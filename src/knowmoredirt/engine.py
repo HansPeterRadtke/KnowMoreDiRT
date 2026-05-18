@@ -12,9 +12,9 @@ from dataclasses import dataclass
 from pathlib import Path
 
 from .extractors import after_label, capitalized_phrases, identifiers, urls
+from .ingest import ingest_folder
 from .index import LexicalIndex
-from .models import Answer, Document, Evidence, Sentence
-from .scanner import scan_folder
+from .models import Answer, Evidence, Sentence
 from .text import compact_answer, normalize
 
 
@@ -27,10 +27,16 @@ class EngineStats:
 class KnowMoreDiRTEngine:
     def __init__(self, folder_path: str | Path) -> None:
         self.folder_path = Path(folder_path)
-        self.documents, self.sentences = scan_folder(self.folder_path)
+        self.store, self.run_id, self.documents, self.sentences = ingest_folder(self.folder_path)
         self.index = LexicalIndex(self.sentences)
         self.stats = EngineStats(len(self.documents), len(self.sentences))
         self._full_names_by_first = self._build_name_aliases()
+
+    def dspg_counts(self) -> dict[str, int]:
+        return self.store.counts()
+
+    def dspg_integrity(self) -> str:
+        return self.store.integrity_check()
 
     def answer(self, question: str) -> Answer:
         question = str(question or "").strip()

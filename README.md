@@ -24,9 +24,9 @@ Internals may use indexes, extracted spans, evidence, and diagnostics, but only 
 
 ## Current Implementation
 
-This first implementation is deterministic and local-only. It scans raw files, records natural filesystem metadata, chunks text into sentence/line units, builds a lexical index, extracts common IDs/URLs/files/names, and applies conservative source-grounded answer patterns for the fixture categories.
+This implementation is deterministic and local-only by default. It scans raw files, records natural filesystem metadata, chunks text into sentence/line units, builds a normalized SQLite DSPG graph, builds a lexical index, extracts common IDs/URLs/files/names, records contexts/frames, and applies conservative source-grounded answer patterns for the fixture categories.
 
-It is not the final DRT reasoning engine. The fixture score is a starting point for regression testing, not a claim of broad real-world generalization.
+It is a cleaned DRT/DSPG vertical slice, not the final model-assisted DRT reasoning engine. The fixture score is a starting point for regression testing, not a claim of broad real-world generalization.
 
 ## Development
 
