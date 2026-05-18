@@ -1,0 +1,6 @@
+Inventory memo.
+Crate ID CR-18 belongs to customer Northstar Credit.
+A table below lists contacts:
+name | role | email
+Ari Moss | invoice contact | ari.moss@northstar.example
+Bex Vale | technical contact | bex.vale@northstar.example

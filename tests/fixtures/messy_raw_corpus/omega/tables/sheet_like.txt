@@ -1,0 +1,6 @@
+Sheet: refunds
+as of: 2024-12-31
+customer | product | refund_status
+Blue Dune Retail | SearchSprout | requested
+Helio Works | MistHarbor | requested
+Ardent Mill | FlowQuill | alleged

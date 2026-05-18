@@ -1,0 +1,3 @@
+Sora believes QuillCache stores passwords in plaintext.
+Audit result: QuillCache stores only salted password hashes.
+Sora's belief should not be treated as the audit result.

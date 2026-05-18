@@ -1,0 +1,5 @@
+LumaLedger design note, revision R7.
+Nina Vale drafted the escrow import design. Omar Kestrel performed the risk review.
+The canonical design URL is https://docs.luma.example/ledger/escrow-import-r7.
+PR-8042 implements the importer and touches ledger_importer.rs.
+A distractor line says LumaLedge is a bird-watching club, not the finance product.

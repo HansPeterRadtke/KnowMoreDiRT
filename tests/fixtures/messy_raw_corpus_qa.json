@@ -1,0 +1,697 @@
+{
+  "corpus_root": "messy_raw_corpus",
+  "questions": [
+    {
+      "answer": "Nina Vale",
+      "category": "direct_fact",
+      "evidence": [
+        {
+          "file": "m7/alpha/no-extension-note",
+          "snippet": "Nina Vale drafted the escrow import design."
+        }
+      ],
+      "id": "q001",
+      "question": "Who drafted the escrow import design for LumaLedger?"
+    },
+    {
+      "answer": "Omar Kestrel",
+      "category": "direct_fact",
+      "evidence": [
+        {
+          "file": "m7/alpha/2026-odd.minutes",
+          "snippet": "Omar reviewed PR-8042"
+        }
+      ],
+      "id": "q002",
+      "question": "Who reviewed PR-8042?"
+    },
+    {
+      "answer": "PR-8042",
+      "category": "exact_id",
+      "evidence": [
+        {
+          "file": "m7/alpha/no-extension-note",
+          "snippet": "PR-8042 implements the importer"
+        }
+      ],
+      "id": "q003",
+      "question": "Which PR implements the LumaLedger importer?"
+    },
+    {
+      "answer": "https://docs.luma.example/ledger/escrow-import-r7",
+      "category": "exact_url",
+      "evidence": [
+        {
+          "file": "m7/alpha/no-extension-note",
+          "snippet": "https://docs.luma.example/ledger/escrow-import-r7"
+        }
+      ],
+      "id": "q004",
+      "question": "What is the canonical design URL for the escrow import design?"
+    },
+    {
+      "answer": "closed",
+      "category": "temporal",
+      "evidence": [
+        {
+          "file": "m7/rubble/incidents/sky-17.log",
+          "snippet": "Final incident state: closed."
+        }
+      ],
+      "id": "q005",
+      "question": "What is the final state of BUG-4481?"
+    },
+    {
+      "answer": "Northstar Credit",
+      "category": "temporal",
+      "evidence": [
+        {
+          "file": "m7/rubble/incidents/sky-17.log",
+          "snippet": "customer Northstar Credit reported a regression"
+        }
+      ],
+      "id": "q006",
+      "question": "Which customer reported the BUG-4481 regression?"
+    },
+    {
+      "answer": "unknown",
+      "category": "ambiguity",
+      "evidence": [],
+      "id": "q007",
+      "question": "Which Morgan approved PR-9910?"
+    },
+    {
+      "answer": "Morgan Hale",
+      "category": "entity_resolution",
+      "evidence": [
+        {
+          "file": "m7/rubble/chat/room-forest.chat",
+          "snippet": "Morgan Hale: I will review PR-9910 for BeaconQueue docs."
+        }
+      ],
+      "id": "q008",
+      "question": "Who reviewed PR-9910 for BeaconQueue docs?"
+    },
+    {
+      "answer": "No; the deletion occurred only in a dream and the repository still contained vault.key.",
+      "category": "dream_vs_fact",
+      "evidence": [
+        {
+          "file": "q2/no_ext/dreamfile",
+          "snippet": "When I woke up, the repository still contained vault.key."
+        },
+        {
+          "file": "q2/no_ext/dreamfile",
+          "snippet": "The dream was not an incident report."
+        }
+      ],
+      "id": "q009",
+      "question": "Did AtlasCrane really delete vault.key?"
+    },
+    {
+      "answer": "temp_token.txt",
+      "category": "dream_vs_fact",
+      "evidence": [
+        {
+          "file": "q2/no_ext/realfile",
+          "snippet": "Rhea Sol deleted temp_token.txt from the staging host after the audit."
+        }
+      ],
+      "id": "q010",
+      "question": "Which file did Rhea Sol delete in the real security bulletin?"
+    },
+    {
+      "answer": "Ardent Mill",
+      "category": "claim_vs_fact",
+      "evidence": [
+        {
+          "file": "q2/legal/casefile.allegation",
+          "snippet": "Plaintiff Ardent Mill alleges that FlowQuill caused invoice drift"
+        }
+      ],
+      "id": "q011",
+      "question": "Who alleged that FlowQuill caused invoice drift?"
+    },
+    {
+      "answer": "No; the final judgment found no proof.",
+      "category": "contradiction_resolution",
+      "evidence": [
+        {
+          "file": "q2/legal/judgment.final",
+          "snippet": "The court found no proof that FlowQuill caused invoice drift."
+        }
+      ],
+      "id": "q012",
+      "question": "Was FlowQuill proven to have caused invoice drift?"
+    },
+    {
+      "answer": "SUP-1207",
+      "category": "source_grounded",
+      "evidence": [
+        {
+          "file": "q2/legal/casefile.allegation",
+          "snippet": "support ticket SUP-1207"
+        }
+      ],
+      "id": "q013",
+      "question": "Which support ticket is named in the FlowQuill allegation?"
+    },
+    {
+      "answer": "1986-07-14",
+      "category": "table_context",
+      "evidence": [
+        {
+          "file": "q2/tables/measurements.tsv",
+          "snippet": "measurement date: 1986-07-14"
+        }
+      ],
+      "id": "q014",
+      "question": "What is the measurement date for the DeltaPier sensor readings?"
+    },
+    {
+      "answer": "S-3",
+      "category": "table_context",
+      "evidence": [
+        {
+          "file": "q2/tables/measurements.tsv",
+          "snippet": "S-3\t91\tcritical"
+        }
+      ],
+      "id": "q015",
+      "question": "Which DeltaPier sensor had critical status?"
+    },
+    {
+      "answer": "2010-05-20",
+      "category": "temporal_context",
+      "evidence": [
+        {
+          "file": "q2/tables/measurements.tsv",
+          "snippet": "source file copied: 2010-05-20"
+        }
+      ],
+      "id": "q016",
+      "question": "When was the DeltaPier source file copied?"
+    },
+    {
+      "answer": "Iris Park",
+      "category": "raw_json_text",
+      "evidence": [
+        {
+          "file": "q2/raw/blob.jsonish",
+          "snippet": "Iris Park accepted responsibility for BUG-7301"
+        }
+      ],
+      "id": "q017",
+      "question": "Who accepted responsibility for BUG-7301?"
+    },
+    {
+      "answer": "https://runbooks.tracenest.example/bug-7301",
+      "category": "exact_url",
+      "evidence": [
+        {
+          "file": "q2/raw/blob.jsonish",
+          "snippet": "https://runbooks.tracenest.example/bug-7301"
+        }
+      ],
+      "id": "q018",
+      "question": "What runbook URL is listed for BUG-7301?"
+    },
+    {
+      "answer": "Rowan",
+      "category": "quote_vs_assertion",
+      "evidence": [
+        {
+          "file": "q2/email/thread.eml",
+          "snippet": "Mira wrote: Rowan fixed parser.cpp in PR-3307."
+        }
+      ],
+      "id": "q019",
+      "question": "According to Mira's top-level note, who fixed parser.cpp?"
+    },
+    {
+      "answer": "Rowan planned to fix parser.cpp tomorrow, not today.",
+      "category": "quote_vs_assertion",
+      "evidence": [
+        {
+          "file": "q2/email/thread.eml",
+          "snippet": "I plan to fix parser.cpp tomorrow, not today."
+        }
+      ],
+      "id": "q020",
+      "question": "What did the forwarded Rowan message say about fixing parser.cpp?"
+    },
+    {
+      "answer": "unknown",
+      "category": "discussion_no_decision",
+      "evidence": [],
+      "id": "q021",
+      "question": "What cache expiration did the team finally choose for VectorLamp?"
+    },
+    {
+      "answer": "It should expire every 8 minutes.",
+      "category": "belief_vs_fact",
+      "evidence": [
+        {
+          "file": "z9/debates/choice.md",
+          "snippet": "Tao believes the cache should expire every 8 minutes."
+        }
+      ],
+      "id": "q022",
+      "question": "What does Tao believe about the VectorLamp cache?"
+    },
+    {
+      "answer": "Blue Dune Retail",
+      "category": "customer",
+      "evidence": [
+        {
+          "file": "z9/support/customer-note.txt",
+          "snippet": "Blue Dune Retail reported that SearchSprout returned duplicate invoices."
+        }
+      ],
+      "id": "q023",
+      "question": "Which customer reported duplicate invoices in SearchSprout?"
+    },
+    {
+      "answer": "Kai Ren",
+      "category": "customer",
+      "evidence": [
+        {
+          "file": "z9/support/customer-note.txt",
+          "snippet": "Kai Ren is the escalation owner."
+        }
+      ],
+      "id": "q024",
+      "question": "Who is the escalation owner for SUP-4432?"
+    },
+    {
+      "answer": "Helio Works",
+      "category": "noisy_text",
+      "evidence": [
+        {
+          "file": "z9/noisy/grit.weird",
+          "snippet": "Helio Works asked for a refund for MistHarbor BUG-9090."
+        }
+      ],
+      "id": "q025",
+      "question": "Which customer asked for a refund for MistHarbor BUG-9090?"
+    },
+    {
+      "answer": "Eli Stone",
+      "category": "entity_resolution",
+      "evidence": [
+        {
+          "file": "z9/names/near-duplicates.txt",
+          "snippet": "Eli Stone manages RenderFern billing."
+        }
+      ],
+      "id": "q026",
+      "question": "Who manages RenderFern billing?"
+    },
+    {
+      "answer": "Eli Stowe",
+      "category": "entity_resolution",
+      "evidence": [
+        {
+          "file": "z9/names/near-duplicates.txt",
+          "snippet": "Eli Stowe manages RenderFern rendering."
+        }
+      ],
+      "id": "q027",
+      "question": "Who manages RenderFern rendering?"
+    },
+    {
+      "answer": "No; runtime flags stale ledgers for human review.",
+      "category": "code_context",
+      "evidence": [
+        {
+          "file": "omega/code/readme_plus.cmt",
+          "snippet": "Runtime note: the code flags stale ledgers; it does not delete them."
+        }
+      ],
+      "id": "q028",
+      "question": "Does NovaTally runtime delete stale ledgers?"
+    },
+    {
+      "answer": "Tomas Vale",
+      "category": "temporal",
+      "evidence": [
+        {
+          "file": "omega/timeline/final-state.timeline",
+          "snippet": "Wednesday: PR-1201 merged by Tomas Vale."
+        }
+      ],
+      "id": "q029",
+      "question": "Who merged PR-1201?"
+    },
+    {
+      "answer": "resumed",
+      "category": "temporal",
+      "evidence": [
+        {
+          "file": "omega/timeline/final-state.timeline",
+          "snippet": "Current rollout state: resumed."
+        }
+      ],
+      "id": "q030",
+      "question": "What is the current HarborMint rollout state?"
+    },
+    {
+      "answer": "No; it is fiction homework.",
+      "category": "fiction_vs_fact",
+      "evidence": [
+        {
+          "file": "omega/distractors/story_about_drawings.txt",
+          "snippet": "this is fiction homework, not an engineering record."
+        }
+      ],
+      "id": "q031",
+      "question": "Should the moon factory candy bridge drawing be treated as an engineering record?"
+    },
+    {
+      "answer": "https://drawings.copper.example/CH-77",
+      "category": "technical_document",
+      "evidence": [
+        {
+          "file": "omega/engineering/drawing-note",
+          "snippet": "https://drawings.copper.example/CH-77"
+        }
+      ],
+      "id": "q032",
+      "question": "Where is construction drawing CH-77 stored?"
+    },
+    {
+      "answer": "Veda Lin",
+      "category": "technical_document",
+      "evidence": [
+        {
+          "file": "omega/engineering/drawing-note",
+          "snippet": "Revision C was approved by engineer Veda Lin"
+        }
+      ],
+      "id": "q033",
+      "question": "Who approved CopperHollow revision C?"
+    },
+    {
+      "answer": "2",
+      "category": "aggregation",
+      "evidence": [
+        {
+          "file": "omega/tables/sheet_like.txt",
+          "snippet": "Blue Dune Retail | SearchSprout | requested"
+        },
+        {
+          "file": "omega/tables/sheet_like.txt",
+          "snippet": "Helio Works | MistHarbor | requested"
+        }
+      ],
+      "id": "q034",
+      "question": "How many customers have requested refund status in the refunds sheet?"
+    },
+    {
+      "answer": "bad certificate",
+      "category": "contradiction_resolution",
+      "evidence": [
+        {
+          "file": "omega/messages/disagreement.msg",
+          "snippet": "final cause was the bad certificate, not gateway overload."
+        }
+      ],
+      "id": "q035",
+      "question": "What was the final cause of the outage?"
+    },
+    {
+      "answer": "Dana",
+      "category": "who_claimed_what",
+      "evidence": [
+        {
+          "file": "omega/messages/disagreement.msg",
+          "snippet": "Dana: The outage was caused by gateway overload."
+        }
+      ],
+      "id": "q036",
+      "question": "Who claimed the outage was caused by gateway overload?"
+    },
+    {
+      "answer": "No; it stores only salted password hashes.",
+      "category": "belief_vs_fact",
+      "evidence": [
+        {
+          "file": "lambda/claims/beliefs.txt",
+          "snippet": "Audit result: QuillCache stores only salted password hashes."
+        }
+      ],
+      "id": "q037",
+      "question": "Does the audit say QuillCache stores plaintext passwords?"
+    },
+    {
+      "answer": "Reese Vale",
+      "category": "multi_hop",
+      "evidence": [
+        {
+          "file": "lambda/projects/project-plan.note",
+          "snippet": "Reese Vale requested the plan"
+        }
+      ],
+      "id": "q038",
+      "question": "Who requested the MarlinKind plan?"
+    },
+    {
+      "answer": "SPEC-22, PR-7788, and https://plans.marlin.example/kind",
+      "category": "multi_hop",
+      "evidence": [
+        {
+          "file": "lambda/projects/project-plan.note",
+          "snippet": "SPEC-22, PR-7788, and https://plans.marlin.example/kind"
+        }
+      ],
+      "id": "q039",
+      "question": "Which three artifacts does Project MarlinKind depend on?"
+    },
+    {
+      "answer": "b16b00b5",
+      "category": "exact_id",
+      "evidence": [
+        {
+          "file": "lambda/logs/randomized.LOG",
+          "snippet": "commit b16b00b5 fixed NullMoss crash BUG-5150"
+        }
+      ],
+      "id": "q040",
+      "question": "Which commit fixed NullMoss crash BUG-5150?"
+    },
+    {
+      "answer": "Green Parcel",
+      "category": "customer",
+      "evidence": [
+        {
+          "file": "lambda/logs/randomized.LOG",
+          "snippet": "customer Green Parcel confirmed the fix on 2026-04-19"
+        }
+      ],
+      "id": "q041",
+      "question": "Which customer confirmed the NullMoss fix?"
+    },
+    {
+      "answer": "unknown",
+      "category": "unanswerable",
+      "evidence": [],
+      "id": "q042",
+      "question": "What is the release date for VioletForge?"
+    },
+    {
+      "answer": "unknown",
+      "category": "unanswerable",
+      "evidence": [],
+      "id": "q043",
+      "question": "Who owns MoonCrate?"
+    },
+    {
+      "answer": "Bex Vale",
+      "category": "table_lookup",
+      "evidence": [
+        {
+          "file": "zz/mixed/table_and_prose.txt",
+          "snippet": "Bex Vale | technical contact | bex.vale@northstar.example"
+        }
+      ],
+      "id": "q044",
+      "question": "Who is the technical contact for Northstar Credit?"
+    },
+    {
+      "answer": "CR-18",
+      "category": "exact_id",
+      "evidence": [
+        {
+          "file": "zz/mixed/table_and_prose.txt",
+          "snippet": "Crate ID CR-18 belongs to customer Northstar Credit."
+        }
+      ],
+      "id": "q045",
+      "question": "Which crate ID belongs to Northstar Credit?"
+    },
+    {
+      "answer": "Jules",
+      "category": "transcript",
+      "evidence": [
+        {
+          "file": "zz/transcripts/standup.log",
+          "snippet": "Blocker is BUG-2244, owned by Jules."
+        }
+      ],
+      "id": "q046",
+      "question": "Who owns BUG-2244?"
+    },
+    {
+      "answer": "Ava",
+      "category": "transcript",
+      "evidence": [
+        {
+          "file": "zz/transcripts/standup.log",
+          "snippet": "Ava: Yesterday I tested BeaconQueue cold start."
+        }
+      ],
+      "id": "q047",
+      "question": "Who tested BeaconQueue cold start?"
+    },
+    {
+      "answer": "Elan Ruiz",
+      "category": "noisy_text",
+      "evidence": [
+        {
+          "file": "zz/malformed/without_extension_again",
+          "snippet": "CedarSpan launch owner is Elan Ruiz."
+        }
+      ],
+      "id": "q048",
+      "question": "Who is the CedarSpan launch owner?"
+    },
+    {
+      "answer": "Iona Gray",
+      "category": "raw_json_text",
+      "evidence": [
+        {
+          "file": "zz/json_as_text/products.dump",
+          "snippet": "reviewer: \"Iona Gray\""
+        }
+      ],
+      "id": "q049",
+      "question": "Who reviewed PR-6402 for RippleDesk?"
+    },
+    {
+      "answer": "Gus North",
+      "category": "raw_json_text",
+      "evidence": [
+        {
+          "file": "zz/json_as_text/products.dump",
+          "snippet": "approver: \"Gus North\""
+        }
+      ],
+      "id": "q050",
+      "question": "Who approved RippleDesk?"
+    },
+    {
+      "answer": "No; it is an unrelated gardening note.",
+      "category": "distractor_avoidance",
+      "evidence": [
+        {
+          "file": "zz/distractors/similar-title.txt",
+          "snippet": "This unrelated gardening note mentions market research but has no relation"
+        }
+      ],
+      "id": "q051",
+      "question": "Is ActionGarden a product roadmap target in the corpus?"
+    },
+    {
+      "answer": "unknown",
+      "category": "unanswerable",
+      "evidence": [],
+      "id": "q052",
+      "question": "What is the customer ID for Blue Dune Retail?"
+    },
+    {
+      "answer": "unknown",
+      "category": "not_over_answering",
+      "evidence": [],
+      "id": "q053",
+      "question": "Which Morgan should be merged with Morgan Hale?"
+    },
+    {
+      "answer": "ledger_importer.rs",
+      "category": "source_grounded",
+      "evidence": [
+        {
+          "file": "m7/alpha/no-extension-note",
+          "snippet": "touches ledger_importer.rs"
+        }
+      ],
+      "id": "q054",
+      "question": "Which file did PR-8042 touch?"
+    },
+    {
+      "answer": "2026-02-03 16:45",
+      "category": "temporal",
+      "evidence": [
+        {
+          "file": "m7/rubble/incidents/sky-17.log",
+          "snippet": "2026-02-03 16:45 BUG-4481 reopened"
+        }
+      ],
+      "id": "q055",
+      "question": "When did BUG-4481 reopen?"
+    },
+    {
+      "answer": "unknown",
+      "category": "claim_vs_fact",
+      "evidence": [],
+      "id": "q056",
+      "question": "Was Ardent Mill refund request proven by the judgment?"
+    },
+    {
+      "answer": "2",
+      "category": "aggregation",
+      "evidence": [
+        {
+          "file": "zz/mixed/table_and_prose.txt",
+          "snippet": "Ari Moss | invoice contact | ari.moss@northstar.example"
+        },
+        {
+          "file": "zz/mixed/table_and_prose.txt",
+          "snippet": "Bex Vale | technical contact | bex.vale@northstar.example"
+        }
+      ],
+      "id": "q057",
+      "question": "How many contacts are listed for Northstar Credit?"
+    },
+    {
+      "answer": "Rui",
+      "category": "discussion_disagreement",
+      "evidence": [
+        {
+          "file": "omega/messages/disagreement.msg",
+          "snippet": "Rui: I disagree; the outage was caused by a bad certificate."
+        }
+      ],
+      "id": "q058",
+      "question": "Who disagreed with Dana about the outage cause?"
+    },
+    {
+      "answer": "Sora",
+      "category": "belief_vs_fact",
+      "evidence": [
+        {
+          "file": "lambda/claims/beliefs.txt",
+          "snippet": "Sora believes QuillCache stores passwords in plaintext."
+        }
+      ],
+      "id": "q059",
+      "question": "Who believed QuillCache stored passwords in plaintext?"
+    },
+    {
+      "answer": "unknown",
+      "category": "unanswerable",
+      "evidence": [],
+      "id": "q060",
+      "question": "What is the email address for Elan Ruiz?"
+    }
+  ]
+}

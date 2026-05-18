@@ -1,0 +1,4 @@
+Meeting transcript -- Boreal Room.
+[Cal] I thought Omar owned PR-8042.
+[Nina] Correction: Omar reviewed PR-8042; Nina authored the design and Priya Moon owns deployment.
+[Priya] Deployment owner accepted. The release gate remains blocked until BUG-4481 is closed.

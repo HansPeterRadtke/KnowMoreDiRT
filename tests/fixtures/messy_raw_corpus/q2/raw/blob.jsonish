@@ -1,0 +1,7 @@
+{
+  "not_a_schema": "this file is raw text for KnowMoreDiRT tests",
+  "project": "TraceNest",
+  "issue": "BUG-7301",
+  "owner_sentence": "Iris Park accepted responsibility for BUG-7301 after Zed Labs escalated it.",
+  "url_sentence": "The runbook is https://runbooks.tracenest.example/bug-7301"
+}

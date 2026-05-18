@@ -1,0 +1,6 @@
+2026-02-01 09:00 BUG-4481 opened for LumaLedger escrow import timeout.
+2026-02-01 11:30 BUG-4481 assigned to Priya Moon.
+2026-02-02 08:10 BUG-4481 marked fixed by commit a91c0ffee12b.
+2026-02-03 16:45 BUG-4481 reopened after customer Northstar Credit reported a regression.
+2026-02-04 10:15 BUG-4481 closed again after PR-8042 was merged.
+Final incident state: closed.

@@ -1,0 +1,4 @@
+Support summary for customer Blue Dune Retail.
+Blue Dune Retail reported that SearchSprout returned duplicate invoices.
+Ticket SUP-4432 tracks the duplicate invoice issue.
+Kai Ren is the escalation owner.

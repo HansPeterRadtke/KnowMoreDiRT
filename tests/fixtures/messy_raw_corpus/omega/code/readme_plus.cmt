@@ -1,0 +1,5 @@
+// Comment: NovaTally automatically deletes stale ledgers.
+function reconcileLedger() {
+  return "stale ledgers are flagged for human review";
+}
+Runtime note: the code flags stale ledgers; it does not delete them.

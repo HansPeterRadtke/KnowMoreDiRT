@@ -1,0 +1,7 @@
+Timeline for HarborMint rollout:
+Monday: PR-1201 opened.
+Tuesday: PR-1201 approved by Sana Reed.
+Wednesday: PR-1201 merged by Tomas Vale.
+Thursday: HarborMint rollout paused after BUG-6022.
+Friday: BUG-6022 fixed and HarborMint rollout resumed.
+Current rollout state: resumed.

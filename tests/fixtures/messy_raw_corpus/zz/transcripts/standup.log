@@ -1,0 +1,3 @@
+[09:01] Ava: Yesterday I tested BeaconQueue cold start.
+[09:02] Jules: Today I will document the retry window.
+[09:03] Ava: Blocker is BUG-2244, owned by Jules.

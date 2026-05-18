@@ -1,0 +1,3 @@
+AtlasCrane security bulletin.
+Rhea Sol deleted temp_token.txt from the staging host after the audit.
+The deletion was confirmed by log entry SEC-771.
