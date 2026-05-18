@@ -1,6 +1,11 @@
-"""Public package interface for KnowMoreDiRT."""
+"""KnowMoreDiRT public package interface.
 
-from .public import KnowMoreDiRTSession, initialize
+Only the two intended public functions are exported:
 
-__all__ = ["KnowMoreDiRTSession", "initialize"]
+- :func:`initialize`
+- :func:`question`
+"""
 
+from .public import initialize, question
+
+__all__ = ["initialize", "question"]

@@ -19,6 +19,6 @@ The fixture at `tests/fixtures/messy_raw_corpus/` is a deliberately messy raw-fo
 
 The fixture is usable only as a raw folder tree. It contains no metadata wrappers, prepared manifests, benchmark-specific headers, or schema fields required by the public system. A future solver must discover structure from the file contents.
 
-## Intentionally Not Implemented
+## Current Implementation Status
 
-The final DRT reasoning engine is not implemented in this phase. The package currently provides only a stub public interface and validation tests for the corpus and contract.
+An initial deterministic raw-text engine is now implemented. It is sufficient to use this fixture as an executable regression baseline, but it is not the final DRT reasoning system and should be expanded with unseen holdouts before any broad claims are made.

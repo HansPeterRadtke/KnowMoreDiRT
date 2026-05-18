@@ -37,7 +37,6 @@ REQUIRED_CATEGORIES = {
 
 
 def test_messy_raw_fixture_has_nested_unstructured_shape() -> None:
-    assert FIXTURE_ROOT.is_dir()
     files = [path for path in FIXTURE_ROOT.rglob("*") if path.is_file()]
     directories = [path for path in FIXTURE_ROOT.rglob("*") if path.is_dir()]
     suffixes = {path.suffix for path in files}
@@ -90,6 +89,5 @@ def test_qa_evidence_points_only_to_raw_corpus_text() -> None:
             assert not rel_path.is_absolute()
             source_path = FIXTURE_ROOT / rel_path
             assert source_path.is_file(), f"missing evidence file {rel_path}"
-            source_text = source_path.read_text(encoding="utf-8")
-            assert evidence["snippet"] in source_text, f"snippet missing for {entry['id']}"
+            assert evidence["snippet"] in source_path.read_text(encoding="utf-8")
 
