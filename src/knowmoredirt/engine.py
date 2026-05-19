@@ -41,6 +41,7 @@ class KnowMoreDiRTEngine:
         self._low_semantic_noise_paths = {
             document.rel_path for document in self.documents if is_low_semantic_noise(document.text)
         }
+        self._allow_global_fallback = len(self.sentences) <= 100_000
 
     def dspg_counts(self) -> dict[str, int]:
         return self.store.counts()
@@ -277,7 +278,8 @@ class KnowMoreDiRTEngine:
         if any(term in qnorm for term in ["roadmap target", "target"]):
             candidates = self._search(question, limit=10)
             seen = {sentence.sentence_id for sentence, _ in candidates}
-            candidates.extend((sentence, 0.2) for sentence in self.sentences if "unrelated" in normalize(sentence.text) and sentence.sentence_id not in seen)
+            if self._allow_global_fallback:
+                candidates.extend((sentence, 0.2) for sentence in self.sentences if "unrelated" in normalize(sentence.text) and sentence.sentence_id not in seen)
             for sentence, score in candidates:
                 if "unrelated" in normalize(sentence.text):
                     match = re.search(r"\bunrelated\s+([^.;]+)", sentence.text, re.I)
@@ -360,7 +362,9 @@ class KnowMoreDiRTEngine:
         if wants_url_like:
             question_ids = identifiers(question)
             url_matches: list[tuple[float, str, Sentence, float]] = []
-            scan_items = candidates + [(sentence, 0.1) for sentence in self.sentences if urls(sentence.text)]
+            scan_items = list(candidates)
+            if self._allow_global_fallback:
+                scan_items.extend((sentence, 0.1) for sentence in self.sentences if urls(sentence.text))
             for sentence, score in scan_items:
                 sentence_norm = normalize(sentence.text)
                 if question_ids and not any(item in sentence.text for item in question_ids):
@@ -396,7 +400,9 @@ class KnowMoreDiRTEngine:
             if " id" in qnorm and not any(term in qnorm for term in ["which pr", "what pr", "which commit", "ticket"]):
                 return None
             id_matches: list[tuple[float, str, Sentence, float]] = []
-            scan_items = candidates + [(sentence, 0.1) for sentence in self.sentences if identifiers(sentence.text)]
+            scan_items = list(candidates)
+            if self._allow_global_fallback:
+                scan_items.extend((sentence, 0.1) for sentence in self.sentences if identifiers(sentence.text))
             for sentence, score in scan_items:
                 values = identifiers(sentence.text)
                 if not values:
@@ -428,7 +434,9 @@ class KnowMoreDiRTEngine:
             return None
         descriptor = clean_extracted_value(match.group(1))
         descriptor_terms = [term for term in descriptor.split() if term not in {"the", "a", "an"}]
-        scan_items = self._search(question, limit=12) + [(sentence, 0.1) for sentence in self.sentences]
+        scan_items = self._search(question, limit=12)
+        if self._allow_global_fallback:
+            scan_items = scan_items + [(sentence, 0.1) for sentence in self.sentences]
         matches: list[tuple[float, str, Sentence, float]] = []
         for sentence, score in scan_items:
             text_norm = normalize(sentence.text)
@@ -698,7 +706,9 @@ class KnowMoreDiRTEngine:
                         value += "."
                     return Answer(value, score, [self._evidence(sentence, score)], "belief content")
         if "what was the final cause" in qnorm:
-            scan_items = candidates + [(sentence, 0.1) for sentence in self.sentences if "final cause" in normalize(sentence.text)]
+            scan_items = list(candidates)
+            if self._allow_global_fallback:
+                scan_items.extend((sentence, 0.1) for sentence in self.sentences if "final cause" in normalize(sentence.text))
             for sentence, score in scan_items:
                 match = re.search(r"final cause was (.+?)(?:,|\.|$)", sentence.text, re.I)
                 if match:
@@ -881,7 +891,8 @@ class KnowMoreDiRTEngine:
         matches: list[tuple[float, str, Sentence, float]] = []
         scan_items = list(candidates)
         seen_ids = {sentence.sentence_id for sentence, _ in scan_items}
-        scan_items.extend((sentence, 0.25) for sentence in self.sentences if sentence.sentence_id not in seen_ids)
+        if self._allow_global_fallback:
+            scan_items.extend((sentence, 0.25) for sentence in self.sentences if sentence.sentence_id not in seen_ids)
         for sentence, score in scan_items:
             parts = re.split(r"\s*[|,;]\s*", sentence.text)
             for part in parts:

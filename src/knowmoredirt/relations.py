@@ -91,6 +91,26 @@ STATUS_TRIGGERS = {
     "no crack": "negated",
 }
 
+ACTIVE_EVENT_RE = re.compile(
+    rf"\b({PERSON_PATTERN})\s+({'|'.join(sorted(map(re.escape, GENERIC_VERBS), key=len, reverse=True))})\b([^.;\n]*)"
+)
+PASSIVE_EVENT_RE = re.compile(
+    rf"([^.;\n]{{2,120}}?)\s+(?:was\s+)?({'|'.join(sorted(map(re.escape, PASSIVE_VERBS), key=len, reverse=True))})\s+by\s+({PERSON_PATTERN})",
+    re.I,
+)
+MEANING_RE = re.compile(r"([^.;:\n]+?)\s+means\s+([^.;\n]+)", re.I)
+PLURAL_RE = re.compile(r"plural\s+of\s+([^.;\n]+?)\s+is\s+([^.;\n]+)", re.I)
+ALIAS_RE = re.compile(r"([A-Z][A-Za-z]+(?:\s+[A-Z][A-Za-z]+){0,3})\s+is\s+also\s+called\s+([^.;\n]+)")
+NEGATIVE_BUY_RE = re.compile(r"\bbought\s+(.+?)\s+but\s+not\s+([^.;\n]+)", re.I)
+PRACTICE_SCALE_RE = re.compile(r"\bpracticed\s+the\s+(.+?)\s+scale\b", re.I)
+CONFIRMED_FIX_RE = re.compile(r"confirmed\s+fix\s*[:=]\s*(.+)", re.I)
+TIMESTAMP_RE = re.compile(r"\b(\d{4}-\d{2}-\d{2}\s+\d{2}:\d{2})\b")
+ROLE_LABEL_RE = re.compile(
+    rf"\b(?:owner|contact|researcher|vet|inspector|clinician)\b[^:;\n]{{0,30}}[:=]\s*({PERSON_PATTERN})",
+    re.I,
+)
+LABEL_VALUE_RE = re.compile(r'\s*"?([A-Za-z][A-Za-z0-9 _/-]{1,50})"?\s*[:=]\s*"?([^"{}\[\]\n;,|]+)"?')
+
 
 @dataclass(frozen=True)
 class ExtractedRelation:
@@ -143,27 +163,26 @@ def extract_relations(text: str) -> list[ExtractedRelation]:
     for identifier in identifiers(value):
         _append(relations, "identifier", "identifier", value=identifier, confidence=0.8)
 
-    for match in re.finditer(r"([^.;:\n]+?)\s+means\s+([^.;\n]+)", value, re.I):
+    for match in MEANING_RE.finditer(value):
         _append(relations, "meaning", "mean", match.group(1).split(":")[-1], value=match.group(2), confidence=0.88)
-    for match in re.finditer(r"plural\s+of\s+([^.;\n]+?)\s+is\s+([^.;\n]+)", value, re.I):
+    for match in PLURAL_RE.finditer(value):
         _append(relations, "grammar", "plural", match.group(1), value=match.group(2), confidence=0.88)
-    for match in re.finditer(r"([A-Z][A-Za-z]+(?:\s+[A-Z][A-Za-z]+){0,3})\s+is\s+also\s+called\s+([^.;\n]+)", value):
+    for match in ALIAS_RE.finditer(value):
         _append(relations, "identity", "alias", match.group(1), value=match.group(2), confidence=0.82)
-    for match in re.finditer(r"\bbought\s+(.+?)\s+but\s+not\s+([^.;\n]+)", value, re.I):
+    for match in NEGATIVE_BUY_RE.finditer(value):
         _append(relations, "event", "not_buy", object_=match.group(2), value=match.group(2), confidence=0.82)
-    for match in re.finditer(r"\bpracticed\s+the\s+(.+?)\s+scale\b", value, re.I):
+    for match in PRACTICE_SCALE_RE.finditer(value):
         _append(relations, "event_detail", "practice_scale", value=match.group(1), confidence=0.82)
-    for match in re.finditer(r"confirmed\s+fix\s*[:=]\s*(.+)", value, re.I):
+    for match in CONFIRMED_FIX_RE.finditer(value):
         _append(relations, "status", "confirmed_fix", value=match.group(1), confidence=0.86)
-    for match in re.finditer(r"\b(\d{4}-\d{2}-\d{2}\s+\d{2}:\d{2})\b", value):
+    for match in TIMESTAMP_RE.finditer(value):
         _append(relations, "temporal", "timestamp", value=match.group(1), confidence=0.8)
 
     for trigger, predicate in STATUS_TRIGGERS.items():
         if trigger in lowered:
             _append(relations, "status", predicate, value=value, confidence=0.75, trigger=trigger)
 
-    verb_choices = "|".join(sorted(map(re.escape, GENERIC_VERBS), key=len, reverse=True))
-    for match in re.finditer(rf"\b({PERSON_PATTERN})\s+({verb_choices})\b([^.;\n]*)", value):
+    for match in ACTIVE_EVENT_RE.finditer(value):
         verb = match.group(2).lower()
         _append(
             relations,
@@ -175,8 +194,7 @@ def extract_relations(text: str) -> list[ExtractedRelation]:
             surface_verb=verb,
         )
 
-    passive_choices = "|".join(sorted(map(re.escape, PASSIVE_VERBS), key=len, reverse=True))
-    for match in re.finditer(rf"([^.;\n]{{2,120}}?)\s+(?:was\s+)?({passive_choices})\s+by\s+({PERSON_PATTERN})", value, re.I):
+    for match in PASSIVE_EVENT_RE.finditer(value):
         verb = match.group(2).lower()
         _append(
             relations,
@@ -189,7 +207,7 @@ def extract_relations(text: str) -> list[ExtractedRelation]:
             surface_verb=verb,
         )
 
-    for match in re.finditer(rf"\b(?:owner|contact|researcher|vet|inspector|clinician)\b[^:;\n]{{0,30}}[:=]\s*({PERSON_PATTERN})", value, re.I):
+    for match in ROLE_LABEL_RE.finditer(value):
         label = value[max(0, match.start() - 40): match.start()].split("|")[-1]
         _append(relations, "label_value", "label", subject=label, value=match.group(1), confidence=0.82)
 
@@ -200,7 +218,7 @@ def _extract_label_values(text: str) -> list[ExtractedRelation]:
     relations: list[ExtractedRelation] = []
     pieces = re.split(r"\s*(?:[|;,]|\n)\s*", text)
     for piece in pieces:
-        match = re.match(r'\s*"?([A-Za-z][A-Za-z0-9 _/-]{1,50})"?\s*[:=]\s*"?([^"{}\[\]\n;,|]+)"?', piece)
+        match = LABEL_VALUE_RE.match(piece)
         if not match:
             continue
         label = clean_extracted_value(match.group(1))

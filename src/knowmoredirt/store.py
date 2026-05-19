@@ -27,13 +27,17 @@ def stable_id(prefix: str, *parts: Any) -> str:
 class DSPGStore:
     """Small SQLite persistence layer for internal DSPG records."""
 
-    def __init__(self, path: str | Path = ":memory:") -> None:
+    def __init__(self, path: str | Path = ":memory:", *, create_indexes: bool = True) -> None:
         self.path = str(path)
         self.connection = sqlite3.connect(self.path)
         self.connection.row_factory = sqlite3.Row
-        self.initialize_schema()
+        self.connection.execute("PRAGMA synchronous=OFF")
+        self.connection.execute("PRAGMA temp_store=MEMORY")
+        if self.path == ":memory:":
+            self.connection.execute("PRAGMA journal_mode=MEMORY")
+        self.initialize_schema(create_indexes=create_indexes)
 
-    def initialize_schema(self) -> None:
+    def initialize_schema(self, *, create_indexes: bool = True) -> None:
         statements = [
             "CREATE TABLE IF NOT EXISTS schema_meta (key TEXT PRIMARY KEY, value TEXT NOT NULL)",
             """
@@ -182,6 +186,19 @@ class DSPGStore:
               metadata_json TEXT
             )
             """,
+        ]
+        for statement in statements:
+            self.connection.execute(statement)
+        if create_indexes:
+            self.create_indexes()
+        self.connection.execute(
+            "INSERT OR REPLACE INTO schema_meta(key, value) VALUES ('schema_version', ?)",
+            (str(SCHEMA_VERSION),),
+        )
+        self.connection.commit()
+
+    def create_indexes(self) -> None:
+        statements = [
             "CREATE INDEX IF NOT EXISTS idx_documents_run ON documents(run_id)",
             "CREATE INDEX IF NOT EXISTS idx_documents_rel ON documents(rel_path)",
             "CREATE INDEX IF NOT EXISTS idx_chunks_doc_order ON chunks(document_id, chunk_order)",
@@ -203,10 +220,6 @@ class DSPGStore:
         ]
         for statement in statements:
             self.connection.execute(statement)
-        self.connection.execute(
-            "INSERT OR REPLACE INTO schema_meta(key, value) VALUES ('schema_version', ?)",
-            (str(SCHEMA_VERSION),),
-        )
         self.connection.commit()
 
     def start_run(self, input_root: str | Path) -> str:

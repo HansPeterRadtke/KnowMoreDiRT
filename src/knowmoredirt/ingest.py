@@ -37,6 +37,10 @@ VERB_PREDICATES = {
     "tested": "test",
     "manages": "manage",
 }
+VERB_PREDICATE_RE = re.compile(
+    r"\b(" + "|".join(sorted(map(re.escape, VERB_PREDICATES), key=len, reverse=True)) + r")\b",
+    re.I,
+)
 
 DATE_RE = re.compile(r"\b(\d{4}-\d{2}-\d{2})(?:[ T]\d{2}:\d{2})?\b")
 STATE_RE = re.compile(r"\b(?:state|status)\s*:\s*([A-Za-z0-9_-]+)", re.I)
@@ -92,9 +96,10 @@ def collect_mentions(sentence: Sentence) -> list[tuple[str, str, int, int]]:
 
 
 def frame_predicate(text: str) -> tuple[str, str] | None:
-    for verb, predicate in VERB_PREDICATES.items():
-        if re.search(rf"\b{re.escape(verb)}\b", text, re.I):
-            return predicate, verb
+    match = VERB_PREDICATE_RE.search(text)
+    if match:
+        verb = match.group(1).lower()
+        return VERB_PREDICATES[verb], verb
     return None
 
 
@@ -120,12 +125,13 @@ def temporal_state(text: str) -> tuple[str, str] | None:
 
 
 def ingest_folder(folder_path: str | Path, store: DSPGStore | None = None) -> tuple[DSPGStore, str, list[Document], list[Sentence]]:
-    store = store or DSPGStore()
+    created_store = store is None
+    store = store or DSPGStore(create_indexes=False)
     documents, sentences = scan_folder(folder_path)
     run_id = store.start_run(folder_path)
 
     sentence_by_id = {sentence.sentence_id: sentence for sentence in sentences}
-    mention_by_surface: dict[tuple[str, str], str] = {}
+    referent_cache: dict[tuple[str, str], str] = {}
     context_by_kind: dict[str, str] = {}
 
     for document in documents:
@@ -192,12 +198,15 @@ def ingest_folder(folder_path: str | Path, store: DSPGStore | None = None) -> tu
                 "INSERT OR IGNORE INTO mentions(mention_id, run_id, span_id, surface, surface_norm, mention_kind, entity_type, confidence, source) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)",
                 (mention_id, run_id, mention_span_id, surface, normalize(surface), entity_type, entity_type, 1.0, "deterministic"),
             )
-            referent_id = store.upsert_referent(run_id, surface, entity_type)
+            referent_key = (normalize(surface), entity_type)
+            referent_id = referent_cache.get(referent_key)
+            if referent_id is None:
+                referent_id = store.upsert_referent(run_id, surface, entity_type)
+                referent_cache[referent_key] = referent_id
             store.execute(
                 "INSERT OR IGNORE INTO mention_referents(mention_id, referent_id, link_status, confidence) VALUES (?, ?, ?, ?)",
                 (mention_id, referent_id, "candidate", 1.0),
             )
-            mention_by_surface[(sentence.sentence_id, surface)] = mention_id
             mentions_for_sentence.append((surface, mention_id, referent_id))
 
         frame_info = frame_predicate(sentence.text)
@@ -280,5 +289,7 @@ def ingest_folder(folder_path: str | Path, store: DSPGStore | None = None) -> tu
         "sentences": len(sentences),
         **store.counts(),
     }
+    if created_store:
+        store.create_indexes()
     store.finish_run(run_id, metrics)
     return store, run_id, documents, sentences
