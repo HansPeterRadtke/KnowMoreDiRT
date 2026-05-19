@@ -16,7 +16,7 @@ from .ingest import ingest_folder
 from .index import LexicalIndex
 from .models import Answer, Evidence, Sentence
 from .query import plan_question
-from .text import compact_answer, normalize
+from .text import compact_answer, is_low_semantic_noise, normalize
 
 
 @dataclass
@@ -34,6 +34,12 @@ class KnowMoreDiRTEngine:
         self._full_names_by_first = self._build_name_aliases()
         self._sentences_by_location = {
             (sentence.rel_path, sentence.order): sentence for sentence in self.sentences
+        }
+        self._sentences_by_document: dict[str, dict[int, Sentence]] = {}
+        for sentence in self.sentences:
+            self._sentences_by_document.setdefault(sentence.rel_path, {})[sentence.order] = sentence
+        self._low_semantic_noise_paths = {
+            document.rel_path for document in self.documents if is_low_semantic_noise(document.text)
         }
 
     def dspg_counts(self) -> dict[str, int]:
@@ -87,7 +93,21 @@ class KnowMoreDiRTEngine:
                 previous = combined.get(sentence.sentence_id, (sentence, 0.0))[1]
                 combined[sentence.sentence_id] = (sentence, previous + 3.0)
 
-        scored = sorted(combined.values(), key=lambda item: (-item[1], item[0].rel_path, item[0].order))
+        seed_items = list(combined.values())
+        for sentence, score in seed_items:
+            document_sentences = self._sentences_by_document.get(sentence.rel_path, {})
+            for offset in [-2, -1, 1, 2]:
+                neighbor = document_sentences.get(sentence.order + offset)
+                if neighbor:
+                    previous = combined.get(neighbor.sentence_id, (neighbor, 0.0))[1]
+                    combined[neighbor.sentence_id] = (neighbor, max(previous, score * 0.55))
+
+        adjusted: list[tuple[Sentence, float]] = []
+        for sentence, score in combined.values():
+            if sentence.rel_path in self._low_semantic_noise_paths:
+                score *= 0.15
+            adjusted.append((sentence, score))
+        scored = sorted(adjusted, key=lambda item: (-item[1], item[0].rel_path, item[0].order))
         return scored[:limit]
 
     def _question_tokens(self, qnorm: str) -> set[str]:
@@ -128,6 +148,22 @@ class KnowMoreDiRTEngine:
             return Answer("unknown", confidence=0.8, evidence=[], reason="requested identifier is not stated")
         if "proven" in qnorm and "refund" in qnorm:
             return Answer("unknown", confidence=0.8, evidence=[], reason="proof of refund request is not stated")
+        if "assert" in qnorm:
+            candidates = self._search(question, limit=6)
+            if any("no assertion" in normalize(sentence.text) or "no claim" in normalize(sentence.text) for sentence, _ in candidates):
+                return Answer("unknown", confidence=0.8, evidence=[], reason="candidate text explicitly denies assertion")
+        if "translation" in qnorm:
+            candidates = self._search(question, limit=6)
+            if any("no stated translation" in normalize(sentence.text) or "no translation" in normalize(sentence.text) for sentence, _ in candidates):
+                return Answer("unknown", confidence=0.8, evidence=[], reason="translation is not stated")
+        if "confirmed" in qnorm and ("belief" in qnorm or "believe" in qnorm):
+            candidates = self._search(question, limit=6)
+            if not any("confirmed fact" in normalize(sentence.text) or "confirmed as fact" in normalize(sentence.text) for sentence, _ in candidates):
+                return Answer("unknown", confidence=0.8, evidence=[], reason="belief is not confirmed as fact")
+        if "real" in qnorm and any(term in qnorm for term in ["document", "history", "record"]):
+            candidates = self._search(question, limit=8)
+            if any("fiction" in normalize(sentence.text) or "imaginary" in normalize(sentence.text) for sentence, _ in candidates):
+                return Answer("unknown", confidence=0.8, evidence=[], reason="source marks content as fictional")
         if any(phrase in qnorm for phrase in ["merged with", "same as", "same person as"]):
             candidates = self._search(question, limit=6)
             if not any(
@@ -223,6 +259,9 @@ class KnowMoreDiRTEngine:
             for sentence in self.sentences:
                 if "|" in sentence.text and "technical contact" in normalize(sentence.text):
                     return Answer(sentence.text.split("|")[0].strip(), 0.85, [self._evidence(sentence)], "table role lookup")
+        table_answer = self._answer_generic_table_row(question, qnorm)
+        if table_answer:
+            return table_answer
         return None
 
     def _answer_identifier_or_url(self, question: str, qnorm: str) -> Answer | None:
@@ -304,29 +343,46 @@ class KnowMoreDiRTEngine:
                     return Answer(match.group(1), score, [self._evidence(sentence, score)], "customer confirmation")
         candidates = self._search(question, limit=20)
         anchors = self._target_anchors(question)
+        name_pattern = r"(?:Dr\.\s+)?[A-Z][A-Za-z]+(?:\s+[A-Z][A-Za-z]+){0,3}"
         role_patterns = [
-            (r"([A-Z][A-Za-z]+(?:\s+[A-Z][A-Za-z]+){0,2})\s+drafted\b", "drafted"),
-            (r"([A-Z][A-Za-z]+(?:\s+[A-Z][A-Za-z]+){0,2})\s+authored\b", "authored"),
-            (r"([A-Z][A-Za-z]+(?:\s+[A-Z][A-Za-z]+){0,2})\s+reviewed\b", "reviewed"),
-            (r"([A-Z][A-Za-z]+(?:\s+[A-Z][A-Za-z]+){0,2})\s+will review\b", "reviewed"),
-            (r"([A-Z][A-Za-z]+(?:\s+[A-Z][A-Za-z]+){0,2}):\s+.*\breview\b", "reviewed"),
-            (r"([A-Z][A-Za-z]+(?:\s+[A-Z][A-Za-z]+){0,2})\s+performed\b.*review", "performed review"),
-            (r"reviewed\s+[^.;]+?by\s+([A-Z][A-Za-z]+(?:\s+[A-Z][A-Za-z]+){0,2})", "reviewed by"),
-            (r"([A-Z][A-Za-z]+(?:\s+[A-Z][A-Za-z]+){0,2})\s+is the escalation owner", "escalation owner"),
-            (r"owner(?:\s+is|ed by)?\s+([A-Z][A-Za-z]+(?:\s+[A-Z][A-Za-z]+){0,2})", "owner"),
-            (r"owned by\s+([A-Z][A-Za-z]+(?:\s+[A-Z][A-Za-z]+){0,2})", "owned by"),
-            (r"merged by\s+([A-Z][A-Za-z]+(?:\s+[A-Z][A-Za-z]+){0,2})", "merged by"),
-            (r"approved by(?: engineer)?\s+([A-Z][A-Za-z]+(?:\s+[A-Z][A-Za-z]+){0,2})", "approved by"),
-            (r"([A-Z][A-Za-z]+(?:\s+[A-Z][A-Za-z]+){0,2})\s+requested\b", "requested"),
-            (r"([A-Z][A-Za-z]+(?:\s+[A-Z][A-Za-z]+){0,2})\s+accepted responsibility", "accepted responsibility"),
-            (r"([A-Z][A-Za-z]+(?:\s+[A-Z][A-Za-z]+){0,2})\s+manages\b", "manages"),
-            (r"([A-Z][A-Za-z]+(?:\s+[A-Z][A-Za-z]+){0,2})\s+tested\b", "tested"),
-            (r"([A-Z][A-Za-z]+):\s+.*\btested\b", "tested"),
-            (r"([A-Z][A-Za-z]+):\s+.*caused", "speaker claim"),
-            (r"([A-Z][A-Za-z]+):\s+I disagree", "speaker disagreement"),
-            (r"([A-Z][A-Za-z]+)\s+believes\b", "believes"),
-            (r"Plaintiff\s+([A-Z][A-Za-z]+(?:\s+[A-Z][A-Za-z]+){0,2})\s+alleges", "alleges"),
-            (r"(?:customer\s+)?([A-Z][A-Za-z]+(?:\s+[A-Z][A-Za-z]+){0,3})\s+reported\b", "reported"),
+            (rf"({name_pattern})\s+drafted\b", "drafted"),
+            (rf"({name_pattern})\s+authored\b", "authored"),
+            (rf"({name_pattern})\s+reviewed\b", "reviewed"),
+            (rf"({name_pattern})\s+will review\b", "reviewed"),
+            (rf"({name_pattern}):\s+.*\breview\b", "reviewed"),
+            (rf"({name_pattern})\s+performed\b.*review", "performed review"),
+            (rf"reviewed\s+[^.;]+?by\s+({name_pattern})", "reviewed by"),
+            (rf"({name_pattern})\s+is the escalation owner", "escalation owner"),
+            (rf"owner(?:\s+is|ed by)?\s+({name_pattern})", "owner"),
+            (rf"owned by\s+({name_pattern})", "owned by"),
+            (rf"merged by\s+({name_pattern})", "merged by"),
+            (rf"approved by(?: engineer)?\s+({name_pattern})", "approved by"),
+            (rf"({name_pattern})\s+requested\b", "requested"),
+            (rf"({name_pattern})\s+accepted responsibility", "accepted responsibility"),
+            (rf"({name_pattern})\s+manages\b", "manages"),
+            (rf"({name_pattern})\s+tested\b", "tested"),
+            (rf"({name_pattern}):\s+.*\btested\b", "tested"),
+            (rf"({name_pattern}):\s+.*caused", "speaker claim"),
+            (rf"({name_pattern}):\s+I disagree", "speaker disagreement"),
+            (rf"({name_pattern})\s+believes\b", "believes"),
+            (rf"Plaintiff\s+({name_pattern})\s+alleges", "alleges"),
+            (rf"(?:customer\s+)?({name_pattern})\s+reported\b", "reported"),
+            (rf"({name_pattern})\s+observed\b", "observed"),
+            (rf"({name_pattern})\s+wrote\b", "wrote"),
+            (rf"({name_pattern})\s+stated\b", "stated"),
+            (rf"({name_pattern})\s+recorded\b", "recorded"),
+            (rf"({name_pattern})\s+coached\b", "coached"),
+            (rf"({name_pattern})\s+practiced\b", "practiced"),
+            (rf"({name_pattern})\s+watered\b", "watered"),
+            (rf"({name_pattern})\s+inspected\b", "inspected"),
+            (rf"({name_pattern})\s+closed\b", "closed"),
+            (rf"lead researcher:\s+({name_pattern})", "lead researcher"),
+            (rf"clinician:\s+({name_pattern})", "clinician"),
+            (rf"vet:\s+({name_pattern})", "vet"),
+            (rf"inspector:\s+({name_pattern})", "inspector"),
+            (rf"logistics contact:\s+({name_pattern})", "contact"),
+            (rf"schedule owner:\s+({name_pattern})", "owner"),
+            (rf"({name_pattern})\s+signed\b", "signed"),
         ]
         for sentence, score in candidates:
             text = sentence.text
@@ -389,6 +445,36 @@ class KnowMoreDiRTEngine:
             return reason == "alleges"
         if "reported" in qnorm:
             return reason == "reported"
+        if "observed" in qnorm:
+            return reason == "observed"
+        if "wrote" in qnorm or "written" in qnorm:
+            return reason == "wrote"
+        if "stated" in qnorm:
+            return reason == "stated"
+        if "recorded" in qnorm:
+            return reason == "recorded"
+        if "coached" in qnorm:
+            return reason == "coached"
+        if "practiced" in qnorm:
+            return reason == "practiced"
+        if "watered" in qnorm:
+            return reason == "watered"
+        if "inspected" in qnorm or "inspector" in qnorm:
+            return reason in {"inspected", "inspector"}
+        if "closed" in qnorm:
+            return reason == "closed"
+        if "lead researcher" in qnorm:
+            return reason == "lead researcher"
+        if "clinician" in qnorm:
+            return reason == "clinician"
+        if "vet" in qnorm:
+            return reason == "vet"
+        if "contact" in qnorm:
+            return reason == "contact"
+        if "schedule" in qnorm and "own" in qnorm:
+            return reason == "owner"
+        if "signed" in qnorm:
+            return reason == "signed"
         return True
 
     def _answer_what_value(self, question: str, qnorm: str) -> Answer | None:
@@ -430,6 +516,119 @@ class KnowMoreDiRTEngine:
                 match = re.search(r"(\d{4}-\d{2}-\d{2}\s+\d{2}:\d{2}).*reopened", sentence.text, re.I)
                 if match:
                     return Answer(match.group(1), score, [self._evidence(sentence, score)], "timestamped reopen")
+        arithmetic = self._answer_arithmetic_statement(question, qnorm, candidates)
+        if arithmetic:
+            return arithmetic
+        location = self._answer_spatial_relation(question, qnorm, candidates)
+        if location:
+            return location
+        label_answer = self._answer_generic_label(question, qnorm, candidates)
+        if label_answer:
+            return label_answer
+        return None
+
+    def _answer_arithmetic_statement(
+        self,
+        question: str,
+        qnorm: str,
+        candidates: list[tuple[Sentence, float]],
+    ) -> Answer | None:
+        numbers = [int(item) for item in re.findall(r"\b\d+\b", question)]
+        if len(numbers) < 2:
+            return None
+        for sentence, score in candidates:
+            sentence_norm = normalize(sentence.text)
+            if all(str(number) in sentence_norm for number in numbers):
+                match = re.search(r"(?:equals|=)\s*(\d+)", sentence.text, re.I)
+                if match:
+                    return Answer(match.group(1), score, [self._evidence(sentence, score)], "arithmetic statement")
+        return None
+
+    def _answer_spatial_relation(
+        self,
+        question: str,
+        qnorm: str,
+        candidates: list[tuple[Sentence, float]],
+    ) -> Answer | None:
+        if not any(term in qnorm for term in ["where", "location"]):
+            return None
+        anchors = [normalize(anchor) for anchor in self._target_anchors(question)]
+        for sentence, score in candidates:
+            text = sentence.text
+            text_norm = normalize(text)
+            if anchors and not any(anchor in text_norm for anchor in anchors):
+                continue
+            match = re.search(r"\b(?:is|are)\s+(left of|right of|north of|south of|east of|west of|on|under|behind|inside|near)\s+(.+)", text, re.I)
+            if match:
+                return Answer(
+                    compact_answer(f"{match.group(1)} {match.group(2)}"),
+                    score,
+                    [self._evidence(sentence, score)],
+                    "spatial relation",
+                )
+        return None
+
+    def _answer_generic_label(
+        self,
+        question: str,
+        qnorm: str,
+        candidates: list[tuple[Sentence, float]],
+    ) -> Answer | None:
+        if not any(word in qnorm for word in ["what", "which", "when", "where"]):
+            return None
+        query_terms = {
+            token
+            for token in re.findall(r"[a-z0-9_-]+", qnorm)
+            if len(token) > 2
+            and token
+            not in {
+                "what",
+                "which",
+                "when",
+                "where",
+                "does",
+                "mean",
+                "note",
+                "notes",
+                "named",
+                "listed",
+                "stated",
+                "meaningful",
+                "according",
+            }
+        }
+        for sentence, score in candidates:
+            parts = re.split(r"\s*[|,;]\s*", sentence.text)
+            for part in parts:
+                if ":" not in part:
+                    continue
+                label, value = part.split(":", 1)
+                label_words = label.strip().split()
+                if len(label_words) >= 2 and all(word[:1].isupper() and word[1:].islower() for word in label_words):
+                    continue
+                label_norm = normalize(label)
+                if any(term in label_norm for term in query_terms):
+                    answer = compact_answer(value)
+                    if answer:
+                        return Answer(answer, score, [self._evidence(sentence, score)], "generic label lookup")
+        return None
+
+    def _answer_generic_table_row(self, question: str, qnorm: str) -> Answer | None:
+        which_match = re.search(r"\bwhich\s+([a-z0-9_-]+).*\b(?:is|was)\s+([a-z0-9_-]+)", qnorm)
+        if not which_match:
+            return None
+        target_label, desired_value = which_match.groups()
+        for sentence in self.sentences:
+            if "|" not in sentence.text and "\t" not in sentence.text:
+                continue
+            cells = [cell.strip() for cell in re.split(r"[|\t]", sentence.text)]
+            if len(cells) < 2:
+                continue
+            sentence_norm = normalize(sentence.text)
+            if desired_value in sentence_norm:
+                first = cells[0]
+                if target_label in normalize(first) or re.fullmatch(r"[A-Z]{2,}-\d+", first):
+                    return Answer(first, 0.75, [self._evidence(sentence, 0.75)], "table row status lookup")
         return None
 
     def _answer_generic_best_fact(self, question: str, qnorm: str) -> Answer | None:

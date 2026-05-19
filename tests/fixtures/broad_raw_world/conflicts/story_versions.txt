@@ -1,0 +1,3 @@
+Version A says the parade began at noon.
+Version B says the parade began at 13:00.
+Final verified schedule: parade began at 13:00.

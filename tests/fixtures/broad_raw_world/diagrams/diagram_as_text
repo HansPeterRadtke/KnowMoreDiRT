@@ -1,0 +1,4 @@
+Diagram described in text.
+Node A connects to Node B.
+Node B connects to Node C.
+Critical edge: Node B -> Node C.

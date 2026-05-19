@@ -1,0 +1,590 @@
+{
+  "name": "broad_raw_world",
+  "questions": [
+    {
+      "id": "bwq001",
+      "category": "school_homework",
+      "question": "Who drafted the volcano homework essay for Meadow Class?",
+      "answer": "Lina Soto",
+      "evidence": [
+        "k7/no_ext_homework"
+      ]
+    },
+    {
+      "id": "bwq002",
+      "category": "teacher_feedback",
+      "question": "Who wrote feedback on the volcano homework essay?",
+      "answer": "Ms. Orin",
+      "evidence": [
+        "k7/no_ext_homework"
+      ]
+    },
+    {
+      "id": "bwq003",
+      "category": "math_word_problem",
+      "question": "What does 7 plus 5 equal in the homework note?",
+      "answer": "12",
+      "evidence": [
+        "k7/no_ext_homework"
+      ]
+    },
+    {
+      "id": "bwq004",
+      "category": "biology",
+      "question": "Who observed onion cells?",
+      "answer": "Maya Chen",
+      "evidence": [
+        "k7/science/leaf_lab.notes"
+      ]
+    },
+    {
+      "id": "bwq005",
+      "category": "exact_id",
+      "question": "What is the biology specimen code?",
+      "answer": "BIO-22",
+      "evidence": [
+        "k7/science/leaf_lab.notes"
+      ]
+    },
+    {
+      "id": "bwq006",
+      "category": "chemistry",
+      "question": "What catalyst is named in the chemistry lab note?",
+      "answer": "copper sulfate",
+      "evidence": [
+        "k7/science/chem_lab.weird"
+      ]
+    },
+    {
+      "id": "bwq007",
+      "category": "physics_temporal",
+      "question": "What is the current state of RampCart?",
+      "answer": "revised",
+      "evidence": [
+        "k7/physics/homework.tmp"
+      ]
+    },
+    {
+      "id": "bwq008",
+      "category": "history",
+      "question": "Who authored the river trade history essay?",
+      "answer": "Ravi Nolen",
+      "evidence": [
+        "history/essay-final"
+      ]
+    },
+    {
+      "id": "bwq009",
+      "category": "debate_claim",
+      "question": "Who argued the ferry mattered more?",
+      "answer": "Priya",
+      "evidence": [
+        "history/essay-final"
+      ]
+    },
+    {
+      "id": "bwq010",
+      "category": "geography",
+      "question": "Where is the village map stored?",
+      "answer": "https://maps.example/village/orchard-north",
+      "evidence": [
+        "geo/maps/zz_map_fragment.geo"
+      ]
+    },
+    {
+      "id": "bwq011",
+      "category": "language_learning",
+      "question": "What does buenos dias mean?",
+      "answer": "good morning",
+      "evidence": [
+        "languages/spanish_lesson.txt"
+      ]
+    },
+    {
+      "id": "bwq012",
+      "category": "grammar",
+      "question": "What is the plural of flor?",
+      "answer": "flores",
+      "evidence": [
+        "languages/spanish_lesson.txt"
+      ]
+    },
+    {
+      "id": "bwq013",
+      "category": "dream_vs_fact",
+      "question": "Did the silver train really carry the kitchen table away?",
+      "answer": "unknown",
+      "evidence": [
+        "family/diary.dream"
+      ]
+    },
+    {
+      "id": "bwq014",
+      "category": "household",
+      "question": "What did Owen not buy?",
+      "answer": "blue soap",
+      "evidence": [
+        "family/messages/chatlog"
+      ]
+    },
+    {
+      "id": "bwq015",
+      "category": "shopping_state",
+      "question": "What is the shopping list status?",
+      "answer": "incomplete",
+      "evidence": [
+        "family/messages/chatlog"
+      ]
+    },
+    {
+      "id": "bwq016",
+      "category": "recipe",
+      "question": "What is the oven temperature for pear oat cakes?",
+      "answer": "180C",
+      "evidence": [
+        "kitchen/recipe-card"
+      ]
+    },
+    {
+      "id": "bwq017",
+      "category": "recipe",
+      "question": "What is the bake time for pear oat cakes?",
+      "answer": "22 minutes",
+      "evidence": [
+        "kitchen/recipe-card"
+      ]
+    },
+    {
+      "id": "bwq018",
+      "category": "travel",
+      "question": "What is the Lake Sable departure date?",
+      "answer": "2026-07-12",
+      "evidence": [
+        "travel/packing.list"
+      ]
+    },
+    {
+      "id": "bwq019",
+      "category": "exact_id",
+      "question": "What is the hotel confirmation code?",
+      "answer": "HTL-7712",
+      "evidence": [
+        "travel/packing.list"
+      ]
+    },
+    {
+      "id": "bwq020",
+      "category": "sports",
+      "question": "Who coached the under-12 relay team?",
+      "answer": "Nora Lin",
+      "evidence": [
+        "sports/music/art_mix.note"
+      ]
+    },
+    {
+      "id": "bwq021",
+      "category": "music",
+      "question": "What scale did Arlo practice?",
+      "answer": "D minor",
+      "evidence": [
+        "sports/music/art_mix.note"
+      ]
+    },
+    {
+      "id": "bwq022",
+      "category": "fiction",
+      "question": "Is the Moon Gate story a real history document?",
+      "answer": "unknown",
+      "evidence": [
+        "fiction/fantasy_lore.scroll"
+      ]
+    },
+    {
+      "id": "bwq023",
+      "category": "fiction",
+      "question": "Which treaty ID appears in the fantasy lore?",
+      "answer": "DRG-404",
+      "evidence": [
+        "fiction/fantasy_lore.scroll"
+      ]
+    },
+    {
+      "id": "bwq024",
+      "category": "letters",
+      "question": "Who wrote to Jonah Reed?",
+      "answer": "Marta Reed",
+      "evidence": [
+        "letters/real_letter_1931.txt"
+      ]
+    },
+    {
+      "id": "bwq025",
+      "category": "letters",
+      "question": "Who signed the orchard lease?",
+      "answer": "Clara Reed",
+      "evidence": [
+        "letters/real_letter_1931.txt"
+      ]
+    },
+    {
+      "id": "bwq026",
+      "category": "forum",
+      "question": "What was the confirmed bicycle fix?",
+      "answer": "tighten the clamp bolt",
+      "evidence": [
+        "net/forum.thread"
+      ]
+    },
+    {
+      "id": "bwq027",
+      "category": "legal_claim",
+      "question": "Who alleges Bright Pump cracked the storage tank?",
+      "answer": "Harbor Coop",
+      "evidence": [
+        "law/legalish_notes.doc"
+      ]
+    },
+    {
+      "id": "bwq028",
+      "category": "witness_statement",
+      "question": "Who stated she heard a bang?",
+      "answer": "Mira Cole",
+      "evidence": [
+        "law/legalish_notes.doc"
+      ]
+    },
+    {
+      "id": "bwq029",
+      "category": "legal_fact",
+      "question": "Was a crack found in the tank wall?",
+      "answer": "No; later inspection found no crack in the tank wall.",
+      "evidence": [
+        "law/legalish_notes.doc"
+      ]
+    },
+    {
+      "id": "bwq030",
+      "category": "incident",
+      "question": "Who recorded incident INC-882?",
+      "answer": "Talen",
+      "evidence": [
+        "police_style/incident_note"
+      ]
+    },
+    {
+      "id": "bwq031",
+      "category": "medical_note",
+      "question": "What is River appointment time?",
+      "answer": "15:30",
+      "evidence": [
+        "medical/appointment_note.txt"
+      ]
+    },
+    {
+      "id": "bwq032",
+      "category": "veterinary",
+      "question": "What species is Marmalade?",
+      "answer": "cat",
+      "evidence": [
+        "vets/pet_visit"
+      ]
+    },
+    {
+      "id": "bwq033",
+      "category": "veterinary",
+      "question": "Who is the vet for Marmalade?",
+      "answer": "Dr. Hali",
+      "evidence": [
+        "vets/pet_visit"
+      ]
+    },
+    {
+      "id": "bwq034",
+      "category": "gardening",
+      "question": "Who watered the north bed?",
+      "answer": "Joss",
+      "evidence": [
+        "garden/farm.log"
+      ]
+    },
+    {
+      "id": "bwq035",
+      "category": "maintenance",
+      "question": "What is the greenhouse pump state?",
+      "answer": "repaired",
+      "evidence": [
+        "garden/farm.log"
+      ]
+    },
+    {
+      "id": "bwq036",
+      "category": "construction",
+      "question": "Who inspected the shed roof note?",
+      "answer": "Lale Kim",
+      "evidence": [
+        "construction/site_note"
+      ]
+    },
+    {
+      "id": "bwq037",
+      "category": "construction",
+      "question": "What drawing reference is named for the shed roof?",
+      "answer": "DRW-SHED-19",
+      "evidence": [
+        "construction/site_note"
+      ]
+    },
+    {
+      "id": "bwq038",
+      "category": "manual",
+      "question": "Where is the reset button located?",
+      "answer": "behind the lower left panel",
+      "evidence": [
+        "manuals/appliance_manual.txt"
+      ]
+    },
+    {
+      "id": "bwq039",
+      "category": "manual",
+      "question": "What is the appliance model code?",
+      "answer": "KET-55",
+      "evidence": [
+        "manuals/appliance_manual.txt"
+      ]
+    },
+    {
+      "id": "bwq040",
+      "category": "research",
+      "question": "Who is lead researcher for urban owl calls?",
+      "answer": "Petra Moon",
+      "evidence": [
+        "research/abstract_owl.txt"
+      ]
+    },
+    {
+      "id": "bwq041",
+      "category": "exact_url",
+      "question": "What dataset URL is listed for owl calls?",
+      "answer": "https://research.example/owl-calls-set",
+      "evidence": [
+        "research/abstract_owl.txt"
+      ]
+    },
+    {
+      "id": "bwq042",
+      "category": "lab_notebook",
+      "question": "What is the current state of algae jar B?",
+      "answer": "clear",
+      "evidence": [
+        "research/lab_page_17"
+      ]
+    },
+    {
+      "id": "bwq043",
+      "category": "interview_debate",
+      "question": "Who disagreed about library hours?",
+      "answer": "Ben",
+      "evidence": [
+        "interviews/debate_transcript"
+      ]
+    },
+    {
+      "id": "bwq044",
+      "category": "no_decision",
+      "question": "What final decision was made about library hours?",
+      "answer": "unknown",
+      "evidence": [
+        "interviews/debate_transcript"
+      ]
+    },
+    {
+      "id": "bwq045",
+      "category": "belief",
+      "question": "What does Oren believe?",
+      "answer": "minds are patterns of relations",
+      "evidence": [
+        "beliefs/philosophy_note"
+      ]
+    },
+    {
+      "id": "bwq046",
+      "category": "belief_vs_fact",
+      "question": "Was Oren belief confirmed as fact?",
+      "answer": "unknown",
+      "evidence": [
+        "beliefs/philosophy_note"
+      ]
+    },
+    {
+      "id": "bwq047",
+      "category": "political_neutral",
+      "question": "What was the poll result in the fictional civic debate?",
+      "answer": "undecided",
+      "evidence": [
+        "neutral_civic/fictional_policy_argument"
+      ]
+    },
+    {
+      "id": "bwq048",
+      "category": "accounting",
+      "question": "Which invoice is unpaid?",
+      "answer": "INV-101",
+      "evidence": [
+        "business/invoice_snippet.csvish"
+      ]
+    },
+    {
+      "id": "bwq049",
+      "category": "accounting",
+      "question": "Who closed INV-100?",
+      "answer": "Mara",
+      "evidence": [
+        "business/invoice_snippet.csvish"
+      ]
+    },
+    {
+      "id": "bwq050",
+      "category": "shipping",
+      "question": "Which parcel was delayed?",
+      "answer": "PKG-89",
+      "evidence": [
+        "logistics/shipping.tsv"
+      ]
+    },
+    {
+      "id": "bwq051",
+      "category": "shipping",
+      "question": "Who is the logistics contact?",
+      "answer": "Sumi Park",
+      "evidence": [
+        "logistics/shipping.tsv"
+      ]
+    },
+    {
+      "id": "bwq052",
+      "category": "calendar",
+      "question": "Who owns the schedule?",
+      "answer": "Hale",
+      "evidence": [
+        "calendar/schedule.txt"
+      ]
+    },
+    {
+      "id": "bwq053",
+      "category": "calendar",
+      "question": "When is the piano recital?",
+      "answer": "2026-06-02 18:00",
+      "evidence": [
+        "calendar/schedule.txt"
+      ]
+    },
+    {
+      "id": "bwq054",
+      "category": "spatial",
+      "question": "Where is the brass lamp?",
+      "answer": "on the red desk",
+      "evidence": [
+        "spatial/layout.desc"
+      ]
+    },
+    {
+      "id": "bwq055",
+      "category": "diagram",
+      "question": "What is the critical edge?",
+      "answer": "Node B -> Node C",
+      "evidence": [
+        "diagrams/diagram_as_text"
+      ]
+    },
+    {
+      "id": "bwq056",
+      "category": "raw_json_text",
+      "question": "Who is the owner in the raw JSON-like text?",
+      "answer": "Zia Fern",
+      "evidence": [
+        "data/raw_json_like.blob"
+      ]
+    },
+    {
+      "id": "bwq057",
+      "category": "raw_json_text",
+      "question": "What ticket appears in the raw JSON-like text?",
+      "answer": "TXT-991",
+      "evidence": [
+        "data/raw_json_like.blob"
+      ]
+    },
+    {
+      "id": "bwq058",
+      "category": "multilingual",
+      "question": "What does bonsoir mean?",
+      "answer": "good evening",
+      "evidence": [
+        "multilingual/fragments.mix"
+      ]
+    },
+    {
+      "id": "bwq059",
+      "category": "multilingual_unknown",
+      "question": "What does sola miri tahu mean?",
+      "answer": "unknown",
+      "evidence": [
+        "multilingual/fragments.mix"
+      ]
+    },
+    {
+      "id": "bwq060",
+      "category": "ocr",
+      "question": "Who owns the Cedar Span pump repair?",
+      "answer": "Kito Marsh",
+      "evidence": [
+        "ocr/noisy_scan.txt"
+      ]
+    },
+    {
+      "id": "bwq061",
+      "category": "conflict_resolution",
+      "question": "When did the parade begin according to final verified schedule?",
+      "answer": "13:00",
+      "evidence": [
+        "conflicts/story_versions.txt"
+      ]
+    },
+    {
+      "id": "bwq062",
+      "category": "alias",
+      "question": "What is Juniper Vale also called?",
+      "answer": "Juni",
+      "evidence": [
+        "aliases/nicknames.note"
+      ]
+    },
+    {
+      "id": "bwq063",
+      "category": "alias",
+      "question": "Who signed the mural plan?",
+      "answer": "Juni",
+      "evidence": [
+        "aliases/nicknames.note"
+      ]
+    },
+    {
+      "id": "bwq064",
+      "category": "unanswerable",
+      "question": "What is the phone number for Petra Moon?",
+      "answer": "unknown",
+      "evidence": [
+        "research/abstract_owl.txt"
+      ]
+    },
+    {
+      "id": "bwq065",
+      "category": "not_over_answering",
+      "question": "What is the translation of the invented language line?",
+      "answer": "unknown",
+      "evidence": [
+        "multilingual/fragments.mix"
+      ]
+    }
+  ]
+}

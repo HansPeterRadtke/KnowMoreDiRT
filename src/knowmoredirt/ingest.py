@@ -3,13 +3,14 @@
 from __future__ import annotations
 
 import re
+import json
 from pathlib import Path
 
 from .extractors import capitalized_phrases, identifiers, urls
 from .models import Document, Sentence
 from .scanner import scan_folder
 from .store import DSPGStore, stable_id
-from .text import normalize, tokenize
+from .text import normalize, text_quality_metrics, tokenize
 
 
 VERB_PREDICATES = {
@@ -147,7 +148,7 @@ def ingest_folder(folder_path: str | Path, store: DSPGStore | None = None) -> tu
                 document.mtime,
                 document.ctime,
                 len(document.text),
-                "{}",
+                json.dumps({"text_quality": text_quality_metrics(document.text)}, sort_keys=True),
             ),
         )
 

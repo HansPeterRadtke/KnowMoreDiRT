@@ -1,0 +1,77 @@
+{
+  "name": "hardcore_noise",
+  "questions": [
+    {
+      "id": "nq001",
+      "category": "noise_ingest",
+      "question": "Who watered the greenhouse fern?",
+      "answer": "Dr. Pella",
+      "evidence": [
+        "mixed/meaningful_note.txt"
+      ]
+    },
+    {
+      "id": "nq002",
+      "category": "noise_meaningful_state",
+      "question": "What is the greenhouse fern state?",
+      "answer": "healthy",
+      "evidence": [
+        "mixed/meaningful_note.txt"
+      ]
+    },
+    {
+      "id": "nq003",
+      "category": "noise_exact_id",
+      "question": "What tool ID is stated in the meaningful note?",
+      "answer": "TOOL-77",
+      "evidence": [
+        "mixed/meaningful_note.txt"
+      ]
+    },
+    {
+      "id": "nq004",
+      "category": "noise_unknown",
+      "question": "What fact does the staircase invoice prove?",
+      "answer": "unknown",
+      "evidence": [
+        "words/plausible_babble.txt"
+      ]
+    },
+    {
+      "id": "nq005",
+      "category": "noise_unknown",
+      "question": "Who signed the deadbeef blob?",
+      "answer": "unknown",
+      "evidence": [
+        "chars/base64ish.blob"
+      ]
+    },
+    {
+      "id": "nq006",
+      "category": "ocr_partial",
+      "question": "Who owns the greenhouse fern according to the OCR correction?",
+      "answer": "Dr. Pella",
+      "evidence": [
+        "ocr/garbage_scan.txt"
+      ]
+    },
+    {
+      "id": "nq007",
+      "category": "noise_distractor",
+      "question": "Does the repeated adversarial names file assert that Dr. Pella watered the fern?",
+      "answer": "unknown",
+      "evidence": [
+        "mixed/adversarial_names.txt"
+      ]
+    },
+    {
+      "id": "nq008",
+      "category": "noise_unknown",
+      "question": "What does florpus zeta mean?",
+      "answer": "unknown",
+      "evidence": [
+        "words/salad.noext"
+      ]
+    }
+  ]
+}

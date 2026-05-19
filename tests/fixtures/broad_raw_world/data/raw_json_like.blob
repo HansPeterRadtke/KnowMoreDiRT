@@ -1,0 +1,2 @@
+{ project: "Not a schema", owner: "Zia Fern", status: "observed", ticket: "TXT-991" }
+This line says the braces are ordinary raw text.

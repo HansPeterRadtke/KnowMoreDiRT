@@ -1,0 +1,4 @@
+invoice_id|customer|amount|status
+INV-100|Cedar Theater|410|paid
+INV-101|River Clinic|125|unpaid
+Accounting note: Mara closed INV-100.

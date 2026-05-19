@@ -1,0 +1,4 @@
+Calendar fragment.
+2026-06-01 09:00 dentist appointment.
+2026-06-02 18:00 piano recital.
+Schedule owner: Hale.

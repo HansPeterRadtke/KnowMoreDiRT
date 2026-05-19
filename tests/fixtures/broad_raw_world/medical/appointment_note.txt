@@ -1,0 +1,5 @@
+Invented non-advisory medical appointment note.
+Patient nickname: River.
+Appointment time: 15:30.
+Clinician: Dr. Sava.
+Plan: discuss sleep diary with guardian.

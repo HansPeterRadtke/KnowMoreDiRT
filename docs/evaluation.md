@@ -1,34 +1,41 @@
 # Evaluation
 
-## Current Fixture
+## Fixture Suites
 
-The current self-written fixture is:
+KMD currently keeps three self-written fixture suites:
 
-- corpus: `tests/fixtures/messy_raw_corpus/`
-- QA file: `tests/fixtures/messy_raw_corpus_qa.json`
-- files: 30
-- questions: 60
+- `tests/fixtures/messy_raw_corpus/`: original project-style regression corpus.
+- `tests/fixtures/broad_raw_world/`: heterogeneous raw-world corpus across school, family, household, fiction, law-like notes, medical appointment notes, veterinary notes, geography, language learning, recipes, travel, sports, art, research, logistics, accounting, schedules, diagrams, tables, OCR-like text, multilingual fragments, aliases, and conflicts.
+- `tests/fixtures/hardcore_noise/`: random-character, base64/hex-like, word-salad, multilingual nonsense, OCR garbage, plausible babble, and adversarial distractor pollution.
 
-The fixture is designed to exercise the raw-folder contract. It contains arbitrary nested folders, arbitrary filenames, mixed file endings, files without extensions, prose, tables, chats, logs, transcript turns, JSON-like text, dreams, beliefs, allegations, contradictions, noisy text, IDs, URLs, and distractors.
+All fixtures are raw text only. They use arbitrary nested folders, arbitrary filenames, mixed file endings, files without extensions, prose, tables, chats, logs, transcript turns, JSON-like text, dreams, beliefs, allegations, contradictions, noisy text, IDs, URLs, and distractors.
 
 ## Current Score
 
-Current result:
+Current results:
 
-- total: `60/60`
-- score: `1.000`
+- original messy corpus: `60/60 (1.000)`
+- broad raw-world corpus: `38/65 (0.585)`
+- hardcore noise corpus: `8/8 (1.000)`
 
-The current score is a regression baseline for the fixture, not evidence that KMD is generally solved.
+The original fixture and noise fixture currently pass strongly. The broad raw-world fixture exposes substantial remaining semantic gaps; that is intentional. It is a broader evaluation target, not a solved benchmark.
 
 ## Categories Covered
 
-The fixture covers:
+Across the fixture suite, categories include:
 
 - direct facts,
 - exact IDs and URLs,
 - source-grounded questions,
 - temporal/final-state questions,
 - table lookup and table context,
+- school homework, teacher feedback, math word problems, science notes, language learning, history and geography notes,
+- diary entries, dream journals, family messages, household notes, recipes, travel plans, sports/music/art notes,
+- fiction, fantasy lore, fictional and real letters, forum posts, legal-style notes, incident notes,
+- invented medical appointment and veterinary notes,
+- gardening, farming, construction, appliance manuals, scientific abstracts, lab notebooks,
+- debates, belief statements, neutral fictional civic arguments, accounting, shipping, calendars, spatial layouts, diagrams,
+- multilingual fragments and OCR-like corruption,
 - beliefs versus facts,
 - dreams and fiction versus assertions,
 - claims, counterclaims, allegations, and contradictions,
@@ -39,6 +46,16 @@ The fixture covers:
 - multi-hop dependencies,
 - aggregation,
 - unanswerable questions.
+
+## Noise/Gibberish Robustness
+
+The hardcore noise suite checks that:
+
+- random-character and near-binary text remains ingestible,
+- symbol-heavy files receive low-semantic-content flags,
+- noisy files do not dominate normal meaningful answers,
+- gibberish-only questions return `unknown`,
+- meaningful facts mixed with noise remain answerable.
 
 ## Architecture Checks
 
@@ -58,7 +75,7 @@ Architecture tests assert that the core package contains no old benchmark/prepar
 
 ## Limitations
 
-The fixture is self-written and currently friendly to the implementation. It is useful for regression, but it should not be treated as proof of broad real-world generalization.
+The fixtures are self-written and useful for regression, but they should not be treated as proof of broad real-world generalization. The broad raw-world score is deliberately reported honestly; many categories still fail with the current deterministic vertical slice.
 
 Next evaluation work should add:
 

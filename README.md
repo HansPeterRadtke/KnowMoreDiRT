@@ -48,6 +48,7 @@ KMD currently provides a first DSPG-backed vertical slice:
 - SQLite DSPG persistence,
 - source spans, mentions, referents, contexts, frames, and frame arguments,
 - bounded lexical/referent retrieval,
+- text-quality/noise signals for random-character and low-semantic-content files,
 - conservative source-grounded answering,
 - isolated optional local-model integration hooks.
 
@@ -65,12 +66,17 @@ PYTHONPATH=src python3 scripts/evaluate_fixture.py --json-out /tmp/kmd_eval.json
 
 - `tests/unit/` validates raw fixture contracts, scanner behavior, and indexing.
 - `tests/smoke/` validates the two-function public API.
-- `tests/evaluation/` runs the messy-corpus QA evaluation harness.
-- `tests/fixtures/messy_raw_corpus/` contains the raw text corpus.
-- `tests/fixtures/messy_raw_corpus_qa.json` contains source-grounded QA pairs.
+- `tests/evaluation/` runs fixture QA evaluation harnesses.
+- `tests/fixtures/messy_raw_corpus/` contains the original project-style regression corpus.
+- `tests/fixtures/broad_raw_world/` contains a broad heterogeneous raw-world corpus.
+- `tests/fixtures/hardcore_noise/` contains random-character, OCR, base64/hex-like, and word-salad pollution tests.
 
 ## Current Fixture Score
 
-`60/60 (1.000)` on the 60-question messy raw-text corpus.
+Current regression scores:
+
+- original messy corpus: `60/60 (1.000)`
+- broad raw-world corpus: `38/65 (0.585)`
+- hardcore noise corpus: `8/8 (1.000)`
 
 See [`docs/evaluation.md`](docs/evaluation.md) for details and limitations.

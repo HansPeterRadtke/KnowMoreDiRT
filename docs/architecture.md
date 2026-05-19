@@ -24,7 +24,8 @@ Initialization performs these steps:
 7. **Referent construction**: create local referents from exact mentions without requiring destructive global merging.
 8. **Context assignment**: mark sentence-level contexts such as asserted, reported, believed, alleged, dreamed, fictional, and negated.
 9. **Frame extraction**: create lightweight event/proposition frames with predicates and argument links.
-10. **Indexing**: build bounded retrieval structures over both raw chunks and DSPG records.
+10. **Text-quality scoring**: store generic structural signals for low-semantic-content files such as random-character blobs and symbol-heavy corruption.
+11. **Indexing**: build bounded retrieval structures over both raw chunks and DSPG records.
 
 ## SQLite DSPG Store
 
@@ -52,6 +53,7 @@ The current query path combines:
 - referent-centric retrieval through mentions and referents,
 - frame-aware retrieval through predicates and frame arguments,
 - temporal state retrieval for state changes with dated evidence,
+- text-quality downweighting so noise files do not dominate normal questions,
 - conservative deterministic answer extraction over bounded candidates.
 
 This is a first vertical slice of the full DSPG query architecture. It avoids full-corpus reasoning per question and avoids assuming external input structure. Future work should strengthen graph traversal, entity resolution, uncertainty handling, and model-assisted query planning.
@@ -79,5 +81,6 @@ DSPG objects are grounded in exact source spans. Answers at the public boundary 
 - Entity resolution is local and conservative.
 - Context propagation is sentence-level rather than fully hierarchical.
 - Temporal modeling handles simple dated state statements but not full interval logic.
+- Noise handling is structural and conservative; it is not a semantic gibberish detector.
 - The local model path is isolated but not yet part of the default staged pipeline.
-- The 60-question fixture is a regression baseline, not proof of broad generalization.
+- The fixture suite is now broader, but it is still self-written and not proof of broad generalization.
