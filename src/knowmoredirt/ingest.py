@@ -36,6 +36,9 @@ VERB_PREDICATES = {
     "manages": "manage",
 }
 
+DATE_RE = re.compile(r"\b(\d{4}-\d{2}-\d{2})(?:[ T]\d{2}:\d{2})?\b")
+STATE_RE = re.compile(r"\b(?:state|status)\s*:\s*([A-Za-z0-9_-]+)", re.I)
+
 
 def mention_entity_type(surface: str) -> str:
     if re.fullmatch(r"https?://\S+", surface):
@@ -94,6 +97,27 @@ def frame_predicate(text: str) -> tuple[str, str] | None:
     for verb, predicate in VERB_PREDICATES.items():
         if re.search(rf"\b{re.escape(verb)}\b", text, re.I):
             return predicate, verb
+    return None
+
+
+def temporal_state(text: str) -> tuple[str, str] | None:
+    date_match = DATE_RE.search(text)
+    state_match = STATE_RE.search(text)
+    if date_match and state_match:
+        return date_match.group(0), state_match.group(1)
+    date_match = DATE_RE.search(text)
+    if not date_match:
+        return None
+    lowered = normalize(text)
+    for trigger, state in [
+        ("reopened", "reopened"),
+        ("closed", "closed"),
+        ("opened", "open"),
+        ("fixed", "fixed"),
+        ("regression", "regressed"),
+    ]:
+        if trigger in lowered:
+            return date_match.group(0), state
     return None
 
 
@@ -184,6 +208,29 @@ def ingest_folder(folder_path: str | Path, store: DSPGStore | None = None) -> tu
                     (stable_id("arg", frame_id, role, mention_id), frame_id, role, mention_id, referent_id, surface, 0.7),
                 )
 
+        state_info = temporal_state(sentence.text)
+        if state_info:
+            temporal_value, state_value = state_info
+            referent_id = mentions_for_sentence[0][2] if mentions_for_sentence else None
+            store.execute(
+                """
+                INSERT OR IGNORE INTO temporal_edges(
+                  edge_id, run_id, source_span_id, referent_id, context_id, relation, temporal_value, state_value, confidence
+                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+                """,
+                (
+                    stable_id("tmp", run_id, sentence.sentence_id, temporal_value, state_value),
+                    run_id,
+                    span_id,
+                    referent_id,
+                    context_id,
+                    "state_at",
+                    temporal_value,
+                    state_value,
+                    0.85,
+                ),
+            )
+
     metrics = {
         "documents": len(documents),
         "sentences": len(sentences),
@@ -191,4 +238,3 @@ def ingest_folder(folder_path: str | Path, store: DSPGStore | None = None) -> tu
     }
     store.finish_run(run_id, metrics)
     return store, run_id, documents, sentences
-

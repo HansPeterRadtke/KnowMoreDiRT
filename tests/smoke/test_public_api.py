@@ -24,7 +24,7 @@ def test_public_contract_exports_only_initialize_and_question() -> None:
 
 def test_public_contract_is_documented() -> None:
     readme = (REPO_ROOT / "README.md").read_text(encoding="utf-8")
-    contract = (REPO_ROOT / "docs" / "public_contract.md").read_text(encoding="utf-8")
+    contract = (REPO_ROOT / "docs" / "public_api.md").read_text(encoding="utf-8")
     combined = readme + "\n" + contract
 
     assert "initialize(folder_path)" in combined
@@ -52,4 +52,3 @@ def test_smoke_answers_simple_fixture_question() -> None:
     knowmoredirt.initialize(FIXTURE_ROOT)
 
     assert knowmoredirt.question("Who drafted the escrow import design for LumaLedger?") == "Nina Vale"
-

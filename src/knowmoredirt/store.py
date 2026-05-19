@@ -150,6 +150,19 @@ class DSPGStore:
               confidence REAL NOT NULL
             )
             """,
+            """
+            CREATE TABLE IF NOT EXISTS temporal_edges (
+              edge_id TEXT PRIMARY KEY,
+              run_id TEXT NOT NULL,
+              source_span_id TEXT NOT NULL,
+              referent_id TEXT,
+              context_id TEXT,
+              relation TEXT NOT NULL,
+              temporal_value TEXT NOT NULL,
+              state_value TEXT,
+              confidence REAL NOT NULL
+            )
+            """,
             "CREATE INDEX IF NOT EXISTS idx_documents_run ON documents(run_id)",
             "CREATE INDEX IF NOT EXISTS idx_documents_rel ON documents(rel_path)",
             "CREATE INDEX IF NOT EXISTS idx_chunks_doc_order ON chunks(document_id, chunk_order)",
@@ -160,6 +173,9 @@ class DSPGStore:
             "CREATE INDEX IF NOT EXISTS idx_context_kind ON contexts(kind)",
             "CREATE INDEX IF NOT EXISTS idx_frames_predicate ON frames(predicate_norm)",
             "CREATE INDEX IF NOT EXISTS idx_frame_args_role ON frame_arguments(role)",
+            "CREATE INDEX IF NOT EXISTS idx_temporal_ref ON temporal_edges(referent_id)",
+            "CREATE INDEX IF NOT EXISTS idx_temporal_relation ON temporal_edges(relation)",
+            "CREATE INDEX IF NOT EXISTS idx_temporal_value ON temporal_edges(temporal_value)",
         ]
         for statement in statements:
             self.connection.execute(statement)
@@ -201,6 +217,7 @@ class DSPGStore:
             "contexts",
             "frames",
             "frame_arguments",
+            "temporal_edges",
         ]
         return {
             table: int(self.connection.execute(f"SELECT COUNT(*) FROM {table}").fetchone()[0])
@@ -223,3 +240,90 @@ class DSPGStore:
         )
         return referent_id
 
+    def referent_candidate_chunks(self, run_id: str, anchors: list[str], limit: int = 12) -> list[sqlite3.Row]:
+        scores: dict[tuple[str, int], float] = {}
+        rows_by_key: dict[tuple[str, int], sqlite3.Row] = {}
+        for anchor in anchors:
+            anchor_norm = normalize(anchor)
+            if not anchor_norm:
+                continue
+            rows = self.connection.execute(
+                """
+                SELECT d.rel_path, c.chunk_order, c.text, r.canonical_label, m.entity_type
+                FROM referents r
+                JOIN mention_referents mr ON mr.referent_id = r.referent_id
+                JOIN mentions m ON m.mention_id = mr.mention_id
+                JOIN source_spans s ON s.span_id = m.span_id
+                JOIN chunks c ON c.chunk_id = s.chunk_id
+                JOIN documents d ON d.document_id = c.document_id
+                WHERE r.run_id = ? AND r.canonical_label_norm LIKE ?
+                LIMIT ?
+                """,
+                (run_id, f"%{anchor_norm}%", limit),
+            ).fetchall()
+            for row in rows:
+                key = (str(row["rel_path"]), int(row["chunk_order"]))
+                rows_by_key[key] = row
+                scores[key] = scores.get(key, 0.0) + 3.0
+        ordered = sorted(rows_by_key.items(), key=lambda item: (-scores[item[0]], item[0][0], item[0][1]))
+        return [row for _, row in ordered[:limit]]
+
+    def frame_candidate_chunks(
+        self,
+        run_id: str,
+        predicates: list[str],
+        anchors: list[str],
+        limit: int = 12,
+    ) -> list[sqlite3.Row]:
+        if not predicates:
+            return []
+        predicate_norms = [normalize(predicate) for predicate in predicates if normalize(predicate)]
+        placeholders = ",".join("?" for _ in predicate_norms)
+        rows = self.connection.execute(
+            f"""
+            SELECT d.rel_path, c.chunk_order, c.text, f.predicate_norm, f.trigger_surface, ctx.kind AS context_kind
+            FROM frames f
+            JOIN source_spans s ON s.span_id = f.span_id
+            JOIN chunks c ON c.chunk_id = s.chunk_id
+            JOIN documents d ON d.document_id = c.document_id
+            JOIN contexts ctx ON ctx.context_id = f.context_id
+            WHERE f.run_id = ? AND f.predicate_norm IN ({placeholders})
+            LIMIT ?
+            """,
+            (run_id, *predicate_norms, limit * 4),
+        ).fetchall()
+        anchor_norms = [normalize(anchor) for anchor in anchors if normalize(anchor)]
+        scored: list[tuple[float, sqlite3.Row]] = []
+        for row in rows:
+            text_norm = normalize(str(row["text"]))
+            score = 4.0
+            score += sum(2.0 for anchor in anchor_norms if anchor in text_norm)
+            scored.append((score, row))
+        scored.sort(key=lambda item: (-item[0], str(item[1]["rel_path"]), int(item[1]["chunk_order"])))
+        return [row for _, row in scored[:limit]]
+
+    def latest_state(self, run_id: str, anchors: list[str]) -> sqlite3.Row | None:
+        anchor_norms = [normalize(anchor) for anchor in anchors if normalize(anchor)]
+        if not anchor_norms:
+            return None
+        rows = self.connection.execute(
+            """
+            SELECT d.rel_path, c.chunk_order, c.text, t.temporal_value, t.state_value
+            FROM temporal_edges t
+            JOIN source_spans s ON s.span_id = t.source_span_id
+            JOIN chunks c ON c.chunk_id = s.chunk_id
+            JOIN documents d ON d.document_id = c.document_id
+            WHERE t.run_id = ? AND t.relation = 'state_at' AND t.state_value IS NOT NULL
+            ORDER BY t.temporal_value DESC
+            """,
+            (run_id,),
+        ).fetchall()
+        for row in rows:
+            text_norm = normalize(str(row["text"]))
+            if all(anchor in text_norm for anchor in anchor_norms):
+                return row
+        for row in rows:
+            text_norm = normalize(str(row["text"]))
+            if any(anchor in text_norm for anchor in anchor_norms):
+                return row
+        return None

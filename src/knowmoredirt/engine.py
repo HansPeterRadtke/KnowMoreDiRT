@@ -15,6 +15,7 @@ from .extractors import after_label, capitalized_phrases, identifiers, urls
 from .ingest import ingest_folder
 from .index import LexicalIndex
 from .models import Answer, Evidence, Sentence
+from .query import plan_question
 from .text import compact_answer, normalize
 
 
@@ -31,6 +32,9 @@ class KnowMoreDiRTEngine:
         self.index = LexicalIndex(self.sentences)
         self.stats = EngineStats(len(self.documents), len(self.sentences))
         self._full_names_by_first = self._build_name_aliases()
+        self._sentences_by_location = {
+            (sentence.rel_path, sentence.order): sentence for sentence in self.sentences
+        }
 
     def dspg_counts(self) -> dict[str, int]:
         return self.store.counts()
@@ -65,7 +69,26 @@ class KnowMoreDiRTEngine:
         return Evidence(sentence.rel_path, sentence.text, score)
 
     def _search(self, question: str, limit: int = 12, required: list[str] | None = None) -> list[tuple[Sentence, float]]:
-        return self.index.search(question, limit=limit, required=required)
+        combined: dict[str, tuple[Sentence, float]] = {}
+        for sentence, score in self.index.search(question, limit=limit, required=required):
+            combined[sentence.sentence_id] = (sentence, score)
+
+        plan = plan_question(question)
+        for row in self.store.referent_candidate_chunks(self.run_id, list(plan.anchors), limit=limit):
+            sentence = self._sentences_by_location.get((str(row["rel_path"]), int(row["chunk_order"])))
+            if sentence:
+                previous = combined.get(sentence.sentence_id, (sentence, 0.0))[1]
+                combined[sentence.sentence_id] = (sentence, previous + 2.0)
+        for row in self.store.frame_candidate_chunks(
+            self.run_id, list(plan.predicates), list(plan.anchors), limit=limit
+        ):
+            sentence = self._sentences_by_location.get((str(row["rel_path"]), int(row["chunk_order"])))
+            if sentence:
+                previous = combined.get(sentence.sentence_id, (sentence, 0.0))[1]
+                combined[sentence.sentence_id] = (sentence, previous + 3.0)
+
+        scored = sorted(combined.values(), key=lambda item: (-item[1], item[0].rel_path, item[0].order))
+        return scored[:limit]
 
     def _question_tokens(self, qnorm: str) -> set[str]:
         return set(re.findall(r"[a-z0-9_.:/#-]+", qnorm))
@@ -105,6 +128,13 @@ class KnowMoreDiRTEngine:
             return Answer("unknown", confidence=0.8, evidence=[], reason="requested identifier is not stated")
         if "proven" in qnorm and "refund" in qnorm:
             return Answer("unknown", confidence=0.8, evidence=[], reason="proof of refund request is not stated")
+        if any(phrase in qnorm for phrase in ["merged with", "same as", "same person as"]):
+            candidates = self._search(question, limit=6)
+            if not any(
+                any(marker in normalize(sentence.text) for marker in ["same person", "same as", "identical to"])
+                for sentence, _ in candidates
+            ):
+                return Answer("unknown", confidence=0.8, evidence=[], reason="identity merge is not source-grounded")
         if any(phrase in qnorm for phrase in unknown_phrases):
             candidates = self._search(question, limit=4)
             if not candidates or any("no " in normalize(sentence.text) or "unknown" in normalize(sentence.text) for sentence, _ in candidates):
@@ -157,6 +187,18 @@ class KnowMoreDiRTEngine:
     def _answer_final_state(self, question: str, qnorm: str) -> Answer | None:
         if not any(term in qnorm for term in ["final state", "current", "state"]):
             return None
+        plan = plan_question(question)
+        if plan.wants_current_state:
+            state_row = self.store.latest_state(self.run_id, list(plan.anchors))
+            if state_row and state_row["state_value"]:
+                sentence = self._sentences_by_location.get((str(state_row["rel_path"]), int(state_row["chunk_order"])))
+                if sentence:
+                    return Answer(
+                        str(state_row["state_value"]),
+                        0.88,
+                        [self._evidence(sentence, 0.88)],
+                        "latest temporal state from DSPG",
+                    )
         candidates = self._search(question, limit=10)
         for sentence, score in candidates:
             match = re.search(r"(?:final|current)[^:]{0,40}state:\s*([A-Za-z0-9_-]+)", sentence.text, re.I)
@@ -241,10 +283,12 @@ class KnowMoreDiRTEngine:
             for value in values:
                 if value.startswith("SUP-"):
                     return value
+            return ""
         if "pr" in qnorm:
             for value in values:
                 if value.startswith("PR-"):
                     return value
+            return ""
         return values[0] if values else ""
 
     def _answer_who_role(self, question: str, qnorm: str) -> Answer | None:
