@@ -9,6 +9,7 @@ def test_text_quality_flags_random_character_noise() -> None:
 
     assert metrics["char_count"] > 100
     assert metrics["low_semantic_noise"] is True
+    assert metrics["semantic_quality"] == "random_character_noise"
     assert is_low_semantic_noise(noise)
 
 
@@ -18,4 +19,5 @@ def test_text_quality_keeps_plain_discourse_as_semantic_text() -> None:
 
     assert metrics["token_count"] >= 8
     assert metrics["low_semantic_noise"] is False
+    assert metrics["semantic_quality"] == "meaningful_discourse"
     assert not is_low_semantic_noise(text)

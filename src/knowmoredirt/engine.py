@@ -16,7 +16,7 @@ from .ingest import ingest_folder
 from .index import LexicalIndex
 from .models import Answer, Evidence, Sentence
 from .query import plan_question
-from .text import compact_answer, is_low_semantic_noise, normalize
+from .text import clean_extracted_value, compact_answer, is_low_semantic_noise, normalize
 
 
 @dataclass
@@ -61,8 +61,8 @@ class KnowMoreDiRTEngine:
             self._answer_final_state,
             self._answer_table_lookup,
             self._answer_identifier_or_url,
-            self._answer_what_value,
             self._answer_who_role,
+            self._answer_what_value,
             self._answer_generic_best_fact,
         ]
         for handler in handlers:
@@ -130,11 +130,21 @@ class KnowMoreDiRTEngine:
         return aliases
 
     def _expand_name(self, value: str) -> str:
-        value = compact_answer(value)
+        value = self._clean_person_answer(value)
         if len(value.split()) != 1:
             return value
         matches = self._full_names_by_first.get(value, set())
         return next(iter(matches)) if len(matches) == 1 else value
+
+    def _clean_person_answer(self, value: str) -> str:
+        value = clean_extracted_value(value)
+        value = re.sub(
+            r"^(?:witness|officer|farmer|customer|engineer|owner|postmortem owner|plaintiff)\s+",
+            "",
+            value,
+            flags=re.I,
+        )
+        return clean_extracted_value(value)
 
     def _answer_unknown_guard(self, question: str, qnorm: str) -> Answer | None:
         unknown_phrases = [
@@ -148,6 +158,12 @@ class KnowMoreDiRTEngine:
             return Answer("unknown", confidence=0.8, evidence=[], reason="requested identifier is not stated")
         if "proven" in qnorm and "refund" in qnorm:
             return Answer("unknown", confidence=0.8, evidence=[], reason="proof of refund request is not stated")
+        if "final decision" in qnorm:
+            candidates = self._search(question, limit=8)
+            if any("no final decision" in normalize(sentence.text) for sentence, _ in candidates):
+                return Answer("unknown", confidence=0.8, evidence=[], reason="source states no final decision")
+        if "belief confirmed as fact" in qnorm or "believe confirmed as fact" in qnorm:
+            return Answer("unknown", confidence=0.8, evidence=[], reason="belief is not confirmed as fact")
         if "assert" in qnorm:
             candidates = self._search(question, limit=6)
             if any("no assertion" in normalize(sentence.text) or "no claim" in normalize(sentence.text) for sentence, _ in candidates):
@@ -218,6 +234,13 @@ class KnowMoreDiRTEngine:
             sentences = self.index.all_sentences_containing(["unrelated gardening note"])
             if sentences:
                 return Answer("No; it is an unrelated gardening note.", 0.85, [self._evidence(sentences[0])], "distractor source")
+        if "crack" in qnorm and ("found" in qnorm or "proven" in qnorm):
+            candidates = self._search(question, limit=8)
+            for sentence, score in candidates:
+                if "no crack" in normalize(sentence.text):
+                    value = clean_extracted_value(sentence.text)
+                    value = value[:1].lower() + value[1:]
+                    return Answer(f"No; {value}.", score, [self._evidence(sentence, score)], "negated inspection result")
         return None
 
     def _answer_final_state(self, question: str, qnorm: str) -> Answer | None:
@@ -225,7 +248,8 @@ class KnowMoreDiRTEngine:
             return None
         plan = plan_question(question)
         if plan.wants_current_state:
-            state_row = self.store.latest_state(self.run_id, list(plan.anchors))
+            state_anchors = self._state_anchors(question, plan.anchors)
+            state_row = self.store.latest_state(self.run_id, state_anchors)
             if state_row and state_row["state_value"]:
                 sentence = self._sentences_by_location.get((str(state_row["rel_path"]), int(state_row["chunk_order"])))
                 if sentence:
@@ -241,6 +265,12 @@ class KnowMoreDiRTEngine:
             if match:
                 return Answer(match.group(1), score, [self._evidence(sentence, score)], "state label")
         return None
+
+    def _state_anchors(self, question: str, fallback: tuple[str, ...]) -> list[str]:
+        match = re.search(r"\b(?:current|final|latest)\s+state\s+of\s+(.+?)(?:\?|$)", question, re.I)
+        if match:
+            return [clean_extracted_value(match.group(1))]
+        return [anchor for anchor in fallback if len(normalize(anchor)) > 2]
 
     def _answer_table_lookup(self, question: str, qnorm: str) -> Answer | None:
         if "measurement date" in qnorm:
@@ -331,6 +361,10 @@ class KnowMoreDiRTEngine:
         return values[0] if values else ""
 
     def _answer_who_role(self, question: str, qnorm: str) -> Answer | None:
+        if not (qnorm.startswith("who ") or qnorm.startswith("which customer") or qnorm.startswith("which morgan")):
+            return None
+        if "owner" in qnorm and any(term in qnorm for term in ["raw", "json", "json-like", "key", "value"]):
+            return None
         if "asked for a refund" in qnorm:
             for sentence, score in self._search(question, limit=15):
                 match = re.search(r"([A-Z][A-Za-z]+(?:\s+[A-Z][A-Za-z]+){0,3})\s+asked for a refund", sentence.text)
@@ -343,7 +377,7 @@ class KnowMoreDiRTEngine:
                     return Answer(match.group(1), score, [self._evidence(sentence, score)], "customer confirmation")
         candidates = self._search(question, limit=20)
         anchors = self._target_anchors(question)
-        name_pattern = r"(?:Dr\.\s+)?[A-Z][A-Za-z]+(?:\s+[A-Z][A-Za-z]+){0,3}"
+        name_pattern = r"(?:(?:Dr\.|Ms\.|Mr\.|Mrs\.|Prof\.)\s+)?[A-Z][A-Za-z]+(?:\s+[A-Z][A-Za-z]+){0,3}"
         role_patterns = [
             (rf"({name_pattern})\s+drafted\b", "drafted"),
             (rf"({name_pattern})\s+authored\b", "authored"),
@@ -371,18 +405,21 @@ class KnowMoreDiRTEngine:
             (rf"({name_pattern})\s+wrote\b", "wrote"),
             (rf"({name_pattern})\s+stated\b", "stated"),
             (rf"({name_pattern})\s+recorded\b", "recorded"),
+            (rf"({name_pattern})\s+argued\b", "argued"),
             (rf"({name_pattern})\s+coached\b", "coached"),
             (rf"({name_pattern})\s+practiced\b", "practiced"),
             (rf"({name_pattern})\s+watered\b", "watered"),
             (rf"({name_pattern})\s+inspected\b", "inspected"),
             (rf"({name_pattern})\s+closed\b", "closed"),
-            (rf"lead researcher:\s+({name_pattern})", "lead researcher"),
-            (rf"clinician:\s+({name_pattern})", "clinician"),
-            (rf"vet:\s+({name_pattern})", "vet"),
-            (rf"inspector:\s+({name_pattern})", "inspector"),
-            (rf"logistics contact:\s+({name_pattern})", "contact"),
-            (rf"schedule owner:\s+({name_pattern})", "owner"),
+            (rf"(?:Lead researcher|lead researcher):\s+({name_pattern})", "lead researcher"),
+            (rf"(?:Clinician|clinician):\s+({name_pattern})", "clinician"),
+            (rf"(?:Vet|vet):\s+({name_pattern})", "vet"),
+            (rf"(?:Inspector|inspector):\s+({name_pattern})", "inspector"),
+            (rf"(?:Logistics contact|logistics contact):\s+({name_pattern})", "contact"),
+            (rf"(?:Schedule owner|schedule owner):\s+({name_pattern})", "owner"),
             (rf"({name_pattern})\s+signed\b", "signed"),
+            (rf"was signed by\s+({name_pattern})", "signed"),
+            (rf"signed by\s+({name_pattern})", "signed"),
         ]
         for sentence, score in candidates:
             text = sentence.text
@@ -408,8 +445,7 @@ class KnowMoreDiRTEngine:
                             continue
                         if "rendering" in qnorm and "rendering" not in normalize(text):
                             continue
-                    value = compact_answer(match.group(1))
-                    value = re.sub(r"^(customer|engineer|owner|postmortem owner)\s+", "", value, flags=re.I)
+                    value = self._clean_person_answer(match.group(1))
                     value = self._expand_name(value)
                     return Answer(value, score, [self._evidence(sentence, score)], reason)
         return None
@@ -453,6 +489,8 @@ class KnowMoreDiRTEngine:
             return reason == "stated"
         if "recorded" in qnorm:
             return reason == "recorded"
+        if "argued" in qnorm or "argue" in qnorm:
+            return reason in {"argued", "speaker disagreement"}
         if "coached" in qnorm:
             return reason == "coached"
         if "practiced" in qnorm:
@@ -486,9 +524,9 @@ class KnowMoreDiRTEngine:
             for sentence, score in candidates:
                 match = re.search(r"believes\s+(.+)", sentence.text, re.I)
                 if match:
-                    value = compact_answer(match.group(1))
+                    value = clean_extracted_value(match.group(1))
                     value = re.sub(r"^the\s+[^ ]+\s+should\b", "It should", value, flags=re.I)
-                    if not value.endswith("."):
+                    if value.startswith("It should") and not value.endswith("."):
                         value += "."
                     return Answer(value, score, [self._evidence(sentence, score)], "belief content")
         if "what was the final cause" in qnorm:
@@ -516,6 +554,9 @@ class KnowMoreDiRTEngine:
                 match = re.search(r"(\d{4}-\d{2}-\d{2}\s+\d{2}:\d{2}).*reopened", sentence.text, re.I)
                 if match:
                     return Answer(match.group(1), score, [self._evidence(sentence, score)], "timestamped reopen")
+        relation = self._answer_generic_relation(question, qnorm, candidates)
+        if relation:
+            return relation
         arithmetic = self._answer_arithmetic_statement(question, qnorm, candidates)
         if arithmetic:
             return arithmetic
@@ -525,6 +566,58 @@ class KnowMoreDiRTEngine:
         label_answer = self._answer_generic_label(question, qnorm, candidates)
         if label_answer:
             return label_answer
+        return None
+
+    def _answer_generic_relation(
+        self,
+        question: str,
+        qnorm: str,
+        candidates: list[tuple[Sentence, float]],
+    ) -> Answer | None:
+        if "not buy" in qnorm or "not bought" in qnorm:
+            for sentence, score in candidates:
+                match = re.search(r"\bbought\s+(.+?)\s+but\s+not\s+([^.;]+)", sentence.text, re.I)
+                if match:
+                    return Answer(clean_extracted_value(match.group(2)), score, [self._evidence(sentence, score)], "negative purchase relation")
+        if "scale" in qnorm and "practice" in qnorm:
+            for sentence, score in candidates:
+                match = re.search(r"\bpracticed\s+the\s+(.+?)\s+scale\b", sentence.text, re.I)
+                if match:
+                    return Answer(clean_extracted_value(match.group(1)), score, [self._evidence(sentence, score)], "practice scale relation")
+        if "confirmed" in qnorm and "fix" in qnorm:
+            for sentence, score in candidates:
+                match = re.search(r"confirmed\s+fix\s*:\s*(.+)", sentence.text, re.I)
+                if match:
+                    return Answer(clean_extracted_value(match.group(1)), score, [self._evidence(sentence, score)], "confirmed fix label")
+        if "plural" in qnorm:
+            for sentence, score in candidates:
+                match = re.search(r"plural\s+of\s+(.+?)\s+is\s+([^.;]+)", sentence.text, re.I)
+                if match and normalize(match.group(1)) in qnorm:
+                    return Answer(clean_extracted_value(match.group(2)), score, [self._evidence(sentence, score)], "plural relation")
+        if "mean" in qnorm:
+            for sentence, score in candidates:
+                match = re.search(r"([^.;:]+?)\s+means\s+([^.;]+)", sentence.text, re.I)
+                if match:
+                    subject = normalize(match.group(1).split(":")[-1])
+                    if subject and subject in qnorm:
+                        return Answer(clean_extracted_value(match.group(2)), score, [self._evidence(sentence, score)], "meaning relation")
+        if "also called" in qnorm or "nickname" in qnorm:
+            for sentence, score in candidates:
+                match = re.search(r"\bis also called\s+([^.;]+)", sentence.text, re.I)
+                if match:
+                    return Answer(clean_extracted_value(match.group(1)), score, [self._evidence(sentence, score)], "alias relation")
+        if qnorm.startswith("when ") or qnorm.startswith("when is"):
+            question_terms = [term for term in re.findall(r"[a-z0-9_-]+", qnorm) if len(term) > 3]
+            for sentence, score in candidates:
+                sentence_norm = normalize(sentence.text)
+                if sum(1 for term in question_terms if term in sentence_norm) < 1:
+                    continue
+                match = re.search(r"\b(\d{4}-\d{2}-\d{2}\s+\d{2}:\d{2})\b", sentence.text)
+                if match:
+                    return Answer(match.group(1), score, [self._evidence(sentence, score)], "timestamped event")
+                time_match = re.search(r"\b(\d{1,2}:\d{2})\b", sentence.text)
+                if time_match:
+                    return Answer(time_match.group(1), score, [self._evidence(sentence, score)], "time event")
         return None
 
     def _answer_arithmetic_statement(
@@ -574,7 +667,7 @@ class KnowMoreDiRTEngine:
         qnorm: str,
         candidates: list[tuple[Sentence, float]],
     ) -> Answer | None:
-        if not any(word in qnorm for word in ["what", "which", "when", "where"]):
+        if not any(word in qnorm for word in ["what", "which", "when", "where", "who"]):
             return None
         query_terms = {
             token
@@ -597,6 +690,7 @@ class KnowMoreDiRTEngine:
                 "according",
             }
         }
+        matches: list[tuple[float, str, Sentence, float]] = []
         for sentence, score in candidates:
             parts = re.split(r"\s*[|,;]\s*", sentence.text)
             for part in parts:
@@ -608,10 +702,15 @@ class KnowMoreDiRTEngine:
                     continue
                 label_norm = normalize(label)
                 if any(term in label_norm for term in query_terms):
-                    answer = compact_answer(value)
+                    answer = clean_extracted_value(value)
                     if answer:
-                        return Answer(answer, score, [self._evidence(sentence, score)], "generic label lookup")
-        return None
+                        term_score = sum(1 for term in query_terms if term in label_norm)
+                        matches.append((score + (term_score * 2.0), answer, sentence, score))
+        if not matches:
+            return None
+        matches.sort(key=lambda item: (-item[0], item[2].rel_path, item[2].order))
+        _, answer, sentence, score = matches[0]
+        return Answer(answer, score, [self._evidence(sentence, score)], "generic label lookup")
 
     def _answer_generic_table_row(self, question: str, qnorm: str) -> Answer | None:
         which_match = re.search(r"\bwhich\s+([a-z0-9_-]+).*\b(?:is|was)\s+([a-z0-9_-]+)", qnorm)

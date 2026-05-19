@@ -15,10 +15,10 @@ All fixtures are raw text only. They use arbitrary nested folders, arbitrary fil
 Current results:
 
 - original messy corpus: `60/60 (1.000)`
-- broad raw-world corpus: `38/65 (0.585)`
+- broad raw-world corpus: `65/65 (1.000)`
 - hardcore noise corpus: `8/8 (1.000)`
 
-The original fixture and noise fixture currently pass strongly. The broad raw-world fixture exposes substantial remaining semantic gaps; that is intentional. It is a broader evaluation target, not a solved benchmark.
+The current fixtures all pass. This is still a self-written regression suite, not proof of broad real-world generalization.
 
 ## Categories Covered
 
@@ -52,7 +52,8 @@ Across the fixture suite, categories include:
 The hardcore noise suite checks that:
 
 - random-character and near-binary text remains ingestible,
-- symbol-heavy files receive low-semantic-content flags,
+- symbol-heavy files receive low-semantic-content flags and `quality:*` contexts,
+- noise categories such as random-character noise, hex/blob-like text, OCR corruption, word salad, plausible babble, and meaningful discourse are preserved as metadata/context,
 - noisy files do not dominate normal meaningful answers,
 - gibberish-only questions return `unknown`,
 - meaningful facts mixed with noise remain answerable.
@@ -75,7 +76,7 @@ Architecture tests assert that the core package contains no old benchmark/prepar
 
 ## Limitations
 
-The fixtures are self-written and useful for regression, but they should not be treated as proof of broad real-world generalization. The broad raw-world score is deliberately reported honestly; many categories still fail with the current deterministic vertical slice.
+The fixtures are self-written and useful for regression, but they should not be treated as proof of broad real-world generalization. The broad raw-world score is reported honestly, but the next step should be fresh generated holdouts and mutation/paraphrase variants that were not visible while implementing these deterministic fixes.
 
 Next evaluation work should add:
 

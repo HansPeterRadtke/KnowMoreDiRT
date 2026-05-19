@@ -132,6 +132,7 @@ def ingest_folder(folder_path: str | Path, store: DSPGStore | None = None) -> tu
     context_by_kind: dict[str, str] = {}
 
     for document in documents:
+        quality = text_quality_metrics(document.text)
         store.execute(
             """
             INSERT INTO documents(
@@ -148,9 +149,17 @@ def ingest_folder(folder_path: str | Path, store: DSPGStore | None = None) -> tu
                 document.mtime,
                 document.ctime,
                 len(document.text),
-                json.dumps({"text_quality": text_quality_metrics(document.text)}, sort_keys=True),
+                json.dumps({"text_quality": quality}, sort_keys=True),
             ),
         )
+        quality_kind = f"quality:{quality['semantic_quality']}"
+        if quality_kind not in context_by_kind:
+            context_id = stable_id("ctx", run_id, quality_kind)
+            context_by_kind[quality_kind] = context_id
+            store.execute(
+                "INSERT INTO contexts(context_id, run_id, kind, parent_context_id, holder_surface, evidence_surface, confidence) VALUES (?, ?, ?, ?, ?, ?, ?)",
+                (context_id, run_id, quality_kind, None, document.rel_path, quality_kind, 1.0),
+            )
 
     for sentence in sentences:
         token_estimate = max(1, len(tokenize(sentence.text)))

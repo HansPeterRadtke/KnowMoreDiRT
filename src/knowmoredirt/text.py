@@ -93,6 +93,13 @@ def compact_answer(text: str) -> str:
     return re.sub(r"\s+", " ", str(text or "").strip()).strip(" .;:")
 
 
+def clean_extracted_value(text: str) -> str:
+    value = compact_answer(text)
+    value = value.strip(" \t\r\n\"'`{}[](),")
+    value = re.sub(r"\s*[}\]),]+$", "", value).strip(" \"'`")
+    return compact_answer(value)
+
+
 def text_quality_metrics(text: str) -> dict[str, float | int | bool]:
     """Return generic raw-text quality signals used to downweight noise.
 
@@ -112,7 +119,10 @@ def text_quality_metrics(text: str) -> dict[str, float | int | bool]:
             "token_count": 0,
             "unique_token_ratio": 0.0,
             "long_token_ratio": 0.0,
+            "non_ascii_ratio": 0.0,
+            "ocrish_ratio": 0.0,
             "low_semantic_noise": True,
+            "semantic_quality": "empty",
         }
     printable = sum(1 for char in value if char in string.printable or char.isprintable())
     alnum = sum(1 for char in value if char.isalnum())
@@ -120,12 +130,16 @@ def text_quality_metrics(text: str) -> dict[str, float | int | bool]:
     tokens = tokenize(value)
     unique_tokens = set(tokens)
     long_tokens = [token for token in tokens if len(token) >= 24]
+    non_ascii = sum(1 for char in value if ord(char) > 127)
+    ocrish_tokens = [token for token in tokens if any(char.isdigit() for char in token) and any(char.isalpha() for char in token)]
     printable_ratio = printable / length
     alnum_ratio = alnum / length
     symbol_ratio = symbolic / length
     token_count = len(tokens)
     unique_token_ratio = (len(unique_tokens) / token_count) if token_count else 0.0
     long_token_ratio = (len(long_tokens) / token_count) if token_count else 0.0
+    non_ascii_ratio = non_ascii / length
+    ocrish_ratio = (len(ocrish_tokens) / token_count) if token_count else 0.0
     low_semantic_noise = (
         printable_ratio < 0.75
         or alnum_ratio < 0.25
@@ -133,6 +147,20 @@ def text_quality_metrics(text: str) -> dict[str, float | int | bool]:
         or (length > 80 and token_count < 4)
         or (token_count >= 20 and unique_token_ratio > 0.95 and long_token_ratio > 0.20)
     )
+    if symbol_ratio > 0.35 or printable_ratio < 0.75:
+        quality = "random_character_noise"
+    elif long_token_ratio > 0.25 or re.search(r"\b(?:[0-9a-fA-F]{24,}|[A-Za-z0-9+/]{32,}=*)\b", value):
+        quality = "base64_or_hex_blob"
+    elif ocrish_ratio > 0.20:
+        quality = "ocr_corruption"
+    elif non_ascii_ratio > 0.05 and unique_token_ratio > 0.80:
+        quality = "multilingual_word_salad"
+    elif token_count >= 12 and unique_token_ratio > 0.90:
+        quality = "word_salad"
+    elif "no actionable fact is asserted" in normalize(value):
+        quality = "plausible_babble"
+    else:
+        quality = "meaningful_discourse"
     return {
         "char_count": length,
         "printable_ratio": round(printable_ratio, 4),
@@ -141,7 +169,10 @@ def text_quality_metrics(text: str) -> dict[str, float | int | bool]:
         "token_count": token_count,
         "unique_token_ratio": round(unique_token_ratio, 4),
         "long_token_ratio": round(long_token_ratio, 4),
+        "non_ascii_ratio": round(non_ascii_ratio, 4),
+        "ocrish_ratio": round(ocrish_ratio, 4),
         "low_semantic_noise": bool(low_semantic_noise),
+        "semantic_quality": quality,
     }
 
 

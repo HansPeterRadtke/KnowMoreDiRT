@@ -24,7 +24,7 @@ Initialization performs these steps:
 7. **Referent construction**: create local referents from exact mentions without requiring destructive global merging.
 8. **Context assignment**: mark sentence-level contexts such as asserted, reported, believed, alleged, dreamed, fictional, and negated.
 9. **Frame extraction**: create lightweight event/proposition frames with predicates and argument links.
-10. **Text-quality scoring**: store generic structural signals for low-semantic-content files such as random-character blobs and symbol-heavy corruption.
+10. **Text-quality/context scoring**: store generic structural signals and document-level contexts for low-semantic-content files such as random-character blobs, hex/blob-like text, OCR corruption, word salad, plausible babble, and meaningful discourse.
 11. **Indexing**: build bounded retrieval structures over both raw chunks and DSPG records.
 
 ## SQLite DSPG Store
@@ -44,6 +44,8 @@ The current store is SQLite-backed and normalized. It includes:
 - `temporal_edges`
 
 The current implementation uses an in-memory database by default. A durable user-configurable store path is planned.
+
+Document metadata stores text-quality metrics, including printable ratio, symbol ratio, token diversity, OCR-like token ratio, a low-semantic-noise flag, and a semantic-quality label. The same classification is also represented as a `quality:*` context so noisy source material remains preserved and queryable rather than discarded.
 
 ## Retrieval and Query Execution
 
@@ -81,6 +83,6 @@ DSPG objects are grounded in exact source spans. Answers at the public boundary 
 - Entity resolution is local and conservative.
 - Context propagation is sentence-level rather than fully hierarchical.
 - Temporal modeling handles simple dated state statements but not full interval logic.
-- Noise handling is structural and conservative; it is not a semantic gibberish detector.
+- Noise handling is structural and conservative; it labels and downweights low-semantic-content sources for ordinary fact retrieval while preserving them as source-grounded contexts.
 - The local model path is isolated but not yet part of the default staged pipeline.
 - The fixture suite is now broader, but it is still self-written and not proof of broad generalization.

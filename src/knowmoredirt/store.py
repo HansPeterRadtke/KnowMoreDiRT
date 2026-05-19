@@ -303,7 +303,7 @@ class DSPGStore:
         return [row for _, row in scored[:limit]]
 
     def latest_state(self, run_id: str, anchors: list[str]) -> sqlite3.Row | None:
-        anchor_norms = [normalize(anchor) for anchor in anchors if normalize(anchor)]
+        anchor_norms = [normalize(anchor) for anchor in anchors if len(normalize(anchor)) > 2]
         if not anchor_norms:
             return None
         rows = self.connection.execute(
