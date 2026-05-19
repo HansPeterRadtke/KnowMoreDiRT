@@ -6,7 +6,7 @@ KnowMoreDiRT (KMD) is a raw-folder discourse knowledge system. It reads arbitrar
 import knowmoredirt as kmd
 
 kmd.initialize("/path/to/random/raw/folder")
-answer = kmd.question("Who reviewed PR-8042?")
+answer = kmd.question("Who reviewed the field report?")
 ```
 
 ## Public Contract
@@ -47,6 +47,7 @@ KMD currently provides a first DSPG-backed vertical slice:
 - sentence/line chunking,
 - SQLite DSPG persistence,
 - source spans, mentions, referents, contexts, frames, and frame arguments,
+- generic label/value, event, temporal-state, identity, and context relation extraction,
 - bounded lexical/referent retrieval,
 - text-quality/noise contexts for random-character, hex/blob-like, OCR-corrupted, word-salad, plausible-babble, and meaningful-discourse sources,
 - conservative source-grounded answering,

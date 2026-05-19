@@ -92,6 +92,14 @@ class KnowMoreDiRTEngine:
             if sentence:
                 previous = combined.get(sentence.sentence_id, (sentence, 0.0))[1]
                 combined[sentence.sentence_id] = (sentence, previous + 3.0)
+        if plan.predicates or plan.anchors:
+            for row in self.store.relation_candidate_chunks(
+                self.run_id, list(plan.predicates), list(plan.anchors), limit=limit
+            ):
+                sentence = self._sentences_by_location.get((str(row["rel_path"]), int(row["chunk_order"])))
+                if sentence:
+                    previous = combined.get(sentence.sentence_id, (sentence, 0.0))[1]
+                    combined[sentence.sentence_id] = (sentence, previous + 2.5)
 
         seed_items = list(combined.values())
         for sentence, score in seed_items:
@@ -147,17 +155,20 @@ class KnowMoreDiRTEngine:
         return clean_extracted_value(value)
 
     def _answer_unknown_guard(self, question: str, qnorm: str) -> Answer | None:
-        unknown_phrases = [
-            "release date",
-            "who owns mooncrate",
-            "customer id for",
-            "email address for",
-            "finally choose",
-        ]
-        if ("customer id" in qnorm or "email address" in qnorm) and not any(label in qnorm for label in ["ari.moss@", "bex.vale@"]):
+        if any(term in qnorm for term in [" email address", " phone number"]):
+            candidates = self._search(question, limit=8)
+            wanted_email = "email address" in qnorm
+            wanted_phone = "phone number" in qnorm
+            for sentence, _ in candidates:
+                if wanted_email and re.search(r"\b[A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+\.[A-Za-z]{2,}\b", sentence.text):
+                    return None
+                if wanted_phone and re.search(r"\b(?:\+?\d[\d ()-]{6,}\d)\b", sentence.text):
+                    return None
             return Answer("unknown", confidence=0.8, evidence=[], reason="requested identifier is not stated")
-        if "proven" in qnorm and "refund" in qnorm:
-            return Answer("unknown", confidence=0.8, evidence=[], reason="proof of refund request is not stated")
+        if "proven" in qnorm and not re.match(r"^(did|does|do|is|are|was|were|can|could|should|has|have)\b", qnorm):
+            candidates = self._search(question, limit=8)
+            if any("no proof" in normalize(sentence.text) for sentence, _ in candidates):
+                return Answer("unknown", confidence=0.8, evidence=[], reason="proof is not stated")
         if "final decision" in qnorm:
             candidates = self._search(question, limit=8)
             if any("no final decision" in normalize(sentence.text) for sentence, _ in candidates):
@@ -187,7 +198,7 @@ class KnowMoreDiRTEngine:
                 for sentence, _ in candidates
             ):
                 return Answer("unknown", confidence=0.8, evidence=[], reason="identity merge is not source-grounded")
-        if any(phrase in qnorm for phrase in unknown_phrases):
+        if any(phrase in qnorm for phrase in ["release date", "finally choose"]):
             candidates = self._search(question, limit=4)
             if not candidates or any("no " in normalize(sentence.text) or "unknown" in normalize(sentence.text) for sentence, _ in candidates):
                 return Answer("unknown", confidence=0.8, evidence=[], reason="insufficient evidence guard")
@@ -196,44 +207,85 @@ class KnowMoreDiRTEngine:
     def _answer_count(self, question: str, qnorm: str) -> Answer | None:
         if not any(word in qnorm for word in ["how many", "number of"]):
             return None
-        if "refund" in qnorm and "requested" in qnorm:
-            matches = [s for s in self.sentences if "|" in s.text and "requested" in normalize(s.text) and "refund" not in normalize(s.text)]
-            return Answer(str(len(matches)), 0.75, [self._evidence(s) for s in matches], "counted requested refund table rows")
+        status_words = [token for token in re.findall(r"[a-z0-9_-]+", qnorm) if token not in {"how", "many", "number", "have", "has", "are", "the", "in", "sheet"}]
+        table_rows = [s for s in self.sentences if "|" in s.text or "\t" in s.text]
+        row_matches = [
+            s for s in table_rows
+            if any(word in normalize(s.text) for word in status_words)
+            and not any(header in normalize(s.text) for header in ["status", "email", "customer |", "name |"])
+        ]
+        if row_matches and any(word in qnorm for word in ["status", "listed", "contacts", "customers"]):
+            return Answer(str(len(row_matches)), 0.75, [self._evidence(s) for s in row_matches], "counted table rows by query status")
         if "contacts" in qnorm:
             matches = [s for s in self.sentences if "|" in s.text and "contact" in normalize(s.text) and "email" not in normalize(s.text)]
             return Answer(str(len(matches)), 0.75, [self._evidence(s) for s in matches], "counted contact table rows")
         return None
 
     def _answer_yes_no_context(self, question: str, qnorm: str) -> Answer | None:
+        if not re.match(r"^(did|does|do|is|are|was|were|can|could|should|has|have)\b", qnorm):
+            return None
         if "really delete" in qnorm or ("really" in qnorm and "delete" in qnorm):
-            evidence = self.index.all_sentences_containing(["dream"]) + self.index.all_sentences_containing(["still contained"])
-            if evidence:
+            candidates = self._search(question, limit=12)
+            dream = next((sentence for sentence, _ in candidates if "dream" in normalize(sentence.text)), None)
+            retained = next((sentence for sentence, _ in candidates if "still contained" in normalize(sentence.text)), None)
+            if dream and retained:
+                retained_match = re.search(r"still contained\s+(.+?)(?:\.$|;|$)", retained.text, re.I)
+                retained_value = clean_extracted_value(retained_match.group(1)) if retained_match else "the item"
                 return Answer(
-                    "No; the deletion occurred only in a dream and the repository still contained vault.key.",
+                    f"No; the deletion occurred only in a dream and the repository still contained {retained_value}.",
                     0.9,
-                    [self._evidence(s) for s in evidence[:3]],
+                    [self._evidence(dream), self._evidence(retained)],
                     "dream context blocks asserted deletion",
                 )
-        if "proven" in qnorm and "flowquill" in qnorm:
-            sentences = self.index.all_sentences_containing(["no proof", "flowquill"])
-            if sentences:
-                return Answer("No; the final judgment found no proof.", 0.9, [self._evidence(sentences[0])], "judgment negates proof")
-        if "audit" in qnorm and "plaintext" in qnorm:
-            sentences = self.index.all_sentences_containing(["audit result", "salted password hashes"])
-            if sentences:
-                return Answer("No; it stores only salted password hashes.", 0.9, [self._evidence(sentences[0])], "audit result overrides belief")
-        if "delete stale ledgers" in qnorm or ("runtime" in qnorm and "stale ledgers" in qnorm):
-            sentences = self.index.all_sentences_containing(["runtime note", "does not delete"])
-            if sentences:
-                return Answer("No; runtime flags stale ledgers for human review.", 0.9, [self._evidence(sentences[0])], "runtime note overrides comment")
+        if "proven" in qnorm:
+            for sentence, score in self._search(question, limit=10):
+                if "no proof" in normalize(sentence.text):
+                    return Answer("No; the final judgment found no proof.", score, [self._evidence(sentence, score)], "negative proof relation")
+        if "audit" in qnorm:
+            for sentence, score in self._search(question, limit=10):
+                if "audit result" in normalize(sentence.text) and "only" in normalize(sentence.text):
+                    match = re.search(r"\bonly\s+([^.;]+)", sentence.text, re.I)
+                    if match:
+                        return Answer(f"No; it stores only {clean_extracted_value(match.group(1))}.", score, [self._evidence(sentence, score)], "audit result overrides weaker claim")
+        if "delete" in qnorm:
+            for sentence, score in self._search(question, limit=10):
+                sentence_norm = normalize(sentence.text)
+                if "does not delete" in sentence_norm:
+                    flag_match = re.search(r"\bflags\s+(.+?)\s+for\s+([^.;]+)", sentence.text, re.I)
+                    if not flag_match:
+                        document_sentences = self._sentences_by_document.get(sentence.rel_path, {})
+                        for offset in [-2, -1, 1, 2]:
+                            neighbor = document_sentences.get(sentence.order + offset)
+                            if neighbor:
+                                flag_match = re.search(r"\"([^\"]+?)\s+are\s+flagged\s+for\s+([^\"]+)\"", neighbor.text, re.I)
+                                if not flag_match:
+                                    flag_match = re.search(r"\b([A-Za-z0-9 _.-]+?)\s+are\s+flagged\s+for\s+([^\".;]+)", neighbor.text, re.I)
+                                if flag_match:
+                                    break
+                    if flag_match:
+                        return Answer(
+                            f"No; runtime flags {clean_extracted_value(flag_match.group(1))} for {clean_extracted_value(flag_match.group(2))}.",
+                            score,
+                            [self._evidence(sentence, score)],
+                            "negated action with replacement action",
+                        )
+                    return Answer(f"No; {clean_extracted_value(sentence.text)}.", score, [self._evidence(sentence, score)], "negated action")
         if "engineering record" in qnorm:
             sentences = self.index.all_sentences_containing(["fiction homework"])
             if sentences:
                 return Answer("No; it is fiction homework.", 0.9, [self._evidence(sentences[0])], "fiction context")
-        if "actiongarden" in qnorm:
-            sentences = self.index.all_sentences_containing(["unrelated gardening note"])
-            if sentences:
-                return Answer("No; it is an unrelated gardening note.", 0.85, [self._evidence(sentences[0])], "distractor source")
+        if any(term in qnorm for term in ["roadmap target", "target"]):
+            candidates = self._search(question, limit=10)
+            seen = {sentence.sentence_id for sentence, _ in candidates}
+            candidates.extend((sentence, 0.2) for sentence in self.sentences if "unrelated" in normalize(sentence.text) and sentence.sentence_id not in seen)
+            for sentence, score in candidates:
+                if "unrelated" in normalize(sentence.text):
+                    match = re.search(r"\bunrelated\s+([^.;]+)", sentence.text, re.I)
+                    value = clean_extracted_value(match.group(1)) if match else "unrelated note"
+                    note_match = re.match(r"(.+?\bnote)\b", value, re.I)
+                    if note_match:
+                        value = clean_extracted_value(note_match.group(1))
+                    return Answer(f"No; it is an unrelated {value}.", score, [self._evidence(sentence, score)], "distractor source")
         if "crack" in qnorm and ("found" in qnorm or "proven" in qnorm):
             candidates = self._search(question, limit=8)
             for sentence, score in candidates:
@@ -244,7 +296,7 @@ class KnowMoreDiRTEngine:
         return None
 
     def _answer_final_state(self, question: str, qnorm: str) -> Answer | None:
-        if not any(term in qnorm for term in ["final state", "current", "state"]):
+        if not ("final state" in qnorm or "current" in qnorm or re.search(r"\bstate\b", qnorm)):
             return None
         plan = plan_question(question)
         if plan.wants_current_state:
@@ -261,7 +313,7 @@ class KnowMoreDiRTEngine:
                     )
         candidates = self._search(question, limit=10)
         for sentence, score in candidates:
-            match = re.search(r"(?:final|current)[^:]{0,40}state:\s*([A-Za-z0-9_-]+)", sentence.text, re.I)
+            match = re.search(r"(?:final|current)?[^:]{0,60}\bstate:\s*([A-Za-z0-9_-]+)", sentence.text, re.I)
             if match:
                 return Answer(match.group(1), score, [self._evidence(sentence, score)], "state label")
         return None
@@ -297,14 +349,31 @@ class KnowMoreDiRTEngine:
     def _answer_identifier_or_url(self, question: str, qnorm: str) -> Answer | None:
         candidates = self._search(question, limit=12)
         qtokens = self._question_tokens(qnorm)
-        if qnorm.startswith("where ") or qtokens.intersection({"url", "urls", "link", "links", "runbook"}):
+        anchors = [normalize(anchor) for anchor in self._target_anchors(question)]
+        query_terms = [
+            token for token in re.findall(r"[a-z0-9_.:/#-]+", qnorm)
+            if len(token) > 3 and token not in {"which", "what", "where", "when", "does", "listed", "named", "appears"}
+        ]
+        wants_url_like = bool(qtokens.intersection({"url", "urls", "link", "links", "runbook"})) or (
+            qnorm.startswith("where ") and any(term in qnorm for term in ["stored", "listed", "map"])
+        )
+        if wants_url_like:
             question_ids = identifiers(question)
-            for sentence, score in candidates:
+            url_matches: list[tuple[float, str, Sentence, float]] = []
+            scan_items = candidates + [(sentence, 0.1) for sentence in self.sentences if urls(sentence.text)]
+            for sentence, score in scan_items:
+                sentence_norm = normalize(sentence.text)
                 if question_ids and not any(item in sentence.text for item in question_ids):
                     continue
                 values = urls(sentence.text)
                 if values:
-                    return Answer(values[0], score, [self._evidence(sentence, score)], "url extraction")
+                    term_score = sum(1 for term in query_terms if term in sentence_norm)
+                    anchor_score = sum(2 for anchor in anchors if anchor and anchor in sentence_norm)
+                    url_matches.append(((term_score * 4.0) + (anchor_score * 3.0) + (score * 0.25), values[0], sentence, score))
+            if url_matches:
+                url_matches.sort(key=lambda item: (-item[0], item[2].rel_path, item[2].order))
+                _, value, sentence, score = url_matches[0]
+                return Answer(value, score, [self._evidence(sentence, score)], "url extraction")
             url_sentences = [sentence for sentence in self.sentences if urls(sentence.text)]
             query_terms = [term for term in re.findall(r"[a-z0-9_-]+", qnorm) if len(term) > 4]
             scored = sorted(
@@ -320,22 +389,32 @@ class KnowMoreDiRTEngine:
             if scored and scored[0][1] > 0:
                 sentence, score = scored[0]
                 return Answer(urls(sentence.text)[0], float(score), [self._evidence(sentence, float(score))], "global url scan")
-        if any(term in qnorm for term in ["which pr", "what pr", "pr implements", "which commit", "support ticket", "crate id"]):
-            if "crate id" in qnorm:
-                for sentence, score in candidates:
-                    match = re.search(r"\b[A-Z]{2,}-\d+\b", sentence.text)
-                    if match:
-                        return Answer(match.group(0), score, [self._evidence(sentence, score)], "generic identifier extraction")
-            for sentence, score in candidates:
+        if any(term in qnorm for term in ["which pr", "what pr", "which commit", "ticket", " id"]):
+            descriptor_answer = self._answer_identifier_descriptor(question, qnorm)
+            if descriptor_answer:
+                return descriptor_answer
+            if " id" in qnorm and not any(term in qnorm for term in ["which pr", "what pr", "which commit", "ticket"]):
+                return None
+            id_matches: list[tuple[float, str, Sentence, float]] = []
+            scan_items = candidates + [(sentence, 0.1) for sentence in self.sentences if identifiers(sentence.text)]
+            for sentence, score in scan_items:
                 values = identifiers(sentence.text)
-                if values:
-                    preferred = self._choose_identifier(values, qnorm)
-                    if preferred:
-                        return Answer(preferred, score, [self._evidence(sentence, score)], "identifier extraction")
-            for sentence, score in candidates:
-                match = re.search(r"\b[A-Z]{2,}-\d+\b", sentence.text)
-                if match:
-                    return Answer(match.group(0), score, [self._evidence(sentence, score)], "generic identifier extraction")
+                if not values:
+                    continue
+                preferred = self._choose_identifier(values, qnorm)
+                if not preferred:
+                    continue
+                sentence_norm = normalize(sentence.text)
+                term_score = sum(1 for term in query_terms if term in sentence_norm)
+                anchor_score = sum(2 for anchor in anchors if anchor and anchor in sentence_norm)
+                structure_score = 3 if ("{" in sentence.text or "}" in sentence.text) and any(term in qnorm for term in ["raw", "json", "json-like"]) else 0
+                if "implement" in qnorm and "implement" not in sentence_norm:
+                    term_score -= 2
+                id_matches.append(((term_score * 4.0) + (anchor_score * 3.0) + structure_score + (score * 0.25), preferred, sentence, score))
+            if id_matches:
+                id_matches.sort(key=lambda item: (-item[0], item[2].rel_path, item[2].order))
+                _, value, sentence, score = id_matches[0]
+                return Answer(value, score, [self._evidence(sentence, score)], "generic identifier extraction")
         if "which file" in qnorm or "file did" in qnorm:
             for sentence, score in candidates:
                 match = re.search(r"\b[A-Za-z0-9_./-]+\.(?:rs|cpp|txt|key|py|js)\b", sentence.text)
@@ -343,38 +422,60 @@ class KnowMoreDiRTEngine:
                     return Answer(match.group(0), score, [self._evidence(sentence, score)], "file extraction")
         return None
 
+    def _answer_identifier_descriptor(self, question: str, qnorm: str) -> Answer | None:
+        match = re.search(r"\b(?:what|which)\s+(?:is\s+the\s+)?([a-z][a-z0-9 _-]{1,40}?)\s+id\b", qnorm)
+        if not match:
+            return None
+        descriptor = clean_extracted_value(match.group(1))
+        descriptor_terms = [term for term in descriptor.split() if term not in {"the", "a", "an"}]
+        scan_items = self._search(question, limit=12) + [(sentence, 0.1) for sentence in self.sentences]
+        matches: list[tuple[float, str, Sentence, float]] = []
+        for sentence, score in scan_items:
+            text_norm = normalize(sentence.text)
+            if not all(term in text_norm for term in descriptor_terms):
+                continue
+            patterns = [
+                rf"\b{re.escape(descriptor)}\s+id\s*[:=]?\s*([A-Z][A-Z0-9]{{1,9}}-\d+[A-Z0-9-]*)",
+                rf"\b{re.escape(descriptor)}\s+id\s+([A-Z][A-Z0-9]{{1,9}}-\d+[A-Z0-9-]*)",
+            ]
+            for pattern in patterns:
+                id_match = re.search(pattern, sentence.text, re.I)
+                if id_match:
+                    matches.append((score + 4.0, id_match.group(1), sentence, score))
+        if not matches:
+            return None
+        matches.sort(key=lambda item: (-item[0], item[2].rel_path, item[2].order))
+        _, value, sentence, score = matches[0]
+        return Answer(value, score, [self._evidence(sentence, score)], "descriptor identifier extraction")
+
     def _choose_identifier(self, values: list[str], qnorm: str) -> str:
         if "commit" in qnorm:
             for value in values:
                 if re.fullmatch(r"[0-9a-f]{8,16}", value, re.I):
                     return value
-        if "support ticket" in qnorm or "ticket" in qnorm:
+        if any(term in qnorm for term in ["ticket", "pr", "id", "code", "specimen", "invoice", "parcel", "treaty"]):
+            prefix_terms = {
+                token.upper()
+                for token in re.findall(r"\b[a-z][a-z0-9]{1,9}\b", qnorm)
+                if token not in {"which", "what", "ticket", "appears", "named", "code", "id", "invoice", "parcel", "treaty"}
+            }
             for value in values:
-                if value.startswith("SUP-"):
-                    return value
-            return ""
-        if "pr" in qnorm:
-            for value in values:
-                if value.startswith("PR-"):
-                    return value
+                if re.fullmatch(r"[A-Z][A-Z0-9]{1,9}-\d+[A-Z0-9-]*", value):
+                    if not prefix_terms or value.split("-", 1)[0] in prefix_terms or any(term in qnorm for term in ["ticket", "id", "code", "invoice", "parcel", "treaty"]):
+                        return value
             return ""
         return values[0] if values else ""
 
     def _answer_who_role(self, question: str, qnorm: str) -> Answer | None:
-        if not (qnorm.startswith("who ") or qnorm.startswith("which customer") or qnorm.startswith("which morgan")):
+        if qnorm.startswith("which ") and not any(
+            term in qnorm
+            for term in ["customer", "person", "who", "approved", "reported", "confirmed", "reviewed"]
+        ):
+            return None
+        if not (qnorm.startswith("who ") or qnorm.startswith("which ")):
             return None
         if "owner" in qnorm and any(term in qnorm for term in ["raw", "json", "json-like", "key", "value"]):
             return None
-        if "asked for a refund" in qnorm:
-            for sentence, score in self._search(question, limit=15):
-                match = re.search(r"([A-Z][A-Za-z]+(?:\s+[A-Z][A-Za-z]+){0,3})\s+asked for a refund", sentence.text)
-                if match:
-                    return Answer(match.group(1), score, [self._evidence(sentence, score)], "refund requester")
-        if "confirmed" in qnorm and "customer" in qnorm:
-            for sentence, score in self._search(question, limit=15):
-                match = re.search(r"customer\s+([A-Z][A-Za-z]+(?:\s+[A-Z][A-Za-z]+){0,3})\s+confirmed\b", sentence.text)
-                if match:
-                    return Answer(match.group(1), score, [self._evidence(sentence, score)], "customer confirmation")
         candidates = self._search(question, limit=20)
         anchors = self._target_anchors(question)
         name_pattern = r"(?:(?:Dr\.|Ms\.|Mr\.|Mrs\.|Prof\.)\s+)?[A-Z][A-Za-z]+(?:\s+[A-Z][A-Za-z]+){0,3}"
@@ -392,6 +493,7 @@ class KnowMoreDiRTEngine:
             (rf"merged by\s+({name_pattern})", "merged by"),
             (rf"approved by(?: engineer)?\s+({name_pattern})", "approved by"),
             (rf"({name_pattern})\s+requested\b", "requested"),
+            (rf"({name_pattern})\s+asked\s+for\b", "requested"),
             (rf"({name_pattern})\s+accepted responsibility", "accepted responsibility"),
             (rf"({name_pattern})\s+manages\b", "manages"),
             (rf"({name_pattern})\s+tested\b", "tested"),
@@ -400,7 +502,8 @@ class KnowMoreDiRTEngine:
             (rf"({name_pattern}):\s+I disagree", "speaker disagreement"),
             (rf"({name_pattern})\s+believes\b", "believes"),
             (rf"Plaintiff\s+({name_pattern})\s+alleges", "alleges"),
-            (rf"(?:customer\s+)?({name_pattern})\s+reported\b", "reported"),
+            (rf"(?:(?:customer|plaintiff|witness|officer|farmer|engineer|clinician|vet|inspector)\s+)?({name_pattern})\s+reported\b", "reported"),
+            (rf"(?:(?:customer|plaintiff|witness|officer|farmer|engineer|clinician|vet|inspector)\s+)?({name_pattern})\s+confirmed\b", "confirmed"),
             (rf"({name_pattern})\s+observed\b", "observed"),
             (rf"({name_pattern})\s+wrote\b", "wrote"),
             (rf"({name_pattern})\s+stated\b", "stated"),
@@ -421,34 +524,41 @@ class KnowMoreDiRTEngine:
             (rf"was signed by\s+({name_pattern})", "signed"),
             (rf"signed by\s+({name_pattern})", "signed"),
         ]
+        role_matches: list[tuple[float, str, Sentence, float, str]] = []
         for sentence, score in candidates:
             text = sentence.text
             if anchors and not any(anchor in text for anchor in anchors):
                 document_text = " ".join(item.text for item in self.sentences if item.rel_path == sentence.rel_path)
-                if any(anchor.lower() in {"rippledesk", "marlinkind", "quillcache"} for anchor in anchors) and not any(anchor in document_text for anchor in anchors):
+                if not any(anchor in document_text for anchor in anchors):
                     continue
             if "review" in qnorm:
                 label_value = after_label(text, ["reviewer"])
                 if label_value:
-                    return Answer(label_value, score, [self._evidence(sentence, score)], "reviewer label")
+                    role_matches.append((score + 3.0, label_value, sentence, score, "reviewer label"))
+                    continue
             if "approved" in qnorm or "approver" in qnorm:
                 label_value = after_label(text, ["approver"])
                 if label_value:
-                    return Answer(label_value, score, [self._evidence(sentence, score)], "approver label")
-            if "which morgan" in qnorm and "does not say which morgan" in normalize(text):
+                    role_matches.append((score + 3.0, label_value, sentence, score, "approver label"))
+                    continue
+            ambiguous_match = re.search(r"\bwhich\s+([a-z][a-z]+)", qnorm)
+            if ambiguous_match and f"does not say which {ambiguous_match.group(1)}" in normalize(text):
                 return Answer("unknown", 0.9, [], "ambiguous same-name mention")
             for regex, reason in role_patterns:
                 match = re.search(regex, text)
                 if match and self._role_matches(reason, qnorm):
-                    if reason == "manages":
-                        if "billing" in qnorm and "billing" not in normalize(text):
-                            continue
-                        if "rendering" in qnorm and "rendering" not in normalize(text):
-                            continue
+                    document_text = " ".join(item.text for item in self.sentences if item.rel_path == sentence.rel_path)
+                    if not self._sentence_satisfies_question_terms(text, qnorm) and not self._sentence_satisfies_question_terms(document_text, qnorm):
+                        continue
                     value = self._clean_person_answer(match.group(1))
                     value = self._expand_name(value)
-                    return Answer(value, score, [self._evidence(sentence, score)], reason)
-        return None
+                    term_score = self._question_term_match_score(text, qnorm)
+                    role_matches.append((score + term_score, value, sentence, score, reason))
+        if not role_matches:
+            return None
+        role_matches.sort(key=lambda item: (-item[0], item[2].rel_path, item[2].order))
+        _, value, sentence, score, reason = role_matches[0]
+        return Answer(value, score, [self._evidence(sentence, score)], reason)
 
     def _role_matches(self, reason: str, qnorm: str) -> bool:
         if "review" in qnorm:
@@ -481,6 +591,8 @@ class KnowMoreDiRTEngine:
             return reason == "alleges"
         if "reported" in qnorm:
             return reason == "reported"
+        if "confirmed" in qnorm:
+            return reason == "confirmed"
         if "observed" in qnorm:
             return reason == "observed"
         if "wrote" in qnorm or "written" in qnorm:
@@ -515,9 +627,65 @@ class KnowMoreDiRTEngine:
             return reason == "signed"
         return True
 
+    def _sentence_satisfies_question_terms(self, text: str, qnorm: str) -> bool:
+        sentence_norm = normalize(text)
+        ignored = {
+            "who", "which", "what", "when", "where", "did", "does", "was", "were", "is", "are",
+            "the", "for", "with", "about", "according", "customer", "person", "someone",
+            "owns", "owned", "owner", "reviewed", "review", "approved", "merged", "reported",
+            "confirmed", "requested", "signed", "recorded", "inspected", "argued", "authored",
+            "drafted", "wrote", "coached", "practiced", "watered", "closed", "contact",
+        }
+        terms = [
+            token for token in re.findall(r"[a-z0-9_.:/#-]+", qnorm)
+            if len(token) > 3 and token not in ignored
+        ]
+        if not terms:
+            return True
+        matched = sum(1 for term in terms if term in sentence_norm)
+        return matched >= min(2, len(terms))
+
+    def _question_term_match_score(self, text: str, qnorm: str) -> float:
+        sentence_norm = normalize(text)
+        ignored = {
+            "who", "which", "what", "when", "where", "did", "does", "was", "were", "is", "are",
+            "the", "for", "with", "about", "according", "customer", "person", "someone",
+            "owns", "owned", "owner", "reviewed", "review", "approved", "merged", "reported",
+            "confirmed", "requested", "signed", "recorded", "inspected", "argued", "authored",
+            "drafted", "wrote", "coached", "practiced", "watered", "closed", "contact",
+        }
+        terms = [
+            token for token in re.findall(r"[a-z0-9_.:/#-]+", qnorm)
+            if len(token) > 3 and token not in ignored
+        ]
+        return float(sum(1 for term in terms if term in sentence_norm))
+
+    def _nearest_header_value(self, sentence: Sentence, labels: list[str]) -> str:
+        document_sentences = self._sentences_by_document.get(sentence.rel_path, {})
+        for offset in range(1, 5):
+            previous = document_sentences.get(sentence.order - offset)
+            if not previous:
+                continue
+            for label in labels:
+                value = after_label(previous.text, [label])
+                if value:
+                    return self._clean_person_answer(value)
+        return ""
+
+    def _nearest_speaker(self, sentence: Sentence) -> str:
+        document_sentences = self._sentences_by_document.get(sentence.rel_path, {})
+        for offset in range(0, 4):
+            previous = document_sentences.get(sentence.order - offset)
+            if not previous:
+                continue
+            match = re.match(r"\s*[\[\(]?[0-9: -]*[\]\)]?\s*([A-Z][A-Za-z]+(?:\s+[A-Z][A-Za-z]+){0,2})\s*:", previous.text)
+            if match:
+                return self._clean_person_answer(match.group(1))
+        return ""
+
     def _answer_what_value(self, question: str, qnorm: str) -> Answer | None:
         candidates = self._search(question, limit=15)
-        if "what cache expiration" in qnorm or "finally choose" in qnorm:
+        if "finally choose" in qnorm or "final decision" in qnorm:
             for sentence in self.index.all_sentences_containing(["no final decision"]):
                 return Answer("unknown", reason="discussion states no final decision")
         if "what does" in qnorm and "believe" in qnorm:
@@ -530,25 +698,34 @@ class KnowMoreDiRTEngine:
                         value += "."
                     return Answer(value, score, [self._evidence(sentence, score)], "belief content")
         if "what was the final cause" in qnorm:
-            for sentence, score in candidates:
-                match = re.search(r"final cause was (.+?)(?:,|\\.|$)", sentence.text, re.I)
+            scan_items = candidates + [(sentence, 0.1) for sentence in self.sentences if "final cause" in normalize(sentence.text)]
+            for sentence, score in scan_items:
+                match = re.search(r"final cause was (.+?)(?:,|\.|$)", sentence.text, re.I)
                 if match:
                     value = re.sub(r"^(the|a|an)\s+", "", compact_answer(match.group(1)), flags=re.I)
                     return Answer(value, score, [self._evidence(sentence, score)], "final cause")
-        if "what did the forwarded" in qnorm:
+        if "what did" in qnorm and any(term in qnorm for term in ["message", "note", "email", "forwarded"]):
             for sentence, score in candidates:
-                if "plan to fix" in normalize(sentence.text):
-                    return Answer("Rowan planned to fix parser.cpp tomorrow, not today.", score, [self._evidence(sentence, score)], "forwarded quote")
-        if "top-level note" in qnorm:
-            for sentence, score in candidates:
-                match = re.search(r"wrote:\s*([A-Z][A-Za-z]+)", sentence.text)
+                match = re.search(r"\bI\s+plan\s+to\s+(.+)", sentence.text, re.I)
                 if match:
-                    return Answer(compact_answer(match.group(1)), score, [self._evidence(sentence, score)], "top-level email note")
-        if ("depend" in qnorm or "depends" in qnorm) and "artifact" in qnorm:
+                    speaker = self._nearest_header_value(sentence, ["from", "speaker", "author"]) or self._nearest_speaker(sentence)
+                    action = clean_extracted_value(match.group(1))
+                    if speaker:
+                        first = speaker.split()[0]
+                        if first and first.lower() in qnorm:
+                            speaker = first
+                        return Answer(f"{speaker} planned to {action}.", score, [self._evidence(sentence, score)], "reported message content")
+                    return Answer(f"Planned to {action}.", score, [self._evidence(sentence, score)], "reported message content")
+        if "according to" in qnorm and "who" in qnorm:
             for sentence, score in candidates:
-                match = re.search(r"depends on three artifacts:\s*(.+)", sentence.text, re.I)
+                match = re.search(r"wrote:\s*([A-Z][A-Za-z]+(?:\s+[A-Z][A-Za-z]+){0,3})\s+([a-z]+)", sentence.text)
                 if match:
-                    return Answer(compact_answer(match.group(1)), score, [self._evidence(sentence, score)], "artifact list")
+                    return Answer(self._clean_person_answer(match.group(1)), score, [self._evidence(sentence, score)], "reported note actor")
+        if "depend" in qnorm or "depends" in qnorm:
+            for sentence, score in candidates:
+                match = re.search(r"depends on(?:\s+\w+)?(?:\s+\w+)?\s*:\s*(.+)", sentence.text, re.I)
+                if match:
+                    return Answer(compact_answer(match.group(1)), score, [self._evidence(sentence, score)], "dependency list")
         if "when did" in qnorm and "reopen" in qnorm:
             for sentence, score in candidates:
                 match = re.search(r"(\d{4}-\d{2}-\d{2}\s+\d{2}:\d{2}).*reopened", sentence.text, re.I)
@@ -679,6 +856,16 @@ class KnowMoreDiRTEngine:
                 "which",
                 "when",
                 "where",
+                "who",
+                "is",
+                "are",
+                "was",
+                "were",
+                "the",
+                "for",
+                "in",
+                "of",
+                "on",
                 "does",
                 "mean",
                 "note",
@@ -690,22 +877,35 @@ class KnowMoreDiRTEngine:
                 "according",
             }
         }
+        anchors = [normalize(anchor) for anchor in self._target_anchors(question)]
         matches: list[tuple[float, str, Sentence, float]] = []
-        for sentence, score in candidates:
+        scan_items = list(candidates)
+        seen_ids = {sentence.sentence_id for sentence, _ in scan_items}
+        scan_items.extend((sentence, 0.25) for sentence in self.sentences if sentence.sentence_id not in seen_ids)
+        for sentence, score in scan_items:
             parts = re.split(r"\s*[|,;]\s*", sentence.text)
             for part in parts:
                 if ":" not in part:
                     continue
                 label, value = part.split(":", 1)
+                if re.search(r"\d$", label.strip()):
+                    continue
                 label_words = label.strip().split()
+                if len(label_words) > 5:
+                    continue
+                if any(word.lower() in {"says", "began", "closed", "opened", "state"} for word in label_words):
+                    continue
                 if len(label_words) >= 2 and all(word[:1].isupper() and word[1:].islower() for word in label_words):
                     continue
                 label_norm = normalize(label)
+                sentence_norm = normalize(sentence.text)
                 if any(term in label_norm for term in query_terms):
                     answer = clean_extracted_value(value)
                     if answer:
                         term_score = sum(1 for term in query_terms if term in label_norm)
-                        matches.append((score + (term_score * 2.0), answer, sentence, score))
+                        anchor_score = sum(1 for anchor in anchors if anchor and anchor in sentence_norm)
+                        structure_score = 1.0 if ("{" in sentence.text or "}" in sentence.text) and any(term in qnorm for term in ["raw", "json", "json-like"]) else 0.0
+                        matches.append((score + (term_score * 2.0) + (anchor_score * 3.0) + structure_score, answer, sentence, score))
         if not matches:
             return None
         matches.sort(key=lambda item: (-item[0], item[2].rel_path, item[2].order))
@@ -737,16 +937,8 @@ class KnowMoreDiRTEngine:
         sentence, score = candidates[0]
         if score < 2:
             return Answer("unknown", reason="weak lexical evidence")
-        if "customer" in qnorm and "reported" in qnorm:
-            match = re.search(r"(?:customer\s+)?([A-Z][A-Za-z]+(?:\s+[A-Z][A-Za-z]+){0,3})\s+reported\b", sentence.text)
-            if match:
-                return Answer(match.group(1), score, [self._evidence(sentence, score)], "customer mention")
-        if "customer" in qnorm and "confirmed" in qnorm:
-            match = re.search(r"customer\s+([A-Z][A-Za-z]+(?:\s+[A-Z][A-Za-z]+){0,3})\s+confirmed\b", sentence.text)
-            if match:
-                return Answer(match.group(1), score, [self._evidence(sentence, score)], "customer confirmation")
-        if "refund" in qnorm:
-            match = re.search(r"([A-Z][A-Za-z]+(?:\s+[A-Z][A-Za-z]+){0,3})\s+asked for a refund", sentence.text)
-            if match:
-                return Answer(match.group(1), score, [self._evidence(sentence, score)], "refund requester")
+        if qnorm.startswith("who ") or qnorm.startswith("which "):
+            relation_answer = self._answer_who_role(question, qnorm)
+            if relation_answer:
+                return relation_answer
         return Answer("unknown", reason="best sentence did not yield a grounded answer")

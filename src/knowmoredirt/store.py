@@ -16,7 +16,7 @@ from typing import Any
 from .text import normalize
 
 
-SCHEMA_VERSION = 1
+SCHEMA_VERSION = 2
 
 
 def stable_id(prefix: str, *parts: Any) -> str:
@@ -163,6 +163,25 @@ class DSPGStore:
               confidence REAL NOT NULL
             )
             """,
+            """
+            CREATE TABLE IF NOT EXISTS relations (
+              relation_id TEXT PRIMARY KEY,
+              run_id TEXT NOT NULL,
+              relation_type TEXT NOT NULL,
+              subject TEXT,
+              subject_norm TEXT,
+              predicate TEXT NOT NULL,
+              predicate_norm TEXT NOT NULL,
+              object TEXT,
+              object_norm TEXT,
+              value TEXT,
+              value_norm TEXT,
+              source_span_id TEXT NOT NULL,
+              context_id TEXT,
+              confidence REAL NOT NULL,
+              metadata_json TEXT
+            )
+            """,
             "CREATE INDEX IF NOT EXISTS idx_documents_run ON documents(run_id)",
             "CREATE INDEX IF NOT EXISTS idx_documents_rel ON documents(rel_path)",
             "CREATE INDEX IF NOT EXISTS idx_chunks_doc_order ON chunks(document_id, chunk_order)",
@@ -176,6 +195,11 @@ class DSPGStore:
             "CREATE INDEX IF NOT EXISTS idx_temporal_ref ON temporal_edges(referent_id)",
             "CREATE INDEX IF NOT EXISTS idx_temporal_relation ON temporal_edges(relation)",
             "CREATE INDEX IF NOT EXISTS idx_temporal_value ON temporal_edges(temporal_value)",
+            "CREATE INDEX IF NOT EXISTS idx_relations_predicate ON relations(predicate_norm)",
+            "CREATE INDEX IF NOT EXISTS idx_relations_subject ON relations(subject_norm)",
+            "CREATE INDEX IF NOT EXISTS idx_relations_object ON relations(object_norm)",
+            "CREATE INDEX IF NOT EXISTS idx_relations_value ON relations(value_norm)",
+            "CREATE INDEX IF NOT EXISTS idx_relations_type ON relations(relation_type)",
         ]
         for statement in statements:
             self.connection.execute(statement)
@@ -218,6 +242,7 @@ class DSPGStore:
             "frames",
             "frame_arguments",
             "temporal_edges",
+            "relations",
         ]
         return {
             table: int(self.connection.execute(f"SELECT COUNT(*) FROM {table}").fetchone()[0])
@@ -327,3 +352,60 @@ class DSPGStore:
             if any(anchor in text_norm for anchor in anchor_norms):
                 return row
         return None
+
+    def relation_candidate_chunks(
+        self,
+        run_id: str,
+        predicates: list[str] | None = None,
+        anchors: list[str] | None = None,
+        limit: int = 20,
+    ) -> list[sqlite3.Row]:
+        predicate_norms = [normalize(predicate) for predicate in (predicates or []) if normalize(predicate)]
+        params: list[Any] = [run_id]
+        predicate_filter = ""
+        if predicate_norms:
+            placeholders = ",".join("?" for _ in predicate_norms)
+            predicate_filter = f"AND r.predicate_norm IN ({placeholders})"
+            params.extend(predicate_norms)
+        params.append(limit * 8)
+        rows = self.connection.execute(
+            f"""
+            SELECT
+              d.rel_path,
+              c.chunk_order,
+              c.text,
+              r.relation_type,
+              r.subject,
+              r.predicate,
+              r.object,
+              r.value,
+              r.confidence,
+              ctx.kind AS context_kind
+            FROM relations r
+            JOIN source_spans s ON s.span_id = r.source_span_id
+            JOIN chunks c ON c.chunk_id = s.chunk_id
+            JOIN documents d ON d.document_id = c.document_id
+            LEFT JOIN contexts ctx ON ctx.context_id = r.context_id
+            WHERE r.run_id = ? {predicate_filter}
+            LIMIT ?
+            """,
+            tuple(params),
+        ).fetchall()
+        anchor_norms = [normalize(anchor) for anchor in (anchors or []) if len(normalize(anchor)) > 1]
+        scored: list[tuple[float, sqlite3.Row]] = []
+        for row in rows:
+            material = " ".join(
+                str(row[key] or "")
+                for key in ["text", "subject", "predicate", "object", "value", "relation_type"]
+            )
+            material_norm = normalize(material)
+            anchor_hits = sum(1 for anchor in anchor_norms if anchor and anchor in material_norm)
+            predicate_hits = sum(1 for predicate in predicate_norms if predicate and predicate in material_norm)
+            if anchor_norms and not anchor_hits and not predicate_hits:
+                continue
+            score = float(row["confidence"] or 0.0)
+            score += anchor_hits * 2.5
+            score += predicate_hits * 1.5
+            scored.append((score, row))
+        scored.sort(key=lambda item: (-item[0], str(item[1]["rel_path"]), int(item[1]["chunk_order"])))
+        return [row for _, row in scored[:limit]]

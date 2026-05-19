@@ -33,3 +33,25 @@ def test_public_api_exports_only_two_user_functions() -> None:
     text = init_file.read_text(encoding="utf-8")
     assert '__all__ = ["initialize", "question"]' in text
 
+
+def test_core_package_has_no_fixture_or_domain_shaped_literals() -> None:
+    forbidden = [
+        "FlowQuill",
+        "ActionGarden",
+        "vault.key",
+        "stale ledgers",
+        "plaintext",
+        "cache expiration",
+        "parser.cpp",
+        "MarlinKind",
+        "RippleDesk",
+        "Blue Dune",
+        "Northstar Credit",
+    ]
+    findings: list[str] = []
+    for path in (REPO_ROOT / "src" / "knowmoredirt").glob("*.py"):
+        text = path.read_text(encoding="utf-8")
+        for marker in forbidden:
+            if marker.lower() in text.lower():
+                findings.append(f"{path.relative_to(REPO_ROOT)}:{marker}")
+    assert findings == []

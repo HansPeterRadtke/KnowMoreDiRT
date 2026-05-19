@@ -17,15 +17,16 @@ Initialization performs these steps:
 
 1. **Folder scan**: recursively traverse arbitrary folders and filenames.
 2. **Text read**: read each readable file as text.
-3. **Natural metadata capture**: record path, relative path, size, ctime, mtime, byte count, and SHA-256 content hash.
+3. **Natural metadata capture**: record filename, suffixes, parent path, directory depth, mode/permissions, uid/gid where available, inode/device where available, atime/ctime/mtime, symlink status, MIME guess, line count, word count, byte count, and SHA-256 content hash.
 4. **Chunking**: split text into sentence/line-sized units while preserving source offsets.
 5. **Source spans**: store both chunk spans and mention spans.
-6. **Mention extraction**: extract source-grounded IDs, URLs, file-like values, names, and artifact strings.
+6. **Mention extraction**: extract source-grounded IDs, URLs, file-like values, names, and named text spans.
 7. **Referent construction**: create local referents from exact mentions without requiring destructive global merging.
 8. **Context assignment**: mark sentence-level contexts such as asserted, reported, believed, alleged, dreamed, fictional, and negated.
 9. **Frame extraction**: create lightweight event/proposition frames with predicates and argument links.
-10. **Text-quality/context scoring**: store generic structural signals and document-level contexts for low-semantic-content files such as random-character blobs, hex/blob-like text, OCR corruption, word salad, plausible babble, and meaningful discourse.
-11. **Indexing**: build bounded retrieval structures over both raw chunks and DSPG records.
+10. **Generic relation extraction**: store label/value pairs, raw text key/value pairs, table cells, identifier values, meaning/plural relations, active/passive events, negation/proof/status relations, aliases, and timestamp relations as source-grounded DSPG relations.
+11. **Text-quality/context scoring**: store generic structural signals and document-level contexts for low-semantic-content files such as random-character blobs, hex/blob-like text, OCR corruption, word salad, plausible babble, and meaningful discourse.
+12. **Indexing**: build bounded retrieval structures over both raw chunks and DSPG records.
 
 ## SQLite DSPG Store
 
@@ -42,10 +43,11 @@ The current store is SQLite-backed and normalized. It includes:
 - `frames`
 - `frame_arguments`
 - `temporal_edges`
+- `relations`
 
 The current implementation uses an in-memory database by default. A durable user-configurable store path is planned.
 
-Document metadata stores text-quality metrics, including printable ratio, symbol ratio, token diversity, OCR-like token ratio, a low-semantic-noise flag, and a semantic-quality label. The same classification is also represented as a `quality:*` context so noisy source material remains preserved and queryable rather than discarded.
+Document metadata stores natural filesystem/read metadata and text-quality metrics, including printable ratio, symbol ratio, token diversity, OCR-like token ratio, a low-semantic-noise flag, and a semantic-quality label. The same classification is also represented as a `quality:*` context so noisy source material remains preserved and queryable rather than discarded.
 
 ## Retrieval and Query Execution
 
@@ -54,9 +56,11 @@ The current query path combines:
 - lexical retrieval over raw sentence chunks,
 - referent-centric retrieval through mentions and referents,
 - frame-aware retrieval through predicates and frame arguments,
+- relation-aware retrieval through generic label, identifier, event, status, temporal, and table relations,
 - temporal state retrieval for state changes with dated evidence,
 - text-quality downweighting so noise files do not dominate normal questions,
-- conservative deterministic answer extraction over bounded candidates.
+- conservative deterministic answer extraction over bounded candidates,
+- ranking by anchor match, predicate/label match, context validity, temporal recency, and text-quality signals.
 
 This is a first vertical slice of the full DSPG query architecture. It avoids full-corpus reasoning per question and avoids assuming external input structure. Future work should strengthen graph traversal, entity resolution, uncertainty handling, and model-assisted query planning.
 

@@ -10,6 +10,10 @@ from .text import normalize
 
 
 PREDICATE_TERMS = {
+    "accept": "accept",
+    "accepted": "accept",
+    "allege": "allege",
+    "alleged": "allege",
     "author": "author",
     "authored": "author",
     "draft": "author",
@@ -32,6 +36,9 @@ PREDICATE_TERMS = {
     "requested": "request",
     "fix": "fix",
     "fixed": "fix",
+    "implement": "implement",
+    "implemented": "implement",
+    "implements": "implement",
     "delete": "delete",
     "deleted": "delete",
     "believe": "believe",
@@ -45,6 +52,33 @@ PREDICATE_TERMS = {
     "tested": "test",
     "manage": "manage",
     "manages": "manage",
+    "argue": "argue",
+    "argued": "argue",
+    "coach": "coach",
+    "coached": "coach",
+    "confirm": "confirm",
+    "confirmed": "confirm",
+    "depend": "depend",
+    "depends": "depend",
+    "disagree": "disagree",
+    "disagreed": "disagree",
+    "inspect": "inspect",
+    "inspected": "inspect",
+    "observe": "observe",
+    "observed": "observe",
+    "practice": "practice",
+    "practiced": "practice",
+    "record": "record",
+    "recorded": "record",
+    "sign": "sign",
+    "signed": "sign",
+    "state": "state",
+    "stated": "state",
+    "water": "water",
+    "watered": "water",
+    "write": "write",
+    "wrote": "write",
+    "written": "write",
 }
 
 
@@ -62,7 +96,14 @@ def plan_question(question: str) -> QueryPlan:
     anchors: list[str] = []
     anchors.extend(urls(question))
     anchors.extend(identifiers(question))
-    anchors.extend(capitalized_phrases(question))
+    anchor_skip = {
+        "Who", "What", "Which", "Where", "When", "Can", "Could", "Did", "Does", "Do",
+        "Is", "Are", "Was", "Were", "How", "Project", "Document", "Technical",
+    }
+    anchors.extend(
+        phrase for phrase in capitalized_phrases(question)
+        if phrase.split()[0] not in anchor_skip
+    )
 
     seen: set[str] = set()
     unique_anchors: list[str] = []

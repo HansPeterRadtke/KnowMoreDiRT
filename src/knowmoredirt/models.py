@@ -18,6 +18,7 @@ class Document:
     mtime: float
     ctime: float
     sha256: str
+    metadata: dict[str, object] = field(default_factory=dict)
 
 
 @dataclass(frozen=True)
@@ -50,4 +51,3 @@ class Answer:
     confidence: float = 0.0
     evidence: list[Evidence] = field(default_factory=list)
     reason: str = ""
-

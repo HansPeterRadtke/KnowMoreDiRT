@@ -71,8 +71,20 @@ The unit tests also verify that initialization creates normalized DSPG structure
 - frames,
 - frame arguments,
 - temporal edges.
+- generic relation records.
 
 Architecture tests assert that the core package contains no old benchmark/prepared-input markers and that `knowmoredirt.__all__` exports only `initialize` and `question`.
+They also scan the core package for fixture/domain-shaped literals from the regression corpora so future changes do not quietly reintroduce content-specific answer branches.
+
+The current answer path has been refactored toward generic DSPG mechanisms:
+
+- label/value and raw text key/value relations,
+- active/passive event relations,
+- negation/proof/status relations,
+- temporal state relations,
+- identity/alias relations,
+- table row/cell relations,
+- filesystem/read metadata and document quality contexts.
 
 ## Limitations
 

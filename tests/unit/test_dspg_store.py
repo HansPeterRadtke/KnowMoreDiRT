@@ -25,6 +25,7 @@ def test_ingest_builds_normalized_dspg_tables() -> None:
     assert counts["frames"] > 20
     assert counts["frame_arguments"] > 20
     assert "temporal_edges" in counts
+    assert counts["relations"] > 20
 
 
 def test_engine_exposes_internal_dspg_counts_for_diagnostics_only() -> None:

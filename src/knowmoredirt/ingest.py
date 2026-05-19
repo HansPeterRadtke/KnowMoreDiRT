@@ -8,6 +8,7 @@ from pathlib import Path
 
 from .extractors import capitalized_phrases, identifiers, urls
 from .models import Document, Sentence
+from .relations import extract_relations
 from .scanner import scan_folder
 from .store import DSPGStore, stable_id
 from .text import normalize, text_quality_metrics, tokenize
@@ -44,19 +45,15 @@ STATE_RE = re.compile(r"\b(?:state|status)\s*:\s*([A-Za-z0-9_-]+)", re.I)
 def mention_entity_type(surface: str) -> str:
     if re.fullmatch(r"https?://\S+", surface):
         return "url"
-    if re.fullmatch(r"PR-\d+", surface):
-        return "pr"
-    if re.fullmatch(r"BUG-\d+", surface):
-        return "bug"
-    if re.fullmatch(r"SUP-\d+", surface):
-        return "ticket"
+    if re.fullmatch(r"[A-Z][A-Z0-9]{1,9}-\d+[A-Z0-9-]*", surface):
+        return "identifier"
     if re.fullmatch(r"[0-9a-f]{8,16}", surface, re.I):
         return "commit"
     if "@" in surface and "." in surface:
         return "email"
     if len(surface.split()) >= 2:
         return "name"
-    return "artifact"
+    return "entity"
 
 
 def context_kind_for_sentence(text: str) -> str:
@@ -149,7 +146,7 @@ def ingest_folder(folder_path: str | Path, store: DSPGStore | None = None) -> tu
                 document.mtime,
                 document.ctime,
                 len(document.text),
-                json.dumps({"text_quality": quality}, sort_keys=True),
+                json.dumps({**document.metadata, "text_quality": quality}, sort_keys=True),
             ),
         )
         quality_kind = f"quality:{quality['semantic_quality']}"
@@ -238,6 +235,43 @@ def ingest_folder(folder_path: str | Path, store: DSPGStore | None = None) -> tu
                     temporal_value,
                     state_value,
                     0.85,
+                ),
+            )
+
+        for relation in extract_relations(sentence.text):
+            relation_id = stable_id(
+                "rel",
+                run_id,
+                sentence.sentence_id,
+                relation.relation_type,
+                relation.predicate,
+                relation.subject,
+                relation.object,
+                relation.value,
+            )
+            store.execute(
+                """
+                INSERT OR IGNORE INTO relations(
+                  relation_id, run_id, relation_type, subject, subject_norm, predicate, predicate_norm,
+                  object, object_norm, value, value_norm, source_span_id, context_id, confidence, metadata_json
+                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                """,
+                (
+                    relation_id,
+                    run_id,
+                    relation.relation_type,
+                    relation.subject,
+                    normalize(relation.subject),
+                    relation.predicate,
+                    normalize(relation.predicate),
+                    relation.object,
+                    normalize(relation.object),
+                    relation.value,
+                    normalize(relation.value),
+                    span_id,
+                    context_id,
+                    relation.confidence,
+                    json.dumps(relation.metadata, sort_keys=True),
                 ),
             )
 
