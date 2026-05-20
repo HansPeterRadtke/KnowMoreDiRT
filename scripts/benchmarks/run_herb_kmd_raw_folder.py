@@ -85,6 +85,7 @@ def main() -> int:
     parser.add_argument("--report-root", default=str(DEFAULT_KMD_REPORT_ROOT))
     parser.add_argument("--run-name", default=f"kmd_public_raw_folder_{time.strftime('%Y%m%d_%H%M%S')}")
     parser.add_argument("--limit", type=int, default=0, help="Optional smoke-test limit; 0 means all questions.")
+    parser.add_argument("--use-local-model", action="store_true", help="Enable KMD's optional localhost-only migrated DRT model-query planner.")
     args = parser.parse_args()
 
     repo_root = Path(__file__).resolve().parents[2]
@@ -107,8 +108,11 @@ def main() -> int:
 
     sys.path.insert(0, str(repo_root / "src"))
     sys.path.insert(0, str(herb_root / "src"))
+    if args.use_local_model:
+        os.environ["KMD_USE_LOCAL_MODEL"] = "1"
 
     import knowmoredirt as kmd  # noqa: WPS433 - operational benchmark adapter
+    from knowmoredirt import public as kmd_public  # noqa: WPS433
     from herb_kgqa.config import get_settings  # noqa: WPS433
     from herb_kgqa.evaluator import evaluate_run  # noqa: WPS433
 
@@ -132,7 +136,7 @@ def main() -> int:
         total_questions=len(questions),
         limit=args.limit,
         query_input_fields=["question_id", "question"],
-        model_status="not used; current KMD public API is deterministic",
+        model_status="optional localhost migrated DRT model-query planner enabled" if args.use_local_model else "not used; current KMD public API is deterministic",
     )
 
     init_started = time.time()
@@ -164,6 +168,18 @@ def main() -> int:
         question_started = time.time()
         log_event(log_path, "question_start", index=index, total=total, question_id=question_id)
         public_answer = kmd.question(question_text)
+        internal_answer = getattr(getattr(kmd_public, "_ENGINE", None), "last_answer", None)
+        model_trace = getattr(getattr(kmd_public, "_ENGINE", None), "model_query_trace", None)
+        evidence_items = []
+        for evidence in getattr(internal_answer, "evidence", []) or []:
+            evidence_items.append(
+                {
+                    "source_id": evidence.rel_path,
+                    "chunk_id": evidence.rel_path,
+                    "text": evidence.text,
+                    "score": evidence.score,
+                }
+            )
         elapsed = round(time.time() - question_started, 3)
         serialized_answer = serialize_answer(public_answer)
         is_answered = bool(serialized_answer)
@@ -173,10 +189,10 @@ def main() -> int:
         retrieved_row = {
             "question_id": question_id,
             "question": question_text,
-            "source_ids": [],
-            "chunk_ids": [],
+            "source_ids": [item["source_id"] for item in evidence_items],
+            "chunk_ids": [item["chunk_id"] for item in evidence_items],
             "candidate_entities": [public_answer] if is_answered else [],
-            "top_score": 1.0 if is_answered else 0.0,
+            "top_score": max([item["score"] for item in evidence_items] or ([1.0] if is_answered else [0.0])),
         }
         evidence_row = {
             "question_id": question_id,
@@ -187,7 +203,7 @@ def main() -> int:
             "allowed_product_ids": [],
             "exact_matches": [],
             "candidate_entities": [public_answer] if is_answered else [],
-            "retrieved_chunks": [],
+            "retrieved_chunks": evidence_items,
             "graph_facts": [{"public_api": "initialize(folder_path); question(text) -> string"}],
             "temporal_facts": [],
         }
@@ -196,8 +212,8 @@ def main() -> int:
             "answer": serialized_answer,
             "answerable": is_answered,
             "confidence": 1.0 if is_answered else 0.0,
-            "supporting_source_ids": [],
-            "supporting_chunk_ids": [],
+            "supporting_source_ids": [item["source_id"] for item in evidence_items],
+            "supporting_chunk_ids": [item["chunk_id"] for item in evidence_items],
             "reasoning_summary": "KnowMoreDiRT public raw-folder answer serialized without gold labels or source conversion.",
         }
         checkpoint_row = {
@@ -208,6 +224,8 @@ def main() -> int:
             "public_answer": public_answer,
             "serialized_answer": serialized_answer,
             "answered": is_answered,
+            "evidence_count": len(evidence_items),
+            "model_query_trace": model_trace.as_dict() if model_trace and args.use_local_model else None,
             "elapsed_seconds": elapsed,
         }
 
@@ -227,6 +245,7 @@ def main() -> int:
             question_id=question_id,
             answered=is_answered,
             answered_count=answered_count,
+            evidence_count=len(evidence_items),
             elapsed_seconds=elapsed,
         )
 
@@ -256,7 +275,7 @@ def main() -> int:
         "completed_question_count": len(questions),
         "completed_percent": round((len(questions) / len(all_questions)) * 100, 3) if all_questions else 0.0,
         "answered_count": answered_count,
-        "deterministic_model_status": "deterministic KMD public API; no LLM calls made",
+        "deterministic_model_status": "optional localhost migrated DRT model-query planner enabled" if args.use_local_model else "deterministic KMD public API; no LLM calls made",
         "scorer": "herb_kgqa.evaluator.evaluate_run(use_local_judge=False)",
         "run_dir": str(run_dir),
         "progress_log": str(log_path),
@@ -266,6 +285,11 @@ def main() -> int:
         "evidence_packets": str(run_dir / "evidence_packets.jsonl"),
         "scores_path": str(run_dir / "scores.json"),
         "scores": scores,
+        "model_query_trace": (
+            getattr(getattr(kmd_public, "_ENGINE", None), "model_query_trace", None).as_dict()
+            if getattr(getattr(kmd_public, "_ENGINE", None), "model_query_trace", None)
+            else None
+        ),
         "no_gold_use_audit": {
             "query_input_fields": ["question_id", "question"],
             "gold_answers_used_for_query": False,
@@ -274,6 +298,7 @@ def main() -> int:
             "prepared_corpus_used": False,
             "metadata_wrappers_used": False,
             "raw_folder_only": True,
+            "local_model_enabled": bool(args.use_local_model),
         },
     }
     report_root.mkdir(parents=True, exist_ok=True)
@@ -292,7 +317,7 @@ def main() -> int:
                 f"- Questions: `{len(questions)}`",
                 f"- Completed: `{report['completed_question_count']}/{report['official_questions_count']}`",
                 f"- Answered count: `{answered_count}`",
-                "- Deterministic/model status: deterministic KMD public API; no LLM calls made.",
+                f"- Deterministic/model status: `{report['deterministic_model_status']}`",
                 f"- Scorer: `{report['scorer']}`",
                 f"- Run directory: `{run_dir}`",
                 f"- Progress log: `{log_path}`",

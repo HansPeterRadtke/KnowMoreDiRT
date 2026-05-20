@@ -6,6 +6,7 @@ import re
 
 URL_RE = re.compile(r"https?://[^\s)\],\"']+")
 PREFIX_ID_RE = re.compile(r"\b[A-Z][A-Z0-9]{1,9}-\d+[A-Z0-9-]*\b")
+LOWER_UNDERSCORE_ID_RE = re.compile(r"\b[a-z][a-z0-9]{1,12}_[a-z0-9]{6,}\b")
 COMMIT_RE = re.compile(r"\b[0-9a-f]{8,16}\b", re.I)
 EMAIL_RE = re.compile(r"\b[A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+\.[A-Za-z]{2,}\b")
 FILE_LIKE_RE = re.compile(r"\b[A-Za-z0-9_./-]+\.[A-Za-z0-9]{1,8}\b")
@@ -17,7 +18,7 @@ def urls(text: str) -> list[str]:
 
 def identifiers(text: str) -> list[str]:
     values: list[str] = []
-    for regex in [PREFIX_ID_RE, COMMIT_RE, EMAIL_RE, FILE_LIKE_RE]:
+    for regex in [PREFIX_ID_RE, LOWER_UNDERSCORE_ID_RE, COMMIT_RE, EMAIL_RE, FILE_LIKE_RE]:
         values.extend(match.group(0) for match in regex.finditer(text))
     return values
 

@@ -51,6 +51,8 @@ def mention_entity_type(surface: str) -> str:
         return "url"
     if re.fullmatch(r"[A-Z][A-Z0-9]{1,9}-\d+[A-Z0-9-]*", surface):
         return "identifier"
+    if re.fullmatch(r"[a-z][a-z0-9]{1,12}_[a-z0-9]{6,}", surface):
+        return "identifier"
     if re.fullmatch(r"[0-9a-f]{8,16}", surface, re.I):
         return "commit"
     if "@" in surface and "." in surface:

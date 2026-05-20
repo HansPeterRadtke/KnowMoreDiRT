@@ -7,6 +7,8 @@ patterns. It is not a final DRT reasoning system.
 
 from __future__ import annotations
 
+import json
+import os
 import re
 from dataclasses import dataclass
 from pathlib import Path
@@ -14,9 +16,16 @@ from pathlib import Path
 from .extractors import after_label, capitalized_phrases, identifiers, urls
 from .ingest import ingest_folder
 from .index import LexicalIndex
+from .legacy_drt_path import (
+    ModelQueryTrace,
+    call_model_query_plan,
+    deterministic_plan as migrated_deterministic_plan,
+    normalize_model_plan,
+)
+from .model import LocalModelClient
 from .models import Answer, Evidence, Sentence
 from .query import plan_question
-from .text import clean_extracted_value, compact_answer, is_low_semantic_noise, normalize
+from .text import clean_extracted_value, compact_answer, content_tokens, is_low_semantic_noise, normalize, tokenize
 
 
 @dataclass
@@ -38,10 +47,37 @@ class KnowMoreDiRTEngine:
         self._sentences_by_document: dict[str, dict[int, Sentence]] = {}
         for sentence in self.sentences:
             self._sentences_by_document.setdefault(sentence.rel_path, {})[sentence.order] = sentence
+        self._sentence_norm_by_id = {
+            sentence.sentence_id: normalize(sentence.text) for sentence in self.sentences
+        }
+        self._document_text_norm_by_rel_path = {
+            rel_path: normalize(" ".join(sentence.text for sentence in ordered.values()))
+            for rel_path, ordered in self._sentences_by_document.items()
+        }
+        self._documents_by_rel_path = {document.rel_path: document for document in self.documents}
+        self._document_metadata_text = {
+            document.rel_path: normalize(
+                " ".join(
+                    str(value)
+                    for value in [
+                        document.metadata.get("file_name", ""),
+                        document.metadata.get("stem", ""),
+                        document.metadata.get("suffix", ""),
+                        document.metadata.get("parent_rel_path", ""),
+                        " ".join(str(part) for part in document.metadata.get("path_parts", [])),
+                    ]
+                )
+            )
+            for document in self.documents
+        }
         self._low_semantic_noise_paths = {
             document.rel_path for document in self.documents if is_low_semantic_noise(document.text)
         }
         self._allow_global_fallback = len(self.sentences) <= 100_000
+        self._use_local_model = os.environ.get("KMD_USE_LOCAL_MODEL", "").strip().lower() in {"1", "true", "yes", "on"}
+        self._model_client = LocalModelClient() if self._use_local_model else None
+        self.model_query_trace = ModelQueryTrace(enabled=self._use_local_model, prompt_hashes=[], response_hashes=[])
+        self.last_answer: Answer | None = None
 
     def dspg_counts(self) -> dict[str, int]:
         return self.store.counts()
@@ -66,16 +102,157 @@ class KnowMoreDiRTEngine:
             self._answer_what_value,
             self._answer_generic_best_fact,
         ]
+        fallback_unknown: Answer | None = None
+        if self._use_local_model:
+            model_planned_answer = self._answer_with_migrated_model_query(question, qnorm)
+            if model_planned_answer and model_planned_answer.text and normalize(model_planned_answer.text) != "unknown":
+                self.last_answer = model_planned_answer
+                return model_planned_answer
+            if model_planned_answer and normalize(model_planned_answer.text) == "unknown":
+                fallback_unknown = model_planned_answer
         for handler in handlers:
             answer = handler(question, qnorm)
             if answer and answer.text:
+                if normalize(answer.text) == "unknown":
+                    if handler.__name__ == "_answer_unknown_guard":
+                        self.last_answer = answer
+                        return answer
+                    fallback_unknown = answer
+                    continue
+                self.last_answer = answer
                 return answer
-        return Answer("unknown", reason="no matching source-grounded pattern")
+        answer = fallback_unknown or Answer("unknown", reason="no matching source-grounded pattern")
+        self.last_answer = answer
+        return answer
 
     def _evidence(self, sentence: Sentence, score: float = 1.0) -> Evidence:
         return Evidence(sentence.rel_path, sentence.text, score)
 
+    def _answer_with_migrated_model_query(self, question: str, qnorm: str) -> Answer | None:
+        if self._model_client is None:
+            return None
+        trace = self.model_query_trace
+        trace.call_count += 1
+        det = migrated_deterministic_plan(question)
+        model = call_model_query_plan(question, self._model_client)
+        if model.get("prompt_hash"):
+            trace.prompt_hashes = [*list(trace.prompt_hashes or []), str(model["prompt_hash"])][-20:]
+        if model.get("output_hash"):
+            trace.response_hashes = [*list(trace.response_hashes or []), str(model["output_hash"])][-20:]
+        if model.get("accepted"):
+            trace.parsed_count += 1
+            trace.accepted_count += 1
+        plan = normalize_model_plan(question, model, det) if model.get("accepted") else det
+        trace.last_plan = plan
+        answer = self._execute_migrated_plan(question, qnorm, plan or det)
+        if answer and normalize(answer.text) != "unknown":
+            trace.model_answer_count += 1
+            answer.reason = f"migrated DRT model-query plan: {(plan or {}).get('intent')}"
+            return answer
+        return Answer("unknown", confidence=0.0, evidence=[], reason=f"migrated DRT model-query produced no grounded answer for {(plan or {}).get('intent')}")
+
+    def _execute_migrated_plan(self, question: str, qnorm: str, plan: dict[str, object]) -> Answer | None:
+        intent = str(plan.get("intent") or "unknown")
+        target = str(plan.get("target_surface") or "").strip()
+        focused_question = question
+        if target and target not in focused_question:
+            focused_question = f"{question.rstrip('?')} about {target}?"
+        if intent == "who_owns" and target:
+            focused_question = f"Who is the owner for {target}?"
+        focused_norm = normalize(focused_question)
+        if intent in {"who_author", "who_opened", "who_review", "who_approved", "who_commented", "who_merged", "who_assigned", "who_owns", "who_reported", "which_customer"}:
+            return self._answer_who_role(focused_question, focused_norm) or self._answer_what_value(focused_question, focused_norm)
+        if intent in {"which_pr", "which_ticket", "which_issue", "which_url", "which_file"}:
+            return self._answer_identifier_or_url(focused_question, focused_norm)
+        if intent == "final_state":
+            return self._answer_final_state(focused_question, focused_norm)
+        if intent in {"context_time", "scope_status", "identity_status", "broad_search_grouped"}:
+            return self._answer_what_value(focused_question, focused_norm) or self._answer_generic_best_fact(focused_question, focused_norm)
+        return None
+
+    def _answer_with_local_model(self, question: str, qnorm: str) -> Answer | None:
+        if self._model_client is None:
+            return None
+        candidates = self._search(question, limit=int(os.environ.get("KMD_MODEL_SNIPPETS", "18")))
+        if not candidates:
+            return None
+        snippets = []
+        for index, (sentence, score) in enumerate(candidates, start=1):
+            snippets.append(
+                {
+                    "id": index,
+                    "source": sentence.rel_path,
+                    "text": sentence.text[:900],
+                    "score": round(float(score), 3),
+                }
+            )
+        prompt = (
+            "You answer questions only from the provided raw-text snippets. "
+            "Return JSON only with keys answer, evidence_ids, confidence. "
+            "If the snippets do not contain enough evidence, set answer to \"unknown\". "
+            "Do not use outside knowledge. Do not invent names, IDs, URLs, or facts. "
+            "Prefer exact IDs, URLs, names, dates, counts, or short phrases copied from snippets.\n"
+            + json.dumps({"question": question, "snippets": snippets}, ensure_ascii=False)
+            + "\nJSON:"
+        )
+        try:
+            result = self._model_client.complete_json(
+                prompt,
+                n_predict=int(os.environ.get("KMD_MODEL_N_PREDICT", "96")),
+            )
+        except Exception as exc:
+            return Answer("unknown", confidence=0.0, evidence=[], reason=f"local model failed: {exc}")
+        answer_text = clean_extracted_value(str(result.get("answer") or ""))
+        if not answer_text or normalize(answer_text) == "unknown":
+            return None
+        evidence_ids = result.get("evidence_ids") or []
+        if not isinstance(evidence_ids, list):
+            evidence_ids = []
+        selected_sentences: list[tuple[Sentence, float]] = []
+        by_index = {index: (sentence, score) for index, (sentence, score) in enumerate(candidates, start=1)}
+        for item in evidence_ids:
+            try:
+                pair = by_index.get(int(item))
+            except Exception:
+                pair = None
+            if pair:
+                selected_sentences.append(pair)
+        if not selected_sentences:
+            selected_sentences = candidates[:3]
+        evidence_text = "\n".join(sentence.text for sentence, _ in selected_sentences)
+        if not self._model_answer_is_grounded(answer_text, evidence_text):
+            return Answer("unknown", confidence=0.0, evidence=[], reason="local model answer failed source-grounding validation")
+        confidence = result.get("confidence")
+        try:
+            confidence_value = max(0.0, min(1.0, float(confidence)))
+        except Exception:
+            confidence_value = 0.55
+        return Answer(
+            answer_text,
+            confidence_value,
+            [self._evidence(sentence, score) for sentence, score in selected_sentences],
+            "local model bounded raw-text answer",
+        )
+
+    def _model_answer_is_grounded(self, answer: str, evidence_text: str) -> bool:
+        answer_norm = normalize(answer)
+        evidence_norm = normalize(evidence_text)
+        if answer_norm in evidence_norm:
+            return True
+        answer_ids = set(identifiers(answer) + urls(answer))
+        if answer_ids and all(item in evidence_text for item in answer_ids):
+            return True
+        answer_tokens = [
+            token for token in tokenize(answer)
+            if len(token) > 2 and token not in {"yes", "no", "the", "and", "or", "unknown"}
+        ]
+        if not answer_tokens:
+            return False
+        hits = sum(1 for token in answer_tokens if token in evidence_norm)
+        return hits >= max(1, min(3, len(answer_tokens)))
+
     def _search(self, question: str, limit: int = 12, required: list[str] | None = None) -> list[tuple[Sentence, float]]:
+        qnorm = normalize(question)
         combined: dict[str, tuple[Sentence, float]] = {}
         for sentence, score in self.index.search(question, limit=limit, required=required):
             combined[sentence.sentence_id] = (sentence, score)
@@ -101,6 +278,9 @@ class KnowMoreDiRTEngine:
                 if sentence:
                     previous = combined.get(sentence.sentence_id, (sentence, 0.0))[1]
                     combined[sentence.sentence_id] = (sentence, previous + 2.5)
+        for sentence, score in self._metadata_bounded_candidates(question, limit=max(limit * 2, 24)):
+            previous = combined.get(sentence.sentence_id, (sentence, 0.0))[1]
+            combined[sentence.sentence_id] = (sentence, max(previous, score))
 
         seed_items = list(combined.values())
         for sentence, score in seed_items:
@@ -115,9 +295,74 @@ class KnowMoreDiRTEngine:
         for sentence, score in combined.values():
             if sentence.rel_path in self._low_semantic_noise_paths:
                 score *= 0.15
+            if self._is_question_like_source(sentence.text) and "question" not in qnorm:
+                score *= 0.12
             adjusted.append((sentence, score))
         scored = sorted(adjusted, key=lambda item: (-item[1], item[0].rel_path, item[0].order))
         return scored[:limit]
+
+    def _metadata_bounded_candidates(self, question: str, limit: int = 24) -> list[tuple[Sentence, float]]:
+        """Use natural filesystem metadata only as a retrieval prior.
+
+        The answer still has to come from raw file text. This prior helps large
+        raw folders where a user's visible anchor appears in a file name or
+        directory label but not in every line of the file.
+        """
+
+        query_tokens = [
+            token for token in content_tokens(question)
+            if len(token) > 3 and token not in {"file", "folder", "document", "product", "source"}
+        ]
+        if not query_tokens:
+            return []
+        doc_scores: list[tuple[float, str]] = []
+        score_by_doc: dict[str, float] = {}
+        for rel_path, metadata_text in self._document_metadata_text.items():
+            score = sum(4.0 for token in query_tokens if token in metadata_text)
+            if score:
+                doc_scores.append((score, rel_path))
+                score_by_doc[rel_path] = score
+        doc_scores.sort(key=lambda item: (-item[0], item[1]))
+        selected_docs = {rel_path for _, rel_path in doc_scores[:8]}
+        if not selected_docs:
+            return []
+        candidates: list[tuple[Sentence, float]] = []
+        wants_identifier_context = bool(
+            {"id", "ids", "identifier", "identifiers", "ticket", "commit", "employee"}.intersection(set(tokenize(question)))
+        )
+        for rel_path in selected_docs:
+            document_sentences = self._sentences_by_document.get(rel_path, {})
+            for sentence in document_sentences.values():
+                text_norm = self._sentence_norm_by_id.get(sentence.sentence_id, "")
+                token_hits = sum(1 for token in query_tokens if token in text_norm)
+                identifier_bonus = 0.0
+                if wants_identifier_context and identifiers(sentence.text):
+                    window_text = " ".join(
+                        document_sentences[order].text
+                        for order in range(max(0, sentence.order - 2), sentence.order + 3)
+                        if order in document_sentences
+                    )
+                    window_norm = normalize(window_text)
+                    window_hits = sum(1 for token in query_tokens if token in window_norm)
+                    if window_hits:
+                        token_hits = max(token_hits, window_hits)
+                        identifier_bonus = 3.0
+                if token_hits:
+                    score = score_by_doc.get(sentence.rel_path, 0.0) + token_hits + identifier_bonus
+                    if self._is_question_like_source(sentence.text) and "question" not in normalize(question):
+                        score *= 0.12
+                    candidates.append((sentence, score))
+        candidates.sort(key=lambda item: (-item[1], item[0].rel_path, item[0].order))
+        return candidates[:limit]
+
+    def _is_question_like_source(self, text: str) -> bool:
+        value = str(text or "").strip()
+        lowered = normalize(value)
+        return (
+            value.endswith("?")
+            or re.match(r'^["\']?question["\']?\s*[:=]', value, re.I) is not None
+            or lowered.startswith("question:")
+        )
 
     def _question_tokens(self, qnorm: str) -> set[str]:
         return set(re.findall(r"[a-z0-9_.:/#-]+", qnorm))
@@ -170,6 +415,10 @@ class KnowMoreDiRTEngine:
             candidates = self._search(question, limit=8)
             if any("no proof" in normalize(sentence.text) for sentence, _ in candidates):
                 return Answer("unknown", confidence=0.8, evidence=[], reason="proof is not stated")
+        if "proven by" in qnorm:
+            candidates = self._search(question, limit=8)
+            if any("no proof" in normalize(sentence.text) for sentence, _ in candidates):
+                return Answer("unknown", confidence=0.8, evidence=[], reason="proof is not source-grounded")
         if "final decision" in qnorm:
             candidates = self._search(question, limit=8)
             if any("no final decision" in normalize(sentence.text) for sentence, _ in candidates):
@@ -394,6 +643,25 @@ class KnowMoreDiRTEngine:
                 sentence, score = scored[0]
                 return Answer(urls(sentence.text)[0], float(score), [self._evidence(sentence, float(score))], "global url scan")
         if any(term in qnorm for term in ["which pr", "what pr", "which commit", "ticket", " id"]):
+            if "employee" in qnorm:
+                employee_matches: list[tuple[float, str, Sentence, float]] = []
+                for sentence, score in candidates:
+                    sentence_norm = normalize(sentence.text)
+                    term_score = sum(1 for term in query_terms if term in sentence_norm)
+                    for value in identifiers(sentence.text):
+                        if re.fullmatch(r"[a-z][a-z0-9]{1,12}_[a-z0-9]{6,}", value):
+                            employee_matches.append((score + term_score, value, sentence, score))
+                if employee_matches:
+                    employee_matches.sort(key=lambda item: (-item[0], item[2].rel_path, item[2].order))
+                    values: list[str] = []
+                    evidence: list[Evidence] = []
+                    for _, value, sentence, score in employee_matches:
+                        if value not in values:
+                            values.append(value)
+                            evidence.append(self._evidence(sentence, score))
+                        if len(values) >= 8:
+                            break
+                    return Answer("; ".join(values), employee_matches[0][0], evidence, "employee identifier extraction")
             descriptor_answer = self._answer_identifier_descriptor(question, qnorm)
             if descriptor_answer:
                 return descriptor_answer
@@ -467,6 +735,10 @@ class KnowMoreDiRTEngine:
                 for token in re.findall(r"\b[a-z][a-z0-9]{1,9}\b", qnorm)
                 if token not in {"which", "what", "ticket", "appears", "named", "code", "id", "invoice", "parcel", "treaty"}
             }
+            if "employee" in qnorm:
+                for value in values:
+                    if re.fullmatch(r"[a-z][a-z0-9]{1,12}_[a-z0-9]{6,}", value):
+                        return value
             for value in values:
                 if re.fullmatch(r"[A-Z][A-Z0-9]{1,9}-\d+[A-Z0-9-]*", value):
                     if not prefix_terms or value.split("-", 1)[0] in prefix_terms or any(term in qnorm for term in ["ticket", "id", "code", "invoice", "parcel", "treaty"]):
@@ -536,8 +808,8 @@ class KnowMoreDiRTEngine:
         for sentence, score in candidates:
             text = sentence.text
             if anchors and not any(anchor in text for anchor in anchors):
-                document_text = " ".join(item.text for item in self.sentences if item.rel_path == sentence.rel_path)
-                if not any(anchor in document_text for anchor in anchors):
+                document_text = self._document_text_norm_by_rel_path.get(sentence.rel_path, "")
+                if not any(normalize(anchor) in document_text for anchor in anchors):
                     continue
             if "review" in qnorm:
                 label_value = after_label(text, ["reviewer"])
@@ -555,7 +827,7 @@ class KnowMoreDiRTEngine:
             for regex, reason in role_patterns:
                 match = re.search(regex, text)
                 if match and self._role_matches(reason, qnorm):
-                    document_text = " ".join(item.text for item in self.sentences if item.rel_path == sentence.rel_path)
+                    document_text = self._document_text_norm_by_rel_path.get(sentence.rel_path, "")
                     if not self._sentence_satisfies_question_terms(text, qnorm) and not self._sentence_satisfies_question_terms(document_text, qnorm):
                         continue
                     value = self._clean_person_answer(match.group(1))

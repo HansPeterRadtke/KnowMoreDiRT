@@ -1,0 +1,117 @@
+{
+  "active_model_proof": {
+    "answer": "Nia Vale",
+    "evidence_count": 1,
+    "first_evidence": "The SequoiaLens notebook says the owner is Nia Vale.",
+    "folder": "/tmp/tmp.dlmRLSt5wm",
+    "model_query_trace": {
+      "accepted_count": 1,
+      "call_count": 1,
+      "enabled": true,
+      "last_plan": {
+        "accepted": true,
+        "answer_role": "owner",
+        "elapsed": 10.777,
+        "fresh_or_cached": "fresh",
+        "grammar_hash": "6c2af6f4399d4a49af18983a2804d073fd91fa55648db38e78258213cb43393a",
+        "intent": "who_owns",
+        "output_hash": "3f1cb1d1fe4a3089c4133cee9b326a9ef98b3d887e6de91b22cc545cfe28b840",
+        "prompt_hash": "e215bd6ffd88f5f62e52b24ea5c4c9436b1cb913ed12f1657098ae6005fc3abf",
+        "query_text": "Who owns SequoiaLens?",
+        "raw_text": "{\"query_plan\": {\"intent\": \"who_author\", \"target_surface\": \"SequoiaLens\", \"answer_role\": \"customer\", \"requires_asserted\": false}}",
+        "requires_asserted": true,
+        "source": "model",
+        "stop_reason": "parsed_json",
+        "target_surface": "SequoiaLens"
+      },
+      "model_answer_count": 1,
+      "parsed_count": 1,
+      "prompt_hashes": [
+        "e215bd6ffd88f5f62e52b24ea5c4c9436b1cb913ed12f1657098ae6005fc3abf"
+      ],
+      "response_hashes": [
+        "3f1cb1d1fe4a3089c4133cee9b326a9ef98b3d887e6de91b22cc545cfe28b840"
+      ]
+    },
+    "question": "Who owns SequoiaLens?",
+    "reason": "migrated DRT model-query plan: who_owns"
+  },
+  "clean_capability_ported": [
+    "constrained local-model query-plan grammar and prompt style",
+    "old query intent enum and plan normalization behavior",
+    "fresh local llama.cpp /completion call path with grammar support",
+    "bounded raw-text/DSPG execution path from model plan to grounded answer",
+    "per-question progress/checkpoint model trace in benchmark adapter"
+  ],
+  "contamination_removed_or_rejected": [
+    "old prepared DRT source corpus",
+    "HERB RAW ARTIFACT metadata/text wrappers",
+    "prepared product_id/product_name/source_title/employee_ids/customer_id metadata routing",
+    "allow_prepared_metadata and metadata-only deterministic HERB intents",
+    "gold answers, answerability labels, official question family/type labels",
+    "filename/folder-path semantics as fake content facts inside core KMD"
+  ],
+  "created_at": "2026-05-20T10:16:40+0200",
+  "fixture_evals": {
+    "broad": "/tmp/kmd_eval_broad_parity.json",
+    "messy": "/tmp/kmd_eval_messy_parity.json",
+    "noise": "/tmp/kmd_eval_noise_parity.json"
+  },
+  "full_herb_run_status": "not run for this task; full old-59 parity is not proven because the old scored run depended on the rejected prepared-corpus SQLite graph/source representation",
+  "known_gap": "The active old model-query planning path is alive in KMD, but the old execute_plan/load_bounded_records path was not ported byte-for-byte because it targets the old prepared DSPG schema and contaminated prepared corpus. KMD executes the migrated plan over raw-folder DSPG handlers instead.",
+  "migration_map": {
+    "old answer/evidence rows": "scripts/benchmarks/run_herb_kmd_raw_folder.py benchmark glue from public answer + last_answer evidence",
+    "old progress/checkpoint discipline": "scripts/benchmarks/run_herb_kmd_raw_folder.py per-question progress/checkpoint output",
+    "scripts/dspg_query.py bounded retrieval idea": "src/knowmoredirt/engine.py:_metadata_bounded_candidates, _search, and answer handlers over KMD raw-folder DSPG records",
+    "scripts/dspg_query.py:INTENT_GRAMMAR": "src/knowmoredirt/legacy_drt_path.py:INTENT_GRAMMAR",
+    "scripts/dspg_query.py:call_model_query_plan": "src/knowmoredirt/legacy_drt_path.py:call_model_query_plan + src/knowmoredirt/model.py:LocalModelClient.complete_json(grammar=...)",
+    "scripts/dspg_query.py:deterministic_plan": "src/knowmoredirt/legacy_drt_path.py:deterministic_plan",
+    "scripts/dspg_query.py:execute_plan": "src/knowmoredirt/engine.py:_execute_migrated_plan bridging the migrated query plan into KMD DSPG/raw-text handlers",
+    "scripts/dspg_query.py:normalize_model_plan": "src/knowmoredirt/legacy_drt_path.py:normalize_model_plan",
+    "scripts/dspg_query.py:run_query model-plan branch": "src/knowmoredirt/engine.py:_answer_with_migrated_model_query"
+  },
+  "old_59_entrypoint": {
+    "batch_driver": "/data/var/herb_benchmark/drt_prepared/model_query_fix_batches100_20260517_141511/run_remaining_1_15.sh",
+    "merge_script": "/data/src/github/devtests/DRT_tests/scripts/merge_drt_query_batches.py",
+    "query_script": "/data/src/github/devtests/DRT_tests/scripts/dspg_query.py --use-model-query --bounded-doc-limit 40",
+    "score_answerable_accuracy": 0.5914110429447853,
+    "score_wrapper": "/data/src/github/devtests/DRT_tests/scripts/run_drt_batched_model_query_scoring.py",
+    "scored_run": "/data/var/herb_benchmark/runs/drt_dspg_model_query_pure_raw_20260517_193059"
+  },
+  "old_function_chain": [
+    "dspg_query.INTENT_GRAMMAR",
+    "dspg_query.deterministic_plan",
+    "dspg_query.call_model_query_plan",
+    "dspg_query.normalize_model_plan",
+    "dspg_query.rank_document_candidates",
+    "dspg_query.load_bounded_records",
+    "dspg_query.execute_plan",
+    "dspg_query.run_query",
+    "per-question progress/checkpoint JSONL",
+    "merge_drt_query_batches",
+    "run_drt_batched_model_query_scoring / HERB scorer adapter"
+  ],
+  "repo_commit": "8f68d1e96a9c7751b94c4bc03beadf06160c7253",
+  "sample_comparison": {
+    "comparison_report_json": "/data/var/knowmoredirt/reports/kmd_parity_model_sample50_20260520_094158_parity_comparison.json",
+    "comparison_report_md": "/data/var/knowmoredirt/reports/kmd_parity_model_sample50_20260520_094158_parity_comparison.md",
+    "model_trace_summary": {
+      "accepted_count": 50,
+      "call_count": 50,
+      "enabled": true,
+      "model_answer_count": 12,
+      "parsed_count": 50,
+      "prompt_hash_count": 20,
+      "response_hash_count": 20
+    },
+    "run_report": "/data/var/knowmoredirt/reports/kmd_parity_model_sample50_20260520_094158.json",
+    "summary": {
+      "new_answered": 24,
+      "new_evidence_bearing": 24,
+      "old_answered": 32,
+      "run_dir": "/data/var/knowmoredirt/herb_runs/kmd_parity_model_sample50_20260520_094158",
+      "same_serialized_answer": 8,
+      "sample_count": 50
+    }
+  }
+}
