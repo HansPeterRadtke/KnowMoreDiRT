@@ -16,7 +16,7 @@ from typing import Any
 from .text import normalize
 
 
-SCHEMA_VERSION = 2
+SCHEMA_VERSION = 3
 
 
 def stable_id(prefix: str, *parts: Any) -> str:
@@ -131,6 +131,31 @@ class DSPGStore:
             )
             """,
             """
+            CREATE TABLE IF NOT EXISTS context_carriers (
+              carrier_id TEXT PRIMARY KEY,
+              run_id TEXT NOT NULL,
+              context_id TEXT NOT NULL,
+              document_id TEXT,
+              source_span_id TEXT,
+              carrier_kind TEXT NOT NULL,
+              carrier_surface TEXT NOT NULL,
+              temporal_value TEXT,
+              temporal_value_type TEXT,
+              confidence REAL NOT NULL
+            )
+            """,
+            """
+            CREATE TABLE IF NOT EXISTS context_assignments (
+              assignment_id TEXT PRIMARY KEY,
+              run_id TEXT NOT NULL,
+              context_id TEXT NOT NULL,
+              applies_to_type TEXT NOT NULL,
+              applies_to_id TEXT NOT NULL,
+              source_span_id TEXT,
+              confidence REAL NOT NULL
+            )
+            """,
+            """
             CREATE TABLE IF NOT EXISTS frames (
               frame_id TEXT PRIMARY KEY,
               run_id TEXT NOT NULL,
@@ -186,6 +211,18 @@ class DSPGStore:
               metadata_json TEXT
             )
             """,
+            """
+            CREATE TABLE IF NOT EXISTS metadata_records (
+              metadata_id TEXT PRIMARY KEY,
+              run_id TEXT NOT NULL,
+              document_id TEXT NOT NULL,
+              key TEXT NOT NULL,
+              value TEXT NOT NULL,
+              value_norm TEXT NOT NULL,
+              source TEXT NOT NULL,
+              confidence REAL NOT NULL
+            )
+            """,
         ]
         for statement in statements:
             self.connection.execute(statement)
@@ -207,6 +244,11 @@ class DSPGStore:
             "CREATE INDEX IF NOT EXISTS idx_mentions_entity ON mentions(entity_type)",
             "CREATE INDEX IF NOT EXISTS idx_referents_label ON referents(canonical_label_norm)",
             "CREATE INDEX IF NOT EXISTS idx_context_kind ON contexts(kind)",
+            "CREATE INDEX IF NOT EXISTS idx_context_carriers_kind ON context_carriers(carrier_kind)",
+            "CREATE INDEX IF NOT EXISTS idx_context_carriers_doc ON context_carriers(document_id)",
+            "CREATE INDEX IF NOT EXISTS idx_context_carriers_time ON context_carriers(temporal_value_type, temporal_value)",
+            "CREATE INDEX IF NOT EXISTS idx_context_assignments_context ON context_assignments(context_id)",
+            "CREATE INDEX IF NOT EXISTS idx_context_assignments_applies ON context_assignments(applies_to_type, applies_to_id)",
             "CREATE INDEX IF NOT EXISTS idx_frames_predicate ON frames(predicate_norm)",
             "CREATE INDEX IF NOT EXISTS idx_frame_args_role ON frame_arguments(role)",
             "CREATE INDEX IF NOT EXISTS idx_temporal_ref ON temporal_edges(referent_id)",
@@ -217,6 +259,8 @@ class DSPGStore:
             "CREATE INDEX IF NOT EXISTS idx_relations_object ON relations(object_norm)",
             "CREATE INDEX IF NOT EXISTS idx_relations_value ON relations(value_norm)",
             "CREATE INDEX IF NOT EXISTS idx_relations_type ON relations(relation_type)",
+            "CREATE INDEX IF NOT EXISTS idx_metadata_records_key ON metadata_records(key)",
+            "CREATE INDEX IF NOT EXISTS idx_metadata_records_value ON metadata_records(value_norm)",
         ]
         for statement in statements:
             self.connection.execute(statement)
@@ -252,10 +296,13 @@ class DSPGStore:
             "referents",
             "mention_referents",
             "contexts",
+            "context_carriers",
+            "context_assignments",
             "frames",
             "frame_arguments",
             "temporal_edges",
             "relations",
+            "metadata_records",
         ]
         return {
             table: int(self.connection.execute(f"SELECT COUNT(*) FROM {table}").fetchone()[0])

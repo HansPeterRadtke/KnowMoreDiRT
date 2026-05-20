@@ -12,6 +12,7 @@ import re
 from dataclasses import dataclass
 from pathlib import Path
 
+from .bounded_dspg import execute_bounded_query
 from .extractors import after_label, capitalized_phrases, identifiers, urls
 from .ingest import ingest_folder
 from .index import LexicalIndex
@@ -77,6 +78,7 @@ class KnowMoreDiRTEngine:
         self._model_client = LocalModelClient() if self._use_local_model else None
         self.model_query_trace = ModelQueryTrace(enabled=self._use_local_model, prompt_hashes=[], response_hashes=[])
         self.last_answer: Answer | None = None
+        self.last_bounded_diagnostics: dict[str, object] = {}
 
     def dspg_counts(self) -> dict[str, int]:
         return self.store.counts()
@@ -152,6 +154,17 @@ class KnowMoreDiRTEngine:
 
     def _execute_model_plan(self, question: str, qnorm: str, plan: dict[str, object]) -> Answer | None:
         intent = str(plan.get("intent") or "unknown")
+        bounded_answer, diagnostics = execute_bounded_query(
+            self.store,
+            self.run_id,
+            self.documents,
+            self._sentences_by_document,
+            question,
+            plan,
+        )
+        self.last_bounded_diagnostics = diagnostics
+        if bounded_answer and not self._is_underdisambiguated_name_answer(qnorm, bounded_answer.text):
+            return bounded_answer
         target = str(plan.get("target_surface") or "").strip()
         focused_question = question
         if target and target not in focused_question:

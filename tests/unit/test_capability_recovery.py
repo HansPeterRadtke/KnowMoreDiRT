@@ -59,6 +59,8 @@ def test_optional_local_model_invokes_generic_query_plan_path(tmp_path: Path) ->
     assert answer.reason == "local model query plan: role_lookup"
     assert answer.evidence
     assert "Owner: Nia Vale" in answer.evidence[0].text
+    assert engine.last_bounded_diagnostics["ranking"]["selected_chunk_count"] > 0
+    assert engine.last_bounded_diagnostics["execution"]["record_counts"]["relations"] > 0
     assert engine.model_query_trace.call_count == 1
     assert engine.model_query_trace.accepted_count == 1
     assert engine.model_query_trace.model_answer_count == 1

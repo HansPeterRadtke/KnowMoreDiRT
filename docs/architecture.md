@@ -40,14 +40,17 @@ The current store is SQLite-backed and normalized. It includes:
 - `referents`
 - `mention_referents`
 - `contexts`
+- `context_carriers`
+- `context_assignments`
 - `frames`
 - `frame_arguments`
 - `temporal_edges`
 - `relations`
+- `metadata_records`
 
 The current implementation uses an in-memory database by default. A durable user-configurable store path is planned.
 
-Document metadata stores natural filesystem/read metadata and text-quality metrics, including printable ratio, symbol ratio, token diversity, OCR-like token ratio, a low-semantic-noise flag, and a semantic-quality label. The same classification is also represented as a `quality:*` context so noisy source material remains preserved and queryable rather than discarded.
+Document metadata stores natural filesystem/read metadata and text-quality metrics, including printable ratio, symbol ratio, token diversity, OCR-like token ratio, a low-semantic-noise flag, and a semantic-quality label. The same classification is also represented as a `quality:*` context so noisy source material remains preserved and queryable rather than discarded. Generic filesystem/read metadata is also normalized into `metadata_records`, while source quality, filesystem time, sentence context, and event-time signals are represented as context carriers and assignments.
 
 ## Retrieval and Query Execution
 
@@ -57,16 +60,17 @@ The current query path combines:
 - referent-centric retrieval through mentions and referents,
 - frame-aware retrieval through predicates and frame arguments,
 - relation-aware retrieval through generic label, identifier, event, status, temporal, and table relations,
+- bounded SQLite subgraph execution over selected documents/chunks, source spans, mentions, referents, contexts, frames, frame arguments, temporal edges, and relations,
 - temporal state retrieval for state changes with dated evidence,
 - text-quality downweighting so noise files do not dominate normal questions,
 - conservative deterministic answer extraction over bounded candidates,
 - ranking by anchor match, predicate/label match, context validity, temporal recency, and text-quality signals.
 
-This is a first vertical slice of the full DSPG query architecture. It avoids full-corpus reasoning per question and avoids assuming external input structure. Future work should strengthen graph traversal, entity resolution, uncertainty handling, and model-assisted query planning.
+This is a first vertical slice of the full DSPG query architecture. It avoids full-corpus graph loading per question and avoids assuming external input structure. Future work should strengthen graph traversal, entity resolution, uncertainty handling, and deeper model-assisted extraction.
 
 ## Optional Local Model Integration
 
-KMD includes an isolated local model client hook. The default system does not require a model and does not call cloud APIs. Future staged model integration should use bounded inputs and constrained outputs for:
+KMD includes an isolated local model client hook. The default system does not require a model and does not call cloud APIs. When explicitly enabled, model use is bounded and constrained: the model can produce a generic JSON query plan, and execution still runs against source-grounded DSPG records or bounded raw-text evidence. Future staged model integration should extend the same constrained pattern for:
 
 - mention classification,
 - frame extraction,
@@ -88,11 +92,11 @@ DSPG objects are grounded in exact source spans. Answers at the public boundary 
 - Context propagation is sentence-level rather than fully hierarchical.
 - Temporal modeling handles simple dated state statements but not full interval logic.
 - Noise handling is structural and conservative; it labels and downweights low-semantic-content sources for ordinary fact retrieval while preserving them as source-grounded contexts.
-- The local model path is isolated but not yet part of the default staged pipeline.
+- The local model path is isolated, disabled by default, and currently focused on bounded query planning rather than full staged extraction.
 - The fixture suite is now broader, but it is still self-written and not proof of broad generalization.
 
 ## Optional Local Query Planner
 
-KMD includes an optional local planning path for development. Candidate selection remains bounded before reasoning: lexical sentence search, DSPG relation/frame matches, neighboring discourse units, and natural filesystem metadata may contribute retrieval priors. Filesystem metadata can help locate a raw file, but answer facts must still be grounded in readable raw text spans.
+KMD includes an optional local planning path for development. Candidate selection remains bounded before reasoning: lexical sentence search, DSPG relation/frame matches, neighboring discourse units, normalized metadata records, and natural filesystem metadata may contribute retrieval priors. Filesystem metadata can help locate a raw file, but answer facts must still be grounded in readable raw text spans unless the user explicitly asks about file metadata itself.
 
-When enabled, the local-model path uses a localhost llama.cpp-compatible endpoint to produce constrained JSON query plans, normalizes those plans with the deterministic planner, and executes them against KMD raw-folder DSPG records. This path is disabled by default, never uses cloud APIs, and must remain independent of any external evaluation harness.
+When enabled, the local-model path uses a localhost llama.cpp-compatible endpoint to produce constrained JSON query plans, normalizes those plans with the deterministic planner, executes a bounded SQLite DSPG subgraph, and falls back to generic source-grounded deterministic handlers when the bounded graph does not support an answer. This path is disabled by default, never uses cloud APIs, and must remain independent of any external evaluation harness.

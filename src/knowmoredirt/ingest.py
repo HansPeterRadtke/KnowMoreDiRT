@@ -2,8 +2,9 @@
 
 from __future__ import annotations
 
-import re
 import json
+import re
+import time
 from pathlib import Path
 
 from .extractors import capitalized_phrases, identifiers, urls
@@ -44,6 +45,54 @@ VERB_PREDICATE_RE = re.compile(
 
 DATE_RE = re.compile(r"\b(\d{4}-\d{2}-\d{2})(?:[ T]\d{2}:\d{2})?\b")
 STATE_RE = re.compile(r"\b(?:state|status)\s*:\s*([A-Za-z0-9_-]+)", re.I)
+
+
+def _timestamp_value(value: float) -> str:
+    try:
+        return time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime(float(value)))
+    except Exception:
+        return str(value)
+
+
+def _metadata_pairs(document: Document, quality: dict[str, object]) -> list[tuple[str, str]]:
+    pairs: list[tuple[str, str]] = []
+    for key in [
+        "file_name",
+        "stem",
+        "suffix",
+        "suffixes",
+        "parent_rel_path",
+        "directory_depth",
+        "hidden_file",
+        "stat_mode",
+        "permissions",
+        "uid",
+        "gid",
+        "inode",
+        "device",
+        "atime",
+        "mtime",
+        "ctime",
+        "line_count",
+        "word_count",
+        "mime_type",
+        "encoding",
+        "decode_errors",
+        "read_mode",
+        "symlink",
+        "symlink_target",
+    ]:
+        if key in document.metadata:
+            pairs.append((key, json.dumps(document.metadata[key], sort_keys=True) if isinstance(document.metadata[key], (list, dict)) else str(document.metadata[key])))
+    pairs.extend(
+        [
+            ("size_bytes", str(document.size_bytes)),
+            ("content_hash", document.sha256),
+            ("char_count", str(len(document.text))),
+            ("text_quality", str(quality.get("semantic_quality", ""))),
+        ]
+    )
+    return [(key, value) for key, value in pairs if value != ""]
 
 
 def mention_entity_type(surface: str) -> str:
@@ -165,6 +214,68 @@ def ingest_folder(folder_path: str | Path, store: DSPGStore | None = None) -> tu
                 "INSERT INTO contexts(context_id, run_id, kind, parent_context_id, holder_surface, evidence_surface, confidence) VALUES (?, ?, ?, ?, ?, ?, ?)",
                 (context_id, run_id, quality_kind, None, document.rel_path, quality_kind, 1.0),
             )
+        quality_context_id = context_by_kind[quality_kind]
+        store.execute(
+            """
+            INSERT OR IGNORE INTO context_carriers(
+              carrier_id, run_id, context_id, document_id, source_span_id, carrier_kind, carrier_surface,
+              temporal_value, temporal_value_type, confidence
+            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+            """,
+            (
+                stable_id("carrier", run_id, document.document_id, "quality", quality_kind),
+                run_id,
+                quality_context_id,
+                document.document_id,
+                None,
+                "source_quality",
+                quality_kind,
+                None,
+                None,
+                1.0,
+            ),
+        )
+        for temporal_key, temporal_type in [("mtime", "file_modified_time"), ("ctime", "file_created_time")]:
+            if temporal_key in document.metadata:
+                temporal_value = _timestamp_value(float(document.metadata[temporal_key]))
+                store.execute(
+                    """
+                    INSERT OR IGNORE INTO context_carriers(
+                      carrier_id, run_id, context_id, document_id, source_span_id, carrier_kind, carrier_surface,
+                      temporal_value, temporal_value_type, confidence
+                    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                    """,
+                    (
+                        stable_id("carrier", run_id, document.document_id, temporal_type),
+                        run_id,
+                        quality_context_id,
+                        document.document_id,
+                        None,
+                        "filesystem_time",
+                        temporal_key,
+                        temporal_value,
+                        temporal_type,
+                        1.0,
+                    ),
+                )
+        for key, value in _metadata_pairs(document, quality):
+            store.execute(
+                """
+                INSERT OR IGNORE INTO metadata_records(
+                  metadata_id, run_id, document_id, key, value, value_norm, source, confidence
+                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+                """,
+                (
+                    stable_id("meta", run_id, document.document_id, key, value),
+                    run_id,
+                    document.document_id,
+                    key,
+                    value,
+                    normalize(value),
+                    "filesystem" if key in {"size_bytes", "content_hash", "char_count"} or key in document.metadata else "analysis",
+                    1.0,
+                ),
+            )
 
     for sentence in sentences:
         token_estimate = max(1, len(tokenize(sentence.text)))
@@ -186,6 +297,43 @@ def ingest_folder(folder_path: str | Path, store: DSPGStore | None = None) -> tu
             store.execute(
                 "INSERT INTO contexts(context_id, run_id, kind, parent_context_id, holder_surface, evidence_surface, confidence) VALUES (?, ?, ?, ?, ?, ?, ?)",
                 (context_id, run_id, context_kind, None, None, context_kind, 1.0),
+            )
+        store.execute(
+            """
+            INSERT OR IGNORE INTO context_carriers(
+              carrier_id, run_id, context_id, document_id, source_span_id, carrier_kind, carrier_surface,
+              temporal_value, temporal_value_type, confidence
+            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+            """,
+            (
+                stable_id("carrier", run_id, sentence.sentence_id, context_kind),
+                run_id,
+                context_id,
+                sentence.document_id,
+                span_id,
+                "sentence_context",
+                context_kind,
+                None,
+                None,
+                0.9,
+            ),
+        )
+        for applies_to_type, applies_to_id in [("chunk", chunk_id), ("source_span", span_id)]:
+            store.execute(
+                """
+                INSERT OR IGNORE INTO context_assignments(
+                  assignment_id, run_id, context_id, applies_to_type, applies_to_id, source_span_id, confidence
+                ) VALUES (?, ?, ?, ?, ?, ?, ?)
+                """,
+                (
+                    stable_id("ctx_assign", run_id, context_id, applies_to_type, applies_to_id),
+                    run_id,
+                    context_id,
+                    applies_to_type,
+                    applies_to_id,
+                    span_id,
+                    0.9,
+                ),
             )
 
         mentions_for_sentence: list[tuple[str, str, str]] = []
@@ -245,6 +393,26 @@ def ingest_folder(folder_path: str | Path, store: DSPGStore | None = None) -> tu
                     "state_at",
                     temporal_value,
                     state_value,
+                    0.85,
+                ),
+            )
+            store.execute(
+                """
+                INSERT OR IGNORE INTO context_carriers(
+                  carrier_id, run_id, context_id, document_id, source_span_id, carrier_kind, carrier_surface,
+                  temporal_value, temporal_value_type, confidence
+                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                """,
+                (
+                    stable_id("carrier", run_id, sentence.sentence_id, "event_time", temporal_value),
+                    run_id,
+                    context_id,
+                    sentence.document_id,
+                    span_id,
+                    "temporal_expression",
+                    temporal_value,
+                    temporal_value,
+                    "event_time",
                     0.85,
                 ),
             )

@@ -48,11 +48,20 @@ def test_ingest_stores_relations_and_enriched_file_metadata(tmp_path) -> None:
 
     assert run_id
     assert counts["relations"] >= 3
+    assert counts["metadata_records"] >= 10
+    assert counts["context_carriers"] >= 3
+    assert counts["context_assignments"] >= 1
     assert metadata["file_name"] == "odd.name"
     assert metadata["suffix"] == ".name"
     assert metadata["parent_rel_path"] == "r4"
     assert metadata["line_count"] == 3
     assert metadata["text_quality"]["semantic_quality"] == "meaningful_discourse"
+
+    carrier_row = store.execute(
+        "SELECT temporal_value_type FROM context_carriers WHERE document_id=? AND temporal_value_type='file_modified_time'",
+        (documents[0].document_id,),
+    ).fetchone()
+    assert carrier_row is not None
 
 
 def test_generic_query_answers_new_raw_text_without_fixture_literals(tmp_path) -> None:

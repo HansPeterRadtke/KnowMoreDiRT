@@ -68,10 +68,12 @@ The unit tests also verify that initialization creates normalized DSPG structure
 - mentions,
 - referents,
 - context records,
+- context carriers and assignments,
 - frames,
 - frame arguments,
 - temporal edges.
 - generic relation records.
+- normalized metadata records.
 
 Architecture tests assert that the core package contains no external-evaluation markers, wrapper assumptions, hidden-label terms, or dataset-shaped routing, and that `knowmoredirt.__all__` exports only `initialize` and `question`.
 They also scan the core package for fixture/domain-shaped literals from the regression corpora so future changes do not quietly reintroduce content-specific answer branches.

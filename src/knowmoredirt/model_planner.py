@@ -35,6 +35,11 @@ REFERENCE_PATTERNS = [
     r"\b[A-Za-z0-9_./-]+\.(?:cpp|tmp|py|js|md|txt|json|yaml|yml|csv|tsv|pdf)\b",
 ]
 
+GENERIC_NAMED_ANCHORS = {
+    "Find", "What", "Which", "Who", "Where", "When", "How", "Can", "Could",
+    "Document", "Report", "Note", "Record", "Guide", "Manual", "IDs", "ID",
+}
+
 
 @dataclass
 class ModelQueryTrace:
@@ -68,6 +73,29 @@ def visible_reference_anchor(question: str) -> str:
     return ""
 
 
+def visible_named_anchors(question: str) -> list[str]:
+    values: list[str] = []
+    seen: set[str] = set()
+    pattern = re.compile(r"\b[A-Z][A-Za-z0-9_-]+(?:\s+[A-Z][A-Za-z0-9_-]+){0,4}\b")
+    for match in pattern.finditer(question):
+        value = match.group(0).strip()
+        parts = value.split()
+        if all(part in GENERIC_NAMED_ANCHORS for part in parts):
+            continue
+        if value not in seen:
+            seen.add(value)
+            values.append(value)
+    return values
+
+
+def preferred_target_surface(question: str) -> str:
+    reference = visible_reference_anchor(question)
+    if reference:
+        return reference
+    anchors = visible_named_anchors(question)
+    return " ".join(anchors[:3])
+
+
 def _role_object_anchor(question: str, role_words: list[str]) -> str:
     role_alt = "|".join(re.escape(word) for word in role_words)
     for pattern in [rf"\b(?:{role_alt})\s+(?:the\s+)?([^?]+?)(?:\?|$)", rf"\b(?:{role_alt})\s+(?:for|of)\s+(?:the\s+)?([^?]+?)(?:\?|$)"]:
@@ -92,7 +120,7 @@ def _text_has_target(text: str, terms: list[str]) -> bool:
 
 def deterministic_plan(question: str) -> dict[str, Any]:
     q = normalize(question)
-    target = visible_reference_anchor(question)
+    target = preferred_target_surface(question)
     plan: dict[str, Any] = {
         "intent": "unknown",
         "target_surface": target,
@@ -100,7 +128,10 @@ def deterministic_plan(question: str) -> dict[str, Any]:
         "requires_asserted": True,
         "source": "deterministic",
     }
-    if any(phrase in q for phrase in ["who owns", "who owned", "who is owner", "which owner"]):
+    wants_identifier_answer = re.search(r"\bids?\b|\bidentifiers?\b|\breferences?\b", q) is not None
+    if wants_identifier_answer and target:
+        plan.update({"intent": "reference_lookup", "answer_role": "reference", "target_surface": target, "requires_asserted": True})
+    elif any(phrase in q for phrase in ["who owns", "who owned", "who is owner", "which owner"]):
         plan.update({"intent": "role_lookup", "answer_role": "owner", "target_surface": target or _role_object_anchor(question, ["owns", "owned", "owner"]), "requires_asserted": True})
     elif any(phrase in q for phrase in ["who authored", "who wrote", "who created", "who assembled", "responsible for", "carried", "actor behind"]):
         plan.update({"intent": "role_lookup", "answer_role": "author", "target_surface": target or _role_object_anchor(question, ["authored", "wrote", "created", "assembled", "responsible for", "carried"]), "requires_asserted": True})
@@ -133,10 +164,15 @@ def normalize_model_plan(question: str, model: dict[str, Any] | None, det: dict[
     plan = dict(model)
     plan["query_text"] = question
     q = normalize(question)
-    target = visible_reference_anchor(question)
-    if target and not _text_has_target(str(plan.get("target_surface", "")), [normalize(target)]):
+    target = preferred_target_surface(question)
+    target_terms = [term for term in re.findall(r"[a-z0-9_-]+", normalize(str(plan.get("target_surface") or ""))) if len(term) > 1]
+    target_is_generic_reference = bool(target_terms) and len(target_terms) <= 3 and any(term in {"id", "ids", "identifier", "identifiers", "reference", "references"} for term in target_terms)
+    if target and (target_is_generic_reference or not _text_has_target(str(plan.get("target_surface", "")), [normalize(term) for term in target.split()])):
         plan["target_surface"] = target
-    if any(phrase in q for phrase in ["who owns", "who owned", "who is owner", "which owner"]):
+    wants_identifier_answer = re.search(r"\bids?\b|\bidentifiers?\b|\breferences?\b", q) is not None
+    if wants_identifier_answer and target:
+        plan.update({"intent": "reference_lookup", "answer_role": "reference", "target_surface": target, "requires_asserted": True})
+    elif any(phrase in q for phrase in ["who owns", "who owned", "who is owner", "which owner"]):
         plan.update({"intent": "role_lookup", "answer_role": "owner"})
     elif any(phrase in q for phrase in ["who authored", "who wrote", "who created", "who assembled", "responsible for", "carried", "actor behind"]):
         plan.update({"intent": "role_lookup", "answer_role": "author"})

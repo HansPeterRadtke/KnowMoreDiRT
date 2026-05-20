@@ -22,10 +22,13 @@ def test_ingest_builds_normalized_dspg_tables() -> None:
     assert counts["mentions"] > 50
     assert counts["referents"] > 30
     assert counts["contexts"] >= 3
+    assert counts["context_carriers"] >= counts["documents"]
+    assert counts["context_assignments"] >= counts["chunks"]
     assert counts["frames"] > 20
     assert counts["frame_arguments"] > 20
     assert "temporal_edges" in counts
     assert counts["relations"] > 20
+    assert counts["metadata_records"] >= counts["documents"]
 
 
 def test_engine_exposes_internal_dspg_counts_for_diagnostics_only() -> None:
