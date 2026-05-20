@@ -191,6 +191,8 @@ def _load_records(store: Any, run_id: str, document_ids: list[str], chunk_keys: 
     temporal = _fetch_by_ids(connection, "temporal_edges", "source_span_id", span_ids)
     relations = _fetch_by_ids(connection, "relations", "source_span_id", span_ids)
     contexts = [dict(row) for row in connection.execute("SELECT * FROM contexts WHERE run_id=?", (run_id,))]
+    context_carriers = _fetch_by_ids(connection, "context_carriers", "document_id", document_ids)
+    metadata_records = _fetch_by_ids(connection, "metadata_records", "document_id", document_ids)
     return {
         "documents": documents,
         "chunks": chunks,
@@ -203,10 +205,13 @@ def _load_records(store: Any, run_id: str, document_ids: list[str], chunk_keys: 
         "frame_arguments": args,
         "temporal_edges": temporal,
         "relations": relations,
+        "context_carriers": context_carriers,
+        "metadata_records": metadata_records,
         "record_counts": {
             "documents": len(documents), "chunks": len(chunks), "source_spans": len(spans),
             "mentions": len(mentions), "referents": len(referents), "frames": len(frames),
             "frame_arguments": len(args), "temporal_edges": len(temporal), "relations": len(relations),
+            "context_carriers": len(context_carriers), "metadata_records": len(metadata_records),
         },
     }
 
@@ -215,6 +220,13 @@ def _evidence(span: dict[str, Any], chunks_by_id: dict[str, dict[str, Any]], doc
     chunk = chunks_by_id.get(str(span.get("chunk_id")), {})
     doc = docs_by_id.get(str(span.get("document_id")), {})
     return Evidence(str(doc.get("rel_path") or doc.get("path") or ""), str(chunk.get("text") or span.get("surface") or ""), 0.75)
+
+
+def _metadata_evidence(record: dict[str, Any], docs_by_id: dict[str, dict[str, Any]]) -> Evidence:
+    doc = docs_by_id.get(str(record.get("document_id")), {})
+    key = str(record.get("key") or "metadata")
+    value = str(record.get("value") or "")
+    return Evidence(str(doc.get("rel_path") or doc.get("path") or ""), f"metadata {key}: {value}", 0.7)
 
 
 def _add(values: list[str], evidence: list[Evidence], value: str, ev: Evidence) -> None:
@@ -232,14 +244,70 @@ def _execute(records: dict[str, Any], plan: dict[str, Any]) -> tuple[list[str], 
     chunks_by_id = {str(chunk["chunk_id"]): chunk for chunk in records["chunks"]}
     docs_by_id = {str(document["document_id"]): document for document in records["documents"]}
     spans_by_id = {str(span["span_id"]): span for span in records["source_spans"]}
+    contexts_by_id = {str(context["context_id"]): context for context in records["contexts"]}
+    query_text = normalize(str(plan.get("query_text") or ""))
     values: list[str] = []
     evidence: list[Evidence] = []
+    if intent == "context_lookup":
+        metadata_key_by_token = {
+            "size": "size_bytes",
+            "hash": "content_hash",
+            "suffix": "suffix",
+            "extension": "suffix",
+            "name": "file_name",
+            "lines": "line_count",
+            "line": "line_count",
+            "words": "word_count",
+            "encoding": "encoding",
+        }
+        wanted_keys = {key for token, key in metadata_key_by_token.items() if token in query_text}
+        if wanted_keys:
+            for record in records.get("metadata_records", []):
+                if str(record.get("key") or "") not in wanted_keys:
+                    continue
+                document_material = normalize(str(docs_by_id.get(str(record.get("document_id")), {}).get("rel_path", "")))
+                if terms and not any(term in document_material for term in terms):
+                    continue
+                _add(values, evidence, str(record.get("value") or ""), _metadata_evidence(record, docs_by_id))
+            if values:
+                return values[:8], evidence[:8], {"record_counts": records.get("record_counts", {})}
+        wants_time = any(token in query_text for token in ["modified", "created", "time", "date", "valid", "effective", "measured"])
+        if wants_time:
+            for carrier in records.get("context_carriers", []):
+                temporal_value = str(carrier.get("temporal_value") or "")
+                if not temporal_value:
+                    continue
+                material = normalize(" ".join(str(carrier.get(key) or "") for key in ["carrier_kind", "carrier_surface", "temporal_value_type", "temporal_value"]))
+                document_material = normalize(str(docs_by_id.get(str(carrier.get("document_id")), {}).get("rel_path", "")))
+                if terms and not any(term in material or term in document_material for term in terms):
+                    continue
+                ev = Evidence(
+                    str(docs_by_id.get(str(carrier.get("document_id")), {}).get("rel_path") or ""),
+                    f"context {carrier.get('temporal_value_type')}: {temporal_value}",
+                    0.72,
+                )
+                _add(values, evidence, temporal_value, ev)
+            if values:
+                return values[:8], evidence[:8], {"record_counts": records.get("record_counts", {})}
+        for carrier in records.get("context_carriers", []):
+            context = contexts_by_id.get(str(carrier.get("context_id")), {})
+            kind = str(context.get("kind") or carrier.get("carrier_surface") or carrier.get("carrier_kind") or "")
+            if not kind:
+                continue
+            span = spans_by_id.get(str(carrier.get("source_span_id")), {})
+            ev = _evidence(span, chunks_by_id, docs_by_id)
+            material = normalize(" ".join([kind, ev.text, str(carrier.get("carrier_surface") or "")]))
+            if terms and not any(term in material for term in terms):
+                continue
+            _add(values, evidence, kind, ev)
+        if values:
+            return values[:8], evidence[:8], {"record_counts": records.get("record_counts", {})}
     for relation in records["relations"]:
         span = spans_by_id.get(str(relation.get("source_span_id")), {})
         ev = _evidence(span, chunks_by_id, docs_by_id)
         material = normalize(" ".join(str(relation.get(key) or "") for key in ["relation_type", "subject", "predicate", "object", "value"]) + " " + ev.text)
         has_target = any(term in material for term in terms)
-        if terms and not has_target and intent not in {"reference_lookup", "url_lookup", "file_lookup"}:
+        if terms and not has_target:
             continue
         predicate = normalize(str(relation.get("predicate") or ""))
         rel_type = normalize(str(relation.get("relation_type") or ""))
@@ -263,8 +331,6 @@ def _execute(records: dict[str, Any], plan: dict[str, Any]) -> tuple[list[str], 
             candidates = urls(ev.text) if intent == "url_lookup" else identifiers(ev.text)
             if intent == "file_lookup":
                 candidates = [item for item in identifiers(ev.text) if "." in item]
-            if terms and not has_target and not candidates:
-                continue
             for candidate in candidates:
                 _add(values, evidence, candidate, ev)
         elif intent == "state_lookup":
@@ -278,6 +344,28 @@ def _execute(records: dict[str, Any], plan: dict[str, Any]) -> tuple[list[str], 
             span = spans_by_id.get(str(edge.get("source_span_id")), {})
             ev = _evidence(span, chunks_by_id, docs_by_id)
             _add(values, evidence, str(edge.get("state_value") or edge.get("temporal_value") or ""), ev)
+    if intent == "identity_lookup":
+        for relation in records["relations"]:
+            if normalize(str(relation.get("relation_type") or "")) != "identity":
+                continue
+            span = spans_by_id.get(str(relation.get("source_span_id")), {})
+            ev = _evidence(span, chunks_by_id, docs_by_id)
+            material = normalize(" ".join(str(relation.get(key) or "") for key in ["subject", "object", "value"]) + " " + ev.text)
+            if terms and not any(term in material for term in terms):
+                continue
+            _add(values, evidence, str(relation.get("value") or relation.get("object") or "same"), ev)
+    if intent == "grouped_search":
+        seen_paths: set[str] = set()
+        for chunk in records["chunks"][:24]:
+            doc = docs_by_id.get(str(chunk.get("document_id")), {})
+            rel_path = str(doc.get("rel_path") or "")
+            if not rel_path or rel_path in seen_paths:
+                continue
+            material = normalize(" ".join([rel_path, str(chunk.get("text") or "")]))
+            if terms and not any(term in material for term in terms):
+                continue
+            seen_paths.add(rel_path)
+            _add(values, evidence, rel_path, Evidence(rel_path, str(chunk.get("text") or ""), 0.62))
     if intent == "role_lookup" and not values:
         desired: set[str] = set()
         if role == "reviewer":
@@ -329,6 +417,6 @@ def execute_bounded_query(
     records = _load_records(store, run_id, document_ids, chunk_keys)
     values, evidence, execution = _execute(records, enriched_plan)
     diagnostics = {"ranking": ranking, "execution": execution}
-    if not values:
+    if not values or not evidence:
         return None, diagnostics
     return Answer("; ".join(values), 0.78, evidence, "bounded DSPG subgraph execution"), diagnostics

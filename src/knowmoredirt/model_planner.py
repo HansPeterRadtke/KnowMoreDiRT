@@ -120,6 +120,7 @@ def _text_has_target(text: str, terms: list[str]) -> bool:
 
 def deterministic_plan(question: str) -> dict[str, Any]:
     q = normalize(question)
+    qtokens = set(re.findall(r"[a-z0-9_-]+", q))
     target = preferred_target_surface(question)
     plan: dict[str, Any] = {
         "intent": "unknown",
@@ -129,7 +130,10 @@ def deterministic_plan(question: str) -> dict[str, Any]:
         "source": "deterministic",
     }
     wants_identifier_answer = re.search(r"\bids?\b|\bidentifiers?\b|\breferences?\b", q) is not None
-    if wants_identifier_answer and target:
+    wants_metadata_answer = any(word in q for word in ["modified", "created", "mtime", "ctime", "size", "hash", "suffix", "extension", "encoding", "line count", "word count"])
+    if wants_metadata_answer:
+        plan.update({"intent": "context_lookup", "answer_role": "state", "target_surface": target or question.strip(" ?"), "requires_asserted": False})
+    elif wants_identifier_answer and target:
         plan.update({"intent": "reference_lookup", "answer_role": "reference", "target_surface": target, "requires_asserted": True})
     elif any(phrase in q for phrase in ["who owns", "who owned", "who is owner", "which owner"]):
         plan.update({"intent": "role_lookup", "answer_role": "owner", "target_surface": target or _role_object_anchor(question, ["owns", "owned", "owner"]), "requires_asserted": True})
@@ -141,11 +145,11 @@ def deterministic_plan(question: str) -> dict[str, Any]:
         plan.update({"intent": "role_lookup", "answer_role": "approver", "target_surface": target, "requires_asserted": True})
     elif any(phrase in q for phrase in ["who reported", "who requested", "who claimed", "who alleged", "which organization", "which company", "which account"]):
         plan.update({"intent": "role_lookup", "answer_role": "reporter", "target_surface": target or question.strip(" ?"), "requires_asserted": True})
-    elif any(word in q for word in ["url", "link", "runbook", "manual", "guide"]):
+    elif qtokens.intersection({"url", "urls", "link", "links", "runbook", "manual", "guide"}):
         plan.update({"intent": "url_lookup", "answer_role": "reference", "target_surface": target or question.strip(" ?"), "requires_asserted": True})
-    elif any(word in q for word in ["file", "path"]):
+    elif qtokens.intersection({"file", "files", "path", "paths"}):
         plan.update({"intent": "file_lookup", "answer_role": "reference", "target_surface": target or question.strip(" ?"), "requires_asserted": True})
-    elif any(word in q for word in ["reference", "identifier", "id", "case"]):
+    elif qtokens.intersection({"reference", "references", "identifier", "identifiers", "id", "ids", "case"}):
         plan.update({"intent": "reference_lookup", "answer_role": "reference", "target_surface": target or question.strip(" ?"), "requires_asserted": True})
     elif any(phrase in q for phrase in ["final state", "left in", "ended up", "at the end", "current state"]):
         plan.update({"intent": "state_lookup", "answer_role": "state", "target_surface": target or question.strip(" ?"), "requires_asserted": True})
@@ -164,13 +168,17 @@ def normalize_model_plan(question: str, model: dict[str, Any] | None, det: dict[
     plan = dict(model)
     plan["query_text"] = question
     q = normalize(question)
+    qtokens = set(re.findall(r"[a-z0-9_-]+", q))
     target = preferred_target_surface(question)
     target_terms = [term for term in re.findall(r"[a-z0-9_-]+", normalize(str(plan.get("target_surface") or ""))) if len(term) > 1]
     target_is_generic_reference = bool(target_terms) and len(target_terms) <= 3 and any(term in {"id", "ids", "identifier", "identifiers", "reference", "references"} for term in target_terms)
     if target and (target_is_generic_reference or not _text_has_target(str(plan.get("target_surface", "")), [normalize(term) for term in target.split()])):
         plan["target_surface"] = target
     wants_identifier_answer = re.search(r"\bids?\b|\bidentifiers?\b|\breferences?\b", q) is not None
-    if wants_identifier_answer and target:
+    wants_metadata_answer = any(word in q for word in ["modified", "created", "mtime", "ctime", "size", "hash", "suffix", "extension", "encoding", "line count", "word count"])
+    if wants_metadata_answer:
+        plan.update({"intent": "context_lookup", "answer_role": "state", "target_surface": target or question.strip(" ?"), "requires_asserted": False})
+    elif wants_identifier_answer and target:
         plan.update({"intent": "reference_lookup", "answer_role": "reference", "target_surface": target, "requires_asserted": True})
     elif any(phrase in q for phrase in ["who owns", "who owned", "who is owner", "which owner"]):
         plan.update({"intent": "role_lookup", "answer_role": "owner"})
@@ -182,11 +190,11 @@ def normalize_model_plan(question: str, model: dict[str, Any] | None, det: dict[
         plan.update({"intent": "role_lookup", "answer_role": "approver"})
     elif any(phrase in q for phrase in ["who reported", "who requested", "who claimed", "who alleged", "which organization", "which company", "which account"]):
         plan.update({"intent": "role_lookup", "answer_role": "reporter"})
-    elif any(word in q for word in ["url", "link", "runbook", "manual", "guide"]):
+    elif qtokens.intersection({"url", "urls", "link", "links", "runbook", "manual", "guide"}):
         plan.update({"intent": "url_lookup", "answer_role": "reference"})
-    elif any(word in q for word in ["file", "path"]):
+    elif qtokens.intersection({"file", "files", "path", "paths"}):
         plan.update({"intent": "file_lookup", "answer_role": "reference"})
-    elif any(word in q for word in ["reference", "identifier", "id", "case"]):
+    elif qtokens.intersection({"reference", "references", "identifier", "identifiers", "id", "ids", "case"}):
         plan.update({"intent": "reference_lookup", "answer_role": "reference"})
     elif any(phrase in q for phrase in ["final state", "left in", "ended up", "at the end", "current state"]):
         plan.update({"intent": "state_lookup", "answer_role": "state", "requires_asserted": True})

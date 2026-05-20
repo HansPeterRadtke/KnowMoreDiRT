@@ -1,8 +1,9 @@
-"""Initial KnowMoreDiRT raw-text QA engine.
+"""KnowMoreDiRT raw-folder DRT/DSPG question-answering engine.
 
-This is deliberately conservative. It combines raw text scanning, lexical
-retrieval, source-grounded regex/entity extraction, and small general answer
-patterns. It is not a final DRT reasoning system.
+The engine builds a grounded discourse provenance graph from arbitrary readable
+raw text files, stores normalized DSPG records, retrieves bounded graph
+subgraphs and text evidence, and answers through generic source-grounded query
+execution. Optional local model use is limited to constrained query planning.
 """
 
 from __future__ import annotations
@@ -101,6 +102,7 @@ class KnowMoreDiRTEngine:
             self._answer_identifier_or_url,
             self._answer_who_role,
             self._answer_what_value,
+            self._answer_with_bounded_dspg,
             self._answer_generic_best_fact,
         ]
         fallback_unknown: Answer | None = None
@@ -119,6 +121,9 @@ class KnowMoreDiRTEngine:
                         self.last_answer = answer
                         return answer
                     fallback_unknown = answer
+                    continue
+                if not self._answer_has_source_grounding(answer):
+                    fallback_unknown = Answer("unknown", reason=f"{handler.__name__} returned an ungrounded answer")
                     continue
                 self.last_answer = answer
                 return answer
@@ -182,6 +187,28 @@ class KnowMoreDiRTEngine:
             return self._answer_what_value(focused_question, focused_norm) or self._answer_generic_best_fact(focused_question, focused_norm)
         return None
 
+    def _answer_with_bounded_dspg(self, question: str, qnorm: str) -> Answer | None:
+        plan = model_deterministic_plan(question)
+        if not plan or str(plan.get("intent") or "unknown") == "unknown":
+            return None
+        bounded_answer, diagnostics = execute_bounded_query(
+            self.store,
+            self.run_id,
+            self.documents,
+            self._sentences_by_document,
+            question,
+            plan,
+        )
+        self.last_bounded_diagnostics = diagnostics
+        if bounded_answer and not self._is_underdisambiguated_name_answer(qnorm, bounded_answer.text):
+            return bounded_answer
+        return None
+
+    def _answer_has_source_grounding(self, answer: Answer) -> bool:
+        if normalize(answer.text) == "unknown":
+            return True
+        return any(evidence.rel_path and evidence.text for evidence in answer.evidence)
+
     def _is_underdisambiguated_name_answer(self, qnorm: str, answer_text: str) -> bool:
         match = re.search(r"\bwhich\s+([a-z][a-z'-]{1,30})\b", qnorm)
         if not match:
@@ -189,87 +216,6 @@ class KnowMoreDiRTEngine:
         requested_name = match.group(1)
         answer_norm = normalize(answer_text)
         return answer_norm == requested_name
-
-    def _answer_with_local_model(self, question: str, qnorm: str) -> Answer | None:
-        if self._model_client is None:
-            return None
-        candidates = self._search(question, limit=int(os.environ.get("KMD_MODEL_SNIPPETS", "18")))
-        if not candidates:
-            return None
-        snippets = []
-        for index, (sentence, score) in enumerate(candidates, start=1):
-            snippets.append(
-                {
-                    "id": index,
-                    "source": sentence.rel_path,
-                    "text": sentence.text[:900],
-                    "score": round(float(score), 3),
-                }
-            )
-        prompt = (
-            "You answer questions only from the provided raw-text snippets. "
-            "Return JSON only with keys answer, evidence_ids, confidence. "
-            "If the snippets do not contain enough evidence, set answer to \"unknown\". "
-            "Do not use outside knowledge. Do not invent names, IDs, URLs, or facts. "
-            "Prefer exact IDs, URLs, names, dates, counts, or short phrases copied from snippets.\n"
-            + json.dumps({"question": question, "snippets": snippets}, ensure_ascii=False)
-            + "\nJSON:"
-        )
-        try:
-            result = self._model_client.complete_json(
-                prompt,
-                n_predict=int(os.environ.get("KMD_MODEL_N_PREDICT", "96")),
-            )
-        except Exception as exc:
-            return Answer("unknown", confidence=0.0, evidence=[], reason=f"local model failed: {exc}")
-        answer_text = clean_extracted_value(str(result.get("answer") or ""))
-        if not answer_text or normalize(answer_text) == "unknown":
-            return None
-        evidence_ids = result.get("evidence_ids") or []
-        if not isinstance(evidence_ids, list):
-            evidence_ids = []
-        selected_sentences: list[tuple[Sentence, float]] = []
-        by_index = {index: (sentence, score) for index, (sentence, score) in enumerate(candidates, start=1)}
-        for item in evidence_ids:
-            try:
-                pair = by_index.get(int(item))
-            except Exception:
-                pair = None
-            if pair:
-                selected_sentences.append(pair)
-        if not selected_sentences:
-            selected_sentences = candidates[:3]
-        evidence_text = "\n".join(sentence.text for sentence, _ in selected_sentences)
-        if not self._model_answer_is_grounded(answer_text, evidence_text):
-            return Answer("unknown", confidence=0.0, evidence=[], reason="local model answer failed source-grounding validation")
-        confidence = result.get("confidence")
-        try:
-            confidence_value = max(0.0, min(1.0, float(confidence)))
-        except Exception:
-            confidence_value = 0.55
-        return Answer(
-            answer_text,
-            confidence_value,
-            [self._evidence(sentence, score) for sentence, score in selected_sentences],
-            "local model bounded raw-text answer",
-        )
-
-    def _model_answer_is_grounded(self, answer: str, evidence_text: str) -> bool:
-        answer_norm = normalize(answer)
-        evidence_norm = normalize(evidence_text)
-        if answer_norm in evidence_norm:
-            return True
-        answer_ids = set(identifiers(answer) + urls(answer))
-        if answer_ids and all(item in evidence_text for item in answer_ids):
-            return True
-        answer_tokens = [
-            token for token in tokenize(answer)
-            if len(token) > 2 and token not in {"yes", "no", "the", "and", "or", "unknown"}
-        ]
-        if not answer_tokens:
-            return False
-        hits = sum(1 for token in answer_tokens if token in evidence_norm)
-        return hits >= max(1, min(3, len(answer_tokens)))
 
     def _search(self, question: str, limit: int = 12, required: list[str] | None = None) -> list[tuple[Sentence, float]]:
         qnorm = normalize(question)

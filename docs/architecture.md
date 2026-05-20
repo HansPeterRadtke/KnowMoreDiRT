@@ -68,6 +68,8 @@ The current query path combines:
 
 This is a first vertical slice of the full DSPG query architecture. It avoids full-corpus graph loading per question and avoids assuming external input structure. Future work should strengthen graph traversal, entity resolution, uncertainty handling, and deeper model-assisted extraction.
 
+The bounded SQLite graph executor is part of the normal non-model answer pipeline for query plans that can be mapped to generic DSPG operations. The optional local model path uses the same executor after producing a constrained plan, so model assistance refines planning rather than replacing grounded graph execution.
+
 ## Optional Local Model Integration
 
 KMD includes an isolated local model client hook. The default system does not require a model and does not call cloud APIs. When explicitly enabled, model use is bounded and constrained: the model can produce a generic JSON query plan, and execution still runs against source-grounded DSPG records or bounded raw-text evidence. Future staged model integration should extend the same constrained pattern for:
