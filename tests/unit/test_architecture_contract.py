@@ -6,6 +6,13 @@ from conftest import REPO_ROOT
 
 
 FORBIDDEN_CORE_MARKERS = [
+    "HERB",
+    "HELP",
+    "benchmark",
+    "gold",
+    "answerability",
+    "question_id",
+    "official question",
     "HERB RAW ARTIFACT",
     "allow_prepared_metadata",
     "DRT_HERB_PREP_ROOT",
@@ -13,6 +20,16 @@ FORBIDDEN_CORE_MARKERS = [
     "source_corpus",
     "product_id",
     "source_title",
+    "product_name",
+    "employee_ids",
+    "customer_id",
+    "which_pr",
+    "which_customer",
+    "which_ticket",
+    "which_issue",
+    "max-PR",
+    "unresolved-bug",
+    "employee-ID",
 ]
 
 

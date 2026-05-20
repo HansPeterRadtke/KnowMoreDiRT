@@ -157,18 +157,26 @@ class KnowMoreDiRTEngine:
         focused_question = question
         if target and target not in focused_question:
             focused_question = f"{question.rstrip('?')} about {target}?"
-        if intent == "who_owns" and target:
+        if intent == "role_lookup" and target and str(plan.get("answer_role") or "") == "owner":
             focused_question = f"Who is the owner for {target}?"
         focused_norm = normalize(focused_question)
-        if intent in {"who_author", "who_opened", "who_review", "who_approved", "who_commented", "who_merged", "who_assigned", "who_owns", "who_reported", "which_customer"}:
+        if intent == "role_lookup":
             return self._answer_who_role(focused_question, focused_norm) or self._answer_what_value(focused_question, focused_norm)
-        if intent in {"which_pr", "which_ticket", "which_issue", "which_url", "which_file"}:
+        if intent in {"reference_lookup", "url_lookup", "file_lookup"}:
             return self._answer_identifier_or_url(focused_question, focused_norm)
-        if intent == "final_state":
+        if intent == "state_lookup":
             return self._answer_final_state(focused_question, focused_norm)
-        if intent in {"context_time", "scope_status", "identity_status", "broad_search_grouped"}:
+        if intent in {"context_lookup", "identity_lookup", "grouped_search"}:
             return self._answer_what_value(focused_question, focused_norm) or self._answer_generic_best_fact(focused_question, focused_norm)
         return None
+
+    def _is_underdisambiguated_name_answer(self, qnorm: str, answer_text: str) -> bool:
+        match = re.search(r"\bwhich\s+([a-z][a-z'-]{1,30})\b", qnorm)
+        if not match:
+            return False
+        requested_name = match.group(1)
+        answer_norm = normalize(answer_text)
+        return answer_norm == requested_name
 
     def _answer_with_local_model(self, question: str, qnorm: str) -> Answer | None:
         if self._model_client is None:
@@ -609,14 +617,14 @@ class KnowMoreDiRTEngine:
             qnorm.startswith("where ") and any(term in qnorm for term in ["stored", "listed", "map"])
         )
         if wants_url_like:
-            question_ids = identifiers(question)
+            query_identifiers = identifiers(question)
             url_matches: list[tuple[float, str, Sentence, float]] = []
             scan_items = list(candidates)
             if self._allow_global_fallback:
                 scan_items.extend((sentence, 0.1) for sentence in self.sentences if urls(sentence.text))
             for sentence, score in scan_items:
                 sentence_norm = normalize(sentence.text)
-                if question_ids and not any(item in sentence.text for item in question_ids):
+                if query_identifiers and not any(item in sentence.text for item in query_identifiers):
                     continue
                 values = urls(sentence.text)
                 if values:
@@ -642,7 +650,7 @@ class KnowMoreDiRTEngine:
             if scored and scored[0][1] > 0:
                 sentence, score = scored[0]
                 return Answer(urls(sentence.text)[0], float(score), [self._evidence(sentence, float(score))], "global url scan")
-        if any(term in qnorm for term in ["which pr", "what pr", "which commit", "ticket", " id"]):
+        if any(term in qnorm for term in ["which pr", "what pr", "which commit", "ticket", " id", " ids"]):
             if "employee" in qnorm:
                 employee_matches: list[tuple[float, str, Sentence, float]] = []
                 for sentence, score in candidates:

@@ -7,16 +7,16 @@ from knowmoredirt.engine import KnowMoreDiRTEngine
 
 class FakeLocalModel:
     def complete_json(self, prompt: str, *, n_predict: int = 128, grammar: str | None = None) -> dict[str, object]:
-        assert "Convert the question into a graph query plan" in prompt
+        assert "generic raw-text knowledge query plan" in prompt
         assert grammar and "query_plan" in grammar
         return {
             "query_plan": {
-                "intent": "who_owns",
+                "intent": "role_lookup",
                 "target_surface": "SequoiaLens",
                 "answer_role": "owner",
                 "requires_asserted": True,
             },
-            "_model_raw": '{"query_plan":{"intent":"who_owns","target_surface":"SequoiaLens","answer_role":"owner","requires_asserted":true}}',
+            "_model_raw": '{"query_plan":{"intent":"role_lookup","target_surface":"SequoiaLens","answer_role":"owner","requires_asserted":true}}',
             "_model_elapsed_seconds": 0.01,
         }
 
@@ -56,7 +56,7 @@ def test_optional_local_model_invokes_migrated_query_plan_path(tmp_path: Path) -
     answer = engine.answer("Who owns SequoiaLens?")
 
     assert answer.text == "Nia Vale"
-    assert answer.reason == "migrated DRT model-query plan: who_owns"
+    assert answer.reason == "migrated DRT model-query plan: role_lookup"
     assert answer.evidence
     assert "Owner: Nia Vale" in answer.evidence[0].text
     assert engine.model_query_trace.call_count == 1

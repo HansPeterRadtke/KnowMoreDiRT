@@ -91,8 +91,8 @@ DSPG objects are grounded in exact source spans. Answers at the public boundary 
 - The local model path is isolated but not yet part of the default staged pipeline.
 - The fixture suite is now broader, but it is still self-written and not proof of broad generalization.
 
-## Migrated DRT Model-Query Path
+## Optional Local Query Planner
 
-KMD ports the clean planning pieces of the older DRT/DSPG model-query path without reintroducing benchmark-specific input assumptions. Candidate selection remains bounded before reasoning: lexical sentence search, DSPG relation/frame matches, neighboring discourse units, and natural filesystem metadata may contribute retrieval priors. Filesystem metadata can help locate a raw file, but answer facts must still be grounded in readable raw text spans.
+KMD includes an optional local planning path for development. Candidate selection remains bounded before reasoning: lexical sentence search, DSPG relation/frame matches, neighboring discourse units, and natural filesystem metadata may contribute retrieval priors. Filesystem metadata can help locate a raw file, but answer facts must still be grounded in readable raw text spans.
 
-An optional local-model path can be enabled for development or benchmark diagnostics. It uses a localhost llama.cpp-compatible endpoint to produce constrained JSON query plans, normalizes those plans with the deterministic planner, and executes them against KMD raw-folder DSPG records. This path is disabled by default, never uses cloud APIs, and never accepts an answer that lacks source-grounded raw-text evidence.
+When enabled, the local-model path uses a localhost llama.cpp-compatible endpoint to produce constrained JSON query plans, normalizes those plans with the deterministic planner, and executes them against KMD raw-folder DSPG records. This path is disabled by default, never uses cloud APIs, and should not introduce dataset- or scorer-specific behavior.

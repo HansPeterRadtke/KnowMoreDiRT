@@ -97,8 +97,8 @@ Next evaluation work should add:
 - paraphrased question suites,
 - adversarial context/scope tests,
 - larger random raw-folder corpora,
-- independent external benchmark runs only after internal generalization improves.
+- independent external evaluations only after internal generalization improves.
 
-## External Benchmark Diagnostics
+## External Evaluation Diagnostics
 
-HERB and other external benchmarks are treated as diagnostics rather than training data. KMD benchmark adapters may format public `question(text)` outputs for a scorer, but core KMD does not consume gold answers, answerability labels, benchmark family labels, prepared metadata wrappers, or benchmark-specific source conversions. Current HERB runs should therefore be read as objective capability measurements; low retrieval/citation scores identify engineering work rather than reasons to add benchmark shortcuts.
+External evaluations are treated as diagnostics rather than training data. KMD adapters may format public `question(text)` outputs for a scorer, but core KMD must not consume hidden answers, answerability labels, dataset category labels, prepared metadata wrappers, or source conversions. Low retrieval/citation scores identify engineering work rather than reasons to add shortcuts.

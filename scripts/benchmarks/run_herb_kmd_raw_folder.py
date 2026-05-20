@@ -86,6 +86,7 @@ def main() -> int:
     parser.add_argument("--run-name", default=f"kmd_public_raw_folder_{time.strftime('%Y%m%d_%H%M%S')}")
     parser.add_argument("--limit", type=int, default=0, help="Optional smoke-test limit; 0 means all questions.")
     parser.add_argument("--use-local-model", action="store_true", help="Enable KMD's optional localhost-only migrated DRT model-query planner.")
+    parser.add_argument("--resume", action="store_true", help="Resume an interrupted run directory without deleting completed JSONL outputs.")
     args = parser.parse_args()
 
     repo_root = Path(__file__).resolve().parents[2]
@@ -117,23 +118,39 @@ def main() -> int:
     from herb_kgqa.evaluator import evaluate_run  # noqa: WPS433
 
     run_dir.mkdir(parents=True, exist_ok=True)
-    for output_name in ["retrieved_sources.jsonl", "evidence_packets.jsonl", "predictions.jsonl", "kmd_public_answers.jsonl"]:
-        output_path = run_dir / output_name
-        if output_path.exists():
-            output_path.unlink()
+    if not args.resume:
+        for output_name in ["retrieved_sources.jsonl", "evidence_packets.jsonl", "predictions.jsonl", "kmd_public_answers.jsonl"]:
+            output_path = run_dir / output_name
+            if output_path.exists():
+                output_path.unlink()
 
     all_questions = read_official_questions(normalized_questions)
     questions = all_questions[: args.limit] if args.limit else all_questions
     write_jsonl(sanitized_questions_path, questions)
+    completed_ids: set[str] = set()
+    answered_count = 0
+    if args.resume and checkpoint_path.exists():
+        with checkpoint_path.open("r", encoding="utf-8") as handle:
+            for line in handle:
+                if not line.strip():
+                    continue
+                checkpoint = json.loads(line)
+                question_id = str(checkpoint.get("question_id") or "")
+                if question_id:
+                    completed_ids.add(question_id)
+                    if checkpoint.get("answered"):
+                        answered_count += 1
     log_event(
         log_path,
-        "run_start",
+        "resume_start" if args.resume else "run_start",
         repo_root=str(repo_root),
         raw_folder=str(raw_folder),
         run_dir=str(run_dir),
         official_questions=str(normalized_questions),
         sanitized_questions=str(sanitized_questions_path),
         total_questions=len(questions),
+        already_completed=len(completed_ids),
+        already_answered=answered_count,
         limit=args.limit,
         query_input_fields=["question_id", "question"],
         model_status="optional localhost migrated DRT model-query planner enabled" if args.use_local_model else "not used; current KMD public API is deterministic",
@@ -159,17 +176,19 @@ def main() -> int:
     prediction_rows: list[dict[str, Any]] = []
     retrieved_rows: list[dict[str, Any]] = []
     evidence_rows: list[dict[str, Any]] = []
-    answered_count = 0
     started = time.time()
     total = len(questions)
     for index, row in enumerate(questions, start=1):
         question_id = row["question_id"]
         question_text = row["question"]
+        if question_id in completed_ids:
+            continue
         question_started = time.time()
         log_event(log_path, "question_start", index=index, total=total, question_id=question_id)
         public_answer = kmd.question(question_text)
         internal_answer = getattr(getattr(kmd_public, "_ENGINE", None), "last_answer", None)
         model_trace = getattr(getattr(kmd_public, "_ENGINE", None), "model_query_trace", None)
+        bounded_diagnostics = getattr(getattr(kmd_public, "_ENGINE", None), "last_bounded_diagnostics", None)
         evidence_items = []
         for evidence in getattr(internal_answer, "evidence", []) or []:
             evidence_items.append(
@@ -226,6 +245,7 @@ def main() -> int:
             "answered": is_answered,
             "evidence_count": len(evidence_items),
             "model_query_trace": model_trace.as_dict() if model_trace and args.use_local_model else None,
+            "bounded_diagnostics": bounded_diagnostics,
             "elapsed_seconds": elapsed,
         }
 
@@ -246,15 +266,33 @@ def main() -> int:
             answered=is_answered,
             answered_count=answered_count,
             evidence_count=len(evidence_items),
+            bounded_record_counts=(
+                bounded_diagnostics.get("execution", {}).get("record_counts", {})
+                if isinstance(bounded_diagnostics, dict)
+                else {}
+            ),
             elapsed_seconds=elapsed,
         )
 
     query_elapsed = round(time.time() - started, 3)
-    log_event(log_path, "query_done", completed=len(questions), answered_count=answered_count, elapsed_seconds=query_elapsed)
+    completed_after = len(completed_ids)
+    if checkpoint_path.exists():
+        seen_after: set[str] = set()
+        with checkpoint_path.open("r", encoding="utf-8") as handle:
+            for line in handle:
+                if not line.strip():
+                    continue
+                checkpoint = json.loads(line)
+                question_id = str(checkpoint.get("question_id") or "")
+                if question_id:
+                    seen_after.add(question_id)
+        completed_after = len(seen_after)
+    log_event(log_path, "query_done", completed=completed_after, answered_count=answered_count, elapsed_seconds=query_elapsed)
 
-    if len(questions) != len(all_questions):
-        log_event(log_path, "scorer_skipped", reason="limit was set", completed=len(questions), full_count=len(all_questions))
-        scores: dict[str, Any] = {"runtime_failure": True, "error": "scorer skipped because this was a limited smoke run"}
+    if len(questions) != len(all_questions) or completed_after != len(all_questions):
+        reason = "limit was set" if len(questions) != len(all_questions) else "run incomplete"
+        log_event(log_path, "scorer_skipped", reason=reason, completed=completed_after, full_count=len(all_questions))
+        scores: dict[str, Any] = {"runtime_failure": True, "error": f"scorer skipped because {reason}"}
     else:
         os.environ.setdefault("HERB_BENCHMARK_SOURCE_ROOT", str(herb_root))
         os.environ.setdefault("HERB_BENCHMARK_VAR_ROOT", str(var_root))
@@ -271,9 +309,9 @@ def main() -> int:
         "raw_herb_source_folder": str(raw_folder),
         "questions_count": len(questions),
         "official_questions_count": len(all_questions),
-        "query_completed": len(questions) == len(all_questions),
-        "completed_question_count": len(questions),
-        "completed_percent": round((len(questions) / len(all_questions)) * 100, 3) if all_questions else 0.0,
+        "query_completed": completed_after == len(all_questions),
+        "completed_question_count": completed_after,
+        "completed_percent": round((completed_after / len(all_questions)) * 100, 3) if all_questions else 0.0,
         "answered_count": answered_count,
         "deterministic_model_status": "optional localhost migrated DRT model-query planner enabled" if args.use_local_model else "deterministic KMD public API; no LLM calls made",
         "scorer": "herb_kgqa.evaluator.evaluate_run(use_local_judge=False)",

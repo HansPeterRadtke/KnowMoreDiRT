@@ -1,10 +1,9 @@
-"""Migrated old DRT model-query planning primitives.
+"""Generic local-model query planning primitives.
 
-This module is a cleaned port of the high-performing DRT_tests
-``scripts/dspg_query.py`` model-query path. It contains only generic query
-planning, prompt construction, normalization, and trace helpers. It deliberately
-contains no benchmark-specific names, prepared-corpus markers, gold labels, or
-adapter logic.
+This module keeps the optional local-model path generic: it asks a localhost
+model to classify a question into broad raw-folder knowledge-system operations.
+It does not contain external-evaluation names, special input markers, hidden
+answer labels, or dataset-group routing.
 """
 
 from __future__ import annotations
@@ -22,20 +21,18 @@ from .text import normalize
 
 INTENT_GRAMMAR = r'''
 root ::= "{" ws "\"query_plan\"" ws ":" ws "{" ws "\"intent\"" ws ":" ws intent ws "," ws "\"target_surface\"" ws ":" ws string ws "," ws "\"answer_role\"" ws ":" ws role ws "," ws "\"requires_asserted\"" ws ":" ws bool ws "}" ws "}"
-intent ::= "\"who_author\"" | "\"who_opened\"" | "\"who_review\"" | "\"who_approved\"" | "\"who_commented\"" | "\"who_merged\"" | "\"who_assigned\"" | "\"who_owns\"" | "\"who_reported\"" | "\"which_customer\"" | "\"which_pr\"" | "\"which_ticket\"" | "\"which_issue\"" | "\"which_url\"" | "\"which_file\"" | "\"final_state\"" | "\"scope_status\"" | "\"identity_status\"" | "\"context_time\"" | "\"broad_search_grouped\"" | "\"unknown\""
-role ::= "\"agent\"" | "\"author\"" | "\"reviewer\"" | "\"approver\"" | "\"customer\"" | "\"theme\"" | "\"artifact\"" | "\"state\"" | "\"unknown\""
+intent ::= "\"role_lookup\"" | "\"reference_lookup\"" | "\"url_lookup\"" | "\"file_lookup\"" | "\"state_lookup\"" | "\"context_lookup\"" | "\"identity_lookup\"" | "\"grouped_search\"" | "\"unknown\""
+role ::= "\"actor\"" | "\"author\"" | "\"reviewer\"" | "\"approver\"" | "\"owner\"" | "\"reporter\"" | "\"assignee\"" | "\"organization\"" | "\"reference\"" | "\"state\"" | "\"unknown\""
 bool ::= "true" | "false"
 string ::= "\"" chars "\""
 chars ::= ([^"\\] | "\\" ["\\/bfnrt])*
 ws ::= [ \t\n\r]*
 '''
 
-ARTIFACT_PATTERNS = [
-    r"\bPR-\d+\b",
-    r"\b(?:BUG|ISSUE)-\d+\b",
-    r"\b(?:SUP|TICKET)-\d+\b",
+REFERENCE_PATTERNS = [
+    r"\b[A-Z][A-Z0-9]{1,12}-\d+[A-Z0-9-]*\b",
     r"https?://[^\s\]\)\"']+",
-    r"\b[A-Za-z0-9_./-]+\.(?:cpp|tmp|py|js|md|txt|json|yaml|yml)\b",
+    r"\b[A-Za-z0-9_./-]+\.(?:cpp|tmp|py|js|md|txt|json|yaml|yml|csv|tsv|pdf)\b",
 ]
 
 
@@ -63,57 +60,12 @@ class ModelQueryTrace:
         }
 
 
-def visible_artifact_anchor(question: str) -> str:
-    for pattern in ARTIFACT_PATTERNS:
+def visible_reference_anchor(question: str) -> str:
+    for pattern in REFERENCE_PATTERNS:
         match = re.search(pattern, question, re.I)
         if match:
             return match.group(0)
     return ""
-
-
-def deterministic_plan(question: str) -> dict[str, Any]:
-    q = normalize(question)
-    target = visible_artifact_anchor(question)
-    if ("authored" in q or "opened" in q or "which engineer" in q or "carried" in q) and target:
-        return {"intent": "who_author", "target_surface": target, "answer_role": "author", "requires_asserted": True, "source": "deterministic"}
-    if any(phrase in q for phrase in ["who owns", "who owned", "who is owner", "which owner"]) and target:
-        return {"intent": "who_owns", "target_surface": target, "answer_role": "owner", "requires_asserted": True, "source": "deterministic"}
-    if any(phrase in q for phrase in ["responsible for", "carried the fix", "engineer behind", "authored the fix"]) and target:
-        return {"intent": "who_author", "target_surface": target, "answer_role": "author", "requires_asserted": True, "source": "deterministic"}
-    if ("reviewed" in q or "reviewer" in q) and target:
-        return {"intent": "who_review", "target_surface": target, "answer_role": "reviewer", "requires_asserted": True, "source": "deterministic"}
-    if any(phrase in q for phrase in ["looked over", "checked", "inspected", "signed off"]) and target:
-        return {"intent": "who_review", "target_surface": target, "answer_role": "reviewer", "requires_asserted": True, "source": "deterministic"}
-    if "approved" in q and target:
-        return {"intent": "who_approved", "target_surface": target, "answer_role": "approver", "requires_asserted": True, "source": "deterministic"}
-    if ("which customer" in q or "which company" in q or "which account" in q) and target:
-        return {"intent": "which_customer", "target_surface": target, "answer_role": "customer", "requires_asserted": True, "source": "deterministic"}
-    if "which pr" in q and target:
-        return {"intent": "which_pr", "target_surface": target, "answer_role": "artifact", "requires_asserted": True, "source": "deterministic"}
-    if "which ticket" in q and target:
-        return {"intent": "which_ticket", "target_surface": target, "answer_role": "artifact", "requires_asserted": True, "source": "deterministic"}
-    if "which issue" in q and target:
-        return {"intent": "which_issue", "target_surface": target, "answer_role": "artifact", "requires_asserted": True, "source": "deterministic"}
-    if "which url" in q:
-        return {"intent": "which_url", "target_surface": question.strip(" ?"), "answer_role": "artifact", "requires_asserted": True, "source": "deterministic"}
-    if q.startswith("where ") and any(word in q for word in ["catalog", "located", "link", "url", "runbook", "manual", "guide", "document", "drawing"]):
-        return {"intent": "which_url", "target_surface": question.strip(" ?"), "answer_role": "artifact", "requires_asserted": True, "source": "deterministic"}
-    if "which file" in q:
-        return {"intent": "which_file", "target_surface": target or question.strip(" ?"), "answer_role": "artifact", "requires_asserted": True, "source": "deterministic"}
-    if ("final state" in q or "left" in q or "ended up" in q or "at the end" in q) and target:
-        return {"intent": "final_state", "target_surface": target, "answer_role": "state", "requires_asserted": True, "source": "deterministic"}
-    if any(word in q for word in ["measurement year", "measurement date", "measured", "source modified", "file modified", "modified time", "archived as of", "valid until", "validity"]):
-        return {"intent": "context_time", "target_surface": question.strip(" ?"), "answer_role": "state", "requires_asserted": False, "source": "deterministic"}
-    if ("asserted" in q or "alleged" in q or "reported" in q or "assertion status" in q) and target:
-        return {"intent": "scope_status", "target_surface": target, "answer_role": "unknown", "requires_asserted": False, "source": "deterministic"}
-    if (q.startswith("are ") and " same " in q) or ("same person" in q and "identify" in q):
-        return {"intent": "identity_status", "target_surface": question.strip(" ?"), "answer_role": "unknown", "requires_asserted": False, "source": "deterministic"}
-    return {"intent": "unknown", "target_surface": target, "answer_role": "unknown", "requires_asserted": True, "source": "deterministic"}
-
-
-def _customer_anchor(question: str) -> str:
-    match = re.search(r"\b(?:customer|account|company)\s+([A-Z][A-Za-z0-9&.'-]*(?:\s+[A-Z][A-Za-z0-9&.'-]*){0,5})", question)
-    return match.group(1).strip(" .?,") if match else ""
 
 
 def _role_object_anchor(question: str, role_words: list[str]) -> str:
@@ -121,7 +73,7 @@ def _role_object_anchor(question: str, role_words: list[str]) -> str:
     for pattern in [rf"\b(?:{role_alt})\s+(?:the\s+)?([^?]+?)(?:\?|$)", rf"\b(?:{role_alt})\s+(?:for|of)\s+(?:the\s+)?([^?]+?)(?:\?|$)"]:
         match = re.search(pattern, question, re.I)
         if match:
-            value = re.sub(r"\b(?:after|before|during|for customer|by customer)\b.*$", "", match.group(1), flags=re.I)
+            value = re.sub(r"\b(?:after|before|during|for|by)\b.*$", "", match.group(1), flags=re.I)
             return value.strip(" .?,")
     return ""
 
@@ -138,91 +90,95 @@ def _text_has_target(text: str, terms: list[str]) -> bool:
     return hits >= 1
 
 
+def deterministic_plan(question: str) -> dict[str, Any]:
+    q = normalize(question)
+    target = visible_reference_anchor(question)
+    plan: dict[str, Any] = {
+        "intent": "unknown",
+        "target_surface": target,
+        "answer_role": "unknown",
+        "requires_asserted": True,
+        "source": "deterministic",
+    }
+    if any(phrase in q for phrase in ["who owns", "who owned", "who is owner", "which owner"]):
+        plan.update({"intent": "role_lookup", "answer_role": "owner", "target_surface": target or _role_object_anchor(question, ["owns", "owned", "owner"]), "requires_asserted": True})
+    elif any(phrase in q for phrase in ["who authored", "who wrote", "who created", "who prepared", "responsible for", "carried", "engineer behind"]):
+        plan.update({"intent": "role_lookup", "answer_role": "author", "target_surface": target or _role_object_anchor(question, ["authored", "wrote", "created", "prepared", "responsible for", "carried"]), "requires_asserted": True})
+    elif any(phrase in q for phrase in ["who reviewed", "reviewer", "looked over", "checked", "inspected", "signed off"]):
+        plan.update({"intent": "role_lookup", "answer_role": "reviewer", "target_surface": target or _role_object_anchor(question, ["reviewed", "looked over", "checked", "inspected", "signed off"]), "requires_asserted": True})
+    elif "approved" in q:
+        plan.update({"intent": "role_lookup", "answer_role": "approver", "target_surface": target, "requires_asserted": True})
+    elif any(phrase in q for phrase in ["who reported", "who requested", "who claimed", "who alleged", "which organization", "which company", "which account"]):
+        plan.update({"intent": "role_lookup", "answer_role": "reporter", "target_surface": target or question.strip(" ?"), "requires_asserted": True})
+    elif any(word in q for word in ["url", "link", "runbook", "manual", "guide"]):
+        plan.update({"intent": "url_lookup", "answer_role": "reference", "target_surface": target or question.strip(" ?"), "requires_asserted": True})
+    elif any(word in q for word in ["file", "path"]):
+        plan.update({"intent": "file_lookup", "answer_role": "reference", "target_surface": target or question.strip(" ?"), "requires_asserted": True})
+    elif any(word in q for word in ["reference", "identifier", "id", "ticket", "case"]):
+        plan.update({"intent": "reference_lookup", "answer_role": "reference", "target_surface": target or question.strip(" ?"), "requires_asserted": True})
+    elif any(phrase in q for phrase in ["final state", "left in", "ended up", "at the end", "current state"]):
+        plan.update({"intent": "state_lookup", "answer_role": "state", "target_surface": target or question.strip(" ?"), "requires_asserted": True})
+    elif any(word in q for word in ["measurement", "measured", "modified", "archived", "valid", "validity", "effective"]):
+        plan.update({"intent": "context_lookup", "answer_role": "state", "target_surface": question.strip(" ?"), "requires_asserted": False})
+    elif any(word in q for word in ["asserted", "alleged", "reported", "quoted", "fictional", "dream"]):
+        plan.update({"intent": "context_lookup", "answer_role": "unknown", "target_surface": target or question.strip(" ?"), "requires_asserted": False})
+    elif (q.startswith("are ") and " same " in q) or ("same person" in q and "identify" in q):
+        plan.update({"intent": "identity_lookup", "answer_role": "unknown", "target_surface": question.strip(" ?"), "requires_asserted": False})
+    return plan
+
+
 def normalize_model_plan(question: str, model: dict[str, Any] | None, det: dict[str, Any]) -> dict[str, Any] | None:
     if not model or not model.get("accepted"):
         return model
     plan = dict(model)
     plan["query_text"] = question
     q = normalize(question)
-    target = visible_artifact_anchor(question)
+    target = visible_reference_anchor(question)
     if target and not _text_has_target(str(plan.get("target_surface", "")), [normalize(target)]):
         plan["target_surface"] = target
-    customer = _customer_anchor(question)
-    if any(word in q for word in ["which account", "which customer", "which company", "what account", "what customer", "what company"]):
-        plan["intent"] = "which_customer"
-        plan["answer_role"] = "customer"
-        if target:
-            plan["target_surface"] = target
-    if customer and any(phrase in q for phrase in ["for customer", "for account", "customer ", "account ", "company "]):
-        generic_target = normalize(str(plan.get("target_surface") or ""))
-        if not generic_target or generic_target in {"engineer", "customer", "account", "company", "person", "fix"}:
-            plan["target_surface"] = customer
-    if plan.get("intent") in {"who_author", "who_opened", "who_reported", "unknown"} and (plan.get("answer_role") == "customer" or any(word in q for word in ["which account", "which customer", "which company", "account sounded", "company flagged", "account raised", "customer escalated"])):
-        plan["intent"] = "which_customer"
-        plan["answer_role"] = "customer"
-    if any(phrase in q for phrase in ["who authored", "who wrote", "who created", "who prepared", "which engineer", "engineer behind", "carried the fix", "responsible for", "authored the fix"]):
-        plan["intent"] = "who_author"
-        plan["answer_role"] = "author"
-        if not target and not customer:
-            obj = _role_object_anchor(question, ["authored", "wrote", "created", "prepared", "carried", "responsible for"])
-            if obj:
-                plan["target_surface"] = obj
-    if any(phrase in q for phrase in ["who reviewed", "who looked over", "looked over", "checked", "inspected", "signed off"]):
-        plan["intent"] = "who_review"
-        plan["answer_role"] = "reviewer"
-        if not target:
-            obj = _role_object_anchor(question, ["reviewed", "looked over", "checked", "inspected", "signed off"])
-            if obj:
-                plan["target_surface"] = obj
     if any(phrase in q for phrase in ["who owns", "who owned", "who is owner", "which owner"]):
-        plan["intent"] = "who_owns"
-        plan["answer_role"] = "owner"
-        if target:
-            plan["target_surface"] = target
-    if plan.get("intent") == "scope_status" and q.startswith("where") and any(word in q for word in ["cataloged", "link", "url", "drawing", "runbook", "manual", "document"]):
-        plan["intent"] = "which_url"
-        plan["answer_role"] = "artifact"
-    if plan.get("intent") in {"unknown", "scope_status", "broad_search_grouped"} and any(word in q for word in ["guide", "runbook", "manual", "document", "drawing"]) and any(phrase in q for phrase in ["point me", "show me", "locate", "where"]):
-        plan["intent"] = "which_url"
-        plan["answer_role"] = "artifact"
-        if target:
-            plan["target_surface"] = target
-    if plan.get("intent") in {"unknown", "scope_status"} and any(word in q for word in ["measurement year", "measurement date", "measured", "source modified", "file modified", "valid until", "archived as of"]):
-        plan["intent"] = "context_time"
-        plan["answer_role"] = "state"
-    if plan.get("intent") == "context_time" and not str(plan.get("target_surface") or "").strip():
-        plan["target_surface"] = question.strip(" ?")
-    if any(phrase in q for phrase in ["final state", "left in", "ended up", "at the end"]):
-        plan["intent"] = "final_state"
-        plan["answer_role"] = "state"
-        if target:
-            plan["target_surface"] = target
-        plan["requires_asserted"] = True
-    if plan.get("intent") in {"who_author", "who_opened", "who_review", "who_approved", "who_commented", "who_merged", "who_assigned", "who_owns", "which_customer", "which_pr", "which_ticket", "which_issue", "which_url", "which_file", "final_state"}:
-        plan["requires_asserted"] = True
-    if det.get("intent") == "identity_status" and plan.get("intent") != "identity_status":
+        plan.update({"intent": "role_lookup", "answer_role": "owner"})
+    elif any(phrase in q for phrase in ["who authored", "who wrote", "who created", "who prepared", "responsible for", "carried", "engineer behind"]):
+        plan.update({"intent": "role_lookup", "answer_role": "author"})
+    elif any(phrase in q for phrase in ["who reviewed", "reviewer", "looked over", "checked", "inspected", "signed off"]):
+        plan.update({"intent": "role_lookup", "answer_role": "reviewer"})
+    elif "approved" in q:
+        plan.update({"intent": "role_lookup", "answer_role": "approver"})
+    elif any(phrase in q for phrase in ["who reported", "who requested", "who claimed", "who alleged", "which organization", "which company", "which account"]):
+        plan.update({"intent": "role_lookup", "answer_role": "reporter"})
+    elif any(word in q for word in ["url", "link", "runbook", "manual", "guide"]):
+        plan.update({"intent": "url_lookup", "answer_role": "reference"})
+    elif any(word in q for word in ["file", "path"]):
+        plan.update({"intent": "file_lookup", "answer_role": "reference"})
+    elif any(word in q for word in ["reference", "identifier", "id", "ticket", "case"]):
+        plan.update({"intent": "reference_lookup", "answer_role": "reference"})
+    elif any(phrase in q for phrase in ["final state", "left in", "ended up", "at the end", "current state"]):
+        plan.update({"intent": "state_lookup", "answer_role": "state", "requires_asserted": True})
+    elif any(word in q for word in ["measurement", "measured", "modified", "archived", "valid", "validity", "effective", "asserted", "alleged", "reported", "quoted", "fictional", "dream"]):
+        plan.update({"intent": "context_lookup", "requires_asserted": False})
+    if not str(plan.get("target_surface") or "").strip() and det.get("target_surface"):
+        plan["target_surface"] = det["target_surface"]
+    if det.get("intent") == "identity_lookup" and plan.get("intent") != "identity_lookup":
         plan = dict(det)
         plan["source"] = "deterministic_identity_guard"
+    if plan.get("intent") in {"role_lookup", "reference_lookup", "url_lookup", "file_lookup", "state_lookup"}:
+        plan["requires_asserted"] = True
     return plan
 
 
 def build_query_plan_prompt(question: str) -> str:
     return (
-        "JSON only. Convert the question into a graph query plan, do not answer it. "
-        "Use the intent enum. Map implicit responsibility for a change/fix/patch to who_author or who_opened. "
-        "Map responsible owner, engineer behind, carried, landed, or authored the fix to who_author unless the question asks ownership directly. "
-        "Map reviewed/looked over/checked/inspected/signed-off review to who_review. "
-        "Map account/customer/company raised/flagged/escalated/reported/affected/suffered/experienced/requested refund to customer/report intents. "
-        "Map runbook/design/manual/document/drawing link/cataloged/location questions to which_url. "
-        "Map final state/left/ended up/after timeline/at the end to final_state. "
-        "Map asserted/reported/quoted/alleged/fictional status questions to scope_status. "
-        "Map measurement/source-modified/validity/archive time questions to context_time. "
-        "target_surface must be an exact visible anchor from the question when present.\n"
+        "JSON only. Convert the question into a generic raw-text knowledge query plan; do not answer it. "
+        "Use role_lookup for questions asking who performed a role or action. "
+        "Use reference_lookup for IDs or named references, url_lookup for links, file_lookup for file paths, "
+        "state_lookup for final/current state, context_lookup for assertion/report/quote/validity/time context, "
+        "identity_lookup for same-entity questions, grouped_search for broad grouped retrieval, unknown otherwise. "
+        "target_surface must be an exact visible anchor from the question when present."
         + json.dumps({"question": question}, ensure_ascii=False)
     )
 
 
-def call_model_query_plan(question: str, client: LocalModelClient, *, n_predict: int = 128) -> dict[str, Any]:
+def call_model_query_plan(question: str, client: LocalModelClient, *, n_predict: int = 96) -> dict[str, Any]:
     prompt = build_query_plan_prompt(question)
     start = time.time()
     try:
