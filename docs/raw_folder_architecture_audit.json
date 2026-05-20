@@ -1,29 +1,42 @@
 {
   "benchmark_processes_stopped": true,
-  "changes_made": [
-    "removed bounded_dspg.py and engine integration",
-    "refactored optional model plan intents to generic raw-folder operations",
-    "deleted capability_parity_migration docs",
-    "strengthened core source forbidden-marker audit tests",
-    "updated architecture and evaluation docs to avoid migration/score-recovery framing"
+  "public_api": ["initialize(folder_path)", "question(text) -> string"],
+  "generic_primitives_extracted": [
+    "bounded_retrieval",
+    "evidence_ranking",
+    "graph_traversal",
+    "relation_resolution",
+    "context_handling",
+    "temporal_reasoning",
+    "identifier_resolution",
+    "role_assignment",
+    "source_grounding",
+    "localhost_only_bounded_model_planning"
   ],
-  "core_contamination_found": [
-    "uncommitted bounded_dspg.py used legacy benchmark-shaped intent vocabulary",
-    "legacy_drt_path.py used overly specific reference/customer/pr-style intent names",
-    "official docs contained migration score/path report unsuitable as public architecture docs"
+  "removed_or_refactored": [
+    "external-evaluation terminology from core modules",
+    "hidden-label and scoring terms from core modules",
+    "prepared-input and wrapper markers from core modules",
+    "old family-shaped reference intents",
+    "domain-shaped role routing terms",
+    "scratch bounded_dspg migration module",
+    "legacy_drt_path module name and old vocabulary"
   ],
-  "deliberately_kept": [
-    "benchmark adapter under scripts/benchmarks because it is outside core and passes only folder path and question text to KMD",
-    "generic identifier/url/file/status/person/organization text-domain handling",
-    "resume/checkpoint adapter behavior outside core"
+  "core_intents": [
+    "role_lookup",
+    "reference_lookup",
+    "url_lookup",
+    "file_lookup",
+    "state_lookup",
+    "context_lookup",
+    "identity_lookup",
+    "grouped_search",
+    "unknown"
   ],
-  "public_api": [
-    "initialize(folder_path)",
-    "question(text) -> string"
-  ],
+  "adapter_boundary": "External adapter scripts may exist outside src/knowmoredirt but may pass only folder path and question text into KMD.",
   "remaining_concerns": [
-    "some broad domain terms remain in deterministic engine as generic text-domain vocabulary and should be generalized over time",
-    "optional local-model planner is developmental and disabled by default"
-  ],
-  "status": "audit_completed"
+    "self-written fixtures still contain legacy project-style words as input data, not core vocabulary",
+    "deterministic phrase patterns should continue moving toward relation-first graph execution",
+    "optional local-model planning needs broader non-fixture validation"
+  ]
 }

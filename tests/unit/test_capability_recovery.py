@@ -41,7 +41,7 @@ def test_document_metadata_is_retrieval_prior_not_answer_source(tmp_path: Path) 
     assert "Owner: Nia Vale" in answer.evidence[0].text
 
 
-def test_optional_local_model_invokes_migrated_query_plan_path(tmp_path: Path) -> None:
+def test_optional_local_model_invokes_generic_query_plan_path(tmp_path: Path) -> None:
     (tmp_path / "odd").mkdir()
     (tmp_path / "odd" / "SequoiaLens.raw").write_text(
         "Owner: Nia Vale\nThe delivery motto for this note is blue lantern.\n",
@@ -56,7 +56,7 @@ def test_optional_local_model_invokes_migrated_query_plan_path(tmp_path: Path) -
     answer = engine.answer("Who owns SequoiaLens?")
 
     assert answer.text == "Nia Vale"
-    assert answer.reason == "migrated DRT model-query plan: role_lookup"
+    assert answer.reason == "local model query plan: role_lookup"
     assert answer.evidence
     assert "Owner: Nia Vale" in answer.evidence[0].text
     assert engine.model_query_trace.call_count == 1

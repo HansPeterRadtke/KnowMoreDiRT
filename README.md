@@ -16,7 +16,7 @@ KMD exposes only two intended user-facing operations:
 - `initialize(folder_path)`: read one folder tree containing arbitrary readable text files.
 - `question(text) -> string`: answer one natural-language question as a plain string.
 
-The input folder may contain nested folders, arbitrary filenames, arbitrary extensions, files without extensions, prose, logs, tables, transcripts, JSON-like text, and noisy text. KMD does not require schemas, prepared corpora, metadata wrappers, or benchmark-specific conversion.
+The input folder may contain nested folders, arbitrary filenames, arbitrary extensions, files without extensions, prose, logs, tables, transcripts, JSON-like text, and noisy text. KMD does not require schemas, metadata wrappers, manifests, or external source conversion.
 
 See [`docs/public_api.md`](docs/public_api.md) for the exact API contract.
 

@@ -73,7 +73,7 @@ The unit tests also verify that initialization creates normalized DSPG structure
 - temporal edges.
 - generic relation records.
 
-Architecture tests assert that the core package contains no old benchmark/prepared-input markers and that `knowmoredirt.__all__` exports only `initialize` and `question`.
+Architecture tests assert that the core package contains no external-evaluation markers, wrapper assumptions, hidden-label terms, or dataset-shaped routing, and that `knowmoredirt.__all__` exports only `initialize` and `question`.
 They also scan the core package for fixture/domain-shaped literals from the regression corpora so future changes do not quietly reintroduce content-specific answer branches.
 
 The current answer path has been refactored toward generic DSPG mechanisms:
@@ -101,4 +101,4 @@ Next evaluation work should add:
 
 ## External Evaluation Diagnostics
 
-External evaluations are treated as diagnostics rather than training data. KMD adapters may format public `question(text)` outputs for a scorer, but core KMD must not consume hidden answers, answerability labels, dataset category labels, prepared metadata wrappers, or source conversions. Low retrieval/citation scores identify engineering work rather than reasons to add shortcuts.
+External evaluations are treated as diagnostics rather than training data. Any adapter may only pass a folder path to `initialize(folder_path)` and question strings to `question(text)`, then format the returned strings for the outside harness. Core KMD must not consume hidden answers, labels, dataset categories, metadata wrappers, or source conversions.

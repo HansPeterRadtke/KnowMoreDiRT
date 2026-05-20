@@ -30,7 +30,7 @@ def test_public_contract_is_documented() -> None:
     assert "initialize(folder_path)" in combined
     assert "question(text) -> string" in combined
     assert "raw text" in combined
-    assert "prepared corpora" in combined
+    assert "metadata wrappers" in combined
 
 
 def test_initialize_and_question_work_on_random_raw_folder(tmp_path: Path) -> None:

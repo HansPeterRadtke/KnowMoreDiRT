@@ -7,7 +7,6 @@ patterns. It is not a final DRT reasoning system.
 
 from __future__ import annotations
 
-import json
 import os
 import re
 from dataclasses import dataclass
@@ -16,10 +15,10 @@ from pathlib import Path
 from .extractors import after_label, capitalized_phrases, identifiers, urls
 from .ingest import ingest_folder
 from .index import LexicalIndex
-from .legacy_drt_path import (
+from .model_planner import (
     ModelQueryTrace,
     call_model_query_plan,
-    deterministic_plan as migrated_deterministic_plan,
+    deterministic_plan as model_deterministic_plan,
     normalize_model_plan,
 )
 from .model import LocalModelClient
@@ -104,7 +103,7 @@ class KnowMoreDiRTEngine:
         ]
         fallback_unknown: Answer | None = None
         if self._use_local_model:
-            model_planned_answer = self._answer_with_migrated_model_query(question, qnorm)
+            model_planned_answer = self._answer_with_model_query_plan(question, qnorm)
             if model_planned_answer and model_planned_answer.text and normalize(model_planned_answer.text) != "unknown":
                 self.last_answer = model_planned_answer
                 return model_planned_answer
@@ -128,12 +127,12 @@ class KnowMoreDiRTEngine:
     def _evidence(self, sentence: Sentence, score: float = 1.0) -> Evidence:
         return Evidence(sentence.rel_path, sentence.text, score)
 
-    def _answer_with_migrated_model_query(self, question: str, qnorm: str) -> Answer | None:
+    def _answer_with_model_query_plan(self, question: str, qnorm: str) -> Answer | None:
         if self._model_client is None:
             return None
         trace = self.model_query_trace
         trace.call_count += 1
-        det = migrated_deterministic_plan(question)
+        det = model_deterministic_plan(question)
         model = call_model_query_plan(question, self._model_client)
         if model.get("prompt_hash"):
             trace.prompt_hashes = [*list(trace.prompt_hashes or []), str(model["prompt_hash"])][-20:]
@@ -144,14 +143,14 @@ class KnowMoreDiRTEngine:
             trace.accepted_count += 1
         plan = normalize_model_plan(question, model, det) if model.get("accepted") else det
         trace.last_plan = plan
-        answer = self._execute_migrated_plan(question, qnorm, plan or det)
+        answer = self._execute_model_plan(question, qnorm, plan or det)
         if answer and normalize(answer.text) != "unknown":
             trace.model_answer_count += 1
-            answer.reason = f"migrated DRT model-query plan: {(plan or {}).get('intent')}"
+            answer.reason = f"local model query plan: {(plan or {}).get('intent')}"
             return answer
-        return Answer("unknown", confidence=0.0, evidence=[], reason=f"migrated DRT model-query produced no grounded answer for {(plan or {}).get('intent')}")
+        return Answer("unknown", confidence=0.0, evidence=[], reason=f"local model query produced no grounded answer for {(plan or {}).get('intent')}")
 
-    def _execute_migrated_plan(self, question: str, qnorm: str, plan: dict[str, object]) -> Answer | None:
+    def _execute_model_plan(self, question: str, qnorm: str, plan: dict[str, object]) -> Answer | None:
         intent = str(plan.get("intent") or "unknown")
         target = str(plan.get("target_surface") or "").strip()
         focused_question = question
@@ -319,7 +318,7 @@ class KnowMoreDiRTEngine:
 
         query_tokens = [
             token for token in content_tokens(question)
-            if len(token) > 3 and token not in {"file", "folder", "document", "product", "source"}
+            if len(token) > 3 and token not in {"file", "folder", "document", "object", "source"}
         ]
         if not query_tokens:
             return []
@@ -336,7 +335,7 @@ class KnowMoreDiRTEngine:
             return []
         candidates: list[tuple[Sentence, float]] = []
         wants_identifier_context = bool(
-            {"id", "ids", "identifier", "identifiers", "ticket", "commit", "employee"}.intersection(set(tokenize(question)))
+            {"id", "ids", "identifier", "identifiers", "reference", "case", "commit", "code"}.intersection(set(tokenize(question)))
         )
         for rel_path in selected_docs:
             document_sentences = self._sentences_by_document.get(rel_path, {})
@@ -401,7 +400,7 @@ class KnowMoreDiRTEngine:
     def _clean_person_answer(self, value: str) -> str:
         value = clean_extracted_value(value)
         value = re.sub(
-            r"^(?:witness|officer|farmer|customer|engineer|owner|postmortem owner|plaintiff)\s+",
+            r"^(?:witness|officer|farmer|owner|plaintiff|defendant|inspector|researcher|coach|clinician|teacher|speaker|author|reporter|actor)\s+",
             "",
             value,
             flags=re.I,
@@ -427,6 +426,12 @@ class KnowMoreDiRTEngine:
             candidates = self._search(question, limit=8)
             if any("no proof" in normalize(sentence.text) for sentence, _ in candidates):
                 return Answer("unknown", confidence=0.8, evidence=[], reason="proof is not source-grounded")
+        if "prove" in qnorm or "proves" in qnorm:
+            candidates = self._search(question, limit=8)
+            if any(any(marker in normalize(sentence.text) for marker in ["no actionable fact", "no assertion", "no claim"]) for sentence, _ in candidates):
+                return Answer("unknown", confidence=0.8, evidence=[], reason="source says no fact is asserted")
+            if not any(any(marker in normalize(sentence.text) for marker in ["proof", "proves", "proved", "confirms", "confirmed"]) for sentence, _ in candidates):
+                return Answer("unknown", confidence=0.8, evidence=[], reason="proof relation is not source-grounded")
         if "final decision" in qnorm:
             candidates = self._search(question, limit=8)
             if any("no final decision" in normalize(sentence.text) for sentence, _ in candidates):
@@ -470,9 +475,9 @@ class KnowMoreDiRTEngine:
         row_matches = [
             s for s in table_rows
             if any(word in normalize(s.text) for word in status_words)
-            and not any(header in normalize(s.text) for header in ["status", "email", "customer |", "name |"])
+            and not any(header in normalize(s.text) for header in ["status", "email", "name |"])
         ]
-        if row_matches and any(word in qnorm for word in ["status", "listed", "contacts", "customers"]):
+        if row_matches and any(word in qnorm for word in ["status", "listed", "contacts", "entries", "rows"]):
             return Answer(str(len(row_matches)), 0.75, [self._evidence(s) for s in row_matches], "counted table rows by query status")
         if "contacts" in qnorm:
             matches = [s for s in self.sentences if "|" in s.text and "contact" in normalize(s.text) and "email" not in normalize(s.text)]
@@ -650,30 +655,34 @@ class KnowMoreDiRTEngine:
             if scored and scored[0][1] > 0:
                 sentence, score = scored[0]
                 return Answer(urls(sentence.text)[0], float(score), [self._evidence(sentence, float(score))], "global url scan")
-        if any(term in qnorm for term in ["which pr", "what pr", "which commit", "ticket", " id", " ids"]):
-            if "employee" in qnorm:
-                employee_matches: list[tuple[float, str, Sentence, float]] = []
+        wants_named_reference = (
+            qnorm.startswith("which ")
+            and any(term in qnorm for term in ["implements", "implemented", "named", "appears", "fixed", "touch", "depends"])
+        )
+        if (any(term in qnorm for term in ["which reference", "what reference", "which commit", "case", " id", " ids"]) or wants_named_reference) and not any(term in qnorm for term in ["which file", "file did"]):
+            if any(term in qnorm for term in ["person id", "actor id", "account id", "user id"]):
+                prefixed_identifier_matches: list[tuple[float, str, Sentence, float]] = []
                 for sentence, score in candidates:
                     sentence_norm = normalize(sentence.text)
                     term_score = sum(1 for term in query_terms if term in sentence_norm)
                     for value in identifiers(sentence.text):
                         if re.fullmatch(r"[a-z][a-z0-9]{1,12}_[a-z0-9]{6,}", value):
-                            employee_matches.append((score + term_score, value, sentence, score))
-                if employee_matches:
-                    employee_matches.sort(key=lambda item: (-item[0], item[2].rel_path, item[2].order))
+                            prefixed_identifier_matches.append((score + term_score, value, sentence, score))
+                if prefixed_identifier_matches:
+                    prefixed_identifier_matches.sort(key=lambda item: (-item[0], item[2].rel_path, item[2].order))
                     values: list[str] = []
                     evidence: list[Evidence] = []
-                    for _, value, sentence, score in employee_matches:
+                    for _, value, sentence, score in prefixed_identifier_matches:
                         if value not in values:
                             values.append(value)
                             evidence.append(self._evidence(sentence, score))
                         if len(values) >= 8:
                             break
-                    return Answer("; ".join(values), employee_matches[0][0], evidence, "employee identifier extraction")
+                    return Answer("; ".join(values), prefixed_identifier_matches[0][0], evidence, "prefixed identifier extraction")
             descriptor_answer = self._answer_identifier_descriptor(question, qnorm)
             if descriptor_answer:
                 return descriptor_answer
-            if " id" in qnorm and not any(term in qnorm for term in ["which pr", "what pr", "which commit", "ticket"]):
+            if " id" in qnorm and not any(term in qnorm for term in ["which reference", "what reference", "which commit", "case"]) and not wants_named_reference:
                 return None
             id_matches: list[tuple[float, str, Sentence, float]] = []
             scan_items = list(candidates)
@@ -737,19 +746,19 @@ class KnowMoreDiRTEngine:
             for value in values:
                 if re.fullmatch(r"[0-9a-f]{8,16}", value, re.I):
                     return value
-        if any(term in qnorm for term in ["ticket", "pr", "id", "code", "specimen", "invoice", "parcel", "treaty"]):
+        if any(term in qnorm for term in ["reference", "case", "id", "code", "specimen", "invoice", "parcel", "treaty"]):
             prefix_terms = {
                 token.upper()
                 for token in re.findall(r"\b[a-z][a-z0-9]{1,9}\b", qnorm)
-                if token not in {"which", "what", "ticket", "appears", "named", "code", "id", "invoice", "parcel", "treaty"}
+                if token not in {"which", "what", "reference", "case", "appears", "named", "code", "id", "invoice", "parcel", "treaty"}
             }
-            if "employee" in qnorm:
+            if any(term in qnorm for term in ["person id", "actor id", "account id", "user id"]):
                 for value in values:
                     if re.fullmatch(r"[a-z][a-z0-9]{1,12}_[a-z0-9]{6,}", value):
                         return value
             for value in values:
                 if re.fullmatch(r"[A-Z][A-Z0-9]{1,9}-\d+[A-Z0-9-]*", value):
-                    if not prefix_terms or value.split("-", 1)[0] in prefix_terms or any(term in qnorm for term in ["ticket", "id", "code", "invoice", "parcel", "treaty"]):
+                    if not prefix_terms or value.split("-", 1)[0] in prefix_terms or any(term in qnorm for term in ["reference", "case", "id", "code", "invoice", "parcel", "treaty"]):
                         return value
             return ""
         return values[0] if values else ""
@@ -757,8 +766,8 @@ class KnowMoreDiRTEngine:
     def _answer_who_role(self, question: str, qnorm: str) -> Answer | None:
         if qnorm.startswith("which ") and not any(
             term in qnorm
-            for term in ["customer", "person", "who", "approved", "reported", "confirmed", "reviewed"]
-        ):
+            for term in ["person", "actor", "organization", "who", "approved", "reported", "confirmed", "reviewed"]
+        ) and not any(verb in qnorm for verb in ["reported", "asked", "requested", "confirmed", "filed", "alleged"]):
             return None
         if not (qnorm.startswith("who ") or qnorm.startswith("which ")):
             return None
@@ -790,8 +799,8 @@ class KnowMoreDiRTEngine:
             (rf"({name_pattern}):\s+I disagree", "speaker disagreement"),
             (rf"({name_pattern})\s+believes\b", "believes"),
             (rf"Plaintiff\s+({name_pattern})\s+alleges", "alleges"),
-            (rf"(?:(?:customer|plaintiff|witness|officer|farmer|engineer|clinician|vet|inspector)\s+)?({name_pattern})\s+reported\b", "reported"),
-            (rf"(?:(?:customer|plaintiff|witness|officer|farmer|engineer|clinician|vet|inspector)\s+)?({name_pattern})\s+confirmed\b", "confirmed"),
+            (rf"({name_pattern})\s+reported\b", "reported"),
+            (rf"({name_pattern})\s+confirmed\b", "confirmed"),
             (rf"({name_pattern})\s+observed\b", "observed"),
             (rf"({name_pattern})\s+wrote\b", "wrote"),
             (rf"({name_pattern})\s+stated\b", "stated"),
@@ -919,7 +928,7 @@ class KnowMoreDiRTEngine:
         sentence_norm = normalize(text)
         ignored = {
             "who", "which", "what", "when", "where", "did", "does", "was", "were", "is", "are",
-            "the", "for", "with", "about", "according", "customer", "person", "someone",
+            "the", "for", "with", "about", "according", "person", "actor", "organization", "someone",
             "owns", "owned", "owner", "reviewed", "review", "approved", "merged", "reported",
             "confirmed", "requested", "signed", "recorded", "inspected", "argued", "authored",
             "drafted", "wrote", "coached", "practiced", "watered", "closed", "contact",
@@ -937,7 +946,7 @@ class KnowMoreDiRTEngine:
         sentence_norm = normalize(text)
         ignored = {
             "who", "which", "what", "when", "where", "did", "does", "was", "were", "is", "are",
-            "the", "for", "with", "about", "according", "customer", "person", "someone",
+            "the", "for", "with", "about", "according", "person", "actor", "organization", "someone",
             "owns", "owned", "owner", "reviewed", "review", "approved", "merged", "reported",
             "confirmed", "requested", "signed", "recorded", "inspected", "argued", "authored",
             "drafted", "wrote", "coached", "practiced", "watered", "closed", "contact",

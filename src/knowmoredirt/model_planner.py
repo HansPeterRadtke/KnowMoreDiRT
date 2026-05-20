@@ -102,8 +102,8 @@ def deterministic_plan(question: str) -> dict[str, Any]:
     }
     if any(phrase in q for phrase in ["who owns", "who owned", "who is owner", "which owner"]):
         plan.update({"intent": "role_lookup", "answer_role": "owner", "target_surface": target or _role_object_anchor(question, ["owns", "owned", "owner"]), "requires_asserted": True})
-    elif any(phrase in q for phrase in ["who authored", "who wrote", "who created", "who prepared", "responsible for", "carried", "engineer behind"]):
-        plan.update({"intent": "role_lookup", "answer_role": "author", "target_surface": target or _role_object_anchor(question, ["authored", "wrote", "created", "prepared", "responsible for", "carried"]), "requires_asserted": True})
+    elif any(phrase in q for phrase in ["who authored", "who wrote", "who created", "who assembled", "responsible for", "carried", "actor behind"]):
+        plan.update({"intent": "role_lookup", "answer_role": "author", "target_surface": target or _role_object_anchor(question, ["authored", "wrote", "created", "assembled", "responsible for", "carried"]), "requires_asserted": True})
     elif any(phrase in q for phrase in ["who reviewed", "reviewer", "looked over", "checked", "inspected", "signed off"]):
         plan.update({"intent": "role_lookup", "answer_role": "reviewer", "target_surface": target or _role_object_anchor(question, ["reviewed", "looked over", "checked", "inspected", "signed off"]), "requires_asserted": True})
     elif "approved" in q:
@@ -114,7 +114,7 @@ def deterministic_plan(question: str) -> dict[str, Any]:
         plan.update({"intent": "url_lookup", "answer_role": "reference", "target_surface": target or question.strip(" ?"), "requires_asserted": True})
     elif any(word in q for word in ["file", "path"]):
         plan.update({"intent": "file_lookup", "answer_role": "reference", "target_surface": target or question.strip(" ?"), "requires_asserted": True})
-    elif any(word in q for word in ["reference", "identifier", "id", "ticket", "case"]):
+    elif any(word in q for word in ["reference", "identifier", "id", "case"]):
         plan.update({"intent": "reference_lookup", "answer_role": "reference", "target_surface": target or question.strip(" ?"), "requires_asserted": True})
     elif any(phrase in q for phrase in ["final state", "left in", "ended up", "at the end", "current state"]):
         plan.update({"intent": "state_lookup", "answer_role": "state", "target_surface": target or question.strip(" ?"), "requires_asserted": True})
@@ -138,7 +138,7 @@ def normalize_model_plan(question: str, model: dict[str, Any] | None, det: dict[
         plan["target_surface"] = target
     if any(phrase in q for phrase in ["who owns", "who owned", "who is owner", "which owner"]):
         plan.update({"intent": "role_lookup", "answer_role": "owner"})
-    elif any(phrase in q for phrase in ["who authored", "who wrote", "who created", "who prepared", "responsible for", "carried", "engineer behind"]):
+    elif any(phrase in q for phrase in ["who authored", "who wrote", "who created", "who assembled", "responsible for", "carried", "actor behind"]):
         plan.update({"intent": "role_lookup", "answer_role": "author"})
     elif any(phrase in q for phrase in ["who reviewed", "reviewer", "looked over", "checked", "inspected", "signed off"]):
         plan.update({"intent": "role_lookup", "answer_role": "reviewer"})
@@ -150,7 +150,7 @@ def normalize_model_plan(question: str, model: dict[str, Any] | None, det: dict[
         plan.update({"intent": "url_lookup", "answer_role": "reference"})
     elif any(word in q for word in ["file", "path"]):
         plan.update({"intent": "file_lookup", "answer_role": "reference"})
-    elif any(word in q for word in ["reference", "identifier", "id", "ticket", "case"]):
+    elif any(word in q for word in ["reference", "identifier", "id", "case"]):
         plan.update({"intent": "reference_lookup", "answer_role": "reference"})
     elif any(phrase in q for phrase in ["final state", "left in", "ended up", "at the end", "current state"]):
         plan.update({"intent": "state_lookup", "answer_role": "state", "requires_asserted": True})

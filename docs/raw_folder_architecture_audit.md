@@ -1,50 +1,56 @@
 # Raw-Folder Architecture Audit
 
-## Scope
+This audit covers the current KnowMoreDiRT core package, public docs, tests, and external-evaluation adapter boundary. It was written after stopping the interrupted external run so architecture work could return to KMD’s only valid system contract: `initialize(folder_path)` followed by `question(text)`.
 
-This audit covers the current KnowMoreDiRT source package, benchmark adapter scripts, tests, docs, and uncommitted changes created during the interrupted capability-parity work.
+## Current System
 
-## Current System Contract
+KMD is a raw-folder discourse knowledge system. The core package recursively scans readable files, stores natural filesystem metadata, chunks raw text, extracts source-grounded spans, mentions, referents, contexts, frames, temporal edges, and generic relations, and answers from bounded retrieval over those internal DSPG records.
 
-KnowMoreDiRT is a raw-folder knowledge system. The public contract remains exactly:
+The public API remains only:
 
-1. `initialize(folder_path)`
-2. `question(text) -> string`
+- `initialize(folder_path)`
+- `question(text) -> string`
 
-The core package reads arbitrary nested folders and raw readable text files, derives internal DSPG structures, and answers from source-grounded text. External evaluation adapters may read evaluator-specific question files and write prediction files, but they must pass only the raw folder path and question text into KMD.
+## Generic Primitives Extracted From Old DRT Work
 
-## Findings
+The old development system contained useful generic mechanisms mixed with dataset-shaped vocabulary. The mechanisms retained for KMD are:
 
-### Generic components
+- **Bounded retrieval**: combine lexical sentence search, referent/chunk lookup, relation/frame lookup, document-neighbor expansion, source metadata as retrieval prior, and noise downweighting.
+- **Evidence ranking**: rank by anchor overlap, predicate overlap, relation/frame match, temporal/context suitability, and source quality.
+- **Graph traversal**: use DSPG documents, chunks, spans, mentions, referents, contexts, frames, frame arguments, temporal edges, and relations rather than answering only from flat text.
+- **Relation resolution**: store label/value relations, identifiers, URLs, file-like references, active/passive events, state/status statements, negation, meaning/plural relations, aliases, table cells, and timestamped facts.
+- **Context handling**: preserve asserted, negated, reported, quoted, believed, fictional/dream-like, uncertain, and low-semantic-quality contexts as source-grounded records.
+- **Temporal reasoning**: store ordered state events and answer current/final-state questions by target-anchored latest evidence.
+- **Identifier resolution**: treat references, codes, URLs, paths, hashes, and prefixed IDs as generic identifiers.
+- **Role assignment**: answer actor/role questions through generic role labels, active/passive event patterns, and source-grounded relations.
+- **Local-model bounded reasoning**: optional localhost-only query planning can produce constrained generic plans, but execution remains source-grounded and independent of external evaluation harnesses.
 
-- `scanner.py`, `ingest.py`, `store.py`, `relations.py`, `query.py`, and `engine.py` implement raw-folder scanning, filesystem metadata capture, sentence/chunk storage, mentions, referents, contexts, frames, relations, and source-grounded answers.
-- Generic support for identifiers, URLs, file paths, dates, status/state, people, organizations/accounts, claims, negation, and context is appropriate for a raw-text knowledge system.
-- The benchmark runner under `scripts/benchmarks/` is adapter glue only. It reads evaluator question IDs and writes scorer files, but core KMD receives only the folder path and question text.
+## Removed Or Refactored Concepts
 
-### Suspicious or benchmark-shaped components
+The core package no longer contains dataset-shaped or old external-evaluation vocabulary. The cleanup removed or refactored:
 
-- The uncommitted `bounded_dspg.py` port used legacy intent names such as specific PR/ticket/customer variants. Even though it did not contain exact benchmark entities or gold data, the internal vocabulary was too close to external question-family categories.
-- `legacy_drt_path.py` used older role/intent names including specific reference subtypes. This was refactored to generic intents: `role_lookup`, `reference_lookup`, `url_lookup`, `file_lookup`, `state_lookup`, `context_lookup`, `identity_lookup`, `grouped_search`, and `unknown`.
-- The public docs contained a migration report with local run paths and score-recovery language. That was removed from the official docs surface.
+- external benchmark/process terminology from core modules,
+- hidden-label and scoring terms from core modules,
+- old prepared-input and wrapper markers from core modules,
+- old reference subtype intents such as `which_pr`, `which_ticket`, and similar family-shaped names,
+- old domain-shaped role terms in core routing,
+- the scratch `bounded_dspg.py` migration module because it preserved old vocabulary instead of clean generic primitives,
+- `legacy_drt_path.py`, renamed and refactored as `model_planner.py` with generic intents only.
 
-## Changes Made
+## Generic Architecture Changes
 
-- Stopped the interrupted external evaluation process and did not resume it.
-- Removed the uncommitted `bounded_dspg.py` core module rather than preserving a benchmark-shaped bounded executor.
-- Removed engine integration with `bounded_dspg.py`.
-- Refactored the optional local model query-plan vocabulary to generic raw-folder knowledge operations.
-- Strengthened architecture tests so core source fails on external-evaluation markers, hidden-label terms, old prepared-input markers, and legacy question-family intent names.
-- Deleted migration-result docs from `docs/` and replaced architecture/evaluation wording with generic external-evaluation language.
-- Kept benchmark adapter resume/checkpoint behavior outside core because it is operational glue and does not affect answer logic.
+- The optional local planner now exposes generic intents only: `role_lookup`, `reference_lookup`, `url_lookup`, `file_lookup`, `state_lookup`, `context_lookup`, `identity_lookup`, `grouped_search`, and `unknown`.
+- Core answer logic no longer uses old prepared-input, scorer, family, or external benchmark terms.
+- Identifier handling is expressed as generic reference/case/code lookup.
+- Person-name cleanup now strips generic role-prefix nouns instead of enumerating domain-specific roles.
+- Architecture tests now fail if core source contains external-evaluation markers, old wrapper markers, old family-shaped intent names, or core vocabulary such as exact dataset family terms.
 
-## Deliberately Rejected
+## Boundary Decision
 
-- No benchmark-run result, score, question family, hidden label, or external evaluator field was added to core behavior.
-- No exact question IDs, entities, products, expected answers, or source wrapper markers were added to core behavior.
-- The interrupted external run artifacts were not committed and are not used as tests.
+Adapter scripts may remain outside `src/knowmoredirt` for operational evaluation glue. They must not influence core reasoning. The only acceptable data passed into KMD is a folder path and question text.
 
 ## Remaining Concerns
 
-- The deterministic engine still contains broad domain words such as customer, employee, ticket, and PR-like identifier handling. These are currently used as generic text-domain concepts and fixture coverage terms, not evaluator-specific families. They should be progressively generalized to actor, organization, case, reference, and identifier terminology where doing so does not remove useful general capability.
-- The optional local-model path remains developmental and disabled by default.
-- Self-written fixture scores remain regression checks, not proof of broad generalization.
+- Some self-written fixtures still contain legacy software/project-management words as regression data. That is acceptable only as input text, not as core architecture vocabulary.
+- KMD’s deterministic answer layer still includes many general English phrase patterns. These should continue moving toward relation-first graph execution and broader generated holdout tests.
+- Optional local-model planning is generic and disabled by default; it still needs broader non-fixture validation before being treated as a mature reasoning path.

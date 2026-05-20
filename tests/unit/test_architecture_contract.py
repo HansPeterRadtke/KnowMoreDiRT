@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import re
 from pathlib import Path
 
 from conftest import REPO_ROOT
@@ -9,10 +10,17 @@ FORBIDDEN_CORE_MARKERS = [
     "HERB",
     "HELP",
     "benchmark",
+    "benchmark family",
+    "question family",
+    "benchmark routing",
+    "benchmark intents",
+    "parity",
+    "scorer",
     "gold",
     "answerability",
     "question_id",
     "official question",
+    "prepared",
     "HERB RAW ARTIFACT",
     "allow_prepared_metadata",
     "DRT_HERB_PREP_ROOT",
@@ -30,6 +38,17 @@ FORBIDDEN_CORE_MARKERS = [
     "max-PR",
     "unresolved-bug",
     "employee-ID",
+    "artifact search",
+]
+
+FORBIDDEN_CORE_REGEXES = [
+    r"\bPR\b",
+    r"\bpr\b",
+    r"\bticket\b",
+    r"\bissue\b",
+    r"\bcustomer\b",
+    r"\bemployee\b",
+    r"\bartifact\b",
 ]
 
 
@@ -42,6 +61,9 @@ def test_core_package_has_no_benchmark_or_prepared_input_markers() -> None:
         for marker in FORBIDDEN_CORE_MARKERS:
             if marker in text:
                 findings.append(f"{path.relative_to(REPO_ROOT)}:{marker}")
+        for pattern in FORBIDDEN_CORE_REGEXES:
+            if re.search(pattern, text):
+                findings.append(f"{path.relative_to(REPO_ROOT)}:{pattern}")
     assert findings == []
 
 

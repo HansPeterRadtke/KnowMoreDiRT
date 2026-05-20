@@ -52,4 +52,4 @@ Classical DRT provides the semantic rationale. DSPG provides the database-backed
 
 ## Raw Discourse Grounding
 
-KMD’s public input contract is intentionally strict: a folder path and raw readable file contents. The system must discover structure from text rather than relying on prepared metadata wrappers. This is the engineering consequence of the DRT perspective: meaning is built by tracking discourse updates, referents, contexts, and source-grounded conditions, not by assuming a benchmark-specific external schema.
+KMD’s public input contract is intentionally strict: a folder path and raw readable file contents. The system must discover structure from text rather than relying on source-side metadata wrappers or external schemas. This is the engineering consequence of the DRT perspective: meaning is built by tracking discourse updates, referents, contexts, and source-grounded conditions inside the system.

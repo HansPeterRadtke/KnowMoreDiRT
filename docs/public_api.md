@@ -23,12 +23,12 @@ kmd.initialize("/path/to/folder")
 - code-like text,
 - noisy mixed text.
 
-Every readable file is treated as raw text. KMD does not require or accept a special external schema, prepared corpus, metadata wrapper, benchmark conversion, manifest, or semantic adapter format.
+Every readable file is treated as raw text. KMD does not require or accept prepared corpora, a special external schema, metadata wrapper, manifest, source conversion layer, or semantic adapter format.
 
 ## `question(text) -> string`
 
 ```python
-answer = kmd.question("Which PR fixed the cache regression?")
+answer = kmd.question("Which reference fixed the cache regression?")
 ```
 
 `text` is the only question input. The return value is a plain answer string.

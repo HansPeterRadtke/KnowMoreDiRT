@@ -9,7 +9,7 @@ The public boundary is intentionally minimal:
 - `initialize(folder_path)`
 - `question(text) -> string`
 
-No prepared corpus, metadata wrapper, benchmark adapter, manifest, or schema is part of the input contract.
+No metadata wrapper, manifest, semantic adapter, or external schema is part of the input contract.
 
 ## Ingestion Pipeline
 
@@ -95,4 +95,4 @@ DSPG objects are grounded in exact source spans. Answers at the public boundary 
 
 KMD includes an optional local planning path for development. Candidate selection remains bounded before reasoning: lexical sentence search, DSPG relation/frame matches, neighboring discourse units, and natural filesystem metadata may contribute retrieval priors. Filesystem metadata can help locate a raw file, but answer facts must still be grounded in readable raw text spans.
 
-When enabled, the local-model path uses a localhost llama.cpp-compatible endpoint to produce constrained JSON query plans, normalizes those plans with the deterministic planner, and executes them against KMD raw-folder DSPG records. This path is disabled by default, never uses cloud APIs, and should not introduce dataset- or scorer-specific behavior.
+When enabled, the local-model path uses a localhost llama.cpp-compatible endpoint to produce constrained JSON query plans, normalizes those plans with the deterministic planner, and executes them against KMD raw-folder DSPG records. This path is disabled by default, never uses cloud APIs, and must remain independent of any external evaluation harness.

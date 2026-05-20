@@ -40,15 +40,15 @@ def test_engine_exposes_internal_dspg_counts_for_diagnostics_only() -> None:
 
 def test_store_supports_referent_centric_candidate_retrieval(tmp_path: Path) -> None:
     (tmp_path / "unstructured.note").write_text(
-        "A raw note says BlueTensor reviewed PR-4321 for the ledger cache.",
+        "A raw note says BlueTensor reviewed REF-4321 for the ledger cache.",
         encoding="utf-8",
     )
     store, run_id, _, _ = ingest_folder(tmp_path)
 
-    rows = store.referent_candidate_chunks(run_id, ["PR-4321"], limit=3)
+    rows = store.referent_candidate_chunks(run_id, ["REF-4321"], limit=3)
 
     assert rows
-    assert "BlueTensor reviewed PR-4321" in rows[0]["text"]
+    assert "BlueTensor reviewed REF-4321" in rows[0]["text"]
 
 
 def test_temporal_state_query_uses_dspg_latest_event(tmp_path: Path) -> None:
