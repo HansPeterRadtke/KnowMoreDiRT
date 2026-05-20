@@ -57,8 +57,83 @@
     "messy": "/tmp/kmd_eval_messy_parity.json",
     "noise": "/tmp/kmd_eval_noise_parity.json"
   },
-  "full_herb_run_status": "not run for this task; full old-59 parity is not proven because the old scored run depended on the rejected prepared-corpus SQLite graph/source representation",
-  "known_gap": "The active old model-query planning path is alive in KMD, but the old execute_plan/load_bounded_records path was not ported byte-for-byte because it targets the old prepared DSPG schema and contaminated prepared corpus. KMD executes the migrated plan over raw-folder DSPG handlers instead.",
+  "full_clean_raw_folder_rerun": {
+    "answered_count": 726,
+    "evidence_bearing_count": 726,
+    "model_used": false,
+    "questions_count": 1514,
+    "raw_herb_source_folder": "/data/var/herb_benchmark/raw/herb_raw/hf_snapshot",
+    "run_dir": "/data/var/knowmoredirt/herb_runs/kmd_recovery_raw_folder_full_20260520_093611",
+    "run_report_json": "/data/var/knowmoredirt/reports/kmd_recovery_raw_folder_full_20260520_093611.json",
+    "run_report_md": "/data/var/knowmoredirt/reports/kmd_recovery_raw_folder_full_20260520_093611.md",
+    "scores": {
+      "answerable_accuracy": 0.5558282208588957,
+      "by_family": {
+        "artifact search questions": {
+          "count": 187,
+          "exact_match": 0.14919786096256685,
+          "mean_f1": 0.14919786096256685
+        },
+        "content questions": {
+          "count": 338,
+          "exact_match": 0.08519920812430923,
+          "mean_f1": 0.08689727449669275
+        },
+        "customer questions": {
+          "count": 70,
+          "exact_match": 0.0,
+          "mean_f1": 0.0
+        },
+        "employee-ID questions": {
+          "count": 79,
+          "exact_match": 0.25021328882088373,
+          "mean_f1": 0.25021328882088373
+        },
+        "max-PR-count questions": {
+          "count": 80,
+          "exact_match": 0.046746031746031744,
+          "mean_f1": 0.046746031746031744
+        },
+        "multi-hop questions": {
+          "count": 1,
+          "exact_match": 0.6,
+          "mean_f1": 0.6
+        },
+        "temporal questions": {
+          "count": 18,
+          "exact_match": 0.058879392212725534,
+          "mean_f1": 0.058879392212725534
+        },
+        "unanswerable questions": {
+          "count": 699,
+          "exact_match": 0.642346208869814,
+          "mean_f1": 0.642346208869814
+        },
+        "unresolved-bug assignment questions": {
+          "count": 42,
+          "exact_match": 0.07585034013605443,
+          "mean_f1": 0.07585034013605443
+        }
+      },
+      "deterministic_exact_match": 0.3527406922378419,
+      "failure_types": {
+        "answer normalization error": 465,
+        "retrieval miss": 362
+      },
+      "local_judge_mean": null,
+      "question_count": 1514,
+      "retrieval_recall": 0.0,
+      "row_count_evidence_packets": 1514,
+      "row_count_predictions": 1514,
+      "row_count_retrieved_sources": 1514,
+      "source_citation_precision": 0.0,
+      "source_citation_recall": 0.0,
+      "token_f1": 0.3531197849946884,
+      "unanswerable_accuracy": 0.6094420600858369
+    }
+  },
+  "full_herb_run_status": "completed clean raw-folder full rerun without local model; capability recovered close to the old 59.14% path but did not fully match it",
+  "known_gap": "The clean raw-folder KMD rerun recovered answerable_accuracy 0.5558, close to the old 0.5914 run, but source/citation recall remains 0.0 and customer/content retrieval remains weak. The remaining gap is bounded evidence routing over raw JSON-as-text and citation ID mapping, not prepared-corpus restoration.",
   "migration_map": {
     "old answer/evidence rows": "scripts/benchmarks/run_herb_kmd_raw_folder.py benchmark glue from public answer + last_answer evidence",
     "old progress/checkpoint discipline": "scripts/benchmarks/run_herb_kmd_raw_folder.py per-question progress/checkpoint output",
@@ -91,7 +166,7 @@
     "merge_drt_query_batches",
     "run_drt_batched_model_query_scoring / HERB scorer adapter"
   ],
-  "repo_commit": "8f68d1e96a9c7751b94c4bc03beadf06160c7253",
+  "repo_commit": "22a058a9c85a274ec6a7775a6725fcb27b64a501",
   "sample_comparison": {
     "comparison_report_json": "/data/var/knowmoredirt/reports/kmd_parity_model_sample50_20260520_094158_parity_comparison.json",
     "comparison_report_md": "/data/var/knowmoredirt/reports/kmd_parity_model_sample50_20260520_094158_parity_comparison.md",

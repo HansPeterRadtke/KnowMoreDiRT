@@ -92,6 +92,34 @@ This proves the old model-query planning path is being invoked from KMD. It does
 - Broad fixture: `65/65`
 - Hardcore noise fixture: `8/8`
 
+## Full Clean Raw-Folder HERB Rerun
+
+A full official local HERB run was executed after the clean capability-port work using the current KMD raw-folder public interface and no local model calls. The run used the raw HERB source folder directly; no prepared DRT corpus, metadata wrapper, gold answer, answerability label, official family/type label, or scorer field was used by KMD query behavior.
+
+- Run report: `/data/var/knowmoredirt/reports/kmd_recovery_raw_folder_full_20260520_093611.json`
+- Run directory: `/data/var/knowmoredirt/herb_runs/kmd_recovery_raw_folder_full_20260520_093611`
+- KMD commit at run time: `22a058a9c85a274ec6a7775a6725fcb27b64a501`
+- Questions completed: `1514/1514`
+- Answered count: `726`
+- Evidence-bearing count: `726`
+- Model used: `no` for the full rerun. The local-model path is ported and tested separately, but the full model run remains too slow/weak to use as the final full result on this Jetson configuration.
+
+Scores from the official local scorer:
+
+```json
+{
+  "answerable_accuracy": 0.5558282208588957,
+  "deterministic_exact_match": 0.3527406922378419,
+  "token_f1": 0.3531197849946884,
+  "unanswerable_accuracy": 0.6094420600858369,
+  "retrieval_recall": 0.0,
+  "source_citation_precision": 0.0,
+  "source_citation_recall": 0.0
+}
+```
+
+This recovers most of the old 0.5914 answerable score while preserving the clean raw-folder contract. It does **not** claim full parity: the old 59.14% run still had a prepared SQLite/source representation that KMD intentionally rejects. The remaining gap is raw JSON-as-text bounded evidence routing and citation/source-ID mapping, especially for customer/content families.
+
 ## Current Gap
 
-The old local-model planner path is now alive in KMD. The old `execute_plan` / `load_bounded_records` behavior was not copied byte-for-byte because it was tied to the old DSPG schema and contaminated prepared corpus. KMD executes the migrated query plan over raw-folder DSPG handlers instead. Recovering the full 59.14% behavior without contamination requires the next step: port the remaining bounded subgraph execution/ranking semantics onto KMD's raw-folder DSPG schema and prove parity again without prepared source wrappers.
+The old local-model planner path is alive in KMD and the clean full rerun now reaches answerable accuracy `0.5558282208588957`. The old `execute_plan` / `load_bounded_records` behavior was not copied byte-for-byte because it was tied to the old DSPG schema and contaminated prepared corpus. KMD executes migrated plans and deterministic bounded retrieval over raw-folder DSPG handlers instead. Recovering or exceeding the old `0.5914110429447853` result without contamination requires better raw JSON-as-text bounded evidence routing, customer/content extraction, and source/citation ID mapping.
