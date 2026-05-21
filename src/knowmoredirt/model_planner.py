@@ -29,8 +29,17 @@ chars ::= ([^"\\] | "\\" ["\\/bfnrt])*
 ws ::= [ \t\n\r]*
 '''
 
+EVIDENCE_EXTRACTION_GRAMMAR = r'''
+root ::= "{" ws "\"answer\"" ws ":" ws "{" ws "\"sufficient_evidence\"" ws ":" ws bool ws "," ws "\"answer_type\"" ws ":" ws answer_type ws "," ws "\"answer\"" ws ":" ws string ws "," ws "\"evidence_span\"" ws ":" ws string ws "}" ws "}"
+answer_type ::= "\"person\"" | "\"actor\"" | "\"organization\"" | "\"identifier\"" | "\"url\"" | "\"file_path\"" | "\"count\"" | "\"state\"" | "\"date_time\"" | "\"boolean\"" | "\"content_phrase\"" | "\"metadata_value\"" | "\"unknown\""
+bool ::= "true" | "false"
+string ::= "\"" chars "\""
+chars ::= ([^"\\] | "\\" ["\\/bfnrt])*
+ws ::= [ \t\n\r]*
+'''
+
 REFERENCE_PATTERNS = [
-    r"\b[A-Z][A-Z0-9]{1,12}-\d+[A-Z0-9-]*\b",
+    r"\b[A-Z][A-Z0-9]{1,12}(?:-[A-Z0-9]{2,12})*-\d+[A-Z0-9-]*\b",
     r"https?://[^\s\]\)\"']+",
     r"\b[A-Za-z0-9_./-]+\.(?:cpp|tmp|py|js|md|txt|json|yaml|yml|csv|tsv|pdf)\b",
 ]
@@ -48,6 +57,10 @@ class ModelQueryTrace:
     parsed_count: int = 0
     accepted_count: int = 0
     model_answer_count: int = 0
+    evidence_call_count: int = 0
+    evidence_parsed_count: int = 0
+    evidence_accepted_count: int = 0
+    evidence_rejected_count: int = 0
     prompt_hashes: list[str] | None = None
     response_hashes: list[str] | None = None
     last_plan: dict[str, Any] | None = None
@@ -59,6 +72,10 @@ class ModelQueryTrace:
             "parsed_count": self.parsed_count,
             "accepted_count": self.accepted_count,
             "model_answer_count": self.model_answer_count,
+            "evidence_call_count": self.evidence_call_count,
+            "evidence_parsed_count": self.evidence_parsed_count,
+            "evidence_accepted_count": self.evidence_accepted_count,
+            "evidence_rejected_count": self.evidence_rejected_count,
             "prompt_hashes": self.prompt_hashes or [],
             "response_hashes": self.response_hashes or [],
             "last_plan": self.last_plan,
@@ -129,7 +146,9 @@ def deterministic_plan(question: str) -> dict[str, Any]:
         "requires_asserted": True,
         "source": "deterministic",
     }
-    wants_identifier_answer = re.search(r"\bids?\b|\bidentifiers?\b|\breferences?\b", q) is not None
+    wants_identifier_answer = re.search(r"\bids?\b|\bidentifiers?\b|\breferences?\b", q) is not None or (
+        q.startswith(("what ", "which ")) and any(token in qtokens for token in {"raw", "json", "record"})
+    )
     wants_metadata_answer = any(word in q for word in ["modified", "created", "mtime", "ctime", "size", "hash", "suffix", "extension", "encoding", "line count", "word count"])
     if wants_metadata_answer:
         plan.update({"intent": "context_lookup", "answer_role": "state", "target_surface": target or question.strip(" ?"), "requires_asserted": False})
@@ -266,6 +285,69 @@ def call_model_query_plan(question: str, client: LocalModelClient, *, n_predict:
         "stop_reason": "parsed_json",
         "prompt_hash": hashlib.sha256(prompt.encode()).hexdigest(),
         "grammar_hash": hashlib.sha256(INTENT_GRAMMAR.encode()).hexdigest(),
+        "output_hash": hashlib.sha256(raw.encode()).hexdigest(),
+        "fresh_or_cached": "fresh",
+    }
+
+
+def build_evidence_extraction_prompt(question: str, expected_answer_type: str, evidence_items: list[dict[str, str]]) -> str:
+    return (
+        "JSON only. Answer the question only from the provided raw-text evidence. "
+        "Return sufficient_evidence=false and answer='unknown' when the evidence does not state a complete answer. "
+        "The answer must be the shortest exact grounded value compatible with the expected answer type. "
+        "Do not use outside knowledge."
+        + json.dumps(
+            {
+                "question": question,
+                "expected_answer_type": expected_answer_type,
+                "evidence": evidence_items,
+            },
+            ensure_ascii=False,
+        )
+    )
+
+
+def call_model_evidence_answer(
+    question: str,
+    expected_answer_type: str,
+    evidence_items: list[dict[str, str]],
+    client: LocalModelClient,
+    *,
+    n_predict: int = 160,
+) -> dict[str, Any]:
+    prompt = build_evidence_extraction_prompt(question, expected_answer_type, evidence_items)
+    start = time.time()
+    try:
+        parsed = client.complete_json(prompt, n_predict=n_predict, grammar=EVIDENCE_EXTRACTION_GRAMMAR)
+    except Exception as exc:
+        return {
+            "accepted": False,
+            "reason": "request_failed",
+            "error": str(exc),
+            "prompt_hash": hashlib.sha256(prompt.encode()).hexdigest(),
+            "grammar_hash": hashlib.sha256(EVIDENCE_EXTRACTION_GRAMMAR.encode()).hexdigest(),
+            "elapsed": round(time.time() - start, 3),
+        }
+    answer = parsed.get("answer") if isinstance(parsed, dict) else None
+    raw = str(parsed.get("_model_raw") or "") if isinstance(parsed, dict) else ""
+    if not isinstance(answer, dict):
+        return {
+            "accepted": False,
+            "reason": "invalid_json",
+            "raw_text": raw,
+            "prompt_hash": hashlib.sha256(prompt.encode()).hexdigest(),
+            "grammar_hash": hashlib.sha256(EVIDENCE_EXTRACTION_GRAMMAR.encode()).hexdigest(),
+            "elapsed": round(time.time() - start, 3),
+        }
+    return {
+        **answer,
+        "source": "model_evidence_extraction",
+        "accepted": True,
+        "raw_text": raw,
+        "elapsed": parsed.get("_model_elapsed_seconds", round(time.time() - start, 3)),
+        "stop_reason": "parsed_json",
+        "prompt_hash": hashlib.sha256(prompt.encode()).hexdigest(),
+        "grammar_hash": hashlib.sha256(EVIDENCE_EXTRACTION_GRAMMAR.encode()).hexdigest(),
         "output_hash": hashlib.sha256(raw.encode()).hexdigest(),
         "fresh_or_cached": "fresh",
     }

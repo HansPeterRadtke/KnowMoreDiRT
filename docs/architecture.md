@@ -24,7 +24,7 @@ Initialization performs these steps:
 7. **Referent construction**: create local referents from exact mentions without requiring destructive global merging.
 8. **Context assignment**: mark sentence-level contexts such as asserted, reported, believed, alleged, dreamed, fictional, and negated.
 9. **Frame extraction**: create lightweight event/proposition frames with predicates and argument links.
-10. **Generic relation extraction**: store label/value pairs, raw text key/value pairs, table cells, identifier values, meaning/plural relations, active/passive events, negation/proof/status relations, aliases, and timestamp relations as source-grounded DSPG relations.
+10. **Generic relation extraction**: store label/value pairs, JSON-like/object-as-text key/value pairs, table cells, identifier values, meaning/plural relations, active/passive events, negation/proof/status relations, aliases, and timestamp relations as source-grounded DSPG relations.
 11. **Text-quality/context scoring**: store generic structural signals and document-level contexts for low-semantic-content files such as random-character blobs, hex/blob-like text, OCR corruption, word salad, plausible babble, and meaningful discourse.
 12. **Indexing**: build bounded retrieval structures over both raw chunks and DSPG records.
 
@@ -70,9 +70,11 @@ This is a first vertical slice of the full DSPG query architecture. It avoids fu
 
 The bounded SQLite graph executor is part of the normal non-model answer pipeline for query plans that can be mapped to generic DSPG operations. The optional local model path uses the same executor after producing a constrained plan, so model assistance refines planning rather than replacing grounded graph execution.
 
+Before returning a non-unknown answer, KMD now infers a broad expected answer type from the question: person/actor, organization, identifier, URL, file path, count, state, date/time, boolean, content phrase, metadata value, or unknown. Candidate answers are rejected if the value type is incompatible with the question. This prevents structural references such as URLs, file paths, IDs, and metadata-only hits from satisfying person, organization, state, or content questions unless the question explicitly asks for that type. Metadata records remain valid answer sources only for metadata questions; otherwise they serve as retrieval priors.
+
 ## Optional Local Model Integration
 
-KMD includes an isolated local model client hook. The default system does not require a model and does not call cloud APIs. When explicitly enabled, model use is bounded and constrained: the model can produce a generic JSON query plan, and execution still runs against source-grounded DSPG records or bounded raw-text evidence. Future staged model integration should extend the same constrained pattern for:
+KMD includes an isolated local model client hook. The default system does not require a model and does not call cloud APIs. When explicitly enabled, model use is bounded and constrained: the model can produce a generic JSON query plan, and execution still runs against source-grounded DSPG records or bounded raw-text evidence. If graph execution cannot extract a value, the model may be asked to extract the shortest answer from the bounded evidence packet using constrained JSON with `sufficient_evidence`, `answer_type`, `answer`, and `evidence_span`. The answer is accepted only when the evidence span and answer are present in retrieved raw text and the inferred answer type is compatible. Future staged model integration should extend the same constrained pattern for:
 
 - mention classification,
 - frame extraction,

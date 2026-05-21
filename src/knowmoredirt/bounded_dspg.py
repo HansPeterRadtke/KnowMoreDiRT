@@ -11,10 +11,11 @@ from __future__ import annotations
 import re
 from typing import Any
 
+from .answer_types import ExpectedAnswer, canonicalize_answer, infer_expected_answer
 from .extractors import identifiers, urls
 from .model_planner import REFERENCE_PATTERNS, visible_named_anchors
 from .models import Answer, Document, Evidence, Sentence
-from .text import clean_extracted_value, content_tokens, normalize
+from .text import clean_extracted_value, content_tokens, is_low_semantic_noise, normalize
 
 
 def _clean(value: str) -> str:
@@ -25,14 +26,23 @@ def _query_terms(text: str) -> list[str]:
     stop = {
         "what", "which", "where", "when", "find", "provide", "show", "give",
         "the", "and", "that", "this", "with", "from", "into", "only", "name",
-        "names", "source", "document", "object", "reference", "id", "ids",
+        "names", "source", "document", "reference", "id", "ids",
+        "identifier", "identifiers",
     }
-    return [token for token in content_tokens(text) if len(token) > 2 and token not in stop]
+    terms: list[str] = []
+    for token in content_tokens(text):
+        candidates = [token, *re.split(r"[-_]", token)]
+        for candidate in candidates:
+            if len(candidate) > 2 and candidate not in stop and candidate not in terms:
+                terms.append(candidate)
+    return terms
 
 
 def _target_terms(plan: dict[str, Any], question: str) -> list[str]:
     target = str(plan.get("target_surface") or "")
     terms = _query_terms(target)
+    if terms and all(term in {"id", "ids", "identifier", "identifiers", "reference", "references"} for term in terms):
+        terms = [term for term in _query_terms(question) if term not in {"id", "ids", "identifier", "identifiers", "reference", "references"}]
     target_has_specific_anchor = bool(visible_named_anchors(target))
     question_anchors = visible_named_anchors(question)
     if question_anchors and (not terms or not target_has_specific_anchor or any(term in {"id", "ids", "identifier", "identifiers"} for term in terms)):
@@ -82,6 +92,24 @@ def _document_text(document: Document, sentences: list[Sentence]) -> str:
     return normalize(f"{metadata} {' '.join(sentence.text for sentence in sentences[:40])}")
 
 
+def _answer_type_bonus(expected: ExpectedAnswer, sentence_text: str) -> int:
+    if expected.answer_type == "url":
+        return 18 if urls(sentence_text) else 0
+    if expected.answer_type == "identifier":
+        return 12 if identifiers(sentence_text) else 0
+    if expected.answer_type == "file_path":
+        return 12 if any("." in item for item in identifiers(sentence_text)) else 0
+    if expected.answer_type in {"person", "actor", "organization"}:
+        return 6 if re.search(r"\b[A-Z][A-Za-z'-]+(?:\s+[A-Z][A-Za-z'-]+){0,3}\b", sentence_text) else 0
+    if expected.answer_type == "date_time":
+        return 10 if re.search(r"\b\d{4}-\d{2}-\d{2}|\b\d{1,2}:\d{2}\b", sentence_text) else 0
+    if expected.answer_type == "count":
+        return 8 if re.search(r"\b\d+\b", sentence_text) else 0
+    if expected.answer_type == "boolean":
+        return 8 if re.search(r"\b(?:yes|no|not|no proof|unknown|unsupported|confirmed|denied)\b", normalize(sentence_text)) else 0
+    return 0
+
+
 def _rank_scope(
     documents: list[Document],
     sentences_by_document: dict[str, dict[int, Sentence]],
@@ -90,6 +118,7 @@ def _rank_scope(
     doc_limit: int,
     chunk_limit: int,
 ) -> tuple[list[str], list[tuple[str, int]], dict[str, Any]]:
+    expected = infer_expected_answer(question)
     target_terms = _target_terms(plan, question)
     q_terms = _query_terms(question)
     cues = _intent_cues(plan)
@@ -101,6 +130,8 @@ def _rank_scope(
         if target_terms and not target_hits:
             continue
         score = target_hits * 12 + q_hits
+        if is_low_semantic_noise(" ".join(sentence.text for sentence in sentences_by_document.get(document.rel_path, {}).values())) and expected.answer_type != "metadata_value":
+            score = int(score * 0.2)
         if score:
             doc_scores.append((score, document.document_id, document.rel_path))
     doc_scores.sort(key=lambda item: (-item[0], item[2]))
@@ -119,10 +150,13 @@ def _rank_scope(
             score = sum(20 for term in target_terms if term in low)
             score += sum(3 for term in q_terms if term in low)
             score += sum(8 for cue in cues if cue and cue in low)
+            score += _answer_type_bonus(expected, sentence.text)
             if doc_has_target and any(cue and cue in low for cue in cues):
                 score += 12
             if doc_has_target and (identifiers(sentence.text) or urls(sentence.text)):
                 score += 4
+            if is_low_semantic_noise(sentence.text) and expected.answer_type != "metadata_value":
+                score = int(score * 0.15)
             if score:
                 chunk_scores.append((score, document.document_id, order, document.rel_path))
             elif doc_has_target and re.search(r"\b[A-Za-z][A-Za-z0-9 _/-]{1,50}\s*[:=]", sentence.text):
@@ -305,7 +339,8 @@ def _execute(records: dict[str, Any], plan: dict[str, Any]) -> tuple[list[str], 
     for relation in records["relations"]:
         span = spans_by_id.get(str(relation.get("source_span_id")), {})
         ev = _evidence(span, chunks_by_id, docs_by_id)
-        material = normalize(" ".join(str(relation.get(key) or "") for key in ["relation_type", "subject", "predicate", "object", "value"]) + " " + ev.text)
+        doc_material = normalize(str(docs_by_id.get(str(span.get("document_id")), {}).get("rel_path", "")))
+        material = normalize(" ".join(str(relation.get(key) or "") for key in ["relation_type", "subject", "predicate", "object", "value"]) + " " + ev.text + " " + doc_material)
         has_target = any(term in material for term in terms)
         if terms and not has_target:
             continue
@@ -313,7 +348,7 @@ def _execute(records: dict[str, Any], plan: dict[str, Any]) -> tuple[list[str], 
         rel_type = normalize(str(relation.get("relation_type") or ""))
         if intent == "role_lookup":
             candidate = ""
-            if rel_type == "label_value" and role in normalize(str(relation.get("subject") or "")):
+            if rel_type in {"label_value", "record_value"} and role in normalize(str(relation.get("subject") or "")):
                 candidate = str(relation.get("value") or "")
             elif role == "owner" and predicate in {"own", "owner", "manage", "responsible"}:
                 candidate = str(relation.get("subject") or relation.get("value") or "")
@@ -413,10 +448,15 @@ def execute_bounded_query(
     chunk_limit: int = 240,
 ) -> tuple[Answer | None, dict[str, Any]]:
     enriched_plan = {**plan, "query_text": question}
+    expected = infer_expected_answer(question)
     document_ids, chunk_keys, ranking = _rank_scope(documents, sentences_by_document, question, enriched_plan, doc_limit, chunk_limit)
     records = _load_records(store, run_id, document_ids, chunk_keys)
     values, evidence, execution = _execute(records, enriched_plan)
     diagnostics = {"ranking": ranking, "execution": execution}
     if not values or not evidence:
         return None, diagnostics
-    return Answer("; ".join(values), 0.78, evidence, "bounded DSPG subgraph execution"), diagnostics
+    answer_text = canonicalize_answer(expected, "; ".join(values))
+    if not answer_text:
+        diagnostics["execution"] = {**execution, "rejected_reason": "answer_type_incompatible", "expected_answer_type": expected.answer_type}
+        return None, diagnostics
+    return Answer(answer_text, 0.78, evidence, "bounded DSPG subgraph execution", expected.answer_type), diagnostics

@@ -81,12 +81,16 @@ They also scan the core package for fixture/domain-shaped literals from the regr
 The current answer path has been refactored toward generic DSPG mechanisms:
 
 - label/value and raw text key/value relations,
+- JSON-like/object-as-text key/value relations with source-grounded record paths,
 - active/passive event relations,
 - negation/proof/status relations,
 - temporal state relations,
 - identity/alias relations,
 - table row/cell relations,
 - filesystem/read metadata and document quality contexts.
+- broad expected-answer type validation for person/actor, organization, identifier, URL, file path, count, state, date/time, boolean, content phrase, and metadata answers.
+
+Additional unit coverage checks that type-unsafe candidates are rejected: person questions do not return URLs, paths, or IDs; URL questions return URLs rather than nearby names; organization questions reject bare structural identifiers; metadata-only hits cannot answer non-metadata questions; JSON-like raw text supports generic key/value lookup; and low-semantic/cache-like text is downweighted without being discarded. Fake local-model tests verify that evidence extraction is invoked only in model mode, counted, grounded to a retrieved span, and rejected when the proposed answer type is incompatible.
 
 ## Limitations
 

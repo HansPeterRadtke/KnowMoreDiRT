@@ -51,3 +51,4 @@ class Answer:
     confidence: float = 0.0
     evidence: list[Evidence] = field(default_factory=list)
     reason: str = ""
+    answer_type: str = "unknown"

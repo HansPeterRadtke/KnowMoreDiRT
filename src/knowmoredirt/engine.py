@@ -13,12 +13,19 @@ import re
 from dataclasses import dataclass
 from pathlib import Path
 
+from .answer_types import (
+    ExpectedAnswer,
+    canonicalize_answer,
+    infer_expected_answer,
+    is_metadata_evidence_text,
+)
 from .bounded_dspg import execute_bounded_query
 from .extractors import after_label, capitalized_phrases, identifiers, urls
 from .ingest import ingest_folder
 from .index import LexicalIndex
 from .model_planner import (
     ModelQueryTrace,
+    call_model_evidence_answer,
     call_model_query_plan,
     deterministic_plan as model_deterministic_plan,
     normalize_model_plan,
@@ -93,6 +100,7 @@ class KnowMoreDiRTEngine:
             return Answer("unknown", reason="empty question")
 
         qnorm = normalize(question)
+        expected = infer_expected_answer(question)
         handlers = [
             self._answer_unknown_guard,
             self._answer_count,
@@ -109,8 +117,11 @@ class KnowMoreDiRTEngine:
         if self._use_local_model:
             model_planned_answer = self._answer_with_model_query_plan(question, qnorm)
             if model_planned_answer and model_planned_answer.text and normalize(model_planned_answer.text) != "unknown":
-                self.last_answer = model_planned_answer
-                return model_planned_answer
+                finalized = self._finalize_answer(model_planned_answer, expected, "model query")
+                if finalized:
+                    self.last_answer = finalized
+                    return finalized
+                fallback_unknown = Answer("unknown", reason="model query returned incompatible or ungrounded answer")
             if model_planned_answer and normalize(model_planned_answer.text) == "unknown":
                 fallback_unknown = model_planned_answer
         for handler in handlers:
@@ -122,11 +133,12 @@ class KnowMoreDiRTEngine:
                         return answer
                     fallback_unknown = answer
                     continue
-                if not self._answer_has_source_grounding(answer):
-                    fallback_unknown = Answer("unknown", reason=f"{handler.__name__} returned an ungrounded answer")
+                finalized = self._finalize_answer(answer, expected, handler.__name__)
+                if not finalized:
+                    fallback_unknown = Answer("unknown", reason=f"{handler.__name__} returned incompatible or ungrounded answer")
                     continue
-                self.last_answer = answer
-                return answer
+                self.last_answer = finalized
+                return finalized
         answer = fallback_unknown or Answer("unknown", reason="no matching source-grounded pattern")
         self.last_answer = answer
         return answer
@@ -155,7 +167,57 @@ class KnowMoreDiRTEngine:
             trace.model_answer_count += 1
             answer.reason = f"local model query plan: {(plan or {}).get('intent')}"
             return answer
+        evidence_answer = self._answer_with_model_evidence_extraction(question, plan or det)
+        if evidence_answer and normalize(evidence_answer.text) != "unknown":
+            trace.model_answer_count += 1
+            return evidence_answer
         return Answer("unknown", confidence=0.0, evidence=[], reason=f"local model query produced no grounded answer for {(plan or {}).get('intent')}")
+
+    def _answer_with_model_evidence_extraction(self, question: str, plan: dict[str, object]) -> Answer | None:
+        if self._model_client is None:
+            return None
+        expected = infer_expected_answer(question)
+        candidates = self._search(question, limit=8)
+        if not candidates:
+            return None
+        evidence = [self._evidence(sentence, score) for sentence, score in candidates[:8]]
+        payload = [
+            {"source": item.rel_path, "text": item.text[:1200]}
+            for item in evidence
+            if item.rel_path and item.text
+        ]
+        if not payload:
+            return None
+        trace = self.model_query_trace
+        trace.evidence_call_count += 1
+        model = call_model_evidence_answer(question, expected.answer_type, payload, self._model_client)
+        if model.get("prompt_hash"):
+            trace.prompt_hashes = [*list(trace.prompt_hashes or []), str(model["prompt_hash"])][-20:]
+        if model.get("output_hash"):
+            trace.response_hashes = [*list(trace.response_hashes or []), str(model["output_hash"])][-20:]
+        if not model.get("accepted"):
+            trace.evidence_rejected_count += 1
+            return None
+        trace.evidence_parsed_count += 1
+        if not model.get("sufficient_evidence"):
+            trace.evidence_rejected_count += 1
+            return None
+        proposed = str(model.get("answer") or "")
+        evidence_span = str(model.get("evidence_span") or "")
+        if not proposed or not evidence_span:
+            trace.evidence_rejected_count += 1
+            return None
+        matching = [item for item in evidence if evidence_span in item.text and proposed in item.text]
+        if not matching:
+            trace.evidence_rejected_count += 1
+            return None
+        answer = Answer(proposed, 0.74, matching[:3], f"local model bounded evidence extraction: {plan.get('intent')}", str(model.get("answer_type") or "unknown"))
+        finalized = self._finalize_answer(answer, expected, "local model bounded evidence extraction")
+        if not finalized:
+            trace.evidence_rejected_count += 1
+            return None
+        trace.evidence_accepted_count += 1
+        return finalized
 
     def _execute_model_plan(self, question: str, qnorm: str, plan: dict[str, object]) -> Answer | None:
         intent = str(plan.get("intent") or "unknown")
@@ -208,6 +270,22 @@ class KnowMoreDiRTEngine:
         if normalize(answer.text) == "unknown":
             return True
         return any(evidence.rel_path and evidence.text for evidence in answer.evidence)
+
+    def _finalize_answer(self, answer: Answer, expected: ExpectedAnswer, source: str) -> Answer | None:
+        if normalize(answer.text) == "unknown":
+            return answer
+        if not self._answer_has_source_grounding(answer):
+            return None
+        if any(is_metadata_evidence_text(evidence.text) for evidence in answer.evidence) and not expected.allow_metadata_evidence:
+            return None
+        canonical = canonicalize_answer(expected, answer.text)
+        if not canonical:
+            return None
+        if canonical != answer.text:
+            answer = Answer(canonical, answer.confidence, answer.evidence, answer.reason, expected.answer_type)
+        else:
+            answer.answer_type = expected.answer_type
+        return answer
 
     def _is_underdisambiguated_name_answer(self, qnorm: str, answer_text: str) -> bool:
         match = re.search(r"\bwhich\s+([a-z][a-z'-]{1,30})\b", qnorm)
@@ -1146,6 +1224,8 @@ class KnowMoreDiRTEngine:
             for part in parts:
                 if ":" not in part:
                     continue
+                if any(marker in part for marker in "{}[]"):
+                    continue
                 label, value = part.split(":", 1)
                 if re.search(r"\d$", label.strip()):
                     continue
@@ -1158,10 +1238,10 @@ class KnowMoreDiRTEngine:
                     continue
                 label_norm = normalize(label)
                 sentence_norm = normalize(sentence.text)
-                if any(term in label_norm for term in query_terms):
+                if any(re.search(rf"(?<![a-z0-9]){re.escape(term)}(?![a-z0-9])", label_norm) for term in query_terms):
                     answer = clean_extracted_value(value)
                     if answer:
-                        term_score = sum(1 for term in query_terms if term in label_norm)
+                        term_score = sum(1 for term in query_terms if re.search(rf"(?<![a-z0-9]){re.escape(term)}(?![a-z0-9])", label_norm))
                         anchor_score = sum(1 for anchor in anchors if anchor and anchor in sentence_norm)
                         structure_score = 1.0 if ("{" in sentence.text or "}" in sentence.text) and any(term in qnorm for term in ["raw", "json", "json-like"]) else 0.0
                         matches.append((score + (term_score * 2.0) + (anchor_score * 3.0) + structure_score, answer, sentence, score))

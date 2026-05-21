@@ -8,8 +8,10 @@ school note, forum post, legal-style note, lab page, or project document.
 
 from __future__ import annotations
 
+import json
 import re
 from dataclasses import dataclass, field
+from typing import Any
 
 from .extractors import identifiers, urls
 from .text import clean_extracted_value, normalize
@@ -110,6 +112,10 @@ ROLE_LABEL_RE = re.compile(
     re.I,
 )
 LABEL_VALUE_RE = re.compile(r'\s*"?([A-Za-z][A-Za-z0-9 _/-]{1,50})"?\s*[:=]\s*"?([^"{}\[\]\n;,|]+)"?')
+JSON_SCALAR_PAIR_RE = re.compile(
+    r'"([^"\n]{1,80})"\s*:\s*(?:"([^"\n]*)"|(-?\d+(?:\.\d+)?)|(true|false|null))',
+    re.I,
+)
 
 
 @dataclass(frozen=True)
@@ -155,6 +161,7 @@ def extract_relations(text: str) -> list[ExtractedRelation]:
     lowered = normalize(value)
     relations: list[ExtractedRelation] = []
 
+    relations.extend(_extract_record_values(value))
     relations.extend(_extract_label_values(value))
     relations.extend(_extract_table_row_relations(value))
 
@@ -218,6 +225,8 @@ def _extract_label_values(text: str) -> list[ExtractedRelation]:
     relations: list[ExtractedRelation] = []
     pieces = re.split(r"\s*(?:[|;,]|\n)\s*", text)
     for piece in pieces:
+        if any(marker in piece for marker in "{}[]"):
+            continue
         match = LABEL_VALUE_RE.match(piece)
         if not match:
             continue
@@ -226,6 +235,62 @@ def _extract_label_values(text: str) -> list[ExtractedRelation]:
         if label and value:
             _append(relations, "label_value", "label", subject=label, value=value, confidence=0.84)
     return relations
+
+
+def _extract_record_values(text: str) -> list[ExtractedRelation]:
+    relations: list[ExtractedRelation] = []
+    stripped = text.strip()
+    if stripped.startswith(("{", "[")):
+        try:
+            parsed = json.loads(stripped)
+        except Exception:
+            parsed = None
+        if parsed is not None:
+            _walk_record_value(parsed, (), relations)
+    for match in JSON_SCALAR_PAIR_RE.finditer(text):
+        key = clean_extracted_value(match.group(1))
+        value = clean_extracted_value(next(group for group in match.groups()[1:] if group is not None))
+        if key and value:
+            _append(
+                relations,
+                "record_value",
+                "key_value",
+                subject=key,
+                value=value,
+                confidence=0.83,
+                record_path=key,
+                surface_format="json_like",
+            )
+    return relations
+
+
+def _walk_record_value(value: Any, path: tuple[str, ...], relations: list[ExtractedRelation]) -> None:
+    if isinstance(value, dict):
+        for key, item in value.items():
+            _walk_record_value(item, (*path, str(key)), relations)
+        return
+    if isinstance(value, list):
+        for index, item in enumerate(value):
+            _walk_record_value(item, (*path, str(index)), relations)
+        return
+    if value is None:
+        scalar = "null"
+    elif isinstance(value, bool):
+        scalar = "true" if value else "false"
+    else:
+        scalar = str(value)
+    if not path or scalar == "":
+        return
+    _append(
+        relations,
+        "record_value",
+        "key_value",
+        subject=".".join(path),
+        value=scalar,
+        confidence=0.86,
+        record_path=".".join(path),
+        surface_format="json",
+    )
 
 
 def _extract_table_row_relations(text: str) -> list[ExtractedRelation]:
