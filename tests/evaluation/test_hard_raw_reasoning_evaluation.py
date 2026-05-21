@@ -38,6 +38,6 @@ def test_hard_raw_reasoning_fixture_is_broad_and_failure_driven() -> None:
 def test_hard_raw_reasoning_evaluation_reaches_full_correctness() -> None:
     result = evaluate_fixture(HARD_REASONING_ROOT, HARD_REASONING_QA_PATH)
 
-    assert result.total == 84
-    assert result.correct == 84
+    assert result.total == 134
+    assert result.correct == 134
     assert all(values["correct"] == values["total"] for values in result.by_category.values())

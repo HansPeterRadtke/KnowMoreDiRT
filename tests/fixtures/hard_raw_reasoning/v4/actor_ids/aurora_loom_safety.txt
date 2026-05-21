@@ -1,0 +1,7 @@
+Dossier: Aurora Loom Safety Note.
+Author: Nira Sol | actor id: ACT-410
+Key reviewer: Olan Vex | actor id: ACT-411
+Reviewer: Pema Rill | actor id: ACT-412
+Observer: Tavi Moss | observer id: OBS-900
+Reference URL: https://refs.example.test/aurora-loom-safety
+Noise row: Aurora Loom mentions web id WEB-999 but that is not an actor identifier.

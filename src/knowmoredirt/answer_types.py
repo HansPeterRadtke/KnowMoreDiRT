@@ -49,7 +49,7 @@ _PERSON_RE = re.compile(
     r"^(?:(?:Dr\.|Ms\.|Mr\.|Mrs\.|Prof\.)\s+)?[A-Z][A-Za-z'-]+(?:\s+[A-Z][A-Za-z'-]+){0,3}$"
 )
 _ORG_HINT_RE = re.compile(
-    r"\b(?:association|bureau|center|centre|clinic|club|collective|committee|company|council|department|foundation|group|guild|institute|lab|laboratory|office|school|society|studio|team|union|university|workshop)\b",
+    r"\b(?:association|bureau|center|centre|clinic|club|collective|committee|company|council|department|foundation|group|guild|institute|lab|laboratory|office|school|society|studio|team|trust|union|university|workshop)\b",
     re.I,
 )
 

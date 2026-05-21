@@ -1,0 +1,5 @@
+Record: Mica Relay.
+Manual URL: https://manuals.example.test/mica-relay
+Warranty URL: https://warranty.example.test/mica-relay
+Support URL: https://support.example.test/mica-relay
+Archive note: there is no archive URL for Mica Relay.

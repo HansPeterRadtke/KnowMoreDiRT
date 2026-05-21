@@ -1,0 +1,5 @@
+Entity: Garnet Bridge.
+Owning organization: Morrow Slate Guild.
+Operator person: Jae Noll.
+Billing code: BILL-881.
+Website: https://guilds.example.test/morrow-slate

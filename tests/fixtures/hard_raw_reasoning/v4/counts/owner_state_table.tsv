@@ -1,0 +1,9 @@
+Table: owner state table.
+actor	item	state	reference
+Mira Sol	Aster One	open	AS-001
+Mira Sol	Aster Two	open	AS-002
+Mira Sol	Aster Three	closed	AS-003
+Pax Neri	Beryl One	open	BY-001
+Pax Neri	Beryl Two	open	BY-002
+Pax Neri	Beryl Three	open	BY-003
+Tavi Moss	Cedar One	paused	CD-001

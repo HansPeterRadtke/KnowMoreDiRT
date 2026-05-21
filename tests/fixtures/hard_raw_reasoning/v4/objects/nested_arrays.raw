@@ -1,0 +1,7 @@
+group: "Orchid Frame"
+records: [
+{ name: "Orchid Alpha", owner: "Ila Voss", status: "ready", ids: { asset: "OA-7001", audit: "AUD-3001" }, links: { report: "https://reports.example.test/orchid-alpha" } }
+{ name: "Orchid Beta", owner: "Niko Rell", status: "paused", ids: { asset: "OB-7002", audit: "AUD-3002" }, links: { report: "https://reports.example.test/orchid-beta" } }
+{ name: "Orchid Gamma", owner: "Tessa Noll", status: "ready", ids: { asset: "OG-7003", audit: "AUD-3003" }, links: { report: "https://reports.example.test/orchid-gamma" } }
+]
+summary: "Only ready records are valid for release."

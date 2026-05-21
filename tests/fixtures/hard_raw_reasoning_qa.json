@@ -504,6 +504,306 @@
       "category": "mixed_formats",
       "id": "hrq084",
       "question": "Who stated the south field gate was open?"
+    },
+    {
+      "id": "hrq085",
+      "category": "actor_identifier_role_chain",
+      "question": "Which actor id belongs to the author of Aurora Loom Safety Note?",
+      "answer": "ACT-410"
+    },
+    {
+      "id": "hrq086",
+      "category": "actor_identifier_role_chain",
+      "question": "Which actor id belongs to the key reviewer of Aurora Loom Safety Note?",
+      "answer": "ACT-411"
+    },
+    {
+      "id": "hrq087",
+      "category": "actor_identifier_role_chain",
+      "question": "Find actor IDs of the author and reviewers of Aurora Loom Safety Note.",
+      "answer": "ACT-410; ACT-411; ACT-412"
+    },
+    {
+      "id": "hrq088",
+      "category": "actor_identifier_role_chain",
+      "question": "Who is the key reviewer of Brindle Map Survey?",
+      "answer": "Mira Pell"
+    },
+    {
+      "id": "hrq089",
+      "category": "actor_identifier_role_chain",
+      "question": "Which actor id belongs to the reviewer of Brindle Map Survey named Dax Ivor?",
+      "answer": "ACT-512"
+    },
+    {
+      "id": "hrq090",
+      "category": "missing_actor_identifier_role_chain",
+      "question": "Which actor id belongs to the approver of Cinder Orchard Field Brief?",
+      "answer": "unknown"
+    },
+    {
+      "id": "hrq091",
+      "category": "relation_scoped_reference",
+      "question": "Which warranty URL belongs to Mica Relay?",
+      "answer": "https://warranty.example.test/mica-relay"
+    },
+    {
+      "id": "hrq092",
+      "category": "relation_scoped_reference",
+      "question": "Which manual URL belongs to Mica Relay?",
+      "answer": "https://manuals.example.test/mica-relay"
+    },
+    {
+      "id": "hrq093",
+      "category": "relation_scoped_reference",
+      "question": "Which runbook URL belongs to North Lantern?",
+      "answer": "https://runbooks.example.test/north-lantern"
+    },
+    {
+      "id": "hrq094",
+      "category": "relation_scoped_reference",
+      "question": "Which guide URL belongs to North Lantern?",
+      "answer": "https://guides.example.test/north-lantern"
+    },
+    {
+      "id": "hrq095",
+      "category": "missing_relation_scoped_reference",
+      "question": "Which archive URL belongs to Mica Relay?",
+      "answer": "unknown"
+    },
+    {
+      "id": "hrq096",
+      "category": "identifier_family",
+      "question": "Which reference ID identifies Silver Loom?",
+      "answer": "REF-7401"
+    },
+    {
+      "id": "hrq097",
+      "category": "organization_relation",
+      "question": "Which organization owns Garnet Bridge?",
+      "answer": "Morrow Slate Guild"
+    },
+    {
+      "id": "hrq098",
+      "category": "organization_relation",
+      "question": "Which organization owns Harbor Flax?",
+      "answer": "Juniper Vale Trust"
+    },
+    {
+      "id": "hrq099",
+      "category": "organization_person_confusion",
+      "question": "Who is the contact person for Harbor Flax?",
+      "answer": "Ria Kest"
+    },
+    {
+      "id": "hrq100",
+      "category": "wrong_answer_type",
+      "question": "Which account identifier is listed for Harbor Flax?",
+      "answer": "ACCT-4431"
+    },
+    {
+      "id": "hrq101",
+      "category": "missing_organization_relation",
+      "question": "Which organization owns Ion Reed?",
+      "answer": "unknown"
+    },
+    {
+      "id": "hrq102",
+      "category": "temporal_final_current_state",
+      "question": "What is the final state of Loom Finch?",
+      "answer": "released"
+    },
+    {
+      "id": "hrq103",
+      "category": "temporal_final_current_state",
+      "question": "What is the current state of River Dial?",
+      "answer": "ready"
+    },
+    {
+      "id": "hrq104",
+      "category": "unanswerable_temporal_false_positive",
+      "question": "Was the River Dial archive decision finalized?",
+      "answer": "unknown"
+    },
+    {
+      "id": "hrq105",
+      "category": "state_assignment_lookup",
+      "question": "Who is Ember Kite currently assigned to?",
+      "answer": "Uma Fenn"
+    },
+    {
+      "id": "hrq106",
+      "category": "state_assignment_lookup",
+      "question": "Who was Ember Kite assigned to on 2026-06-10?",
+      "answer": "Lio Nym"
+    },
+    {
+      "id": "hrq107",
+      "category": "context_discourse",
+      "question": "Did Pearl Engine really open the hidden gate?",
+      "answer": "unknown"
+    },
+    {
+      "id": "hrq108",
+      "category": "context_discourse",
+      "question": "Was the north hinge crack proven?",
+      "answer": "unknown"
+    },
+    {
+      "id": "hrq109",
+      "category": "context_discourse",
+      "question": "What did Runa say snapped during loading?",
+      "answer": "blue latch"
+    },
+    {
+      "id": "hrq110",
+      "category": "context_discourse",
+      "question": "Was the latch confirmed broken?",
+      "answer": "unknown"
+    },
+    {
+      "id": "hrq111",
+      "category": "content_phrase",
+      "question": "What was the corrected crate color for Mist Vale?",
+      "answer": "amber"
+    },
+    {
+      "id": "hrq112",
+      "category": "unanswerable_relation_false_positive",
+      "question": "Was the river reroute confirmed as a plan?",
+      "answer": "unknown"
+    },
+    {
+      "id": "hrq113",
+      "category": "counts_aggregation",
+      "question": "How many rows have state open?",
+      "answer": "5"
+    },
+    {
+      "id": "hrq114",
+      "category": "counts_aggregation",
+      "question": "How many rows for Mira Sol have state open?",
+      "answer": "2"
+    },
+    {
+      "id": "hrq115",
+      "category": "argmax_count_aggregation",
+      "question": "Which actor has the most open rows?",
+      "answer": "Pax Neri"
+    },
+    {
+      "id": "hrq116",
+      "category": "argmax_count_aggregation",
+      "question": "How many open rows does Pax Neri have?",
+      "answer": "3"
+    },
+    {
+      "id": "hrq117",
+      "category": "count_aggregation",
+      "question": "How many rows have state paused?",
+      "answer": "1"
+    },
+    {
+      "id": "hrq118",
+      "category": "nested_json",
+      "question": "Who owns Orchid Alpha?",
+      "answer": "Ila Voss"
+    },
+    {
+      "id": "hrq119",
+      "category": "nested_json",
+      "question": "Which asset id belongs to Orchid Beta?",
+      "answer": "OB-7002"
+    },
+    {
+      "id": "hrq120",
+      "category": "nested_json",
+      "question": "Which audit id belongs to Orchid Gamma?",
+      "answer": "AUD-3003"
+    },
+    {
+      "id": "hrq121",
+      "category": "nested_json",
+      "question": "Which report URL belongs to Orchid Gamma?",
+      "answer": "https://reports.example.test/orchid-gamma"
+    },
+    {
+      "id": "hrq122",
+      "category": "nested_json",
+      "question": "What is the status of Orchid Beta?",
+      "answer": "paused"
+    },
+    {
+      "id": "hrq123",
+      "category": "nested_json",
+      "question": "How many Orchid records are ready?",
+      "answer": "2"
+    },
+    {
+      "id": "hrq124",
+      "category": "noise_pollution",
+      "question": "Which organization owns Garnet Bridge according to the semantic record?",
+      "answer": "Morrow Slate Guild"
+    },
+    {
+      "id": "hrq125",
+      "category": "noise_pollution",
+      "question": "Which warranty URL belongs to Mica Relay despite the cache file?",
+      "answer": "https://warranty.example.test/mica-relay"
+    },
+    {
+      "id": "hrq126",
+      "category": "unanswerable_actor_identifier_false_positive",
+      "question": "Which actor id belongs to the nonexistent approver of Aurora Loom Safety Note?",
+      "answer": "unknown"
+    },
+    {
+      "id": "hrq127",
+      "category": "unanswerable_reference_false_positive",
+      "question": "Which hidden cache URL is the official warranty URL for Mica Relay?",
+      "answer": "unknown"
+    },
+    {
+      "id": "hrq128",
+      "category": "content_phrase_or_field_value",
+      "question": "What does the Orchid Frame summary say about ready records?",
+      "answer": "Only ready records are valid for release"
+    },
+    {
+      "id": "hrq129",
+      "category": "content_phrase_or_field_value",
+      "question": "What did the correction say about Mist Vale shipping the red crate?",
+      "answer": "Mist Vale did not ship the red crate"
+    },
+    {
+      "id": "hrq130",
+      "category": "content_phrase_or_field_value",
+      "question": "What was the confirmed plan for the river reroute?",
+      "answer": "no reroute decision was made"
+    },
+    {
+      "id": "hrq131",
+      "category": "canonical_output",
+      "question": "Return only the warranty URL for North Lantern.",
+      "answer": "https://warranty.example.test/north-lantern"
+    },
+    {
+      "id": "hrq132",
+      "category": "canonical_output",
+      "question": "Return only the actor id for Nira Sol.",
+      "answer": "ACT-410"
+    },
+    {
+      "id": "hrq133",
+      "category": "multi_hop",
+      "question": "Which report URL belongs to the ready Orchid record owned by Tessa Noll?",
+      "answer": "https://reports.example.test/orchid-gamma"
+    },
+    {
+      "id": "hrq134",
+      "category": "multi_hop",
+      "question": "Which asset id belongs to the paused Orchid record?",
+      "answer": "OB-7002"
     }
   ]
 }

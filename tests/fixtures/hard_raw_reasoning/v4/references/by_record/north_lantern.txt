@@ -1,0 +1,5 @@
+Record: North Lantern.
+Guide URL: https://guides.example.test/north-lantern
+Runbook URL: https://runbooks.example.test/north-lantern
+Warranty URL: https://warranty.example.test/north-lantern
+Distractor URL: https://noise.example.test/not-the-answer

@@ -1,0 +1,4 @@
+Dossier: Brindle Map Survey.
+Author: Hale Norr | actor id: ACT-510
+Key reviewer: Mira Pell | actor id: ACT-511
+Reviewer: Dax Ivor | actor id: ACT-512

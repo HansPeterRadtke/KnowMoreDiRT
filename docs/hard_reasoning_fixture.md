@@ -29,7 +29,7 @@ The latest external diagnostic run showed recurring structural failures rather t
 - Corpus root: `tests/fixtures/hard_raw_reasoning/`
 - QA file: `tests/fixtures/hard_raw_reasoning_qa.json`
 - Source files: 12
-- Questions: 84
+- Questions: 134
 - Categories: 15
 
 ## Anti-Overfitting Boundary
@@ -38,4 +38,4 @@ The fixture uses invented entities and values. It is structurally inspired by ob
 
 ## Current Result
 
-The hard fixture currently passes at `84/84 (1.000)`. This is a stricter internal regression milestone, not a claim of external benchmark generalization.
+The hard fixture currently passes at `134/134 (1.000)`. This is a stricter internal regression milestone, not a claim of external benchmark generalization.

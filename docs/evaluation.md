@@ -18,7 +18,7 @@ Current results:
 - original messy corpus: `60/60 (1.000)`
 - broad raw-world corpus: `65/65 (1.000)`
 - hardcore noise corpus: `8/8 (1.000)`
-- hard raw-reasoning corpus: `84/84 (1.000)`
+- hard raw-reasoning corpus: `134/134 (1.000)`
 
 The current fixtures all pass. This is still a self-written regression suite, not proof of broad real-world generalization.
 

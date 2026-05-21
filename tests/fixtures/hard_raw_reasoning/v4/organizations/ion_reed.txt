@@ -1,0 +1,2 @@
+Entity: Ion Reed.
+No owning organization is stated. A person named Organization Noll appears in a quote, but that is not an organization relation.
