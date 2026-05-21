@@ -18,6 +18,7 @@ from .answer_types import (
     canonicalize_answer,
     infer_expected_answer,
     is_metadata_evidence_text,
+    is_value_compatible,
 )
 from .bounded_dspg import execute_bounded_query
 from .extractors import after_label, capitalized_phrases, identifiers, urls
@@ -103,8 +104,10 @@ class KnowMoreDiRTEngine:
         expected = infer_expected_answer(question)
         handlers = [
             self._answer_unknown_guard,
+            self._answer_chained_relation,
             self._answer_count,
             self._answer_yes_no_context,
+            self._answer_contextual_fact,
             self._answer_final_state,
             self._answer_table_lookup,
             self._answer_identifier_or_url,
@@ -339,6 +342,8 @@ class KnowMoreDiRTEngine:
         for sentence, score in combined.values():
             if sentence.rel_path in self._low_semantic_noise_paths:
                 score *= 0.15
+            if self._is_low_priority_source_path(sentence.rel_path) and not self._asks_about_low_priority_source(qnorm):
+                score *= 0.05
             if self._is_question_like_source(sentence.text) and "question" not in qnorm:
                 score *= 0.12
             adjusted.append((sentence, score))
@@ -408,6 +413,15 @@ class KnowMoreDiRTEngine:
             or lowered.startswith("question:")
         )
 
+    def _is_low_priority_source_path(self, rel_path: str) -> bool:
+        parts = re.split(r"[/_.-]+", normalize(rel_path))
+        return bool({"cache", "lock", "tmp", "temp", "transport", "hidden"}.intersection(parts))
+
+    def _asks_about_low_priority_source(self, qnorm: str) -> bool:
+        if "despite" in qnorm or "according to meaningful source" in qnorm:
+            return False
+        return any(term in qnorm for term in ["cache", "lock", "temporary", "metadata", "file", "path"])
+
     def _question_tokens(self, qnorm: str) -> set[str]:
         return set(re.findall(r"[a-z0-9_.:/#-]+", qnorm))
 
@@ -415,6 +429,8 @@ class KnowMoreDiRTEngine:
         skip = {
             "Who", "What", "Which", "Where", "When", "Can", "Could", "Project",
             "Product", "Technical", "Specifications", "Document", "Vision",
+            "URL", "URLs", "ID", "IDs", "Link", "Links",
+            "JSON", "JSON-like", "Raw", "Text",
         }
         return [phrase for phrase in capitalized_phrases(question) if phrase.split()[0] not in skip]
 
@@ -507,19 +523,141 @@ class KnowMoreDiRTEngine:
     def _answer_count(self, question: str, qnorm: str) -> Answer | None:
         if not any(word in qnorm for word in ["how many", "number of"]):
             return None
-        status_words = [token for token in re.findall(r"[a-z0-9_-]+", qnorm) if token not in {"how", "many", "number", "have", "has", "are", "the", "in", "sheet"}]
-        table_rows = [s for s in self.sentences if "|" in s.text or "\t" in s.text]
-        row_matches = [
-            s for s in table_rows
-            if any(word in normalize(s.text) for word in status_words)
-            and not any(header in normalize(s.text) for header in ["status", "email", "name |"])
+        status_stopwords = {
+            "listed", "named", "counted", "there", "these", "those", "in", "of", "for", "the", "a", "an",
+        }
+        status_candidates = [
+            match.group(1)
+            for pattern in [
+                r"\bstatus\s+(?:is\s+)?([a-z0-9_-]+)",
+                r"\bhave\s+([a-z0-9_-]+)\s+[^?]*\bstatus\b",
+                r"\b(?:are|is)\s+([a-z0-9_-]+)\b",
+            ]
+            for match in [re.search(pattern, qnorm)]
+            if match
         ]
+        desired_status = next((candidate for candidate in status_candidates if candidate not in status_stopwords), "")
+        target_terms = [
+            token for token in re.findall(r"[a-z0-9_-]+", qnorm)
+            if token not in {
+                "how", "many", "number", "have", "has", "are", "the", "in", "sheet", "rows",
+                "row", "entries", "entry", "status", "listed", "with", "of",
+                "contact", "contacts", "item", "items", "entity", "entities",
+            }
+            and token != desired_status
+            and len(token) > 2
+        ]
+        table_rows = [s for s in self.sentences if "|" in s.text or "\t" in s.text]
+
+        def term_matches_row_context(term: str, row_norm: str, document_norm: str) -> bool:
+            variants = {term}
+            if term.endswith("s") and len(term) > 3:
+                variants.add(term[:-1])
+            return any(variant in row_norm or variant in document_norm for variant in variants)
+
+        row_matches = []
+        for sentence in table_rows:
+            row_norm = normalize(sentence.text)
+            document_norm = self._document_text_norm_by_rel_path.get(sentence.rel_path, "")
+            if any(header in row_norm for header in ["status", "email", "name |"]):
+                continue
+            if desired_status and not re.search(rf"(?:^|[|\t ]){re.escape(desired_status)}(?:$|[|\t .,;])", row_norm):
+                continue
+            if all(term_matches_row_context(term, row_norm, document_norm) for term in target_terms):
+                row_matches.append(sentence)
         if row_matches and any(word in qnorm for word in ["status", "listed", "contacts", "entries", "rows"]):
             return Answer(str(len(row_matches)), 0.75, [self._evidence(s) for s in row_matches], "counted table rows by query status")
         if "contacts" in qnorm:
             matches = [s for s in self.sentences if "|" in s.text and "contact" in normalize(s.text) and "email" not in normalize(s.text)]
             return Answer(str(len(matches)), 0.75, [self._evidence(s) for s in matches], "counted contact table rows")
         return None
+
+    def _answer_chained_relation(self, question: str, qnorm: str) -> Answer | None:
+        """Resolve small generic two-hop relation chains from raw text.
+
+        This covers discourse patterns like "owner of the reference for X" and
+        "identifier for the reviewer of X" without introducing any corpus- or
+        domain-specific object classes.
+        """
+
+        anchor = self._chain_anchor(question)
+        if not anchor:
+            return None
+        if any(term in qnorm for term in ["owner", "owns", "owned"]) and "reference" in qnorm and qnorm.startswith("who"):
+            reference = self._find_labeled_value(anchor, ["reference"])
+            if reference:
+                owner = self._find_labeled_value(reference, ["owner"])
+                if owner:
+                    evidence = self._evidence_for_terms([anchor, reference, owner])
+                    return Answer(owner, 0.86, evidence, "two-hop owner through reference")
+        if "id" in qnorm or "identifier" in qnorm:
+            role = ""
+            if "owner" in qnorm:
+                role = "owner"
+            elif "reviewer" in qnorm or "review" in qnorm:
+                role = "reviewer"
+            if role:
+                person = self._find_labeled_value(anchor, [role])
+                if not person and role == "owner":
+                    reference = self._find_labeled_value(anchor, ["reference"])
+                    if reference:
+                        person = self._find_labeled_value(reference, ["owner"])
+                if person:
+                    value = self._find_labeled_value(person, ["badge id", "person id", "actor id", "id"])
+                    if value:
+                        evidence = self._evidence_for_terms([anchor, person, value])
+                        return Answer(value, 0.86, evidence, "two-hop identifier through role")
+        return None
+
+    def _chain_anchor(self, question: str) -> str:
+        for pattern in [
+            r"\bfor\s+([A-Z][A-Za-z0-9_-]+(?:\s+[A-Z][A-Za-z0-9_-]+){0,4})\?",
+            r"\bof\s+([A-Z][A-Za-z0-9_-]+(?:\s+[A-Z][A-Za-z0-9_-]+){0,4})\?",
+        ]:
+            match = re.search(pattern, question)
+            if match:
+                return clean_extracted_value(match.group(1))
+        anchors = self._target_anchors(question)
+        return anchors[-1] if anchors else ""
+
+    def _find_labeled_value(self, anchor: str, labels: list[str]) -> str:
+        anchor_norm = normalize(anchor)
+        label_patterns = [re.escape(label).replace(r"\ ", r"\s+") for label in labels]
+        for sentence in self.sentences:
+            text_norm = normalize(sentence.text)
+            if anchor_norm not in text_norm:
+                continue
+            for label, pattern in zip(labels, label_patterns):
+                for regex in [
+                    rf"{re.escape(anchor)}[^.;\n]{{0,100}}?\b{pattern}\s*[:=]\s*([^.;\n]+)",
+                    rf"\b{pattern}\s+(?:for\s+)?{re.escape(anchor)}\s+(?:is|=|:)\s*([^.;\n]+)",
+                    rf"\b{pattern}\s+for\s+{re.escape(anchor)}\s+is\s+([^.;\n]+)",
+                ]:
+                    match = re.search(regex, sentence.text, re.I)
+                    if match:
+                        value = clean_extracted_value(match.group(1))
+                        if value:
+                            return value
+        for sentence in self.sentences:
+            text_norm = normalize(sentence.text)
+            if anchor_norm not in text_norm:
+                continue
+            for label in labels:
+                value = after_label(sentence.text, [label])
+                if value:
+                    return clean_extracted_value(value)
+        return ""
+
+    def _evidence_for_terms(self, terms: list[str]) -> list[Evidence]:
+        evidence: list[Evidence] = []
+        norm_terms = [normalize(term) for term in terms if normalize(term)]
+        for sentence in self.sentences:
+            sentence_norm = normalize(sentence.text)
+            if any(term in sentence_norm for term in norm_terms):
+                evidence.append(self._evidence(sentence, 0.8))
+            if len(evidence) >= 3:
+                break
+        return evidence
 
     def _answer_yes_no_context(self, question: str, qnorm: str) -> Answer | None:
         if not re.match(r"^(did|does|do|is|are|was|were|can|could|should|has|have)\b", qnorm):
@@ -587,13 +725,52 @@ class KnowMoreDiRTEngine:
                     if note_match:
                         value = clean_extracted_value(note_match.group(1))
                     return Answer(f"No; it is an unrelated {value}.", score, [self._evidence(sentence, score)], "distractor source")
-        if "crack" in qnorm and ("found" in qnorm or "proven" in qnorm):
+        if "crack" in qnorm and ("found" in qnorm or "find" in qnorm or "proven" in qnorm):
             candidates = self._search(question, limit=8)
+            if self._allow_global_fallback:
+                seen = {sentence.sentence_id for sentence, _ in candidates}
+                candidates.extend(
+                    (sentence, 0.4)
+                    for sentence in self.sentences
+                    if "no crack" in normalize(sentence.text) and sentence.sentence_id not in seen
+                )
             for sentence, score in candidates:
                 if "no crack" in normalize(sentence.text):
                     value = clean_extracted_value(sentence.text)
+                    value = re.sub(r"^\[?\d{1,2}:\d{2}\]?\s*", "", value)
                     value = value[:1].lower() + value[1:]
                     return Answer(f"No; {value}.", score, [self._evidence(sentence, score)], "negated inspection result")
+        return None
+
+    def _answer_contextual_fact(self, question: str, qnorm: str) -> Answer | None:
+        candidates = self._search(question, limit=12)
+        if "remains installed" in qnorm or ("what remains" in qnorm and "installed" in qnorm):
+            scan_items = list(candidates)
+            if self._allow_global_fallback:
+                scan_items.extend((sentence, 0.35) for sentence in self.sentences if "remains installed" in normalize(sentence.text))
+            for sentence, score in scan_items:
+                match = re.search(r"([A-Za-z][A-Za-z0-9 _-]{1,60}?)\s+remains\s+installed", sentence.text, re.I)
+                if match:
+                    return Answer(clean_extracted_value(match.group(1)), score, [self._evidence(sentence, score)], "remaining installed object")
+        if "color remains" in qnorm or ("what color" in qnorm and "remains" in qnorm):
+            for sentence, score in candidates + [(s, 0.35) for s in self.sentences if "color remains" in normalize(s.text)]:
+                match = re.search(r"\bcolor\s+remains\s+([A-Za-z0-9_-]+)", sentence.text, re.I)
+                if match:
+                    return Answer(clean_extracted_value(match.group(1)), score, [self._evidence(sentence, score)], "remaining color")
+        if "what did" in qnorm and "report" in qnorm:
+            reporter_match = re.search(r"what\s+did\s+([A-Z][A-Za-z]+(?:\s+[A-Z][A-Za-z]+){0,3})\s+report", question, re.I)
+            reporter = reporter_match.group(1) if reporter_match else ""
+            for sentence, score in candidates:
+                if reporter and reporter not in sentence.text:
+                    continue
+                match = re.search(r"\breported\s+that\s+(.+?)(?:\.|$)", sentence.text, re.I)
+                if match:
+                    return Answer(compact_answer(match.group(1)), score, [self._evidence(sentence, score)], "reported content")
+        if "correction" in qnorm and not (qnorm.startswith("who ") or qnorm.startswith("which ")):
+            for sentence, score in candidates:
+                match = re.search(r"\bcorrection\s*:\s*(.+?)(?:\.|$)", sentence.text, re.I)
+                if match:
+                    return Answer(compact_answer(match.group(1)), score, [self._evidence(sentence, score)], "correction content")
         return None
 
     def _answer_final_state(self, question: str, qnorm: str) -> Answer | None:
@@ -612,6 +789,24 @@ class KnowMoreDiRTEngine:
                         [self._evidence(sentence, 0.88)],
                         "latest temporal state from DSPG",
                     )
+        if "current state" in qnorm or "final state" in qnorm:
+            anchors = [normalize(anchor) for anchor in self._target_anchors(question)]
+            label = "current" if "current state" in qnorm else "final"
+            scan_items = self._search(question, limit=12)
+            if self._allow_global_fallback:
+                seen = {sentence.sentence_id for sentence, _ in scan_items}
+                scan_items.extend((sentence, 0.15) for sentence in self.sentences if sentence.sentence_id not in seen)
+            for sentence, score in scan_items:
+                sentence_norm = normalize(sentence.text)
+                if anchors and not all(anchor in sentence_norm for anchor in anchors):
+                    continue
+                for pattern in [
+                    rf'"{label}"\s*:\s*"([^"\n]+)"',
+                    rf"\b{label}\s+state\s*[:=]\s*([^.;|\n]+)",
+                ]:
+                    match = re.search(pattern, sentence.text, re.I)
+                    if match:
+                        return Answer(clean_extracted_value(match.group(1)), score, [self._evidence(sentence, score)], "state value relation")
         candidates = self._search(question, limit=10)
         for sentence, score in candidates:
             match = re.search(r"(?:final|current)?[^:]{0,60}\bstate:\s*([A-Za-z0-9_-]+)", sentence.text, re.I)
@@ -655,10 +850,18 @@ class KnowMoreDiRTEngine:
             token for token in re.findall(r"[a-z0-9_.:/#-]+", qnorm)
             if len(token) > 3 and token not in {"which", "what", "where", "when", "does", "listed", "named", "appears"}
         ]
-        wants_url_like = bool(qtokens.intersection({"url", "urls", "link", "links", "runbook"})) or (
-            qnorm.startswith("where ") and any(term in qnorm for term in ["stored", "listed", "map"])
+        wants_url_like = bool(qtokens.intersection({"url", "urls", "link", "links", "runbook", "manual", "warranty", "guide", "site", "endpoint"})) or (
+            qnorm.startswith("where ") and any(term in qnorm for term in ["stored", "listed", "map", "manual", "warranty", "guide", "site", "endpoint"])
         )
         if wants_url_like:
+            table_url = self._answer_table_url_lookup(question, qnorm)
+            if table_url:
+                return table_url
+            descriptor_url = self._answer_labeled_url(question, qnorm, candidates)
+            if descriptor_url:
+                return descriptor_url
+            if self._url_descriptor_labels(qnorm):
+                return None
             query_identifiers = identifiers(question)
             url_matches: list[tuple[float, str, Sentence, float]] = []
             scan_items = list(candidates)
@@ -750,8 +953,76 @@ class KnowMoreDiRTEngine:
                     return Answer(match.group(0), score, [self._evidence(sentence, score)], "file extraction")
         return None
 
+    def _answer_table_url_lookup(self, question: str, qnorm: str) -> Answer | None:
+        if not any(term in qnorm for term in ["url", "link"]):
+            return None
+        anchors = [normalize(anchor) for anchor in self._target_anchors(question)]
+        if not anchors:
+            return None
+        for _rel_path, rows in self._sentences_by_document.items():
+            header_cells: list[str] = []
+            for sentence in rows.values():
+                if "|" not in sentence.text and "\t" not in sentence.text:
+                    continue
+                cells = [clean_extracted_value(cell) for cell in re.split(r"[|\t]", sentence.text)]
+                if len(cells) < 2:
+                    continue
+                norm_cells = [normalize(cell) for cell in cells]
+                if any(cell in {"url", "link"} for cell in norm_cells) and any(cell in {"item", "name", "record", "entity"} for cell in norm_cells):
+                    header_cells = norm_cells
+                    continue
+                if not header_cells:
+                    continue
+                sentence_norm = normalize(sentence.text)
+                if not any(anchor in sentence_norm for anchor in anchors):
+                    continue
+                url_index = next((index for index, cell in enumerate(header_cells) if cell in {"url", "link"}), -1)
+                if 0 <= url_index < len(cells):
+                    found = urls(cells[url_index])
+                    if found:
+                        return Answer(found[0], 0.8, [self._evidence(sentence, 0.8)], "table URL lookup")
+        return None
+
+    def _answer_labeled_url(self, question: str, qnorm: str, candidates: list[tuple[Sentence, float]]) -> Answer | None:
+        labels = self._url_descriptor_labels(qnorm)
+        if not labels:
+            return None
+        anchors = [normalize(anchor) for anchor in self._target_anchors(question)]
+        scan_items = list(candidates)
+        if self._allow_global_fallback:
+            seen = {sentence.sentence_id for sentence, _ in scan_items}
+            scan_items.extend((sentence, 0.15) for sentence in self.sentences if sentence.sentence_id not in seen and urls(sentence.text))
+        matches: list[tuple[float, str, Sentence, float]] = []
+        for sentence, score in scan_items:
+            sentence_norm = normalize(sentence.text)
+            if anchors and not any(anchor in sentence_norm for anchor in anchors):
+                continue
+            for label in labels:
+                for pattern in [
+                    rf'["\']?{re.escape(label)}["\']?\s*[:=]\s*["\']?(https?://[^"\s,;}}\]]+)',
+                    rf"\b{re.escape(label)}\s+(?:link|url)?\s*[:=]\s*(https?://[^\s,;]+)",
+                ]:
+                    match = re.search(pattern, sentence.text, re.I)
+                    if match:
+                        matches.append((score + 4.0, match.group(1).rstrip(".,;)"), sentence, score))
+        if not matches:
+            return None
+        matches.sort(key=lambda item: (-item[0], item[2].rel_path, item[2].order))
+        _, value, sentence, score = matches[0]
+        return Answer(value, score, [self._evidence(sentence, score)], "labeled URL relation")
+
+    def _url_descriptor_labels(self, qnorm: str) -> list[str]:
+        labels = [
+            label
+            for label in ["support url", "dataset url", "dataset", "manual", "warranty", "runbook", "guide", "site", "endpoint"]
+            if label in qnorm
+        ]
+        if not labels and any(label in qnorm for label in ["link", "url"]):
+            return []
+        return labels
+
     def _answer_identifier_descriptor(self, question: str, qnorm: str) -> Answer | None:
-        match = re.search(r"\b(?:what|which)\s+(?:is\s+the\s+)?([a-z][a-z0-9 _-]{1,40}?)\s+id\b", qnorm)
+        match = re.search(r"\b(?:what|which)\s+(?:is\s+the\s+)?([a-z][a-z0-9 _-]{1,40}?)\s+(?:id|identifier|reference)\b", qnorm)
         if not match:
             return None
         descriptor = clean_extracted_value(match.group(1))
@@ -767,6 +1038,8 @@ class KnowMoreDiRTEngine:
             patterns = [
                 rf"\b{re.escape(descriptor)}\s+id\s*[:=]?\s*([A-Z][A-Z0-9]{{1,9}}-\d+[A-Z0-9-]*)",
                 rf"\b{re.escape(descriptor)}\s+id\s+([A-Z][A-Z0-9]{{1,9}}-\d+[A-Z0-9-]*)",
+                rf'["\']?{re.escape(descriptor)}["\']?\s*[:=]\s*["\']?([A-Z][A-Z0-9]{{1,9}}-\d+[A-Z0-9-]*)',
+                rf"\b{re.escape(descriptor)}\b[^.;\n]{{0,40}}\b([A-Z][A-Z0-9]{{1,9}}-\d+[A-Z0-9-]*)\b",
             ]
             for pattern in patterns:
                 id_match = re.search(pattern, sentence.text, re.I)
@@ -808,8 +1081,12 @@ class KnowMoreDiRTEngine:
             return None
         if not (qnorm.startswith("who ") or qnorm.startswith("which ")):
             return None
-        if "owner" in qnorm and any(term in qnorm for term in ["raw", "json", "json-like", "key", "value"]):
-            return None
+        table_role = self._answer_table_role_lookup(question, qnorm)
+        if table_role:
+            return table_role
+        scoped_label = self._answer_heading_scoped_role(question, qnorm)
+        if scoped_label:
+            return scoped_label
         candidates = self._search(question, limit=20)
         anchors = self._target_anchors(question)
         name_pattern = r"(?:(?:Dr\.|Ms\.|Mr\.|Mrs\.|Prof\.)\s+)?[A-Z][A-Za-z]+(?:\s+[A-Z][A-Za-z]+){0,3}"
@@ -893,6 +1170,64 @@ class KnowMoreDiRTEngine:
         role_matches.sort(key=lambda item: (-item[0], item[2].rel_path, item[2].order))
         _, value, sentence, score, reason = role_matches[0]
         return Answer(value, score, [self._evidence(sentence, score)], reason)
+
+    def _answer_heading_scoped_role(self, question: str, qnorm: str) -> Answer | None:
+        anchors = [normalize(anchor) for anchor in self._target_anchors(question)]
+        if not anchors:
+            return None
+        labels: list[str] = []
+        if "own" in qnorm or "owner" in qnorm:
+            labels.append("owner")
+        if "review" in qnorm or "reviewer" in qnorm:
+            labels.append("reviewer")
+        if "organization" in qnorm or "company" in qnorm or "group" in qnorm:
+            labels.append("organization")
+        if not labels:
+            return None
+        for rel_path, rows in self._sentences_by_document.items():
+            ordered = sorted(rows.items())
+            document_norm = self._document_text_norm_by_rel_path.get(rel_path, "")
+            source_context_norm = f"{document_norm} {normalize(rel_path)}"
+            for index, (_order, sentence) in enumerate(ordered):
+                sentence_norm = normalize(sentence.text)
+                if not all(anchor in sentence_norm or anchor in source_context_norm for anchor in anchors):
+                    continue
+                for _next_order, nearby in ordered[index:index + 8]:
+                    if self._is_low_priority_source_path(nearby.rel_path) and not self._asks_about_low_priority_source(qnorm):
+                        continue
+                    for label in labels:
+                        value = after_label(nearby.text, [label])
+                        if value:
+                            value = self._clean_person_answer(value)
+                            return Answer(value, 0.82, [self._evidence(nearby, 0.82)], "heading-scoped label relation")
+        return None
+
+    def _answer_table_role_lookup(self, question: str, qnorm: str) -> Answer | None:
+        if not any(term in qnorm for term in ["own", "owner", "reviewer", "contact"]):
+            return None
+        anchors = [normalize(anchor) for anchor in self._target_anchors(question)]
+        role = "owner" if "own" in qnorm or "owner" in qnorm else "reviewer" if "reviewer" in qnorm else "contact"
+        for rel_path, rows in self._sentences_by_document.items():
+            header_cells: list[str] = []
+            for sentence in rows.values():
+                if "|" not in sentence.text and "\t" not in sentence.text:
+                    continue
+                cells = [clean_extracted_value(cell) for cell in re.split(r"[|\t]", sentence.text)]
+                if len(cells) < 2:
+                    continue
+                norm_cells = [normalize(cell) for cell in cells]
+                if role in norm_cells and any(cell in {"item", "name", "record", "entity"} for cell in norm_cells):
+                    header_cells = norm_cells
+                    continue
+                if not header_cells or role not in header_cells:
+                    continue
+                sentence_norm = normalize(sentence.text)
+                if anchors and not any(anchor in sentence_norm for anchor in anchors):
+                    continue
+                role_index = header_cells.index(role)
+                if role_index < len(cells):
+                    return Answer(self._clean_person_answer(cells[role_index]), 0.8, [self._evidence(sentence, 0.8)], "table role lookup")
+        return None
 
     def _role_matches(self, reason: str, qnorm: str) -> bool:
         if "review" in qnorm:
@@ -1087,6 +1422,10 @@ class KnowMoreDiRTEngine:
         qnorm: str,
         candidates: list[tuple[Sentence, float]],
     ) -> Answer | None:
+        if "claim" in qnorm:
+            claim = self._answer_claim_value(question, qnorm, candidates)
+            if claim:
+                return claim
         if "not buy" in qnorm or "not bought" in qnorm:
             for sentence, score in candidates:
                 match = re.search(r"\bbought\s+(.+?)\s+but\s+not\s+([^.;]+)", sentence.text, re.I)
@@ -1108,10 +1447,14 @@ class KnowMoreDiRTEngine:
                 if match and normalize(match.group(1)) in qnorm:
                     return Answer(clean_extracted_value(match.group(2)), score, [self._evidence(sentence, score)], "plural relation")
         if "mean" in qnorm:
-            for sentence, score in candidates:
+            scan_items = list(candidates)
+            if self._allow_global_fallback:
+                seen = {sentence.sentence_id for sentence, _ in scan_items}
+                scan_items.extend((sentence, 0.2) for sentence in self.sentences if sentence.sentence_id not in seen and "means" in normalize(sentence.text))
+            for sentence, score in scan_items:
                 match = re.search(r"([^.;:]+?)\s+means\s+([^.;]+)", sentence.text, re.I)
                 if match:
-                    subject = normalize(match.group(1).split(":")[-1])
+                    subject = normalize(match.group(1).split(":")[-1].strip(" \"'"))
                     if subject and subject in qnorm:
                         return Answer(clean_extracted_value(match.group(2)), score, [self._evidence(sentence, score)], "meaning relation")
         if "also called" in qnorm or "nickname" in qnorm:
@@ -1132,6 +1475,43 @@ class KnowMoreDiRTEngine:
                 if time_match:
                     return Answer(time_match.group(1), score, [self._evidence(sentence, score)], "time event")
         return None
+
+    def _answer_claim_value(
+        self,
+        question: str,
+        qnorm: str,
+        candidates: list[tuple[Sentence, float]],
+    ) -> Answer | None:
+        topic_terms = [
+            token for token in re.findall(r"[a-z0-9_-]+", qnorm)
+            if len(token) >= 3 and token not in {"what", "which", "claim", "listed", "about", "from", "does"}
+        ]
+        anchor_terms = {
+            token
+            for anchor in self._target_anchors(question)
+            for token in re.findall(r"[a-z0-9_-]+", normalize(anchor))
+        }
+        value_topic_terms = [term for term in topic_terms if term not in anchor_terms]
+        scan_items = list(candidates)
+        if self._allow_global_fallback:
+            seen = {sentence.sentence_id for sentence, _ in scan_items}
+            scan_items.extend((sentence, 0.2) for sentence in self.sentences if sentence.sentence_id not in seen and "claim" in normalize(sentence.text))
+        matches: list[tuple[float, str, Sentence, float]] = []
+        for sentence, score in scan_items:
+            for match in re.finditer(r'["\']?claim["\']?\s*[:=]\s*["\']?([^"{}\[\];.]+)', sentence.text, re.I):
+                value = clean_extracted_value(match.group(1))
+                if not value:
+                    continue
+                value_norm = normalize(value)
+                sentence_norm = normalize(sentence.text)
+                topic_score = sum(4 for term in value_topic_terms if term in value_norm)
+                topic_score += sum(1 for term in topic_terms if term not in value_norm and term in sentence_norm)
+                matches.append((score + topic_score, value, sentence, score))
+        if not matches:
+            return None
+        matches.sort(key=lambda item: (-item[0], item[2].rel_path, item[2].order))
+        _, value, sentence, score = matches[0]
+        return Answer(value, score, [self._evidence(sentence, score)], "claim value relation")
 
     def _answer_arithmetic_statement(
         self,
@@ -1213,6 +1593,8 @@ class KnowMoreDiRTEngine:
                 "according",
             }
         }
+        label_terms = self._label_terms_for_question(qnorm, query_terms)
+        expected = infer_expected_answer(question)
         anchors = [normalize(anchor) for anchor in self._target_anchors(question)]
         matches: list[tuple[float, str, Sentence, float]] = []
         scan_items = list(candidates)
@@ -1220,6 +1602,8 @@ class KnowMoreDiRTEngine:
         if self._allow_global_fallback:
             scan_items.extend((sentence, 0.25) for sentence in self.sentences if sentence.sentence_id not in seen_ids)
         for sentence, score in scan_items:
+            if self._is_low_priority_source_path(sentence.rel_path) and not self._asks_about_low_priority_source(qnorm):
+                score *= 0.03
             parts = re.split(r"\s*[|,;]\s*", sentence.text)
             for part in parts:
                 if ":" not in part:
@@ -1238,18 +1622,70 @@ class KnowMoreDiRTEngine:
                     continue
                 label_norm = normalize(label)
                 sentence_norm = normalize(sentence.text)
-                if any(re.search(rf"(?<![a-z0-9]){re.escape(term)}(?![a-z0-9])", label_norm) for term in query_terms):
-                    answer = clean_extracted_value(value)
-                    if answer:
-                        term_score = sum(1 for term in query_terms if re.search(rf"(?<![a-z0-9]){re.escape(term)}(?![a-z0-9])", label_norm))
-                        anchor_score = sum(1 for anchor in anchors if anchor and anchor in sentence_norm)
-                        structure_score = 1.0 if ("{" in sentence.text or "}" in sentence.text) and any(term in qnorm for term in ["raw", "json", "json-like"]) else 0.0
-                        matches.append((score + (term_score * 2.0) + (anchor_score * 3.0) + structure_score, answer, sentence, score))
+                if label_terms and not any(re.search(rf"(?<![a-z0-9]){re.escape(term)}(?![a-z0-9])", label_norm) for term in label_terms):
+                    continue
+                if not label_terms and not any(re.search(rf"(?<![a-z0-9]){re.escape(term)}(?![a-z0-9])", label_norm) for term in query_terms):
+                    continue
+                answer = clean_extracted_value(value)
+                if answer:
+                    if not is_value_compatible(expected, answer):
+                        continue
+                    term_score = sum(1 for term in (label_terms or query_terms) if re.search(rf"(?<![a-z0-9]){re.escape(term)}(?![a-z0-9])", label_norm))
+                    document_text = self._document_text_norm_by_rel_path.get(sentence.rel_path, "")
+                    anchor_score = sum(1 for anchor in anchors if anchor and (anchor in sentence_norm or anchor in document_text))
+                    if anchors and anchor_score == 0:
+                        continue
+                    structure_score = 1.0 if ("{" in sentence.text or "}" in sentence.text) and any(term in qnorm for term in ["raw", "json", "json-like"]) else 0.0
+                    for anchor in anchors:
+                        if anchor and answer.lower().endswith(f" for {anchor}"):
+                            answer = answer[: -(len(anchor) + 5)].strip()
+                    matches.append((score + (term_score * 2.0) + (anchor_score * 3.0) + structure_score, answer, sentence, score))
         if not matches:
             return None
         matches.sort(key=lambda item: (-item[0], item[2].rel_path, item[2].order))
         _, answer, sentence, score = matches[0]
         return Answer(answer, score, [self._evidence(sentence, score)], "generic label lookup")
+
+    def _label_terms_for_question(self, qnorm: str, query_terms: set[str]) -> set[str]:
+        phrases = [
+            "change summary",
+            "audit result",
+            "final state",
+            "current state",
+            "person id",
+            "asset id",
+            "case id",
+            "parcel id",
+            "invoice id",
+            "badge id",
+            "contact id",
+            "statement",
+            "explanation",
+            "approved",
+            "approver",
+            "reference",
+            "owner",
+            "reviewer",
+            "approver",
+            "organization",
+            "warranty",
+            "manual",
+            "runbook",
+            "link",
+            "url",
+        ]
+        terms: set[str] = set()
+        for phrase in phrases:
+            if phrase in qnorm:
+                terms.update(phrase.split())
+        if terms:
+            return terms
+        before_relation = re.split(r"\b(?:for|of|about|according|from)\b", qnorm, maxsplit=1)[0]
+        terms.update(
+            token for token in re.findall(r"[a-z0-9_-]+", before_relation)
+            if token in query_terms and token not in {"what", "which", "when", "where", "who"}
+        )
+        return terms
 
     def _answer_generic_table_row(self, question: str, qnorm: str) -> Answer | None:
         which_match = re.search(r"\bwhich\s+([a-z0-9_-]+).*\b(?:is|was)\s+([a-z0-9_-]+)", qnorm)

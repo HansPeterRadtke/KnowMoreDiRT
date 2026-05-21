@@ -1,0 +1,20 @@
+Cinder Atlas dossier.
+owner: Mara Vell
+reviewer: Toma Rusk
+approver: Eri Noam
+organization: North Lumen Cooperative
+person id: actor_mara884211
+case id: CAX-4102
+parcel id: PCL-9930
+guide link: https://guides.example.test/cinder-atlas
+archive path: vault/cinder_atlas_notes.md
+current state: stable
+change summary: replace the cracked inlet gasket before the winter check
+explanation: pressure fell because the upper valve stayed half open
+Do not confuse this with the cache file that mentions Cinder Atlas and says owner: wrong_url.
+
+Mara Vell reviewed the safety addendum for Amber Loom.
+Amber Loom owner: Pela Dorn.
+Amber Loom reference: AML-2201.
+Amber Loom repair link: https://guides.example.test/amber-loom-repair
+Amber Loom current state: paused.

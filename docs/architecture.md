@@ -59,12 +59,13 @@ The current query path combines:
 - lexical retrieval over raw sentence chunks,
 - referent-centric retrieval through mentions and referents,
 - frame-aware retrieval through predicates and frame arguments,
-- relation-aware retrieval through generic label, identifier, event, status, temporal, and table relations,
+- relation-aware retrieval through generic label, identifier, event, status, temporal, table, and heading-scoped relations,
 - bounded SQLite subgraph execution over selected documents/chunks, source spans, mentions, referents, contexts, frames, frame arguments, temporal edges, and relations,
 - temporal state retrieval for state changes with dated evidence,
 - text-quality downweighting so noise files do not dominate normal questions,
 - conservative deterministic answer extraction over bounded candidates,
-- ranking by anchor match, predicate/label match, context validity, temporal recency, and text-quality signals.
+- ranking by anchor match, predicate/label match, relation completeness, context validity, temporal recency, and text-quality signals.
+- small generic two-hop traversal for reference/role/value chains, such as resolving an owner through a referenced record and then resolving that actor's identifier.
 
 This is a first vertical slice of the full DSPG query architecture. It avoids full-corpus graph loading per question and avoids assuming external input structure. Future work should strengthen graph traversal, entity resolution, uncertainty handling, and deeper model-assisted extraction.
 
@@ -97,7 +98,7 @@ DSPG objects are grounded in exact source spans. Answers at the public boundary 
 - Temporal modeling handles simple dated state statements but not full interval logic.
 - Noise handling is structural and conservative; it labels and downweights low-semantic-content sources for ordinary fact retrieval while preserving them as source-grounded contexts.
 - The local model path is isolated, disabled by default, and currently focused on bounded query planning rather than full staged extraction.
-- The fixture suite is now broader, but it is still self-written and not proof of broad generalization.
+- The fixture suite now includes hard failure-driven raw reasoning tests, but it is still self-written and not proof of broad generalization.
 
 ## Optional Local Query Planner
 

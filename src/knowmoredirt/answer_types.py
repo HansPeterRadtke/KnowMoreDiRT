@@ -40,6 +40,7 @@ class ExpectedAnswer:
 
 
 _FILE_RE = re.compile(r"(?:^|[/\\])[^/\\\s]+\.[A-Za-z0-9]{1,12}$|^[A-Za-z0-9_.-]+\.[A-Za-z0-9]{1,12}$")
+_PATH_RE = re.compile(r"\b[A-Za-z0-9_-]+(?:/[A-Za-z0-9_.-]+)+\b")
 _DATE_TIME_RE = re.compile(
     r"\b(?:\d{4}-\d{2}-\d{2}(?:[ T]\d{1,2}:\d{2}(?::\d{2})?)?|\d{1,2}:\d{2}|\d{1,2}/\d{1,2}/\d{2,4})\b"
 )
@@ -81,7 +82,7 @@ def infer_expected_answer(question: str) -> ExpectedAnswer:
         return ExpectedAnswer("count")
     if re.match(r"^(did|does|do|is|are|was|were|can|could|should|has|have)\b", q):
         return ExpectedAnswer("boolean")
-    if any(token in qtokens for token in ["url", "urls", "link", "links", "runbook", "manual", "guide", "endpoint", "site"]) or (
+    if any(token in qtokens for token in ["url", "urls", "link", "links", "runbook", "manual", "warranty", "guide", "endpoint", "site"]) or (
         q.startswith("where ") and any(token in qtokens for token in ["stored", "listed", "available", "published", "map"])
     ):
         return ExpectedAnswer("url")
@@ -91,12 +92,12 @@ def infer_expected_answer(question: str) -> ExpectedAnswer:
         return ExpectedAnswer("date_time", allow_metadata_evidence=asks_metadata)
     if any(phrase in q for phrase in ["current state", "final state", "latest state"]) or "status" in qtokens or "state" in qtokens:
         return ExpectedAnswer("state")
-    if asks_metadata:
-        return ExpectedAnswer("metadata_value", allow_metadata_evidence=True)
     if q.startswith("who ") or " which person" in q or " actor" in qtokens:
         return ExpectedAnswer("person")
     if any(phrase in q for phrase in ["which organization", "what organization", "which group", "what group", "which team", "what team"]):
         return ExpectedAnswer("organization")
+    if asks_metadata:
+        return ExpectedAnswer("metadata_value", allow_metadata_evidence=True)
     if any(token in qtokens for token in ["identifier", "identifiers", "reference", "references", "id", "ids", "code", "hash", "commit", "invoice", "parcel", "case", "specimen", "sample", "order"]) or (
         q.startswith(("what ", "which ")) and any(token in qtokens for token in ["raw", "json", "record"])
     ) or (
@@ -134,10 +135,10 @@ def classify_value(value: str) -> AnswerType:
     extracted_ids = identifiers(text)
     if extracted_ids and any(item.rstrip(".,;)") == text.rstrip(".,;)") for item in extracted_ids):
         return "identifier"
-    if _PERSON_RE.fullmatch(text):
-        return "person"
     if _ORG_HINT_RE.search(text):
         return "organization"
+    if _PERSON_RE.fullmatch(text):
+        return "person"
     return "content_phrase"
 
 
@@ -174,6 +175,9 @@ def canonicalize_answer(expected: ExpectedAnswer, value: str) -> str:
     if expected.answer_type == "boolean":
         text = str(value or "").strip()
         return text if is_value_compatible(expected, text) else ""
+    if expected.answer_type in {"person", "actor", "organization"} and ";" in str(value):
+        parts = compatible_answer_parts(expected, value)
+        return "; ".join(dict.fromkeys(parts))
     if expected.answer_type in {"person", "actor", "organization", "state", "content_phrase", "metadata_value"}:
         text = str(value or "").strip().strip('"')
         return text if is_value_compatible(expected, text) else ""
@@ -195,7 +199,13 @@ def _canonical_part(expected: ExpectedAnswer, value: str) -> str:
         found = identifiers(cleaned)
         return found[0].rstrip(".,;)") if found else ""
     if expected.answer_type == "file_path":
-        match = _FILE_RE.search(cleaned)
+        without_urls = cleaned
+        for url in urls(cleaned):
+            without_urls = without_urls.replace(url, " ")
+        path_match = _PATH_RE.search(without_urls)
+        if path_match:
+            return path_match.group(0).rstrip(".,;)")
+        match = _FILE_RE.search(without_urls)
         return match.group(0).rstrip(".,;)") if match else ""
     if expected.answer_type == "count":
         match = re.search(r"\b\d+\b", cleaned)
@@ -210,5 +220,9 @@ def _canonical_part(expected: ExpectedAnswer, value: str) -> str:
 
 
 def _is_structural_reference(value: str) -> bool:
+    if "://" in str(value) or "http" in normalize(value):
+        return True
+    if urls(value) or identifiers(value):
+        return True
     value_type = classify_value(value)
     return value_type in {"url", "file_path", "identifier", "count", "date_time"}

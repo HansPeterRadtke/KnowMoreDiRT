@@ -38,6 +38,41 @@ def _query_terms(text: str) -> list[str]:
     return terms
 
 
+def _low_priority_source_path(rel_path: str) -> bool:
+    path = normalize(rel_path)
+    parts = re.split(r"[/_.-]+", path)
+    return bool({"cache", "lock", "tmp", "temp", "transport", "hidden"}.intersection(parts))
+
+
+def _asks_about_low_priority_source(question: str) -> bool:
+    q = normalize(question)
+    if "despite" in q or "according to meaningful source" in q:
+        return False
+    return any(term in q for term in ["cache", "lock", "temporary", "metadata", "file", "path"])
+
+
+def _descriptor_terms(question: str) -> list[str]:
+    q = normalize(question)
+    terms: list[str] = []
+    patterns = [
+        r"\b(?:what|which)\s+(?:is\s+the\s+)?([a-z][a-z0-9 _-]{1,40}?)\s+(?:id|identifier|reference|url|link|path)\b",
+        r"\b(?:where)\s+(?:is\s+the\s+)?([a-z][a-z0-9 _-]{1,40}?)\s+(?:url|link|path)\b",
+    ]
+    for pattern in patterns:
+        match = re.search(pattern, q)
+        if match:
+            terms.extend(term for term in match.group(1).split() if term not in {"the", "a", "an", "for"})
+    if "manual" in q:
+        terms.append("manual")
+    if "warranty" in q:
+        terms.append("warranty")
+    if "runbook" in q:
+        terms.append("runbook")
+    if "guide" in q:
+        terms.append("guide")
+    return list(dict.fromkeys(term for term in terms if len(term) > 2))
+
+
 def _target_terms(plan: dict[str, Any], question: str) -> list[str]:
     target = str(plan.get("target_surface") or "")
     terms = _query_terms(target)
@@ -130,7 +165,10 @@ def _rank_scope(
         if target_terms and not target_hits:
             continue
         score = target_hits * 12 + q_hits
-        if is_low_semantic_noise(" ".join(sentence.text for sentence in sentences_by_document.get(document.rel_path, {}).values())) and expected.answer_type != "metadata_value":
+        if (
+            is_low_semantic_noise(" ".join(sentence.text for sentence in sentences_by_document.get(document.rel_path, {}).values()))
+            or _low_priority_source_path(document.rel_path)
+        ) and expected.answer_type != "metadata_value" and not _asks_about_low_priority_source(question):
             score = int(score * 0.2)
         if score:
             doc_scores.append((score, document.document_id, document.rel_path))
@@ -155,7 +193,10 @@ def _rank_scope(
                 score += 12
             if doc_has_target and (identifiers(sentence.text) or urls(sentence.text)):
                 score += 4
-            if is_low_semantic_noise(sentence.text) and expected.answer_type != "metadata_value":
+            if (
+                is_low_semantic_noise(sentence.text)
+                or _low_priority_source_path(sentence.rel_path)
+            ) and expected.answer_type != "metadata_value" and not _asks_about_low_priority_source(question):
                 score = int(score * 0.15)
             if score:
                 chunk_scores.append((score, document.document_id, order, document.rel_path))
@@ -280,6 +321,7 @@ def _execute(records: dict[str, Any], plan: dict[str, Any]) -> tuple[list[str], 
     spans_by_id = {str(span["span_id"]): span for span in records["source_spans"]}
     contexts_by_id = {str(context["context_id"]): context for context in records["contexts"]}
     query_text = normalize(str(plan.get("query_text") or ""))
+    descriptor_terms = _descriptor_terms(str(plan.get("query_text") or ""))
     values: list[str] = []
     evidence: list[Evidence] = []
     if intent == "context_lookup":
@@ -363,6 +405,14 @@ def _execute(records: dict[str, Any], plan: dict[str, Any]) -> tuple[list[str], 
             if candidate:
                 _add(values, evidence, candidate, ev)
         elif intent in {"reference_lookup", "url_lookup", "file_lookup"}:
+            relation_label = normalize(" ".join(str(relation.get(key) or "") for key in ["subject", "predicate", "object"]))
+            relation_value = str(relation.get("value") or "")
+            if descriptor_terms and relation_value and any(term in relation_label for term in descriptor_terms):
+                _add(values, evidence, relation_value, ev)
+                continue
+            if intent == "url_lookup" and relation_value.startswith("http") and (not descriptor_terms or any(term in relation_label for term in descriptor_terms)):
+                _add(values, evidence, relation_value, ev)
+                continue
             candidates = urls(ev.text) if intent == "url_lookup" else identifiers(ev.text)
             if intent == "file_lookup":
                 candidates = [item for item in identifiers(ev.text) if "." in item]

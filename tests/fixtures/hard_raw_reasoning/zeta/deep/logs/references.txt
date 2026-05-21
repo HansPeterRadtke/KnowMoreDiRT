@@ -1,0 +1,6 @@
+Silver Nest reference: SVN-5001. SVN-5001 owner: Leda Cross. Leda Cross badge id: person_leda777000.
+Silver Nest reviewer: Orin Cale. Orin Cale badge id: person_orin228800.
+Copper Nest reference: CPN-6001. CPN-6001 owner: Milo Thane. Milo Thane badge id: person_milo993300.
+Copper Nest reviewer: Anya Reeve. Anya Reeve badge id: person_anya882200.
+The reference for Echo Tray is ECH-7001. ECH-7001 final state: approved.
+The reference for Echo Tray is not ECH-0000; that number appears in an old example.

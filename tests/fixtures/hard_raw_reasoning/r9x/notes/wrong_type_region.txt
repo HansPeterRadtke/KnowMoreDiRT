@@ -1,0 +1,10 @@
+Riven Glass note.
+Riven Glass reference: RVG-8181.
+Riven Glass link: https://links.example.test/riven-glass.
+Riven Glass path: cases/riven_glass.plan.
+No person is named as reviewer for Riven Glass.
+
+Oak Meridian organization: Sable Harbor Institute.
+Oak Meridian contact person: Jun Sato.
+Oak Meridian contact id: CONTACT-8800.
+Oak Meridian support URL: https://support.example.test/oak-meridian.

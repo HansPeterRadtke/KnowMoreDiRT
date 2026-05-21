@@ -1,0 +1,509 @@
+{
+  "description": "Hard raw-folder reasoning fixture inspired by structural failure classes, with invented entities only.",
+  "questions": [
+    {
+      "answer": "unknown",
+      "category": "wrong_answer_type",
+      "id": "hrq001",
+      "question": "Who reviewed Riven Glass?"
+    },
+    {
+      "answer": "Mara Vell",
+      "category": "wrong_answer_type",
+      "id": "hrq002",
+      "question": "Who owns Cinder Atlas?"
+    },
+    {
+      "answer": "Sable Harbor Institute",
+      "category": "wrong_answer_type",
+      "id": "hrq003",
+      "question": "Which organization is listed for Oak Meridian?"
+    },
+    {
+      "answer": "Jun Sato",
+      "category": "wrong_answer_type",
+      "id": "hrq004",
+      "question": "Who is the contact person for Oak Meridian?"
+    },
+    {
+      "answer": "CONTACT-8800",
+      "category": "wrong_answer_type",
+      "id": "hrq005",
+      "question": "What is the contact id for Oak Meridian?"
+    },
+    {
+      "answer": "https://support.example.test/oak-meridian",
+      "category": "wrong_answer_type",
+      "id": "hrq006",
+      "question": "Where is the support URL for Oak Meridian?"
+    },
+    {
+      "answer": "CAX-4102",
+      "category": "identifier_family",
+      "id": "hrq007",
+      "question": "What is the case id for Cinder Atlas?"
+    },
+    {
+      "answer": "PCL-9930",
+      "category": "identifier_family",
+      "id": "hrq008",
+      "question": "What is the parcel id for Cinder Atlas?"
+    },
+    {
+      "answer": "actor_mara884211",
+      "category": "identifier_family",
+      "id": "hrq009",
+      "question": "What is the person id for Cinder Atlas?"
+    },
+    {
+      "answer": "JG-4410",
+      "category": "identifier_family",
+      "id": "hrq010",
+      "question": "What is the asset id for Juniper Gate?"
+    },
+    {
+      "answer": "AUD-3310",
+      "category": "identifier_family",
+      "id": "hrq011",
+      "question": "What is the audit id for Juniper Gate?"
+    },
+    {
+      "answer": "SO-5512",
+      "category": "identifier_family",
+      "id": "hrq012",
+      "question": "What is the asset id for Slate Orchard?"
+    },
+    {
+      "answer": "https://guides.example.test/cinder-atlas",
+      "category": "url_confusion",
+      "id": "hrq013",
+      "question": "Where is the guide link for Cinder Atlas?"
+    },
+    {
+      "answer": "https://runbooks.example.test/juniper-gate",
+      "category": "url_confusion",
+      "id": "hrq014",
+      "question": "Where is the runbook for Juniper Gate?"
+    },
+    {
+      "answer": "https://runbooks.example.test/slate-orchard",
+      "category": "url_confusion",
+      "id": "hrq015",
+      "question": "Where is the runbook for Slate Orchard?"
+    },
+    {
+      "answer": "https://manuals.example.test/lark-mirror",
+      "category": "url_confusion",
+      "id": "hrq016",
+      "question": "Where is the manual for Lark Mirror?"
+    },
+    {
+      "answer": "https://warranty.example.test/lark-mirror",
+      "category": "url_confusion",
+      "id": "hrq017",
+      "question": "Where is the warranty for Lark Mirror?"
+    },
+    {
+      "answer": "https://manuals.example.test/moss-beacon",
+      "category": "url_confusion",
+      "id": "hrq018",
+      "question": "Where is the manual for Moss Beacon?"
+    },
+    {
+      "answer": "Ila Nore",
+      "category": "organization_person_confusion",
+      "id": "hrq019",
+      "question": "Who is owner for Lark Mirror?"
+    },
+    {
+      "answer": "Oren Pax",
+      "category": "organization_person_confusion",
+      "id": "hrq020",
+      "question": "Who is reviewer for Lark Mirror?"
+    },
+    {
+      "answer": "Tali Wren",
+      "category": "organization_person_confusion",
+      "id": "hrq021",
+      "question": "Who is owner for Moss Beacon?"
+    },
+    {
+      "answer": "Aro Lin",
+      "category": "organization_person_confusion",
+      "id": "hrq022",
+      "question": "Who is reviewer for Moss Beacon?"
+    },
+    {
+      "answer": "Nessa Vale",
+      "category": "organization_person_confusion",
+      "id": "hrq023",
+      "question": "Who is owner for Juniper Gate?"
+    },
+    {
+      "answer": "Hema Quill",
+      "category": "organization_person_confusion",
+      "id": "hrq024",
+      "question": "Who is owner for Slate Orchard?"
+    },
+    {
+      "answer": "replace the cracked inlet gasket before the winter check",
+      "category": "content_phrase",
+      "id": "hrq025",
+      "question": "What is the change summary for Cinder Atlas?"
+    },
+    {
+      "answer": "pressure fell because the upper valve stayed half open",
+      "category": "content_phrase",
+      "id": "hrq026",
+      "question": "What is the explanation for Cinder Atlas?"
+    },
+    {
+      "answer": "latch vibration returned after rain",
+      "category": "content_phrase",
+      "id": "hrq027",
+      "question": "What is the statement for Juniper Gate audit?"
+    },
+    {
+      "answer": "mirror needs velvet pad",
+      "category": "content_phrase",
+      "id": "hrq028",
+      "question": "What claim is listed for Lark Mirror about the pad?"
+    },
+    {
+      "answer": "do not use blue solvent",
+      "category": "content_phrase",
+      "id": "hrq029",
+      "question": "What claim is listed for Lark Mirror about solvent?"
+    },
+    {
+      "answer": "only humidity readings were stored",
+      "category": "content_phrase",
+      "id": "hrq030",
+      "question": "What was the audit result for Fern Vault?"
+    },
+    {
+      "answer": "unknown",
+      "category": "unanswerable_false_positive",
+      "id": "hrq031",
+      "question": "Who approved Riven Glass?"
+    },
+    {
+      "answer": "unknown",
+      "category": "unanswerable_false_positive",
+      "id": "hrq032",
+      "question": "Where is the warranty for Moss Beacon?"
+    },
+    {
+      "answer": "unknown",
+      "category": "unanswerable_false_positive",
+      "id": "hrq033",
+      "question": "What is the phone number for Fern Vault?"
+    },
+    {
+      "answer": "unknown",
+      "category": "unanswerable_false_positive",
+      "id": "hrq034",
+      "question": "What is the email address for Fern Vault?"
+    },
+    {
+      "answer": "unknown",
+      "category": "unanswerable_false_positive",
+      "id": "hrq035",
+      "question": "Who approved Amber Loom?"
+    },
+    {
+      "answer": "unknown",
+      "category": "unanswerable_false_positive",
+      "id": "hrq036",
+      "question": "What is the release date for west archive shelf?"
+    },
+    {
+      "answer": "TKT-9102",
+      "category": "nested_json",
+      "id": "hrq037",
+      "question": "What is the ticket id for Lark Mirror?"
+    },
+    {
+      "answer": "INV-3004",
+      "category": "nested_json",
+      "id": "hrq038",
+      "question": "What is the invoice id for Lark Mirror?"
+    },
+    {
+      "answer": "AST-7100",
+      "category": "nested_json",
+      "id": "hrq039",
+      "question": "What is the asset id for Lark Mirror?"
+    },
+    {
+      "answer": "TKT-9202",
+      "category": "nested_json",
+      "id": "hrq040",
+      "question": "What is the ticket id for Moss Beacon?"
+    },
+    {
+      "answer": "INV-3204",
+      "category": "nested_json",
+      "id": "hrq041",
+      "question": "What is the invoice id for Moss Beacon?"
+    },
+    {
+      "answer": "ready",
+      "category": "nested_json",
+      "id": "hrq042",
+      "question": "What is the current state of Lark Mirror?"
+    },
+    {
+      "answer": "Leda Cross",
+      "category": "multi_hop",
+      "id": "hrq043",
+      "question": "Who owns the reference for Silver Nest?"
+    },
+    {
+      "answer": "person_leda777000",
+      "category": "multi_hop",
+      "id": "hrq044",
+      "question": "What is the badge id for the owner of Silver Nest?"
+    },
+    {
+      "answer": "Orin Cale",
+      "category": "multi_hop",
+      "id": "hrq045",
+      "question": "Who reviewed Silver Nest?"
+    },
+    {
+      "answer": "person_orin228800",
+      "category": "multi_hop",
+      "id": "hrq046",
+      "question": "What is the badge id for the reviewer of Silver Nest?"
+    },
+    {
+      "answer": "Milo Thane",
+      "category": "multi_hop",
+      "id": "hrq047",
+      "question": "Who owns the reference for Copper Nest?"
+    },
+    {
+      "answer": "person_anya882200",
+      "category": "multi_hop",
+      "id": "hrq048",
+      "question": "What is the badge id for the reviewer of Copper Nest?"
+    },
+    {
+      "answer": "closed",
+      "category": "temporal_state",
+      "id": "hrq049",
+      "question": "What is the current state of Delta Well?"
+    },
+    {
+      "answer": "stable",
+      "category": "temporal_state",
+      "id": "hrq050",
+      "question": "What is the final state of Ibis Well?"
+    },
+    {
+      "answer": "approved",
+      "category": "temporal_state",
+      "id": "hrq051",
+      "question": "What is the final state of Echo Tray?"
+    },
+    {
+      "answer": "2026-04-11 09:30",
+      "category": "temporal_state",
+      "id": "hrq052",
+      "question": "When was Juniper Gate final state recorded?"
+    },
+    {
+      "answer": "2026-04-12 16:00",
+      "category": "temporal_state",
+      "id": "hrq053",
+      "question": "When was Slate Orchard final state recorded?"
+    },
+    {
+      "answer": "2026-04-10 07:15",
+      "category": "temporal_state",
+      "id": "hrq054",
+      "question": "When did Officer Talen record the north camera failure?"
+    },
+    {
+      "answer": "unknown",
+      "category": "context_discourse",
+      "id": "hrq055",
+      "question": "Did the dream actually delete the silver gate?"
+    },
+    {
+      "answer": "silver gate",
+      "category": "context_discourse",
+      "id": "hrq056",
+      "question": "What remains installed after the dream?"
+    },
+    {
+      "answer": "unknown",
+      "category": "context_discourse",
+      "id": "hrq057",
+      "question": "Is Kalo Reed belief confirmed as fact?"
+    },
+    {
+      "answer": "green",
+      "category": "context_discourse",
+      "id": "hrq058",
+      "question": "What color remains on the lantern?"
+    },
+    {
+      "answer": "No; later inspection found no crack in the blue pump.",
+      "category": "context_discourse",
+      "id": "hrq059",
+      "question": "Did later inspection find a crack in the blue pump?"
+    },
+    {
+      "answer": "Mist Rail was delayed",
+      "category": "context_discourse",
+      "id": "hrq060",
+      "question": "What did Otho Vale report about Mist Rail?"
+    },
+    {
+      "answer": "Mist Rail departed on time",
+      "category": "context_discourse",
+      "id": "hrq061",
+      "question": "What was the correction about Mist Rail?"
+    },
+    {
+      "answer": "Mara Vell",
+      "category": "noise_pollution",
+      "id": "hrq062",
+      "question": "Who owns Cinder Atlas according to meaningful source?"
+    },
+    {
+      "answer": "unknown",
+      "category": "noise_pollution",
+      "id": "hrq063",
+      "question": "Who reviewed Riven Glass despite the cache file?"
+    },
+    {
+      "answer": "CAX-4102",
+      "category": "noise_pollution",
+      "id": "hrq064",
+      "question": "What is the case id for Cinder Atlas according to meaningful source?"
+    },
+    {
+      "answer": "Ola Nym",
+      "category": "noise_pollution",
+      "id": "hrq065",
+      "question": "Who owns Bell Finch according to the table?"
+    },
+    {
+      "answer": "vault/cinder_atlas_notes.md",
+      "category": "canonical_output",
+      "id": "hrq066",
+      "question": "What file path is listed for Cinder Atlas?"
+    },
+    {
+      "answer": "north water",
+      "category": "canonical_output",
+      "id": "hrq067",
+      "question": "What does naur mean?"
+    },
+    {
+      "answer": "small lantern",
+      "category": "canonical_output",
+      "id": "hrq068",
+      "question": "What does felin mean?"
+    },
+    {
+      "answer": "tiros",
+      "category": "canonical_output",
+      "id": "hrq069",
+      "question": "What is the plural of tiro?"
+    },
+    {
+      "answer": "velas",
+      "category": "canonical_output",
+      "id": "hrq070",
+      "question": "What is the plural of vela?"
+    },
+    {
+      "answer": "22",
+      "category": "canonical_output",
+      "id": "hrq071",
+      "question": "What does 14 plus 8 equal?"
+    },
+    {
+      "answer": "3",
+      "category": "counts_aggregation",
+      "id": "hrq072",
+      "question": "How many Finch rows have status active?"
+    },
+    {
+      "answer": "1",
+      "category": "counts_aggregation",
+      "id": "hrq073",
+      "question": "How many rows have status blocked?"
+    },
+    {
+      "answer": "1",
+      "category": "counts_aggregation",
+      "id": "hrq074",
+      "question": "How many rows have status archived?"
+    },
+    {
+      "answer": "3",
+      "category": "counts_aggregation",
+      "id": "hrq075",
+      "question": "How many Finch entries are active?"
+    },
+    {
+      "answer": "Ola Nym",
+      "category": "tables_logs",
+      "id": "hrq076",
+      "question": "Who owns Bell Finch?"
+    },
+    {
+      "answer": "CF-2201",
+      "category": "tables_logs",
+      "id": "hrq077",
+      "question": "What reference is listed for Cedar Finch?"
+    },
+    {
+      "answer": "https://items.example.test/dune-finch",
+      "category": "tables_logs",
+      "id": "hrq078",
+      "question": "Where is the URL for Dune Finch?"
+    },
+    {
+      "answer": "Uma Korr",
+      "category": "tables_logs",
+      "id": "hrq079",
+      "question": "Who owns Ember Finch?"
+    },
+    {
+      "answer": "blue soap",
+      "category": "mixed_formats",
+      "id": "hrq080",
+      "question": "What did Rumi not buy?"
+    },
+    {
+      "answer": "D minor",
+      "category": "mixed_formats",
+      "id": "hrq081",
+      "question": "What scale did Asha practice?"
+    },
+    {
+      "answer": "Mira Cole",
+      "category": "mixed_formats",
+      "id": "hrq082",
+      "question": "Who reported the north camera failure?"
+    },
+    {
+      "answer": "Talen",
+      "category": "mixed_formats",
+      "id": "hrq083",
+      "question": "Who recorded the north camera failure?"
+    },
+    {
+      "answer": "Joss",
+      "category": "mixed_formats",
+      "id": "hrq084",
+      "question": "Who stated the south field gate was open?"
+    }
+  ]
+}

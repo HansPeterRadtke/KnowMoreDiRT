@@ -2,11 +2,12 @@
 
 ## Fixture Suites
 
-KMD currently keeps three self-written fixture suites:
+KMD currently keeps four self-written fixture suites:
 
 - `tests/fixtures/messy_raw_corpus/`: original project-style regression corpus.
 - `tests/fixtures/broad_raw_world/`: heterogeneous raw-world corpus across school, family, household, fiction, law-like notes, medical appointment notes, veterinary notes, geography, language learning, recipes, travel, sports, art, research, logistics, accounting, schedules, diagrams, tables, OCR-like text, multilingual fragments, aliases, and conflicts.
 - `tests/fixtures/hardcore_noise/`: random-character, base64/hex-like, word-salad, multilingual nonsense, OCR garbage, plausible babble, and adversarial distractor pollution.
+- `tests/fixtures/hard_raw_reasoning/`: hard failure-driven raw-text suite covering type safety, relation-scoped IDs/URLs, unanswerable false positives, nested object text, multi-hop lookup, temporal state, context, tables/logs, and noise pollution.
 
 All fixtures are raw text only. They use arbitrary nested folders, arbitrary filenames, mixed file endings, files without extensions, prose, tables, chats, logs, transcript turns, JSON-like text, dreams, beliefs, allegations, contradictions, noisy text, IDs, URLs, and distractors.
 
@@ -17,6 +18,7 @@ Current results:
 - original messy corpus: `60/60 (1.000)`
 - broad raw-world corpus: `65/65 (1.000)`
 - hardcore noise corpus: `8/8 (1.000)`
+- hard raw-reasoning corpus: `84/84 (1.000)`
 
 The current fixtures all pass. This is still a self-written regression suite, not proof of broad real-world generalization.
 
@@ -90,7 +92,7 @@ The current answer path has been refactored toward generic DSPG mechanisms:
 - filesystem/read metadata and document quality contexts.
 - broad expected-answer type validation for person/actor, organization, identifier, URL, file path, count, state, date/time, boolean, content phrase, and metadata answers.
 
-Additional unit coverage checks that type-unsafe candidates are rejected: person questions do not return URLs, paths, or IDs; URL questions return URLs rather than nearby names; organization questions reject bare structural identifiers; metadata-only hits cannot answer non-metadata questions; JSON-like raw text supports generic key/value lookup; and low-semantic/cache-like text is downweighted without being discarded. Fake local-model tests verify that evidence extraction is invoked only in model mode, counted, grounded to a retrieved span, and rejected when the proposed answer type is incompatible.
+Additional unit and hard-fixture coverage checks that type-unsafe candidates are rejected: person questions do not return URLs, paths, or IDs; URL questions return URLs rather than nearby names; organization questions reject bare structural identifiers; metadata-only hits cannot answer non-metadata questions; JSON-like raw text supports generic key/value lookup; and low-semantic/cache-like text is downweighted without being discarded. Fake local-model tests verify that evidence extraction is invoked only in model mode, counted, grounded to a retrieved span, and rejected when the proposed answer type is incompatible.
 
 ## Limitations
 

@@ -1,0 +1,6 @@
+record: Juniper Gate | owner: Nessa Vale | asset id: JG-4410 | runbook: https://runbooks.example.test/juniper-gate | state: active
+record: Juniper Gate | audit id: AUD-3310 | witness: Corin Hale | statement: latch vibration returned after rain
+record: Juniper Gate | final state: monitoring | timestamp: 2026-04-11 09:30
+record: Slate Orchard | owner: Hema Quill | asset id: SO-5512 | runbook: https://runbooks.example.test/slate-orchard | state: active
+record: Slate Orchard | final state: closed | timestamp: 2026-04-12 16:00
+record: Slate Orchard | unrelated URL: https://noise.example.test/slate-orchard

@@ -162,7 +162,9 @@ def deterministic_plan(question: str) -> dict[str, Any]:
         plan.update({"intent": "role_lookup", "answer_role": "reviewer", "target_surface": target or _role_object_anchor(question, ["reviewed", "looked over", "checked", "inspected", "signed off"]), "requires_asserted": True})
     elif "approved" in q:
         plan.update({"intent": "role_lookup", "answer_role": "approver", "target_surface": target, "requires_asserted": True})
-    elif any(phrase in q for phrase in ["who reported", "who requested", "who claimed", "who alleged", "which organization", "which company", "which account"]):
+    elif any(phrase in q for phrase in ["which organization", "what organization", "which company", "what company", "which group", "what group"]):
+        plan.update({"intent": "role_lookup", "answer_role": "organization", "target_surface": target or question.strip(" ?"), "requires_asserted": True})
+    elif any(phrase in q for phrase in ["who reported", "who requested", "who claimed", "who alleged", "which account"]):
         plan.update({"intent": "role_lookup", "answer_role": "reporter", "target_surface": target or question.strip(" ?"), "requires_asserted": True})
     elif qtokens.intersection({"url", "urls", "link", "links", "runbook", "manual", "guide"}):
         plan.update({"intent": "url_lookup", "answer_role": "reference", "target_surface": target or question.strip(" ?"), "requires_asserted": True})
@@ -207,7 +209,9 @@ def normalize_model_plan(question: str, model: dict[str, Any] | None, det: dict[
         plan.update({"intent": "role_lookup", "answer_role": "reviewer"})
     elif "approved" in q:
         plan.update({"intent": "role_lookup", "answer_role": "approver"})
-    elif any(phrase in q for phrase in ["who reported", "who requested", "who claimed", "who alleged", "which organization", "which company", "which account"]):
+    elif any(phrase in q for phrase in ["which organization", "what organization", "which company", "what company", "which group", "what group"]):
+        plan.update({"intent": "role_lookup", "answer_role": "organization"})
+    elif any(phrase in q for phrase in ["who reported", "who requested", "who claimed", "who alleged", "which account"]):
         plan.update({"intent": "role_lookup", "answer_role": "reporter"})
     elif qtokens.intersection({"url", "urls", "link", "links", "runbook", "manual", "guide"}):
         plan.update({"intent": "url_lookup", "answer_role": "reference"})
