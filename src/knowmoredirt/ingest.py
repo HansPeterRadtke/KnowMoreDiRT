@@ -8,6 +8,7 @@ import time
 from pathlib import Path
 from typing import Any
 
+from .drs import DiscourseArgument, DiscourseCondition, frame_from_model_dict
 from .extractors import capitalized_phrases, identifiers, urls
 from .models import Document, Sentence
 from .model_planner import call_model_chunk_frames
@@ -262,6 +263,33 @@ def _grounded_model_frames(
             },
         )
     return frames, result
+
+
+def _condition_from_deterministic_relation(relation: ExtractedRelation, evidence_text: str) -> DiscourseCondition | None:
+    predicate = relation.predicate or relation.relation_type
+    if not predicate:
+        return None
+    arguments: list[DiscourseArgument] = []
+    for role, value in [
+        ("subject", relation.subject),
+        ("object", relation.object),
+        ("value", relation.value),
+    ]:
+        if value:
+            arguments.append(DiscourseArgument(role=role, value=value, value_type="unknown"))
+    if not arguments and relation.value:
+        arguments.append(DiscourseArgument(role="value", value=relation.value, value_type="unknown"))
+    return DiscourseCondition(
+        predicate=predicate,
+        arguments=tuple(arguments),
+        frame_type=relation.relation_type,
+        polarity="negative" if relation.relation_type == "status" and normalize(relation.predicate) == "negation" else "positive",
+        modality="asserted",
+        temporal_text="",
+        evidence_text=evidence_text,
+        confidence=relation.confidence,
+        metadata=dict(relation.metadata),
+    )
 
 
 def ingest_folder(
@@ -590,6 +618,68 @@ def ingest_folder(
                     json.dumps(metadata, sort_keys=True),
                 ),
             )
+            condition = _condition_from_deterministic_relation(relation, sentence.text)
+            if condition is not None and condition.arguments:
+                condition_frame_id = stable_id(
+                    "frm",
+                    run_id,
+                    sentence.sentence_id,
+                    "condition",
+                    relation.relation_type,
+                    relation.predicate,
+                    relation.subject,
+                    relation.object,
+                    relation.value,
+                )
+                store.execute(
+                    "INSERT OR IGNORE INTO frames(frame_id, run_id, context_id, predicate, predicate_norm, trigger_surface, confidence, source, span_id) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)",
+                    (
+                        condition_frame_id,
+                        run_id,
+                        context_id,
+                        condition.predicate,
+                        normalize(condition.predicate),
+                        condition.predicate,
+                        condition.confidence,
+                        "deterministic_relation",
+                        span_id,
+                    ),
+                )
+                for arg_index, argument in enumerate(condition.arguments):
+                    arg_referent_id = store.upsert_referent(run_id, argument.value, argument.value_type)
+                    store.execute(
+                        "INSERT OR IGNORE INTO frame_arguments(argument_id, frame_id, role, mention_id, referent_id, surface, confidence) VALUES (?, ?, ?, ?, ?, ?, ?)",
+                        (
+                            stable_id("arg", condition_frame_id, arg_index, argument.role, argument.value),
+                            condition_frame_id,
+                            argument.role,
+                            None,
+                            arg_referent_id,
+                            argument.value,
+                            condition.confidence,
+                        ),
+                    )
+                    normalized_argument = normalize(argument.value)
+                    for existing_surface, _mention_id, existing_referent_id in mentions_for_sentence:
+                        if normalize(existing_surface) == normalized_argument and existing_referent_id != arg_referent_id:
+                            store.execute(
+                                """
+                                INSERT OR IGNORE INTO identity_hypotheses(
+                                  hypothesis_id, run_id, left_referent_id, right_referent_id,
+                                  relation, evidence, confidence, source
+                                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+                                """,
+                                (
+                                    stable_id("idh", run_id, existing_referent_id, arg_referent_id, sentence.sentence_id),
+                                    run_id,
+                                    existing_referent_id,
+                                    arg_referent_id,
+                                    "same_surface",
+                                    argument.value,
+                                    0.82,
+                                    "deterministic_surface",
+                                ),
+                            )
 
         if not _is_structural_heading(sentence.text) and pending_label_heading:
             section_anchor_by_document[sentence.document_id] = pending_label_heading
@@ -598,14 +688,15 @@ def ingest_folder(
         if use_semantic_frames and semantic_client is not None:
             model_frames, _frame_result = _grounded_model_frames(sentence, semantic_client, semantic_cache)
             for index, frame in enumerate(model_frames):
-                frame_type = clean_extracted_value(str(frame.get("frame_type") or "relation")) or "relation"
-                predicate = clean_extracted_value(str(frame.get("predicate") or "")) or frame_type
-                evidence_text = str(frame.get("evidence_text") or "").strip()
-                if not evidence_text or evidence_text not in sentence.text:
+                condition = frame_from_model_dict(frame)
+                if condition is None or condition.evidence_text not in sentence.text:
                     continue
-                modality = normalize(str(frame.get("modality") or "asserted")) or "asserted"
-                polarity = normalize(str(frame.get("polarity") or "positive")) or "positive"
-                temporal_text = clean_extracted_value(str(frame.get("temporal_text") or ""))
+                frame_type = condition.frame_type
+                predicate = condition.predicate or frame_type
+                evidence_text = condition.evidence_text
+                modality = condition.modality
+                polarity = condition.polarity
+                temporal_text = condition.temporal_text
                 semantic_context_id = context_id
                 if modality != "asserted":
                     context_key = f"modality:{modality}"
@@ -615,7 +706,7 @@ def ingest_folder(
                         context_by_kind[context_key] = semantic_context_id
                         store.execute(
                             "INSERT INTO contexts(context_id, run_id, kind, parent_context_id, holder_surface, evidence_surface, confidence) VALUES (?, ?, ?, ?, ?, ?, ?)",
-                            (semantic_context_id, run_id, context_key, context_id, None, evidence_text, float(frame.get("confidence") or 0.65)),
+                            (semantic_context_id, run_id, context_key, context_id, None, evidence_text, condition.confidence),
                         )
                 semantic_frame_id = stable_id("frm", run_id, sentence.sentence_id, "model", index, predicate, evidence_text)
                 store.execute(
@@ -627,7 +718,7 @@ def ingest_folder(
                         predicate,
                         normalize(predicate),
                         predicate,
-                        float(frame.get("confidence") or 0.65),
+                        condition.confidence,
                         "local_model",
                         span_id,
                     ),
@@ -662,20 +753,14 @@ def ingest_folder(
                         normalize(evidence_text),
                         span_id,
                         semantic_context_id,
-                        float(frame.get("confidence") or 0.65),
+                        condition.confidence,
                         json.dumps(frame_metadata, sort_keys=True),
                     ),
                 )
-                arguments = frame.get("arguments")
-                if not isinstance(arguments, list):
-                    arguments = []
-                for arg_index, argument in enumerate(arguments):
-                    if not isinstance(argument, dict):
-                        continue
-                    role = clean_extracted_value(str(argument.get("role") or f"arg_{arg_index}"))
-                    surface = clean_extracted_value(str(argument.get("text") or ""))
-                    if not surface:
-                        continue
+                for arg_index, argument in enumerate(condition.arguments):
+                    role = argument.role
+                    surface = argument.value
+                    arg_referent_id = store.upsert_referent(run_id, surface, argument.value_type)
                     store.execute(
                         "INSERT OR IGNORE INTO frame_arguments(argument_id, frame_id, role, mention_id, referent_id, surface, confidence) VALUES (?, ?, ?, ?, ?, ?, ?)",
                         (
@@ -683,15 +768,15 @@ def ingest_folder(
                             semantic_frame_id,
                             role,
                             None,
-                            None,
+                            arg_referent_id,
                             surface,
-                            float(frame.get("confidence") or 0.65),
+                            condition.confidence,
                         ),
                     )
                     relation_metadata = {
                         **frame_metadata,
                         "argument_role": role,
-                        "argument_value_type": str(argument.get("value_type") or ""),
+                        "argument_value_type": argument.value_type,
                     }
                     store.execute(
                         """
@@ -714,10 +799,31 @@ def ingest_folder(
                             normalize(surface),
                             span_id,
                             semantic_context_id,
-                            float(frame.get("confidence") or 0.65),
+                            condition.confidence,
                             json.dumps(relation_metadata, sort_keys=True),
                         ),
                     )
+                    normalized_argument = normalize(surface)
+                    for existing_surface, _mention_id, existing_referent_id in mentions_for_sentence:
+                        if normalize(existing_surface) == normalized_argument and existing_referent_id != arg_referent_id:
+                            store.execute(
+                                """
+                                INSERT OR IGNORE INTO identity_hypotheses(
+                                  hypothesis_id, run_id, left_referent_id, right_referent_id,
+                                  relation, evidence, confidence, source
+                                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+                                """,
+                                (
+                                    stable_id("idh", run_id, existing_referent_id, arg_referent_id, semantic_frame_id),
+                                    run_id,
+                                    existing_referent_id,
+                                    arg_referent_id,
+                                    "same_surface",
+                                    surface,
+                                    min(0.9, condition.confidence),
+                                    "local_model_frame",
+                                ),
+                            )
                 if temporal_text:
                     store.execute(
                         """
@@ -734,7 +840,7 @@ def ingest_folder(
                             "frame_temporal_scope",
                             temporal_text,
                             "",
-                            float(frame.get("confidence") or 0.65),
+                            condition.confidence,
                         ),
                     )
 

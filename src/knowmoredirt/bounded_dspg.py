@@ -284,6 +284,7 @@ def _load_records(store: Any, run_id: str, document_ids: list[str], chunk_keys: 
     mentions = _fetch_by_ids(connection, "mentions", "span_id", span_ids)
     refs = _fetch_by_ids(connection, "mention_referents", "mention_id", [row["mention_id"] for row in mentions])
     referents = _fetch_by_ids(connection, "referents", "referent_id", [row["referent_id"] for row in refs])
+    identity = _fetch_by_ids(connection, "identity_hypotheses", "left_referent_id", [row["referent_id"] for row in referents])
     frames = _fetch_by_ids(connection, "frames", "span_id", span_ids)
     args = _fetch_by_ids(connection, "frame_arguments", "frame_id", [frame["frame_id"] for frame in frames])
     temporal = _fetch_by_ids(connection, "temporal_edges", "source_span_id", span_ids)
@@ -298,6 +299,7 @@ def _load_records(store: Any, run_id: str, document_ids: list[str], chunk_keys: 
         "mentions": mentions,
         "mention_referents": refs,
         "referents": referents,
+        "identity_hypotheses": identity,
         "contexts": contexts,
         "frames": frames,
         "frame_arguments": args,
@@ -309,7 +311,7 @@ def _load_records(store: Any, run_id: str, document_ids: list[str], chunk_keys: 
             "documents": len(documents), "chunks": len(chunks), "source_spans": len(spans),
             "mentions": len(mentions), "referents": len(referents), "frames": len(frames),
             "frame_arguments": len(args), "temporal_edges": len(temporal), "relations": len(relations),
-            "context_carriers": len(context_carriers), "metadata_records": len(metadata_records),
+            "identity_hypotheses": len(identity), "context_carriers": len(context_carriers), "metadata_records": len(metadata_records),
         },
     }
 
@@ -747,6 +749,91 @@ def _score_relation(
     return score, values
 
 
+def _score_frame_bindings(
+    records: dict[str, Any],
+    spans_by_id: dict[str, dict[str, Any]],
+    chunks_by_id: dict[str, dict[str, Any]],
+    docs_by_id: dict[str, dict[str, Any]],
+    document_context: dict[str, str],
+    frame: QueryFrame,
+    expected: ExpectedAnswer,
+    target_terms: list[str],
+    relation_terms: list[str],
+) -> list[tuple[int, str, Evidence]]:
+    """Bind answer variables against generic frame arguments.
+
+    This is the DRT/DSPG counterpart to the relation-row matcher.  It does not
+    know domain roles.  It asks whether a grounded condition's predicate and
+    arguments satisfy the query frame, then returns compatible non-target
+    arguments as candidate variable bindings.
+    """
+
+    args_by_frame: dict[str, list[dict[str, Any]]] = {}
+    for argument in records.get("frame_arguments", []):
+        args_by_frame.setdefault(str(argument.get("frame_id")), []).append(argument)
+    contexts_by_id = {str(context.get("context_id")): context for context in records.get("contexts", [])}
+    scored: list[tuple[int, str, Evidence]] = []
+    for source_frame in records.get("frames", []):
+        if str(source_frame.get("source") or "") != "local_model":
+            continue
+        span = spans_by_id.get(str(source_frame.get("span_id")), {})
+        ev = _evidence(span, chunks_by_id, docs_by_id)
+        doc_ctx = document_context.get(str(span.get("document_id")), "")
+        arguments = args_by_frame.get(str(source_frame.get("frame_id")), [])
+        argument_text = " ".join(str(argument.get("surface") or "") for argument in arguments)
+        predicate_text = " ".join(
+            str(source_frame.get(key) or "")
+            for key in ["predicate", "trigger_surface", "source"]
+        )
+        context = contexts_by_id.get(str(source_frame.get("context_id")), {})
+        context_kind = normalize(str(context.get("kind") or ""))
+        local_material = normalize(" ".join([predicate_text, argument_text, ev.text, context_kind]))
+        material = normalize(" ".join([local_material, doc_ctx]))
+        if (
+            expected.answer_type != "boolean"
+            and not frame.negated
+            and (context_kind.startswith("modality:") or _is_nonassertive_material(material))
+            and _requires_asserted_truth(relation_terms)
+        ):
+            continue
+        if (
+            expected.answer_type != "boolean"
+            and not frame.negated
+            and re.search(r"\b(?:no|not|never|without|denied|unsupported)\b", local_material)
+        ):
+            continue
+        target_hits = sum(1 for term in target_terms if _has_term(material, term))
+        relation_hits = sum(1 for term in relation_terms if _has_term(local_material, term))
+        if target_terms and not target_hits:
+            continue
+        if relation_terms and not relation_hits:
+            continue
+        ordered_arguments = sorted(
+            arguments,
+            key=lambda item: 0 if normalize(str(item.get("role") or "")) == "value" else 1,
+        )
+        has_value_argument = any(normalize(str(item.get("role") or "")) == "value" for item in ordered_arguments)
+        for argument in ordered_arguments:
+            role_norm = normalize(str(argument.get("role") or ""))
+            if has_value_argument and expected.answer_type in {"state", "content_phrase", "metadata_value"} and role_norm != "value":
+                continue
+            value = _clean(str(argument.get("surface") or ""))
+            if not value:
+                continue
+            value_norm = normalize(value)
+            if target_terms and any(_has_term(value_norm, term) for term in target_terms):
+                continue
+            if not is_value_compatible(expected, value):
+                continue
+            score = 20 + target_hits * 18 + relation_hits * 14 + _answer_type_bonus(expected, value)
+            if role_norm == "value":
+                score += 18
+            if str(source_frame.get("source") or "") == "local_model":
+                score += 10
+            scored.append((score, value, ev))
+    return scored
+
+
 def _execute(records: dict[str, Any], frame: QueryFrame, question: str) -> tuple[list[str], list[Evidence], dict[str, Any]]:
     expected = infer_expected_answer(question)
     target_terms = _target_terms(frame, question)
@@ -857,7 +944,17 @@ def _execute(records: dict[str, Any], frame: QueryFrame, question: str) -> tuple
         if context_values:
             return context_values[:4], context_evidence[:4], {"record_counts": records.get("record_counts", {})}
 
-    scored: list[tuple[int, str, Evidence]] = []
+    scored: list[tuple[int, str, Evidence]] = _score_frame_bindings(
+        records,
+        spans_by_id,
+        chunks_by_id,
+        docs_by_id,
+        document_context,
+        frame,
+        expected,
+        target_terms,
+        relation_terms,
+    )
     for relation in records["relations"]:
         span = spans_by_id.get(str(relation.get("source_span_id")), {})
         ev = relation_evidence.get(str(relation.get("relation_id"))) or _evidence(span, chunks_by_id, docs_by_id)

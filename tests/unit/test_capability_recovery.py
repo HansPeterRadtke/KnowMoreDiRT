@@ -61,6 +61,32 @@ class FakeFrameModel(FakeLocalModel):
                 ],
                 "_model_raw": '{"frames":[{"frame_type":"relation","predicate":"guards","arguments":[{"role":"entity","text":"Marble Gate","value_type":"entity"},{"role":"participant","text":"Sena Rill","value_type":"person"}],"polarity":"positive","modality":"asserted","temporal_text":"","evidence_text":"Marble Gate is guarded by Sena Rill","confidence":0.91}]}',
             }
+        if "generic DRT/DSPG query frame" in prompt and "Marble Gate" in prompt:
+            return {
+                "query_frame": {
+                    "target_anchors": ["Marble Gate"],
+                    "requested_relation": "guards",
+                    "relation_terms": ["guards"],
+                    "constraints": [],
+                    "answer_type": "person",
+                    "temporal_scope": "",
+                    "negated": False,
+                    "aggregation": "",
+                    "requires_evidence": True,
+                },
+                "_model_raw": '{"query_frame":{"target_anchors":["Marble Gate"],"requested_relation":"guards","relation_terms":["guards"],"constraints":[],"answer_type":"person","temporal_scope":"","negated":false,"aggregation":"","requires_evidence":true}}',
+            }
+        if "Verify whether the candidate answer is entailed" in prompt and "Marble Gate" in prompt:
+            return {
+                "verification": {
+                    "entailed": True,
+                    "answer_type": "person",
+                    "answer": "Sena Rill",
+                    "evidence_span": "Marble Gate is guarded by Sena Rill",
+                    "reason": "fake grounded verifier",
+                },
+                "_model_raw": '{"verification":{"entailed":true,"answer_type":"person","answer":"Sena Rill","evidence_span":"Marble Gate is guarded by Sena Rill","reason":"fake grounded verifier"}}',
+            }
         return super().complete_json(prompt, n_predict=n_predict, grammar=grammar)
 
 
@@ -127,6 +153,24 @@ def test_local_model_ingest_builds_grounded_generic_frames(tmp_path: Path, monke
     assert engine.model_query_trace.chunk_frame_call_count >= 1
     assert engine.model_query_trace.chunk_frame_parsed_count >= 1
     assert engine.model_query_trace.chunk_frame_accepted_count >= 1
+
+
+def test_local_model_frame_arguments_bind_answer_variables_generically(tmp_path: Path, monkeypatch) -> None:
+    fake = FakeFrameModel()
+    (tmp_path / "frame.raw").write_text("Marble Gate is guarded by Sena Rill.\n", encoding="utf-8")
+    monkeypatch.setenv("KMD_USE_LOCAL_MODEL", "1")
+    monkeypatch.setenv("KMD_LLM_INGEST", "1")
+    monkeypatch.setenv("KMD_FRAME_CACHE_DIR", str(tmp_path / ".frame-cache"))
+    monkeypatch.setattr("knowmoredirt.engine.LocalModelClient", lambda: fake)
+
+    engine = KnowMoreDiRTEngine(tmp_path)
+    answer = engine.answer("Who guards Marble Gate?")
+
+    assert answer.text == "Sena Rill"
+    assert answer.evidence
+    assert answer.reason in {"local model query-frame execution", "bounded DSPG query-frame execution"}
+    assert engine.last_bounded_diagnostics["execution"]["record_counts"]["frame_arguments"] >= 2
+    assert engine.dspg_counts()["identity_hypotheses"] >= 0
 
 
 def test_bounded_graph_execution_runs_without_model_for_context_lookup(tmp_path: Path) -> None:

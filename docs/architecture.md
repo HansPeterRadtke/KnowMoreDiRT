@@ -24,7 +24,7 @@ Initialization performs these steps:
 7. **Referent construction**: create local referents from exact mentions without requiring destructive global merging.
 8. **Context assignment**: mark sentence-level assertion and discourse-scope contexts from source-grounded carriers.
 9. **Frame extraction**: create lightweight event/proposition frames with observed predicates and argument links.
-10. **Optional local-model discourse frames**: when `KMD_USE_LOCAL_MODEL=1` and LLM ingestion is enabled, each meaningful source chunk is sent to the localhost-only model for generic DRT/DSPG frame JSON. Accepted frames must be grounded by exact evidence text from the chunk before they are stored.
+10. **Optional local-model discourse frames**: when `KMD_USE_LOCAL_MODEL=1` and LLM ingestion is enabled, each meaningful source chunk is sent to the localhost-only model for generic DRT/DSPG frame JSON. Accepted frames must be grounded by exact evidence text from the chunk before they are stored. Model arguments are converted into referents, frame arguments, same-surface identity hypotheses, and source-grounded semantic relations.
 11. **Generic relation extraction**: store label/value pairs, JSON-like/object-as-text key/value pairs, table cells, identifier values, copular assertions, active/passive events, negation relations, and timestamp relations as source-grounded DSPG relations.
 12. **Text-quality/context scoring**: store generic structural signals and document-level contexts for low-semantic-content files such as random-character blobs, hex/blob-like text, OCR corruption, word salad, plausible babble, and meaningful discourse.
 13. **Indexing**: build bounded retrieval structures over both raw chunks and DSPG records.
@@ -40,6 +40,7 @@ The current store is SQLite-backed and normalized. It includes:
 - `mentions`
 - `referents`
 - `mention_referents`
+- `identity_hypotheses`
 - `contexts`
 - `context_carriers`
 - `context_assignments`
@@ -50,6 +51,8 @@ The current store is SQLite-backed and normalized. It includes:
 - `metadata_records`
 
 The current implementation uses an in-memory database by default. A durable user-configurable store path is planned.
+
+KMD now has an explicit Python DRT layer in `knowmoredirt.drs`. It defines discourse referents, discourse arguments, discourse conditions, and discourse contexts as relation-agnostic objects. These objects are normalized into the SQLite DSPG store. Predicate and role labels remain data from source text or model output. They are not intent enums and do not select bespoke answer handlers.
 
 Document metadata stores natural filesystem/read metadata and text-quality metrics, including printable ratio, symbol ratio, token diversity, OCR-like token ratio, a low-semantic-noise flag, and a semantic-quality label. The same classification is also represented as a `quality:*` context so noisy source material remains preserved and queryable rather than discarded. Generic filesystem/read metadata is also normalized into `metadata_records`, while source quality, filesystem time, sentence context, and event-time signals are represented as context carriers and assignments.
 
@@ -62,6 +65,7 @@ The current query path combines:
 - frame-aware retrieval through observed predicates and frame arguments,
 - relation-aware retrieval through generic label, identifier, event, assertion, temporal, table, and record relations,
 - bounded SQLite subgraph execution over selected documents/chunks, source spans, mentions, referents, contexts, frames, frame arguments, temporal edges, and relations,
+- local-model frame argument binding when semantic frames are present,
 - temporal state retrieval for state changes with dated evidence,
 - text-quality downweighting so noise files do not dominate normal questions,
 - conservative deterministic answer extraction over bounded candidates,
@@ -72,6 +76,8 @@ Questions are parsed into generic query frames containing target anchors, reques
 This is a first vertical slice of the full DSPG query architecture. It avoids full-corpus graph loading per question and avoids assuming external input structure. Future work should strengthen graph traversal, entity resolution, uncertainty handling, aggregation, discourse context propagation, and deeper model-assisted extraction.
 
 The bounded SQLite graph executor is part of the normal non-model answer pipeline for query plans that can be mapped to generic DSPG operations. The optional local model path uses the same executor after producing a constrained plan, so model assistance refines planning rather than replacing grounded graph execution.
+
+When model frames are available, answer candidates can be produced by binding the query frame against frame arguments rather than by using a relation-name handler. The executor checks that the target anchors, requested predicate text, context, and expected answer type are jointly satisfied, then returns compatible non-target arguments as possible answer-variable bindings.
 
 Before returning a non-unknown answer, KMD now infers a broad expected answer type from the question: person/actor, organization, identifier, URL, file path, count, state, date/time, boolean, content phrase, metadata value, or unknown. Candidate answers are rejected if the value type is incompatible with the question. This prevents structural references such as URLs, file paths, IDs, and metadata-only hits from satisfying person, organization, state, or content questions unless the question explicitly asks for that type. Metadata records remain valid answer sources only for metadata questions; otherwise they serve as retrieval priors.
 

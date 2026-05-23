@@ -8,113 +8,41 @@ This report records the current KnowMoreDiRT implementation state after continui
 
 ## Local Model Status
 
-The local llama.cpp text endpoint was checked directly:
-
-- Endpoint: `http://127.0.0.1:14829/v1`
-- Model reported by `/v1/models`: `Qwen2.5-14B-Instruct-Q4_K_M.gguf`
-- Context reported by server metadata: `32768`
-- Chat completion smoke test: passed during this work window
-- Cloud APIs: not used
-- HERB: not run
-
-The vision endpoint on port `14830` is unrelated to this KMD text task and was not modified.
+The local llama.cpp text endpoint was checked directly at `http://127.0.0.1:14829/v1/models`. It reported `Qwen2.5-14B-Instruct-Q4_K_M.gguf` with server metadata showing a 32768 context. Cloud APIs were not used. A live full fixture pass with the local model was not completed because the local model path is still too slow for the full internal fixture loop without additional batching and cache controls.
 
 ## What Changed
 
-### Generic local-model plumbing
+This pass added an explicit generic DRT layer in `src/knowmoredirt/drs.py`. The new layer defines discourse referents, discourse arguments, discourse conditions, and discourse contexts as relation-agnostic Python objects. These objects are not semantic handlers. They are normalized containers for predicates, arguments, modality, polarity, temporal text, confidence, and exact evidence text.
 
-- Added `src/knowmoredirt/semantic_cache.py` for stable JSON caching of local-model chunk frame extraction.
-- Extended the local model client to support llama.cpp OpenAI-compatible chat completions with stricter localhost-only safety and more robust JSON extraction.
-- Added generic model-planner calls for:
-  - chunk-to-discourse-frame extraction,
-  - question-to-query-frame planning,
-  - bounded evidence answer verification.
-- Added counters/traces for model plan, chunk-frame, verifier, parse, accept, and reject activity.
-- Kept local model usage explicit and optional. Default deterministic behavior still works without the model.
+The SQLite DSPG schema was extended with `identity_hypotheses`. Ingestion now creates same-surface identity hypotheses when deterministic or model-produced frame arguments align with existing mention referents. This is a small first step toward the old DRT_tests identity machinery, but without importing benchmark-shaped identity categories.
 
-### Generic DSPG ingestion improvements
+Ingestion now converts deterministic source-grounded relations into generic discourse conditions and frame arguments. Those deterministic relation frames are stored for provenance and diagnostics, but current answer-variable binding uses local-model semantic frames only, because deterministic verb and label heuristics are still too shallow and can introduce false positives if treated as full semantic frames.
 
-- Ingest now can attach local-model frames to grounded source spans when enabled.
-- Added generic section/record grouping so label-value, table, and object-like text can inherit source-local structural context without requiring a prepared schema.
-- Added object-like raw-text record extraction for brace-delimited raw text. This treats JSON-like data as text and stores grounded key/value relations rather than relying on an external schema.
-- Added table/header relation extraction for delimited raw-text rows.
-- Preserved source spans and provenance for deterministic and model-extracted relations.
+The local-model chunk-frame path now normalizes accepted frame dictionaries through the DRS layer. Accepted model frames create referents, frame arguments, semantic relations, modality contexts, temporal edges when supplied, and identity hypotheses. The model output must still be grounded by exact evidence text from the chunk before it is stored.
 
-### Generic bounded graph execution improvements
+The bounded DSPG executor now has a generic frame-argument binding path. When local-model frames are present, it binds a query frame against grounded frame arguments by checking target anchors, requested predicate text, context, expected answer type, and source evidence. This is closer to Kamp-style variable binding than the earlier relation-row-only execution path. It does not branch on owner, reviewer, manual, runbook, customer, ticket, or any other domain relation name.
 
-- Strengthened target and relation constraint matching in the bounded DSPG executor.
-- Added low-priority/noise source filtering when better grounded non-noise candidates exist.
-- Added generic relation-constraint filtering so broad answer-type terms do not satisfy missing relation requests by themselves.
-- Improved count aggregation over grouped table/record/label relations.
-- Added generic validity/context priors for current/active versus stale/obsolete source groups.
-- Kept the implementation relation-agnostic: relation words remain data, not control-flow handlers.
-
-### Generic extraction and canonicalization fixes
-
-- Improved active-event extraction in mixed structural text so label-value lines do not suppress unrelated event sentences in the same chunk.
-- Added a generic conversion from action-like label values into event-like relations when the label supplies a predicate and the value is a grounded action phrase.
-- Improved token cleanup and name/person descriptor normalization without fixture-specific entity branches.
-
-## Anti-Hardcoding Position
-
-The current architecture intentionally avoids benchmark-specific and fixture-specific answer routes. Semantic words from source text or questions are used as relation/constraint data. They are not allowed to drive control-flow branches such as special owner/reviewer/manual/organization handlers.
-
-Static architecture tests were strengthened earlier and still run under `pytest`; they now pass. The remaining failures are strict fixture-score failures, not static contamination failures.
+Unit tests were extended to prove that local-model chunk frames can become queryable generic frame arguments and that the store exposes the new identity-hypothesis table. The static architecture tests still reject benchmark/prepared markers and obvious semantic-handler branches in core code.
 
 ## Validation Run
 
 Commands run:
 
 ```bash
-PYTHONPATH=src /data/venv/bin/python -m py_compile src/knowmoredirt/*.py tests/**/*.py scripts/evaluate_fixture.py
-PYTHONPATH=src /data/venv/bin/python -m pytest -q
-PYTHONPATH=src /data/venv/bin/python scripts/evaluate_fixture.py --corpus tests/fixtures/messy_raw_corpus --qa tests/fixtures/messy_raw_corpus_qa.json --json-out /tmp/kmd_eval_messy_final.json
-PYTHONPATH=src /data/venv/bin/python scripts/evaluate_fixture.py --corpus tests/fixtures/broad_raw_world --qa tests/fixtures/broad_raw_world_qa.json --json-out /tmp/kmd_eval_broad_final.json
-PYTHONPATH=src /data/venv/bin/python scripts/evaluate_fixture.py --corpus tests/fixtures/hardcore_noise --qa tests/fixtures/hardcore_noise_qa.json --json-out /tmp/kmd_eval_noise_final.json
-PYTHONPATH=src /data/venv/bin/python scripts/evaluate_fixture.py --corpus tests/fixtures/hard_raw_reasoning --qa tests/fixtures/hard_raw_reasoning_qa.json --json-out /tmp/kmd_eval_hard_final.json
+python3 -m py_compile src/knowmoredirt/*.py tests/**/*.py scripts/evaluate_fixture.py
+PYTHONPATH=src pytest -q
 ```
 
-Results:
+The py_compile command passed. Pytest still fails only on the strict fixture-score gates. The non-evaluation unit, smoke, architecture, store, model, and capability tests pass after this change. The strict fixture results observed in the pytest output were messy 29/60, broad 41/65, noise 7/8, and hard 71/134. These gates were not lowered.
 
-- `py_compile`: passed
-- `pytest -q`: failed because strict fixture score gates are still not restored
-- Unit/static tests outside strict fixture gates: passed in the final pytest run
-- Messy fixture: `29/60` (`0.483`)
-- Broad fixture: `41/65` (`0.631`)
-- Hardcore noise fixture: `7/8` (`0.875`)
-- Hard raw reasoning fixture: `71/134` (`0.530`)
+HERB was not run.
 
-The strict evaluation tests currently expect:
+## Interpretation
 
-- Messy: `60/60`
-- Broad: `65/65`
-- Noise: `8/8`
-- Hard: `134/134`
+The current implementation is still not complete. It is materially closer to the intended architecture because the package now has explicit DRT-style condition objects, identity-hypothesis storage, model-frame normalization, and frame-argument variable binding. However, the strict internal fixtures remain far below the earlier procedural-handler scores. That failure is expected at this stage and should not be hidden: KMD has removed most procedural semantic routing, but the replacement generic LLM-centered DRT/DSPG machinery is not yet strong enough to recover all fixture behavior.
 
-Those gates are intentionally still strict and were not lowered.
+The main remaining gap is not a missing owner/reviewer/manual-style handler. The missing work is generic. KMD still needs robust LLM chunk-frame coverage with cacheable fixture execution, stronger context accessibility, stronger temporal/event/state modeling, stronger multi-hop referent traversal, stronger table/log/object group traversal, aggregation operators over generic frame bindings, and verifier-driven unknown gating. The current deterministic fallback is useful infrastructure, but it is not a full semantic parser.
 
-## Remaining Limitations
+## Next Required Work
 
-The current implementation is not done. The main remaining gaps are generic reasoning gaps, not benchmark adapter problems:
-
-- Context/discourse accessibility is still weak, especially belief/dream/fiction/quote/denial separation.
-- Multi-hop binding still misses many actor/reference chains and relation-scoped identifiers.
-- Table/log row reasoning needs stronger row grouping, argmax/min, and exact constraint satisfaction.
-- Unknown gating still allows some false positives when broad lexical evidence exists but a complete relation binding is absent.
-- Canonical output sometimes returns a broader phrase than the expected minimal grounded value.
-- The local-model path is wired and tested technically, but full fixture evaluation still primarily exercises deterministic DSPG execution; cached model-frame evaluation needs a dedicated, reproducible test mode before it can become a normal gate.
-- Runtime use of the live local model is too slow for full fixture loops without additional caching and batching controls.
-
-## Next Correct Work
-
-The next implementation steps should remain generic:
-
-1. Add a cacheable LLM-frame evaluation mode for fixtures so local semantic frames can be used reproducibly without expensive repeated calls.
-2. Build a proper generic context-accessibility layer over assertion, quote, report, belief, dream, fiction, allegation, denial, and uncertainty contexts.
-3. Strengthen relation role alignment and answer-variable binding in the graph executor instead of adding semantic keyword handlers.
-4. Add generic row/object group traversal with aggregation operators such as count, latest, argmax, and scoped list extraction.
-5. Use the local-model verifier as a bounded entailment check for high-risk candidates, with grounding and type validation enforced before returning a non-unknown answer.
-
-## Conclusion
-
-KMD has moved closer to the intended generic hybrid architecture: deterministic code builds and searches grounded DSPG structures, and the local LLM path now has concrete ingestion, planning, and verification hooks with caching. However, the internal fixture gates are not restored. This state should be treated as committed progress, not completion.
+The next correct step is to make local-model frame extraction practical for full fixture evaluation by adding durable cache reuse, progress logging, and batch controls, then run the strict internal fixtures in model-enabled mode without changing the public API. After that, the bounded executor should be extended to traverse frame-to-referent neighborhoods, identity hypotheses, context assignments, temporal edges, and grouped object/table records as generic DRT structures. Only then should fixture failures be treated as evidence of missing generic mechanisms rather than as prompts to reintroduce semantic handlers.

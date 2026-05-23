@@ -21,6 +21,7 @@ def test_ingest_builds_normalized_dspg_tables() -> None:
     assert counts["source_spans"] >= counts["chunks"]
     assert counts["mentions"] > 50
     assert counts["referents"] > 30
+    assert "identity_hypotheses" in counts
     assert counts["contexts"] >= 3
     assert counts["context_carriers"] >= counts["documents"]
     assert counts["context_assignments"] >= counts["chunks"]

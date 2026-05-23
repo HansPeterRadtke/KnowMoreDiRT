@@ -13,14 +13,14 @@ All fixtures are raw text only. They use arbitrary nested folders, arbitrary fil
 
 ## Current Score
 
-Current generic hybrid query-frame results after restoring strict fixture gates:
+Current generic hybrid query-frame results after adding the DRS condition layer, identity-hypothesis storage, local-model frame normalization, and model-frame argument binding:
 
-- original messy corpus: `26/60 (0.433)`
-- broad raw-world corpus: `37/65 (0.569)`
+- original messy corpus: `29/60 (0.483)`
+- broad raw-world corpus: `41/65 (0.631)`
 - hardcore noise corpus: `7/8 (0.875)`
-- hard raw-reasoning corpus: `67/134 (0.500)`
+- hard raw-reasoning corpus: `71/134 (0.530)`
 
-These scores are intentionally reported after removing procedural semantic routing and relation-specific answer handlers from the core and re-raising the fixture gates to exact correctness. The strict gates currently fail; the numbers above are the honest current state. The next implementation work is to recover accuracy through generic discourse parsing, graph traversal, context propagation, aggregation, and local-model frame extraction/verification rather than semantic handler branches.
+These scores are intentionally reported after removing procedural semantic routing and relation-specific answer handlers from the core and keeping the fixture gates at exact correctness. The strict gates currently fail; the numbers above are the honest current state. The next implementation work is to recover accuracy through generic discourse parsing, graph traversal, context propagation, aggregation, cacheable local-model frame extraction, and bounded entailment verification rather than semantic handler branches.
 
 ## Categories Covered
 
@@ -69,12 +69,13 @@ The unit tests also verify that initialization creates normalized DSPG structure
 - source spans,
 - mentions,
 - referents,
+- identity hypotheses,
 - context records,
 - context carriers and assignments,
 - frames,
 - frame arguments,
-- temporal edges.
-- generic relation records.
+- temporal edges,
+- generic relation records,
 - normalized metadata records.
 
 Architecture tests assert that the core package contains no external-evaluation markers, wrapper assumptions, hidden-label terms, or dataset-shaped routing, and that `knowmoredirt.__all__` exports only `initialize` and `question`.

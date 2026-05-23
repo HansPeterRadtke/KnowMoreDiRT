@@ -16,7 +16,7 @@ from typing import Any
 from .text import normalize
 
 
-SCHEMA_VERSION = 3
+SCHEMA_VERSION = 4
 
 
 def stable_id(prefix: str, *parts: Any) -> str:
@@ -117,6 +117,18 @@ class DSPGStore:
               link_status TEXT NOT NULL,
               confidence REAL NOT NULL,
               PRIMARY KEY (mention_id, referent_id)
+            )
+            """,
+            """
+            CREATE TABLE IF NOT EXISTS identity_hypotheses (
+              hypothesis_id TEXT PRIMARY KEY,
+              run_id TEXT NOT NULL,
+              left_referent_id TEXT NOT NULL,
+              right_referent_id TEXT NOT NULL,
+              relation TEXT NOT NULL,
+              evidence TEXT NOT NULL,
+              confidence REAL NOT NULL,
+              source TEXT NOT NULL
             )
             """,
             """
@@ -243,6 +255,8 @@ class DSPGStore:
             "CREATE INDEX IF NOT EXISTS idx_mentions_surface ON mentions(surface_norm)",
             "CREATE INDEX IF NOT EXISTS idx_mentions_entity ON mentions(entity_type)",
             "CREATE INDEX IF NOT EXISTS idx_referents_label ON referents(canonical_label_norm)",
+            "CREATE INDEX IF NOT EXISTS idx_identity_left ON identity_hypotheses(left_referent_id)",
+            "CREATE INDEX IF NOT EXISTS idx_identity_right ON identity_hypotheses(right_referent_id)",
             "CREATE INDEX IF NOT EXISTS idx_context_kind ON contexts(kind)",
             "CREATE INDEX IF NOT EXISTS idx_context_carriers_kind ON context_carriers(carrier_kind)",
             "CREATE INDEX IF NOT EXISTS idx_context_carriers_doc ON context_carriers(document_id)",
@@ -295,6 +309,7 @@ class DSPGStore:
             "mentions",
             "referents",
             "mention_referents",
+            "identity_hypotheses",
             "contexts",
             "context_carriers",
             "context_assignments",
