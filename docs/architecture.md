@@ -22,9 +22,9 @@ Initialization performs these steps:
 5. **Source spans**: store both chunk spans and mention spans.
 6. **Mention extraction**: extract source-grounded IDs, URLs, file-like values, names, and named text spans.
 7. **Referent construction**: create local referents from exact mentions without requiring destructive global merging.
-8. **Context assignment**: mark sentence-level contexts such as asserted, reported, believed, alleged, dreamed, fictional, and negated.
-9. **Frame extraction**: create lightweight event/proposition frames with predicates and argument links.
-10. **Generic relation extraction**: store label/value pairs, JSON-like/object-as-text key/value pairs, table cells, identifier values, meaning/plural relations, active/passive events, negation/proof/status relations, aliases, and timestamp relations as source-grounded DSPG relations.
+8. **Context assignment**: mark sentence-level assertion and discourse-scope contexts from source-grounded carriers.
+9. **Frame extraction**: create lightweight event/proposition frames with observed predicates and argument links.
+10. **Generic relation extraction**: store label/value pairs, JSON-like/object-as-text key/value pairs, table cells, identifier values, copular assertions, active/passive events, negation relations, and timestamp relations as source-grounded DSPG relations.
 11. **Text-quality/context scoring**: store generic structural signals and document-level contexts for low-semantic-content files such as random-character blobs, hex/blob-like text, OCR corruption, word salad, plausible babble, and meaningful discourse.
 12. **Indexing**: build bounded retrieval structures over both raw chunks and DSPG records.
 
@@ -58,16 +58,17 @@ The current query path combines:
 
 - lexical retrieval over raw sentence chunks,
 - referent-centric retrieval through mentions and referents,
-- frame-aware retrieval through predicates and frame arguments,
-- relation-aware retrieval through generic label, identifier, event, status, temporal, table, and heading-scoped relations,
+- frame-aware retrieval through observed predicates and frame arguments,
+- relation-aware retrieval through generic label, identifier, event, assertion, temporal, table, and record relations,
 - bounded SQLite subgraph execution over selected documents/chunks, source spans, mentions, referents, contexts, frames, frame arguments, temporal edges, and relations,
 - temporal state retrieval for state changes with dated evidence,
 - text-quality downweighting so noise files do not dominate normal questions,
 - conservative deterministic answer extraction over bounded candidates,
-- ranking by anchor match, predicate/label match, relation completeness, context validity, temporal recency, and text-quality signals.
-- small generic two-hop traversal for reference/role/value chains, such as resolving an owner through a referenced record and then resolving that actor's identifier.
+- ranking by anchor match, requested-relation term match, relation completeness, context validity, temporal recency, and text-quality signals.
 
-This is a first vertical slice of the full DSPG query architecture. It avoids full-corpus graph loading per question and avoids assuming external input structure. Future work should strengthen graph traversal, entity resolution, uncertainty handling, and deeper model-assisted extraction.
+Questions are parsed into generic query frames containing target anchors, requested relation text, relation terms, constraints, answer type, temporal scope, negation, aggregation, and evidence requirements. Relation words from a source or question remain data inside the frame; they do not select content-specific code branches.
+
+This is a first vertical slice of the full DSPG query architecture. It avoids full-corpus graph loading per question and avoids assuming external input structure. Future work should strengthen graph traversal, entity resolution, uncertainty handling, aggregation, discourse context propagation, and deeper model-assisted extraction.
 
 The bounded SQLite graph executor is part of the normal non-model answer pipeline for query plans that can be mapped to generic DSPG operations. The optional local model path uses the same executor after producing a constrained plan, so model assistance refines planning rather than replacing grounded graph execution.
 
@@ -104,4 +105,4 @@ DSPG objects are grounded in exact source spans. Answers at the public boundary 
 
 KMD includes an optional local planning path for development. Candidate selection remains bounded before reasoning: lexical sentence search, DSPG relation/frame matches, neighboring discourse units, normalized metadata records, and natural filesystem metadata may contribute retrieval priors. Filesystem metadata can help locate a raw file, but answer facts must still be grounded in readable raw text spans unless the user explicitly asks about file metadata itself.
 
-When enabled, the local-model path uses a localhost llama.cpp-compatible endpoint to produce constrained JSON query plans, normalizes those plans with the deterministic planner, executes a bounded SQLite DSPG subgraph, and falls back to generic source-grounded deterministic handlers when the bounded graph does not support an answer. This path is disabled by default, never uses cloud APIs, and must remain independent of any external evaluation harness.
+When enabled, the local-model path uses a localhost llama.cpp-compatible endpoint to produce constrained JSON query frames, normalizes those frames with the deterministic frame builder, executes a bounded SQLite DSPG subgraph, and can fall back to source-grounded bounded evidence extraction when the graph does not support an answer. This path is disabled by default, never uses cloud APIs, and must remain independent of any external evaluation harness.

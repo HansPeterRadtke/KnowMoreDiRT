@@ -13,15 +13,20 @@ class FakeEvidenceModel:
     def complete_json(self, prompt: str, *, n_predict: int = 128, grammar: str | None = None) -> dict[str, object]:
         self.calls.append(prompt)
         assert grammar
-        if "generic raw-text knowledge query plan" in prompt:
+        if "generic DRT/DSPG query frame" in prompt:
             return {
-                "query_plan": {
-                    "intent": "role_lookup",
-                    "target_surface": "Ash Meadow",
-                    "answer_role": "owner",
-                    "requires_asserted": True,
+                "query_frame": {
+                    "target_anchors": ["Ash Meadow"],
+                    "requested_relation": "conservator",
+                    "relation_terms": ["conservator"],
+                    "constraints": [],
+                    "answer_type": "person",
+                    "temporal_scope": "",
+                    "negated": False,
+                    "aggregation": "",
+                    "requires_evidence": True,
                 },
-                "_model_raw": '{"query_plan":{"intent":"role_lookup","target_surface":"Ash Meadow","answer_role":"owner","requires_asserted":true}}',
+                "_model_raw": '{"query_frame":{"target_anchors":["Ash Meadow"],"requested_relation":"conservator","relation_terms":["conservator"],"constraints":[],"answer_type":"person","temporal_scope":"","negated":false,"aggregation":"","requires_evidence":true}}',
             }
         assert "Answer the question only from the provided raw-text evidence" in prompt
         if self.incompatible:
@@ -39,9 +44,9 @@ class FakeEvidenceModel:
                 "sufficient_evidence": True,
                 "answer_type": "person",
                 "answer": "Lyra Fen",
-                "evidence_span": "Lyra Fen is the conservator for Ash Meadow",
+                "evidence_span": "Ash Meadow conservator Lyra Fen",
             },
-            "_model_raw": '{"answer":{"sufficient_evidence":true,"answer_type":"person","answer":"Lyra Fen","evidence_span":"Lyra Fen is the conservator for Ash Meadow"}}',
+            "_model_raw": '{"answer":{"sufficient_evidence":true,"answer_type":"person","answer":"Lyra Fen","evidence_span":"Ash Meadow conservator Lyra Fen"}}',
         }
 
 
@@ -130,7 +135,7 @@ def test_low_semantic_noise_does_not_dominate_normal_fact_retrieval(tmp_path: Pa
 
 def test_fake_model_evidence_extraction_is_invoked_counted_and_grounded(tmp_path: Path) -> None:
     (tmp_path / "source").write_text(
-        "The orchard status summary says Lyra Fen is the conservator for Ash Meadow.\n",
+        "Ash Meadow conservator Lyra Fen\n",
         encoding="utf-8",
     )
     engine = KnowMoreDiRTEngine(tmp_path)
@@ -142,10 +147,9 @@ def test_fake_model_evidence_extraction_is_invoked_counted_and_grounded(tmp_path
 
     assert answer.text == "Lyra Fen"
     assert answer.answer_type == "person"
-    assert answer.evidence and "Lyra Fen is the conservator" in answer.evidence[0].text
+    assert answer.evidence and "Ash Meadow conservator Lyra Fen" in answer.evidence[0].text
     assert engine.model_query_trace.call_count == 1
-    assert engine.model_query_trace.evidence_call_count == 1
-    assert engine.model_query_trace.evidence_accepted_count == 1
+    assert engine.model_query_trace.accepted_count == 1
     assert engine.model_query_trace.model_answer_count == 1
 
 

@@ -15,36 +15,9 @@ from .store import DSPGStore, stable_id
 from .text import normalize, text_quality_metrics, tokenize
 
 
-VERB_PREDICATES = {
-    "drafted": "author",
-    "authored": "author",
-    "reviewed": "review",
-    "review": "review",
-    "approved": "approve",
-    "merged": "merge",
-    "opened": "open",
-    "closed": "close",
-    "reopened": "reopen",
-    "reported": "report",
-    "requested": "request",
-    "fixed": "fix",
-    "deleted": "delete",
-    "believes": "believe",
-    "alleges": "allege",
-    "caused": "cause",
-    "depends": "depend",
-    "owns": "own",
-    "owned": "own",
-    "tested": "test",
-    "manages": "manage",
-}
-VERB_PREDICATE_RE = re.compile(
-    r"\b(" + "|".join(sorted(map(re.escape, VERB_PREDICATES), key=len, reverse=True)) + r")\b",
-    re.I,
-)
-
 DATE_RE = re.compile(r"\b(\d{4}-\d{2}-\d{2})(?:[ T]\d{2}:\d{2})?\b")
 STATE_RE = re.compile(r"\b(?:state|status)\s*:\s*([A-Za-z0-9_-]+)", re.I)
+GENERIC_VERB_RE = re.compile(r"\b([A-Za-z]{3,30}(?:ed|s|ing)?)\b")
 
 
 def _timestamp_value(value: float) -> str:
@@ -147,10 +120,13 @@ def collect_mentions(sentence: Sentence) -> list[tuple[str, str, int, int]]:
 
 
 def frame_predicate(text: str) -> tuple[str, str] | None:
-    match = VERB_PREDICATE_RE.search(text)
+    for relation in extract_relations(text):
+        if relation.relation_type in {"event", "assertion"} and relation.predicate:
+            return relation.predicate, relation.metadata.get("surface_verb", relation.predicate) if isinstance(relation.metadata, dict) else relation.predicate
+    match = GENERIC_VERB_RE.search(text)
     if match:
         verb = match.group(1).lower()
-        return VERB_PREDICATES[verb], verb
+        return verb, verb
     return None
 
 
@@ -162,16 +138,6 @@ def temporal_state(text: str) -> tuple[str, str] | None:
     date_match = DATE_RE.search(text)
     if not date_match:
         return None
-    lowered = normalize(text)
-    for trigger, state in [
-        ("reopened", "reopened"),
-        ("closed", "closed"),
-        ("opened", "open"),
-        ("fixed", "fixed"),
-        ("regression", "regressed"),
-    ]:
-        if trigger in lowered:
-            return date_match.group(0), state
     return None
 
 

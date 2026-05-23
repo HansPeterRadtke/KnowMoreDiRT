@@ -1,9 +1,9 @@
-"""Bounded SQLite DSPG subgraph retrieval and execution.
+"""Generic bounded DSPG retrieval and graph execution.
 
-The query planner produces a small generic plan. This module ranks source
-documents and chunks, loads only the selected SQLite graph records, and returns
-answers grounded in raw source spans. It does not depend on external input
-schemas, external labels, or corpus-specific names.
+This module takes a relation-agnostic query frame, selects a compact SQLite
+subgraph, and answers only from grounded relations/source spans.  It has no
+content-domain intent switch: relation words from the question are treated as
+data used for constraint matching.
 """
 
 from __future__ import annotations
@@ -11,11 +11,15 @@ from __future__ import annotations
 import re
 from typing import Any
 
-from .answer_types import ExpectedAnswer, canonicalize_answer, infer_expected_answer
-from .extractors import identifiers, urls
-from .model_planner import REFERENCE_PATTERNS, visible_named_anchors
+from .answer_types import ExpectedAnswer, canonicalize_answer, infer_expected_answer, is_value_compatible
+from .extractors import capitalized_phrases, identifiers, urls
 from .models import Answer, Document, Evidence, Sentence
+from .query import QueryFrame, expand_terms, frame_from_mapping, plan_question
 from .text import clean_extracted_value, content_tokens, is_low_semantic_noise, normalize
+
+
+DATE_TIME_RE = re.compile(r"\b(?:\d{4}-\d{2}-\d{2}(?:[ T]\d{1,2}:\d{2})?|\d{1,2}:\d{2})\b")
+PATH_RE = re.compile(r"\b[A-Za-z0-9_-]+(?:/[A-Za-z0-9_.-]+)+\b|\b[A-Za-z0-9_.-]+\.[A-Za-z0-9]{1,12}\b")
 
 
 def _clean(value: str) -> str:
@@ -24,18 +28,29 @@ def _clean(value: str) -> str:
 
 def _query_terms(text: str) -> list[str]:
     stop = {
-        "what", "which", "where", "when", "find", "provide", "show", "give",
-        "the", "and", "that", "this", "with", "from", "into", "only", "name",
-        "names", "source", "document", "reference", "id", "ids",
-        "identifier", "identifiers",
+        "answer",
+        "content",
+        "document",
+        "entity",
+        "fact",
+        "field",
+        "folder",
+        "item",
+        "name",
+        "note",
+        "object",
+        "record",
+        "source",
+        "text",
+        "thing",
+        "value",
     }
     terms: list[str] = []
     for token in content_tokens(text):
-        candidates = [token, *re.split(r"[-_]", token)]
-        for candidate in candidates:
-            if len(candidate) > 2 and candidate not in stop and candidate not in terms:
+        for candidate in [token, *re.split(r"[-_]", token)]:
+            if len(candidate) > 1 and candidate not in stop and candidate not in terms:
                 terms.append(candidate)
-    return terms
+    return expand_terms(terms)
 
 
 def _low_priority_source_path(rel_path: str) -> bool:
@@ -46,71 +61,34 @@ def _low_priority_source_path(rel_path: str) -> bool:
 
 def _asks_about_low_priority_source(question: str) -> bool:
     q = normalize(question)
-    if "despite" in q or "according to meaningful source" in q:
-        return False
     return any(term in q for term in ["cache", "lock", "temporary", "metadata", "file", "path"])
 
 
-def _descriptor_terms(question: str) -> list[str]:
-    q = normalize(question)
+def _frame(plan: dict[str, Any] | QueryFrame | None, question: str) -> QueryFrame:
+    if isinstance(plan, QueryFrame):
+        return plan
+    return frame_from_mapping(question, plan if isinstance(plan, dict) else None)
+
+
+def _target_terms(frame: QueryFrame, question: str) -> list[str]:
     terms: list[str] = []
-    patterns = [
-        r"\b(?:what|which)\s+(?:is\s+the\s+)?([a-z][a-z0-9 _-]{1,40}?)\s+(?:id|identifier|reference|url|link|path)\b",
-        r"\b(?:where)\s+(?:is\s+the\s+)?([a-z][a-z0-9 _-]{1,40}?)\s+(?:url|link|path)\b",
-    ]
-    for pattern in patterns:
-        match = re.search(pattern, q)
-        if match:
-            terms.extend(term for term in match.group(1).split() if term not in {"the", "a", "an", "for"})
-    if "manual" in q:
-        terms.append("manual")
-    if "warranty" in q:
-        terms.append("warranty")
-    if "runbook" in q:
-        terms.append("runbook")
-    if "guide" in q:
-        terms.append("guide")
-    return list(dict.fromkeys(term for term in terms if len(term) > 2))
-
-
-def _target_terms(plan: dict[str, Any], question: str) -> list[str]:
-    target = str(plan.get("target_surface") or "")
-    terms = _query_terms(target)
-    if terms and all(term in {"id", "ids", "identifier", "identifiers", "reference", "references"} for term in terms):
-        terms = [term for term in _query_terms(question) if term not in {"id", "ids", "identifier", "identifiers", "reference", "references"}]
-    target_has_specific_anchor = bool(visible_named_anchors(target))
-    question_anchors = visible_named_anchors(question)
-    if question_anchors and (not terms or not target_has_specific_anchor or any(term in {"id", "ids", "identifier", "identifiers"} for term in terms)):
-        terms = _query_terms(" ".join(question_anchors[:3]))
-    for pattern in REFERENCE_PATTERNS:
-        terms.extend(normalize(match.group(0)) for match in re.finditer(pattern, question, re.I))
-        terms.extend(normalize(match.group(0)) for match in re.finditer(pattern, target, re.I))
-    if not terms:
-        terms = _query_terms(question)
+    for anchor in frame.target_anchors:
+        terms.extend(_query_terms(anchor))
+        terms.append(normalize(anchor))
     return list(dict.fromkeys(term for term in terms if term))
 
 
-def _intent_cues(plan: dict[str, Any]) -> set[str]:
-    role = normalize(str(plan.get("answer_role") or ""))
-    intent = normalize(str(plan.get("intent") or ""))
-    cues: set[str] = set()
-    if role in {"author", "actor"}:
-        cues.update({"author", "authored", "wrote", "drafted", "created", "compiled"})
-    if role == "reviewer":
-        cues.update({"review", "reviewed", "reviewer", "checked", "inspected"})
-    if role == "approver":
-        cues.update({"approve", "approved", "approver", "signed"})
-    if role == "owner":
-        cues.update({"owner", "owns", "owned", "responsible", "contact"})
-    if role in {"reporter", "organization"}:
-        cues.update({"reported", "requested", "raised", "flagged", "escalated", "claimed", "alleged", "account"})
-    if intent in {"reference_lookup", "url_lookup", "file_lookup"}:
-        cues.update({"id", "identifier", "reference", "url", "link", "file", "case"})
-    if intent == "state_lookup":
-        cues.update({"state", "status", "final", "current", "closed", "open", "fixed", "resolved"})
-    if intent == "context_lookup":
-        cues.update({"asserted", "reported", "quoted", "alleged", "valid", "effective", "measured", "date"})
-    return cues
+def _relation_terms(frame: QueryFrame, question: str) -> list[str]:
+    terms = list(frame.relation_terms)
+    terms.extend(_query_terms(frame.requested_relation))
+    terms.extend(frame.constraints)
+    target = set(_target_terms(frame, question))
+    values = [
+        term
+        for term in expand_terms(terms)
+        if term not in target and len(term) > 1
+    ]
+    return list(dict.fromkeys(values))
 
 
 def _document_text(document: Document, sentences: list[Sentence]) -> str:
@@ -121,27 +99,26 @@ def _document_text(document: Document, sentences: list[Sentence]) -> str:
             document.metadata.get("stem", ""),
             document.metadata.get("suffix", ""),
             document.metadata.get("parent_rel_path", ""),
-            " ".join(str(part) for part in document.metadata.get("path_parts", [])),
         ]
     )
-    return normalize(f"{metadata} {' '.join(sentence.text for sentence in sentences[:40])}")
+    return normalize(f"{metadata} {' '.join(sentence.text for sentence in sentences[:80])}")
 
 
-def _answer_type_bonus(expected: ExpectedAnswer, sentence_text: str) -> int:
+def _answer_type_bonus(expected: ExpectedAnswer, text: str) -> int:
     if expected.answer_type == "url":
-        return 18 if urls(sentence_text) else 0
+        return 20 if urls(text) else 0
     if expected.answer_type == "identifier":
-        return 12 if identifiers(sentence_text) else 0
+        return 14 if identifiers(text) else 0
     if expected.answer_type == "file_path":
-        return 12 if any("." in item for item in identifiers(sentence_text)) else 0
+        return 14 if PATH_RE.search(text) else 0
     if expected.answer_type in {"person", "actor", "organization"}:
-        return 6 if re.search(r"\b[A-Z][A-Za-z'-]+(?:\s+[A-Z][A-Za-z'-]+){0,3}\b", sentence_text) else 0
+        return 8 if re.search(r"\b[A-Z][A-Za-z'-]+(?:\s+[A-Z][A-Za-z'-]+){0,3}\b", text) else 0
     if expected.answer_type == "date_time":
-        return 10 if re.search(r"\b\d{4}-\d{2}-\d{2}|\b\d{1,2}:\d{2}\b", sentence_text) else 0
+        return 12 if DATE_TIME_RE.search(text) else 0
     if expected.answer_type == "count":
-        return 8 if re.search(r"\b\d+\b", sentence_text) else 0
+        return 10 if re.search(r"\b\d+\b", text) else 0
     if expected.answer_type == "boolean":
-        return 8 if re.search(r"\b(?:yes|no|not|no proof|unknown|unsupported|confirmed|denied)\b", normalize(sentence_text)) else 0
+        return 8 if re.search(r"\b(?:yes|no|not|no|never|denied|unsupported)\b", normalize(text)) else 0
     return 0
 
 
@@ -149,22 +126,23 @@ def _rank_scope(
     documents: list[Document],
     sentences_by_document: dict[str, dict[int, Sentence]],
     question: str,
-    plan: dict[str, Any],
+    frame: QueryFrame,
     doc_limit: int,
     chunk_limit: int,
 ) -> tuple[list[str], list[tuple[str, int]], dict[str, Any]]:
     expected = infer_expected_answer(question)
-    target_terms = _target_terms(plan, question)
+    target_terms = _target_terms(frame, question)
+    relation_terms = _relation_terms(frame, question)
     q_terms = _query_terms(question)
-    cues = _intent_cues(plan)
     doc_scores: list[tuple[int, str, str]] = []
     for document in documents:
-        search = _document_text(document, list(sentences_by_document.get(document.rel_path, {}).values()))
-        target_hits = sum(1 for term in target_terms if term in search)
-        q_hits = sum(1 for term in q_terms if term in search)
+        text = _document_text(document, list(sentences_by_document.get(document.rel_path, {}).values()))
+        target_hits = sum(1 for term in target_terms if _has_term(text, term))
+        relation_hits = sum(1 for term in relation_terms if _has_term(text, term))
+        q_hits = sum(1 for term in q_terms if _has_term(text, term))
         if target_terms and not target_hits:
             continue
-        score = target_hits * 12 + q_hits
+        score = target_hits * 16 + relation_hits * 6 + q_hits
         if (
             is_low_semantic_noise(" ".join(sentence.text for sentence in sentences_by_document.get(document.rel_path, {}).values()))
             or _low_priority_source_path(document.rel_path)
@@ -181,18 +159,18 @@ def _rank_scope(
         if document.document_id not in selected_set:
             continue
         ordered = sentences_by_document.get(document.rel_path, {})
-        doc_search = _document_text(document, list(ordered.values()))
-        doc_has_target = any(term in doc_search for term in target_terms)
+        doc_text = _document_text(document, list(ordered.values()))
+        doc_has_target = any(_has_term(doc_text, term) for term in target_terms)
         for order, sentence in ordered.items():
             low = normalize(sentence.text)
-            score = sum(20 for term in target_terms if term in low)
-            score += sum(3 for term in q_terms if term in low)
-            score += sum(8 for cue in cues if cue and cue in low)
+            score = sum(24 for term in target_terms if _has_term(low, term))
+            score += sum(10 for term in relation_terms if _has_term(low, term))
+            score += sum(2 for term in q_terms if _has_term(low, term))
             score += _answer_type_bonus(expected, sentence.text)
-            if doc_has_target and any(cue and cue in low for cue in cues):
-                score += 12
-            if doc_has_target and (identifiers(sentence.text) or urls(sentence.text)):
-                score += 4
+            if doc_has_target and any(_has_term(low, term) for term in relation_terms):
+                score += 14
+            if doc_has_target and _answer_type_bonus(expected, sentence.text):
+                score += 6
             if (
                 is_low_semantic_noise(sentence.text)
                 or _low_priority_source_path(sentence.rel_path)
@@ -200,7 +178,7 @@ def _rank_scope(
                 score = int(score * 0.15)
             if score:
                 chunk_scores.append((score, document.document_id, order, document.rel_path))
-            elif doc_has_target and re.search(r"\b[A-Za-z][A-Za-z0-9 _/-]{1,50}\s*[:=]", sentence.text):
+            elif doc_has_target and re.search(r"\b[A-Za-z][A-Za-z0-9 _/-]{1,80}\s*[:=]", sentence.text):
                 fallback_scores.append((1, document.document_id, order, document.rel_path))
     chunk_scores.sort(key=lambda item: (-item[0], item[3], item[2]))
     fallback_scores.sort(key=lambda item: (item[3], item[2]))
@@ -209,8 +187,8 @@ def _rank_scope(
     for _score, document_id, order, _rel_path in [*chunk_scores, *fallback_scores]:
         if len(selected) >= chunk_limit:
             break
-        for nearby in (order - 1, order, order + 1):
-            if nearby < 0 or per_doc.get(document_id, 0) >= 18:
+        for nearby in (order - 2, order - 1, order, order + 1, order + 2):
+            if nearby < 0 or per_doc.get(document_id, 0) >= 24:
                 continue
             key = (document_id, nearby)
             if key not in selected:
@@ -221,8 +199,8 @@ def _rank_scope(
         "selected_document_count": len(selected_docs),
         "candidate_chunk_rows": len(chunk_scores),
         "selected_chunk_count": len(selected[:chunk_limit]),
-        "target_terms": target_terms[:24],
-        "intent_cues": sorted(cues),
+        "target_terms": target_terms[:32],
+        "relation_terms": relation_terms[:32],
     }
 
 
@@ -304,186 +282,268 @@ def _metadata_evidence(record: dict[str, Any], docs_by_id: dict[str, dict[str, A
     return Evidence(str(doc.get("rel_path") or doc.get("path") or ""), f"metadata {key}: {value}", 0.7)
 
 
-def _add(values: list[str], evidence: list[Evidence], value: str, ev: Evidence) -> None:
-    value = _clean(value)
-    if value and normalize(value) != "unknown" and value not in values:
-        values.append(value)
-        if ev.rel_path and ev.text:
-            evidence.append(ev)
+def _material_for_relation(relation: dict[str, Any], evidence: Evidence, document_context: str) -> str:
+    return normalize(
+        " ".join(str(relation.get(key) or "") for key in ["relation_type", "subject", "predicate", "object", "value"])
+        + " "
+        + evidence.text
+        + " "
+        + document_context
+    )
 
 
-def _execute(records: dict[str, Any], plan: dict[str, Any]) -> tuple[list[str], list[Evidence], dict[str, Any]]:
-    intent = normalize(str(plan.get("intent") or ""))
-    role = normalize(str(plan.get("answer_role") or ""))
-    terms = _target_terms(plan, str(plan.get("query_text") or ""))
+def _contains_any(material: str, terms: list[str]) -> bool:
+    return any(_has_term(material, term) for term in terms)
+
+
+def _has_term(material: str, term: str) -> bool:
+    if not term:
+        return False
+    if len(term) <= 4 and re.fullmatch(r"[a-z0-9_-]+", term):
+        return re.search(rf"\b{re.escape(term)}\b", material) is not None
+    return term in material
+
+
+def _candidate_values(relation: dict[str, Any], evidence: Evidence, expected: ExpectedAnswer, target_terms: list[str]) -> list[str]:
+    rel_type = normalize(str(relation.get("relation_type") or ""))
+    local_relation_text = normalize(" ".join(str(relation.get(key) or "") for key in ["relation_type", "subject", "predicate", "object", "value"]) + " " + evidence.text)
+    if expected.answer_type not in {"boolean", "metadata_value"} and re.search(r"\b(?:no|not|never|without|denied|unsupported)\b", local_relation_text):
+        return []
+    if expected.answer_type in {"person", "actor", "organization"} and rel_type == "event":
+        subject = _clean(str(relation.get("subject") or ""))
+        object_value = _clean(str(relation.get("object") or relation.get("value") or ""))
+        if target_terms and subject and any(_has_term(normalize(subject), term) for term in target_terms) and object_value:
+            for phrase in capitalized_phrases(object_value):
+                parts = phrase.split()
+                if len(parts) >= 2 or phrase.startswith(("Dr.", "Ms.", "Mr.", "Mrs.", "Prof.")):
+                    return [phrase]
+            return [object_value]
+        if subject and len(subject.split()) == 1:
+            honorific = re.search(rf"\b(?:Dr\.|Ms\.|Mr\.|Mrs\.|Prof\.)\s+{re.escape(subject)}\b", evidence.text)
+            if honorific:
+                subject = honorific.group(0)
+            for phrase in capitalized_phrases(evidence.text):
+                if phrase.endswith(f" {subject}") or phrase == subject:
+                    subject = phrase
+                    break
+        return [subject] if subject else []
+    elif expected.answer_type in {"person", "actor", "organization"} and rel_type in {"label_value", "record_value", "table_cell"}:
+        value = _clean(str(relation.get("value") or relation.get("object") or ""))
+        return [value] if value else []
+    elif expected.answer_type == "state":
+        fields = [
+            str(relation.get("value") or ""),
+            str(relation.get("object") or ""),
+        ]
+    elif expected.answer_type == "content_phrase" and rel_type in {"label_value", "record_value", "table_cell", "assertion"}:
+        fields = [
+            str(relation.get("value") or ""),
+            str(relation.get("object") or ""),
+        ]
+    else:
+        fields = [
+            str(relation.get("value") or ""),
+            str(relation.get("object") or ""),
+            str(relation.get("subject") or ""),
+        ]
+    text = " ".join([*fields, evidence.text])
+    if expected.answer_type == "url":
+        return [value for value in urls(text) if "." in value.split("://", 1)[-1].split("/", 1)[0]]
+    if expected.answer_type == "identifier":
+        return identifiers(text)
+    if expected.answer_type == "file_path":
+        without_urls = text
+        for url in urls(text):
+            without_urls = without_urls.replace(url, " ")
+        return [match.group(0).rstrip(".,;)") for match in PATH_RE.finditer(without_urls)]
+    if expected.answer_type == "date_time":
+        return [match.group(0) for match in DATE_TIME_RE.finditer(text)]
+    if expected.answer_type == "boolean":
+        if re.search(r"\b(?:no|not|never|without|denied|unsupported)\b", normalize(evidence.text)):
+            return [f"No; {_clean(evidence.text)}."]
+        return [f"Yes; {_clean(evidence.text)}."]
+    if expected.answer_type in {"person", "actor", "organization"}:
+        expanded: list[str] = []
+        for field in fields:
+            field_clean = _clean(field)
+            if field_clean:
+                expanded.append(field_clean)
+                if is_value_compatible(expected, field_clean):
+                    continue
+            for phrase in capitalized_phrases(field):
+                parts = phrase.split()
+                if (
+                    normalize(phrase) not in {"the", "a", "an"}
+                    and (len(parts) >= 2 or phrase.startswith(("Dr.", "Ms.", "Mr.", "Mrs.", "Prof.")))
+                    and not phrase.isupper()
+                ):
+                    expanded.append(phrase)
+        fields = expanded
+    values: list[str] = []
+    for field in fields:
+        field_clean = _clean(field)
+        if not field_clean:
+            continue
+        field_norm = normalize(field_clean)
+        if target_terms and any(_has_term(field_norm, term) for term in target_terms):
+            continue
+        values.append(field_clean)
+    if not values and expected.answer_type in {"content_phrase", "state"}:
+        values.append(_clean(evidence.text))
+    return values
+
+
+def _score_relation(
+    relation: dict[str, Any],
+    evidence: Evidence,
+    document_context: str,
+    frame: QueryFrame,
+    expected: ExpectedAnswer,
+    target_terms: list[str],
+    relation_terms: list[str],
+) -> tuple[int, list[str]]:
+    local_material = _material_for_relation(relation, evidence, "")
+    local_key_material = normalize(" ".join(str(relation.get(key) or "") for key in ["relation_type", "subject", "predicate", "object"]))
+    material = _material_for_relation(relation, evidence, document_context)
+    target_hits = sum(1 for term in target_terms if _has_term(material, term))
+    relation_hits = sum(1 for term in relation_terms if _has_term(local_material, term))
+    key_relation_hits = sum(1 for term in relation_terms if _has_term(local_key_material, term))
+    if target_terms and not target_hits:
+        return 0, []
+    if relation_terms and not relation_hits and expected.answer_type not in {"url", "identifier", "file_path", "date_time"}:
+        return 0, []
+    if (
+        normalize(str(relation.get("relation_type") or "")) in {"label_value", "record_value", "table_cell"}
+        and relation_terms
+        and not key_relation_hits
+        and expected.answer_type in {"content_phrase", "state", "person", "actor", "organization"}
+    ):
+        return 0, []
+    values = [
+        value
+        for value in _candidate_values(relation, evidence, expected, target_terms)
+        if is_value_compatible(expected, value)
+    ]
+    if not values:
+        return 0, []
+    score = target_hits * 18 + relation_hits * 12 + key_relation_hits * 8 + _answer_type_bonus(expected, " ".join(values) + " " + evidence.text)
+    if frame.temporal_scope == "latest" and DATE_TIME_RE.search(evidence.text):
+        score += 8
+    if normalize(str(relation.get("relation_type") or "")) in {"label_value", "record_value", "table_cell"}:
+        score += 4
+    return score, values
+
+
+def _execute(records: dict[str, Any], frame: QueryFrame, question: str) -> tuple[list[str], list[Evidence], dict[str, Any]]:
+    expected = infer_expected_answer(question)
+    target_terms = _target_terms(frame, question)
+    relation_terms = _relation_terms(frame, question)
     chunks_by_id = {str(chunk["chunk_id"]): chunk for chunk in records["chunks"]}
     docs_by_id = {str(document["document_id"]): document for document in records["documents"]}
     spans_by_id = {str(span["span_id"]): span for span in records["source_spans"]}
-    contexts_by_id = {str(context["context_id"]): context for context in records["contexts"]}
-    query_text = normalize(str(plan.get("query_text") or ""))
-    descriptor_terms = _descriptor_terms(str(plan.get("query_text") or ""))
-    values: list[str] = []
-    evidence: list[Evidence] = []
-    if intent == "context_lookup":
-        metadata_key_by_token = {
-            "size": "size_bytes",
-            "hash": "content_hash",
-            "suffix": "suffix",
-            "extension": "suffix",
-            "name": "file_name",
-            "lines": "line_count",
-            "line": "line_count",
-            "words": "word_count",
-            "encoding": "encoding",
-        }
-        wanted_keys = {key for token, key in metadata_key_by_token.items() if token in query_text}
-        if wanted_keys:
-            for record in records.get("metadata_records", []):
-                if str(record.get("key") or "") not in wanted_keys:
-                    continue
-                document_material = normalize(str(docs_by_id.get(str(record.get("document_id")), {}).get("rel_path", "")))
-                if terms and not any(term in document_material for term in terms):
-                    continue
-                _add(values, evidence, str(record.get("value") or ""), _metadata_evidence(record, docs_by_id))
-            if values:
-                return values[:8], evidence[:8], {"record_counts": records.get("record_counts", {})}
-        wants_time = any(token in query_text for token in ["modified", "created", "time", "date", "valid", "effective", "measured"])
-        if wants_time:
-            for carrier in records.get("context_carriers", []):
-                temporal_value = str(carrier.get("temporal_value") or "")
-                if not temporal_value:
-                    continue
-                material = normalize(" ".join(str(carrier.get(key) or "") for key in ["carrier_kind", "carrier_surface", "temporal_value_type", "temporal_value"]))
-                document_material = normalize(str(docs_by_id.get(str(carrier.get("document_id")), {}).get("rel_path", "")))
-                if terms and not any(term in material or term in document_material for term in terms):
-                    continue
-                ev = Evidence(
-                    str(docs_by_id.get(str(carrier.get("document_id")), {}).get("rel_path") or ""),
-                    f"context {carrier.get('temporal_value_type')}: {temporal_value}",
-                    0.72,
-                )
-                _add(values, evidence, temporal_value, ev)
-            if values:
-                return values[:8], evidence[:8], {"record_counts": records.get("record_counts", {})}
+    chunks_by_doc: dict[str, list[str]] = {}
+    for chunk in records["chunks"]:
+        chunks_by_doc.setdefault(str(chunk.get("document_id")), []).append(str(chunk.get("text") or ""))
+    document_context = {
+        document_id: normalize(str(docs_by_id.get(document_id, {}).get("rel_path") or "") + " " + " ".join(texts))
+        for document_id, texts in chunks_by_doc.items()
+    }
+
+    if expected.answer_type == "metadata_value":
+        metadata_hits: list[tuple[int, str, Evidence]] = []
+        query_terms = _query_terms(question)
+        for record in records.get("metadata_records", []):
+            doc = docs_by_id.get(str(record.get("document_id")), {})
+            doc_context = normalize(str(doc.get("rel_path") or "") + " " + document_context.get(str(record.get("document_id")), ""))
+            if target_terms and not _contains_any(doc_context, target_terms):
+                continue
+            key = normalize(str(record.get("key") or ""))
+            score = sum(10 for term in query_terms if term in key)
+            if score:
+                metadata_hits.append((score, str(record.get("value") or ""), _metadata_evidence(record, docs_by_id)))
+        metadata_hits.sort(key=lambda item: -item[0])
+        if metadata_hits:
+            return [value for _score, value, _ev in metadata_hits[:8]], [ev for _score, _value, ev in metadata_hits[:8]], {"record_counts": records.get("record_counts", {})}
+
+    if frame.aggregation == "count":
+        seen: set[str] = set()
+        evidence: list[Evidence] = []
+        for relation in records["relations"]:
+            span = spans_by_id.get(str(relation.get("source_span_id")), {})
+            ev = _evidence(span, chunks_by_id, docs_by_id)
+            doc_ctx = document_context.get(str(span.get("document_id")), "")
+            material = _material_for_relation(relation, ev, doc_ctx)
+            if target_terms and not _contains_any(material, target_terms):
+                continue
+            if relation_terms and not _contains_any(material, relation_terms):
+                continue
+            key = normalize(" ".join(str(relation.get(field) or "") for field in ["subject", "object", "value"]) or ev.text)
+            if key and key not in seen:
+                seen.add(key)
+                evidence.append(ev)
+        if seen:
+            return [str(len(seen))], evidence[:8], {"record_counts": records.get("record_counts", {})}
+
+    if "context" in normalize(question):
+        contexts_by_id = {str(context["context_id"]): context for context in records["contexts"]}
+        context_values: list[str] = []
+        context_evidence: list[Evidence] = []
         for carrier in records.get("context_carriers", []):
             context = contexts_by_id.get(str(carrier.get("context_id")), {})
-            kind = str(context.get("kind") or carrier.get("carrier_surface") or carrier.get("carrier_kind") or "")
-            if not kind:
-                continue
+            value = str(context.get("kind") or carrier.get("carrier_surface") or "")
             span = spans_by_id.get(str(carrier.get("source_span_id")), {})
             ev = _evidence(span, chunks_by_id, docs_by_id)
-            material = normalize(" ".join([kind, ev.text, str(carrier.get("carrier_surface") or "")]))
-            if terms and not any(term in material for term in terms):
+            material = normalize(" ".join([value, str(carrier.get("carrier_surface") or ""), ev.text]))
+            if target_terms and not _contains_any(material, target_terms):
                 continue
-            _add(values, evidence, kind, ev)
-        if values:
-            return values[:8], evidence[:8], {"record_counts": records.get("record_counts", {})}
+            if value and normalize(value).startswith("quality:"):
+                continue
+            if value and value not in context_values:
+                context_values.append(value)
+                context_evidence.append(ev)
+        if context_values:
+            return context_values[:4], context_evidence[:4], {"record_counts": records.get("record_counts", {})}
+
+    scored: list[tuple[int, str, Evidence]] = []
     for relation in records["relations"]:
         span = spans_by_id.get(str(relation.get("source_span_id")), {})
         ev = _evidence(span, chunks_by_id, docs_by_id)
-        doc_material = normalize(str(docs_by_id.get(str(span.get("document_id")), {}).get("rel_path", "")))
-        material = normalize(" ".join(str(relation.get(key) or "") for key in ["relation_type", "subject", "predicate", "object", "value"]) + " " + ev.text + " " + doc_material)
-        has_target = any(term in material for term in terms)
-        if terms and not has_target:
-            continue
-        predicate = normalize(str(relation.get("predicate") or ""))
-        rel_type = normalize(str(relation.get("relation_type") or ""))
-        if intent == "role_lookup":
-            candidate = ""
-            if rel_type in {"label_value", "record_value"} and role in normalize(str(relation.get("subject") or "")):
-                candidate = str(relation.get("value") or "")
-            elif role == "owner" and predicate in {"own", "owner", "manage", "responsible"}:
-                candidate = str(relation.get("subject") or relation.get("value") or "")
-            elif role == "reviewer" and predicate in {"review", "inspect", "check"}:
-                candidate = str(relation.get("subject") or "")
-            elif role == "approver" and predicate in {"approve", "sign"}:
-                candidate = str(relation.get("subject") or "")
-            elif role in {"author", "actor"} and predicate in {"author", "write", "draft", "create", "prepare"}:
-                candidate = str(relation.get("subject") or "")
-            elif role in {"reporter", "organization"} and predicate in {"report", "request", "allege", "claim", "state"}:
-                candidate = str(relation.get("subject") or relation.get("value") or "")
-            if candidate:
-                _add(values, evidence, candidate, ev)
-        elif intent in {"reference_lookup", "url_lookup", "file_lookup"}:
-            relation_label = normalize(" ".join(str(relation.get(key) or "") for key in ["subject", "predicate", "object"]))
-            relation_value = str(relation.get("value") or "")
-            if descriptor_terms and relation_value and any(term in relation_label for term in descriptor_terms):
-                _add(values, evidence, relation_value, ev)
-                continue
-            if intent == "url_lookup" and relation_value.startswith("http") and (not descriptor_terms or any(term in relation_label for term in descriptor_terms)):
-                _add(values, evidence, relation_value, ev)
-                continue
-            candidates = urls(ev.text) if intent == "url_lookup" else identifiers(ev.text)
-            if intent == "file_lookup":
-                candidates = [item for item in identifiers(ev.text) if "." in item]
-            for candidate in candidates:
-                _add(values, evidence, candidate, ev)
-        elif intent == "state_lookup":
-            if rel_type == "status":
-                _add(values, evidence, str(relation.get("value") or relation.get("predicate") or ""), ev)
-        elif intent == "context_lookup":
-            if rel_type in {"status", "temporal"}:
-                _add(values, evidence, str(relation.get("value") or relation.get("predicate") or ""), ev)
-    if intent == "state_lookup":
+        doc_ctx = document_context.get(str(span.get("document_id")), "")
+        score, values = _score_relation(relation, ev, doc_ctx, frame, expected, target_terms, relation_terms)
+        for value in values:
+            if score:
+                scored.append((score, value, ev))
+
+    if frame.temporal_scope == "latest":
+        temporal_scored: list[tuple[str, str, Evidence]] = []
         for edge in records["temporal_edges"]:
             span = spans_by_id.get(str(edge.get("source_span_id")), {})
             ev = _evidence(span, chunks_by_id, docs_by_id)
-            _add(values, evidence, str(edge.get("state_value") or edge.get("temporal_value") or ""), ev)
-    if intent == "identity_lookup":
-        for relation in records["relations"]:
-            if normalize(str(relation.get("relation_type") or "")) != "identity":
+            material = normalize(ev.text + " " + document_context.get(str(span.get("document_id")), ""))
+            if target_terms and not _contains_any(material, target_terms):
                 continue
-            span = spans_by_id.get(str(relation.get("source_span_id")), {})
-            ev = _evidence(span, chunks_by_id, docs_by_id)
-            material = normalize(" ".join(str(relation.get(key) or "") for key in ["subject", "object", "value"]) + " " + ev.text)
-            if terms and not any(term in material for term in terms):
-                continue
-            _add(values, evidence, str(relation.get("value") or relation.get("object") or "same"), ev)
-    if intent == "grouped_search":
-        seen_paths: set[str] = set()
-        for chunk in records["chunks"][:24]:
-            doc = docs_by_id.get(str(chunk.get("document_id")), {})
-            rel_path = str(doc.get("rel_path") or "")
-            if not rel_path or rel_path in seen_paths:
-                continue
-            material = normalize(" ".join([rel_path, str(chunk.get("text") or "")]))
-            if terms and not any(term in material for term in terms):
-                continue
-            seen_paths.add(rel_path)
-            _add(values, evidence, rel_path, Evidence(rel_path, str(chunk.get("text") or ""), 0.62))
-    if intent == "role_lookup" and not values:
-        desired: set[str] = set()
-        if role == "reviewer":
-            desired.update({"review", "inspect", "check", "test"})
-        elif role == "approver":
-            desired.update({"approve", "sign"})
-        elif role == "owner":
-            desired.update({"own", "manage"})
-        elif role in {"author", "actor"}:
-            desired.update({"author", "write", "draft", "create", "compile", "open", "fix", "merge"})
-        elif role in {"reporter", "organization"}:
-            desired.update({"report", "request", "allege", "claim", "state"})
-        arguments_by_frame: dict[str, list[dict[str, Any]]] = {}
-        mentions_by_id = {str(mention.get("mention_id")): mention for mention in records["mentions"]}
-        for argument in records["frame_arguments"]:
-            arguments_by_frame.setdefault(str(argument.get("frame_id")), []).append(argument)
-        for frame in records["frames"]:
-            predicate = normalize(str(frame.get("predicate_norm") or frame.get("predicate") or ""))
-            if desired and predicate not in desired:
-                continue
-            span = spans_by_id.get(str(frame.get("span_id")), {})
-            ev = _evidence(span, chunks_by_id, docs_by_id)
-            material = normalize(" ".join([predicate, ev.text]))
-            if terms and not any(term in material for term in terms):
-                continue
-            for argument in arguments_by_frame.get(str(frame.get("frame_id")), []):
-                if normalize(str(argument.get("role") or "")) not in {"agent", "author", "reviewer", "approver", "speaker", "owner", "assignee", "requester"}:
-                    continue
-                mention = mentions_by_id.get(str(argument.get("mention_id") or ""))
-                surface = str(argument.get("surface") or (mention or {}).get("surface") or "")
-                if surface:
-                    _add(values, evidence, surface, ev)
-    return values[:8], evidence[:8], {"record_counts": records.get("record_counts", {})}
+            value = str(edge.get("state_value") or edge.get("temporal_value") or "")
+            if value and is_value_compatible(expected, value):
+                temporal_scored.append((str(edge.get("temporal_value") or ""), value, ev))
+        temporal_scored.sort(key=lambda item: item[0], reverse=True)
+        if temporal_scored:
+            value, ev = temporal_scored[0][1], temporal_scored[0][2]
+            return [value], [ev], {"record_counts": records.get("record_counts", {})}
+
+    scored.sort(key=lambda item: (-item[0], item[1]))
+    values: list[str] = []
+    evidence: list[Evidence] = []
+    allow_multiple = bool(re.search(r"\b(?:all|list|names|ids|urls|references|which ones)\b", normalize(question)))
+    for _score, value, ev in scored:
+        value = _clean(value)
+        if value and normalize(value) != "unknown" and value not in values:
+            values.append(value)
+            evidence.append(ev)
+            if not allow_multiple or expected.answer_type in {"state", "date_time", "count", "boolean"}:
+                break
+        if len(values) >= 8:
+            break
+    return values, evidence, {"record_counts": records.get("record_counts", {})}
 
 
 def execute_bounded_query(
@@ -492,21 +552,21 @@ def execute_bounded_query(
     documents: list[Document],
     sentences_by_document: dict[str, dict[int, Sentence]],
     question: str,
-    plan: dict[str, Any],
+    plan: dict[str, Any] | QueryFrame | None,
     *,
     doc_limit: int = 40,
     chunk_limit: int = 240,
 ) -> tuple[Answer | None, dict[str, Any]]:
-    enriched_plan = {**plan, "query_text": question}
+    frame = _frame(plan, question)
     expected = infer_expected_answer(question)
-    document_ids, chunk_keys, ranking = _rank_scope(documents, sentences_by_document, question, enriched_plan, doc_limit, chunk_limit)
+    document_ids, chunk_keys, ranking = _rank_scope(documents, sentences_by_document, question, frame, doc_limit, chunk_limit)
     records = _load_records(store, run_id, document_ids, chunk_keys)
-    values, evidence, execution = _execute(records, enriched_plan)
-    diagnostics = {"ranking": ranking, "execution": execution}
+    values, evidence, execution = _execute(records, frame, question)
+    diagnostics = {"ranking": ranking, "execution": execution, "query_frame": frame.as_dict()}
     if not values or not evidence:
         return None, diagnostics
     answer_text = canonicalize_answer(expected, "; ".join(values))
     if not answer_text:
         diagnostics["execution"] = {**execution, "rejected_reason": "answer_type_incompatible", "expected_answer_type": expected.answer_type}
         return None, diagnostics
-    return Answer(answer_text, 0.78, evidence, "bounded DSPG subgraph execution", expected.answer_type), diagnostics
+    return Answer(answer_text, 0.78, evidence, "bounded DSPG query-frame execution", expected.answer_type), diagnostics

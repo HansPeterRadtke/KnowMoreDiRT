@@ -72,4 +72,4 @@ def test_temporal_state_query_uses_dspg_latest_event(tmp_path: Path) -> None:
     answer = engine.answer("What is the current state of AuroraGate?")
 
     assert answer.text == "closed"
-    assert answer.reason == "latest temporal state from DSPG"
+    assert answer.reason == "bounded DSPG query-frame execution"

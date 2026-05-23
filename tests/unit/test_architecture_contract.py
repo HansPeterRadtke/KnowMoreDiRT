@@ -39,6 +39,15 @@ FORBIDDEN_CORE_MARKERS = [
     "unresolved-bug",
     "employee-ID",
     "artifact search",
+    "role_lookup",
+    "reference_lookup",
+    "url_lookup",
+    "file_lookup",
+    "state_lookup",
+    "answer_role",
+    "_answer_who_role",
+    "_answer_identifier_or_url",
+    "_answer_final_state",
 ]
 
 FORBIDDEN_CORE_REGEXES = [
@@ -49,6 +58,8 @@ FORBIDDEN_CORE_REGEXES = [
     r"\bcustomer\b",
     r"\bemployee\b",
     r"\bartifact\b",
+    r"\bif\s+.*['\"](?:owner|reviewer|approver|reporter|author)['\"]",
+    r"\belif\s+.*['\"](?:owner|reviewer|approver|reporter|author)['\"]",
 ]
 
 

@@ -13,14 +13,14 @@ All fixtures are raw text only. They use arbitrary nested folders, arbitrary fil
 
 ## Current Score
 
-Current results:
+Current generic query-frame results:
 
-- original messy corpus: `60/60 (1.000)`
-- broad raw-world corpus: `65/65 (1.000)`
-- hardcore noise corpus: `8/8 (1.000)`
-- hard raw-reasoning corpus: `134/134 (1.000)`
+- original messy corpus: `31/60 (0.517)`
+- broad raw-world corpus: `35/65 (0.538)`
+- hardcore noise corpus: `6/8 (0.750)`
+- hard raw-reasoning corpus: `51/134 (0.381)`
 
-The current fixtures all pass. This is still a self-written regression suite, not proof of broad real-world generalization.
+These scores are intentionally reported after removing procedural semantic routing and relation-specific answer handlers from the core. They are lower than the previous fixture-perfect state, but they reflect the current generic DSPG matcher rather than a collection of content-shaped branches. The current milestone is architectural correctness and raw-folder purity; the next implementation work is to recover accuracy through generic discourse parsing, graph traversal, context propagation, aggregation, and optional local-model extraction.
 
 ## Categories Covered
 
@@ -80,19 +80,18 @@ The unit tests also verify that initialization creates normalized DSPG structure
 Architecture tests assert that the core package contains no external-evaluation markers, wrapper assumptions, hidden-label terms, or dataset-shaped routing, and that `knowmoredirt.__all__` exports only `initialize` and `question`.
 They also scan the core package for fixture/domain-shaped literals from the regression corpora so future changes do not quietly reintroduce content-specific answer branches.
 
-The current answer path has been refactored toward generic DSPG mechanisms:
+The current answer path uses generic DSPG mechanisms:
 
 - label/value and raw text key/value relations,
 - JSON-like/object-as-text key/value relations with source-grounded record paths,
 - active/passive event relations,
-- negation/proof/status relations,
+- negation relations,
 - temporal state relations,
-- identity/alias relations,
 - table row/cell relations,
 - filesystem/read metadata and document quality contexts.
 - broad expected-answer type validation for person/actor, organization, identifier, URL, file path, count, state, date/time, boolean, content phrase, and metadata answers.
 
-Additional unit and hard-fixture coverage checks that type-unsafe candidates are rejected: person questions do not return URLs, paths, or IDs; URL questions return URLs rather than nearby names; organization questions reject bare structural identifiers; metadata-only hits cannot answer non-metadata questions; JSON-like raw text supports generic key/value lookup; and low-semantic/cache-like text is downweighted without being discarded. Fake local-model tests verify that evidence extraction is invoked only in model mode, counted, grounded to a retrieved span, and rejected when the proposed answer type is incompatible.
+Additional unit and hard-fixture coverage checks that type-unsafe candidates are rejected: person questions do not return URLs, paths, or IDs; URL questions return URLs rather than nearby names; organization questions reject bare structural identifiers; metadata-only hits cannot answer non-metadata questions; JSON-like raw text supports generic key/value lookup; and low-semantic/cache-like text is downweighted without being discarded. Fake local-model tests verify that model query-frame calls are counted, grounded through bounded DSPG execution, and rejected when proposed evidence is incompatible.
 
 ## Limitations
 

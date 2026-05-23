@@ -49,7 +49,7 @@ _PERSON_RE = re.compile(
     r"^(?:(?:Dr\.|Ms\.|Mr\.|Mrs\.|Prof\.)\s+)?[A-Z][A-Za-z'-]+(?:\s+[A-Z][A-Za-z'-]+){0,3}$"
 )
 _ORG_HINT_RE = re.compile(
-    r"\b(?:association|bureau|center|centre|clinic|club|collective|committee|company|council|department|foundation|group|guild|institute|lab|laboratory|office|school|society|studio|team|trust|union|university|workshop)\b",
+    r"\b(?:association|bureau|center|centre|clinic|club|collective|committee|company|co-?op|cooperative|council|department|foundation|group|guild|institute|lab|laboratory|office|school|society|studio|team|trust|union|university|workshop)\b",
     re.I,
 )
 
@@ -82,9 +82,7 @@ def infer_expected_answer(question: str) -> ExpectedAnswer:
         return ExpectedAnswer("count")
     if re.match(r"^(did|does|do|is|are|was|were|can|could|should|has|have)\b", q):
         return ExpectedAnswer("boolean")
-    if any(token in qtokens for token in ["url", "urls", "link", "links", "runbook", "manual", "warranty", "guide", "endpoint", "site"]) or (
-        q.startswith("where ") and any(token in qtokens for token in ["stored", "listed", "available", "published", "map"])
-    ):
+    if any(token in qtokens for token in ["url", "urls", "link", "links"]) or q.startswith("where "):
         return ExpectedAnswer("url")
     if any(token in qtokens for token in ["path", "paths"]) or any(phrase in q for phrase in ["which file", "what file"]):
         return ExpectedAnswer("file_path", allow_metadata_evidence=asks_metadata)
@@ -120,6 +118,8 @@ def classify_value(value: str) -> AnswerType:
     low = normalize(text)
     if not text or low == "unknown":
         return "unknown"
+    if low in {"the", "a", "an"}:
+        return "content_phrase"
     if re.match(r"^(yes|no)\b", low):
         return "boolean"
     if urls(text) and urls(text)[0].rstrip(".,;)") == text.rstrip(".,;)"):
@@ -135,6 +135,8 @@ def classify_value(value: str) -> AnswerType:
     extracted_ids = identifiers(text)
     if extracted_ids and any(item.rstrip(".,;)") == text.rstrip(".,;)") for item in extracted_ids):
         return "identifier"
+    if " " not in text and any(char.isupper() for char in text[1:]):
+        return "content_phrase"
     if _ORG_HINT_RE.search(text):
         return "organization"
     if _PERSON_RE.fullmatch(text):
@@ -155,13 +157,13 @@ def is_value_compatible(expected: ExpectedAnswer, value: str) -> bool:
     if expected_type == "unknown":
         return False
     if expected_type in {"person", "actor"}:
-        return value_type in {"person", "content_phrase"} and not _is_structural_reference(value)
+        return value_type == "person" and not _is_structural_reference(value)
     if expected_type == "organization":
         return value_type in {"organization", "content_phrase"} and not _is_structural_reference(value)
     if expected_type == "content_phrase":
         return value_type not in {"url", "file_path", "identifier"}
     if expected_type == "state":
-        return value_type not in {"url", "file_path"}
+        return value_type not in {"url", "file_path", "identifier", "count", "date_time"}
     if expected_type == "metadata_value":
         return True
     return value_type == expected_type

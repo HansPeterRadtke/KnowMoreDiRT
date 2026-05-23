@@ -1,6 +1,6 @@
 {
-  "benchmark_processes_stopped": true,
   "public_api": ["initialize(folder_path)", "question(text) -> string"],
+  "core_query_architecture": "generic query frame over raw-folder DSPG records",
   "generic_primitives_extracted": [
     "bounded_retrieval",
     "evidence_ranking",
@@ -9,7 +9,6 @@
     "context_handling",
     "temporal_reasoning",
     "identifier_resolution",
-    "role_assignment",
     "source_grounding",
     "localhost_only_bounded_model_planning"
   ],
@@ -17,26 +16,26 @@
     "external-evaluation terminology from core modules",
     "hidden-label and scoring terms from core modules",
     "prepared-input and wrapper markers from core modules",
-    "old family-shaped reference intents",
-    "domain-shaped role routing terms",
-    "scratch bounded_dspg migration module",
-    "legacy_drt_path module name and old vocabulary"
+    "old semantic intent enums",
+    "old answer role enums",
+    "procedural semantic answer handlers",
+    "query-planner prompts with relation-specific operation names"
   ],
-  "core_intents": [
-    "role_lookup",
-    "reference_lookup",
-    "url_lookup",
-    "file_lookup",
-    "state_lookup",
-    "context_lookup",
-    "identity_lookup",
-    "grouped_search",
-    "unknown"
+  "query_frame_fields": [
+    "target_anchors",
+    "requested_relation",
+    "relation_terms",
+    "constraints",
+    "answer_type",
+    "temporal_scope",
+    "negated",
+    "aggregation",
+    "requires_evidence"
   ],
   "adapter_boundary": "External adapter scripts may exist outside src/knowmoredirt but may pass only folder path and question text into KMD.",
   "remaining_concerns": [
     "self-written fixtures still contain legacy project-style words as input data, not core vocabulary",
-    "deterministic phrase patterns should continue moving toward relation-first graph execution",
-    "optional local-model planning needs broader non-fixture validation"
+    "fixture accuracy regressed after removing procedural semantic handlers",
+    "generic graph traversal, aggregation, context propagation, and optional local-model verification need further work"
   ]
 }

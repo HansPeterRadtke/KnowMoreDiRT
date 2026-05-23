@@ -25,9 +25,9 @@ def test_generic_relation_extractor_covers_common_discourse_shapes() -> None:
     assert ("label_value", "label", "Author", "", "Mira Sol") in facts
     assert any(item.predicate == "review" and item.subject == "Orin Vale" for item in relations)
     assert any(item.predicate == "sign" and item.subject == "Kira Holt" for item in relations)
-    assert ("grammar", "plural", "lumen", "", "lumens") in facts
-    assert ("meaning", "mean", "bonjour", "", "good day") in facts
-    assert ("status", "confirmed_fix", "", "", "replace the brass pin") in facts
+    assert ("assertion", "is", "Plural of lumen", "", "lumens") in facts
+    assert ("assertion", "mean", "bonjour", "", "good day") in facts
+    assert any(item.predicate == "fix" and item.object == "replace the brass pin" for item in relations)
 
 
 def test_ingest_stores_relations_and_enriched_file_metadata(tmp_path) -> None:

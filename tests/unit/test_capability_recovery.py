@@ -7,16 +7,21 @@ from knowmoredirt.engine import KnowMoreDiRTEngine
 
 class FakeLocalModel:
     def complete_json(self, prompt: str, *, n_predict: int = 128, grammar: str | None = None) -> dict[str, object]:
-        assert "generic raw-text knowledge query plan" in prompt
-        assert grammar and "query_plan" in grammar
+        assert "generic DRT/DSPG query frame" in prompt
+        assert grammar and "query_frame" in grammar
         return {
-            "query_plan": {
-                "intent": "role_lookup",
-                "target_surface": "SequoiaLens",
-                "answer_role": "owner",
-                "requires_asserted": True,
+            "query_frame": {
+                "target_anchors": ["SequoiaLens"],
+                "requested_relation": "owns",
+                "relation_terms": ["owns"],
+                "constraints": [],
+                "answer_type": "person",
+                "temporal_scope": "",
+                "negated": False,
+                "aggregation": "",
+                "requires_evidence": True,
             },
-            "_model_raw": '{"query_plan":{"intent":"role_lookup","target_surface":"SequoiaLens","answer_role":"owner","requires_asserted":true}}',
+            "_model_raw": '{"query_frame":{"target_anchors":["SequoiaLens"],"requested_relation":"owns","relation_terms":["owns"],"constraints":[],"answer_type":"person","temporal_scope":"","negated":false,"aggregation":"","requires_evidence":true}}',
             "_model_elapsed_seconds": 0.01,
         }
 
@@ -56,7 +61,7 @@ def test_optional_local_model_invokes_generic_query_plan_path(tmp_path: Path) ->
     answer = engine.answer("Who owns SequoiaLens?")
 
     assert answer.text == "Nia Vale"
-    assert answer.reason == "local model query plan: role_lookup"
+    assert answer.reason == "local model query-frame execution"
     assert answer.evidence
     assert "Owner: Nia Vale" in answer.evidence[0].text
     assert engine.last_bounded_diagnostics["ranking"]["selected_chunk_count"] > 0
