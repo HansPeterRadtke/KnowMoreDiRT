@@ -12,7 +12,6 @@ class FakeEvidenceModel:
 
     def complete_json(self, prompt: str, *, n_predict: int = 128, grammar: str | None = None) -> dict[str, object]:
         self.calls.append(prompt)
-        assert grammar
         if "generic DRT/DSPG query frame" in prompt:
             return {
                 "query_frame": {
@@ -27,6 +26,17 @@ class FakeEvidenceModel:
                     "requires_evidence": True,
                 },
                 "_model_raw": '{"query_frame":{"target_anchors":["Ash Meadow"],"requested_relation":"conservator","relation_terms":["conservator"],"constraints":[],"answer_type":"person","temporal_scope":"","negated":false,"aggregation":"","requires_evidence":true}}',
+            }
+        if "Verify whether the candidate answer is entailed" in prompt:
+            return {
+                "verification": {
+                    "entailed": not self.incompatible,
+                    "answer_type": "person" if not self.incompatible else "unknown",
+                    "answer": "Lyra Fen" if not self.incompatible else "unknown",
+                    "evidence_span": "Ash Meadow conservator Lyra Fen" if not self.incompatible else "",
+                    "reason": "fake grounded verifier",
+                },
+                "_model_raw": '{"verification":{"entailed":true,"answer_type":"person","answer":"Lyra Fen","evidence_span":"Ash Meadow conservator Lyra Fen","reason":"fake grounded verifier"}}',
             }
         assert "Answer the question only from the provided raw-text evidence" in prompt
         if self.incompatible:

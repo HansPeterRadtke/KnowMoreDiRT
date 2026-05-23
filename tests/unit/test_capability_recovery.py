@@ -7,8 +7,18 @@ from knowmoredirt.engine import KnowMoreDiRTEngine
 
 class FakeLocalModel:
     def complete_json(self, prompt: str, *, n_predict: int = 128, grammar: str | None = None) -> dict[str, object]:
+        if "Verify whether the candidate answer is entailed" in prompt:
+            return {
+                "verification": {
+                    "entailed": True,
+                    "answer_type": "person",
+                    "answer": "Nia Vale",
+                    "evidence_span": "Owner: Nia Vale",
+                    "reason": "fake grounded verifier",
+                },
+                "_model_raw": '{"verification":{"entailed":true,"answer_type":"person","answer":"Nia Vale","evidence_span":"Owner: Nia Vale","reason":"fake grounded verifier"}}',
+        }
         assert "generic DRT/DSPG query frame" in prompt
-        assert grammar and "query_frame" in grammar
         return {
             "query_frame": {
                 "target_anchors": ["SequoiaLens"],
@@ -24,6 +34,34 @@ class FakeLocalModel:
             "_model_raw": '{"query_frame":{"target_anchors":["SequoiaLens"],"requested_relation":"owns","relation_terms":["owns"],"constraints":[],"answer_type":"person","temporal_scope":"","negated":false,"aggregation":"","requires_evidence":true}}',
             "_model_elapsed_seconds": 0.01,
         }
+
+
+class FakeFrameModel(FakeLocalModel):
+    def __init__(self) -> None:
+        self.prompts: list[str] = []
+
+    def complete_json(self, prompt: str, *, n_predict: int = 128, grammar: str | None = None) -> dict[str, object]:
+        self.prompts.append(prompt)
+        if "Extract generic DRT/DSPG discourse frames" in prompt:
+            return {
+                "frames": [
+                    {
+                        "frame_type": "relation",
+                        "predicate": "guards",
+                        "arguments": [
+                            {"role": "entity", "text": "Marble Gate", "value_type": "entity"},
+                            {"role": "participant", "text": "Sena Rill", "value_type": "person"},
+                        ],
+                        "polarity": "positive",
+                        "modality": "asserted",
+                        "temporal_text": "",
+                        "evidence_text": "Marble Gate is guarded by Sena Rill",
+                        "confidence": 0.91,
+                    }
+                ],
+                "_model_raw": '{"frames":[{"frame_type":"relation","predicate":"guards","arguments":[{"role":"entity","text":"Marble Gate","value_type":"entity"},{"role":"participant","text":"Sena Rill","value_type":"person"}],"polarity":"positive","modality":"asserted","temporal_text":"","evidence_text":"Marble Gate is guarded by Sena Rill","confidence":0.91}]}',
+            }
+        return super().complete_json(prompt, n_predict=n_predict, grammar=grammar)
 
 
 def test_document_metadata_is_retrieval_prior_not_answer_source(tmp_path: Path) -> None:
@@ -69,6 +107,26 @@ def test_optional_local_model_invokes_generic_query_plan_path(tmp_path: Path) ->
     assert engine.model_query_trace.call_count == 1
     assert engine.model_query_trace.accepted_count == 1
     assert engine.model_query_trace.model_answer_count == 1
+
+
+def test_local_model_ingest_builds_grounded_generic_frames(tmp_path: Path, monkeypatch) -> None:
+    fake = FakeFrameModel()
+    (tmp_path / "frame.raw").write_text("Marble Gate is guarded by Sena Rill.\n", encoding="utf-8")
+    monkeypatch.setenv("KMD_USE_LOCAL_MODEL", "1")
+    monkeypatch.setenv("KMD_LLM_INGEST", "1")
+    monkeypatch.setenv("KMD_FRAME_CACHE_DIR", str(tmp_path / ".frame-cache"))
+    monkeypatch.setattr("knowmoredirt.engine.LocalModelClient", lambda: fake)
+
+    engine = KnowMoreDiRTEngine(tmp_path)
+
+    counts = engine.dspg_counts()
+    semantic_rows = engine.store.execute("SELECT COUNT(*) FROM frames WHERE source='local_model'").fetchone()[0]
+    assert semantic_rows >= 1
+    assert counts["relations"] >= 2
+    assert any("Extract generic DRT/DSPG discourse frames" in prompt for prompt in fake.prompts)
+    assert engine.model_query_trace.chunk_frame_call_count >= 1
+    assert engine.model_query_trace.chunk_frame_parsed_count >= 1
+    assert engine.model_query_trace.chunk_frame_accepted_count >= 1
 
 
 def test_bounded_graph_execution_runs_without_model_for_context_lookup(tmp_path: Path) -> None:

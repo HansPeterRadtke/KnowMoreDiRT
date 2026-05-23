@@ -26,6 +26,7 @@ QUESTION_WORDS = {
     "when",
     "why",
     "how",
+    "many",
     "did",
     "does",
     "do",
@@ -96,10 +97,17 @@ GENERIC_NOUNS = {
     "note",
     "object",
     "record",
+    "records",
+    "row",
+    "rows",
+    "entry",
+    "entries",
     "source",
     "text",
     "thing",
     "value",
+    "count",
+    "number",
 }
 
 
@@ -157,13 +165,18 @@ def visible_anchors(text: str) -> list[str]:
     values.extend(identifiers(text))
     for phrase in capitalized_phrases(text):
         first = phrase.split()[0]
-        if first not in ANCHOR_SKIP and phrase not in ANCHOR_SKIP and phrase not in values:
+        if (
+            first not in ANCHOR_SKIP
+            and phrase not in ANCHOR_SKIP
+            and not (phrase.isupper() and len(phrase) <= 5)
+            and phrase not in values
+        ):
             values.append(phrase)
     return list(dict.fromkeys(value for value in values if value))
 
 
 def _question_relation_terms(question: str) -> list[str]:
-    qnorm = normalize(question)
+    qnorm = re.sub(r"\baccording to\b.+", " ", normalize(question))
     anchors = [normalize(anchor) for anchor in visible_anchors(question)]
     tokens = [
         token

@@ -24,9 +24,10 @@ Initialization performs these steps:
 7. **Referent construction**: create local referents from exact mentions without requiring destructive global merging.
 8. **Context assignment**: mark sentence-level assertion and discourse-scope contexts from source-grounded carriers.
 9. **Frame extraction**: create lightweight event/proposition frames with observed predicates and argument links.
-10. **Generic relation extraction**: store label/value pairs, JSON-like/object-as-text key/value pairs, table cells, identifier values, copular assertions, active/passive events, negation relations, and timestamp relations as source-grounded DSPG relations.
-11. **Text-quality/context scoring**: store generic structural signals and document-level contexts for low-semantic-content files such as random-character blobs, hex/blob-like text, OCR corruption, word salad, plausible babble, and meaningful discourse.
-12. **Indexing**: build bounded retrieval structures over both raw chunks and DSPG records.
+10. **Optional local-model discourse frames**: when `KMD_USE_LOCAL_MODEL=1` and LLM ingestion is enabled, each meaningful source chunk is sent to the localhost-only model for generic DRT/DSPG frame JSON. Accepted frames must be grounded by exact evidence text from the chunk before they are stored.
+11. **Generic relation extraction**: store label/value pairs, JSON-like/object-as-text key/value pairs, table cells, identifier values, copular assertions, active/passive events, negation relations, and timestamp relations as source-grounded DSPG relations.
+12. **Text-quality/context scoring**: store generic structural signals and document-level contexts for low-semantic-content files such as random-character blobs, hex/blob-like text, OCR corruption, word salad, plausible babble, and meaningful discourse.
+13. **Indexing**: build bounded retrieval structures over both raw chunks and DSPG records.
 
 ## SQLite DSPG Store
 
@@ -76,16 +77,13 @@ Before returning a non-unknown answer, KMD now infers a broad expected answer ty
 
 ## Optional Local Model Integration
 
-KMD includes an isolated local model client hook. The default system does not require a model and does not call cloud APIs. When explicitly enabled, model use is bounded and constrained: the model can produce a generic JSON query plan, and execution still runs against source-grounded DSPG records or bounded raw-text evidence. If graph execution cannot extract a value, the model may be asked to extract the shortest answer from the bounded evidence packet using constrained JSON with `sufficient_evidence`, `answer_type`, `answer`, and `evidence_span`. The answer is accepted only when the evidence span and answer are present in retrieved raw text and the inferred answer type is compatible. Future staged model integration should extend the same constrained pattern for:
+KMD includes an isolated local model client hook. The default system does not require a model and does not call cloud APIs. When explicitly enabled, model use is bounded and constrained in three roles:
 
-- mention classification,
-- frame extraction,
-- context/scope classification,
-- identity hypotheses,
-- query plan generation,
-- answer verbalization with source grounding.
+1. **Chunk frame extraction**: convert raw chunks into generic DRT/DSPG frames with predicates, argument roles, polarity, modality/context, temporal text, confidence, and exact evidence text.
+2. **Question frame parsing**: convert the question into the same generic query-frame language used by deterministic planning.
+3. **Answer verification/extraction**: verify candidate answers against bounded evidence and discourse frames, or extract the shortest grounded answer from bounded evidence when graph execution cannot bind an answer.
 
-Model output must remain optional, validated, and source-grounded.
+The model is never allowed to use outside knowledge or external labels. All accepted output must be JSON, localhost-only, and source-grounded. Model-derived chunk frames are cached under a local cache directory keyed by chunk text and extraction version so repeated initialization does not repeat work.
 
 ## Provenance
 
@@ -93,16 +91,16 @@ DSPG objects are grounded in exact source spans. Answers at the public boundary 
 
 ## Current Weaknesses
 
-- The extractor is still mostly deterministic and shallow.
+- The deterministic fallback is still shallow and currently below the strict fixture gates after removal of semantic answer handlers.
 - Entity resolution is local and conservative.
 - Context propagation is sentence-level rather than fully hierarchical.
 - Temporal modeling handles simple dated state statements but not full interval logic.
 - Noise handling is structural and conservative; it labels and downweights low-semantic-content sources for ordinary fact retrieval while preserving them as source-grounded contexts.
-- The local model path is isolated, disabled by default, and currently focused on bounded query planning rather than full staged extraction.
+- The local model path now includes chunk-frame extraction, query-frame parsing, bounded verification, and evidence extraction, but live-model throughput and JSON reliability are still active engineering constraints.
 - The fixture suite now includes hard failure-driven raw reasoning tests, but it is still self-written and not proof of broad generalization.
 
 ## Optional Local Query Planner
 
 KMD includes an optional local planning path for development. Candidate selection remains bounded before reasoning: lexical sentence search, DSPG relation/frame matches, neighboring discourse units, normalized metadata records, and natural filesystem metadata may contribute retrieval priors. Filesystem metadata can help locate a raw file, but answer facts must still be grounded in readable raw text spans unless the user explicitly asks about file metadata itself.
 
-When enabled, the local-model path uses a localhost llama.cpp-compatible endpoint to produce constrained JSON query frames, normalizes those frames with the deterministic frame builder, executes a bounded SQLite DSPG subgraph, and can fall back to source-grounded bounded evidence extraction when the graph does not support an answer. This path is disabled by default, never uses cloud APIs, and must remain independent of any external evaluation harness.
+When enabled, the local-model path uses a localhost llama.cpp-compatible endpoint to produce generic JSON query frames, normalizes those frames with the deterministic frame builder, executes a bounded SQLite DSPG subgraph, verifies candidates from bounded evidence, and can fall back to source-grounded bounded evidence extraction when the graph does not support an answer. This path is disabled by default, never uses cloud APIs, and must remain independent of any external evaluation harness.

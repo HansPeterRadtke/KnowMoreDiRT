@@ -13,14 +13,14 @@ All fixtures are raw text only. They use arbitrary nested folders, arbitrary fil
 
 ## Current Score
 
-Current generic query-frame results:
+Current generic hybrid query-frame results after restoring strict fixture gates:
 
-- original messy corpus: `31/60 (0.517)`
-- broad raw-world corpus: `35/65 (0.538)`
-- hardcore noise corpus: `6/8 (0.750)`
-- hard raw-reasoning corpus: `51/134 (0.381)`
+- original messy corpus: `26/60 (0.433)`
+- broad raw-world corpus: `37/65 (0.569)`
+- hardcore noise corpus: `7/8 (0.875)`
+- hard raw-reasoning corpus: `67/134 (0.500)`
 
-These scores are intentionally reported after removing procedural semantic routing and relation-specific answer handlers from the core. They are lower than the previous fixture-perfect state, but they reflect the current generic DSPG matcher rather than a collection of content-shaped branches. The current milestone is architectural correctness and raw-folder purity; the next implementation work is to recover accuracy through generic discourse parsing, graph traversal, context propagation, aggregation, and optional local-model extraction.
+These scores are intentionally reported after removing procedural semantic routing and relation-specific answer handlers from the core and re-raising the fixture gates to exact correctness. The strict gates currently fail; the numbers above are the honest current state. The next implementation work is to recover accuracy through generic discourse parsing, graph traversal, context propagation, aggregation, and local-model frame extraction/verification rather than semantic handler branches.
 
 ## Categories Covered
 
@@ -91,7 +91,7 @@ The current answer path uses generic DSPG mechanisms:
 - filesystem/read metadata and document quality contexts.
 - broad expected-answer type validation for person/actor, organization, identifier, URL, file path, count, state, date/time, boolean, content phrase, and metadata answers.
 
-Additional unit and hard-fixture coverage checks that type-unsafe candidates are rejected: person questions do not return URLs, paths, or IDs; URL questions return URLs rather than nearby names; organization questions reject bare structural identifiers; metadata-only hits cannot answer non-metadata questions; JSON-like raw text supports generic key/value lookup; and low-semantic/cache-like text is downweighted without being discarded. Fake local-model tests verify that model query-frame calls are counted, grounded through bounded DSPG execution, and rejected when proposed evidence is incompatible.
+Additional unit and hard-fixture coverage checks that type-unsafe candidates are rejected: person questions do not return URLs, paths, or IDs; URL questions return URLs rather than nearby names; organization questions reject bare structural identifiers; metadata-only hits cannot answer non-metadata questions; JSON-like raw text supports generic key/value lookup; and low-semantic/cache-like text is downweighted without being discarded. Fake local-model tests verify that chunk-frame extraction, query-frame calls, bounded verification, and evidence extraction are invoked, counted, source-grounded, and rejected when proposed evidence is incompatible.
 
 ## Limitations
 

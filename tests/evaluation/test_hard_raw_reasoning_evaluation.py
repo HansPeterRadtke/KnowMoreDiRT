@@ -39,5 +39,5 @@ def test_hard_raw_reasoning_evaluation_reports_generic_floor() -> None:
     result = evaluate_fixture(HARD_REASONING_ROOT, HARD_REASONING_QA_PATH)
 
     assert result.total == 134
-    assert result.correct >= 40
-    assert len([values for values in result.by_category.values() if values["correct"] > 0]) >= 15
+    assert result.correct == 134
+    assert len([values for values in result.by_category.values() if values["correct"] == values["total"]]) == len(result.by_category)

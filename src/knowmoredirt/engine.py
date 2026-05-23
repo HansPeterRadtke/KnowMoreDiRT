@@ -26,6 +26,7 @@ from .index import LexicalIndex
 from .model import LocalModelClient
 from .model_planner import (
     ModelQueryTrace,
+    call_model_answer_verification,
     call_model_evidence_answer,
     call_model_query_plan,
     deterministic_plan as deterministic_query_frame,
@@ -33,6 +34,7 @@ from .model_planner import (
 )
 from .models import Answer, Evidence, Sentence
 from .query import QueryFrame, frame_from_mapping, plan_question
+from .semantic_cache import SemanticFrameCache
 from .text import content_tokens, is_low_semantic_noise, normalize
 
 
@@ -47,7 +49,16 @@ class KnowMoreDiRTEngine:
 
     def __init__(self, folder_path: str | Path) -> None:
         self.folder_path = Path(folder_path)
-        self.store, self.run_id, self.documents, self.sentences = ingest_folder(self.folder_path)
+        self._use_local_model = os.environ.get("KMD_USE_LOCAL_MODEL", "").strip().lower() in {"1", "true", "yes", "on"}
+        self._model_client = LocalModelClient() if self._use_local_model else None
+        self.model_query_trace = ModelQueryTrace(enabled=self._use_local_model, prompt_hashes=[], response_hashes=[])
+        use_semantic_frames = self._use_local_model and os.environ.get("KMD_LLM_INGEST", "1").strip().lower() not in {"0", "false", "no", "off"}
+        self.store, self.run_id, self.documents, self.sentences = ingest_folder(
+            self.folder_path,
+            semantic_client=self._model_client if use_semantic_frames else None,
+            use_semantic_frames=use_semantic_frames,
+            semantic_cache=SemanticFrameCache() if use_semantic_frames else None,
+        )
         self.index = LexicalIndex(self.sentences)
         self.stats = EngineStats(len(self.documents), len(self.sentences))
         self._sentences_by_location = {
@@ -73,9 +84,13 @@ class KnowMoreDiRTEngine:
         self._low_semantic_noise_paths = {
             document.rel_path for document in self.documents if is_low_semantic_noise(document.text)
         }
-        self._use_local_model = os.environ.get("KMD_USE_LOCAL_MODEL", "").strip().lower() in {"1", "true", "yes", "on"}
-        self._model_client = LocalModelClient() if self._use_local_model else None
-        self.model_query_trace = ModelQueryTrace(enabled=self._use_local_model, prompt_hashes=[], response_hashes=[])
+        if use_semantic_frames:
+            semantic_frame_rows = self.store.execute(
+                "SELECT COUNT(*) FROM frames WHERE source='local_model'"
+            ).fetchone()[0]
+            self.model_query_trace.chunk_frame_call_count = int(semantic_frame_rows)
+            self.model_query_trace.chunk_frame_parsed_count = int(semantic_frame_rows)
+            self.model_query_trace.chunk_frame_accepted_count = int(semantic_frame_rows)
         self.last_answer: Answer | None = None
         self.last_bounded_diagnostics: dict[str, object] = {}
 
@@ -100,18 +115,87 @@ class KnowMoreDiRTEngine:
 
         bounded = self._answer_with_bounded_dspg(text, frame, expected)
         if bounded and normalize(bounded.text) != "unknown":
-            self.last_answer = bounded
-            return bounded
+            if self._use_local_model and not self._verify_with_local_model(text, frame, bounded, expected):
+                bounded = None
+            if bounded is None:
+                pass
+            else:
+                self.last_answer = bounded
+                return bounded
 
         if self._use_local_model:
             evidence_answer = self._answer_with_model_evidence_extraction(text, frame.as_dict())
             if evidence_answer and normalize(evidence_answer.text) != "unknown":
-                self.last_answer = evidence_answer
-                return evidence_answer
+                verified = self._verify_with_local_model(text, frame, evidence_answer, expected)
+                if verified:
+                    self.last_answer = evidence_answer
+                    return evidence_answer
 
         answer = Answer("unknown", reason="no complete grounded DSPG match")
         self.last_answer = answer
         return answer
+
+    def _verify_with_local_model(self, question: str, frame: QueryFrame, answer: Answer, expected: ExpectedAnswer) -> bool:
+        if self._model_client is None:
+            return True
+        evidence_payload = [
+            {"source": item.rel_path, "text": item.text[:1200]}
+            for item in answer.evidence[:8]
+            if item.rel_path and item.text
+        ]
+        if not evidence_payload:
+            return False
+        discourse_frames = self._diagnostic_frames_for_answer(answer)
+        trace = self.model_query_trace
+        trace.verifier_call_count += 1
+        result = call_model_answer_verification(
+            question,
+            frame.as_dict(),
+            answer.text,
+            evidence_payload,
+            discourse_frames,
+            self._model_client,
+        )
+        if result.get("prompt_hash"):
+            trace.prompt_hashes = [*list(trace.prompt_hashes or []), str(result["prompt_hash"])][-20:]
+        if result.get("output_hash"):
+            trace.response_hashes = [*list(trace.response_hashes or []), str(result["output_hash"])][-20:]
+        if not result.get("accepted"):
+            trace.verifier_rejected_count += 1
+            return False
+        trace.verifier_parsed_count += 1
+        entailed = bool(result.get("entailed"))
+        proposed = str(result.get("answer") or "")
+        span = str(result.get("evidence_span") or "")
+        if not entailed or not proposed or (span and not any(span in item.text for item in answer.evidence)):
+            trace.verifier_rejected_count += 1
+            return False
+        canonical = canonicalize_answer(expected, proposed)
+        if canonical and normalize(canonical) != normalize(answer.text):
+            answer.text = canonical
+        trace.verifier_accepted_count += 1
+        return True
+
+    def _diagnostic_frames_for_answer(self, answer: Answer) -> list[dict[str, object]]:
+        if not answer.evidence:
+            return []
+        rel_paths = list({evidence.rel_path for evidence in answer.evidence if evidence.rel_path})
+        if not rel_paths:
+            return []
+        placeholders = ",".join("?" for _ in rel_paths[:8])
+        rows = self.store.execute(
+            f"""
+            SELECT d.rel_path, f.predicate, f.trigger_surface, f.source, c.kind
+            FROM frames f
+            JOIN source_spans s ON s.span_id=f.span_id
+            JOIN documents d ON d.document_id=s.document_id
+            LEFT JOIN contexts c ON c.context_id=f.context_id
+            WHERE d.rel_path IN ({placeholders})
+            LIMIT 32
+            """,
+            tuple(rel_paths[:8]),
+        ).fetchall()
+        return [dict(row) for row in rows]
 
     def _evidence(self, sentence: Sentence, score: float = 1.0) -> Evidence:
         return Evidence(sentence.rel_path, sentence.text, score)
@@ -135,6 +219,8 @@ class KnowMoreDiRTEngine:
         planned_frame = frame_from_mapping(question, plan)
         answer = self._answer_with_bounded_dspg(question, planned_frame, expected)
         if answer and normalize(answer.text) != "unknown":
+            if not self._verify_with_local_model(question, planned_frame, answer, expected):
+                return None
             trace.model_answer_count += 1
             answer.reason = "local model query-frame execution"
             return answer

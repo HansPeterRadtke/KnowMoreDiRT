@@ -24,7 +24,10 @@ def identifiers(text: str) -> list[str]:
 
 
 def capitalized_phrases(text: str) -> list[str]:
-    pattern = re.compile(r"\b[A-Z][A-Za-z0-9_-]+(?:\s+[A-Z][A-Za-z0-9_-]+){0,3}\b")
+    pattern = re.compile(
+        r"\b(?:(?:Dr\.|Ms\.|Mr\.|Mrs\.|Prof\.)\s+)?"
+        r"[A-Z][A-Za-z0-9_-]+(?:\s+[A-Z][A-Za-z0-9_-]+){0,3}\b"
+    )
     values: list[str] = []
     seen: set[str] = set()
     for match in pattern.finditer(text):

@@ -22,7 +22,7 @@ def normalize(text: str) -> str:
 
 
 def tokenize(text: str) -> list[str]:
-    return [token.lower() for token in WORD_RE.findall(text or "")]
+    return [token.strip(".,;:!?()[]{}\"'`").lower() for token in WORD_RE.findall(text or "") if token.strip(".,;:!?()[]{}\"'`")]
 
 
 def content_tokens(text: str) -> list[str]:

@@ -6,18 +6,22 @@ import json
 import re
 import time
 from pathlib import Path
+from typing import Any
 
 from .extractors import capitalized_phrases, identifiers, urls
 from .models import Document, Sentence
-from .relations import extract_relations
+from .model_planner import call_model_chunk_frames
+from .relations import ExtractedRelation, extract_relations
 from .scanner import scan_folder
+from .semantic_cache import SemanticFrameCache
 from .store import DSPGStore, stable_id
-from .text import normalize, text_quality_metrics, tokenize
+from .text import clean_extracted_value, normalize, text_quality_metrics, tokenize
 
 
 DATE_RE = re.compile(r"\b(\d{4}-\d{2}-\d{2})(?:[ T]\d{2}:\d{2})?\b")
 STATE_RE = re.compile(r"\b(?:state|status)\s*:\s*([A-Za-z0-9_-]+)", re.I)
 GENERIC_VERB_RE = re.compile(r"\b([A-Za-z]{3,30}(?:ed|s|ing)?)\b")
+TABLE_SPLIT_RE = re.compile(r"\s*(?:\||\t)\s*")
 
 
 def _timestamp_value(value: float) -> str:
@@ -141,7 +145,133 @@ def temporal_state(text: str) -> tuple[str, str] | None:
     return None
 
 
-def ingest_folder(folder_path: str | Path, store: DSPGStore | None = None) -> tuple[DSPGStore, str, list[Document], list[Sentence]]:
+def _table_cells(text: str) -> list[str]:
+    if "|" not in text and "\t" not in text:
+        return []
+    cells = [clean_extracted_value(cell) for cell in TABLE_SPLIT_RE.split(text)]
+    return [cell for cell in cells if cell]
+
+
+def _looks_like_table_header(cells: list[str]) -> bool:
+    if len(cells) < 2:
+        return False
+    return all(re.search(r"[A-Za-z]", cell) for cell in cells) and not any(urls(cell) or identifiers(cell) for cell in cells)
+
+
+def _is_structural_heading(text: str) -> bool:
+    value = clean_extracted_value(text)
+    if not value or ":" in value or "|" in value or "\t" in value:
+        return False
+    if urls(value) or identifiers(value):
+        return False
+    tokens = tokenize(value)
+    if not 1 <= len(tokens) <= 8:
+        return False
+    phrases = capitalized_phrases(value)
+    return bool(phrases) and len(value) <= 100
+
+
+def _starts_new_structural_record(text: str) -> bool:
+    if "|" in text or "\t" in text:
+        return True
+    if re.search(r"^\s*[\[{]", text):
+        return True
+    prefix = re.split(r"[:=]", text, maxsplit=1)[0]
+    if any(len(phrase.split()) >= 2 for phrase in capitalized_phrases(prefix)):
+        return True
+    return False
+
+
+def _relation_inherits_heading(text: str, relations: list[ExtractedRelation]) -> bool:
+    if not relations:
+        return False
+    value = text.strip()
+    if not value or _starts_new_structural_record(value):
+        return False
+    return all(relation.relation_type in {"label_value", "record_value", "status"} for relation in relations)
+
+
+def _label_heading_value(text: str) -> str:
+    if "|" in text or "\t" in text or "://" in text:
+        return ""
+    relations = extract_relations(text)
+    label_values = [relation for relation in relations if relation.relation_type == "label_value"]
+    if len(label_values) != 1:
+        return ""
+    value = clean_extracted_value(label_values[0].value)
+    if identifiers(value) or urls(value):
+        return ""
+    if any(len(phrase.split()) >= 2 and normalize(phrase) == normalize(value) for phrase in capitalized_phrases(value)):
+        return value
+    return ""
+
+
+def _table_header_relations(sentence: Sentence, headers: list[str], cells: list[str]) -> list[ExtractedRelation]:
+    if len(headers) < 2 or len(cells) != len(headers):
+        return []
+    row_key = cells[0]
+    relations: list[ExtractedRelation] = []
+    group = stable_id("table_row", sentence.document_id, sentence.order, row_key, "|".join(cells))
+    for header, cell in zip(headers[1:], cells[1:]):
+        if not header or not cell:
+            continue
+        relations.append(
+            ExtractedRelation(
+                relation_type="table_cell",
+                predicate=normalize(header),
+                subject=row_key,
+                value=cell,
+                confidence=0.82,
+                metadata={
+                    "record_group": group,
+                    "row_key": row_key,
+                    "column_header": header,
+                    "surface_format": "delimited_table",
+                },
+            )
+        )
+    return relations
+
+
+def _grounded_model_frames(
+    sentence: Sentence,
+    semantic_client: Any | None,
+    semantic_cache: SemanticFrameCache | None,
+) -> tuple[list[dict[str, Any]], dict[str, Any]]:
+    if semantic_client is None:
+        return [], {"source": "disabled"}
+    quality = text_quality_metrics(sentence.text)
+    if quality.get("low_semantic_noise"):
+        return [], {"source": "skipped_noise"}
+    if len(sentence.text) > 2600:
+        return [], {"source": "skipped_long_chunk"}
+    cached = semantic_cache.get(sentence.text) if semantic_cache else None
+    if cached is not None:
+        frames = [frame for frame in cached.get("frames", []) if isinstance(frame, dict)]
+        return frames, {"source": "cache", "frame_count": len(frames)}
+    result = call_model_chunk_frames(sentence.text, semantic_client, rel_path=sentence.rel_path)
+    frames = [frame for frame in result.get("frames", []) if isinstance(frame, dict)] if result.get("accepted") else []
+    if semantic_cache is not None and result.get("accepted"):
+        semantic_cache.put(
+            sentence.text,
+            frames,
+            {
+                "rel_path": sentence.rel_path,
+                "prompt_hash": result.get("prompt_hash"),
+                "output_hash": result.get("output_hash"),
+            },
+        )
+    return frames, result
+
+
+def ingest_folder(
+    folder_path: str | Path,
+    store: DSPGStore | None = None,
+    *,
+    semantic_client: Any | None = None,
+    use_semantic_frames: bool = False,
+    semantic_cache: SemanticFrameCache | None = None,
+) -> tuple[DSPGStore, str, list[Document], list[Sentence]]:
     created_store = store is None
     store = store or DSPGStore(create_indexes=False)
     documents, sentences = scan_folder(folder_path)
@@ -242,6 +372,10 @@ def ingest_folder(folder_path: str | Path, store: DSPGStore | None = None) -> tu
                     1.0,
                 ),
             )
+
+    table_headers_by_document: dict[str, list[str]] = {}
+    section_anchor_by_document: dict[str, str] = {}
+    section_group_by_document: dict[str, str] = {}
 
     for sentence in sentences:
         token_estimate = max(1, len(tokenize(sentence.text)))
@@ -383,7 +517,44 @@ def ingest_folder(folder_path: str | Path, store: DSPGStore | None = None) -> tu
                 ),
             )
 
-        for relation in extract_relations(sentence.text):
+        if _is_structural_heading(sentence.text):
+            section_anchor = clean_extracted_value(sentence.text)
+            section_anchor_by_document[sentence.document_id] = section_anchor
+            section_group_by_document[sentence.document_id] = stable_id("section_group", sentence.document_id, section_anchor)
+        else:
+            pending_label_heading = _label_heading_value(sentence.text)
+
+        deterministic_relations = extract_relations(sentence.text)
+        cells = _table_cells(sentence.text)
+        if cells:
+            current_header = table_headers_by_document.get(sentence.document_id)
+            if current_header and len(cells) == len(current_header) and cells != current_header:
+                deterministic_relations.extend(_table_header_relations(sentence, current_header, cells))
+            elif _looks_like_table_header(cells):
+                table_headers_by_document[sentence.document_id] = cells
+
+        for relation in deterministic_relations:
+            metadata = {
+                **relation.metadata,
+                "sentence_group": stable_id("sentence_group", sentence.sentence_id),
+            }
+            if "record_group" not in metadata:
+                metadata["record_group"] = metadata["sentence_group"]
+            if _relation_inherits_heading(sentence.text, deterministic_relations):
+                section_group = section_group_by_document.get(sentence.document_id)
+                section_anchor = section_anchor_by_document.get(sentence.document_id)
+                if section_group and section_anchor:
+                    metadata["record_group"] = section_group
+                    metadata["section_anchor"] = section_anchor
+            elif not _starts_new_structural_record(sentence.text):
+                section_anchor = section_anchor_by_document.get(sentence.document_id)
+                if section_anchor:
+                    metadata["section_anchor"] = section_anchor
+            elif "section_anchor" not in metadata:
+                section_anchor = section_anchor_by_document.get(sentence.document_id)
+                prefix = re.split(r"[:=|\t]", sentence.text, maxsplit=1)[0]
+                if section_anchor and not any(len(phrase.split()) >= 2 for phrase in capitalized_phrases(prefix)):
+                    metadata["section_anchor"] = section_anchor
             relation_id = stable_id(
                 "rel",
                 run_id,
@@ -416,9 +587,156 @@ def ingest_folder(folder_path: str | Path, store: DSPGStore | None = None) -> tu
                     span_id,
                     context_id,
                     relation.confidence,
-                    json.dumps(relation.metadata, sort_keys=True),
+                    json.dumps(metadata, sort_keys=True),
                 ),
             )
+
+        if not _is_structural_heading(sentence.text) and pending_label_heading:
+            section_anchor_by_document[sentence.document_id] = pending_label_heading
+            section_group_by_document[sentence.document_id] = stable_id("section_group", sentence.document_id, pending_label_heading)
+
+        if use_semantic_frames and semantic_client is not None:
+            model_frames, _frame_result = _grounded_model_frames(sentence, semantic_client, semantic_cache)
+            for index, frame in enumerate(model_frames):
+                frame_type = clean_extracted_value(str(frame.get("frame_type") or "relation")) or "relation"
+                predicate = clean_extracted_value(str(frame.get("predicate") or "")) or frame_type
+                evidence_text = str(frame.get("evidence_text") or "").strip()
+                if not evidence_text or evidence_text not in sentence.text:
+                    continue
+                modality = normalize(str(frame.get("modality") or "asserted")) or "asserted"
+                polarity = normalize(str(frame.get("polarity") or "positive")) or "positive"
+                temporal_text = clean_extracted_value(str(frame.get("temporal_text") or ""))
+                semantic_context_id = context_id
+                if modality != "asserted":
+                    context_key = f"modality:{modality}"
+                    semantic_context_id = context_by_kind.get(context_key)
+                    if semantic_context_id is None:
+                        semantic_context_id = stable_id("ctx", run_id, context_key)
+                        context_by_kind[context_key] = semantic_context_id
+                        store.execute(
+                            "INSERT INTO contexts(context_id, run_id, kind, parent_context_id, holder_surface, evidence_surface, confidence) VALUES (?, ?, ?, ?, ?, ?, ?)",
+                            (semantic_context_id, run_id, context_key, context_id, None, evidence_text, float(frame.get("confidence") or 0.65)),
+                        )
+                semantic_frame_id = stable_id("frm", run_id, sentence.sentence_id, "model", index, predicate, evidence_text)
+                store.execute(
+                    "INSERT OR IGNORE INTO frames(frame_id, run_id, context_id, predicate, predicate_norm, trigger_surface, confidence, source, span_id) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)",
+                    (
+                        semantic_frame_id,
+                        run_id,
+                        semantic_context_id,
+                        predicate,
+                        normalize(predicate),
+                        predicate,
+                        float(frame.get("confidence") or 0.65),
+                        "local_model",
+                        span_id,
+                    ),
+                )
+                group = stable_id("semantic_group", semantic_frame_id)
+                frame_metadata = {
+                    "frame_type": frame_type,
+                    "modality": modality,
+                    "polarity": polarity,
+                    "temporal_text": temporal_text,
+                    "record_group": group,
+                    "source": "local_model",
+                }
+                store.execute(
+                    """
+                    INSERT OR IGNORE INTO relations(
+                      relation_id, run_id, relation_type, subject, subject_norm, predicate, predicate_norm,
+                      object, object_norm, value, value_norm, source_span_id, context_id, confidence, metadata_json
+                    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                    """,
+                    (
+                        stable_id("rel", run_id, semantic_frame_id, "semantic_frame"),
+                        run_id,
+                        "semantic_frame",
+                        frame_type,
+                        normalize(frame_type),
+                        predicate,
+                        normalize(predicate),
+                        "",
+                        "",
+                        evidence_text,
+                        normalize(evidence_text),
+                        span_id,
+                        semantic_context_id,
+                        float(frame.get("confidence") or 0.65),
+                        json.dumps(frame_metadata, sort_keys=True),
+                    ),
+                )
+                arguments = frame.get("arguments")
+                if not isinstance(arguments, list):
+                    arguments = []
+                for arg_index, argument in enumerate(arguments):
+                    if not isinstance(argument, dict):
+                        continue
+                    role = clean_extracted_value(str(argument.get("role") or f"arg_{arg_index}"))
+                    surface = clean_extracted_value(str(argument.get("text") or ""))
+                    if not surface:
+                        continue
+                    store.execute(
+                        "INSERT OR IGNORE INTO frame_arguments(argument_id, frame_id, role, mention_id, referent_id, surface, confidence) VALUES (?, ?, ?, ?, ?, ?, ?)",
+                        (
+                            stable_id("arg", semantic_frame_id, arg_index, role, surface),
+                            semantic_frame_id,
+                            role,
+                            None,
+                            None,
+                            surface,
+                            float(frame.get("confidence") or 0.65),
+                        ),
+                    )
+                    relation_metadata = {
+                        **frame_metadata,
+                        "argument_role": role,
+                        "argument_value_type": str(argument.get("value_type") or ""),
+                    }
+                    store.execute(
+                        """
+                        INSERT OR IGNORE INTO relations(
+                          relation_id, run_id, relation_type, subject, subject_norm, predicate, predicate_norm,
+                          object, object_norm, value, value_norm, source_span_id, context_id, confidence, metadata_json
+                        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                        """,
+                        (
+                            stable_id("rel", run_id, semantic_frame_id, "arg", arg_index, role, surface),
+                            run_id,
+                            "semantic_argument",
+                            role,
+                            normalize(role),
+                            predicate,
+                            normalize(predicate),
+                            frame_type,
+                            normalize(frame_type),
+                            surface,
+                            normalize(surface),
+                            span_id,
+                            semantic_context_id,
+                            float(frame.get("confidence") or 0.65),
+                            json.dumps(relation_metadata, sort_keys=True),
+                        ),
+                    )
+                if temporal_text:
+                    store.execute(
+                        """
+                        INSERT OR IGNORE INTO temporal_edges(
+                          edge_id, run_id, source_span_id, referent_id, context_id, relation, temporal_value, state_value, confidence
+                        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+                        """,
+                        (
+                            stable_id("tmp", run_id, semantic_frame_id, temporal_text),
+                            run_id,
+                            span_id,
+                            None,
+                            semantic_context_id,
+                            "frame_temporal_scope",
+                            temporal_text,
+                            "",
+                            float(frame.get("confidence") or 0.65),
+                        ),
+                    )
 
     metrics = {
         "documents": len(documents),

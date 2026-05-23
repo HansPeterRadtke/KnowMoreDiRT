@@ -182,6 +182,8 @@ def canonicalize_answer(expected: ExpectedAnswer, value: str) -> str:
         return "; ".join(dict.fromkeys(parts))
     if expected.answer_type in {"person", "actor", "organization", "state", "content_phrase", "metadata_value"}:
         text = str(value or "").strip().strip('"')
+        if expected.answer_type in {"person", "actor"}:
+            text = _strip_person_descriptor_prefix(text)
         return text if is_value_compatible(expected, text) else ""
     parts = compatible_answer_parts(expected, value)
     if not parts:
@@ -218,6 +220,20 @@ def _canonical_part(expected: ExpectedAnswer, value: str) -> str:
             return duration.group(0)
         match = _DATE_TIME_RE.search(cleaned)
         return match.group(0) if match else ""
+    return text
+
+
+def _strip_person_descriptor_prefix(value: str) -> str:
+    text = clean_extracted_value(value)
+    parts = text.split()
+    if len(parts) < 2:
+        return text
+    if parts[0] in {"Dr.", "Ms.", "Mr.", "Mrs.", "Prof."}:
+        return text
+    if len(parts) <= 3 and re.search(r"(?:er|or|ess|ist|ant|iff)$", parts[0], re.I):
+        candidate = " ".join(parts[1:])
+        if _PERSON_RE.fullmatch(candidate):
+            return candidate
     return text
 
 

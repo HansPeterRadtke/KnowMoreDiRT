@@ -24,10 +24,24 @@ def _completion_endpoint(endpoint: str) -> str:
     return value + "/completion"
 
 
+def _chat_endpoint(endpoint: str) -> str | None:
+    value = endpoint.rstrip("/")
+    if value.endswith("/v1"):
+        return value + "/chat/completions"
+    if value.endswith("/chat/completions"):
+        return value
+    return None
+
+
 def _extract_balanced_json(raw: str) -> str | None:
-    start = raw.find("{")
-    if start < 0:
+    object_start = raw.find("{")
+    array_start = raw.find("[")
+    candidates = [index for index in [object_start, array_start] if index >= 0]
+    if not candidates:
         return None
+    start = min(candidates)
+    opener = raw[start]
+    closer = "}" if opener == "{" else "]"
     depth = 0
     in_string = False
     escape = False
@@ -42,9 +56,9 @@ def _extract_balanced_json(raw: str) -> str | None:
             continue
         if char == '"':
             in_string = True
-        elif char == "{":
+        elif char == opener:
             depth += 1
-        elif char == "}":
+        elif char == closer:
             depth -= 1
             if depth == 0:
                 return raw[start : index + 1]
@@ -54,7 +68,7 @@ def _extract_balanced_json(raw: str) -> str | None:
 @dataclass(frozen=True)
 class LocalModelClient:
     endpoint: str = os.environ.get("KMD_LOCAL_MODEL_ENDPOINT", "http://127.0.0.1:14829/v1")
-    timeout_seconds: float = float(os.environ.get("KMD_LOCAL_MODEL_TIMEOUT", "30"))
+    timeout_seconds: float = float(os.environ.get("KMD_LOCAL_MODEL_TIMEOUT", "180"))
 
     def models(self) -> dict:
         url = self.endpoint.rstrip("/") + "/models"
@@ -64,21 +78,34 @@ class LocalModelClient:
     def complete_json(self, prompt: str, *, n_predict: int = 128, grammar: str | None = None) -> dict[str, Any]:
         """Return a parsed JSON object from the local completion endpoint."""
 
-        endpoint = _completion_endpoint(self.endpoint)
+        endpoint = _chat_endpoint(self.endpoint) or _completion_endpoint(self.endpoint)
         if not (
             endpoint.startswith("http://127.0.0.1:")
             or endpoint.startswith("http://localhost:")
             or endpoint.startswith("http://[::1]:")
         ):
             raise ValueError("KMD local model endpoint must be localhost-only")
-        body = {
-            "prompt": prompt,
-            "n_predict": int(n_predict),
-            "temperature": 0.0,
-            "top_p": 1.0,
-            "seed": int(os.environ.get("KMD_LOCAL_MODEL_SEED", "1778779265")),
-            "stream": False,
-        }
+        if endpoint.endswith("/chat/completions"):
+            body = {
+                "messages": [
+                    {"role": "system", "content": "Return one valid JSON object or array and no prose."},
+                    {"role": "user", "content": prompt},
+                ],
+                "max_tokens": int(n_predict),
+                "temperature": 0.0,
+                "top_p": 1.0,
+                "seed": int(os.environ.get("KMD_LOCAL_MODEL_SEED", "1778779265")),
+                "stream": False,
+            }
+        else:
+            body = {
+                "prompt": prompt,
+                "n_predict": int(n_predict),
+                "temperature": 0.0,
+                "top_p": 1.0,
+                "seed": int(os.environ.get("KMD_LOCAL_MODEL_SEED", "1778779265")),
+                "stream": False,
+            }
         if grammar:
             body["grammar"] = grammar
         started = time.time()
@@ -91,10 +118,20 @@ class LocalModelClient:
         with urllib.request.urlopen(request, timeout=self.timeout_seconds) as response:
             response_obj = json.loads(response.read().decode("utf-8", errors="replace"))
         raw = str(response_obj.get("content") or "")
+        if not raw and isinstance(response_obj.get("choices"), list) and response_obj["choices"]:
+            choice = response_obj["choices"][0]
+            if isinstance(choice, dict):
+                message = choice.get("message")
+                if isinstance(message, dict):
+                    raw = str(message.get("content") or "")
+                else:
+                    raw = str(choice.get("text") or "")
         snippet = _extract_balanced_json(raw) or raw
         parsed = json.loads(snippet)
+        if isinstance(parsed, list):
+            parsed = {"items": parsed}
         if not isinstance(parsed, dict):
-            raise ValueError("local model did not return a JSON object")
+            raise ValueError("local model did not return a JSON object or array")
         parsed["_model_raw"] = raw
         parsed["_model_elapsed_seconds"] = round(time.time() - started, 3)
         parsed["_model_endpoint"] = endpoint

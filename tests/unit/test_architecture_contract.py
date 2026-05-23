@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import ast
 import re
 from pathlib import Path
 
@@ -62,6 +63,31 @@ FORBIDDEN_CORE_REGEXES = [
     r"\belif\s+.*['\"](?:owner|reviewer|approver|reporter|author)['\"]",
 ]
 
+FORBIDDEN_SEMANTIC_BRANCH_WORDS = {
+    "owner",
+    "reviewer",
+    "manual",
+    "runbook",
+    "assignment",
+    "claim",
+    "warranty",
+    "endpoint",
+    "company",
+    "customer",
+    "author",
+    "maintainer",
+    "assignee",
+}
+
+CORE_BRANCH_FILES = {
+    "answer_types.py",
+    "bounded_dspg.py",
+    "engine.py",
+    "model_planner.py",
+    "query.py",
+    "relations.py",
+}
+
 
 def test_core_package_has_no_benchmark_or_prepared_input_markers() -> None:
     source_files = list((REPO_ROOT / "src" / "knowmoredirt").glob("*.py"))
@@ -104,4 +130,28 @@ def test_core_package_has_no_fixture_or_domain_shaped_literals() -> None:
         for marker in forbidden:
             if marker.lower() in text.lower():
                 findings.append(f"{path.relative_to(REPO_ROOT)}:{marker}")
+    assert findings == []
+
+
+def test_core_has_no_string_triggered_semantic_relation_branches() -> None:
+    findings: list[str] = []
+    for path in (REPO_ROOT / "src" / "knowmoredirt").glob("*.py"):
+        if path.name not in CORE_BRANCH_FILES:
+            continue
+        tree = ast.parse(path.read_text(encoding="utf-8"), filename=str(path))
+        for node in ast.walk(tree):
+            if not isinstance(node, (ast.If, ast.IfExp, ast.While)):
+                continue
+            condition = ast.get_source_segment(path.read_text(encoding="utf-8"), node.test) or ""
+            literals = [
+                child.value.lower()
+                for child in ast.walk(node.test)
+                if isinstance(child, ast.Constant) and isinstance(child.value, str)
+            ]
+            branch_words = [
+                word for word in FORBIDDEN_SEMANTIC_BRANCH_WORDS
+                if any(re.search(rf"\b{re.escape(word)}\b", literal) for literal in literals)
+            ]
+            if branch_words:
+                findings.append(f"{path.relative_to(REPO_ROOT)}:{node.lineno}:{','.join(sorted(branch_words))}:{condition}")
     assert findings == []

@@ -9,6 +9,7 @@ copular assertion, event, temporal expression, and negation.
 from __future__ import annotations
 
 import json
+import hashlib
 import re
 from dataclasses import dataclass, field
 from typing import Any
@@ -25,6 +26,10 @@ PERSON_PATTERN = (
 LABEL_VALUE_RE = re.compile(r'\s*"?([A-Za-z][A-Za-z0-9 _/-]{1,80})"?\s*[:=]\s*"?([^"{}\[\]\n;,|]+)"?')
 JSON_SCALAR_PAIR_RE = re.compile(
     r'"([^"\n]{1,80})"\s*:\s*(?:"([^"\n]*)"|(-?\d+(?:\.\d+)?)|(true|false|null))',
+    re.I,
+)
+LOOSE_SCALAR_PAIR_RE = re.compile(
+    r'\b"?([A-Za-z][A-Za-z0-9 _/-]{0,80})"?\s*:\s*(?:"([^"\n{}\[\]]*)"|([^,{}\[\]\n]+))',
     re.I,
 )
 TIMESTAMP_RE = re.compile(r"\b(\d{4}-\d{2}-\d{2}(?:[ T]\d{2}:\d{2})?)\b")
@@ -86,6 +91,10 @@ def extract_relations(text: str) -> list[ExtractedRelation]:
     relations.extend(_extract_record_values(value))
     relations.extend(_extract_label_values(value))
     relations.extend(_extract_table_row_relations(value))
+    structural_record_text = (":" in value or "|" in value or "\t" in value) and any(
+        relation.relation_type in {"label_value", "record_value", "table_cell"}
+        for relation in relations
+    )
 
     for url in urls(value):
         _append(relations, "identifier", "url", value=url, confidence=0.85)
@@ -113,20 +122,46 @@ def extract_relations(text: str) -> list[ExtractedRelation]:
             surface_verb=match.group(2),
         )
 
-    for match in ACTIVE_EVENT_RE.finditer(value):
-        subject = match.group(1)
-        predicate = match.group(2)
-        object_text = match.group(3)
-        _append(
-            relations,
-            "event",
-            predicate,
-            subject=subject,
-            object_=object_text,
-            confidence=0.72,
-            voice="active",
-            surface_verb=predicate,
-        )
+    active_event_texts = [value] if not structural_record_text else [
+        piece
+        for piece in re.split(r"\n+", value)
+        if piece.strip() and not LABEL_VALUE_RE.match(piece.strip())
+    ]
+    for active_text in active_event_texts:
+        for match in ACTIVE_EVENT_RE.finditer(active_text):
+            subject = match.group(1)
+            predicate = match.group(2)
+            object_text = match.group(3)
+            _append(
+                relations,
+                "event",
+                predicate,
+                subject=subject,
+                object_=object_text,
+                confidence=0.72,
+                voice="active",
+                surface_verb=predicate,
+            )
+    if structural_record_text:
+        for source_relation in list(relations):
+            clause = source_relation.value or source_relation.object
+            if not clause:
+                continue
+            for match in ACTIVE_EVENT_RE.finditer(clause):
+                subject = match.group(1)
+                predicate = match.group(2)
+                object_text = match.group(3)
+                _append(
+                    relations,
+                    "event",
+                    predicate,
+                    subject=subject,
+                    object_=object_text,
+                    confidence=0.7,
+                    voice="active",
+                    surface_verb=predicate,
+                    embedded_in=source_relation.relation_type,
+                )
 
     if NEGATION_RE.search(value):
         _append(relations, "status", "negation", value=value, confidence=0.72)
@@ -147,6 +182,17 @@ def _extract_label_values(text: str) -> list[ExtractedRelation]:
         value = clean_extracted_value(match.group(2))
         if label and value:
             _append(relations, "label_value", "label", subject=label, value=value, confidence=0.84)
+            label_terms = normalize(label).split()
+            if label_terms and re.match(r"^[a-z][a-z-]+(?:\s+[a-z][a-z-]+){1,12}$", value):
+                _append(
+                    relations,
+                    "event",
+                    label_terms[-1],
+                    object_=value,
+                    confidence=0.7,
+                    voice="label_value",
+                    source_label=label,
+                )
     return relations
 
 
@@ -160,10 +206,37 @@ def _extract_record_values(text: str) -> list[ExtractedRelation]:
             parsed = None
         if parsed is not None:
             _walk_record_value(parsed, (), relations)
+    object_ranges: list[tuple[int, int]] = []
+    for object_match in re.finditer(r"\{[^{}\n]*(?:\{[^{}\n]*\}[^{}\n]*)*\}", text):
+        object_text = object_match.group(0)
+        if ":" not in object_text:
+            continue
+        object_ranges.append((object_match.start(), object_match.end()))
+        record_group = "object:" + hashlib.sha256(normalize(object_text).encode("utf-8")).hexdigest()[:16]
+        for pair in LOOSE_SCALAR_PAIR_RE.finditer(object_text):
+            key = clean_extracted_value(pair.group(1))
+            value = clean_extracted_value(next(group for group in pair.groups()[1:] if group is not None))
+            if not key or not value or "{" in value:
+                continue
+            _append(
+                relations,
+                "record_value",
+                "key_value",
+                subject=key,
+                value=value,
+                confidence=0.84,
+                record_path=key,
+                record_group=record_group,
+                surface_format="object_like",
+            )
     for match in JSON_SCALAR_PAIR_RE.finditer(text):
+        if any(start <= match.start() < end for start, end in object_ranges):
+            continue
         key = clean_extracted_value(match.group(1))
         value = clean_extracted_value(next(group for group in match.groups()[1:] if group is not None))
         if key and value:
+            record_path = key
+            record_group = ".".join(record_path.split(".")[:-1]) or record_path
             _append(
                 relations,
                 "record_value",
@@ -171,7 +244,8 @@ def _extract_record_values(text: str) -> list[ExtractedRelation]:
                 subject=key,
                 value=value,
                 confidence=0.83,
-                record_path=key,
+                record_path=record_path,
+                record_group=record_group,
                 surface_format="json_like",
             )
     return relations
@@ -202,6 +276,7 @@ def _walk_record_value(value: Any, path: tuple[str, ...], relations: list[Extrac
         value=scalar,
         confidence=0.86,
         record_path=".".join(path),
+        record_group=".".join(path[:-1]) if len(path) > 1 else ".".join(path),
         surface_format="json",
     )
 
@@ -216,7 +291,15 @@ def _extract_table_row_relations(text: str) -> list[ExtractedRelation]:
         return relations
     first = cells[0]
     for index, cell in enumerate(cells[1:], start=1):
-        _append(relations, "table_cell", f"cell_{index}", subject=first, value=cell, confidence=0.72)
+        _append(
+            relations,
+            "table_cell",
+            f"cell_{index}",
+            subject=first,
+            value=cell,
+            confidence=0.72,
+            cell_index=index,
+        )
     return relations
 
 

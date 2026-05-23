@@ -12,7 +12,7 @@ def test_broad_world_evaluation_runs_with_honest_score() -> None:
     result = evaluate_fixture(BROAD_FIXTURE_ROOT, BROAD_QA_PATH)
 
     assert result.total == 65
-    assert result.correct >= 25
+    assert result.correct == 65
     assert "school_homework" in result.by_category
     assert "medical_note" in result.by_category
     assert "multilingual_unknown" in result.by_category
@@ -23,7 +23,7 @@ def test_hardcore_noise_evaluation_runs_and_preserves_meaningful_answers() -> No
     result = evaluate_fixture(NOISE_FIXTURE_ROOT, NOISE_QA_PATH)
 
     assert result.total == 8
-    assert result.correct >= 4
+    assert result.correct == 8
     assert "noise_unknown" in result.by_category
     assert "noise_ingest" in result.by_category
 
