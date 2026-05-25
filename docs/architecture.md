@@ -22,10 +22,10 @@ Initialization performs these steps:
 5. **Source spans**: store both chunk spans and mention spans.
 6. **Mention extraction**: extract source-grounded IDs, URLs, file-like values, names, and named text spans.
 7. **Referent construction**: create local referents from exact mentions without requiring destructive global merging.
-8. **Context assignment**: mark sentence-level assertion and discourse-scope contexts from source-grounded carriers.
-9. **Frame extraction**: create lightweight event/proposition frames with observed predicates and argument links.
+8. **Context assignment**: attach source-grounded sentence, quality, and temporal carriers to explicit context records.
+9. **Surface-structure extraction**: record universal source structures such as label/value text, object-like key/value text, table cells, identifiers, URLs, and timestamps. These records preserve source structure but do not perform semantic event or role interpretation.
 10. **Optional local-model discourse frames**: when `KMD_USE_LOCAL_MODEL=1` and LLM ingestion is enabled, each meaningful source chunk is sent to the localhost-only model for generic DRT/DSPG frame JSON. Accepted frames must be grounded by exact evidence text from the chunk before they are stored. Model arguments are converted into referents, frame arguments, same-surface identity hypotheses, and source-grounded semantic relations.
-11. **Generic relation extraction**: store label/value pairs, JSON-like/object-as-text key/value pairs, table cells, identifier values, copular assertions, active/passive events, negation relations, and timestamp relations as source-grounded DSPG relations.
+11. **Generic relation storage**: store deterministic surface records and model-produced DRS conditions in the same grounded SQLite representation, while keeping relation words as data rather than control-flow selectors.
 12. **Text-quality/context scoring**: store generic structural signals and document-level contexts for low-semantic-content files such as random-character blobs, hex/blob-like text, OCR corruption, word salad, plausible babble, and meaningful discourse.
 13. **Indexing**: build bounded retrieval structures over both raw chunks and DSPG records.
 
@@ -63,7 +63,7 @@ The current query path combines:
 - lexical retrieval over raw sentence chunks,
 - referent-centric retrieval through mentions and referents,
 - frame-aware retrieval through observed predicates and frame arguments,
-- relation-aware retrieval through generic label, identifier, event, assertion, temporal, table, and record relations,
+- relation-aware retrieval through generic label, identifier, temporal, table, and record relations,
 - bounded SQLite subgraph execution over selected documents/chunks, source spans, mentions, referents, contexts, frames, frame arguments, temporal edges, and relations,
 - local-model frame argument binding when semantic frames are present,
 - temporal state retrieval for state changes with dated evidence,
@@ -73,11 +73,11 @@ The current query path combines:
 
 Questions are parsed into generic query frames containing target anchors, requested relation text, relation terms, constraints, answer type, temporal scope, negation, aggregation, and evidence requirements. Relation words from a source or question remain data inside the frame; they do not select content-specific code branches.
 
-This is a first vertical slice of the full DSPG query architecture. It avoids full-corpus graph loading per question and avoids assuming external input structure. Future work should strengthen graph traversal, entity resolution, uncertainty handling, aggregation, discourse context propagation, and deeper model-assisted extraction.
+This is a first vertical slice of the full DRS/DSPG query architecture. It avoids full-corpus graph loading per question and avoids assuming external input structure. The deterministic layer no longer attempts to parse active/passive events, copular assertions, or discourse modality by hand. Those semantic decisions belong to the local-model DRS extraction path. Future work should strengthen graph traversal, entity resolution, uncertainty handling, aggregation, discourse context propagation, and live-model throughput.
 
 The bounded SQLite graph executor is part of the normal non-model answer pipeline for query plans that can be mapped to generic DSPG operations. The optional local model path uses the same executor after producing a constrained plan, so model assistance refines planning rather than replacing grounded graph execution.
 
-When model frames are available, answer candidates can be produced by binding the query frame against frame arguments rather than by using a relation-name handler. The executor checks that the target anchors, requested predicate text, context, and expected answer type are jointly satisfied, then returns compatible non-target arguments as possible answer-variable bindings.
+When model frames are available, answer candidates can be produced by binding the query frame against frame arguments rather than by using a relation-name handler. The executor checks that the target anchors, requested predicate text, context, and expected answer type are jointly satisfied, then returns compatible non-target arguments as possible answer-variable bindings. This is the intended path for semantic roles, claims, reports, dreams, temporal events, and other discourse conditions.
 
 Before returning a non-unknown answer, KMD now infers a broad expected answer type from the question: person/actor, organization, identifier, URL, file path, count, state, date/time, boolean, content phrase, metadata value, or unknown. Candidate answers are rejected if the value type is incompatible with the question. This prevents structural references such as URLs, file paths, IDs, and metadata-only hits from satisfying person, organization, state, or content questions unless the question explicitly asks for that type. Metadata records remain valid answer sources only for metadata questions; otherwise they serve as retrieval priors.
 
@@ -97,12 +97,12 @@ DSPG objects are grounded in exact source spans. Answers at the public boundary 
 
 ## Current Weaknesses
 
-- The deterministic fallback is still shallow and currently below the strict fixture gates after removal of semantic answer handlers.
+- The deterministic fallback is intentionally shallow after removal of semantic answer handlers and is currently below the strict fixture gates.
 - Entity resolution is local and conservative.
 - Context propagation is sentence-level rather than fully hierarchical.
 - Temporal modeling handles simple dated state statements but not full interval logic.
 - Noise handling is structural and conservative; it labels and downweights low-semantic-content sources for ordinary fact retrieval while preserving them as source-grounded contexts.
-- The local model path now includes chunk-frame extraction, query-frame parsing, bounded verification, and evidence extraction, but live-model throughput and JSON reliability are still active engineering constraints.
+- The local model path now includes chunk-frame extraction, query-frame parsing, bounded verification, and evidence extraction, but live-model throughput, durable cache reuse, and JSON reliability are still active engineering constraints.
 - The fixture suite now includes hard failure-driven raw reasoning tests, but it is still self-written and not proof of broad generalization.
 
 ## Optional Local Query Planner

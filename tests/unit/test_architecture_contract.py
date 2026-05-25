@@ -155,3 +155,20 @@ def test_core_has_no_string_triggered_semantic_relation_branches() -> None:
             if branch_words:
                 findings.append(f"{path.relative_to(REPO_ROOT)}:{node.lineno}:{','.join(sorted(branch_words))}:{condition}")
     assert findings == []
+
+
+def test_surface_extractor_has_no_deterministic_semantic_event_regexes() -> None:
+    text = (REPO_ROOT / "src" / "knowmoredirt" / "relations.py").read_text(encoding="utf-8")
+    forbidden = [
+        "COPULAR_RE",
+        "PASSIVE_EVENT_RE",
+        "ACTIVE_EVENT_RE",
+        "PERSON_PATTERN",
+        "surface_verb",
+        'relation_type", "event"',
+        '"event",',
+        '"assertion",',
+        '"polarity_marker",',
+    ]
+    findings = [marker for marker in forbidden if marker in text]
+    assert findings == []

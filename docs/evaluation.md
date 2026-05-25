@@ -13,14 +13,14 @@ All fixtures are raw text only. They use arbitrary nested folders, arbitrary fil
 
 ## Current Score
 
-Current generic hybrid query-frame results after adding the DRS condition layer, identity-hypothesis storage, local-model frame normalization, and model-frame argument binding:
+Current generic hybrid query-frame results after removing deterministic semantic event/assertion handlers and keeping only universal surface-structure extraction in the deterministic layer:
 
-- original messy corpus: `29/60 (0.483)`
-- broad raw-world corpus: `41/65 (0.631)`
+- original messy corpus: `18/60 (0.300)`
+- broad raw-world corpus: `27/65 (0.415)`
 - hardcore noise corpus: `7/8 (0.875)`
-- hard raw-reasoning corpus: `71/134 (0.530)`
+- hard raw-reasoning corpus: `45/134 (0.336)`
 
-These scores are intentionally reported after removing procedural semantic routing and relation-specific answer handlers from the core and keeping the fixture gates at exact correctness. The strict gates currently fail; the numbers above are the honest current state. The next implementation work is to recover accuracy through generic discourse parsing, graph traversal, context propagation, aggregation, cacheable local-model frame extraction, and bounded entailment verification rather than semantic handler branches.
+These scores are intentionally reported after removing procedural semantic routing and relation-specific answer handlers from the core and keeping the fixture gates at exact correctness. The strict gates currently fail; the numbers above are the honest current state. The removed code was helping the fixtures by acting as hand-written semantic interpretation. The next implementation work is to recover accuracy through cacheable local-model DRS construction, graph traversal, context propagation, aggregation, and bounded entailment verification rather than semantic handler branches.
 
 ## Categories Covered
 
@@ -85,12 +85,12 @@ The current answer path uses generic DSPG mechanisms:
 
 - label/value and raw text key/value relations,
 - JSON-like/object-as-text key/value relations with source-grounded record paths,
-- active/passive event relations,
-- negation relations,
 - temporal state relations,
 - table row/cell relations,
 - filesystem/read metadata and document quality contexts.
 - broad expected-answer type validation for person/actor, organization, identifier, URL, file path, count, state, date/time, boolean, content phrase, and metadata answers.
+
+The deterministic surface extractor deliberately no longer creates active/passive event relations, copular assertion relations, or negation-as-semantics records. Semantic events, polarity, modality, claims, reports, dreams, and roles are expected to come from the local-model DRS frame path with exact evidence text.
 
 Additional unit and hard-fixture coverage checks that type-unsafe candidates are rejected: person questions do not return URLs, paths, or IDs; URL questions return URLs rather than nearby names; organization questions reject bare structural identifiers; metadata-only hits cannot answer non-metadata questions; JSON-like raw text supports generic key/value lookup; and low-semantic/cache-like text is downweighted without being discarded. Fake local-model tests verify that chunk-frame extraction, query-frame calls, bounded verification, and evidence extraction are invoked, counted, source-grounded, and rejected when proposed evidence is incompatible.
 

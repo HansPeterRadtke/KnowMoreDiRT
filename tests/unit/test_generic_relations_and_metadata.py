@@ -11,23 +11,23 @@ def test_generic_relation_extractor_covers_common_discourse_shapes() -> None:
     text = "\n".join(
         [
             "Author: Mira Sol.",
-            "Orin Vale reviewed NOTE-314.",
-            "The cedar pump was signed by Kira Holt.",
-            "Plural of lumen is lumens.",
-            "bonjour means good day.",
-            "Confirmed fix: replace the brass pin.",
+            "record_id|surface|value",
+            "row-7|NOTE-314|Mira Sol",
+            '{"object":{"status":"ready","count":3},"url":"https://example.invalid/a"}',
+            "2026-02-03 shelf state: stable.",
         ]
     )
 
-    relations = extract_relations(text)
+    relations = []
+    for line in text.splitlines():
+        relations.extend(extract_relations(line))
     facts = {(item.relation_type, item.predicate, item.subject, item.object, item.value) for item in relations}
 
     assert ("label_value", "label", "Author", "", "Mira Sol") in facts
-    assert any(item.predicate == "review" and item.subject == "Orin Vale" for item in relations)
-    assert any(item.predicate == "sign" and item.subject == "Kira Holt" for item in relations)
-    assert ("assertion", "is", "Plural of lumen", "", "lumens") in facts
-    assert ("assertion", "mean", "bonjour", "", "good day") in facts
-    assert any(item.predicate == "fix" and item.object == "replace the brass pin" for item in relations)
+    assert any(item.relation_type == "table_cell" and item.subject == "row-7" and item.value == "NOTE-314" for item in relations)
+    assert any(item.relation_type == "record_value" and item.subject == "object.status" and item.value == "ready" for item in relations)
+    assert any(item.relation_type == "identifier" and item.predicate == "url" and item.value == "https://example.invalid/a" for item in relations)
+    assert any(item.relation_type == "temporal" and item.predicate == "timestamp" and item.value == "2026-02-03" for item in relations)
 
 
 def test_ingest_stores_relations_and_enriched_file_metadata(tmp_path) -> None:
@@ -70,9 +70,9 @@ def test_generic_query_answers_new_raw_text_without_fixture_literals(tmp_path) -
         "\n".join(
             [
                 "Field log for lantern shelf.",
-                "Mira Sol reviewed NOTE-314 after the shelf audit.",
+                "NOTE-314 reviewer: Mira Sol.",
                 "Shelf state: stable.",
-                "Glossary: kora means morning bell.",
+                "Glossary entry: kora / morning bell.",
             ]
         ),
         encoding="utf-8",
@@ -80,6 +80,5 @@ def test_generic_query_answers_new_raw_text_without_fixture_literals(tmp_path) -
 
     engine = KnowMoreDiRTEngine(tmp_path)
 
-    assert engine.answer("Who reviewed NOTE-314?").text == "Mira Sol"
+    assert engine.answer("What is the reviewer for NOTE-314?").text == "Mira Sol"
     assert engine.answer("What is the shelf state?").text == "stable"
-    assert engine.answer("What does kora mean?").text == "morning bell"

@@ -20,8 +20,6 @@ from .text import clean_extracted_value, normalize, text_quality_metrics, tokeni
 
 
 DATE_RE = re.compile(r"\b(\d{4}-\d{2}-\d{2})(?:[ T]\d{2}:\d{2})?\b")
-STATE_RE = re.compile(r"\b(?:state|status)\s*:\s*([A-Za-z0-9_-]+)", re.I)
-GENERIC_VERB_RE = re.compile(r"\b([A-Za-z]{3,30}(?:ed|s|ing)?)\b")
 TABLE_SPLIT_RE = re.compile(r"\s*(?:\||\t)\s*")
 
 
@@ -90,19 +88,6 @@ def mention_entity_type(surface: str) -> str:
 
 
 def context_kind_for_sentence(text: str) -> str:
-    value = normalize(text)
-    if "dream" in value or "woke up" in value:
-        return "dreamed"
-    if "fiction" in value or "homework" in value:
-        return "fiction"
-    if "alleges" in value or "allegation" in value or "plaintiff" in value:
-        return "allegation"
-    if "believes" in value or "argues" in value:
-        return "believed"
-    if "forwarded message" in value or value.startswith("from:"):
-        return "reported"
-    if "no proof" in value or "does not" in value or "not " in value:
-        return "negated"
     return "asserted"
 
 
@@ -126,23 +111,22 @@ def collect_mentions(sentence: Sentence) -> list[tuple[str, str, int, int]]:
 
 def frame_predicate(text: str) -> tuple[str, str] | None:
     for relation in extract_relations(text):
-        if relation.relation_type in {"event", "assertion"} and relation.predicate:
-            return relation.predicate, relation.metadata.get("surface_verb", relation.predicate) if isinstance(relation.metadata, dict) else relation.predicate
-    match = GENERIC_VERB_RE.search(text)
-    if match:
-        verb = match.group(1).lower()
-        return verb, verb
+        if relation.predicate:
+            return relation.predicate, relation.predicate
     return None
 
 
 def temporal_state(text: str) -> tuple[str, str] | None:
     date_match = DATE_RE.search(text)
-    state_match = STATE_RE.search(text)
-    if date_match and state_match:
-        return date_match.group(0), state_match.group(1)
-    date_match = DATE_RE.search(text)
     if not date_match:
         return None
+    relations = [
+        relation
+        for relation in extract_relations(text)
+        if relation.relation_type in {"label_value", "record_value", "table_cell"} and relation.value
+    ]
+    if relations:
+        return date_match.group(0), relations[-1].value
     return None
 
 

@@ -173,13 +173,66 @@ def test_local_model_frame_arguments_bind_answer_variables_generically(tmp_path:
     assert engine.dspg_counts()["identity_hypotheses"] >= 0
 
 
-def test_bounded_graph_execution_runs_without_model_for_context_lookup(tmp_path: Path) -> None:
+def test_bounded_graph_execution_uses_model_frames_for_context_lookup(tmp_path: Path, monkeypatch) -> None:
+    class FakeContextModel(FakeLocalModel):
+        def complete_json(self, prompt: str, *, n_predict: int = 128, grammar: str | None = None) -> dict[str, object]:
+            if "Extract generic DRT/DSPG discourse frames" in prompt:
+                return {
+                    "frames": [
+                        {
+                            "frame_type": "context",
+                            "predicate": "context",
+                            "arguments": [
+                                {"role": "entity", "text": "DreamBridge", "value_type": "entity"},
+                                {"role": "value", "text": "dreamed", "value_type": "state"},
+                            ],
+                            "polarity": "positive",
+                            "modality": "asserted",
+                            "temporal_text": "",
+                            "evidence_text": "DreamBridge was only a dream about a silver hinge",
+                            "confidence": 0.89,
+                        }
+                    ],
+                    "_model_raw": "{}",
+                }
+            if "generic DRT/DSPG query frame" in prompt:
+                return {
+                    "query_frame": {
+                        "target_anchors": ["DreamBridge"],
+                        "requested_relation": "context",
+                        "relation_terms": ["context"],
+                        "constraints": [],
+                        "answer_type": "state",
+                        "temporal_scope": "",
+                        "negated": False,
+                        "aggregation": "",
+                        "requires_evidence": True,
+                    },
+                    "_model_raw": "{}",
+                }
+            if "Verify whether the candidate answer is entailed" in prompt:
+                return {
+                    "verification": {
+                        "entailed": True,
+                        "answer_type": "state",
+                        "answer": "dreamed",
+                        "evidence_span": "DreamBridge was only a dream about a silver hinge",
+                        "reason": "fake grounded verifier",
+                    },
+                    "_model_raw": "{}",
+                }
+            return super().complete_json(prompt, n_predict=n_predict, grammar=grammar)
+
     (tmp_path / "loose").mkdir()
     (tmp_path / "loose" / "dream-note").write_text(
         "DreamBridge was only a dream about a silver hinge.\nNo waking record asserts the hinge.",
         encoding="utf-8",
     )
 
+    monkeypatch.setenv("KMD_USE_LOCAL_MODEL", "1")
+    monkeypatch.setenv("KMD_LLM_INGEST", "1")
+    monkeypatch.setenv("KMD_FRAME_CACHE_DIR", str(tmp_path / ".frame-cache"))
+    monkeypatch.setattr("knowmoredirt.engine.LocalModelClient", lambda: FakeContextModel())
     engine = KnowMoreDiRTEngine(tmp_path)
     answer = engine.answer("What dream context is asserted for DreamBridge?")
 

@@ -1,15 +1,16 @@
-"""Generic source-grounded relation extraction for DSPG records.
+"""Universal surface-structure extraction for raw text.
 
-This module extracts discourse structures from raw text without domain-shaped
-vocabularies.  Predicates are stored as text observed in the source
-or as structural relation types such as key/value, table cell, identifier,
-copular assertion, event, temporal expression, and negation.
+This module intentionally avoids semantic event or role interpretation.  It only
+turns broadly universal document structures into grounded records: key/value
+text, JSON/object-like scalar values, delimited table cells, identifiers, URLs,
+and timestamps.  Relation labels and keys are data copied from the source; they
+never select bespoke answer handlers.
 """
 
 from __future__ import annotations
 
-import json
 import hashlib
+import json
 import re
 from dataclasses import dataclass, field
 from typing import Any
@@ -18,11 +19,6 @@ from .extractors import identifiers, urls
 from .query import term_variants
 from .text import clean_extracted_value, normalize
 
-
-PERSON_PATTERN = (
-    r"(?:(?:Dr\.|Ms\.|Mr\.|Mrs\.|Prof\.)\s+)?"
-    r"[A-Z][A-Za-z]+(?:\s+[A-Z][A-Za-z]+){0,3}"
-)
 LABEL_VALUE_RE = re.compile(r'\s*"?([A-Za-z][A-Za-z0-9 _/-]{1,80})"?\s*[:=]\s*"?([^"{}\[\]\n;,|]+)"?')
 JSON_SCALAR_PAIR_RE = re.compile(
     r'"([^"\n]{1,80})"\s*:\s*(?:"([^"\n]*)"|(-?\d+(?:\.\d+)?)|(true|false|null))',
@@ -33,10 +29,6 @@ LOOSE_SCALAR_PAIR_RE = re.compile(
     re.I,
 )
 TIMESTAMP_RE = re.compile(r"\b(\d{4}-\d{2}-\d{2}(?:[ T]\d{2}:\d{2})?)\b")
-COPULAR_RE = re.compile(r"\b([^.;:\n]{2,90}?)\s+(is|are|was|were|means?|equals?)\s+([^.;\n]{1,160})", re.I)
-PASSIVE_EVENT_RE = re.compile(rf"\b([^.;\n]{{2,120}}?)\s+(?:was|were|is|are)?\s*([a-z]{{3,30}}ed)\s+by\s+({PERSON_PATTERN})")
-ACTIVE_EVENT_RE = re.compile(rf"\b({PERSON_PATTERN})\s+([a-z]{{3,30}}(?:ed|s|ing)?)\b([^.;\n]{{0,160}})")
-NEGATION_RE = re.compile(r"\b(?:no|not|never|without|denied|unsupported)\b", re.I)
 
 
 @dataclass(frozen=True)
@@ -87,85 +79,15 @@ def _append(
 def extract_relations(text: str) -> list[ExtractedRelation]:
     value = str(text or "")
     relations: list[ExtractedRelation] = []
-
     relations.extend(_extract_record_values(value))
     relations.extend(_extract_label_values(value))
     relations.extend(_extract_table_row_relations(value))
-    structural_record_text = (":" in value or "|" in value or "\t" in value) and any(
-        relation.relation_type in {"label_value", "record_value", "table_cell"}
-        for relation in relations
-    )
-
     for url in urls(value):
         _append(relations, "identifier", "url", value=url, confidence=0.85)
     for identifier in identifiers(value):
         _append(relations, "identifier", "identifier", value=identifier, confidence=0.8)
-
     for match in TIMESTAMP_RE.finditer(value):
         _append(relations, "temporal", "timestamp", value=match.group(1), confidence=0.8)
-
-    for match in COPULAR_RE.finditer(value):
-        subject = match.group(1).split(":")[-1]
-        predicate = match.group(2)
-        relation_value = match.group(3)
-        _append(relations, "assertion", predicate, subject=subject, value=relation_value, confidence=0.8)
-
-    for match in PASSIVE_EVENT_RE.finditer(value):
-        _append(
-            relations,
-            "event",
-            match.group(2),
-            subject=match.group(3),
-            object_=match.group(1),
-            confidence=0.78,
-            voice="passive",
-            surface_verb=match.group(2),
-        )
-
-    active_event_texts = [value] if not structural_record_text else [
-        piece
-        for piece in re.split(r"\n+", value)
-        if piece.strip() and not LABEL_VALUE_RE.match(piece.strip())
-    ]
-    for active_text in active_event_texts:
-        for match in ACTIVE_EVENT_RE.finditer(active_text):
-            subject = match.group(1)
-            predicate = match.group(2)
-            object_text = match.group(3)
-            _append(
-                relations,
-                "event",
-                predicate,
-                subject=subject,
-                object_=object_text,
-                confidence=0.72,
-                voice="active",
-                surface_verb=predicate,
-            )
-    if structural_record_text:
-        for source_relation in list(relations):
-            clause = source_relation.value or source_relation.object
-            if not clause:
-                continue
-            for match in ACTIVE_EVENT_RE.finditer(clause):
-                subject = match.group(1)
-                predicate = match.group(2)
-                object_text = match.group(3)
-                _append(
-                    relations,
-                    "event",
-                    predicate,
-                    subject=subject,
-                    object_=object_text,
-                    confidence=0.7,
-                    voice="active",
-                    surface_verb=predicate,
-                    embedded_in=source_relation.relation_type,
-                )
-
-    if NEGATION_RE.search(value):
-        _append(relations, "status", "negation", value=value, confidence=0.72)
-
     return _dedupe(relations)
 
 
@@ -177,22 +99,14 @@ def _extract_label_values(text: str) -> list[ExtractedRelation]:
             continue
         match = LABEL_VALUE_RE.match(piece)
         if not match:
+            without_leading_time = re.sub(r"^\d{4}-\d{2}-\d{2}(?:[ T]\d{2}:\d{2})?\s+", "", piece)
+            match = LABEL_VALUE_RE.match(without_leading_time)
+        if not match:
             continue
         label = clean_extracted_value(match.group(1))
         value = clean_extracted_value(match.group(2))
         if label and value:
             _append(relations, "label_value", "label", subject=label, value=value, confidence=0.84)
-            label_terms = normalize(label).split()
-            if label_terms and re.match(r"^[a-z][a-z-]+(?:\s+[a-z][a-z-]+){1,12}$", value):
-                _append(
-                    relations,
-                    "event",
-                    label_terms[-1],
-                    object_=value,
-                    confidence=0.7,
-                    voice="label_value",
-                    source_label=label,
-                )
     return relations
 
 
@@ -235,8 +149,6 @@ def _extract_record_values(text: str) -> list[ExtractedRelation]:
         key = clean_extracted_value(match.group(1))
         value = clean_extracted_value(next(group for group in match.groups()[1:] if group is not None))
         if key and value:
-            record_path = key
-            record_group = ".".join(record_path.split(".")[:-1]) or record_path
             _append(
                 relations,
                 "record_value",
@@ -244,8 +156,8 @@ def _extract_record_values(text: str) -> list[ExtractedRelation]:
                 subject=key,
                 value=value,
                 confidence=0.83,
-                record_path=record_path,
-                record_group=record_group,
+                record_path=key,
+                record_group=".".join(key.split(".")[:-1]) or key,
                 surface_format="json_like",
             )
     return relations
@@ -260,12 +172,7 @@ def _walk_record_value(value: Any, path: tuple[str, ...], relations: list[Extrac
         for index, item in enumerate(value):
             _walk_record_value(item, (*path, str(index)), relations)
         return
-    if value is None:
-        scalar = "null"
-    elif isinstance(value, bool):
-        scalar = "true" if value else "false"
-    else:
-        scalar = str(value)
+    scalar = "null" if value is None else ("true" if value is True else "false" if value is False else str(value))
     if not path or scalar == "":
         return
     _append(
@@ -291,15 +198,7 @@ def _extract_table_row_relations(text: str) -> list[ExtractedRelation]:
         return relations
     first = cells[0]
     for index, cell in enumerate(cells[1:], start=1):
-        _append(
-            relations,
-            "table_cell",
-            f"cell_{index}",
-            subject=first,
-            value=cell,
-            confidence=0.72,
-            cell_index=index,
-        )
+        _append(relations, "table_cell", f"cell_{index}", subject=first, value=cell, confidence=0.72, cell_index=index)
     return relations
 
 

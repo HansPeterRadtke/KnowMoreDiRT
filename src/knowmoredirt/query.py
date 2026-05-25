@@ -144,6 +144,9 @@ def term_variants(term: str) -> set[str]:
             if suffix == "ies":
                 stem = f"{stem}y"
             variants.add(stem)
+            if suffix == "s":
+                variants.add(f"{stem}er")
+                variants.add(f"{stem}or")
     if len(token) >= 3:
         variants.add(f"{token}er")
         variants.add(f"{token}or")

@@ -308,7 +308,7 @@ class KnowMoreDiRTEngine:
         canonical = canonicalize_answer(expected, answer.text)
         if not canonical:
             return None
-        return Answer(canonical, answer.confidence, answer.evidence, answer.reason or source, expected.answer_type)
+        return Answer(canonical, answer.confidence, answer.evidence, source, expected.answer_type)
 
     def _search(self, question: str, limit: int = 12, required: list[str] | None = None) -> list[tuple[Sentence, float]]:
         frame = plan_question(question)
