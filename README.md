@@ -38,6 +38,8 @@ Selected DRT references:
 - Hans Kamp and Uwe Reyle, [*From Discourse to Logic*](https://books.google.com/books?vid=ISBN079232403X)
 - Kamp, van Genabith, and Reyle, [“Discourse Representation Theory” handbook chapter](https://www.ims.uni-stuttgart.de/archiv/kamp/files/2011.kamp.van.genebith.reyle.discourse.representation.theory.handbook.pdf)
 
+Local copies of open DRT reference papers are tracked in [`docs/papers/`](docs/papers/).
+
 ## Current System
 
 KMD currently provides a first DSPG-backed vertical slice:
