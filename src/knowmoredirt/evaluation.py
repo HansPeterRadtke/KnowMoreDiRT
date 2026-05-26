@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import json
+import os
 from collections import defaultdict
 from dataclasses import asdict, dataclass
 from pathlib import Path
@@ -41,7 +42,11 @@ def evaluate_fixture(corpus_root: str | Path, qa_path: str | Path) -> Evaluation
     payload = json.loads(Path(qa_path).read_text(encoding="utf-8"))
     results: list[QuestionResult] = []
     category_counts: dict[str, list[bool]] = defaultdict(list)
-    for entry in payload["questions"]:
+    progress = os.environ.get("KMD_EVAL_PROGRESS", "").strip().lower() in {"1", "true", "yes", "on"}
+    questions = payload["questions"]
+    for index, entry in enumerate(questions, start=1):
+        if progress:
+            print(f"kmd-eval {Path(qa_path).name} {index}/{len(questions)} {entry['id']}", flush=True)
         answer = engine.answer(entry["question"]).text
         correct = answer_matches(answer, entry["answer"])
         results.append(
@@ -77,4 +82,3 @@ def evaluation_to_dict(result: EvaluationResult) -> dict:
     data = asdict(result)
     data["results"] = [asdict(item) for item in result.results]
     return data
-

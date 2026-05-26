@@ -163,14 +163,22 @@ def _extract_record_values(text: str) -> list[ExtractedRelation]:
     return relations
 
 
-def _walk_record_value(value: Any, path: tuple[str, ...], relations: list[ExtractedRelation]) -> None:
+def _walk_record_value(
+    value: Any,
+    path: tuple[str, ...],
+    relations: list[ExtractedRelation],
+    *,
+    root_group: str = "",
+) -> None:
     if isinstance(value, dict):
+        group = root_group or (".".join(path) if path else "root")
         for key, item in value.items():
-            _walk_record_value(item, (*path, str(key)), relations)
+            _walk_record_value(item, (*path, str(key)), relations, root_group=group)
         return
     if isinstance(value, list):
+        group = root_group or (".".join(path) if path else "root")
         for index, item in enumerate(value):
-            _walk_record_value(item, (*path, str(index)), relations)
+            _walk_record_value(item, (*path, str(index)), relations, root_group=group)
         return
     scalar = "null" if value is None else ("true" if value is True else "false" if value is False else str(value))
     if not path or scalar == "":
@@ -183,7 +191,7 @@ def _walk_record_value(value: Any, path: tuple[str, ...], relations: list[Extrac
         value=scalar,
         confidence=0.86,
         record_path=".".join(path),
-        record_group=".".join(path[:-1]) if len(path) > 1 else ".".join(path),
+        record_group=root_group or (".".join(path[:-1]) if len(path) > 1 else ".".join(path)),
         surface_format="json",
     )
 

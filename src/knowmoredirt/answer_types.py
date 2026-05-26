@@ -7,6 +7,7 @@ grounded DSPG/query layer.
 
 from __future__ import annotations
 
+import ast
 import re
 from dataclasses import dataclass
 from typing import Literal
@@ -182,6 +183,7 @@ def canonicalize_answer(expected: ExpectedAnswer, value: str) -> str:
         return "; ".join(dict.fromkeys(parts))
     if expected.answer_type in {"person", "actor", "organization", "state", "content_phrase", "metadata_value"}:
         text = str(value or "").strip().strip('"')
+        text = _format_literal_list(text) or text
         if expected.answer_type in {"person", "actor"}:
             text = _strip_person_descriptor_prefix(text)
         return text if is_value_compatible(expected, text) else ""
@@ -221,6 +223,26 @@ def _canonical_part(expected: ExpectedAnswer, value: str) -> str:
         match = _DATE_TIME_RE.search(cleaned)
         return match.group(0) if match else ""
     return text
+
+
+def _format_literal_list(value: str) -> str:
+    text = str(value or "").strip()
+    if not (text.startswith("[") and text.endswith("]")):
+        return ""
+    try:
+        parsed = ast.literal_eval(text)
+    except (ValueError, SyntaxError):
+        return ""
+    if not isinstance(parsed, list) or not parsed or not all(isinstance(item, str) for item in parsed):
+        return ""
+    items = [item.strip() for item in parsed if item.strip()]
+    if not items:
+        return ""
+    if len(items) == 1:
+        return items[0]
+    if len(items) == 2:
+        return f"{items[0]} and {items[1]}"
+    return f"{', '.join(items[:-1])}, and {items[-1]}"
 
 
 def _strip_person_descriptor_prefix(value: str) -> str:

@@ -173,7 +173,7 @@ def _relation_inherits_heading(text: str, relations: list[ExtractedRelation]) ->
     value = text.strip()
     if not value or _starts_new_structural_record(value):
         return False
-    return all(relation.relation_type in {"label_value", "record_value", "status"} for relation in relations)
+    return all(relation.relation_type in {"label_value", "record_value"} for relation in relations)
 
 
 def _label_heading_value(text: str) -> str:
@@ -267,7 +267,7 @@ def _condition_from_deterministic_relation(relation: ExtractedRelation, evidence
         predicate=predicate,
         arguments=tuple(arguments),
         frame_type=relation.relation_type,
-        polarity="negative" if relation.relation_type == "status" and normalize(relation.predicate) == "negation" else "positive",
+        polarity="positive",
         modality="asserted",
         temporal_text="",
         evidence_text=evidence_text,
