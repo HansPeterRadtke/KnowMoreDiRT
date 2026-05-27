@@ -692,7 +692,15 @@ def ingest_folder(
                 context_holder = clean_extracted_value(str(condition.metadata.get("context_holder") or ""))
                 semantic_context_id = context_id
                 if modality != "asserted":
-                    context_key = f"modality:{modality}:{normalize(context_holder)}" if context_holder else f"modality:{modality}"
+                    context_key = "|".join(
+                        [
+                            "modality",
+                            modality,
+                            context_id,
+                            normalize(context_holder),
+                            normalize(evidence_text),
+                        ]
+                    )
                     semantic_context_id = context_by_kind.get(context_key)
                     if semantic_context_id is None:
                         semantic_context_id = stable_id("ctx", run_id, context_key)
@@ -701,6 +709,24 @@ def ingest_folder(
                             "INSERT INTO contexts(context_id, run_id, kind, parent_context_id, holder_surface, evidence_surface, confidence) VALUES (?, ?, ?, ?, ?, ?, ?)",
                             (semantic_context_id, run_id, f"modality:{modality}", context_id, context_holder or None, evidence_text, condition.confidence),
                         )
+                if polarity not in {"", "positive"}:
+                    context_key = "|".join(
+                        [
+                            "polarity",
+                            polarity,
+                            semantic_context_id,
+                            normalize(evidence_text),
+                        ]
+                    )
+                    polarity_context_id = context_by_kind.get(context_key)
+                    if polarity_context_id is None:
+                        polarity_context_id = stable_id("ctx", run_id, context_key)
+                        context_by_kind[context_key] = polarity_context_id
+                        store.execute(
+                            "INSERT INTO contexts(context_id, run_id, kind, parent_context_id, holder_surface, evidence_surface, confidence) VALUES (?, ?, ?, ?, ?, ?, ?)",
+                            (polarity_context_id, run_id, f"polarity:{polarity}", semantic_context_id, None, evidence_text, condition.confidence),
+                        )
+                    semantic_context_id = polarity_context_id
                 semantic_frame_id = stable_id("frm", run_id, sentence.sentence_id, "model", index, predicate, evidence_text)
                 store.execute(
                     "INSERT OR IGNORE INTO frames(frame_id, run_id, context_id, predicate, predicate_norm, trigger_surface, confidence, source, span_id) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)",

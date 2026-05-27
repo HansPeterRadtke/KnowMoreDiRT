@@ -50,6 +50,8 @@ An isolated live-model probe on a tiny scoped-state corpus showed that the chunk
 
 An isolated live-model count probe on `Alpha/Beta/Gamma unit status` records showed a graph aggregation flaw: the query DRS contained `requested_relation=status`, `relation_terms=(units, ready)`, and `aggregation=count`, but the executor counted a `blocked` unit because it only required two matched prefixes from the whole flattened relation term set. The aggregation matcher now treats each model-produced relation term or constraint token as its own DRS term group and requires every group to hold in a counted source span. This is a pure query-DRS satisfaction check; it does not interpret the raw language or add a count-domain handler. The same live probe now returns `2`.
 
+Eager model-frame ingestion now mirrors lazy materialization for polarity scope: non-positive model-produced DRS conditions are stored in nested `polarity:*` contexts, and context IDs include their parent and evidence surface so separate subordinate boxes are not destructively merged. Bounded accessibility no longer treats any satisfied context requirement as permission to pass through every inaccessible context; negative contexts remain blocked unless the query DRS is negated or explicitly asks for that polarity scope.
+
 After the count aggregation repair, local-model-disabled fixture slices are:
 
 ```text

@@ -549,7 +549,14 @@ class KnowMoreDiRTEngine:
         confidence: float,
         holder_surface: str = "",
     ) -> str:
-        context_id = stable_id("ctx", self.run_id, kind, normalize(holder_surface))
+        context_id = stable_id(
+            "ctx",
+            self.run_id,
+            kind,
+            parent_context_id,
+            normalize(holder_surface),
+            normalize(evidence_surface),
+        )
         self.store.execute(
             "INSERT OR IGNORE INTO contexts(context_id, run_id, kind, parent_context_id, holder_surface, evidence_surface, confidence) VALUES (?, ?, ?, ?, ?, ?, ?)",
             (context_id, self.run_id, kind, parent_context_id or None, holder_surface or None, evidence_surface, confidence),

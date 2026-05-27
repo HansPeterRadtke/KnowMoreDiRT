@@ -420,17 +420,24 @@ def _context_accessible(context_id: str, records: dict[str, Any], frame: QueryFr
     if not _context_satisfies_requirements(context_id, records, frame):
         return False
     requirements = _context_requirements(frame)
-    if requirements:
-        return True
     relation_requests_context = _context_requested_by_relation(context_id, records, frame)
     for context in chain:
         kind = normalize(str(context.get("kind") or "asserted"))
         if not kind or kind == "asserted":
             continue
         if kind.startswith("polarity:negative") and frame.answer_type != "boolean" and not frame.negated:
-            return False
+            context_surface = normalize(
+                " ".join([kind, str(context.get("holder_surface") or "")])
+            )
+            if not _terms_match_material(requirements, context_surface):
+                return False
         if kind.startswith(INACCESSIBLE_CONTEXT_PREFIXES):
-            if kind.startswith("modality:") and relation_requests_context:
+            context_surface = normalize(
+                " ".join([kind, str(context.get("holder_surface") or "")])
+            )
+            if kind.startswith("modality:") and (
+                relation_requests_context or _terms_match_material(requirements, context_surface)
+            ):
                 continue
             return False
     return True

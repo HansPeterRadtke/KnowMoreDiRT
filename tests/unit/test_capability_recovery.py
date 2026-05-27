@@ -420,6 +420,66 @@ def test_unary_model_predicate_can_bind_nonstructural_answer_value(tmp_path: Pat
     assert answer.text == "was sealed"
 
 
+def test_model_polarity_context_blocks_unnegated_query_drs(tmp_path: Path, monkeypatch) -> None:
+    class FakeNegativePredicateModel(FakeLocalModel):
+        def complete_json(self, prompt: str, *, n_predict: int = 128, grammar: str | None = None) -> dict[str, object]:
+            if "Extract generic DRT/DSPG discourse frames" in prompt:
+                return {
+                    "frames": [
+                        {
+                            "frame_type": "state",
+                            "predicate": "sealed",
+                            "arguments": [
+                                {"role": "entity", "text": "Violet Rack", "value_type": "entity"},
+                                {"role": "value", "text": "sealed", "value_type": "state"},
+                            ],
+                            "polarity": "negative",
+                            "modality": "asserted",
+                            "context_holder": "",
+                            "temporal_text": "",
+                            "evidence_text": "Violet Rack was not sealed",
+                            "confidence": 0.9,
+                        }
+                    ],
+                    "_model_raw": "{}",
+                }
+            return super().complete_json(prompt, n_predict=n_predict, grammar=grammar)
+
+    (tmp_path / "state.txt").write_text("Violet Rack was not sealed.\n", encoding="utf-8")
+    monkeypatch.setenv("KMD_USE_LOCAL_MODEL", "1")
+    monkeypatch.setenv("KMD_LLM_INGEST", "1")
+    monkeypatch.setenv("KMD_FRAME_CACHE_DIR", str(tmp_path / ".frame-cache"))
+    monkeypatch.setattr("knowmoredirt.engine.LocalModelClient", lambda: FakeNegativePredicateModel())
+    engine = KnowMoreDiRTEngine(tmp_path)
+    expected = ExpectedAnswer("state")
+    asserted_frame = QueryFrame(
+        question_text="model query DRS without negated scope",
+        answer_type="state",
+        answer_variables=("state",),
+        target_anchors=("Violet Rack",),
+        requested_relation="state",
+        relation_terms=("state",),
+        constraints=(),
+    )
+    negated_frame = QueryFrame(
+        question_text="model query DRS with negated scope",
+        answer_type="state",
+        answer_variables=("state",),
+        target_anchors=("Violet Rack",),
+        requested_relation="state",
+        relation_terms=("state",),
+        constraints=(),
+        negated=True,
+    )
+
+    asserted_answer = engine._answer_with_bounded_dspg("asserted DRS", asserted_frame, expected)
+    negated_answer = engine._answer_with_bounded_dspg("negated DRS", negated_frame, expected)
+
+    assert asserted_answer is None
+    assert negated_answer is not None
+    assert negated_answer.text == "sealed"
+
+
 def test_file_metadata_answers_require_metadata_question(tmp_path: Path) -> None:
     target = tmp_path / "AtlasNote.txt"
     target.write_text("AtlasNote says the lamp state: steady.\n", encoding="utf-8")
