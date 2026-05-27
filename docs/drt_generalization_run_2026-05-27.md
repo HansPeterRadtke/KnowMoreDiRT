@@ -58,6 +58,8 @@ The bounded executor now uses model-produced `answer_variables` as DRS answer-sl
 
 The normalized DSPG schema now stores `frame_arguments.value_type` directly, instead of keeping model argument types only in relation metadata. This makes DRS argument typing available to graph binding and validation as first-class structure.
 
+The chunk-frame schema/cache version was bumped after the stricter grounding and argument-type changes so cached model DRS frames from older validation rules are not reused.
+
 After the count aggregation repair, local-model-disabled fixture slices are:
 
 ```text

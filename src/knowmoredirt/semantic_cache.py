@@ -16,7 +16,7 @@ from typing import Any
 from .model_planner import CHUNK_FRAME_SCHEMA_VERSION, PROMPT_VERSION
 
 
-CACHE_VERSION = "semantic-frames-v4"
+CACHE_VERSION = "semantic-frames-v5"
 
 
 def _default_cache_dir() -> Path:

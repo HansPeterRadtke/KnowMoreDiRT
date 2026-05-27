@@ -39,7 +39,7 @@ ANSWER_TYPES = {
 }
 
 PROMPT_VERSION = "kmd-drt-2026-05-27-v28"
-CHUNK_FRAME_SCHEMA_VERSION = "chunk-frames-v4"
+CHUNK_FRAME_SCHEMA_VERSION = "chunk-frames-v5"
 QUERY_FRAME_SCHEMA_VERSION = "query-frame-v4"
 ANSWER_SCHEMA_VERSION = "answer-v4"
 
