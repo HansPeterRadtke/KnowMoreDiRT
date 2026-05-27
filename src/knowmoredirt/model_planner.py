@@ -1111,6 +1111,10 @@ def call_model_chunk_frames(
         if context_holder and context_holder not in chunk_text:
             rejected_for_grounding += 1
             continue
+        temporal_text = str(frame.get("temporal_text") or "").strip()
+        if temporal_text and temporal_text not in chunk_text:
+            rejected_for_grounding += 1
+            continue
         grounded.append(
             {
                 "frame_type": str(frame.get("frame_type") or "relation"),
@@ -1120,7 +1124,7 @@ def call_model_chunk_frames(
                 "polarity": str(frame.get("polarity") or "positive"),
                 "modality": str(frame.get("modality") or "asserted"),
                 "context_holder": context_holder,
-                "temporal_text": str(frame.get("temporal_text") or ""),
+                "temporal_text": temporal_text,
                 "evidence_text": evidence_text,
                 "confidence": _coerce_confidence(frame.get("confidence")),
             }

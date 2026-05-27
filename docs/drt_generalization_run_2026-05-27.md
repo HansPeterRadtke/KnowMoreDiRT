@@ -52,6 +52,8 @@ An isolated live-model count probe on `Alpha/Beta/Gamma unit status` records sho
 
 Eager model-frame ingestion now mirrors lazy materialization for polarity scope: non-positive model-produced DRS conditions are stored in nested `polarity:*` contexts, and context IDs include their parent and evidence surface so separate subordinate boxes are not destructively merged. Bounded accessibility no longer treats any satisfied context requirement as permission to pass through every inaccessible context; negative contexts remain blocked unless the query DRS is negated or explicitly asks for that polarity scope.
 
+Frame validation now also requires model-produced `temporal_text` to be an exact substring of the source chunk before temporal DRS records are accepted. This extends the existing grounding checks for evidence, arguments, identity hypotheses, and context holders.
+
 After the count aggregation repair, local-model-disabled fixture slices are:
 
 ```text

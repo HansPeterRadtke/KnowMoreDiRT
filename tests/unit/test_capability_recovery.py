@@ -4,6 +4,7 @@ from pathlib import Path
 
 from knowmoredirt.answer_types import ExpectedAnswer
 from knowmoredirt.engine import KnowMoreDiRTEngine
+from knowmoredirt.model_planner import call_model_chunk_frames
 from knowmoredirt.query import QueryFrame
 
 
@@ -478,6 +479,39 @@ def test_model_polarity_context_blocks_unnegated_query_drs(tmp_path: Path, monke
     assert asserted_answer is None
     assert negated_answer is not None
     assert negated_answer.text == "sealed"
+
+
+def test_chunk_frame_temporal_text_must_be_source_grounded() -> None:
+    class FakeUngroundedTemporalModel(FakeLocalModel):
+        def complete_json(self, prompt: str, *, n_predict: int = 128, grammar: str | None = None) -> dict[str, object]:
+            assert "Extract generic DRT/DSPG discourse frames" in prompt
+            return {
+                "frames": [
+                    {
+                        "frame_type": "state",
+                        "predicate": "ready",
+                        "arguments": [{"role": "entity", "text": "Aero Gate", "value_type": "entity"}],
+                        "identity_hypotheses": [],
+                        "polarity": "positive",
+                        "modality": "asserted",
+                        "context_holder": "",
+                        "temporal_text": "tomorrow",
+                        "evidence_text": "Aero Gate is ready",
+                        "confidence": 0.9,
+                    }
+                ],
+                "_model_raw": "{}",
+            }
+
+    result = call_model_chunk_frames(
+        "Aero Gate is ready.",
+        FakeUngroundedTemporalModel(),
+        rel_path="state.txt",
+    )
+
+    assert result["accepted"] is False
+    assert result["reason"] == "grounding_validation_failed"
+    assert result["rejected_for_grounding"] >= 1
 
 
 def test_file_metadata_answers_require_metadata_question(tmp_path: Path) -> None:

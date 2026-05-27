@@ -425,7 +425,7 @@ def _context_accessible(context_id: str, records: dict[str, Any], frame: QueryFr
         kind = normalize(str(context.get("kind") or "asserted"))
         if not kind or kind == "asserted":
             continue
-        if kind.startswith("polarity:negative") and frame.answer_type != "boolean" and not frame.negated:
+        if kind.startswith("polarity:") and frame.answer_type != "boolean" and not frame.negated:
             context_surface = normalize(
                 " ".join([kind, str(context.get("holder_surface") or "")])
             )
