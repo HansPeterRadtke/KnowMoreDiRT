@@ -2,7 +2,9 @@ from __future__ import annotations
 
 from pathlib import Path
 
+from knowmoredirt.answer_types import ExpectedAnswer
 from knowmoredirt.engine import KnowMoreDiRTEngine
+from knowmoredirt.query import QueryFrame
 
 
 class FakeLocalModel:
@@ -298,6 +300,124 @@ def test_bounded_graph_execution_uses_model_frames_for_context_lookup(tmp_path: 
     assert answer.evidence
     assert "DreamBridge" in answer.evidence[0].text
     assert engine.last_bounded_diagnostics["execution"]["record_counts"]["context_carriers"] > 0
+
+
+def test_modal_context_requires_query_drs_scope(tmp_path: Path, monkeypatch) -> None:
+    class FakeModalModel(FakeLocalModel):
+        def complete_json(self, prompt: str, *, n_predict: int = 128, grammar: str | None = None) -> dict[str, object]:
+            if "Extract generic DRT/DSPG discourse frames" in prompt:
+                return {
+                    "frames": [
+                        {
+                            "frame_type": "state",
+                            "predicate": "state",
+                            "arguments": [
+                                {"role": "entity", "text": "Violet Rack", "value_type": "entity"},
+                                {"role": "value", "text": "sealed", "value_type": "state"},
+                            ],
+                            "polarity": "positive",
+                            "modality": "reported",
+                            "context_holder": "Report",
+                            "temporal_text": "",
+                            "evidence_text": "Report: Violet Rack was sealed",
+                            "confidence": 0.9,
+                        }
+                    ],
+                    "_model_raw": "{}",
+                }
+            return super().complete_json(prompt, n_predict=n_predict, grammar=grammar)
+
+    (tmp_path / "report.txt").write_text("Report: Violet Rack was sealed.\n", encoding="utf-8")
+    monkeypatch.setenv("KMD_USE_LOCAL_MODEL", "1")
+    monkeypatch.setenv("KMD_LLM_INGEST", "1")
+    monkeypatch.setenv("KMD_FRAME_CACHE_DIR", str(tmp_path / ".frame-cache"))
+    monkeypatch.setattr("knowmoredirt.engine.LocalModelClient", lambda: FakeModalModel())
+    engine = KnowMoreDiRTEngine(tmp_path)
+    expected = ExpectedAnswer("state")
+    asserted_frame = QueryFrame(
+        question_text="model query DRS without modal requirement",
+        answer_type="state",
+        answer_variables=("state",),
+        target_anchors=("Violet Rack",),
+        requested_relation="state",
+        relation_terms=("state",),
+        constraints=(),
+    )
+    scoped_frame = QueryFrame(
+        question_text="model query DRS with modal requirement",
+        answer_type="state",
+        answer_variables=("state",),
+        target_anchors=("Violet Rack",),
+        requested_relation="state",
+        relation_terms=("state",),
+        constraints=(),
+        modality_requirements=("reported",),
+    )
+    relation_scoped_frame = QueryFrame(
+        question_text="model query DRS with requested relation matching modal context",
+        answer_type="state",
+        answer_variables=("state",),
+        target_anchors=("Violet Rack",),
+        requested_relation="reported",
+        relation_terms=("state",),
+        constraints=(),
+    )
+
+    asserted_answer = engine._answer_with_bounded_dspg("asserted DRS", asserted_frame, expected)
+    scoped_answer = engine._answer_with_bounded_dspg("reported DRS", scoped_frame, expected)
+    relation_scoped_answer = engine._answer_with_bounded_dspg("relation-scoped DRS", relation_scoped_frame, expected)
+
+    assert asserted_answer is None
+    assert scoped_answer is not None
+    assert scoped_answer.text == "sealed"
+    assert relation_scoped_answer is not None
+    assert relation_scoped_answer.text == "sealed"
+
+
+def test_unary_model_predicate_can_bind_nonstructural_answer_value(tmp_path: Path, monkeypatch) -> None:
+    class FakeUnaryPredicateModel(FakeLocalModel):
+        def complete_json(self, prompt: str, *, n_predict: int = 128, grammar: str | None = None) -> dict[str, object]:
+            if "Extract generic DRT/DSPG discourse frames" in prompt:
+                return {
+                    "frames": [
+                        {
+                            "frame_type": "state",
+                            "predicate": "was sealed",
+                            "arguments": [
+                                {"role": "entity", "text": "Violet Rack", "value_type": "entity"},
+                            ],
+                            "polarity": "positive",
+                            "modality": "asserted",
+                            "context_holder": "",
+                            "temporal_text": "",
+                            "evidence_text": "Violet Rack was sealed",
+                            "confidence": 0.9,
+                        }
+                    ],
+                    "_model_raw": "{}",
+                }
+            return super().complete_json(prompt, n_predict=n_predict, grammar=grammar)
+
+    (tmp_path / "state.txt").write_text("Violet Rack was sealed.\n", encoding="utf-8")
+    monkeypatch.setenv("KMD_USE_LOCAL_MODEL", "1")
+    monkeypatch.setenv("KMD_LLM_INGEST", "1")
+    monkeypatch.setenv("KMD_FRAME_CACHE_DIR", str(tmp_path / ".frame-cache"))
+    monkeypatch.setattr("knowmoredirt.engine.LocalModelClient", lambda: FakeUnaryPredicateModel())
+    engine = KnowMoreDiRTEngine(tmp_path)
+    frame = QueryFrame(
+        question_text="model query DRS for unary condition",
+        answer_type="state",
+        answer_variables=("state",),
+        target_anchors=("Violet Rack",),
+        requested_relation="state",
+        relation_terms=("state",),
+        constraints=(),
+    )
+
+    answer = engine._answer_with_bounded_dspg("unary predicate DRS", frame, ExpectedAnswer("state"))
+
+    assert answer is not None
+    assert answer.text == "was sealed"
 
 
 def test_file_metadata_answers_require_metadata_question(tmp_path: Path) -> None:

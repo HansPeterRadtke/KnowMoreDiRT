@@ -22,7 +22,7 @@ from .text import clean_extracted_value, content_tokens, normalize, text_quality
 
 DATE_TIME_RE = re.compile(r"\b(?:\d{4}-\d{2}-\d{2}(?:[ T]\d{1,2}:\d{2})?|\d{1,2}:\d{2})\b")
 PATH_RE = re.compile(r"\b[A-Za-z0-9_-]+(?:/[A-Za-z0-9_.-]+)+\b|\b[A-Za-z0-9_.-]+\.[A-Za-z0-9]{1,12}\b")
-INACCESSIBLE_CONTEXT_PREFIXES = ("modality:dream", "modality:fiction", "modality:hypothetical", "quality:")
+INACCESSIBLE_CONTEXT_PREFIXES = ("modality:",)
 
 
 def _frame(plan: dict[str, Any] | QueryFrame | None, question: str) -> QueryFrame:
@@ -284,6 +284,73 @@ def _contexts_by_id(records: dict[str, Any]) -> dict[str, dict[str, Any]]:
     return {str(row.get("context_id")): row for row in records.get("contexts", [])}
 
 
+def _context_chain(context_id: str, records: dict[str, Any]) -> list[dict[str, Any]]:
+    contexts = _contexts_by_id(records)
+    chain: list[dict[str, Any]] = []
+    seen: set[str] = set()
+    current_id = str(context_id or "")
+    while current_id and current_id not in seen:
+        seen.add(current_id)
+        context = contexts.get(current_id)
+        if not context:
+            break
+        chain.append(context)
+        current_id = str(context.get("parent_context_id") or "")
+    return chain
+
+
+def _context_chain_material(context_id: str, records: dict[str, Any]) -> str:
+    fields: list[str] = []
+    for context in _context_chain(context_id, records):
+        fields.extend(
+            [
+                str(context.get("kind") or ""),
+                str(context.get("holder_surface") or ""),
+                str(context.get("evidence_surface") or ""),
+            ]
+        )
+    return normalize(" ".join(fields))
+
+
+def _context_requirements(frame: QueryFrame) -> list[str]:
+    values = [*frame.modality_requirements, *frame.scope_requirements]
+    return list(dict.fromkeys(normalize(value) for value in values if normalize(value)))
+
+
+def _terms_match_material(terms: list[str], material: str) -> bool:
+    if not terms or not material:
+        return False
+    material_tokens = set(content_tokens(material))
+    for term in terms:
+        if term in material:
+            return True
+        term_tokens = [token for token in content_tokens(term) if token]
+        if term_tokens and all(token in material_tokens for token in term_tokens):
+            return True
+    return False
+
+
+def _context_satisfies_terms(context_id: str, records: dict[str, Any], terms: list[str], *, require_all: bool) -> bool:
+    material = _context_chain_material(context_id, records)
+    if not terms:
+        return True
+    if require_all:
+        return all(_terms_match_material([term], material) for term in terms)
+    return _terms_match_material(terms, material)
+
+
+def _context_satisfies_requirements(context_id: str, records: dict[str, Any], frame: QueryFrame) -> bool:
+    requirements = _context_requirements(frame)
+    return _context_satisfies_terms(context_id, records, requirements, require_all=True)
+
+
+def _context_requested_by_relation(context_id: str, records: dict[str, Any], frame: QueryFrame) -> bool:
+    requested = normalize(frame.requested_relation)
+    if not requested:
+        return False
+    return _context_satisfies_terms(context_id, records, [requested], require_all=False)
+
+
 def _referents_by_id(records: dict[str, Any]) -> dict[str, dict[str, Any]]:
     return {str(row.get("referent_id")): row for row in records.get("referents", [])}
 
@@ -347,14 +414,25 @@ def _metadata_evidence(record: dict[str, Any], records: dict[str, Any]) -> Evide
 
 
 def _context_accessible(context_id: str, records: dict[str, Any], frame: QueryFrame) -> bool:
-    context = _contexts_by_id(records).get(str(context_id), {})
-    kind = normalize(str(context.get("kind") or "asserted"))
-    if not kind:
+    chain = _context_chain(context_id, records)
+    if not chain:
         return True
-    if kind.startswith("polarity:negative") and frame.answer_type != "boolean" and not frame.negated:
+    if not _context_satisfies_requirements(context_id, records, frame):
         return False
-    if kind.startswith(INACCESSIBLE_CONTEXT_PREFIXES) and not frame.negated:
-        return False
+    requirements = _context_requirements(frame)
+    if requirements:
+        return True
+    relation_requests_context = _context_requested_by_relation(context_id, records, frame)
+    for context in chain:
+        kind = normalize(str(context.get("kind") or "asserted"))
+        if not kind or kind == "asserted":
+            continue
+        if kind.startswith("polarity:negative") and frame.answer_type != "boolean" and not frame.negated:
+            return False
+        if kind.startswith(INACCESSIBLE_CONTEXT_PREFIXES):
+            if kind.startswith("modality:") and relation_requests_context:
+                continue
+            return False
     return True
 
 
@@ -471,8 +549,9 @@ def _answer_values_from_relation(
     target_terms: list[str],
     relation_terms: list[str],
 ) -> list[str]:
-    primary_values = [str(row.get(key) or "") for key in ["value", "object"]]
-    fallback_values = [str(row.get("subject") or "")]
+    relation_type = str(row.get("relation_type") or "")
+    primary_values = [] if relation_type == "semantic_frame" else [str(row.get(key) or "") for key in ["value", "object"]]
+    fallback_values = [] if relation_type in {"semantic_argument", "semantic_frame"} else [str(row.get("subject") or "")]
     structural = expected.answer_type in {"url", "identifier", "file_path", "date_time", "count"}
     primary_values = [
         value for value in primary_values
@@ -509,7 +588,20 @@ def _answer_values_from_frame(
         and (structural or not _value_is_target(value, target_terms))
         and (structural or not _value_is_target(value, relation_terms))
     ]
-    return _compatible_values(expected, values)
+    compatible = _compatible_values(expected, values)
+    if compatible or structural:
+        return compatible
+    predicate_values = [
+        str(frame_row.get(key) or "")
+        for key in ["predicate", "trigger_surface"]
+        if str(frame_row.get(key) or "")
+    ]
+    predicate_values = [
+        value for value in predicate_values
+        if not _value_is_target(value, target_terms)
+        and not _value_is_target(value, relation_terms)
+    ]
+    return _compatible_values(expected, predicate_values)
 
 
 def _match_score(material: str, target_terms: list[str], relation_terms: list[str]) -> float:
@@ -542,6 +634,14 @@ def _bind_frame_conditions(records: dict[str, Any], frame: QueryFrame, expected:
     args_by_frame: dict[str, list[dict[str, Any]]] = defaultdict(list)
     for arg in records.get("frame_arguments", []):
         args_by_frame[str(arg.get("frame_id"))].append(arg)
+    frame_types_by_span_predicate: dict[tuple[str, str], list[str]] = defaultdict(list)
+    for relation in records.get("relations", []):
+        if str(relation.get("relation_type") or "") != "semantic_frame":
+            continue
+        key = (str(relation.get("source_span_id") or ""), normalize(str(relation.get("predicate") or "")))
+        frame_type = str(relation.get("subject") or "")
+        if frame_type:
+            frame_types_by_span_predicate[key].append(frame_type)
     candidates: list[tuple[float, str, Evidence, str]] = []
     for row in records.get("frames", []):
         if not _context_accessible(str(row.get("context_id") or ""), records, frame):
@@ -550,7 +650,13 @@ def _bind_frame_conditions(records: dict[str, Any], frame: QueryFrame, expected:
         if _source_is_low_priority(evidence.rel_path, evidence.text) and not _structured_source_row(row):
             continue
         arg_text = " ".join(str(arg.get("surface") or "") for arg in args_by_frame.get(str(row.get("frame_id")), []))
-        local_material = normalize(" ".join([str(row.get("predicate") or ""), str(row.get("trigger_surface") or ""), arg_text, evidence.text]))
+        frame_type_material = " ".join(
+            frame_types_by_span_predicate.get(
+                (str(row.get("span_id") or ""), normalize(str(row.get("predicate") or ""))),
+                [],
+            )
+        )
+        local_material = normalize(" ".join([frame_type_material, str(row.get("predicate") or ""), str(row.get("trigger_surface") or ""), arg_text, evidence.text]))
         score = _split_match_score(local_material, local_material, target_terms, relation_terms)
         if score <= 0:
             continue
@@ -833,6 +939,8 @@ def _choose_answer(candidates: list[tuple[float, str, Evidence, str]], expected:
         canonical = canonicalize_answer(expected, value)
         if not canonical:
             continue
+        if reason == "frame_argument_binding":
+            score += 3.0
         previous = scored.get(canonical)
         if previous is None:
             scored[canonical] = (score, [evidence], reason)

@@ -38,7 +38,7 @@ ANSWER_TYPES = {
     "unknown",
 }
 
-PROMPT_VERSION = "kmd-drt-2026-05-27-v25"
+PROMPT_VERSION = "kmd-drt-2026-05-27-v27"
 CHUNK_FRAME_SCHEMA_VERSION = "chunk-frames-v4"
 QUERY_FRAME_SCHEMA_VERSION = "query-frame-v4"
 ANSWER_SCHEMA_VERSION = "answer-v4"
@@ -515,7 +515,9 @@ def build_query_plan_prompt(question: str) -> str:
         "boolean, content_phrase, metadata_value, or unknown. Use unknown only when the query DRS leaves the "
         "answer variable type underspecified. Put any quantity, list, temporal, modal, polarity, or qualifier "
         "requirements into aggregation, temporal_scope, modality_requirements, scope_requirements, negated, "
-        "constraints, and answer_variables as DRS data rather than as prose. Relation terms should describe the "
+        "constraints, and answer_variables as DRS data rather than as prose. If the answer is requested inside a "
+        "subordinate or non-asserted DRS, represent that accessibility requirement in modality_requirements or "
+        "scope_requirements as well as any predicate text; do not leave the scope marker only in requested_relation. Relation terms should describe the "
         "predicate or answer slot requested by the question, not hidden labels. Use only text visible in the "
         "question and no outside knowledge. Surface observations are syntactic hints only."
         + json.dumps({"question": question, "surface_observations": surface}, ensure_ascii=False)
@@ -996,7 +998,10 @@ def build_chunk_frame_prompt(chunk_text: str, *, rel_path: str = "") -> str:
         "Represent only source-grounded discourse conditions. Predicate and role words are data supplied by "
         "your semantic parse, not control-flow labels. evidence_text must be copied exactly from the chunk. "
         "Each non-empty argument text and identity_hypotheses evidence_text/left_text/right_text must also be "
-        "copied exactly from the chunk. Include identity_hypotheses only when the chunk itself supports alias, "
+        "copied exactly from the chunk. Arguments should include every grounded phrase needed to bind the "
+        "condition's discourse referents, participants, complements, attributes, quantities, locations, times, "
+        "and values when those phrases appear in the chunk. Do not bury a bound value only inside predicate text "
+        "when the same value appears as an exact argument phrase in the chunk. Include identity_hypotheses only when the chunk itself supports alias, "
         "coreference, pronoun, speaker, or same-referent links. Include modality, polarity, context_holder, "
         "and temporal_text only when the chunk itself supports that DRT interpretation."
         + json.dumps({"source": rel_path, "chunk": chunk_text[:2400]}, ensure_ascii=False)
