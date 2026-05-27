@@ -155,6 +155,64 @@ def test_local_model_ingest_builds_grounded_generic_frames(tmp_path: Path, monke
     assert engine.model_query_trace.chunk_frame_accepted_count >= 1
 
 
+def test_local_model_ingest_logs_chunk_progress(tmp_path: Path, monkeypatch, capsys) -> None:
+    fake = FakeFrameModel()
+    (tmp_path / "frame.raw").write_text("Marble Gate is guarded by Sena Rill.\n", encoding="utf-8")
+    monkeypatch.setenv("KMD_USE_LOCAL_MODEL", "1")
+    monkeypatch.setenv("KMD_LLM_INGEST", "1")
+    monkeypatch.setenv("KMD_PROGRESS", "1")
+    monkeypatch.setenv("KMD_FRAME_CACHE_DIR", str(tmp_path / ".frame-cache"))
+    monkeypatch.setattr("knowmoredirt.engine.LocalModelClient", lambda: fake)
+
+    KnowMoreDiRTEngine(tmp_path)
+    output = capsys.readouterr().out
+
+    assert "kmd-ingest llm_start chunk=1/1 source=frame.raw:0" in output
+    assert "kmd-ingest llm_done chunk=1/1 source=frame.raw:0" in output
+    assert "frames=1" in output
+
+
+def test_local_model_ingest_caches_rejected_grounding_results(tmp_path: Path, monkeypatch) -> None:
+    class RejectingFrameModel(FakeLocalModel):
+        def __init__(self) -> None:
+            self.prompts: list[str] = []
+
+        def complete_json(self, prompt: str, *, n_predict: int = 128, grammar: str | None = None) -> dict[str, object]:
+            self.prompts.append(prompt)
+            assert "Extract generic DRT/DSPG discourse frames" in prompt
+            return {
+                "frames": [
+                    {
+                        "frame_type": "relation",
+                        "predicate": "guards",
+                        "arguments": [{"role": "participant", "text": "Ungrounded Name", "value_type": "person"}],
+                        "polarity": "positive",
+                        "modality": "asserted",
+                        "temporal_text": "",
+                        "evidence_text": "Ungrounded evidence",
+                        "confidence": 0.9,
+                    }
+                ],
+                "_model_raw": "{}",
+            }
+
+    fake = RejectingFrameModel()
+    corpus = tmp_path / "corpus"
+    corpus.mkdir()
+    (corpus / "frame.raw").write_text("Marble Gate is guarded by Sena Rill.\n", encoding="utf-8")
+    monkeypatch.setenv("KMD_USE_LOCAL_MODEL", "1")
+    monkeypatch.setenv("KMD_LLM_INGEST", "1")
+    monkeypatch.setenv("KMD_FRAME_CACHE_DIR", str(tmp_path / ".frame-cache"))
+    monkeypatch.setattr("knowmoredirt.engine.LocalModelClient", lambda: fake)
+
+    first = KnowMoreDiRTEngine(corpus)
+    second = KnowMoreDiRTEngine(corpus)
+
+    assert sum("Extract generic DRT/DSPG discourse frames" in prompt for prompt in fake.prompts) == 1
+    assert first.store.execute("SELECT COUNT(*) FROM frames WHERE source='local_model'").fetchone()[0] == 0
+    assert second.store.execute("SELECT COUNT(*) FROM frames WHERE source='local_model'").fetchone()[0] == 0
+
+
 def test_local_model_frame_arguments_bind_answer_variables_generically(tmp_path: Path, monkeypatch) -> None:
     fake = FakeFrameModel()
     (tmp_path / "frame.raw").write_text("Marble Gate is guarded by Sena Rill.\n", encoding="utf-8")

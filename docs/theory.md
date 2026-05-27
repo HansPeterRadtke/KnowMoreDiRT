@@ -19,6 +19,8 @@ Useful references:
 - Hans Kamp, [“A Theory of Truth and Semantic Representation”](https://www.degruyterbrill.com/document/doi/10.1515/9783110867602.1/html)
 - Hans Kamp and Uwe Reyle, [*From Discourse to Logic*](https://books.google.com/books?vid=ISBN079232403X)
 - Kamp, van Genabith, and Reyle, [“Discourse Representation Theory” handbook chapter](https://www.ims.uni-stuttgart.de/archiv/kamp/files/2011.kamp.van.genebith.reyle.discourse.representation.theory.handbook.pdf)
+- Johan Bos, [“Wide-Coverage Semantic Analysis with Boxer”](https://aclanthology.org/W08-2222/)
+- Parallel Meaning Bank / DRS parsing shared-task work, represented in the local paper archive under `docs/papers/`
 
 ## Why Flat Triples Are Not Enough
 
@@ -49,6 +51,12 @@ DSPG preserves the DRT commitments that matter operationally:
 - **Provenance**: the path from answer back to source text and extraction run.
 
 Classical DRT provides the semantic rationale. DSPG provides the database-backed operational form needed to ingest arbitrary file trees, preserve provenance, and answer questions without assuming that the input already has a schema.
+
+## Implementation Notes from DRT References
+
+The Kamp, van Genabith, and Reyle handbook chapter treats DRT as dynamic context update: discourse introduces referents and conditions, and later interpretation is constrained by accessibility. For KMD this means source chunks should update a global DRS/DSPG rather than populate question-specific handlers.
+
+Boxer and the Parallel Meaning Bank show the practical value of machine-readable DRS structures with normalized predicates, roles, discourse referents, and scoped conditions. KMD follows that engineering lesson by asking the local model for strict JSON DRS/DSPG structures, then accepting only grounded spans that can be mapped into SQLite referents, contexts, conditions, arguments, identity hypotheses, and provenance records.
 
 ## Raw Discourse Grounding
 

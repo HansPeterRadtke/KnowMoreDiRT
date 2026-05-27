@@ -2,8 +2,10 @@ from __future__ import annotations
 
 from pathlib import Path
 
+from knowmoredirt.answer_types import ExpectedAnswer
 from knowmoredirt.engine import KnowMoreDiRTEngine
 from knowmoredirt.ingest import ingest_folder
+from knowmoredirt.query import QueryFrame
 
 from conftest import FIXTURE_ROOT
 
@@ -55,7 +57,7 @@ def test_store_supports_referent_centric_candidate_retrieval(tmp_path: Path) -> 
     assert "BlueTensor reviewed REF-4321" in rows[0]["text"]
 
 
-def test_temporal_state_query_uses_dspg_latest_event(tmp_path: Path) -> None:
+def test_temporal_query_drs_uses_latest_temporal_edge(tmp_path: Path) -> None:
     (tmp_path / "random_blob").write_text(
         "\n".join(
             [
@@ -70,7 +72,22 @@ def test_temporal_state_query_uses_dspg_latest_event(tmp_path: Path) -> None:
     engine = KnowMoreDiRTEngine(tmp_path)
 
     assert engine.dspg_counts()["temporal_edges"] == 3
-    answer = engine.answer("What is the current state of AuroraGate?")
+    frame = QueryFrame(
+        question_text="model-produced temporal query DRS",
+        answer_type="state",
+        answer_variables=("state",),
+        target_anchors=("AuroraGate",),
+        requested_relation="state",
+        relation_terms=("state",),
+        constraints=(),
+        temporal_scope="latest",
+    )
+    answer = engine._answer_with_bounded_dspg(
+        "model-produced temporal query DRS",
+        frame,
+        ExpectedAnswer("state"),
+    )
 
+    assert answer is not None
     assert answer.text == "closed"
     assert answer.reason == "bounded DSPG query-frame execution"

@@ -17,12 +17,11 @@ from typing import Any
 from .answer_types import ExpectedAnswer, canonicalize_answer, is_value_compatible
 from .extractors import identifiers, urls
 from .models import Answer, Document, Evidence, Sentence
-from .query import QueryFrame, expand_terms, frame_from_mapping, plan_question
-from .text import clean_extracted_value, content_tokens, is_low_semantic_noise, normalize
+from .query import QueryFrame, expand_terms, frame_from_mapping, normalize_temporal_scope, plan_question
+from .text import clean_extracted_value, content_tokens, normalize, text_quality_metrics
 
 DATE_TIME_RE = re.compile(r"\b(?:\d{4}-\d{2}-\d{2}(?:[ T]\d{1,2}:\d{2})?|\d{1,2}:\d{2})\b")
 PATH_RE = re.compile(r"\b[A-Za-z0-9_-]+(?:/[A-Za-z0-9_.-]+)+\b|\b[A-Za-z0-9_.-]+\.[A-Za-z0-9]{1,12}\b")
-LOW_VALIDITY_RE = re.compile(r"\b(?:archived|obsolete|superseded|stale|retired)\b", re.I)
 INACCESSIBLE_CONTEXT_PREFIXES = ("modality:dream", "modality:fiction", "modality:hypothetical", "quality:")
 
 
@@ -53,14 +52,18 @@ def _target_terms(frame: QueryFrame, question: str) -> list[str]:
         if " " in norm:
             values.append(norm.replace(" ", "_"))
             values.append(norm.replace(" ", "-"))
-        values.extend(_query_terms(anchor))
     return list(dict.fromkeys(values))
 
 
 def _relation_terms(frame: QueryFrame, question: str) -> list[str]:
     target = set(_target_terms(frame, question))
     terms = list(frame.relation_terms) + _query_terms(frame.requested_relation) + list(frame.constraints)
-    return list(dict.fromkeys(term for term in expand_terms(terms) if term and term not in target))
+    filtered = [
+        term
+        for term in terms
+        if term and term not in target and normalize_temporal_scope(term) not in {"latest", "earliest"}
+    ]
+    return list(dict.fromkeys(term for term in expand_terms(filtered) if term and term not in target))
 
 
 def _has_term(material: str, term: str) -> bool:
@@ -68,10 +71,12 @@ def _has_term(material: str, term: str) -> bool:
         return False
     if term in material:
         return True
+    if re.search(r"[\s_./:-]", term):
+        return False
     parts = re.split(r"[^a-z0-9]+", material)
     if term in parts:
         return True
-    if len(term) >= 3 and any(part.startswith(term) or term.startswith(part) for part in parts if len(part) >= 3):
+    if len(term) >= 3 and any(part.startswith(term) for part in parts if len(part) >= 3):
         return True
     if len(term) <= 4 and re.fullmatch(r"[a-z0-9_-]+", term):
         return re.search(rf"\b{re.escape(term)}\b", material) is not None
@@ -95,13 +100,16 @@ def _document_material(document: Document, sentences: list[Sentence]) -> str:
 
 
 def _source_is_low_priority(rel_path: str, text: str) -> bool:
-    parts = set(re.split(r"[/_.-]+", normalize(rel_path)))
-    return bool(parts.intersection({"cache", "lock", "tmp", "temp", "transport", "hidden"})) or is_low_semantic_noise(text)
-
-
-def _asks_about_source_structure(question: str) -> bool:
-    q = normalize(question)
-    return any(term in q for term in ["cache", "lock", "temporary", "metadata", "file", "folder", "path"])
+    quality = text_quality_metrics(text)
+    quality_label = str(quality.get("semantic_quality") or "")
+    token_count = int(quality.get("token_count") or 0)
+    return bool(quality.get("low_semantic_noise")) or quality_label in {
+        "random_character_noise",
+        "base64_or_hex_blob",
+    } or (
+        token_count >= 20
+        and quality_label in {"ocr_corruption", "multilingual_word_salad", "word_salad", "plausible_babble"}
+    )
 
 
 def _rank_scope(
@@ -125,7 +133,7 @@ def _rank_scope(
         if target_terms and not target_hits:
             continue
         score = target_hits * 16 + relation_hits * 8 + lexical_hits
-        if _source_is_low_priority(document.rel_path, " ".join(sentence.text for sentence in sentences)) and not _asks_about_source_structure(question):
+        if _source_is_low_priority(document.rel_path, " ".join(sentence.text for sentence in sentences)):
             score *= 0.2
         if score:
             doc_scores.append((score, document.document_id, document.rel_path))
@@ -145,7 +153,7 @@ def _rank_scope(
             score += sum(2 for term in all_terms if _has_term(material, term))
             if document_has_target and relation_terms and _contains_any(material, relation_terms):
                 score += 12
-            if _source_is_low_priority(sentence.rel_path, sentence.text) and not _asks_about_source_structure(question):
+            if _source_is_low_priority(sentence.rel_path, sentence.text):
                 score *= 0.15
             if score:
                 chunk_scores.append((score, document.document_id, order, document.rel_path))
@@ -211,6 +219,16 @@ def _load_records(store: Any, run_id: str, document_ids: list[str], chunk_keys: 
     relations = _fetch_by_ids(connection, "relations", "source_span_id", span_ids)
     temporal = _fetch_by_ids(connection, "temporal_edges", "source_span_id", span_ids)
     metadata_records = _fetch_by_ids(connection, "metadata_records", "document_id", document_ids)
+    identity_hypotheses = [dict(row) for row in connection.execute("SELECT * FROM identity_hypotheses WHERE run_id=?", (run_id,))]
+    identity_referent_ids = list(
+        dict.fromkeys(
+            str(row.get(key) or "")
+            for row in identity_hypotheses
+            for key in ["left_referent_id", "right_referent_id"]
+            if str(row.get(key) or "")
+        )
+    )
+    referents = _fetch_by_ids(connection, "referents", "referent_id", identity_referent_ids)
     contexts = [dict(row) for row in connection.execute("SELECT * FROM contexts WHERE run_id=?", (run_id,))]
     context_carriers = _fetch_by_ids(connection, "context_carriers", "document_id", document_ids)
     docs_by_document_id = {str(doc.get("document_id")): doc for doc in documents}
@@ -228,6 +246,8 @@ def _load_records(store: Any, run_id: str, document_ids: list[str], chunk_keys: 
         "relations": relations,
         "temporal_edges": temporal,
         "metadata_records": metadata_records,
+        "identity_hypotheses": identity_hypotheses,
+        "referents": referents,
         "contexts": contexts,
         "context_carriers": context_carriers,
         "document_context_norm_by_rel_path": dict(document_context_norm_by_rel_path),
@@ -240,6 +260,8 @@ def _load_records(store: Any, run_id: str, document_ids: list[str], chunk_keys: 
             "temporal_edges": len(temporal),
             "relations": len(relations),
             "metadata_records": len(metadata_records),
+            "identity_hypotheses": len(identity_hypotheses),
+            "referents": len(referents),
             "contexts": len(contexts),
             "context_carriers": len(context_carriers),
         },
@@ -260,6 +282,56 @@ def _spans_by_id(records: dict[str, Any]) -> dict[str, dict[str, Any]]:
 
 def _contexts_by_id(records: dict[str, Any]) -> dict[str, dict[str, Any]]:
     return {str(row.get("context_id")): row for row in records.get("contexts", [])}
+
+
+def _referents_by_id(records: dict[str, Any]) -> dict[str, dict[str, Any]]:
+    return {str(row.get("referent_id")): row for row in records.get("referents", [])}
+
+
+def _identity_expanded_terms(records: dict[str, Any], terms: list[str]) -> list[str]:
+    if not terms:
+        return []
+    referents = _referents_by_id(records)
+    seed_ids: set[str] = set()
+    normalized_terms = [normalize(term) for term in terms if normalize(term)]
+    seed_terms = [
+        term for term in normalized_terms
+        if " " in term or "_" in term or "-" in term or "/" in term or "." in term
+    ]
+    if not seed_terms:
+        return []
+    for referent_id, row in referents.items():
+        label_norm = normalize(str(row.get("canonical_label") or row.get("canonical_label_norm") or ""))
+        if label_norm and any(label_norm == term or term in label_norm or label_norm in term for term in seed_terms):
+            seed_ids.add(referent_id)
+    if not seed_ids:
+        return []
+    expanded: list[str] = []
+    frontier = set(seed_ids)
+    visited = set(seed_ids)
+    for _depth in range(3):
+        next_frontier: set[str] = set()
+        for hypothesis in records.get("identity_hypotheses", []):
+            left = str(hypothesis.get("left_referent_id") or "")
+            right = str(hypothesis.get("right_referent_id") or "")
+            if left in frontier and right and right not in visited:
+                next_frontier.add(right)
+            if right in frontier and left and left not in visited:
+                next_frontier.add(left)
+        if not next_frontier:
+            break
+        visited.update(next_frontier)
+        frontier = next_frontier
+    for referent_id in visited:
+        row = referents.get(referent_id, {})
+        label = str(row.get("canonical_label") or "")
+        if label:
+            label_norm = normalize(label)
+            expanded.append(label_norm)
+            if " " in label_norm:
+                expanded.append(label_norm.replace(" ", "_"))
+                expanded.append(label_norm.replace(" ", "-"))
+    return list(dict.fromkeys(term for term in expanded if term))
 
 
 def _evidence_for_span(span_id: str, records: dict[str, Any]) -> Evidence:
@@ -294,6 +366,13 @@ def _relation_metadata(row: dict[str, Any]) -> dict[str, Any]:
     return value if isinstance(value, dict) else {}
 
 
+def _structured_source_row(row: dict[str, Any]) -> bool:
+    metadata = _relation_metadata(row)
+    return str(row.get("relation_type") or "") in {"record_value", "table_cell"} or str(
+        metadata.get("surface_format") or ""
+    ) in {"json", "json_like", "object_like", "delimited_table"}
+
+
 def _expected_from_frame(frame: QueryFrame) -> ExpectedAnswer:
     allowed = {
         "person",
@@ -310,7 +389,7 @@ def _expected_from_frame(frame: QueryFrame) -> ExpectedAnswer:
         "metadata_value",
         "unknown",
     }
-    answer_type = frame.answer_type if frame.answer_type in allowed else "content_phrase"
+    answer_type = frame.answer_type if frame.answer_type in allowed else "unknown"
     return ExpectedAnswer(answer_type, allow_metadata_evidence=answer_type == "metadata_value")  # type: ignore[arg-type]
 
 
@@ -336,6 +415,7 @@ def _relation_local_material(row: dict[str, Any], evidence: Evidence | None = No
         metadata.get("record_path"),
         metadata.get("row_key"),
         metadata.get("column_header"),
+        metadata.get("section_anchor"),
         metadata.get("argument_role"),
         metadata.get("argument_value_type"),
     ]
@@ -458,10 +538,6 @@ def _split_match_score(full_material: str, local_material: str, target_terms: li
     return target_hits * 4.0 + relation_hits * 3.0 + 1.0
 
 
-def _validity_penalty(text: str) -> float:
-    return 0.5 if LOW_VALIDITY_RE.search(text or "") else 1.0
-
-
 def _bind_frame_conditions(records: dict[str, Any], frame: QueryFrame, expected: ExpectedAnswer, target_terms: list[str], relation_terms: list[str]) -> list[tuple[float, str, Evidence, str]]:
     args_by_frame: dict[str, list[dict[str, Any]]] = defaultdict(list)
     for arg in records.get("frame_arguments", []):
@@ -471,13 +547,15 @@ def _bind_frame_conditions(records: dict[str, Any], frame: QueryFrame, expected:
         if not _context_accessible(str(row.get("context_id") or ""), records, frame):
             continue
         evidence = _evidence_for_span(str(row.get("span_id") or ""), records)
+        if _source_is_low_priority(evidence.rel_path, evidence.text) and not _structured_source_row(row):
+            continue
         arg_text = " ".join(str(arg.get("surface") or "") for arg in args_by_frame.get(str(row.get("frame_id")), []))
         local_material = normalize(" ".join([str(row.get("predicate") or ""), str(row.get("trigger_surface") or ""), arg_text, evidence.text]))
         score = _split_match_score(local_material, local_material, target_terms, relation_terms)
         if score <= 0:
             continue
         for value in _answer_values_from_frame(row, args_by_frame.get(str(row.get("frame_id")), []), expected, target_terms, relation_terms):
-            candidates.append((score * _validity_penalty(evidence.text), value, evidence, "frame_argument_binding"))
+            candidates.append((score, value, evidence, "frame_argument_binding"))
     return candidates
 
 
@@ -487,13 +565,15 @@ def _bind_relation_conditions(records: dict[str, Any], frame: QueryFrame, expect
         if not _context_accessible(str(row.get("context_id") or ""), records, frame):
             continue
         evidence = _evidence_for_span(str(row.get("source_span_id") or ""), records)
+        if _source_is_low_priority(evidence.rel_path, evidence.text):
+            continue
         row_material = _relation_local_material(row, evidence, include_evidence=False)
         evidence_material = normalize(" ".join([row_material, evidence.rel_path, evidence.text]))
         score = _split_match_score(evidence_material, row_material, target_terms, relation_terms)
         if score <= 0:
             continue
         for value in _answer_values_from_relation(row, evidence, expected, target_terms, relation_terms):
-            candidates.append((score * float(row.get("confidence") or 0.7) * _validity_penalty(evidence.text), value, evidence, "relation_condition_binding"))
+            candidates.append((score * float(row.get("confidence") or 0.7), value, evidence, "relation_condition_binding"))
     return candidates
 
 
@@ -547,6 +627,8 @@ def _bind_record_groups(
             if not _context_accessible(str(row.get("context_id") or ""), records, frame):
                 continue
             evidence = _evidence_for_span(str(row.get("source_span_id") or ""), records)
+            if _source_is_low_priority(evidence.rel_path, evidence.text) and not _structured_source_row(row):
+                continue
             local_material = _relation_local_material(row, evidence, include_evidence=False)
             relation_hits = sum(1 for term in relation_terms if _has_term(local_material, term))
             if relation_terms and relation_hits == 0:
@@ -557,18 +639,89 @@ def _bind_record_groups(
                 score = 5.0 + target_hits * 5.0 + relation_hits * 6.0 + group_relation_hits * 1.5
                 score += value_hits * 4.0
                 score *= float(row.get("confidence") or 0.7)
-                score *= _validity_penalty(evidence.text)
                 candidates.append((score, value, evidence, "record_group_drs_binding"))
     return candidates
 
 
+def _term_prefixes(terms: list[str]) -> set[str]:
+    return {term[:5] for term in terms if len(term) > 2}
+
+
+def _matched_term_prefixes(material: str, terms: list[str]) -> set[str]:
+    return {term[:5] for term in terms if len(term) > 2 and _has_term(material, term)}
+
+
+def _frame_requests_row_units(frame: QueryFrame) -> bool:
+    material = normalize(" ".join(frame.answer_variables))
+    return bool(re.search(r"\brows?\b", material))
+
+
+def _rows_are_table_like(rows: list[dict[str, Any]]) -> bool:
+    for row in rows:
+        if str(row.get("relation_type") or "") == "table_cell":
+            return True
+        metadata = _relation_metadata(row)
+        if str(metadata.get("surface_format") or "") == "delimited_table":
+            return True
+        if metadata.get("column_header") or metadata.get("cell_index") is not None:
+            return True
+    return False
+
+
+def _count_matching_record_groups(
+    records: dict[str, Any],
+    frame: QueryFrame,
+    target_terms: list[str],
+    relation_terms: list[str],
+) -> tuple[int, list[Evidence]]:
+    groups = _record_groups(records)
+    required_relation_prefixes = _term_prefixes(relation_terms)
+    require_table_row = _frame_requests_row_units(frame)
+    matched: list[tuple[str, Evidence]] = []
+    for group_id, rows in groups.items():
+        accessible_rows = [
+            row for row in rows if _context_accessible(str(row.get("context_id") or ""), records, frame)
+        ]
+        if not accessible_rows:
+            continue
+        rows_by_span: dict[str, list[dict[str, Any]]] = defaultdict(list)
+        for row in accessible_rows:
+            rows_by_span[str(row.get("source_span_id") or "")].append(row)
+        for span_id, span_rows in rows_by_span.items():
+            if not span_rows:
+                continue
+            if require_table_row and not _rows_are_table_like(span_rows):
+                continue
+            evidence = _evidence_for_span(span_id, records)
+            if _source_is_low_priority(evidence.rel_path, evidence.text) and not any(_structured_source_row(row) for row in span_rows):
+                continue
+            span_material = _group_material(span_rows, records)
+            if target_terms and not _contains_any(span_material, target_terms):
+                continue
+            if relation_terms:
+                hit_prefixes = _matched_term_prefixes(span_material, relation_terms)
+                if not hit_prefixes:
+                    continue
+                if len(required_relation_prefixes) >= 2 and len(hit_prefixes) < 2:
+                    continue
+            provenance_key = span_id or group_id
+            matched.append((provenance_key, evidence))
+    unique: dict[str, Evidence] = {}
+    for group_id, evidence in matched:
+        unique.setdefault(group_id, evidence)
+    return len(unique), list(unique.values())[:4]
+
+
 def _bind_metadata(records: dict[str, Any], question: str, expected: ExpectedAnswer, target_terms: list[str], relation_terms: list[str]) -> list[tuple[float, str, Evidence, str]]:
-    if not expected.allow_metadata_evidence:
+    if not expected.allow_metadata_evidence and expected.answer_type != "unknown":
         return []
     docs = _docs_by_id(records)
     candidates: list[tuple[float, str, Evidence, str]] = []
     for row in records.get("metadata_records", []):
         doc = docs.get(str(row.get("document_id")), {})
+        key_material = normalize(str(row.get("key") or ""))
+        if expected.answer_type == "unknown" and relation_terms and not _contains_any(key_material, relation_terms):
+            continue
         material = normalize(" ".join([str(doc.get("rel_path") or ""), str(row.get("key") or ""), str(row.get("value") or "")]))
         score = _match_score(material, target_terms, relation_terms or _query_terms(question))
         if score <= 0:
@@ -626,6 +779,54 @@ def _temporal_candidates(records: dict[str, Any], frame: QueryFrame, expected: E
     return candidates
 
 
+def _temporal_relation_candidates(
+    records: dict[str, Any],
+    frame: QueryFrame,
+    expected: ExpectedAnswer,
+    target_terms: list[str],
+    relation_terms: list[str],
+) -> list[tuple[float, str, Evidence, str]]:
+    if frame.temporal_scope not in {"latest", "earliest"}:
+        return []
+    if expected.answer_type not in {"state", "date_time", "content_phrase", "unknown"}:
+        return []
+    rows_by_span: dict[str, list[dict[str, Any]]] = defaultdict(list)
+    for row in records.get("relations", []):
+        rows_by_span[str(row.get("source_span_id") or "")].append(row)
+    ordered: list[tuple[str, str, list[dict[str, Any]], Evidence]] = []
+    for span_id, rows in rows_by_span.items():
+        if not span_id:
+            continue
+        temporal_values = [
+            str(row.get("value") or "")
+            for row in rows
+            if str(row.get("relation_type") or "") == "temporal" or normalize(str(row.get("predicate") or "")) == "timestamp"
+        ]
+        temporal_values = [value for value in temporal_values if DATE_TIME_RE.search(value)]
+        if not temporal_values:
+            continue
+        evidence = _evidence_for_span(span_id, records)
+        if _source_is_low_priority(evidence.rel_path, evidence.text):
+            continue
+        material = _group_material(rows, records)
+        if target_terms and not _contains_any(material, target_terms):
+            continue
+        if relation_terms and not _contains_any(material, relation_terms):
+            continue
+        ordered.append((max(temporal_values), span_id, rows, evidence))
+    ordered.sort(key=lambda item: item[0], reverse=frame.temporal_scope != "earliest")
+    candidates: list[tuple[float, str, Evidence, str]] = []
+    for _time_value, _span_id, rows, evidence in ordered[:1]:
+        for row in rows:
+            if str(row.get("relation_type") or "") == "temporal":
+                continue
+            if not _context_accessible(str(row.get("context_id") or ""), records, frame):
+                continue
+            for value in _answer_values_from_relation(row, evidence, expected, target_terms, relation_terms):
+                candidates.append((9.0 * float(row.get("confidence") or 0.7), value, evidence, "temporal_relation_binding"))
+    return candidates
+
+
 def _choose_answer(candidates: list[tuple[float, str, Evidence, str]], expected: ExpectedAnswer) -> Answer | None:
     scored: dict[str, tuple[float, list[Evidence], str]] = {}
     for score, value, evidence, reason in candidates:
@@ -642,6 +843,35 @@ def _choose_answer(candidates: list[tuple[float, str, Evidence, str]], expected:
     ordered = sorted(scored.items(), key=lambda item: (-item[1][0], len(item[0]), item[0]))
     value, (score, evidence, reason) = ordered[0]
     return Answer(value, min(0.95, max(0.0, score / 10.0)), evidence, reason, expected.answer_type)
+
+
+def _choose_list_answer(candidates: list[tuple[float, str, Evidence, str]], expected: ExpectedAnswer) -> Answer | None:
+    values: list[str] = []
+    evidence: list[Evidence] = []
+    for _score, value, item_evidence, _reason in candidates:
+        canonical = canonicalize_answer(expected, value)
+        if not canonical:
+            continue
+        parts = [part.strip() for part in canonical.split(";") if part.strip()]
+        for part in parts or [canonical]:
+            if part not in values:
+                values.append(part)
+                evidence.append(item_evidence)
+    if not values:
+        return None
+    return Answer("; ".join(values), 0.86, evidence[:6], "list aggregation DRS binding", expected.answer_type)
+
+
+def _has_unscoped_temporal_ambiguity(candidates: list[tuple[float, str, Evidence, str]]) -> bool:
+    values_by_time: dict[str, set[str]] = defaultdict(set)
+    for _score, value, evidence, _reason in candidates:
+        match = DATE_TIME_RE.search(evidence.text)
+        if match and value:
+            values_by_time[match.group(0)].add(normalize(value))
+    if len(values_by_time) < 2:
+        return False
+    distinct_values = {value for values in values_by_time.values() for value in values if value}
+    return len(distinct_values) > 1
 
 
 def execute_bounded_query(
@@ -661,6 +891,10 @@ def execute_bounded_query(
     relation_terms = _relation_terms(frame, question)
     selected_docs, selected_chunks, ranking = _rank_scope(documents, sentences_by_document, question, frame, doc_limit, chunk_limit)
     records = _load_records(store, run_id, selected_docs, selected_chunks)
+    identity_terms = _identity_expanded_terms(records, target_terms)
+    if identity_terms:
+        target_terms = list(dict.fromkeys([*target_terms, *identity_terms]))
+        ranking["identity_expanded_target_terms"] = identity_terms[:32]
     diagnostics = {"ranking": ranking, "execution": {"record_counts": records["record_counts"], "query_frame": frame.as_dict()}}
 
     if expected.answer_type == "boolean":
@@ -671,15 +905,26 @@ def execute_bounded_query(
     candidates.extend(_bind_frame_conditions(records, frame, expected, target_terms, relation_terms))
     candidates.extend(_bind_relation_conditions(records, frame, expected, target_terms, relation_terms))
     temporal_candidates = _temporal_candidates(records, frame, expected, target_terms, relation_terms)
+    temporal_candidates.extend(_temporal_relation_candidates(records, frame, expected, target_terms, relation_terms))
     if temporal_candidates and frame.temporal_scope in {"latest", "earliest"}:
         return _choose_answer(temporal_candidates, expected), diagnostics
     candidates.extend(temporal_candidates)
     candidates.extend(_bind_metadata(records, question, expected, target_terms, relation_terms))
     candidates.extend(_bind_contexts(records, frame, expected, target_terms, relation_terms))
 
-    if expected.answer_type == "count" and candidates:
+    if not frame.temporal_scope and _has_unscoped_temporal_ambiguity(candidates):
+        diagnostics["execution"]["temporal_ambiguity_without_query_scope"] = True
+        return None, diagnostics
+
+    if expected.answer_type == "count" and frame.aggregation == "count":
+        group_count, group_evidence = _count_matching_record_groups(records, frame, target_terms, relation_terms)
+        if group_count:
+            return Answer(str(group_count), 0.86, group_evidence, "record-group aggregation DRS binding", "count"), diagnostics
+    if expected.answer_type == "count" and frame.aggregation == "count" and candidates:
         values = sorted({canonicalize_answer(expected, value) or value for _score, value, _evidence, _reason in candidates})
         evidence = [item[2] for item in candidates[:4]]
         return Answer(str(len(values)), 0.85, evidence, "aggregation DRS binding", "count"), diagnostics
+    if frame.aggregation in {"list", "set"}:
+        return _choose_list_answer(candidates, expected), diagnostics
 
     return _choose_answer(candidates, expected), diagnostics

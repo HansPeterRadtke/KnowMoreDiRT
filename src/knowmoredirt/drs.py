@@ -121,5 +121,9 @@ def frame_from_model_dict(frame: dict[str, Any]) -> DiscourseCondition | None:
         temporal_text=str(frame.get("temporal_text") or ""),
         evidence_text=evidence_text,
         confidence=float(frame.get("confidence") or 0.65),
-        metadata={"source": "local_model"},
+        metadata={
+            "source": "local_model",
+            "context_holder": frame.get("context_holder") if isinstance(frame.get("context_holder"), str) else "",
+            "identity_hypotheses": frame.get("identity_hypotheses") if isinstance(frame.get("identity_hypotheses"), list) else [],
+        },
     )

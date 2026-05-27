@@ -13,8 +13,10 @@ import os
 from pathlib import Path
 from typing import Any
 
+from .model_planner import CHUNK_FRAME_SCHEMA_VERSION, PROMPT_VERSION
 
-CACHE_VERSION = "semantic-frames-v1"
+
+CACHE_VERSION = "semantic-frames-v4"
 
 
 def _default_cache_dir() -> Path:
@@ -32,7 +34,19 @@ class SemanticFrameCache:
         self.root.mkdir(parents=True, exist_ok=True)
 
     def key_for(self, text: str) -> str:
-        material = f"{CACHE_VERSION}\x1f{text}".encode("utf-8", errors="replace")
+        material = "\x1f".join(
+            [
+                CACHE_VERSION,
+                os.environ.get("KMD_LOCAL_MODEL_ENDPOINT", "http://127.0.0.1:14829/v1"),
+                os.environ.get("KMD_LOCAL_MODEL_ID", ""),
+                os.environ.get("KMD_LOCAL_MODEL_SEED", "1778779265"),
+                PROMPT_VERSION,
+                CHUNK_FRAME_SCHEMA_VERSION,
+                os.environ.get("KMD_CHUNK_FRAME_N_PREDICT", "192"),
+                os.environ.get("KMD_LOCAL_MODEL_GRAMMAR", ""),
+                text,
+            ]
+        ).encode("utf-8", errors="replace")
         return hashlib.sha256(material).hexdigest()
 
     def get(self, text: str) -> dict[str, Any] | None:

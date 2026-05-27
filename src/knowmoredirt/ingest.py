@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import json
+import os
 import re
 import time
 from pathlib import Path
@@ -19,8 +20,19 @@ from .store import DSPGStore, stable_id
 from .text import clean_extracted_value, normalize, text_quality_metrics, tokenize
 
 
-DATE_RE = re.compile(r"\b(\d{4}-\d{2}-\d{2})(?:[ T]\d{2}:\d{2})?\b")
 TABLE_SPLIT_RE = re.compile(r"\s*(?:\||\t)\s*")
+PROGRESS_TRUE_VALUES = {"1", "true", "yes", "on"}
+
+
+def _progress_enabled() -> bool:
+    return os.environ.get("KMD_PROGRESS", "").strip().lower() in PROGRESS_TRUE_VALUES or os.environ.get(
+        "KMD_EVAL_PROGRESS", ""
+    ).strip().lower() in PROGRESS_TRUE_VALUES
+
+
+def _log_progress(message: str) -> None:
+    if _progress_enabled():
+        print(message, flush=True)
 
 
 def _timestamp_value(value: float) -> str:
@@ -107,27 +119,6 @@ def collect_mentions(sentence: Sentence) -> list[tuple[str, str, int, int]]:
             seen.add(key)
             unique.append(item)
     return unique
-
-
-def frame_predicate(text: str) -> tuple[str, str] | None:
-    for relation in extract_relations(text):
-        if relation.predicate:
-            return relation.predicate, relation.predicate
-    return None
-
-
-def temporal_state(text: str) -> tuple[str, str] | None:
-    date_match = DATE_RE.search(text)
-    if not date_match:
-        return None
-    relations = [
-        relation
-        for relation in extract_relations(text)
-        if relation.relation_type in {"label_value", "record_value", "table_cell"} and relation.value
-    ]
-    if relations:
-        return date_match.group(0), relations[-1].value
-    return None
 
 
 def _table_cells(text: str) -> list[str]:
@@ -233,15 +224,25 @@ def _grounded_model_frames(
     cached = semantic_cache.get(sentence.text) if semantic_cache else None
     if cached is not None:
         frames = [frame for frame in cached.get("frames", []) if isinstance(frame, dict)]
-        return frames, {"source": "cache", "frame_count": len(frames)}
+        metadata = cached.get("metadata") if isinstance(cached.get("metadata"), dict) else {}
+        accepted = bool(metadata.get("accepted", True))
+        return frames, {
+            "source": "cache",
+            "frame_count": len(frames),
+            "accepted": accepted,
+            "reason": str(metadata.get("reason") or ""),
+        }
     result = call_model_chunk_frames(sentence.text, semantic_client, rel_path=sentence.rel_path)
     frames = [frame for frame in result.get("frames", []) if isinstance(frame, dict)] if result.get("accepted") else []
-    if semantic_cache is not None and result.get("accepted"):
+    cacheable_failure = result.get("reason") in {"invalid_json", "schema_validation_failed", "grounding_validation_failed"}
+    if semantic_cache is not None and (result.get("accepted") or cacheable_failure):
         semantic_cache.put(
             sentence.text,
             frames,
             {
                 "rel_path": sentence.rel_path,
+                "accepted": bool(result.get("accepted")),
+                "reason": str(result.get("reason") or ""),
                 "prompt_hash": result.get("prompt_hash"),
                 "output_hash": result.get("output_hash"),
             },
@@ -286,6 +287,7 @@ def ingest_folder(
 ) -> tuple[DSPGStore, str, list[Document], list[Sentence]]:
     created_store = store is None
     store = store or DSPGStore(create_indexes=False)
+    ingest_started = time.monotonic()
     documents, sentences = scan_folder(folder_path)
     run_id = store.start_run(folder_path)
 
@@ -388,6 +390,8 @@ def ingest_folder(
     table_headers_by_document: dict[str, list[str]] = {}
     section_anchor_by_document: dict[str, str] = {}
     section_group_by_document: dict[str, str] = {}
+    semantic_total = len(sentences) if use_semantic_frames and semantic_client is not None else 0
+    semantic_index = 0
 
     for sentence in sentences:
         token_estimate = max(1, len(tokenize(sentence.text)))
@@ -471,64 +475,6 @@ def ingest_folder(
             )
             mentions_for_sentence.append((surface, mention_id, referent_id))
 
-        frame_info = frame_predicate(sentence.text)
-        if frame_info:
-            predicate, trigger = frame_info
-            frame_id = stable_id("frm", run_id, sentence.sentence_id, predicate, trigger)
-            store.execute(
-                "INSERT OR IGNORE INTO frames(frame_id, run_id, context_id, predicate, predicate_norm, trigger_surface, confidence, source, span_id) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)",
-                (frame_id, run_id, context_id, predicate, normalize(predicate), trigger, 0.8, "deterministic", span_id),
-            )
-            for index, (surface, mention_id, referent_id) in enumerate(mentions_for_sentence[:4]):
-                role = "agent" if index == 0 else "theme"
-                store.execute(
-                    "INSERT OR IGNORE INTO frame_arguments(argument_id, frame_id, role, mention_id, referent_id, surface, confidence) VALUES (?, ?, ?, ?, ?, ?, ?)",
-                    (stable_id("arg", frame_id, role, mention_id), frame_id, role, mention_id, referent_id, surface, 0.7),
-                )
-
-        state_info = temporal_state(sentence.text)
-        if state_info:
-            temporal_value, state_value = state_info
-            referent_id = mentions_for_sentence[0][2] if mentions_for_sentence else None
-            store.execute(
-                """
-                INSERT OR IGNORE INTO temporal_edges(
-                  edge_id, run_id, source_span_id, referent_id, context_id, relation, temporal_value, state_value, confidence
-                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
-                """,
-                (
-                    stable_id("tmp", run_id, sentence.sentence_id, temporal_value, state_value),
-                    run_id,
-                    span_id,
-                    referent_id,
-                    context_id,
-                    "state_at",
-                    temporal_value,
-                    state_value,
-                    0.85,
-                ),
-            )
-            store.execute(
-                """
-                INSERT OR IGNORE INTO context_carriers(
-                  carrier_id, run_id, context_id, document_id, source_span_id, carrier_kind, carrier_surface,
-                  temporal_value, temporal_value_type, confidence
-                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-                """,
-                (
-                    stable_id("carrier", run_id, sentence.sentence_id, "event_time", temporal_value),
-                    run_id,
-                    context_id,
-                    sentence.document_id,
-                    span_id,
-                    "temporal_expression",
-                    temporal_value,
-                    temporal_value,
-                    "event_time",
-                    0.85,
-                ),
-            )
-
         if _is_structural_heading(sentence.text):
             section_anchor = clean_extracted_value(sentence.text)
             section_anchor_by_document[sentence.document_id] = section_anchor
@@ -545,6 +491,11 @@ def ingest_folder(
             elif _looks_like_table_header(cells):
                 table_headers_by_document[sentence.document_id] = cells
 
+        temporal_values = [
+            relation.value
+            for relation in deterministic_relations
+            if relation.relation_type == "temporal" and relation.value
+        ]
         for relation in deterministic_relations:
             metadata = {
                 **relation.metadata,
@@ -665,12 +616,69 @@ def ingest_folder(
                                 ),
                             )
 
-        if not _is_structural_heading(sentence.text) and pending_label_heading:
+            if temporal_values and relation.relation_type != "temporal" and relation.value:
+                # Pure DRT infrastructure: attach explicit same-span times to
+                # structural conditions without interpreting the condition label.
+                for temporal_value in temporal_values:
+                    store.execute(
+                        """
+                        INSERT OR IGNORE INTO temporal_edges(
+                          edge_id, run_id, source_span_id, referent_id, context_id, relation, temporal_value, state_value, confidence
+                        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+                        """,
+                        (
+                            stable_id(
+                                "tmp",
+                                run_id,
+                                sentence.sentence_id,
+                                relation.relation_type,
+                                relation.predicate,
+                                relation.subject,
+                                relation.object,
+                                relation.value,
+                                temporal_value,
+                            ),
+                            run_id,
+                            span_id,
+                            store.upsert_referent(run_id, relation.subject or relation.object or relation.value, "unknown"),
+                            context_id,
+                            relation.subject or relation.predicate or relation.relation_type,
+                            temporal_value,
+                            relation.value,
+                            min(0.9, relation.confidence),
+                        ),
+                    )
+
+        if (
+            not _is_structural_heading(sentence.text)
+            and pending_label_heading
+            and not section_anchor_by_document.get(sentence.document_id)
+        ):
             section_anchor_by_document[sentence.document_id] = pending_label_heading
             section_group_by_document[sentence.document_id] = stable_id("section_group", sentence.document_id, pending_label_heading)
 
         if use_semantic_frames and semantic_client is not None:
+            semantic_index += 1
+            _log_progress(
+                "kmd-ingest llm_start "
+                f"chunk={semantic_index}/{semantic_total} "
+                f"source={sentence.rel_path}:{sentence.order} "
+                f"elapsed={time.monotonic() - ingest_started:.1f}s"
+            )
             model_frames, _frame_result = _grounded_model_frames(sentence, semantic_client, semantic_cache)
+            result_source = str(_frame_result.get("fresh_or_cached") or _frame_result.get("source") or "fresh")
+            accepted = bool(_frame_result.get("accepted")) if "accepted" in _frame_result else result_source == "cache"
+            _log_progress(
+                "kmd-ingest llm_done "
+                f"chunk={semantic_index}/{semantic_total} "
+                f"source={sentence.rel_path}:{sentence.order} "
+                f"result={result_source} "
+                f"accepted={accepted} "
+                f"reason={str(_frame_result.get('reason') or '')} "
+                f"frames={len(model_frames)} "
+                f"model_elapsed={float(_frame_result.get('elapsed') or 0.0):.1f}s "
+                f"elapsed={time.monotonic() - ingest_started:.1f}s"
+            )
             for index, frame in enumerate(model_frames):
                 condition = frame_from_model_dict(frame)
                 if condition is None or condition.evidence_text not in sentence.text:
@@ -681,16 +689,17 @@ def ingest_folder(
                 modality = condition.modality
                 polarity = condition.polarity
                 temporal_text = condition.temporal_text
+                context_holder = clean_extracted_value(str(condition.metadata.get("context_holder") or ""))
                 semantic_context_id = context_id
                 if modality != "asserted":
-                    context_key = f"modality:{modality}"
+                    context_key = f"modality:{modality}:{normalize(context_holder)}" if context_holder else f"modality:{modality}"
                     semantic_context_id = context_by_kind.get(context_key)
                     if semantic_context_id is None:
                         semantic_context_id = stable_id("ctx", run_id, context_key)
                         context_by_kind[context_key] = semantic_context_id
                         store.execute(
                             "INSERT INTO contexts(context_id, run_id, kind, parent_context_id, holder_surface, evidence_surface, confidence) VALUES (?, ?, ?, ?, ?, ?, ?)",
-                            (semantic_context_id, run_id, context_key, context_id, None, evidence_text, condition.confidence),
+                            (semantic_context_id, run_id, f"modality:{modality}", context_id, context_holder or None, evidence_text, condition.confidence),
                         )
                 semantic_frame_id = stable_id("frm", run_id, sentence.sentence_id, "model", index, predicate, evidence_text)
                 store.execute(
@@ -712,6 +721,7 @@ def ingest_folder(
                     "frame_type": frame_type,
                     "modality": modality,
                     "polarity": polarity,
+                    "context_holder": context_holder,
                     "temporal_text": temporal_text,
                     "record_group": group,
                     "source": "local_model",
@@ -808,6 +818,36 @@ def ingest_folder(
                                     "local_model_frame",
                                 ),
                             )
+                for hypothesis_index, hypothesis in enumerate(condition.metadata.get("identity_hypotheses", [])):
+                    if not isinstance(hypothesis, dict):
+                        continue
+                    left_text = clean_extracted_value(str(hypothesis.get("left_text") or ""))
+                    right_text = clean_extracted_value(str(hypothesis.get("right_text") or ""))
+                    identity_evidence = clean_extracted_value(str(hypothesis.get("evidence_text") or evidence_text))
+                    if not left_text or not right_text or not identity_evidence:
+                        continue
+                    if left_text not in sentence.text or right_text not in sentence.text or identity_evidence not in sentence.text:
+                        continue
+                    left_ref = store.upsert_referent(run_id, left_text, "unknown")
+                    right_ref = store.upsert_referent(run_id, right_text, "unknown")
+                    store.execute(
+                        """
+                        INSERT OR IGNORE INTO identity_hypotheses(
+                          hypothesis_id, run_id, left_referent_id, right_referent_id,
+                          relation, evidence, confidence, source
+                        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+                        """,
+                        (
+                            stable_id("idh", run_id, semantic_frame_id, "model_identity", hypothesis_index, left_text, right_text),
+                            run_id,
+                            left_ref,
+                            right_ref,
+                            clean_extracted_value(str(hypothesis.get("relation") or "same_referent")),
+                            identity_evidence,
+                            float(hypothesis.get("confidence") or condition.confidence),
+                            "local_model_frame",
+                        ),
+                    )
                 if temporal_text:
                     store.execute(
                         """

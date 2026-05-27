@@ -3,6 +3,7 @@ from __future__ import annotations
 from pathlib import Path
 
 from knowmoredirt.engine import KnowMoreDiRTEngine
+from knowmoredirt.model_planner import call_model_evidence_answer
 
 
 class FakeEvidenceModel:
@@ -178,3 +179,25 @@ def test_fake_model_evidence_extraction_rejects_incompatible_answer_type(tmp_pat
     assert answer.text == "unknown"
     assert engine.model_query_trace.evidence_call_count == 1
     assert engine.model_query_trace.evidence_rejected_count >= 1
+
+
+def test_invalid_model_evidence_answer_is_cached(tmp_path: Path, monkeypatch) -> None:
+    class InvalidEvidenceModel:
+        def __init__(self) -> None:
+            self.calls = 0
+
+        def complete_json(self, prompt: str, *, n_predict: int = 128, grammar: str | None = None) -> dict[str, object]:
+            self.calls += 1
+            return {"unexpected": "shape", "_model_raw": '{"unexpected":"shape"}'}
+
+    model = InvalidEvidenceModel()
+    monkeypatch.setenv("KMD_EVIDENCE_ANSWER_CACHE_DIR", str(tmp_path / "evidence-cache"))
+    evidence = [{"source": "note", "text": "Ash Meadow conservator Lyra Fen"}]
+
+    first = call_model_evidence_answer("Who is the conservator for Ash Meadow?", "person", evidence, model)  # type: ignore[arg-type]
+    second = call_model_evidence_answer("Who is the conservator for Ash Meadow?", "person", evidence, model)  # type: ignore[arg-type]
+
+    assert model.calls == 1
+    assert first["accepted"] is False
+    assert second["accepted"] is False
+    assert second["fresh_or_cached"] == "cache"

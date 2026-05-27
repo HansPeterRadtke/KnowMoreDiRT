@@ -1,10 +1,11 @@
-"""Generic query-frame construction for DSPG retrieval.
+"""Generic query-frame containers for DSPG retrieval.
 
-The core does not route questions through content-specific intent names.  It
-turns a question into a relation-agnostic frame: visible anchors, requested
-relation text, constraints, answer type, temporal/aggregation flags, and
-evidence requirements.  The terms remain data; they do not select bespoke code
-paths.
+Natural-language question semantics are model-owned.  The deterministic helper
+in this module builds only a lexical skeleton used for bounded retrieval when a
+model query DRS is missing or being repaired: exact URLs, identifiers,
+capitalized surface anchors, and content tokens.  It does not decide answer
+type, negation, temporal scope, aggregation, or the requested semantic
+relation.
 """
 
 from __future__ import annotations
@@ -13,7 +14,6 @@ import re
 from dataclasses import asdict, dataclass
 from typing import Any
 
-from .answer_types import infer_expected_answer
 from .extractors import capitalized_phrases, identifiers, urls
 from .text import content_tokens, normalize, tokenize
 
@@ -117,10 +117,13 @@ class QueryFrame:
 
     question_text: str
     answer_type: str
+    answer_variables: tuple[str, ...]
     target_anchors: tuple[str, ...]
     requested_relation: str
     relation_terms: tuple[str, ...]
     constraints: tuple[str, ...]
+    scope_requirements: tuple[str, ...] = ()
+    modality_requirements: tuple[str, ...] = ()
     temporal_scope: str = ""
     negated: bool = False
     aggregation: str = ""
@@ -137,6 +140,8 @@ def term_variants(term: str) -> set[str]:
     token = normalize(term)
     if not token:
         return set()
+    if not re.fullmatch(r"[a-z]+", token):
+        return {token}
     variants = {token}
     for suffix in ("ing", "ied", "ed", "ers", "er", "ors", "or", "ies", "s"):
         if token.endswith(suffix) and len(token) > len(suffix) + 2:
@@ -151,6 +156,27 @@ def term_variants(term: str) -> set[str]:
         variants.add(f"{token}er")
         variants.add(f"{token}or")
     return {value for value in variants if len(value) > 1}
+
+
+def normalize_temporal_scope(value: str) -> str:
+    """Normalize model-produced temporal operators into executor enums."""
+
+    scope = normalize(value)
+    aliases = {
+        "current": "latest",
+        "currently": "latest",
+        "latest": "latest",
+        "most_recent": "latest",
+        "most recent": "latest",
+        "recent": "latest",
+        "final": "latest",
+        "last": "latest",
+        "earliest": "earliest",
+        "oldest": "earliest",
+        "first": "earliest",
+        "initial": "earliest",
+    }
+    return aliases.get(scope, scope)
 
 
 def expand_terms(terms: list[str] | tuple[str, ...]) -> list[str]:
@@ -206,16 +232,8 @@ def _requested_relation(question: str, relation_terms: list[str]) -> str:
 
 
 def plan_question(question: str) -> QueryFrame:
-    qnorm = normalize(question)
     anchors = tuple(visible_anchors(question))
-    relation_terms = _question_relation_terms(question)
-    expected = infer_expected_answer(question)
-    temporal_scope = ""
-    if any(term in qnorm for term in ("current", "latest", "final")):
-        temporal_scope = "latest"
-    elif any(term in qnorm for term in ("earliest", "first", "initial")):
-        temporal_scope = "earliest"
-    aggregation = "count" if expected.answer_type == "count" else ""
+    relation_terms = tuple(_question_relation_terms(question))
     constraints = tuple(
         term
         for term in relation_terms
@@ -223,14 +241,17 @@ def plan_question(question: str) -> QueryFrame:
     )
     return QueryFrame(
         question_text=question,
-        answer_type=expected.answer_type,
+        answer_type="unknown",
+        answer_variables=(),
         target_anchors=anchors,
-        requested_relation=_requested_relation(question, relation_terms),
-        relation_terms=tuple(relation_terms),
+        requested_relation="",
+        relation_terms=relation_terms,
         constraints=constraints,
-        temporal_scope=temporal_scope,
-        negated=bool(re.search(r"\b(?:not|no|never|without|denied|unsupported)\b", qnorm)),
-        aggregation=aggregation,
+        scope_requirements=(),
+        modality_requirements=(),
+        temporal_scope="",
+        negated=False,
+        aggregation="",
         requires_evidence=True,
     )
 
@@ -247,20 +268,41 @@ def frame_from_mapping(question: str, mapping: dict[str, Any] | None, *, source:
     anchors = raw.get("target_anchors")
     if isinstance(anchors, str):
         anchor_tuple = tuple(value.strip() for value in anchors.split(";") if value.strip())
-    elif isinstance(anchors, list):
+    elif isinstance(anchors, (list, tuple)):
         anchor_tuple = tuple(str(value).strip() for value in anchors if str(value).strip())
     else:
         anchor_tuple = base.target_anchors
     relation_terms_raw = raw.get("relation_terms")
-    if isinstance(relation_terms_raw, list):
-        relation_terms = tuple(expand_terms([str(value) for value in relation_terms_raw if str(value).strip()]))
+    relation_terms_supplied = isinstance(relation_terms_raw, (list, tuple))
+    if isinstance(relation_terms_raw, (list, tuple)):
+        relation_values = [str(value).strip() for value in relation_terms_raw if str(value).strip()]
+        relation_terms = tuple(relation_values if source == "model" else expand_terms(relation_values))
     else:
         relation_terms = base.relation_terms
     constraints_raw = raw.get("constraints")
-    if isinstance(constraints_raw, list):
-        constraints = tuple(expand_terms([str(value) for value in constraints_raw if str(value).strip()]))
+    constraints_supplied = isinstance(constraints_raw, (list, tuple))
+    if isinstance(constraints_raw, (list, tuple)):
+        constraint_values = [str(value).strip() for value in constraints_raw if str(value).strip()]
+        constraints = tuple(constraint_values if source == "model" else expand_terms(constraint_values))
     else:
         constraints = base.constraints
+    answer_variables_raw = raw.get("answer_variables")
+    if isinstance(answer_variables_raw, str):
+        answer_variables = tuple(value.strip() for value in answer_variables_raw.split(";") if value.strip())
+    elif isinstance(answer_variables_raw, (list, tuple)):
+        answer_variables = tuple(str(value).strip() for value in answer_variables_raw if str(value).strip())
+    else:
+        answer_variables = base.answer_variables
+    scope_requirements_raw = raw.get("scope_requirements")
+    if isinstance(scope_requirements_raw, (list, tuple)):
+        scope_requirements = tuple(str(value).strip() for value in scope_requirements_raw if str(value).strip())
+    else:
+        scope_requirements = base.scope_requirements
+    modality_requirements_raw = raw.get("modality_requirements")
+    if isinstance(modality_requirements_raw, (list, tuple)):
+        modality_requirements = tuple(str(value).strip() for value in modality_requirements_raw if str(value).strip())
+    else:
+        modality_requirements = base.modality_requirements
     answer_type = str(raw.get("answer_type") or base.answer_type)
     if answer_type not in {
         "person",
@@ -278,14 +320,18 @@ def frame_from_mapping(question: str, mapping: dict[str, Any] | None, *, source:
         "unknown",
     }:
         answer_type = base.answer_type
+    combined_anchors = tuple(dict.fromkeys([*anchor_tuple, *base.target_anchors])) if anchor_tuple else base.target_anchors
     return QueryFrame(
         question_text=question,
         answer_type=answer_type,
-        target_anchors=anchor_tuple or base.target_anchors,
+        answer_variables=answer_variables,
+        target_anchors=combined_anchors,
         requested_relation=str(raw.get("requested_relation") or base.requested_relation),
-        relation_terms=relation_terms or base.relation_terms,
-        constraints=constraints or base.constraints,
-        temporal_scope=str(raw.get("temporal_scope") or base.temporal_scope),
+        relation_terms=relation_terms if relation_terms_supplied else base.relation_terms,
+        constraints=constraints if constraints_supplied else base.constraints,
+        scope_requirements=scope_requirements,
+        modality_requirements=modality_requirements,
+        temporal_scope=normalize_temporal_scope(str(raw.get("temporal_scope") or base.temporal_scope)),
         negated=bool(raw.get("negated", base.negated)),
         aggregation=str(raw.get("aggregation") or base.aggregation),
         requires_evidence=bool(raw.get("requires_evidence", True)),

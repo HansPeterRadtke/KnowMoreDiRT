@@ -46,64 +46,18 @@ _DATE_TIME_RE = re.compile(
     r"\b(?:\d{4}-\d{2}-\d{2}(?:[ T]\d{1,2}:\d{2}(?::\d{2})?)?|\d{1,2}:\d{2}|\d{1,2}/\d{1,2}/\d{2,4})\b"
 )
 _DURATION_RE = re.compile(r"\b\d+(?:\.\d+)?\s*(?:seconds?|minutes?|hours?|days?|weeks?|months?|years?)\b", re.I)
-_PERSON_RE = re.compile(
-    r"^(?:(?:Dr\.|Ms\.|Mr\.|Mrs\.|Prof\.)\s+)?[A-Z][A-Za-z'-]+(?:\s+[A-Z][A-Za-z'-]+){0,3}$"
-)
-_ORG_HINT_RE = re.compile(
-    r"\b(?:association|bureau|center|centre|clinic|club|collective|committee|company|co-?op|cooperative|council|department|foundation|group|guild|institute|lab|laboratory|office|school|society|studio|team|trust|union|university|workshop)\b",
-    re.I,
-)
 
 
 def infer_expected_answer(question: str) -> ExpectedAnswer:
-    q = normalize(question)
-    qtokens = set(re.findall(r"[a-z0-9_-]+", q))
-    metadata_terms = {
-        "metadata",
-        "file",
-        "folder",
-        "path",
-        "name",
-        "extension",
-        "suffix",
-        "size",
-        "hash",
-        "encoding",
-        "created",
-        "modified",
-        "mtime",
-        "ctime",
-        "lines",
-        "words",
-    }
-    asks_metadata = bool(qtokens.intersection(metadata_terms)) and any(
-        term in q for term in ["file", "folder", "metadata", "path", "extension", "suffix", "size", "hash", "encoding", "line count", "word count", "created", "modified", "mtime", "ctime"]
-    )
-    if any(phrase in q for phrase in ["how many", "number of", "count of"]):
-        return ExpectedAnswer("count")
-    if re.match(r"^(did|does|do|is|are|was|were|can|could|should|has|have)\b", q):
-        return ExpectedAnswer("boolean")
-    if any(token in qtokens for token in ["url", "urls", "link", "links"]) or q.startswith("where "):
-        return ExpectedAnswer("url")
-    if any(token in qtokens for token in ["path", "paths"]) or any(phrase in q for phrase in ["which file", "what file"]):
-        return ExpectedAnswer("file_path", allow_metadata_evidence=asks_metadata)
-    if q.startswith("when ") or any(token in qtokens for token in ["date", "time", "timestamp", "created", "modified", "effective", "validity", "measured"]):
-        return ExpectedAnswer("date_time", allow_metadata_evidence=asks_metadata)
-    if any(phrase in q for phrase in ["current state", "final state", "latest state"]) or "status" in qtokens or "state" in qtokens:
-        return ExpectedAnswer("state")
-    if q.startswith("who ") or " which person" in q or " actor" in qtokens:
-        return ExpectedAnswer("person")
-    if any(phrase in q for phrase in ["which organization", "what organization", "which group", "what group", "which team", "what team"]):
-        return ExpectedAnswer("organization")
-    if asks_metadata:
-        return ExpectedAnswer("metadata_value", allow_metadata_evidence=True)
-    if any(token in qtokens for token in ["identifier", "identifiers", "reference", "references", "id", "ids", "code", "hash", "commit", "invoice", "parcel", "case", "specimen", "sample", "order"]) or (
-        q.startswith(("what ", "which ")) and any(token in qtokens for token in ["raw", "json", "record"])
-    ) or (
-        q.startswith("which ") and any(token in qtokens for token in ["implements", "implemented", "fixed", "touches", "touched", "appears", "named"])
-    ):
-        return ExpectedAnswer("identifier", allow_metadata_evidence=asks_metadata)
-    return ExpectedAnswer("content_phrase")
+    """Return a non-semantic default expectation.
+
+    The answer type for a natural-language question is part of the query DRS
+    and must be supplied by the model.  Deterministic code may classify and
+    validate candidate values once a query schema asks for a type, but it must
+    not infer that type from question words.
+    """
+
+    return ExpectedAnswer("unknown")
 
 
 def answer_parts(value: str) -> list[str]:
@@ -115,16 +69,29 @@ def answer_parts(value: str) -> list[str]:
 
 
 def classify_value(value: str) -> AnswerType:
+    """Classify deterministic value shapes, not natural-language roles.
+
+    Person, actor, organization, state, and other content-level readings are
+    query-DRS/model-owned.  Deterministic classification is limited to surface
+    forms with non-semantic structure such as URLs, identifiers, files, counts,
+    and dates.
+    """
+
     text = clean_extracted_value(value)
     low = normalize(text)
     if not text or low == "unknown":
         return "unknown"
     if low in {"the", "a", "an"}:
         return "content_phrase"
-    if re.match(r"^(yes|no)\b", low):
+    if re.match(r"^(yes|no)(?:$|[;,:.!?]\s+)", low):
         return "boolean"
     if urls(text) and urls(text)[0].rstrip(".,;)") == text.rstrip(".,;)"):
         return "url"
+    found_urls = urls(text)
+    if len(found_urls) == 1:
+        remainder = normalize(text.replace(found_urls[0], " "))
+        if not remainder or all(token in {"at", "in", "on", "from", "to"} for token in remainder.split()):
+            return "url"
     if _FILE_RE.search(text) and not urls(text):
         return "file_path"
     if re.fullmatch(r"\d+", text):
@@ -138,10 +105,6 @@ def classify_value(value: str) -> AnswerType:
         return "identifier"
     if " " not in text and any(char.isupper() for char in text[1:]):
         return "content_phrase"
-    if _ORG_HINT_RE.search(text):
-        return "organization"
-    if _PERSON_RE.fullmatch(text):
-        return "person"
     return "content_phrase"
 
 
@@ -156,11 +119,9 @@ def is_value_compatible(expected: ExpectedAnswer, value: str) -> bool:
         return False
     expected_type = expected.answer_type
     if expected_type == "unknown":
-        return False
-    if expected_type in {"person", "actor"}:
-        return value_type == "person" and not _is_structural_reference(value)
-    if expected_type == "organization":
-        return value_type in {"organization", "content_phrase"} and not _is_structural_reference(value)
+        return value_type != "unknown"
+    if expected_type in {"person", "actor", "organization"}:
+        return value_type not in {"url", "file_path", "identifier", "count", "date_time", "unknown"} and not _is_structural_reference(value)
     if expected_type == "content_phrase":
         return value_type not in {"url", "file_path", "identifier"}
     if expected_type == "state":
@@ -182,10 +143,8 @@ def canonicalize_answer(expected: ExpectedAnswer, value: str) -> str:
         parts = compatible_answer_parts(expected, value)
         return "; ".join(dict.fromkeys(parts))
     if expected.answer_type in {"person", "actor", "organization", "state", "content_phrase", "metadata_value"}:
-        text = str(value or "").strip().strip('"')
+        text = clean_extracted_value(str(value or "").strip().strip('"')).strip(" .;:")
         text = _format_literal_list(text) or text
-        if expected.answer_type in {"person", "actor"}:
-            text = _strip_person_descriptor_prefix(text)
         return text if is_value_compatible(expected, text) else ""
     parts = compatible_answer_parts(expected, value)
     if not parts:
@@ -243,20 +202,6 @@ def _format_literal_list(value: str) -> str:
     if len(items) == 2:
         return f"{items[0]} and {items[1]}"
     return f"{', '.join(items[:-1])}, and {items[-1]}"
-
-
-def _strip_person_descriptor_prefix(value: str) -> str:
-    text = clean_extracted_value(value)
-    parts = text.split()
-    if len(parts) < 2:
-        return text
-    if parts[0] in {"Dr.", "Ms.", "Mr.", "Mrs.", "Prof."}:
-        return text
-    if len(parts) <= 3 and re.search(r"(?:er|or|ess|ist|ant|iff)$", parts[0], re.I):
-        candidate = " ".join(parts[1:])
-        if _PERSON_RE.fullmatch(candidate):
-            return candidate
-    return text
 
 
 def _is_structural_reference(value: str) -> bool:

@@ -402,32 +402,6 @@ class DSPGStore:
         scored.sort(key=lambda item: (-item[0], str(item[1]["rel_path"]), int(item[1]["chunk_order"])))
         return [row for _, row in scored[:limit]]
 
-    def latest_state(self, run_id: str, anchors: list[str]) -> sqlite3.Row | None:
-        anchor_norms = [normalize(anchor) for anchor in anchors if len(normalize(anchor)) > 2]
-        if not anchor_norms:
-            return None
-        rows = self.connection.execute(
-            """
-            SELECT d.rel_path, c.chunk_order, c.text, t.temporal_value, t.state_value
-            FROM temporal_edges t
-            JOIN source_spans s ON s.span_id = t.source_span_id
-            JOIN chunks c ON c.chunk_id = s.chunk_id
-            JOIN documents d ON d.document_id = c.document_id
-            WHERE t.run_id = ? AND t.relation = 'state_at' AND t.state_value IS NOT NULL
-            ORDER BY t.temporal_value DESC
-            """,
-            (run_id,),
-        ).fetchall()
-        for row in rows:
-            text_norm = normalize(str(row["text"]))
-            if all(anchor in text_norm for anchor in anchor_norms):
-                return row
-        for row in rows:
-            text_norm = normalize(str(row["text"]))
-            if any(anchor in text_norm for anchor in anchor_norms):
-                return row
-        return None
-
     def relation_candidate_chunks(
         self,
         run_id: str,
