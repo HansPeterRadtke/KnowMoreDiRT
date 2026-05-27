@@ -38,7 +38,7 @@ hard: 49/134
 After the second generalized cleanup checkpoint, deterministic fallback slices are:
 
 ```text
-messy: 9/60
+messy: 10/60
 broad: 20/65
 noise: 4/8
 hard: 44/134
@@ -52,7 +52,7 @@ Full pytest with `KMD_AUTO_LOCAL_MODEL=0` still fails the strict fixture gates:
 broad expected 65/65, got 20/65
 noise expected 8/8, got 4/8
 hard expected 134/134, got 44/134
-messy expected 60/60, got 9/60
+messy expected 60/60, got 10/60
 ```
 
 The remaining failures are expected after removing shortcut-style semantic fallbacks. They should be addressed through better chunk-to-DRS construction, query-DRS construction, identity/context accessibility, bounded DRS binding, and verifier behavior, not by adding deterministic semantic handlers.

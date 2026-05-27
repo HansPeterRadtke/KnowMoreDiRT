@@ -542,6 +542,29 @@ def _value_is_target(value: str, target_terms: list[str]) -> bool:
     return False
 
 
+def _value_contains_target(value: str, target_terms: list[str]) -> bool:
+    material = normalize(value)
+    if not material or not target_terms:
+        return False
+    material_tokens = {token for token in re.split(r"[^a-z0-9]+", material) if token}
+    for term in target_terms:
+        term_norm = normalize(term)
+        if not term_norm or material == term_norm:
+            continue
+        term_tokens = {token for token in re.split(r"[^a-z0-9]+", term_norm) if token}
+        if term_tokens and term_tokens.issubset(material_tokens):
+            return True
+        if " " in term_norm and term_norm in material:
+            return True
+    return False
+
+
+def _rejects_bound_target_value(expected: ExpectedAnswer, value: str, target_terms: list[str]) -> bool:
+    if expected.answer_type in {"content_phrase", "metadata_value", "unknown"}:
+        return False
+    return _value_contains_target(value, target_terms)
+
+
 def _answer_values_from_relation(
     row: dict[str, Any],
     evidence: Evidence,
@@ -557,12 +580,14 @@ def _answer_values_from_relation(
         value for value in primary_values
         if value
         and (structural or not _value_is_target(value, target_terms))
+        and (structural or not _rejects_bound_target_value(expected, value, target_terms))
         and (structural or not _value_is_target(value, relation_terms))
     ]
     fallback_values = [
         value for value in fallback_values
         if value
         and (structural or not _value_is_target(value, target_terms))
+        and (structural or not _rejects_bound_target_value(expected, value, target_terms))
         and (structural or not _value_is_target(value, relation_terms))
     ]
     compatible = _compatible_values(expected, primary_values)
@@ -586,11 +611,14 @@ def _answer_values_from_frame(
         value for value in values
         if value
         and (structural or not _value_is_target(value, target_terms))
+        and (structural or not _rejects_bound_target_value(expected, value, target_terms))
         and (structural or not _value_is_target(value, relation_terms))
     ]
     compatible = _compatible_values(expected, values)
     if compatible or structural:
         return compatible
+    if str(frame_row.get("source") or "") != "local_model":
+        return []
     predicate_values = [
         str(frame_row.get(key) or "")
         for key in ["predicate", "trigger_surface"]
@@ -599,6 +627,7 @@ def _answer_values_from_frame(
     predicate_values = [
         value for value in predicate_values
         if not _value_is_target(value, target_terms)
+        and not _rejects_bound_target_value(expected, value, target_terms)
         and not _value_is_target(value, relation_terms)
     ]
     return _compatible_values(expected, predicate_values)
