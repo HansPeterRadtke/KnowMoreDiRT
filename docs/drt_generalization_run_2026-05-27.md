@@ -46,6 +46,8 @@ hard: 44/134
 
 The second checkpoint removed agentive morphology generation, made all non-asserted `modality:*` contexts inaccessible unless the query DRS requests that context, treated source-quality contexts as retrieval metadata rather than inaccessible discourse boxes, and allowed model-produced unary DRS predicates to bind non-structural answer variables when no non-target argument exists. The score regression is accepted for this checkpoint because it removes deterministic semantic guessing and improves the LLM-first DRS path.
 
+An isolated live-model probe on a tiny scoped-state corpus showed that the chunk model can mark a frame as `modality="reported"` and the query model can produce a grounded query frame, but it may encode the scoped value as a unary predicate rather than a separate argument. Graph binding now supports that unary DRS shape. The verifier still rejected the graph candidate for this probe, while bounded model evidence extraction returned the correct grounded value; this points to verifier calibration as a generic model-stage issue rather than a reason to add deterministic semantic parsing.
+
 Full pytest with `KMD_AUTO_LOCAL_MODEL=0` still fails the strict fixture gates:
 
 ```text

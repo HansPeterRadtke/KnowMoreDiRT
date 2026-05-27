@@ -38,7 +38,7 @@ ANSWER_TYPES = {
     "unknown",
 }
 
-PROMPT_VERSION = "kmd-drt-2026-05-27-v27"
+PROMPT_VERSION = "kmd-drt-2026-05-27-v28"
 CHUNK_FRAME_SCHEMA_VERSION = "chunk-frames-v4"
 QUERY_FRAME_SCHEMA_VERSION = "query-frame-v4"
 ANSWER_SCHEMA_VERSION = "answer-v4"
@@ -1159,7 +1159,8 @@ def build_answer_verification_prompt(
         "JSON only. Verify whether the candidate answer is entailed by the bounded raw-text evidence and "
         "generic discourse frames. Reject candidates that do not satisfy the query frame's answer type, predicate, "
         "argument roles, referents, identity links, context accessibility, polarity, modality, temporal constraints, "
-        "and provenance. "
+        "and provenance. Treat answer_type as a broad schema compatibility label for the bound variable, not as a "
+        "word that must appear in the answer surface. "
         "Return exactly {\"verification\":{\"entailed\":false,\"answer_type\":\"unknown\",\"answer\":\"unknown\","
         "\"evidence_span\":\"\",\"reason\":\"\"}} with the appropriate values. "
         "Return the grounded answer binding or aggregate entailed by the evidence, using an exact evidence_span "

@@ -229,41 +229,52 @@ class KnowMoreDiRTEngine:
             return False
         discourse_frames = self._diagnostic_frames_for_answer(answer)
         trace = self.model_query_trace
-        trace.verifier_call_count += 1
-        result = call_model_answer_verification(
-            question,
-            frame.as_dict(),
-            answer.text,
-            evidence_payload,
-            discourse_frames,
-            self._model_client,
-        )
-        self._record_model_result(result)
-        if result.get("prompt_hash"):
-            trace.prompt_hashes = [*list(trace.prompt_hashes or []), str(result["prompt_hash"])][-20:]
-        if result.get("output_hash"):
-            trace.response_hashes = [*list(trace.response_hashes or []), str(result["output_hash"])][-20:]
-        if not result.get("accepted"):
-            trace.verifier_rejected_count += 1
-            return False
-        trace.verifier_parsed_count += 1
-        entailed = bool(result.get("entailed"))
-        proposed = str(result.get("answer") or "")
-        span = str(result.get("evidence_span") or "")
-        if not entailed or not proposed or (span and not any(span in item.get("text", "") for item in evidence_payload)):
-            trace.verifier_rejected_count += 1
-            return False
-        canonical = canonicalize_answer(expected, proposed)
-        if not canonical:
-            trace.verifier_rejected_count += 1
-            return False
-        if canonical and expected.answer_type in {"person", "actor"}:
-            if len(str(canonical).split()) == 1:
-                canonical = self._canonicalize_identity_with_local_model(question, canonical, answer.evidence) or canonical
-        if canonical and normalize(canonical) != normalize(answer.text):
-            answer.text = canonical
-        trace.verifier_accepted_count += 1
-        return True
+        candidate_answers = [answer.text]
+        canonical_candidate = self._canonicalize_model_answer_with_local_model(question, answer.text, expected, answer.evidence)
+        if canonical_candidate and normalize(canonical_candidate) != normalize(answer.text):
+            candidate_answers.insert(0, canonical_candidate)
+        seen_candidates: set[str] = set()
+        for candidate_answer in candidate_answers:
+            candidate_key = normalize(candidate_answer)
+            if not candidate_key or candidate_key in seen_candidates:
+                continue
+            seen_candidates.add(candidate_key)
+            trace.verifier_call_count += 1
+            result = call_model_answer_verification(
+                question,
+                frame.as_dict(),
+                candidate_answer,
+                evidence_payload,
+                discourse_frames,
+                self._model_client,
+            )
+            self._record_model_result(result)
+            if result.get("prompt_hash"):
+                trace.prompt_hashes = [*list(trace.prompt_hashes or []), str(result["prompt_hash"])][-20:]
+            if result.get("output_hash"):
+                trace.response_hashes = [*list(trace.response_hashes or []), str(result["output_hash"])][-20:]
+            if not result.get("accepted"):
+                trace.verifier_rejected_count += 1
+                continue
+            trace.verifier_parsed_count += 1
+            entailed = bool(result.get("entailed"))
+            proposed = str(result.get("answer") or "")
+            span = str(result.get("evidence_span") or "")
+            if not entailed or not proposed or (span and not any(span in item.get("text", "") for item in evidence_payload)):
+                trace.verifier_rejected_count += 1
+                continue
+            canonical = canonicalize_answer(expected, proposed)
+            if not canonical:
+                trace.verifier_rejected_count += 1
+                continue
+            if canonical and expected.answer_type in {"person", "actor"}:
+                if len(str(canonical).split()) == 1:
+                    canonical = self._canonicalize_identity_with_local_model(question, canonical, answer.evidence) or canonical
+            if canonical and normalize(canonical) != normalize(answer.text):
+                answer.text = canonical
+            trace.verifier_accepted_count += 1
+            return True
+        return False
 
     def _canonicalize_identity_with_local_model(self, question: str, value: str, evidence: list[Evidence]) -> str:
         if self._model_client is None or len(str(value).split()) != 1:
