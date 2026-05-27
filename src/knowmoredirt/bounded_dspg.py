@@ -778,12 +778,23 @@ def _bind_record_groups(
     return candidates
 
 
-def _term_prefixes(terms: list[str]) -> set[str]:
-    return {term[:5] for term in terms if len(term) > 2}
+def _relation_term_groups_for_frame(frame: QueryFrame) -> list[list[str]]:
+    groups: list[list[str]] = []
+    seen: set[tuple[str, ...]] = set()
+    raw_items = [*frame.relation_terms, *list(frame.constraints), *_query_terms(frame.requested_relation)]
+    for item in raw_items:
+        tokens = content_tokens(item) or [normalize(item)]
+        for token in tokens:
+            variants = list(dict.fromkeys(variant for variant in expand_terms([token]) if variant))
+            key = tuple(sorted(variants))
+            if variants and key not in seen:
+                groups.append(variants)
+                seen.add(key)
+    return groups
 
 
-def _matched_term_prefixes(material: str, terms: list[str]) -> set[str]:
-    return {term[:5] for term in terms if len(term) > 2 and _has_term(material, term)}
+def _material_matches_all_term_groups(material: str, groups: list[list[str]]) -> bool:
+    return all(any(_has_term(material, term) for term in group) for group in groups)
 
 
 def _frame_requests_row_units(frame: QueryFrame) -> bool:
@@ -810,7 +821,7 @@ def _count_matching_record_groups(
     relation_terms: list[str],
 ) -> tuple[int, list[Evidence]]:
     groups = _record_groups(records)
-    required_relation_prefixes = _term_prefixes(relation_terms)
+    required_relation_groups = _relation_term_groups_for_frame(frame)
     require_table_row = _frame_requests_row_units(frame)
     matched: list[tuple[str, Evidence]] = []
     for group_id, rows in groups.items():
@@ -833,12 +844,8 @@ def _count_matching_record_groups(
             span_material = _group_material(span_rows, records)
             if target_terms and not _contains_any(span_material, target_terms):
                 continue
-            if relation_terms:
-                hit_prefixes = _matched_term_prefixes(span_material, relation_terms)
-                if not hit_prefixes:
-                    continue
-                if len(required_relation_prefixes) >= 2 and len(hit_prefixes) < 2:
-                    continue
+            if required_relation_groups and not _material_matches_all_term_groups(span_material, required_relation_groups):
+                continue
             provenance_key = span_id or group_id
             matched.append((provenance_key, evidence))
     unique: dict[str, Evidence] = {}

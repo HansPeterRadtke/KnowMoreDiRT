@@ -143,8 +143,10 @@ def term_variants(term: str) -> set[str]:
     if not re.fullmatch(r"[a-z]+", token):
         return {token}
     variants = {token}
-    for suffix in ("ing", "ied", "ed", "ers", "er", "ors", "or", "ies", "s"):
+    for suffix in ("ing", "ied", "ed", "ies", "s"):
         if token.endswith(suffix) and len(token) > len(suffix) + 2:
+            if suffix == "s" and token.endswith(("ss", "us", "is")):
+                continue
             stem = token[: -len(suffix)]
             if suffix == "ies":
                 stem = f"{stem}y"

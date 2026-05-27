@@ -48,13 +48,25 @@ The second checkpoint removed agentive morphology generation, made all non-asser
 
 An isolated live-model probe on a tiny scoped-state corpus showed that the chunk model can mark a frame as `modality="reported"` and the query model can produce a grounded query frame, but it may encode the scoped value as a unary predicate rather than a separate argument. Graph binding now supports that unary DRS shape. The verifier still rejected the graph candidate for this probe, while bounded model evidence extraction returned the correct grounded value; this points to verifier calibration as a generic model-stage issue rather than a reason to add deterministic semantic parsing.
 
-Full pytest with `KMD_AUTO_LOCAL_MODEL=0` still fails the strict fixture gates:
+An isolated live-model count probe on `Alpha/Beta/Gamma unit status` records showed a graph aggregation flaw: the query DRS contained `requested_relation=status`, `relation_terms=(units, ready)`, and `aggregation=count`, but the executor counted a `blocked` unit because it only required two matched prefixes from the whole flattened relation term set. The aggregation matcher now treats each model-produced relation term or constraint token as its own DRS term group and requires every group to hold in a counted source span. This is a pure query-DRS satisfaction check; it does not interpret the raw language or add a count-domain handler. The same live probe now returns `2`.
+
+After the count aggregation repair, local-model-disabled fixture slices are:
+
+```text
+messy: 11/60
+broad: 20/65
+noise: 4/8
+hard: 44/134
+```
+
+Full pytest with `KMD_AUTO_LOCAL_MODEL=0` still fails the strict fixture gates and the known noise canonicalization check:
 
 ```text
 broad expected 65/65, got 20/65
 noise expected 8/8, got 4/8
 hard expected 134/134, got 44/134
-messy expected 60/60, got 10/60
+messy expected 60/60, got 11/60
+direct noise query expected "Dr. Pella", got "Dr. Pella watered the greenhouse fern"
 ```
 
 The remaining failures are expected after removing shortcut-style semantic fallbacks. They should be addressed through better chunk-to-DRS construction, query-DRS construction, identity/context accessibility, bounded DRS binding, and verifier behavior, not by adding deterministic semantic handlers.

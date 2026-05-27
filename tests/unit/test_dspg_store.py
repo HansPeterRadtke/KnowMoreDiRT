@@ -91,3 +91,36 @@ def test_temporal_query_drs_uses_latest_temporal_edge(tmp_path: Path) -> None:
     assert answer is not None
     assert answer.text == "closed"
     assert answer.reason == "bounded DSPG query-frame execution"
+
+
+def test_count_aggregation_requires_each_query_drs_term_group(tmp_path: Path) -> None:
+    (tmp_path / "states.txt").write_text(
+        "\n".join(
+            [
+                "Alpha unit status: ready.",
+                "Beta unit status: ready.",
+                "Gamma unit status: blocked.",
+            ]
+        ),
+        encoding="utf-8",
+    )
+    engine = KnowMoreDiRTEngine(tmp_path)
+    frame = QueryFrame(
+        question_text="model-produced count query DRS",
+        answer_type="count",
+        answer_variables=("units",),
+        target_anchors=(),
+        requested_relation="status",
+        relation_terms=("units", "ready"),
+        constraints=(),
+        aggregation="count",
+    )
+    answer = engine._answer_with_bounded_dspg(
+        "model-produced count query DRS",
+        frame,
+        ExpectedAnswer("count"),
+    )
+
+    assert answer is not None
+    assert answer.text == "2"
+    assert answer.reason == "bounded DSPG query-frame execution"
