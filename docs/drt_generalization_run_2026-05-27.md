@@ -54,6 +54,8 @@ Eager model-frame ingestion now mirrors lazy materialization for polarity scope:
 
 Frame validation now also requires model-produced `temporal_text` to be an exact substring of the source chunk before temporal DRS records are accepted. This extends the existing grounding checks for evidence, arguments, identity hypotheses, and context holders.
 
+The bounded executor now uses model-produced `answer_variables` as DRS answer-slot constraints when binding local-model frame arguments. If an answer variable matches a grounded argument role or value type, only that slot is bound; otherwise the executor falls back to the previous compatible non-target argument search. This is variable unification over model DRS structure, not deterministic role interpretation from raw text.
+
 After the count aggregation repair, local-model-disabled fixture slices are:
 
 ```text

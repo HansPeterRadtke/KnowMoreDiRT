@@ -234,6 +234,54 @@ def test_local_model_frame_arguments_bind_answer_variables_generically(tmp_path:
     assert engine.dspg_counts()["identity_hypotheses"] >= 0
 
 
+def test_query_drs_answer_variable_selects_model_frame_role(tmp_path: Path, monkeypatch) -> None:
+    class FakeRoleFrameModel(FakeLocalModel):
+        def complete_json(self, prompt: str, *, n_predict: int = 128, grammar: str | None = None) -> dict[str, object]:
+            if "Extract generic DRT/DSPG discourse frames" in prompt:
+                return {
+                    "frames": [
+                        {
+                            "frame_type": "event",
+                            "predicate": "gave",
+                            "arguments": [
+                                {"role": "agent", "text": "Ana", "value_type": "person"},
+                                {"role": "theme", "text": "blue key", "value_type": "entity"},
+                                {"role": "recipient", "text": "Zachary Vale", "value_type": "person"},
+                            ],
+                            "polarity": "positive",
+                            "modality": "asserted",
+                            "context_holder": "",
+                            "temporal_text": "",
+                            "evidence_text": "Ana gave the blue key to Zachary Vale",
+                            "confidence": 0.9,
+                        }
+                    ],
+                    "_model_raw": "{}",
+                }
+            return super().complete_json(prompt, n_predict=n_predict, grammar=grammar)
+
+    (tmp_path / "event.txt").write_text("Ana gave the blue key to Zachary Vale.\n", encoding="utf-8")
+    monkeypatch.setenv("KMD_USE_LOCAL_MODEL", "1")
+    monkeypatch.setenv("KMD_LLM_INGEST", "1")
+    monkeypatch.setenv("KMD_FRAME_CACHE_DIR", str(tmp_path / ".frame-cache"))
+    monkeypatch.setattr("knowmoredirt.engine.LocalModelClient", lambda: FakeRoleFrameModel())
+    engine = KnowMoreDiRTEngine(tmp_path)
+    frame = QueryFrame(
+        question_text="model query DRS with answer role variable",
+        answer_type="person",
+        answer_variables=("recipient",),
+        target_anchors=("blue key",),
+        requested_relation="gave",
+        relation_terms=("gave",),
+        constraints=(),
+    )
+
+    answer = engine._answer_with_bounded_dspg("role variable DRS", frame, ExpectedAnswer("person"))
+
+    assert answer is not None
+    assert answer.text == "Zachary Vale"
+
+
 def test_bounded_graph_execution_uses_model_frames_for_context_lookup(tmp_path: Path, monkeypatch) -> None:
     class FakeContextModel(FakeLocalModel):
         def complete_json(self, prompt: str, *, n_predict: int = 128, grammar: str | None = None) -> dict[str, object]:

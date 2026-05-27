@@ -23,6 +23,7 @@ from .text import clean_extracted_value, content_tokens, normalize, text_quality
 DATE_TIME_RE = re.compile(r"\b(?:\d{4}-\d{2}-\d{2}(?:[ T]\d{1,2}:\d{2})?|\d{1,2}:\d{2})\b")
 PATH_RE = re.compile(r"\b[A-Za-z0-9_-]+(?:/[A-Za-z0-9_.-]+)+\b|\b[A-Za-z0-9_.-]+\.[A-Za-z0-9]{1,12}\b")
 INACCESSIBLE_CONTEXT_PREFIXES = ("modality:",)
+ANSWER_SLOT_SKIP_TERMS = {"answer", "value", "entity", "item", "thing", "text", "content"}
 
 
 def _frame(plan: dict[str, Any] | QueryFrame | None, question: str) -> QueryFrame:
@@ -64,6 +65,18 @@ def _relation_terms(frame: QueryFrame, question: str) -> list[str]:
         if term and term not in target and normalize_temporal_scope(term) not in {"latest", "earliest"}
     ]
     return list(dict.fromkeys(term for term in expand_terms(filtered) if term and term not in target))
+
+
+def _answer_slot_terms(frame: QueryFrame) -> list[str]:
+    terms: list[str] = []
+    for variable in frame.answer_variables:
+        norm = normalize(variable)
+        if norm and norm not in ANSWER_SLOT_SKIP_TERMS:
+            terms.append(norm)
+        for token in content_tokens(variable):
+            if token not in ANSWER_SLOT_SKIP_TERMS:
+                terms.append(token)
+    return list(dict.fromkeys(term for term in expand_terms(terms) if term))
 
 
 def _has_term(material: str, term: str) -> bool:
@@ -578,8 +591,22 @@ def _answer_values_from_relation(
     expected: ExpectedAnswer,
     target_terms: list[str],
     relation_terms: list[str],
+    answer_slot_terms: list[str] | None = None,
 ) -> list[str]:
     relation_type = str(row.get("relation_type") or "")
+    if relation_type == "semantic_argument" and answer_slot_terms:
+        metadata = _relation_metadata(row)
+        slot_material = normalize(
+            " ".join(
+                [
+                    str(row.get("subject") or ""),
+                    str(metadata.get("argument_role") or ""),
+                    str(metadata.get("argument_value_type") or ""),
+                ]
+            )
+        )
+        if slot_material and not _contains_any(slot_material, answer_slot_terms):
+            return []
     primary_values = [] if relation_type == "semantic_frame" else [str(row.get(key) or "") for key in ["value", "object"]]
     fallback_values = [] if relation_type in {"semantic_argument", "semantic_frame"} else [str(row.get("subject") or "")]
     structural = expected.answer_type in {"url", "identifier", "file_path", "date_time", "count"}
@@ -611,8 +638,20 @@ def _answer_values_from_frame(
     expected: ExpectedAnswer,
     target_terms: list[str],
     relation_terms: list[str],
+    answer_slot_terms: list[str] | None = None,
 ) -> list[str]:
-    values = [str(arg.get("surface") or "") for arg in args]
+    candidate_args = args
+    if answer_slot_terms:
+        slot_args = [
+            arg for arg in args
+            if _contains_any(
+                normalize(" ".join([str(arg.get("role") or ""), str(arg.get("value_type") or "")])),
+                answer_slot_terms,
+            )
+        ]
+        if slot_args:
+            candidate_args = slot_args
+    values = [str(arg.get("surface") or "") for arg in candidate_args]
     structural = expected.answer_type in {"url", "identifier", "file_path", "date_time", "count"}
     values = [
         value for value in values
@@ -667,6 +706,7 @@ def _split_match_score(full_material: str, local_material: str, target_terms: li
 
 
 def _bind_frame_conditions(records: dict[str, Any], frame: QueryFrame, expected: ExpectedAnswer, target_terms: list[str], relation_terms: list[str]) -> list[tuple[float, str, Evidence, str]]:
+    answer_slot_terms = _answer_slot_terms(frame)
     args_by_frame: dict[str, list[dict[str, Any]]] = defaultdict(list)
     for arg in records.get("frame_arguments", []):
         args_by_frame[str(arg.get("frame_id"))].append(arg)
@@ -696,12 +736,20 @@ def _bind_frame_conditions(records: dict[str, Any], frame: QueryFrame, expected:
         score = _split_match_score(local_material, local_material, target_terms, relation_terms)
         if score <= 0:
             continue
-        for value in _answer_values_from_frame(row, args_by_frame.get(str(row.get("frame_id")), []), expected, target_terms, relation_terms):
+        for value in _answer_values_from_frame(
+            row,
+            args_by_frame.get(str(row.get("frame_id")), []),
+            expected,
+            target_terms,
+            relation_terms,
+            answer_slot_terms,
+        ):
             candidates.append((score, value, evidence, "frame_argument_binding"))
     return candidates
 
 
 def _bind_relation_conditions(records: dict[str, Any], frame: QueryFrame, expected: ExpectedAnswer, target_terms: list[str], relation_terms: list[str]) -> list[tuple[float, str, Evidence, str]]:
+    answer_slot_terms = _answer_slot_terms(frame)
     candidates: list[tuple[float, str, Evidence, str]] = []
     for row in records.get("relations", []):
         if not _context_accessible(str(row.get("context_id") or ""), records, frame):
@@ -714,7 +762,7 @@ def _bind_relation_conditions(records: dict[str, Any], frame: QueryFrame, expect
         score = _split_match_score(evidence_material, row_material, target_terms, relation_terms)
         if score <= 0:
             continue
-        for value in _answer_values_from_relation(row, evidence, expected, target_terms, relation_terms):
+        for value in _answer_values_from_relation(row, evidence, expected, target_terms, relation_terms, answer_slot_terms):
             candidates.append((score * float(row.get("confidence") or 0.7), value, evidence, "relation_condition_binding"))
     return candidates
 
@@ -755,6 +803,7 @@ def _bind_record_groups(
     """
 
     candidates: list[tuple[float, str, Evidence, str]] = []
+    answer_slot_terms = _answer_slot_terms(frame)
     for _group_id, rows in _record_groups(records).items():
         if not rows:
             continue
@@ -775,7 +824,7 @@ def _bind_record_groups(
             relation_hits = sum(1 for term in relation_terms if _has_term(local_material, term))
             if relation_terms and relation_hits == 0:
                 continue
-            values = _answer_values_from_relation(row, evidence, expected, target_terms, relation_terms)
+            values = _answer_values_from_relation(row, evidence, expected, target_terms, relation_terms, answer_slot_terms)
             for value in values:
                 value_hits = sum(1 for term in relation_terms if _has_term(normalize(value), term))
                 score = 5.0 + target_hits * 5.0 + relation_hits * 6.0 + group_relation_hits * 1.5
@@ -939,6 +988,7 @@ def _temporal_relation_candidates(
         return []
     if expected.answer_type not in {"state", "date_time", "content_phrase", "unknown"}:
         return []
+    answer_slot_terms = _answer_slot_terms(frame)
     rows_by_span: dict[str, list[dict[str, Any]]] = defaultdict(list)
     for row in records.get("relations", []):
         rows_by_span[str(row.get("source_span_id") or "")].append(row)
@@ -971,7 +1021,7 @@ def _temporal_relation_candidates(
                 continue
             if not _context_accessible(str(row.get("context_id") or ""), records, frame):
                 continue
-            for value in _answer_values_from_relation(row, evidence, expected, target_terms, relation_terms):
+            for value in _answer_values_from_relation(row, evidence, expected, target_terms, relation_terms, answer_slot_terms):
                 candidates.append((9.0 * float(row.get("confidence") or 0.7), value, evidence, "temporal_relation_binding"))
     return candidates
 
