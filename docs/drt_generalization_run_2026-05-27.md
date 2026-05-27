@@ -56,6 +56,8 @@ Frame validation now also requires model-produced `temporal_text` to be an exact
 
 The bounded executor now uses model-produced `answer_variables` as DRS answer-slot constraints when binding local-model frame arguments. If an answer variable matches a grounded argument role or value type, only that slot is bound; otherwise the executor falls back to the previous compatible non-target argument search. This is variable unification over model DRS structure, not deterministic role interpretation from raw text.
 
+The normalized DSPG schema now stores `frame_arguments.value_type` directly, instead of keeping model argument types only in relation metadata. This makes DRS argument typing available to graph binding and validation as first-class structure.
+
 After the count aggregation repair, local-model-disabled fixture slices are:
 
 ```text

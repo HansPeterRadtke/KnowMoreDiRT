@@ -16,7 +16,7 @@ from typing import Any
 from .text import normalize
 
 
-SCHEMA_VERSION = 4
+SCHEMA_VERSION = 5
 
 
 def stable_id(prefix: str, *parts: Any) -> str:
@@ -188,6 +188,7 @@ class DSPGStore:
               mention_id TEXT,
               referent_id TEXT,
               surface TEXT,
+              value_type TEXT,
               confidence REAL NOT NULL
             )
             """,

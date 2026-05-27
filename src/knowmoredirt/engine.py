@@ -711,7 +711,7 @@ class KnowMoreDiRTEngine:
             for arg_index, argument in enumerate(condition.arguments):
                 arg_referent_id = self.store.upsert_referent(self.run_id, argument.value, argument.value_type)
                 self.store.execute(
-                    "INSERT OR IGNORE INTO frame_arguments(argument_id, frame_id, role, mention_id, referent_id, surface, confidence) VALUES (?, ?, ?, ?, ?, ?, ?)",
+                    "INSERT OR IGNORE INTO frame_arguments(argument_id, frame_id, role, mention_id, referent_id, surface, value_type, confidence) VALUES (?, ?, ?, ?, ?, ?, ?, ?)",
                     (
                         stable_id("arg", semantic_frame_id, arg_index, argument.role, argument.value),
                         semantic_frame_id,
@@ -719,6 +719,7 @@ class KnowMoreDiRTEngine:
                         None,
                         arg_referent_id,
                         argument.value,
+                        argument.value_type,
                         condition.confidence,
                     ),
                 )

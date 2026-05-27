@@ -231,6 +231,11 @@ def test_local_model_frame_arguments_bind_answer_variables_generically(tmp_path:
     assert answer.evidence
     assert answer.reason in {"local model query-frame execution", "bounded DSPG query-frame execution"}
     assert engine.last_bounded_diagnostics["execution"]["record_counts"]["frame_arguments"] >= 2
+    arg_types = {
+        str(row["value_type"])
+        for row in engine.store.execute("SELECT value_type FROM frame_arguments").fetchall()
+    }
+    assert "person" in arg_types
     assert engine.dspg_counts()["identity_hypotheses"] >= 0
 
 

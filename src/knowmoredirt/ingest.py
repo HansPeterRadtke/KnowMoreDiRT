@@ -583,7 +583,7 @@ def ingest_folder(
                 for arg_index, argument in enumerate(condition.arguments):
                     arg_referent_id = store.upsert_referent(run_id, argument.value, argument.value_type)
                     store.execute(
-                        "INSERT OR IGNORE INTO frame_arguments(argument_id, frame_id, role, mention_id, referent_id, surface, confidence) VALUES (?, ?, ?, ?, ?, ?, ?)",
+                        "INSERT OR IGNORE INTO frame_arguments(argument_id, frame_id, role, mention_id, referent_id, surface, value_type, confidence) VALUES (?, ?, ?, ?, ?, ?, ?, ?)",
                         (
                             stable_id("arg", condition_frame_id, arg_index, argument.role, argument.value),
                             condition_frame_id,
@@ -591,6 +591,7 @@ def ingest_folder(
                             None,
                             arg_referent_id,
                             argument.value,
+                            argument.value_type,
                             condition.confidence,
                         ),
                     )
@@ -782,7 +783,7 @@ def ingest_folder(
                     surface = argument.value
                     arg_referent_id = store.upsert_referent(run_id, surface, argument.value_type)
                     store.execute(
-                        "INSERT OR IGNORE INTO frame_arguments(argument_id, frame_id, role, mention_id, referent_id, surface, confidence) VALUES (?, ?, ?, ?, ?, ?, ?)",
+                        "INSERT OR IGNORE INTO frame_arguments(argument_id, frame_id, role, mention_id, referent_id, surface, value_type, confidence) VALUES (?, ?, ?, ?, ?, ?, ?, ?)",
                         (
                             stable_id("arg", semantic_frame_id, arg_index, role, surface),
                             semantic_frame_id,
@@ -790,6 +791,7 @@ def ingest_folder(
                             None,
                             arg_referent_id,
                             surface,
+                            argument.value_type,
                             condition.confidence,
                         ),
                     )
