@@ -12,7 +12,7 @@ from typing import Any
 from .drs import DiscourseArgument, DiscourseCondition, frame_from_model_dict
 from .extractors import capitalized_phrases, identifiers, urls
 from .models import Document, Sentence
-from .model_planner import call_model_chunk_frames, chunk_frame_cache_context
+from .model_planner import call_model_chunk_drs, call_model_chunk_frames, chunk_frame_cache_context
 from .relations import ExtractedRelation, extract_relations
 from .scanner import scan_folder
 from .semantic_cache import SemanticFrameCache
@@ -284,6 +284,7 @@ def ingest_folder(
     *,
     semantic_client: Any | None = None,
     use_semantic_frames: bool = False,
+    use_drs_semantics: bool = False,
     semantic_cache: SemanticFrameCache | None = None,
 ) -> tuple[DSPGStore, str, list[Document], list[Sentence]]:
     created_store = store is None
@@ -391,7 +392,10 @@ def ingest_folder(
     table_headers_by_document: dict[str, list[str]] = {}
     section_anchor_by_document: dict[str, str] = {}
     section_group_by_document: dict[str, str] = {}
-    semantic_total = len(sentences) if use_semantic_frames and semantic_client is not None else 0
+    semantic_passes = int(bool(use_semantic_frames and semantic_client is not None)) + int(
+        bool(use_drs_semantics and semantic_client is not None)
+    )
+    semantic_total = len(sentences) * semantic_passes
     semantic_index = 0
 
     for sentence in sentences:
@@ -896,6 +900,35 @@ def ingest_folder(
                             condition.confidence,
                         ),
                     )
+
+        if use_drs_semantics and semantic_client is not None:
+            semantic_index += 1
+            _log_progress(
+                "kmd-ingest drs_start "
+                f"chunk={semantic_index}/{semantic_total} "
+                f"source={sentence.rel_path}:{sentence.order} "
+                f"elapsed={time.monotonic() - ingest_started:.1f}s"
+            )
+            drs_result = call_model_chunk_drs(sentence.text, semantic_client, rel_path=sentence.rel_path)
+            materialized = {"accepted": False, "reason": "not_attempted", "inserted": {}}
+            if drs_result.get("accepted") and isinstance(drs_result.get("drs"), dict):
+                materialized = store.materialize_drs_payload(
+                    run_id,
+                    span_id,
+                    sentence.text,
+                    {"drs": drs_result["drs"]},
+                    source="local_model_drs",
+                )
+            _log_progress(
+                "kmd-ingest drs_done "
+                f"chunk={semantic_index}/{semantic_total} "
+                f"source={sentence.rel_path}:{sentence.order} "
+                f"accepted={bool(drs_result.get('accepted'))} "
+                f"materialized={bool(materialized.get('accepted'))} "
+                f"reason={str(drs_result.get('reason') or materialized.get('reason') or '')} "
+                f"model_elapsed={float(drs_result.get('elapsed') or 0.0):.1f}s "
+                f"elapsed={time.monotonic() - ingest_started:.1f}s"
+            )
 
     metrics = {
         "documents": len(documents),

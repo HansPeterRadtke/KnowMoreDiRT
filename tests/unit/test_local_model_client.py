@@ -4,7 +4,7 @@ import json
 from typing import Any
 
 from knowmoredirt.model import LocalModelClient
-from knowmoredirt.model_planner import call_model_chunk_frames
+from knowmoredirt.model_planner import call_model_chunk_drs, call_model_chunk_frames, call_model_query_drs
 
 
 class FakeHTTPResponse:
@@ -167,3 +167,157 @@ def test_chunk_frame_planner_prefers_json_schema_for_capable_clients(monkeypatch
     assert model.grammar is None
     assert model.json_schema is not None
     assert "frames" in model.json_schema["properties"]
+
+
+def test_chunk_drs_planner_uses_json_schema_and_validates_grounding(monkeypatch, tmp_path) -> None:
+    class JsonSchemaCapableModel:
+        def __init__(self) -> None:
+            self.json_schema: dict[str, Any] | None = None
+            self.prompt = ""
+
+        def context_size(self) -> int:
+            return 8192
+
+        def cache_fingerprint(self) -> dict[str, Any]:
+            return {"model_id": "fake-drs", "context_size": 8192}
+
+        def complete_json(
+            self,
+            prompt: str,
+            *,
+            n_predict: int = 128,
+            grammar: str | None = None,
+            json_schema: dict[str, Any] | None = None,
+        ) -> dict[str, object]:
+            self.prompt = prompt
+            self.json_schema = json_schema
+            assert grammar is None
+            return {
+                "drs": {
+                    "schema_version": "chunk-drs-v1",
+                    "source_id": "note.txt",
+                    "referents": [
+                        {"id": "r1", "label": "Aero Gate", "kind": "entity", "evidence_text": "Aero Gate"},
+                        {"id": "r2", "label": "Mira Chen", "kind": "person", "evidence_text": "Mira Chen"},
+                    ],
+                    "boxes": [
+                        {"id": "b0", "kind": "asserted", "parent_id": "", "holder_referent_id": "", "evidence_text": "Aero Gate is ready"},
+                    ],
+                    "conditions": [
+                        {
+                            "id": "c1",
+                            "predicate": "ready",
+                            "box_id": "b0",
+                            "polarity": "positive",
+                            "modality": "asserted",
+                            "temporal_id": "",
+                            "arguments": [
+                                {
+                                    "role": "entity",
+                                    "target_kind": "referent",
+                                    "target_id": "r1",
+                                    "value": "Aero Gate",
+                                    "value_type": "entity",
+                                    "evidence_text": "Aero Gate",
+                                }
+                            ],
+                            "evidence_text": "Aero Gate is ready",
+                        }
+                    ],
+                    "identity_hypotheses": [],
+                    "temporal_records": [],
+                    "evidence_spans": ["Aero Gate is ready"],
+                    "semantic_notes": [],
+                },
+                "_model_raw": "{}",
+                "_model_elapsed_seconds": 0.01,
+            }
+
+    monkeypatch.delenv("KMD_LOCAL_MODEL_JSON_SCHEMA", raising=False)
+    monkeypatch.setenv("KMD_CHUNK_DRS_CACHE_DIR", str(tmp_path / "drs-cache"))
+    model = JsonSchemaCapableModel()
+
+    result = call_model_chunk_drs("Aero Gate is ready. Mira Chen signed.", model, rel_path="note.txt")  # type: ignore[arg-type]
+
+    assert result["accepted"] is True
+    assert result["validation"]["condition_count"] == 1
+    assert result["context_budget"]["runtime_context_size"] == 8192
+    assert model.json_schema is not None
+    assert "drs" in model.json_schema["properties"]
+    assert "source-grounded DRS" in model.prompt
+
+
+def test_query_drs_planner_uses_json_schema(monkeypatch, tmp_path) -> None:
+    class JsonSchemaCapableModel:
+        def __init__(self) -> None:
+            self.json_schema: dict[str, Any] | None = None
+            self.prompt = ""
+
+        def context_size(self) -> int:
+            return 8192
+
+        def cache_fingerprint(self) -> dict[str, Any]:
+            return {"model_id": "fake-query-drs", "context_size": 8192}
+
+        def complete_json(
+            self,
+            prompt: str,
+            *,
+            n_predict: int = 128,
+            grammar: str | None = None,
+            json_schema: dict[str, Any] | None = None,
+        ) -> dict[str, object]:
+            self.prompt = prompt
+            self.json_schema = json_schema
+            assert grammar is None
+            return {
+                "query_drs": {
+                    "schema_version": "query-drs-v1",
+                    "question": "Who reviewed Aero Gate?",
+                    "answer_variables": ["reviewer"],
+                    "target_referents": [
+                        {"id": "qr0", "label": "Aero Gate", "kind": "entity", "evidence_text": "Aero Gate"}
+                    ],
+                    "requested_conditions": [
+                        {
+                            "id": "qc0",
+                            "predicate": "reviewed",
+                            "box_id": "",
+                            "polarity": "positive",
+                            "modality": "asserted",
+                            "temporal_id": "",
+                            "arguments": [
+                                {
+                                    "role": "object",
+                                    "target_kind": "referent",
+                                    "target_id": "qr0",
+                                    "value": "Aero Gate",
+                                    "value_type": "entity",
+                                    "evidence_text": "Aero Gate",
+                                }
+                            ],
+                            "evidence_text": "reviewed Aero Gate",
+                        }
+                    ],
+                    "constraints": [],
+                    "box_requirements": [],
+                    "temporal_scope": "",
+                    "aggregation": "",
+                    "answer_type": "person",
+                    "requires_evidence": True,
+                },
+                "_model_raw": "{}",
+                "_model_elapsed_seconds": 0.01,
+            }
+
+    monkeypatch.delenv("KMD_LOCAL_MODEL_JSON_SCHEMA", raising=False)
+    monkeypatch.setenv("KMD_QUERY_DRS_CACHE_DIR", str(tmp_path / "query-drs-cache"))
+    model = JsonSchemaCapableModel()
+
+    result = call_model_query_drs("Who reviewed Aero Gate?", model)  # type: ignore[arg-type]
+
+    assert result["accepted"] is True
+    assert result["validation"]["condition_count"] == 1
+    assert model.json_schema is not None
+    assert "query_drs" in model.json_schema["properties"]
+    assert "generic DRT query DRS" in model.prompt

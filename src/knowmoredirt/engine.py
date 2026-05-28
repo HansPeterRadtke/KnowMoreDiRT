@@ -65,11 +65,20 @@ class KnowMoreDiRTEngine:
         self._semantic_cache = SemanticFrameCache() if self._use_local_model else None
         llm_ingest_setting = os.environ.get("KMD_LLM_INGEST", "1").strip().lower()
         use_semantic_frames = self._use_local_model and llm_ingest_setting not in {"0", "false", "no", "off"}
-        self._log_progress(f"kmd-init start local_model={self._use_local_model} eager_llm_ingest={use_semantic_frames} root={self.folder_path}")
+        drs_ingest_setting = os.environ.get("KMD_LLM_DRS_INGEST", "0").strip().lower()
+        use_drs_semantics = self._use_local_model and drs_ingest_setting in {"1", "true", "yes", "on"}
+        self._log_progress(
+            "kmd-init start "
+            f"local_model={self._use_local_model} "
+            f"eager_llm_ingest={use_semantic_frames} "
+            f"drs_ingest={use_drs_semantics} "
+            f"root={self.folder_path}"
+        )
         self.store, self.run_id, self.documents, self.sentences = ingest_folder(
             self.folder_path,
-            semantic_client=self._model_client if use_semantic_frames else None,
+            semantic_client=self._model_client if use_semantic_frames or use_drs_semantics else None,
             use_semantic_frames=use_semantic_frames,
+            use_drs_semantics=use_drs_semantics,
             semantic_cache=self._semantic_cache if use_semantic_frames else None,
         )
         self._log_progress(

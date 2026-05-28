@@ -37,9 +37,27 @@ ANSWER_TYPES = {
     "metadata_value",
     "unknown",
 }
+DRS_CONTEXT_KINDS = {
+    "asserted",
+    "negated",
+    "conditional_antecedent",
+    "conditional_consequent",
+    "reported",
+    "quoted",
+    "believed",
+    "possible",
+    "uncertain",
+    "hypothetical",
+    "fictional",
+    "dreamed",
+}
+DRS_POLARITIES = {"positive", "negative", "unknown"}
+DRS_IDENTITY_STATUSES = {"accepted", "candidate", "rejected", "ambiguous"}
 
 PROMPT_VERSION = "kmd-drt-2026-05-27-v28"
 CHUNK_FRAME_SCHEMA_VERSION = "chunk-frames-v5"
+CHUNK_DRS_SCHEMA_VERSION = "chunk-drs-v1"
+QUERY_DRS_SCHEMA_VERSION = "query-drs-v1"
 QUERY_FRAME_SCHEMA_VERSION = "query-frame-v4"
 ANSWER_SCHEMA_VERSION = "answer-v4"
 
@@ -106,6 +124,32 @@ def default_chunk_frame_n_predict(client: LocalModelClient | None = None) -> int
     if context_size > 0:
         return max(192, min(1024, context_size // 32))
     return 192
+
+
+def default_chunk_drs_n_predict(client: LocalModelClient | None = None) -> int:
+    configured = os.environ.get("KMD_CHUNK_DRS_N_PREDICT")
+    if configured:
+        try:
+            return max(1, int(configured))
+        except ValueError:
+            pass
+    context_size = _client_context_size(client)
+    if context_size > 0:
+        return max(384, min(1536, context_size // 24))
+    return 384
+
+
+def default_query_drs_n_predict(client: LocalModelClient | None = None) -> int:
+    configured = os.environ.get("KMD_QUERY_DRS_N_PREDICT")
+    if configured:
+        try:
+            return max(1, int(configured))
+        except ValueError:
+            pass
+    context_size = _client_context_size(client)
+    if context_size > 0:
+        return max(256, min(768, context_size // 48))
+    return 256
 
 
 ANSWER_TYPE_ALIASES = {
@@ -629,6 +673,138 @@ FRAME_JSON_SCHEMA = _schema_obj(
     },
 )
 
+DRS_ARGUMENT_JSON_SCHEMA = _schema_obj(
+    ["role", "target_kind", "target_id", "value", "value_type", "evidence_text"],
+    {
+        "role": STRING_SCHEMA,
+        "target_kind": _schema_enum({"referent", "box", "condition", "literal", "unknown"}),
+        "target_id": STRING_SCHEMA,
+        "value": STRING_SCHEMA,
+        "value_type": STRING_SCHEMA,
+        "evidence_text": STRING_SCHEMA,
+    },
+)
+
+DRS_REFERENT_JSON_SCHEMA = _schema_obj(
+    ["id", "label", "kind", "evidence_text"],
+    {
+        "id": STRING_SCHEMA,
+        "label": STRING_SCHEMA,
+        "kind": STRING_SCHEMA,
+        "evidence_text": STRING_SCHEMA,
+    },
+)
+
+DRS_BOX_JSON_SCHEMA = _schema_obj(
+    ["id", "kind", "parent_id", "holder_referent_id", "evidence_text"],
+    {
+        "id": STRING_SCHEMA,
+        "kind": _schema_enum(DRS_CONTEXT_KINDS),
+        "parent_id": STRING_SCHEMA,
+        "holder_referent_id": STRING_SCHEMA,
+        "evidence_text": STRING_SCHEMA,
+    },
+)
+
+DRS_TEMPORAL_JSON_SCHEMA = _schema_obj(
+    ["id", "value", "value_type", "evidence_text"],
+    {
+        "id": STRING_SCHEMA,
+        "value": STRING_SCHEMA,
+        "value_type": STRING_SCHEMA,
+        "evidence_text": STRING_SCHEMA,
+    },
+)
+
+DRS_CONDITION_JSON_SCHEMA = _schema_obj(
+    ["id", "predicate", "box_id", "polarity", "modality", "temporal_id", "arguments", "evidence_text"],
+    {
+        "id": STRING_SCHEMA,
+        "predicate": STRING_SCHEMA,
+        "box_id": STRING_SCHEMA,
+        "polarity": _schema_enum(DRS_POLARITIES),
+        "modality": _schema_enum(DRS_CONTEXT_KINDS),
+        "temporal_id": STRING_SCHEMA,
+        "arguments": _schema_array(DRS_ARGUMENT_JSON_SCHEMA),
+        "evidence_text": STRING_SCHEMA,
+    },
+)
+
+DRS_IDENTITY_JSON_SCHEMA = _schema_obj(
+    ["left_referent_id", "right_referent_id", "status", "evidence_text", "confidence"],
+    {
+        "left_referent_id": STRING_SCHEMA,
+        "right_referent_id": STRING_SCHEMA,
+        "status": _schema_enum(DRS_IDENTITY_STATUSES),
+        "evidence_text": STRING_SCHEMA,
+        "confidence": NUMBER_SCHEMA,
+    },
+)
+
+DRS_JSON_SCHEMA = _schema_obj(
+    ["drs"],
+    {
+        "drs": _schema_obj(
+            [
+                "schema_version",
+                "source_id",
+                "referents",
+                "boxes",
+                "conditions",
+                "identity_hypotheses",
+                "temporal_records",
+                "evidence_spans",
+                "semantic_notes",
+            ],
+            {
+                "schema_version": STRING_SCHEMA,
+                "source_id": STRING_SCHEMA,
+                "referents": _schema_array(DRS_REFERENT_JSON_SCHEMA),
+                "boxes": _schema_array(DRS_BOX_JSON_SCHEMA),
+                "conditions": _schema_array(DRS_CONDITION_JSON_SCHEMA),
+                "identity_hypotheses": _schema_array(DRS_IDENTITY_JSON_SCHEMA),
+                "temporal_records": _schema_array(DRS_TEMPORAL_JSON_SCHEMA),
+                "evidence_spans": STRING_ARRAY_SCHEMA,
+                "semantic_notes": STRING_ARRAY_SCHEMA,
+            },
+        )
+    },
+)
+
+QUERY_DRS_JSON_SCHEMA = _schema_obj(
+    ["query_drs"],
+    {
+        "query_drs": _schema_obj(
+            [
+                "schema_version",
+                "question",
+                "answer_variables",
+                "target_referents",
+                "requested_conditions",
+                "constraints",
+                "box_requirements",
+                "temporal_scope",
+                "aggregation",
+                "answer_type",
+                "requires_evidence",
+            ],
+            {
+                "schema_version": STRING_SCHEMA,
+                "question": STRING_SCHEMA,
+                "answer_variables": STRING_ARRAY_SCHEMA,
+                "target_referents": _schema_array(DRS_REFERENT_JSON_SCHEMA),
+                "requested_conditions": _schema_array(DRS_CONDITION_JSON_SCHEMA),
+                "constraints": STRING_ARRAY_SCHEMA,
+                "box_requirements": _schema_array(DRS_BOX_JSON_SCHEMA),
+                "temporal_scope": STRING_SCHEMA,
+                "aggregation": STRING_SCHEMA,
+                "answer_type": ANSWER_TYPE_SCHEMA,
+                "requires_evidence": BOOL_SCHEMA,
+            },
+        )
+    },
+)
+
 VERIFICATION_JSON_SCHEMA = _schema_obj(
     ["verification"],
     {
@@ -873,6 +1049,171 @@ def call_model_query_plan(question: str, client: LocalModelClient, *, n_predict:
         "stop_reason": "parsed_json",
         "prompt_hash": prompt_hash,
         **constraint,
+        "output_hash": hashlib.sha256(raw.encode()).hexdigest(),
+        "fresh_or_cached": "fresh",
+    }
+    _write_cache(cache_path, payload)
+    return payload
+
+
+QUERY_DRS_GRAMMAR = ""
+
+
+def build_query_drs_prompt(question: str) -> str:
+    surface = {
+        "visible_anchors": visible_anchors(question),
+        "urls": urls(question),
+        "identifiers": identifiers(question),
+        "content_tokens": content_tokens(question)[:32],
+    }
+    return (
+        "JSON only. Convert the question into a generic DRT query DRS; do not answer it. "
+        "Every semantic decision about answer variables, target referents, requested conditions, constraints, "
+        "scope, modality, temporal scope, polarity, and aggregation must be represented in the query_drs JSON. "
+        "Use only text visible in the question and no outside knowledge. Use subordinate box_requirements for "
+        "questions about reported, believed, negated, conditional, uncertain, hypothetical, fictional, or quoted "
+        "content. If a requested condition is in the main asserted query scope and no explicit box_requirement is "
+        "needed, set its box_id to the empty string; do not invent a box id without declaring that box. "
+        "Arguments use target_kind and target_id exactly as in chunk DRS extraction. "
+        "Return this shape with schema_version query-drs-v1: {\"query_drs\":{\"schema_version\":\"query-drs-v1\","
+        "\"question\":\"\",\"answer_variables\":[],\"target_referents\":[],\"requested_conditions\":[],"
+        "\"constraints\":[],\"box_requirements\":[],\"temporal_scope\":\"\",\"aggregation\":\"\","
+        "\"answer_type\":\"unknown\",\"requires_evidence\":true}}."
+        + json.dumps({"question": question, "surface_observations": surface}, ensure_ascii=False)
+    )
+
+
+def _validate_query_drs_payload(payload: Any, question: str) -> dict[str, Any]:
+    if not isinstance(payload, dict) or not isinstance(payload.get("query_drs"), dict):
+        return {"schema_valid": False, "errors": ["missing_query_drs_object"]}
+    query_drs = payload["query_drs"]
+    errors: list[str] = []
+
+    def collection(name: str) -> list[dict[str, Any]]:
+        value = query_drs.get(name)
+        if not isinstance(value, list):
+            errors.append(f"not_list:{name}")
+            return []
+        return [item for item in value if isinstance(item, dict)]
+
+    if query_drs.get("question") != question:
+        errors.append("question_mismatch")
+    if str(query_drs.get("answer_type") or "") not in ANSWER_TYPES:
+        errors.append(f"bad_answer_type:{query_drs.get('answer_type')}")
+    if not isinstance(query_drs.get("answer_variables"), list):
+        errors.append("not_list:answer_variables")
+    if not isinstance(query_drs.get("constraints"), list):
+        errors.append("not_list:constraints")
+    targets = collection("target_referents")
+    boxes = collection("box_requirements")
+    conditions = collection("requested_conditions")
+    target_ids = {str(item.get("id") or "") for item in targets if str(item.get("id") or "")}
+    box_ids = {str(item.get("id") or "") for item in boxes if str(item.get("id") or "")}
+    condition_ids = {str(item.get("id") or "") for item in conditions if str(item.get("id") or "")}
+    for box in boxes:
+        box_id = str(box.get("id") or "")
+        parent_id = str(box.get("parent_id") or "")
+        holder_id = str(box.get("holder_referent_id") or "")
+        if str(box.get("kind") or "") not in DRS_CONTEXT_KINDS:
+            errors.append(f"bad_box_kind:{box_id}:{box.get('kind')}")
+        if parent_id and parent_id not in box_ids:
+            errors.append(f"missing_parent_box:{box_id}->{parent_id}")
+        if holder_id and holder_id not in target_ids:
+            errors.append(f"missing_holder_referent:{box_id}->{holder_id}")
+    for condition in conditions:
+        condition_id = str(condition.get("id") or "")
+        box_id = str(condition.get("box_id") or "")
+        if not condition_id or not str(condition.get("predicate") or "").strip():
+            errors.append(f"bad_condition:{condition_id}")
+        if box_id and box_id not in box_ids:
+            errors.append(f"missing_condition_box:{condition_id}->{box_id}")
+        if str(condition.get("polarity") or "") not in DRS_POLARITIES:
+            errors.append(f"bad_polarity:{condition_id}:{condition.get('polarity')}")
+        if str(condition.get("modality") or "") not in DRS_CONTEXT_KINDS:
+            errors.append(f"bad_modality:{condition_id}:{condition.get('modality')}")
+        arguments = condition.get("arguments")
+        if not isinstance(arguments, list):
+            errors.append(f"bad_arguments:{condition_id}")
+            continue
+        for arg in arguments:
+            if not isinstance(arg, dict):
+                continue
+            target_kind = str(arg.get("target_kind") or "")
+            target_id = str(arg.get("target_id") or "")
+            if target_kind == "referent" and target_id and target_id not in target_ids:
+                errors.append(f"missing_argument_referent:{condition_id}->{target_id}")
+            elif target_kind == "box" and target_id and target_id not in box_ids:
+                errors.append(f"missing_argument_box:{condition_id}->{target_id}")
+            elif target_kind == "condition" and target_id and target_id not in condition_ids:
+                errors.append(f"missing_argument_condition:{condition_id}->{target_id}")
+            elif target_kind not in {"referent", "box", "condition", "literal", "unknown"}:
+                errors.append(f"bad_argument_target_kind:{condition_id}:{target_kind}")
+    return {
+        "schema_valid": not errors,
+        "errors": errors[:50],
+        "target_count": len(targets),
+        "condition_count": len(conditions),
+        "box_requirement_count": len(boxes),
+    }
+
+
+def call_model_query_drs(question: str, client: LocalModelClient, *, n_predict: int | None = None) -> dict[str, Any]:
+    if n_predict is None:
+        n_predict = default_query_drs_n_predict(client)
+    prompt = build_query_drs_prompt(question)
+    constraint = _constraint_settings(QUERY_DRS_GRAMMAR, QUERY_DRS_JSON_SCHEMA, QUERY_DRS_SCHEMA_VERSION)
+    prompt_hash = _cache_hash(
+        "query_drs",
+        prompt,
+        client,
+        {"n_predict": n_predict, "schema": QUERY_DRS_SCHEMA_VERSION, **constraint},
+    )
+    cache_path = _cache_path("KMD_QUERY_DRS_CACHE_DIR", prompt_hash)
+    cached = _read_cache(cache_path)
+    if cached is not None:
+        return cached
+    start = time.time()
+    try:
+        parsed = _complete_structured(
+            client,
+            prompt,
+            n_predict=n_predict,
+            grammar=QUERY_DRS_GRAMMAR,
+            json_schema=QUERY_DRS_JSON_SCHEMA,
+        )
+    except Exception as exc:
+        payload = {
+            "accepted": False,
+            "reason": "request_failed",
+            "error": str(exc),
+            "prompt_hash": prompt_hash,
+            **constraint,
+            "elapsed": round(time.time() - start, 3),
+        }
+        _write_cache(cache_path, payload)
+        return payload
+    raw = str(parsed.get("_model_raw") or "") if isinstance(parsed, dict) else ""
+    validation = _validate_query_drs_payload(parsed, question)
+    if not validation.get("schema_valid"):
+        payload = {
+            "accepted": False,
+            "reason": "schema_validation_failed",
+            "raw_text": raw,
+            "prompt_hash": prompt_hash,
+            **constraint,
+            "elapsed": parsed.get("_model_elapsed_seconds", round(time.time() - start, 3)),
+            "validation": validation,
+        }
+        _write_cache(cache_path, payload)
+        return payload
+    payload = {
+        "accepted": True,
+        "query_drs": parsed["query_drs"],
+        "raw_text": raw,
+        "elapsed": parsed.get("_model_elapsed_seconds", round(time.time() - start, 3)),
+        "prompt_hash": prompt_hash,
+        **constraint,
+        "validation": validation,
         "output_hash": hashlib.sha256(raw.encode()).hexdigest(),
         "fresh_or_cached": "fresh",
     }
@@ -1547,6 +1888,320 @@ def call_model_chunk_frames(
         "fresh_or_cached": "fresh",
         "rejected_for_grounding": rejected_for_grounding,
     }
+
+
+CHUNK_DRS_GRAMMAR = ""
+
+
+def build_chunk_drs_prompt(chunk_text: str, *, rel_path: str = "", context_budget: dict[str, Any] | None = None) -> str:
+    return (
+        "JSON only. Convert the raw text chunk into one source-grounded DRS object. "
+        "Every semantic decision must be represented as referents, boxes, conditions, temporal_records, "
+        "and identity_hypotheses. Do not answer questions, use outside knowledge, infer hidden answers, "
+        "or use handler names. The root asserted box should have id b0 and parent_id ''. Use subordinate boxes "
+        "for negation, reports, quotes, beliefs, conditionals, uncertainty, dreams, fiction, and modality. "
+        "Arguments use target_kind and target_id; use target_kind=box when an argument is a subordinate DRS box, "
+        "target_kind=condition when an argument is another condition, and target_kind=referent for discourse "
+        "referents. Identity hypotheses must be model-provided DRT data, not same-name merging. "
+        "Every evidence_text and evidence_spans item must be copied exactly from the chunk."
+        + json.dumps(
+            {
+                "source_id": rel_path,
+                "schema_version": CHUNK_DRS_SCHEMA_VERSION,
+                "context_budget": context_budget or {},
+                "required_top_shape": {
+                    "drs": {
+                        "schema_version": CHUNK_DRS_SCHEMA_VERSION,
+                        "source_id": rel_path,
+                        "referents": [],
+                        "boxes": [],
+                        "conditions": [],
+                        "identity_hypotheses": [],
+                        "temporal_records": [],
+                        "evidence_spans": [],
+                        "semantic_notes": [],
+                    }
+                },
+                "chunk": chunk_text,
+            },
+            ensure_ascii=False,
+        )
+    )
+
+
+def _context_limited_chunk_drs_text(
+    chunk_text: str,
+    client: LocalModelClient,
+    *,
+    rel_path: str,
+    n_predict: int,
+) -> tuple[str, dict[str, Any]]:
+    context_size = _client_context_size(client)
+    budget: dict[str, Any] = {
+        "runtime_context_size": context_size,
+        "reserved_output_tokens": int(n_predict),
+        "context_source": "client_metadata" if context_size > 0 else "unavailable",
+    }
+    if context_size <= 0:
+        configured_chars = os.environ.get("KMD_CHUNK_DRS_MAX_CHARS")
+        if configured_chars:
+            try:
+                max_chars = max(1, int(configured_chars))
+            except ValueError:
+                max_chars = len(chunk_text)
+            limited = chunk_text[:max_chars]
+        else:
+            limited = chunk_text
+        budget.update(
+            {
+                "prompt_budget_tokens": 0,
+                "prompt_overhead_tokens": 0,
+                "chunk_budget_tokens": _estimate_tokens(limited),
+                "input_chars": len(chunk_text),
+                "prompt_chunk_chars": len(limited),
+                "input_truncated": len(limited) < len(chunk_text),
+            }
+        )
+        return limited, budget
+    seed_budget = {**budget, "prompt_budget_tokens": max(0, context_size - int(n_predict)), "chunk_budget_tokens": 0}
+    overhead_tokens = _estimate_tokens(build_chunk_drs_prompt("", rel_path=rel_path, context_budget=seed_budget))
+    prompt_budget_tokens = max(0, context_size - int(n_predict) - overhead_tokens)
+    max_chars = max(0, prompt_budget_tokens * 4)
+    limited = chunk_text[:max_chars] if max_chars else ""
+    budget.update(
+        {
+            "prompt_budget_tokens": prompt_budget_tokens,
+            "prompt_overhead_tokens": overhead_tokens,
+            "chunk_budget_tokens": _estimate_tokens(limited),
+            "input_chars": len(chunk_text),
+            "prompt_chunk_chars": len(limited),
+            "input_truncated": len(limited) < len(chunk_text),
+        }
+    )
+    return limited, budget
+
+
+def _validate_chunk_drs_payload(payload: Any, source_text: str) -> dict[str, Any]:
+    if not isinstance(payload, dict) or not isinstance(payload.get("drs"), dict):
+        return {"schema_valid": False, "errors": ["missing_drs_object"], "grounding_failures": []}
+    drs = payload["drs"]
+    errors: list[str] = []
+    grounding_failures: list[str] = []
+
+    def collection(name: str) -> list[dict[str, Any]]:
+        value = drs.get(name)
+        if not isinstance(value, list):
+            errors.append(f"not_list:{name}")
+            return []
+        return [item for item in value if isinstance(item, dict)]
+
+    referents = collection("referents")
+    boxes = collection("boxes")
+    conditions = collection("conditions")
+    identities = collection("identity_hypotheses")
+    temporals = collection("temporal_records")
+    evidence_spans = drs.get("evidence_spans")
+    if not isinstance(evidence_spans, list):
+        errors.append("not_list:evidence_spans")
+        evidence_spans = []
+
+    referent_ids = {str(item.get("id") or "") for item in referents if str(item.get("id") or "")}
+    box_ids = {str(item.get("id") or "") for item in boxes if str(item.get("id") or "")}
+    condition_ids = {str(item.get("id") or "") for item in conditions if str(item.get("id") or "")}
+    temporal_ids = {str(item.get("id") or "") for item in temporals if str(item.get("id") or "")}
+
+    def check_span(value: Any, label: str) -> None:
+        span = str(value or "").strip()
+        if span and span not in source_text:
+            grounding_failures.append(f"{label}:{span[:100]}")
+
+    if not box_ids:
+        errors.append("missing_box")
+    for span in evidence_spans:
+        check_span(span, "evidence_spans")
+    for item in referents:
+        ref_id = str(item.get("id") or "")
+        if not ref_id or not str(item.get("label") or "").strip():
+            errors.append(f"bad_referent:{ref_id}")
+        check_span(item.get("evidence_text"), f"referent:{ref_id}")
+    for item in boxes:
+        box_id = str(item.get("id") or "")
+        parent_id = str(item.get("parent_id") or "")
+        holder_id = str(item.get("holder_referent_id") or "")
+        if str(item.get("kind") or "") not in DRS_CONTEXT_KINDS:
+            errors.append(f"bad_box_kind:{box_id}:{item.get('kind')}")
+        if parent_id and parent_id not in box_ids:
+            errors.append(f"missing_parent_box:{box_id}->{parent_id}")
+        if holder_id and holder_id not in referent_ids:
+            errors.append(f"missing_holder_referent:{box_id}->{holder_id}")
+        check_span(item.get("evidence_text"), f"box:{box_id}")
+    for item in temporals:
+        temporal_id = str(item.get("id") or "")
+        if not temporal_id or not str(item.get("value") or "").strip():
+            errors.append(f"bad_temporal:{temporal_id}")
+        check_span(item.get("evidence_text"), f"temporal:{temporal_id}")
+    for item in conditions:
+        condition_id = str(item.get("id") or "")
+        box_id = str(item.get("box_id") or "")
+        temporal_id = str(item.get("temporal_id") or "")
+        if not condition_id or not str(item.get("predicate") or "").strip():
+            errors.append(f"bad_condition:{condition_id}")
+        if box_id not in box_ids:
+            errors.append(f"missing_condition_box:{condition_id}->{box_id}")
+        if str(item.get("polarity") or "") not in DRS_POLARITIES:
+            errors.append(f"bad_polarity:{condition_id}:{item.get('polarity')}")
+        if str(item.get("modality") or "") not in DRS_CONTEXT_KINDS:
+            errors.append(f"bad_modality:{condition_id}:{item.get('modality')}")
+        if temporal_id and temporal_id not in temporal_ids:
+            errors.append(f"missing_temporal:{condition_id}->{temporal_id}")
+        check_span(item.get("evidence_text"), f"condition:{condition_id}")
+        arguments = item.get("arguments")
+        if not isinstance(arguments, list):
+            errors.append(f"bad_arguments:{condition_id}")
+            continue
+        for arg in arguments:
+            if not isinstance(arg, dict):
+                continue
+            target_kind = str(arg.get("target_kind") or "")
+            target_id = str(arg.get("target_id") or "")
+            if target_kind == "referent" and target_id and target_id not in referent_ids:
+                errors.append(f"missing_argument_referent:{condition_id}->{target_id}")
+            elif target_kind == "box" and target_id and target_id not in box_ids:
+                errors.append(f"missing_argument_box:{condition_id}->{target_id}")
+            elif target_kind == "condition" and target_id and target_id not in condition_ids:
+                errors.append(f"missing_argument_condition:{condition_id}->{target_id}")
+            elif target_kind not in {"referent", "box", "condition", "literal", "unknown"}:
+                errors.append(f"bad_argument_target_kind:{condition_id}:{target_kind}")
+            check_span(arg.get("evidence_text"), f"argument:{condition_id}:{arg.get('role')}")
+    for item in identities:
+        left_id = str(item.get("left_referent_id") or "")
+        right_id = str(item.get("right_referent_id") or "")
+        if left_id not in referent_ids:
+            errors.append(f"missing_identity_left:{left_id}")
+        if right_id not in referent_ids:
+            errors.append(f"missing_identity_right:{right_id}")
+        if str(item.get("status") or "") not in DRS_IDENTITY_STATUSES:
+            errors.append(f"bad_identity_status:{item.get('status')}")
+        check_span(item.get("evidence_text"), f"identity:{left_id}:{right_id}")
+    return {
+        "schema_valid": not errors,
+        "errors": errors[:50],
+        "grounding_failures": grounding_failures[:50],
+        "grounding_failure_count": len(grounding_failures),
+        "referent_count": len(referents),
+        "box_count": len(boxes),
+        "condition_count": len(conditions),
+        "identity_hypothesis_count": len(identities),
+    }
+
+
+def chunk_drs_cache_context(client: LocalModelClient | None, *, n_predict: int | None = None) -> dict[str, Any]:
+    constraint = _constraint_settings(CHUNK_DRS_GRAMMAR, DRS_JSON_SCHEMA, CHUNK_DRS_SCHEMA_VERSION)
+    if n_predict is None:
+        n_predict = default_chunk_drs_n_predict(client)
+    return {
+        "prompt_version": PROMPT_VERSION,
+        "schema_version": CHUNK_DRS_SCHEMA_VERSION,
+        **constraint,
+        "n_predict": int(n_predict),
+        "model_fingerprint": _client_fingerprint(client),
+    }
+
+
+def call_model_chunk_drs(
+    chunk_text: str,
+    client: LocalModelClient,
+    *,
+    rel_path: str = "",
+    n_predict: int | None = None,
+) -> dict[str, Any]:
+    if n_predict is None:
+        n_predict = default_chunk_drs_n_predict(client)
+    prompt_chunk, context_budget = _context_limited_chunk_drs_text(
+        chunk_text,
+        client,
+        rel_path=rel_path,
+        n_predict=n_predict,
+    )
+    prompt = build_chunk_drs_prompt(prompt_chunk, rel_path=rel_path, context_budget=context_budget)
+    constraint = _constraint_settings(CHUNK_DRS_GRAMMAR, DRS_JSON_SCHEMA, CHUNK_DRS_SCHEMA_VERSION)
+    prompt_hash = _cache_hash(
+        "chunk_drs",
+        prompt,
+        client,
+        {
+            "n_predict": n_predict,
+            "schema": CHUNK_DRS_SCHEMA_VERSION,
+            **constraint,
+            "context_budget": context_budget,
+        },
+    )
+    cache_path = _cache_path("KMD_CHUNK_DRS_CACHE_DIR", prompt_hash)
+    cached = _read_cache(cache_path)
+    if cached is not None:
+        return cached
+    start = time.time()
+    try:
+        parsed = _complete_structured(
+            client,
+            prompt,
+            n_predict=n_predict,
+            grammar=CHUNK_DRS_GRAMMAR,
+            json_schema=DRS_JSON_SCHEMA,
+        )
+    except Exception as exc:
+        payload = {
+            "accepted": False,
+            "reason": "request_failed",
+            "error": str(exc),
+            "prompt_hash": prompt_hash,
+            **constraint,
+            "elapsed": round(time.time() - start, 3),
+        }
+        _write_cache(cache_path, payload)
+        return payload
+    raw = str(parsed.get("_model_raw") or "") if isinstance(parsed, dict) else ""
+    validation = _validate_chunk_drs_payload(parsed, prompt_chunk)
+    if not validation.get("schema_valid"):
+        payload = {
+            "accepted": False,
+            "reason": "schema_validation_failed",
+            "raw_text": raw,
+            "prompt_hash": prompt_hash,
+            **constraint,
+            "elapsed": parsed.get("_model_elapsed_seconds", round(time.time() - start, 3)),
+            "validation": validation,
+            "context_budget": context_budget,
+        }
+        _write_cache(cache_path, payload)
+        return payload
+    if validation.get("grounding_failure_count"):
+        payload = {
+            "accepted": False,
+            "reason": "grounding_validation_failed",
+            "raw_text": raw,
+            "prompt_hash": prompt_hash,
+            **constraint,
+            "elapsed": parsed.get("_model_elapsed_seconds", round(time.time() - start, 3)),
+            "validation": validation,
+            "context_budget": context_budget,
+        }
+        _write_cache(cache_path, payload)
+        return payload
+    payload = {
+        "accepted": True,
+        "drs": parsed["drs"],
+        "raw_text": raw,
+        "elapsed": parsed.get("_model_elapsed_seconds", round(time.time() - start, 3)),
+        "prompt_hash": prompt_hash,
+        **constraint,
+        "context_budget": context_budget,
+        "validation": validation,
+        "output_hash": hashlib.sha256(raw.encode()).hexdigest(),
+        "fresh_or_cached": "fresh",
+    }
+    _write_cache(cache_path, payload)
+    return payload
 
 
 def build_answer_verification_prompt(
