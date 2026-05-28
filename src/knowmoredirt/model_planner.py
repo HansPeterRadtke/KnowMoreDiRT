@@ -771,6 +771,29 @@ DRS_JSON_SCHEMA = _schema_obj(
     },
 )
 
+
+def chunk_drs_json_schema(max_evidence_chars: int | None = None) -> dict[str, Any]:
+    schema = json.loads(json.dumps(DRS_JSON_SCHEMA))
+    if not max_evidence_chars:
+        return schema
+    max_length = max(1, int(max_evidence_chars))
+
+    def visit(node: Any, parent_key: str = "") -> None:
+        if isinstance(node, dict):
+            if parent_key == "evidence_text" and node.get("type") == "string":
+                node["maxLength"] = max_length
+            if parent_key == "evidence_spans" and isinstance(node.get("items"), dict):
+                node["items"]["maxLength"] = max_length
+            for key, value in node.items():
+                visit(value, key)
+        elif isinstance(node, list):
+            for item in node:
+                visit(item, parent_key)
+
+    visit(schema)
+    return schema
+
+
 QUERY_DRS_JSON_SCHEMA = _schema_obj(
     ["query_drs"],
     {
@@ -1903,7 +1926,8 @@ def build_chunk_drs_prompt(chunk_text: str, *, rel_path: str = "", context_budge
         "Arguments use target_kind and target_id; use target_kind=box when an argument is a subordinate DRS box, "
         "target_kind=condition when an argument is another condition, and target_kind=referent for discourse "
         "referents. Identity hypotheses must be model-provided DRT data, not same-name merging. "
-        "Every evidence_text and evidence_spans item must be copied exactly from the chunk."
+        "Every evidence_text and evidence_spans item must be one contiguous substring copied exactly from the chunk. "
+        "Copy each evidence substring at most once; never concatenate or repeat the chunk inside a string."
         + json.dumps(
             {
                 "source_id": rel_path,
@@ -2124,7 +2148,8 @@ def call_model_chunk_drs(
         n_predict=n_predict,
     )
     prompt = build_chunk_drs_prompt(prompt_chunk, rel_path=rel_path, context_budget=context_budget)
-    constraint = _constraint_settings(CHUNK_DRS_GRAMMAR, DRS_JSON_SCHEMA, CHUNK_DRS_SCHEMA_VERSION)
+    drs_json_schema = chunk_drs_json_schema(len(prompt_chunk) if prompt_chunk else None)
+    constraint = _constraint_settings(CHUNK_DRS_GRAMMAR, drs_json_schema, CHUNK_DRS_SCHEMA_VERSION)
     prompt_hash = _cache_hash(
         "chunk_drs",
         prompt,
@@ -2147,13 +2172,16 @@ def call_model_chunk_drs(
             prompt,
             n_predict=n_predict,
             grammar=CHUNK_DRS_GRAMMAR,
-            json_schema=DRS_JSON_SCHEMA,
+            json_schema=drs_json_schema,
         )
     except Exception as exc:
+        raw_text = str(getattr(exc, "raw_text", "") or "")
         payload = {
             "accepted": False,
             "reason": "request_failed",
             "error": str(exc),
+            "raw_text": raw_text,
+            "raw_snippet": str(getattr(exc, "snippet", "") or raw_text)[:4000],
             "prompt_hash": prompt_hash,
             **constraint,
             "elapsed": round(time.time() - start, 3),

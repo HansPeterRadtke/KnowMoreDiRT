@@ -173,6 +173,15 @@ def _extract_balanced_json(raw: str) -> str | None:
     return None
 
 
+class LocalModelJSONError(ValueError):
+    """Raised when the local model response cannot be parsed as JSON."""
+
+    def __init__(self, message: str, *, raw_text: str, snippet: str) -> None:
+        super().__init__(message)
+        self.raw_text = raw_text
+        self.snippet = snippet
+
+
 @dataclass
 class LocalModelClient:
     endpoint: str = os.environ.get("KMD_LOCAL_MODEL_ENDPOINT", "http://127.0.0.1:14829/v1")
@@ -391,7 +400,10 @@ class LocalModelClient:
                 response_obj = json.loads(response.read().decode("utf-8", errors="replace"))
                 raw = _response_content(response_obj)
         snippet = _extract_balanced_json(raw) or raw
-        parsed = json.loads(snippet)
+        try:
+            parsed = json.loads(snippet)
+        except json.JSONDecodeError as exc:
+            raise LocalModelJSONError(str(exc), raw_text=raw, snippet=snippet) from exc
         if isinstance(parsed, list):
             parsed = {"items": parsed}
         if not isinstance(parsed, dict):
