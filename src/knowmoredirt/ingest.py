@@ -168,9 +168,12 @@ def _relation_inherits_heading(text: str, relations: list[ExtractedRelation]) ->
 
 
 def _label_heading_value(text: str) -> str:
+    return _label_heading_value_from_relations(text, extract_relations(text))
+
+
+def _label_heading_value_from_relations(text: str, relations: list[ExtractedRelation]) -> str:
     if "|" in text or "\t" in text or "://" in text:
         return ""
-    relations = extract_relations(text)
     label_values = [relation for relation in relations if relation.relation_type == "label_value"]
     if len(label_values) != 1:
         return ""
@@ -508,12 +511,12 @@ def ingest_folder(
             )
             mentions_for_sentence.append((surface, mention_id, referent_id))
 
-        if _is_structural_heading(sentence.text):
+        is_structural_heading = _is_structural_heading(sentence.text)
+        pending_label_heading = ""
+        if is_structural_heading:
             section_anchor = clean_extracted_value(sentence.text)
             section_anchor_by_document[sentence.document_id] = section_anchor
             section_group_by_document[sentence.document_id] = stable_id("section_group", sentence.document_id, section_anchor)
-        else:
-            pending_label_heading = _label_heading_value(sentence.text)
 
         deterministic_relations = extract_relations(sentence.text)
         cells = _table_cells(sentence.text)
@@ -523,6 +526,8 @@ def ingest_folder(
                 deterministic_relations.extend(_table_header_relations(sentence, current_header, cells))
             elif _looks_like_table_header(cells):
                 table_headers_by_document[sentence.document_id] = cells
+        if not is_structural_heading:
+            pending_label_heading = _label_heading_value_from_relations(sentence.text, deterministic_relations)
 
         temporal_values = [
             relation.value
@@ -550,6 +555,11 @@ def ingest_folder(
         except ValueError:
             max_deterministic_frames = 32
         deterministic_frame_count = 0
+        relations_inherit_heading = _relation_inherits_heading(sentence.text, deterministic_relations)
+        starts_new_structural_record = _starts_new_structural_record(sentence.text)
+        active_section_anchor = section_anchor_by_document.get(sentence.document_id)
+        prefix = re.split(r"[:=|\t]", sentence.text, maxsplit=1)[0]
+        prefix_has_structural_phrase = any(len(phrase.split()) >= 2 for phrase in capitalized_phrases(prefix))
         for relation in deterministic_relations:
             metadata = {
                 **relation.metadata,
@@ -557,21 +567,17 @@ def ingest_folder(
             }
             if "record_group" not in metadata:
                 metadata["record_group"] = metadata["sentence_group"]
-            if _relation_inherits_heading(sentence.text, deterministic_relations):
+            if relations_inherit_heading:
                 section_group = section_group_by_document.get(sentence.document_id)
-                section_anchor = section_anchor_by_document.get(sentence.document_id)
-                if section_group and section_anchor:
+                if section_group and active_section_anchor:
                     metadata["record_group"] = section_group
-                    metadata["section_anchor"] = section_anchor
-            elif not _starts_new_structural_record(sentence.text):
-                section_anchor = section_anchor_by_document.get(sentence.document_id)
-                if section_anchor:
-                    metadata["section_anchor"] = section_anchor
+                    metadata["section_anchor"] = active_section_anchor
+            elif not starts_new_structural_record:
+                if active_section_anchor:
+                    metadata["section_anchor"] = active_section_anchor
             elif "section_anchor" not in metadata:
-                section_anchor = section_anchor_by_document.get(sentence.document_id)
-                prefix = re.split(r"[:=|\t]", sentence.text, maxsplit=1)[0]
-                if section_anchor and not any(len(phrase.split()) >= 2 for phrase in capitalized_phrases(prefix)):
-                    metadata["section_anchor"] = section_anchor
+                if active_section_anchor and not prefix_has_structural_phrase:
+                    metadata["section_anchor"] = active_section_anchor
             relation_id = stable_id(
                 "rel",
                 run_id,
@@ -607,11 +613,14 @@ def ingest_folder(
                     json.dumps(metadata, sort_keys=True),
                 ),
             )
-            condition = _condition_from_deterministic_relation(relation, sentence.text)
+            condition = (
+                _condition_from_deterministic_relation(relation, sentence.text)
+                if not max_deterministic_frames or deterministic_frame_count < max_deterministic_frames
+                else None
+            )
             if (
                 condition is not None
                 and condition.arguments
-                and (not max_deterministic_frames or deterministic_frame_count < max_deterministic_frames)
             ):
                 deterministic_frame_count += 1
                 condition_frame_id = stable_id(
