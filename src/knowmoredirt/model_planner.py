@@ -2123,6 +2123,42 @@ def _validate_chunk_drs_payload(payload: Any, source_text: str) -> dict[str, Any
     }
 
 
+def _repair_chunk_drs_payload(payload: Any) -> Any:
+    if not isinstance(payload, dict) or not isinstance(payload.get("drs"), dict):
+        return payload
+    drs = {**payload["drs"]}
+    referents = drs.get("referents")
+    conditions = drs.get("conditions")
+    if not isinstance(referents, list) or not isinstance(conditions, list):
+        return payload
+    repaired_referents = [item for item in referents if isinstance(item, dict)]
+    referent_ids = {str(item.get("id") or "") for item in repaired_referents}
+    for condition in conditions:
+        if not isinstance(condition, dict) or not isinstance(condition.get("arguments"), list):
+            continue
+        for argument in condition["arguments"]:
+            if not isinstance(argument, dict) or str(argument.get("target_kind") or "") != "referent":
+                continue
+            target_id = str(argument.get("target_id") or "").strip()
+            value = str(argument.get("value") or "").strip()
+            evidence_text = str(argument.get("evidence_text") or "").strip()
+            if not target_id or target_id in referent_ids or not value:
+                continue
+            repaired_referents.append(
+                {
+                    "id": target_id,
+                    "label": value,
+                    "kind": str(argument.get("value_type") or "unknown") or "unknown",
+                    "evidence_text": evidence_text or value,
+                }
+            )
+            referent_ids.add(target_id)
+    if len(repaired_referents) == len(referents):
+        return payload
+    drs["referents"] = repaired_referents
+    return {**payload, "drs": drs}
+
+
 def chunk_drs_cache_context(client: LocalModelClient | None, *, n_predict: int | None = None) -> dict[str, Any]:
     constraint = _constraint_settings(CHUNK_DRS_GRAMMAR, DRS_JSON_SCHEMA, CHUNK_DRS_SCHEMA_VERSION)
     if n_predict is None:
@@ -2193,6 +2229,7 @@ def call_model_chunk_drs(
         _write_cache(cache_path, payload)
         return payload
     raw = str(parsed.get("_model_raw") or "") if isinstance(parsed, dict) else ""
+    parsed = _repair_chunk_drs_payload(parsed)
     validation = _validate_chunk_drs_payload(parsed, prompt_chunk)
     if not validation.get("schema_valid"):
         payload = {

@@ -341,3 +341,65 @@ def test_chunk_drs_schema_caps_evidence_strings_to_chunk_length() -> None:
     assert condition_schema["properties"]["evidence_text"]["maxLength"] == 19
     assert argument_schema["properties"]["evidence_text"]["maxLength"] == 19
     assert drs_schema["properties"]["evidence_spans"]["items"]["maxLength"] == 19
+
+
+def test_chunk_drs_planner_repairs_model_referent_argument_records(monkeypatch, tmp_path) -> None:
+    class MissingReferentModel:
+        def context_size(self) -> int:
+            return 4096
+
+        def cache_fingerprint(self) -> dict[str, Any]:
+            return {"model_id": "fake-missing-ref", "context_size": 4096}
+
+        def complete_json(self, prompt: str, *, n_predict: int = 128, grammar=None, json_schema=None):
+            return {
+                "drs": {
+                    "schema_version": "chunk-drs-v1",
+                    "source_id": "note.txt",
+                    "referents": [],
+                    "boxes": [
+                        {
+                            "id": "b0",
+                            "kind": "asserted",
+                            "parent_id": "",
+                            "holder_referent_id": "",
+                            "evidence_text": "Aero Gate is ready.",
+                        }
+                    ],
+                    "conditions": [
+                        {
+                            "id": "c0",
+                            "predicate": "ready",
+                            "box_id": "b0",
+                            "polarity": "positive",
+                            "modality": "asserted",
+                            "temporal_id": "",
+                            "arguments": [
+                                {
+                                    "role": "theme",
+                                    "target_kind": "referent",
+                                    "target_id": "r0",
+                                    "value": "Aero Gate",
+                                    "value_type": "entity",
+                                    "evidence_text": "Aero Gate",
+                                }
+                            ],
+                            "evidence_text": "Aero Gate is ready.",
+                        }
+                    ],
+                    "identity_hypotheses": [],
+                    "temporal_records": [],
+                    "evidence_spans": ["Aero Gate is ready."],
+                    "semantic_notes": [],
+                },
+                "_model_raw": "{}",
+                "_model_elapsed_seconds": 0.01,
+            }
+
+    monkeypatch.setenv("KMD_CHUNK_DRS_CACHE_DIR", str(tmp_path / "missing-ref-cache"))
+    result = call_model_chunk_drs("Aero Gate is ready.", MissingReferentModel(), rel_path="note.txt")  # type: ignore[arg-type]
+
+    assert result["accepted"] is True
+    assert result["validation"]["referent_count"] == 1
+    assert result["drs"]["referents"][0]["id"] == "r0"
+    assert result["drs"]["referents"][0]["label"] == "Aero Gate"
