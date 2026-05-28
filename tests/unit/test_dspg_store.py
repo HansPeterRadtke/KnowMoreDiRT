@@ -275,8 +275,6 @@ def test_ingest_can_materialize_schema_constrained_model_drs(tmp_path: Path, mon
                     ],
                     "identity_hypotheses": [],
                     "temporal_records": [],
-                    "evidence_spans": ["Aero Gate is ready."],
-                    "semantic_notes": [],
                 },
                 "_model_raw": "{}",
                 "_model_elapsed_seconds": 0.01,

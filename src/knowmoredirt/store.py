@@ -599,7 +599,9 @@ class DSPGStore:
         conditions = as_list("conditions")
         identities = as_list("identity_hypotheses")
         temporals = as_list("temporal_records")
-        evidence_spans = drs.get("evidence_spans")
+        evidence_spans = drs.get("evidence_spans", [])
+        if evidence_spans is None:
+            evidence_spans = []
         if not isinstance(evidence_spans, list):
             errors.append("not_list:evidence_spans")
             evidence_spans = []

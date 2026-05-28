@@ -286,6 +286,79 @@ def test_chunk_drs_schema_caps_arrays_from_output_budget() -> None:
     assert drs_schema["properties"]["evidence_spans"]["items"]["maxLength"] == 31
 
 
+def test_chunk_drs_production_schema_omits_auxiliary_note_arrays(monkeypatch, tmp_path) -> None:
+    class ProductionSchemaModel:
+        def __init__(self) -> None:
+            self.json_schema = None
+
+        def context_size(self) -> int:
+            return 8192
+
+        def cache_fingerprint(self) -> dict[str, object]:
+            return {"model_id": "fake-production-lean-drs", "context_size": 8192}
+
+        def complete_json(self, prompt: str, *, n_predict: int = 128, grammar=None, json_schema=None):
+            self.json_schema = json_schema
+            drs_schema = json_schema["properties"]["drs"]
+            assert "evidence_spans" not in drs_schema["properties"]
+            assert "semantic_notes" not in drs_schema["properties"]
+            assert "evidence_spans" not in drs_schema["required"]
+            assert "semantic_notes" not in drs_schema["required"]
+            assert "evidence_spans" not in prompt
+            assert "semantic_notes" not in prompt
+            return {
+                "drs": {
+                    "schema_version": "chunk-drs-v2",
+                    "source_id": "note.txt",
+                    "referents": [
+                        {"id": "r0", "label": "Aero Gate", "kind": "entity", "evidence_text": "Aero Gate"}
+                    ],
+                    "boxes": [
+                        {
+                            "id": "b0",
+                            "kind": "asserted",
+                            "parent_id": "",
+                            "holder_referent_id": "",
+                            "evidence_text": "Aero Gate is ready.",
+                        }
+                    ],
+                    "conditions": [
+                        {
+                            "id": "c0",
+                            "predicate": "ready",
+                            "box_id": "b0",
+                            "polarity": "positive",
+                            "modality": "asserted",
+                            "temporal_id": "",
+                            "arguments": [
+                                {
+                                    "role": "theme",
+                                    "target_kind": "referent",
+                                    "target_id": "r0",
+                                    "value": "Aero Gate",
+                                    "value_type": "entity",
+                                    "evidence_text": "Aero Gate",
+                                }
+                            ],
+                            "evidence_text": "Aero Gate is ready.",
+                        }
+                    ],
+                    "identity_hypotheses": [],
+                    "temporal_records": [],
+                },
+                "_model_raw": "{}",
+                "_model_elapsed_seconds": 0.01,
+            }
+
+    monkeypatch.setenv("KMD_CHUNK_DRS_CACHE_DIR", str(tmp_path / "chunk-drs-cache"))
+    model = ProductionSchemaModel()
+    result = call_model_chunk_drs("Aero Gate is ready.", model, rel_path="note.txt")  # type: ignore[arg-type]
+
+    assert result["accepted"] is True
+    assert result["validation"]["schema_valid"] is True
+    assert model.json_schema is not None
+
+
 def test_chunk_drs_rejects_ungrounded_temporal_records(monkeypatch, tmp_path) -> None:
     class UngroundedTemporalModel:
         def context_size(self) -> int:

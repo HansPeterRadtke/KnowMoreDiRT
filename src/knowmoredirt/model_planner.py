@@ -54,9 +54,9 @@ DRS_CONTEXT_KINDS = {
 DRS_POLARITIES = {"positive", "negative", "unknown"}
 DRS_IDENTITY_STATUSES = {"accepted", "candidate", "rejected", "ambiguous"}
 
-PROMPT_VERSION = "kmd-drt-2026-05-28-v32"
+PROMPT_VERSION = "kmd-drt-2026-05-28-v34"
 CHUNK_FRAME_SCHEMA_VERSION = "chunk-frames-v5"
-CHUNK_DRS_SCHEMA_VERSION = "chunk-drs-v1"
+CHUNK_DRS_SCHEMA_VERSION = "chunk-drs-v2"
 QUERY_DRS_SCHEMA_VERSION = "query-drs-v3"
 QUERY_FRAME_SCHEMA_VERSION = "query-frame-v4"
 ANSWER_SCHEMA_VERSION = "answer-v4"
@@ -808,8 +808,22 @@ DRS_JSON_SCHEMA = _schema_obj(
 )
 
 
-def chunk_drs_json_schema(max_evidence_chars: int | None = None, max_array_items: int | None = None) -> dict[str, Any]:
+def chunk_drs_json_schema(
+    max_evidence_chars: int | None = None,
+    max_array_items: int | None = None,
+    *,
+    include_auxiliary_fields: bool = True,
+) -> dict[str, Any]:
     schema = json.loads(json.dumps(DRS_JSON_SCHEMA))
+    if not include_auxiliary_fields:
+        drs_schema = schema["properties"]["drs"]
+        required = drs_schema.get("required")
+        if isinstance(required, list):
+            drs_schema["required"] = [key for key in required if key not in {"evidence_spans", "semantic_notes"}]
+        properties = drs_schema.get("properties")
+        if isinstance(properties, dict):
+            properties.pop("evidence_spans", None)
+            properties.pop("semantic_notes", None)
     if not max_evidence_chars and not max_array_items:
         return schema
     max_length = max(1, int(max_evidence_chars)) if max_evidence_chars else None
@@ -2180,7 +2194,7 @@ def build_chunk_drs_prompt(chunk_text: str, *, rel_path: str = "", context_budge
     max_evidence_chars = int((context_budget or {}).get("max_evidence_chars") or 0)
     max_array_items = int((context_budget or {}).get("max_array_items") or 0)
     evidence_budget_text = (
-        f" Each evidence_text and evidence_spans item must be at most {max_evidence_chars} characters."
+        f" Each evidence_text item must be at most {max_evidence_chars} characters."
         if max_evidence_chars > 0
         else ""
     )
@@ -2191,14 +2205,19 @@ def build_chunk_drs_prompt(chunk_text: str, *, rel_path: str = "", context_budge
         "and identity_hypotheses. Do not answer questions, use outside knowledge, infer hidden answers, "
         "or use handler names. The root asserted box should have id b0 and parent_id ''. Use subordinate boxes "
         "for negation, reports, quotes, beliefs, conditionals, uncertainty, dreams, fiction, and modality. "
+        "Do not create boxes only to stand for ordinary events; boxes are for scoped DRS contexts. If an event "
+        "complement is not itself a scoped DRS, represent it as a grounded literal argument or as a declared "
+        "condition referenced with target_kind=condition. "
         "Arguments use target_kind and target_id; use target_kind=box when an argument is a subordinate DRS box, "
         "target_kind=condition when an argument is another condition, and target_kind=referent for discourse "
         "referents. Identity hypotheses must be model-provided DRT data, not same-name merging; do not include "
         "self identity hypotheses where left_referent_id equals right_referent_id. Every target_id using "
         "target_kind referent, box, or condition must match an id declared in the corresponding array. If a grounded "
         "participant has no declared id, declare it first or use target_kind literal or unknown; never emit undeclared "
-        "ids. Identity hypotheses must reference declared distinct referents. "
-        "Every evidence_text and evidence_spans item must be one contiguous substring copied exactly from the chunk."
+        "ids. Identity hypotheses must reference declared distinct referents and should be [] unless the source "
+        "explicitly supports an identity, alias, or coreference link. Use temporal_records only for explicit "
+        "source-grounded temporal or ordering phrases; otherwise temporal_id must be ''. "
+        "Every evidence_text item must be one contiguous substring copied exactly from the chunk."
         + evidence_budget_text
         + array_budget_text
         + " "
@@ -2217,8 +2236,6 @@ def build_chunk_drs_prompt(chunk_text: str, *, rel_path: str = "", context_budge
                         "conditions": [],
                         "identity_hypotheses": [],
                         "temporal_records": [],
-                        "evidence_spans": [],
-                        "semantic_notes": [],
                     }
                 },
                 "chunk": chunk_text,
@@ -2303,7 +2320,9 @@ def _validate_chunk_drs_payload(payload: Any, source_text: str) -> dict[str, Any
     conditions = collection("conditions")
     identities = collection("identity_hypotheses")
     temporals = collection("temporal_records")
-    evidence_spans = drs.get("evidence_spans")
+    evidence_spans = drs.get("evidence_spans", [])
+    if evidence_spans is None:
+        evidence_spans = []
     if not isinstance(evidence_spans, list):
         errors.append("not_list:evidence_spans")
         evidence_spans = []
@@ -2450,9 +2469,10 @@ def _repair_chunk_drs_payload(payload: Any) -> Any:
 
 
 def chunk_drs_cache_context(client: LocalModelClient | None, *, n_predict: int | None = None) -> dict[str, Any]:
-    constraint = _constraint_settings(CHUNK_DRS_GRAMMAR, DRS_JSON_SCHEMA, CHUNK_DRS_SCHEMA_VERSION)
     if n_predict is None:
         n_predict = default_chunk_drs_n_predict(client)
+    production_schema = chunk_drs_json_schema(include_auxiliary_fields=False)
+    constraint = _constraint_settings(CHUNK_DRS_GRAMMAR, production_schema, CHUNK_DRS_SCHEMA_VERSION)
     return {
         "prompt_version": PROMPT_VERSION,
         "schema_version": CHUNK_DRS_SCHEMA_VERSION,
@@ -2480,7 +2500,11 @@ def call_model_chunk_drs(
         n_predict=n_predict,
     )
     prompt = build_chunk_drs_prompt(prompt_chunk, rel_path=rel_path, context_budget=context_budget)
-    drs_json_schema = chunk_drs_json_schema(context_budget.get("max_evidence_chars"), context_budget.get("max_array_items"))
+    drs_json_schema = chunk_drs_json_schema(
+        context_budget.get("max_evidence_chars"),
+        context_budget.get("max_array_items"),
+        include_auxiliary_fields=False,
+    )
     constraint = _constraint_settings(CHUNK_DRS_GRAMMAR, drs_json_schema, CHUNK_DRS_SCHEMA_VERSION)
     prompt_hash = _cache_hash(
         "chunk_drs",
