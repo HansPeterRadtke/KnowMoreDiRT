@@ -54,7 +54,7 @@ DRS_CONTEXT_KINDS = {
 DRS_POLARITIES = {"positive", "negative", "unknown"}
 DRS_IDENTITY_STATUSES = {"accepted", "candidate", "rejected", "ambiguous"}
 
-PROMPT_VERSION = "kmd-drt-2026-05-28-v31"
+PROMPT_VERSION = "kmd-drt-2026-05-28-v32"
 CHUNK_FRAME_SCHEMA_VERSION = "chunk-frames-v5"
 CHUNK_DRS_SCHEMA_VERSION = "chunk-drs-v1"
 QUERY_DRS_SCHEMA_VERSION = "query-drs-v3"
@@ -808,18 +808,35 @@ DRS_JSON_SCHEMA = _schema_obj(
 )
 
 
-def chunk_drs_json_schema(max_evidence_chars: int | None = None) -> dict[str, Any]:
+def chunk_drs_json_schema(max_evidence_chars: int | None = None, max_array_items: int | None = None) -> dict[str, Any]:
     schema = json.loads(json.dumps(DRS_JSON_SCHEMA))
-    if not max_evidence_chars:
+    if not max_evidence_chars and not max_array_items:
         return schema
-    max_length = max(1, int(max_evidence_chars))
+    max_length = max(1, int(max_evidence_chars)) if max_evidence_chars else None
+    max_items = max(1, int(max_array_items)) if max_array_items else None
 
     def visit(node: Any, parent_key: str = "") -> None:
         if isinstance(node, dict):
-            if parent_key == "evidence_text" and node.get("type") == "string":
+            if max_length is not None and parent_key == "evidence_text" and node.get("type") == "string":
                 node["maxLength"] = max_length
-            if parent_key == "evidence_spans" and isinstance(node.get("items"), dict):
+            if max_length is not None and parent_key == "evidence_spans" and isinstance(node.get("items"), dict):
                 node["items"]["maxLength"] = max_length
+            if (
+                max_items is not None
+                and node.get("type") == "array"
+                and parent_key
+                in {
+                    "referents",
+                    "boxes",
+                    "conditions",
+                    "arguments",
+                    "identity_hypotheses",
+                    "temporal_records",
+                    "evidence_spans",
+                    "semantic_notes",
+                }
+            ):
+                node["maxItems"] = max_items
             for key, value in node.items():
                 visit(value, key)
         elif isinstance(node, list):
@@ -843,6 +860,18 @@ def chunk_drs_evidence_max_chars(chunk_text: str, n_predict: int | None = None) 
         return len(chunk_text)
     budgeted = max(96, min(256, int(n_predict) // 4))
     return max(1, min(len(chunk_text), budgeted))
+
+
+def chunk_drs_array_max_items(n_predict: int | None = None) -> int | None:
+    configured = os.environ.get("KMD_CHUNK_DRS_MAX_ARRAY_ITEMS")
+    if configured:
+        try:
+            return max(1, int(configured))
+        except ValueError:
+            pass
+    if not n_predict:
+        return None
+    return max(4, min(10, int(n_predict) // 96))
 
 
 QUERY_DRS_JSON_SCHEMA = _schema_obj(
@@ -2149,11 +2178,13 @@ CHUNK_DRS_GRAMMAR = ""
 
 def build_chunk_drs_prompt(chunk_text: str, *, rel_path: str = "", context_budget: dict[str, Any] | None = None) -> str:
     max_evidence_chars = int((context_budget or {}).get("max_evidence_chars") or 0)
+    max_array_items = int((context_budget or {}).get("max_array_items") or 0)
     evidence_budget_text = (
         f" Each evidence_text and evidence_spans item must be at most {max_evidence_chars} characters."
         if max_evidence_chars > 0
         else ""
     )
+    array_budget_text = f" Each JSON array must contain at most {max_array_items} items." if max_array_items > 0 else ""
     return (
         "JSON only. Convert the raw text chunk into one source-grounded DRS object. "
         "Every semantic decision must be represented as referents, boxes, conditions, temporal_records, "
@@ -2163,9 +2194,13 @@ def build_chunk_drs_prompt(chunk_text: str, *, rel_path: str = "", context_budge
         "Arguments use target_kind and target_id; use target_kind=box when an argument is a subordinate DRS box, "
         "target_kind=condition when an argument is another condition, and target_kind=referent for discourse "
         "referents. Identity hypotheses must be model-provided DRT data, not same-name merging; do not include "
-        "self identity hypotheses where left_referent_id equals right_referent_id. "
+        "self identity hypotheses where left_referent_id equals right_referent_id. Every target_id using "
+        "target_kind referent, box, or condition must match an id declared in the corresponding array. If a grounded "
+        "participant has no declared id, declare it first or use target_kind literal or unknown; never emit undeclared "
+        "ids. Identity hypotheses must reference declared distinct referents. "
         "Every evidence_text and evidence_spans item must be one contiguous substring copied exactly from the chunk."
         + evidence_budget_text
+        + array_budget_text
         + " "
         "Copy each evidence substring at most once; never concatenate or repeat the chunk inside a string."
         + json.dumps(
@@ -2224,6 +2259,7 @@ def _context_limited_chunk_drs_text(
                 "input_chars": len(chunk_text),
                 "prompt_chunk_chars": len(limited),
                 "max_evidence_chars": chunk_drs_evidence_max_chars(limited, n_predict),
+                "max_array_items": chunk_drs_array_max_items(n_predict),
                 "input_truncated": len(limited) < len(chunk_text),
             }
         )
@@ -2241,6 +2277,7 @@ def _context_limited_chunk_drs_text(
             "input_chars": len(chunk_text),
             "prompt_chunk_chars": len(limited),
             "max_evidence_chars": chunk_drs_evidence_max_chars(limited, n_predict),
+            "max_array_items": chunk_drs_array_max_items(n_predict),
             "input_truncated": len(limited) < len(chunk_text),
         }
     )
@@ -2420,6 +2457,7 @@ def chunk_drs_cache_context(client: LocalModelClient | None, *, n_predict: int |
         "prompt_version": PROMPT_VERSION,
         "schema_version": CHUNK_DRS_SCHEMA_VERSION,
         "evidence_cap_policy": "min_chunk_or_reserved_output_quarter_96_256",
+        "array_cap_policy": "reserved_output_tokens_div_96_4_10",
         **constraint,
         "n_predict": int(n_predict),
         "model_fingerprint": _client_fingerprint(client),
@@ -2442,7 +2480,7 @@ def call_model_chunk_drs(
         n_predict=n_predict,
     )
     prompt = build_chunk_drs_prompt(prompt_chunk, rel_path=rel_path, context_budget=context_budget)
-    drs_json_schema = chunk_drs_json_schema(context_budget.get("max_evidence_chars"))
+    drs_json_schema = chunk_drs_json_schema(context_budget.get("max_evidence_chars"), context_budget.get("max_array_items"))
     constraint = _constraint_settings(CHUNK_DRS_GRAMMAR, drs_json_schema, CHUNK_DRS_SCHEMA_VERSION)
     prompt_hash = _cache_hash(
         "chunk_drs",

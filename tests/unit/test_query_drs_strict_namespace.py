@@ -3,7 +3,9 @@ from __future__ import annotations
 from knowmoredirt.model_planner import (
     call_model_chunk_drs,
     call_model_query_drs,
+    chunk_drs_array_max_items,
     chunk_drs_evidence_max_chars,
+    chunk_drs_json_schema,
     query_frame_from_query_drs,
 )
 
@@ -258,13 +260,30 @@ def test_chunk_drs_removes_tautological_self_identity_hypotheses(monkeypatch, tm
 
 def test_chunk_drs_evidence_cap_uses_reserved_output_budget(monkeypatch) -> None:
     monkeypatch.delenv("KMD_CHUNK_DRS_MAX_EVIDENCE_CHARS", raising=False)
+    monkeypatch.delenv("KMD_CHUNK_DRS_MAX_ARRAY_ITEMS", raising=False)
 
     assert chunk_drs_evidence_max_chars("x" * 1000, 512) == 128
     assert chunk_drs_evidence_max_chars("x" * 50, 512) == 50
+    assert chunk_drs_array_max_items(768) == 8
 
     monkeypatch.setenv("KMD_CHUNK_DRS_MAX_EVIDENCE_CHARS", "77")
+    monkeypatch.setenv("KMD_CHUNK_DRS_MAX_ARRAY_ITEMS", "6")
 
     assert chunk_drs_evidence_max_chars("x" * 1000, 512) == 77
+    assert chunk_drs_array_max_items(768) == 6
+
+
+def test_chunk_drs_schema_caps_arrays_from_output_budget() -> None:
+    schema = chunk_drs_json_schema(31, 7)
+    drs_schema = schema["properties"]["drs"]
+    condition_schema = drs_schema["properties"]["conditions"]["items"]
+
+    assert drs_schema["properties"]["referents"]["maxItems"] == 7
+    assert drs_schema["properties"]["boxes"]["maxItems"] == 7
+    assert drs_schema["properties"]["conditions"]["maxItems"] == 7
+    assert condition_schema["properties"]["arguments"]["maxItems"] == 7
+    assert drs_schema["properties"]["evidence_spans"]["maxItems"] == 7
+    assert drs_schema["properties"]["evidence_spans"]["items"]["maxLength"] == 31
 
 
 def test_chunk_drs_rejects_ungrounded_temporal_records(monkeypatch, tmp_path) -> None:
