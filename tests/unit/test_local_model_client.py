@@ -9,6 +9,7 @@ from knowmoredirt.model_planner import (
     call_model_chunk_frames,
     call_model_query_drs,
     chunk_drs_json_schema,
+    query_frame_from_query_drs,
 )
 
 
@@ -403,3 +404,53 @@ def test_chunk_drs_planner_repairs_model_referent_argument_records(monkeypatch, 
     assert result["validation"]["referent_count"] == 1
     assert result["drs"]["referents"][0]["id"] == "r0"
     assert result["drs"]["referents"][0]["label"] == "Aero Gate"
+
+
+def test_query_drs_projects_to_query_frame_without_language_handlers() -> None:
+    query_drs = {
+        "answer_variables": ["reviewer"],
+        "target_referents": [
+            {"id": "r0", "label": "Aero Gate", "kind": "entity", "evidence_text": "Aero Gate"}
+        ],
+        "requested_conditions": [
+            {
+                "id": "c0",
+                "predicate": "review",
+                "box_id": "",
+                "polarity": "positive",
+                "modality": "asserted",
+                "temporal_id": "",
+                "arguments": [
+                    {
+                        "role": "theme",
+                        "target_kind": "referent",
+                        "target_id": "r0",
+                        "value": "Aero Gate",
+                        "value_type": "entity",
+                        "evidence_text": "Aero Gate",
+                    }
+                ],
+                "evidence_text": "reviewed Aero Gate",
+            }
+        ],
+        "constraints": ["release"],
+        "box_requirements": [
+            {"id": "b1", "kind": "reported", "parent_id": "", "holder_referent_id": "", "evidence_text": "reported"}
+        ],
+        "temporal_scope": "latest",
+        "aggregation": "",
+        "answer_type": "person",
+        "requires_evidence": True,
+    }
+
+    frame = query_frame_from_query_drs("Who reviewed Aero Gate?", query_drs)
+
+    assert frame is not None
+    assert frame["source"] == "model_query_drs"
+    assert frame["target_anchors"] == ("Aero Gate",)
+    assert frame["answer_variables"] == ("reviewer",)
+    assert frame["requested_relation"] == "review"
+    assert "theme" in frame["relation_terms"]
+    assert frame["scope_requirements"] == ("reported",)
+    assert frame["temporal_scope"] == "latest"
+    assert frame["answer_type"] == "person"

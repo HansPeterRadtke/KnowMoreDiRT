@@ -1248,6 +1248,66 @@ def call_model_query_drs(question: str, client: LocalModelClient, *, n_predict: 
     return payload
 
 
+def query_frame_from_query_drs(question: str, query_drs: dict[str, Any] | None) -> dict[str, Any] | None:
+    if not isinstance(query_drs, dict):
+        return None
+    target_referents = query_drs.get("target_referents")
+    requested_conditions = query_drs.get("requested_conditions")
+    box_requirements = query_drs.get("box_requirements")
+    if not isinstance(target_referents, list) or not isinstance(requested_conditions, list):
+        return None
+    target_anchors = [
+        str(item.get("label") or "").strip()
+        for item in target_referents
+        if isinstance(item, dict) and str(item.get("label") or "").strip()
+    ]
+    predicates = [
+        str(item.get("predicate") or "").strip()
+        for item in requested_conditions
+        if isinstance(item, dict) and str(item.get("predicate") or "").strip()
+    ]
+    argument_terms: list[str] = []
+    modality_terms: list[str] = []
+    for condition in requested_conditions:
+        if not isinstance(condition, dict):
+            continue
+        modality = str(condition.get("modality") or "").strip()
+        if modality and modality != "asserted":
+            modality_terms.append(modality)
+        for argument in condition.get("arguments") or []:
+            if not isinstance(argument, dict):
+                continue
+            value = str(argument.get("value") or "").strip()
+            role = str(argument.get("role") or "").strip()
+            if value:
+                argument_terms.append(value)
+            if role:
+                argument_terms.append(role)
+    scope_terms = [
+        str(item.get("kind") or "").strip()
+        for item in box_requirements or []
+        if isinstance(item, dict) and str(item.get("kind") or "").strip() and str(item.get("kind") or "") != "asserted"
+    ]
+    frame = frame_from_mapping(
+        question,
+        {
+            "target_anchors": list(dict.fromkeys(target_anchors)),
+            "answer_variables": query_drs.get("answer_variables") if isinstance(query_drs.get("answer_variables"), list) else [],
+            "requested_relation": " ".join(dict.fromkeys(predicates)),
+            "relation_terms": list(dict.fromkeys([*predicates, *argument_terms])),
+            "constraints": query_drs.get("constraints") if isinstance(query_drs.get("constraints"), list) else [],
+            "scope_requirements": list(dict.fromkeys(scope_terms)),
+            "modality_requirements": list(dict.fromkeys(modality_terms)),
+            "answer_type": query_drs.get("answer_type") if isinstance(query_drs.get("answer_type"), str) else "unknown",
+            "temporal_scope": query_drs.get("temporal_scope") if isinstance(query_drs.get("temporal_scope"), str) else "",
+            "aggregation": query_drs.get("aggregation") if isinstance(query_drs.get("aggregation"), str) else "",
+            "requires_evidence": bool(query_drs.get("requires_evidence", True)),
+        },
+        source="model_query_drs",
+    )
+    return frame.as_dict()
+
+
 def build_evidence_extraction_prompt(question: str, expected_answer_type: str, evidence_items: list[dict[str, str]]) -> str:
     return (
         "JSON only. Answer the question only from the provided raw-text evidence. "

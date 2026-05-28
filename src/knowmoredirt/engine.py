@@ -35,11 +35,13 @@ from .model_planner import (
     call_model_chunk_frames,
     call_model_evidence_answer,
     call_model_identity_canonicalization,
+    call_model_query_drs,
     call_model_query_evidence_answer,
     call_model_query_plan,
     chunk_frame_cache_context,
     deterministic_plan as deterministic_query_frame,
     normalize_model_plan,
+    query_frame_from_query_drs,
 )
 from .models import Answer, Evidence, Sentence
 from .query import QueryFrame, frame_from_mapping, plan_question, term_variants
@@ -445,7 +447,27 @@ class KnowMoreDiRTEngine:
         trace.call_count += 1
         det = deterministic_query_frame(question)
         self._log_progress("kmd-answer model_plan_start")
-        model = call_model_query_plan(question, self._model_client)
+        use_query_drs_plan = os.environ.get("KMD_QUERY_DRS_PLAN", "0").strip().lower() in {"1", "true", "yes", "on"}
+        if use_query_drs_plan:
+            model = call_model_query_drs(question, self._model_client)
+            if model.get("accepted"):
+                query_drs_model = model
+                projected = query_frame_from_query_drs(
+                    question,
+                    model.get("query_drs") if isinstance(model.get("query_drs"), dict) else None,
+                )
+                if projected is not None:
+                    model = {
+                        **projected,
+                        "accepted": True,
+                        "query_drs": query_drs_model.get("query_drs"),
+                        "source": "model_query_drs",
+                        "prompt_hash": query_drs_model.get("prompt_hash"),
+                        "output_hash": query_drs_model.get("output_hash"),
+                        "elapsed": query_drs_model.get("elapsed"),
+                    }
+        else:
+            model = call_model_query_plan(question, self._model_client)
         self._record_model_result(model)
         if model.get("prompt_hash"):
             trace.prompt_hashes = [*list(trace.prompt_hashes or []), str(model["prompt_hash"])][-20:]
