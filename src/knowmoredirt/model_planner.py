@@ -58,6 +58,52 @@ def _optional_grammar(grammar: str) -> str | None:
     return None if os.environ.get("KMD_LOCAL_MODEL_GRAMMAR", "1").strip().lower() in {"0", "false", "no", "off"} else grammar
 
 
+def _estimate_tokens(text: str) -> int:
+    return max(1, (len(text) + 3) // 4)
+
+
+def _client_fingerprint(client: LocalModelClient | None) -> dict[str, Any]:
+    if client is None:
+        return {}
+    method = getattr(client, "cache_fingerprint", None)
+    if callable(method):
+        try:
+            payload = method()
+        except Exception as exc:
+            return {"endpoint": getattr(client, "endpoint", ""), "metadata_error": f"{type(exc).__name__}: {exc}"}
+        return payload if isinstance(payload, dict) else {}
+    return {
+        "endpoint": getattr(client, "endpoint", ""),
+        "timeout_seconds": getattr(client, "timeout_seconds", ""),
+        "seed": os.environ.get("KMD_LOCAL_MODEL_SEED", "1778779265"),
+    }
+
+
+def _client_context_size(client: LocalModelClient | None) -> int:
+    if client is None:
+        return 0
+    method = getattr(client, "context_size", None)
+    if callable(method):
+        try:
+            return max(0, int(method()))
+        except Exception:
+            return 0
+    return 0
+
+
+def default_chunk_frame_n_predict(client: LocalModelClient | None = None) -> int:
+    configured = os.environ.get("KMD_CHUNK_FRAME_N_PREDICT")
+    if configured:
+        try:
+            return max(1, int(configured))
+        except ValueError:
+            pass
+    context_size = _client_context_size(client)
+    if context_size > 0:
+        return max(192, min(1024, context_size // 32))
+    return 192
+
+
 ANSWER_TYPE_ALIASES = {
     "amount": "count",
     "contact": "content_phrase",
@@ -128,6 +174,7 @@ def _cache_material(stage: str, prompt: str, client: LocalModelClient | None, se
         "model_timeout": getattr(client, "timeout_seconds", os.environ.get("KMD_LOCAL_MODEL_TIMEOUT", "")),
         "model_identity": os.environ.get("KMD_LOCAL_MODEL_ID", ""),
         "seed": os.environ.get("KMD_LOCAL_MODEL_SEED", "1778779265"),
+        "model_fingerprint": _client_fingerprint(client),
         "settings": settings or {},
     }
     return json.dumps(payload, ensure_ascii=False, sort_keys=True)
@@ -135,6 +182,10 @@ def _cache_material(stage: str, prompt: str, client: LocalModelClient | None, se
 
 def _cache_hash(stage: str, prompt: str, client: LocalModelClient | None, settings: dict[str, Any] | None = None) -> str:
     return hashlib.sha256(_cache_material(stage, prompt, client, settings).encode("utf-8")).hexdigest()
+
+
+def _grammar_hash(grammar: str, schema_version: str) -> str:
+    return hashlib.sha256((grammar + schema_version).encode()).hexdigest()
 
 
 def _cache_path(env_var: str, prompt_hash: str) -> Path | None:
@@ -528,7 +579,13 @@ def call_model_query_plan(question: str, client: LocalModelClient, *, n_predict:
     if n_predict is None:
         n_predict = int(os.environ.get("KMD_QUERY_PLAN_N_PREDICT", "128"))
     prompt = build_query_plan_prompt(question)
-    prompt_hash = _cache_hash("query_frame", prompt, client, {"n_predict": n_predict, "schema": QUERY_FRAME_SCHEMA_VERSION})
+    grammar_hash = _grammar_hash(QUERY_FRAME_GRAMMAR, QUERY_FRAME_SCHEMA_VERSION)
+    prompt_hash = _cache_hash(
+        "query_frame",
+        prompt,
+        client,
+        {"n_predict": n_predict, "schema": QUERY_FRAME_SCHEMA_VERSION, "grammar_hash": grammar_hash},
+    )
     cache_path = _cache_path("KMD_QUERY_PLAN_CACHE_DIR", prompt_hash)
     cached = _read_cache(cache_path)
     if cached is not None and not (
@@ -549,7 +606,7 @@ def call_model_query_plan(question: str, client: LocalModelClient, *, n_predict:
             "reason": "request_failed",
             "error": str(exc),
             "prompt_hash": prompt_hash,
-            "grammar_hash": hashlib.sha256((QUERY_FRAME_GRAMMAR + QUERY_FRAME_SCHEMA_VERSION).encode()).hexdigest(),
+            "grammar_hash": grammar_hash,
             "elapsed": round(time.time() - start, 3),
         }
         _write_cache(cache_path, payload)
@@ -568,7 +625,7 @@ def call_model_query_plan(question: str, client: LocalModelClient, *, n_predict:
             "reason": "invalid_json",
             "raw_text": raw,
             "prompt_hash": prompt_hash,
-            "grammar_hash": hashlib.sha256((QUERY_FRAME_GRAMMAR + QUERY_FRAME_SCHEMA_VERSION).encode()).hexdigest(),
+            "grammar_hash": grammar_hash,
             "elapsed": round(time.time() - start, 3),
         }
         _write_cache(cache_path, payload)
@@ -584,7 +641,7 @@ def call_model_query_plan(question: str, client: LocalModelClient, *, n_predict:
             "reason": "schema_validation_failed",
             "raw_text": raw,
             "prompt_hash": prompt_hash,
-            "grammar_hash": hashlib.sha256((QUERY_FRAME_GRAMMAR + QUERY_FRAME_SCHEMA_VERSION).encode()).hexdigest(),
+            "grammar_hash": grammar_hash,
             "elapsed": round(time.time() - start, 3),
         }
         _write_cache(cache_path, payload)
@@ -597,7 +654,7 @@ def call_model_query_plan(question: str, client: LocalModelClient, *, n_predict:
         "elapsed": parsed.get("_model_elapsed_seconds", round(time.time() - start, 3)),
         "stop_reason": "parsed_json",
         "prompt_hash": prompt_hash,
-        "grammar_hash": hashlib.sha256((QUERY_FRAME_GRAMMAR + QUERY_FRAME_SCHEMA_VERSION).encode()).hexdigest(),
+        "grammar_hash": grammar_hash,
         "output_hash": hashlib.sha256(raw.encode()).hexdigest(),
         "fresh_or_cached": "fresh",
     }
@@ -638,11 +695,17 @@ def call_model_evidence_answer(
     if n_predict is None:
         n_predict = int(os.environ.get("KMD_EVIDENCE_ANSWER_N_PREDICT", "128"))
     prompt = build_evidence_extraction_prompt(question, expected_answer_type, evidence_items)
+    grammar_hash = _grammar_hash(EVIDENCE_EXTRACTION_GRAMMAR, ANSWER_SCHEMA_VERSION)
     prompt_hash = _cache_hash(
         "evidence_answer",
         prompt,
         client,
-        {"n_predict": n_predict, "schema": ANSWER_SCHEMA_VERSION, "expected_answer_type": expected_answer_type},
+        {
+            "n_predict": n_predict,
+            "schema": ANSWER_SCHEMA_VERSION,
+            "expected_answer_type": expected_answer_type,
+            "grammar_hash": grammar_hash,
+        },
     )
     cache_path = _cache_path("KMD_EVIDENCE_ANSWER_CACHE_DIR", prompt_hash)
     cached = _read_cache(cache_path)
@@ -657,7 +720,7 @@ def call_model_evidence_answer(
             "reason": "request_failed",
             "error": str(exc),
             "prompt_hash": prompt_hash,
-            "grammar_hash": hashlib.sha256((EVIDENCE_EXTRACTION_GRAMMAR + ANSWER_SCHEMA_VERSION).encode()).hexdigest(),
+            "grammar_hash": grammar_hash,
             "elapsed": round(time.time() - start, 3),
         }
     answer = parsed.get("answer") if isinstance(parsed, dict) else None
@@ -675,7 +738,7 @@ def call_model_evidence_answer(
             "reason": "invalid_json",
             "raw_text": raw,
             "prompt_hash": prompt_hash,
-            "grammar_hash": hashlib.sha256((EVIDENCE_EXTRACTION_GRAMMAR + ANSWER_SCHEMA_VERSION).encode()).hexdigest(),
+            "grammar_hash": grammar_hash,
             "elapsed": round(time.time() - start, 3),
         }
         _write_cache(cache_path, payload)
@@ -688,7 +751,7 @@ def call_model_evidence_answer(
             "reason": "schema_validation_failed",
             "raw_text": raw,
             "prompt_hash": prompt_hash,
-            "grammar_hash": hashlib.sha256((EVIDENCE_EXTRACTION_GRAMMAR + ANSWER_SCHEMA_VERSION).encode()).hexdigest(),
+            "grammar_hash": grammar_hash,
             "elapsed": round(time.time() - start, 3),
         }
         _write_cache(cache_path, payload)
@@ -702,7 +765,7 @@ def call_model_evidence_answer(
         "raw_text": raw,
         "elapsed": parsed.get("_model_elapsed_seconds", round(time.time() - start, 3)),
         "prompt_hash": prompt_hash,
-        "grammar_hash": hashlib.sha256((EVIDENCE_EXTRACTION_GRAMMAR + ANSWER_SCHEMA_VERSION).encode()).hexdigest(),
+        "grammar_hash": grammar_hash,
         "output_hash": hashlib.sha256(raw.encode()).hexdigest(),
         "fresh_or_cached": "fresh",
     }
@@ -853,12 +916,17 @@ def _call_model_query_evidence_answer_repair(
     discourse_records: list[dict[str, Any]] | None = None,
 ) -> dict[str, Any]:
     prompt = build_query_evidence_answer_repair_prompt(question, evidence_items, raw_response, discourse_records)
-    prompt_hash = _cache_hash("query_evidence_answer_repair", prompt, client, {"n_predict": n_predict, "schema": ANSWER_SCHEMA_VERSION})
+    grammar_hash = _grammar_hash(QUERY_EVIDENCE_ANSWER_GRAMMAR, ANSWER_SCHEMA_VERSION)
+    prompt_hash = _cache_hash(
+        "query_evidence_answer_repair",
+        prompt,
+        client,
+        {"n_predict": n_predict, "schema": ANSWER_SCHEMA_VERSION, "grammar_hash": grammar_hash},
+    )
     cache_path = _cache_path("KMD_QUERY_EVIDENCE_REPAIR_CACHE_DIR", prompt_hash)
     cached = _read_cache(cache_path)
     if cached is not None and cached.get("reason") not in {"invalid_json", "schema_validation_failed", "grounding_validation_failed"}:
         return cached
-    grammar_hash = hashlib.sha256((QUERY_EVIDENCE_ANSWER_GRAMMAR + ANSWER_SCHEMA_VERSION).encode()).hexdigest()
     start = time.time()
     try:
         parsed = client.complete_json(prompt, n_predict=n_predict, grammar=_optional_grammar(QUERY_EVIDENCE_ANSWER_GRAMMAR))
@@ -913,7 +981,13 @@ def call_model_query_evidence_answer(
     if n_predict is None:
         n_predict = int(os.environ.get("KMD_QUERY_EVIDENCE_N_PREDICT", "128"))
     prompt = build_query_evidence_answer_prompt(question, evidence_items, discourse_records)
-    prompt_hash = _cache_hash("query_evidence_answer", prompt, client, {"n_predict": n_predict, "schema": ANSWER_SCHEMA_VERSION})
+    grammar_hash = _grammar_hash(QUERY_EVIDENCE_ANSWER_GRAMMAR, ANSWER_SCHEMA_VERSION)
+    prompt_hash = _cache_hash(
+        "query_evidence_answer",
+        prompt,
+        client,
+        {"n_predict": n_predict, "schema": ANSWER_SCHEMA_VERSION, "grammar_hash": grammar_hash},
+    )
     cache_path = _cache_path("KMD_QUERY_EVIDENCE_CACHE_DIR", prompt_hash)
     cached = _read_cache(cache_path)
     if cached is not None:
@@ -927,7 +1001,7 @@ def call_model_query_evidence_answer(
             "reason": "request_failed",
             "error": str(exc),
             "prompt_hash": prompt_hash,
-            "grammar_hash": hashlib.sha256((QUERY_EVIDENCE_ANSWER_GRAMMAR + ANSWER_SCHEMA_VERSION).encode()).hexdigest(),
+            "grammar_hash": grammar_hash,
             "elapsed": round(time.time() - start, 3),
         }
     raw = str(parsed.get("_model_raw") or "") if isinstance(parsed, dict) else ""
@@ -952,12 +1026,11 @@ def call_model_query_evidence_answer(
             "reason": "invalid_json",
             "raw_text": raw,
             "prompt_hash": prompt_hash,
-            "grammar_hash": hashlib.sha256((QUERY_EVIDENCE_ANSWER_GRAMMAR + ANSWER_SCHEMA_VERSION).encode()).hexdigest(),
+            "grammar_hash": grammar_hash,
             "elapsed": round(time.time() - start, 3),
         }
         _write_cache(cache_path, payload)
         return payload
-    grammar_hash = hashlib.sha256((QUERY_EVIDENCE_ANSWER_GRAMMAR + ANSWER_SCHEMA_VERSION).encode()).hexdigest()
     missing_required = not {"query_frame", "sufficient_evidence", "answer_type", "answer", "evidence_span", "reason"}.issubset(result)
     payload = _query_evidence_payload_from_result(
         question,
@@ -985,7 +1058,7 @@ def call_model_query_evidence_answer(
     return payload
 
 
-def build_chunk_frame_prompt(chunk_text: str, *, rel_path: str = "") -> str:
+def build_chunk_frame_prompt(chunk_text: str, *, rel_path: str = "", context_budget: dict[str, Any] | None = None) -> str:
     return (
         "JSON only. Extract generic DRT/DSPG discourse frames and grounded DRT structures from this raw text chunk. "
         "Use this exact shape: {\"frames\":[{\"frame_type\":\"relation\",\"predicate\":\"\","
@@ -1004,8 +1077,74 @@ def build_chunk_frame_prompt(chunk_text: str, *, rel_path: str = "") -> str:
         "when the same value appears as an exact argument phrase in the chunk. Include identity_hypotheses only when the chunk itself supports alias, "
         "coreference, pronoun, speaker, or same-referent links. Include modality, polarity, context_holder, "
         "and temporal_text only when the chunk itself supports that DRT interpretation."
-        + json.dumps({"source": rel_path, "chunk": chunk_text[:2400]}, ensure_ascii=False)
+        + json.dumps({"source": rel_path, "context_budget": context_budget or {}, "chunk": chunk_text}, ensure_ascii=False)
     )
+
+
+def _context_limited_chunk_frame_text(
+    chunk_text: str,
+    client: LocalModelClient,
+    *,
+    rel_path: str,
+    n_predict: int,
+) -> tuple[str, dict[str, Any]]:
+    context_size = _client_context_size(client)
+    budget: dict[str, Any] = {
+        "runtime_context_size": context_size,
+        "reserved_output_tokens": int(n_predict),
+        "context_source": "client_metadata" if context_size > 0 else "unavailable",
+    }
+    if context_size <= 0:
+        configured_chars = os.environ.get("KMD_CHUNK_FRAME_MAX_CHARS")
+        if configured_chars:
+            try:
+                max_chars = max(1, int(configured_chars))
+            except ValueError:
+                max_chars = len(chunk_text)
+            limited = chunk_text[:max_chars]
+        else:
+            limited = chunk_text
+        budget.update(
+            {
+                "prompt_budget_tokens": 0,
+                "prompt_overhead_tokens": 0,
+                "chunk_budget_tokens": _estimate_tokens(limited),
+                "input_chars": len(chunk_text),
+                "prompt_chunk_chars": len(limited),
+                "input_truncated": len(limited) < len(chunk_text),
+            }
+        )
+        return limited, budget
+    seed_budget = {**budget, "prompt_budget_tokens": max(0, context_size - int(n_predict)), "chunk_budget_tokens": 0}
+    overhead_tokens = _estimate_tokens(build_chunk_frame_prompt("", rel_path=rel_path, context_budget=seed_budget))
+    prompt_budget_tokens = max(0, context_size - int(n_predict) - overhead_tokens)
+    max_chars = max(0, prompt_budget_tokens * 4)
+    limited = chunk_text[:max_chars] if max_chars else ""
+    budget.update(
+        {
+            "prompt_budget_tokens": prompt_budget_tokens,
+            "prompt_overhead_tokens": overhead_tokens,
+            "chunk_budget_tokens": _estimate_tokens(limited),
+            "input_chars": len(chunk_text),
+            "prompt_chunk_chars": len(limited),
+            "input_truncated": len(limited) < len(chunk_text),
+        }
+    )
+    return limited, budget
+
+
+def chunk_frame_cache_context(client: LocalModelClient | None, *, n_predict: int | None = None) -> dict[str, Any]:
+    grammar_hash = _grammar_hash(FRAME_EXTRACTION_GRAMMAR, CHUNK_FRAME_SCHEMA_VERSION)
+    if n_predict is None:
+        n_predict = default_chunk_frame_n_predict(client)
+    return {
+        "prompt_version": PROMPT_VERSION,
+        "schema_version": CHUNK_FRAME_SCHEMA_VERSION,
+        "grammar_enabled": _optional_grammar(FRAME_EXTRACTION_GRAMMAR) is not None,
+        "grammar_hash": grammar_hash,
+        "n_predict": int(n_predict),
+        "model_fingerprint": _client_fingerprint(client),
+    }
 
 
 def call_model_chunk_frames(
@@ -1016,15 +1155,26 @@ def call_model_chunk_frames(
     n_predict: int | None = None,
 ) -> dict[str, Any]:
     if n_predict is None:
-        n_predict = int(os.environ.get("KMD_CHUNK_FRAME_N_PREDICT", "192"))
-    prompt = build_chunk_frame_prompt(chunk_text, rel_path=rel_path)
+        n_predict = default_chunk_frame_n_predict(client)
+    prompt_chunk, context_budget = _context_limited_chunk_frame_text(
+        chunk_text,
+        client,
+        rel_path=rel_path,
+        n_predict=n_predict,
+    )
+    prompt = build_chunk_frame_prompt(prompt_chunk, rel_path=rel_path, context_budget=context_budget)
+    grammar_hash = _grammar_hash(FRAME_EXTRACTION_GRAMMAR, CHUNK_FRAME_SCHEMA_VERSION)
     prompt_hash = _cache_hash(
         "chunk_frames",
         prompt,
         client,
-        {"n_predict": n_predict, "schema": CHUNK_FRAME_SCHEMA_VERSION},
+        {
+            "n_predict": n_predict,
+            "schema": CHUNK_FRAME_SCHEMA_VERSION,
+            "grammar_hash": grammar_hash,
+            "context_budget": context_budget,
+        },
     )
-    grammar_hash = hashlib.sha256((FRAME_EXTRACTION_GRAMMAR + CHUNK_FRAME_SCHEMA_VERSION).encode()).hexdigest()
     start = time.time()
     try:
         parsed = client.complete_json(prompt, n_predict=n_predict, grammar=_optional_grammar(FRAME_EXTRACTION_GRAMMAR))
@@ -1059,7 +1209,7 @@ def call_model_chunk_frames(
             continue
         evidence_text = str(frame.get("evidence_text") or "").strip()
         predicate = str(frame.get("predicate") or "").strip()
-        if not evidence_text or evidence_text not in chunk_text or not predicate:
+        if not evidence_text or evidence_text not in prompt_chunk or not predicate:
             rejected_for_grounding += 1
             continue
         arguments = frame.get("arguments")
@@ -1074,7 +1224,7 @@ def call_model_chunk_frames(
                 if not isinstance(argument, dict):
                     continue
                 text = str(argument.get("text") or argument.get("value") or "").strip()
-                if text and text not in chunk_text:
+                if text and text not in prompt_chunk:
                     rejected_for_grounding += 1
                     continue
                 grounded_arguments.append(
@@ -1095,7 +1245,7 @@ def call_model_chunk_frames(
                 identity_evidence = str(hypothesis.get("evidence_text") or evidence_text).strip()
                 if not left_text or not right_text or not identity_evidence:
                     continue
-                if left_text not in chunk_text or right_text not in chunk_text or identity_evidence not in chunk_text:
+                if left_text not in prompt_chunk or right_text not in prompt_chunk or identity_evidence not in prompt_chunk:
                     rejected_for_grounding += 1
                     continue
                 identity_hypotheses.append(
@@ -1108,11 +1258,11 @@ def call_model_chunk_frames(
                     }
                 )
         context_holder = str(frame.get("context_holder") or "").strip()
-        if context_holder and context_holder not in chunk_text:
+        if context_holder and context_holder not in prompt_chunk:
             rejected_for_grounding += 1
             continue
         temporal_text = str(frame.get("temporal_text") or "").strip()
-        if temporal_text and temporal_text not in chunk_text:
+        if temporal_text and temporal_text not in prompt_chunk:
             rejected_for_grounding += 1
             continue
         grounded.append(
@@ -1138,6 +1288,7 @@ def call_model_chunk_frames(
             "grammar_hash": grammar_hash,
             "elapsed": parsed.get("_model_elapsed_seconds", round(time.time() - start, 3)),
             "rejected_for_grounding": rejected_for_grounding,
+            "context_budget": context_budget,
         }
     return {
         "accepted": True,
@@ -1146,6 +1297,7 @@ def call_model_chunk_frames(
         "elapsed": parsed.get("_model_elapsed_seconds", round(time.time() - start, 3)),
         "prompt_hash": prompt_hash,
         "grammar_hash": grammar_hash,
+        "context_budget": context_budget,
         "output_hash": hashlib.sha256(raw.encode()).hexdigest(),
         "fresh_or_cached": "fresh",
         "rejected_for_grounding": rejected_for_grounding,
@@ -1198,7 +1350,13 @@ def call_model_answer_verification(
     if n_predict is None:
         n_predict = int(os.environ.get("KMD_VERIFIER_N_PREDICT", "128"))
     prompt = build_answer_verification_prompt(question, query_frame, candidate_answer, evidence_items, discourse_frames)
-    prompt_hash = _cache_hash("answer_verification", prompt, client, {"n_predict": n_predict, "schema": ANSWER_SCHEMA_VERSION})
+    grammar_hash = _grammar_hash(ANSWER_VERIFICATION_GRAMMAR, ANSWER_SCHEMA_VERSION)
+    prompt_hash = _cache_hash(
+        "answer_verification",
+        prompt,
+        client,
+        {"n_predict": n_predict, "schema": ANSWER_SCHEMA_VERSION, "grammar_hash": grammar_hash},
+    )
     cache_path = _cache_path("KMD_VERIFIER_CACHE_DIR", prompt_hash)
     cached = _read_cache(cache_path)
     if cached is not None:
@@ -1212,7 +1370,7 @@ def call_model_answer_verification(
             "reason": "request_failed",
             "error": str(exc),
             "prompt_hash": prompt_hash,
-            "grammar_hash": hashlib.sha256((ANSWER_VERIFICATION_GRAMMAR + ANSWER_SCHEMA_VERSION).encode()).hexdigest(),
+            "grammar_hash": grammar_hash,
             "elapsed": round(time.time() - start, 3),
         }
     raw = str(parsed.get("_model_raw") or "") if isinstance(parsed, dict) else ""
@@ -1225,7 +1383,7 @@ def call_model_answer_verification(
             "reason": "invalid_json",
             "raw_text": raw,
             "prompt_hash": prompt_hash,
-            "grammar_hash": hashlib.sha256((ANSWER_VERIFICATION_GRAMMAR + ANSWER_SCHEMA_VERSION).encode()).hexdigest(),
+            "grammar_hash": grammar_hash,
             "elapsed": round(time.time() - start, 3),
         }
     payload = {
@@ -1238,7 +1396,7 @@ def call_model_answer_verification(
         "raw_text": raw,
         "elapsed": parsed.get("_model_elapsed_seconds", round(time.time() - start, 3)),
         "prompt_hash": prompt_hash,
-        "grammar_hash": hashlib.sha256((ANSWER_VERIFICATION_GRAMMAR + ANSWER_SCHEMA_VERSION).encode()).hexdigest(),
+        "grammar_hash": grammar_hash,
         "output_hash": hashlib.sha256(raw.encode()).hexdigest(),
         "fresh_or_cached": "fresh",
     }
@@ -1284,7 +1442,13 @@ def call_model_answer_canonicalization(
     if n_predict is None:
         n_predict = int(os.environ.get("KMD_ANSWER_CANONICALIZATION_N_PREDICT", "96"))
     prompt = build_answer_canonicalization_prompt(question, candidate_answer, answer_type, evidence_items)
-    prompt_hash = _cache_hash("answer_canonicalization", prompt, client, {"n_predict": n_predict, "schema": ANSWER_SCHEMA_VERSION})
+    grammar_hash = _grammar_hash(ANSWER_CANONICALIZATION_GRAMMAR, ANSWER_SCHEMA_VERSION)
+    prompt_hash = _cache_hash(
+        "answer_canonicalization",
+        prompt,
+        client,
+        {"n_predict": n_predict, "schema": ANSWER_SCHEMA_VERSION, "grammar_hash": grammar_hash},
+    )
     cache_path = _cache_path("KMD_ANSWER_CANONICALIZATION_CACHE_DIR", prompt_hash)
     cached = _read_cache(cache_path)
     if cached is not None and cached.get("reason") not in {"ungrounded_answer", "schema_validation_failed", "invalid_json"}:
@@ -1298,7 +1462,7 @@ def call_model_answer_canonicalization(
             "reason": "request_failed",
             "error": str(exc),
             "prompt_hash": prompt_hash,
-            "grammar_hash": hashlib.sha256((ANSWER_CANONICALIZATION_GRAMMAR + ANSWER_SCHEMA_VERSION).encode()).hexdigest(),
+            "grammar_hash": grammar_hash,
             "elapsed": round(time.time() - start, 3),
         }
     raw = str(parsed.get("_model_raw") or "") if isinstance(parsed, dict) else ""
@@ -1311,7 +1475,7 @@ def call_model_answer_canonicalization(
             "reason": "invalid_json",
             "raw_text": raw,
             "prompt_hash": prompt_hash,
-            "grammar_hash": hashlib.sha256((ANSWER_CANONICALIZATION_GRAMMAR + ANSWER_SCHEMA_VERSION).encode()).hexdigest(),
+            "grammar_hash": grammar_hash,
             "elapsed": round(time.time() - start, 3),
         }
     answer = str(result.get("answer") or "").strip()
@@ -1323,7 +1487,7 @@ def call_model_answer_canonicalization(
             "reason": "schema_validation_failed",
             "raw_text": raw,
             "prompt_hash": prompt_hash,
-            "grammar_hash": hashlib.sha256((ANSWER_CANONICALIZATION_GRAMMAR + ANSWER_SCHEMA_VERSION).encode()).hexdigest(),
+            "grammar_hash": grammar_hash,
             "elapsed": round(time.time() - start, 3),
         }
     span_grounded = False
@@ -1343,7 +1507,7 @@ def call_model_answer_canonicalization(
             "reason": "ungrounded_answer",
             "raw_text": raw,
             "prompt_hash": prompt_hash,
-            "grammar_hash": hashlib.sha256((ANSWER_CANONICALIZATION_GRAMMAR + ANSWER_SCHEMA_VERSION).encode()).hexdigest(),
+            "grammar_hash": grammar_hash,
             "elapsed": round(time.time() - start, 3),
         }
     payload = {
@@ -1354,7 +1518,7 @@ def call_model_answer_canonicalization(
         "raw_text": raw,
         "elapsed": parsed.get("_model_elapsed_seconds", round(time.time() - start, 3)),
         "prompt_hash": prompt_hash,
-        "grammar_hash": hashlib.sha256((ANSWER_CANONICALIZATION_GRAMMAR + ANSWER_SCHEMA_VERSION).encode()).hexdigest(),
+        "grammar_hash": grammar_hash,
         "output_hash": hashlib.sha256(raw.encode()).hexdigest(),
         "fresh_or_cached": "fresh",
     }
@@ -1397,7 +1561,13 @@ def call_model_identity_canonicalization(
     if n_predict is None:
         n_predict = int(os.environ.get("KMD_IDENTITY_N_PREDICT", "96"))
     prompt = build_identity_canonicalization_prompt(question, candidate_answer, fuller_candidates, evidence_items)
-    prompt_hash = _cache_hash("identity_canonicalization", prompt, client, {"n_predict": n_predict, "schema": ANSWER_SCHEMA_VERSION})
+    grammar_hash = _grammar_hash(IDENTITY_CANONICALIZATION_GRAMMAR, ANSWER_SCHEMA_VERSION)
+    prompt_hash = _cache_hash(
+        "identity_canonicalization",
+        prompt,
+        client,
+        {"n_predict": n_predict, "schema": ANSWER_SCHEMA_VERSION, "grammar_hash": grammar_hash},
+    )
     cache_path = _cache_path("KMD_IDENTITY_CACHE_DIR", prompt_hash)
     cached = _read_cache(cache_path)
     if cached is not None:
@@ -1412,7 +1582,7 @@ def call_model_identity_canonicalization(
             "reason": "request_failed",
             "error": str(exc),
             "prompt_hash": prompt_hash,
-            "grammar_hash": hashlib.sha256((IDENTITY_CANONICALIZATION_GRAMMAR + ANSWER_SCHEMA_VERSION).encode()).hexdigest(),
+            "grammar_hash": grammar_hash,
             "elapsed": round(time.time() - start, 3),
         }
     raw = str(parsed.get("_model_raw") or "") if isinstance(parsed, dict) else ""
@@ -1442,7 +1612,7 @@ def call_model_identity_canonicalization(
             "reason": "invalid_json",
             "raw_text": raw,
             "prompt_hash": prompt_hash,
-            "grammar_hash": hashlib.sha256((IDENTITY_CANONICALIZATION_GRAMMAR + ANSWER_SCHEMA_VERSION).encode()).hexdigest(),
+            "grammar_hash": grammar_hash,
             "elapsed": round(time.time() - start, 3),
         }
     answer = str(result.get("answer") or "")
@@ -1453,7 +1623,7 @@ def call_model_identity_canonicalization(
             "reason": "schema_validation_failed",
             "raw_text": raw,
             "prompt_hash": prompt_hash,
-            "grammar_hash": hashlib.sha256((IDENTITY_CANONICALIZATION_GRAMMAR + ANSWER_SCHEMA_VERSION).encode()).hexdigest(),
+            "grammar_hash": grammar_hash,
             "elapsed": round(time.time() - start, 3),
         }
     if not span and answer != candidate_answer:
@@ -1468,7 +1638,7 @@ def call_model_identity_canonicalization(
             "reason": "ungrounded_answer",
             "raw_text": raw,
             "prompt_hash": prompt_hash,
-            "grammar_hash": hashlib.sha256((IDENTITY_CANONICALIZATION_GRAMMAR + ANSWER_SCHEMA_VERSION).encode()).hexdigest(),
+            "grammar_hash": grammar_hash,
             "elapsed": round(time.time() - start, 3),
         }
     payload = {
@@ -1480,7 +1650,7 @@ def call_model_identity_canonicalization(
         "raw_text": raw,
         "elapsed": parsed.get("_model_elapsed_seconds", round(time.time() - start, 3)),
         "prompt_hash": prompt_hash,
-        "grammar_hash": hashlib.sha256((IDENTITY_CANONICALIZATION_GRAMMAR + ANSWER_SCHEMA_VERSION).encode()).hexdigest(),
+        "grammar_hash": grammar_hash,
         "output_hash": hashlib.sha256(raw.encode()).hexdigest(),
         "fresh_or_cached": "fresh",
     }

@@ -37,6 +37,7 @@ from .model_planner import (
     call_model_identity_canonicalization,
     call_model_query_evidence_answer,
     call_model_query_plan,
+    chunk_frame_cache_context,
     deterministic_plan as deterministic_query_frame,
     normalize_model_plan,
 )
@@ -582,9 +583,8 @@ class KnowMoreDiRTEngine:
             return [], {"source": "disabled"}
         if is_low_semantic_noise(sentence.text):
             return [], {"source": "skipped_noise"}
-        if len(sentence.text) > int(os.environ.get("KMD_LAZY_FRAME_MAX_CHARS", "1800")):
-            return [], {"source": "skipped_long_chunk"}
-        cached = self._semantic_cache.get(sentence.text) if self._semantic_cache else None
+        cache_context = chunk_frame_cache_context(self._model_client)
+        cached = self._semantic_cache.get(sentence.text, context=cache_context) if self._semantic_cache else None
         if cached is not None:
             frames = [frame for frame in cached.get("frames", []) if isinstance(frame, dict)]
             metadata = cached.get("metadata") if isinstance(cached.get("metadata"), dict) else {}
@@ -608,7 +608,9 @@ class KnowMoreDiRTEngine:
                     "reason": str(result.get("reason") or ""),
                     "prompt_hash": result.get("prompt_hash"),
                     "output_hash": result.get("output_hash"),
+                    "context_budget": result.get("context_budget"),
                 },
+                context=cache_context,
             )
         self._log_progress(
             f"kmd-llm-frame done {sentence.rel_path}:{sentence.order} frames={len(frames)} source={result.get('fresh_or_cached', 'fresh')}"

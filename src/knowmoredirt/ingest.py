@@ -12,7 +12,7 @@ from typing import Any
 from .drs import DiscourseArgument, DiscourseCondition, frame_from_model_dict
 from .extractors import capitalized_phrases, identifiers, urls
 from .models import Document, Sentence
-from .model_planner import call_model_chunk_frames
+from .model_planner import call_model_chunk_frames, chunk_frame_cache_context
 from .relations import ExtractedRelation, extract_relations
 from .scanner import scan_folder
 from .semantic_cache import SemanticFrameCache
@@ -219,9 +219,8 @@ def _grounded_model_frames(
     quality = text_quality_metrics(sentence.text)
     if quality.get("low_semantic_noise"):
         return [], {"source": "skipped_noise"}
-    if len(sentence.text) > 2600:
-        return [], {"source": "skipped_long_chunk"}
-    cached = semantic_cache.get(sentence.text) if semantic_cache else None
+    cache_context = chunk_frame_cache_context(semantic_client)
+    cached = semantic_cache.get(sentence.text, context=cache_context) if semantic_cache else None
     if cached is not None:
         frames = [frame for frame in cached.get("frames", []) if isinstance(frame, dict)]
         metadata = cached.get("metadata") if isinstance(cached.get("metadata"), dict) else {}
@@ -245,7 +244,9 @@ def _grounded_model_frames(
                 "reason": str(result.get("reason") or ""),
                 "prompt_hash": result.get("prompt_hash"),
                 "output_hash": result.get("output_hash"),
+                "context_budget": result.get("context_budget"),
             },
+            context=cache_context,
         )
     return frames, result
 
