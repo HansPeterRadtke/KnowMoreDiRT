@@ -334,6 +334,22 @@ def test_temporal_query_drs_uses_latest_temporal_edge(tmp_path: Path) -> None:
     assert answer.reason == "bounded DSPG query-frame execution"
 
 
+def test_ingest_skips_cartesian_temporal_edges_for_dense_time_chunks(tmp_path: Path, monkeypatch) -> None:
+    monkeypatch.setenv("KMD_TEMPORAL_SAME_SPAN_MAX_VALUES", "2")
+    (tmp_path / "dense.log").write_text(
+        " ".join(
+            f"2026-01-{index:02d} item_{index}: ready"
+            for index in range(1, 8)
+        ),
+        encoding="utf-8",
+    )
+
+    store, _, _, _ = ingest_folder(tmp_path)
+
+    assert store.counts()["relations"] >= 7
+    assert store.counts()["temporal_edges"] == 0
+
+
 def test_count_aggregation_requires_each_query_drs_term_group(tmp_path: Path) -> None:
     (tmp_path / "states.txt").write_text(
         "\n".join(

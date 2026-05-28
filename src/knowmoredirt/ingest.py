@@ -291,8 +291,12 @@ def _scan_unit_max_chars(semantic_client: Any | None) -> int:
         except Exception:
             context_size = 0
         if context_size > 0:
-            return max(1024, context_size * 2)
-    return int(os.environ.get("KMD_SCAN_UNIT_FALLBACK_MAX_CHARS", "16000"))
+            try:
+                context_cap = max(1024, int(os.environ.get("KMD_SCAN_UNIT_CONTEXT_MAX_CHARS", "16000")))
+            except ValueError:
+                context_cap = 16000
+            return max(1024, min(context_size * 2, context_cap))
+    return int(os.environ.get("KMD_SCAN_UNIT_FALLBACK_MAX_CHARS", "4000"))
 
 
 def ingest_folder(
@@ -518,6 +522,22 @@ def ingest_folder(
             for relation in deterministic_relations
             if relation.relation_type == "temporal" and relation.value
         ]
+        try:
+            max_same_span_temporal_values = max(0, int(os.environ.get("KMD_TEMPORAL_SAME_SPAN_MAX_VALUES", "8")))
+        except ValueError:
+            max_same_span_temporal_values = 8
+        try:
+            max_same_span_temporal_edges = max(0, int(os.environ.get("KMD_TEMPORAL_SAME_SPAN_MAX_EDGES", "64")))
+        except ValueError:
+            max_same_span_temporal_edges = 64
+        attachable_relation_count = sum(
+            1
+            for relation in deterministic_relations
+            if relation.relation_type != "temporal" and relation.value
+        )
+        temporal_scope_values = temporal_values if len(temporal_values) <= max_same_span_temporal_values else []
+        if len(temporal_scope_values) * attachable_relation_count > max_same_span_temporal_edges:
+            temporal_scope_values = []
         for relation in deterministic_relations:
             metadata = {
                 **relation.metadata,
@@ -639,10 +659,10 @@ def ingest_folder(
                                 ),
                             )
 
-            if temporal_values and relation.relation_type != "temporal" and relation.value:
+            if temporal_scope_values and relation.relation_type != "temporal" and relation.value:
                 # Pure DRT infrastructure: attach explicit same-span times to
                 # structural conditions without interpreting the condition label.
-                for temporal_value in temporal_values:
+                for temporal_value in temporal_scope_values:
                     store.execute(
                         """
                         INSERT OR IGNORE INTO temporal_edges(
