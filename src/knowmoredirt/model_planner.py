@@ -54,10 +54,10 @@ DRS_CONTEXT_KINDS = {
 DRS_POLARITIES = {"positive", "negative", "unknown"}
 DRS_IDENTITY_STATUSES = {"accepted", "candidate", "rejected", "ambiguous"}
 
-PROMPT_VERSION = "kmd-drt-2026-05-28-v30"
+PROMPT_VERSION = "kmd-drt-2026-05-28-v31"
 CHUNK_FRAME_SCHEMA_VERSION = "chunk-frames-v5"
 CHUNK_DRS_SCHEMA_VERSION = "chunk-drs-v1"
-QUERY_DRS_SCHEMA_VERSION = "query-drs-v2"
+QUERY_DRS_SCHEMA_VERSION = "query-drs-v3"
 QUERY_FRAME_SCHEMA_VERSION = "query-frame-v4"
 ANSWER_SCHEMA_VERSION = "answer-v4"
 
@@ -699,7 +699,7 @@ QUERY_DRS_ARGUMENT_JSON_SCHEMA = _schema_obj(
     ["role", "target_kind", "target_id", "value", "value_type", "evidence_text"],
     {
         "role": STRING_SCHEMA,
-        "target_kind": _schema_enum({"answer_variable", "referent", "box", "condition", "literal", "unknown"}),
+        "target_kind": _schema_enum({"answer_variable", "referent", "box", "condition", "temporal", "literal", "unknown"}),
         "target_id": STRING_SCHEMA,
         "value": STRING_SCHEMA,
         "value_type": STRING_SCHEMA,
@@ -854,6 +854,7 @@ QUERY_DRS_JSON_SCHEMA = _schema_obj(
                 "question",
                 "answer_variables",
                 "target_referents",
+                "temporal_records",
                 "requested_conditions",
                 "constraints",
                 "box_requirements",
@@ -867,6 +868,7 @@ QUERY_DRS_JSON_SCHEMA = _schema_obj(
                 "question": STRING_SCHEMA,
                 "answer_variables": _schema_array(QUERY_VARIABLE_JSON_SCHEMA),
                 "target_referents": _schema_array(DRS_REFERENT_JSON_SCHEMA),
+                "temporal_records": _schema_array(DRS_TEMPORAL_JSON_SCHEMA),
                 "requested_conditions": _schema_array(QUERY_DRS_CONDITION_JSON_SCHEMA),
                 "constraints": STRING_ARRAY_SCHEMA,
                 "box_requirements": _schema_array(DRS_BOX_JSON_SCHEMA),
@@ -1149,16 +1151,19 @@ def build_query_drs_prompt(question: str) -> str:
         "content. If a requested condition is in the main asserted query scope and no explicit box_requirement is "
         "needed, set its box_id to the empty string; do not invent a box id without declaring that box. "
         "Declare answer variables as objects with stable local ids such as qv0, a short label for the requested "
-        "answer variable, a broad answer_type, and evidence_text copied exactly from the question. Put visible named "
-        "anchors that the requested condition is about into target_referents, and make condition arguments point "
-        "to those referent ids when they are the same discourse referent. Requested condition arguments must use "
-        "target_kind='answer_variable' and target_id equal to the declared qv id for the answer slot. Choose the "
+        "answer variable, a broad answer_type, and evidence_text copied exactly from the question. Put visible "
+        "non-answer discourse anchors that the requested condition is about into target_referents, including named "
+        "and common-noun anchors, and put visible temporal phrases into "
+        "temporal_records with ids such as qt0. Make condition arguments point to those ids when they are the same "
+        "discourse referent or temporal value, and use temporal_id for the condition's temporal record when applicable. "
+        "Requested condition arguments must use target_kind='answer_variable' and target_id equal to the declared qv "
+        "id for the answer slot. Choose the "
         "top-level answer_type from the schema values based on the answer variable requested by the question; use "
         "unknown only when the query DRS leaves the answer variable type underspecified. "
         "Arguments use target_kind and target_id exactly as declared in the query DRS namespace. "
-        "Return this shape with schema_version query-drs-v2: {\"query_drs\":{\"schema_version\":\"query-drs-v2\","
+        "Return this shape with schema_version query-drs-v3: {\"query_drs\":{\"schema_version\":\"query-drs-v3\","
         "\"question\":\"\",\"answer_variables\":[{\"id\":\"qv0\",\"label\":\"\",\"answer_type\":\"unknown\","
-        "\"evidence_text\":\"\"}],\"target_referents\":[],\"requested_conditions\":[],"
+        "\"evidence_text\":\"\"}],\"target_referents\":[],\"temporal_records\":[],\"requested_conditions\":[],"
         "\"constraints\":[],\"box_requirements\":[],\"temporal_scope\":\"\",\"aggregation\":\"\","
         "\"answer_type\":\"unknown\",\"requires_evidence\":true}}."
         + json.dumps({"question": question, "surface_observations": surface}, ensure_ascii=False)
@@ -1174,6 +1179,15 @@ def _validate_query_drs_payload(payload: Any, question: str) -> dict[str, Any]:
 
     def collection(name: str) -> list[dict[str, Any]]:
         value = query_drs.get(name)
+        if not isinstance(value, list):
+            errors.append(f"not_list:{name}")
+            return []
+        return [item for item in value if isinstance(item, dict)]
+
+    def optional_collection(name: str) -> list[dict[str, Any]]:
+        value = query_drs.get(name)
+        if value is None:
+            return []
         if not isinstance(value, list):
             errors.append(f"not_list:{name}")
             return []
@@ -1218,9 +1232,11 @@ def _validate_query_drs_payload(payload: Any, question: str) -> dict[str, Any]:
             else:
                 errors.append(f"bad_answer_variable:{index}")
     targets = collection("target_referents")
+    temporals = optional_collection("temporal_records")
     boxes = collection("box_requirements")
     conditions = collection("requested_conditions")
     target_ids = {str(item.get("id") or "") for item in targets if str(item.get("id") or "")}
+    temporal_ids = {str(item.get("id") or "") for item in temporals if str(item.get("id") or "")}
     box_ids = {str(item.get("id") or "") for item in boxes if str(item.get("id") or "")}
     condition_ids = {str(item.get("id") or "") for item in conditions if str(item.get("id") or "")}
     for box in boxes:
@@ -1239,13 +1255,21 @@ def _validate_query_drs_payload(payload: Any, question: str) -> dict[str, Any]:
         if not target_id or not str(target.get("label") or "").strip():
             errors.append(f"bad_target_referent:{target_id}")
         check_grounding(target.get("evidence_text"), f"target:{target_id}")
+    for temporal in temporals:
+        temporal_id = str(temporal.get("id") or "")
+        if not temporal_id or not str(temporal.get("value") or "").strip():
+            errors.append(f"bad_temporal:{temporal_id}")
+        check_grounding(temporal.get("evidence_text"), f"temporal:{temporal_id}")
     for condition in conditions:
         condition_id = str(condition.get("id") or "")
         box_id = str(condition.get("box_id") or "")
+        temporal_id = str(condition.get("temporal_id") or "")
         if not condition_id or not str(condition.get("predicate") or "").strip():
             errors.append(f"bad_condition:{condition_id}")
         if box_id and box_id not in box_ids:
             errors.append(f"missing_condition_box:{condition_id}->{box_id}")
+        if temporal_id and temporal_id not in temporal_ids:
+            errors.append(f"missing_condition_temporal:{condition_id}->{temporal_id}")
         if str(condition.get("polarity") or "") not in DRS_POLARITIES:
             errors.append(f"bad_polarity:{condition_id}:{condition.get('polarity')}")
         if str(condition.get("modality") or "") not in DRS_CONTEXT_KINDS:
@@ -1271,7 +1295,9 @@ def _validate_query_drs_payload(payload: Any, question: str) -> dict[str, Any]:
                 errors.append(f"missing_argument_box:{condition_id}->{target_id}")
             elif target_kind == "condition" and target_id and target_id not in condition_ids:
                 errors.append(f"missing_argument_condition:{condition_id}->{target_id}")
-            elif target_kind not in {"answer_variable", "referent", "box", "condition", "literal", "unknown"}:
+            elif target_kind == "temporal" and target_id and target_id not in temporal_ids:
+                errors.append(f"missing_argument_temporal:{condition_id}->{target_id}")
+            elif target_kind not in {"answer_variable", "referent", "box", "condition", "temporal", "literal", "unknown"}:
                 errors.append(f"bad_argument_target_kind:{condition_id}:{target_kind}")
             check_grounding(arg.get("evidence_text"), f"argument:{condition_id}:{arg.get('role')}")
     return {
@@ -1281,6 +1307,7 @@ def _validate_query_drs_payload(payload: Any, question: str) -> dict[str, Any]:
         "grounding_failure_count": len(grounding_failures),
         "answer_variable_count": len(answer_variable_ids) or len(answer_variable_labels),
         "target_count": len(targets),
+        "temporal_record_count": len(temporals),
         "condition_count": len(conditions),
         "box_requirement_count": len(boxes),
     }
@@ -1356,6 +1383,7 @@ def query_frame_from_query_drs(question: str, query_drs: dict[str, Any] | None) 
     target_referents = query_drs.get("target_referents")
     requested_conditions = query_drs.get("requested_conditions")
     box_requirements = query_drs.get("box_requirements")
+    temporal_records = query_drs.get("temporal_records")
     if not isinstance(target_referents, list) or not isinstance(requested_conditions, list):
         return None
     answer_variables_raw = query_drs.get("answer_variables")
@@ -1377,6 +1405,20 @@ def query_frame_from_query_drs(question: str, query_drs: dict[str, Any] | None) 
         for item in target_referents
         if isinstance(item, dict) and str(item.get("label") or "").strip()
     ]
+    temporal_terms: list[str] = []
+    temporal_values_by_id: dict[str, str] = {}
+    if isinstance(temporal_records, list):
+        for item in temporal_records:
+            if not isinstance(item, dict):
+                continue
+            temporal_id = str(item.get("id") or "").strip()
+            value = str(item.get("value") or "").strip()
+            evidence = str(item.get("evidence_text") or "").strip()
+            temporal_text = value or evidence
+            if temporal_text:
+                temporal_terms.append(temporal_text)
+            if temporal_id and temporal_text:
+                temporal_values_by_id[temporal_id] = temporal_text
     predicates = [
         str(item.get("predicate") or "").strip()
         for item in requested_conditions
@@ -1399,6 +1441,8 @@ def query_frame_from_query_drs(question: str, query_drs: dict[str, Any] | None) 
             role = str(argument.get("role") or "").strip()
             if target_kind == "answer_variable" and target_id in answer_variable_labels_by_id:
                 argument_terms.append(answer_variable_labels_by_id[target_id])
+            if target_kind == "temporal" and target_id in temporal_values_by_id:
+                argument_terms.append(temporal_values_by_id[target_id])
             if value:
                 argument_terms.append(value)
             if role:
@@ -1408,18 +1452,21 @@ def query_frame_from_query_drs(question: str, query_drs: dict[str, Any] | None) 
         for item in box_requirements or []
         if isinstance(item, dict) and str(item.get("kind") or "").strip() and str(item.get("kind") or "") != "asserted"
     ]
+    temporal_scope = query_drs.get("temporal_scope") if isinstance(query_drs.get("temporal_scope"), str) else ""
+    if not temporal_scope and temporal_terms:
+        temporal_scope = " ".join(dict.fromkeys(temporal_terms))
     frame = frame_from_mapping(
         question,
         {
             "target_anchors": list(dict.fromkeys(target_anchors)),
             "answer_variables": list(dict.fromkeys(answer_variables)),
             "requested_relation": " ".join(dict.fromkeys(predicates)),
-            "relation_terms": list(dict.fromkeys([*predicates, *argument_terms])),
+            "relation_terms": list(dict.fromkeys([*predicates, *argument_terms, *temporal_terms])),
             "constraints": query_drs.get("constraints") if isinstance(query_drs.get("constraints"), list) else [],
             "scope_requirements": list(dict.fromkeys(scope_terms)),
             "modality_requirements": list(dict.fromkeys(modality_terms)),
             "answer_type": query_drs.get("answer_type") if isinstance(query_drs.get("answer_type"), str) else "unknown",
-            "temporal_scope": query_drs.get("temporal_scope") if isinstance(query_drs.get("temporal_scope"), str) else "",
+            "temporal_scope": temporal_scope,
             "aggregation": query_drs.get("aggregation") if isinstance(query_drs.get("aggregation"), str) else "",
             "requires_evidence": bool(query_drs.get("requires_evidence", True)),
         },

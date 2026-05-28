@@ -19,9 +19,10 @@ def test_strict_query_drs_uses_answer_variable_namespace(monkeypatch, tmp_path) 
         def complete_json(self, prompt: str, *, n_predict: int = 128, grammar=None, json_schema=None):
             assert "target_kind='answer_variable'" in prompt
             assert json_schema["properties"]["query_drs"]["properties"]["answer_variables"]["items"]["properties"]["id"]
+            assert "temporal_records" in json_schema["properties"]["query_drs"]["properties"]
             return {
                 "query_drs": {
-                    "schema_version": "query-drs-v2",
+                    "schema_version": "query-drs-v3",
                     "question": "Who reviewed Aero Gate?",
                     "answer_variables": [
                         {
@@ -34,6 +35,7 @@ def test_strict_query_drs_uses_answer_variable_namespace(monkeypatch, tmp_path) 
                     "target_referents": [
                         {"id": "qr0", "label": "Aero Gate", "kind": "entity", "evidence_text": "Aero Gate"}
                     ],
+                    "temporal_records": [],
                     "requested_conditions": [
                         {
                             "id": "qc0",
@@ -88,6 +90,98 @@ def test_strict_query_drs_uses_answer_variable_namespace(monkeypatch, tmp_path) 
     assert frame["target_anchors"] == ("Aero Gate",)
     assert "agent" in frame["relation_terms"]
     assert "reviewed" in frame["relation_terms"]
+
+
+def test_query_drs_temporal_namespace_reaches_query_frame(monkeypatch, tmp_path) -> None:
+    class TemporalQueryModel:
+        def context_size(self) -> int:
+            return 8192
+
+        def cache_fingerprint(self) -> dict[str, object]:
+            return {"model_id": "fake-temporal-query", "context_size": 8192}
+
+        def complete_json(self, prompt: str, *, n_predict: int = 128, grammar=None, json_schema=None):
+            assert "temporal_records" in prompt
+            return {
+                "query_drs": {
+                    "schema_version": "query-drs-v3",
+                    "question": "Which state was current for Aurora Loom after the latest update?",
+                    "answer_variables": [
+                        {
+                            "id": "qv0",
+                            "label": "state",
+                            "answer_type": "state",
+                            "evidence_text": "Which state",
+                        }
+                    ],
+                    "target_referents": [
+                        {"id": "qr0", "label": "Aurora Loom", "kind": "entity", "evidence_text": "Aurora Loom"}
+                    ],
+                    "temporal_records": [
+                        {
+                            "id": "qt0",
+                            "value": "after the latest update",
+                            "value_type": "temporal",
+                            "evidence_text": "after the latest update",
+                        }
+                    ],
+                    "requested_conditions": [
+                        {
+                            "id": "qc0",
+                            "predicate": "current",
+                            "box_id": "",
+                            "polarity": "positive",
+                            "modality": "asserted",
+                            "temporal_id": "qt0",
+                            "arguments": [
+                                {
+                                    "role": "target",
+                                    "target_kind": "answer_variable",
+                                    "target_id": "qv0",
+                                    "value": "",
+                                    "value_type": "state",
+                                    "evidence_text": "state",
+                                },
+                                {
+                                    "role": "theme",
+                                    "target_kind": "referent",
+                                    "target_id": "qr0",
+                                    "value": "Aurora Loom",
+                                    "value_type": "entity",
+                                    "evidence_text": "Aurora Loom",
+                                },
+                            ],
+                            "evidence_text": "current for Aurora Loom after the latest update",
+                        }
+                    ],
+                    "constraints": [],
+                    "box_requirements": [],
+                    "temporal_scope": "",
+                    "aggregation": "",
+                    "answer_type": "state",
+                    "requires_evidence": True,
+                },
+                "_model_raw": "{}",
+                "_model_elapsed_seconds": 0.01,
+            }
+
+    monkeypatch.setenv("KMD_QUERY_DRS_CACHE_DIR", str(tmp_path / "query-drs-cache"))
+    result = call_model_query_drs(
+        "Which state was current for Aurora Loom after the latest update?",
+        TemporalQueryModel(),  # type: ignore[arg-type]
+    )
+
+    assert result["accepted"] is True
+    assert result["validation"]["temporal_record_count"] == 1
+
+    frame = query_frame_from_query_drs(
+        "Which state was current for Aurora Loom after the latest update?",
+        result["query_drs"],
+    )
+
+    assert frame is not None
+    assert frame["temporal_scope"] == "after the latest update"
+    assert "after the latest update" in frame["relation_terms"]
 
 
 def test_chunk_drs_removes_tautological_self_identity_hypotheses(monkeypatch, tmp_path) -> None:
