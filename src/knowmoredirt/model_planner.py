@@ -2303,7 +2303,7 @@ def _validate_chunk_drs_payload(payload: Any, source_text: str) -> dict[str, Any
             errors.append(f"bad_identity_status:{item.get('status')}")
         check_span(item.get("evidence_text"), f"identity:{left_id}:{right_id}")
     return {
-        "schema_valid": not errors,
+        "schema_valid": not errors and not grounding_failures,
         "errors": errors[:50],
         "grounding_failures": grounding_failures[:50],
         "grounding_failure_count": len(grounding_failures),
@@ -2439,9 +2439,10 @@ def call_model_chunk_drs(
     parsed = _repair_chunk_drs_payload(parsed)
     validation = _validate_chunk_drs_payload(parsed, prompt_chunk)
     if not validation.get("schema_valid"):
+        reason = "grounding_validation_failed" if validation.get("grounding_failure_count") else "schema_validation_failed"
         payload = {
             "accepted": False,
-            "reason": "schema_validation_failed",
+            "reason": reason,
             "raw_text": raw,
             "prompt_hash": prompt_hash,
             **constraint,

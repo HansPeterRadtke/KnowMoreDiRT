@@ -171,3 +171,70 @@ def test_chunk_drs_evidence_cap_uses_reserved_output_budget(monkeypatch) -> None
     monkeypatch.setenv("KMD_CHUNK_DRS_MAX_EVIDENCE_CHARS", "77")
 
     assert chunk_drs_evidence_max_chars("x" * 1000, 512) == 77
+
+
+def test_chunk_drs_rejects_ungrounded_temporal_records(monkeypatch, tmp_path) -> None:
+    class UngroundedTemporalModel:
+        def context_size(self) -> int:
+            return 8192
+
+        def cache_fingerprint(self) -> dict[str, object]:
+            return {"model_id": "fake-ungrounded-temporal", "context_size": 8192}
+
+        def complete_json(self, prompt: str, *, n_predict: int = 128, grammar=None, json_schema=None):
+            return {
+                "drs": {
+                    "schema_version": "chunk-drs-v1",
+                    "source_id": "note.txt",
+                    "referents": [
+                        {"id": "r0", "label": "Aero Gate", "kind": "entity", "evidence_text": "Aero Gate"}
+                    ],
+                    "boxes": [
+                        {
+                            "id": "b0",
+                            "kind": "asserted",
+                            "parent_id": "",
+                            "holder_referent_id": "",
+                            "evidence_text": "Aero Gate is ready.",
+                        }
+                    ],
+                    "conditions": [
+                        {
+                            "id": "c0",
+                            "predicate": "ready",
+                            "box_id": "b0",
+                            "polarity": "positive",
+                            "modality": "asserted",
+                            "temporal_id": "t0",
+                            "arguments": [
+                                {
+                                    "role": "theme",
+                                    "target_kind": "referent",
+                                    "target_id": "r0",
+                                    "value": "Aero Gate",
+                                    "value_type": "entity",
+                                    "evidence_text": "Aero Gate",
+                                }
+                            ],
+                            "evidence_text": "Aero Gate is ready.",
+                        }
+                    ],
+                    "identity_hypotheses": [],
+                    "temporal_records": [
+                        {"id": "t0", "value": "now", "value_type": "time", "evidence_text": "now"}
+                    ],
+                    "evidence_spans": ["Aero Gate is ready."],
+                    "semantic_notes": [],
+                },
+                "_model_raw": "{}",
+                "_model_elapsed_seconds": 0.01,
+            }
+
+    monkeypatch.setenv("KMD_CHUNK_DRS_CACHE_DIR", str(tmp_path / "chunk-drs-cache"))
+    result = call_model_chunk_drs("Aero Gate is ready.", UngroundedTemporalModel(), rel_path="note.txt")  # type: ignore[arg-type]
+
+    assert result["accepted"] is False
+    assert result["reason"] == "grounding_validation_failed"
+    assert result["validation"]["schema_valid"] is False
+    assert result["validation"]["grounding_failure_count"] == 1
+    assert result["validation"]["grounding_failures"] == ["temporal:t0:now"]
