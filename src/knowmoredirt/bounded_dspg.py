@@ -32,6 +32,11 @@ def _normalized_token_set(value: str) -> frozenset[str]:
     return frozenset(token for token in re.split(r"[^a-z0-9]+", normalize(value)) if token)
 
 
+@lru_cache(maxsize=16384)
+def _material_parts(material: str) -> tuple[str, ...]:
+    return tuple(part for part in re.split(r"[^a-z0-9]+", material) if part)
+
+
 @lru_cache(maxsize=2048)
 def _normalized_terms(terms: tuple[str, ...]) -> tuple[str, ...]:
     return tuple(dict.fromkeys(term_norm for term in terms if (term_norm := normalize(term))))
@@ -107,13 +112,11 @@ def _has_term(material: str, term: str) -> bool:
         return True
     if re.search(r"[\s_./:-]", term):
         return False
-    parts = re.split(r"[^a-z0-9]+", material)
+    parts = _material_parts(material)
     if term in parts:
         return True
     if len(term) >= 3 and any(part.startswith(term) for part in parts if len(part) >= 3):
         return True
-    if len(term) <= 4 and re.fullmatch(r"[a-z0-9_-]+", term):
-        return re.search(rf"\b{re.escape(term)}\b", material) is not None
     return False
 
 
@@ -158,16 +161,23 @@ def _rank_scope(
     relation_terms = _relation_terms(frame, question)
     all_terms = _query_terms(question)
     doc_scores: list[tuple[float, str, str]] = []
+    document_material_by_id: dict[str, str] = {}
+    document_low_priority_by_id: dict[str, bool] = {}
     for document in documents:
         sentences = list(sentences_by_document.get(document.rel_path, {}).values())
         material = _document_material(document, sentences)
+        document_material_by_id[document.document_id] = material
         target_hits = sum(1 for term in target_terms if _has_term(material, term))
         relation_hits = sum(1 for term in relation_terms if _has_term(material, term))
         lexical_hits = sum(1 for term in all_terms if _has_term(material, term))
         if target_terms and not target_hits:
             continue
         score = target_hits * 16 + relation_hits * 8 + lexical_hits
-        if _source_is_low_priority(document.rel_path, " ".join(sentence.text for sentence in sentences)):
+        document_low_priority_by_id[document.document_id] = _source_is_low_priority(
+            document.rel_path,
+            " ".join(sentence.text for sentence in sentences),
+        )
+        if document_low_priority_by_id[document.document_id]:
             score *= 0.2
         if score:
             doc_scores.append((score, document.document_id, document.rel_path))
@@ -179,7 +189,7 @@ def _rank_scope(
         if document.document_id not in selected_set:
             continue
         ordered = sentences_by_document.get(document.rel_path, {})
-        document_has_target = any(_has_term(_document_material(document, list(ordered.values())), term) for term in target_terms)
+        document_has_target = any(_has_term(document_material_by_id.get(document.document_id, ""), term) for term in target_terms)
         for order, sentence in ordered.items():
             material = normalize(sentence.text)
             score = sum(22 for term in target_terms if _has_term(material, term))
