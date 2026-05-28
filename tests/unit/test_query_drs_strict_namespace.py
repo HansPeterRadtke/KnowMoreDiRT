@@ -1,6 +1,11 @@
 from __future__ import annotations
 
-from knowmoredirt.model_planner import call_model_chunk_drs, call_model_query_drs, query_frame_from_query_drs
+from knowmoredirt.model_planner import (
+    call_model_chunk_drs,
+    call_model_query_drs,
+    chunk_drs_evidence_max_chars,
+    query_frame_from_query_drs,
+)
 
 
 def test_strict_query_drs_uses_answer_variable_namespace(monkeypatch, tmp_path) -> None:
@@ -155,3 +160,14 @@ def test_chunk_drs_removes_tautological_self_identity_hypotheses(monkeypatch, tm
     assert result["accepted"] is True
     assert result["validation"]["identity_hypothesis_count"] == 0
     assert result["drs"]["identity_hypotheses"] == []
+
+
+def test_chunk_drs_evidence_cap_uses_reserved_output_budget(monkeypatch) -> None:
+    monkeypatch.delenv("KMD_CHUNK_DRS_MAX_EVIDENCE_CHARS", raising=False)
+
+    assert chunk_drs_evidence_max_chars("x" * 1000, 512) == 128
+    assert chunk_drs_evidence_max_chars("x" * 50, 512) == 50
+
+    monkeypatch.setenv("KMD_CHUNK_DRS_MAX_EVIDENCE_CHARS", "77")
+
+    assert chunk_drs_evidence_max_chars("x" * 1000, 512) == 77
