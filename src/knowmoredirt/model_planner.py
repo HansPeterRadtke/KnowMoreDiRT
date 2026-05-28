@@ -54,10 +54,10 @@ DRS_CONTEXT_KINDS = {
 DRS_POLARITIES = {"positive", "negative", "unknown"}
 DRS_IDENTITY_STATUSES = {"accepted", "candidate", "rejected", "ambiguous"}
 
-PROMPT_VERSION = "kmd-drt-2026-05-27-v28"
+PROMPT_VERSION = "kmd-drt-2026-05-28-v29"
 CHUNK_FRAME_SCHEMA_VERSION = "chunk-frames-v5"
 CHUNK_DRS_SCHEMA_VERSION = "chunk-drs-v1"
-QUERY_DRS_SCHEMA_VERSION = "query-drs-v1"
+QUERY_DRS_SCHEMA_VERSION = "query-drs-v2"
 QUERY_FRAME_SCHEMA_VERSION = "query-frame-v4"
 ANSWER_SCHEMA_VERSION = "answer-v4"
 
@@ -685,6 +685,42 @@ DRS_ARGUMENT_JSON_SCHEMA = _schema_obj(
     },
 )
 
+QUERY_VARIABLE_JSON_SCHEMA = _schema_obj(
+    ["id", "label", "answer_type", "evidence_text"],
+    {
+        "id": STRING_SCHEMA,
+        "label": STRING_SCHEMA,
+        "answer_type": ANSWER_TYPE_SCHEMA,
+        "evidence_text": STRING_SCHEMA,
+    },
+)
+
+QUERY_DRS_ARGUMENT_JSON_SCHEMA = _schema_obj(
+    ["role", "target_kind", "target_id", "value", "value_type", "evidence_text"],
+    {
+        "role": STRING_SCHEMA,
+        "target_kind": _schema_enum({"answer_variable", "referent", "box", "condition", "literal", "unknown"}),
+        "target_id": STRING_SCHEMA,
+        "value": STRING_SCHEMA,
+        "value_type": STRING_SCHEMA,
+        "evidence_text": STRING_SCHEMA,
+    },
+)
+
+QUERY_DRS_CONDITION_JSON_SCHEMA = _schema_obj(
+    ["id", "predicate", "box_id", "polarity", "modality", "temporal_id", "arguments", "evidence_text"],
+    {
+        "id": STRING_SCHEMA,
+        "predicate": STRING_SCHEMA,
+        "box_id": STRING_SCHEMA,
+        "polarity": _schema_enum(DRS_POLARITIES),
+        "modality": _schema_enum(DRS_CONTEXT_KINDS),
+        "temporal_id": STRING_SCHEMA,
+        "arguments": _schema_array(QUERY_DRS_ARGUMENT_JSON_SCHEMA),
+        "evidence_text": STRING_SCHEMA,
+    },
+)
+
 DRS_REFERENT_JSON_SCHEMA = _schema_obj(
     ["id", "label", "kind", "evidence_text"],
     {
@@ -814,9 +850,9 @@ QUERY_DRS_JSON_SCHEMA = _schema_obj(
             {
                 "schema_version": STRING_SCHEMA,
                 "question": STRING_SCHEMA,
-                "answer_variables": STRING_ARRAY_SCHEMA,
+                "answer_variables": _schema_array(QUERY_VARIABLE_JSON_SCHEMA),
                 "target_referents": _schema_array(DRS_REFERENT_JSON_SCHEMA),
-                "requested_conditions": _schema_array(DRS_CONDITION_JSON_SCHEMA),
+                "requested_conditions": _schema_array(QUERY_DRS_CONDITION_JSON_SCHEMA),
                 "constraints": STRING_ARRAY_SCHEMA,
                 "box_requirements": _schema_array(DRS_BOX_JSON_SCHEMA),
                 "temporal_scope": STRING_SCHEMA,
@@ -1097,13 +1133,17 @@ def build_query_drs_prompt(question: str) -> str:
         "questions about reported, believed, negated, conditional, uncertain, hypothetical, fictional, or quoted "
         "content. If a requested condition is in the main asserted query scope and no explicit box_requirement is "
         "needed, set its box_id to the empty string; do not invent a box id without declaring that box. "
-        "Put visible named anchors that the requested condition is about into target_referents, and make condition "
-        "arguments point to those referent ids when they are the same discourse referent. Choose the broad "
-        "answer_type from the schema values based on the answer variable requested by the question; use unknown "
-        "only when the query DRS leaves the answer variable type underspecified. "
-        "Arguments use target_kind and target_id exactly as in chunk DRS extraction. "
-        "Return this shape with schema_version query-drs-v1: {\"query_drs\":{\"schema_version\":\"query-drs-v1\","
-        "\"question\":\"\",\"answer_variables\":[],\"target_referents\":[],\"requested_conditions\":[],"
+        "Declare answer variables as objects with stable local ids such as qv0, a short label for the requested "
+        "answer variable, a broad answer_type, and evidence_text copied exactly from the question. Put visible named "
+        "anchors that the requested condition is about into target_referents, and make condition arguments point "
+        "to those referent ids when they are the same discourse referent. Requested condition arguments must use "
+        "target_kind='answer_variable' and target_id equal to the declared qv id for the answer slot. Choose the "
+        "top-level answer_type from the schema values based on the answer variable requested by the question; use "
+        "unknown only when the query DRS leaves the answer variable type underspecified. "
+        "Arguments use target_kind and target_id exactly as declared in the query DRS namespace. "
+        "Return this shape with schema_version query-drs-v2: {\"query_drs\":{\"schema_version\":\"query-drs-v2\","
+        "\"question\":\"\",\"answer_variables\":[{\"id\":\"qv0\",\"label\":\"\",\"answer_type\":\"unknown\","
+        "\"evidence_text\":\"\"}],\"target_referents\":[],\"requested_conditions\":[],"
         "\"constraints\":[],\"box_requirements\":[],\"temporal_scope\":\"\",\"aggregation\":\"\","
         "\"answer_type\":\"unknown\",\"requires_evidence\":true}}."
         + json.dumps({"question": question, "surface_observations": surface}, ensure_ascii=False)
@@ -1115,6 +1155,7 @@ def _validate_query_drs_payload(payload: Any, question: str) -> dict[str, Any]:
         return {"schema_valid": False, "errors": ["missing_query_drs_object"]}
     query_drs = payload["query_drs"]
     errors: list[str] = []
+    grounding_failures: list[str] = []
 
     def collection(name: str) -> list[dict[str, Any]]:
         value = query_drs.get(name)
@@ -1123,14 +1164,44 @@ def _validate_query_drs_payload(payload: Any, question: str) -> dict[str, Any]:
             return []
         return [item for item in value if isinstance(item, dict)]
 
+    def check_grounding(value: Any, label: str) -> None:
+        span = str(value or "").strip()
+        if span and span not in question:
+            grounding_failures.append(f"{label}:{span[:100]}")
+
     if query_drs.get("question") != question:
         errors.append("question_mismatch")
     if str(query_drs.get("answer_type") or "") not in ANSWER_TYPES:
         errors.append(f"bad_answer_type:{query_drs.get('answer_type')}")
-    if not isinstance(query_drs.get("answer_variables"), list):
+    raw_answer_variables = query_drs.get("answer_variables")
+    if not isinstance(raw_answer_variables, list):
         errors.append("not_list:answer_variables")
     if not isinstance(query_drs.get("constraints"), list):
         errors.append("not_list:constraints")
+    answer_variable_ids: set[str] = set()
+    answer_variable_labels: set[str] = set()
+    if isinstance(raw_answer_variables, list):
+        for index, variable in enumerate(raw_answer_variables):
+            if isinstance(variable, dict):
+                variable_id = str(variable.get("id") or "").strip()
+                label = str(variable.get("label") or "").strip()
+                if not variable_id:
+                    errors.append(f"answer_variable_missing_id:{index}")
+                if not label:
+                    errors.append(f"answer_variable_missing_label:{variable_id or index}")
+                if str(variable.get("answer_type") or "") not in ANSWER_TYPES:
+                    errors.append(f"bad_answer_variable_type:{variable_id}:{variable.get('answer_type')}")
+                check_grounding(variable.get("evidence_text"), f"answer_variable:{variable_id or index}")
+                if variable_id:
+                    answer_variable_ids.add(variable_id)
+                if label:
+                    answer_variable_labels.add(label)
+            elif isinstance(variable, str):
+                label = variable.strip()
+                if label:
+                    answer_variable_labels.add(label)
+            else:
+                errors.append(f"bad_answer_variable:{index}")
     targets = collection("target_referents")
     boxes = collection("box_requirements")
     conditions = collection("requested_conditions")
@@ -1147,6 +1218,12 @@ def _validate_query_drs_payload(payload: Any, question: str) -> dict[str, Any]:
             errors.append(f"missing_parent_box:{box_id}->{parent_id}")
         if holder_id and holder_id not in target_ids:
             errors.append(f"missing_holder_referent:{box_id}->{holder_id}")
+        check_grounding(box.get("evidence_text"), f"box:{box_id}")
+    for target in targets:
+        target_id = str(target.get("id") or "")
+        if not target_id or not str(target.get("label") or "").strip():
+            errors.append(f"bad_target_referent:{target_id}")
+        check_grounding(target.get("evidence_text"), f"target:{target_id}")
     for condition in conditions:
         condition_id = str(condition.get("id") or "")
         box_id = str(condition.get("box_id") or "")
@@ -1158,6 +1235,7 @@ def _validate_query_drs_payload(payload: Any, question: str) -> dict[str, Any]:
             errors.append(f"bad_polarity:{condition_id}:{condition.get('polarity')}")
         if str(condition.get("modality") or "") not in DRS_CONTEXT_KINDS:
             errors.append(f"bad_modality:{condition_id}:{condition.get('modality')}")
+        check_grounding(condition.get("evidence_text"), f"condition:{condition_id}")
         arguments = condition.get("arguments")
         if not isinstance(arguments, list):
             errors.append(f"bad_arguments:{condition_id}")
@@ -1167,17 +1245,26 @@ def _validate_query_drs_payload(payload: Any, question: str) -> dict[str, Any]:
                 continue
             target_kind = str(arg.get("target_kind") or "")
             target_id = str(arg.get("target_id") or "")
-            if target_kind == "referent" and target_id and target_id not in target_ids:
+            if target_kind == "answer_variable":
+                if answer_variable_ids and target_id not in answer_variable_ids:
+                    errors.append(f"missing_answer_variable:{condition_id}->{target_id}")
+                elif not answer_variable_ids and target_id and target_id not in answer_variable_labels:
+                    errors.append(f"missing_answer_variable:{condition_id}->{target_id}")
+            elif target_kind == "referent" and target_id and target_id not in target_ids:
                 errors.append(f"missing_argument_referent:{condition_id}->{target_id}")
             elif target_kind == "box" and target_id and target_id not in box_ids:
                 errors.append(f"missing_argument_box:{condition_id}->{target_id}")
             elif target_kind == "condition" and target_id and target_id not in condition_ids:
                 errors.append(f"missing_argument_condition:{condition_id}->{target_id}")
-            elif target_kind not in {"referent", "box", "condition", "literal", "unknown"}:
+            elif target_kind not in {"answer_variable", "referent", "box", "condition", "literal", "unknown"}:
                 errors.append(f"bad_argument_target_kind:{condition_id}:{target_kind}")
+            check_grounding(arg.get("evidence_text"), f"argument:{condition_id}:{arg.get('role')}")
     return {
-        "schema_valid": not errors,
+        "schema_valid": not errors and not grounding_failures,
         "errors": errors[:50],
+        "grounding_failures": grounding_failures[:50],
+        "grounding_failure_count": len(grounding_failures),
+        "answer_variable_count": len(answer_variable_ids) or len(answer_variable_labels),
         "target_count": len(targets),
         "condition_count": len(conditions),
         "box_requirement_count": len(boxes),
@@ -1256,6 +1343,20 @@ def query_frame_from_query_drs(question: str, query_drs: dict[str, Any] | None) 
     box_requirements = query_drs.get("box_requirements")
     if not isinstance(target_referents, list) or not isinstance(requested_conditions, list):
         return None
+    answer_variables_raw = query_drs.get("answer_variables")
+    answer_variables: list[str] = []
+    answer_variable_labels_by_id: dict[str, str] = {}
+    if isinstance(answer_variables_raw, list):
+        for item in answer_variables_raw:
+            if isinstance(item, dict):
+                variable_id = str(item.get("id") or "").strip()
+                label = str(item.get("label") or "").strip()
+                if label:
+                    answer_variables.append(label)
+                if variable_id and label:
+                    answer_variable_labels_by_id[variable_id] = label
+            elif str(item or "").strip():
+                answer_variables.append(str(item).strip())
     target_anchors = [
         str(item.get("label") or "").strip()
         for item in target_referents
@@ -1277,8 +1378,12 @@ def query_frame_from_query_drs(question: str, query_drs: dict[str, Any] | None) 
         for argument in condition.get("arguments") or []:
             if not isinstance(argument, dict):
                 continue
+            target_kind = str(argument.get("target_kind") or "").strip()
+            target_id = str(argument.get("target_id") or "").strip()
             value = str(argument.get("value") or "").strip()
             role = str(argument.get("role") or "").strip()
+            if target_kind == "answer_variable" and target_id in answer_variable_labels_by_id:
+                argument_terms.append(answer_variable_labels_by_id[target_id])
             if value:
                 argument_terms.append(value)
             if role:
@@ -1292,7 +1397,7 @@ def query_frame_from_query_drs(question: str, query_drs: dict[str, Any] | None) 
         question,
         {
             "target_anchors": list(dict.fromkeys(target_anchors)),
-            "answer_variables": query_drs.get("answer_variables") if isinstance(query_drs.get("answer_variables"), list) else [],
+            "answer_variables": list(dict.fromkeys(answer_variables)),
             "requested_relation": " ".join(dict.fromkeys(predicates)),
             "relation_terms": list(dict.fromkeys([*predicates, *argument_terms])),
             "constraints": query_drs.get("constraints") if isinstance(query_drs.get("constraints"), list) else [],
@@ -1742,7 +1847,7 @@ def build_chunk_frame_prompt(chunk_text: str, *, rel_path: str = "", context_bud
         "condition's discourse referents, participants, complements, attributes, quantities, locations, times, "
         "and values when those phrases appear in the chunk. Do not bury a bound value only inside predicate text "
         "when the same value appears as an exact argument phrase in the chunk. Include identity_hypotheses only when the chunk itself supports alias, "
-        "coreference, pronoun, speaker, or same-referent links. Include modality, polarity, context_holder, "
+        "coreference, pronoun, speaker, or same-referent links between distinct mentions; do not include self-links. Include modality, polarity, context_holder, "
         "and temporal_text only when the chunk itself supports that DRT interpretation."
         + json.dumps({"source": rel_path, "context_budget": context_budget or {}, "chunk": chunk_text}, ensure_ascii=False)
     )
@@ -1989,7 +2094,8 @@ def build_chunk_drs_prompt(chunk_text: str, *, rel_path: str = "", context_budge
         "for negation, reports, quotes, beliefs, conditionals, uncertainty, dreams, fiction, and modality. "
         "Arguments use target_kind and target_id; use target_kind=box when an argument is a subordinate DRS box, "
         "target_kind=condition when an argument is another condition, and target_kind=referent for discourse "
-        "referents. Identity hypotheses must be model-provided DRT data, not same-name merging. "
+        "referents. Identity hypotheses must be model-provided DRT data, not same-name merging; do not include "
+        "self identity hypotheses where left_referent_id equals right_referent_id. "
         "Every evidence_text and evidence_spans item must be one contiguous substring copied exactly from the chunk. "
         "Copy each evidence substring at most once; never concatenate or repeat the chunk inside a string."
         + json.dumps(
@@ -2213,7 +2319,22 @@ def _repair_chunk_drs_payload(payload: Any) -> Any:
                 }
             )
             referent_ids.add(target_id)
-    if len(repaired_referents) == len(referents):
+    identities = drs.get("identity_hypotheses")
+    repaired_identities = identities
+    if isinstance(identities, list):
+        repaired_identities = [
+            item
+            for item in identities
+            if not (
+                isinstance(item, dict)
+                and str(item.get("left_referent_id") or "").strip()
+                and str(item.get("left_referent_id") or "").strip()
+                == str(item.get("right_referent_id") or "").strip()
+            )
+        ]
+        if len(repaired_identities) != len(identities):
+            drs["identity_hypotheses"] = repaired_identities
+    if len(repaired_referents) == len(referents) and repaired_identities is identities:
         return payload
     drs["referents"] = repaired_referents
     return {**payload, "drs": drs}
