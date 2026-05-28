@@ -478,8 +478,15 @@ def ingest_folder(
                 ),
             )
 
+        try:
+            max_mentions_per_chunk = max(0, int(os.environ.get("KMD_MENTIONS_MAX_PER_CHUNK", "128")))
+        except ValueError:
+            max_mentions_per_chunk = 128
+        mention_candidates = collect_mentions(sentence)
+        if max_mentions_per_chunk and len(mention_candidates) > max_mentions_per_chunk:
+            mention_candidates = mention_candidates[:max_mentions_per_chunk]
         mentions_for_sentence: list[tuple[str, str, str]] = []
-        for surface, entity_type, start, end in collect_mentions(sentence):
+        for surface, entity_type, start, end in mention_candidates:
             mention_span_id = stable_id("span", sentence.sentence_id, surface, start)
             store.execute(
                 "INSERT OR IGNORE INTO source_spans(span_id, document_id, chunk_id, char_start, char_end, surface, surface_norm, span_kind) VALUES (?, ?, ?, ?, ?, ?, ?, ?)",
@@ -538,6 +545,11 @@ def ingest_folder(
         temporal_scope_values = temporal_values if len(temporal_values) <= max_same_span_temporal_values else []
         if len(temporal_scope_values) * attachable_relation_count > max_same_span_temporal_edges:
             temporal_scope_values = []
+        try:
+            max_deterministic_frames = max(0, int(os.environ.get("KMD_DETERMINISTIC_FRAMES_MAX_PER_CHUNK", "32")))
+        except ValueError:
+            max_deterministic_frames = 32
+        deterministic_frame_count = 0
         for relation in deterministic_relations:
             metadata = {
                 **relation.metadata,
@@ -596,7 +608,12 @@ def ingest_folder(
                 ),
             )
             condition = _condition_from_deterministic_relation(relation, sentence.text)
-            if condition is not None and condition.arguments:
+            if (
+                condition is not None
+                and condition.arguments
+                and (not max_deterministic_frames or deterministic_frame_count < max_deterministic_frames)
+            ):
+                deterministic_frame_count += 1
                 condition_frame_id = stable_id(
                     "frm",
                     run_id,

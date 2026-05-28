@@ -350,6 +350,19 @@ def test_ingest_skips_cartesian_temporal_edges_for_dense_time_chunks(tmp_path: P
     assert store.counts()["temporal_edges"] == 0
 
 
+def test_ingest_caps_compatibility_frames_without_dropping_relations(tmp_path: Path, monkeypatch) -> None:
+    monkeypatch.setenv("KMD_DETERMINISTIC_FRAMES_MAX_PER_CHUNK", "1")
+    (tmp_path / "records.txt").write_text(
+        "Alpha owner: Mira; Beta owner: Jonas; Gamma owner: Lina",
+        encoding="utf-8",
+    )
+
+    store, _, _, _ = ingest_folder(tmp_path)
+
+    assert store.counts()["relations"] >= 3
+    assert store.counts()["frames"] == 1
+
+
 def test_count_aggregation_requires_each_query_drs_term_group(tmp_path: Path) -> None:
     (tmp_path / "states.txt").write_text(
         "\n".join(
