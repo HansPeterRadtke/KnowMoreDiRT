@@ -12,6 +12,7 @@ from __future__ import annotations
 import json
 import re
 from collections import defaultdict
+from functools import lru_cache
 from typing import Any
 
 from .answer_types import ExpectedAnswer, canonicalize_answer, is_value_compatible
@@ -24,6 +25,26 @@ DATE_TIME_RE = re.compile(r"\b(?:\d{4}-\d{2}-\d{2}(?:[ T]\d{1,2}:\d{2})?|\d{1,2}
 PATH_RE = re.compile(r"\b[A-Za-z0-9_-]+(?:/[A-Za-z0-9_.-]+)+\b|\b[A-Za-z0-9_.-]+\.[A-Za-z0-9]{1,12}\b")
 INACCESSIBLE_CONTEXT_PREFIXES = ("modality:",)
 ANSWER_SLOT_SKIP_TERMS = {"answer", "value", "entity", "item", "thing", "text", "content"}
+
+
+@lru_cache(maxsize=8192)
+def _normalized_token_set(value: str) -> frozenset[str]:
+    return frozenset(token for token in re.split(r"[^a-z0-9]+", normalize(value)) if token)
+
+
+@lru_cache(maxsize=2048)
+def _normalized_terms(terms: tuple[str, ...]) -> tuple[str, ...]:
+    return tuple(dict.fromkeys(term_norm for term in terms if (term_norm := normalize(term))))
+
+
+@lru_cache(maxsize=2048)
+def _normalized_term_set(terms: tuple[str, ...]) -> frozenset[str]:
+    return frozenset(_normalized_terms(terms))
+
+
+@lru_cache(maxsize=2048)
+def _normalized_term_token_sets(terms: tuple[str, ...]) -> tuple[frozenset[str], ...]:
+    return tuple(token_set for term in _normalized_terms(terms) if (token_set := _normalized_token_set(term)))
 
 
 def _frame(plan: dict[str, Any] | QueryFrame | None, question: str) -> QueryFrame:
@@ -281,20 +302,27 @@ def _load_records(store: Any, run_id: str, document_ids: list[str], chunk_keys: 
     }
 
 
+def _indexed_rows(records: dict[str, Any], cache_key: str, table_key: str, id_key: str) -> dict[str, dict[str, Any]]:
+    indexes = records.setdefault("_indexes", {})
+    if cache_key not in indexes:
+        indexes[cache_key] = {str(row.get(id_key)): row for row in records.get(table_key, [])}
+    return indexes[cache_key]
+
+
 def _docs_by_id(records: dict[str, Any]) -> dict[str, dict[str, Any]]:
-    return {str(row.get("document_id")): row for row in records.get("documents", [])}
+    return _indexed_rows(records, "documents_by_id", "documents", "document_id")
 
 
 def _chunks_by_id(records: dict[str, Any]) -> dict[str, dict[str, Any]]:
-    return {str(row.get("chunk_id")): row for row in records.get("chunks", [])}
+    return _indexed_rows(records, "chunks_by_id", "chunks", "chunk_id")
 
 
 def _spans_by_id(records: dict[str, Any]) -> dict[str, dict[str, Any]]:
-    return {str(row.get("span_id")): row for row in records.get("source_spans", [])}
+    return _indexed_rows(records, "spans_by_id", "source_spans", "span_id")
 
 
 def _contexts_by_id(records: dict[str, Any]) -> dict[str, dict[str, Any]]:
-    return {str(row.get("context_id")): row for row in records.get("contexts", [])}
+    return _indexed_rows(records, "contexts_by_id", "contexts", "context_id")
 
 
 def _context_chain(context_id: str, records: dict[str, Any]) -> list[dict[str, Any]]:
@@ -365,7 +393,7 @@ def _context_requested_by_relation(context_id: str, records: dict[str, Any], fra
 
 
 def _referents_by_id(records: dict[str, Any]) -> dict[str, dict[str, Any]]:
-    return {str(row.get("referent_id")): row for row in records.get("referents", [])}
+    return _indexed_rows(records, "referents_by_id", "referents", "referent_id")
 
 
 def _identity_expanded_terms(records: dict[str, Any], terms: list[str]) -> list[str]:
@@ -560,12 +588,11 @@ def _value_is_target(value: str, target_terms: list[str]) -> bool:
     material = normalize(value)
     if not material or not target_terms:
         return False
-    if material in set(target_terms):
+    terms_key = tuple(target_terms)
+    if material in _normalized_term_set(terms_key):
         return True
-    material_tokens = set(re.split(r"[^a-z0-9]+", material))
-    material_tokens = {token for token in material_tokens if token}
-    for term in target_terms:
-        term_tokens = {token for token in re.split(r"[^a-z0-9]+", normalize(term)) if token}
+    material_tokens = _normalized_token_set(material)
+    for term_tokens in _normalized_term_token_sets(terms_key):
         if term_tokens and material_tokens == term_tokens:
             return True
     return False
@@ -575,12 +602,11 @@ def _value_contains_target(value: str, target_terms: list[str]) -> bool:
     material = normalize(value)
     if not material or not target_terms:
         return False
-    material_tokens = {token for token in re.split(r"[^a-z0-9]+", material) if token}
-    for term in target_terms:
-        term_norm = normalize(term)
+    material_tokens = _normalized_token_set(material)
+    terms_key = tuple(target_terms)
+    for term_norm, term_tokens in zip(_normalized_terms(terms_key), _normalized_term_token_sets(terms_key)):
         if not term_norm or material == term_norm:
             continue
-        term_tokens = {token for token in re.split(r"[^a-z0-9]+", term_norm) if token}
         if term_tokens and term_tokens.issubset(material_tokens):
             return True
         if " " in term_norm and term_norm in material:
