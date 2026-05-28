@@ -3,6 +3,7 @@ from __future__ import annotations
 from pathlib import Path
 
 from knowmoredirt.answer_types import ExpectedAnswer
+from knowmoredirt.bounded_dspg import _context_accessible
 from knowmoredirt.engine import KnowMoreDiRTEngine
 from knowmoredirt.ingest import ingest_folder
 from knowmoredirt.query import QueryFrame
@@ -176,6 +177,33 @@ def test_store_materializes_model_drs_without_same_surface_merging(tmp_path: Pat
     ).fetchone()
     assert row["target_kind"] == "box"
     assert row["target_box_id"]
+
+    reported_context_id = store.execute(
+        "SELECT context_id FROM drs_boxes WHERE kind='reported'"
+    ).fetchone()["context_id"]
+    records = {"contexts": [dict(row) for row in store.execute("SELECT * FROM contexts").fetchall()]}
+    unscoped_frame = QueryFrame(
+        question_text="What is ready?",
+        answer_type="content_phrase",
+        answer_variables=("entity",),
+        target_anchors=(),
+        requested_relation="ready",
+        relation_terms=("ready",),
+        constraints=(),
+    )
+    assert _context_accessible(reported_context_id, records, unscoped_frame) is False
+
+    scoped_frame = QueryFrame(
+        question_text="What was reported as ready?",
+        answer_type="content_phrase",
+        answer_variables=("entity",),
+        target_anchors=(),
+        requested_relation="ready",
+        relation_terms=("ready",),
+        constraints=(),
+        scope_requirements=("reported",),
+    )
+    assert _context_accessible(reported_context_id, records, scoped_frame) is True
 
     bad = store.materialize_drs_payload(
         run_id,

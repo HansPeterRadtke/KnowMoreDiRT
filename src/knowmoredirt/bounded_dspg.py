@@ -453,6 +453,15 @@ def _context_accessible(context_id: str, records: dict[str, Any], frame: QueryFr
             ):
                 continue
             return False
+        if kind.startswith("drs:") and kind != "drs:asserted":
+            context_surface = normalize(
+                " ".join([kind, str(context.get("holder_surface") or ""), str(context.get("evidence_surface") or "")])
+            )
+            if _terms_match_material(requirements, context_surface):
+                continue
+            if kind == "drs:negated" and (frame.answer_type == "boolean" or frame.negated):
+                continue
+            return False
     return True
 
 
