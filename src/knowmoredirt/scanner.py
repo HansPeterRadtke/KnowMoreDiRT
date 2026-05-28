@@ -52,7 +52,7 @@ def read_text_file_with_metadata(path: Path) -> tuple[str, dict[str, object]] | 
         return None
 
 
-def scan_folder(folder_path: str | Path) -> tuple[list[Document], list[Sentence]]:
+def scan_folder(folder_path: str | Path, *, max_unit_chars: int = 0) -> tuple[list[Document], list[Sentence]]:
     root = Path(folder_path)
     if not root.exists():
         raise FileNotFoundError(root)
@@ -109,7 +109,7 @@ def scan_folder(folder_path: str | Path) -> tuple[list[Document], list[Sentence]
             metadata=metadata,
         )
         documents.append(document)
-        for order, (start, end, unit) in enumerate(split_units(text)):
+        for order, (start, end, unit) in enumerate(split_units(text, max_unit_chars=max_unit_chars)):
             sentences.append(
                 Sentence(
                     sentence_id=f"{document_id}:s{order:04d}",

@@ -27,3 +27,15 @@ def test_lexical_index_retrieves_source_sentences(tmp_path: Path) -> None:
 
     assert results
     assert any("Omar reviewed REF-8042" in sentence.text for sentence, _ in results)
+
+
+def test_scanner_bounds_very_long_line_units(tmp_path: Path) -> None:
+    text = " ".join(f"token{i:03d}" for i in range(80))
+    (tmp_path / "long.jsonish").write_text(text, encoding="utf-8")
+
+    _, sentences = scan_folder(tmp_path, max_unit_chars=120)
+
+    assert len(sentences) > 1
+    assert all(len(sentence.text) <= 120 for sentence in sentences)
+    assert "token000" in sentences[0].text
+    assert "token079" in sentences[-1].text

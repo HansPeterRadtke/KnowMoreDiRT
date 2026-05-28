@@ -66,12 +66,48 @@ def content_tokens(text: str) -> list[str]:
     return [token for token in tokenize(text) if len(token) > 2 and token not in stop]
 
 
-def split_units(text: str) -> list[tuple[int, int, str]]:
+def _append_bounded_unit(
+    units: list[tuple[int, int, str]],
+    *,
+    start: int,
+    value: str,
+    max_unit_chars: int,
+) -> None:
+    if max_unit_chars <= 0 or len(value) <= max_unit_chars:
+        units.append((start, start + len(value), value))
+        return
+    offset = 0
+    while offset < len(value):
+        hard_end = min(len(value), offset + max_unit_chars)
+        split_end = hard_end
+        if hard_end < len(value):
+            floor = offset + max(1, max_unit_chars // 2)
+            whitespace = value.rfind(" ", floor, hard_end)
+            if whitespace > offset:
+                split_end = whitespace
+        chunk = value[offset:split_end].strip()
+        if chunk:
+            leading = len(value[offset:split_end]) - len(value[offset:split_end].lstrip())
+            units.append((start + offset + leading, start + offset + leading + len(chunk), chunk))
+        offset = split_end
+        while offset < len(value) and value[offset].isspace():
+            offset += 1
+
+
+def split_units(text: str, *, max_unit_chars: int = 0) -> list[tuple[int, int, str]]:
     """Split raw text into line/sentence units while keeping offsets."""
     protected = text
     for source, target in ABBREVIATION_DOTS.items():
         protected = protected.replace(source, target)
     units: list[tuple[int, int, str]] = []
+    if max_unit_chars > 0 and len(protected) > max_unit_chars:
+        value = protected.strip()
+        for source, target in ABBREVIATION_DOTS.items():
+            value = value.replace(target, source)
+        if value:
+            leading = len(protected) - len(protected.lstrip())
+            _append_bounded_unit(units, start=leading, value=value, max_unit_chars=max_unit_chars)
+        return units
     for match in SENTENCE_SPLIT_RE.finditer(protected):
         pass
     cursor = 0
@@ -85,7 +121,13 @@ def split_units(text: str) -> list[tuple[int, int, str]]:
         for source, target in ABBREVIATION_DOTS.items():
             value = value.replace(target, source)
         if value:
-            units.append((start, end, value))
+            leading = len(part) - len(part.lstrip())
+            _append_bounded_unit(
+                units,
+                start=start + leading,
+                value=value,
+                max_unit_chars=max_unit_chars,
+            )
     return units
 
 

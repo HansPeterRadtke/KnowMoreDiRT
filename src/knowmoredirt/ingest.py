@@ -278,6 +278,23 @@ def _condition_from_deterministic_relation(relation: ExtractedRelation, evidence
     )
 
 
+def _scan_unit_max_chars(semantic_client: Any | None) -> int:
+    configured = os.environ.get("KMD_SCAN_UNIT_MAX_CHARS", "").strip()
+    if configured:
+        try:
+            return max(0, int(configured))
+        except ValueError:
+            pass
+    if semantic_client is not None and hasattr(semantic_client, "context_size"):
+        try:
+            context_size = int(semantic_client.context_size())
+        except Exception:
+            context_size = 0
+        if context_size > 0:
+            return max(1024, context_size * 2)
+    return int(os.environ.get("KMD_SCAN_UNIT_FALLBACK_MAX_CHARS", "16000"))
+
+
 def ingest_folder(
     folder_path: str | Path,
     store: DSPGStore | None = None,
@@ -290,7 +307,7 @@ def ingest_folder(
     created_store = store is None
     store = store or DSPGStore(create_indexes=False)
     ingest_started = time.monotonic()
-    documents, sentences = scan_folder(folder_path)
+    documents, sentences = scan_folder(folder_path, max_unit_chars=_scan_unit_max_chars(semantic_client))
     run_id = store.start_run(folder_path)
 
     sentence_by_id = {sentence.sentence_id: sentence for sentence in sentences}
