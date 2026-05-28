@@ -476,7 +476,10 @@ class KnowMoreDiRTEngine:
         if model.get("accepted"):
             trace.parsed_count += 1
             trace.accepted_count += 1
-        plan = normalize_model_plan(question, model, det) if model.get("accepted") else det
+        if model.get("accepted") and model.get("source") == "model_query_drs":
+            plan = model
+        else:
+            plan = normalize_model_plan(question, model, det) if model.get("accepted") else det
         trace.last_plan = plan
         planned_frame = frame_from_mapping(question, plan)
         expected = self._expected_from_frame(planned_frame)
