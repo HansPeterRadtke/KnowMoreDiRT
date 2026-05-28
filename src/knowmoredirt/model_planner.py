@@ -58,6 +58,10 @@ def _optional_grammar(grammar: str) -> str | None:
     return None if os.environ.get("KMD_LOCAL_MODEL_GRAMMAR", "1").strip().lower() in {"0", "false", "no", "off"} else grammar
 
 
+def _json_schema_enabled() -> bool:
+    return os.environ.get("KMD_LOCAL_MODEL_JSON_SCHEMA", "1").strip().lower() not in {"0", "false", "no", "off"}
+
+
 def _estimate_tokens(text: str) -> int:
     return max(1, (len(text) + 3) // 4)
 
@@ -186,6 +190,35 @@ def _cache_hash(stage: str, prompt: str, client: LocalModelClient | None, settin
 
 def _grammar_hash(grammar: str, schema_version: str) -> str:
     return hashlib.sha256((grammar + schema_version).encode()).hexdigest()
+
+
+def _json_schema_hash(schema: dict[str, Any] | None, schema_version: str) -> str:
+    return hashlib.sha256(json.dumps({"schema": schema or {}, "version": schema_version}, sort_keys=True).encode()).hexdigest()
+
+
+def _constraint_settings(grammar: str, json_schema: dict[str, Any] | None, schema_version: str) -> dict[str, Any]:
+    use_json_schema = bool(json_schema) and _json_schema_enabled()
+    return {
+        "constraint_mode": "json_schema" if use_json_schema else ("gbnf" if _optional_grammar(grammar) else "none"),
+        "grammar_hash": _grammar_hash(grammar, schema_version),
+        "json_schema_hash": _json_schema_hash(json_schema, schema_version) if json_schema else "",
+    }
+
+
+def _complete_structured(
+    client: LocalModelClient,
+    prompt: str,
+    *,
+    n_predict: int,
+    grammar: str,
+    json_schema: dict[str, Any] | None,
+) -> dict[str, Any]:
+    if json_schema and _json_schema_enabled():
+        try:
+            return client.complete_json(prompt, n_predict=n_predict, json_schema=json_schema)
+        except TypeError:
+            pass
+    return client.complete_json(prompt, n_predict=n_predict, grammar=_optional_grammar(grammar))
 
 
 def _cache_path(env_var: str, prompt_hash: str) -> Path | None:
@@ -460,6 +493,184 @@ ws ::= [ \t\n\r]*
 '''
 
 
+def _schema_obj(required: list[str], props: dict[str, Any]) -> dict[str, Any]:
+    return {"type": "object", "additionalProperties": False, "required": required, "properties": props}
+
+
+def _schema_array(item: dict[str, Any]) -> dict[str, Any]:
+    return {"type": "array", "items": item}
+
+
+def _schema_enum(values: set[str]) -> dict[str, Any]:
+    return {"type": "string", "enum": sorted(values)}
+
+
+STRING_SCHEMA = {"type": "string"}
+BOOL_SCHEMA = {"type": "boolean"}
+NUMBER_SCHEMA = {"type": "number"}
+ANSWER_TYPE_SCHEMA = _schema_enum(ANSWER_TYPES)
+STRING_ARRAY_SCHEMA = _schema_array(STRING_SCHEMA)
+
+QUERY_FRAME_JSON_SCHEMA = _schema_obj(
+    ["query_frame"],
+    {
+        "query_frame": _schema_obj(
+            [
+                "target_anchors",
+                "answer_variables",
+                "requested_relation",
+                "relation_terms",
+                "constraints",
+                "scope_requirements",
+                "modality_requirements",
+                "answer_type",
+                "temporal_scope",
+                "negated",
+                "aggregation",
+                "requires_evidence",
+            ],
+            {
+                "target_anchors": STRING_ARRAY_SCHEMA,
+                "answer_variables": STRING_ARRAY_SCHEMA,
+                "requested_relation": STRING_SCHEMA,
+                "relation_terms": STRING_ARRAY_SCHEMA,
+                "constraints": STRING_ARRAY_SCHEMA,
+                "scope_requirements": STRING_ARRAY_SCHEMA,
+                "modality_requirements": STRING_ARRAY_SCHEMA,
+                "answer_type": ANSWER_TYPE_SCHEMA,
+                "temporal_scope": STRING_SCHEMA,
+                "negated": BOOL_SCHEMA,
+                "aggregation": STRING_SCHEMA,
+                "requires_evidence": BOOL_SCHEMA,
+            },
+        )
+    },
+)
+
+ANSWER_JSON_SCHEMA = _schema_obj(
+    ["answer"],
+    {
+        "answer": _schema_obj(
+            ["sufficient_evidence", "answer_type", "answer", "evidence_span"],
+            {
+                "sufficient_evidence": BOOL_SCHEMA,
+                "answer_type": ANSWER_TYPE_SCHEMA,
+                "answer": STRING_SCHEMA,
+                "evidence_span": STRING_SCHEMA,
+            },
+        )
+    },
+)
+
+QUERY_EVIDENCE_ANSWER_JSON_SCHEMA = _schema_obj(
+    ["result"],
+    {
+        "result": _schema_obj(
+            ["query_frame", "sufficient_evidence", "answer_type", "answer", "evidence_span", "reason"],
+            {
+                "query_frame": QUERY_FRAME_JSON_SCHEMA["properties"]["query_frame"],
+                "sufficient_evidence": BOOL_SCHEMA,
+                "answer_type": ANSWER_TYPE_SCHEMA,
+                "answer": STRING_SCHEMA,
+                "evidence_span": STRING_SCHEMA,
+                "reason": STRING_SCHEMA,
+            },
+        )
+    },
+)
+
+FRAME_JSON_SCHEMA = _schema_obj(
+    ["frames"],
+    {
+        "frames": _schema_array(
+            _schema_obj(
+                [
+                    "frame_type",
+                    "predicate",
+                    "arguments",
+                    "identity_hypotheses",
+                    "polarity",
+                    "modality",
+                    "context_holder",
+                    "temporal_text",
+                    "evidence_text",
+                    "confidence",
+                ],
+                {
+                    "frame_type": STRING_SCHEMA,
+                    "predicate": STRING_SCHEMA,
+                    "arguments": _schema_array(
+                        _schema_obj(
+                            ["role", "text", "value_type"],
+                            {"role": STRING_SCHEMA, "text": STRING_SCHEMA, "value_type": STRING_SCHEMA},
+                        )
+                    ),
+                    "identity_hypotheses": _schema_array(
+                        _schema_obj(
+                            ["left_text", "right_text", "relation", "evidence_text", "confidence"],
+                            {
+                                "left_text": STRING_SCHEMA,
+                                "right_text": STRING_SCHEMA,
+                                "relation": STRING_SCHEMA,
+                                "evidence_text": STRING_SCHEMA,
+                                "confidence": NUMBER_SCHEMA,
+                            },
+                        )
+                    ),
+                    "polarity": STRING_SCHEMA,
+                    "modality": STRING_SCHEMA,
+                    "context_holder": STRING_SCHEMA,
+                    "temporal_text": STRING_SCHEMA,
+                    "evidence_text": STRING_SCHEMA,
+                    "confidence": NUMBER_SCHEMA,
+                },
+            )
+        )
+    },
+)
+
+VERIFICATION_JSON_SCHEMA = _schema_obj(
+    ["verification"],
+    {
+        "verification": _schema_obj(
+            ["entailed", "answer_type", "answer", "evidence_span", "reason"],
+            {
+                "entailed": BOOL_SCHEMA,
+                "answer_type": ANSWER_TYPE_SCHEMA,
+                "answer": STRING_SCHEMA,
+                "evidence_span": STRING_SCHEMA,
+                "reason": STRING_SCHEMA,
+            },
+        )
+    },
+)
+
+CANONICAL_ANSWER_JSON_SCHEMA = _schema_obj(
+    ["canonical_answer"],
+    {
+        "canonical_answer": _schema_obj(
+            ["answer", "evidence_span", "reason"],
+            {"answer": STRING_SCHEMA, "evidence_span": STRING_SCHEMA, "reason": STRING_SCHEMA},
+        )
+    },
+)
+
+IDENTITY_CANONICALIZATION_JSON_SCHEMA = _schema_obj(
+    ["canonicalization"],
+    {
+        "canonicalization": _schema_obj(
+            ["same_referent", "answer", "evidence_span", "reason"],
+            {
+                "same_referent": BOOL_SCHEMA,
+                "answer": STRING_SCHEMA,
+                "evidence_span": STRING_SCHEMA,
+                "reason": STRING_SCHEMA,
+            },
+        )
+    },
+)
+
+
 def _evidence_contains_span(span: str, evidence_items: list[dict[str, str]]) -> bool:
     return bool(span) and any(span in str(item.get("text") or "") for item in evidence_items)
 
@@ -579,12 +790,13 @@ def call_model_query_plan(question: str, client: LocalModelClient, *, n_predict:
     if n_predict is None:
         n_predict = int(os.environ.get("KMD_QUERY_PLAN_N_PREDICT", "128"))
     prompt = build_query_plan_prompt(question)
-    grammar_hash = _grammar_hash(QUERY_FRAME_GRAMMAR, QUERY_FRAME_SCHEMA_VERSION)
+    constraint = _constraint_settings(QUERY_FRAME_GRAMMAR, QUERY_FRAME_JSON_SCHEMA, QUERY_FRAME_SCHEMA_VERSION)
+    grammar_hash = str(constraint["grammar_hash"])
     prompt_hash = _cache_hash(
         "query_frame",
         prompt,
         client,
-        {"n_predict": n_predict, "schema": QUERY_FRAME_SCHEMA_VERSION, "grammar_hash": grammar_hash},
+        {"n_predict": n_predict, "schema": QUERY_FRAME_SCHEMA_VERSION, **constraint},
     )
     cache_path = _cache_path("KMD_QUERY_PLAN_CACHE_DIR", prompt_hash)
     cached = _read_cache(cache_path)
@@ -595,7 +807,13 @@ def call_model_query_plan(question: str, client: LocalModelClient, *, n_predict:
         return cached
     start = time.time()
     try:
-        parsed = client.complete_json(prompt, n_predict=n_predict, grammar=_optional_grammar(QUERY_FRAME_GRAMMAR))
+        parsed = _complete_structured(
+            client,
+            prompt,
+            n_predict=n_predict,
+            grammar=QUERY_FRAME_GRAMMAR,
+            json_schema=QUERY_FRAME_JSON_SCHEMA,
+        )
     except Exception as exc:
         from .query import plan_question
 
@@ -606,7 +824,7 @@ def call_model_query_plan(question: str, client: LocalModelClient, *, n_predict:
             "reason": "request_failed",
             "error": str(exc),
             "prompt_hash": prompt_hash,
-            "grammar_hash": grammar_hash,
+            **constraint,
             "elapsed": round(time.time() - start, 3),
         }
         _write_cache(cache_path, payload)
@@ -625,7 +843,7 @@ def call_model_query_plan(question: str, client: LocalModelClient, *, n_predict:
             "reason": "invalid_json",
             "raw_text": raw,
             "prompt_hash": prompt_hash,
-            "grammar_hash": grammar_hash,
+            **constraint,
             "elapsed": round(time.time() - start, 3),
         }
         _write_cache(cache_path, payload)
@@ -641,7 +859,7 @@ def call_model_query_plan(question: str, client: LocalModelClient, *, n_predict:
             "reason": "schema_validation_failed",
             "raw_text": raw,
             "prompt_hash": prompt_hash,
-            "grammar_hash": grammar_hash,
+            **constraint,
             "elapsed": round(time.time() - start, 3),
         }
         _write_cache(cache_path, payload)
@@ -654,7 +872,7 @@ def call_model_query_plan(question: str, client: LocalModelClient, *, n_predict:
         "elapsed": parsed.get("_model_elapsed_seconds", round(time.time() - start, 3)),
         "stop_reason": "parsed_json",
         "prompt_hash": prompt_hash,
-        "grammar_hash": grammar_hash,
+        **constraint,
         "output_hash": hashlib.sha256(raw.encode()).hexdigest(),
         "fresh_or_cached": "fresh",
     }
@@ -695,7 +913,8 @@ def call_model_evidence_answer(
     if n_predict is None:
         n_predict = int(os.environ.get("KMD_EVIDENCE_ANSWER_N_PREDICT", "128"))
     prompt = build_evidence_extraction_prompt(question, expected_answer_type, evidence_items)
-    grammar_hash = _grammar_hash(EVIDENCE_EXTRACTION_GRAMMAR, ANSWER_SCHEMA_VERSION)
+    constraint = _constraint_settings(EVIDENCE_EXTRACTION_GRAMMAR, ANSWER_JSON_SCHEMA, ANSWER_SCHEMA_VERSION)
+    grammar_hash = str(constraint["grammar_hash"])
     prompt_hash = _cache_hash(
         "evidence_answer",
         prompt,
@@ -704,7 +923,7 @@ def call_model_evidence_answer(
             "n_predict": n_predict,
             "schema": ANSWER_SCHEMA_VERSION,
             "expected_answer_type": expected_answer_type,
-            "grammar_hash": grammar_hash,
+            **constraint,
         },
     )
     cache_path = _cache_path("KMD_EVIDENCE_ANSWER_CACHE_DIR", prompt_hash)
@@ -713,14 +932,20 @@ def call_model_evidence_answer(
         return cached
     start = time.time()
     try:
-        parsed = client.complete_json(prompt, n_predict=n_predict, grammar=_optional_grammar(EVIDENCE_EXTRACTION_GRAMMAR))
+        parsed = _complete_structured(
+            client,
+            prompt,
+            n_predict=n_predict,
+            grammar=EVIDENCE_EXTRACTION_GRAMMAR,
+            json_schema=ANSWER_JSON_SCHEMA,
+        )
     except Exception as exc:
         return {
             "accepted": False,
             "reason": "request_failed",
             "error": str(exc),
             "prompt_hash": prompt_hash,
-            "grammar_hash": grammar_hash,
+            **constraint,
             "elapsed": round(time.time() - start, 3),
         }
     answer = parsed.get("answer") if isinstance(parsed, dict) else None
@@ -738,7 +963,7 @@ def call_model_evidence_answer(
             "reason": "invalid_json",
             "raw_text": raw,
             "prompt_hash": prompt_hash,
-            "grammar_hash": grammar_hash,
+            **constraint,
             "elapsed": round(time.time() - start, 3),
         }
         _write_cache(cache_path, payload)
@@ -751,7 +976,7 @@ def call_model_evidence_answer(
             "reason": "schema_validation_failed",
             "raw_text": raw,
             "prompt_hash": prompt_hash,
-            "grammar_hash": grammar_hash,
+            **constraint,
             "elapsed": round(time.time() - start, 3),
         }
         _write_cache(cache_path, payload)
@@ -765,7 +990,7 @@ def call_model_evidence_answer(
         "raw_text": raw,
         "elapsed": parsed.get("_model_elapsed_seconds", round(time.time() - start, 3)),
         "prompt_hash": prompt_hash,
-        "grammar_hash": grammar_hash,
+        **constraint,
         "output_hash": hashlib.sha256(raw.encode()).hexdigest(),
         "fresh_or_cached": "fresh",
     }
@@ -916,12 +1141,13 @@ def _call_model_query_evidence_answer_repair(
     discourse_records: list[dict[str, Any]] | None = None,
 ) -> dict[str, Any]:
     prompt = build_query_evidence_answer_repair_prompt(question, evidence_items, raw_response, discourse_records)
-    grammar_hash = _grammar_hash(QUERY_EVIDENCE_ANSWER_GRAMMAR, ANSWER_SCHEMA_VERSION)
+    constraint = _constraint_settings(QUERY_EVIDENCE_ANSWER_GRAMMAR, QUERY_EVIDENCE_ANSWER_JSON_SCHEMA, ANSWER_SCHEMA_VERSION)
+    grammar_hash = str(constraint["grammar_hash"])
     prompt_hash = _cache_hash(
         "query_evidence_answer_repair",
         prompt,
         client,
-        {"n_predict": n_predict, "schema": ANSWER_SCHEMA_VERSION, "grammar_hash": grammar_hash},
+        {"n_predict": n_predict, "schema": ANSWER_SCHEMA_VERSION, **constraint},
     )
     cache_path = _cache_path("KMD_QUERY_EVIDENCE_REPAIR_CACHE_DIR", prompt_hash)
     cached = _read_cache(cache_path)
@@ -929,7 +1155,13 @@ def _call_model_query_evidence_answer_repair(
         return cached
     start = time.time()
     try:
-        parsed = client.complete_json(prompt, n_predict=n_predict, grammar=_optional_grammar(QUERY_EVIDENCE_ANSWER_GRAMMAR))
+        parsed = _complete_structured(
+            client,
+            prompt,
+            n_predict=n_predict,
+            grammar=QUERY_EVIDENCE_ANSWER_GRAMMAR,
+            json_schema=QUERY_EVIDENCE_ANSWER_JSON_SCHEMA,
+        )
     except Exception as exc:
         payload = {
             "accepted": False,
@@ -981,12 +1213,13 @@ def call_model_query_evidence_answer(
     if n_predict is None:
         n_predict = int(os.environ.get("KMD_QUERY_EVIDENCE_N_PREDICT", "128"))
     prompt = build_query_evidence_answer_prompt(question, evidence_items, discourse_records)
-    grammar_hash = _grammar_hash(QUERY_EVIDENCE_ANSWER_GRAMMAR, ANSWER_SCHEMA_VERSION)
+    constraint = _constraint_settings(QUERY_EVIDENCE_ANSWER_GRAMMAR, QUERY_EVIDENCE_ANSWER_JSON_SCHEMA, ANSWER_SCHEMA_VERSION)
+    grammar_hash = str(constraint["grammar_hash"])
     prompt_hash = _cache_hash(
         "query_evidence_answer",
         prompt,
         client,
-        {"n_predict": n_predict, "schema": ANSWER_SCHEMA_VERSION, "grammar_hash": grammar_hash},
+        {"n_predict": n_predict, "schema": ANSWER_SCHEMA_VERSION, **constraint},
     )
     cache_path = _cache_path("KMD_QUERY_EVIDENCE_CACHE_DIR", prompt_hash)
     cached = _read_cache(cache_path)
@@ -994,7 +1227,13 @@ def call_model_query_evidence_answer(
         return cached
     start = time.time()
     try:
-        parsed = client.complete_json(prompt, n_predict=n_predict, grammar=_optional_grammar(QUERY_EVIDENCE_ANSWER_GRAMMAR))
+        parsed = _complete_structured(
+            client,
+            prompt,
+            n_predict=n_predict,
+            grammar=QUERY_EVIDENCE_ANSWER_GRAMMAR,
+            json_schema=QUERY_EVIDENCE_ANSWER_JSON_SCHEMA,
+        )
     except Exception as exc:
         return {
             "accepted": False,
@@ -1134,14 +1373,13 @@ def _context_limited_chunk_frame_text(
 
 
 def chunk_frame_cache_context(client: LocalModelClient | None, *, n_predict: int | None = None) -> dict[str, Any]:
-    grammar_hash = _grammar_hash(FRAME_EXTRACTION_GRAMMAR, CHUNK_FRAME_SCHEMA_VERSION)
+    constraint = _constraint_settings(FRAME_EXTRACTION_GRAMMAR, FRAME_JSON_SCHEMA, CHUNK_FRAME_SCHEMA_VERSION)
     if n_predict is None:
         n_predict = default_chunk_frame_n_predict(client)
     return {
         "prompt_version": PROMPT_VERSION,
         "schema_version": CHUNK_FRAME_SCHEMA_VERSION,
-        "grammar_enabled": _optional_grammar(FRAME_EXTRACTION_GRAMMAR) is not None,
-        "grammar_hash": grammar_hash,
+        **constraint,
         "n_predict": int(n_predict),
         "model_fingerprint": _client_fingerprint(client),
     }
@@ -1163,7 +1401,8 @@ def call_model_chunk_frames(
         n_predict=n_predict,
     )
     prompt = build_chunk_frame_prompt(prompt_chunk, rel_path=rel_path, context_budget=context_budget)
-    grammar_hash = _grammar_hash(FRAME_EXTRACTION_GRAMMAR, CHUNK_FRAME_SCHEMA_VERSION)
+    constraint = _constraint_settings(FRAME_EXTRACTION_GRAMMAR, FRAME_JSON_SCHEMA, CHUNK_FRAME_SCHEMA_VERSION)
+    grammar_hash = str(constraint["grammar_hash"])
     prompt_hash = _cache_hash(
         "chunk_frames",
         prompt,
@@ -1171,13 +1410,19 @@ def call_model_chunk_frames(
         {
             "n_predict": n_predict,
             "schema": CHUNK_FRAME_SCHEMA_VERSION,
-            "grammar_hash": grammar_hash,
+            **constraint,
             "context_budget": context_budget,
         },
     )
     start = time.time()
     try:
-        parsed = client.complete_json(prompt, n_predict=n_predict, grammar=_optional_grammar(FRAME_EXTRACTION_GRAMMAR))
+        parsed = _complete_structured(
+            client,
+            prompt,
+            n_predict=n_predict,
+            grammar=FRAME_EXTRACTION_GRAMMAR,
+            json_schema=FRAME_JSON_SCHEMA,
+        )
     except Exception as exc:
         return {
             "accepted": False,
@@ -1350,12 +1595,13 @@ def call_model_answer_verification(
     if n_predict is None:
         n_predict = int(os.environ.get("KMD_VERIFIER_N_PREDICT", "128"))
     prompt = build_answer_verification_prompt(question, query_frame, candidate_answer, evidence_items, discourse_frames)
-    grammar_hash = _grammar_hash(ANSWER_VERIFICATION_GRAMMAR, ANSWER_SCHEMA_VERSION)
+    constraint = _constraint_settings(ANSWER_VERIFICATION_GRAMMAR, VERIFICATION_JSON_SCHEMA, ANSWER_SCHEMA_VERSION)
+    grammar_hash = str(constraint["grammar_hash"])
     prompt_hash = _cache_hash(
         "answer_verification",
         prompt,
         client,
-        {"n_predict": n_predict, "schema": ANSWER_SCHEMA_VERSION, "grammar_hash": grammar_hash},
+        {"n_predict": n_predict, "schema": ANSWER_SCHEMA_VERSION, **constraint},
     )
     cache_path = _cache_path("KMD_VERIFIER_CACHE_DIR", prompt_hash)
     cached = _read_cache(cache_path)
@@ -1363,7 +1609,13 @@ def call_model_answer_verification(
         return cached
     start = time.time()
     try:
-        parsed = client.complete_json(prompt, n_predict=n_predict, grammar=_optional_grammar(ANSWER_VERIFICATION_GRAMMAR))
+        parsed = _complete_structured(
+            client,
+            prompt,
+            n_predict=n_predict,
+            grammar=ANSWER_VERIFICATION_GRAMMAR,
+            json_schema=VERIFICATION_JSON_SCHEMA,
+        )
     except Exception as exc:
         return {
             "accepted": False,
@@ -1442,12 +1694,13 @@ def call_model_answer_canonicalization(
     if n_predict is None:
         n_predict = int(os.environ.get("KMD_ANSWER_CANONICALIZATION_N_PREDICT", "96"))
     prompt = build_answer_canonicalization_prompt(question, candidate_answer, answer_type, evidence_items)
-    grammar_hash = _grammar_hash(ANSWER_CANONICALIZATION_GRAMMAR, ANSWER_SCHEMA_VERSION)
+    constraint = _constraint_settings(ANSWER_CANONICALIZATION_GRAMMAR, CANONICAL_ANSWER_JSON_SCHEMA, ANSWER_SCHEMA_VERSION)
+    grammar_hash = str(constraint["grammar_hash"])
     prompt_hash = _cache_hash(
         "answer_canonicalization",
         prompt,
         client,
-        {"n_predict": n_predict, "schema": ANSWER_SCHEMA_VERSION, "grammar_hash": grammar_hash},
+        {"n_predict": n_predict, "schema": ANSWER_SCHEMA_VERSION, **constraint},
     )
     cache_path = _cache_path("KMD_ANSWER_CANONICALIZATION_CACHE_DIR", prompt_hash)
     cached = _read_cache(cache_path)
@@ -1455,7 +1708,13 @@ def call_model_answer_canonicalization(
         return cached
     start = time.time()
     try:
-        parsed = client.complete_json(prompt, n_predict=n_predict, grammar=_optional_grammar(ANSWER_CANONICALIZATION_GRAMMAR))
+        parsed = _complete_structured(
+            client,
+            prompt,
+            n_predict=n_predict,
+            grammar=ANSWER_CANONICALIZATION_GRAMMAR,
+            json_schema=CANONICAL_ANSWER_JSON_SCHEMA,
+        )
     except Exception as exc:
         return {
             "accepted": False,
@@ -1561,12 +1820,13 @@ def call_model_identity_canonicalization(
     if n_predict is None:
         n_predict = int(os.environ.get("KMD_IDENTITY_N_PREDICT", "96"))
     prompt = build_identity_canonicalization_prompt(question, candidate_answer, fuller_candidates, evidence_items)
-    grammar_hash = _grammar_hash(IDENTITY_CANONICALIZATION_GRAMMAR, ANSWER_SCHEMA_VERSION)
+    constraint = _constraint_settings(IDENTITY_CANONICALIZATION_GRAMMAR, IDENTITY_CANONICALIZATION_JSON_SCHEMA, ANSWER_SCHEMA_VERSION)
+    grammar_hash = str(constraint["grammar_hash"])
     prompt_hash = _cache_hash(
         "identity_canonicalization",
         prompt,
         client,
-        {"n_predict": n_predict, "schema": ANSWER_SCHEMA_VERSION, "grammar_hash": grammar_hash},
+        {"n_predict": n_predict, "schema": ANSWER_SCHEMA_VERSION, **constraint},
     )
     cache_path = _cache_path("KMD_IDENTITY_CACHE_DIR", prompt_hash)
     cached = _read_cache(cache_path)
@@ -1575,7 +1835,13 @@ def call_model_identity_canonicalization(
             return cached
     start = time.time()
     try:
-        parsed = client.complete_json(prompt, n_predict=n_predict, grammar=_optional_grammar(IDENTITY_CANONICALIZATION_GRAMMAR))
+        parsed = _complete_structured(
+            client,
+            prompt,
+            n_predict=n_predict,
+            grammar=IDENTITY_CANONICALIZATION_GRAMMAR,
+            json_schema=IDENTITY_CANONICALIZATION_JSON_SCHEMA,
+        )
     except Exception as exc:
         return {
             "accepted": False,

@@ -4,6 +4,7 @@ import json
 from typing import Any
 
 from knowmoredirt.model import LocalModelClient
+from knowmoredirt.model_planner import call_model_chunk_frames
 
 
 class FakeHTTPResponse:
@@ -114,3 +115,55 @@ def test_local_model_client_uses_completion_stream_and_json_schema(monkeypatch) 
     assert requests[0]["body"]["stream"] is True
     assert requests[0]["body"]["json_schema"]["type"] == "object"
     assert "grammar" in requests[0]["body"]
+
+
+def test_chunk_frame_planner_prefers_json_schema_for_capable_clients(monkeypatch) -> None:
+    class JsonSchemaCapableModel:
+        def __init__(self) -> None:
+            self.json_schema: dict[str, Any] | None = None
+            self.grammar: str | None = None
+
+        def context_size(self) -> int:
+            return 4096
+
+        def cache_fingerprint(self) -> dict[str, Any]:
+            return {"model_id": "fake", "context_size": 4096}
+
+        def complete_json(
+            self,
+            prompt: str,
+            *,
+            n_predict: int = 128,
+            grammar: str | None = None,
+            json_schema: dict[str, Any] | None = None,
+        ) -> dict[str, object]:
+            self.grammar = grammar
+            self.json_schema = json_schema
+            assert "Extract generic DRT/DSPG discourse frames" in prompt
+            return {
+                "frames": [
+                    {
+                        "frame_type": "state",
+                        "predicate": "ready",
+                        "arguments": [{"role": "entity", "text": "Aero Gate", "value_type": "entity"}],
+                        "identity_hypotheses": [],
+                        "polarity": "positive",
+                        "modality": "asserted",
+                        "context_holder": "",
+                        "temporal_text": "",
+                        "evidence_text": "Aero Gate is ready",
+                        "confidence": 0.9,
+                    }
+                ],
+                "_model_raw": "{}",
+            }
+
+    monkeypatch.delenv("KMD_LOCAL_MODEL_JSON_SCHEMA", raising=False)
+    model = JsonSchemaCapableModel()
+
+    result = call_model_chunk_frames("Aero Gate is ready.", model)  # type: ignore[arg-type]
+
+    assert result["accepted"] is True
+    assert model.grammar is None
+    assert model.json_schema is not None
+    assert "frames" in model.json_schema["properties"]
