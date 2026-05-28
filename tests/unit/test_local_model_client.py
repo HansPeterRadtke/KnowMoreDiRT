@@ -4,7 +4,12 @@ import json
 from typing import Any
 
 from knowmoredirt.model import LocalModelClient
-from knowmoredirt.model_planner import call_model_chunk_drs, call_model_chunk_frames, call_model_query_drs
+from knowmoredirt.model_planner import (
+    call_model_chunk_drs,
+    call_model_chunk_frames,
+    call_model_query_drs,
+    chunk_drs_json_schema,
+)
 
 
 class FakeHTTPResponse:
@@ -321,3 +326,18 @@ def test_query_drs_planner_uses_json_schema(monkeypatch, tmp_path) -> None:
     assert model.json_schema is not None
     assert "query_drs" in model.json_schema["properties"]
     assert "generic DRT query DRS" in model.prompt
+
+
+def test_chunk_drs_schema_caps_evidence_strings_to_chunk_length() -> None:
+    schema = chunk_drs_json_schema(19)
+    drs_schema = schema["properties"]["drs"]
+    referent_schema = drs_schema["properties"]["referents"]["items"]
+    box_schema = drs_schema["properties"]["boxes"]["items"]
+    condition_schema = drs_schema["properties"]["conditions"]["items"]
+    argument_schema = condition_schema["properties"]["arguments"]["items"]
+
+    assert referent_schema["properties"]["evidence_text"]["maxLength"] == 19
+    assert box_schema["properties"]["evidence_text"]["maxLength"] == 19
+    assert condition_schema["properties"]["evidence_text"]["maxLength"] == 19
+    assert argument_schema["properties"]["evidence_text"]["maxLength"] == 19
+    assert drs_schema["properties"]["evidence_spans"]["items"]["maxLength"] == 19
