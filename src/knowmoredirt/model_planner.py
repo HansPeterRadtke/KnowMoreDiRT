@@ -62,6 +62,7 @@ CHUNK_DRS_STAGED_FALLBACK_POLICY = "retry-invalid-json-schema-grounding-staged-t
 CHUNK_DRS_GROUNDING_REPAIR_POLICY = "model-label-value-escaped-evidence-span-v2"
 CHUNK_DRS_IDENTITY_PROVENANCE_POLICY = "identity-evidence-bilateral-surface-v1"
 CHUNK_DRS_TEMPORAL_PROVENANCE_POLICY = "condition-referenced-temporal-records-v1"
+CHUNK_DRS_SPARSE_RETRY_POLICY = "retry-validated-sparse-drs-staged-v1"
 QUERY_DRS_SCHEMA_VERSION = "query-drs-v3"
 QUERY_DRS_VALIDATION_POLICY = "strict-query-drs-version-question-v1"
 QUERY_FRAME_SCHEMA_VERSION = "query-frame-v4"
@@ -901,6 +902,22 @@ def _staged_chunk_drs_enabled() -> bool:
         "no",
         "off",
     }
+
+
+def _validation_count(validation: dict[str, Any], key: str) -> int:
+    try:
+        return max(0, int(validation.get(key) or 0))
+    except (TypeError, ValueError):
+        return 0
+
+
+def _chunk_drs_structurally_sparse(validation: dict[str, Any]) -> bool:
+    """Return true for model-produced DRS shells that need a second extraction pass."""
+
+    condition_count = _validation_count(validation, "condition_count")
+    referent_count = _validation_count(validation, "referent_count")
+    box_count = _validation_count(validation, "box_count")
+    return condition_count == 0 and box_count > 0 and referent_count > 0
 
 
 def default_staged_chunk_drs_skeleton_n_predict(n_predict: int) -> int:
@@ -2990,6 +3007,7 @@ def _call_model_chunk_drs_staged(
             "grounding_repair_policy": CHUNK_DRS_GROUNDING_REPAIR_POLICY,
             "identity_provenance_policy": CHUNK_DRS_IDENTITY_PROVENANCE_POLICY,
             "temporal_provenance_policy": CHUNK_DRS_TEMPORAL_PROVENANCE_POLICY,
+            "sparse_retry_policy": CHUNK_DRS_SPARSE_RETRY_POLICY,
             "staged_skeleton_n_predict": skeleton_n_predict,
             "staged_condition_n_predict": condition_n_predict,
         },
@@ -3014,6 +3032,7 @@ def chunk_drs_cache_context(client: LocalModelClient | None, *, n_predict: int |
         "grounding_repair_policy": CHUNK_DRS_GROUNDING_REPAIR_POLICY,
         "identity_provenance_policy": CHUNK_DRS_IDENTITY_PROVENANCE_POLICY,
         "temporal_provenance_policy": CHUNK_DRS_TEMPORAL_PROVENANCE_POLICY,
+        "sparse_retry_policy": CHUNK_DRS_SPARSE_RETRY_POLICY,
         "staged_skeleton_n_predict": default_staged_chunk_drs_skeleton_n_predict(int(n_predict)),
         "staged_condition_n_predict": default_staged_chunk_drs_condition_n_predict(int(n_predict)),
         **constraint,
@@ -3058,6 +3077,7 @@ def call_model_chunk_drs(
             "grounding_repair_policy": CHUNK_DRS_GROUNDING_REPAIR_POLICY,
             "identity_provenance_policy": CHUNK_DRS_IDENTITY_PROVENANCE_POLICY,
             "temporal_provenance_policy": CHUNK_DRS_TEMPORAL_PROVENANCE_POLICY,
+            "sparse_retry_policy": CHUNK_DRS_SPARSE_RETRY_POLICY,
             "staged_skeleton_n_predict": default_staged_chunk_drs_skeleton_n_predict(int(n_predict)),
             "staged_condition_n_predict": default_staged_chunk_drs_condition_n_predict(int(n_predict)),
         },
@@ -3168,6 +3188,22 @@ def call_model_chunk_drs(
         }
         _write_cache(cache_path, payload)
         return payload
+    if _staged_chunk_drs_enabled() and _chunk_drs_structurally_sparse(validation):
+        fallback = _call_model_chunk_drs_staged(
+            prompt_chunk,
+            client,
+            rel_path=rel_path,
+            n_predict=n_predict,
+            context_budget=context_budget,
+            cache_path=cache_path,
+        )
+        fallback_validation = fallback.get("validation") if isinstance(fallback.get("validation"), dict) else {}
+        if fallback.get("accepted") and _validation_count(fallback_validation, "condition_count") > _validation_count(
+            validation, "condition_count"
+        ):
+            payload = {**fallback, "fallback_from_reason": "structural_sparsity", "monolithic_prompt_hash": prompt_hash}
+            _write_cache(cache_path, payload)
+            return payload
     payload = {
         "accepted": True,
         "drs": parsed["drs"],
