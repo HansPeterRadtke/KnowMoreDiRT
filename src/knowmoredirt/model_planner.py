@@ -60,6 +60,7 @@ CHUNK_FRAME_SCHEMA_VERSION = "chunk-frames-v5"
 CHUNK_DRS_SCHEMA_VERSION = "chunk-drs-v2"
 CHUNK_DRS_STAGED_FALLBACK_POLICY = "retry-invalid-json-schema-grounding-staged-temporal-v2"
 QUERY_DRS_SCHEMA_VERSION = "query-drs-v3"
+QUERY_DRS_VALIDATION_POLICY = "strict-query-drs-version-question-v1"
 QUERY_FRAME_SCHEMA_VERSION = "query-frame-v4"
 ANSWER_SCHEMA_VERSION = "answer-v4"
 
@@ -1012,6 +1013,15 @@ QUERY_DRS_JSON_SCHEMA = _schema_obj(
     },
 )
 
+
+def query_drs_json_schema(question: str | None = None) -> dict[str, Any]:
+    schema = copy.deepcopy(QUERY_DRS_JSON_SCHEMA)
+    query_schema = schema["properties"]["query_drs"]
+    query_schema["properties"]["schema_version"] = _schema_enum({QUERY_DRS_SCHEMA_VERSION})
+    if question is not None:
+        query_schema["properties"]["question"] = _schema_enum({question})
+    return schema
+
 VERIFICATION_JSON_SCHEMA = _schema_obj(
     ["verification"],
     {
@@ -1331,6 +1341,8 @@ def _validate_query_drs_payload(payload: Any, question: str) -> dict[str, Any]:
 
     if query_drs.get("question") != question:
         errors.append("question_mismatch")
+    if str(query_drs.get("schema_version") or "") != QUERY_DRS_SCHEMA_VERSION:
+        errors.append(f"schema_version_mismatch:{query_drs.get('schema_version')}")
     if str(query_drs.get("answer_type") or "") not in ANSWER_TYPES:
         errors.append(f"bad_answer_type:{query_drs.get('answer_type')}")
     raw_answer_variables = query_drs.get("answer_variables")
@@ -1448,16 +1460,22 @@ def call_model_query_drs(question: str, client: LocalModelClient, *, n_predict: 
     if n_predict is None:
         n_predict = default_query_drs_n_predict(client)
     prompt = build_query_drs_prompt(question)
-    constraint = _constraint_settings(QUERY_DRS_GRAMMAR, QUERY_DRS_JSON_SCHEMA, QUERY_DRS_SCHEMA_VERSION)
+    json_schema = query_drs_json_schema(question)
+    constraint = _constraint_settings(QUERY_DRS_GRAMMAR, json_schema, QUERY_DRS_SCHEMA_VERSION)
     prompt_hash = _cache_hash(
         "query_drs",
         prompt,
         client,
-        {"n_predict": n_predict, "schema": QUERY_DRS_SCHEMA_VERSION, **constraint},
+        {
+            "n_predict": n_predict,
+            "schema": QUERY_DRS_SCHEMA_VERSION,
+            "validation_policy": QUERY_DRS_VALIDATION_POLICY,
+            **constraint,
+        },
     )
     cache_path = _cache_path("KMD_QUERY_DRS_CACHE_DIR", prompt_hash)
     cached = _read_cache(cache_path)
-    if cached is not None:
+    if cached is not None and cached.get("reason") != "request_failed":
         return cached
     start = time.time()
     try:
@@ -1466,19 +1484,32 @@ def call_model_query_drs(question: str, client: LocalModelClient, *, n_predict: 
             prompt,
             n_predict=n_predict,
             grammar=QUERY_DRS_GRAMMAR,
-            json_schema=QUERY_DRS_JSON_SCHEMA,
+            json_schema=json_schema,
         )
-    except Exception as exc:
+    except LocalModelJSONError as exc:
         payload = {
+            "accepted": False,
+            "reason": "invalid_json",
+            "error": str(exc),
+            "raw_text": exc.raw_text,
+            "raw_snippet": exc.snippet,
+            "prompt_hash": prompt_hash,
+            **constraint,
+            "validation_policy": QUERY_DRS_VALIDATION_POLICY,
+            "elapsed": round(time.time() - start, 3),
+        }
+        _write_cache(cache_path, payload)
+        return payload
+    except Exception as exc:
+        return {
             "accepted": False,
             "reason": "request_failed",
             "error": str(exc),
             "prompt_hash": prompt_hash,
             **constraint,
+            "validation_policy": QUERY_DRS_VALIDATION_POLICY,
             "elapsed": round(time.time() - start, 3),
         }
-        _write_cache(cache_path, payload)
-        return payload
     raw = str(parsed.get("_model_raw") or "") if isinstance(parsed, dict) else ""
     validation = _validate_query_drs_payload(parsed, question)
     if not validation.get("schema_valid"):
@@ -1488,6 +1519,7 @@ def call_model_query_drs(question: str, client: LocalModelClient, *, n_predict: 
             "raw_text": raw,
             "prompt_hash": prompt_hash,
             **constraint,
+            "validation_policy": QUERY_DRS_VALIDATION_POLICY,
             "elapsed": parsed.get("_model_elapsed_seconds", round(time.time() - start, 3)),
             "validation": validation,
         }
@@ -1500,6 +1532,7 @@ def call_model_query_drs(question: str, client: LocalModelClient, *, n_predict: 
         "elapsed": parsed.get("_model_elapsed_seconds", round(time.time() - start, 3)),
         "prompt_hash": prompt_hash,
         **constraint,
+        "validation_policy": QUERY_DRS_VALIDATION_POLICY,
         "validation": validation,
         "output_hash": hashlib.sha256(raw.encode()).hexdigest(),
         "fresh_or_cached": "fresh",

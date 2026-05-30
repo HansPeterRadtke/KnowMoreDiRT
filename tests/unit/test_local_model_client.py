@@ -3,7 +3,7 @@ from __future__ import annotations
 import json
 from typing import Any
 
-from knowmoredirt.model import LocalModelClient
+from knowmoredirt.model import LocalModelClient, LocalModelJSONError
 from knowmoredirt.model_planner import (
     call_model_chunk_drs,
     call_model_chunk_frames,
@@ -278,7 +278,7 @@ def test_query_drs_planner_uses_json_schema(monkeypatch, tmp_path) -> None:
             assert grammar is None
             return {
                 "query_drs": {
-                    "schema_version": "query-drs-v1",
+                    "schema_version": "query-drs-v3",
                     "question": "Who reviewed Aero Gate?",
                     "answer_variables": ["reviewer"],
                     "target_referents": [
@@ -326,7 +326,114 @@ def test_query_drs_planner_uses_json_schema(monkeypatch, tmp_path) -> None:
     assert result["validation"]["condition_count"] == 1
     assert model.json_schema is not None
     assert "query_drs" in model.json_schema["properties"]
+    query_schema = model.json_schema["properties"]["query_drs"]
+    assert query_schema["properties"]["question"]["enum"] == ["Who reviewed Aero Gate?"]
+    assert query_schema["properties"]["schema_version"]["enum"] == ["query-drs-v3"]
     assert "generic DRT query DRS" in model.prompt
+
+
+def test_query_drs_request_failure_does_not_poison_cache(monkeypatch, tmp_path) -> None:
+    class FailsThenSucceedsModel:
+        def __init__(self) -> None:
+            self.calls = 0
+
+        def context_size(self) -> int:
+            return 8192
+
+        def cache_fingerprint(self) -> dict[str, Any]:
+            return {"model_id": "fake-query-drs-retry", "context_size": 8192}
+
+        def complete_json(self, prompt: str, *, n_predict: int = 128, grammar=None, json_schema=None):
+            self.calls += 1
+            if self.calls == 1:
+                raise RuntimeError("temporary local model failure")
+            return {
+                "query_drs": {
+                    "schema_version": "query-drs-v3",
+                    "question": "Who reviewed Aero Gate?",
+                    "answer_variables": [
+                        {
+                            "id": "qv0",
+                            "label": "reviewer",
+                            "answer_type": "person",
+                            "evidence_text": "Who",
+                        }
+                    ],
+                    "target_referents": [
+                        {"id": "qr0", "label": "Aero Gate", "kind": "entity", "evidence_text": "Aero Gate"}
+                    ],
+                    "temporal_records": [],
+                    "requested_conditions": [
+                        {
+                            "id": "qc0",
+                            "predicate": "reviewed",
+                            "box_id": "",
+                            "polarity": "positive",
+                            "modality": "asserted",
+                            "temporal_id": "",
+                            "arguments": [
+                                {
+                                    "role": "agent",
+                                    "target_kind": "answer_variable",
+                                    "target_id": "qv0",
+                                    "value": "",
+                                    "value_type": "person",
+                                    "evidence_text": "Who",
+                                },
+                                {
+                                    "role": "theme",
+                                    "target_kind": "referent",
+                                    "target_id": "qr0",
+                                    "value": "Aero Gate",
+                                    "value_type": "entity",
+                                    "evidence_text": "Aero Gate",
+                                },
+                            ],
+                            "evidence_text": "reviewed Aero Gate",
+                        }
+                    ],
+                    "constraints": [],
+                    "box_requirements": [],
+                    "temporal_scope": "",
+                    "aggregation": "",
+                    "answer_type": "person",
+                    "requires_evidence": True,
+                },
+                "_model_raw": "{}",
+                "_model_elapsed_seconds": 0.01,
+            }
+
+    monkeypatch.setenv("KMD_QUERY_DRS_CACHE_DIR", str(tmp_path / "query-drs-cache"))
+    model = FailsThenSucceedsModel()
+
+    first = call_model_query_drs("Who reviewed Aero Gate?", model)  # type: ignore[arg-type]
+    second = call_model_query_drs("Who reviewed Aero Gate?", model)  # type: ignore[arg-type]
+
+    assert first["accepted"] is False
+    assert first["reason"] == "request_failed"
+    assert second["accepted"] is True
+    assert model.calls == 2
+
+
+def test_query_drs_invalid_json_is_not_request_failure(monkeypatch, tmp_path) -> None:
+    class InvalidJSONModel:
+        def context_size(self) -> int:
+            return 8192
+
+        def cache_fingerprint(self) -> dict[str, Any]:
+            return {"model_id": "fake-query-drs-invalid-json", "context_size": 8192}
+
+        def complete_json(self, prompt: str, *, n_predict: int = 128, grammar=None, json_schema=None):
+            raise LocalModelJSONError("bad json", raw_text="not json", snippet="not json")
+
+    monkeypatch.setenv("KMD_QUERY_DRS_CACHE_DIR", str(tmp_path / "query-drs-cache"))
+
+    result = call_model_query_drs("Who reviewed Aero Gate?", InvalidJSONModel())  # type: ignore[arg-type]
+
+    assert result["accepted"] is False
+    assert result["reason"] == "invalid_json"
+    assert result["raw_text"] == "not json"
+    assert result["raw_snippet"] == "not json"
 
 
 def test_chunk_drs_schema_caps_evidence_strings_to_chunk_length() -> None:
