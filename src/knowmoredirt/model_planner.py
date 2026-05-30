@@ -64,7 +64,7 @@ CHUNK_DRS_IDENTITY_PROVENANCE_POLICY = "identity-evidence-bilateral-surface-v1"
 CHUNK_DRS_TEMPORAL_PROVENANCE_POLICY = "condition-referenced-temporal-records-v1"
 CHUNK_DRS_SPARSE_RETRY_POLICY = "retry-validated-sparse-drs-staged-v1"
 QUERY_DRS_SCHEMA_VERSION = "query-drs-v3"
-QUERY_DRS_VALIDATION_POLICY = "strict-query-drs-version-question-evidence-repair-v4"
+QUERY_DRS_VALIDATION_POLICY = "strict-query-drs-version-question-evidence-repair-v5"
 QUERY_FRAME_SCHEMA_VERSION = "query-frame-v4"
 ANSWER_SCHEMA_VERSION = "answer-v4"
 
@@ -1378,6 +1378,11 @@ def _repair_query_drs_payload(payload: Any, question: str) -> Any:
             repaired_arguments = [item for item in arguments if isinstance(item, dict)]
             for argument in repaired_arguments:
                 repaired |= repair_item(argument, ("value", "role"), use_full_question=False)
+                target_kind = str(argument.get("target_kind") or "").strip()
+                value = str(argument.get("value") or "").strip()
+                if target_kind not in {"literal", "unknown"} and value and value not in question:
+                    argument["value"] = ""
+                    repaired = True
             if len(repaired_arguments) != len(arguments):
                 condition["arguments"] = repaired_arguments
                 repaired = True

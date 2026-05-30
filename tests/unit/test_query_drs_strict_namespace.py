@@ -294,7 +294,7 @@ def test_query_drs_repairs_answer_variable_label_variant(monkeypatch, tmp_path) 
                                     "role": "report_link",
                                     "target_kind": "answer_variable",
                                     "target_id": "qv0",
-                                    "value": "",
+                                    "value": ">",
                                     "value_type": "url",
                                     "evidence_text": "report link listed for Orchid Gamma",
                                 },
@@ -302,7 +302,7 @@ def test_query_drs_repairs_answer_variable_label_variant(monkeypatch, tmp_path) 
                                     "role": "for",
                                     "target_kind": "referent",
                                     "target_id": "qr0",
-                                    "value": "Orchid Gamma",
+                                    "value": ">",
                                     "value_type": "entity",
                                     "evidence_text": "Orchid Gamma",
                                 },
@@ -331,9 +331,14 @@ def test_query_drs_repairs_answer_variable_label_variant(monkeypatch, tmp_path) 
     assert result["validation"]["grounding_failure_count"] == 0
     assert result["query_drs"]["answer_variables"][0]["evidence_text"] == "report link"
     assert result["query_drs"]["requested_conditions"][0]["arguments"][0]["evidence_text"] == "report link"
+    assert result["query_drs"]["requested_conditions"][0]["arguments"][0]["value"] == ""
+    assert result["query_drs"]["requested_conditions"][0]["arguments"][1]["value"] == ""
     assert result["query_drs"]["requested_conditions"][0]["evidence_text"] == (
         "What report link is listed for Orchid Gamma?"
     )
+    frame = query_frame_from_query_drs("What report link is listed for Orchid Gamma?", result["query_drs"])
+    assert frame is not None
+    assert ">" not in frame["relation_terms"]
 
 
 def test_query_drs_keeps_ungrounded_temporal_rejection(monkeypatch, tmp_path) -> None:
