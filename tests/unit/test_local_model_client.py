@@ -6,6 +6,7 @@ from typing import Any
 from knowmoredirt.model import LocalModelClient, LocalModelJSONError
 from knowmoredirt.model_planner import (
     CHUNK_DRS_IDENTITY_PROVENANCE_POLICY,
+    CHUNK_DRS_TEMPORAL_PROVENANCE_POLICY,
     call_model_chunk_drs,
     call_model_chunk_frames,
     call_model_query_drs,
@@ -327,6 +328,77 @@ def test_chunk_drs_filters_identity_without_bilateral_evidence(monkeypatch, tmp_
     assert (
         chunk_drs_cache_context(model, n_predict=384)["identity_provenance_policy"]
         == CHUNK_DRS_IDENTITY_PROVENANCE_POLICY
+    )
+
+
+def test_chunk_drs_prunes_unreferenced_temporal_records(monkeypatch, tmp_path) -> None:
+    class TemporalModel:
+        def context_size(self) -> int:
+            return 8192
+
+        def cache_fingerprint(self) -> dict[str, Any]:
+            return {"model_id": "fake-temporal-provenance", "context_size": 8192}
+
+        def complete_json(self, prompt: str, *, n_predict: int = 128, grammar=None, json_schema=None):
+            return {
+                "drs": {
+                    "schema_version": "chunk-drs-v2",
+                    "source_id": "note.txt",
+                    "referents": [
+                        {"id": "r0", "label": "Aero Gate", "kind": "entity", "evidence_text": "Aero Gate"}
+                    ],
+                    "boxes": [
+                        {
+                            "id": "b0",
+                            "kind": "asserted",
+                            "parent_id": "",
+                            "holder_referent_id": "",
+                            "evidence_text": "On 2026-01-03, Aero Gate is ready.",
+                        }
+                    ],
+                    "conditions": [
+                        {
+                            "id": "c0",
+                            "predicate": "ready",
+                            "box_id": "b0",
+                            "polarity": "positive",
+                            "modality": "asserted",
+                            "temporal_id": "t0",
+                            "arguments": [],
+                            "evidence_text": "Aero Gate is ready.",
+                        }
+                    ],
+                    "identity_hypotheses": [],
+                    "temporal_records": [
+                        {
+                            "id": "t0",
+                            "value": "2026-01-03",
+                            "value_type": "date_time",
+                            "evidence_text": "2026-01-03",
+                        },
+                        {"id": "t1", "value": "ready", "value_type": "state", "evidence_text": "ready"},
+                    ],
+                },
+                "_model_raw": "{}",
+                "_model_elapsed_seconds": 0.01,
+            }
+
+    monkeypatch.setenv("KMD_CHUNK_DRS_CACHE_DIR", str(tmp_path / "drs-cache"))
+    model = TemporalModel()
+
+    result = call_model_chunk_drs(
+        "On 2026-01-03, Aero Gate is ready.",
+        model,  # type: ignore[arg-type]
+        rel_path="note.txt",
+    )
+
+    assert result["accepted"] is True
+    assert result["drs"]["temporal_records"] == [
+        {"id": "t0", "value": "2026-01-03", "value_type": "date_time", "evidence_text": "2026-01-03"}
+    ]
+    assert (
+        chunk_drs_cache_context(model, n_predict=384)["temporal_provenance_policy"]
+        == CHUNK_DRS_TEMPORAL_PROVENANCE_POLICY
     )
 
 

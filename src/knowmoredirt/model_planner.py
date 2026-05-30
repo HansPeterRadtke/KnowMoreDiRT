@@ -61,6 +61,7 @@ CHUNK_DRS_SCHEMA_VERSION = "chunk-drs-v2"
 CHUNK_DRS_STAGED_FALLBACK_POLICY = "retry-invalid-json-schema-grounding-staged-temporal-v2"
 CHUNK_DRS_GROUNDING_REPAIR_POLICY = "model-label-value-escaped-evidence-span-v2"
 CHUNK_DRS_IDENTITY_PROVENANCE_POLICY = "identity-evidence-bilateral-surface-v1"
+CHUNK_DRS_TEMPORAL_PROVENANCE_POLICY = "condition-referenced-temporal-records-v1"
 QUERY_DRS_SCHEMA_VERSION = "query-drs-v3"
 QUERY_DRS_VALIDATION_POLICY = "strict-query-drs-version-question-v1"
 QUERY_FRAME_SCHEMA_VERSION = "query-frame-v4"
@@ -2637,7 +2638,7 @@ def _repair_evidence_text_from_declared_value(
     return False
 
 
-def _repair_chunk_drs_payload(payload: Any, source_text: str = "") -> Any:
+def _repair_chunk_drs_payload(payload: Any, source_text: str = "", *, prune_unreferenced_temporals: bool = True) -> Any:
     if not isinstance(payload, dict) or not isinstance(payload.get("drs"), dict):
         return payload
     drs = {**payload["drs"]}
@@ -2666,6 +2667,23 @@ def _repair_chunk_drs_payload(payload: Any, source_text: str = "") -> Any:
             for item in temporals:
                 if isinstance(item, dict):
                     grounding_repaired |= _repair_evidence_text_from_declared_value(item, source_text, ("value",))
+    temporal_records = drs.get("temporal_records")
+    repaired_temporals = temporal_records
+    temporal_repaired = False
+    if prune_unreferenced_temporals and isinstance(temporal_records, list):
+        referenced_temporal_ids = {
+            str(condition.get("temporal_id") or "").strip()
+            for condition in repaired_conditions
+            if str(condition.get("temporal_id") or "").strip()
+        }
+        repaired_temporals = [
+            item
+            for item in temporal_records
+            if isinstance(item, dict) and str(item.get("id") or "").strip() in referenced_temporal_ids
+        ]
+        if len(repaired_temporals) != len(temporal_records):
+            drs["temporal_records"] = repaired_temporals
+            temporal_repaired = True
     for condition in repaired_conditions:
         if not isinstance(condition.get("arguments"), list):
             continue
@@ -2733,6 +2751,7 @@ def _repair_chunk_drs_payload(payload: Any, source_text: str = "") -> Any:
         len(repaired_referents) == len(referents)
         and len(repaired_boxes) == len(boxes)
         and len(repaired_conditions) == len(conditions)
+        and not temporal_repaired
         and repaired_identities is identities
         and not namespace_repaired
         and not grounding_repaired
@@ -2741,6 +2760,8 @@ def _repair_chunk_drs_payload(payload: Any, source_text: str = "") -> Any:
     drs["referents"] = repaired_referents
     drs["boxes"] = repaired_boxes
     drs["conditions"] = repaired_conditions
+    if temporal_repaired:
+        drs["temporal_records"] = repaired_temporals
     return {**payload, "drs": drs}
 
 
@@ -2857,6 +2878,7 @@ def _call_model_chunk_drs_staged(
             }
         },
         prompt_chunk,
+        prune_unreferenced_temporals=False,
     )["drs"]
     referents = skeleton_payload["referents"]
     boxes = skeleton_payload["boxes"]
@@ -2967,6 +2989,7 @@ def _call_model_chunk_drs_staged(
             "staged_fallback_policy": CHUNK_DRS_STAGED_FALLBACK_POLICY,
             "grounding_repair_policy": CHUNK_DRS_GROUNDING_REPAIR_POLICY,
             "identity_provenance_policy": CHUNK_DRS_IDENTITY_PROVENANCE_POLICY,
+            "temporal_provenance_policy": CHUNK_DRS_TEMPORAL_PROVENANCE_POLICY,
             "staged_skeleton_n_predict": skeleton_n_predict,
             "staged_condition_n_predict": condition_n_predict,
         },
@@ -2990,6 +3013,7 @@ def chunk_drs_cache_context(client: LocalModelClient | None, *, n_predict: int |
         "staged_fallback_policy": CHUNK_DRS_STAGED_FALLBACK_POLICY,
         "grounding_repair_policy": CHUNK_DRS_GROUNDING_REPAIR_POLICY,
         "identity_provenance_policy": CHUNK_DRS_IDENTITY_PROVENANCE_POLICY,
+        "temporal_provenance_policy": CHUNK_DRS_TEMPORAL_PROVENANCE_POLICY,
         "staged_skeleton_n_predict": default_staged_chunk_drs_skeleton_n_predict(int(n_predict)),
         "staged_condition_n_predict": default_staged_chunk_drs_condition_n_predict(int(n_predict)),
         **constraint,
@@ -3033,6 +3057,7 @@ def call_model_chunk_drs(
             "staged_fallback_policy": CHUNK_DRS_STAGED_FALLBACK_POLICY,
             "grounding_repair_policy": CHUNK_DRS_GROUNDING_REPAIR_POLICY,
             "identity_provenance_policy": CHUNK_DRS_IDENTITY_PROVENANCE_POLICY,
+            "temporal_provenance_policy": CHUNK_DRS_TEMPORAL_PROVENANCE_POLICY,
             "staged_skeleton_n_predict": default_staged_chunk_drs_skeleton_n_predict(int(n_predict)),
             "staged_condition_n_predict": default_staged_chunk_drs_condition_n_predict(int(n_predict)),
         },
