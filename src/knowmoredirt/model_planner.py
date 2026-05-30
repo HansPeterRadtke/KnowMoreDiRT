@@ -59,7 +59,7 @@ PROMPT_VERSION = "kmd-drt-2026-05-28-v35"
 CHUNK_FRAME_SCHEMA_VERSION = "chunk-frames-v5"
 CHUNK_DRS_SCHEMA_VERSION = "chunk-drs-v2"
 CHUNK_DRS_STAGED_FALLBACK_POLICY = "retry-invalid-json-schema-grounding-staged-temporal-v2"
-CHUNK_DRS_GROUNDING_REPAIR_POLICY = "model-label-value-evidence-span-v1"
+CHUNK_DRS_GROUNDING_REPAIR_POLICY = "model-label-value-escaped-evidence-span-v2"
 CHUNK_DRS_IDENTITY_PROVENANCE_POLICY = "identity-evidence-bilateral-surface-v1"
 QUERY_DRS_SCHEMA_VERSION = "query-drs-v3"
 QUERY_DRS_VALIDATION_POLICY = "strict-query-drs-version-question-v1"
@@ -2620,6 +2620,15 @@ def _repair_evidence_text_from_declared_value(
     evidence_text = str(item.get("evidence_text") or "").strip()
     if not source_text or (evidence_text and evidence_text in source_text):
         return False
+    if evidence_text:
+        for candidate in (
+            evidence_text.replace('\\"', '"'),
+            evidence_text.replace("\\/", "/"),
+            evidence_text.replace('\\"', '"').replace("\\/", "/"),
+        ):
+            if candidate and candidate in source_text:
+                item["evidence_text"] = candidate
+                return True
     for field_name in field_names:
         candidate = str(item.get(field_name) or "").strip()
         if candidate and candidate in source_text:
@@ -2648,6 +2657,10 @@ def _repair_chunk_drs_payload(payload: Any, source_text: str = "") -> Any:
     if source_text:
         for item in repaired_referents:
             grounding_repaired |= _repair_evidence_text_from_declared_value(item, source_text, ("label",))
+        for item in repaired_boxes:
+            grounding_repaired |= _repair_evidence_text_from_declared_value(item, source_text, ())
+        for item in repaired_conditions:
+            grounding_repaired |= _repair_evidence_text_from_declared_value(item, source_text, ())
         temporals = drs.get("temporal_records")
         if isinstance(temporals, list):
             for item in temporals:

@@ -406,7 +406,7 @@ def test_chunk_drs_staged_fallback_repairs_declared_label_evidence(monkeypatch, 
                                 "kind": "asserted",
                                 "parent_id": "",
                                 "holder_referent_id": "",
-                                "evidence_text": '{ ids: { asset: "OG-7003" } }',
+                                "evidence_text": '{ ids: { asset: \\"OG-7003\\" } }',
                             }
                         ],
                         "temporal_records": [],
@@ -469,6 +469,7 @@ def test_chunk_drs_staged_fallback_repairs_declared_label_evidence(monkeypatch, 
     assert result["accepted"] is True
     assert result["reason"] == "staged_fallback"
     assert result["drs"]["referents"][0]["evidence_text"] == "OG-7003"
+    assert result["drs"]["boxes"][0]["evidence_text"] == '{ ids: { asset: "OG-7003" } }'
     assert result["drs"]["conditions"][0]["arguments"][1]["target_id"] == ""
     assert result["context_budget"]["grounding_repair_policy"] == CHUNK_DRS_GROUNDING_REPAIR_POLICY
     assert chunk_drs_cache_context(model, n_predict=384)["grounding_repair_policy"] == CHUNK_DRS_GROUNDING_REPAIR_POLICY
