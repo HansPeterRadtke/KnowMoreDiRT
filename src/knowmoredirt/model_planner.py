@@ -55,10 +55,11 @@ DRS_CONTEXT_KINDS = {
 DRS_POLARITIES = {"positive", "negative", "unknown"}
 DRS_IDENTITY_STATUSES = {"accepted", "candidate", "rejected", "ambiguous"}
 
-PROMPT_VERSION = "kmd-drt-2026-05-28-v34"
+PROMPT_VERSION = "kmd-drt-2026-05-28-v35"
 CHUNK_FRAME_SCHEMA_VERSION = "chunk-frames-v5"
 CHUNK_DRS_SCHEMA_VERSION = "chunk-drs-v2"
 CHUNK_DRS_STAGED_FALLBACK_POLICY = "retry-invalid-json-schema-grounding-staged-temporal-v2"
+CHUNK_DRS_GROUNDING_REPAIR_POLICY = "model-label-value-evidence-span-v1"
 QUERY_DRS_SCHEMA_VERSION = "query-drs-v3"
 QUERY_DRS_VALIDATION_POLICY = "strict-query-drs-version-question-v1"
 QUERY_FRAME_SCHEMA_VERSION = "query-frame-v4"
@@ -2338,6 +2339,9 @@ def build_chunk_drs_prompt(chunk_text: str, *, rel_path: str = "", context_budge
         "ids. Identity hypotheses must reference declared distinct referents and should be [] unless the source "
         "explicitly supports an identity, alias, or coreference link. Use temporal_records only for explicit "
         "source-grounded temporal or ordering phrases; otherwise temporal_id must be ''. "
+        "For compact records, key/value lists, JSON-like objects, TSV/CSV rows, and log entries, still emit "
+        "grounded DRS conditions for visible source-supported field/value or row structure; do not leave "
+        "conditions empty solely because the chunk is terse or delimiter-heavy. "
         "Every evidence_text item must be one contiguous substring copied exactly from the chunk."
         + evidence_budget_text
         + array_budget_text
@@ -2408,6 +2412,9 @@ def build_chunk_drs_condition_prompt(
         "referent and box ids. Do not invent ids; target_id is schema-constrained to declared ids or ''. "
         "If an argument is a literal phrase rather than a declared id, set target_id to '' and put the exact "
         "phrase in value and/or evidence_text. Do not emit identity hypotheses or temporal records in this stage. "
+        "For compact records, key/value lists, JSON-like objects, TSV/CSV rows, and log entries, emit grounded "
+        "conditions for visible source-supported field/value or row structure when declared referents or literals "
+        "can participate. "
         "Every evidence_text item must be one contiguous substring copied exactly from the chunk."
         + json.dumps(
             {
@@ -2577,6 +2584,8 @@ def _validate_chunk_drs_payload(payload: Any, source_text: str) -> dict[str, Any
                 errors.append(f"missing_argument_box:{condition_id}->{target_id}")
             elif target_kind == "condition" and target_id and target_id not in condition_ids:
                 errors.append(f"missing_argument_condition:{condition_id}->{target_id}")
+            elif target_kind in {"literal", "unknown"} and target_id:
+                errors.append(f"literal_argument_has_target_id:{condition_id}->{target_id}")
             elif target_kind not in {"referent", "box", "condition", "literal", "unknown"}:
                 errors.append(f"bad_argument_target_kind:{condition_id}:{target_kind}")
             check_span(arg.get("evidence_text"), f"argument:{condition_id}:{arg.get('role')}")
@@ -2602,7 +2611,23 @@ def _validate_chunk_drs_payload(payload: Any, source_text: str) -> dict[str, Any
     }
 
 
-def _repair_chunk_drs_payload(payload: Any) -> Any:
+def _repair_evidence_text_from_declared_value(
+    item: dict[str, Any],
+    source_text: str,
+    field_names: tuple[str, ...],
+) -> bool:
+    evidence_text = str(item.get("evidence_text") or "").strip()
+    if not source_text or (evidence_text and evidence_text in source_text):
+        return False
+    for field_name in field_names:
+        candidate = str(item.get(field_name) or "").strip()
+        if candidate and candidate in source_text:
+            item["evidence_text"] = candidate
+            return True
+    return False
+
+
+def _repair_chunk_drs_payload(payload: Any, source_text: str = "") -> Any:
     if not isinstance(payload, dict) or not isinstance(payload.get("drs"), dict):
         return payload
     drs = {**payload["drs"]}
@@ -2612,15 +2637,28 @@ def _repair_chunk_drs_payload(payload: Any) -> Any:
     if not isinstance(referents, list) or not isinstance(boxes, list) or not isinstance(conditions, list):
         return payload
     repaired_referents = [item for item in referents if isinstance(item, dict)]
+    repaired_boxes = [item for item in boxes if isinstance(item, dict)]
+    repaired_conditions = [item for item in conditions if isinstance(item, dict)]
     referent_ids = {str(item.get("id") or "") for item in repaired_referents}
-    box_ids = {str(item.get("id") or "") for item in boxes if isinstance(item, dict) and str(item.get("id") or "")}
+    box_ids = {str(item.get("id") or "") for item in repaired_boxes if str(item.get("id") or "")}
     namespace_repaired = False
-    for condition in conditions:
-        if not isinstance(condition, dict) or not isinstance(condition.get("arguments"), list):
+    grounding_repaired = False
+    if source_text:
+        for item in repaired_referents:
+            grounding_repaired |= _repair_evidence_text_from_declared_value(item, source_text, ("label",))
+        temporals = drs.get("temporal_records")
+        if isinstance(temporals, list):
+            for item in temporals:
+                if isinstance(item, dict):
+                    grounding_repaired |= _repair_evidence_text_from_declared_value(item, source_text, ("value",))
+    for condition in repaired_conditions:
+        if not isinstance(condition.get("arguments"), list):
             continue
         for argument in condition["arguments"]:
             if not isinstance(argument, dict):
                 continue
+            if source_text:
+                grounding_repaired |= _repair_evidence_text_from_declared_value(argument, source_text, ("value",))
             target_id = str(argument.get("target_id") or "").strip()
             target_kind = str(argument.get("target_kind") or "").strip()
             if target_id in box_ids and target_kind != "box":
@@ -2630,6 +2668,11 @@ def _repair_chunk_drs_payload(payload: Any) -> Any:
             if target_id in referent_ids and target_kind != "referent":
                 argument["target_kind"] = "referent"
                 namespace_repaired = True
+                target_kind = "referent"
+            if target_kind in {"literal", "unknown"} and target_id:
+                argument["target_id"] = ""
+                namespace_repaired = True
+                target_id = ""
             if str(argument.get("target_kind") or "") != "referent":
                 continue
             value = str(argument.get("value") or "").strip()
@@ -2660,9 +2703,18 @@ def _repair_chunk_drs_payload(payload: Any) -> Any:
         ]
         if len(repaired_identities) != len(identities):
             drs["identity_hypotheses"] = repaired_identities
-    if len(repaired_referents) == len(referents) and repaired_identities is identities and not namespace_repaired:
+    if (
+        len(repaired_referents) == len(referents)
+        and len(repaired_boxes) == len(boxes)
+        and len(repaired_conditions) == len(conditions)
+        and repaired_identities is identities
+        and not namespace_repaired
+        and not grounding_repaired
+    ):
         return payload
     drs["referents"] = repaired_referents
+    drs["boxes"] = repaired_boxes
+    drs["conditions"] = repaired_conditions
     return {**payload, "drs": drs}
 
 
@@ -2766,6 +2818,23 @@ def _call_model_chunk_drs_staged(
     referents = [item for item in referents if isinstance(item, dict)] if isinstance(referents, list) else []
     boxes = [item for item in boxes if isinstance(item, dict)] if isinstance(boxes, list) else []
     temporals = [item for item in temporals if isinstance(item, dict)] if isinstance(temporals, list) else []
+    skeleton_payload = _repair_chunk_drs_payload(
+        {
+            "drs": {
+                "schema_version": CHUNK_DRS_SCHEMA_VERSION,
+                "source_id": rel_path,
+                "referents": referents,
+                "boxes": boxes,
+                "conditions": [],
+                "identity_hypotheses": [],
+                "temporal_records": temporals,
+            }
+        },
+        prompt_chunk,
+    )["drs"]
+    referents = skeleton_payload["referents"]
+    boxes = skeleton_payload["boxes"]
+    temporals = skeleton_payload["temporal_records"]
     skeleton_span_failures = (
         _drs_exact_span_failures(referents, prompt_chunk, "referent")
         + _drs_exact_span_failures(boxes, prompt_chunk, "box")
@@ -2870,6 +2939,7 @@ def _call_model_chunk_drs_staged(
         "context_budget": {
             **context_budget,
             "staged_fallback_policy": CHUNK_DRS_STAGED_FALLBACK_POLICY,
+            "grounding_repair_policy": CHUNK_DRS_GROUNDING_REPAIR_POLICY,
             "staged_skeleton_n_predict": skeleton_n_predict,
             "staged_condition_n_predict": condition_n_predict,
         },
@@ -2891,6 +2961,7 @@ def chunk_drs_cache_context(client: LocalModelClient | None, *, n_predict: int |
         "array_cap_policy": "reserved_output_tokens_div_96_4_10",
         "staged_fallback": _staged_chunk_drs_enabled(),
         "staged_fallback_policy": CHUNK_DRS_STAGED_FALLBACK_POLICY,
+        "grounding_repair_policy": CHUNK_DRS_GROUNDING_REPAIR_POLICY,
         "staged_skeleton_n_predict": default_staged_chunk_drs_skeleton_n_predict(int(n_predict)),
         "staged_condition_n_predict": default_staged_chunk_drs_condition_n_predict(int(n_predict)),
         **constraint,
@@ -2932,6 +3003,7 @@ def call_model_chunk_drs(
             "context_budget": context_budget,
             "staged_fallback": _staged_chunk_drs_enabled(),
             "staged_fallback_policy": CHUNK_DRS_STAGED_FALLBACK_POLICY,
+            "grounding_repair_policy": CHUNK_DRS_GROUNDING_REPAIR_POLICY,
             "staged_skeleton_n_predict": default_staged_chunk_drs_skeleton_n_predict(int(n_predict)),
             "staged_condition_n_predict": default_staged_chunk_drs_condition_n_predict(int(n_predict)),
         },
@@ -2995,7 +3067,7 @@ def call_model_chunk_drs(
         }
         return payload
     raw = str(parsed.get("_model_raw") or "") if isinstance(parsed, dict) else ""
-    parsed = _repair_chunk_drs_payload(parsed)
+    parsed = _repair_chunk_drs_payload(parsed, prompt_chunk)
     validation = _validate_chunk_drs_payload(parsed, prompt_chunk)
     if not validation.get("schema_valid"):
         reason = "grounding_validation_failed" if validation.get("grounding_failure_count") else "schema_validation_failed"

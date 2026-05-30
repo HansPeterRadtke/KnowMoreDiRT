@@ -2,7 +2,12 @@ from __future__ import annotations
 
 from typing import Any
 
-from knowmoredirt.model_planner import CHUNK_DRS_STAGED_FALLBACK_POLICY, call_model_chunk_drs, chunk_drs_cache_context
+from knowmoredirt.model_planner import (
+    CHUNK_DRS_GROUNDING_REPAIR_POLICY,
+    CHUNK_DRS_STAGED_FALLBACK_POLICY,
+    call_model_chunk_drs,
+    chunk_drs_cache_context,
+)
 
 
 def test_chunk_drs_staged_fallback_constrains_condition_targets(monkeypatch, tmp_path) -> None:
@@ -359,3 +364,112 @@ def test_chunk_drs_staged_fallback_preserves_temporal_records(monkeypatch, tmp_p
     ]
     assert result["drs"]["conditions"][0]["temporal_id"] == "t0"
     assert model.condition_schema is not None
+
+
+def test_chunk_drs_staged_fallback_repairs_declared_label_evidence(monkeypatch, tmp_path) -> None:
+    class LabelEvidenceRepairModel:
+        def __init__(self) -> None:
+            self.condition_prompt = ""
+
+        def context_size(self) -> int:
+            return 8192
+
+        def cache_fingerprint(self) -> dict[str, Any]:
+            return {"model_id": "fake-staged-grounding-repair-drs", "context_size": 8192}
+
+        def complete_json(
+            self,
+            prompt: str,
+            *,
+            n_predict: int = 128,
+            grammar: str | None = None,
+            json_schema: dict[str, Any] | None = None,
+        ) -> dict[str, object]:
+            if "one source-grounded DRS object" in prompt:
+                return {"not_drs": {}, "_model_raw": "{}", "_model_elapsed_seconds": 0.01}
+            if "Stage 1 of source-grounded DRS extraction" in prompt:
+                return {
+                    "drs_skeleton": {
+                        "schema_version": "chunk-drs-v2",
+                        "source_id": "object.raw",
+                        "referents": [
+                            {
+                                "id": "r0",
+                                "label": "OG-7003",
+                                "kind": "identifier",
+                                "evidence_text": 'ids.asset: "OG-7003"',
+                            }
+                        ],
+                        "boxes": [
+                            {
+                                "id": "b0",
+                                "kind": "asserted",
+                                "parent_id": "",
+                                "holder_referent_id": "",
+                                "evidence_text": '{ ids: { asset: "OG-7003" } }',
+                            }
+                        ],
+                        "temporal_records": [],
+                    },
+                    "_model_raw": "{}",
+                    "_model_elapsed_seconds": 0.01,
+                }
+            assert "Stage 2 of source-grounded DRS extraction" in prompt
+            self.condition_prompt = prompt
+            assert '"evidence_text": "OG-7003"' in prompt
+            return {
+                "condition_stage": {
+                    "schema_version": "chunk-drs-v2",
+                    "source_id": "object.raw",
+                    "conditions": [
+                        {
+                            "id": "c0",
+                            "predicate": "asset",
+                            "box_id": "b0",
+                            "polarity": "positive",
+                            "modality": "asserted",
+                            "temporal_id": "",
+                            "arguments": [
+                                {
+                                    "role": "value",
+                                    "target_kind": "referent",
+                                    "target_id": "r0",
+                                    "value": "OG-7003",
+                                    "value_type": "identifier",
+                                    "evidence_text": "OG-7003",
+                                },
+                                {
+                                    "role": "field",
+                                    "target_kind": "literal",
+                                    "target_id": "asset",
+                                    "value": "asset",
+                                    "value_type": "literal",
+                                    "evidence_text": "asset",
+                                }
+                            ],
+                            "evidence_text": 'asset: "OG-7003"',
+                        }
+                    ],
+                },
+                "_model_raw": "{}",
+                "_model_elapsed_seconds": 0.01,
+            }
+
+    monkeypatch.delenv("KMD_LOCAL_MODEL_JSON_SCHEMA", raising=False)
+    monkeypatch.setenv("KMD_CHUNK_DRS_CACHE_DIR", str(tmp_path / "drs-cache"))
+    model = LabelEvidenceRepairModel()
+
+    result = call_model_chunk_drs(
+        '{ ids: { asset: "OG-7003" } }',
+        model,  # type: ignore[arg-type]
+        rel_path="object.raw",
+        n_predict=384,
+    )
+
+    assert result["accepted"] is True
+    assert result["reason"] == "staged_fallback"
+    assert result["drs"]["referents"][0]["evidence_text"] == "OG-7003"
+    assert result["drs"]["conditions"][0]["arguments"][1]["target_id"] == ""
+    assert result["context_budget"]["grounding_repair_policy"] == CHUNK_DRS_GROUNDING_REPAIR_POLICY
+    assert chunk_drs_cache_context(model, n_predict=384)["grounding_repair_policy"] == CHUNK_DRS_GROUNDING_REPAIR_POLICY
+    assert model.condition_prompt
