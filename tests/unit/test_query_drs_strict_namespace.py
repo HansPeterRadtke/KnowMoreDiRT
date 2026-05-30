@@ -341,6 +341,94 @@ def test_query_drs_repairs_answer_variable_label_variant(monkeypatch, tmp_path) 
     assert ">" not in frame["relation_terms"]
 
 
+def test_query_drs_repairs_answer_argument_surface_to_declared_referent(monkeypatch, tmp_path) -> None:
+    class TargetSurfaceAsAnswerVariableModel:
+        def context_size(self) -> int:
+            return 8192
+
+        def cache_fingerprint(self) -> dict[str, object]:
+            return {"model_id": "fake-query-target-surface-answer-variable", "context_size": 8192}
+
+        def complete_json(self, prompt: str, *, n_predict: int = 128, grammar=None, json_schema=None):
+            return {
+                "query_drs": {
+                    "schema_version": "query-drs-v3",
+                    "question": "What report link is listed for Orchid Gamma?",
+                    "answer_variables": [
+                        {
+                            "id": "qv0",
+                            "label": "report link",
+                            "answer_type": "url",
+                            "evidence_text": "report link",
+                        }
+                    ],
+                    "target_referents": [
+                        {"id": "tr0", "label": "Orchid Gamma", "kind": "named_anchor", "evidence_text": "Orchid Gamma"}
+                    ],
+                    "temporal_records": [],
+                    "requested_conditions": [
+                        {
+                            "id": "rc0",
+                            "predicate": "listed",
+                            "box_id": "",
+                            "polarity": "positive",
+                            "modality": "asserted",
+                            "temporal_id": "",
+                            "arguments": [
+                                {
+                                    "role": "link",
+                                    "target_kind": "answer_variable",
+                                    "target_id": "qv0",
+                                    "value": "",
+                                    "value_type": "url",
+                                    "evidence_text": "report link",
+                                },
+                                {
+                                    "role": "of",
+                                    "target_kind": "answer_variable",
+                                    "target_id": "qv0",
+                                    "value": "Orchid Gamma",
+                                    "value_type": "named_anchor",
+                                    "evidence_text": "Orchid Gamma",
+                                },
+                                {
+                                    "role": "predicate",
+                                    "target_kind": "answer_variable",
+                                    "target_id": "qv0",
+                                    "value": "listed",
+                                    "value_type": "string",
+                                    "evidence_text": "listed",
+                                },
+                            ],
+                            "evidence_text": "What report link is listed for Orchid Gamma?",
+                        }
+                    ],
+                    "constraints": [],
+                    "box_requirements": [],
+                    "temporal_scope": "",
+                    "aggregation": "",
+                    "answer_type": "url",
+                    "requires_evidence": True,
+                },
+                "_model_raw": "{}",
+                "_model_elapsed_seconds": 0.01,
+            }
+
+    monkeypatch.setenv("KMD_QUERY_DRS_CACHE_DIR", str(tmp_path / "query-drs-cache"))
+    result = call_model_query_drs(
+        "What report link is listed for Orchid Gamma?",
+        TargetSurfaceAsAnswerVariableModel(),  # type: ignore[arg-type]
+    )
+
+    assert result["accepted"] is True
+    arguments = result["query_drs"]["requested_conditions"][0]["arguments"]
+    assert arguments[1]["target_kind"] == "referent"
+    assert arguments[1]["target_id"] == "tr0"
+    assert arguments[1]["value"] == ""
+    assert len(arguments) == 2
+    assert result["validation_policy"] == QUERY_DRS_VALIDATION_POLICY
+
+
 def test_query_drs_keeps_ungrounded_temporal_rejection(monkeypatch, tmp_path) -> None:
     class UngroundedTemporalQueryModel:
         def context_size(self) -> int:

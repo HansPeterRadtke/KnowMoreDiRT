@@ -64,7 +64,7 @@ CHUNK_DRS_IDENTITY_PROVENANCE_POLICY = "identity-evidence-bilateral-surface-v1"
 CHUNK_DRS_TEMPORAL_PROVENANCE_POLICY = "condition-referenced-temporal-records-v1"
 CHUNK_DRS_SPARSE_RETRY_POLICY = "retry-validated-sparse-drs-staged-v1"
 QUERY_DRS_SCHEMA_VERSION = "query-drs-v3"
-QUERY_DRS_VALIDATION_POLICY = "strict-query-drs-version-question-evidence-repair-v7"
+QUERY_DRS_VALIDATION_POLICY = "strict-query-drs-version-question-evidence-repair-v8"
 QUERY_DRS_ARRAY_CAP_POLICY = "reserved_output_tokens_div_96_4_8-v1"
 QUERY_FRAME_SCHEMA_VERSION = "query-frame-v4"
 ANSWER_SCHEMA_VERSION = "answer-v4"
@@ -1425,11 +1425,31 @@ def _repair_query_drs_payload(payload: Any, question: str) -> Any:
         for item in query_drs.get("answer_variables", [])
         if isinstance(item, dict) and str(item.get("id") or "").strip()
     }
+    answer_variable_surfaces_by_id = {
+        str(item.get("id") or "").strip(): {
+            normalize(str(value or ""))
+            for value in [item.get("label"), item.get("evidence_text")]
+            if str(value or "").strip()
+        }
+        for item in query_drs.get("answer_variables", [])
+        if isinstance(item, dict) and str(item.get("id") or "").strip()
+    }
     target_ids = {
         str(item.get("id") or "").strip()
         for item in query_drs.get("target_referents", [])
         if isinstance(item, dict) and str(item.get("id") or "").strip()
     }
+    target_id_by_surface: dict[str, str] = {}
+    for item in query_drs.get("target_referents", []):
+        if not isinstance(item, dict):
+            continue
+        target_id = str(item.get("id") or "").strip()
+        if not target_id:
+            continue
+        for value in [item.get("label"), item.get("evidence_text")]:
+            surface = normalize(str(value or ""))
+            if surface:
+                target_id_by_surface[surface] = target_id
     temporal_ids = {
         str(item.get("id") or "").strip()
         for item in query_drs.get("temporal_records", [])
@@ -1473,16 +1493,44 @@ def _repair_query_drs_payload(payload: Any, question: str) -> Any:
                     argument["target_kind"] = declared_kind
                     target_kind = declared_kind
                     repaired = True
+                if target_kind == "answer_variable":
+                    argument_surfaces = {
+                        normalize(str(value or ""))
+                        for value in [argument.get("evidence_text"), argument.get("value")]
+                        if str(value or "").strip()
+                    }
+                    target_surface_ids = {
+                        target_id_by_surface[surface]
+                        for surface in argument_surfaces
+                        if surface in target_id_by_surface
+                    }
+                    if len(target_surface_ids) == 1:
+                        argument["target_kind"] = "referent"
+                        argument["target_id"] = next(iter(target_surface_ids))
+                        argument["value"] = ""
+                        target_kind = "referent"
+                        repaired = True
                 value = str(argument.get("value") or "").strip()
                 if target_kind not in {"literal", "unknown"} and value and value not in question:
                     argument["value"] = ""
                     repaired = True
             deduped_arguments: list[dict[str, Any]] = []
             seen_answer_argument_refs: set[tuple[str, str, str, str]] = set()
+            grounded_answer_ref_seen: set[str] = set()
             for argument in repaired_arguments:
                 target_kind = str(argument.get("target_kind") or "").strip()
                 target_id = str(argument.get("target_id") or "").strip()
                 if target_kind == "answer_variable" and target_id:
+                    argument_surfaces = {
+                        normalize(str(value or ""))
+                        for value in [argument.get("evidence_text"), argument.get("value"), argument.get("role")]
+                        if str(value or "").strip()
+                    }
+                    answer_surfaces = answer_variable_surfaces_by_id.get(target_id, set())
+                    is_grounded_answer_ref = bool(answer_surfaces.intersection(argument_surfaces))
+                    if target_id in grounded_answer_ref_seen and not is_grounded_answer_ref:
+                        repaired = True
+                        continue
                     signature = (
                         target_id,
                         str(argument.get("value") or "").strip(),
@@ -1493,6 +1541,8 @@ def _repair_query_drs_payload(payload: Any, question: str) -> Any:
                         repaired = True
                         continue
                     seen_answer_argument_refs.add(signature)
+                    if is_grounded_answer_ref:
+                        grounded_answer_ref_seen.add(target_id)
                 deduped_arguments.append(argument)
             if len(deduped_arguments) != len(arguments):
                 condition["arguments"] = deduped_arguments
