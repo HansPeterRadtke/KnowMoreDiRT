@@ -64,7 +64,7 @@ CHUNK_DRS_IDENTITY_PROVENANCE_POLICY = "identity-evidence-bilateral-surface-v1"
 CHUNK_DRS_TEMPORAL_PROVENANCE_POLICY = "condition-referenced-temporal-records-v1"
 CHUNK_DRS_SPARSE_RETRY_POLICY = "retry-validated-sparse-drs-staged-v1"
 QUERY_DRS_SCHEMA_VERSION = "query-drs-v3"
-QUERY_DRS_VALIDATION_POLICY = "strict-query-drs-version-question-evidence-repair-v5"
+QUERY_DRS_VALIDATION_POLICY = "strict-query-drs-version-question-evidence-repair-v6"
 QUERY_FRAME_SCHEMA_VERSION = "query-frame-v4"
 ANSWER_SCHEMA_VERSION = "answer-v4"
 
@@ -1336,15 +1336,33 @@ def _repair_query_drs_payload(payload: Any, question: str) -> Any:
         return payload
     query_drs = {**payload["query_drs"]}
 
+    def grounded_question_surface(candidate: str) -> str:
+        value = candidate.strip()
+        if not value:
+            return ""
+        if value in question:
+            return value
+        index = question.lower().find(value.lower())
+        if index >= 0:
+            return question[index : index + len(value)]
+        return ""
+
     def repair_item(item: dict[str, Any], fields: tuple[str, ...], *, use_full_question: bool = False) -> bool:
         evidence_text = str(item.get("evidence_text") or "").strip()
-        if not evidence_text or evidence_text in question:
+        if not evidence_text:
+            return False
+        grounded_evidence = grounded_question_surface(evidence_text)
+        if grounded_evidence:
+            if grounded_evidence != evidence_text:
+                item["evidence_text"] = grounded_evidence
+                return True
             return False
         for field in fields:
             candidate = str(item.get(field) or "").strip()
             for variant in (candidate, candidate.replace("_", " "), candidate.replace("-", " ")):
-                if variant and variant in question:
-                    item["evidence_text"] = variant
+                grounded_variant = grounded_question_surface(variant)
+                if grounded_variant:
+                    item["evidence_text"] = grounded_variant
                     return True
         if use_full_question and question:
             item["evidence_text"] = question
@@ -1367,6 +1385,31 @@ def _repair_query_drs_payload(payload: Any, question: str) -> Any:
             if len(repaired_items) != len(items):
                 query_drs[key] = repaired_items
                 repaired = True
+    answer_variable_ids = {
+        str(item.get("id") or "").strip()
+        for item in query_drs.get("answer_variables", [])
+        if isinstance(item, dict) and str(item.get("id") or "").strip()
+    }
+    target_ids = {
+        str(item.get("id") or "").strip()
+        for item in query_drs.get("target_referents", [])
+        if isinstance(item, dict) and str(item.get("id") or "").strip()
+    }
+    temporal_ids = {
+        str(item.get("id") or "").strip()
+        for item in query_drs.get("temporal_records", [])
+        if isinstance(item, dict) and str(item.get("id") or "").strip()
+    }
+    box_ids = {
+        str(item.get("id") or "").strip()
+        for item in query_drs.get("box_requirements", [])
+        if isinstance(item, dict) and str(item.get("id") or "").strip()
+    }
+    condition_ids = {
+        str(item.get("id") or "").strip()
+        for item in query_drs.get("requested_conditions", [])
+        if isinstance(item, dict) and str(item.get("id") or "").strip()
+    }
     conditions = query_drs.get("requested_conditions")
     if isinstance(conditions, list):
         for condition in conditions:
@@ -1379,6 +1422,22 @@ def _repair_query_drs_payload(payload: Any, question: str) -> Any:
             for argument in repaired_arguments:
                 repaired |= repair_item(argument, ("value", "role"), use_full_question=False)
                 target_kind = str(argument.get("target_kind") or "").strip()
+                target_id = str(argument.get("target_id") or "").strip()
+                declared_kind = ""
+                if target_id in answer_variable_ids:
+                    declared_kind = "answer_variable"
+                elif target_id in target_ids:
+                    declared_kind = "referent"
+                elif target_id in temporal_ids:
+                    declared_kind = "temporal"
+                elif target_id in box_ids:
+                    declared_kind = "box"
+                elif target_id in condition_ids:
+                    declared_kind = "condition"
+                if declared_kind and target_kind != declared_kind:
+                    argument["target_kind"] = declared_kind
+                    target_kind = declared_kind
+                    repaired = True
                 value = str(argument.get("value") or "").strip()
                 if target_kind not in {"literal", "unknown"} and value and value not in question:
                     argument["value"] = ""

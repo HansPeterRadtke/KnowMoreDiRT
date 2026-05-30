@@ -414,6 +414,88 @@ def test_query_drs_keeps_ungrounded_temporal_rejection(monkeypatch, tmp_path) ->
     assert result["validation"]["grounding_failures"] == ["temporal:qt0:now"]
 
 
+def test_query_drs_repairs_argument_namespace_and_case(monkeypatch, tmp_path) -> None:
+    class NamespaceCaseRepairModel:
+        def context_size(self) -> int:
+            return 8192
+
+        def cache_fingerprint(self) -> dict[str, object]:
+            return {"model_id": "fake-query-namespace-case-repair", "context_size": 8192}
+
+        def complete_json(self, prompt: str, *, n_predict: int = 128, grammar=None, json_schema=None):
+            return {
+                "query_drs": {
+                    "schema_version": "query-drs-v3",
+                    "question": "What does Kalo Reed believe?",
+                    "answer_variables": [
+                        {
+                            "id": "qv0",
+                            "label": "what",
+                            "answer_type": "unknown",
+                            "evidence_text": "Kalo Reed believe",
+                        }
+                    ],
+                    "target_referents": [
+                        {"id": "tr0", "label": "Kalo Reed", "kind": "named_anchor", "evidence_text": "Kalo Reed"}
+                    ],
+                    "temporal_records": [],
+                    "requested_conditions": [
+                        {
+                            "id": "rc0",
+                            "predicate": "believe",
+                            "box_id": "br0",
+                            "polarity": "positive",
+                            "modality": "asserted",
+                            "temporal_id": "",
+                            "arguments": [
+                                {
+                                    "role": "agent",
+                                    "target_kind": "answer_variable",
+                                    "target_id": "tr0",
+                                    "value": "Kalo Reed",
+                                    "value_type": "named_anchor",
+                                    "evidence_text": "Kalo Reed",
+                                },
+                                {
+                                    "role": "content",
+                                    "target_kind": "answer_variable",
+                                    "target_id": "qv0",
+                                    "value": "what",
+                                    "value_type": "unknown",
+                                    "evidence_text": "what",
+                                },
+                            ],
+                            "evidence_text": "Kalo Reed believe",
+                        }
+                    ],
+                    "constraints": [],
+                    "box_requirements": [
+                        {
+                            "id": "br0",
+                            "kind": "reported",
+                            "parent_id": "",
+                            "holder_referent_id": "tr0",
+                            "evidence_text": "Kalo Reed believe",
+                        }
+                    ],
+                    "temporal_scope": "",
+                    "aggregation": "",
+                    "answer_type": "unknown",
+                    "requires_evidence": True,
+                },
+                "_model_raw": "{}",
+                "_model_elapsed_seconds": 0.01,
+            }
+
+    monkeypatch.setenv("KMD_QUERY_DRS_CACHE_DIR", str(tmp_path / "query-drs-cache"))
+    result = call_model_query_drs("What does Kalo Reed believe?", NamespaceCaseRepairModel())  # type: ignore[arg-type]
+
+    assert result["accepted"] is True
+    assert result["validation"]["grounding_failure_count"] == 0
+    assert result["query_drs"]["requested_conditions"][0]["arguments"][0]["target_kind"] == "referent"
+    assert result["query_drs"]["requested_conditions"][0]["arguments"][1]["evidence_text"] == "What"
+
+
 def test_chunk_drs_removes_tautological_self_identity_hypotheses(monkeypatch, tmp_path) -> None:
     class SelfIdentityChunkModel:
         def context_size(self) -> int:
