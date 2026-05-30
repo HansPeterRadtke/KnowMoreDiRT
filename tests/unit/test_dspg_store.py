@@ -3,7 +3,7 @@ from __future__ import annotations
 from pathlib import Path
 
 from knowmoredirt.answer_types import ExpectedAnswer
-from knowmoredirt.bounded_dspg import _context_accessible
+from knowmoredirt.bounded_dspg import _context_accessible, _identity_expanded_terms
 from knowmoredirt.engine import KnowMoreDiRTEngine
 from knowmoredirt.ingest import ingest_folder
 from knowmoredirt.query import QueryFrame
@@ -406,3 +406,49 @@ def test_count_aggregation_requires_each_query_drs_term_group(tmp_path: Path) ->
     assert answer is not None
     assert answer.text == "2"
     assert answer.reason == "bounded DSPG query-frame execution"
+
+
+def test_model_query_drs_compound_slot_matches_structural_record_field(tmp_path: Path) -> None:
+    (tmp_path / "object.raw").write_text(
+        '{ name: "Orchid Gamma", owner: "Tessa Noll", '
+        'links: { report: "https://reports.example.test/orchid-gamma" } }',
+        encoding="utf-8",
+    )
+    engine = KnowMoreDiRTEngine(tmp_path)
+    frame = QueryFrame(
+        question_text="What report link is listed for Orchid Gamma?",
+        answer_type="url",
+        answer_variables=("report_link",),
+        target_anchors=("Orchid Gamma",),
+        requested_relation="listed",
+        relation_terms=("listed", "report_link"),
+        constraints=(),
+    )
+
+    answer = engine._answer_with_bounded_dspg(
+        "What report link is listed for Orchid Gamma?",
+        frame,
+        ExpectedAnswer("url"),
+    )
+
+    assert answer is not None
+    assert answer.text == "https://reports.example.test/orchid-gamma"
+    assert answer.reason == "bounded DSPG query-frame execution"
+
+
+def test_identity_expansion_seeds_only_exact_referent_surfaces() -> None:
+    records = {
+        "referents": [
+            {"referent_id": "r0", "canonical_label": "Orchid Gamma"},
+            {
+                "referent_id": "r1",
+                "canonical_label": "https://reports.example.test/orchid-gamma",
+            },
+        ],
+        "identity_hypotheses": [],
+    }
+
+    expanded = _identity_expanded_terms(records, ["orchid gamma"])
+
+    assert "orchid gamma" in expanded
+    assert "https reports example test orchid gamma" not in expanded

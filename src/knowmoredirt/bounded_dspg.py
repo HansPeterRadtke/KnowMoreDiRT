@@ -52,6 +52,18 @@ def _normalized_term_token_sets(terms: tuple[str, ...]) -> tuple[frozenset[str],
     return tuple(token_set for term in _normalized_terms(terms) if (token_set := _normalized_token_set(term)))
 
 
+def _compound_term_variants(term: str) -> list[str]:
+    norm = normalize(term)
+    if not norm:
+        return []
+    values = [norm]
+    parts = [part for part in re.split(r"[_-]+", norm) if part]
+    if len(parts) > 1 and all(part.isalpha() for part in parts):
+        for part in parts:
+            values.extend(expand_terms([part]))
+    return list(dict.fromkeys(value for value in values if value))
+
+
 def _frame(plan: dict[str, Any] | QueryFrame | None, question: str) -> QueryFrame:
     if isinstance(plan, QueryFrame):
         return plan
@@ -84,7 +96,8 @@ def _target_terms(frame: QueryFrame, question: str) -> list[str]:
 
 def _relation_terms(frame: QueryFrame, question: str) -> list[str]:
     target = set(_target_terms(frame, question))
-    terms = list(frame.relation_terms) + _query_terms(frame.requested_relation) + list(frame.constraints)
+    raw_terms = list(frame.relation_terms) + _query_terms(frame.requested_relation) + list(frame.constraints)
+    terms = [variant for term in raw_terms for variant in _compound_term_variants(term)]
     filtered = [
         term
         for term in terms
@@ -96,9 +109,9 @@ def _relation_terms(frame: QueryFrame, question: str) -> list[str]:
 def _answer_slot_terms(frame: QueryFrame) -> list[str]:
     terms: list[str] = []
     for variable in frame.answer_variables:
-        norm = normalize(variable)
-        if norm and norm not in ANSWER_SLOT_SKIP_TERMS:
-            terms.append(norm)
+        for term in _compound_term_variants(variable):
+            if term not in ANSWER_SLOT_SKIP_TERMS:
+                terms.append(term)
         for token in content_tokens(variable):
             if token not in ANSWER_SLOT_SKIP_TERMS:
                 terms.append(token)
@@ -418,9 +431,14 @@ def _identity_expanded_terms(records: dict[str, Any], terms: list[str]) -> list[
     ]
     if not seed_terms:
         return []
+    seed_token_sets = [_normalized_token_set(term) for term in seed_terms]
     for referent_id, row in referents.items():
         label_norm = normalize(str(row.get("canonical_label") or row.get("canonical_label_norm") or ""))
-        if label_norm and any(label_norm == term or term in label_norm or label_norm in term for term in seed_terms):
+        label_tokens = _normalized_token_set(label_norm)
+        if label_norm and any(
+            label_norm == term or (label_tokens and label_tokens == term_tokens)
+            for term, term_tokens in zip(seed_terms, seed_token_sets)
+        ):
             seed_ids.add(referent_id)
     if not seed_ids:
         return []
@@ -884,13 +902,14 @@ def _relation_term_groups_for_frame(frame: QueryFrame) -> list[list[str]]:
     seen: set[tuple[str, ...]] = set()
     raw_items = [*frame.relation_terms, *list(frame.constraints), *_query_terms(frame.requested_relation)]
     for item in raw_items:
-        tokens = content_tokens(item) or [normalize(item)]
-        for token in tokens:
-            variants = list(dict.fromkeys(variant for variant in expand_terms([token]) if variant))
-            key = tuple(sorted(variants))
-            if variants and key not in seen:
-                groups.append(variants)
-                seen.add(key)
+        variants = _compound_term_variants(item)
+        if not variants:
+            variants = [normalize(item)]
+        variants = list(dict.fromkeys(variant for variant in expand_terms(variants) if variant))
+        key = tuple(sorted(variants))
+        if variants and key not in seen:
+            groups.append(variants)
+            seen.add(key)
     return groups
 
 
