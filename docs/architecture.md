@@ -46,6 +46,11 @@ The current store is SQLite-backed and normalized. It includes:
 - `context_assignments`
 - `frames`
 - `frame_arguments`
+- `drs_boxes`
+- `drs_referents`
+- `drs_conditions`
+- `drs_condition_arguments`
+- `drs_identity_hypotheses`
 - `temporal_edges`
 - `relations`
 - `metadata_records`
@@ -53,6 +58,8 @@ The current store is SQLite-backed and normalized. It includes:
 The current implementation uses an in-memory database by default. A durable user-configurable store path is planned.
 
 KMD now has an explicit Python DRT layer in `knowmoredirt.drs`. It defines discourse referents, discourse arguments, discourse conditions, and discourse contexts as relation-agnostic objects. These objects are normalized into the SQLite DSPG store. Predicate and role labels remain data from source text or model output. They are not intent enums and do not select bespoke answer handlers.
+
+When the model returns full chunk DRS objects, KMD also materializes the declared DRS structure directly. Deterministic materialization validates declared IDs, source grounding, box hierarchy, temporal references, identity references, and provenance. It may dereference a declared referent ID to the model-provided referent label, or a declared box/condition ID to its model-provided evidence surface, so the graph executor can bind variables over first-class `frame_arguments`. It does not infer missing semantic roles or meanings from raw text.
 
 Document metadata stores natural filesystem/read metadata and text-quality metrics, including printable ratio, symbol ratio, token diversity, OCR-like token ratio, a low-semantic-noise flag, and a semantic-quality label. The same classification is also represented as a `quality:*` context so noisy source material remains preserved and queryable rather than discarded. Generic filesystem/read metadata is also normalized into `metadata_records`, while source quality, filesystem time, sentence context, and event-time signals are represented as context carriers and assignments.
 
@@ -83,11 +90,12 @@ Before returning a non-unknown answer, KMD validates the answer against the answ
 
 ## Optional Local Model Integration
 
-KMD includes an isolated local model client hook. The default system does not require a model and does not call cloud APIs. When explicitly enabled, model use is bounded and constrained in three roles:
+KMD includes an isolated local model client hook. The default system does not require a model and does not call cloud APIs. When explicitly enabled, model use is bounded and constrained in four roles:
 
 1. **Chunk frame extraction**: convert raw chunks into generic DRT/DSPG frames with predicates, argument roles, polarity, modality/context, temporal text, confidence, and exact evidence text.
-2. **Question frame parsing**: convert the question into the same generic query-frame language used by deterministic planning.
-3. **Answer verification/extraction**: verify candidate answers against bounded evidence and discourse frames, or extract the shortest grounded answer from bounded evidence when graph execution cannot bind an answer.
+2. **Chunk DRS extraction**: optionally convert raw chunks into schema-constrained DRS objects with referents, boxes, conditions, temporal records, and identity hypotheses. If a monolithic chunk DRS fails JSON, schema, or exact-grounding validation, KMD can retry with staged extraction: stage 1 declares referents, boxes, and explicit temporal records; stage 2 emits conditions constrained to those declared IDs.
+3. **Question frame parsing**: convert the question into the same generic query-frame language used by deterministic planning.
+4. **Answer verification/extraction**: verify candidate answers against bounded evidence and discourse frames, or extract the shortest grounded answer from bounded evidence when graph execution cannot bind an answer.
 
 The model is never allowed to use outside knowledge or external labels. All accepted output must be JSON, localhost-only, and source-grounded. Model-derived chunk frames are cached under a local cache directory keyed by chunk text and extraction version so repeated initialization does not repeat work. Validation failures that produce no grounded frames, such as invalid JSON, schema rejection, or grounding rejection, are cached as accepted=false empty-frame results; they are retried only when the prompt/schema/model cache key changes, and they are never inserted into the DSPG graph. Bounded model evidence answers use the same discipline for malformed JSON/schema failures while avoiding caches for external request failures.
 

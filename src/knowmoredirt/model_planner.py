@@ -58,7 +58,7 @@ DRS_IDENTITY_STATUSES = {"accepted", "candidate", "rejected", "ambiguous"}
 PROMPT_VERSION = "kmd-drt-2026-05-28-v34"
 CHUNK_FRAME_SCHEMA_VERSION = "chunk-frames-v5"
 CHUNK_DRS_SCHEMA_VERSION = "chunk-drs-v2"
-CHUNK_DRS_STAGED_FALLBACK_POLICY = "retry-invalid-json-schema-or-grounding-v1"
+CHUNK_DRS_STAGED_FALLBACK_POLICY = "retry-invalid-json-schema-grounding-staged-temporal-v2"
 QUERY_DRS_SCHEMA_VERSION = "query-drs-v3"
 QUERY_FRAME_SCHEMA_VERSION = "query-frame-v4"
 ANSWER_SCHEMA_VERSION = "answer-v4"
@@ -931,12 +931,13 @@ def chunk_drs_skeleton_json_schema(source_id: str, max_array_items: int | None =
         ["drs_skeleton"],
         {
             "drs_skeleton": _schema_obj(
-                ["schema_version", "source_id", "referents", "boxes"],
+                ["schema_version", "source_id", "referents", "boxes", "temporal_records"],
                 {
                     "schema_version": _schema_enum({CHUNK_DRS_SCHEMA_VERSION}),
                     "source_id": _schema_enum({source_id}),
                     "referents": _schema_array_limited(copy.deepcopy(DRS_REFERENT_JSON_SCHEMA), max_array_items),
                     "boxes": _schema_array_limited(copy.deepcopy(DRS_BOX_JSON_SCHEMA), max_array_items),
+                    "temporal_records": _schema_array_limited(copy.deepcopy(DRS_TEMPORAL_JSON_SCHEMA), max_array_items),
                 },
             )
         },
@@ -948,15 +949,17 @@ def chunk_drs_condition_json_schema(
     source_id: str,
     box_ids: list[str],
     referent_ids: list[str],
+    temporal_ids: list[str] | None = None,
     max_conditions: int | None = None,
     max_arguments: int | None = None,
 ) -> dict[str, Any]:
     condition_schema = copy.deepcopy(DRS_CONDITION_JSON_SCHEMA)
     argument_schema = copy.deepcopy(DRS_ARGUMENT_JSON_SCHEMA)
     allowed_targets = sorted(set(["", *box_ids, *referent_ids]))
+    allowed_temporals = sorted(set(["", *(temporal_ids or [])]))
     argument_schema["properties"]["target_id"] = {"type": "string", "enum": allowed_targets}
     condition_schema["properties"]["box_id"] = {"type": "string", "enum": box_ids or [""]}
-    condition_schema["properties"]["temporal_id"] = {"type": "string", "enum": [""]}
+    condition_schema["properties"]["temporal_id"] = {"type": "string", "enum": allowed_temporals}
     condition_schema["properties"]["arguments"] = _schema_array_limited(argument_schema, max_arguments)
     return _schema_obj(
         ["condition_stage"],
@@ -2333,7 +2336,7 @@ def build_chunk_drs_prompt(chunk_text: str, *, rel_path: str = "", context_budge
 def build_chunk_drs_skeleton_prompt(chunk_text: str, *, rel_path: str = "", context_budget: dict[str, Any] | None = None) -> str:
     return (
         "JSON only. Stage 1 of source-grounded DRS extraction. Extract only declared discourse referents "
-        "and DRS boxes from the chunk. Do not emit conditions, identity hypotheses, temporal records, answers, "
+        "DRS boxes, and explicit temporal records from the chunk. Do not emit conditions, identity hypotheses, answers, "
         "outside knowledge, or handler names. Declare one root asserted box with id b0 and parent_id ''. Use "
         "subordinate boxes only for scoped DRS contexts such as reports, quotes, beliefs, negation, conditionals, "
         "uncertainty, dreams, fiction, and modality. Every evidence_text item must be one contiguous substring "
@@ -2349,6 +2352,7 @@ def build_chunk_drs_skeleton_prompt(chunk_text: str, *, rel_path: str = "", cont
                         "source_id": rel_path,
                         "referents": [],
                         "boxes": [],
+                        "temporal_records": [],
                     }
                 },
                 "chunk": chunk_text,
@@ -2725,9 +2729,15 @@ def _call_model_chunk_drs_staged(
         }
     referents = skeleton_payload.get("referents")
     boxes = skeleton_payload.get("boxes")
+    temporals = skeleton_payload.get("temporal_records")
     referents = [item for item in referents if isinstance(item, dict)] if isinstance(referents, list) else []
     boxes = [item for item in boxes if isinstance(item, dict)] if isinstance(boxes, list) else []
-    skeleton_span_failures = _drs_exact_span_failures(referents, prompt_chunk, "referent") + _drs_exact_span_failures(boxes, prompt_chunk, "box")
+    temporals = [item for item in temporals if isinstance(item, dict)] if isinstance(temporals, list) else []
+    skeleton_span_failures = (
+        _drs_exact_span_failures(referents, prompt_chunk, "referent")
+        + _drs_exact_span_failures(boxes, prompt_chunk, "box")
+        + _drs_exact_span_failures(temporals, prompt_chunk, "temporal")
+    )
     if skeleton_span_failures:
         return {
             "accepted": False,
@@ -2739,6 +2749,7 @@ def _call_model_chunk_drs_staged(
         }
     box_ids = [str(item.get("id") or "") for item in boxes if str(item.get("id") or "")]
     referent_ids = [str(item.get("id") or "") for item in referents if str(item.get("id") or "")]
+    temporal_ids = [str(item.get("id") or "") for item in temporals if str(item.get("id") or "")]
     condition_prompt = build_chunk_drs_condition_prompt(
         prompt_chunk,
         rel_path=rel_path,
@@ -2750,6 +2761,7 @@ def _call_model_chunk_drs_staged(
         source_id=rel_path,
         box_ids=box_ids,
         referent_ids=referent_ids,
+        temporal_ids=temporal_ids,
         max_conditions=max_items,
         max_arguments=max_items,
     )
@@ -2781,7 +2793,7 @@ def _call_model_chunk_drs_staged(
             "boxes": boxes,
             "conditions": conditions,
             "identity_hypotheses": [],
-            "temporal_records": [],
+            "temporal_records": temporals,
         }
     }
     merged = _repair_chunk_drs_payload(merged)

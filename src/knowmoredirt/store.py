@@ -712,6 +712,7 @@ class DSPGStore:
 
         external_to_referent: dict[str, str] = {}
         external_to_drs_referent: dict[str, str] = {}
+        external_to_referent_label: dict[str, str] = {}
         for item in referents:
             external_id = text_value(item, "id")
             label = text_value(item, "label")
@@ -720,6 +721,7 @@ class DSPGStore:
             drs_referent_id = stable_id("drsref", run_id, source_span_id, external_id, label)
             external_to_referent[external_id] = referent_id
             external_to_drs_referent[external_id] = drs_referent_id
+            external_to_referent_label[external_id] = label
             self.connection.execute(
                 """
                 INSERT OR IGNORE INTO drs_referents(
@@ -747,6 +749,7 @@ class DSPGStore:
         temporal_values: dict[str, dict[str, Any]] = {text_value(item, "id"): item for item in temporals}
         external_to_box: dict[str, str] = {}
         external_to_context: dict[str, str] = {}
+        external_to_box_evidence: dict[str, str] = {}
         for item in boxes:
             external_id = text_value(item, "id")
             kind = text_value(item, "kind") or "asserted"
@@ -757,6 +760,7 @@ class DSPGStore:
             drs_box_id = stable_id("drsbox", run_id, source_span_id, external_id, kind, evidence)
             external_to_context[external_id] = context_id
             external_to_box[external_id] = drs_box_id
+            external_to_box_evidence[external_id] = evidence
             self.connection.execute(
                 """
                 INSERT OR IGNORE INTO contexts(
@@ -768,7 +772,7 @@ class DSPGStore:
                     run_id,
                     f"drs:{kind}",
                     external_to_context.get(parent_external),
-                    holder_external or None,
+                    external_to_referent_label.get(holder_external) or holder_external or None,
                     evidence or kind,
                     confidence(item.get("confidence"), 0.75),
                 ),
@@ -800,6 +804,31 @@ class DSPGStore:
             )
 
         external_to_condition: dict[str, str] = {}
+        external_to_condition_evidence: dict[str, str] = {}
+        for item in conditions:
+            external_id = text_value(item, "id")
+            predicate = text_value(item, "predicate")
+            evidence = text_value(item, "evidence_text")
+            if external_id:
+                external_to_condition[external_id] = stable_id(
+                    "drscond", run_id, source_span_id, external_id, predicate, evidence
+                )
+                external_to_condition_evidence[external_id] = evidence
+
+        def resolved_argument_surface(arg: dict[str, Any]) -> str:
+            value = text_value(arg, "value")
+            if value:
+                return value
+            target_kind = text_value(arg, "target_kind")
+            target_external = text_value(arg, "target_id")
+            if target_kind == "referent":
+                return external_to_referent_label.get(target_external, "")
+            if target_kind == "box":
+                return external_to_box_evidence.get(target_external, "")
+            if target_kind == "condition":
+                return external_to_condition_evidence.get(target_external, "")
+            return text_value(arg, "evidence_text")
+
         inserted_arguments = 0
         for item in conditions:
             external_id = text_value(item, "id")
@@ -809,9 +838,8 @@ class DSPGStore:
             temporal_id = text_value(item, "temporal_id")
             temporal_text = text_value(temporal_values.get(temporal_id, {}), "value") if temporal_id else ""
             evidence = text_value(item, "evidence_text")
-            condition_id = stable_id("drscond", run_id, source_span_id, external_id, predicate, evidence)
+            condition_id = external_to_condition[external_id]
             frame_id = stable_id("frm", run_id, source_span_id, "drs", external_id, predicate, evidence)
-            external_to_condition[external_id] = condition_id
             condition_confidence = confidence(item.get("confidence"), 0.65)
             self.connection.execute(
                 "INSERT OR IGNORE INTO frames(frame_id, run_id, context_id, predicate, predicate_norm, trigger_surface, confidence, source, span_id) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)",
@@ -889,6 +917,7 @@ class DSPGStore:
                 value = text_value(arg, "value")
                 value_type = text_value(arg, "value_type") or "unknown"
                 referent_id = external_to_referent.get(target_external) if target_kind == "referent" else None
+                argument_surface = resolved_argument_surface(arg)
                 argument_id = stable_id("drsarg", run_id, condition_id, arg_index, role, target_kind, target_external, value)
                 self.connection.execute(
                     """
@@ -924,7 +953,7 @@ class DSPGStore:
                         role,
                         None,
                         referent_id,
-                        value,
+                        argument_surface,
                         value_type,
                         condition_confidence,
                     ),

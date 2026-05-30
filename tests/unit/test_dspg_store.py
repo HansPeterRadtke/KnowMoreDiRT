@@ -141,7 +141,7 @@ def test_store_materializes_model_drs_without_same_surface_merging(tmp_path: Pat
                             "role": "entity",
                             "target_kind": "referent",
                             "target_id": "r2",
-                            "value": "Aero Gate",
+                            "value": "",
                             "value_type": "entity",
                             "evidence_text": "Aero Gate",
                         }
@@ -181,6 +181,20 @@ def test_store_materializes_model_drs_without_same_surface_merging(tmp_path: Pat
     reported_context_id = store.execute(
         "SELECT context_id FROM drs_boxes WHERE kind='reported'"
     ).fetchone()["context_id"]
+    reported_holder = store.execute(
+        "SELECT holder_surface FROM contexts WHERE context_id=?", (reported_context_id,)
+    ).fetchone()["holder_surface"]
+    assert reported_holder == "Mira Chen"
+    ready_arg = store.execute(
+        """
+        SELECT fa.surface, fa.referent_id
+        FROM frame_arguments fa
+        JOIN frames f ON f.frame_id=fa.frame_id
+        WHERE f.predicate='ready' AND fa.role='entity'
+        """
+    ).fetchone()
+    assert ready_arg["surface"] == "Aero Gate"
+    assert ready_arg["referent_id"]
     records = {"contexts": [dict(row) for row in store.execute("SELECT * FROM contexts").fetchall()]}
     unscoped_frame = QueryFrame(
         question_text="What is ready?",
