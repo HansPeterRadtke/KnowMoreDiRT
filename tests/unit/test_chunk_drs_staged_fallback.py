@@ -13,8 +13,10 @@ from knowmoredirt.model_planner import (
     CHUNK_DRS_SKELETON_ID_POLICY,
     CHUNK_DRS_SKELETON_SOURCE_SPAN_POLICY,
     CHUNK_DRS_SOURCE_SPAN_POLICY,
+    CHUNK_DRS_STAGE_FAILURE_CACHE_POLICY,
     CHUNK_DRS_STAGED_FALLBACK_POLICY,
     CHUNK_DRS_STAGED_RETRY_DIAGNOSTICS_POLICY,
+    _call_model_chunk_drs_staged,
     call_model_chunk_drs,
     chunk_drs_cache_context,
     chunk_drs_skeleton_json_schema,
@@ -172,6 +174,7 @@ def test_chunk_drs_staged_fallback_constrains_condition_targets(monkeypatch, tmp
     assert cache_context["staged_fallback_policy"] == CHUNK_DRS_STAGED_FALLBACK_POLICY
     assert cache_context["skeleton_id_policy"] == CHUNK_DRS_SKELETON_ID_POLICY
     assert cache_context["skeleton_source_span_policy"] == CHUNK_DRS_SKELETON_SOURCE_SPAN_POLICY
+    assert cache_context["stage_failure_cache_policy"] == CHUNK_DRS_STAGE_FAILURE_CACHE_POLICY
     assert model.skeleton_schema is not None
     assert model.condition_schema is not None
 
@@ -1053,6 +1056,63 @@ def test_chunk_drs_failed_staged_fallback_keeps_stage_diagnostics(monkeypatch, t
     assert result["staged_fallback"]["stage"] == "skeleton"
     assert result["staged_fallback"]["error"] == "bad skeleton json"
     assert result["staged_fallback"]["raw_snippet"] == '{"drs_skeleton":'
+
+
+def test_chunk_drs_staged_invalid_json_failure_is_cached(monkeypatch, tmp_path) -> None:
+    class FailedSkeletonModel:
+        def __init__(self) -> None:
+            self.calls = 0
+
+        def context_size(self) -> int:
+            return 8192
+
+        def cache_fingerprint(self) -> dict[str, Any]:
+            return {"model_id": "fake-cached-stage-failure-drs", "context_size": 8192}
+
+        def complete_json(
+            self,
+            prompt: str,
+            *,
+            n_predict: int = 128,
+            grammar: str | None = None,
+            json_schema: dict[str, Any] | None = None,
+        ) -> dict[str, object]:
+            assert "Stage 1 of source-grounded DRS extraction" in prompt
+            self.calls += 1
+            raise LocalModelJSONError(
+                "bad skeleton json",
+                raw_text='{"drs_skeleton":',
+                snippet='{"drs_skeleton":',
+            )
+
+    monkeypatch.delenv("KMD_LOCAL_MODEL_JSON_SCHEMA", raising=False)
+    model = FailedSkeletonModel()
+    cache_path = tmp_path / "drs-cache" / "monolithic.json"
+    context_budget = {"max_array_items": 4, "max_evidence_chars": 96}
+
+    first = _call_model_chunk_drs_staged(
+        "Aero Gate is ready.",
+        model,  # type: ignore[arg-type]
+        rel_path="note.txt",
+        n_predict=384,
+        context_budget=context_budget,
+        cache_path=cache_path,
+    )
+    second = _call_model_chunk_drs_staged(
+        "Aero Gate is ready.",
+        model,  # type: ignore[arg-type]
+        rel_path="note.txt",
+        n_predict=384,
+        context_budget=context_budget,
+        cache_path=cache_path,
+    )
+
+    assert first["accepted"] is False
+    assert first["reason"] == "invalid_json"
+    assert second["accepted"] is False
+    assert second["reason"] == "invalid_json"
+    assert second["fresh_or_cached"] == "cache"
+    assert model.calls == 1
 
 
 def test_chunk_drs_staged_fallback_preserves_temporal_records(monkeypatch, tmp_path) -> None:

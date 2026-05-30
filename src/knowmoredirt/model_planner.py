@@ -71,6 +71,7 @@ CHUNK_DRS_SKELETON_ID_POLICY = "stage1-stable-id-enums-v1"
 CHUNK_DRS_MONOLITHIC_ID_POLICY = "monolithic-stable-id-enums-v1"
 CHUNK_DRS_COMPACT_UNDERCOVERAGE_POLICY = "retry-delimiter-rich-low-condition-density-v1"
 CHUNK_DRS_STAGED_RETRY_DIAGNOSTICS_POLICY = "record-non-improving-staged-retry-v1"
+CHUNK_DRS_STAGE_FAILURE_CACHE_POLICY = "cache-invalid-json-stage-failures-v1"
 QUERY_DRS_SCHEMA_VERSION = "query-drs-v3"
 QUERY_DRS_VALIDATION_POLICY = "strict-query-drs-version-question-evidence-repair-v8"
 QUERY_DRS_ARRAY_CAP_POLICY = "reserved_output_tokens_div_96_4_8-v1"
@@ -3340,7 +3341,12 @@ def _complete_chunk_drs_stage(
         stage,
         prompt,
         client,
-        {"n_predict": n_predict, "schema": CHUNK_DRS_SCHEMA_VERSION, **constraint},
+        {
+            "n_predict": n_predict,
+            "schema": CHUNK_DRS_SCHEMA_VERSION,
+            "stage_failure_cache_policy": CHUNK_DRS_STAGE_FAILURE_CACHE_POLICY,
+            **constraint,
+        },
     )
     path = cache_path.parent / f"{prompt_hash}.json" if cache_path is not None else None
     cached = _read_cache(path)
@@ -3356,15 +3362,21 @@ def _complete_chunk_drs_stage(
             json_schema=schema,
         )
     except LocalModelJSONError as exc:
+        elapsed = round(time.time() - start, 3)
+        payload = {
+            "accepted": False,
+            "reason": "invalid_json",
+            "error": str(exc),
+            "raw_text": exc.raw_text,
+            "raw_snippet": exc.snippet[:4000],
+            "elapsed": elapsed,
+            "prompt_hash": prompt_hash,
+            **constraint,
+        }
+        _write_cache(path, payload)
         return (
-            {
-                "accepted": False,
-                "reason": "invalid_json",
-                "error": str(exc),
-                "raw_text": exc.raw_text,
-                "raw_snippet": exc.snippet[:4000],
-            },
-            round(time.time() - start, 3),
+            payload,
+            elapsed,
             {"prompt_hash": prompt_hash, **constraint},
         )
     except Exception as exc:
@@ -3570,6 +3582,7 @@ def _call_model_chunk_drs_staged(
             "raw_snippet": str(skeleton.get("raw_snippet") or "") if isinstance(skeleton, dict) else "",
             "raw_text": str(skeleton.get("raw_text") or skeleton.get("_model_raw") or "") if isinstance(skeleton, dict) else "",
             "elapsed": skeleton_elapsed,
+            "fresh_or_cached": str(skeleton.get("fresh_or_cached") or "fresh") if isinstance(skeleton, dict) else "fresh",
             **skeleton_constraint,
         }
     referents = skeleton_payload.get("referents")
@@ -3654,6 +3667,9 @@ def _call_model_chunk_drs_staged(
             "raw_snippet": str(condition_stage.get("raw_snippet") or "") if isinstance(condition_stage, dict) else "",
             "raw_text": str(condition_stage.get("raw_text") or condition_stage.get("_model_raw") or "") if isinstance(condition_stage, dict) else "",
             "elapsed": skeleton_elapsed + condition_elapsed,
+            "fresh_or_cached": str(condition_stage.get("fresh_or_cached") or "fresh")
+            if isinstance(condition_stage, dict)
+            else "fresh",
             **condition_constraint,
         }
     conditions = condition_payload.get("conditions")
@@ -3817,6 +3833,7 @@ def chunk_drs_cache_context(client: LocalModelClient | None, *, n_predict: int |
         "monolithic_id_policy": CHUNK_DRS_MONOLITHIC_ID_POLICY,
         "compact_undercoverage_policy": CHUNK_DRS_COMPACT_UNDERCOVERAGE_POLICY,
         "staged_retry_diagnostics_policy": CHUNK_DRS_STAGED_RETRY_DIAGNOSTICS_POLICY,
+        "stage_failure_cache_policy": CHUNK_DRS_STAGE_FAILURE_CACHE_POLICY,
         "staged_skeleton_n_predict": default_staged_chunk_drs_skeleton_n_predict(int(n_predict)),
         "staged_condition_n_predict": default_staged_chunk_drs_condition_n_predict(int(n_predict)),
         "box_completion_n_predict": default_chunk_drs_box_completion_n_predict(int(n_predict)),
@@ -3853,6 +3870,7 @@ def call_model_chunk_drs(
         "monolithic_id_policy": CHUNK_DRS_MONOLITHIC_ID_POLICY,
         "compact_undercoverage_policy": CHUNK_DRS_COMPACT_UNDERCOVERAGE_POLICY,
         "staged_retry_diagnostics_policy": CHUNK_DRS_STAGED_RETRY_DIAGNOSTICS_POLICY,
+        "stage_failure_cache_policy": CHUNK_DRS_STAGE_FAILURE_CACHE_POLICY,
     }
     prompt = build_chunk_drs_prompt(prompt_chunk, rel_path=rel_path, context_budget=context_budget)
     drs_json_schema = chunk_drs_json_schema(
@@ -3887,6 +3905,7 @@ def call_model_chunk_drs(
             "monolithic_id_policy": CHUNK_DRS_MONOLITHIC_ID_POLICY,
             "compact_undercoverage_policy": CHUNK_DRS_COMPACT_UNDERCOVERAGE_POLICY,
             "staged_retry_diagnostics_policy": CHUNK_DRS_STAGED_RETRY_DIAGNOSTICS_POLICY,
+            "stage_failure_cache_policy": CHUNK_DRS_STAGE_FAILURE_CACHE_POLICY,
             "source_span_candidate_count": len(source_span_candidates),
             "staged_skeleton_n_predict": default_staged_chunk_drs_skeleton_n_predict(int(n_predict)),
             "staged_condition_n_predict": default_staged_chunk_drs_condition_n_predict(int(n_predict)),

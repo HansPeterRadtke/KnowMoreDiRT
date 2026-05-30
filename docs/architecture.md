@@ -105,6 +105,8 @@ KMD includes an isolated local model client hook. The default system does not re
 
 The model is never allowed to use outside knowledge or external labels. All accepted output must be JSON, localhost-only, and source-grounded. Model-derived chunk frames are cached under a local cache directory keyed by chunk text and extraction version so repeated initialization does not repeat work. Validation failures that produce no grounded frames, such as invalid JSON, schema rejection, or grounding rejection, are cached as accepted=false empty-frame results; they are retried only when the prompt/schema/model cache key changes, and they are never inserted into the DSPG graph. Bounded model evidence answers use the same discipline for malformed JSON/schema failures while avoiding caches for external request failures.
 
+Chunk DRS staged extraction uses the same cache discipline for non-request JSON failures at each constrained stage: malformed stage output is cached under the stage prompt/schema/model key, while request failures remain uncached so transient endpoint problems can be retried.
+
 ## Provenance
 
 DSPG objects are grounded in exact source spans. Answers at the public boundary are strings, but internal answer records keep evidence objects with relative source path, source text, and score. Future public diagnostic APIs can expose provenance without changing the simple `question(text) -> string` user contract.
