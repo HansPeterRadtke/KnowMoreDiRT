@@ -8,9 +8,11 @@ from knowmoredirt.model_planner import (
     CHUNK_DRS_BOX_COMPLETION_POLICY,
     CHUNK_DRS_GROUNDING_REPAIR_POLICY,
     CHUNK_DRS_SPARSE_RETRY_POLICY,
+    CHUNK_DRS_SKELETON_ID_POLICY,
     CHUNK_DRS_STAGED_FALLBACK_POLICY,
     call_model_chunk_drs,
     chunk_drs_cache_context,
+    chunk_drs_skeleton_json_schema,
     chunk_drs_source_span_candidates,
 )
 
@@ -147,7 +149,10 @@ def test_chunk_drs_staged_fallback_constrains_condition_targets(monkeypatch, tmp
     assert result["validation"]["condition_count"] == 1
     assert result["drs"]["conditions"][0]["arguments"][0]["target_kind"] == "box"
     assert result["context_budget"]["staged_fallback_policy"] == CHUNK_DRS_STAGED_FALLBACK_POLICY
-    assert chunk_drs_cache_context(model, n_predict=384)["staged_fallback_policy"] == CHUNK_DRS_STAGED_FALLBACK_POLICY
+    assert result["context_budget"]["skeleton_id_policy"] == CHUNK_DRS_SKELETON_ID_POLICY
+    cache_context = chunk_drs_cache_context(model, n_predict=384)
+    assert cache_context["staged_fallback_policy"] == CHUNK_DRS_STAGED_FALLBACK_POLICY
+    assert cache_context["skeleton_id_policy"] == CHUNK_DRS_SKELETON_ID_POLICY
     assert model.condition_schema is not None
 
 
@@ -569,6 +574,20 @@ def test_chunk_drs_source_span_candidates_skip_field_headers() -> None:
     assert 'name: "Orchid Gamma"' in spans
     assert 'asset: "OG-7003"' in spans
     assert "ids:" not in spans
+
+
+def test_chunk_drs_skeleton_schema_uses_stable_id_namespaces() -> None:
+    schema = chunk_drs_skeleton_json_schema("note.txt", max_array_items=4)
+    skeleton_schema = schema["properties"]["drs_skeleton"]["properties"]
+    referent_item = skeleton_schema["referents"]["items"]
+    box_item = skeleton_schema["boxes"]["items"]
+    temporal_item = skeleton_schema["temporal_records"]["items"]
+
+    assert referent_item["properties"]["id"]["enum"] == ["r0", "r1", "r2", "r3"]
+    assert box_item["properties"]["id"]["enum"] == ["b0", "b1", "b2", "b3"]
+    assert box_item["properties"]["parent_id"]["enum"] == ["", "b0", "b1", "b2", "b3"]
+    assert box_item["properties"]["holder_referent_id"]["enum"] == ["", "r0", "r1", "r2", "r3"]
+    assert temporal_item["properties"]["id"]["enum"] == ["t0", "t1", "t2", "t3"]
 
 
 def test_chunk_drs_failed_staged_fallback_keeps_stage_diagnostics(monkeypatch, tmp_path) -> None:

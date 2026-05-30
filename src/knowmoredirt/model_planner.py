@@ -66,6 +66,7 @@ CHUNK_DRS_SPARSE_RETRY_POLICY = "retry-validated-sparse-drs-staged-v1"
 CHUNK_DRS_STRUCTURE_VALIDATION_POLICY = "acyclic-box-condition-arguments-v1"
 CHUNK_DRS_BOX_COMPLETION_POLICY = "model-complete-missing-box-declarations-v1"
 CHUNK_DRS_SOURCE_SPAN_POLICY = "condition-stage-delimiter-source-span-enum-v1"
+CHUNK_DRS_SKELETON_ID_POLICY = "stage1-stable-id-enums-v1"
 QUERY_DRS_SCHEMA_VERSION = "query-drs-v3"
 QUERY_DRS_VALIDATION_POLICY = "strict-query-drs-version-question-evidence-repair-v8"
 QUERY_DRS_ARRAY_CAP_POLICY = "reserved_output_tokens_div_96_4_8-v1"
@@ -1010,6 +1011,18 @@ def _schema_array_limited(item: dict[str, Any], max_items: int | None = None) ->
 
 
 def chunk_drs_skeleton_json_schema(source_id: str, max_array_items: int | None = None) -> dict[str, Any]:
+    max_items = max(1, int(max_array_items)) if max_array_items else 8
+    referent_ids = [f"r{index}" for index in range(max_items)]
+    box_ids = [f"b{index}" for index in range(max_items)]
+    temporal_ids = [f"t{index}" for index in range(max_items)]
+    referent_schema = copy.deepcopy(DRS_REFERENT_JSON_SCHEMA)
+    box_schema = copy.deepcopy(DRS_BOX_JSON_SCHEMA)
+    temporal_schema = copy.deepcopy(DRS_TEMPORAL_JSON_SCHEMA)
+    referent_schema["properties"]["id"] = {"type": "string", "enum": referent_ids}
+    box_schema["properties"]["id"] = {"type": "string", "enum": box_ids}
+    box_schema["properties"]["parent_id"] = {"type": "string", "enum": ["", *box_ids]}
+    box_schema["properties"]["holder_referent_id"] = {"type": "string", "enum": ["", *referent_ids]}
+    temporal_schema["properties"]["id"] = {"type": "string", "enum": temporal_ids}
     return _schema_obj(
         ["drs_skeleton"],
         {
@@ -1018,9 +1031,9 @@ def chunk_drs_skeleton_json_schema(source_id: str, max_array_items: int | None =
                 {
                     "schema_version": _schema_enum({CHUNK_DRS_SCHEMA_VERSION}),
                     "source_id": _schema_enum({source_id}),
-                    "referents": _schema_array_limited(copy.deepcopy(DRS_REFERENT_JSON_SCHEMA), max_array_items),
-                    "boxes": _schema_array_limited(copy.deepcopy(DRS_BOX_JSON_SCHEMA), max_array_items),
-                    "temporal_records": _schema_array_limited(copy.deepcopy(DRS_TEMPORAL_JSON_SCHEMA), max_array_items),
+                    "referents": _schema_array_limited(referent_schema, max_array_items),
+                    "boxes": _schema_array_limited(box_schema, max_array_items),
+                    "temporal_records": _schema_array_limited(temporal_schema, max_array_items),
                 },
             )
         },
@@ -2727,6 +2740,7 @@ def build_chunk_drs_skeleton_prompt(chunk_text: str, *, rel_path: str = "", cont
         "JSON only. Stage 1 of source-grounded DRS extraction. Extract only declared discourse referents "
         "DRS boxes, and explicit temporal records from the chunk. Do not emit conditions, identity hypotheses, answers, "
         "outside knowledge, or handler names. Declare one root asserted box with id b0 and parent_id ''. Use "
+        "stable referent ids r0, r1, ...; box ids b0, b1, ...; and temporal ids t0, t1, ... in order. Use "
         "subordinate boxes only for scoped DRS contexts such as reports, quotes, beliefs, negation, conditionals, "
         "uncertainty, dreams, fiction, and modality; subordinate boxes must be distinct from the containing box. "
         "When a scoped context contains embedded proposition content, declare a distinct subordinate box for that "
@@ -3572,6 +3586,7 @@ def _call_model_chunk_drs_staged(
                     "structure_validation_policy": CHUNK_DRS_STRUCTURE_VALIDATION_POLICY,
                     "box_completion_policy": CHUNK_DRS_BOX_COMPLETION_POLICY,
                     "source_span_policy": CHUNK_DRS_SOURCE_SPAN_POLICY,
+                    "skeleton_id_policy": CHUNK_DRS_SKELETON_ID_POLICY,
                     "staged_skeleton_n_predict": skeleton_n_predict,
                     "staged_condition_n_predict": condition_n_predict,
                     "box_completion_n_predict": box_completion["context_budget"]["box_completion_n_predict"],
@@ -3630,6 +3645,7 @@ def _call_model_chunk_drs_staged(
             "structure_validation_policy": CHUNK_DRS_STRUCTURE_VALIDATION_POLICY,
             "box_completion_policy": CHUNK_DRS_BOX_COMPLETION_POLICY,
             "source_span_policy": CHUNK_DRS_SOURCE_SPAN_POLICY,
+            "skeleton_id_policy": CHUNK_DRS_SKELETON_ID_POLICY,
             "staged_skeleton_n_predict": skeleton_n_predict,
             "staged_condition_n_predict": condition_n_predict,
             "box_completion_n_predict": default_chunk_drs_box_completion_n_predict(n_predict),
@@ -3659,6 +3675,7 @@ def chunk_drs_cache_context(client: LocalModelClient | None, *, n_predict: int |
         "structure_validation_policy": CHUNK_DRS_STRUCTURE_VALIDATION_POLICY,
         "box_completion_policy": CHUNK_DRS_BOX_COMPLETION_POLICY,
         "source_span_policy": CHUNK_DRS_SOURCE_SPAN_POLICY,
+        "skeleton_id_policy": CHUNK_DRS_SKELETON_ID_POLICY,
         "staged_skeleton_n_predict": default_staged_chunk_drs_skeleton_n_predict(int(n_predict)),
         "staged_condition_n_predict": default_staged_chunk_drs_condition_n_predict(int(n_predict)),
         "box_completion_n_predict": default_chunk_drs_box_completion_n_predict(int(n_predict)),
@@ -3708,6 +3725,7 @@ def call_model_chunk_drs(
             "structure_validation_policy": CHUNK_DRS_STRUCTURE_VALIDATION_POLICY,
             "box_completion_policy": CHUNK_DRS_BOX_COMPLETION_POLICY,
             "source_span_policy": CHUNK_DRS_SOURCE_SPAN_POLICY,
+            "skeleton_id_policy": CHUNK_DRS_SKELETON_ID_POLICY,
             "staged_skeleton_n_predict": default_staged_chunk_drs_skeleton_n_predict(int(n_predict)),
             "staged_condition_n_predict": default_staged_chunk_drs_condition_n_predict(int(n_predict)),
             "box_completion_n_predict": default_chunk_drs_box_completion_n_predict(int(n_predict)),
