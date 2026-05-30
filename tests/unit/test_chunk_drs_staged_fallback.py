@@ -433,6 +433,8 @@ def test_chunk_drs_staged_fallback_preserves_temporal_records(monkeypatch, tmp_p
                 }
             assert "Stage 2 of source-grounded DRS extraction" in prompt
             self.condition_schema = json_schema
+            assert '"declared_temporal_records": [{"id": "t0"' in prompt
+            assert "set that condition's temporal_id" in prompt
             condition_schema = json_schema["properties"]["condition_stage"]["properties"]["conditions"]["items"]
             assert condition_schema["properties"]["temporal_id"]["enum"] == ["", "t0"]
             return {
@@ -567,7 +569,7 @@ def test_chunk_drs_staged_fallback_repairs_declared_label_evidence(monkeypatch, 
                                     "evidence_text": "asset",
                                 }
                             ],
-                            "evidence_text": 'asset: "OG-7003"',
+                            "evidence_text": 'asset: \\"OG-7003\\"',
                         }
                     ],
                 },
@@ -590,6 +592,7 @@ def test_chunk_drs_staged_fallback_repairs_declared_label_evidence(monkeypatch, 
     assert result["reason"] == "staged_fallback"
     assert result["drs"]["referents"][0]["evidence_text"] == "OG-7003"
     assert result["drs"]["boxes"][0]["evidence_text"] == '{ ids: { asset: "OG-7003" } }'
+    assert result["drs"]["conditions"][0]["evidence_text"] == 'asset: "OG-7003"'
     assert result["drs"]["conditions"][0]["arguments"][1]["target_id"] == ""
     assert result["context_budget"]["grounding_repair_policy"] == CHUNK_DRS_GROUNDING_REPAIR_POLICY
     assert chunk_drs_cache_context(model, n_predict=384)["grounding_repair_policy"] == CHUNK_DRS_GROUNDING_REPAIR_POLICY

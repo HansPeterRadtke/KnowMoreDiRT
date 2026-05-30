@@ -59,9 +59,9 @@ PROMPT_VERSION = "kmd-drt-2026-05-28-v35"
 CHUNK_FRAME_SCHEMA_VERSION = "chunk-frames-v5"
 CHUNK_DRS_SCHEMA_VERSION = "chunk-drs-v2"
 CHUNK_DRS_STAGED_FALLBACK_POLICY = "retry-invalid-json-schema-grounding-staged-temporal-v2"
-CHUNK_DRS_GROUNDING_REPAIR_POLICY = "model-label-value-escaped-evidence-span-v2"
+CHUNK_DRS_GROUNDING_REPAIR_POLICY = "model-label-value-escaped-evidence-span-v3"
 CHUNK_DRS_IDENTITY_PROVENANCE_POLICY = "identity-evidence-bilateral-surface-v1"
-CHUNK_DRS_TEMPORAL_PROVENANCE_POLICY = "condition-referenced-temporal-records-v1"
+CHUNK_DRS_TEMPORAL_PROVENANCE_POLICY = "condition-stage-declared-temporal-records-v2"
 CHUNK_DRS_SPARSE_RETRY_POLICY = "retry-validated-sparse-drs-staged-v1"
 CHUNK_DRS_STRUCTURE_VALIDATION_POLICY = "acyclic-box-condition-arguments-v1"
 QUERY_DRS_SCHEMA_VERSION = "query-drs-v3"
@@ -2661,13 +2661,16 @@ def build_chunk_drs_condition_prompt(
     rel_path: str,
     referents: list[dict[str, Any]],
     boxes: list[dict[str, Any]],
+    temporal_records: list[dict[str, Any]] | None = None,
     context_budget: dict[str, Any] | None = None,
 ) -> str:
     return (
         "JSON only. Stage 2 of source-grounded DRS extraction. Emit conditions using only the declared "
-        "referent and box ids. Do not invent ids; target_id is schema-constrained to declared ids or ''. "
+        "referent, box, and temporal ids. Do not invent ids; target_id is schema-constrained to declared ids or ''. "
         "If an argument is a literal phrase rather than a declared id, set target_id to '' and put the exact "
         "phrase in value and/or evidence_text. Do not emit identity hypotheses or temporal records in this stage. "
+        "When a declared temporal record scopes a condition, set that condition's temporal_id to the declared "
+        "temporal id; otherwise temporal_id must be ''. "
         "A condition must not point a target_kind=box argument at its own box_id; use a distinct declared "
         "subordinate box, a declared condition, or a literal argument. "
         "For compact records, key/value lists, JSON-like objects, TSV/CSV rows, and log entries, emit grounded "
@@ -2681,6 +2684,7 @@ def build_chunk_drs_condition_prompt(
                 "context_budget": context_budget or {},
                 "declared_referents": referents,
                 "declared_boxes": boxes,
+                "declared_temporal_records": temporal_records or [],
                 "required_top_shape": {
                     "condition_stage": {
                         "schema_version": CHUNK_DRS_SCHEMA_VERSION,
@@ -2872,6 +2876,7 @@ def _validate_chunk_drs_payload(payload: Any, source_text: str) -> dict[str, Any
         "box_count": len(boxes),
         "condition_count": len(conditions),
         "identity_hypothesis_count": len(identities),
+        "temporal_record_count": len(temporals),
     }
 
 
@@ -3167,6 +3172,7 @@ def _call_model_chunk_drs_staged(
         rel_path=rel_path,
         referents=referents,
         boxes=boxes,
+        temporal_records=temporals,
         context_budget=context_budget,
     )
     condition_schema = chunk_drs_condition_json_schema(
@@ -3208,7 +3214,7 @@ def _call_model_chunk_drs_staged(
             "temporal_records": temporals,
         }
     }
-    merged = _repair_chunk_drs_payload(merged)
+    merged = _repair_chunk_drs_payload(merged, prompt_chunk)
     validation = _validate_chunk_drs_payload(merged, prompt_chunk)
     elapsed = skeleton_elapsed + condition_elapsed
     if not validation.get("schema_valid"):
