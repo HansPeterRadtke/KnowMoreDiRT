@@ -11,6 +11,7 @@ from knowmoredirt.model_planner import (
     CHUNK_DRS_MONOLITHIC_ID_POLICY,
     CHUNK_DRS_SPARSE_RETRY_POLICY,
     CHUNK_DRS_SKELETON_ID_POLICY,
+    CHUNK_DRS_SKELETON_SOURCE_SPAN_POLICY,
     CHUNK_DRS_SOURCE_SPAN_POLICY,
     CHUNK_DRS_STAGED_FALLBACK_POLICY,
     CHUNK_DRS_STAGED_RETRY_DIAGNOSTICS_POLICY,
@@ -24,6 +25,7 @@ from knowmoredirt.model_planner import (
 def test_chunk_drs_staged_fallback_constrains_condition_targets(monkeypatch, tmp_path) -> None:
     class StagedFallbackModel:
         def __init__(self) -> None:
+            self.skeleton_schema: dict[str, Any] | None = None
             self.condition_schema: dict[str, Any] | None = None
 
         def context_size(self) -> int:
@@ -77,6 +79,17 @@ def test_chunk_drs_staged_fallback_constrains_condition_targets(monkeypatch, tmp
                 }
             if "Stage 1 of source-grounded DRS extraction" in prompt:
                 assert "declare a distinct subordinate box" in prompt
+                assert "source_span_candidates" in prompt
+                self.skeleton_schema = json_schema
+                skeleton_schema = json_schema["properties"]["drs_skeleton"]["properties"]
+                assert skeleton_schema["referents"]["items"]["properties"]["evidence_text"]["enum"] == [
+                    "",
+                    "Aero Gate is ready.",
+                ]
+                assert skeleton_schema["boxes"]["items"]["properties"]["evidence_text"]["enum"] == [
+                    "",
+                    "Aero Gate is ready.",
+                ]
                 return {
                     "drs_skeleton": {
                         "schema_version": "chunk-drs-v2",
@@ -154,9 +167,12 @@ def test_chunk_drs_staged_fallback_constrains_condition_targets(monkeypatch, tmp
     assert result["drs"]["conditions"][0]["arguments"][0]["target_kind"] == "box"
     assert result["context_budget"]["staged_fallback_policy"] == CHUNK_DRS_STAGED_FALLBACK_POLICY
     assert result["context_budget"]["skeleton_id_policy"] == CHUNK_DRS_SKELETON_ID_POLICY
+    assert result["context_budget"]["skeleton_source_span_policy"] == CHUNK_DRS_SKELETON_SOURCE_SPAN_POLICY
     cache_context = chunk_drs_cache_context(model, n_predict=384)
     assert cache_context["staged_fallback_policy"] == CHUNK_DRS_STAGED_FALLBACK_POLICY
     assert cache_context["skeleton_id_policy"] == CHUNK_DRS_SKELETON_ID_POLICY
+    assert cache_context["skeleton_source_span_policy"] == CHUNK_DRS_SKELETON_SOURCE_SPAN_POLICY
+    assert model.skeleton_schema is not None
     assert model.condition_schema is not None
 
 
