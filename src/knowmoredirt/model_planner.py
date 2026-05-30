@@ -3981,6 +3981,7 @@ def call_model_chunk_drs(
         _write_cache(cache_path, payload)
         return payload
     staged_retry_reason = _chunk_drs_staged_retry_reason(validation, prompt_chunk, context_budget)
+    staged_retry_summary: dict[str, Any] | None = None
     if _staged_chunk_drs_enabled() and staged_retry_reason:
         fallback = _call_model_chunk_drs_staged(
             prompt_chunk,
@@ -3997,6 +3998,15 @@ def call_model_chunk_drs(
             payload = {**fallback, "fallback_from_reason": staged_retry_reason, "monolithic_prompt_hash": prompt_hash}
             _write_cache(cache_path, payload)
             return payload
+        staged_retry_summary = _staged_fallback_failure_summary(fallback)
+        staged_retry_summary.update(
+            {
+                "accepted": bool(fallback.get("accepted")),
+                "fallback_from_reason": staged_retry_reason,
+                "monolithic_condition_count": _validation_count(validation, "condition_count"),
+                "fallback_condition_count": _validation_count(fallback_validation, "condition_count"),
+            }
+        )
     payload = {
         "accepted": True,
         "drs": parsed["drs"],
@@ -4009,6 +4019,8 @@ def call_model_chunk_drs(
         "output_hash": hashlib.sha256(raw.encode()).hexdigest(),
         "fresh_or_cached": "fresh",
     }
+    if staged_retry_summary:
+        payload["staged_retry"] = staged_retry_summary
     _write_cache(cache_path, payload)
     return payload
 
