@@ -8,6 +8,7 @@ against source grounding before it can leave the engine.
 
 from __future__ import annotations
 
+import copy
 import hashlib
 import json
 import os
@@ -16,7 +17,7 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import Any
 
-from .model import LocalModelClient
+from .model import LocalModelClient, LocalModelJSONError
 from .extractors import identifiers, urls
 from .query import QueryFrame, frame_from_mapping, visible_anchors
 from .text import content_tokens, normalize
@@ -886,6 +887,89 @@ def chunk_drs_array_max_items(n_predict: int | None = None) -> int | None:
     if not n_predict:
         return None
     return max(4, min(10, int(n_predict) // 96))
+
+
+def _staged_chunk_drs_enabled() -> bool:
+    return os.environ.get("KMD_CHUNK_DRS_STAGED_FALLBACK", "1").strip().lower() not in {
+        "0",
+        "false",
+        "no",
+        "off",
+    }
+
+
+def default_staged_chunk_drs_skeleton_n_predict(n_predict: int) -> int:
+    configured = os.environ.get("KMD_CHUNK_DRS_STAGED_SKELETON_N_PREDICT")
+    if configured:
+        try:
+            return max(1, int(configured))
+        except ValueError:
+            pass
+    return max(192, min(int(n_predict), 384))
+
+
+def default_staged_chunk_drs_condition_n_predict(n_predict: int) -> int:
+    configured = os.environ.get("KMD_CHUNK_DRS_STAGED_CONDITION_N_PREDICT")
+    if configured:
+        try:
+            return max(1, int(configured))
+        except ValueError:
+            pass
+    return max(int(n_predict), 768)
+
+
+def _schema_array_limited(item: dict[str, Any], max_items: int | None = None) -> dict[str, Any]:
+    schema = _schema_array(item)
+    if max_items:
+        schema["maxItems"] = max(1, int(max_items))
+    return schema
+
+
+def chunk_drs_skeleton_json_schema(source_id: str, max_array_items: int | None = None) -> dict[str, Any]:
+    return _schema_obj(
+        ["drs_skeleton"],
+        {
+            "drs_skeleton": _schema_obj(
+                ["schema_version", "source_id", "referents", "boxes"],
+                {
+                    "schema_version": _schema_enum({CHUNK_DRS_SCHEMA_VERSION}),
+                    "source_id": _schema_enum({source_id}),
+                    "referents": _schema_array_limited(copy.deepcopy(DRS_REFERENT_JSON_SCHEMA), max_array_items),
+                    "boxes": _schema_array_limited(copy.deepcopy(DRS_BOX_JSON_SCHEMA), max_array_items),
+                },
+            )
+        },
+    )
+
+
+def chunk_drs_condition_json_schema(
+    *,
+    source_id: str,
+    box_ids: list[str],
+    referent_ids: list[str],
+    max_conditions: int | None = None,
+    max_arguments: int | None = None,
+) -> dict[str, Any]:
+    condition_schema = copy.deepcopy(DRS_CONDITION_JSON_SCHEMA)
+    argument_schema = copy.deepcopy(DRS_ARGUMENT_JSON_SCHEMA)
+    allowed_targets = sorted(set(["", *box_ids, *referent_ids]))
+    argument_schema["properties"]["target_id"] = {"type": "string", "enum": allowed_targets}
+    condition_schema["properties"]["box_id"] = {"type": "string", "enum": box_ids or [""]}
+    condition_schema["properties"]["temporal_id"] = {"type": "string", "enum": [""]}
+    condition_schema["properties"]["arguments"] = _schema_array_limited(argument_schema, max_arguments)
+    return _schema_obj(
+        ["condition_stage"],
+        {
+            "condition_stage": _schema_obj(
+                ["schema_version", "source_id", "conditions"],
+                {
+                    "schema_version": _schema_enum({CHUNK_DRS_SCHEMA_VERSION}),
+                    "source_id": _schema_enum({source_id}),
+                    "conditions": _schema_array_limited(condition_schema, max_conditions),
+                },
+            )
+        },
+    )
 
 
 QUERY_DRS_JSON_SCHEMA = _schema_obj(
@@ -2245,6 +2329,69 @@ def build_chunk_drs_prompt(chunk_text: str, *, rel_path: str = "", context_budge
     )
 
 
+def build_chunk_drs_skeleton_prompt(chunk_text: str, *, rel_path: str = "", context_budget: dict[str, Any] | None = None) -> str:
+    return (
+        "JSON only. Stage 1 of source-grounded DRS extraction. Extract only declared discourse referents "
+        "and DRS boxes from the chunk. Do not emit conditions, identity hypotheses, temporal records, answers, "
+        "outside knowledge, or handler names. Declare one root asserted box with id b0 and parent_id ''. Use "
+        "subordinate boxes only for scoped DRS contexts such as reports, quotes, beliefs, negation, conditionals, "
+        "uncertainty, dreams, fiction, and modality. Every evidence_text item must be one contiguous substring "
+        "copied exactly from the chunk."
+        + json.dumps(
+            {
+                "source_id": rel_path,
+                "schema_version": CHUNK_DRS_SCHEMA_VERSION,
+                "context_budget": context_budget or {},
+                "required_top_shape": {
+                    "drs_skeleton": {
+                        "schema_version": CHUNK_DRS_SCHEMA_VERSION,
+                        "source_id": rel_path,
+                        "referents": [],
+                        "boxes": [],
+                    }
+                },
+                "chunk": chunk_text,
+            },
+            ensure_ascii=False,
+        )
+    )
+
+
+def build_chunk_drs_condition_prompt(
+    chunk_text: str,
+    *,
+    rel_path: str,
+    referents: list[dict[str, Any]],
+    boxes: list[dict[str, Any]],
+    context_budget: dict[str, Any] | None = None,
+) -> str:
+    return (
+        "JSON only. Stage 2 of source-grounded DRS extraction. Emit conditions using only the declared "
+        "referent and box ids. Do not invent ids; target_id is schema-constrained to declared ids or ''. "
+        "If an argument is a literal phrase rather than a declared id, set target_id to '' and put the exact "
+        "phrase in value and/or evidence_text. Do not emit identity hypotheses or temporal records in this stage. "
+        "Every evidence_text item must be one contiguous substring copied exactly from the chunk."
+        + json.dumps(
+            {
+                "source_id": rel_path,
+                "schema_version": CHUNK_DRS_SCHEMA_VERSION,
+                "context_budget": context_budget or {},
+                "declared_referents": referents,
+                "declared_boxes": boxes,
+                "required_top_shape": {
+                    "condition_stage": {
+                        "schema_version": CHUNK_DRS_SCHEMA_VERSION,
+                        "source_id": rel_path,
+                        "conditions": [],
+                    }
+                },
+                "chunk": chunk_text,
+            },
+            ensure_ascii=False,
+        )
+    )
+
+
 def _context_limited_chunk_drs_text(
     chunk_text: str,
     client: LocalModelClient,
@@ -2422,18 +2569,31 @@ def _repair_chunk_drs_payload(payload: Any) -> Any:
         return payload
     drs = {**payload["drs"]}
     referents = drs.get("referents")
+    boxes = drs.get("boxes")
     conditions = drs.get("conditions")
-    if not isinstance(referents, list) or not isinstance(conditions, list):
+    if not isinstance(referents, list) or not isinstance(boxes, list) or not isinstance(conditions, list):
         return payload
     repaired_referents = [item for item in referents if isinstance(item, dict)]
     referent_ids = {str(item.get("id") or "") for item in repaired_referents}
+    box_ids = {str(item.get("id") or "") for item in boxes if isinstance(item, dict) and str(item.get("id") or "")}
+    namespace_repaired = False
     for condition in conditions:
         if not isinstance(condition, dict) or not isinstance(condition.get("arguments"), list):
             continue
         for argument in condition["arguments"]:
-            if not isinstance(argument, dict) or str(argument.get("target_kind") or "") != "referent":
+            if not isinstance(argument, dict):
                 continue
             target_id = str(argument.get("target_id") or "").strip()
+            target_kind = str(argument.get("target_kind") or "").strip()
+            if target_id in box_ids and target_kind != "box":
+                argument["target_kind"] = "box"
+                namespace_repaired = True
+                continue
+            if target_id in referent_ids and target_kind != "referent":
+                argument["target_kind"] = "referent"
+                namespace_repaired = True
+            if str(argument.get("target_kind") or "") != "referent":
+                continue
             value = str(argument.get("value") or "").strip()
             evidence_text = str(argument.get("evidence_text") or "").strip()
             if not target_id or target_id in referent_ids or not value:
@@ -2462,10 +2622,214 @@ def _repair_chunk_drs_payload(payload: Any) -> Any:
         ]
         if len(repaired_identities) != len(identities):
             drs["identity_hypotheses"] = repaired_identities
-    if len(repaired_referents) == len(referents) and repaired_identities is identities:
+    if len(repaired_referents) == len(referents) and repaired_identities is identities and not namespace_repaired:
         return payload
     drs["referents"] = repaired_referents
     return {**payload, "drs": drs}
+
+
+def _drs_exact_span_failures(items: list[dict[str, Any]], source_text: str, prefix: str) -> list[str]:
+    failures: list[str] = []
+    for item in items:
+        span = str(item.get("evidence_text") or "").strip()
+        item_id = str(item.get("id") or item.get("role") or "")
+        if span and span not in source_text:
+            failures.append(f"{prefix}:{item_id}:{span[:100]}")
+    return failures
+
+
+def _complete_chunk_drs_stage(
+    client: LocalModelClient,
+    cache_path: Path | None,
+    prompt: str,
+    schema: dict[str, Any],
+    *,
+    stage: str,
+    n_predict: int,
+) -> tuple[dict[str, Any], float, dict[str, Any]]:
+    constraint = _constraint_settings(CHUNK_DRS_GRAMMAR, schema, CHUNK_DRS_SCHEMA_VERSION)
+    prompt_hash = _cache_hash(
+        stage,
+        prompt,
+        client,
+        {"n_predict": n_predict, "schema": CHUNK_DRS_SCHEMA_VERSION, **constraint},
+    )
+    path = cache_path.parent / f"{prompt_hash}.json" if cache_path is not None else None
+    cached = _read_cache(path)
+    if cached is not None and cached.get("reason") != "request_failed":
+        return cached, 0.0, {"prompt_hash": prompt_hash, **constraint}
+    start = time.time()
+    try:
+        parsed = _complete_structured(
+            client,
+            prompt,
+            n_predict=n_predict,
+            grammar=CHUNK_DRS_GRAMMAR,
+            json_schema=schema,
+        )
+    except LocalModelJSONError as exc:
+        return (
+            {
+                "accepted": False,
+                "reason": "invalid_json",
+                "error": str(exc),
+                "raw_text": exc.raw_text,
+                "raw_snippet": exc.snippet[:4000],
+            },
+            round(time.time() - start, 3),
+            {"prompt_hash": prompt_hash, **constraint},
+        )
+    except Exception as exc:
+        return (
+            {"accepted": False, "reason": "request_failed", "error": str(exc), "raw_text": ""},
+            round(time.time() - start, 3),
+            {"prompt_hash": prompt_hash, **constraint},
+        )
+    elapsed = parsed.get("_model_elapsed_seconds", round(time.time() - start, 3))
+    _write_cache(path, parsed)
+    return parsed, float(elapsed), {"prompt_hash": prompt_hash, **constraint}
+
+
+def _call_model_chunk_drs_staged(
+    prompt_chunk: str,
+    client: LocalModelClient,
+    *,
+    rel_path: str,
+    n_predict: int,
+    context_budget: dict[str, Any],
+    cache_path: Path | None,
+) -> dict[str, Any]:
+    skeleton_n_predict = default_staged_chunk_drs_skeleton_n_predict(n_predict)
+    condition_n_predict = default_staged_chunk_drs_condition_n_predict(n_predict)
+    max_items = context_budget.get("max_array_items") or chunk_drs_array_max_items(n_predict)
+    skeleton_prompt = build_chunk_drs_skeleton_prompt(prompt_chunk, rel_path=rel_path, context_budget=context_budget)
+    skeleton_schema = chunk_drs_skeleton_json_schema(rel_path, max_items)
+    skeleton, skeleton_elapsed, skeleton_constraint = _complete_chunk_drs_stage(
+        client,
+        cache_path,
+        skeleton_prompt,
+        skeleton_schema,
+        stage="chunk_drs_skeleton",
+        n_predict=skeleton_n_predict,
+    )
+    skeleton_payload = skeleton.get("drs_skeleton") if isinstance(skeleton, dict) else None
+    if not isinstance(skeleton_payload, dict):
+        return {
+            "accepted": False,
+            "reason": str(skeleton.get("reason") or "schema_validation_failed") if isinstance(skeleton, dict) else "schema_validation_failed",
+            "stage": "skeleton",
+            "raw_text": str(skeleton.get("raw_text") or skeleton.get("_model_raw") or "") if isinstance(skeleton, dict) else "",
+            "elapsed": skeleton_elapsed,
+            **skeleton_constraint,
+        }
+    referents = skeleton_payload.get("referents")
+    boxes = skeleton_payload.get("boxes")
+    referents = [item for item in referents if isinstance(item, dict)] if isinstance(referents, list) else []
+    boxes = [item for item in boxes if isinstance(item, dict)] if isinstance(boxes, list) else []
+    skeleton_span_failures = _drs_exact_span_failures(referents, prompt_chunk, "referent") + _drs_exact_span_failures(boxes, prompt_chunk, "box")
+    if skeleton_span_failures:
+        return {
+            "accepted": False,
+            "reason": "grounding_validation_failed",
+            "stage": "skeleton",
+            "grounding_failures": skeleton_span_failures[:50],
+            "elapsed": skeleton_elapsed,
+            **skeleton_constraint,
+        }
+    box_ids = [str(item.get("id") or "") for item in boxes if str(item.get("id") or "")]
+    referent_ids = [str(item.get("id") or "") for item in referents if str(item.get("id") or "")]
+    condition_prompt = build_chunk_drs_condition_prompt(
+        prompt_chunk,
+        rel_path=rel_path,
+        referents=referents,
+        boxes=boxes,
+        context_budget=context_budget,
+    )
+    condition_schema = chunk_drs_condition_json_schema(
+        source_id=rel_path,
+        box_ids=box_ids,
+        referent_ids=referent_ids,
+        max_conditions=max_items,
+        max_arguments=max_items,
+    )
+    condition_stage, condition_elapsed, condition_constraint = _complete_chunk_drs_stage(
+        client,
+        cache_path,
+        condition_prompt,
+        condition_schema,
+        stage="chunk_drs_conditions",
+        n_predict=condition_n_predict,
+    )
+    condition_payload = condition_stage.get("condition_stage") if isinstance(condition_stage, dict) else None
+    if not isinstance(condition_payload, dict):
+        return {
+            "accepted": False,
+            "reason": str(condition_stage.get("reason") or "schema_validation_failed") if isinstance(condition_stage, dict) else "schema_validation_failed",
+            "stage": "conditions",
+            "raw_text": str(condition_stage.get("raw_text") or condition_stage.get("_model_raw") or "") if isinstance(condition_stage, dict) else "",
+            "elapsed": skeleton_elapsed + condition_elapsed,
+            **condition_constraint,
+        }
+    conditions = condition_payload.get("conditions")
+    conditions = [item for item in conditions if isinstance(item, dict)] if isinstance(conditions, list) else []
+    merged = {
+        "drs": {
+            "schema_version": CHUNK_DRS_SCHEMA_VERSION,
+            "source_id": rel_path,
+            "referents": referents,
+            "boxes": boxes,
+            "conditions": conditions,
+            "identity_hypotheses": [],
+            "temporal_records": [],
+        }
+    }
+    merged = _repair_chunk_drs_payload(merged)
+    validation = _validate_chunk_drs_payload(merged, prompt_chunk)
+    elapsed = skeleton_elapsed + condition_elapsed
+    if not validation.get("schema_valid"):
+        reason = "grounding_validation_failed" if validation.get("grounding_failure_count") else "schema_validation_failed"
+        return {
+            "accepted": False,
+            "reason": reason,
+            "stage": "merged",
+            "validation": validation,
+            "elapsed": elapsed,
+            **condition_constraint,
+        }
+    raw = json.dumps(
+        {
+            "skeleton": skeleton.get("_model_raw") if isinstance(skeleton, dict) else "",
+            "conditions": condition_stage.get("_model_raw") if isinstance(condition_stage, dict) else "",
+        },
+        sort_keys=True,
+    )
+    staged_prompt_hash = hashlib.sha256(
+        json.dumps(
+            {
+                "skeleton_prompt_hash": skeleton_constraint.get("prompt_hash"),
+                "condition_prompt_hash": condition_constraint.get("prompt_hash"),
+            },
+            sort_keys=True,
+        ).encode()
+    ).hexdigest()
+    return {
+        "accepted": True,
+        "reason": "staged_fallback",
+        "drs": merged["drs"],
+        "raw_text": raw,
+        "elapsed": elapsed,
+        "prompt_hash": staged_prompt_hash,
+        "constraint_mode": condition_constraint.get("constraint_mode"),
+        "validation": validation,
+        "context_budget": {
+            **context_budget,
+            "staged_skeleton_n_predict": skeleton_n_predict,
+            "staged_condition_n_predict": condition_n_predict,
+        },
+        "output_hash": hashlib.sha256(raw.encode()).hexdigest(),
+        "fresh_or_cached": "fresh",
+        "staged": True,
+    }
 
 
 def chunk_drs_cache_context(client: LocalModelClient | None, *, n_predict: int | None = None) -> dict[str, Any]:
@@ -2478,6 +2842,9 @@ def chunk_drs_cache_context(client: LocalModelClient | None, *, n_predict: int |
         "schema_version": CHUNK_DRS_SCHEMA_VERSION,
         "evidence_cap_policy": "min_chunk_or_reserved_output_quarter_96_256",
         "array_cap_policy": "reserved_output_tokens_div_96_4_10",
+        "staged_fallback": _staged_chunk_drs_enabled(),
+        "staged_skeleton_n_predict": default_staged_chunk_drs_skeleton_n_predict(int(n_predict)),
+        "staged_condition_n_predict": default_staged_chunk_drs_condition_n_predict(int(n_predict)),
         **constraint,
         "n_predict": int(n_predict),
         "model_fingerprint": _client_fingerprint(client),
@@ -2515,11 +2882,14 @@ def call_model_chunk_drs(
             "schema": CHUNK_DRS_SCHEMA_VERSION,
             **constraint,
             "context_budget": context_budget,
+            "staged_fallback": _staged_chunk_drs_enabled(),
+            "staged_skeleton_n_predict": default_staged_chunk_drs_skeleton_n_predict(int(n_predict)),
+            "staged_condition_n_predict": default_staged_chunk_drs_condition_n_predict(int(n_predict)),
         },
     )
     cache_path = _cache_path("KMD_CHUNK_DRS_CACHE_DIR", prompt_hash)
     cached = _read_cache(cache_path)
-    if cached is not None:
+    if cached is not None and cached.get("reason") != "request_failed":
         return cached
     start = time.time()
     try:
@@ -2530,6 +2900,38 @@ def call_model_chunk_drs(
             grammar=CHUNK_DRS_GRAMMAR,
             json_schema=drs_json_schema,
         )
+    except LocalModelJSONError as exc:
+        payload = {
+            "accepted": False,
+            "reason": "invalid_json",
+            "error": str(exc),
+            "raw_text": exc.raw_text,
+            "raw_snippet": exc.snippet[:4000],
+            "prompt_hash": prompt_hash,
+            **constraint,
+            "elapsed": round(time.time() - start, 3),
+            "context_budget": context_budget,
+        }
+        if _staged_chunk_drs_enabled():
+            fallback = _call_model_chunk_drs_staged(
+                prompt_chunk,
+                client,
+                rel_path=rel_path,
+                n_predict=n_predict,
+                context_budget=context_budget,
+                cache_path=cache_path,
+            )
+            if fallback.get("accepted"):
+                payload = {**fallback, "fallback_from_reason": "invalid_json", "monolithic_prompt_hash": prompt_hash}
+                _write_cache(cache_path, payload)
+                return payload
+            payload["staged_fallback"] = {
+                "accepted": False,
+                "reason": fallback.get("reason"),
+                "stage": fallback.get("stage"),
+            }
+        _write_cache(cache_path, payload)
+        return payload
     except Exception as exc:
         raw_text = str(getattr(exc, "raw_text", "") or "")
         payload = {
@@ -2542,7 +2944,6 @@ def call_model_chunk_drs(
             **constraint,
             "elapsed": round(time.time() - start, 3),
         }
-        _write_cache(cache_path, payload)
         return payload
     raw = str(parsed.get("_model_raw") or "") if isinstance(parsed, dict) else ""
     parsed = _repair_chunk_drs_payload(parsed)
@@ -2559,6 +2960,24 @@ def call_model_chunk_drs(
             "validation": validation,
             "context_budget": context_budget,
         }
+        if reason == "schema_validation_failed" and _staged_chunk_drs_enabled():
+            fallback = _call_model_chunk_drs_staged(
+                prompt_chunk,
+                client,
+                rel_path=rel_path,
+                n_predict=n_predict,
+                context_budget=context_budget,
+                cache_path=cache_path,
+            )
+            if fallback.get("accepted"):
+                payload = {**fallback, "fallback_from_reason": reason, "monolithic_prompt_hash": prompt_hash}
+                _write_cache(cache_path, payload)
+                return payload
+            payload["staged_fallback"] = {
+                "accepted": False,
+                "reason": fallback.get("reason"),
+                "stage": fallback.get("stage"),
+            }
         _write_cache(cache_path, payload)
         return payload
     if validation.get("grounding_failure_count"):
