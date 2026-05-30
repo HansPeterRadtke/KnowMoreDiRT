@@ -68,6 +68,7 @@ CHUNK_DRS_BOX_COMPLETION_POLICY = "model-complete-missing-box-declarations-v1"
 CHUNK_DRS_SOURCE_SPAN_POLICY = "chunk-drs-delimiter-source-span-enum-v2"
 CHUNK_DRS_SKELETON_ID_POLICY = "stage1-stable-id-enums-v1"
 CHUNK_DRS_MONOLITHIC_ID_POLICY = "monolithic-stable-id-enums-v1"
+CHUNK_DRS_COMPACT_UNDERCOVERAGE_POLICY = "retry-delimiter-rich-low-condition-density-v1"
 QUERY_DRS_SCHEMA_VERSION = "query-drs-v3"
 QUERY_DRS_VALIDATION_POLICY = "strict-query-drs-version-question-evidence-repair-v8"
 QUERY_DRS_ARRAY_CAP_POLICY = "reserved_output_tokens_div_96_4_8-v1"
@@ -989,6 +990,34 @@ def _chunk_drs_structurally_sparse(validation: dict[str, Any]) -> bool:
     referent_count = _validation_count(validation, "referent_count")
     box_count = _validation_count(validation, "box_count")
     return condition_count == 0 and box_count > 0 and referent_count > 0
+
+
+def _chunk_drs_structural_condition_floor(source_text: str, max_evidence_chars: int | None = None) -> int:
+    field_like_spans = []
+    source_surface = source_text.strip()
+    for span in chunk_drs_source_span_candidates(source_text, max_evidence_chars):
+        if not span or span == source_surface:
+            continue
+        if (":" in span or "=" in span) and not span.endswith(":"):
+            field_like_spans.append(span)
+    return len(field_like_spans)
+
+
+def _chunk_drs_staged_retry_reason(
+    validation: dict[str, Any],
+    source_text: str = "",
+    context_budget: dict[str, Any] | None = None,
+) -> str:
+    if _chunk_drs_structurally_sparse(validation):
+        return "structural_sparsity"
+    condition_count = _validation_count(validation, "condition_count")
+    field_like_span_count = _chunk_drs_structural_condition_floor(
+        source_text,
+        (context_budget or {}).get("max_evidence_chars"),
+    )
+    if field_like_span_count >= 3 and condition_count < 2:
+        return "structural_undercoverage"
+    return ""
 
 
 def chunk_drs_source_span_candidates(
@@ -3753,6 +3782,7 @@ def chunk_drs_cache_context(client: LocalModelClient | None, *, n_predict: int |
         "source_span_policy": CHUNK_DRS_SOURCE_SPAN_POLICY,
         "skeleton_id_policy": CHUNK_DRS_SKELETON_ID_POLICY,
         "monolithic_id_policy": CHUNK_DRS_MONOLITHIC_ID_POLICY,
+        "compact_undercoverage_policy": CHUNK_DRS_COMPACT_UNDERCOVERAGE_POLICY,
         "staged_skeleton_n_predict": default_staged_chunk_drs_skeleton_n_predict(int(n_predict)),
         "staged_condition_n_predict": default_staged_chunk_drs_condition_n_predict(int(n_predict)),
         "box_completion_n_predict": default_chunk_drs_box_completion_n_predict(int(n_predict)),
@@ -3786,6 +3816,7 @@ def call_model_chunk_drs(
         "source_span_policy": CHUNK_DRS_SOURCE_SPAN_POLICY,
         "source_span_candidate_count": len(source_span_candidates),
         "monolithic_id_policy": CHUNK_DRS_MONOLITHIC_ID_POLICY,
+        "compact_undercoverage_policy": CHUNK_DRS_COMPACT_UNDERCOVERAGE_POLICY,
     }
     prompt = build_chunk_drs_prompt(prompt_chunk, rel_path=rel_path, context_budget=context_budget)
     drs_json_schema = chunk_drs_json_schema(
@@ -3817,6 +3848,7 @@ def call_model_chunk_drs(
             "source_span_policy": CHUNK_DRS_SOURCE_SPAN_POLICY,
             "skeleton_id_policy": CHUNK_DRS_SKELETON_ID_POLICY,
             "monolithic_id_policy": CHUNK_DRS_MONOLITHIC_ID_POLICY,
+            "compact_undercoverage_policy": CHUNK_DRS_COMPACT_UNDERCOVERAGE_POLICY,
             "source_span_candidate_count": len(source_span_candidates),
             "staged_skeleton_n_predict": default_staged_chunk_drs_skeleton_n_predict(int(n_predict)),
             "staged_condition_n_predict": default_staged_chunk_drs_condition_n_predict(int(n_predict)),
@@ -3948,7 +3980,8 @@ def call_model_chunk_drs(
         }
         _write_cache(cache_path, payload)
         return payload
-    if _staged_chunk_drs_enabled() and _chunk_drs_structurally_sparse(validation):
+    staged_retry_reason = _chunk_drs_staged_retry_reason(validation, prompt_chunk, context_budget)
+    if _staged_chunk_drs_enabled() and staged_retry_reason:
         fallback = _call_model_chunk_drs_staged(
             prompt_chunk,
             client,
@@ -3961,7 +3994,7 @@ def call_model_chunk_drs(
         if fallback.get("accepted") and _validation_count(fallback_validation, "condition_count") > _validation_count(
             validation, "condition_count"
         ):
-            payload = {**fallback, "fallback_from_reason": "structural_sparsity", "monolithic_prompt_hash": prompt_hash}
+            payload = {**fallback, "fallback_from_reason": staged_retry_reason, "monolithic_prompt_hash": prompt_hash}
             _write_cache(cache_path, payload)
             return payload
     payload = {

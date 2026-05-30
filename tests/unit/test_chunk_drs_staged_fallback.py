@@ -6,6 +6,7 @@ from typing import Any
 from knowmoredirt.model import LocalModelJSONError
 from knowmoredirt.model_planner import (
     CHUNK_DRS_BOX_COMPLETION_POLICY,
+    CHUNK_DRS_COMPACT_UNDERCOVERAGE_POLICY,
     CHUNK_DRS_GROUNDING_REPAIR_POLICY,
     CHUNK_DRS_MONOLITHIC_ID_POLICY,
     CHUNK_DRS_SPARSE_RETRY_POLICY,
@@ -566,6 +567,160 @@ def test_chunk_drs_staged_fallback_runs_for_structurally_sparse_drs(monkeypatch,
     assert cache_context["sparse_retry_policy"] == CHUNK_DRS_SPARSE_RETRY_POLICY
 
 
+def test_chunk_drs_staged_fallback_runs_for_compact_record_undercoverage(monkeypatch, tmp_path) -> None:
+    class CompactUndercoverageModel:
+        def context_size(self) -> int:
+            return 8192
+
+        def cache_fingerprint(self) -> dict[str, Any]:
+            return {"model_id": "fake-compact-undercoverage-drs", "context_size": 8192}
+
+        def complete_json(
+            self,
+            prompt: str,
+            *,
+            n_predict: int = 128,
+            grammar: str | None = None,
+            json_schema: dict[str, Any] | None = None,
+        ) -> dict[str, object]:
+            if "one source-grounded DRS object" in prompt:
+                assert "JSON schema constrains condition and argument evidence_text" in prompt
+                return {
+                    "drs": {
+                        "schema_version": "chunk-drs-v2",
+                        "source_id": "records.txt",
+                        "referents": [
+                            {"id": "r0", "label": "Aster Ridge", "kind": "asset", "evidence_text": "Aster Ridge"}
+                        ],
+                        "boxes": [
+                            {
+                                "id": "b0",
+                                "kind": "asserted",
+                                "parent_id": "",
+                                "holder_referent_id": "r0",
+                                "evidence_text": "record: Aster Ridge | steward: Lina Sol | state: active",
+                            }
+                        ],
+                        "conditions": [
+                            {
+                                "id": "c0",
+                                "predicate": "state",
+                                "box_id": "b0",
+                                "polarity": "positive",
+                                "modality": "asserted",
+                                "temporal_id": "",
+                                "arguments": [
+                                    {
+                                        "role": "value",
+                                        "target_kind": "literal",
+                                        "target_id": "",
+                                        "value": "active",
+                                        "value_type": "state",
+                                        "evidence_text": "state: active",
+                                    }
+                                ],
+                                "evidence_text": "state: active",
+                            }
+                        ],
+                        "identity_hypotheses": [],
+                        "temporal_records": [],
+                    },
+                    "_model_raw": "{}",
+                    "_model_elapsed_seconds": 0.01,
+                }
+            if "Stage 1 of source-grounded DRS extraction" in prompt:
+                return {
+                    "drs_skeleton": {
+                        "schema_version": "chunk-drs-v2",
+                        "source_id": "records.txt",
+                        "referents": [
+                            {"id": "r0", "label": "Aster Ridge", "kind": "asset", "evidence_text": "Aster Ridge"}
+                        ],
+                        "boxes": [
+                            {
+                                "id": "b0",
+                                "kind": "asserted",
+                                "parent_id": "",
+                                "holder_referent_id": "r0",
+                                "evidence_text": "record: Aster Ridge | steward: Lina Sol | state: active",
+                            }
+                        ],
+                        "temporal_records": [],
+                    },
+                    "_model_raw": "{}",
+                    "_model_elapsed_seconds": 0.01,
+                }
+            assert "Stage 2 of source-grounded DRS extraction" in prompt
+            condition_schema = json_schema["properties"]["condition_stage"]["properties"]["conditions"]["items"]
+            assert "steward: Lina Sol" in condition_schema["properties"]["evidence_text"]["enum"]
+            return {
+                "condition_stage": {
+                    "schema_version": "chunk-drs-v2",
+                    "source_id": "records.txt",
+                    "conditions": [
+                        {
+                            "id": "c0",
+                            "predicate": "steward",
+                            "box_id": "b0",
+                            "polarity": "positive",
+                            "modality": "asserted",
+                            "temporal_id": "",
+                            "arguments": [
+                                {
+                                    "role": "value",
+                                    "target_kind": "literal",
+                                    "target_id": "",
+                                    "value": "Lina Sol",
+                                    "value_type": "person",
+                                    "evidence_text": "steward: Lina Sol",
+                                }
+                            ],
+                            "evidence_text": "steward: Lina Sol",
+                        },
+                        {
+                            "id": "c1",
+                            "predicate": "state",
+                            "box_id": "b0",
+                            "polarity": "positive",
+                            "modality": "asserted",
+                            "temporal_id": "",
+                            "arguments": [
+                                {
+                                    "role": "value",
+                                    "target_kind": "literal",
+                                    "target_id": "",
+                                    "value": "active",
+                                    "value_type": "state",
+                                    "evidence_text": "state: active",
+                                }
+                            ],
+                            "evidence_text": "state: active",
+                        },
+                    ],
+                },
+                "_model_raw": "{}",
+                "_model_elapsed_seconds": 0.01,
+            }
+
+    monkeypatch.delenv("KMD_LOCAL_MODEL_JSON_SCHEMA", raising=False)
+    monkeypatch.setenv("KMD_CHUNK_DRS_CACHE_DIR", str(tmp_path / "drs-cache"))
+
+    result = call_model_chunk_drs(
+        "record: Aster Ridge | steward: Lina Sol | state: active",
+        CompactUndercoverageModel(),  # type: ignore[arg-type]
+        rel_path="records.txt",
+        n_predict=384,
+    )
+
+    assert result["accepted"] is True
+    assert result["reason"] == "staged_fallback"
+    assert result["fallback_from_reason"] == "structural_undercoverage"
+    assert result["validation"]["condition_count"] == 2
+    assert result["context_budget"]["compact_undercoverage_policy"] == CHUNK_DRS_COMPACT_UNDERCOVERAGE_POLICY
+    cache_context = chunk_drs_cache_context(CompactUndercoverageModel(), n_predict=384)  # type: ignore[arg-type]
+    assert cache_context["compact_undercoverage_policy"] == CHUNK_DRS_COMPACT_UNDERCOVERAGE_POLICY
+
+
 def test_chunk_drs_source_span_candidates_skip_field_headers() -> None:
     spans = chunk_drs_source_span_candidates(
         '{ name: "Orchid Gamma", ids: [asset: "OG-7003", audit: "AUD-3003"] }',
@@ -654,7 +809,26 @@ def test_chunk_drs_monolithic_schema_constrains_ids_and_condition_spans(monkeypa
                                 }
                             ],
                             "evidence_text": "steward: Lina Sol",
-                        }
+                        },
+                        {
+                            "id": "c1",
+                            "predicate": "state",
+                            "box_id": "b0",
+                            "polarity": "positive",
+                            "modality": "asserted",
+                            "temporal_id": "",
+                            "arguments": [
+                                {
+                                    "role": "value",
+                                    "target_kind": "literal",
+                                    "target_id": "",
+                                    "value": "active",
+                                    "value_type": "state",
+                                    "evidence_text": "state: active",
+                                }
+                            ],
+                            "evidence_text": "state: active",
+                        },
                     ],
                     "identity_hypotheses": [],
                     "temporal_records": [],
