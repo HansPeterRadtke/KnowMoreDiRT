@@ -133,4 +133,6 @@ The model path is currently staged as:
 
 Verifier output is rejected when its proposed answer is incompatible with the query DRS answer type. This prevents an absence statement, URL, identifier, or other wrong-shape value from passing a person, organization, URL, identifier, boolean, count, or content query merely because it is present in nearby evidence.
 
+For scoped DRS questions, verifier prompting treats the candidate as the bound embedded proposition or scoped value when the query frame requires a reported/modal scope. The verifier still must ground that binding in raw evidence and discourse records; deterministic code does not rewrite the candidate into a scoped reading.
+
 When `KMD_PROGRESS=1` or `KMD_EVAL_PROGRESS=1`, eager LLM ingestion emits concise per-chunk stdout lines for model-frame start and completion, including chunk counters, source path/order, cache/fresh result, validation reason, frame count, model elapsed time, and cumulative ingest elapsed time. This is observability only; it does not change extraction semantics.

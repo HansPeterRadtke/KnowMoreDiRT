@@ -7,6 +7,7 @@ from knowmoredirt.model import LocalModelClient, LocalModelJSONError
 from knowmoredirt.model_planner import (
     CHUNK_DRS_IDENTITY_PROVENANCE_POLICY,
     CHUNK_DRS_TEMPORAL_PROVENANCE_POLICY,
+    build_answer_verification_prompt,
     call_model_chunk_drs,
     call_model_chunk_frames,
     call_model_query_drs,
@@ -15,6 +16,25 @@ from knowmoredirt.model_planner import (
     query_drs_array_max_items,
     query_frame_from_query_drs,
 )
+
+
+def test_verifier_prompt_allows_scoped_embedded_bindings() -> None:
+    prompt = build_answer_verification_prompt(
+        "What does Kalo Reed believe?",
+        {
+            "target_anchors": ["Kalo Reed"],
+            "requested_relation": "believe",
+            "relation_terms": ["believe", "content"],
+            "scope_requirements": ["reported"],
+            "answer_type": "content_phrase",
+        },
+        "Mira Stone archived the Slate Quill",
+        [{"source": "belief.txt", "text": "Kalo Reed believes that Mira Stone archived the Slate Quill."}],
+        [{"record_kind": "condition", "subject": "reported", "predicate": "archive"}],
+    )
+
+    assert "embedded proposition or scoped value" in prompt
+    assert "instead of requiring the candidate text itself to repeat the target anchor" in prompt
 
 
 class FakeHTTPResponse:
