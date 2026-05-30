@@ -452,3 +452,30 @@ def test_identity_expansion_seeds_only_exact_referent_surfaces() -> None:
 
     assert "orchid gamma" in expanded
     assert "https reports example test orchid gamma" not in expanded
+
+
+def test_model_query_drs_answer_slot_terms_participate_in_structural_binding(tmp_path: Path) -> None:
+    (tmp_path / "object.raw").write_text(
+        '{ name: "Olan Vex", ids: { actor: "OV-8801" } }',
+        encoding="utf-8",
+    )
+    engine = KnowMoreDiRTEngine(tmp_path)
+    frame = QueryFrame(
+        question_text="What actor id is listed for Olan Vex?",
+        answer_type="identifier",
+        answer_variables=("actor id",),
+        target_anchors=("Olan Vex",),
+        requested_relation="listed",
+        relation_terms=("listed",),
+        constraints=(),
+    )
+
+    answer = engine._answer_with_bounded_dspg(
+        "What actor id is listed for Olan Vex?",
+        frame,
+        ExpectedAnswer("identifier"),
+    )
+
+    assert answer is not None
+    assert answer.text == "OV-8801"
+    assert answer.reason == "bounded DSPG query-frame execution"

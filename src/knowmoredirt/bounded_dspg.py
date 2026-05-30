@@ -24,7 +24,22 @@ from .text import clean_extracted_value, content_tokens, normalize, text_quality
 DATE_TIME_RE = re.compile(r"\b(?:\d{4}-\d{2}-\d{2}(?:[ T]\d{1,2}:\d{2})?|\d{1,2}:\d{2})\b")
 PATH_RE = re.compile(r"\b[A-Za-z0-9_-]+(?:/[A-Za-z0-9_.-]+)+\b|\b[A-Za-z0-9_.-]+\.[A-Za-z0-9]{1,12}\b")
 INACCESSIBLE_CONTEXT_PREFIXES = ("modality:",)
-ANSWER_SLOT_SKIP_TERMS = {"answer", "value", "entity", "item", "thing", "text", "content"}
+ANSWER_SLOT_SKIP_TERMS = {
+    "answer",
+    "content",
+    "entity",
+    "how",
+    "item",
+    "text",
+    "thing",
+    "value",
+    "what",
+    "when",
+    "where",
+    "which",
+    "who",
+    "why",
+}
 
 
 @lru_cache(maxsize=8192)
@@ -171,7 +186,7 @@ def _rank_scope(
     chunk_limit: int,
 ) -> tuple[list[str], list[tuple[str, int]], dict[str, Any]]:
     target_terms = _target_terms(frame, question)
-    relation_terms = _relation_terms(frame, question)
+    relation_terms = list(dict.fromkeys([*_relation_terms(frame, question), *_answer_slot_terms(frame)]))
     all_terms = _query_terms(question)
     doc_scores: list[tuple[float, str, str]] = []
     document_material_by_id: dict[str, str] = {}
@@ -1154,6 +1169,9 @@ def execute_bounded_query(
     expected = _expected_from_frame(frame)
     target_terms = _target_terms(frame, question)
     relation_terms = _relation_terms(frame, question)
+    answer_slot_terms = _answer_slot_terms(frame)
+    if answer_slot_terms:
+        relation_terms = list(dict.fromkeys([*relation_terms, *answer_slot_terms]))
     selected_docs, selected_chunks, ranking = _rank_scope(documents, sentences_by_document, question, frame, doc_limit, chunk_limit)
     records = _load_records(store, run_id, selected_docs, selected_chunks)
     identity_terms = _identity_expanded_terms(records, target_terms)
