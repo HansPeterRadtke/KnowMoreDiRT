@@ -65,8 +65,9 @@ CHUNK_DRS_TEMPORAL_PROVENANCE_POLICY = "condition-stage-declared-temporal-record
 CHUNK_DRS_SPARSE_RETRY_POLICY = "retry-validated-sparse-drs-staged-v1"
 CHUNK_DRS_STRUCTURE_VALIDATION_POLICY = "acyclic-box-condition-arguments-v1"
 CHUNK_DRS_BOX_COMPLETION_POLICY = "model-complete-missing-box-declarations-v1"
-CHUNK_DRS_SOURCE_SPAN_POLICY = "condition-stage-delimiter-source-span-enum-v1"
+CHUNK_DRS_SOURCE_SPAN_POLICY = "chunk-drs-delimiter-source-span-enum-v2"
 CHUNK_DRS_SKELETON_ID_POLICY = "stage1-stable-id-enums-v1"
+CHUNK_DRS_MONOLITHIC_ID_POLICY = "monolithic-stable-id-enums-v1"
 QUERY_DRS_SCHEMA_VERSION = "query-drs-v3"
 QUERY_DRS_VALIDATION_POLICY = "strict-query-drs-version-question-evidence-repair-v8"
 QUERY_DRS_ARRAY_CAP_POLICY = "reserved_output_tokens_div_96_4_8-v1"
@@ -825,10 +826,13 @@ def chunk_drs_json_schema(
     max_array_items: int | None = None,
     *,
     include_auxiliary_fields: bool = True,
+    source_id: str | None = None,
+    evidence_text_values: list[str] | None = None,
+    constrain_stable_ids: bool = False,
 ) -> dict[str, Any]:
     schema = json.loads(json.dumps(DRS_JSON_SCHEMA))
+    drs_schema = schema["properties"]["drs"]
     if not include_auxiliary_fields:
-        drs_schema = schema["properties"]["drs"]
         required = drs_schema.get("required")
         if isinstance(required, list):
             drs_schema["required"] = [key for key in required if key not in {"evidence_spans", "semantic_notes"}]
@@ -836,7 +840,13 @@ def chunk_drs_json_schema(
         if isinstance(properties, dict):
             properties.pop("evidence_spans", None)
             properties.pop("semantic_notes", None)
-    if not max_evidence_chars and not max_array_items:
+    if (
+        not max_evidence_chars
+        and not max_array_items
+        and source_id is None
+        and not evidence_text_values
+        and not constrain_stable_ids
+    ):
         return schema
     max_length = max(1, int(max_evidence_chars)) if max_evidence_chars else None
     max_items = max(1, int(max_array_items)) if max_array_items else None
@@ -870,6 +880,46 @@ def chunk_drs_json_schema(
                 visit(item, parent_key)
 
     visit(schema)
+    drs_properties = drs_schema.get("properties")
+    if not isinstance(drs_properties, dict):
+        return schema
+    if source_id is not None:
+        drs_properties["source_id"] = _schema_enum({source_id})
+    if constrain_stable_ids:
+        stable_item_count = max_items or 8
+        referent_ids = [f"r{index}" for index in range(stable_item_count)]
+        box_ids = [f"b{index}" for index in range(stable_item_count)]
+        condition_ids = [f"c{index}" for index in range(stable_item_count)]
+        temporal_ids = [f"t{index}" for index in range(stable_item_count)]
+        referent_schema = drs_properties["referents"]["items"]
+        box_schema = drs_properties["boxes"]["items"]
+        condition_schema = drs_properties["conditions"]["items"]
+        argument_schema = condition_schema["properties"]["arguments"]["items"]
+        identity_schema = drs_properties["identity_hypotheses"]["items"]
+        temporal_schema = drs_properties["temporal_records"]["items"]
+        referent_schema["properties"]["id"] = {"type": "string", "enum": referent_ids}
+        box_schema["properties"]["id"] = {"type": "string", "enum": box_ids}
+        box_schema["properties"]["parent_id"] = {"type": "string", "enum": ["", *box_ids]}
+        box_schema["properties"]["holder_referent_id"] = {"type": "string", "enum": ["", *referent_ids]}
+        condition_schema["properties"]["id"] = {"type": "string", "enum": condition_ids}
+        condition_schema["properties"]["box_id"] = {"type": "string", "enum": box_ids}
+        condition_schema["properties"]["temporal_id"] = {"type": "string", "enum": ["", *temporal_ids]}
+        argument_schema["properties"]["target_id"] = {
+            "type": "string",
+            "enum": sorted(set(["", *box_ids, *condition_ids, *referent_ids])),
+        }
+        identity_schema["properties"]["left_referent_id"] = {"type": "string", "enum": referent_ids}
+        identity_schema["properties"]["right_referent_id"] = {"type": "string", "enum": referent_ids}
+        temporal_schema["properties"]["id"] = {"type": "string", "enum": temporal_ids}
+    if evidence_text_values:
+        evidence_values = list(dict.fromkeys(str(value) for value in evidence_text_values))
+        evidence_schema: dict[str, Any] = {"type": "string", "enum": evidence_values}
+        if max_length is not None:
+            evidence_schema["maxLength"] = max_length
+        condition_schema = drs_properties["conditions"]["items"]
+        argument_schema = condition_schema["properties"]["arguments"]["items"]
+        condition_schema["properties"]["evidence_text"] = copy.deepcopy(evidence_schema)
+        argument_schema["properties"]["evidence_text"] = copy.deepcopy(evidence_schema)
     return schema
 
 
@@ -962,12 +1012,30 @@ def chunk_drs_source_span_candidates(
             return
         candidates.append(span)
 
+    def add_value_spans(segment: str) -> None:
+        text = segment.strip()
+        if not text:
+            return
+        for separator in (":", "="):
+            if separator not in text:
+                continue
+            _head, tail = text.split(separator, 1)
+            value = tail.strip()
+            if not value:
+                continue
+            add(value)
+            unquoted = value.strip("\"'")
+            if unquoted != value:
+                add(unquoted)
+            break
+
     add(chunk_text)
     normalized_separators = chunk_text
     for separator in ("\n", "\t", "|", ";", ",", "{", "}", "[", "]"):
         normalized_separators = normalized_separators.replace(separator, "|")
     for segment in normalized_separators.split("|"):
         add(segment)
+        add_value_spans(segment)
         if len(candidates) >= max_candidates:
             break
     return candidates[:max_candidates]
@@ -2678,12 +2746,19 @@ CHUNK_DRS_GRAMMAR = ""
 def build_chunk_drs_prompt(chunk_text: str, *, rel_path: str = "", context_budget: dict[str, Any] | None = None) -> str:
     max_evidence_chars = int((context_budget or {}).get("max_evidence_chars") or 0)
     max_array_items = int((context_budget or {}).get("max_array_items") or 0)
+    source_span_policy = str((context_budget or {}).get("source_span_policy") or "")
     evidence_budget_text = (
         f" Each evidence_text item must be at most {max_evidence_chars} characters."
         if max_evidence_chars > 0
         else ""
     )
     array_budget_text = f" Each JSON array must contain at most {max_array_items} items." if max_array_items > 0 else ""
+    source_span_text = (
+        " The JSON schema constrains condition and argument evidence_text to deterministic source-span options; "
+        "choose one exact listed source span or ''. "
+        if source_span_policy
+        else ""
+    )
     return (
         "JSON only. Convert the raw text chunk into one source-grounded DRS object. "
         "Every semantic decision must be represented as referents, boxes, conditions, temporal_records, "
@@ -2707,7 +2782,8 @@ def build_chunk_drs_prompt(chunk_text: str, *, rel_path: str = "", context_budge
         "For compact records, key/value lists, JSON-like objects, TSV/CSV rows, and log entries, still emit "
         "grounded DRS conditions for visible source-supported field/value or row structure; do not leave "
         "conditions empty solely because the chunk is terse or delimiter-heavy. "
-        "Every evidence_text item must be one contiguous substring copied exactly from the chunk."
+        + source_span_text
+        + "Every evidence_text item must be one contiguous substring copied exactly from the chunk."
         + evidence_budget_text
         + array_budget_text
         + " "
@@ -3676,6 +3752,7 @@ def chunk_drs_cache_context(client: LocalModelClient | None, *, n_predict: int |
         "box_completion_policy": CHUNK_DRS_BOX_COMPLETION_POLICY,
         "source_span_policy": CHUNK_DRS_SOURCE_SPAN_POLICY,
         "skeleton_id_policy": CHUNK_DRS_SKELETON_ID_POLICY,
+        "monolithic_id_policy": CHUNK_DRS_MONOLITHIC_ID_POLICY,
         "staged_skeleton_n_predict": default_staged_chunk_drs_skeleton_n_predict(int(n_predict)),
         "staged_condition_n_predict": default_staged_chunk_drs_condition_n_predict(int(n_predict)),
         "box_completion_n_predict": default_chunk_drs_box_completion_n_predict(int(n_predict)),
@@ -3700,11 +3777,24 @@ def call_model_chunk_drs(
         rel_path=rel_path,
         n_predict=n_predict,
     )
+    source_span_candidates = chunk_drs_source_span_candidates(
+        prompt_chunk,
+        context_budget.get("max_evidence_chars"),
+    )
+    context_budget = {
+        **context_budget,
+        "source_span_policy": CHUNK_DRS_SOURCE_SPAN_POLICY,
+        "source_span_candidate_count": len(source_span_candidates),
+        "monolithic_id_policy": CHUNK_DRS_MONOLITHIC_ID_POLICY,
+    }
     prompt = build_chunk_drs_prompt(prompt_chunk, rel_path=rel_path, context_budget=context_budget)
     drs_json_schema = chunk_drs_json_schema(
         context_budget.get("max_evidence_chars"),
         context_budget.get("max_array_items"),
         include_auxiliary_fields=False,
+        source_id=rel_path,
+        evidence_text_values=source_span_candidates,
+        constrain_stable_ids=True,
     )
     constraint = _constraint_settings(CHUNK_DRS_GRAMMAR, drs_json_schema, CHUNK_DRS_SCHEMA_VERSION)
     prompt_hash = _cache_hash(
@@ -3726,6 +3816,8 @@ def call_model_chunk_drs(
             "box_completion_policy": CHUNK_DRS_BOX_COMPLETION_POLICY,
             "source_span_policy": CHUNK_DRS_SOURCE_SPAN_POLICY,
             "skeleton_id_policy": CHUNK_DRS_SKELETON_ID_POLICY,
+            "monolithic_id_policy": CHUNK_DRS_MONOLITHIC_ID_POLICY,
+            "source_span_candidate_count": len(source_span_candidates),
             "staged_skeleton_n_predict": default_staged_chunk_drs_skeleton_n_predict(int(n_predict)),
             "staged_condition_n_predict": default_staged_chunk_drs_condition_n_predict(int(n_predict)),
             "box_completion_n_predict": default_chunk_drs_box_completion_n_predict(int(n_predict)),

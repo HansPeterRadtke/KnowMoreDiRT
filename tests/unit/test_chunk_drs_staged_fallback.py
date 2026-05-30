@@ -7,8 +7,10 @@ from knowmoredirt.model import LocalModelJSONError
 from knowmoredirt.model_planner import (
     CHUNK_DRS_BOX_COMPLETION_POLICY,
     CHUNK_DRS_GROUNDING_REPAIR_POLICY,
+    CHUNK_DRS_MONOLITHIC_ID_POLICY,
     CHUNK_DRS_SPARSE_RETRY_POLICY,
     CHUNK_DRS_SKELETON_ID_POLICY,
+    CHUNK_DRS_SOURCE_SPAN_POLICY,
     CHUNK_DRS_STAGED_FALLBACK_POLICY,
     call_model_chunk_drs,
     chunk_drs_cache_context,
@@ -572,8 +574,113 @@ def test_chunk_drs_source_span_candidates_skip_field_headers() -> None:
 
     assert "" in spans
     assert 'name: "Orchid Gamma"' in spans
+    assert "Orchid Gamma" in spans
     assert 'asset: "OG-7003"' in spans
+    assert "OG-7003" in spans
     assert "ids:" not in spans
+
+
+def test_chunk_drs_monolithic_schema_constrains_ids_and_condition_spans(monkeypatch, tmp_path) -> None:
+    class MonolithicSchemaModel:
+        def __init__(self) -> None:
+            self.prompt = ""
+            self.schema: dict[str, Any] | None = None
+
+        def context_size(self) -> int:
+            return 8192
+
+        def cache_fingerprint(self) -> dict[str, Any]:
+            return {"model_id": "fake-monolithic-span-id-drs", "context_size": 8192}
+
+        def complete_json(
+            self,
+            prompt: str,
+            *,
+            n_predict: int = 128,
+            grammar: str | None = None,
+            json_schema: dict[str, Any] | None = None,
+        ) -> dict[str, object]:
+            self.prompt = prompt
+            self.schema = json_schema
+            drs_schema = json_schema["properties"]["drs"]
+            condition_schema = drs_schema["properties"]["conditions"]["items"]
+            argument_schema = condition_schema["properties"]["arguments"]["items"]
+            referent_schema = drs_schema["properties"]["referents"]["items"]
+            box_schema = drs_schema["properties"]["boxes"]["items"]
+            temporal_schema = drs_schema["properties"]["temporal_records"]["items"]
+            assert drs_schema["properties"]["source_id"]["enum"] == ["records.txt"]
+            assert referent_schema["properties"]["id"]["enum"] == ["r0", "r1", "r2", "r3"]
+            assert box_schema["properties"]["id"]["enum"] == ["b0", "b1", "b2", "b3"]
+            assert condition_schema["properties"]["id"]["enum"] == ["c0", "c1", "c2", "c3"]
+            assert condition_schema["properties"]["box_id"]["enum"] == ["b0", "b1", "b2", "b3"]
+            assert temporal_schema["properties"]["id"]["enum"] == ["t0", "t1", "t2", "t3"]
+            assert "steward: Lina Sol" in condition_schema["properties"]["evidence_text"]["enum"]
+            assert "Lina Sol" in condition_schema["properties"]["evidence_text"]["enum"]
+            assert "r0" in argument_schema["properties"]["target_id"]["enum"]
+            assert "b0" in argument_schema["properties"]["target_id"]["enum"]
+            assert "c0" in argument_schema["properties"]["target_id"]["enum"]
+            return {
+                "drs": {
+                    "schema_version": "chunk-drs-v2",
+                    "source_id": "records.txt",
+                    "referents": [
+                        {"id": "r0", "label": "Aster Ridge", "kind": "asset", "evidence_text": "Aster Ridge"}
+                    ],
+                    "boxes": [
+                        {
+                            "id": "b0",
+                            "kind": "asserted",
+                            "parent_id": "",
+                            "holder_referent_id": "r0",
+                            "evidence_text": "record: Aster Ridge | steward: Lina Sol | state: active",
+                        }
+                    ],
+                    "conditions": [
+                        {
+                            "id": "c0",
+                            "predicate": "steward",
+                            "box_id": "b0",
+                            "polarity": "positive",
+                            "modality": "asserted",
+                            "temporal_id": "",
+                            "arguments": [
+                                {
+                                    "role": "value",
+                                    "target_kind": "literal",
+                                    "target_id": "",
+                                    "value": "Lina Sol",
+                                    "value_type": "person",
+                                    "evidence_text": "steward: Lina Sol",
+                                }
+                            ],
+                            "evidence_text": "steward: Lina Sol",
+                        }
+                    ],
+                    "identity_hypotheses": [],
+                    "temporal_records": [],
+                },
+                "_model_raw": "{}",
+                "_model_elapsed_seconds": 0.01,
+            }
+
+    monkeypatch.delenv("KMD_LOCAL_MODEL_JSON_SCHEMA", raising=False)
+    monkeypatch.setenv("KMD_CHUNK_DRS_CACHE_DIR", str(tmp_path / "drs-cache"))
+    model = MonolithicSchemaModel()
+
+    result = call_model_chunk_drs(
+        "record: Aster Ridge | steward: Lina Sol | state: active",
+        model,  # type: ignore[arg-type]
+        rel_path="records.txt",
+        n_predict=384,
+    )
+
+    assert result["accepted"] is True
+    assert result["context_budget"]["source_span_policy"] == CHUNK_DRS_SOURCE_SPAN_POLICY
+    assert result["context_budget"]["monolithic_id_policy"] == CHUNK_DRS_MONOLITHIC_ID_POLICY
+    assert result["context_budget"]["source_span_candidate_count"] >= 6
+    assert chunk_drs_cache_context(model, n_predict=384)["monolithic_id_policy"] == CHUNK_DRS_MONOLITHIC_ID_POLICY
+    assert model.schema is not None
+    assert "JSON schema constrains condition and argument evidence_text" in model.prompt
 
 
 def test_chunk_drs_skeleton_schema_uses_stable_id_namespaces() -> None:
