@@ -58,6 +58,7 @@ DRS_IDENTITY_STATUSES = {"accepted", "candidate", "rejected", "ambiguous"}
 PROMPT_VERSION = "kmd-drt-2026-05-28-v34"
 CHUNK_FRAME_SCHEMA_VERSION = "chunk-frames-v5"
 CHUNK_DRS_SCHEMA_VERSION = "chunk-drs-v2"
+CHUNK_DRS_STAGED_FALLBACK_POLICY = "retry-invalid-json-schema-or-grounding-v1"
 QUERY_DRS_SCHEMA_VERSION = "query-drs-v3"
 QUERY_FRAME_SCHEMA_VERSION = "query-frame-v4"
 ANSWER_SCHEMA_VERSION = "answer-v4"
@@ -2823,6 +2824,7 @@ def _call_model_chunk_drs_staged(
         "validation": validation,
         "context_budget": {
             **context_budget,
+            "staged_fallback_policy": CHUNK_DRS_STAGED_FALLBACK_POLICY,
             "staged_skeleton_n_predict": skeleton_n_predict,
             "staged_condition_n_predict": condition_n_predict,
         },
@@ -2843,6 +2845,7 @@ def chunk_drs_cache_context(client: LocalModelClient | None, *, n_predict: int |
         "evidence_cap_policy": "min_chunk_or_reserved_output_quarter_96_256",
         "array_cap_policy": "reserved_output_tokens_div_96_4_10",
         "staged_fallback": _staged_chunk_drs_enabled(),
+        "staged_fallback_policy": CHUNK_DRS_STAGED_FALLBACK_POLICY,
         "staged_skeleton_n_predict": default_staged_chunk_drs_skeleton_n_predict(int(n_predict)),
         "staged_condition_n_predict": default_staged_chunk_drs_condition_n_predict(int(n_predict)),
         **constraint,
@@ -2883,6 +2886,7 @@ def call_model_chunk_drs(
             **constraint,
             "context_budget": context_budget,
             "staged_fallback": _staged_chunk_drs_enabled(),
+            "staged_fallback_policy": CHUNK_DRS_STAGED_FALLBACK_POLICY,
             "staged_skeleton_n_predict": default_staged_chunk_drs_skeleton_n_predict(int(n_predict)),
             "staged_condition_n_predict": default_staged_chunk_drs_condition_n_predict(int(n_predict)),
         },
@@ -2960,7 +2964,7 @@ def call_model_chunk_drs(
             "validation": validation,
             "context_budget": context_budget,
         }
-        if reason == "schema_validation_failed" and _staged_chunk_drs_enabled():
+        if _staged_chunk_drs_enabled():
             fallback = _call_model_chunk_drs_staged(
                 prompt_chunk,
                 client,
