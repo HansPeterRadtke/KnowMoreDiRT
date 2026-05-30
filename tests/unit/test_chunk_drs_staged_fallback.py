@@ -3,6 +3,7 @@ from __future__ import annotations
 import json
 from typing import Any
 
+from knowmoredirt.model import LocalModelJSONError
 from knowmoredirt.model_planner import (
     CHUNK_DRS_BOX_COMPLETION_POLICY,
     CHUNK_DRS_GROUNDING_REPAIR_POLICY,
@@ -568,6 +569,56 @@ def test_chunk_drs_source_span_candidates_skip_field_headers() -> None:
     assert 'name: "Orchid Gamma"' in spans
     assert 'asset: "OG-7003"' in spans
     assert "ids:" not in spans
+
+
+def test_chunk_drs_failed_staged_fallback_keeps_stage_diagnostics(monkeypatch, tmp_path) -> None:
+    class FailedStagedFallbackModel:
+        def context_size(self) -> int:
+            return 8192
+
+        def cache_fingerprint(self) -> dict[str, Any]:
+            return {"model_id": "fake-failed-staged-drs", "context_size": 8192}
+
+        def complete_json(
+            self,
+            prompt: str,
+            *,
+            n_predict: int = 128,
+            grammar: str | None = None,
+            json_schema: dict[str, Any] | None = None,
+        ) -> dict[str, object]:
+            if "one source-grounded DRS object" in prompt:
+                raise LocalModelJSONError(
+                    "bad monolithic json",
+                    raw_text='{"drs":',
+                    snippet='{"drs":',
+                )
+            if "Stage 1 of source-grounded DRS extraction" in prompt:
+                raise LocalModelJSONError(
+                    "bad skeleton json",
+                    raw_text='{"drs_skeleton":',
+                    snippet='{"drs_skeleton":',
+                )
+            raise AssertionError("condition stage should not run after skeleton JSON failure")
+
+    monkeypatch.delenv("KMD_LOCAL_MODEL_JSON_SCHEMA", raising=False)
+    monkeypatch.setenv("KMD_CHUNK_DRS_CACHE_DIR", str(tmp_path / "drs-cache"))
+    model = FailedStagedFallbackModel()
+
+    result = call_model_chunk_drs(
+        "Aero Gate is ready.",
+        model,  # type: ignore[arg-type]
+        rel_path="note.txt",
+        n_predict=384,
+    )
+
+    assert result["accepted"] is False
+    assert result["reason"] == "invalid_json"
+    assert result["staged_fallback"]["accepted"] is False
+    assert result["staged_fallback"]["reason"] == "invalid_json"
+    assert result["staged_fallback"]["stage"] == "skeleton"
+    assert result["staged_fallback"]["error"] == "bad skeleton json"
+    assert result["staged_fallback"]["raw_snippet"] == '{"drs_skeleton":'
 
 
 def test_chunk_drs_staged_fallback_preserves_temporal_records(monkeypatch, tmp_path) -> None:

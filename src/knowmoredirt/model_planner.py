@@ -915,6 +915,22 @@ def _validation_count(validation: dict[str, Any], key: str) -> int:
         return 0
 
 
+def _staged_fallback_failure_summary(fallback: dict[str, Any]) -> dict[str, Any]:
+    summary: dict[str, Any] = {
+        "accepted": False,
+        "reason": fallback.get("reason"),
+        "stage": fallback.get("stage"),
+    }
+    for key in ("error", "raw_snippet", "grounding_failures", "validation", "elapsed"):
+        value = fallback.get(key)
+        if value:
+            summary[key] = value
+    raw_text = str(fallback.get("raw_text") or "")
+    if raw_text:
+        summary["raw_snippet"] = summary.get("raw_snippet") or raw_text[:4000]
+    return summary
+
+
 def _chunk_drs_structurally_sparse(validation: dict[str, Any]) -> bool:
     """Return true for model-produced DRS shells that need a second extraction pass."""
 
@@ -3398,6 +3414,8 @@ def _call_model_chunk_drs_staged(
             "accepted": False,
             "reason": str(skeleton.get("reason") or "schema_validation_failed") if isinstance(skeleton, dict) else "schema_validation_failed",
             "stage": "skeleton",
+            "error": str(skeleton.get("error") or "") if isinstance(skeleton, dict) else "",
+            "raw_snippet": str(skeleton.get("raw_snippet") or "") if isinstance(skeleton, dict) else "",
             "raw_text": str(skeleton.get("raw_text") or skeleton.get("_model_raw") or "") if isinstance(skeleton, dict) else "",
             "elapsed": skeleton_elapsed,
             **skeleton_constraint,
@@ -3483,6 +3501,8 @@ def _call_model_chunk_drs_staged(
             "accepted": False,
             "reason": str(condition_stage.get("reason") or "schema_validation_failed") if isinstance(condition_stage, dict) else "schema_validation_failed",
             "stage": "conditions",
+            "error": str(condition_stage.get("error") or "") if isinstance(condition_stage, dict) else "",
+            "raw_snippet": str(condition_stage.get("raw_snippet") or "") if isinstance(condition_stage, dict) else "",
             "raw_text": str(condition_stage.get("raw_text") or condition_stage.get("_model_raw") or "") if isinstance(condition_stage, dict) else "",
             "elapsed": skeleton_elapsed + condition_elapsed,
             **condition_constraint,
@@ -3731,11 +3751,7 @@ def call_model_chunk_drs(
                 payload = {**fallback, "fallback_from_reason": "invalid_json", "monolithic_prompt_hash": prompt_hash}
                 _write_cache(cache_path, payload)
                 return payload
-            payload["staged_fallback"] = {
-                "accepted": False,
-                "reason": fallback.get("reason"),
-                "stage": fallback.get("stage"),
-            }
+            payload["staged_fallback"] = _staged_fallback_failure_summary(fallback)
         _write_cache(cache_path, payload)
         return payload
     except Exception as exc:
@@ -3782,11 +3798,7 @@ def call_model_chunk_drs(
                 payload = {**fallback, "fallback_from_reason": reason, "monolithic_prompt_hash": prompt_hash}
                 _write_cache(cache_path, payload)
                 return payload
-            payload["staged_fallback"] = {
-                "accepted": False,
-                "reason": fallback.get("reason"),
-                "stage": fallback.get("stage"),
-            }
+            payload["staged_fallback"] = _staged_fallback_failure_summary(fallback)
         box_completion = _call_model_chunk_drs_box_completion(
             prompt_chunk,
             client,
