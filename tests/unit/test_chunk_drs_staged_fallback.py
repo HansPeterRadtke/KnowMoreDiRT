@@ -1,8 +1,10 @@
 from __future__ import annotations
 
+import json
 from typing import Any
 
 from knowmoredirt.model_planner import (
+    CHUNK_DRS_BOX_COMPLETION_POLICY,
     CHUNK_DRS_GROUNDING_REPAIR_POLICY,
     CHUNK_DRS_SPARSE_RETRY_POLICY,
     CHUNK_DRS_STAGED_FALLBACK_POLICY,
@@ -145,6 +147,179 @@ def test_chunk_drs_staged_fallback_constrains_condition_targets(monkeypatch, tmp
     assert result["context_budget"]["staged_fallback_policy"] == CHUNK_DRS_STAGED_FALLBACK_POLICY
     assert chunk_drs_cache_context(model, n_predict=384)["staged_fallback_policy"] == CHUNK_DRS_STAGED_FALLBACK_POLICY
     assert model.condition_schema is not None
+
+
+def test_chunk_drs_missing_box_completion_after_staged_failure(monkeypatch, tmp_path) -> None:
+    class MissingBoxCompletionModel:
+        def __init__(self) -> None:
+            self.box_completion_schema: dict[str, Any] | None = None
+            self.box_completion_prompt = ""
+
+        def context_size(self) -> int:
+            return 8192
+
+        def cache_fingerprint(self) -> dict[str, Any]:
+            return {"model_id": "fake-box-completion-drs", "context_size": 8192}
+
+        def complete_json(
+            self,
+            prompt: str,
+            *,
+            n_predict: int = 128,
+            grammar: str | None = None,
+            json_schema: dict[str, Any] | None = None,
+        ) -> dict[str, object]:
+            if "one source-grounded DRS object" in prompt:
+                return {
+                    "drs": {
+                        "schema_version": "chunk-drs-v2",
+                        "source_id": "note.txt",
+                        "referents": [
+                            {"id": "r0", "label": "Kalo Reed", "kind": "person", "evidence_text": "Kalo Reed"}
+                        ],
+                        "boxes": [
+                            {
+                                "id": "b0",
+                                "kind": "asserted",
+                                "parent_id": "",
+                                "holder_referent_id": "r0",
+                                "evidence_text": "Kalo Reed believes the lantern should be painted blue.",
+                            }
+                        ],
+                        "conditions": [
+                            {
+                                "id": "c0",
+                                "predicate": "believe",
+                                "box_id": "b0",
+                                "polarity": "positive",
+                                "modality": "asserted",
+                                "temporal_id": "",
+                                "arguments": [
+                                    {
+                                        "role": "holder",
+                                        "target_kind": "referent",
+                                        "target_id": "r0",
+                                        "value": "",
+                                        "value_type": "",
+                                        "evidence_text": "Kalo Reed",
+                                    },
+                                    {
+                                        "role": "content",
+                                        "target_kind": "box",
+                                        "target_id": "b1",
+                                        "value": "",
+                                        "value_type": "",
+                                        "evidence_text": "the lantern should be painted blue",
+                                    },
+                                ],
+                                "evidence_text": "Kalo Reed believes the lantern should be painted blue.",
+                            }
+                        ],
+                        "identity_hypotheses": [],
+                        "temporal_records": [],
+                    },
+                    "_model_raw": "{}",
+                    "_model_elapsed_seconds": 0.01,
+                }
+            if "Stage 1 of source-grounded DRS extraction" in prompt:
+                return {
+                    "drs_skeleton": {
+                        "schema_version": "chunk-drs-v2",
+                        "source_id": "note.txt",
+                        "referents": [
+                            {"id": "r0", "label": "Kalo Reed", "kind": "person", "evidence_text": "Kalo Reed"}
+                        ],
+                        "boxes": [
+                            {
+                                "id": "b0",
+                                "kind": "asserted",
+                                "parent_id": "",
+                                "holder_referent_id": "r0",
+                                "evidence_text": "Kalo Reed believes the lantern should be painted blue.",
+                            }
+                        ],
+                        "temporal_records": [],
+                    },
+                    "_model_raw": "{}",
+                    "_model_elapsed_seconds": 0.01,
+                }
+            if "Stage 2 of source-grounded DRS extraction" in prompt:
+                return {
+                    "condition_stage": {
+                        "schema_version": "chunk-drs-v2",
+                        "source_id": "note.txt",
+                        "conditions": [
+                            {
+                                "id": "c0",
+                                "predicate": "believe",
+                                "box_id": "b0",
+                                "polarity": "positive",
+                                "modality": "asserted",
+                                "temporal_id": "",
+                                "arguments": [
+                                    {
+                                        "role": "content",
+                                        "target_kind": "box",
+                                        "target_id": "b0",
+                                        "value": "",
+                                        "value_type": "",
+                                        "evidence_text": "the lantern should be painted blue",
+                                    }
+                                ],
+                                "evidence_text": "Kalo Reed believes the lantern should be painted blue.",
+                            }
+                        ],
+                    },
+                    "_model_raw": "{}",
+                    "_model_elapsed_seconds": 0.01,
+                }
+            assert "Complete missing source-grounded DRS box declarations" in prompt
+            assert '"missing_box_ids": ["b1"]' in prompt
+            self.box_completion_prompt = prompt
+            self.box_completion_schema = json_schema
+            box_schema = json_schema["properties"]["box_completion"]["properties"]["boxes"]["items"]
+            assert box_schema["properties"]["id"]["enum"] == ["b1"]
+            assert box_schema["properties"]["parent_id"]["enum"] == ["", "b0"]
+            assert box_schema["properties"]["holder_referent_id"]["enum"] == ["", "r0"]
+            return {
+                "box_completion": {
+                    "schema_version": "chunk-drs-v2",
+                    "source_id": "note.txt",
+                    "boxes": [
+                        {
+                            "id": "b1",
+                            "kind": "believed",
+                            "parent_id": "b0",
+                            "holder_referent_id": "r0",
+                            "evidence_text": "the lantern should be painted blue",
+                        }
+                    ],
+                },
+                "_model_raw": "{}",
+                "_model_elapsed_seconds": 0.01,
+            }
+
+    monkeypatch.delenv("KMD_LOCAL_MODEL_JSON_SCHEMA", raising=False)
+    monkeypatch.setenv("KMD_CHUNK_DRS_CACHE_DIR", str(tmp_path / "drs-cache"))
+    model = MissingBoxCompletionModel()
+
+    result = call_model_chunk_drs(
+        "Kalo Reed believes the lantern should be painted blue.",
+        model,  # type: ignore[arg-type]
+        rel_path="note.txt",
+        n_predict=384,
+    )
+
+    assert result["accepted"] is True
+    assert result["reason"] == "box_completion_repair"
+    assert result["fallback_from_reason"] == "schema_validation_failed"
+    assert result["validation"]["box_count"] == 2
+    assert result["drs"]["boxes"][1]["id"] == "b1"
+    assert result["elapsed"] == 0.04
+    assert result["context_budget"]["box_completion_policy"] == CHUNK_DRS_BOX_COMPLETION_POLICY
+    assert chunk_drs_cache_context(model, n_predict=384)["box_completion_policy"] == CHUNK_DRS_BOX_COMPLETION_POLICY
+    assert model.box_completion_schema is not None
+    assert model.box_completion_prompt
 
 
 def test_chunk_drs_staged_fallback_runs_after_grounding_failure(monkeypatch, tmp_path) -> None:

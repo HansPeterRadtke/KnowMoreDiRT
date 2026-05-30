@@ -64,6 +64,7 @@ CHUNK_DRS_IDENTITY_PROVENANCE_POLICY = "identity-evidence-bilateral-surface-v1"
 CHUNK_DRS_TEMPORAL_PROVENANCE_POLICY = "condition-stage-declared-temporal-records-v2"
 CHUNK_DRS_SPARSE_RETRY_POLICY = "retry-validated-sparse-drs-staged-v1"
 CHUNK_DRS_STRUCTURE_VALIDATION_POLICY = "acyclic-box-condition-arguments-v1"
+CHUNK_DRS_BOX_COMPLETION_POLICY = "model-complete-missing-box-declarations-v1"
 QUERY_DRS_SCHEMA_VERSION = "query-drs-v3"
 QUERY_DRS_VALIDATION_POLICY = "strict-query-drs-version-question-evidence-repair-v8"
 QUERY_DRS_ARRAY_CAP_POLICY = "reserved_output_tokens_div_96_4_8-v1"
@@ -942,6 +943,16 @@ def default_staged_chunk_drs_condition_n_predict(n_predict: int) -> int:
     return max(int(n_predict), 768)
 
 
+def default_chunk_drs_box_completion_n_predict(n_predict: int) -> int:
+    configured = os.environ.get("KMD_CHUNK_DRS_BOX_COMPLETION_N_PREDICT")
+    if configured:
+        try:
+            return max(1, int(configured))
+        except ValueError:
+            pass
+    return max(128, min(int(n_predict), 384))
+
+
 def _schema_array_limited(item: dict[str, Any], max_items: int | None = None) -> dict[str, Any]:
     schema = _schema_array(item)
     if max_items:
@@ -993,6 +1004,33 @@ def chunk_drs_condition_json_schema(
                     "schema_version": _schema_enum({CHUNK_DRS_SCHEMA_VERSION}),
                     "source_id": _schema_enum({source_id}),
                     "conditions": _schema_array_limited(condition_schema, max_conditions),
+                },
+            )
+        },
+    )
+
+
+def chunk_drs_box_completion_json_schema(
+    *,
+    source_id: str,
+    missing_box_ids: list[str],
+    existing_box_ids: list[str],
+    referent_ids: list[str],
+    max_boxes: int | None = None,
+) -> dict[str, Any]:
+    box_schema = copy.deepcopy(DRS_BOX_JSON_SCHEMA)
+    box_schema["properties"]["id"] = {"type": "string", "enum": sorted(set(missing_box_ids))}
+    box_schema["properties"]["parent_id"] = {"type": "string", "enum": sorted(set(["", *existing_box_ids]))}
+    box_schema["properties"]["holder_referent_id"] = {"type": "string", "enum": sorted(set(["", *referent_ids]))}
+    return _schema_obj(
+        ["box_completion"],
+        {
+            "box_completion": _schema_obj(
+                ["schema_version", "source_id", "boxes"],
+                {
+                    "schema_version": _schema_enum({CHUNK_DRS_SCHEMA_VERSION}),
+                    "source_id": _schema_enum({source_id}),
+                    "boxes": _schema_array_limited(box_schema, max_boxes),
                 },
             )
         },
@@ -2701,6 +2739,45 @@ def build_chunk_drs_condition_prompt(
     )
 
 
+def build_chunk_drs_box_completion_prompt(
+    chunk_text: str,
+    *,
+    rel_path: str,
+    candidate_drs: dict[str, Any],
+    validation_errors: list[str],
+    missing_box_ids: list[str],
+    context_budget: dict[str, Any] | None = None,
+) -> str:
+    return (
+        "JSON only. Complete missing source-grounded DRS box declarations for an otherwise model-produced DRS. "
+        "This is a structural DRT repair call, not question answering. Do not add referents, conditions, "
+        "identity hypotheses, hidden answers, outside knowledge, or handler names. Emit only boxes for ids listed "
+        "in missing_box_ids when the source supports that referenced DRS box; otherwise emit an empty boxes array. "
+        "Each box evidence_text must be one exact contiguous substring from the chunk. Parent ids and holder ids "
+        "must use declared ids. For scoped complements such as beliefs, reports, quotes, negation, conditionals, "
+        "uncertainty, dreams, fiction, or modality, a missing content box may be subordinate to the containing box. "
+        + json.dumps(
+            {
+                "source_id": rel_path,
+                "schema_version": CHUNK_DRS_SCHEMA_VERSION,
+                "context_budget": context_budget or {},
+                "missing_box_ids": missing_box_ids,
+                "validation_errors": validation_errors[:50],
+                "candidate_drs": candidate_drs,
+                "required_top_shape": {
+                    "box_completion": {
+                        "schema_version": CHUNK_DRS_SCHEMA_VERSION,
+                        "source_id": rel_path,
+                        "boxes": [],
+                    }
+                },
+                "chunk": chunk_text,
+            },
+            ensure_ascii=False,
+        )
+    )
+
+
 def _context_limited_chunk_drs_text(
     chunk_text: str,
     client: LocalModelClient,
@@ -3096,6 +3173,152 @@ def _complete_chunk_drs_stage(
     return parsed, float(elapsed), {"prompt_hash": prompt_hash, **constraint}
 
 
+def _missing_argument_box_ids(validation: dict[str, Any]) -> list[str]:
+    ids: list[str] = []
+    for error in validation.get("errors") or []:
+        text = str(error or "")
+        if not text.startswith("missing_argument_box:") or "->" not in text:
+            continue
+        box_id = text.rsplit("->", 1)[-1].strip()
+        if box_id and box_id not in ids:
+            ids.append(box_id)
+    return ids
+
+
+def _call_model_chunk_drs_box_completion(
+    prompt_chunk: str,
+    client: LocalModelClient,
+    *,
+    rel_path: str,
+    n_predict: int,
+    context_budget: dict[str, Any],
+    cache_path: Path | None,
+    payload: dict[str, Any],
+    validation: dict[str, Any],
+) -> dict[str, Any]:
+    drs = payload.get("drs") if isinstance(payload, dict) else None
+    if not isinstance(drs, dict):
+        return {"accepted": False, "reason": "missing_drs_object", "stage": "box_completion"}
+    missing_box_ids = _missing_argument_box_ids(validation)
+    if not missing_box_ids:
+        return {"accepted": False, "reason": "no_missing_argument_box", "stage": "box_completion"}
+    boxes = [item for item in drs.get("boxes", []) if isinstance(item, dict)] if isinstance(drs.get("boxes"), list) else []
+    referents = (
+        [item for item in drs.get("referents", []) if isinstance(item, dict)]
+        if isinstance(drs.get("referents"), list)
+        else []
+    )
+    existing_box_ids = [str(item.get("id") or "") for item in boxes if str(item.get("id") or "")]
+    referent_ids = [str(item.get("id") or "") for item in referents if str(item.get("id") or "")]
+    missing_box_ids = [box_id for box_id in missing_box_ids if box_id not in existing_box_ids]
+    if not missing_box_ids or not existing_box_ids:
+        return {"accepted": False, "reason": "no_completable_missing_box", "stage": "box_completion"}
+    box_n_predict = default_chunk_drs_box_completion_n_predict(n_predict)
+    prompt = build_chunk_drs_box_completion_prompt(
+        prompt_chunk,
+        rel_path=rel_path,
+        candidate_drs=drs,
+        validation_errors=[str(error) for error in validation.get("errors") or []],
+        missing_box_ids=missing_box_ids,
+        context_budget=context_budget,
+    )
+    schema = chunk_drs_box_completion_json_schema(
+        source_id=rel_path,
+        missing_box_ids=missing_box_ids,
+        existing_box_ids=existing_box_ids,
+        referent_ids=referent_ids,
+        max_boxes=len(missing_box_ids),
+    )
+    completion, elapsed, constraint = _complete_chunk_drs_stage(
+        client,
+        cache_path,
+        prompt,
+        schema,
+        stage="chunk_drs_box_completion",
+        n_predict=box_n_predict,
+    )
+    completion_payload = completion.get("box_completion") if isinstance(completion, dict) else None
+    if not isinstance(completion_payload, dict):
+        return {
+            "accepted": False,
+            "reason": str(completion.get("reason") or "schema_validation_failed")
+            if isinstance(completion, dict)
+            else "schema_validation_failed",
+            "stage": "box_completion",
+            "raw_text": str(completion.get("raw_text") or completion.get("_model_raw") or "")
+            if isinstance(completion, dict)
+            else "",
+            "elapsed": elapsed,
+            "box_completion_n_predict": box_n_predict,
+            **constraint,
+        }
+    new_boxes = completion_payload.get("boxes")
+    new_boxes = [item for item in new_boxes if isinstance(item, dict)] if isinstance(new_boxes, list) else []
+    allowed_missing = set(missing_box_ids)
+    new_boxes = [item for item in new_boxes if str(item.get("id") or "") in allowed_missing]
+    if not new_boxes:
+        return {
+            "accepted": False,
+            "reason": "empty_box_completion",
+            "stage": "box_completion",
+            "raw_text": str(completion.get("_model_raw") or "") if isinstance(completion, dict) else "",
+            "elapsed": elapsed,
+            "box_completion_n_predict": box_n_predict,
+            **constraint,
+        }
+    merged = {
+        **payload,
+        "drs": {
+            **drs,
+            "boxes": [*boxes, *new_boxes],
+        },
+    }
+    merged = _repair_chunk_drs_payload(merged, prompt_chunk)
+    merged_validation = _validate_chunk_drs_payload(merged, prompt_chunk)
+    if not merged_validation.get("schema_valid"):
+        reason = "grounding_validation_failed" if merged_validation.get("grounding_failure_count") else "schema_validation_failed"
+        return {
+            "accepted": False,
+            "reason": reason,
+            "stage": "box_completion",
+            "raw_text": str(completion.get("_model_raw") or "") if isinstance(completion, dict) else "",
+            "elapsed": elapsed,
+            "validation": merged_validation,
+            "box_completion_n_predict": box_n_predict,
+            **constraint,
+        }
+    raw = json.dumps(
+        {
+            "candidate": json.dumps(drs, sort_keys=True),
+            "box_completion": completion.get("_model_raw") if isinstance(completion, dict) else "",
+        },
+        sort_keys=True,
+    )
+    return {
+        "accepted": True,
+        "reason": "box_completion_repair",
+        "drs": merged["drs"],
+        "raw_text": raw,
+        "elapsed": elapsed,
+        "prompt_hash": constraint.get("prompt_hash"),
+        "constraint_mode": constraint.get("constraint_mode"),
+        "validation": merged_validation,
+        "context_budget": {
+            **context_budget,
+            "box_completion_policy": CHUNK_DRS_BOX_COMPLETION_POLICY,
+            "box_completion_n_predict": box_n_predict,
+        },
+        "output_hash": hashlib.sha256(raw.encode()).hexdigest(),
+        "fresh_or_cached": "fresh",
+        "box_completion": {
+            "accepted": True,
+            "missing_box_ids": missing_box_ids,
+            "added_box_count": len(new_boxes),
+            "prompt_hash": constraint.get("prompt_hash"),
+        },
+    }
+
+
 def _call_model_chunk_drs_staged(
     prompt_chunk: str,
     client: LocalModelClient,
@@ -3220,12 +3443,73 @@ def _call_model_chunk_drs_staged(
     validation = _validate_chunk_drs_payload(merged, prompt_chunk)
     elapsed = skeleton_elapsed + condition_elapsed
     if not validation.get("schema_valid"):
+        box_completion = _call_model_chunk_drs_box_completion(
+            prompt_chunk,
+            client,
+            rel_path=rel_path,
+            n_predict=n_predict,
+            context_budget=context_budget,
+            cache_path=cache_path,
+            payload=merged,
+            validation=validation,
+        )
+        if box_completion.get("accepted"):
+            raw = json.dumps(
+                {
+                    "skeleton": skeleton.get("_model_raw") if isinstance(skeleton, dict) else "",
+                    "conditions": condition_stage.get("_model_raw") if isinstance(condition_stage, dict) else "",
+                    "box_completion": box_completion.get("raw_text") or "",
+                },
+                sort_keys=True,
+            )
+            staged_prompt_hash = hashlib.sha256(
+                json.dumps(
+                    {
+                        "skeleton_prompt_hash": skeleton_constraint.get("prompt_hash"),
+                        "condition_prompt_hash": condition_constraint.get("prompt_hash"),
+                        "box_completion_prompt_hash": box_completion.get("prompt_hash"),
+                    },
+                    sort_keys=True,
+                ).encode()
+            ).hexdigest()
+            return {
+                "accepted": True,
+                "reason": "staged_fallback",
+                "drs": box_completion["drs"],
+                "raw_text": raw,
+                "elapsed": elapsed + float(box_completion.get("elapsed") or 0.0),
+                "prompt_hash": staged_prompt_hash,
+                "constraint_mode": condition_constraint.get("constraint_mode"),
+                "validation": box_completion.get("validation"),
+                "context_budget": {
+                    **context_budget,
+                    "staged_fallback_policy": CHUNK_DRS_STAGED_FALLBACK_POLICY,
+                    "grounding_repair_policy": CHUNK_DRS_GROUNDING_REPAIR_POLICY,
+                    "identity_provenance_policy": CHUNK_DRS_IDENTITY_PROVENANCE_POLICY,
+                    "temporal_provenance_policy": CHUNK_DRS_TEMPORAL_PROVENANCE_POLICY,
+                    "sparse_retry_policy": CHUNK_DRS_SPARSE_RETRY_POLICY,
+                    "structure_validation_policy": CHUNK_DRS_STRUCTURE_VALIDATION_POLICY,
+                    "box_completion_policy": CHUNK_DRS_BOX_COMPLETION_POLICY,
+                    "staged_skeleton_n_predict": skeleton_n_predict,
+                    "staged_condition_n_predict": condition_n_predict,
+                    "box_completion_n_predict": box_completion["context_budget"]["box_completion_n_predict"],
+                },
+                "output_hash": hashlib.sha256(raw.encode()).hexdigest(),
+                "fresh_or_cached": "fresh",
+                "staged": True,
+                "box_completion": box_completion.get("box_completion"),
+            }
         reason = "grounding_validation_failed" if validation.get("grounding_failure_count") else "schema_validation_failed"
         return {
             "accepted": False,
             "reason": reason,
             "stage": "merged",
             "validation": validation,
+            "box_completion": {
+                "accepted": False,
+                "reason": box_completion.get("reason"),
+                "stage": box_completion.get("stage"),
+            },
             "elapsed": elapsed,
             **condition_constraint,
         }
@@ -3262,8 +3546,10 @@ def _call_model_chunk_drs_staged(
             "temporal_provenance_policy": CHUNK_DRS_TEMPORAL_PROVENANCE_POLICY,
             "sparse_retry_policy": CHUNK_DRS_SPARSE_RETRY_POLICY,
             "structure_validation_policy": CHUNK_DRS_STRUCTURE_VALIDATION_POLICY,
+            "box_completion_policy": CHUNK_DRS_BOX_COMPLETION_POLICY,
             "staged_skeleton_n_predict": skeleton_n_predict,
             "staged_condition_n_predict": condition_n_predict,
+            "box_completion_n_predict": default_chunk_drs_box_completion_n_predict(n_predict),
         },
         "output_hash": hashlib.sha256(raw.encode()).hexdigest(),
         "fresh_or_cached": "fresh",
@@ -3288,8 +3574,10 @@ def chunk_drs_cache_context(client: LocalModelClient | None, *, n_predict: int |
         "temporal_provenance_policy": CHUNK_DRS_TEMPORAL_PROVENANCE_POLICY,
         "sparse_retry_policy": CHUNK_DRS_SPARSE_RETRY_POLICY,
         "structure_validation_policy": CHUNK_DRS_STRUCTURE_VALIDATION_POLICY,
+        "box_completion_policy": CHUNK_DRS_BOX_COMPLETION_POLICY,
         "staged_skeleton_n_predict": default_staged_chunk_drs_skeleton_n_predict(int(n_predict)),
         "staged_condition_n_predict": default_staged_chunk_drs_condition_n_predict(int(n_predict)),
+        "box_completion_n_predict": default_chunk_drs_box_completion_n_predict(int(n_predict)),
         **constraint,
         "n_predict": int(n_predict),
         "model_fingerprint": _client_fingerprint(client),
@@ -3334,8 +3622,10 @@ def call_model_chunk_drs(
             "temporal_provenance_policy": CHUNK_DRS_TEMPORAL_PROVENANCE_POLICY,
             "sparse_retry_policy": CHUNK_DRS_SPARSE_RETRY_POLICY,
             "structure_validation_policy": CHUNK_DRS_STRUCTURE_VALIDATION_POLICY,
+            "box_completion_policy": CHUNK_DRS_BOX_COMPLETION_POLICY,
             "staged_skeleton_n_predict": default_staged_chunk_drs_skeleton_n_predict(int(n_predict)),
             "staged_condition_n_predict": default_staged_chunk_drs_condition_n_predict(int(n_predict)),
+            "box_completion_n_predict": default_chunk_drs_box_completion_n_predict(int(n_predict)),
         },
     )
     cache_path = _cache_path("KMD_CHUNK_DRS_CACHE_DIR", prompt_hash)
@@ -3401,13 +3691,15 @@ def call_model_chunk_drs(
     validation = _validate_chunk_drs_payload(parsed, prompt_chunk)
     if not validation.get("schema_valid"):
         reason = "grounding_validation_failed" if validation.get("grounding_failure_count") else "schema_validation_failed"
+        monolithic_elapsed = float(parsed.get("_model_elapsed_seconds", round(time.time() - start, 3)))
+        staged_elapsed = 0.0
         payload = {
             "accepted": False,
             "reason": reason,
             "raw_text": raw,
             "prompt_hash": prompt_hash,
             **constraint,
-            "elapsed": parsed.get("_model_elapsed_seconds", round(time.time() - start, 3)),
+            "elapsed": monolithic_elapsed,
             "validation": validation,
             "context_budget": context_budget,
         }
@@ -3420,6 +3712,7 @@ def call_model_chunk_drs(
                 context_budget=context_budget,
                 cache_path=cache_path,
             )
+            staged_elapsed = float(fallback.get("elapsed") or 0.0)
             if fallback.get("accepted"):
                 payload = {**fallback, "fallback_from_reason": reason, "monolithic_prompt_hash": prompt_hash}
                 _write_cache(cache_path, payload)
@@ -3429,6 +3722,30 @@ def call_model_chunk_drs(
                 "reason": fallback.get("reason"),
                 "stage": fallback.get("stage"),
             }
+        box_completion = _call_model_chunk_drs_box_completion(
+            prompt_chunk,
+            client,
+            rel_path=rel_path,
+            n_predict=n_predict,
+            context_budget=context_budget,
+            cache_path=cache_path,
+            payload=parsed,
+            validation=validation,
+        )
+        if box_completion.get("accepted"):
+            payload = {
+                **box_completion,
+                "elapsed": monolithic_elapsed + staged_elapsed + float(box_completion.get("elapsed") or 0.0),
+                "fallback_from_reason": reason,
+                "monolithic_prompt_hash": prompt_hash,
+            }
+            _write_cache(cache_path, payload)
+            return payload
+        payload["box_completion"] = {
+            "accepted": False,
+            "reason": box_completion.get("reason"),
+            "stage": box_completion.get("stage"),
+        }
         _write_cache(cache_path, payload)
         return payload
     if validation.get("grounding_failure_count"):
