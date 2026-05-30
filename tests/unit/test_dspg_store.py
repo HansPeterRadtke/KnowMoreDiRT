@@ -312,6 +312,15 @@ def test_bounded_query_uses_relation_level_drs_scope(tmp_path: Path, monkeypatch
     sentences_by_document = {}
     for sentence in sentences:
         sentences_by_document.setdefault(sentence.rel_path, {})[sentence.order] = sentence
+    unscoped_frame = QueryFrame(
+        question_text="What did Kalo Reed archive?",
+        answer_type="content_phrase",
+        answer_variables=("what",),
+        target_anchors=("Kalo Reed",),
+        requested_relation="archive",
+        relation_terms=("archive",),
+        constraints=(),
+    )
     frame = QueryFrame(
         question_text="What does Kalo Reed believe?",
         answer_type="content_phrase",
@@ -323,8 +332,12 @@ def test_bounded_query_uses_relation_level_drs_scope(tmp_path: Path, monkeypatch
         scope_requirements=("reported",),
     )
 
+    unscoped_answer, _unscoped_diagnostics = execute_bounded_query(
+        store, run_id, documents, sentences_by_document, unscoped_frame.question_text, unscoped_frame
+    )
     answer, _diagnostics = execute_bounded_query(store, run_id, documents, sentences_by_document, frame.question_text, frame)
 
+    assert unscoped_answer is None
     assert answer is not None
     assert answer.text == "Mira Stone archived the Slate Quill"
     assert answer.reason == "relation_condition_binding"

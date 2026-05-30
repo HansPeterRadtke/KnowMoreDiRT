@@ -538,9 +538,23 @@ def _context_accessible(context_id: str, records: dict[str, Any], frame: QueryFr
 
 def _relation_scope_accessible(row: dict[str, Any], records: dict[str, Any], frame: QueryFrame) -> bool:
     context_id = str(row.get("context_id") or "")
+    requirements = _context_requirements(frame)
+    relation_type = str(row.get("relation_type") or "")
+    declared_scope = normalize(str(row.get("subject") or "")) if relation_type == "drs_condition" else ""
+    scope_material = normalize(
+        " ".join(
+            [
+                declared_scope,
+                str(row.get("object") or ""),
+                _context_chain_material(context_id, records),
+            ]
+        )
+    )
+    if declared_scope and declared_scope != "asserted":
+        if not (requirements and all(_terms_match_material([requirement], scope_material) for requirement in requirements)):
+            return False
     if _context_accessible(context_id, records, frame):
         return True
-    requirements = _context_requirements(frame)
     if not requirements:
         return False
     chain = _context_chain(context_id, records)
@@ -550,17 +564,7 @@ def _relation_scope_accessible(row: dict[str, Any], records: dict[str, Any], fra
             return False
         if kind.startswith("drs:") and kind != "drs:asserted":
             return False
-    material = normalize(
-        " ".join(
-            [
-                str(row.get("relation_type") or ""),
-                str(row.get("subject") or ""),
-                str(row.get("object") or ""),
-                _context_chain_material(context_id, records),
-            ]
-        )
-    )
-    return all(_terms_match_material([requirement], material) for requirement in requirements)
+    return all(_terms_match_material([requirement], scope_material) for requirement in requirements)
 
 
 def _relation_metadata(row: dict[str, Any]) -> dict[str, Any]:
@@ -829,6 +833,16 @@ def _bind_frame_conditions(records: dict[str, Any], frame: QueryFrame, expected:
     args_by_frame: dict[str, list[dict[str, Any]]] = defaultdict(list)
     for arg in records.get("frame_arguments", []):
         args_by_frame[str(arg.get("frame_id"))].append(arg)
+    drs_relations_by_frame_key: dict[tuple[str, str, str], list[dict[str, Any]]] = defaultdict(list)
+    for relation in records.get("relations", []):
+        if str(relation.get("relation_type") or "") != "drs_condition":
+            continue
+        key = (
+            str(relation.get("source_span_id") or ""),
+            normalize(str(relation.get("predicate") or "")),
+            str(relation.get("context_id") or ""),
+        )
+        drs_relations_by_frame_key[key].append(relation)
     frame_types_by_span_predicate: dict[tuple[str, str], list[str]] = defaultdict(list)
     for relation in records.get("relations", []):
         if str(relation.get("relation_type") or "") != "semantic_frame":
@@ -839,7 +853,18 @@ def _bind_frame_conditions(records: dict[str, Any], frame: QueryFrame, expected:
             frame_types_by_span_predicate[key].append(frame_type)
     candidates: list[tuple[float, str, Evidence, str]] = []
     for row in records.get("frames", []):
-        if not _context_accessible(str(row.get("context_id") or ""), records, frame):
+        frame_scope_relations = drs_relations_by_frame_key.get(
+            (
+                str(row.get("span_id") or ""),
+                normalize(str(row.get("predicate") or "")),
+                str(row.get("context_id") or ""),
+            ),
+            [],
+        )
+        if frame_scope_relations:
+            if not any(_relation_scope_accessible(relation, records, frame) for relation in frame_scope_relations):
+                continue
+        elif not _context_accessible(str(row.get("context_id") or ""), records, frame):
             continue
         evidence = _evidence_for_span(str(row.get("span_id") or ""), records)
         if _source_is_low_priority(evidence.rel_path, evidence.text) and not _structured_source_row(row):
@@ -1154,6 +1179,8 @@ def _choose_answer(candidates: list[tuple[float, str, Evidence, str]], expected:
             continue
         if reason == "frame_argument_binding":
             score += 3.0
+        if reason == "relation_condition_binding" and expected.answer_type in {"content_phrase", "unknown"}:
+            score += 7.0
         previous = scored.get(canonical)
         if previous is None:
             scored[canonical] = (score, [evidence], reason)
