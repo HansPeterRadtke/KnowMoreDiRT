@@ -3,7 +3,7 @@ from __future__ import annotations
 from pathlib import Path
 
 from knowmoredirt.answer_types import ExpectedAnswer
-from knowmoredirt.bounded_dspg import _context_accessible, _identity_expanded_terms
+from knowmoredirt.bounded_dspg import _context_accessible, _identity_expanded_terms, execute_bounded_query
 from knowmoredirt.engine import KnowMoreDiRTEngine
 from knowmoredirt.ingest import ingest_folder
 from knowmoredirt.query import QueryFrame
@@ -232,6 +232,102 @@ def test_store_materializes_model_drs_without_same_surface_merging(tmp_path: Pat
     )
     assert bad["accepted"] is False
     assert bad["reason"] == "grounding_validation_failed"
+
+
+def test_bounded_query_uses_relation_level_drs_scope(tmp_path: Path, monkeypatch) -> None:
+    (tmp_path / "belief.txt").write_text(
+        "Kalo Reed believes that Mira Stone archived the Slate Quill.",
+        encoding="utf-8",
+    )
+
+    class ReportedConditionModel:
+        def context_size(self) -> int:
+            return 4096
+
+        def cache_fingerprint(self) -> dict[str, object]:
+            return {"model_id": "fake-reported-condition", "context_size": 4096}
+
+        def complete_json(self, prompt: str, *, n_predict: int = 128, grammar=None, json_schema=None):
+            return {
+                "drs": {
+                    "schema_version": "chunk-drs-v2",
+                    "source_id": "belief.txt",
+                    "referents": [
+                        {"id": "r0", "label": "Kalo Reed", "kind": "person", "evidence_text": "Kalo Reed"},
+                        {"id": "r1", "label": "Mira Stone", "kind": "person", "evidence_text": "Mira Stone"},
+                        {"id": "r2", "label": "the Slate Quill", "kind": "artifact", "evidence_text": "the Slate Quill"},
+                    ],
+                    "boxes": [
+                        {
+                            "id": "b0",
+                            "kind": "asserted",
+                            "parent_id": "",
+                            "holder_referent_id": "r0",
+                            "evidence_text": "believes that Mira Stone archived the Slate Quill",
+                        }
+                    ],
+                    "conditions": [
+                        {
+                            "id": "c0",
+                            "predicate": "archive",
+                            "box_id": "b0",
+                            "polarity": "positive",
+                            "modality": "reported",
+                            "temporal_id": "",
+                            "arguments": [
+                                {
+                                    "role": "agent",
+                                    "target_kind": "referent",
+                                    "target_id": "r1",
+                                    "value": "Mira Stone",
+                                    "value_type": "literal",
+                                    "evidence_text": "Mira Stone",
+                                },
+                                {
+                                    "role": "theme",
+                                    "target_kind": "referent",
+                                    "target_id": "r2",
+                                    "value": "the Slate Quill",
+                                    "value_type": "literal",
+                                    "evidence_text": "the Slate Quill",
+                                },
+                            ],
+                            "evidence_text": "Mira Stone archived the Slate Quill",
+                        }
+                    ],
+                    "identity_hypotheses": [],
+                    "temporal_records": [],
+                },
+                "_model_raw": "{}",
+                "_model_elapsed_seconds": 0.01,
+            }
+
+    monkeypatch.setenv("KMD_CHUNK_DRS_CACHE_DIR", str(tmp_path / "chunk-drs-cache"))
+    store, run_id, documents, sentences = ingest_folder(
+        tmp_path,
+        semantic_client=ReportedConditionModel(),  # type: ignore[arg-type]
+        use_semantic_frames=False,
+        use_drs_semantics=True,
+    )
+    sentences_by_document = {}
+    for sentence in sentences:
+        sentences_by_document.setdefault(sentence.rel_path, {})[sentence.order] = sentence
+    frame = QueryFrame(
+        question_text="What does Kalo Reed believe?",
+        answer_type="content_phrase",
+        answer_variables=("what",),
+        target_anchors=("Kalo Reed",),
+        requested_relation="believe",
+        relation_terms=("believe", "content"),
+        constraints=(),
+        scope_requirements=("reported",),
+    )
+
+    answer, _diagnostics = execute_bounded_query(store, run_id, documents, sentences_by_document, frame.question_text, frame)
+
+    assert answer is not None
+    assert answer.text == "Mira Stone archived the Slate Quill"
+    assert answer.reason == "relation_condition_binding"
 
 
 def test_ingest_can_materialize_schema_constrained_model_drs(tmp_path: Path, monkeypatch) -> None:

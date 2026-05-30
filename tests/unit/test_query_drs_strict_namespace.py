@@ -1,10 +1,12 @@
 from __future__ import annotations
 
 from knowmoredirt.model_planner import (
+    CHUNK_DRS_STRUCTURE_VALIDATION_POLICY,
     QUERY_DRS_VALIDATION_POLICY,
     call_model_chunk_drs,
     call_model_query_drs,
     chunk_drs_array_max_items,
+    chunk_drs_cache_context,
     chunk_drs_evidence_max_chars,
     chunk_drs_json_schema,
     query_frame_from_query_drs,
@@ -736,6 +738,78 @@ def test_chunk_drs_removes_tautological_self_identity_hypotheses(monkeypatch, tm
     assert result["accepted"] is True
     assert result["validation"]["identity_hypothesis_count"] == 0
     assert result["drs"]["identity_hypotheses"] == []
+
+
+def test_chunk_drs_rejects_self_referential_box_arguments(monkeypatch, tmp_path) -> None:
+    class SelfReferentialBoxModel:
+        def context_size(self) -> int:
+            return 8192
+
+        def cache_fingerprint(self) -> dict[str, object]:
+            return {"model_id": "fake-self-box", "context_size": 8192}
+
+        def complete_json(self, prompt: str, *, n_predict: int = 128, grammar=None, json_schema=None):
+            assert "target_id equal to its own box_id" in prompt
+            return {
+                "drs": {
+                    "schema_version": "chunk-drs-v2",
+                    "source_id": "note.txt",
+                    "referents": [
+                        {"id": "r0", "label": "Kalo Reed", "kind": "person", "evidence_text": "Kalo Reed"}
+                    ],
+                    "boxes": [
+                        {
+                            "id": "b0",
+                            "kind": "asserted",
+                            "parent_id": "",
+                            "holder_referent_id": "r0",
+                            "evidence_text": "believes that Mira Stone archived the Slate Quill",
+                        }
+                    ],
+                    "conditions": [
+                        {
+                            "id": "c0",
+                            "predicate": "believe",
+                            "box_id": "b0",
+                            "polarity": "positive",
+                            "modality": "asserted",
+                            "temporal_id": "",
+                            "arguments": [
+                                {
+                                    "role": "content",
+                                    "target_kind": "box",
+                                    "target_id": "b0",
+                                    "value": "",
+                                    "value_type": "box",
+                                    "evidence_text": "believes that Mira Stone archived the Slate Quill",
+                                }
+                            ],
+                            "evidence_text": "Kalo Reed believes that Mira Stone archived the Slate Quill.",
+                        }
+                    ],
+                    "identity_hypotheses": [],
+                    "temporal_records": [],
+                },
+                "_model_raw": "{}",
+                "_model_elapsed_seconds": 0.01,
+            }
+
+    model = SelfReferentialBoxModel()
+    monkeypatch.setenv("KMD_CHUNK_DRS_STAGED_FALLBACK", "0")
+    monkeypatch.setenv("KMD_CHUNK_DRS_CACHE_DIR", str(tmp_path / "chunk-drs-cache"))
+    result = call_model_chunk_drs(
+        "Kalo Reed believes that Mira Stone archived the Slate Quill.",
+        model,  # type: ignore[arg-type]
+        rel_path="note.txt",
+    )
+
+    assert result["accepted"] is False
+    assert result["reason"] == "schema_validation_failed"
+    assert "self_argument_box:c0->b0" in result["validation"]["errors"]
+    assert (
+        chunk_drs_cache_context(model, n_predict=384)["structure_validation_policy"]
+        == CHUNK_DRS_STRUCTURE_VALIDATION_POLICY
+    )
 
 
 def test_chunk_drs_evidence_cap_uses_reserved_output_budget(monkeypatch) -> None:

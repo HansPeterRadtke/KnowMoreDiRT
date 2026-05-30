@@ -80,6 +80,13 @@ def test_chunk_drs_staged_fallback_constrains_condition_targets(monkeypatch, tmp
                                 "parent_id": "",
                                 "holder_referent_id": "",
                                 "evidence_text": "Aero Gate is ready.",
+                            },
+                            {
+                                "id": "b1",
+                                "kind": "reported",
+                                "parent_id": "b0",
+                                "holder_referent_id": "",
+                                "evidence_text": "Aero Gate is ready.",
                             }
                         ],
                     },
@@ -90,8 +97,8 @@ def test_chunk_drs_staged_fallback_constrains_condition_targets(monkeypatch, tmp
             self.condition_schema = json_schema
             condition_schema = json_schema["properties"]["condition_stage"]["properties"]["conditions"]["items"]
             argument_schema = condition_schema["properties"]["arguments"]["items"]
-            assert condition_schema["properties"]["box_id"]["enum"] == ["b0"]
-            assert argument_schema["properties"]["target_id"]["enum"] == ["", "b0", "r0"]
+            assert condition_schema["properties"]["box_id"]["enum"] == ["b0", "b1"]
+            assert argument_schema["properties"]["target_id"]["enum"] == ["", "b0", "b1", "r0"]
             return {
                 "condition_stage": {
                     "schema_version": "chunk-drs-v2",
@@ -108,7 +115,7 @@ def test_chunk_drs_staged_fallback_constrains_condition_targets(monkeypatch, tmp
                                 {
                                     "role": "scope",
                                     "target_kind": "referent",
-                                    "target_id": "b0",
+                                    "target_id": "b1",
                                     "value": "",
                                     "value_type": "box",
                                     "evidence_text": "Aero Gate is ready.",

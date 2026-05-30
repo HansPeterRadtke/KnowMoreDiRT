@@ -63,6 +63,7 @@ CHUNK_DRS_GROUNDING_REPAIR_POLICY = "model-label-value-escaped-evidence-span-v2"
 CHUNK_DRS_IDENTITY_PROVENANCE_POLICY = "identity-evidence-bilateral-surface-v1"
 CHUNK_DRS_TEMPORAL_PROVENANCE_POLICY = "condition-referenced-temporal-records-v1"
 CHUNK_DRS_SPARSE_RETRY_POLICY = "retry-validated-sparse-drs-staged-v1"
+CHUNK_DRS_STRUCTURE_VALIDATION_POLICY = "acyclic-box-condition-arguments-v1"
 QUERY_DRS_SCHEMA_VERSION = "query-drs-v3"
 QUERY_DRS_VALIDATION_POLICY = "strict-query-drs-version-question-evidence-repair-v8"
 QUERY_DRS_ARRAY_CAP_POLICY = "reserved_output_tokens_div_96_4_8-v1"
@@ -2579,6 +2580,8 @@ def build_chunk_drs_prompt(chunk_text: str, *, rel_path: str = "", context_budge
         "and identity_hypotheses. Do not answer questions, use outside knowledge, infer hidden answers, "
         "or use handler names. The root asserted box should have id b0 and parent_id ''. Use subordinate boxes "
         "for negation, reports, quotes, beliefs, conditionals, uncertainty, dreams, fiction, and modality. "
+        "A condition must not use target_kind=box with target_id equal to its own box_id; scoped complements "
+        "belong in a distinct subordinate box whose parent_id is the containing box. "
         "Do not create boxes only to stand for ordinary events; boxes are for scoped DRS contexts. If an event "
         "complement is not itself a scoped DRS, represent it as a grounded literal argument or as a declared "
         "condition referenced with target_kind=condition. "
@@ -2628,7 +2631,8 @@ def build_chunk_drs_skeleton_prompt(chunk_text: str, *, rel_path: str = "", cont
         "DRS boxes, and explicit temporal records from the chunk. Do not emit conditions, identity hypotheses, answers, "
         "outside knowledge, or handler names. Declare one root asserted box with id b0 and parent_id ''. Use "
         "subordinate boxes only for scoped DRS contexts such as reports, quotes, beliefs, negation, conditionals, "
-        "uncertainty, dreams, fiction, and modality. Every evidence_text item must be one contiguous substring "
+        "uncertainty, dreams, fiction, and modality; subordinate boxes must be distinct from the containing box. "
+        "Every evidence_text item must be one contiguous substring "
         "copied exactly from the chunk."
         + json.dumps(
             {
@@ -2664,6 +2668,8 @@ def build_chunk_drs_condition_prompt(
         "referent and box ids. Do not invent ids; target_id is schema-constrained to declared ids or ''. "
         "If an argument is a literal phrase rather than a declared id, set target_id to '' and put the exact "
         "phrase in value and/or evidence_text. Do not emit identity hypotheses or temporal records in this stage. "
+        "A condition must not point a target_kind=box argument at its own box_id; use a distinct declared "
+        "subordinate box, a declared condition, or a literal argument. "
         "For compact records, key/value lists, JSON-like objects, TSV/CSV rows, and log entries, emit grounded "
         "conditions for visible source-supported field/value or row structure when declared referents or literals "
         "can participate. "
@@ -2798,6 +2804,8 @@ def _validate_chunk_drs_payload(payload: Any, source_text: str) -> dict[str, Any
             errors.append(f"bad_box_kind:{box_id}:{item.get('kind')}")
         if parent_id and parent_id not in box_ids:
             errors.append(f"missing_parent_box:{box_id}->{parent_id}")
+        if parent_id and parent_id == box_id:
+            errors.append(f"self_parent_box:{box_id}")
         if holder_id and holder_id not in referent_ids:
             errors.append(f"missing_holder_referent:{box_id}->{holder_id}")
         check_span(item.get("evidence_text"), f"box:{box_id}")
@@ -2834,8 +2842,12 @@ def _validate_chunk_drs_payload(payload: Any, source_text: str) -> dict[str, Any
                 errors.append(f"missing_argument_referent:{condition_id}->{target_id}")
             elif target_kind == "box" and target_id and target_id not in box_ids:
                 errors.append(f"missing_argument_box:{condition_id}->{target_id}")
+            elif target_kind == "box" and target_id and target_id == box_id:
+                errors.append(f"self_argument_box:{condition_id}->{target_id}")
             elif target_kind == "condition" and target_id and target_id not in condition_ids:
                 errors.append(f"missing_argument_condition:{condition_id}->{target_id}")
+            elif target_kind == "condition" and target_id and target_id == condition_id:
+                errors.append(f"self_argument_condition:{condition_id}->{target_id}")
             elif target_kind in {"literal", "unknown"} and target_id:
                 errors.append(f"literal_argument_has_target_id:{condition_id}->{target_id}")
             elif target_kind not in {"referent", "box", "condition", "literal", "unknown"}:
@@ -3241,6 +3253,7 @@ def _call_model_chunk_drs_staged(
             "identity_provenance_policy": CHUNK_DRS_IDENTITY_PROVENANCE_POLICY,
             "temporal_provenance_policy": CHUNK_DRS_TEMPORAL_PROVENANCE_POLICY,
             "sparse_retry_policy": CHUNK_DRS_SPARSE_RETRY_POLICY,
+            "structure_validation_policy": CHUNK_DRS_STRUCTURE_VALIDATION_POLICY,
             "staged_skeleton_n_predict": skeleton_n_predict,
             "staged_condition_n_predict": condition_n_predict,
         },
@@ -3266,6 +3279,7 @@ def chunk_drs_cache_context(client: LocalModelClient | None, *, n_predict: int |
         "identity_provenance_policy": CHUNK_DRS_IDENTITY_PROVENANCE_POLICY,
         "temporal_provenance_policy": CHUNK_DRS_TEMPORAL_PROVENANCE_POLICY,
         "sparse_retry_policy": CHUNK_DRS_SPARSE_RETRY_POLICY,
+        "structure_validation_policy": CHUNK_DRS_STRUCTURE_VALIDATION_POLICY,
         "staged_skeleton_n_predict": default_staged_chunk_drs_skeleton_n_predict(int(n_predict)),
         "staged_condition_n_predict": default_staged_chunk_drs_condition_n_predict(int(n_predict)),
         **constraint,
@@ -3311,6 +3325,7 @@ def call_model_chunk_drs(
             "identity_provenance_policy": CHUNK_DRS_IDENTITY_PROVENANCE_POLICY,
             "temporal_provenance_policy": CHUNK_DRS_TEMPORAL_PROVENANCE_POLICY,
             "sparse_retry_policy": CHUNK_DRS_SPARSE_RETRY_POLICY,
+            "structure_validation_policy": CHUNK_DRS_STRUCTURE_VALIDATION_POLICY,
             "staged_skeleton_n_predict": default_staged_chunk_drs_skeleton_n_predict(int(n_predict)),
             "staged_condition_n_predict": default_staged_chunk_drs_condition_n_predict(int(n_predict)),
         },

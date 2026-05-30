@@ -536,6 +536,33 @@ def _context_accessible(context_id: str, records: dict[str, Any], frame: QueryFr
     return True
 
 
+def _relation_scope_accessible(row: dict[str, Any], records: dict[str, Any], frame: QueryFrame) -> bool:
+    context_id = str(row.get("context_id") or "")
+    if _context_accessible(context_id, records, frame):
+        return True
+    requirements = _context_requirements(frame)
+    if not requirements:
+        return False
+    chain = _context_chain(context_id, records)
+    for context in chain:
+        kind = normalize(str(context.get("kind") or "asserted"))
+        if kind.startswith(INACCESSIBLE_CONTEXT_PREFIXES) or kind.startswith("polarity:"):
+            return False
+        if kind.startswith("drs:") and kind != "drs:asserted":
+            return False
+    material = normalize(
+        " ".join(
+            [
+                str(row.get("relation_type") or ""),
+                str(row.get("subject") or ""),
+                str(row.get("object") or ""),
+                _context_chain_material(context_id, records),
+            ]
+        )
+    )
+    return all(_terms_match_material([requirement], material) for requirement in requirements)
+
+
 def _relation_metadata(row: dict[str, Any]) -> dict[str, Any]:
     try:
         value = json.loads(str(row.get("metadata_json") or "{}"))
@@ -582,7 +609,14 @@ def _condition_material(row: dict[str, Any], evidence: Evidence, records: dict[s
     return normalize(" ".join(str(item or "") for item in fields))
 
 
-def _relation_local_material(row: dict[str, Any], evidence: Evidence | None = None, *, include_evidence: bool = False) -> str:
+def _relation_local_material(
+    row: dict[str, Any],
+    evidence: Evidence | None = None,
+    *,
+    include_evidence: bool = False,
+    include_context: bool = False,
+    records: dict[str, Any] | None = None,
+) -> str:
     metadata = _relation_metadata(row)
     fields = [
         row.get("relation_type"),
@@ -600,6 +634,8 @@ def _relation_local_material(row: dict[str, Any], evidence: Evidence | None = No
     if include_evidence and evidence is not None:
         fields.append(evidence.rel_path)
         fields.append(evidence.text)
+    if include_context and records is not None:
+        fields.append(_context_chain_material(str(row.get("context_id") or ""), records))
     return normalize(" ".join(str(item or "") for item in fields))
 
 
@@ -685,7 +721,12 @@ def _answer_values_from_relation(
         )
         if slot_material and not _contains_any(slot_material, answer_slot_terms):
             return []
-    primary_values = [] if relation_type == "semantic_frame" else [str(row.get(key) or "") for key in ["value", "object"]]
+    if relation_type == "semantic_frame":
+        primary_values = []
+    elif relation_type == "drs_condition":
+        primary_values = [str(row.get("value") or "")]
+    else:
+        primary_values = [str(row.get(key) or "") for key in ["value", "object"]]
     fallback_values = [] if relation_type in {"semantic_argument", "semantic_frame"} else [str(row.get("subject") or "")]
     structural = expected.answer_type in {"url", "identifier", "file_path", "date_time", "count"}
     primary_values = [
@@ -830,12 +871,12 @@ def _bind_relation_conditions(records: dict[str, Any], frame: QueryFrame, expect
     answer_slot_terms = _answer_slot_terms(frame)
     candidates: list[tuple[float, str, Evidence, str]] = []
     for row in records.get("relations", []):
-        if not _context_accessible(str(row.get("context_id") or ""), records, frame):
+        if not _relation_scope_accessible(row, records, frame):
             continue
         evidence = _evidence_for_span(str(row.get("source_span_id") or ""), records)
         if _source_is_low_priority(evidence.rel_path, evidence.text):
             continue
-        row_material = _relation_local_material(row, evidence, include_evidence=False)
+        row_material = _relation_local_material(row, evidence, include_evidence=False, include_context=True, records=records)
         evidence_material = normalize(" ".join([row_material, evidence.rel_path, evidence.text]))
         score = _split_match_score(evidence_material, row_material, target_terms, relation_terms)
         if score <= 0:
