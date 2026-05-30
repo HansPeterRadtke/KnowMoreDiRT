@@ -181,6 +181,77 @@ def test_fake_model_evidence_extraction_rejects_incompatible_answer_type(tmp_pat
     assert engine.model_query_trace.evidence_rejected_count >= 1
 
 
+def test_count_evidence_extraction_accepts_grounded_multiline_aggregate(tmp_path: Path) -> None:
+    class CountEvidenceModel:
+        def complete_json(self, prompt: str, *, n_predict: int = 128, grammar: str | None = None) -> dict[str, object]:
+            if "generic DRT/DSPG query frame" in prompt:
+                return {
+                    "query_frame": {
+                        "target_anchors": [],
+                        "answer_variables": [],
+                        "requested_relation": "",
+                        "relation_terms": [],
+                        "constraints": [],
+                        "answer_type": "unknown",
+                        "temporal_scope": "",
+                        "negated": False,
+                        "aggregation": "",
+                        "requires_evidence": True,
+                    },
+                    "_model_raw": '{"query_frame":{"target_anchors":[],"answer_variables":[],"requested_relation":"","relation_terms":[],"constraints":[],"answer_type":"unknown","temporal_scope":"","negated":false,"aggregation":"","requires_evidence":true}}',
+                }
+            if "bounded DRT/DSPG question analysis" in prompt:
+                return {
+                    "result": {
+                        "query_frame": {
+                            "target_anchors": [],
+                            "answer_variables": [],
+                            "requested_relation": "",
+                            "relation_terms": [],
+                            "constraints": [],
+                            "answer_type": "unknown",
+                            "temporal_scope": "",
+                            "negated": False,
+                            "aggregation": "",
+                            "requires_evidence": True,
+                        },
+                        "sufficient_evidence": False,
+                        "answer_type": "unknown",
+                        "answer": "unknown",
+                        "evidence_span": "",
+                        "reason": "not needed",
+                    },
+                    "_model_raw": '{"result":{"sufficient_evidence":false,"answer_type":"unknown","answer":"unknown","evidence_span":"","reason":"not needed"}}',
+                }
+            assert "Answer the question only from the provided raw-text evidence" in prompt
+            return {
+                "answer": {
+                    "sufficient_evidence": True,
+                    "answer_type": "count",
+                    "answer": "2",
+                    "evidence_span": "item: Blue Reef | status: open\nitem: Glass Pier | status: open",
+                },
+                "_model_raw": '{"answer":{"sufficient_evidence":true,"answer_type":"count","answer":"2","evidence_span":"item: Blue Reef | status: open\\nitem: Glass Pier | status: open"}}',
+            }
+
+    (tmp_path / "items").write_text(
+        "item: Blue Reef | status: open\n"
+        "item: Stone Vale | status: closed\n"
+        "item: Glass Pier | status: open\n",
+        encoding="utf-8",
+    )
+    engine = KnowMoreDiRTEngine(tmp_path)
+    engine._use_local_model = True
+    engine._model_client = CountEvidenceModel()  # type: ignore[assignment]
+    engine.model_query_trace.enabled = True
+
+    answer = engine.answer("How many items have open status?")
+
+    assert answer.text == "2"
+    assert answer.answer_type == "count"
+    assert answer.evidence
+
+
 def test_invalid_model_evidence_answer_is_cached(tmp_path: Path, monkeypatch) -> None:
     class InvalidEvidenceModel:
         def __init__(self) -> None:

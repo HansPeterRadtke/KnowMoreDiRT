@@ -438,6 +438,40 @@ class KnowMoreDiRTEngine:
                 or self._is_boolean_text(proposed)
             ):
                 matches.append(item)
+        if matches:
+            return matches
+        if classify_value(proposed) == "count":
+            return self._matching_count_evidence(evidence, evidence_span, proposed)
+        return []
+
+    def _matching_count_evidence(self, evidence: list[Evidence], evidence_span: str, proposed: str) -> list[Evidence]:
+        canonical = canonicalize_answer(ExpectedAnswer("count"), proposed)
+        if not canonical:
+            return []
+        try:
+            expected_count = int(canonical)
+        except ValueError:
+            return []
+        if expected_count <= 0:
+            return []
+        segments = [line.strip() for line in str(evidence_span or "").splitlines() if line.strip()]
+        if len(segments) != expected_count:
+            return []
+        matches: list[Evidence] = []
+        for segment in segments:
+            segment_norm = normalize(segment)
+            if not segment_norm:
+                return []
+            matched: Evidence | None = None
+            for item in evidence:
+                window = self._evidence_window_text(item)
+                if segment in window or segment_norm in normalize(window):
+                    matched = item
+                    break
+            if matched is None:
+                return []
+            if matched not in matches:
+                matches.append(matched)
         return matches
 
     def _answer_with_local_model(self, question: str) -> Answer | None:
@@ -923,8 +957,6 @@ class KnowMoreDiRTEngine:
                 trace.evidence_rejected_count += 1
                 return Answer("unknown", reason="local model boolean answer lacked target grounding")
             matching = self._matching_evidence(evidence, evidence_span, proposed)
-            if not matching and classify_value(proposed) == "count":
-                matching = [item for item in evidence if evidence_span in self._evidence_window_text(item)]
             if not matching:
                 trace.evidence_rejected_count += 1
                 return None
