@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 from knowmoredirt.model_planner import (
+    QUERY_DRS_VALIDATION_POLICY,
     call_model_chunk_drs,
     call_model_query_drs,
     chunk_drs_array_max_items,
@@ -184,6 +185,228 @@ def test_query_drs_temporal_namespace_reaches_query_frame(monkeypatch, tmp_path)
     assert frame is not None
     assert frame["temporal_scope"] == "after the latest update"
     assert "after the latest update" in frame["relation_terms"]
+
+
+def test_query_drs_repairs_condition_evidence_to_full_question(monkeypatch, tmp_path) -> None:
+    class ConditionEvidenceRepairModel:
+        def context_size(self) -> int:
+            return 8192
+
+        def cache_fingerprint(self) -> dict[str, object]:
+            return {"model_id": "fake-query-condition-repair", "context_size": 8192}
+
+        def complete_json(self, prompt: str, *, n_predict: int = 128, grammar=None, json_schema=None):
+            return {
+                "query_drs": {
+                    "schema_version": "query-drs-v3",
+                    "question": "Who reviewed Aero Gate?",
+                    "answer_variables": [
+                        {"id": "qv0", "label": "reviewer", "answer_type": "person", "evidence_text": "Who"}
+                    ],
+                    "target_referents": [
+                        {"id": "qr0", "label": "Aero Gate", "kind": "entity", "evidence_text": "Aero Gate"}
+                    ],
+                    "temporal_records": [],
+                    "requested_conditions": [
+                        {
+                            "id": "qc0",
+                            "predicate": "reviewed",
+                            "box_id": "",
+                            "polarity": "positive",
+                            "modality": "asserted",
+                            "temporal_id": "",
+                            "arguments": [
+                                {
+                                    "role": "agent",
+                                    "target_kind": "answer_variable",
+                                    "target_id": "qv0",
+                                    "value": "",
+                                    "value_type": "person",
+                                    "evidence_text": "Who",
+                                },
+                                {
+                                    "role": "theme",
+                                    "target_kind": "referent",
+                                    "target_id": "qr0",
+                                    "value": "Aero Gate",
+                                    "value_type": "entity",
+                                    "evidence_text": "Aero Gate",
+                                },
+                            ],
+                            "evidence_text": "the review request for Aero Gate",
+                        }
+                    ],
+                    "constraints": [],
+                    "box_requirements": [],
+                    "temporal_scope": "",
+                    "aggregation": "",
+                    "answer_type": "person",
+                    "requires_evidence": True,
+                },
+                "_model_raw": "{}",
+                "_model_elapsed_seconds": 0.01,
+            }
+
+    monkeypatch.setenv("KMD_QUERY_DRS_CACHE_DIR", str(tmp_path / "query-drs-cache"))
+    result = call_model_query_drs("Who reviewed Aero Gate?", ConditionEvidenceRepairModel())  # type: ignore[arg-type]
+
+    assert result["accepted"] is True
+    assert result["validation_policy"] == QUERY_DRS_VALIDATION_POLICY
+    assert result["validation"]["grounding_failure_count"] == 0
+    assert result["query_drs"]["requested_conditions"][0]["evidence_text"] == "Who reviewed Aero Gate?"
+
+
+def test_query_drs_repairs_answer_variable_label_variant(monkeypatch, tmp_path) -> None:
+    class AnswerVariableLabelRepairModel:
+        def context_size(self) -> int:
+            return 8192
+
+        def cache_fingerprint(self) -> dict[str, object]:
+            return {"model_id": "fake-query-answer-variable-repair", "context_size": 8192}
+
+        def complete_json(self, prompt: str, *, n_predict: int = 128, grammar=None, json_schema=None):
+            return {
+                "query_drs": {
+                    "schema_version": "query-drs-v3",
+                    "question": "What report link is listed for Orchid Gamma?",
+                    "answer_variables": [
+                        {
+                            "id": "qv0",
+                            "label": "report_link",
+                            "answer_type": "url",
+                            "evidence_text": "report link listed for Orchid Gamma",
+                        }
+                    ],
+                    "target_referents": [
+                        {"id": "qr0", "label": "Orchid Gamma", "kind": "entity", "evidence_text": "Orchid Gamma"}
+                    ],
+                    "temporal_records": [],
+                    "requested_conditions": [
+                        {
+                            "id": "qc0",
+                            "predicate": "listed",
+                            "box_id": "",
+                            "polarity": "positive",
+                            "modality": "asserted",
+                            "temporal_id": "",
+                            "arguments": [
+                                {
+                                    "role": "report_link",
+                                    "target_kind": "answer_variable",
+                                    "target_id": "qv0",
+                                    "value": "",
+                                    "value_type": "url",
+                                    "evidence_text": "report link listed for Orchid Gamma",
+                                },
+                                {
+                                    "role": "for",
+                                    "target_kind": "referent",
+                                    "target_id": "qr0",
+                                    "value": "Orchid Gamma",
+                                    "value_type": "entity",
+                                    "evidence_text": "Orchid Gamma",
+                                },
+                            ],
+                            "evidence_text": "report link listed for Orchid Gamma",
+                        }
+                    ],
+                    "constraints": [],
+                    "box_requirements": [],
+                    "temporal_scope": "",
+                    "aggregation": "",
+                    "answer_type": "url",
+                    "requires_evidence": True,
+                },
+                "_model_raw": "{}",
+                "_model_elapsed_seconds": 0.01,
+            }
+
+    monkeypatch.setenv("KMD_QUERY_DRS_CACHE_DIR", str(tmp_path / "query-drs-cache"))
+    result = call_model_query_drs(
+        "What report link is listed for Orchid Gamma?",
+        AnswerVariableLabelRepairModel(),  # type: ignore[arg-type]
+    )
+
+    assert result["accepted"] is True
+    assert result["validation"]["grounding_failure_count"] == 0
+    assert result["query_drs"]["answer_variables"][0]["evidence_text"] == "report link"
+    assert result["query_drs"]["requested_conditions"][0]["arguments"][0]["evidence_text"] == "report link"
+    assert result["query_drs"]["requested_conditions"][0]["evidence_text"] == (
+        "What report link is listed for Orchid Gamma?"
+    )
+
+
+def test_query_drs_keeps_ungrounded_temporal_rejection(monkeypatch, tmp_path) -> None:
+    class UngroundedTemporalQueryModel:
+        def context_size(self) -> int:
+            return 8192
+
+        def cache_fingerprint(self) -> dict[str, object]:
+            return {"model_id": "fake-query-ungrounded-temporal", "context_size": 8192}
+
+        def complete_json(self, prompt: str, *, n_predict: int = 128, grammar=None, json_schema=None):
+            return {
+                "query_drs": {
+                    "schema_version": "query-drs-v3",
+                    "question": "Which state was current for Aero Gate?",
+                    "answer_variables": [
+                        {"id": "qv0", "label": "state", "answer_type": "state", "evidence_text": "Which state"}
+                    ],
+                    "target_referents": [
+                        {"id": "qr0", "label": "Aero Gate", "kind": "entity", "evidence_text": "Aero Gate"}
+                    ],
+                    "temporal_records": [
+                        {"id": "qt0", "value": "now", "value_type": "time", "evidence_text": "now"}
+                    ],
+                    "requested_conditions": [
+                        {
+                            "id": "qc0",
+                            "predicate": "current",
+                            "box_id": "",
+                            "polarity": "positive",
+                            "modality": "asserted",
+                            "temporal_id": "qt0",
+                            "arguments": [
+                                {
+                                    "role": "target",
+                                    "target_kind": "answer_variable",
+                                    "target_id": "qv0",
+                                    "value": "",
+                                    "value_type": "state",
+                                    "evidence_text": "state",
+                                },
+                                {
+                                    "role": "theme",
+                                    "target_kind": "referent",
+                                    "target_id": "qr0",
+                                    "value": "Aero Gate",
+                                    "value_type": "entity",
+                                    "evidence_text": "Aero Gate",
+                                },
+                            ],
+                            "evidence_text": "Which state was current for Aero Gate?",
+                        }
+                    ],
+                    "constraints": [],
+                    "box_requirements": [],
+                    "temporal_scope": "",
+                    "aggregation": "",
+                    "answer_type": "state",
+                    "requires_evidence": True,
+                },
+                "_model_raw": "{}",
+                "_model_elapsed_seconds": 0.01,
+            }
+
+    monkeypatch.setenv("KMD_QUERY_DRS_CACHE_DIR", str(tmp_path / "query-drs-cache"))
+    result = call_model_query_drs(
+        "Which state was current for Aero Gate?",
+        UngroundedTemporalQueryModel(),  # type: ignore[arg-type]
+    )
+
+    assert result["accepted"] is False
+    assert result["reason"] == "schema_validation_failed"
+    assert result["validation"]["grounding_failures"] == ["temporal:qt0:now"]
 
 
 def test_chunk_drs_removes_tautological_self_identity_hypotheses(monkeypatch, tmp_path) -> None:

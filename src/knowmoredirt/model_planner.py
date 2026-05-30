@@ -64,7 +64,7 @@ CHUNK_DRS_IDENTITY_PROVENANCE_POLICY = "identity-evidence-bilateral-surface-v1"
 CHUNK_DRS_TEMPORAL_PROVENANCE_POLICY = "condition-referenced-temporal-records-v1"
 CHUNK_DRS_SPARSE_RETRY_POLICY = "retry-validated-sparse-drs-staged-v1"
 QUERY_DRS_SCHEMA_VERSION = "query-drs-v3"
-QUERY_DRS_VALIDATION_POLICY = "strict-query-drs-version-question-v1"
+QUERY_DRS_VALIDATION_POLICY = "strict-query-drs-version-question-evidence-repair-v4"
 QUERY_FRAME_SCHEMA_VERSION = "query-frame-v4"
 ANSWER_SCHEMA_VERSION = "answer-v4"
 
@@ -1331,6 +1331,61 @@ def build_query_drs_prompt(question: str) -> str:
     )
 
 
+def _repair_query_drs_payload(payload: Any, question: str) -> Any:
+    if not isinstance(payload, dict) or not isinstance(payload.get("query_drs"), dict):
+        return payload
+    query_drs = {**payload["query_drs"]}
+
+    def repair_item(item: dict[str, Any], fields: tuple[str, ...], *, use_full_question: bool = False) -> bool:
+        evidence_text = str(item.get("evidence_text") or "").strip()
+        if not evidence_text or evidence_text in question:
+            return False
+        for field in fields:
+            candidate = str(item.get(field) or "").strip()
+            for variant in (candidate, candidate.replace("_", " "), candidate.replace("-", " ")):
+                if variant and variant in question:
+                    item["evidence_text"] = variant
+                    return True
+        if use_full_question and question:
+            item["evidence_text"] = question
+            return True
+        return False
+
+    repaired = False
+    for key, fields, use_full_question in [
+        ("answer_variables", ("label",), False),
+        ("target_referents", ("label",), False),
+        ("temporal_records", ("value",), False),
+        ("box_requirements", (), True),
+        ("requested_conditions", (), True),
+    ]:
+        items = query_drs.get(key)
+        if isinstance(items, list):
+            repaired_items = [item for item in items if isinstance(item, dict)]
+            for item in repaired_items:
+                repaired |= repair_item(item, fields, use_full_question=use_full_question)
+            if len(repaired_items) != len(items):
+                query_drs[key] = repaired_items
+                repaired = True
+    conditions = query_drs.get("requested_conditions")
+    if isinstance(conditions, list):
+        for condition in conditions:
+            if not isinstance(condition, dict):
+                continue
+            arguments = condition.get("arguments")
+            if not isinstance(arguments, list):
+                continue
+            repaired_arguments = [item for item in arguments if isinstance(item, dict)]
+            for argument in repaired_arguments:
+                repaired |= repair_item(argument, ("value", "role"), use_full_question=False)
+            if len(repaired_arguments) != len(arguments):
+                condition["arguments"] = repaired_arguments
+                repaired = True
+    if not repaired:
+        return payload
+    return {**payload, "query_drs": query_drs}
+
+
 def _validate_query_drs_payload(payload: Any, question: str) -> dict[str, Any]:
     if not isinstance(payload, dict) or not isinstance(payload.get("query_drs"), dict):
         return {"schema_valid": False, "errors": ["missing_query_drs_object"]}
@@ -1531,6 +1586,7 @@ def call_model_query_drs(question: str, client: LocalModelClient, *, n_predict: 
             "elapsed": round(time.time() - start, 3),
         }
     raw = str(parsed.get("_model_raw") or "") if isinstance(parsed, dict) else ""
+    parsed = _repair_query_drs_payload(parsed, question)
     validation = _validate_query_drs_payload(parsed, question)
     if not validation.get("schema_valid"):
         payload = {
