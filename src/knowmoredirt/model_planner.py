@@ -72,6 +72,7 @@ CHUNK_DRS_MONOLITHIC_ID_POLICY = "monolithic-stable-id-enums-v1"
 CHUNK_DRS_COMPACT_UNDERCOVERAGE_POLICY = "retry-delimiter-rich-low-condition-density-v1"
 CHUNK_DRS_STAGED_RETRY_DIAGNOSTICS_POLICY = "record-non-improving-staged-retry-v1"
 CHUNK_DRS_STAGE_FAILURE_CACHE_POLICY = "cache-invalid-json-stage-failures-v1"
+CHUNK_DRS_DYNAMIC_SKELETON_BUDGET_POLICY = "field-like-source-spans-allow-768-v1"
 QUERY_DRS_SCHEMA_VERSION = "query-drs-v3"
 QUERY_DRS_VALIDATION_POLICY = "strict-query-drs-version-question-evidence-repair-v8"
 QUERY_DRS_ARRAY_CAP_POLICY = "reserved_output_tokens_div_96_4_8-v1"
@@ -1073,14 +1074,21 @@ def chunk_drs_source_span_candidates(
     return candidates[:max_candidates]
 
 
-def default_staged_chunk_drs_skeleton_n_predict(n_predict: int) -> int:
+def default_staged_chunk_drs_skeleton_n_predict(
+    n_predict: int,
+    source_text: str = "",
+    max_evidence_chars: int | None = None,
+) -> int:
     configured = os.environ.get("KMD_CHUNK_DRS_STAGED_SKELETON_N_PREDICT")
     if configured:
         try:
             return max(1, int(configured))
         except ValueError:
             pass
-    return max(192, min(int(n_predict), 384))
+    base = max(192, min(int(n_predict), 384))
+    if source_text and _chunk_drs_structural_condition_floor(source_text, max_evidence_chars) >= 4:
+        return max(base, 768)
+    return base
 
 
 def default_staged_chunk_drs_condition_n_predict(n_predict: int) -> int:
@@ -3545,10 +3553,14 @@ def _call_model_chunk_drs_staged(
     context_budget: dict[str, Any],
     cache_path: Path | None,
 ) -> dict[str, Any]:
-    skeleton_n_predict = default_staged_chunk_drs_skeleton_n_predict(n_predict)
     condition_n_predict = default_staged_chunk_drs_condition_n_predict(n_predict)
     max_items = context_budget.get("max_array_items") or chunk_drs_array_max_items(n_predict)
     source_span_candidates = chunk_drs_source_span_candidates(
+        prompt_chunk,
+        context_budget.get("max_evidence_chars"),
+    )
+    skeleton_n_predict = default_staged_chunk_drs_skeleton_n_predict(
+        n_predict,
         prompt_chunk,
         context_budget.get("max_evidence_chars"),
     )
@@ -3739,6 +3751,7 @@ def _call_model_chunk_drs_staged(
                     "source_span_policy": CHUNK_DRS_SOURCE_SPAN_POLICY,
                     "skeleton_source_span_policy": CHUNK_DRS_SKELETON_SOURCE_SPAN_POLICY,
                     "skeleton_id_policy": CHUNK_DRS_SKELETON_ID_POLICY,
+                    "dynamic_skeleton_budget_policy": CHUNK_DRS_DYNAMIC_SKELETON_BUDGET_POLICY,
                     "staged_skeleton_n_predict": skeleton_n_predict,
                     "staged_condition_n_predict": condition_n_predict,
                     "box_completion_n_predict": box_completion["context_budget"]["box_completion_n_predict"],
@@ -3799,6 +3812,7 @@ def _call_model_chunk_drs_staged(
             "source_span_policy": CHUNK_DRS_SOURCE_SPAN_POLICY,
             "skeleton_source_span_policy": CHUNK_DRS_SKELETON_SOURCE_SPAN_POLICY,
             "skeleton_id_policy": CHUNK_DRS_SKELETON_ID_POLICY,
+            "dynamic_skeleton_budget_policy": CHUNK_DRS_DYNAMIC_SKELETON_BUDGET_POLICY,
             "staged_skeleton_n_predict": skeleton_n_predict,
             "staged_condition_n_predict": condition_n_predict,
             "box_completion_n_predict": default_chunk_drs_box_completion_n_predict(n_predict),
@@ -3834,6 +3848,7 @@ def chunk_drs_cache_context(client: LocalModelClient | None, *, n_predict: int |
         "compact_undercoverage_policy": CHUNK_DRS_COMPACT_UNDERCOVERAGE_POLICY,
         "staged_retry_diagnostics_policy": CHUNK_DRS_STAGED_RETRY_DIAGNOSTICS_POLICY,
         "stage_failure_cache_policy": CHUNK_DRS_STAGE_FAILURE_CACHE_POLICY,
+        "dynamic_skeleton_budget_policy": CHUNK_DRS_DYNAMIC_SKELETON_BUDGET_POLICY,
         "staged_skeleton_n_predict": default_staged_chunk_drs_skeleton_n_predict(int(n_predict)),
         "staged_condition_n_predict": default_staged_chunk_drs_condition_n_predict(int(n_predict)),
         "box_completion_n_predict": default_chunk_drs_box_completion_n_predict(int(n_predict)),
@@ -3871,6 +3886,7 @@ def call_model_chunk_drs(
         "compact_undercoverage_policy": CHUNK_DRS_COMPACT_UNDERCOVERAGE_POLICY,
         "staged_retry_diagnostics_policy": CHUNK_DRS_STAGED_RETRY_DIAGNOSTICS_POLICY,
         "stage_failure_cache_policy": CHUNK_DRS_STAGE_FAILURE_CACHE_POLICY,
+        "dynamic_skeleton_budget_policy": CHUNK_DRS_DYNAMIC_SKELETON_BUDGET_POLICY,
     }
     prompt = build_chunk_drs_prompt(prompt_chunk, rel_path=rel_path, context_budget=context_budget)
     drs_json_schema = chunk_drs_json_schema(
@@ -3906,8 +3922,13 @@ def call_model_chunk_drs(
             "compact_undercoverage_policy": CHUNK_DRS_COMPACT_UNDERCOVERAGE_POLICY,
             "staged_retry_diagnostics_policy": CHUNK_DRS_STAGED_RETRY_DIAGNOSTICS_POLICY,
             "stage_failure_cache_policy": CHUNK_DRS_STAGE_FAILURE_CACHE_POLICY,
+            "dynamic_skeleton_budget_policy": CHUNK_DRS_DYNAMIC_SKELETON_BUDGET_POLICY,
             "source_span_candidate_count": len(source_span_candidates),
-            "staged_skeleton_n_predict": default_staged_chunk_drs_skeleton_n_predict(int(n_predict)),
+            "staged_skeleton_n_predict": default_staged_chunk_drs_skeleton_n_predict(
+                int(n_predict),
+                prompt_chunk,
+                context_budget.get("max_evidence_chars"),
+            ),
             "staged_condition_n_predict": default_staged_chunk_drs_condition_n_predict(int(n_predict)),
             "box_completion_n_predict": default_chunk_drs_box_completion_n_predict(int(n_predict)),
         },

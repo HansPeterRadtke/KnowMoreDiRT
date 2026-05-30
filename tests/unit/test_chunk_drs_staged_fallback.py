@@ -7,6 +7,7 @@ from knowmoredirt.model import LocalModelJSONError
 from knowmoredirt.model_planner import (
     CHUNK_DRS_BOX_COMPLETION_POLICY,
     CHUNK_DRS_COMPACT_UNDERCOVERAGE_POLICY,
+    CHUNK_DRS_DYNAMIC_SKELETON_BUDGET_POLICY,
     CHUNK_DRS_GROUNDING_REPAIR_POLICY,
     CHUNK_DRS_MONOLITHIC_ID_POLICY,
     CHUNK_DRS_SPARSE_RETRY_POLICY,
@@ -21,6 +22,7 @@ from knowmoredirt.model_planner import (
     chunk_drs_cache_context,
     chunk_drs_skeleton_json_schema,
     chunk_drs_source_span_candidates,
+    default_staged_chunk_drs_skeleton_n_predict,
 )
 
 
@@ -175,6 +177,7 @@ def test_chunk_drs_staged_fallback_constrains_condition_targets(monkeypatch, tmp
     assert cache_context["skeleton_id_policy"] == CHUNK_DRS_SKELETON_ID_POLICY
     assert cache_context["skeleton_source_span_policy"] == CHUNK_DRS_SKELETON_SOURCE_SPAN_POLICY
     assert cache_context["stage_failure_cache_policy"] == CHUNK_DRS_STAGE_FAILURE_CACHE_POLICY
+    assert cache_context["dynamic_skeleton_budget_policy"] == CHUNK_DRS_DYNAMIC_SKELETON_BUDGET_POLICY
     assert model.skeleton_schema is not None
     assert model.condition_schema is not None
 
@@ -870,6 +873,22 @@ def test_chunk_drs_source_span_candidates_skip_field_headers() -> None:
     assert 'asset: "OG-7003"' in spans
     assert "OG-7003" in spans
     assert "ids:" not in spans
+
+
+def test_chunk_drs_dynamic_skeleton_budget_for_field_rich_chunks(monkeypatch) -> None:
+    field_rich = (
+        '{ name: "Cobalt Fern", owner: "Mira Vale", status: "ready", '
+        'ids: { asset: "CF-2201", audit: "AUD-881" } }'
+    )
+    plain_sentence = "Mara thinks Theo heard that Ivo planned a rollback."
+
+    monkeypatch.delenv("KMD_CHUNK_DRS_STAGED_SKELETON_N_PREDICT", raising=False)
+
+    assert default_staged_chunk_drs_skeleton_n_predict(384, plain_sentence, 96) == 384
+    assert default_staged_chunk_drs_skeleton_n_predict(384, field_rich, 96) == 768
+
+    monkeypatch.setenv("KMD_CHUNK_DRS_STAGED_SKELETON_N_PREDICT", "512")
+    assert default_staged_chunk_drs_skeleton_n_predict(384, field_rich, 96) == 512
 
 
 def test_chunk_drs_monolithic_schema_constrains_ids_and_condition_spans(monkeypatch, tmp_path) -> None:

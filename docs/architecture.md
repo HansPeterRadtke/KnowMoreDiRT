@@ -63,6 +63,8 @@ When the model returns full chunk DRS objects, KMD also materializes the declare
 
 In the staged chunk DRS path, stage 1 referent, box, and temporal evidence is also schema-constrained to deterministic source-span candidates. The model still chooses the DRS declarations and semantics; deterministic code only supplies grounded span options, stable ID namespaces, cache keys, and validation.
 
+For delimiter-rich or field-heavy chunks, KMD may raise the Stage 1 skeleton token budget before calling the model so the constrained decoder has room to declare the model-chosen referents, boxes, and temporal records. This is a budget policy only; it does not add semantic fields or Python-side role interpretation.
+
 Document metadata stores natural filesystem/read metadata and text-quality metrics, including printable ratio, symbol ratio, token diversity, OCR-like token ratio, a low-semantic-noise flag, and a semantic-quality label. The same classification is also represented as a `quality:*` context so noisy source material remains preserved and queryable rather than discarded. Generic filesystem/read metadata is also normalized into `metadata_records`, while source quality, filesystem time, sentence context, and event-time signals are represented as context carriers and assignments.
 
 ## Retrieval and Query Execution
