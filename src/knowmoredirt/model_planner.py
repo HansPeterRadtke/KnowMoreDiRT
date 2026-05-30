@@ -69,6 +69,7 @@ CHUNK_DRS_SOURCE_SPAN_POLICY = "chunk-drs-delimiter-source-span-enum-v2"
 CHUNK_DRS_SKELETON_ID_POLICY = "stage1-stable-id-enums-v1"
 CHUNK_DRS_MONOLITHIC_ID_POLICY = "monolithic-stable-id-enums-v1"
 CHUNK_DRS_COMPACT_UNDERCOVERAGE_POLICY = "retry-delimiter-rich-low-condition-density-v1"
+CHUNK_DRS_STAGED_RETRY_DIAGNOSTICS_POLICY = "record-non-improving-staged-retry-v1"
 QUERY_DRS_SCHEMA_VERSION = "query-drs-v3"
 QUERY_DRS_VALIDATION_POLICY = "strict-query-drs-version-question-evidence-repair-v8"
 QUERY_DRS_ARRAY_CAP_POLICY = "reserved_output_tokens_div_96_4_8-v1"
@@ -3783,6 +3784,7 @@ def chunk_drs_cache_context(client: LocalModelClient | None, *, n_predict: int |
         "skeleton_id_policy": CHUNK_DRS_SKELETON_ID_POLICY,
         "monolithic_id_policy": CHUNK_DRS_MONOLITHIC_ID_POLICY,
         "compact_undercoverage_policy": CHUNK_DRS_COMPACT_UNDERCOVERAGE_POLICY,
+        "staged_retry_diagnostics_policy": CHUNK_DRS_STAGED_RETRY_DIAGNOSTICS_POLICY,
         "staged_skeleton_n_predict": default_staged_chunk_drs_skeleton_n_predict(int(n_predict)),
         "staged_condition_n_predict": default_staged_chunk_drs_condition_n_predict(int(n_predict)),
         "box_completion_n_predict": default_chunk_drs_box_completion_n_predict(int(n_predict)),
@@ -3817,6 +3819,7 @@ def call_model_chunk_drs(
         "source_span_candidate_count": len(source_span_candidates),
         "monolithic_id_policy": CHUNK_DRS_MONOLITHIC_ID_POLICY,
         "compact_undercoverage_policy": CHUNK_DRS_COMPACT_UNDERCOVERAGE_POLICY,
+        "staged_retry_diagnostics_policy": CHUNK_DRS_STAGED_RETRY_DIAGNOSTICS_POLICY,
     }
     prompt = build_chunk_drs_prompt(prompt_chunk, rel_path=rel_path, context_budget=context_budget)
     drs_json_schema = chunk_drs_json_schema(
@@ -3849,6 +3852,7 @@ def call_model_chunk_drs(
             "skeleton_id_policy": CHUNK_DRS_SKELETON_ID_POLICY,
             "monolithic_id_policy": CHUNK_DRS_MONOLITHIC_ID_POLICY,
             "compact_undercoverage_policy": CHUNK_DRS_COMPACT_UNDERCOVERAGE_POLICY,
+            "staged_retry_diagnostics_policy": CHUNK_DRS_STAGED_RETRY_DIAGNOSTICS_POLICY,
             "source_span_candidate_count": len(source_span_candidates),
             "staged_skeleton_n_predict": default_staged_chunk_drs_skeleton_n_predict(int(n_predict)),
             "staged_condition_n_predict": default_staged_chunk_drs_condition_n_predict(int(n_predict)),

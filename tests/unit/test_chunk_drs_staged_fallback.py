@@ -13,6 +13,7 @@ from knowmoredirt.model_planner import (
     CHUNK_DRS_SKELETON_ID_POLICY,
     CHUNK_DRS_SOURCE_SPAN_POLICY,
     CHUNK_DRS_STAGED_FALLBACK_POLICY,
+    CHUNK_DRS_STAGED_RETRY_DIAGNOSTICS_POLICY,
     call_model_chunk_drs,
     chunk_drs_cache_context,
     chunk_drs_skeleton_json_schema,
@@ -717,8 +718,12 @@ def test_chunk_drs_staged_fallback_runs_for_compact_record_undercoverage(monkeyp
     assert result["fallback_from_reason"] == "structural_undercoverage"
     assert result["validation"]["condition_count"] == 2
     assert result["context_budget"]["compact_undercoverage_policy"] == CHUNK_DRS_COMPACT_UNDERCOVERAGE_POLICY
+    assert (
+        result["context_budget"]["staged_retry_diagnostics_policy"] == CHUNK_DRS_STAGED_RETRY_DIAGNOSTICS_POLICY
+    )
     cache_context = chunk_drs_cache_context(CompactUndercoverageModel(), n_predict=384)  # type: ignore[arg-type]
     assert cache_context["compact_undercoverage_policy"] == CHUNK_DRS_COMPACT_UNDERCOVERAGE_POLICY
+    assert cache_context["staged_retry_diagnostics_policy"] == CHUNK_DRS_STAGED_RETRY_DIAGNOSTICS_POLICY
 
 
 def test_chunk_drs_compact_undercoverage_records_non_improving_retry(monkeypatch, tmp_path) -> None:
@@ -831,6 +836,7 @@ def test_chunk_drs_compact_undercoverage_records_non_improving_retry(monkeypatch
     assert result["staged_retry"]["fallback_from_reason"] == "structural_undercoverage"
     assert result["staged_retry"]["monolithic_condition_count"] == 1
     assert result["staged_retry"]["fallback_condition_count"] == 1
+    assert result["context_budget"]["staged_retry_diagnostics_policy"] == CHUNK_DRS_STAGED_RETRY_DIAGNOSTICS_POLICY
 
 
 def test_chunk_drs_source_span_candidates_skip_field_headers() -> None:
