@@ -65,6 +65,7 @@ CHUNK_DRS_TEMPORAL_PROVENANCE_POLICY = "condition-stage-declared-temporal-record
 CHUNK_DRS_SPARSE_RETRY_POLICY = "retry-validated-sparse-drs-staged-v1"
 CHUNK_DRS_STRUCTURE_VALIDATION_POLICY = "acyclic-box-condition-arguments-v1"
 CHUNK_DRS_BOX_COMPLETION_POLICY = "model-complete-missing-box-declarations-v1"
+CHUNK_DRS_SOURCE_SPAN_POLICY = "condition-stage-delimiter-source-span-enum-v1"
 QUERY_DRS_SCHEMA_VERSION = "query-drs-v3"
 QUERY_DRS_VALIDATION_POLICY = "strict-query-drs-version-question-evidence-repair-v8"
 QUERY_DRS_ARRAY_CAP_POLICY = "reserved_output_tokens_div_96_4_8-v1"
@@ -923,6 +924,38 @@ def _chunk_drs_structurally_sparse(validation: dict[str, Any]) -> bool:
     return condition_count == 0 and box_count > 0 and referent_count > 0
 
 
+def chunk_drs_source_span_candidates(
+    chunk_text: str,
+    max_evidence_chars: int | None = None,
+    *,
+    max_candidates: int = 24,
+) -> list[str]:
+    candidates = [""]
+    if not chunk_text:
+        return candidates
+    max_len = max(1, int(max_evidence_chars)) if max_evidence_chars else 0
+
+    def add(candidate: str) -> None:
+        span = candidate.strip()
+        if not span or span in candidates or span not in chunk_text:
+            return
+        if span.endswith(":"):
+            return
+        if max_len and len(span) > max_len:
+            return
+        candidates.append(span)
+
+    add(chunk_text)
+    normalized_separators = chunk_text
+    for separator in ("\n", "\t", "|", ";", ",", "{", "}", "[", "]"):
+        normalized_separators = normalized_separators.replace(separator, "|")
+    for segment in normalized_separators.split("|"):
+        add(segment)
+        if len(candidates) >= max_candidates:
+            break
+    return candidates[:max_candidates]
+
+
 def default_staged_chunk_drs_skeleton_n_predict(n_predict: int) -> int:
     configured = os.environ.get("KMD_CHUNK_DRS_STAGED_SKELETON_N_PREDICT")
     if configured:
@@ -986,6 +1019,7 @@ def chunk_drs_condition_json_schema(
     temporal_ids: list[str] | None = None,
     max_conditions: int | None = None,
     max_arguments: int | None = None,
+    evidence_text_values: list[str] | None = None,
 ) -> dict[str, Any]:
     condition_schema = copy.deepcopy(DRS_CONDITION_JSON_SCHEMA)
     argument_schema = copy.deepcopy(DRS_ARGUMENT_JSON_SCHEMA)
@@ -994,6 +1028,15 @@ def chunk_drs_condition_json_schema(
     argument_schema["properties"]["target_id"] = {"type": "string", "enum": allowed_targets}
     condition_schema["properties"]["box_id"] = {"type": "string", "enum": box_ids or [""]}
     condition_schema["properties"]["temporal_id"] = {"type": "string", "enum": allowed_temporals}
+    if max_conditions:
+        condition_schema["properties"]["id"] = {
+            "type": "string",
+            "enum": [f"c{index}" for index in range(max(1, int(max_conditions)))],
+        }
+    if evidence_text_values:
+        evidence_values = list(dict.fromkeys(str(value) for value in evidence_text_values))
+        condition_schema["properties"]["evidence_text"] = {"type": "string", "enum": evidence_values}
+        argument_schema["properties"]["evidence_text"] = {"type": "string", "enum": evidence_values}
     condition_schema["properties"]["arguments"] = _schema_array_limited(argument_schema, max_arguments)
     return _schema_obj(
         ["condition_stage"],
@@ -2704,9 +2747,16 @@ def build_chunk_drs_condition_prompt(
     temporal_records: list[dict[str, Any]] | None = None,
     context_budget: dict[str, Any] | None = None,
 ) -> str:
+    source_span_candidates = (context_budget or {}).get("source_span_candidates")
+    span_candidate_text = (
+        "When source_span_candidates are provided, each evidence_text must be exactly one listed source span or ''. "
+        if isinstance(source_span_candidates, list) and source_span_candidates
+        else ""
+    )
     return (
         "JSON only. Stage 2 of source-grounded DRS extraction. Emit conditions using only the declared "
         "referent, box, and temporal ids. Do not invent ids; target_id is schema-constrained to declared ids or ''. "
+        "Use stable condition ids c0, c1, c2, ... in order. "
         "If an argument is a literal phrase rather than a declared id, set target_id to '' and put the exact "
         "phrase in value and/or evidence_text. Do not emit identity hypotheses or temporal records in this stage. "
         "When a declared temporal record scopes a condition, set that condition's temporal_id to the declared "
@@ -2716,7 +2766,8 @@ def build_chunk_drs_condition_prompt(
         "For compact records, key/value lists, JSON-like objects, TSV/CSV rows, and log entries, emit grounded "
         "conditions for visible source-supported field/value or row structure when declared referents or literals "
         "can participate. "
-        "Every evidence_text item must be one contiguous substring copied exactly from the chunk."
+        + span_candidate_text
+        + "Every evidence_text item must be one contiguous substring copied exactly from the chunk."
         + json.dumps(
             {
                 "source_id": rel_path,
@@ -3392,13 +3443,22 @@ def _call_model_chunk_drs_staged(
     box_ids = [str(item.get("id") or "") for item in boxes if str(item.get("id") or "")]
     referent_ids = [str(item.get("id") or "") for item in referents if str(item.get("id") or "")]
     temporal_ids = [str(item.get("id") or "") for item in temporals if str(item.get("id") or "")]
+    source_span_candidates = chunk_drs_source_span_candidates(
+        prompt_chunk,
+        context_budget.get("max_evidence_chars"),
+    )
+    condition_context_budget = {
+        **context_budget,
+        "source_span_policy": CHUNK_DRS_SOURCE_SPAN_POLICY,
+        "source_span_candidates": source_span_candidates,
+    }
     condition_prompt = build_chunk_drs_condition_prompt(
         prompt_chunk,
         rel_path=rel_path,
         referents=referents,
         boxes=boxes,
         temporal_records=temporals,
-        context_budget=context_budget,
+        context_budget=condition_context_budget,
     )
     condition_schema = chunk_drs_condition_json_schema(
         source_id=rel_path,
@@ -3407,6 +3467,7 @@ def _call_model_chunk_drs_staged(
         temporal_ids=temporal_ids,
         max_conditions=max_items,
         max_arguments=max_items,
+        evidence_text_values=source_span_candidates,
     )
     condition_stage, condition_elapsed, condition_constraint = _complete_chunk_drs_stage(
         client,
@@ -3490,6 +3551,7 @@ def _call_model_chunk_drs_staged(
                     "sparse_retry_policy": CHUNK_DRS_SPARSE_RETRY_POLICY,
                     "structure_validation_policy": CHUNK_DRS_STRUCTURE_VALIDATION_POLICY,
                     "box_completion_policy": CHUNK_DRS_BOX_COMPLETION_POLICY,
+                    "source_span_policy": CHUNK_DRS_SOURCE_SPAN_POLICY,
                     "staged_skeleton_n_predict": skeleton_n_predict,
                     "staged_condition_n_predict": condition_n_predict,
                     "box_completion_n_predict": box_completion["context_budget"]["box_completion_n_predict"],
@@ -3547,6 +3609,7 @@ def _call_model_chunk_drs_staged(
             "sparse_retry_policy": CHUNK_DRS_SPARSE_RETRY_POLICY,
             "structure_validation_policy": CHUNK_DRS_STRUCTURE_VALIDATION_POLICY,
             "box_completion_policy": CHUNK_DRS_BOX_COMPLETION_POLICY,
+            "source_span_policy": CHUNK_DRS_SOURCE_SPAN_POLICY,
             "staged_skeleton_n_predict": skeleton_n_predict,
             "staged_condition_n_predict": condition_n_predict,
             "box_completion_n_predict": default_chunk_drs_box_completion_n_predict(n_predict),
@@ -3575,6 +3638,7 @@ def chunk_drs_cache_context(client: LocalModelClient | None, *, n_predict: int |
         "sparse_retry_policy": CHUNK_DRS_SPARSE_RETRY_POLICY,
         "structure_validation_policy": CHUNK_DRS_STRUCTURE_VALIDATION_POLICY,
         "box_completion_policy": CHUNK_DRS_BOX_COMPLETION_POLICY,
+        "source_span_policy": CHUNK_DRS_SOURCE_SPAN_POLICY,
         "staged_skeleton_n_predict": default_staged_chunk_drs_skeleton_n_predict(int(n_predict)),
         "staged_condition_n_predict": default_staged_chunk_drs_condition_n_predict(int(n_predict)),
         "box_completion_n_predict": default_chunk_drs_box_completion_n_predict(int(n_predict)),
@@ -3623,6 +3687,7 @@ def call_model_chunk_drs(
             "sparse_retry_policy": CHUNK_DRS_SPARSE_RETRY_POLICY,
             "structure_validation_policy": CHUNK_DRS_STRUCTURE_VALIDATION_POLICY,
             "box_completion_policy": CHUNK_DRS_BOX_COMPLETION_POLICY,
+            "source_span_policy": CHUNK_DRS_SOURCE_SPAN_POLICY,
             "staged_skeleton_n_predict": default_staged_chunk_drs_skeleton_n_predict(int(n_predict)),
             "staged_condition_n_predict": default_staged_chunk_drs_condition_n_predict(int(n_predict)),
             "box_completion_n_predict": default_chunk_drs_box_completion_n_predict(int(n_predict)),

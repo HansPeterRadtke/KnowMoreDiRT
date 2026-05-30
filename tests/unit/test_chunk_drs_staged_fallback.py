@@ -10,6 +10,7 @@ from knowmoredirt.model_planner import (
     CHUNK_DRS_STAGED_FALLBACK_POLICY,
     call_model_chunk_drs,
     chunk_drs_cache_context,
+    chunk_drs_source_span_candidates,
 )
 
 
@@ -557,6 +558,18 @@ def test_chunk_drs_staged_fallback_runs_for_structurally_sparse_drs(monkeypatch,
     assert cache_context["sparse_retry_policy"] == CHUNK_DRS_SPARSE_RETRY_POLICY
 
 
+def test_chunk_drs_source_span_candidates_skip_field_headers() -> None:
+    spans = chunk_drs_source_span_candidates(
+        '{ name: "Orchid Gamma", ids: [asset: "OG-7003", audit: "AUD-3003"] }',
+        max_evidence_chars=96,
+    )
+
+    assert "" in spans
+    assert 'name: "Orchid Gamma"' in spans
+    assert 'asset: "OG-7003"' in spans
+    assert "ids:" not in spans
+
+
 def test_chunk_drs_staged_fallback_preserves_temporal_records(monkeypatch, tmp_path) -> None:
     class TemporalStagedFallbackModel:
         def __init__(self) -> None:
@@ -669,6 +682,7 @@ def test_chunk_drs_staged_fallback_repairs_declared_label_evidence(monkeypatch, 
     class LabelEvidenceRepairModel:
         def __init__(self) -> None:
             self.condition_prompt = ""
+            self.condition_schema: dict[str, Any] | None = None
 
         def context_size(self) -> int:
             return 8192
@@ -715,6 +729,7 @@ def test_chunk_drs_staged_fallback_repairs_declared_label_evidence(monkeypatch, 
                 }
             assert "Stage 2 of source-grounded DRS extraction" in prompt
             self.condition_prompt = prompt
+            self.condition_schema = json_schema
             assert '"evidence_text": "OG-7003"' in prompt
             return {
                 "condition_stage": {
@@ -774,3 +789,10 @@ def test_chunk_drs_staged_fallback_repairs_declared_label_evidence(monkeypatch, 
     assert result["context_budget"]["grounding_repair_policy"] == CHUNK_DRS_GROUNDING_REPAIR_POLICY
     assert chunk_drs_cache_context(model, n_predict=384)["grounding_repair_policy"] == CHUNK_DRS_GROUNDING_REPAIR_POLICY
     assert model.condition_prompt
+    assert "source_span_candidates" in model.condition_prompt
+    assert model.condition_schema is not None
+    condition_schema = model.condition_schema["properties"]["condition_stage"]["properties"]["conditions"]["items"]
+    evidence_values = condition_schema["properties"]["evidence_text"]["enum"]
+    assert 'asset: "OG-7003"' in evidence_values
+    assert "ids:" not in evidence_values
+    assert condition_schema["properties"]["id"]["enum"] == ["c0", "c1", "c2", "c3"]
