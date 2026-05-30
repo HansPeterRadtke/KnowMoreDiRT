@@ -66,6 +66,7 @@ def test_chunk_drs_staged_fallback_constrains_condition_targets(monkeypatch, tmp
                     "_model_elapsed_seconds": 0.01,
                 }
             if "Stage 1 of source-grounded DRS extraction" in prompt:
+                assert "declare a distinct subordinate box" in prompt
                 return {
                     "drs_skeleton": {
                         "schema_version": "chunk-drs-v2",
@@ -94,6 +95,7 @@ def test_chunk_drs_staged_fallback_constrains_condition_targets(monkeypatch, tmp
                     "_model_elapsed_seconds": 0.01,
                 }
             assert "Stage 2 of source-grounded DRS extraction" in prompt
+            assert "distinct declared subordinate box for scoped content" in prompt
             self.condition_schema = json_schema
             condition_schema = json_schema["properties"]["condition_stage"]["properties"]["conditions"]["items"]
             argument_schema = condition_schema["properties"]["arguments"]["items"]
