@@ -60,6 +60,7 @@ CHUNK_FRAME_SCHEMA_VERSION = "chunk-frames-v5"
 CHUNK_DRS_SCHEMA_VERSION = "chunk-drs-v2"
 CHUNK_DRS_STAGED_FALLBACK_POLICY = "retry-invalid-json-schema-grounding-staged-temporal-v2"
 CHUNK_DRS_GROUNDING_REPAIR_POLICY = "model-label-value-evidence-span-v1"
+CHUNK_DRS_IDENTITY_PROVENANCE_POLICY = "identity-evidence-bilateral-surface-v1"
 QUERY_DRS_SCHEMA_VERSION = "query-drs-v3"
 QUERY_DRS_VALIDATION_POLICY = "strict-query-drs-version-question-v1"
 QUERY_FRAME_SCHEMA_VERSION = "query-frame-v4"
@@ -2640,6 +2641,7 @@ def _repair_chunk_drs_payload(payload: Any, source_text: str = "") -> Any:
     repaired_boxes = [item for item in boxes if isinstance(item, dict)]
     repaired_conditions = [item for item in conditions if isinstance(item, dict)]
     referent_ids = {str(item.get("id") or "") for item in repaired_referents}
+    referents_by_id = {str(item.get("id") or ""): item for item in repaired_referents if str(item.get("id") or "")}
     box_ids = {str(item.get("id") or "") for item in repaired_boxes if str(item.get("id") or "")}
     namespace_repaired = False
     grounding_repaired = False
@@ -2691,16 +2693,27 @@ def _repair_chunk_drs_payload(payload: Any, source_text: str = "") -> Any:
     identities = drs.get("identity_hypotheses")
     repaired_identities = identities
     if isinstance(identities, list):
-        repaired_identities = [
-            item
-            for item in identities
-            if not (
-                isinstance(item, dict)
-                and str(item.get("left_referent_id") or "").strip()
-                and str(item.get("left_referent_id") or "").strip()
-                == str(item.get("right_referent_id") or "").strip()
-            )
-        ]
+        repaired_identities = []
+        for item in identities:
+            if not isinstance(item, dict):
+                continue
+            left_id = str(item.get("left_referent_id") or "").strip()
+            right_id = str(item.get("right_referent_id") or "").strip()
+            if left_id and left_id == right_id:
+                continue
+            if source_text:
+                evidence_text = str(item.get("evidence_text") or "").strip()
+
+                def supported_by_evidence(ref_id: str) -> bool:
+                    referent = referents_by_id.get(ref_id)
+                    if not referent:
+                        return False
+                    surfaces = [str(referent.get("label") or "").strip(), str(referent.get("evidence_text") or "").strip()]
+                    return any(surface and surface in evidence_text for surface in surfaces)
+
+                if not evidence_text or not supported_by_evidence(left_id) or not supported_by_evidence(right_id):
+                    continue
+            repaired_identities.append(item)
         if len(repaired_identities) != len(identities):
             drs["identity_hypotheses"] = repaired_identities
     if (
@@ -2940,6 +2953,7 @@ def _call_model_chunk_drs_staged(
             **context_budget,
             "staged_fallback_policy": CHUNK_DRS_STAGED_FALLBACK_POLICY,
             "grounding_repair_policy": CHUNK_DRS_GROUNDING_REPAIR_POLICY,
+            "identity_provenance_policy": CHUNK_DRS_IDENTITY_PROVENANCE_POLICY,
             "staged_skeleton_n_predict": skeleton_n_predict,
             "staged_condition_n_predict": condition_n_predict,
         },
@@ -2962,6 +2976,7 @@ def chunk_drs_cache_context(client: LocalModelClient | None, *, n_predict: int |
         "staged_fallback": _staged_chunk_drs_enabled(),
         "staged_fallback_policy": CHUNK_DRS_STAGED_FALLBACK_POLICY,
         "grounding_repair_policy": CHUNK_DRS_GROUNDING_REPAIR_POLICY,
+        "identity_provenance_policy": CHUNK_DRS_IDENTITY_PROVENANCE_POLICY,
         "staged_skeleton_n_predict": default_staged_chunk_drs_skeleton_n_predict(int(n_predict)),
         "staged_condition_n_predict": default_staged_chunk_drs_condition_n_predict(int(n_predict)),
         **constraint,
@@ -3004,6 +3019,7 @@ def call_model_chunk_drs(
             "staged_fallback": _staged_chunk_drs_enabled(),
             "staged_fallback_policy": CHUNK_DRS_STAGED_FALLBACK_POLICY,
             "grounding_repair_policy": CHUNK_DRS_GROUNDING_REPAIR_POLICY,
+            "identity_provenance_policy": CHUNK_DRS_IDENTITY_PROVENANCE_POLICY,
             "staged_skeleton_n_predict": default_staged_chunk_drs_skeleton_n_predict(int(n_predict)),
             "staged_condition_n_predict": default_staged_chunk_drs_condition_n_predict(int(n_predict)),
         },

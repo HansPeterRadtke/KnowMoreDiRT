@@ -5,9 +5,11 @@ from typing import Any
 
 from knowmoredirt.model import LocalModelClient, LocalModelJSONError
 from knowmoredirt.model_planner import (
+    CHUNK_DRS_IDENTITY_PROVENANCE_POLICY,
     call_model_chunk_drs,
     call_model_chunk_frames,
     call_model_query_drs,
+    chunk_drs_cache_context,
     chunk_drs_json_schema,
     query_frame_from_query_drs,
 )
@@ -251,6 +253,81 @@ def test_chunk_drs_planner_uses_json_schema_and_validates_grounding(monkeypatch,
     assert model.json_schema is not None
     assert "drs" in model.json_schema["properties"]
     assert "source-grounded DRS" in model.prompt
+
+
+def test_chunk_drs_filters_identity_without_bilateral_evidence(monkeypatch, tmp_path) -> None:
+    class IdentityModel:
+        def context_size(self) -> int:
+            return 8192
+
+        def cache_fingerprint(self) -> dict[str, Any]:
+            return {"model_id": "fake-identity-provenance", "context_size": 8192}
+
+        def complete_json(self, prompt: str, *, n_predict: int = 128, grammar=None, json_schema=None):
+            return {
+                "drs": {
+                    "schema_version": "chunk-drs-v2",
+                    "source_id": "note.txt",
+                    "referents": [
+                        {"id": "r0", "label": "Aero Gate", "kind": "entity", "evidence_text": "Aero Gate"},
+                        {"id": "r1", "label": "AG-1", "kind": "identifier", "evidence_text": "AG-1"},
+                        {"id": "r2", "label": "Mira Chen", "kind": "person", "evidence_text": "Mira Chen"},
+                    ],
+                    "boxes": [
+                        {
+                            "id": "b0",
+                            "kind": "asserted",
+                            "parent_id": "",
+                            "holder_referent_id": "",
+                            "evidence_text": "Aero Gate alias AG-1.",
+                        }
+                    ],
+                    "conditions": [],
+                    "identity_hypotheses": [
+                        {
+                            "left_referent_id": "r0",
+                            "right_referent_id": "r2",
+                            "status": "candidate",
+                            "evidence_text": "Aero Gate alias AG-1",
+                            "confidence": 0.4,
+                        },
+                        {
+                            "left_referent_id": "r0",
+                            "right_referent_id": "r1",
+                            "status": "candidate",
+                            "evidence_text": "Aero Gate alias AG-1",
+                            "confidence": 0.7,
+                        },
+                    ],
+                    "temporal_records": [],
+                },
+                "_model_raw": "{}",
+                "_model_elapsed_seconds": 0.01,
+            }
+
+    monkeypatch.setenv("KMD_CHUNK_DRS_CACHE_DIR", str(tmp_path / "drs-cache"))
+    model = IdentityModel()
+
+    result = call_model_chunk_drs(
+        "Aero Gate alias AG-1. Mira Chen signed.",
+        model,  # type: ignore[arg-type]
+        rel_path="note.txt",
+    )
+
+    assert result["accepted"] is True
+    assert result["drs"]["identity_hypotheses"] == [
+        {
+            "left_referent_id": "r0",
+            "right_referent_id": "r1",
+            "status": "candidate",
+            "evidence_text": "Aero Gate alias AG-1",
+            "confidence": 0.7,
+        }
+    ]
+    assert (
+        chunk_drs_cache_context(model, n_predict=384)["identity_provenance_policy"]
+        == CHUNK_DRS_IDENTITY_PROVENANCE_POLICY
+    )
 
 
 def test_query_drs_planner_uses_json_schema(monkeypatch, tmp_path) -> None:
