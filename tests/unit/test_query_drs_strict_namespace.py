@@ -496,6 +496,88 @@ def test_query_drs_repairs_argument_namespace_and_case(monkeypatch, tmp_path) ->
     assert result["query_drs"]["requested_conditions"][0]["arguments"][1]["evidence_text"] == "What"
 
 
+def test_query_drs_prunes_duplicate_answer_variable_arguments(monkeypatch, tmp_path) -> None:
+    class DuplicateAnswerArgumentModel:
+        def context_size(self) -> int:
+            return 8192
+
+        def cache_fingerprint(self) -> dict[str, object]:
+            return {"model_id": "fake-duplicate-answer-arguments", "context_size": 8192}
+
+        def complete_json(self, prompt: str, *, n_predict: int = 128, grammar=None, json_schema=None):
+            return {
+                "query_drs": {
+                    "schema_version": "query-drs-v3",
+                    "question": "What actor id is listed for Olan Vex?",
+                    "answer_variables": [
+                        {
+                            "id": "qv0",
+                            "label": "actor id",
+                            "answer_type": "identifier",
+                            "evidence_text": "actor id",
+                        }
+                    ],
+                    "target_referents": [
+                        {"id": "tr0", "label": "Olan Vex", "kind": "named_anchor", "evidence_text": "Olan Vex"}
+                    ],
+                    "temporal_records": [],
+                    "requested_conditions": [
+                        {
+                            "id": "rc0",
+                            "predicate": "listed",
+                            "box_id": "",
+                            "polarity": "positive",
+                            "modality": "asserted",
+                            "temporal_id": "",
+                            "arguments": [
+                                {
+                                    "role": "ARG0",
+                                    "target_kind": "answer_variable",
+                                    "target_id": "qv0",
+                                    "value": "qv0",
+                                    "value_type": "identifier",
+                                    "evidence_text": "actor id",
+                                },
+                                {
+                                    "role": "ARG1",
+                                    "target_kind": "answer_variable",
+                                    "target_id": "qv0",
+                                    "value": "qv0",
+                                    "value_type": "identifier",
+                                    "evidence_text": "actor id",
+                                },
+                                {
+                                    "role": "for",
+                                    "target_kind": "referent",
+                                    "target_id": "tr0",
+                                    "value": "Olan Vex",
+                                    "value_type": "named_anchor",
+                                    "evidence_text": "Olan Vex",
+                                },
+                            ],
+                            "evidence_text": "listed for Olan Vex",
+                        }
+                    ],
+                    "constraints": [],
+                    "box_requirements": [],
+                    "temporal_scope": "",
+                    "aggregation": "",
+                    "answer_type": "identifier",
+                    "requires_evidence": True,
+                },
+                "_model_raw": "{}",
+                "_model_elapsed_seconds": 0.01,
+            }
+
+    monkeypatch.setenv("KMD_QUERY_DRS_CACHE_DIR", str(tmp_path / "query-drs-cache"))
+    result = call_model_query_drs("What actor id is listed for Olan Vex?", DuplicateAnswerArgumentModel())  # type: ignore[arg-type]
+
+    assert result["accepted"] is True
+    arguments = result["query_drs"]["requested_conditions"][0]["arguments"]
+    assert [argument["target_kind"] for argument in arguments] == ["answer_variable", "referent"]
+    assert result["validation_policy"] == QUERY_DRS_VALIDATION_POLICY
+
+
 def test_chunk_drs_removes_tautological_self_identity_hypotheses(monkeypatch, tmp_path) -> None:
     class SelfIdentityChunkModel:
         def context_size(self) -> int:

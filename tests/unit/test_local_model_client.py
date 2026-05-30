@@ -12,6 +12,7 @@ from knowmoredirt.model_planner import (
     call_model_query_drs,
     chunk_drs_cache_context,
     chunk_drs_json_schema,
+    query_drs_array_max_items,
     query_frame_from_query_drs,
 )
 
@@ -478,6 +479,11 @@ def test_query_drs_planner_uses_json_schema(monkeypatch, tmp_path) -> None:
     query_schema = model.json_schema["properties"]["query_drs"]
     assert query_schema["properties"]["question"]["enum"] == ["Who reviewed Aero Gate?"]
     assert query_schema["properties"]["schema_version"]["enum"] == ["query-drs-v3"]
+    assert query_schema["properties"]["requested_conditions"]["maxItems"] == query_drs_array_max_items(256)
+    assert (
+        query_schema["properties"]["requested_conditions"]["items"]["properties"]["arguments"]["maxItems"]
+        == query_drs_array_max_items(256)
+    )
     assert "generic DRT query DRS" in model.prompt
 
 

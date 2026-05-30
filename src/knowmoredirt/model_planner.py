@@ -64,7 +64,8 @@ CHUNK_DRS_IDENTITY_PROVENANCE_POLICY = "identity-evidence-bilateral-surface-v1"
 CHUNK_DRS_TEMPORAL_PROVENANCE_POLICY = "condition-referenced-temporal-records-v1"
 CHUNK_DRS_SPARSE_RETRY_POLICY = "retry-validated-sparse-drs-staged-v1"
 QUERY_DRS_SCHEMA_VERSION = "query-drs-v3"
-QUERY_DRS_VALIDATION_POLICY = "strict-query-drs-version-question-evidence-repair-v6"
+QUERY_DRS_VALIDATION_POLICY = "strict-query-drs-version-question-evidence-repair-v7"
+QUERY_DRS_ARRAY_CAP_POLICY = "reserved_output_tokens_div_96_4_8-v1"
 QUERY_FRAME_SCHEMA_VERSION = "query-frame-v4"
 ANSWER_SCHEMA_VERSION = "answer-v4"
 
@@ -1034,12 +1035,46 @@ QUERY_DRS_JSON_SCHEMA = _schema_obj(
 )
 
 
-def query_drs_json_schema(question: str | None = None) -> dict[str, Any]:
+def query_drs_array_max_items(n_predict: int | None = None) -> int | None:
+    configured = os.environ.get("KMD_QUERY_DRS_MAX_ARRAY_ITEMS")
+    if configured:
+        try:
+            return max(1, int(configured))
+        except ValueError:
+            pass
+    if not n_predict:
+        return None
+    return max(4, min(8, int(n_predict) // 96))
+
+
+def query_drs_json_schema(question: str | None = None, max_array_items: int | None = None) -> dict[str, Any]:
     schema = copy.deepcopy(QUERY_DRS_JSON_SCHEMA)
     query_schema = schema["properties"]["query_drs"]
     query_schema["properties"]["schema_version"] = _schema_enum({QUERY_DRS_SCHEMA_VERSION})
     if question is not None:
         query_schema["properties"]["question"] = _schema_enum({question})
+    if max_array_items:
+        capped = max(1, int(max_array_items))
+
+        def visit(node: Any, parent_key: str = "") -> None:
+            if isinstance(node, dict):
+                if node.get("type") == "array" and parent_key in {
+                    "answer_variables",
+                    "target_referents",
+                    "temporal_records",
+                    "requested_conditions",
+                    "constraints",
+                    "box_requirements",
+                    "arguments",
+                }:
+                    node["maxItems"] = capped
+                for key, value in node.items():
+                    visit(value, key)
+            elif isinstance(node, list):
+                for item in node:
+                    visit(item, parent_key)
+
+        visit(schema)
     return schema
 
 VERIFICATION_JSON_SCHEMA = _schema_obj(
@@ -1442,8 +1477,25 @@ def _repair_query_drs_payload(payload: Any, question: str) -> Any:
                 if target_kind not in {"literal", "unknown"} and value and value not in question:
                     argument["value"] = ""
                     repaired = True
-            if len(repaired_arguments) != len(arguments):
-                condition["arguments"] = repaired_arguments
+            deduped_arguments: list[dict[str, Any]] = []
+            seen_answer_argument_refs: set[tuple[str, str, str, str]] = set()
+            for argument in repaired_arguments:
+                target_kind = str(argument.get("target_kind") or "").strip()
+                target_id = str(argument.get("target_id") or "").strip()
+                if target_kind == "answer_variable" and target_id:
+                    signature = (
+                        target_id,
+                        str(argument.get("value") or "").strip(),
+                        str(argument.get("value_type") or "").strip(),
+                        str(argument.get("evidence_text") or "").strip(),
+                    )
+                    if signature in seen_answer_argument_refs:
+                        repaired = True
+                        continue
+                    seen_answer_argument_refs.add(signature)
+                deduped_arguments.append(argument)
+            if len(deduped_arguments) != len(arguments):
+                condition["arguments"] = deduped_arguments
                 repaired = True
     if not repaired:
         return payload
@@ -1599,7 +1651,8 @@ def call_model_query_drs(question: str, client: LocalModelClient, *, n_predict: 
     if n_predict is None:
         n_predict = default_query_drs_n_predict(client)
     prompt = build_query_drs_prompt(question)
-    json_schema = query_drs_json_schema(question)
+    max_array_items = query_drs_array_max_items(n_predict)
+    json_schema = query_drs_json_schema(question, max_array_items=max_array_items)
     constraint = _constraint_settings(QUERY_DRS_GRAMMAR, json_schema, QUERY_DRS_SCHEMA_VERSION)
     prompt_hash = _cache_hash(
         "query_drs",
@@ -1609,6 +1662,8 @@ def call_model_query_drs(question: str, client: LocalModelClient, *, n_predict: 
             "n_predict": n_predict,
             "schema": QUERY_DRS_SCHEMA_VERSION,
             "validation_policy": QUERY_DRS_VALIDATION_POLICY,
+            "array_cap_policy": QUERY_DRS_ARRAY_CAP_POLICY,
+            "max_array_items": max_array_items,
             **constraint,
         },
     )
@@ -1635,6 +1690,8 @@ def call_model_query_drs(question: str, client: LocalModelClient, *, n_predict: 
             "prompt_hash": prompt_hash,
             **constraint,
             "validation_policy": QUERY_DRS_VALIDATION_POLICY,
+            "array_cap_policy": QUERY_DRS_ARRAY_CAP_POLICY,
+            "max_array_items": max_array_items,
             "elapsed": round(time.time() - start, 3),
         }
         _write_cache(cache_path, payload)
@@ -1647,6 +1704,8 @@ def call_model_query_drs(question: str, client: LocalModelClient, *, n_predict: 
             "prompt_hash": prompt_hash,
             **constraint,
             "validation_policy": QUERY_DRS_VALIDATION_POLICY,
+            "array_cap_policy": QUERY_DRS_ARRAY_CAP_POLICY,
+            "max_array_items": max_array_items,
             "elapsed": round(time.time() - start, 3),
         }
     raw = str(parsed.get("_model_raw") or "") if isinstance(parsed, dict) else ""
@@ -1660,6 +1719,8 @@ def call_model_query_drs(question: str, client: LocalModelClient, *, n_predict: 
             "prompt_hash": prompt_hash,
             **constraint,
             "validation_policy": QUERY_DRS_VALIDATION_POLICY,
+            "array_cap_policy": QUERY_DRS_ARRAY_CAP_POLICY,
+            "max_array_items": max_array_items,
             "elapsed": parsed.get("_model_elapsed_seconds", round(time.time() - start, 3)),
             "validation": validation,
         }
@@ -1673,6 +1734,8 @@ def call_model_query_drs(question: str, client: LocalModelClient, *, n_predict: 
         "prompt_hash": prompt_hash,
         **constraint,
         "validation_policy": QUERY_DRS_VALIDATION_POLICY,
+        "array_cap_policy": QUERY_DRS_ARRAY_CAP_POLICY,
+        "max_array_items": max_array_items,
         "validation": validation,
         "output_hash": hashlib.sha256(raw.encode()).hexdigest(),
         "fresh_or_cached": "fresh",
