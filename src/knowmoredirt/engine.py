@@ -414,8 +414,10 @@ class KnowMoreDiRTEngine:
         if max_chars is None:
             max_chars = int(os.environ.get("KMD_EVIDENCE_TEXT_CHARS", "1200"))
         sentences = self._sentences_by_document.get(evidence.rel_path, {})
-        center_order: int | None = None
+        center_order = evidence.chunk_order if evidence.chunk_order in sentences else None
         for order, sentence in sentences.items():
+            if center_order is not None:
+                break
             if sentence.text == evidence.text:
                 center_order = order
                 break

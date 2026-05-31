@@ -6,6 +6,7 @@ from knowmoredirt.answer_types import ExpectedAnswer
 from knowmoredirt.bounded_dspg import _context_accessible, _identity_expanded_terms, execute_bounded_query
 from knowmoredirt.engine import KnowMoreDiRTEngine
 from knowmoredirt.ingest import ingest_folder
+from knowmoredirt.models import Evidence
 from knowmoredirt.query import QueryFrame
 from knowmoredirt.store import DSPGStore, stable_id
 
@@ -44,6 +45,34 @@ def test_engine_exposes_internal_dspg_counts_for_diagnostics_only() -> None:
     assert counts["documents"] == 30
     assert counts["mentions"] > 50
     assert counts["frames"] > 20
+
+
+def test_evidence_window_uses_chunk_order_for_duplicate_text(tmp_path: Path, monkeypatch) -> None:
+    monkeypatch.setenv("KMD_USE_LOCAL_MODEL", "0")
+    (tmp_path / "duplicates.txt").write_text(
+        "\n".join(
+                [
+                    "Repeated source line.",
+                    "First neighbor only.",
+                    "Neutral spacer.",
+                    "Repeated source line.",
+                    "Second neighbor only.",
+                ]
+        ),
+        encoding="utf-8",
+    )
+    engine = KnowMoreDiRTEngine(tmp_path)
+    evidence = Evidence(
+        "duplicates.txt",
+        "Repeated source line.",
+        0.8,
+        chunk_order=3,
+    )
+
+    window = engine._evidence_window_text(evidence, radius=1, max_chars=500)
+
+    assert "Second neighbor only." in window
+    assert "First neighbor only." not in window
 
 
 def test_store_supports_referent_centric_candidate_retrieval(tmp_path: Path) -> None:
