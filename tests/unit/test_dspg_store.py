@@ -1631,6 +1631,80 @@ def test_incremental_drs_ingest_reuses_existing_materialized_chunks(tmp_path: Pa
     assert store.counts()["drs_conditions"] == 1
 
 
+def test_incremental_drs_ingest_skips_previous_failed_attempts(tmp_path: Path, monkeypatch) -> None:
+    cache_dir = tmp_path.parent / f"{tmp_path.name}-failed-attempt-drs-cache"
+    monkeypatch.setenv("KMD_CHUNK_DRS_CACHE_DIR", str(cache_dir))
+    monkeypatch.setenv("KMD_CHUNK_DRS_STAGED_FALLBACK", "0")
+    (tmp_path / "note.txt").write_text("Aero Gate is ready.\n", encoding="utf-8")
+
+    class FailingDrsModel:
+        def __init__(self) -> None:
+            self.calls = 0
+
+        def context_size(self) -> int:
+            return 4096
+
+        def cache_fingerprint(self) -> dict[str, object]:
+            return {"model_id": "fake-failing-incremental-drs", "context_size": 4096}
+
+        def complete_json(self, prompt: str, *, n_predict: int = 128, grammar=None, json_schema=None):
+            self.calls += 1
+            return {
+                "drs": {
+                    "schema_version": "chunk-drs-v2",
+                    "source_id": "note.txt",
+                    "referents": [
+                        {"id": "r0", "label": "Aero Gate", "kind": "entity", "evidence_text": "Aero Gate"},
+                    ],
+                    "boxes": [
+                        {
+                            "id": "b0",
+                            "kind": "asserted",
+                            "parent_id": "",
+                            "holder_referent_id": "",
+                            "evidence_text": "not in source",
+                        },
+                    ],
+                    "conditions": [],
+                    "identity_hypotheses": [],
+                    "temporal_records": [],
+                },
+                "_model_raw": "{}",
+                "_model_elapsed_seconds": 0.01,
+            }
+
+    model = FailingDrsModel()
+    store = DSPGStore()
+
+    store, first_run_id, _, _ = ingest_folder(
+        tmp_path,
+        store=store,
+        semantic_client=model,
+        use_semantic_frames=False,
+        use_drs_semantics=True,
+    )
+    calls_after_first_ingest = model.calls
+    for cache_file in cache_dir.glob("*.json"):
+        cache_file.unlink()
+    store, second_run_id, _, _ = ingest_folder(
+        tmp_path,
+        store=store,
+        semantic_client=model,
+        use_semantic_frames=False,
+        use_drs_semantics=True,
+    )
+
+    assert first_run_id == second_run_id
+    assert calls_after_first_ingest == 1
+    assert model.calls == calls_after_first_ingest
+    assert store.counts()["drs_boxes"] == 0
+    assert store.counts()["model_attempts"] == 1
+    attempt = store.execute("SELECT accepted, materialized, reason FROM model_attempts").fetchone()
+    assert attempt["accepted"] == 0
+    assert attempt["materialized"] == 0
+    assert attempt["reason"] == "grounding_validation_failed"
+
+
 def test_incremental_frame_ingest_reuses_existing_materialized_chunks(tmp_path: Path) -> None:
     (tmp_path / "note.txt").write_text("Aero Gate is ready.\n", encoding="utf-8")
 

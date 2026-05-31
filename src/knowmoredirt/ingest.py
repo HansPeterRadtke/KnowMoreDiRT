@@ -12,7 +12,7 @@ from typing import Any
 from .drs import DiscourseArgument, DiscourseCondition, frame_from_model_dict
 from .extractors import capitalized_phrases, identifiers, urls
 from .models import Document, Sentence
-from .model_planner import call_model_chunk_drs, call_model_chunk_frames, chunk_frame_cache_context
+from .model_planner import call_model_chunk_drs, call_model_chunk_frames, chunk_drs_cache_context, chunk_frame_cache_context
 from .relations import ExtractedRelation, extract_relations
 from .scanner import scan_folder
 from .semantic_cache import SemanticFrameCache
@@ -33,6 +33,10 @@ def _progress_enabled() -> bool:
 def _log_progress(message: str) -> None:
     if _progress_enabled():
         print(message, flush=True)
+
+
+def _env_true(name: str) -> bool:
+    return os.environ.get(name, "").strip().lower() in PROGRESS_TRUE_VALUES
 
 
 def _timestamp_value(value: float) -> str:
@@ -1003,6 +1007,8 @@ def ingest_folder(
                     f"elapsed={time.monotonic() - ingest_started:.1f}s"
                 )
                 continue
+            drs_cache_context = chunk_drs_cache_context(semantic_client)
+            drs_cache_key = stable_id("drs_attempt_context", json.dumps(drs_cache_context, sort_keys=True, default=str))
             existing_drs = store.execute(
                 """
                 SELECT COUNT(*)
@@ -1023,6 +1029,27 @@ def ingest_folder(
                     f"elapsed={time.monotonic() - ingest_started:.1f}s"
                 )
                 continue
+            previous_attempt = store.execute(
+                """
+                SELECT accepted, materialized, reason
+                FROM model_attempts
+                WHERE run_id=? AND source_span_id=? AND task=? AND source=? AND cache_key=?
+                LIMIT 1
+                """,
+                (run_id, span_id, "chunk_drs", "local_model_drs", drs_cache_key),
+            ).fetchone()
+            if previous_attempt is not None and not _env_true("KMD_DRS_RETRY_FAILED_ATTEMPTS"):
+                _log_progress(
+                    "kmd-ingest drs_done "
+                    f"chunk={semantic_index}/{semantic_total} "
+                    f"source={sentence.rel_path}:{sentence.order} "
+                    f"accepted={bool(previous_attempt['accepted'])} "
+                    f"materialized={bool(previous_attempt['materialized'])} "
+                    "reason=previous_attempt "
+                    "model_elapsed=0.0 "
+                    f"elapsed={time.monotonic() - ingest_started:.1f}s"
+                )
+                continue
             _log_progress(
                 "kmd-ingest drs_start "
                 f"chunk={semantic_index}/{semantic_total} "
@@ -1039,6 +1066,37 @@ def ingest_folder(
                     {"drs": drs_result["drs"]},
                     source="local_model_drs",
                 )
+            store.execute(
+                """
+                INSERT OR REPLACE INTO model_attempts(
+                  attempt_id, run_id, source_span_id, task, source, cache_key, accepted, materialized,
+                  reason, prompt_hash, output_hash, elapsed, metadata_json
+                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                """,
+                (
+                    stable_id("attempt", run_id, span_id, "chunk_drs", "local_model_drs", drs_cache_key),
+                    run_id,
+                    span_id,
+                    "chunk_drs",
+                    "local_model_drs",
+                    drs_cache_key,
+                    int(bool(drs_result.get("accepted"))),
+                    int(bool(materialized.get("accepted"))),
+                    str(drs_result.get("reason") or materialized.get("reason") or ""),
+                    str(drs_result.get("prompt_hash") or ""),
+                    str(drs_result.get("output_hash") or ""),
+                    float(drs_result.get("elapsed") or 0.0),
+                    json.dumps(
+                        {
+                            "cache_context": drs_cache_context,
+                            "context_budget": drs_result.get("context_budget"),
+                            "materialized": materialized,
+                        },
+                        sort_keys=True,
+                        default=str,
+                    ),
+                ),
+            )
             _log_progress(
                 "kmd-ingest drs_done "
                 f"chunk={semantic_index}/{semantic_total} "

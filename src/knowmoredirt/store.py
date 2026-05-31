@@ -32,7 +32,7 @@ DRS_CONTEXT_KINDS = {
     "dreamed",
 }
 DRS_POLARITIES = {"positive", "negative", "unknown"}
-SCHEMA_VERSION = 6
+SCHEMA_VERSION = 7
 
 
 def stable_id(prefix: str, *parts: Any) -> str:
@@ -343,6 +343,23 @@ class DSPGStore:
               confidence REAL NOT NULL
             )
             """,
+            """
+            CREATE TABLE IF NOT EXISTS model_attempts (
+              attempt_id TEXT PRIMARY KEY,
+              run_id TEXT NOT NULL,
+              source_span_id TEXT NOT NULL,
+              task TEXT NOT NULL,
+              source TEXT NOT NULL,
+              cache_key TEXT NOT NULL,
+              accepted INTEGER NOT NULL,
+              materialized INTEGER NOT NULL,
+              reason TEXT,
+              prompt_hash TEXT,
+              output_hash TEXT,
+              elapsed REAL,
+              metadata_json TEXT
+            )
+            """,
         ]
         for statement in statements:
             self.connection.execute(statement)
@@ -391,6 +408,7 @@ class DSPGStore:
             "CREATE INDEX IF NOT EXISTS idx_relations_type ON relations(relation_type)",
             "CREATE INDEX IF NOT EXISTS idx_metadata_records_key ON metadata_records(key)",
             "CREATE INDEX IF NOT EXISTS idx_metadata_records_value ON metadata_records(value_norm)",
+            "CREATE INDEX IF NOT EXISTS idx_model_attempts_span ON model_attempts(run_id, source_span_id, task, source, cache_key)",
         ]
         for statement in statements:
             self.connection.execute(statement)
@@ -452,6 +470,7 @@ class DSPGStore:
             "temporal_edges",
             "relations",
             "metadata_records",
+            "model_attempts",
         ]
         return {
             table: int(self.connection.execute(f"SELECT COUNT(*) FROM {table}").fetchone()[0])
