@@ -2582,6 +2582,39 @@ def test_incremental_drs_ingest_reuses_existing_materialized_chunks(tmp_path: Pa
     assert store.counts()["drs_conditions"] == 1
 
 
+def test_incremental_ingest_uses_chunk_boundary_ids_when_scan_policy_changes(
+    tmp_path: Path,
+    monkeypatch,
+) -> None:
+    text = (
+        "Aero Gate carries a very long operational note with Alpha status and "
+        "Beta status details that should be re-chunked when the scan policy changes."
+    )
+    (tmp_path / "note.txt").write_text(text, encoding="utf-8")
+    store = DSPGStore()
+
+    monkeypatch.setenv("KMD_SCAN_UNIT_MAX_CHARS", "0")
+    store, first_run_id, _, first_sentences = ingest_folder(tmp_path, store=store)
+    assert len(first_sentences) == 1
+    first_span_id = stable_id("span", first_sentences[0].sentence_id, "sentence")
+
+    monkeypatch.setenv("KMD_SCAN_UNIT_MAX_CHARS", "48")
+    store, second_run_id, _, second_sentences = ingest_folder(tmp_path, store=store)
+
+    assert first_run_id == second_run_id
+    assert len(second_sentences) > 1
+    assert first_span_id not in {
+        stable_id("span", sentence.sentence_id, "sentence") for sentence in second_sentences
+    }
+    for sentence in second_sentences:
+        chunk_id = stable_id("chunk", sentence.sentence_id)
+        stored = store.execute("SELECT text, char_start, char_end FROM chunks WHERE chunk_id=?", (chunk_id,)).fetchone()
+        assert stored is not None
+        assert stored["text"] == sentence.text
+        assert stored["char_start"] == sentence.char_start
+        assert stored["char_end"] == sentence.char_end
+
+
 def test_incremental_drs_ingest_skips_previous_failed_attempts(tmp_path: Path, monkeypatch) -> None:
     cache_dir = tmp_path.parent / f"{tmp_path.name}-failed-attempt-drs-cache"
     monkeypatch.setenv("KMD_CHUNK_DRS_CACHE_DIR", str(cache_dir))

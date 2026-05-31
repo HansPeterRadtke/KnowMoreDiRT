@@ -116,9 +116,10 @@ def scan_folder(folder_path: str | Path, *, max_unit_chars: int = 0) -> tuple[li
         )
         documents.append(document)
         for order, (start, end, unit) in enumerate(split_units(text, max_unit_chars=max_unit_chars)):
+            unit_hash = hashlib.sha256(unit.encode("utf-8", errors="replace")).hexdigest()
             sentences.append(
                 Sentence(
-                    sentence_id=f"{document_id}:s{order:04d}",
+                    sentence_id=_stable_scan_id("unit", document_id, order, start, end, unit_hash),
                     document_id=document_id,
                     rel_path=rel_path,
                     text=unit,
