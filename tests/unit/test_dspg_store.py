@@ -994,6 +994,46 @@ def test_store_rejects_cyclic_drs_box_parent_graphs() -> None:
     assert "cyclic_box_parent:b0->b1->b0" in result["errors"]
 
 
+def test_store_rejects_multiple_drs_root_boxes() -> None:
+    store = DSPGStore()
+    text = "Opening memo introduces Vesper Key. Ending note says VX-17 is Vesper Key."
+    payload = {
+        "drs": {
+            "schema_version": "chunk-drs-v2",
+            "source_id": "combined.txt",
+            "referents": [
+                {"id": "r0", "label": "Vesper Key", "kind": "artifact", "evidence_text": "Vesper Key"},
+                {"id": "r1", "label": "VX-17", "kind": "identifier", "evidence_text": "VX-17"},
+            ],
+            "boxes": [
+                {
+                    "id": "b0",
+                    "kind": "asserted",
+                    "parent_id": "",
+                    "holder_referent_id": "",
+                    "evidence_text": "Opening memo introduces Vesper Key.",
+                },
+                {
+                    "id": "b1",
+                    "kind": "asserted",
+                    "parent_id": "",
+                    "holder_referent_id": "",
+                    "evidence_text": "Ending note says VX-17 is Vesper Key.",
+                },
+            ],
+            "conditions": [],
+            "identity_hypotheses": [],
+            "temporal_records": [],
+        }
+    }
+
+    result = store.materialize_drs_payload("run", "span", text, payload)
+
+    assert result["accepted"] is False
+    assert result["reason"] == "schema_validation_failed"
+    assert "multiple_root_boxes:b0,b1" in result["errors"]
+
+
 def test_bounded_query_uses_relation_level_drs_scope(tmp_path: Path, monkeypatch) -> None:
     (tmp_path / "belief.txt").write_text(
         "Kalo Reed believes that Mira Stone archived the Slate Quill.",

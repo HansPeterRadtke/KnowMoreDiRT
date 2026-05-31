@@ -54,6 +54,20 @@ def box_parent_cycle_errors(boxes: list[dict[str, Any]]) -> list[str]:
     return errors[:50]
 
 
+def box_root_errors(boxes: list[dict[str, Any]], *, require_asserted: bool = True) -> list[str]:
+    """Return errors for DRS payloads without exactly one main box."""
+
+    roots = [item for item in boxes if _item_id(item, "id") and not _item_id(item, "parent_id")]
+    if not roots:
+        return ["missing_root_box"]
+    if len(roots) > 1:
+        root_ids = ",".join(sorted(_item_id(item, "id") for item in roots))
+        return [f"multiple_root_boxes:{root_ids}"]
+    if require_asserted and _item_id(roots[0], "kind") != "asserted":
+        return [f"bad_root_box_kind:{_item_id(roots[0], 'id')}:{_item_id(roots[0], 'kind')}"]
+    return []
+
+
 def condition_argument_cycle_errors(conditions: list[dict[str, Any]]) -> list[str]:
     """Return cycle errors for condition-to-condition DRS argument links."""
 

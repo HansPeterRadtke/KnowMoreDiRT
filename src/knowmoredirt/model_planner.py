@@ -17,7 +17,7 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import Any
 
-from .drs_validation import box_parent_cycle_errors, condition_argument_cycle_errors
+from .drs_validation import box_parent_cycle_errors, box_root_errors, condition_argument_cycle_errors
 from .model import LocalModelClient, LocalModelJSONError
 from .extractors import identifiers, urls
 from .query import QueryFrame, frame_from_mapping, visible_anchors
@@ -65,7 +65,7 @@ CHUNK_DRS_GROUNDING_REPAIR_POLICY = "model-label-value-escaped-evidence-span-v3"
 CHUNK_DRS_IDENTITY_PROVENANCE_POLICY = "identity-evidence-bilateral-surface-v1"
 CHUNK_DRS_TEMPORAL_PROVENANCE_POLICY = "condition-stage-declared-temporal-records-v2"
 CHUNK_DRS_SPARSE_RETRY_POLICY = "retry-validated-sparse-drs-staged-v2"
-CHUNK_DRS_STRUCTURE_VALIDATION_POLICY = "acyclic-box-parent-condition-arguments-v3"
+CHUNK_DRS_STRUCTURE_VALIDATION_POLICY = "single-root-acyclic-box-parent-condition-arguments-v4"
 CHUNK_DRS_BOX_COMPLETION_POLICY = "model-complete-missing-box-declarations-v1"
 CHUNK_DRS_SOURCE_SPAN_POLICY = "chunk-drs-delimiter-source-span-enum-v2"
 CHUNK_DRS_SKELETON_SOURCE_SPAN_POLICY = "stage1-source-span-evidence-enum-v1"
@@ -2867,7 +2867,7 @@ def build_chunk_drs_prompt(chunk_text: str, *, rel_path: str = "", context_budge
         "JSON only. Convert the raw text chunk into one source-grounded DRS object. "
         "Every semantic decision must be represented as referents, boxes, conditions, temporal_records, "
         "and identity_hypotheses. Do not answer questions, use outside knowledge, infer hidden answers, "
-        "or use handler names. The root asserted box should have id b0 and parent_id ''. Use subordinate boxes "
+        "or use handler names. Emit exactly one root asserted box with id b0 and parent_id ''. Use subordinate boxes "
         "for negation, reports, quotes, beliefs, conditionals, uncertainty, dreams, fiction, and modality. "
         "Box parent links must be acyclic. "
         "A condition must not use target_kind=box with target_id equal to its own box_id; scoped complements "
@@ -2926,7 +2926,7 @@ def build_chunk_drs_skeleton_prompt(chunk_text: str, *, rel_path: str = "", cont
     return (
         "JSON only. Stage 1 of source-grounded DRS extraction. Extract only declared discourse referents "
         "DRS boxes, and explicit temporal records from the chunk. Do not emit conditions, identity hypotheses, answers, "
-        "outside knowledge, or handler names. Declare one root asserted box with id b0 and parent_id ''. Use "
+        "outside knowledge, or handler names. Declare exactly one root asserted box with id b0 and parent_id ''. Use "
         "stable referent ids r0, r1, ...; box ids b0, b1, ...; and temporal ids t0, t1, ... in order. Use "
         "subordinate boxes only for scoped DRS contexts such as reports, quotes, beliefs, negation, conditionals, "
         "uncertainty, dreams, fiction, and modality; subordinate boxes must be distinct from the containing box "
@@ -3162,6 +3162,7 @@ def _validate_chunk_drs_payload(payload: Any, source_text: str) -> dict[str, Any
         if holder_id and holder_id not in referent_ids:
             errors.append(f"missing_holder_referent:{box_id}->{holder_id}")
         check_span(item.get("evidence_text"), f"box:{box_id}")
+    errors.extend(box_root_errors(boxes))
     errors.extend(box_parent_cycle_errors(boxes))
     for item in temporals:
         temporal_id = str(item.get("id") or "")

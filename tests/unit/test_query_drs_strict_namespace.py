@@ -977,6 +977,62 @@ def test_chunk_drs_rejects_cyclic_box_parents(monkeypatch, tmp_path) -> None:
     assert "cyclic_box_parent:b0->b1->b0" in result["validation"]["errors"]
 
 
+def test_chunk_drs_rejects_multiple_root_boxes(monkeypatch, tmp_path) -> None:
+    class MultipleRootModel:
+        def context_size(self) -> int:
+            return 8192
+
+        def cache_fingerprint(self) -> dict[str, object]:
+            return {"model_id": "fake-multiple-root-drs", "context_size": 8192}
+
+        def complete_json(self, prompt: str, *, n_predict: int = 128, grammar=None, json_schema=None):
+            assert "exactly one root asserted box" in prompt
+            return {
+                "drs": {
+                    "schema_version": "chunk-drs-v2",
+                    "source_id": "note.txt",
+                    "referents": [
+                        {"id": "r0", "label": "Vesper Key", "kind": "artifact", "evidence_text": "Vesper Key"},
+                        {"id": "r1", "label": "VX-17", "kind": "identifier", "evidence_text": "VX-17"},
+                    ],
+                    "boxes": [
+                        {
+                            "id": "b0",
+                            "kind": "asserted",
+                            "parent_id": "",
+                            "holder_referent_id": "",
+                            "evidence_text": "Opening memo introduces Vesper Key.",
+                        },
+                        {
+                            "id": "b1",
+                            "kind": "asserted",
+                            "parent_id": "",
+                            "holder_referent_id": "",
+                            "evidence_text": "Ending note says VX-17 is Vesper Key.",
+                        },
+                    ],
+                    "conditions": [],
+                    "identity_hypotheses": [],
+                    "temporal_records": [],
+                },
+                "_model_raw": "{}",
+                "_model_elapsed_seconds": 0.01,
+            }
+
+    model = MultipleRootModel()
+    monkeypatch.setenv("KMD_CHUNK_DRS_STAGED_FALLBACK", "0")
+    monkeypatch.setenv("KMD_CHUNK_DRS_CACHE_DIR", str(tmp_path / "chunk-drs-cache"))
+    result = call_model_chunk_drs(
+        "Opening memo introduces Vesper Key. Ending note says VX-17 is Vesper Key.",
+        model,  # type: ignore[arg-type]
+        rel_path="note.txt",
+    )
+
+    assert result["accepted"] is False
+    assert result["reason"] == "schema_validation_failed"
+    assert "multiple_root_boxes:b0,b1" in result["validation"]["errors"]
+
+
 def test_chunk_drs_evidence_cap_uses_reserved_output_budget(monkeypatch) -> None:
     monkeypatch.delenv("KMD_CHUNK_DRS_MAX_EVIDENCE_CHARS", raising=False)
     monkeypatch.delenv("KMD_CHUNK_DRS_MAX_ARRAY_ITEMS", raising=False)

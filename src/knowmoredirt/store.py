@@ -13,7 +13,7 @@ import time
 from pathlib import Path
 from typing import Any
 
-from .drs_validation import box_parent_cycle_errors, condition_argument_cycle_errors
+from .drs_validation import box_parent_cycle_errors, box_root_errors, condition_argument_cycle_errors
 from .text import normalize
 
 
@@ -684,6 +684,7 @@ class DSPGStore:
             if holder_id and holder_id not in referent_ids:
                 errors.append(f"missing_holder_referent:{box_id}->{holder_id}")
             check_grounding(item.get("evidence_text"), f"box:{box_id}")
+        errors.extend(box_root_errors(boxes))
         errors.extend(box_parent_cycle_errors(boxes))
         for item in temporals:
             temporal_id = text_value(item, "id")
