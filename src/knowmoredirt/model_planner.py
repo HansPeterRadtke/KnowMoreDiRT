@@ -82,7 +82,7 @@ QUERY_DRS_SCHEMA_VERSION = "query-drs-v3"
 QUERY_DRS_VALIDATION_POLICY = "strict-query-drs-version-question-evidence-box-dag-repair-v9"
 QUERY_DRS_ARRAY_CAP_POLICY = "reserved_output_tokens_div_96_4_8-v1"
 QUERY_DRS_DYNAMIC_OUTPUT_BUDGET_POLICY = "surface-token-budget-short384-mid512-long-context-v1"
-QUERY_FRAME_SCHEMA_VERSION = "query-frame-v4"
+QUERY_FRAME_SCHEMA_VERSION = "query-frame-v5"
 ANSWER_SCHEMA_VERSION = "answer-v4"
 
 QUERY_FRAME_GRAMMAR = r'''
@@ -596,6 +596,7 @@ STRING_SCHEMA = {"type": "string"}
 BOOL_SCHEMA = {"type": "boolean"}
 NUMBER_SCHEMA = {"type": "number"}
 ANSWER_TYPE_SCHEMA = _schema_enum(ANSWER_TYPES)
+TEMPORAL_SCOPE_SCHEMA = _schema_enum({"", "earliest", "latest"})
 STRING_ARRAY_SCHEMA = _schema_array(STRING_SCHEMA)
 
 QUERY_FRAME_JSON_SCHEMA = _schema_obj(
@@ -625,7 +626,7 @@ QUERY_FRAME_JSON_SCHEMA = _schema_obj(
                 "scope_requirements": STRING_ARRAY_SCHEMA,
                 "modality_requirements": STRING_ARRAY_SCHEMA,
                 "answer_type": ANSWER_TYPE_SCHEMA,
-                "temporal_scope": STRING_SCHEMA,
+                "temporal_scope": TEMPORAL_SCOPE_SCHEMA,
                 "negated": BOOL_SCHEMA,
                 "aggregation": STRING_SCHEMA,
                 "requires_evidence": BOOL_SCHEMA,
@@ -1515,7 +1516,9 @@ def build_query_plan_prompt(question: str) -> str:
         "temporal constraints, modality, and aggregation belong in this JSON. The broad answer_type must be one "
         "of the schema values: person, actor, organization, identifier, url, file_path, count, state, date_time, "
         "boolean, content_phrase, metadata_value, or unknown. Use unknown only when the query DRS leaves the "
-        "answer variable type underspecified. Put any quantity, list, temporal, modal, polarity, or qualifier "
+        "answer variable type underspecified. temporal_scope must be '', 'latest', or 'earliest'; put current, "
+        "latest, final, first, earliest, or ordering requirements there as a normalized DRS operator rather "
+        "than leaving them only in requested_relation. Put any quantity, list, temporal, modal, polarity, or qualifier "
         "requirements into aggregation, temporal_scope, modality_requirements, scope_requirements, negated, "
         "constraints, and answer_variables as DRS data rather than as prose. If the answer is requested inside a "
         "subordinate or non-asserted DRS, represent that accessibility requirement in modality_requirements or "

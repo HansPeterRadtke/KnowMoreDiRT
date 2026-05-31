@@ -11,6 +11,7 @@ from knowmoredirt.model_planner import (
     build_answer_verification_prompt,
     call_model_chunk_drs,
     call_model_chunk_frames,
+    call_model_query_plan,
     call_model_query_drs,
     chunk_drs_cache_context,
     chunk_drs_json_schema,
@@ -199,6 +200,62 @@ def test_chunk_frame_planner_prefers_json_schema_for_capable_clients(monkeypatch
     assert model.grammar is None
     assert model.json_schema is not None
     assert "frames" in model.json_schema["properties"]
+
+
+def test_query_frame_schema_constrains_temporal_scope_operator(monkeypatch, tmp_path) -> None:
+    class QueryFrameModel:
+        def __init__(self) -> None:
+            self.json_schema: dict[str, Any] | None = None
+            self.prompt = ""
+
+        def context_size(self) -> int:
+            return 4096
+
+        def cache_fingerprint(self) -> dict[str, Any]:
+            return {"model_id": "fake-query-frame-temporal", "context_size": 4096}
+
+        def complete_json(
+            self,
+            prompt: str,
+            *,
+            n_predict: int = 128,
+            grammar: str | None = None,
+            json_schema: dict[str, Any] | None = None,
+        ) -> dict[str, object]:
+            self.prompt = prompt
+            self.json_schema = json_schema
+            assert grammar is None
+            return {
+                "query_frame": {
+                    "target_anchors": ["Delta Well"],
+                    "answer_variables": ["state"],
+                    "requested_relation": "state",
+                    "relation_terms": ["state"],
+                    "constraints": [],
+                    "scope_requirements": [],
+                    "modality_requirements": [],
+                    "answer_type": "state",
+                    "temporal_scope": "latest",
+                    "negated": False,
+                    "aggregation": "",
+                    "requires_evidence": True,
+                },
+                "_model_raw": "{}",
+                "_model_elapsed_seconds": 0.01,
+            }
+
+    monkeypatch.delenv("KMD_LOCAL_MODEL_JSON_SCHEMA", raising=False)
+    monkeypatch.setenv("KMD_QUERY_PLAN_CACHE_DIR", str(tmp_path / "query-frame-cache"))
+    model = QueryFrameModel()
+
+    result = call_model_query_plan("What is the current state of Delta Well?", model, n_predict=64)  # type: ignore[arg-type]
+
+    assert result["accepted"] is True
+    assert result["temporal_scope"] == "latest"
+    assert "temporal_scope must be" in model.prompt
+    assert model.json_schema is not None
+    query_schema = model.json_schema["properties"]["query_frame"]
+    assert query_schema["properties"]["temporal_scope"]["enum"] == ["", "earliest", "latest"]
 
 
 def test_chunk_drs_planner_uses_json_schema_and_validates_grounding(monkeypatch, tmp_path) -> None:
