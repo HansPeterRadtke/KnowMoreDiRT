@@ -889,7 +889,7 @@ def test_chunk_drs_field_like_records_use_staged_extraction_first(monkeypatch, t
                 self.monolithic_called = True
                 raise AssertionError("field-like compact records should try staged extraction first")
             if "Stage 1 of source-grounded DRS extraction" in prompt:
-                assert n_predict == 768
+                assert n_predict == 384
                 return {
                     "drs_skeleton": {
                         "schema_version": "chunk-drs-v2",
@@ -1002,11 +1002,13 @@ def test_chunk_drs_dynamic_skeleton_budget_for_field_rich_chunks(monkeypatch) ->
         '{ name: "Cobalt Fern", owner: "Mira Vale", status: "ready", '
         'ids: { asset: "CF-2201", audit: "AUD-881" } }'
     )
+    flat_field_rich = "record: Cobalt Fern | owner: Mira Vale | status: ready | asset: CF-2201"
     plain_sentence = "Mara thinks Theo heard that Ivo planned a rollback."
 
     monkeypatch.delenv("KMD_CHUNK_DRS_STAGED_SKELETON_N_PREDICT", raising=False)
 
     assert default_staged_chunk_drs_skeleton_n_predict(384, plain_sentence, 96) == 384
+    assert default_staged_chunk_drs_skeleton_n_predict(384, flat_field_rich, 96) == 384
     assert default_staged_chunk_drs_skeleton_n_predict(384, field_rich, 96) == 768
 
     monkeypatch.setenv("KMD_CHUNK_DRS_STAGED_SKELETON_N_PREDICT", "512")

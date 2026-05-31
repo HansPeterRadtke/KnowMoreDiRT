@@ -63,7 +63,7 @@ When the model returns full chunk DRS objects, KMD also materializes the declare
 
 In the staged chunk DRS path, stage 1 referent, box, and temporal evidence is also schema-constrained to deterministic source-span candidates. The model still chooses the DRS declarations and semantics; deterministic code only supplies grounded span options, stable ID namespaces, source-aware output budgets, cache keys, and validation.
 
-For delimiter-rich or field-heavy chunks, KMD may raise the Stage 1 skeleton token budget before calling the model so the constrained decoder has room to declare the model-chosen referents, boxes, and temporal records. This is a budget policy only; it does not add semantic fields or Python-side role interpretation.
+For nested delimiter-rich or field-heavy chunks, KMD may raise the Stage 1 skeleton token budget before calling the model so the constrained decoder has room to declare the model-chosen referents, boxes, and temporal records. Flat delimiter records keep the smaller skeleton budget and reserve the larger budget for condition extraction. This is a budget policy only; it does not add semantic fields or Python-side role interpretation.
 
 For chunks with several delimiter-boundary field-like source spans, KMD may schedule the staged constrained DRS extractor before the monolithic extractor. This is a call-order policy only: the model still produces all DRS referents, boxes, conditions, roles, and temporal links, and deterministic code still only supplies spans, stable namespaces, cache keys, and validation. If staged extraction fails, KMD can still try the monolithic path.
 

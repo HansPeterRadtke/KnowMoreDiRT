@@ -72,7 +72,7 @@ CHUNK_DRS_MONOLITHIC_ID_POLICY = "monolithic-stable-id-enums-v1"
 CHUNK_DRS_COMPACT_UNDERCOVERAGE_POLICY = "retry-delimiter-rich-low-condition-density-v1"
 CHUNK_DRS_STAGED_RETRY_DIAGNOSTICS_POLICY = "record-non-improving-staged-retry-v1"
 CHUNK_DRS_STAGE_FAILURE_CACHE_POLICY = "cache-invalid-json-stage-failures-v1"
-CHUNK_DRS_DYNAMIC_SKELETON_BUDGET_POLICY = "field-like-source-spans-allow-768-v1"
+CHUNK_DRS_DYNAMIC_SKELETON_BUDGET_POLICY = "nested-field-like-source-spans-allow-768-v2"
 CHUNK_DRS_DYNAMIC_OUTPUT_BUDGET_POLICY = "source-aware-short-chunk-768-1024-v1"
 CHUNK_DRS_STAGED_FIRST_POLICY = "field-like-source-spans-before-monolithic-v1"
 QUERY_DRS_SCHEMA_VERSION = "query-drs-v3"
@@ -1111,7 +1111,11 @@ def default_staged_chunk_drs_skeleton_n_predict(
         except ValueError:
             pass
     base = max(192, min(int(n_predict), 384))
-    if source_text and _chunk_drs_structural_condition_floor(source_text, max_evidence_chars) >= 4:
+    if (
+        source_text
+        and _chunk_drs_structural_condition_floor(source_text, max_evidence_chars) >= 4
+        and any(delimiter in source_text for delimiter in "{}[]")
+    ):
         return max(base, 768)
     return base
 
