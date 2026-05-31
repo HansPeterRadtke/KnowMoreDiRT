@@ -1202,16 +1202,21 @@ def _temporal_relation_candidates(
     return candidates
 
 
+def _choice_score(score: float, reason: str, expected: ExpectedAnswer) -> float:
+    if reason == "frame_argument_binding":
+        score += 3.0
+    if reason == "relation_condition_binding" and expected.answer_type in {"content_phrase", "unknown"}:
+        score += 7.0
+    return score
+
+
 def _choose_answer(candidates: list[tuple[float, str, Evidence, str]], expected: ExpectedAnswer) -> Answer | None:
     scored: dict[str, tuple[float, list[Evidence], str]] = {}
     for score, value, evidence, reason in candidates:
         canonical = canonicalize_answer(expected, value)
         if not canonical:
             continue
-        if reason == "frame_argument_binding":
-            score += 3.0
-        if reason == "relation_condition_binding" and expected.answer_type in {"content_phrase", "unknown"}:
-            score += 7.0
+        score = _choice_score(score, reason, expected)
         previous = scored.get(canonical)
         if previous is None:
             scored[canonical] = (score, [evidence], reason)
@@ -1222,6 +1227,70 @@ def _choose_answer(candidates: list[tuple[float, str, Evidence, str]], expected:
     ordered = sorted(scored.items(), key=lambda item: (-item[1][0], len(item[0]), item[0]))
     value, (score, evidence, reason) = ordered[0]
     return Answer(value, min(0.95, max(0.0, score / 10.0)), evidence, reason, expected.answer_type)
+
+
+def _answer_conflict_diagnostics(
+    candidates: list[tuple[float, str, Evidence, str]],
+    expected: ExpectedAnswer,
+) -> dict[str, Any] | None:
+    buckets: dict[str, dict[str, Any]] = {}
+    for score, value, evidence, reason in candidates:
+        canonical = canonicalize_answer(expected, value)
+        if not canonical:
+            continue
+        bucket = buckets.setdefault(canonical, {"score": 0.0, "evidence": [], "reasons": set()})
+        bucket["score"] = float(bucket["score"]) + _choice_score(score, reason, expected)
+        bucket["reasons"].add(reason)
+        if len(bucket["evidence"]) < 4:
+            bucket["evidence"].append(evidence)
+    if len(buckets) < 2:
+        return None
+    ordered = sorted(buckets.items(), key=lambda item: (-float(item[1]["score"]), len(item[0]), item[0]))
+    top_value, top_bucket = ordered[0]
+    next_value, next_bucket = ordered[1]
+    top_score = float(top_bucket["score"])
+    next_score = float(next_bucket["score"])
+    if top_score <= 0.0 or next_score < top_score * 0.85:
+        return None
+
+    def evidence_keys(bucket: dict[str, Any]) -> set[tuple[str, str, int | None, str]]:
+        return {
+            (item.rel_path, item.span_id, item.chunk_order, item.text)
+            for item in bucket["evidence"]
+            if isinstance(item, Evidence)
+        }
+
+    if evidence_keys(top_bucket) & evidence_keys(next_bucket):
+        return None
+
+    def evidence_payload(item: Evidence) -> dict[str, Any]:
+        return {
+            "rel_path": item.rel_path,
+            "span_id": item.span_id,
+            "chunk_order": item.chunk_order,
+            "char_start": item.char_start,
+            "char_end": item.char_end,
+            "source_kind": item.source_kind,
+            "text": item.text[:500],
+        }
+
+    values = []
+    for value, bucket in ordered[:4]:
+        values.append(
+            {
+                "value": value,
+                "score": round(float(bucket["score"]), 3),
+                "reasons": sorted(bucket["reasons"]),
+                "evidence": [evidence_payload(item) for item in bucket["evidence"]],
+            }
+        )
+    return {
+        "top_value": top_value,
+        "next_value": next_value,
+        "top_score": round(top_score, 3),
+        "next_score": round(next_score, 3),
+        "values": values,
+    }
 
 
 def _choose_list_answer(candidates: list[tuple[float, str, Evidence, str]], expected: ExpectedAnswer) -> Answer | None:
@@ -1334,5 +1403,10 @@ def execute_bounded_query(
         return Answer(str(len(values)), 0.85, evidence, "aggregation DRS binding", "count"), diagnostics
     if frame.aggregation in {"list", "set"}:
         return _choose_list_answer(candidates, expected), diagnostics
+    if not frame.temporal_scope and expected.answer_type != "count":
+        conflict = _answer_conflict_diagnostics(candidates, expected)
+        if conflict:
+            diagnostics["execution"]["answer_conflict_without_query_scope"] = conflict
+            return None, diagnostics
 
     return _choose_answer(candidates, expected), diagnostics

@@ -862,6 +862,234 @@ def test_identity_expanded_retrieval_respects_reported_scope_against_asserted_st
     assert "cb-44" in reported_diagnostics["ranking"]["identity_expanded_target_terms"]
 
 
+def test_scattered_identity_conflict_returns_unknown_with_source_provenance(
+    tmp_path: Path,
+    monkeypatch,
+) -> None:
+    (tmp_path / "opening").mkdir()
+    (tmp_path / "middle").mkdir()
+    (tmp_path / "ending").mkdir()
+    (tmp_path / "opening" / "intro.txt").write_text(
+        "Opening registry introduces Marble Lens as the survey artifact.",
+        encoding="utf-8",
+    )
+    (tmp_path / "middle" / "status.txt").write_text(
+        "Field code ML-9 status is green.",
+        encoding="utf-8",
+    )
+    (tmp_path / "ending" / "identity.txt").write_text(
+        "Resolution states ML-9 is the same artifact as Marble Lens.",
+        encoding="utf-8",
+    )
+    (tmp_path / "ending" / "correction.txt").write_text(
+        "Audit correction records ML-9 status is red.",
+        encoding="utf-8",
+    )
+
+    class ConflictingScatteredModel:
+        def context_size(self) -> int:
+            return 4096
+
+        def cache_fingerprint(self) -> dict[str, object]:
+            return {"model_id": "fake-conflicting-scattered-drs", "context_size": 4096}
+
+        def complete_json(self, prompt: str, *, n_predict: int = 128, grammar=None, json_schema=None):
+            if "Opening registry" in prompt:
+                text = "Opening registry introduces Marble Lens as the survey artifact."
+                referents = [{"id": "r0", "label": "Marble Lens", "kind": "artifact", "evidence_text": "Marble Lens"}]
+                conditions = [
+                    {
+                        "id": "c0",
+                        "predicate": "introduce",
+                        "box_id": "b0",
+                        "polarity": "positive",
+                        "modality": "asserted",
+                        "temporal_id": "",
+                        "arguments": [
+                            {
+                                "role": "object",
+                                "target_kind": "referent",
+                                "target_id": "r0",
+                                "value": "",
+                                "value_type": "artifact",
+                                "evidence_text": "Marble Lens",
+                            }
+                        ],
+                        "evidence_text": text,
+                    }
+                ]
+                identities = []
+            elif "Field code ML-9" in prompt:
+                text = "Field code ML-9 status is green."
+                referents = [{"id": "r0", "label": "ML-9", "kind": "identifier", "evidence_text": "ML-9"}]
+                conditions = [
+                    {
+                        "id": "c0",
+                        "predicate": "status",
+                        "box_id": "b0",
+                        "polarity": "positive",
+                        "modality": "asserted",
+                        "temporal_id": "",
+                        "arguments": [
+                            {
+                                "role": "subject",
+                                "target_kind": "referent",
+                                "target_id": "r0",
+                                "value": "",
+                                "value_type": "identifier",
+                                "evidence_text": "ML-9",
+                            },
+                            {
+                                "role": "state",
+                                "target_kind": "literal",
+                                "target_id": "",
+                                "value": "green",
+                                "value_type": "state",
+                                "evidence_text": "green",
+                            },
+                        ],
+                        "evidence_text": "ML-9 status is green",
+                    }
+                ]
+                identities = []
+            elif "same artifact" in prompt:
+                text = "Resolution states ML-9 is the same artifact as Marble Lens."
+                referents = [
+                    {"id": "r0", "label": "ML-9", "kind": "identifier", "evidence_text": "ML-9"},
+                    {"id": "r1", "label": "Marble Lens", "kind": "artifact", "evidence_text": "Marble Lens"},
+                ]
+                conditions = [
+                    {
+                        "id": "c0",
+                        "predicate": "same_artifact",
+                        "box_id": "b0",
+                        "polarity": "positive",
+                        "modality": "asserted",
+                        "temporal_id": "",
+                        "arguments": [
+                            {
+                                "role": "left",
+                                "target_kind": "referent",
+                                "target_id": "r0",
+                                "value": "",
+                                "value_type": "identifier",
+                                "evidence_text": "ML-9",
+                            },
+                            {
+                                "role": "right",
+                                "target_kind": "referent",
+                                "target_id": "r1",
+                                "value": "",
+                                "value_type": "artifact",
+                                "evidence_text": "Marble Lens",
+                            },
+                        ],
+                        "evidence_text": "ML-9 is the same artifact as Marble Lens",
+                    }
+                ]
+                identities = [
+                    {
+                        "left_referent_id": "r0",
+                        "right_referent_id": "r1",
+                        "status": "accepted",
+                        "evidence_text": "ML-9 is the same artifact as Marble Lens",
+                        "confidence": 0.93,
+                    }
+                ]
+            else:
+                text = "Audit correction records ML-9 status is red."
+                referents = [{"id": "r0", "label": "ML-9", "kind": "identifier", "evidence_text": "ML-9"}]
+                conditions = [
+                    {
+                        "id": "c0",
+                        "predicate": "status",
+                        "box_id": "b0",
+                        "polarity": "positive",
+                        "modality": "asserted",
+                        "temporal_id": "",
+                        "arguments": [
+                            {
+                                "role": "subject",
+                                "target_kind": "referent",
+                                "target_id": "r0",
+                                "value": "",
+                                "value_type": "identifier",
+                                "evidence_text": "ML-9",
+                            },
+                            {
+                                "role": "state",
+                                "target_kind": "literal",
+                                "target_id": "",
+                                "value": "red",
+                                "value_type": "state",
+                                "evidence_text": "red",
+                            },
+                        ],
+                        "evidence_text": "ML-9 status is red",
+                    }
+                ]
+                identities = []
+            return {
+                "drs": {
+                    "schema_version": "chunk-drs-v2",
+                    "source_id": "fixture.txt",
+                    "referents": referents,
+                    "boxes": [
+                        {"id": "b0", "kind": "asserted", "parent_id": "", "holder_referent_id": "", "evidence_text": text}
+                    ],
+                    "conditions": conditions,
+                    "identity_hypotheses": identities,
+                    "temporal_records": [],
+                },
+                "_model_raw": "{}",
+                "_model_elapsed_seconds": 0.01,
+            }
+
+    cache_dir = tmp_path.parent / f"{tmp_path.name}-conflict-drs-cache"
+    monkeypatch.setenv("KMD_CHUNK_DRS_CACHE_DIR", str(cache_dir))
+    store, run_id, documents, sentences = ingest_folder(
+        tmp_path,
+        semantic_client=ConflictingScatteredModel(),  # type: ignore[arg-type]
+        use_semantic_frames=False,
+        use_drs_semantics=True,
+    )
+    sentences_by_document: dict[str, dict[int, object]] = {}
+    for sentence in sentences:
+        sentences_by_document.setdefault(sentence.rel_path, {})[sentence.order] = sentence
+    frame = QueryFrame(
+        question_text="What status is recorded for Marble Lens?",
+        answer_type="state",
+        answer_variables=("state",),
+        target_anchors=("Marble Lens",),
+        requested_relation="status",
+        relation_terms=("status",),
+        constraints=(),
+    )
+
+    answer, diagnostics = execute_bounded_query(
+        store,
+        run_id,
+        documents,
+        sentences_by_document,  # type: ignore[arg-type]
+        frame.question_text,
+        frame,
+    )
+
+    conflict = diagnostics["execution"]["answer_conflict_without_query_scope"]
+    values = {item["value"] for item in conflict["values"]}
+    evidence_paths = {
+        evidence["rel_path"]
+        for item in conflict["values"]
+        for evidence in item["evidence"]
+    }
+    assert answer is None
+    assert any("green" in value for value in values)
+    assert any("red" in value for value in values)
+    assert "middle/status.txt" in evidence_paths
+    assert "ending/correction.txt" in evidence_paths
+    assert "ml-9" in diagnostics["ranking"]["identity_expanded_target_terms"]
+
+
 def test_store_rejects_invalid_drs_condition_graphs() -> None:
     store = DSPGStore()
     payload = {
