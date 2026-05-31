@@ -736,6 +736,8 @@ def ingest_folder(
 
         if use_semantic_frames and semantic_client is not None:
             semantic_index += 1
+            frame_cache_context = chunk_frame_cache_context(semantic_client)
+            frame_cache_key = stable_id("frame_attempt_context", json.dumps(frame_cache_context, sort_keys=True, default=str))
             existing_frames = store.execute(
                 """
                 SELECT COUNT(*)
@@ -753,6 +755,28 @@ def ingest_folder(
                     "accepted=True "
                     "reason=already_materialized "
                     f"frames={int(existing_frames)} "
+                    "model_elapsed=0.0 "
+                    f"elapsed={time.monotonic() - ingest_started:.1f}s"
+                )
+                continue
+            previous_attempt = store.execute(
+                """
+                SELECT accepted, materialized, reason
+                FROM model_attempts
+                WHERE run_id=? AND source_span_id=? AND task=? AND source=? AND cache_key=?
+                LIMIT 1
+                """,
+                (run_id, span_id, "chunk_frames", "local_model", frame_cache_key),
+            ).fetchone()
+            if previous_attempt is not None and not _env_true("KMD_FRAME_RETRY_FAILED_ATTEMPTS"):
+                _log_progress(
+                    "kmd-ingest llm_done "
+                    f"chunk={semantic_index}/{semantic_total} "
+                    f"source={sentence.rel_path}:{sentence.order} "
+                    "result=previous_attempt "
+                    f"accepted={bool(previous_attempt['accepted'])} "
+                    f"reason={str(previous_attempt['reason'] or 'previous_attempt')} "
+                    "frames=0 "
                     "model_elapsed=0.0 "
                     f"elapsed={time.monotonic() - ingest_started:.1f}s"
                 )
@@ -777,6 +801,7 @@ def ingest_folder(
                 f"model_elapsed={float(_frame_result.get('elapsed') or 0.0):.1f}s "
                 f"elapsed={time.monotonic() - ingest_started:.1f}s"
             )
+            inserted_model_frames = 0
             for index, frame in enumerate(model_frames):
                 condition = frame_from_model_dict(frame)
                 if condition is None or condition.evidence_text not in sentence.text:
@@ -840,6 +865,7 @@ def ingest_folder(
                         span_id,
                     ),
                 )
+                inserted_model_frames += 1
                 group = stable_id("semantic_group", semantic_frame_id)
                 frame_metadata = {
                     "frame_type": frame_type,
@@ -992,6 +1018,37 @@ def ingest_folder(
                             condition.confidence,
                         ),
                     )
+            store.execute(
+                """
+                INSERT OR REPLACE INTO model_attempts(
+                  attempt_id, run_id, source_span_id, task, source, cache_key, accepted, materialized,
+                  reason, prompt_hash, output_hash, elapsed, metadata_json
+                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                """,
+                (
+                    stable_id("attempt", run_id, span_id, "chunk_frames", "local_model", frame_cache_key),
+                    run_id,
+                    span_id,
+                    "chunk_frames",
+                    "local_model",
+                    frame_cache_key,
+                    int(accepted),
+                    int(inserted_model_frames > 0),
+                    str(_frame_result.get("reason") or ""),
+                    str(_frame_result.get("prompt_hash") or ""),
+                    str(_frame_result.get("output_hash") or ""),
+                    float(_frame_result.get("elapsed") or 0.0),
+                    json.dumps(
+                        {
+                            "cache_context": frame_cache_context,
+                            "frame_count": len(model_frames),
+                            "inserted_frame_count": inserted_model_frames,
+                        },
+                        sort_keys=True,
+                        default=str,
+                    ),
+                ),
+            )
 
         if use_drs_semantics and semantic_client is not None:
             semantic_index += 1
