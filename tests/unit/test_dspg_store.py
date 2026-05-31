@@ -630,6 +630,10 @@ def test_identity_expanded_retrieval_merges_scattered_drs_chunks(tmp_path: Path,
     assert answer is not None
     assert answer.text == "amber-ready under Delta review"
     assert answer.evidence[0].rel_path == "middle/status.txt"
+    assert "ending/resolution.txt" in {item.rel_path for item in answer.evidence}
+    assert "ending/resolution.txt" in {
+        item["rel_path"] for item in diagnostics["execution"]["identity_expansion_evidence"]
+    }
     assert "vx-17" in diagnostics["ranking"]["identity_expanded_target_terms"]
     assert diagnostics["ranking"]["identity_reranked_selected_document_count"] >= 3
 
@@ -861,6 +865,8 @@ def test_identity_expansion_iterates_across_scattered_drs_sources(
     assert answer is not None
     assert answer.text == "cleared"
     assert answer.evidence[0].rel_path == "deep/status.txt"
+    evidence_paths = {item.rel_path for item in answer.evidence}
+    assert {"middle/crosswalk_a.txt", "ending/crosswalk_b.txt"}.issubset(evidence_paths)
     assert {"px-11", "relay-prime"}.issubset(set(diagnostics["ranking"]["identity_expanded_target_terms"]))
     assert diagnostics["ranking"]["identity_expansion_rounds"] >= 2
 
@@ -1124,6 +1130,8 @@ def test_identity_expanded_retrieval_respects_reported_scope_against_asserted_st
     assert reported_answer is not None
     assert reported_answer.text == "green"
     assert reported_answer.evidence[0].rel_path == "middle/report.txt"
+    assert "ending/audit.txt" in {item.rel_path for item in asserted_answer.evidence}
+    assert "ending/audit.txt" in {item.rel_path for item in reported_answer.evidence}
     assert "cb-44" in asserted_diagnostics["ranking"]["identity_expanded_target_terms"]
     assert "cb-44" in reported_diagnostics["ranking"]["identity_expanded_target_terms"]
 
@@ -1405,6 +1413,9 @@ def test_scattered_reported_identity_does_not_leak_into_unscoped_merge(
     assert reported_answer is not None
     assert reported_answer.text == "blue"
     assert reported_answer.evidence[0].rel_path == "ending/reported_crosswalk.txt"
+    assert "ending/reported_crosswalk.txt" in {
+        item["rel_path"] for item in reported_diagnostics["execution"]["identity_expansion_evidence"]
+    }
     assert "nl-7" in reported_diagnostics["ranking"]["identity_expanded_target_terms"]
 
 

@@ -469,8 +469,31 @@ def _identity_expanded_terms(
     terms: list[str],
     frame: QueryFrame | None = None,
 ) -> list[str]:
+    expanded_terms, _evidence = _identity_expansion(records, terms, frame)
+    return expanded_terms
+
+
+def _dedupe_evidence(items: list[Evidence], *, limit: int = 12) -> list[Evidence]:
+    values: list[Evidence] = []
+    seen: set[tuple[str, str, int | None, str]] = set()
+    for item in items:
+        key = (item.rel_path, item.span_id, item.chunk_order, item.text)
+        if not item.rel_path or not item.text or key in seen:
+            continue
+        seen.add(key)
+        values.append(item)
+        if len(values) >= limit:
+            break
+    return values
+
+
+def _identity_expansion(
+    records: dict[str, Any],
+    terms: list[str],
+    frame: QueryFrame | None = None,
+) -> tuple[list[str], list[Evidence]]:
     if not terms:
-        return []
+        return [], []
     referents = _referents_by_id(records)
     seed_ids: set[str] = set()
     normalized_terms = [normalize(term) for term in terms if normalize(term)]
@@ -479,7 +502,7 @@ def _identity_expanded_terms(
         if " " in term or "_" in term or "-" in term or "/" in term or "." in term
     ]
     if not seed_terms:
-        return []
+        return [], []
     seed_token_sets = [_normalized_token_set(term) for term in seed_terms]
     for referent_id, row in referents.items():
         label_norm = normalize(str(row.get("canonical_label") or row.get("canonical_label_norm") or ""))
@@ -490,8 +513,10 @@ def _identity_expanded_terms(
         ):
             seed_ids.add(referent_id)
     if not seed_ids:
-        return []
+        return [], []
     expanded: list[str] = []
+    expansion_evidence: list[Evidence] = []
+    seen_edges: set[str] = set()
     frontier = set(seed_ids)
     visited = set(seed_ids)
     for _depth in range(3):
@@ -506,8 +531,16 @@ def _identity_expanded_terms(
             right = str(hypothesis.get("right_referent_id") or "")
             if left in frontier and right and right not in visited:
                 next_frontier.add(right)
+                edge_id = str(hypothesis.get("hypothesis_id") or f"{left}->{right}")
+                if edge_id not in seen_edges:
+                    seen_edges.add(edge_id)
+                    expansion_evidence.append(_evidence_for_span(str(hypothesis.get("source_span_id") or ""), records))
             if right in frontier and left and left not in visited:
                 next_frontier.add(left)
+                edge_id = str(hypothesis.get("hypothesis_id") or f"{right}->{left}")
+                if edge_id not in seen_edges:
+                    seen_edges.add(edge_id)
+                    expansion_evidence.append(_evidence_for_span(str(hypothesis.get("source_span_id") or ""), records))
         if not next_frontier:
             break
         visited.update(next_frontier)
@@ -521,7 +554,7 @@ def _identity_expanded_terms(
             if " " in label_norm:
                 expanded.append(label_norm.replace(" ", "_"))
                 expanded.append(label_norm.replace(" ", "-"))
-    return list(dict.fromkeys(term for term in expanded if term))
+    return list(dict.fromkeys(term for term in expanded if term)), _dedupe_evidence(expansion_evidence)
 
 
 def _evidence_for_span(span_id: str, records: dict[str, Any]) -> Evidence:
@@ -1446,6 +1479,13 @@ def _choose_answer(candidates: list[tuple[float, str, Evidence, str]], expected:
     return Answer(value, min(0.95, max(0.0, score / 10.0)), evidence, reason, expected.answer_type)
 
 
+def _with_supporting_evidence(answer: Answer | None, supporting_evidence: list[Evidence]) -> Answer | None:
+    if answer is None or not supporting_evidence:
+        return answer
+    answer.evidence = _dedupe_evidence([*answer.evidence, *supporting_evidence])
+    return answer
+
+
 def _answer_conflict_diagnostics(
     candidates: list[tuple[float, str, Evidence, str]],
     expected: ExpectedAnswer,
@@ -1556,9 +1596,11 @@ def execute_bounded_query(
     selected_docs, selected_chunks, ranking = _rank_scope(documents, sentences_by_document, question, frame, doc_limit, chunk_limit)
     records = _load_records(store, run_id, selected_docs, selected_chunks)
     identity_expanded_terms: list[str] = []
+    identity_expansion_evidence: list[Evidence] = []
     identity_expansion_rounds = 0
     for _round in range(3):
-        identity_terms = _identity_expanded_terms(records, target_terms, frame)
+        identity_terms, identity_evidence = _identity_expansion(records, target_terms, frame)
+        identity_expansion_evidence = _dedupe_evidence([*identity_expansion_evidence, *identity_evidence])
         new_identity_terms = [term for term in identity_terms if term and term not in target_terms]
         if not new_identity_terms:
             break
@@ -1597,6 +1639,10 @@ def execute_bounded_query(
         selected_chunks = next_chunks
         records = _load_records(store, run_id, selected_docs, selected_chunks)
     diagnostics = {"ranking": ranking, "execution": {"record_counts": records["record_counts"], "query_frame": frame.as_dict()}}
+    if identity_expansion_evidence:
+        diagnostics["execution"]["identity_expansion_evidence"] = [
+            _evidence_payload(item) for item in identity_expansion_evidence
+        ]
 
     if expected.answer_type == "boolean":
         _attach_no_answer_provenance(
@@ -1617,7 +1663,7 @@ def execute_bounded_query(
     temporal_candidates = _temporal_candidates(records, frame, expected, target_terms, relation_terms)
     temporal_candidates.extend(_temporal_relation_candidates(records, frame, expected, target_terms, relation_terms))
     if temporal_candidates and frame.temporal_scope in {"latest", "earliest"}:
-        answer = _choose_answer(temporal_candidates, expected)
+        answer = _with_supporting_evidence(_choose_answer(temporal_candidates, expected), identity_expansion_evidence)
         if answer is None:
             _attach_no_answer_provenance(
                 diagnostics,
@@ -1649,13 +1695,15 @@ def execute_bounded_query(
     if expected.answer_type == "count" and frame.aggregation == "count":
         group_count, group_evidence = _count_matching_record_groups(records, frame, target_terms, relation_terms)
         if group_count:
-            return Answer(str(group_count), 0.86, group_evidence, "record-group aggregation DRS binding", "count"), diagnostics
+            answer = Answer(str(group_count), 0.86, group_evidence, "record-group aggregation DRS binding", "count")
+            return _with_supporting_evidence(answer, identity_expansion_evidence), diagnostics
     if expected.answer_type == "count" and frame.aggregation == "count" and candidates:
         values = sorted({canonicalize_answer(expected, value) or value for _score, value, _evidence, _reason in candidates})
         evidence = [item[2] for item in candidates[:4]]
-        return Answer(str(len(values)), 0.85, evidence, "aggregation DRS binding", "count"), diagnostics
+        answer = Answer(str(len(values)), 0.85, evidence, "aggregation DRS binding", "count")
+        return _with_supporting_evidence(answer, identity_expansion_evidence), diagnostics
     if frame.aggregation in {"list", "set"}:
-        answer = _choose_list_answer(candidates, expected)
+        answer = _with_supporting_evidence(_choose_list_answer(candidates, expected), identity_expansion_evidence)
         if answer is None:
             _attach_no_answer_provenance(
                 diagnostics,
@@ -1673,7 +1721,7 @@ def execute_bounded_query(
             diagnostics["execution"]["answer_conflict_without_query_scope"] = conflict
             return None, diagnostics
 
-    answer = _choose_answer(candidates, expected)
+    answer = _with_supporting_evidence(_choose_answer(candidates, expected), identity_expansion_evidence)
     if answer is None:
         _attach_no_answer_provenance(
             diagnostics,
