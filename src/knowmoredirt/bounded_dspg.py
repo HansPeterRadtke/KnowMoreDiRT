@@ -1504,8 +1504,11 @@ def _temporal_candidates(records: dict[str, Any], frame: QueryFrame, expected: E
         rows.append((str(row.get("temporal_value") or ""), row, evidence))
     rows.sort(key=lambda item: item[0], reverse=frame.temporal_scope != "earliest")
     candidates: list[tuple[float, str, Evidence, str]] = []
-    limit = 1 if frame.temporal_scope in {"latest", "earliest"} else 3
-    for _time_value, row, evidence in rows[:limit]:
+    selected_rows = rows[:3]
+    if frame.temporal_scope in {"latest", "earliest"} and rows:
+        boundary_value = rows[0][0]
+        selected_rows = [item for item in rows if item[0] == boundary_value]
+    for _time_value, row, evidence in selected_rows:
         state_value = str(row.get("state_value") or "")
         temporal_value = str(row.get("temporal_value") or "")
         raw_values = [state_value] if state_value else []
@@ -1557,7 +1560,11 @@ def _temporal_relation_candidates(
         ordered.append((max(temporal_values), span_id, accessible_rows, evidence))
     ordered.sort(key=lambda item: item[0], reverse=frame.temporal_scope != "earliest")
     candidates: list[tuple[float, str, Evidence, str]] = []
-    for _time_value, _span_id, rows, evidence in ordered[:1]:
+    selected_rows = ordered[:1]
+    if ordered:
+        boundary_value = ordered[0][0]
+        selected_rows = [item for item in ordered if item[0] == boundary_value]
+    for _time_value, _span_id, rows, evidence in selected_rows:
         for row in rows:
             if str(row.get("relation_type") or "") == "temporal":
                 continue
@@ -1799,6 +1806,19 @@ def execute_bounded_query(
     temporal_candidates = _temporal_candidates(records, frame, expected, target_terms, relation_terms)
     temporal_candidates.extend(_temporal_relation_candidates(records, frame, expected, target_terms, relation_terms))
     if temporal_candidates and frame.temporal_scope in {"latest", "earliest"}:
+        conflict = _answer_conflict_diagnostics(temporal_candidates, expected, target_terms)
+        if conflict:
+            diagnostics["execution"]["temporal_answer_conflict_at_boundary"] = conflict
+            _attach_no_answer_provenance(
+                diagnostics,
+                records,
+                target_terms,
+                relation_terms,
+                temporal_candidates,
+                expected,
+                "temporal_answer_conflict_at_boundary",
+            )
+            return None, diagnostics
         answer = _with_supporting_evidence(_choose_answer(temporal_candidates, expected), identity_expansion_evidence)
         if answer is None:
             _attach_no_answer_provenance(

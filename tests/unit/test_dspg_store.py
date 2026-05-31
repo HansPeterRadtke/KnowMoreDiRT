@@ -3750,6 +3750,242 @@ def test_latest_temporal_query_respects_reported_drs_scope(
     assert reported_answer.evidence[0].rel_path == "reported.txt"
 
 
+def test_latest_temporal_query_with_boundary_conflict_returns_unknown_with_provenance(
+    tmp_path: Path,
+    monkeypatch,
+) -> None:
+    (tmp_path / "begin").mkdir()
+    (tmp_path / "middle").mkdir()
+    (tmp_path / "ending").mkdir()
+    (tmp_path / "begin" / "registry.txt").write_text(
+        "Registry introduces Hinge Node as the monitored artifact.",
+        encoding="utf-8",
+    )
+    (tmp_path / "middle" / "state_a.txt").write_text(
+        "State channel A says HN-9 marker T005 state open.",
+        encoding="utf-8",
+    )
+    (tmp_path / "middle" / "state_b.txt").write_text(
+        "State channel B says HN-9 marker T005 state closed.",
+        encoding="utf-8",
+    )
+    (tmp_path / "ending" / "crosswalk.txt").write_text(
+        "Crosswalk states HN-9 is the same artifact as Hinge Node.",
+        encoding="utf-8",
+    )
+
+    class BoundaryConflictTemporalModel:
+        def context_size(self) -> int:
+            return 4096
+
+        def cache_fingerprint(self) -> dict[str, object]:
+            return {"model_id": "fake-boundary-conflict-temporal-drs", "context_size": 4096}
+
+        def complete_json(self, prompt: str, *, n_predict: int = 128, grammar=None, json_schema=None):
+            if "Registry introduces" in prompt:
+                text = "Registry introduces Hinge Node as the monitored artifact."
+                referents = [{"id": "r0", "label": "Hinge Node", "kind": "artifact", "evidence_text": "Hinge Node"}]
+                conditions = [
+                    {
+                        "id": "c0",
+                        "predicate": "introduces",
+                        "box_id": "b0",
+                        "polarity": "positive",
+                        "modality": "asserted",
+                        "temporal_id": "",
+                        "arguments": [
+                            {
+                                "role": "object",
+                                "target_kind": "referent",
+                                "target_id": "r0",
+                                "value": "",
+                                "value_type": "artifact",
+                                "evidence_text": "Hinge Node",
+                            }
+                        ],
+                        "evidence_text": text,
+                    }
+                ]
+                identities = []
+                temporals = []
+                source_id = "begin/registry.txt"
+            elif "channel A" in prompt:
+                text = "State channel A says HN-9 marker T005 state open."
+                referents = [{"id": "r0", "label": "HN-9", "kind": "identifier", "evidence_text": "HN-9"}]
+                conditions = [
+                    {
+                        "id": "c0",
+                        "predicate": "state",
+                        "box_id": "b0",
+                        "polarity": "positive",
+                        "modality": "asserted",
+                        "temporal_id": "t0",
+                        "arguments": [
+                            {
+                                "role": "subject",
+                                "target_kind": "referent",
+                                "target_id": "r0",
+                                "value": "",
+                                "value_type": "identifier",
+                                "evidence_text": "HN-9",
+                            },
+                            {
+                                "role": "state",
+                                "target_kind": "literal",
+                                "target_id": "",
+                                "value": "open",
+                                "value_type": "state",
+                                "evidence_text": "open",
+                            },
+                        ],
+                        "evidence_text": "HN-9 marker T005 state open",
+                    }
+                ]
+                identities = []
+                temporals = [{"id": "t0", "value": "T005", "value_type": "sequence_marker", "evidence_text": "T005"}]
+                source_id = "middle/state_a.txt"
+            elif "channel B" in prompt:
+                text = "State channel B says HN-9 marker T005 state closed."
+                referents = [{"id": "r0", "label": "HN-9", "kind": "identifier", "evidence_text": "HN-9"}]
+                conditions = [
+                    {
+                        "id": "c0",
+                        "predicate": "state",
+                        "box_id": "b0",
+                        "polarity": "positive",
+                        "modality": "asserted",
+                        "temporal_id": "t0",
+                        "arguments": [
+                            {
+                                "role": "subject",
+                                "target_kind": "referent",
+                                "target_id": "r0",
+                                "value": "",
+                                "value_type": "identifier",
+                                "evidence_text": "HN-9",
+                            },
+                            {
+                                "role": "state",
+                                "target_kind": "literal",
+                                "target_id": "",
+                                "value": "closed",
+                                "value_type": "state",
+                                "evidence_text": "closed",
+                            },
+                        ],
+                        "evidence_text": "HN-9 marker T005 state closed",
+                    }
+                ]
+                identities = []
+                temporals = [{"id": "t0", "value": "T005", "value_type": "sequence_marker", "evidence_text": "T005"}]
+                source_id = "middle/state_b.txt"
+            else:
+                text = "Crosswalk states HN-9 is the same artifact as Hinge Node."
+                referents = [
+                    {"id": "r0", "label": "HN-9", "kind": "identifier", "evidence_text": "HN-9"},
+                    {"id": "r1", "label": "Hinge Node", "kind": "artifact", "evidence_text": "Hinge Node"},
+                ]
+                conditions = [
+                    {
+                        "id": "c0",
+                        "predicate": "same_artifact",
+                        "box_id": "b0",
+                        "polarity": "positive",
+                        "modality": "asserted",
+                        "temporal_id": "",
+                        "arguments": [
+                            {
+                                "role": "left",
+                                "target_kind": "referent",
+                                "target_id": "r0",
+                                "value": "",
+                                "value_type": "identifier",
+                                "evidence_text": "HN-9",
+                            },
+                            {
+                                "role": "right",
+                                "target_kind": "referent",
+                                "target_id": "r1",
+                                "value": "",
+                                "value_type": "artifact",
+                                "evidence_text": "Hinge Node",
+                            },
+                        ],
+                        "evidence_text": "HN-9 is the same artifact as Hinge Node",
+                    }
+                ]
+                identities = [
+                    {
+                        "left_referent_id": "r0",
+                        "right_referent_id": "r1",
+                        "status": "accepted",
+                        "evidence_text": "HN-9 is the same artifact as Hinge Node",
+                        "confidence": 0.93,
+                    }
+                ]
+                temporals = []
+                source_id = "ending/crosswalk.txt"
+            return {
+                "drs": {
+                    "schema_version": "chunk-drs-v2",
+                    "source_id": source_id,
+                    "referents": referents,
+                    "boxes": [
+                        {"id": "b0", "kind": "asserted", "parent_id": "", "holder_referent_id": "", "evidence_text": text}
+                    ],
+                    "conditions": conditions,
+                    "identity_hypotheses": identities,
+                    "temporal_records": temporals,
+                },
+                "_model_raw": "{}",
+                "_model_elapsed_seconds": 0.01,
+            }
+
+    monkeypatch.setenv("KMD_CHUNK_DRS_CACHE_DIR", str(tmp_path / ".drs-cache"))
+    store, run_id, documents, sentences = ingest_folder(
+        tmp_path,
+        semantic_client=BoundaryConflictTemporalModel(),  # type: ignore[arg-type]
+        use_semantic_frames=False,
+        use_drs_semantics=True,
+    )
+    sentences_by_document: dict[str, dict[int, object]] = {}
+    for sentence in sentences:
+        sentences_by_document.setdefault(sentence.rel_path, {})[sentence.order] = sentence
+    frame = QueryFrame(
+        question_text="What is the latest state for Hinge Node?",
+        answer_type="state",
+        answer_variables=("state",),
+        target_anchors=("Hinge Node",),
+        requested_relation="state",
+        relation_terms=("state",),
+        constraints=(),
+        temporal_scope="latest",
+    )
+
+    answer, diagnostics = execute_bounded_query(
+        store,
+        run_id,
+        documents,
+        sentences_by_document,  # type: ignore[arg-type]
+        frame.question_text,
+        frame,
+    )
+
+    assert answer is None
+    assert diagnostics["execution"]["no_answer_reason"] == "temporal_answer_conflict_at_boundary"
+    conflict = diagnostics["execution"]["temporal_answer_conflict_at_boundary"]
+    assert {item["value"] for item in conflict["values"]} == {"closed", "open"}
+    evidence_paths = {
+        evidence["rel_path"]
+        for item in conflict["values"]
+        for evidence in item["evidence"]
+    }
+    assert {"middle/state_a.txt", "middle/state_b.txt"}.issubset(evidence_paths)
+    assert "ending/crosswalk.txt" in {
+        item["rel_path"] for item in diagnostics["execution"]["identity_expansion_evidence"]
+    }
+
+
 def test_ingest_skips_cartesian_temporal_edges_for_dense_time_chunks(tmp_path: Path, monkeypatch) -> None:
     monkeypatch.setenv("KMD_TEMPORAL_SAME_SPAN_MAX_VALUES", "2")
     (tmp_path / "dense.log").write_text(
