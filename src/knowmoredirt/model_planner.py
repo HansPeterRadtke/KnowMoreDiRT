@@ -63,7 +63,7 @@ CHUNK_DRS_STAGED_FALLBACK_POLICY = "retry-invalid-json-schema-grounding-staged-t
 CHUNK_DRS_GROUNDING_REPAIR_POLICY = "model-label-value-escaped-evidence-span-v3"
 CHUNK_DRS_IDENTITY_PROVENANCE_POLICY = "identity-evidence-bilateral-surface-v1"
 CHUNK_DRS_TEMPORAL_PROVENANCE_POLICY = "condition-stage-declared-temporal-records-v2"
-CHUNK_DRS_SPARSE_RETRY_POLICY = "retry-validated-sparse-drs-staged-v1"
+CHUNK_DRS_SPARSE_RETRY_POLICY = "retry-validated-sparse-drs-staged-v2"
 CHUNK_DRS_STRUCTURE_VALIDATION_POLICY = "acyclic-box-condition-arguments-v2"
 CHUNK_DRS_BOX_COMPLETION_POLICY = "model-complete-missing-box-declarations-v1"
 CHUNK_DRS_SOURCE_SPAN_POLICY = "chunk-drs-delimiter-source-span-enum-v2"
@@ -1081,6 +1081,9 @@ def _chunk_drs_staged_retry_reason(
     if _chunk_drs_structurally_sparse(validation):
         return "structural_sparsity"
     condition_count = _validation_count(validation, "condition_count")
+    box_count = _validation_count(validation, "box_count")
+    if box_count >= 3 and condition_count < box_count - 1:
+        return "scoped_box_undercoverage"
     field_like_span_count = _chunk_drs_structural_condition_floor(
         source_text,
         (context_budget or {}).get("max_evidence_chars"),

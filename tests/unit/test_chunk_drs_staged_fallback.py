@@ -606,6 +606,206 @@ def test_chunk_drs_staged_fallback_runs_for_structurally_sparse_drs(monkeypatch,
     assert cache_context["sparse_retry_policy"] == CHUNK_DRS_SPARSE_RETRY_POLICY
 
 
+def test_chunk_drs_staged_fallback_runs_for_scoped_box_undercoverage(monkeypatch, tmp_path) -> None:
+    class ScopedUndercoverageModel:
+        def context_size(self) -> int:
+            return 8192
+
+        def cache_fingerprint(self) -> dict[str, Any]:
+            return {"model_id": "fake-scoped-undercoverage-drs", "context_size": 8192}
+
+        def complete_json(
+            self,
+            prompt: str,
+            *,
+            n_predict: int = 128,
+            grammar: str | None = None,
+            json_schema: dict[str, Any] | None = None,
+        ) -> dict[str, object]:
+            if "one source-grounded DRS object" in prompt:
+                return {
+                    "drs": {
+                        "schema_version": "chunk-drs-v2",
+                        "source_id": "belief.txt",
+                        "referents": [
+                            {"id": "r0", "label": "Anna", "kind": "person", "evidence_text": "Anna"},
+                            {"id": "r1", "label": "Jonas", "kind": "person", "evidence_text": "Jonas"},
+                            {"id": "r2", "label": "Martin", "kind": "person", "evidence_text": "Martin"},
+                            {"id": "r3", "label": "PR-417", "kind": "identifier", "evidence_text": "PR-417"},
+                        ],
+                        "boxes": [
+                            {
+                                "id": "b0",
+                                "kind": "asserted",
+                                "parent_id": "",
+                                "holder_referent_id": "r0",
+                                "evidence_text": "Anna believes Jonas heard that Martin planned to revert PR-417.",
+                            },
+                            {
+                                "id": "b1",
+                                "kind": "believed",
+                                "parent_id": "b0",
+                                "holder_referent_id": "r0",
+                                "evidence_text": "Anna believes Jonas heard that Martin planned to revert PR-417.",
+                            },
+                            {
+                                "id": "b2",
+                                "kind": "reported",
+                                "parent_id": "b1",
+                                "holder_referent_id": "r1",
+                                "evidence_text": "Jonas heard that Martin planned to revert PR-417.",
+                            },
+                            {
+                                "id": "b3",
+                                "kind": "asserted",
+                                "parent_id": "b2",
+                                "holder_referent_id": "r1",
+                                "evidence_text": "Martin planned to revert PR-417.",
+                            },
+                        ],
+                        "conditions": [
+                            {
+                                "id": "c0",
+                                "predicate": "hear",
+                                "box_id": "b2",
+                                "polarity": "positive",
+                                "modality": "asserted",
+                                "temporal_id": "",
+                                "arguments": [],
+                                "evidence_text": "Jonas heard that Martin planned to revert PR-417.",
+                            }
+                        ],
+                        "identity_hypotheses": [],
+                        "temporal_records": [],
+                    },
+                    "_model_raw": "{}",
+                    "_model_elapsed_seconds": 0.01,
+                }
+            if "Stage 1 of source-grounded DRS extraction" in prompt:
+                return {
+                    "drs_skeleton": {
+                        "schema_version": "chunk-drs-v2",
+                        "source_id": "belief.txt",
+                        "referents": [
+                            {"id": "r0", "label": "Anna", "kind": "person", "evidence_text": "Anna"},
+                            {"id": "r1", "label": "Jonas", "kind": "person", "evidence_text": "Jonas"},
+                            {"id": "r2", "label": "Martin", "kind": "person", "evidence_text": "Martin"},
+                            {"id": "r3", "label": "PR-417", "kind": "identifier", "evidence_text": "PR-417"},
+                        ],
+                        "boxes": [
+                            {
+                                "id": "b0",
+                                "kind": "asserted",
+                                "parent_id": "",
+                                "holder_referent_id": "r0",
+                                "evidence_text": "Anna believes Jonas heard that Martin planned to revert PR-417.",
+                            },
+                            {
+                                "id": "b1",
+                                "kind": "believed",
+                                "parent_id": "b0",
+                                "holder_referent_id": "r0",
+                                "evidence_text": "Jonas heard that Martin planned to revert PR-417.",
+                            },
+                            {
+                                "id": "b2",
+                                "kind": "reported",
+                                "parent_id": "b1",
+                                "holder_referent_id": "r1",
+                                "evidence_text": "Martin planned to revert PR-417.",
+                            },
+                        ],
+                        "temporal_records": [],
+                    },
+                    "_model_raw": "{}",
+                    "_model_elapsed_seconds": 0.01,
+                }
+            assert "Stage 2 of source-grounded DRS extraction" in prompt
+            return {
+                "condition_stage": {
+                    "schema_version": "chunk-drs-v2",
+                    "source_id": "belief.txt",
+                    "conditions": [
+                        {
+                            "id": "c0",
+                            "predicate": "believe",
+                            "box_id": "b0",
+                            "polarity": "positive",
+                            "modality": "asserted",
+                            "temporal_id": "",
+                            "arguments": [
+                                {
+                                    "role": "content",
+                                    "target_kind": "box",
+                                    "target_id": "b1",
+                                    "value": "",
+                                    "value_type": "box",
+                                    "evidence_text": "Jonas heard that Martin planned to revert PR-417.",
+                                }
+                            ],
+                            "evidence_text": "Anna believes Jonas heard that Martin planned to revert PR-417.",
+                        },
+                        {
+                            "id": "c1",
+                            "predicate": "hear",
+                            "box_id": "b1",
+                            "polarity": "positive",
+                            "modality": "believed",
+                            "temporal_id": "",
+                            "arguments": [
+                                {
+                                    "role": "content",
+                                    "target_kind": "box",
+                                    "target_id": "b2",
+                                    "value": "",
+                                    "value_type": "box",
+                                    "evidence_text": "Martin planned to revert PR-417.",
+                                }
+                            ],
+                            "evidence_text": "Jonas heard that Martin planned to revert PR-417.",
+                        },
+                        {
+                            "id": "c2",
+                            "predicate": "plan",
+                            "box_id": "b2",
+                            "polarity": "positive",
+                            "modality": "reported",
+                            "temporal_id": "",
+                            "arguments": [
+                                {
+                                    "role": "theme",
+                                    "target_kind": "referent",
+                                    "target_id": "r3",
+                                    "value": "",
+                                    "value_type": "identifier",
+                                    "evidence_text": "PR-417",
+                                }
+                            ],
+                            "evidence_text": "Martin planned to revert PR-417.",
+                        },
+                    ],
+                },
+                "_model_raw": "{}",
+                "_model_elapsed_seconds": 0.01,
+            }
+
+    monkeypatch.delenv("KMD_LOCAL_MODEL_JSON_SCHEMA", raising=False)
+    monkeypatch.setenv("KMD_CHUNK_DRS_CACHE_DIR", str(tmp_path / "drs-cache"))
+
+    result = call_model_chunk_drs(
+        "Anna believes Jonas heard that Martin planned to revert PR-417.",
+        ScopedUndercoverageModel(),  # type: ignore[arg-type]
+        rel_path="belief.txt",
+        n_predict=384,
+    )
+
+    assert result["accepted"] is True
+    assert result["reason"] == "staged_fallback"
+    assert result["fallback_from_reason"] == "scoped_box_undercoverage"
+    assert result["validation"]["condition_count"] == 3
+    assert result["context_budget"]["sparse_retry_policy"] == CHUNK_DRS_SPARSE_RETRY_POLICY
+
+
 def test_chunk_drs_staged_fallback_runs_for_compact_record_undercoverage(monkeypatch, tmp_path) -> None:
     class CompactUndercoverageModel:
         def context_size(self) -> int:
