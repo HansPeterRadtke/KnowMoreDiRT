@@ -138,6 +138,24 @@ def test_optional_local_model_invokes_generic_query_plan_path(tmp_path: Path) ->
     assert engine.model_query_trace.model_answer_count == 1
 
 
+def test_unknown_answer_retains_bounded_source_provenance(tmp_path: Path, monkeypatch) -> None:
+    monkeypatch.setenv("KMD_USE_LOCAL_MODEL", "0")
+    (tmp_path / "registry.txt").write_text(
+        "Registry introduces North Lantern as the sealed device.",
+        encoding="utf-8",
+    )
+
+    engine = KnowMoreDiRTEngine(tmp_path)
+    answer = engine.answer("What status is recorded for North Lantern?")
+
+    assert answer.text == "unknown"
+    assert answer.evidence
+    assert answer.evidence[0].rel_path == "registry.txt"
+    assert "North Lantern" in answer.evidence[0].text
+    assert engine.last_answer is answer
+    assert engine.last_bounded_diagnostics["execution"]["source_provenance_sample"]
+
+
 def test_local_model_ingest_builds_grounded_generic_frames(tmp_path: Path, monkeypatch) -> None:
     fake = FakeFrameModel()
     (tmp_path / "frame.raw").write_text("Marble Gate is guarded by Sena Rill.\n", encoding="utf-8")
@@ -640,7 +658,9 @@ def test_missing_source_evidence_returns_unknown(tmp_path: Path) -> None:
     answer = engine.answer("Which reference identifies OrionLeaf?")
 
     assert answer.text == "unknown"
-    assert not answer.evidence
+    assert answer.evidence
+    assert answer.evidence[0].rel_path == "plain"
+    assert "OrionLeaf" in answer.evidence[0].text
 
 
 def test_core_has_no_prepared_or_herb_marker_dependencies() -> None:

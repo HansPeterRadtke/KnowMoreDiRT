@@ -194,7 +194,7 @@ class KnowMoreDiRTEngine:
             if model_answer:
                 self.last_answer = model_answer
                 return model_answer
-            answer = Answer("unknown", reason="local model DRT path found no complete grounded answer")
+            answer = self._unknown_answer("local model DRT path found no complete grounded answer")
             self.last_answer = answer
             return answer
 
@@ -210,9 +210,75 @@ class KnowMoreDiRTEngine:
                 self.last_answer = bounded
                 return bounded
 
-        answer = Answer("unknown", reason="no complete grounded DSPG match")
+        answer = self._unknown_answer("no complete grounded DSPG match")
         self.last_answer = answer
         return answer
+
+    def _unknown_answer(self, reason: str) -> Answer:
+        return Answer("unknown", 0.0, self._diagnostic_unknown_evidence(), reason, "unknown")
+
+    def _diagnostic_unknown_evidence(self, *, limit: int = 6) -> list[Evidence]:
+        diagnostics = self.last_bounded_diagnostics if isinstance(self.last_bounded_diagnostics, dict) else {}
+        execution = diagnostics.get("execution") if isinstance(diagnostics.get("execution"), dict) else {}
+        payloads: list[dict[str, object]] = []
+        conflict = execution.get("answer_conflict_without_query_scope") if isinstance(execution, dict) else None
+        if isinstance(conflict, dict):
+            for value_item in conflict.get("values") or []:
+                if not isinstance(value_item, dict):
+                    continue
+                for evidence in value_item.get("evidence") or []:
+                    if isinstance(evidence, dict):
+                        payloads.append(evidence)
+        for candidate in execution.get("candidate_evidence_sample") or []:
+            if isinstance(candidate, dict) and isinstance(candidate.get("evidence"), dict):
+                payloads.append(candidate["evidence"])
+        for source in execution.get("source_provenance_sample") or []:
+            if isinstance(source, dict):
+                payloads.append(source)
+
+        evidence_items: list[Evidence] = []
+        seen: set[tuple[str, str, str]] = set()
+        for payload in payloads:
+            rel_path = str(payload.get("rel_path") or payload.get("source") or "")
+            text = str(payload.get("text") or "")
+            span_id = str(payload.get("span_id") or "")
+            if not rel_path or not text:
+                continue
+            key = (rel_path, span_id, text)
+            if key in seen:
+                continue
+            seen.add(key)
+            try:
+                score = float(payload.get("score") or 0.45)
+            except (TypeError, ValueError):
+                score = 0.45
+            try:
+                chunk_order = int(payload["chunk_order"]) if payload.get("chunk_order") not in {"", None} else None
+            except (TypeError, ValueError):
+                chunk_order = None
+            try:
+                char_start = int(payload["char_start"]) if payload.get("char_start") not in {"", None} else None
+            except (TypeError, ValueError):
+                char_start = None
+            try:
+                char_end = int(payload["char_end"]) if payload.get("char_end") not in {"", None} else None
+            except (TypeError, ValueError):
+                char_end = None
+            evidence_items.append(
+                Evidence(
+                    rel_path,
+                    text,
+                    score,
+                    span_id=span_id,
+                    chunk_order=chunk_order,
+                    char_start=char_start,
+                    char_end=char_end,
+                    source_kind=str(payload.get("source_kind") or payload.get("span_kind") or "source_span"),
+                )
+            )
+            if len(evidence_items) >= limit:
+                break
+        return evidence_items
 
     def _expected_from_frame(self, frame: QueryFrame) -> ExpectedAnswer:
         allowed = {

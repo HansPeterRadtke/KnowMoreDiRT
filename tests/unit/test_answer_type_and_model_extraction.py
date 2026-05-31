@@ -73,7 +73,9 @@ def test_person_question_rejects_structural_references(tmp_path: Path) -> None:
     answer = engine.answer("Who reviewed Velora Map?")
 
     assert answer.text == "unknown"
-    assert not answer.evidence
+    assert answer.evidence
+    assert answer.evidence[0].rel_path == "notes/entity.raw"
+    assert "Velora Map" in answer.evidence[0].text
 
 
 def test_url_question_returns_url_not_person_or_path(tmp_path: Path) -> None:
