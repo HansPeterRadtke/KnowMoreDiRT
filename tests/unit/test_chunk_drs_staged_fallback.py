@@ -1258,6 +1258,7 @@ def test_chunk_drs_dynamic_output_budget_for_short_chunks(monkeypatch) -> None:
 
     model = LargeContextModel()
     compact_record = "record: Aster Ridge | steward: Lina Sol | state: active"
+    tiny_prose = "Iris Vale reports that NL-7 is North Lantern and NL-7 status is blue."
     field_dense = " | ".join(f"field{index}: value{index}" for index in range(10))
     medium_text = " ".join(f"token{index}" for index in range(120))
     long_text = " ".join(f"token{index}" for index in range(260))
@@ -1265,6 +1266,7 @@ def test_chunk_drs_dynamic_output_budget_for_short_chunks(monkeypatch) -> None:
     monkeypatch.delenv("KMD_CHUNK_DRS_N_PREDICT", raising=False)
 
     assert default_chunk_drs_n_predict(model) == 1365  # type: ignore[arg-type]
+    assert default_chunk_drs_n_predict(model, tiny_prose) == 544  # type: ignore[arg-type]
     assert default_chunk_drs_n_predict(model, compact_record) == 768  # type: ignore[arg-type]
     assert default_chunk_drs_n_predict(model, field_dense) == 1024  # type: ignore[arg-type]
     assert default_chunk_drs_n_predict(model, medium_text) == 1024  # type: ignore[arg-type]
