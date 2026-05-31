@@ -307,7 +307,8 @@ def test_model_drs_referents_remain_source_local_without_identity(tmp_path: Path
                 "_model_elapsed_seconds": 0.01,
             }
 
-    monkeypatch.setenv("KMD_CHUNK_DRS_CACHE_DIR", str(tmp_path / ".drs-cache"))
+    cache_dir = tmp_path.parent / f"{tmp_path.name}-drs-cache"
+    monkeypatch.setenv("KMD_CHUNK_DRS_CACHE_DIR", str(cache_dir))
     store, _, _, _ = ingest_folder(
         tmp_path,
         semantic_client=TwoSurfaceModel(),  # type: ignore[arg-type]
@@ -532,7 +533,8 @@ def test_identity_expanded_retrieval_merges_scattered_drs_chunks(tmp_path: Path,
                 "_model_elapsed_seconds": 0.01,
             }
 
-    monkeypatch.setenv("KMD_CHUNK_DRS_CACHE_DIR", str(tmp_path / ".drs-cache"))
+    cache_dir = tmp_path.parent / f"{tmp_path.name}-scattered-drs-cache"
+    monkeypatch.setenv("KMD_CHUNK_DRS_CACHE_DIR", str(cache_dir))
     store, run_id, documents, sentences = ingest_folder(
         tmp_path,
         semantic_client=ScatteredModel(),  # type: ignore[arg-type]
@@ -1148,7 +1150,8 @@ def test_drs_ingest_skips_low_semantic_noise_chunks(tmp_path: Path, monkeypatch)
                 "_model_elapsed_seconds": 0.01,
             }
 
-    monkeypatch.setenv("KMD_CHUNK_DRS_CACHE_DIR", str(tmp_path / ".drs-cache"))
+    cache_dir = tmp_path.parent / f"{tmp_path.name}-noise-drs-cache"
+    monkeypatch.setenv("KMD_CHUNK_DRS_CACHE_DIR", str(cache_dir))
     model = CountingDrsModel()
 
     store, _, _, _ = ingest_folder(
@@ -1159,6 +1162,113 @@ def test_drs_ingest_skips_low_semantic_noise_chunks(tmp_path: Path, monkeypatch)
     )
 
     assert len(model.calls) == 1
+    assert store.counts()["drs_conditions"] == 1
+
+
+def test_ingest_can_incrementally_merge_new_files_into_existing_store(tmp_path: Path) -> None:
+    store = DSPGStore()
+    (tmp_path / "alpha.txt").write_text("Alpha note one.", encoding="utf-8")
+
+    store, first_run_id, first_documents, first_sentences = ingest_folder(tmp_path, store=store)
+    (tmp_path / "beta.txt").write_text("Beta note two.", encoding="utf-8")
+    store, second_run_id, second_documents, second_sentences = ingest_folder(tmp_path, store=store)
+
+    assert first_run_id == second_run_id
+    assert len(first_documents) == 1
+    assert len(first_sentences) == 1
+    assert len(second_documents) == 2
+    assert len(second_sentences) == 2
+    assert first_documents[0].document_id in {document.document_id for document in second_documents}
+    assert store.integrity_check() == "ok"
+    assert store.counts()["documents"] == 2
+    assert store.counts()["chunks"] == 2
+    assert store.execute("SELECT COUNT(*) FROM extraction_runs").fetchone()[0] == 1
+
+
+def test_incremental_drs_ingest_reuses_existing_materialized_chunks(tmp_path: Path, monkeypatch) -> None:
+    (tmp_path / "note.txt").write_text("Aero Gate is ready.\n", encoding="utf-8")
+
+    class CountingDrsModel:
+        def __init__(self) -> None:
+            self.calls = 0
+
+        def context_size(self) -> int:
+            return 4096
+
+        def cache_fingerprint(self) -> dict[str, object]:
+            return {"model_id": "fake-incremental-drs", "context_size": 4096}
+
+        def complete_json(self, prompt: str, *, n_predict: int = 128, grammar=None, json_schema=None):
+            self.calls += 1
+            assert "Aero Gate is ready" in prompt
+            return {
+                "drs": {
+                    "schema_version": "chunk-drs-v2",
+                    "source_id": "note.txt",
+                    "referents": [
+                        {"id": "r0", "label": "Aero Gate", "kind": "entity", "evidence_text": "Aero Gate"},
+                    ],
+                    "boxes": [
+                        {
+                            "id": "b0",
+                            "kind": "asserted",
+                            "parent_id": "",
+                            "holder_referent_id": "",
+                            "evidence_text": "Aero Gate is ready.",
+                        },
+                    ],
+                    "conditions": [
+                        {
+                            "id": "c0",
+                            "predicate": "ready",
+                            "box_id": "b0",
+                            "polarity": "positive",
+                            "modality": "asserted",
+                            "temporal_id": "",
+                            "arguments": [
+                                {
+                                    "role": "entity",
+                                    "target_kind": "referent",
+                                    "target_id": "r0",
+                                    "value": "",
+                                    "value_type": "entity",
+                                    "evidence_text": "Aero Gate",
+                                }
+                            ],
+                            "evidence_text": "Aero Gate is ready.",
+                        }
+                    ],
+                    "identity_hypotheses": [],
+                    "temporal_records": [],
+                },
+                "_model_raw": "{}",
+                "_model_elapsed_seconds": 0.01,
+            }
+
+    incremental_cache_dir = tmp_path.parent / f"{tmp_path.name}-incremental-drs-cache"
+    monkeypatch.setenv("KMD_CHUNK_DRS_CACHE_DIR", str(incremental_cache_dir))
+    model = CountingDrsModel()
+    store = DSPGStore()
+
+    store, first_run_id, _, _ = ingest_folder(
+        tmp_path,
+        store=store,
+        semantic_client=model,
+        use_semantic_frames=False,
+        use_drs_semantics=True,
+    )
+    calls_after_first_ingest = model.calls
+    store, second_run_id, _, _ = ingest_folder(
+        tmp_path,
+        store=store,
+        semantic_client=model,
+        use_semantic_frames=False,
+        use_drs_semantics=True,
+    )
+
+    assert first_run_id == second_run_id
+    assert calls_after_first_ingest >= 1
+    assert model.calls == calls_after_first_ingest
     assert store.counts()["drs_conditions"] == 1
 
 

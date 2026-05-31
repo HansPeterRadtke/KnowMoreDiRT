@@ -448,6 +448,19 @@ class DSPGStore:
         )
         return run_id
 
+    def latest_run_id(self, input_root: str | Path) -> str:
+        row = self.connection.execute(
+            """
+            SELECT run_id
+            FROM extraction_runs
+            WHERE input_root=?
+            ORDER BY started_at DESC
+            LIMIT 1
+            """,
+            (str(input_root),),
+        ).fetchone()
+        return str(row["run_id"]) if row is not None else ""
+
     def finish_run(self, run_id: str, metrics: dict[str, Any]) -> None:
         self.connection.execute(
             "UPDATE extraction_runs SET status=?, metrics_json=? WHERE run_id=?",

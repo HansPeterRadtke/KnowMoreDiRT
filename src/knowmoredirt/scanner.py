@@ -11,6 +11,11 @@ from .models import Document, Sentence
 from .text import split_units, tokenize
 
 
+def _stable_scan_id(prefix: str, *parts: object) -> str:
+    material = "\x1f".join(str(part) for part in parts)
+    return f"{prefix}_{hashlib.sha256(material.encode('utf-8')).hexdigest()[:24]}"
+
+
 def read_text_file(path: Path) -> str | None:
     """Read a file as text if possible.
 
@@ -61,7 +66,7 @@ def scan_folder(folder_path: str | Path, *, max_unit_chars: int = 0) -> tuple[li
 
     documents: list[Document] = []
     sentences: list[Sentence] = []
-    for document_index, path in enumerate(sorted(root.rglob("*"))):
+    for path in sorted(root.rglob("*")):
         if not path.is_file():
             continue
         read_result = read_text_file_with_metadata(path)
@@ -70,7 +75,8 @@ def scan_folder(folder_path: str | Path, *, max_unit_chars: int = 0) -> tuple[li
         text, read_metadata = read_result
         stat = path.stat()
         rel_path = path.relative_to(root).as_posix()
-        document_id = f"d{document_index:05d}"
+        content_hash = hashlib.sha256(text.encode("utf-8", errors="replace")).hexdigest()
+        document_id = _stable_scan_id("doc", rel_path, content_hash)
         suffixes = list(path.suffixes)
         metadata: dict[str, object] = {
             **read_metadata,
@@ -105,7 +111,7 @@ def scan_folder(folder_path: str | Path, *, max_unit_chars: int = 0) -> tuple[li
             size_bytes=stat.st_size,
             mtime=stat.st_mtime,
             ctime=stat.st_ctime,
-            sha256=hashlib.sha256(text.encode("utf-8", errors="replace")).hexdigest(),
+            sha256=content_hash,
             metadata=metadata,
         )
         documents.append(document)

@@ -315,7 +315,11 @@ def ingest_folder(
     store = store or DSPGStore(create_indexes=False)
     ingest_started = time.monotonic()
     documents, sentences = scan_folder(folder_path, max_unit_chars=_scan_unit_max_chars(semantic_client))
-    run_id = store.start_run(folder_path)
+    run_id = "" if created_store else store.latest_run_id(folder_path)
+    if run_id:
+        store.execute("UPDATE extraction_runs SET status=? WHERE run_id=?", ("running", run_id))
+    else:
+        run_id = store.start_run(folder_path)
 
     sentence_by_id = {sentence.sentence_id: sentence for sentence in sentences}
     referent_cache: dict[tuple[str, str], str] = {}
@@ -325,7 +329,7 @@ def ingest_folder(
         quality = text_quality_metrics(document.text)
         store.execute(
             """
-            INSERT INTO documents(
+            INSERT OR IGNORE INTO documents(
               document_id, run_id, path, rel_path, content_hash, size_bytes, mtime, ctime, char_count, metadata_json
             ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
             """,
@@ -347,7 +351,7 @@ def ingest_folder(
             context_id = stable_id("ctx", run_id, quality_kind)
             context_by_kind[quality_kind] = context_id
             store.execute(
-                "INSERT INTO contexts(context_id, run_id, kind, parent_context_id, holder_surface, evidence_surface, confidence) VALUES (?, ?, ?, ?, ?, ?, ?)",
+                "INSERT OR IGNORE INTO contexts(context_id, run_id, kind, parent_context_id, holder_surface, evidence_surface, confidence) VALUES (?, ?, ?, ?, ?, ?, ?)",
                 (context_id, run_id, quality_kind, None, document.rel_path, quality_kind, 1.0),
             )
         quality_context_id = context_by_kind[quality_kind]
@@ -426,12 +430,12 @@ def ingest_folder(
         token_estimate = max(1, len(tokenize(sentence.text)))
         chunk_id = stable_id("chunk", sentence.sentence_id)
         store.execute(
-            "INSERT INTO chunks(chunk_id, document_id, chunk_order, char_start, char_end, text, token_estimate) VALUES (?, ?, ?, ?, ?, ?, ?)",
+            "INSERT OR IGNORE INTO chunks(chunk_id, document_id, chunk_order, char_start, char_end, text, token_estimate) VALUES (?, ?, ?, ?, ?, ?, ?)",
             (chunk_id, sentence.document_id, sentence.order, sentence.char_start, sentence.char_end, sentence.text, token_estimate),
         )
         span_id = stable_id("span", sentence.sentence_id, "sentence")
         store.execute(
-            "INSERT INTO source_spans(span_id, document_id, chunk_id, char_start, char_end, surface, surface_norm, span_kind) VALUES (?, ?, ?, ?, ?, ?, ?, ?)",
+            "INSERT OR IGNORE INTO source_spans(span_id, document_id, chunk_id, char_start, char_end, surface, surface_norm, span_kind) VALUES (?, ?, ?, ?, ?, ?, ?, ?)",
             (span_id, sentence.document_id, chunk_id, sentence.char_start, sentence.char_end, sentence.text, normalize(sentence.text), "sentence"),
         )
         context_kind = context_kind_for_sentence(sentence.text)
@@ -440,7 +444,7 @@ def ingest_folder(
             context_id = stable_id("ctx", run_id, context_kind)
             context_by_kind[context_kind] = context_id
             store.execute(
-                "INSERT INTO contexts(context_id, run_id, kind, parent_context_id, holder_surface, evidence_surface, confidence) VALUES (?, ?, ?, ?, ?, ?, ?)",
+                "INSERT OR IGNORE INTO contexts(context_id, run_id, kind, parent_context_id, holder_surface, evidence_surface, confidence) VALUES (?, ?, ?, ?, ?, ?, ?)",
                 (context_id, run_id, context_kind, None, None, context_kind, 1.0),
             )
         store.execute(
@@ -775,7 +779,7 @@ def ingest_folder(
                         semantic_context_id = stable_id("ctx", run_id, context_key)
                         context_by_kind[context_key] = semantic_context_id
                         store.execute(
-                            "INSERT INTO contexts(context_id, run_id, kind, parent_context_id, holder_surface, evidence_surface, confidence) VALUES (?, ?, ?, ?, ?, ?, ?)",
+                            "INSERT OR IGNORE INTO contexts(context_id, run_id, kind, parent_context_id, holder_surface, evidence_surface, confidence) VALUES (?, ?, ?, ?, ?, ?, ?)",
                             (semantic_context_id, run_id, f"modality:{modality}", context_id, context_holder or None, evidence_text, condition.confidence),
                         )
                 if polarity not in {"", "positive"}:
@@ -792,7 +796,7 @@ def ingest_folder(
                         polarity_context_id = stable_id("ctx", run_id, context_key)
                         context_by_kind[context_key] = polarity_context_id
                         store.execute(
-                            "INSERT INTO contexts(context_id, run_id, kind, parent_context_id, holder_surface, evidence_surface, confidence) VALUES (?, ?, ?, ?, ?, ?, ?)",
+                            "INSERT OR IGNORE INTO contexts(context_id, run_id, kind, parent_context_id, holder_surface, evidence_surface, confidence) VALUES (?, ?, ?, ?, ?, ?, ?)",
                             (polarity_context_id, run_id, f"polarity:{polarity}", semantic_context_id, None, evidence_text, condition.confidence),
                         )
                     semantic_context_id = polarity_context_id
@@ -974,6 +978,26 @@ def ingest_folder(
                     "accepted=False "
                     "materialized=False "
                     "reason=skipped_noise "
+                    "model_elapsed=0.0 "
+                    f"elapsed={time.monotonic() - ingest_started:.1f}s"
+                )
+                continue
+            existing_drs = store.execute(
+                """
+                SELECT COUNT(*)
+                FROM drs_boxes
+                WHERE run_id=? AND source_span_id=? AND source='local_model_drs'
+                """,
+                (run_id, span_id),
+            ).fetchone()[0]
+            if existing_drs:
+                _log_progress(
+                    "kmd-ingest drs_done "
+                    f"chunk={semantic_index}/{semantic_total} "
+                    f"source={sentence.rel_path}:{sentence.order} "
+                    "accepted=True "
+                    "materialized=True "
+                    "reason=already_materialized "
                     "model_elapsed=0.0 "
                     f"elapsed={time.monotonic() - ingest_started:.1f}s"
                 )
