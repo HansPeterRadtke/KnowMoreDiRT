@@ -894,6 +894,89 @@ def test_chunk_drs_rejects_cyclic_condition_arguments(monkeypatch, tmp_path) -> 
     assert "cyclic_condition_argument:c0->c1->c0" in result["validation"]["errors"]
 
 
+def test_chunk_drs_rejects_cyclic_box_parents(monkeypatch, tmp_path) -> None:
+    class CyclicBoxModel:
+        def context_size(self) -> int:
+            return 8192
+
+        def cache_fingerprint(self) -> dict[str, object]:
+            return {"model_id": "fake-cyclic-box-drs", "context_size": 8192}
+
+        def complete_json(self, prompt: str, *, n_predict: int = 128, grammar=None, json_schema=None):
+            return {
+                "drs": {
+                    "schema_version": "chunk-drs-v2",
+                    "source_id": "note.txt",
+                    "referents": [
+                        {"id": "r0", "label": "Rhea Vale", "kind": "person", "evidence_text": "Rhea Vale"},
+                        {"id": "r1", "label": "CB-44", "kind": "identifier", "evidence_text": "CB-44"},
+                    ],
+                    "boxes": [
+                        {
+                            "id": "b0",
+                            "kind": "asserted",
+                            "parent_id": "b1",
+                            "holder_referent_id": "",
+                            "evidence_text": "Rhea Vale reports that CB-44 status is green.",
+                        },
+                        {
+                            "id": "b1",
+                            "kind": "reported",
+                            "parent_id": "b0",
+                            "holder_referent_id": "r0",
+                            "evidence_text": "CB-44 status is green",
+                        },
+                    ],
+                    "conditions": [
+                        {
+                            "id": "c0",
+                            "predicate": "status",
+                            "box_id": "b1",
+                            "polarity": "positive",
+                            "modality": "asserted",
+                            "temporal_id": "",
+                            "arguments": [
+                                {
+                                    "role": "subject",
+                                    "target_kind": "referent",
+                                    "target_id": "r1",
+                                    "value": "",
+                                    "value_type": "identifier",
+                                    "evidence_text": "CB-44",
+                                },
+                                {
+                                    "role": "state",
+                                    "target_kind": "literal",
+                                    "target_id": "",
+                                    "value": "green",
+                                    "value_type": "state",
+                                    "evidence_text": "green",
+                                },
+                            ],
+                            "evidence_text": "CB-44 status is green",
+                        }
+                    ],
+                    "identity_hypotheses": [],
+                    "temporal_records": [],
+                },
+                "_model_raw": "{}",
+                "_model_elapsed_seconds": 0.01,
+            }
+
+    model = CyclicBoxModel()
+    monkeypatch.setenv("KMD_CHUNK_DRS_STAGED_FALLBACK", "0")
+    monkeypatch.setenv("KMD_CHUNK_DRS_CACHE_DIR", str(tmp_path / "chunk-drs-cache"))
+    result = call_model_chunk_drs(
+        "Rhea Vale reports that CB-44 status is green.",
+        model,  # type: ignore[arg-type]
+        rel_path="note.txt",
+    )
+
+    assert result["accepted"] is False
+    assert result["reason"] == "schema_validation_failed"
+    assert "cyclic_box_parent:b0->b1->b0" in result["validation"]["errors"]
+
+
 def test_chunk_drs_evidence_cap_uses_reserved_output_budget(monkeypatch) -> None:
     monkeypatch.delenv("KMD_CHUNK_DRS_MAX_EVIDENCE_CHARS", raising=False)
     monkeypatch.delenv("KMD_CHUNK_DRS_MAX_ARRAY_ITEMS", raising=False)

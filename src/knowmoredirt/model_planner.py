@@ -17,6 +17,7 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import Any
 
+from .drs_validation import box_parent_cycle_errors, condition_argument_cycle_errors
 from .model import LocalModelClient, LocalModelJSONError
 from .extractors import identifiers, urls
 from .query import QueryFrame, frame_from_mapping, visible_anchors
@@ -64,7 +65,7 @@ CHUNK_DRS_GROUNDING_REPAIR_POLICY = "model-label-value-escaped-evidence-span-v3"
 CHUNK_DRS_IDENTITY_PROVENANCE_POLICY = "identity-evidence-bilateral-surface-v1"
 CHUNK_DRS_TEMPORAL_PROVENANCE_POLICY = "condition-stage-declared-temporal-records-v2"
 CHUNK_DRS_SPARSE_RETRY_POLICY = "retry-validated-sparse-drs-staged-v2"
-CHUNK_DRS_STRUCTURE_VALIDATION_POLICY = "acyclic-box-condition-arguments-v2"
+CHUNK_DRS_STRUCTURE_VALIDATION_POLICY = "acyclic-box-parent-condition-arguments-v3"
 CHUNK_DRS_BOX_COMPLETION_POLICY = "model-complete-missing-box-declarations-v1"
 CHUNK_DRS_SOURCE_SPAN_POLICY = "chunk-drs-delimiter-source-span-enum-v2"
 CHUNK_DRS_SKELETON_SOURCE_SPAN_POLICY = "stage1-source-span-evidence-enum-v1"
@@ -78,7 +79,7 @@ CHUNK_DRS_DYNAMIC_OUTPUT_BUDGET_POLICY = "source-aware-short-chunk-768-1024-v1"
 CHUNK_DRS_DYNAMIC_CONDITION_BUDGET_POLICY = "compact-nontemporal-condition-stage-floor-528-v2"
 CHUNK_DRS_STAGED_FIRST_POLICY = "field-like-source-spans-before-monolithic-v1"
 QUERY_DRS_SCHEMA_VERSION = "query-drs-v3"
-QUERY_DRS_VALIDATION_POLICY = "strict-query-drs-version-question-evidence-repair-v8"
+QUERY_DRS_VALIDATION_POLICY = "strict-query-drs-version-question-evidence-box-dag-repair-v9"
 QUERY_DRS_ARRAY_CAP_POLICY = "reserved_output_tokens_div_96_4_8-v1"
 QUERY_FRAME_SCHEMA_VERSION = "query-frame-v4"
 ANSWER_SCHEMA_VERSION = "answer-v4"
@@ -1010,51 +1011,6 @@ def _chunk_drs_structurally_sparse(validation: dict[str, Any]) -> bool:
     return condition_count == 0 and box_count > 0 and referent_count > 0
 
 
-def _condition_argument_cycle_errors(conditions: list[dict[str, Any]]) -> list[str]:
-    condition_ids = {str(item.get("id") or "") for item in conditions if str(item.get("id") or "")}
-    graph: dict[str, list[str]] = {}
-    for condition in conditions:
-        condition_id = str(condition.get("id") or "")
-        if not condition_id:
-            continue
-        edges: list[str] = []
-        arguments = condition.get("arguments")
-        arguments = [item for item in arguments if isinstance(item, dict)] if isinstance(arguments, list) else []
-        for argument in arguments:
-            target_id = str(argument.get("target_id") or "")
-            if str(argument.get("target_kind") or "") == "condition" and target_id in condition_ids and target_id != condition_id:
-                edges.append(target_id)
-        graph[condition_id] = edges
-
-    errors: list[str] = []
-    visiting: set[str] = set()
-    visited: set[str] = set()
-    stack: list[str] = []
-
-    def visit(node: str) -> None:
-        if node in visiting:
-            start = stack.index(node) if node in stack else 0
-            errors.append("cyclic_condition_argument:" + "->".join([*stack[start:], node]))
-            return
-        if node in visited:
-            return
-        visiting.add(node)
-        stack.append(node)
-        for next_node in graph.get(node, []):
-            visit(next_node)
-            if errors:
-                break
-        stack.pop()
-        visiting.remove(node)
-        visited.add(node)
-
-    for condition_id in sorted(graph):
-        visit(condition_id)
-        if len(errors) >= 50:
-            break
-    return errors[:50]
-
-
 def _chunk_drs_structural_condition_floor(source_text: str, max_evidence_chars: int | None = None) -> int:
     field_like_spans = []
     source_surface = source_text.strip()
@@ -1955,9 +1911,12 @@ def _validate_query_drs_payload(payload: Any, question: str) -> dict[str, Any]:
             errors.append(f"bad_box_kind:{box_id}:{box.get('kind')}")
         if parent_id and parent_id not in box_ids:
             errors.append(f"missing_parent_box:{box_id}->{parent_id}")
+        if parent_id and parent_id == box_id:
+            errors.append(f"self_parent_box:{box_id}")
         if holder_id and holder_id not in target_ids:
             errors.append(f"missing_holder_referent:{box_id}->{holder_id}")
         check_grounding(box.get("evidence_text"), f"box:{box_id}")
+    errors.extend(box_parent_cycle_errors(boxes))
     for target in targets:
         target_id = str(target.get("id") or "")
         if not target_id or not str(target.get("label") or "").strip():
@@ -2910,6 +2869,7 @@ def build_chunk_drs_prompt(chunk_text: str, *, rel_path: str = "", context_budge
         "and identity_hypotheses. Do not answer questions, use outside knowledge, infer hidden answers, "
         "or use handler names. The root asserted box should have id b0 and parent_id ''. Use subordinate boxes "
         "for negation, reports, quotes, beliefs, conditionals, uncertainty, dreams, fiction, and modality. "
+        "Box parent links must be acyclic. "
         "A condition must not use target_kind=box with target_id equal to its own box_id; scoped complements "
         "belong in a distinct subordinate box whose parent_id is the containing box. "
         "Do not create boxes only to stand for ordinary events; boxes are for scoped DRS contexts. If an event "
@@ -2969,7 +2929,8 @@ def build_chunk_drs_skeleton_prompt(chunk_text: str, *, rel_path: str = "", cont
         "outside knowledge, or handler names. Declare one root asserted box with id b0 and parent_id ''. Use "
         "stable referent ids r0, r1, ...; box ids b0, b1, ...; and temporal ids t0, t1, ... in order. Use "
         "subordinate boxes only for scoped DRS contexts such as reports, quotes, beliefs, negation, conditionals, "
-        "uncertainty, dreams, fiction, and modality; subordinate boxes must be distinct from the containing box. "
+        "uncertainty, dreams, fiction, and modality; subordinate boxes must be distinct from the containing box "
+        "and parent links must be acyclic. "
         "When a scoped context contains embedded proposition content, declare a distinct subordinate box for that "
         "content so stage 2 can reference it; do not require a condition to point back to its own box. "
         + span_candidate_text
@@ -3201,6 +3162,7 @@ def _validate_chunk_drs_payload(payload: Any, source_text: str) -> dict[str, Any
         if holder_id and holder_id not in referent_ids:
             errors.append(f"missing_holder_referent:{box_id}->{holder_id}")
         check_span(item.get("evidence_text"), f"box:{box_id}")
+    errors.extend(box_parent_cycle_errors(boxes))
     for item in temporals:
         temporal_id = str(item.get("id") or "")
         if not temporal_id or not str(item.get("value") or "").strip():
@@ -3245,7 +3207,7 @@ def _validate_chunk_drs_payload(payload: Any, source_text: str) -> dict[str, Any
             elif target_kind not in {"referent", "box", "condition", "literal", "unknown"}:
                 errors.append(f"bad_argument_target_kind:{condition_id}:{target_kind}")
             check_span(arg.get("evidence_text"), f"argument:{condition_id}:{arg.get('role')}")
-    errors.extend(_condition_argument_cycle_errors(conditions))
+    errors.extend(condition_argument_cycle_errors(conditions))
     for item in identities:
         left_id = str(item.get("left_referent_id") or "")
         right_id = str(item.get("right_referent_id") or "")

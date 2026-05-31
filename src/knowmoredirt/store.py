@@ -13,6 +13,7 @@ import time
 from pathlib import Path
 from typing import Any
 
+from .drs_validation import box_parent_cycle_errors, condition_argument_cycle_errors
 from .text import normalize
 
 
@@ -37,51 +38,6 @@ SCHEMA_VERSION = 6
 def stable_id(prefix: str, *parts: Any) -> str:
     material = "\x1f".join(str(part) for part in parts)
     return f"{prefix}_{hashlib.sha256(material.encode('utf-8')).hexdigest()[:24]}"
-
-
-def _condition_argument_cycle_errors(conditions: list[dict[str, Any]]) -> list[str]:
-    condition_ids = {str(item.get("id") or "").strip() for item in conditions if str(item.get("id") or "").strip()}
-    graph: dict[str, list[str]] = {}
-    for condition in conditions:
-        condition_id = str(condition.get("id") or "").strip()
-        if not condition_id:
-            continue
-        edges: list[str] = []
-        arguments = condition.get("arguments")
-        arguments = [item for item in arguments if isinstance(item, dict)] if isinstance(arguments, list) else []
-        for argument in arguments:
-            target_id = str(argument.get("target_id") or "").strip()
-            if str(argument.get("target_kind") or "").strip() == "condition" and target_id in condition_ids and target_id != condition_id:
-                edges.append(target_id)
-        graph[condition_id] = edges
-
-    errors: list[str] = []
-    visiting: set[str] = set()
-    visited: set[str] = set()
-    stack: list[str] = []
-
-    def visit(node: str) -> None:
-        if node in visiting:
-            start = stack.index(node) if node in stack else 0
-            errors.append("cyclic_condition_argument:" + "->".join([*stack[start:], node]))
-            return
-        if node in visited:
-            return
-        visiting.add(node)
-        stack.append(node)
-        for next_node in graph.get(node, []):
-            visit(next_node)
-            if errors:
-                break
-        stack.pop()
-        visiting.remove(node)
-        visited.add(node)
-
-    for condition_id in sorted(graph):
-        visit(condition_id)
-        if len(errors) >= 50:
-            break
-    return errors[:50]
 
 
 class DSPGStore:
@@ -728,6 +684,7 @@ class DSPGStore:
             if holder_id and holder_id not in referent_ids:
                 errors.append(f"missing_holder_referent:{box_id}->{holder_id}")
             check_grounding(item.get("evidence_text"), f"box:{box_id}")
+        errors.extend(box_parent_cycle_errors(boxes))
         for item in temporals:
             temporal_id = text_value(item, "id")
             if not temporal_id:
@@ -777,7 +734,7 @@ class DSPGStore:
                 elif target_kind not in {"referent", "box", "condition", "literal", "unknown"}:
                     errors.append(f"bad_argument_target_kind:{condition_id}:{target_kind}")
                 check_grounding(arg.get("evidence_text"), f"argument:{condition_id}:{text_value(arg, 'role')}")
-        errors.extend(_condition_argument_cycle_errors(conditions))
+        errors.extend(condition_argument_cycle_errors(conditions))
         for item in identities:
             left_id = text_value(item, "left_referent_id")
             right_id = text_value(item, "right_referent_id")

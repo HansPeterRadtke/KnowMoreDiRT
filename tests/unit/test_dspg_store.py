@@ -932,6 +932,68 @@ def test_store_rejects_invalid_drs_condition_graphs() -> None:
     assert "cyclic_condition_argument:c0->c1->c0" in result["errors"]
 
 
+def test_store_rejects_cyclic_drs_box_parent_graphs() -> None:
+    store = DSPGStore()
+    text = "Rhea Vale reports that CB-44 status is green."
+    payload = {
+        "drs": {
+            "schema_version": "chunk-drs-v2",
+            "source_id": "report.txt",
+            "referents": [
+                {"id": "r0", "label": "Rhea Vale", "kind": "person", "evidence_text": "Rhea Vale"},
+                {"id": "r1", "label": "CB-44", "kind": "identifier", "evidence_text": "CB-44"},
+            ],
+            "boxes": [
+                {"id": "b0", "kind": "asserted", "parent_id": "b1", "holder_referent_id": "", "evidence_text": text},
+                {
+                    "id": "b1",
+                    "kind": "reported",
+                    "parent_id": "b0",
+                    "holder_referent_id": "r0",
+                    "evidence_text": "CB-44 status is green",
+                },
+            ],
+            "conditions": [
+                {
+                    "id": "c0",
+                    "predicate": "status",
+                    "box_id": "b1",
+                    "polarity": "positive",
+                    "modality": "asserted",
+                    "temporal_id": "",
+                    "arguments": [
+                        {
+                            "role": "subject",
+                            "target_kind": "referent",
+                            "target_id": "r1",
+                            "value": "",
+                            "value_type": "identifier",
+                            "evidence_text": "CB-44",
+                        },
+                        {
+                            "role": "state",
+                            "target_kind": "literal",
+                            "target_id": "",
+                            "value": "green",
+                            "value_type": "state",
+                            "evidence_text": "green",
+                        },
+                    ],
+                    "evidence_text": "CB-44 status is green",
+                }
+            ],
+            "identity_hypotheses": [],
+            "temporal_records": [],
+        }
+    }
+
+    result = store.materialize_drs_payload("run", "span", text, payload)
+
+    assert result["accepted"] is False
+    assert result["reason"] == "schema_validation_failed"
+    assert "cyclic_box_parent:b0->b1->b0" in result["errors"]
+
+
 def test_bounded_query_uses_relation_level_drs_scope(tmp_path: Path, monkeypatch) -> None:
     (tmp_path / "belief.txt").write_text(
         "Kalo Reed believes that Mira Stone archived the Slate Quill.",
