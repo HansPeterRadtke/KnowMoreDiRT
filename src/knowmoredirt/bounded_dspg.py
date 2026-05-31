@@ -1835,6 +1835,17 @@ def execute_bounded_query(
     candidates.extend(_bind_metadata(records, question, expected, target_terms, relation_terms))
     candidates.extend(_bind_contexts(records, frame, expected, target_terms, relation_terms))
 
+    if expected.answer_type == "count" and frame.aggregation == "count":
+        group_count, group_evidence = _count_matching_record_groups(records, frame, target_terms, relation_terms)
+        if group_count:
+            answer = Answer(str(group_count), 0.86, group_evidence, "record-group aggregation DRS binding", "count")
+            return _with_supporting_evidence(answer, identity_expansion_evidence), diagnostics
+    if expected.answer_type == "count" and frame.aggregation == "count" and candidates:
+        values = sorted({canonicalize_answer(expected, value) or value for _score, value, _evidence, _reason in candidates})
+        evidence = [item[2] for item in candidates[:4]]
+        answer = Answer(str(len(values)), 0.85, evidence, "aggregation DRS binding", "count")
+        return _with_supporting_evidence(answer, identity_expansion_evidence), diagnostics
+
     if not frame.temporal_scope and _has_unscoped_temporal_ambiguity(candidates):
         diagnostics["execution"]["temporal_ambiguity_without_query_scope"] = True
         _attach_no_answer_provenance(
@@ -1848,16 +1859,6 @@ def execute_bounded_query(
         )
         return None, diagnostics
 
-    if expected.answer_type == "count" and frame.aggregation == "count":
-        group_count, group_evidence = _count_matching_record_groups(records, frame, target_terms, relation_terms)
-        if group_count:
-            answer = Answer(str(group_count), 0.86, group_evidence, "record-group aggregation DRS binding", "count")
-            return _with_supporting_evidence(answer, identity_expansion_evidence), diagnostics
-    if expected.answer_type == "count" and frame.aggregation == "count" and candidates:
-        values = sorted({canonicalize_answer(expected, value) or value for _score, value, _evidence, _reason in candidates})
-        evidence = [item[2] for item in candidates[:4]]
-        answer = Answer(str(len(values)), 0.85, evidence, "aggregation DRS binding", "count")
-        return _with_supporting_evidence(answer, identity_expansion_evidence), diagnostics
     if frame.aggregation in {"list", "set"}:
         answer = _with_supporting_evidence(_choose_list_answer(candidates, expected), identity_expansion_evidence)
         if answer is None:

@@ -4048,6 +4048,57 @@ def test_count_aggregation_requires_each_query_drs_term_group(tmp_path: Path) ->
     assert answer.reason == "bounded DSPG query-frame execution"
 
 
+def test_count_aggregation_is_not_blocked_by_unscoped_temporal_candidates(tmp_path: Path) -> None:
+    (tmp_path / "rows.tsv").write_text(
+        "\n".join(
+            [
+                "unit\tstate",
+                "Alpha unit\topen",
+                "Beta unit\topen",
+                "Gamma unit\tpaused",
+            ]
+        ),
+        encoding="utf-8",
+    )
+    (tmp_path / "timeline.log").write_text(
+        "\n".join(
+            [
+                "2026-04-02 08:00 Delta unit state: open.",
+                "2026-04-02 10:00 Delta unit state: closed.",
+            ]
+        ),
+        encoding="utf-8",
+    )
+    store, run_id, documents, sentences = ingest_folder(tmp_path)
+    sentences_by_document: dict[str, dict[int, object]] = {}
+    for sentence in sentences:
+        sentences_by_document.setdefault(sentence.rel_path, {})[sentence.order] = sentence
+    frame = QueryFrame(
+        question_text="How many rows have state open?",
+        answer_type="count",
+        answer_variables=("rows",),
+        target_anchors=(),
+        requested_relation="state",
+        relation_terms=("state", "open"),
+        constraints=(),
+        aggregation="count",
+    )
+
+    answer, diagnostics = execute_bounded_query(
+        store,
+        run_id,
+        documents,
+        sentences_by_document,  # type: ignore[arg-type]
+        frame.question_text,
+        frame,
+    )
+
+    assert answer is not None
+    assert answer.text == "2"
+    assert answer.reason == "record-group aggregation DRS binding"
+    assert "temporal_ambiguity_without_query_scope" not in diagnostics["execution"]
+
+
 def test_model_query_drs_compound_slot_matches_structural_record_field(tmp_path: Path) -> None:
     (tmp_path / "object.raw").write_text(
         '{ name: "Orchid Gamma", owner: "Tessa Noll", '
