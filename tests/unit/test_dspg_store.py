@@ -2741,6 +2741,208 @@ def test_unscoped_model_temporal_values_return_unknown_even_with_same_source_spa
     assert {"draft", "final"}.issubset(values)
 
 
+def test_latest_temporal_query_respects_reported_drs_scope(
+    tmp_path: Path,
+    monkeypatch,
+) -> None:
+    (tmp_path / "asserted.txt").write_text(
+        "Timeline HN-7 marker T001 state open.",
+        encoding="utf-8",
+    )
+    (tmp_path / "reported.txt").write_text(
+        "Analyst report says HN-7 marker T003 state closed.",
+        encoding="utf-8",
+    )
+
+    class ScopedTemporalDrsModel:
+        def context_size(self) -> int:
+            return 4096
+
+        def cache_fingerprint(self) -> dict[str, object]:
+            return {"model_id": "fake-scoped-temporal-drs", "context_size": 4096}
+
+        def complete_json(self, prompt: str, *, n_predict: int = 128, grammar=None, json_schema=None):
+            if "T001" in prompt:
+                text = "Timeline HN-7 marker T001 state open."
+                return {
+                    "drs": {
+                        "schema_version": "chunk-drs-v2",
+                        "source_id": "asserted.txt",
+                        "referents": [
+                            {"id": "r0", "label": "HN-7", "kind": "identifier", "evidence_text": "HN-7"},
+                        ],
+                        "boxes": [
+                            {"id": "b0", "kind": "asserted", "parent_id": "", "holder_referent_id": "", "evidence_text": text}
+                        ],
+                        "conditions": [
+                            {
+                                "id": "c0",
+                                "predicate": "state",
+                                "box_id": "b0",
+                                "polarity": "positive",
+                                "modality": "asserted",
+                                "temporal_id": "t0",
+                                "arguments": [
+                                    {
+                                        "role": "subject",
+                                        "target_kind": "referent",
+                                        "target_id": "r0",
+                                        "value": "",
+                                        "value_type": "identifier",
+                                        "evidence_text": "HN-7",
+                                    },
+                                    {
+                                        "role": "state",
+                                        "target_kind": "literal",
+                                        "target_id": "",
+                                        "value": "open",
+                                        "value_type": "state",
+                                        "evidence_text": "open",
+                                    },
+                                ],
+                                "evidence_text": "HN-7 marker T001 state open",
+                            }
+                        ],
+                        "identity_hypotheses": [],
+                        "temporal_records": [
+                            {"id": "t0", "value": "T001", "value_type": "sequence_marker", "evidence_text": "T001"}
+                        ],
+                    },
+                    "_model_raw": "{}",
+                    "_model_elapsed_seconds": 0.01,
+                }
+            text = "Analyst report says HN-7 marker T003 state closed."
+            reported = "HN-7 marker T003 state closed"
+            return {
+                "drs": {
+                    "schema_version": "chunk-drs-v2",
+                    "source_id": "reported.txt",
+                    "referents": [
+                        {"id": "r0", "label": "Analyst report", "kind": "document", "evidence_text": "Analyst report"},
+                        {"id": "r1", "label": "HN-7", "kind": "identifier", "evidence_text": "HN-7"},
+                    ],
+                    "boxes": [
+                        {"id": "b0", "kind": "asserted", "parent_id": "", "holder_referent_id": "", "evidence_text": text},
+                        {
+                            "id": "b1",
+                            "kind": "reported",
+                            "parent_id": "b0",
+                            "holder_referent_id": "r0",
+                            "evidence_text": reported,
+                        },
+                    ],
+                    "conditions": [
+                        {
+                            "id": "c0",
+                            "predicate": "report",
+                            "box_id": "b0",
+                            "polarity": "positive",
+                            "modality": "asserted",
+                            "temporal_id": "",
+                            "arguments": [
+                                {
+                                    "role": "source",
+                                    "target_kind": "referent",
+                                    "target_id": "r0",
+                                    "value": "",
+                                    "value_type": "document",
+                                    "evidence_text": "Analyst report",
+                                },
+                                {
+                                    "role": "content",
+                                    "target_kind": "box",
+                                    "target_id": "b1",
+                                    "value": "",
+                                    "value_type": "box",
+                                    "evidence_text": reported,
+                                },
+                            ],
+                            "evidence_text": text,
+                        },
+                        {
+                            "id": "c1",
+                            "predicate": "state",
+                            "box_id": "b1",
+                            "polarity": "positive",
+                            "modality": "asserted",
+                            "temporal_id": "t0",
+                            "arguments": [
+                                {
+                                    "role": "subject",
+                                    "target_kind": "referent",
+                                    "target_id": "r1",
+                                    "value": "",
+                                    "value_type": "identifier",
+                                    "evidence_text": "HN-7",
+                                },
+                                {
+                                    "role": "state",
+                                    "target_kind": "literal",
+                                    "target_id": "",
+                                    "value": "closed",
+                                    "value_type": "state",
+                                    "evidence_text": "closed",
+                                },
+                            ],
+                            "evidence_text": reported,
+                        },
+                    ],
+                    "identity_hypotheses": [],
+                    "temporal_records": [
+                        {"id": "t0", "value": "T003", "value_type": "sequence_marker", "evidence_text": "T003"}
+                    ],
+                },
+                "_model_raw": "{}",
+                "_model_elapsed_seconds": 0.01,
+            }
+
+    monkeypatch.setenv("KMD_CHUNK_DRS_CACHE_DIR", str(tmp_path / ".drs-cache"))
+    store, run_id, documents, sentences = ingest_folder(
+        tmp_path,
+        semantic_client=ScopedTemporalDrsModel(),  # type: ignore[arg-type]
+        use_semantic_frames=False,
+        use_drs_semantics=True,
+    )
+    sentences_by_document: dict[str, dict[int, object]] = {}
+    for sentence in sentences:
+        sentences_by_document.setdefault(sentence.rel_path, {})[sentence.order] = sentence
+    unscoped_frame = QueryFrame(
+        question_text="What is the latest state for HN-7?",
+        answer_type="state",
+        answer_variables=("state",),
+        target_anchors=("HN-7",),
+        requested_relation="state",
+        relation_terms=("state",),
+        constraints=(),
+        temporal_scope="latest",
+    )
+    reported_frame = QueryFrame(
+        question_text="What is the latest reported state for HN-7?",
+        answer_type="state",
+        answer_variables=("state",),
+        target_anchors=("HN-7",),
+        requested_relation="state",
+        relation_terms=("state",),
+        constraints=(),
+        temporal_scope="latest",
+        scope_requirements=("reported",),
+    )
+
+    unscoped_answer, _unscoped_diagnostics = execute_bounded_query(
+        store, run_id, documents, sentences_by_document, unscoped_frame.question_text, unscoped_frame
+    )
+    reported_answer, _reported_diagnostics = execute_bounded_query(
+        store, run_id, documents, sentences_by_document, reported_frame.question_text, reported_frame
+    )
+
+    assert unscoped_answer is not None
+    assert unscoped_answer.text == "open"
+    assert unscoped_answer.evidence[0].rel_path == "asserted.txt"
+    assert reported_answer is not None
+    assert reported_answer.text == "closed"
+    assert reported_answer.evidence[0].rel_path == "reported.txt"
+
+
 def test_ingest_skips_cartesian_temporal_edges_for_dense_time_chunks(tmp_path: Path, monkeypatch) -> None:
     monkeypatch.setenv("KMD_TEMPORAL_SAME_SPAN_MAX_VALUES", "2")
     (tmp_path / "dense.log").write_text(

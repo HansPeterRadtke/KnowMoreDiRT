@@ -1324,6 +1324,8 @@ def _temporal_candidates(records: dict[str, Any], frame: QueryFrame, expected: E
         return []
     rows: list[tuple[str, dict[str, Any], Evidence]] = []
     for row in records.get("temporal_edges", []):
+        if not _context_accessible(str(row.get("context_id") or ""), records, frame):
+            continue
         evidence = _evidence_for_span(str(row.get("source_span_id") or ""), records)
         material = normalize(" ".join([str(row.get("relation") or ""), str(row.get("temporal_value") or ""), str(row.get("state_value") or ""), evidence.text]))
         if target_terms and not _contains_any(material, target_terms):
@@ -1364,9 +1366,12 @@ def _temporal_relation_candidates(
     for span_id, rows in rows_by_span.items():
         if not span_id:
             continue
+        accessible_rows = [row for row in rows if _relation_scope_accessible(row, records, frame)]
+        if not accessible_rows:
+            continue
         temporal_values = [
             str(row.get("value") or "")
-            for row in rows
+            for row in accessible_rows
             if str(row.get("relation_type") or "") == "temporal" or normalize(str(row.get("predicate") or "")) == "timestamp"
         ]
         temporal_values = [value for value in temporal_values if DATE_TIME_RE.search(value)]
@@ -1375,12 +1380,12 @@ def _temporal_relation_candidates(
         evidence = _evidence_for_span(span_id, records)
         if _source_is_low_priority(evidence.rel_path, evidence.text):
             continue
-        material = _group_material(rows, records)
+        material = _group_material(accessible_rows, records)
         if target_terms and not _contains_any(material, target_terms):
             continue
         if relation_terms and not _contains_any(material, relation_terms):
             continue
-        ordered.append((max(temporal_values), span_id, rows, evidence))
+        ordered.append((max(temporal_values), span_id, accessible_rows, evidence))
     ordered.sort(key=lambda item: item[0], reverse=frame.temporal_scope != "earliest")
     candidates: list[tuple[float, str, Evidence, str]] = []
     for _time_value, _span_id, rows, evidence in ordered[:1]:
