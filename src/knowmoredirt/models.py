@@ -41,6 +41,11 @@ class Evidence:
     rel_path: str
     text: str
     score: float = 0.0
+    span_id: str = ""
+    chunk_order: int | None = None
+    char_start: int | None = None
+    char_end: int | None = None
+    source_kind: str = "source_span"
 
 
 @dataclass

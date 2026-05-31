@@ -398,7 +398,15 @@ class KnowMoreDiRTEngine:
         return records[:limit]
 
     def _evidence(self, sentence: Sentence, score: float = 1.0) -> Evidence:
-        return Evidence(sentence.rel_path, sentence.text, score)
+        return Evidence(
+            sentence.rel_path,
+            sentence.text,
+            score,
+            span_id=self._sentence_span_id(sentence),
+            chunk_order=sentence.order,
+            char_start=sentence.char_start,
+            char_end=sentence.char_end,
+        )
 
     def _evidence_window_text(self, evidence: Evidence, *, radius: int | None = None, max_chars: int | None = None) -> str:
         if radius is None:
@@ -422,7 +430,15 @@ class KnowMoreDiRTEngine:
 
     def _evidence_payload(self, evidence: list[Evidence], *, limit: int = 8) -> list[dict[str, str]]:
         return [
-            {"source": item.rel_path, "text": self._evidence_window_text(item)}
+            {
+                "source": item.rel_path,
+                "text": self._evidence_window_text(item),
+                "span_id": item.span_id,
+                "chunk_order": "" if item.chunk_order is None else str(item.chunk_order),
+                "char_start": "" if item.char_start is None else str(item.char_start),
+                "char_end": "" if item.char_end is None else str(item.char_end),
+                "source_kind": item.source_kind,
+            }
             for item in evidence[:limit]
             if item.rel_path and item.text
         ]

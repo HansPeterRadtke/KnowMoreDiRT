@@ -234,6 +234,340 @@ def test_store_materializes_model_drs_without_same_surface_merging(tmp_path: Pat
     assert bad["reason"] == "grounding_validation_failed"
 
 
+def test_model_drs_referents_remain_source_local_without_identity(tmp_path: Path, monkeypatch) -> None:
+    (tmp_path / "north.txt").write_text(
+        "North intake names Jordan Vale as the witness for beacon A.",
+        encoding="utf-8",
+    )
+    (tmp_path / "south.txt").write_text(
+        "South intake names Jordan Vale as the witness for beacon B.",
+        encoding="utf-8",
+    )
+
+    class TwoSurfaceModel:
+        def context_size(self) -> int:
+            return 4096
+
+        def cache_fingerprint(self) -> dict[str, object]:
+            return {"model_id": "fake-source-local-drs", "context_size": 4096}
+
+        def complete_json(self, prompt: str, *, n_predict: int = 128, grammar=None, json_schema=None):
+            if "beacon A" in prompt:
+                source_id = "north.txt"
+                text = "North intake names Jordan Vale as the witness for beacon A."
+                beacon = "beacon A"
+            else:
+                source_id = "south.txt"
+                text = "South intake names Jordan Vale as the witness for beacon B."
+                beacon = "beacon B"
+            return {
+                "drs": {
+                    "schema_version": "chunk-drs-v2",
+                    "source_id": source_id,
+                    "referents": [
+                        {"id": "r0", "label": "Jordan Vale", "kind": "person", "evidence_text": "Jordan Vale"},
+                        {"id": "r1", "label": beacon, "kind": "entity", "evidence_text": beacon},
+                    ],
+                    "boxes": [
+                        {"id": "b0", "kind": "asserted", "parent_id": "", "holder_referent_id": "", "evidence_text": text}
+                    ],
+                    "conditions": [
+                        {
+                            "id": "c0",
+                            "predicate": "witness",
+                            "box_id": "b0",
+                            "polarity": "positive",
+                            "modality": "asserted",
+                            "temporal_id": "",
+                            "arguments": [
+                                {
+                                    "role": "person",
+                                    "target_kind": "referent",
+                                    "target_id": "r0",
+                                    "value": "",
+                                    "value_type": "person",
+                                    "evidence_text": "Jordan Vale",
+                                },
+                                {
+                                    "role": "object",
+                                    "target_kind": "referent",
+                                    "target_id": "r1",
+                                    "value": "",
+                                    "value_type": "entity",
+                                    "evidence_text": beacon,
+                                },
+                            ],
+                            "evidence_text": text,
+                        }
+                    ],
+                    "identity_hypotheses": [],
+                    "temporal_records": [],
+                },
+                "_model_raw": "{}",
+                "_model_elapsed_seconds": 0.01,
+            }
+
+    monkeypatch.setenv("KMD_CHUNK_DRS_CACHE_DIR", str(tmp_path / ".drs-cache"))
+    store, _, _, _ = ingest_folder(
+        tmp_path,
+        semantic_client=TwoSurfaceModel(),  # type: ignore[arg-type]
+        use_semantic_frames=False,
+        use_drs_semantics=True,
+    )
+
+    rows = store.execute(
+        """
+        SELECT referent_id, source_span_id
+        FROM drs_referents
+        WHERE surface='Jordan Vale'
+        ORDER BY source_span_id
+        """
+    ).fetchall()
+
+    assert len(rows) == 2
+    assert len({row["source_span_id"] for row in rows}) == 2
+    assert len({row["referent_id"] for row in rows}) == 2
+    assert store.execute("SELECT COUNT(*) FROM identity_hypotheses WHERE source='local_model_drs'").fetchone()[0] == 0
+
+
+def test_store_rejects_identity_hypothesis_without_bilateral_grounding() -> None:
+    store = DSPGStore()
+    text = "Ari Kade and Bo Noll appear in the roster."
+    payload = {
+        "drs": {
+            "schema_version": "chunk-drs-v2",
+            "source_id": "roster.txt",
+            "referents": [
+                {"id": "r0", "label": "Ari Kade", "kind": "person", "evidence_text": "Ari Kade"},
+                {"id": "r1", "label": "Bo Noll", "kind": "person", "evidence_text": "Bo Noll"},
+            ],
+            "boxes": [
+                {"id": "b0", "kind": "asserted", "parent_id": "", "holder_referent_id": "", "evidence_text": text}
+            ],
+            "conditions": [],
+            "identity_hypotheses": [
+                {
+                    "left_referent_id": "r0",
+                    "right_referent_id": "r1",
+                    "status": "accepted",
+                    "evidence_text": "Ari Kade",
+                    "confidence": 0.9,
+                }
+            ],
+            "temporal_records": [],
+        }
+    }
+
+    result = store.materialize_drs_payload("run", "span", text, payload)
+
+    assert result["accepted"] is False
+    assert result["reason"] == "schema_validation_failed"
+    assert any(str(error).startswith("identity_evidence_missing_side:") for error in result["errors"])
+
+
+def test_identity_expanded_retrieval_merges_scattered_drs_chunks(tmp_path: Path, monkeypatch) -> None:
+    (tmp_path / "opening").mkdir()
+    (tmp_path / "middle").mkdir()
+    (tmp_path / "ending").mkdir()
+    (tmp_path / "opening" / "intro.txt").write_text(
+        "Opening memo introduces Vesper Key as the expedition object.",
+        encoding="utf-8",
+    )
+    (tmp_path / "middle" / "status.txt").write_text(
+        "Field code VX-17 status is amber-ready under Delta review.",
+        encoding="utf-8",
+    )
+    (tmp_path / "ending" / "resolution.txt").write_text(
+        "The concordance states VX-17 is the same artifact as Vesper Key.",
+        encoding="utf-8",
+    )
+
+    class ScatteredModel:
+        def context_size(self) -> int:
+            return 4096
+
+        def cache_fingerprint(self) -> dict[str, object]:
+            return {"model_id": "fake-scattered-drs", "context_size": 4096}
+
+        def complete_json(self, prompt: str, *, n_predict: int = 128, grammar=None, json_schema=None):
+            if "Opening memo" in prompt:
+                text = "Opening memo introduces Vesper Key as the expedition object."
+                return {
+                    "drs": {
+                        "schema_version": "chunk-drs-v2",
+                        "source_id": "opening/intro.txt",
+                        "referents": [
+                            {"id": "r0", "label": "Vesper Key", "kind": "artifact", "evidence_text": "Vesper Key"}
+                        ],
+                        "boxes": [
+                            {"id": "b0", "kind": "asserted", "parent_id": "", "holder_referent_id": "", "evidence_text": text}
+                        ],
+                        "conditions": [
+                            {
+                                "id": "c0",
+                                "predicate": "introduce",
+                                "box_id": "b0",
+                                "polarity": "positive",
+                                "modality": "asserted",
+                                "temporal_id": "",
+                                "arguments": [
+                                    {
+                                        "role": "object",
+                                        "target_kind": "referent",
+                                        "target_id": "r0",
+                                        "value": "",
+                                        "value_type": "artifact",
+                                        "evidence_text": "Vesper Key",
+                                    }
+                                ],
+                                "evidence_text": text,
+                            }
+                        ],
+                        "identity_hypotheses": [],
+                        "temporal_records": [],
+                    },
+                    "_model_raw": "{}",
+                    "_model_elapsed_seconds": 0.01,
+                }
+            if "Field code VX-17" in prompt:
+                text = "Field code VX-17 status is amber-ready under Delta review."
+                return {
+                    "drs": {
+                        "schema_version": "chunk-drs-v2",
+                        "source_id": "middle/status.txt",
+                        "referents": [
+                            {"id": "r0", "label": "VX-17", "kind": "identifier", "evidence_text": "VX-17"}
+                        ],
+                        "boxes": [
+                            {"id": "b0", "kind": "asserted", "parent_id": "", "holder_referent_id": "", "evidence_text": text}
+                        ],
+                        "conditions": [
+                            {
+                                "id": "c0",
+                                "predicate": "status",
+                                "box_id": "b0",
+                                "polarity": "positive",
+                                "modality": "asserted",
+                                "temporal_id": "",
+                                "arguments": [
+                                    {
+                                        "role": "subject",
+                                        "target_kind": "referent",
+                                        "target_id": "r0",
+                                        "value": "",
+                                        "value_type": "identifier",
+                                        "evidence_text": "VX-17",
+                                    },
+                                    {
+                                        "role": "state",
+                                        "target_kind": "literal",
+                                        "target_id": "",
+                                        "value": "amber-ready under Delta review",
+                                        "value_type": "state",
+                                        "evidence_text": "amber-ready under Delta review",
+                                    },
+                                ],
+                                "evidence_text": text,
+                            }
+                        ],
+                        "identity_hypotheses": [],
+                        "temporal_records": [],
+                    },
+                    "_model_raw": "{}",
+                    "_model_elapsed_seconds": 0.01,
+                }
+            text = "The concordance states VX-17 is the same artifact as Vesper Key."
+            return {
+                "drs": {
+                    "schema_version": "chunk-drs-v2",
+                    "source_id": "ending/resolution.txt",
+                    "referents": [
+                        {"id": "r0", "label": "VX-17", "kind": "identifier", "evidence_text": "VX-17"},
+                        {"id": "r1", "label": "Vesper Key", "kind": "artifact", "evidence_text": "Vesper Key"},
+                    ],
+                    "boxes": [
+                        {"id": "b0", "kind": "asserted", "parent_id": "", "holder_referent_id": "", "evidence_text": text}
+                    ],
+                    "conditions": [
+                        {
+                            "id": "c0",
+                            "predicate": "same_artifact",
+                            "box_id": "b0",
+                            "polarity": "positive",
+                            "modality": "asserted",
+                            "temporal_id": "",
+                            "arguments": [
+                                {
+                                    "role": "left",
+                                    "target_kind": "referent",
+                                    "target_id": "r0",
+                                    "value": "",
+                                    "value_type": "identifier",
+                                    "evidence_text": "VX-17",
+                                },
+                                {
+                                    "role": "right",
+                                    "target_kind": "referent",
+                                    "target_id": "r1",
+                                    "value": "",
+                                    "value_type": "artifact",
+                                    "evidence_text": "Vesper Key",
+                                },
+                            ],
+                            "evidence_text": text,
+                        }
+                    ],
+                    "identity_hypotheses": [
+                        {
+                            "left_referent_id": "r0",
+                            "right_referent_id": "r1",
+                            "status": "accepted",
+                            "evidence_text": text,
+                            "confidence": 0.92,
+                        }
+                    ],
+                    "temporal_records": [],
+                },
+                "_model_raw": "{}",
+                "_model_elapsed_seconds": 0.01,
+            }
+
+    monkeypatch.setenv("KMD_CHUNK_DRS_CACHE_DIR", str(tmp_path / ".drs-cache"))
+    store, run_id, documents, sentences = ingest_folder(
+        tmp_path,
+        semantic_client=ScatteredModel(),  # type: ignore[arg-type]
+        use_semantic_frames=False,
+        use_drs_semantics=True,
+    )
+    sentences_by_document: dict[str, dict[int, object]] = {}
+    for sentence in sentences:
+        sentences_by_document.setdefault(sentence.rel_path, {})[sentence.order] = sentence
+    frame = QueryFrame(
+        question_text="What status is recorded for Vesper Key?",
+        answer_type="state",
+        answer_variables=("state",),
+        target_anchors=("Vesper Key",),
+        requested_relation="status",
+        relation_terms=("status",),
+        constraints=(),
+    )
+
+    answer, diagnostics = execute_bounded_query(
+        store,
+        run_id,
+        documents,
+        sentences_by_document,  # type: ignore[arg-type]
+        frame.question_text,
+        frame,
+    )
+
+    assert answer is not None
+    assert answer.text == "amber-ready under Delta review"
+    assert answer.evidence[0].rel_path == "middle/status.txt"
+    assert "vx-17" in diagnostics["ranking"]["identity_expanded_target_terms"]
+    assert diagnostics["ranking"]["identity_reranked_selected_document_count"] >= 3
+
+
 def test_store_rejects_invalid_drs_condition_graphs() -> None:
     store = DSPGStore()
     payload = {

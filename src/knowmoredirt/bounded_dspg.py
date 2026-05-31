@@ -12,6 +12,7 @@ from __future__ import annotations
 import json
 import re
 from collections import defaultdict
+from dataclasses import replace
 from functools import lru_cache
 from typing import Any
 
@@ -489,12 +490,38 @@ def _evidence_for_span(span_id: str, records: dict[str, Any]) -> Evidence:
     span = _spans_by_id(records).get(span_id, {})
     chunk = _chunks_by_id(records).get(str(span.get("chunk_id")), {})
     doc = _docs_by_id(records).get(str(span.get("document_id")), {})
-    return Evidence(str(doc.get("rel_path") or ""), str(chunk.get("text") or span.get("surface") or ""), 0.78)
+    chunk_order: int | None
+    try:
+        chunk_order = int(chunk["chunk_order"]) if chunk.get("chunk_order") is not None else None
+    except (TypeError, ValueError):
+        chunk_order = None
+    try:
+        char_start = int(span["char_start"]) if span.get("char_start") is not None else None
+    except (TypeError, ValueError):
+        char_start = None
+    try:
+        char_end = int(span["char_end"]) if span.get("char_end") is not None else None
+    except (TypeError, ValueError):
+        char_end = None
+    return Evidence(
+        str(doc.get("rel_path") or ""),
+        str(chunk.get("text") or span.get("surface") or ""),
+        0.78,
+        span_id=str(span.get("span_id") or span_id),
+        chunk_order=chunk_order,
+        char_start=char_start,
+        char_end=char_end,
+    )
 
 
 def _metadata_evidence(record: dict[str, Any], records: dict[str, Any]) -> Evidence:
     doc = _docs_by_id(records).get(str(record.get("document_id")), {})
-    return Evidence(str(doc.get("rel_path") or ""), f"metadata {record.get('key')}: {record.get('value')}", 0.72)
+    return Evidence(
+        str(doc.get("rel_path") or ""),
+        f"metadata {record.get('key')}: {record.get('value')}",
+        0.72,
+        source_kind="metadata",
+    )
 
 
 def _context_accessible(context_id: str, records: dict[str, Any], frame: QueryFrame) -> bool:
@@ -731,7 +758,11 @@ def _answer_values_from_relation(
         primary_values = [str(row.get("value") or "")]
     else:
         primary_values = [str(row.get(key) or "") for key in ["value", "object"]]
-    fallback_values = [] if relation_type in {"semantic_argument", "semantic_frame"} else [str(row.get("subject") or "")]
+    fallback_values = (
+        []
+        if relation_type in {"semantic_argument", "semantic_frame", "drs_condition"}
+        else [str(row.get("subject") or "")]
+    )
     structural = expected.answer_type in {"url", "identifier", "file_path", "date_time", "count"}
     primary_values = [
         value for value in primary_values
@@ -1246,6 +1277,32 @@ def execute_bounded_query(
     if identity_terms:
         target_terms = list(dict.fromkeys([*target_terms, *identity_terms]))
         ranking["identity_expanded_target_terms"] = identity_terms[:32]
+        expanded_frame = replace(
+            frame,
+            target_anchors=tuple(dict.fromkeys([*frame.target_anchors, *identity_terms])),
+        )
+        expanded_docs, expanded_chunks, expanded_ranking = _rank_scope(
+            documents,
+            sentences_by_document,
+            question,
+            expanded_frame,
+            doc_limit,
+            chunk_limit,
+        )
+        merged_docs = list(dict.fromkeys([*expanded_docs, *selected_docs]))
+        merged_chunks = list(dict.fromkeys([*expanded_chunks, *selected_chunks]))
+        if merged_docs != selected_docs or merged_chunks != selected_chunks:
+            selected_docs = merged_docs[:doc_limit]
+            selected_chunks = merged_chunks[:chunk_limit]
+            records = _load_records(store, run_id, selected_docs, selected_chunks)
+            ranking.update(
+                {
+                    "identity_reranked_candidate_document_rows": expanded_ranking.get("candidate_document_rows", 0),
+                    "identity_reranked_selected_document_count": len(selected_docs),
+                    "identity_reranked_candidate_chunk_rows": expanded_ranking.get("candidate_chunk_rows", 0),
+                    "identity_reranked_selected_chunk_count": len(selected_chunks),
+                }
+            )
     diagnostics = {"ranking": ranking, "execution": {"record_counts": records["record_counts"], "query_frame": frame.as_dict()}}
 
     if expected.answer_type == "boolean":

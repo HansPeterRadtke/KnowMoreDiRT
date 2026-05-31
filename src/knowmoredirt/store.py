@@ -677,6 +677,9 @@ class DSPGStore:
         for span in evidence_spans:
             check_grounding(span, "evidence_spans")
 
+        referent_labels_by_id = {text_value(item, "id"): text_value(item, "label") for item in referents}
+        referent_evidence_by_id = {text_value(item, "id"): text_value(item, "evidence_text") for item in referents}
+
         referent_ids = {text_value(item, "id") for item in referents if text_value(item, "id")}
         box_ids = {text_value(item, "id") for item in boxes if text_value(item, "id")}
         condition_ids = {text_value(item, "id") for item in conditions if text_value(item, "id")}
@@ -769,6 +772,30 @@ class DSPGStore:
                 errors.append(f"missing_identity_left:{left_id}")
             if right_id not in referent_ids:
                 errors.append(f"missing_identity_right:{right_id}")
+            evidence = text_value(item, "evidence_text")
+            if left_id and right_id and left_id != right_id:
+                left_surfaces = [
+                    surface
+                    for surface in [
+                        referent_labels_by_id.get(left_id, ""),
+                        referent_evidence_by_id.get(left_id, ""),
+                    ]
+                    if surface
+                ]
+                right_surfaces = [
+                    surface
+                    for surface in [
+                        referent_labels_by_id.get(right_id, ""),
+                        referent_evidence_by_id.get(right_id, ""),
+                    ]
+                    if surface
+                ]
+                if normalize(referent_labels_by_id.get(left_id, "")) == normalize(referent_labels_by_id.get(right_id, "")):
+                    errors.append(f"identity_evidence_ambiguous_same_surface:{left_id}:{right_id}")
+                elif not any(surface in evidence for surface in left_surfaces) or not any(
+                    surface in evidence for surface in right_surfaces
+                ):
+                    errors.append(f"identity_evidence_missing_side:{left_id}:{right_id}")
             check_grounding(item.get("evidence_text"), f"identity:{left_id}:{right_id}")
 
         if errors or grounding_failures:
@@ -793,7 +820,30 @@ class DSPGStore:
             external_id = text_value(item, "id")
             label = text_value(item, "label")
             value_type = text_value(item, "kind") or text_value(item, "value_type") or "unknown"
-            referent_id = self.upsert_referent(run_id, label, value_type)
+            referent_id = stable_id("ref", run_id, source_span_id, external_id, normalize(label), value_type)
+            self.connection.execute(
+                """
+                INSERT OR IGNORE INTO referents(
+                  referent_id, run_id, canonical_label, canonical_label_norm, entity_type, status, attributes_json
+                ) VALUES (?, ?, ?, ?, ?, ?, ?)
+                """,
+                (
+                    referent_id,
+                    run_id,
+                    label,
+                    normalize(label),
+                    value_type,
+                    "candidate",
+                    json.dumps(
+                        {
+                            "source": source,
+                            "source_span_id": source_span_id,
+                            "external_referent_id": external_id,
+                        },
+                        sort_keys=True,
+                    ),
+                ),
+            )
             drs_referent_id = stable_id("drsref", run_id, source_span_id, external_id, label)
             external_to_referent[external_id] = referent_id
             external_to_drs_referent[external_id] = drs_referent_id
