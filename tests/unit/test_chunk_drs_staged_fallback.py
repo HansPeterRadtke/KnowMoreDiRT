@@ -16,6 +16,7 @@ from knowmoredirt.model_planner import (
     CHUNK_DRS_SKELETON_SOURCE_SPAN_POLICY,
     CHUNK_DRS_SOURCE_SPAN_POLICY,
     CHUNK_DRS_STAGE_FAILURE_CACHE_POLICY,
+    CHUNK_DRS_STAGED_FIRST_POLICY,
     CHUNK_DRS_STAGED_FALLBACK_POLICY,
     CHUNK_DRS_STAGED_RETRY_DIAGNOSTICS_POLICY,
     _call_model_chunk_drs_staged,
@@ -181,6 +182,7 @@ def test_chunk_drs_staged_fallback_constrains_condition_targets(monkeypatch, tmp
     assert cache_context["stage_failure_cache_policy"] == CHUNK_DRS_STAGE_FAILURE_CACHE_POLICY
     assert cache_context["dynamic_skeleton_budget_policy"] == CHUNK_DRS_DYNAMIC_SKELETON_BUDGET_POLICY
     assert cache_context["dynamic_output_budget_policy"] == CHUNK_DRS_DYNAMIC_OUTPUT_BUDGET_POLICY
+    assert cache_context["staged_first_policy"] == CHUNK_DRS_STAGED_FIRST_POLICY
     assert model.skeleton_schema is not None
     assert model.condition_schema is not None
 
@@ -862,6 +864,123 @@ def test_chunk_drs_compact_undercoverage_records_non_improving_retry(monkeypatch
     assert result["staged_retry"]["monolithic_condition_count"] == 1
     assert result["staged_retry"]["fallback_condition_count"] == 1
     assert result["context_budget"]["staged_retry_diagnostics_policy"] == CHUNK_DRS_STAGED_RETRY_DIAGNOSTICS_POLICY
+
+
+def test_chunk_drs_field_like_records_use_staged_extraction_first(monkeypatch, tmp_path) -> None:
+    class StagedFirstModel:
+        def __init__(self) -> None:
+            self.monolithic_called = False
+
+        def context_size(self) -> int:
+            return 32768
+
+        def cache_fingerprint(self) -> dict[str, Any]:
+            return {"model_id": "fake-staged-first-drs", "context_size": 32768}
+
+        def complete_json(
+            self,
+            prompt: str,
+            *,
+            n_predict: int = 128,
+            grammar: str | None = None,
+            json_schema: dict[str, Any] | None = None,
+        ) -> dict[str, object]:
+            if "one source-grounded DRS object" in prompt:
+                self.monolithic_called = True
+                raise AssertionError("field-like compact records should try staged extraction first")
+            if "Stage 1 of source-grounded DRS extraction" in prompt:
+                assert n_predict == 768
+                return {
+                    "drs_skeleton": {
+                        "schema_version": "chunk-drs-v2",
+                        "source_id": "records.txt",
+                        "referents": [
+                            {"id": "r0", "label": "Aster Ridge", "kind": "asset", "evidence_text": "Aster Ridge"}
+                        ],
+                        "boxes": [
+                            {
+                                "id": "b0",
+                                "kind": "asserted",
+                                "parent_id": "",
+                                "holder_referent_id": "r0",
+                                "evidence_text": "record: Aster Ridge | steward: Lina Sol | state: active | runbook: /ops/aster",
+                            }
+                        ],
+                        "temporal_records": [],
+                    },
+                    "_model_raw": "{}",
+                    "_model_elapsed_seconds": 0.01,
+                }
+            assert "Stage 2 of source-grounded DRS extraction" in prompt
+            assert n_predict == 768
+            return {
+                "condition_stage": {
+                    "schema_version": "chunk-drs-v2",
+                    "source_id": "records.txt",
+                    "conditions": [
+                        {
+                            "id": "c0",
+                            "predicate": "steward",
+                            "box_id": "b0",
+                            "polarity": "positive",
+                            "modality": "asserted",
+                            "temporal_id": "",
+                            "arguments": [
+                                {
+                                    "role": "value",
+                                    "target_kind": "literal",
+                                    "target_id": "",
+                                    "value": "Lina Sol",
+                                    "value_type": "person",
+                                    "evidence_text": "steward: Lina Sol",
+                                }
+                            ],
+                            "evidence_text": "steward: Lina Sol",
+                        },
+                        {
+                            "id": "c1",
+                            "predicate": "state",
+                            "box_id": "b0",
+                            "polarity": "positive",
+                            "modality": "asserted",
+                            "temporal_id": "",
+                            "arguments": [
+                                {
+                                    "role": "value",
+                                    "target_kind": "literal",
+                                    "target_id": "",
+                                    "value": "active",
+                                    "value_type": "state",
+                                    "evidence_text": "state: active",
+                                }
+                            ],
+                            "evidence_text": "state: active",
+                        },
+                    ],
+                },
+                "_model_raw": "{}",
+                "_model_elapsed_seconds": 0.01,
+            }
+
+    monkeypatch.delenv("KMD_LOCAL_MODEL_JSON_SCHEMA", raising=False)
+    monkeypatch.delenv("KMD_CHUNK_DRS_N_PREDICT", raising=False)
+    monkeypatch.setenv("KMD_CHUNK_DRS_CACHE_DIR", str(tmp_path / "drs-cache"))
+    model = StagedFirstModel()
+
+    result = call_model_chunk_drs(
+        "record: Aster Ridge | steward: Lina Sol | state: active | runbook: /ops/aster",
+        model,  # type: ignore[arg-type]
+        rel_path="records.txt",
+    )
+
+    assert result["accepted"] is True
+    assert result["reason"] == "staged_fallback"
+    assert result["fallback_from_reason"] == "field_like_source_spans"
+    assert result["staged_first"] is True
+    assert result["validation"]["condition_count"] == 2
+    assert result["context_budget"]["reserved_output_tokens"] == 768
+    assert result["context_budget"]["staged_first_policy"] == CHUNK_DRS_STAGED_FIRST_POLICY
+    assert model.monolithic_called is False
 
 
 def test_chunk_drs_source_span_candidates_skip_field_headers() -> None:
