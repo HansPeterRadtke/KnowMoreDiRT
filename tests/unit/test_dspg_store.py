@@ -634,6 +634,237 @@ def test_identity_expanded_retrieval_merges_scattered_drs_chunks(tmp_path: Path,
     assert diagnostics["ranking"]["identity_reranked_selected_document_count"] >= 3
 
 
+def test_identity_expansion_iterates_across_scattered_drs_sources(
+    tmp_path: Path,
+    monkeypatch,
+) -> None:
+    (tmp_path / "beginning").mkdir()
+    (tmp_path / "middle").mkdir()
+    (tmp_path / "ending").mkdir()
+    (tmp_path / "deep").mkdir()
+    (tmp_path / "beginning" / "intro.txt").write_text(
+        "Opening register introduces Prism Relay as the archive target.",
+        encoding="utf-8",
+    )
+    (tmp_path / "middle" / "crosswalk_a.txt").write_text(
+        "Crosswalk A says PX-11 is the same artifact as Prism Relay.",
+        encoding="utf-8",
+    )
+    (tmp_path / "ending" / "crosswalk_b.txt").write_text(
+        "Crosswalk B says PX-11 is the same artifact as Relay-Prime.",
+        encoding="utf-8",
+    )
+    (tmp_path / "deep" / "status.txt").write_text(
+        "Deep status note says Relay-Prime status is cleared.",
+        encoding="utf-8",
+    )
+
+    class MultiHopIdentityModel:
+        def context_size(self) -> int:
+            return 4096
+
+        def cache_fingerprint(self) -> dict[str, object]:
+            return {"model_id": "fake-multihop-scattered-drs", "context_size": 4096}
+
+        def complete_json(self, prompt: str, *, n_predict: int = 128, grammar=None, json_schema=None):
+            if "Opening register" in prompt:
+                text = "Opening register introduces Prism Relay as the archive target."
+                referents = [{"id": "r0", "label": "Prism Relay", "kind": "artifact", "evidence_text": "Prism Relay"}]
+                conditions = [
+                    {
+                        "id": "c0",
+                        "predicate": "introduce",
+                        "box_id": "b0",
+                        "polarity": "positive",
+                        "modality": "asserted",
+                        "temporal_id": "",
+                        "arguments": [
+                            {
+                                "role": "object",
+                                "target_kind": "referent",
+                                "target_id": "r0",
+                                "value": "",
+                                "value_type": "artifact",
+                                "evidence_text": "Prism Relay",
+                            }
+                        ],
+                        "evidence_text": text,
+                    }
+                ]
+                identities = []
+            elif "Crosswalk A" in prompt:
+                text = "Crosswalk A says PX-11 is the same artifact as Prism Relay."
+                referents = [
+                    {"id": "r0", "label": "PX-11", "kind": "identifier", "evidence_text": "PX-11"},
+                    {"id": "r1", "label": "Prism Relay", "kind": "artifact", "evidence_text": "Prism Relay"},
+                ]
+                conditions = [
+                    {
+                        "id": "c0",
+                        "predicate": "same_artifact",
+                        "box_id": "b0",
+                        "polarity": "positive",
+                        "modality": "asserted",
+                        "temporal_id": "",
+                        "arguments": [
+                            {
+                                "role": "left",
+                                "target_kind": "referent",
+                                "target_id": "r0",
+                                "value": "",
+                                "value_type": "identifier",
+                                "evidence_text": "PX-11",
+                            },
+                            {
+                                "role": "right",
+                                "target_kind": "referent",
+                                "target_id": "r1",
+                                "value": "",
+                                "value_type": "artifact",
+                                "evidence_text": "Prism Relay",
+                            },
+                        ],
+                        "evidence_text": text,
+                    }
+                ]
+                identities = [
+                    {
+                        "left_referent_id": "r0",
+                        "right_referent_id": "r1",
+                        "status": "accepted",
+                        "evidence_text": "PX-11 is the same artifact as Prism Relay",
+                        "confidence": 0.92,
+                    }
+                ]
+            elif "Crosswalk B" in prompt:
+                text = "Crosswalk B says PX-11 is the same artifact as Relay-Prime."
+                referents = [
+                    {"id": "r0", "label": "PX-11", "kind": "identifier", "evidence_text": "PX-11"},
+                    {"id": "r1", "label": "Relay-Prime", "kind": "artifact", "evidence_text": "Relay-Prime"},
+                ]
+                conditions = [
+                    {
+                        "id": "c0",
+                        "predicate": "same_artifact",
+                        "box_id": "b0",
+                        "polarity": "positive",
+                        "modality": "asserted",
+                        "temporal_id": "",
+                        "arguments": [
+                            {
+                                "role": "left",
+                                "target_kind": "referent",
+                                "target_id": "r0",
+                                "value": "",
+                                "value_type": "identifier",
+                                "evidence_text": "PX-11",
+                            },
+                            {
+                                "role": "right",
+                                "target_kind": "referent",
+                                "target_id": "r1",
+                                "value": "",
+                                "value_type": "artifact",
+                                "evidence_text": "Relay-Prime",
+                            },
+                        ],
+                        "evidence_text": text,
+                    }
+                ]
+                identities = [
+                    {
+                        "left_referent_id": "r0",
+                        "right_referent_id": "r1",
+                        "status": "accepted",
+                        "evidence_text": "PX-11 is the same artifact as Relay-Prime",
+                        "confidence": 0.92,
+                    }
+                ]
+            else:
+                text = "Deep status note says Relay-Prime status is cleared."
+                referents = [{"id": "r0", "label": "Relay-Prime", "kind": "artifact", "evidence_text": "Relay-Prime"}]
+                conditions = [
+                    {
+                        "id": "c0",
+                        "predicate": "status",
+                        "box_id": "b0",
+                        "polarity": "positive",
+                        "modality": "asserted",
+                        "temporal_id": "",
+                        "arguments": [
+                            {
+                                "role": "subject",
+                                "target_kind": "referent",
+                                "target_id": "r0",
+                                "value": "",
+                                "value_type": "artifact",
+                                "evidence_text": "Relay-Prime",
+                            },
+                            {
+                                "role": "state",
+                                "target_kind": "literal",
+                                "target_id": "",
+                                "value": "cleared",
+                                "value_type": "state",
+                                "evidence_text": "cleared",
+                            },
+                        ],
+                        "evidence_text": "Relay-Prime status is cleared",
+                    }
+                ]
+                identities = []
+            return {
+                "drs": {
+                    "schema_version": "chunk-drs-v2",
+                    "source_id": "multi-hop.txt",
+                    "referents": referents,
+                    "boxes": [
+                        {"id": "b0", "kind": "asserted", "parent_id": "", "holder_referent_id": "", "evidence_text": text}
+                    ],
+                    "conditions": conditions,
+                    "identity_hypotheses": identities,
+                    "temporal_records": [],
+                },
+                "_model_raw": "{}",
+                "_model_elapsed_seconds": 0.01,
+            }
+
+    monkeypatch.setenv("KMD_CHUNK_DRS_CACHE_DIR", str(tmp_path / ".drs-cache"))
+    store, run_id, documents, sentences = ingest_folder(
+        tmp_path,
+        semantic_client=MultiHopIdentityModel(),  # type: ignore[arg-type]
+        use_semantic_frames=False,
+        use_drs_semantics=True,
+    )
+    sentences_by_document: dict[str, dict[int, object]] = {}
+    for sentence in sentences:
+        sentences_by_document.setdefault(sentence.rel_path, {})[sentence.order] = sentence
+    frame = QueryFrame(
+        question_text="What status is recorded for Prism Relay?",
+        answer_type="state",
+        answer_variables=("state",),
+        target_anchors=("Prism Relay",),
+        requested_relation="status",
+        relation_terms=("status",),
+        constraints=(),
+    )
+
+    answer, diagnostics = execute_bounded_query(
+        store,
+        run_id,
+        documents,
+        sentences_by_document,  # type: ignore[arg-type]
+        frame.question_text,
+        frame,
+    )
+
+    assert answer is not None
+    assert answer.text == "cleared"
+    assert answer.evidence[0].rel_path == "deep/status.txt"
+    assert {"px-11", "relay-prime"}.issubset(set(diagnostics["ranking"]["identity_expanded_target_terms"]))
+    assert diagnostics["ranking"]["identity_expansion_rounds"] >= 2
+
+
 def test_identity_expanded_retrieval_respects_reported_scope_against_asserted_state(
     tmp_path: Path,
     monkeypatch,

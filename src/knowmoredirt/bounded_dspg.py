@@ -1530,13 +1530,20 @@ def execute_bounded_query(
         relation_terms = list(dict.fromkeys([*relation_terms, *answer_slot_terms]))
     selected_docs, selected_chunks, ranking = _rank_scope(documents, sentences_by_document, question, frame, doc_limit, chunk_limit)
     records = _load_records(store, run_id, selected_docs, selected_chunks)
-    identity_terms = _identity_expanded_terms(records, target_terms)
-    if identity_terms:
-        target_terms = list(dict.fromkeys([*target_terms, *identity_terms]))
-        ranking["identity_expanded_target_terms"] = identity_terms[:32]
+    identity_expanded_terms: list[str] = []
+    identity_expansion_rounds = 0
+    for _round in range(3):
+        identity_terms = _identity_expanded_terms(records, target_terms)
+        new_identity_terms = [term for term in identity_terms if term and term not in target_terms]
+        if not new_identity_terms:
+            break
+        identity_expansion_rounds += 1
+        identity_expanded_terms = list(dict.fromkeys([*identity_expanded_terms, *new_identity_terms]))
+        target_terms = list(dict.fromkeys([*target_terms, *new_identity_terms]))
+        ranking["identity_expanded_target_terms"] = identity_expanded_terms[:32]
         expanded_frame = replace(
             frame,
-            target_anchors=tuple(dict.fromkeys([*frame.target_anchors, *identity_terms])),
+            target_anchors=tuple(dict.fromkeys([*frame.target_anchors, *target_terms])),
         )
         expanded_docs, expanded_chunks, expanded_ranking = _rank_scope(
             documents,
@@ -1548,18 +1555,22 @@ def execute_bounded_query(
         )
         merged_docs = list(dict.fromkeys([*expanded_docs, *selected_docs]))
         merged_chunks = list(dict.fromkeys([*expanded_chunks, *selected_chunks]))
-        if merged_docs != selected_docs or merged_chunks != selected_chunks:
-            selected_docs = merged_docs[:doc_limit]
-            selected_chunks = merged_chunks[:chunk_limit]
-            records = _load_records(store, run_id, selected_docs, selected_chunks)
-            ranking.update(
-                {
-                    "identity_reranked_candidate_document_rows": expanded_ranking.get("candidate_document_rows", 0),
-                    "identity_reranked_selected_document_count": len(selected_docs),
-                    "identity_reranked_candidate_chunk_rows": expanded_ranking.get("candidate_chunk_rows", 0),
-                    "identity_reranked_selected_chunk_count": len(selected_chunks),
-                }
-            )
+        next_docs = merged_docs[:doc_limit]
+        next_chunks = merged_chunks[:chunk_limit]
+        ranking.update(
+            {
+                "identity_expansion_rounds": identity_expansion_rounds,
+                "identity_reranked_candidate_document_rows": expanded_ranking.get("candidate_document_rows", 0),
+                "identity_reranked_selected_document_count": len(next_docs),
+                "identity_reranked_candidate_chunk_rows": expanded_ranking.get("candidate_chunk_rows", 0),
+                "identity_reranked_selected_chunk_count": len(next_chunks),
+            }
+        )
+        if next_docs == selected_docs and next_chunks == selected_chunks:
+            break
+        selected_docs = next_docs
+        selected_chunks = next_chunks
+        records = _load_records(store, run_id, selected_docs, selected_chunks)
     diagnostics = {"ranking": ranking, "execution": {"record_counts": records["record_counts"], "query_frame": frame.as_dict()}}
 
     if expected.answer_type == "boolean":
