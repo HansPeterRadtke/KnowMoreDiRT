@@ -2410,6 +2410,106 @@ def test_model_drs_temporal_records_project_latest_literal_values(tmp_path: Path
     assert answer.evidence[0].rel_path == "late.txt"
 
 
+def test_unscoped_model_temporal_values_return_unknown_even_with_same_source_span(
+    tmp_path: Path,
+    monkeypatch,
+) -> None:
+    (tmp_path / "timeline.txt").write_text(
+        "Timeline note: Lumen Core marker T001 state draft and marker T003 state final.",
+        encoding="utf-8",
+    )
+
+    class SameSpanTemporalDrsModel:
+        def context_size(self) -> int:
+            return 4096
+
+        def cache_fingerprint(self) -> dict[str, object]:
+            return {"model_id": "fake-same-span-temporal-drs", "context_size": 4096}
+
+        def complete_json(self, prompt: str, *, n_predict: int = 128, grammar=None, json_schema=None):
+            text = "Timeline note: Lumen Core marker T001 state draft and marker T003 state final."
+            conditions = []
+            for index, (marker, state) in enumerate([("T001", "draft"), ("T003", "final")]):
+                conditions.append(
+                    {
+                        "id": f"c{index}",
+                        "predicate": "state",
+                        "box_id": "b0",
+                        "polarity": "positive",
+                        "modality": "asserted",
+                        "temporal_id": f"t{index}",
+                        "arguments": [
+                            {
+                                "role": "subject",
+                                "target_kind": "referent",
+                                "target_id": "r0",
+                                "value": "",
+                                "value_type": "entity",
+                                "evidence_text": "Lumen Core",
+                            },
+                            {
+                                "role": "state",
+                                "target_kind": "literal",
+                                "target_id": "",
+                                "value": state,
+                                "value_type": "state",
+                                "evidence_text": state,
+                            },
+                        ],
+                        "evidence_text": f"marker {marker} state {state}",
+                    }
+                )
+            return {
+                "drs": {
+                    "schema_version": "chunk-drs-v2",
+                    "source_id": "timeline.txt",
+                    "referents": [
+                        {"id": "r0", "label": "Lumen Core", "kind": "entity", "evidence_text": "Lumen Core"},
+                    ],
+                    "boxes": [
+                        {"id": "b0", "kind": "asserted", "parent_id": "", "holder_referent_id": "", "evidence_text": text}
+                    ],
+                    "conditions": conditions,
+                    "identity_hypotheses": [],
+                    "temporal_records": [
+                        {"id": "t0", "value": "T001", "value_type": "sequence_marker", "evidence_text": "T001"},
+                        {"id": "t1", "value": "T003", "value_type": "sequence_marker", "evidence_text": "T003"},
+                    ],
+                },
+                "_model_raw": "{}",
+                "_model_elapsed_seconds": 0.01,
+            }
+
+    cache_dir = tmp_path.parent / f"{tmp_path.name}-same-span-temporal-cache"
+    monkeypatch.setenv("KMD_CHUNK_DRS_CACHE_DIR", str(cache_dir))
+    store, run_id, documents, sentences = ingest_folder(
+        tmp_path,
+        semantic_client=SameSpanTemporalDrsModel(),  # type: ignore[arg-type]
+        use_semantic_frames=False,
+        use_drs_semantics=True,
+    )
+    sentences_by_document: dict[str, dict[int, object]] = {}
+    for sentence in sentences:
+        sentences_by_document.setdefault(sentence.rel_path, {})[sentence.order] = sentence
+    frame = QueryFrame(
+        question_text="What state is recorded for Lumen Core?",
+        answer_type="state",
+        answer_variables=("state",),
+        target_anchors=("Lumen Core",),
+        requested_relation="state",
+        relation_terms=("state",),
+        constraints=(),
+    )
+
+    answer, diagnostics = execute_bounded_query(store, run_id, documents, sentences_by_document, frame.question_text, frame)
+
+    assert store.counts()["temporal_edges"] == 2
+    assert answer is None
+    assert diagnostics["execution"]["temporal_ambiguity_without_query_scope"] is True
+    values = {item["value"] for item in diagnostics["execution"]["candidate_evidence_sample"]}
+    assert {"draft", "final"}.issubset(values)
+
+
 def test_ingest_skips_cartesian_temporal_edges_for_dense_time_chunks(tmp_path: Path, monkeypatch) -> None:
     monkeypatch.setenv("KMD_TEMPORAL_SAME_SPAN_MAX_VALUES", "2")
     (tmp_path / "dense.log").write_text(

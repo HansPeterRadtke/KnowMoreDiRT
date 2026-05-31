@@ -1476,6 +1476,13 @@ def _choose_list_answer(candidates: list[tuple[float, str, Evidence, str]], expe
 
 
 def _has_unscoped_temporal_ambiguity(candidates: list[tuple[float, str, Evidence, str]]) -> bool:
+    temporal_candidate_values = {
+        normalize(value)
+        for _score, value, _evidence, reason in candidates
+        if reason in {"temporal_binding", "temporal_relation_binding"} and normalize(value)
+    }
+    if len(temporal_candidate_values) > 1:
+        return True
     values_by_time: dict[str, set[str]] = defaultdict(set)
     for _score, value, evidence, _reason in candidates:
         match = DATE_TIME_RE.search(evidence.text)
