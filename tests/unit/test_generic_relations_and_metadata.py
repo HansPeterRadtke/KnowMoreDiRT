@@ -112,3 +112,15 @@ def test_section_scoped_label_urls_return_urls_not_neighboring_prose(tmp_path, m
         "https://manuals.example.test/quartz-harbor"
     )
     assert engine.answer("Which archive URL belongs to Quartz Harbor?").text == "unknown"
+
+
+def test_structural_table_cell_label_match_returns_cell_value_only(tmp_path, monkeypatch) -> None:
+    monkeypatch.setenv("KMD_USE_LOCAL_MODEL", "0")
+    (tmp_path / "records.txt").write_text(
+        "record: North Panel | finish: matte cyan | marker: NP-4402",
+        encoding="utf-8",
+    )
+
+    engine = KnowMoreDiRTEngine(tmp_path)
+
+    assert engine.answer("What finish is listed for North Panel?").text == "matte cyan"

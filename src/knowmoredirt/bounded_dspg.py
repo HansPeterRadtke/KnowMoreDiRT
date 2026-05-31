@@ -976,6 +976,28 @@ def _unknown_query_requests_url(
     return any(term in {"url", "uri", "link"} for term in terms)
 
 
+def _matching_structural_label_values(
+    value: str,
+    relation_terms: list[str],
+    answer_slot_terms: list[str] | None = None,
+) -> list[str]:
+    text = clean_extracted_value(value)
+    if not text:
+        return []
+    separator = ":" if ":" in text else "=" if "=" in text else ""
+    if not separator:
+        return []
+    label, rest = text.split(separator, 1)
+    label_material = normalize(label)
+    answer_text = clean_extracted_value(rest)
+    if not label_material or not answer_text:
+        return []
+    terms = list(dict.fromkeys([*relation_terms, *(answer_slot_terms or [])]))
+    if terms and not _contains_any(label_material, terms):
+        return []
+    return [answer_text]
+
+
 def _value_is_target(value: str, target_terms: list[str]) -> bool:
     material = normalize(value)
     if not material or not target_terms:
@@ -1045,6 +1067,14 @@ def _answer_values_from_relation(
         if relation_type in {"semantic_argument", "semantic_frame", "drs_condition"}
         else [str(row.get("subject") or "")]
     )
+    label_values = [
+        split_value
+        for value in [*primary_values, *fallback_values]
+        for split_value in _matching_structural_label_values(value, relation_terms, answer_slot_terms)
+    ]
+    if label_values:
+        primary_values = label_values
+        fallback_values = []
     url_requested = _unknown_query_requests_url(expected, relation_terms, answer_slot_terms)
     structural = expected.answer_type in {"url", "identifier", "file_path", "date_time", "count"} or url_requested
     primary_values = [
@@ -1575,6 +1605,7 @@ def _with_supporting_evidence(answer: Answer | None, supporting_evidence: list[E
 def _answer_conflict_diagnostics(
     candidates: list[tuple[float, str, Evidence, str]],
     expected: ExpectedAnswer,
+    target_terms: list[str],
 ) -> dict[str, Any] | None:
     buckets: dict[str, dict[str, Any]] = {}
     for score, value, evidence, reason in candidates:
@@ -1594,6 +1625,25 @@ def _answer_conflict_diagnostics(
     top_score = float(top_bucket["score"])
     next_score = float(next_bucket["score"])
     if top_score <= 0.0 or next_score < top_score * 0.85:
+        return None
+
+    def target_coverage(bucket: dict[str, Any]) -> int:
+        if not target_terms:
+            return 0
+        return max(
+            (
+                sum(
+                    1
+                    for term in target_terms
+                    if _has_term(normalize(" ".join([item.rel_path, item.text])), term)
+                )
+                for item in bucket["evidence"]
+                if isinstance(item, Evidence)
+            ),
+            default=0,
+        )
+
+    if target_coverage(top_bucket) > target_coverage(next_bucket):
         return None
 
     def evidence_keys(bucket: dict[str, Any]) -> set[tuple[str, str, int | None, str]]:
@@ -1802,7 +1852,7 @@ def execute_bounded_query(
             )
         return answer, diagnostics
     if not frame.temporal_scope and expected.answer_type != "count":
-        conflict = _answer_conflict_diagnostics(candidates, expected)
+        conflict = _answer_conflict_diagnostics(candidates, expected, target_terms)
         if conflict:
             diagnostics["execution"]["answer_conflict_without_query_scope"] = conflict
             return None, diagnostics

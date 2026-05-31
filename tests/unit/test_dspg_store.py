@@ -3,7 +3,12 @@ from __future__ import annotations
 from pathlib import Path
 
 from knowmoredirt.answer_types import ExpectedAnswer
-from knowmoredirt.bounded_dspg import _context_accessible, _identity_expanded_terms, execute_bounded_query
+from knowmoredirt.bounded_dspg import (
+    _answer_conflict_diagnostics,
+    _context_accessible,
+    _identity_expanded_terms,
+    execute_bounded_query,
+)
 from knowmoredirt.engine import KnowMoreDiRTEngine
 from knowmoredirt.ingest import ingest_folder
 from knowmoredirt.models import Evidence
@@ -3851,6 +3856,26 @@ def test_identity_expansion_seeds_only_exact_referent_surfaces() -> None:
 
     assert "orchid gamma" in expanded
     assert "https reports example test orchid gamma" not in expanded
+
+
+def test_conflict_detection_allows_candidate_with_more_query_anchor_coverage() -> None:
+    expected = ExpectedAnswer("identifier")
+    candidates = [
+        (
+            10.0,
+            "NS-200",
+            Evidence("folder/source.txt", "Reviewer: Nia Sol | marker: NS-200", 0.8),
+            "relation_condition_binding",
+        ),
+        (
+            9.5,
+            "MV-100",
+            Evidence("folder/source.txt", "Reviewer: Mira Vale | marker: MV-100", 0.8),
+            "relation_condition_binding",
+        ),
+    ]
+
+    assert _answer_conflict_diagnostics(candidates, expected, ["nia sol"]) is None
 
 
 def test_model_query_drs_answer_slot_terms_participate_in_structural_binding(tmp_path: Path) -> None:
