@@ -234,6 +234,76 @@ def test_store_materializes_model_drs_without_same_surface_merging(tmp_path: Pat
     assert bad["reason"] == "grounding_validation_failed"
 
 
+def test_store_rejects_invalid_drs_condition_graphs() -> None:
+    store = DSPGStore()
+    payload = {
+        "drs": {
+            "schema_version": "chunk-drs-v2",
+            "source_id": "note.txt",
+            "referents": [
+                {"id": "r0", "label": "Aero Gate", "kind": "entity", "evidence_text": "Aero Gate"}
+            ],
+            "boxes": [
+                {
+                    "id": "b0",
+                    "kind": "asserted",
+                    "parent_id": "",
+                    "holder_referent_id": "",
+                    "evidence_text": "Aero Gate is ready.",
+                }
+            ],
+            "conditions": [
+                {
+                    "id": "c0",
+                    "predicate": "ready",
+                    "box_id": "b0",
+                    "polarity": "positive",
+                    "modality": "asserted",
+                    "temporal_id": "",
+                    "arguments": [
+                        {
+                            "role": "content",
+                            "target_kind": "condition",
+                            "target_id": "c1",
+                            "value": "",
+                            "value_type": "condition",
+                            "evidence_text": "Aero Gate is ready.",
+                        }
+                    ],
+                    "evidence_text": "Aero Gate is ready.",
+                },
+                {
+                    "id": "c1",
+                    "predicate": "state",
+                    "box_id": "b0",
+                    "polarity": "positive",
+                    "modality": "asserted",
+                    "temporal_id": "",
+                    "arguments": [
+                        {
+                            "role": "content",
+                            "target_kind": "condition",
+                            "target_id": "c0",
+                            "value": "",
+                            "value_type": "condition",
+                            "evidence_text": "Aero Gate is ready.",
+                        }
+                    ],
+                    "evidence_text": "Aero Gate is ready.",
+                },
+            ],
+            "identity_hypotheses": [],
+            "temporal_records": [],
+        }
+    }
+
+    result = store.materialize_drs_payload("run", "span", "Aero Gate is ready.", payload)
+
+    assert result["accepted"] is False
+    assert result["reason"] == "schema_validation_failed"
+    assert "cyclic_condition_argument:c0->c1->c0" in result["errors"]
+
+
 def test_bounded_query_uses_relation_level_drs_scope(tmp_path: Path, monkeypatch) -> None:
     (tmp_path / "belief.txt").write_text(
         "Kalo Reed believes that Mira Stone archived the Slate Quill.",

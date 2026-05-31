@@ -812,6 +812,88 @@ def test_chunk_drs_rejects_self_referential_box_arguments(monkeypatch, tmp_path)
     )
 
 
+def test_chunk_drs_rejects_cyclic_condition_arguments(monkeypatch, tmp_path) -> None:
+    class CyclicConditionModel:
+        def context_size(self) -> int:
+            return 8192
+
+        def cache_fingerprint(self) -> dict[str, object]:
+            return {"model_id": "fake-cyclic-condition-drs", "context_size": 8192}
+
+        def complete_json(self, prompt: str, *, n_predict: int = 128, grammar=None, json_schema=None):
+            return {
+                "drs": {
+                    "schema_version": "chunk-drs-v2",
+                    "source_id": "note.txt",
+                    "referents": [
+                        {"id": "r0", "label": "Aero Gate", "kind": "entity", "evidence_text": "Aero Gate"}
+                    ],
+                    "boxes": [
+                        {
+                            "id": "b0",
+                            "kind": "asserted",
+                            "parent_id": "",
+                            "holder_referent_id": "",
+                            "evidence_text": "Aero Gate is ready.",
+                        }
+                    ],
+                    "conditions": [
+                        {
+                            "id": "c0",
+                            "predicate": "ready",
+                            "box_id": "b0",
+                            "polarity": "positive",
+                            "modality": "asserted",
+                            "temporal_id": "",
+                            "arguments": [
+                                {
+                                    "role": "depends_on",
+                                    "target_kind": "condition",
+                                    "target_id": "c1",
+                                    "value": "",
+                                    "value_type": "condition",
+                                    "evidence_text": "Aero Gate is ready.",
+                                }
+                            ],
+                            "evidence_text": "Aero Gate is ready.",
+                        },
+                        {
+                            "id": "c1",
+                            "predicate": "state",
+                            "box_id": "b0",
+                            "polarity": "positive",
+                            "modality": "asserted",
+                            "temporal_id": "",
+                            "arguments": [
+                                {
+                                    "role": "depends_on",
+                                    "target_kind": "condition",
+                                    "target_id": "c0",
+                                    "value": "",
+                                    "value_type": "condition",
+                                    "evidence_text": "Aero Gate is ready.",
+                                }
+                            ],
+                            "evidence_text": "Aero Gate is ready.",
+                        },
+                    ],
+                    "identity_hypotheses": [],
+                    "temporal_records": [],
+                },
+                "_model_raw": "{}",
+                "_model_elapsed_seconds": 0.01,
+            }
+
+    model = CyclicConditionModel()
+    monkeypatch.setenv("KMD_CHUNK_DRS_STAGED_FALLBACK", "0")
+    monkeypatch.setenv("KMD_CHUNK_DRS_CACHE_DIR", str(tmp_path / "chunk-drs-cache"))
+    result = call_model_chunk_drs("Aero Gate is ready.", model, rel_path="note.txt")  # type: ignore[arg-type]
+
+    assert result["accepted"] is False
+    assert result["reason"] == "schema_validation_failed"
+    assert "cyclic_condition_argument:c0->c1->c0" in result["validation"]["errors"]
+
+
 def test_chunk_drs_evidence_cap_uses_reserved_output_budget(monkeypatch) -> None:
     monkeypatch.delenv("KMD_CHUNK_DRS_MAX_EVIDENCE_CHARS", raising=False)
     monkeypatch.delenv("KMD_CHUNK_DRS_MAX_ARRAY_ITEMS", raising=False)

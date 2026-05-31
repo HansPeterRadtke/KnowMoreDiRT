@@ -132,7 +132,16 @@ def test_chunk_drs_staged_fallback_constrains_condition_targets(monkeypatch, tmp
             condition_schema = json_schema["properties"]["condition_stage"]["properties"]["conditions"]["items"]
             argument_schema = condition_schema["properties"]["arguments"]["items"]
             assert condition_schema["properties"]["box_id"]["enum"] == ["b0", "b1"]
-            assert argument_schema["properties"]["target_id"]["enum"] == ["", "b0", "b1", "r0"]
+            assert argument_schema["properties"]["target_id"]["enum"] == [
+                "",
+                "b0",
+                "b1",
+                "c0",
+                "c1",
+                "c2",
+                "c3",
+                "r0",
+            ]
             return {
                 "condition_stage": {
                     "schema_version": "chunk-drs-v2",

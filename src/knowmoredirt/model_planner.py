@@ -64,7 +64,7 @@ CHUNK_DRS_GROUNDING_REPAIR_POLICY = "model-label-value-escaped-evidence-span-v3"
 CHUNK_DRS_IDENTITY_PROVENANCE_POLICY = "identity-evidence-bilateral-surface-v1"
 CHUNK_DRS_TEMPORAL_PROVENANCE_POLICY = "condition-stage-declared-temporal-records-v2"
 CHUNK_DRS_SPARSE_RETRY_POLICY = "retry-validated-sparse-drs-staged-v1"
-CHUNK_DRS_STRUCTURE_VALIDATION_POLICY = "acyclic-box-condition-arguments-v1"
+CHUNK_DRS_STRUCTURE_VALIDATION_POLICY = "acyclic-box-condition-arguments-v2"
 CHUNK_DRS_BOX_COMPLETION_POLICY = "model-complete-missing-box-declarations-v1"
 CHUNK_DRS_SOURCE_SPAN_POLICY = "chunk-drs-delimiter-source-span-enum-v2"
 CHUNK_DRS_SKELETON_SOURCE_SPAN_POLICY = "stage1-source-span-evidence-enum-v1"
@@ -1010,6 +1010,51 @@ def _chunk_drs_structurally_sparse(validation: dict[str, Any]) -> bool:
     return condition_count == 0 and box_count > 0 and referent_count > 0
 
 
+def _condition_argument_cycle_errors(conditions: list[dict[str, Any]]) -> list[str]:
+    condition_ids = {str(item.get("id") or "") for item in conditions if str(item.get("id") or "")}
+    graph: dict[str, list[str]] = {}
+    for condition in conditions:
+        condition_id = str(condition.get("id") or "")
+        if not condition_id:
+            continue
+        edges: list[str] = []
+        arguments = condition.get("arguments")
+        arguments = [item for item in arguments if isinstance(item, dict)] if isinstance(arguments, list) else []
+        for argument in arguments:
+            target_id = str(argument.get("target_id") or "")
+            if str(argument.get("target_kind") or "") == "condition" and target_id in condition_ids and target_id != condition_id:
+                edges.append(target_id)
+        graph[condition_id] = edges
+
+    errors: list[str] = []
+    visiting: set[str] = set()
+    visited: set[str] = set()
+    stack: list[str] = []
+
+    def visit(node: str) -> None:
+        if node in visiting:
+            start = stack.index(node) if node in stack else 0
+            errors.append("cyclic_condition_argument:" + "->".join([*stack[start:], node]))
+            return
+        if node in visited:
+            return
+        visiting.add(node)
+        stack.append(node)
+        for next_node in graph.get(node, []):
+            visit(next_node)
+            if errors:
+                break
+        stack.pop()
+        visiting.remove(node)
+        visited.add(node)
+
+    for condition_id in sorted(graph):
+        visit(condition_id)
+        if len(errors) >= 50:
+            break
+    return errors[:50]
+
+
 def _chunk_drs_structural_condition_floor(source_text: str, max_evidence_chars: int | None = None) -> int:
     field_like_spans = []
     source_surface = source_text.strip()
@@ -1219,16 +1264,14 @@ def chunk_drs_condition_json_schema(
 ) -> dict[str, Any]:
     condition_schema = copy.deepcopy(DRS_CONDITION_JSON_SCHEMA)
     argument_schema = copy.deepcopy(DRS_ARGUMENT_JSON_SCHEMA)
-    allowed_targets = sorted(set(["", *box_ids, *referent_ids]))
+    condition_ids = [f"c{index}" for index in range(max(1, int(max_conditions)))] if max_conditions else []
+    allowed_targets = sorted(set(["", *box_ids, *condition_ids, *referent_ids]))
     allowed_temporals = sorted(set(["", *(temporal_ids or [])]))
     argument_schema["properties"]["target_id"] = {"type": "string", "enum": allowed_targets}
     condition_schema["properties"]["box_id"] = {"type": "string", "enum": box_ids or [""]}
     condition_schema["properties"]["temporal_id"] = {"type": "string", "enum": allowed_temporals}
-    if max_conditions:
-        condition_schema["properties"]["id"] = {
-            "type": "string",
-            "enum": [f"c{index}" for index in range(max(1, int(max_conditions)))],
-        }
+    if condition_ids:
+        condition_schema["properties"]["id"] = {"type": "string", "enum": condition_ids}
     if evidence_text_values:
         evidence_values = list(dict.fromkeys(str(value) for value in evidence_text_values))
         condition_schema["properties"]["evidence_text"] = {"type": "string", "enum": evidence_values}
@@ -3199,6 +3242,7 @@ def _validate_chunk_drs_payload(payload: Any, source_text: str) -> dict[str, Any
             elif target_kind not in {"referent", "box", "condition", "literal", "unknown"}:
                 errors.append(f"bad_argument_target_kind:{condition_id}:{target_kind}")
             check_span(arg.get("evidence_text"), f"argument:{condition_id}:{arg.get('role')}")
+    errors.extend(_condition_argument_cycle_errors(conditions))
     for item in identities:
         left_id = str(item.get("left_referent_id") or "")
         right_id = str(item.get("right_referent_id") or "")
