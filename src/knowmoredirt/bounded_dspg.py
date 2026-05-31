@@ -1147,7 +1147,11 @@ def _temporal_candidates(records: dict[str, Any], frame: QueryFrame, expected: E
     candidates: list[tuple[float, str, Evidence, str]] = []
     limit = 1 if frame.temporal_scope in {"latest", "earliest"} else 3
     for _time_value, row, evidence in rows[:limit]:
-        raw_values = [str(row.get("state_value") or ""), str(row.get("temporal_value") or "")]
+        state_value = str(row.get("state_value") or "")
+        temporal_value = str(row.get("temporal_value") or "")
+        raw_values = [state_value] if state_value else []
+        if expected.answer_type == "date_time" or not raw_values:
+            raw_values.append(temporal_value)
         for value in _compatible_values(expected, raw_values):
             candidates.append((8.0, value, evidence, "temporal_binding"))
     return candidates

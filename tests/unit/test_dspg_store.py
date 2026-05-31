@@ -1803,6 +1803,104 @@ def test_temporal_query_drs_uses_latest_temporal_edge(tmp_path: Path) -> None:
     assert answer.reason == "bounded DSPG query-frame execution"
 
 
+def test_model_drs_temporal_records_project_latest_literal_values(tmp_path: Path, monkeypatch) -> None:
+    (tmp_path / "early.txt").write_text("Phase note: Lumen Core marker T001 state amber.", encoding="utf-8")
+    (tmp_path / "late.txt").write_text("Phase note: Lumen Core marker T003 state green.", encoding="utf-8")
+
+    class TemporalDrsModel:
+        def context_size(self) -> int:
+            return 4096
+
+        def cache_fingerprint(self) -> dict[str, object]:
+            return {"model_id": "fake-temporal-drs", "context_size": 4096}
+
+        def complete_json(self, prompt: str, *, n_predict: int = 128, grammar=None, json_schema=None):
+            if "T001" in prompt:
+                marker = "T001"
+                state = "amber"
+                text = "Phase note: Lumen Core marker T001 state amber."
+            else:
+                marker = "T003"
+                state = "green"
+                text = "Phase note: Lumen Core marker T003 state green."
+            return {
+                "drs": {
+                    "schema_version": "chunk-drs-v2",
+                    "source_id": "temporal.txt",
+                    "referents": [
+                        {"id": "r0", "label": "Lumen Core", "kind": "entity", "evidence_text": "Lumen Core"},
+                    ],
+                    "boxes": [
+                        {"id": "b0", "kind": "asserted", "parent_id": "", "holder_referent_id": "", "evidence_text": text}
+                    ],
+                    "conditions": [
+                        {
+                            "id": "c0",
+                            "predicate": "state",
+                            "box_id": "b0",
+                            "polarity": "positive",
+                            "modality": "asserted",
+                            "temporal_id": "t0",
+                            "arguments": [
+                                {
+                                    "role": "subject",
+                                    "target_kind": "referent",
+                                    "target_id": "r0",
+                                    "value": "",
+                                    "value_type": "entity",
+                                    "evidence_text": "Lumen Core",
+                                },
+                                {
+                                    "role": "state",
+                                    "target_kind": "literal",
+                                    "target_id": "",
+                                    "value": state,
+                                    "value_type": "state",
+                                    "evidence_text": state,
+                                },
+                            ],
+                            "evidence_text": f"Lumen Core marker {marker} state {state}",
+                        }
+                    ],
+                    "identity_hypotheses": [],
+                    "temporal_records": [
+                        {"id": "t0", "value": marker, "value_type": "sequence_marker", "evidence_text": marker}
+                    ],
+                },
+                "_model_raw": "{}",
+                "_model_elapsed_seconds": 0.01,
+            }
+
+    cache_dir = tmp_path.parent / f"{tmp_path.name}-temporal-drs-cache"
+    monkeypatch.setenv("KMD_CHUNK_DRS_CACHE_DIR", str(cache_dir))
+    store, run_id, documents, sentences = ingest_folder(
+        tmp_path,
+        semantic_client=TemporalDrsModel(),  # type: ignore[arg-type]
+        use_semantic_frames=False,
+        use_drs_semantics=True,
+    )
+    sentences_by_document: dict[str, dict[int, object]] = {}
+    for sentence in sentences:
+        sentences_by_document.setdefault(sentence.rel_path, {})[sentence.order] = sentence
+    frame = QueryFrame(
+        question_text="What is the latest state for Lumen Core?",
+        answer_type="state",
+        answer_variables=("state",),
+        target_anchors=("Lumen Core",),
+        requested_relation="state",
+        relation_terms=("state",),
+        constraints=(),
+        temporal_scope="latest",
+    )
+
+    answer, _diagnostics = execute_bounded_query(store, run_id, documents, sentences_by_document, frame.question_text, frame)
+
+    assert store.counts()["temporal_edges"] == 2
+    assert answer is not None
+    assert answer.text == "green"
+    assert answer.evidence[0].rel_path == "late.txt"
+
+
 def test_ingest_skips_cartesian_temporal_edges_for_dense_time_chunks(tmp_path: Path, monkeypatch) -> None:
     monkeypatch.setenv("KMD_TEMPORAL_SAME_SPAN_MAX_VALUES", "2")
     (tmp_path / "dense.log").write_text(

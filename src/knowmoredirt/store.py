@@ -1024,6 +1024,7 @@ class DSPGStore:
                     json.dumps({"source": source, "external_condition_id": external_id, "external_box_id": box_external}, sort_keys=True),
                 ),
             )
+            temporal_edge_values: list[str] = []
             for arg_index, arg in enumerate(item.get("arguments") or []):
                 if not isinstance(arg, dict):
                     continue
@@ -1034,6 +1035,8 @@ class DSPGStore:
                 value_type = text_value(arg, "value_type") or "unknown"
                 referent_id = external_to_referent.get(target_external) if target_kind == "referent" else None
                 argument_surface = resolved_argument_surface(arg)
+                if temporal_text and target_kind in {"literal", "unknown"} and value:
+                    temporal_edge_values.append(value)
                 argument_id = stable_id("drsarg", run_id, condition_id, arg_index, role, target_kind, target_external, value)
                 self.connection.execute(
                     """
@@ -1076,24 +1079,26 @@ class DSPGStore:
                 )
                 inserted_arguments += 1
             if temporal_text:
-                self.connection.execute(
-                    """
-                    INSERT OR IGNORE INTO temporal_edges(
-                      edge_id, run_id, source_span_id, referent_id, context_id, relation, temporal_value, state_value, confidence
-                    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
-                    """,
-                    (
-                        stable_id("tmp", run_id, condition_id, temporal_id, temporal_text),
-                        run_id,
-                        source_span_id,
-                        None,
-                        context_id,
-                        predicate,
-                        temporal_text,
-                        evidence,
-                        condition_confidence,
-                    ),
-                )
+                edge_values = list(dict.fromkeys(temporal_edge_values)) or [evidence]
+                for edge_index, state_value in enumerate(edge_values):
+                    self.connection.execute(
+                        """
+                        INSERT OR IGNORE INTO temporal_edges(
+                          edge_id, run_id, source_span_id, referent_id, context_id, relation, temporal_value, state_value, confidence
+                        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+                        """,
+                        (
+                            stable_id("tmp", run_id, condition_id, temporal_id, temporal_text, edge_index, state_value),
+                            run_id,
+                            source_span_id,
+                            None,
+                            context_id,
+                            predicate,
+                            temporal_text,
+                            state_value,
+                            condition_confidence,
+                        ),
+                    )
 
         inserted_identity = 0
         for index, item in enumerate(identities):
