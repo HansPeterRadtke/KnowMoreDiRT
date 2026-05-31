@@ -281,6 +281,46 @@ def _fetch_chunks(connection: Any, chunk_keys: list[tuple[str, int]]) -> list[di
     return rows
 
 
+def _merge_rows_by_id(rows: list[dict[str, Any]], extra_rows: list[dict[str, Any]], id_key: str) -> list[dict[str, Any]]:
+    merged = {str(row.get(id_key)): row for row in rows}
+    for row in extra_rows:
+        row_id = str(row.get(id_key) or "")
+        if row_id and row_id not in merged:
+            merged[row_id] = row
+    return list(merged.values())
+
+
+def _fetch_identity_hypotheses(
+    connection: Any,
+    run_id: str,
+    span_ids: list[str],
+    document_ids: list[str],
+) -> list[dict[str, Any]]:
+    clauses = ["ih.source_span_id IS NULL"]
+    params: list[Any] = [run_id]
+    if span_ids:
+        placeholders = ",".join("?" for _ in span_ids)
+        clauses.append(f"ih.source_span_id IN ({placeholders})")
+        params.extend(span_ids)
+    if document_ids:
+        placeholders = ",".join("?" for _ in document_ids)
+        clauses.append(f"s.document_id IN ({placeholders})")
+        params.extend(document_ids)
+    where = " OR ".join(f"({clause})" for clause in clauses)
+    return [
+        dict(row)
+        for row in connection.execute(
+            f"""
+            SELECT DISTINCT ih.*
+            FROM identity_hypotheses ih
+            LEFT JOIN source_spans s ON s.span_id=ih.source_span_id
+            WHERE ih.run_id=? AND ({where})
+            """,
+            params,
+        )
+    ]
+
+
 def _load_records(store: Any, run_id: str, document_ids: list[str], chunk_keys: list[tuple[str, int]]) -> dict[str, Any]:
     connection = store.connection
     documents = _fetch_by_ids(connection, "documents", "document_id", document_ids)
@@ -288,27 +328,32 @@ def _load_records(store: Any, run_id: str, document_ids: list[str], chunk_keys: 
     chunk_ids = [chunk["chunk_id"] for chunk in chunks]
     spans = _fetch_by_ids(connection, "source_spans", "chunk_id", chunk_ids)
     span_ids = [span["span_id"] for span in spans]
+    identity_hypotheses = _fetch_identity_hypotheses(connection, run_id, span_ids, document_ids)
+    identity_span_ids = list(
+        dict.fromkeys(
+            str(row.get("source_span_id") or "")
+            for row in identity_hypotheses
+            if str(row.get("source_span_id") or "")
+        )
+    )
+    extra_span_ids = [span_id for span_id in identity_span_ids if span_id not in set(span_ids)]
+    if extra_span_ids:
+        extra_spans = _fetch_by_ids(connection, "source_spans", "span_id", extra_span_ids)
+        spans = _merge_rows_by_id(spans, extra_spans, "span_id")
+        extra_chunk_ids = [
+            str(span.get("chunk_id") or "")
+            for span in extra_spans
+            if str(span.get("chunk_id") or "") and str(span.get("chunk_id") or "") not in set(chunk_ids)
+        ]
+        if extra_chunk_ids:
+            chunks = _merge_rows_by_id(chunks, _fetch_by_ids(connection, "chunks", "chunk_id", extra_chunk_ids), "chunk_id")
+        chunk_ids = [chunk["chunk_id"] for chunk in chunks]
+        span_ids = [span["span_id"] for span in spans]
     frames = _fetch_by_ids(connection, "frames", "span_id", span_ids)
     arguments = _fetch_by_ids(connection, "frame_arguments", "frame_id", [frame["frame_id"] for frame in frames])
     relations = _fetch_by_ids(connection, "relations", "source_span_id", span_ids)
     temporal = _fetch_by_ids(connection, "temporal_edges", "source_span_id", span_ids)
     metadata_records = _fetch_by_ids(connection, "metadata_records", "document_id", document_ids)
-    if span_ids:
-        placeholders = ",".join("?" for _ in span_ids)
-        identity_hypotheses = [
-            dict(row)
-            for row in connection.execute(
-                f"""
-                SELECT *
-                FROM identity_hypotheses
-                WHERE run_id=?
-                  AND (source_span_id IN ({placeholders}) OR source_span_id IS NULL)
-                """,
-                [run_id, *span_ids],
-            )
-        ]
-    else:
-        identity_hypotheses = []
     material_referent_ids = list(
         dict.fromkeys(
             str(row.get(key) or "")

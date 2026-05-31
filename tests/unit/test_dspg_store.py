@@ -3163,6 +3163,286 @@ def test_scattered_identity_temporal_latest_answer_keeps_crosswalk_provenance(
     }
 
 
+def test_document_local_identity_bridge_outside_chunk_budget_reaches_scattered_temporal_states(
+    tmp_path: Path,
+    monkeypatch,
+) -> None:
+    (tmp_path / "begin").mkdir()
+    (tmp_path / "middle").mkdir()
+    (tmp_path / "end").mkdir()
+    (tmp_path / "reports").mkdir()
+    registry_lines = ["Registry page opens for Cloud Dial."]
+    registry_lines.extend(
+        f"Registry filler {index:02d} repeats Cloud Dial without an operational state."
+        for index in range(30)
+    )
+    registry_lines.append("Crosswalk near the end states CD-2 is the same artifact as Cloud Dial.")
+    (tmp_path / "begin" / "registry.txt").write_text("\n".join(registry_lines), encoding="utf-8")
+    (tmp_path / "middle" / "state_early.log").write_text(
+        "Update row CD-2 marker T001 state draft.",
+        encoding="utf-8",
+    )
+    (tmp_path / "end" / "state_final.log").write_text(
+        "Update row CD-2 marker T009 state sealed.",
+        encoding="utf-8",
+    )
+    (tmp_path / "reports" / "reported_late.log").write_text(
+        "Observer report says CD-2 marker T010 state broken.",
+        encoding="utf-8",
+    )
+
+    class ScatteredBridgeModel:
+        def context_size(self) -> int:
+            return 4096
+
+        def cache_fingerprint(self) -> dict[str, object]:
+            return {"model_id": "fake-scattered-bridge-drs", "context_size": 4096}
+
+        def complete_json(self, prompt: str, *, n_predict: int = 128, grammar=None, json_schema=None):
+            if "Crosswalk near the end" in prompt:
+                text = "Crosswalk near the end states CD-2 is the same artifact as Cloud Dial."
+                referents = [
+                    {"id": "r0", "label": "CD-2", "kind": "identifier", "evidence_text": "CD-2"},
+                    {"id": "r1", "label": "Cloud Dial", "kind": "artifact", "evidence_text": "Cloud Dial"},
+                ]
+                conditions = [
+                    {
+                        "id": "c0",
+                        "predicate": "same_artifact",
+                        "box_id": "b0",
+                        "polarity": "positive",
+                        "modality": "asserted",
+                        "temporal_id": "",
+                        "arguments": [
+                            {
+                                "role": "left",
+                                "target_kind": "referent",
+                                "target_id": "r0",
+                                "value": "",
+                                "value_type": "identifier",
+                                "evidence_text": "CD-2",
+                            },
+                            {
+                                "role": "right",
+                                "target_kind": "referent",
+                                "target_id": "r1",
+                                "value": "",
+                                "value_type": "artifact",
+                                "evidence_text": "Cloud Dial",
+                            },
+                        ],
+                        "evidence_text": "CD-2 is the same artifact as Cloud Dial",
+                    }
+                ]
+                identities = [
+                    {
+                        "left_referent_id": "r0",
+                        "right_referent_id": "r1",
+                        "status": "accepted",
+                        "evidence_text": "CD-2 is the same artifact as Cloud Dial",
+                        "confidence": 0.94,
+                    }
+                ]
+                temporals = []
+                boxes = [{"id": "b0", "kind": "asserted", "parent_id": "", "holder_referent_id": "", "evidence_text": text}]
+            elif "T001" in prompt or "T009" in prompt:
+                marker = "T001" if "T001" in prompt else "T009"
+                state = "draft" if marker == "T001" else "sealed"
+                text = f"Update row CD-2 marker {marker} state {state}."
+                referents = [{"id": "r0", "label": "CD-2", "kind": "identifier", "evidence_text": "CD-2"}]
+                conditions = [
+                    {
+                        "id": "c0",
+                        "predicate": "state",
+                        "box_id": "b0",
+                        "polarity": "positive",
+                        "modality": "asserted",
+                        "temporal_id": "t0",
+                        "arguments": [
+                            {
+                                "role": "subject",
+                                "target_kind": "referent",
+                                "target_id": "r0",
+                                "value": "",
+                                "value_type": "identifier",
+                                "evidence_text": "CD-2",
+                            },
+                            {
+                                "role": "state",
+                                "target_kind": "literal",
+                                "target_id": "",
+                                "value": state,
+                                "value_type": "state",
+                                "evidence_text": state,
+                            },
+                        ],
+                        "evidence_text": f"CD-2 marker {marker} state {state}",
+                    }
+                ]
+                identities = []
+                temporals = [{"id": "t0", "value": marker, "value_type": "sequence_marker", "evidence_text": marker}]
+                boxes = [{"id": "b0", "kind": "asserted", "parent_id": "", "holder_referent_id": "", "evidence_text": text}]
+            elif "T010" in prompt:
+                text = "Observer report says CD-2 marker T010 state broken."
+                reported = "CD-2 marker T010 state broken"
+                referents = [
+                    {"id": "r0", "label": "Observer report", "kind": "document", "evidence_text": "Observer report"},
+                    {"id": "r1", "label": "CD-2", "kind": "identifier", "evidence_text": "CD-2"},
+                ]
+                conditions = [
+                    {
+                        "id": "c0",
+                        "predicate": "report",
+                        "box_id": "b0",
+                        "polarity": "positive",
+                        "modality": "asserted",
+                        "temporal_id": "",
+                        "arguments": [
+                            {
+                                "role": "source",
+                                "target_kind": "referent",
+                                "target_id": "r0",
+                                "value": "",
+                                "value_type": "document",
+                                "evidence_text": "Observer report",
+                            },
+                            {
+                                "role": "content",
+                                "target_kind": "box",
+                                "target_id": "b1",
+                                "value": "",
+                                "value_type": "box",
+                                "evidence_text": reported,
+                            },
+                        ],
+                        "evidence_text": text,
+                    },
+                    {
+                        "id": "c1",
+                        "predicate": "state",
+                        "box_id": "b1",
+                        "polarity": "positive",
+                        "modality": "asserted",
+                        "temporal_id": "t0",
+                        "arguments": [
+                            {
+                                "role": "subject",
+                                "target_kind": "referent",
+                                "target_id": "r1",
+                                "value": "",
+                                "value_type": "identifier",
+                                "evidence_text": "CD-2",
+                            },
+                            {
+                                "role": "state",
+                                "target_kind": "literal",
+                                "target_id": "",
+                                "value": "broken",
+                                "value_type": "state",
+                                "evidence_text": "broken",
+                            },
+                        ],
+                        "evidence_text": reported,
+                    },
+                ]
+                identities = []
+                temporals = [{"id": "t0", "value": "T010", "value_type": "sequence_marker", "evidence_text": "T010"}]
+                boxes = [
+                    {"id": "b0", "kind": "asserted", "parent_id": "", "holder_referent_id": "", "evidence_text": text},
+                    {
+                        "id": "b1",
+                        "kind": "reported",
+                        "parent_id": "b0",
+                        "holder_referent_id": "r0",
+                        "evidence_text": reported,
+                    },
+                ]
+            else:
+                text = "Cloud Dial"
+                referents = [{"id": "r0", "label": "Cloud Dial", "kind": "artifact", "evidence_text": "Cloud Dial"}]
+                conditions = []
+                identities = []
+                temporals = []
+                boxes = [{"id": "b0", "kind": "asserted", "parent_id": "", "holder_referent_id": "", "evidence_text": text}]
+            return {
+                "drs": {
+                    "schema_version": "chunk-drs-v2",
+                    "source_id": "scattered-bridge",
+                    "referents": referents,
+                    "boxes": boxes,
+                    "conditions": conditions,
+                    "identity_hypotheses": identities,
+                    "temporal_records": temporals,
+                },
+                "_model_raw": "{}",
+                "_model_elapsed_seconds": 0.01,
+            }
+
+    monkeypatch.setenv("KMD_CHUNK_DRS_CACHE_DIR", str(tmp_path / ".drs-cache"))
+    store, run_id, documents, sentences = ingest_folder(
+        tmp_path,
+        semantic_client=ScatteredBridgeModel(),  # type: ignore[arg-type]
+        use_semantic_frames=False,
+        use_drs_semantics=True,
+    )
+    sentences_by_document: dict[str, dict[int, object]] = {}
+    for sentence in sentences:
+        sentences_by_document.setdefault(sentence.rel_path, {})[sentence.order] = sentence
+    unscoped_frame = QueryFrame(
+        question_text="What is the latest state for Cloud Dial?",
+        answer_type="state",
+        answer_variables=("state",),
+        target_anchors=("Cloud Dial",),
+        requested_relation="state",
+        relation_terms=("state",),
+        constraints=(),
+        temporal_scope="latest",
+    )
+    reported_frame = QueryFrame(
+        question_text="What is the latest reported state for Cloud Dial?",
+        answer_type="state",
+        answer_variables=("state",),
+        target_anchors=("Cloud Dial",),
+        requested_relation="state",
+        relation_terms=("state",),
+        constraints=(),
+        temporal_scope="latest",
+        scope_requirements=("reported",),
+    )
+
+    unscoped_answer, unscoped_diagnostics = execute_bounded_query(
+        store,
+        run_id,
+        documents,
+        sentences_by_document,  # type: ignore[arg-type]
+        unscoped_frame.question_text,
+        unscoped_frame,
+        chunk_limit=12,
+    )
+    reported_answer, _reported_diagnostics = execute_bounded_query(
+        store,
+        run_id,
+        documents,
+        sentences_by_document,  # type: ignore[arg-type]
+        reported_frame.question_text,
+        reported_frame,
+        chunk_limit=12,
+    )
+
+    assert unscoped_answer is not None
+    assert unscoped_answer.text == "sealed"
+    assert {item.rel_path for item in unscoped_answer.evidence} >= {
+        "begin/registry.txt",
+        "end/state_final.log",
+    }
+    assert "begin/registry.txt" in {
+        item["rel_path"] for item in unscoped_diagnostics["execution"]["identity_expansion_evidence"]
+    }
+    assert reported_answer is not None
+    assert reported_answer.text == "broken"
+    assert reported_answer.evidence[0].rel_path == "reports/reported_late.log"
+
+
 def test_unscoped_model_temporal_values_return_unknown_even_with_same_source_span(
     tmp_path: Path,
     monkeypatch,
