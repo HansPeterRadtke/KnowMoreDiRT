@@ -9,6 +9,7 @@ from knowmoredirt.model_planner import (
     CHUNK_DRS_COMPACT_UNDERCOVERAGE_POLICY,
     CHUNK_DRS_DYNAMIC_SKELETON_BUDGET_POLICY,
     CHUNK_DRS_DYNAMIC_OUTPUT_BUDGET_POLICY,
+    CHUNK_DRS_DYNAMIC_CONDITION_BUDGET_POLICY,
     CHUNK_DRS_GROUNDING_REPAIR_POLICY,
     CHUNK_DRS_MONOLITHIC_ID_POLICY,
     CHUNK_DRS_SPARSE_RETRY_POLICY,
@@ -25,6 +26,7 @@ from knowmoredirt.model_planner import (
     chunk_drs_skeleton_json_schema,
     chunk_drs_source_span_candidates,
     default_chunk_drs_n_predict,
+    default_staged_chunk_drs_condition_n_predict,
     default_staged_chunk_drs_skeleton_n_predict,
 )
 
@@ -912,7 +914,7 @@ def test_chunk_drs_field_like_records_use_staged_extraction_first(monkeypatch, t
                     "_model_elapsed_seconds": 0.01,
                 }
             assert "Stage 2 of source-grounded DRS extraction" in prompt
-            assert n_predict == 768
+            assert n_predict == 528
             return {
                 "condition_stage": {
                     "schema_version": "chunk-drs-v2",
@@ -980,6 +982,8 @@ def test_chunk_drs_field_like_records_use_staged_extraction_first(monkeypatch, t
     assert result["validation"]["condition_count"] == 2
     assert result["context_budget"]["reserved_output_tokens"] == 768
     assert result["context_budget"]["staged_first_policy"] == CHUNK_DRS_STAGED_FIRST_POLICY
+    assert result["context_budget"]["dynamic_condition_budget_policy"] == CHUNK_DRS_DYNAMIC_CONDITION_BUDGET_POLICY
+    assert result["context_budget"]["staged_condition_n_predict"] == 528
     assert model.monolithic_called is False
 
 
@@ -1013,6 +1017,26 @@ def test_chunk_drs_dynamic_skeleton_budget_for_field_rich_chunks(monkeypatch) ->
 
     monkeypatch.setenv("KMD_CHUNK_DRS_STAGED_SKELETON_N_PREDICT", "512")
     assert default_staged_chunk_drs_skeleton_n_predict(384, field_rich, 96) == 512
+
+
+def test_chunk_drs_dynamic_condition_budget_for_compact_chunks(monkeypatch) -> None:
+    compact_record = "record: Cobalt Fern | owner: Mira Vale | status: ready | asset: CF-2201"
+    compact_sentence = "Anna believes Jonas heard that Martin planned to revert PR-417."
+    temporal_record = "2026-04-02 08:00 Loom Finch state: draft."
+    field_dense = " | ".join(f"field{index}: value{index}" for index in range(10))
+    long_text = " ".join(f"token{index}" for index in range(90))
+
+    monkeypatch.delenv("KMD_CHUNK_DRS_STAGED_CONDITION_N_PREDICT", raising=False)
+
+    assert default_staged_chunk_drs_condition_n_predict(384) == 768
+    assert default_staged_chunk_drs_condition_n_predict(768, compact_record, 130) == 528
+    assert default_staged_chunk_drs_condition_n_predict(384, compact_sentence, 96) == 528
+    assert default_staged_chunk_drs_condition_n_predict(384, temporal_record, 96) == 768
+    assert default_staged_chunk_drs_condition_n_predict(768, field_dense, 256) == 768
+    assert default_staged_chunk_drs_condition_n_predict(768, long_text, 256) == 768
+
+    monkeypatch.setenv("KMD_CHUNK_DRS_STAGED_CONDITION_N_PREDICT", "640")
+    assert default_staged_chunk_drs_condition_n_predict(768, compact_record, 130) == 640
 
 
 def test_chunk_drs_dynamic_output_budget_for_short_chunks(monkeypatch) -> None:
