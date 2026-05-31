@@ -711,6 +711,37 @@ class KnowMoreDiRTEngine:
         ).fetchone()[0]
         if existing:
             return 0
+        if self._model_client is None:
+            return 0
+        frame_cache_context = chunk_frame_cache_context(self._model_client)
+        frame_cache_key = stable_id(
+            "frame_attempt_context",
+            json.dumps(frame_cache_context, sort_keys=True, default=str),
+        )
+        previous_attempt = self.store.execute(
+            """
+            SELECT accepted, materialized, reason
+            FROM model_attempts
+            WHERE run_id=? AND source_span_id=? AND task=? AND source=? AND cache_key=?
+            LIMIT 1
+            """,
+            (self.run_id, span_id, "chunk_frames", "local_model", frame_cache_key),
+        ).fetchone()
+        retry_failed = os.environ.get("KMD_FRAME_RETRY_FAILED_ATTEMPTS", "").strip().lower() in {
+            "1",
+            "true",
+            "yes",
+            "on",
+        }
+        if previous_attempt is not None and not retry_failed:
+            self._log_progress(
+                "kmd-answer lazy_frame previous_attempt "
+                f"{sentence.rel_path}:{sentence.order} "
+                f"accepted={bool(previous_attempt['accepted'])} "
+                f"materialized={bool(previous_attempt['materialized'])} "
+                f"reason={str(previous_attempt['reason'] or 'previous_attempt')}"
+            )
+            return 0
         model_frames, result = self._cached_or_fresh_chunk_frames(sentence)
         self._record_model_result(result)
         if result.get("prompt_hash"):
@@ -718,9 +749,8 @@ class KnowMoreDiRTEngine:
         if result.get("output_hash"):
             self.model_query_trace.response_hashes = [*list(self.model_query_trace.response_hashes or []), str(result["output_hash"])][-20:]
         self.model_query_trace.chunk_frame_call_count += 0 if result.get("source") in {"cache", "skipped_noise", "skipped_long_chunk", "disabled"} else 1
-        if not model_frames:
-            return 0
-        self.model_query_trace.chunk_frame_parsed_count += len(model_frames)
+        if model_frames:
+            self.model_query_trace.chunk_frame_parsed_count += len(model_frames)
         context_id = self._sentence_context_id(sentence)
         mentions_for_sentence = self._mentions_for_sentence(sentence)
         inserted = 0
@@ -915,6 +945,40 @@ class KnowMoreDiRTEngine:
                 )
             inserted += 1
         self.model_query_trace.chunk_frame_accepted_count += inserted
+        result_source = str(result.get("fresh_or_cached") or result.get("source") or "fresh")
+        accepted = bool(result.get("accepted")) if "accepted" in result else result_source == "cache"
+        self.store.execute(
+            """
+            INSERT OR REPLACE INTO model_attempts(
+              attempt_id, run_id, source_span_id, task, source, cache_key, accepted, materialized,
+              reason, prompt_hash, output_hash, elapsed, metadata_json
+            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+            """,
+            (
+                stable_id("attempt", self.run_id, span_id, "chunk_frames", "local_model", frame_cache_key),
+                self.run_id,
+                span_id,
+                "chunk_frames",
+                "local_model",
+                frame_cache_key,
+                int(accepted),
+                int(inserted > 0),
+                str(result.get("reason") or ""),
+                str(result.get("prompt_hash") or ""),
+                str(result.get("output_hash") or ""),
+                float(result.get("elapsed") or 0.0),
+                json.dumps(
+                    {
+                        "cache_context": frame_cache_context,
+                        "frame_count": len(model_frames),
+                        "inserted_frame_count": inserted,
+                        "result_source": result_source,
+                    },
+                    sort_keys=True,
+                    default=str,
+                ),
+            ),
+        )
         return inserted
 
     def _answer_with_model_query_evidence(self, question: str, expected_hint: ExpectedAnswer | None = None) -> Answer | None:

@@ -954,6 +954,7 @@ def _answer_values_from_frame(
     target_terms: list[str],
     relation_terms: list[str],
     answer_slot_terms: list[str] | None = None,
+    frame_type_material: str = "",
 ) -> list[str]:
     candidate_args = args
     if answer_slot_terms:
@@ -967,7 +968,21 @@ def _answer_values_from_frame(
         if slot_args:
             candidate_args = slot_args
         elif expected.answer_type not in {"content_phrase", "unknown"}:
-            return []
+            predicate_slot_material = normalize(
+                " ".join(
+                    [
+                        frame_type_material,
+                        str(frame_row.get("predicate") or ""),
+                        str(frame_row.get("trigger_surface") or ""),
+                    ]
+                )
+            )
+            if str(frame_row.get("source") or "") != "local_model" or not _contains_any(
+                predicate_slot_material,
+                answer_slot_terms,
+            ):
+                return []
+            candidate_args = []
     values = [str(arg.get("surface") or "") for arg in candidate_args]
     structural = expected.answer_type in {"url", "identifier", "file_path", "date_time", "count"}
     values = [
@@ -1090,6 +1105,7 @@ def _bind_frame_conditions(records: dict[str, Any], frame: QueryFrame, expected:
             target_terms,
             relation_terms,
             answer_slot_terms,
+            frame_type_material,
         ):
             candidates.append((score, value, evidence, "frame_argument_binding"))
     return candidates

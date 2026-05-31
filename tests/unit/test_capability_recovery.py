@@ -216,6 +216,56 @@ def test_local_model_ingest_caches_rejected_grounding_results(tmp_path: Path, mo
     assert second.store.execute("SELECT COUNT(*) FROM frames WHERE source='local_model'").fetchone()[0] == 0
 
 
+def test_lazy_frame_materialization_skips_previous_failed_attempts(tmp_path: Path, monkeypatch) -> None:
+    class RejectingFrameModel(FakeLocalModel):
+        def __init__(self) -> None:
+            self.prompts: list[str] = []
+
+        def complete_json(self, prompt: str, *, n_predict: int = 128, grammar: str | None = None) -> dict[str, object]:
+            self.prompts.append(prompt)
+            assert "Extract generic DRT/DSPG discourse frames" in prompt
+            return {
+                "frames": [
+                    {
+                        "frame_type": "relation",
+                        "predicate": "guards",
+                        "arguments": [{"role": "participant", "text": "Ungrounded Name", "value_type": "person"}],
+                        "identity_hypotheses": [],
+                        "polarity": "positive",
+                        "modality": "asserted",
+                        "context_holder": "",
+                        "temporal_text": "",
+                        "evidence_text": "Ungrounded evidence",
+                        "confidence": 0.9,
+                    }
+                ],
+                "_model_raw": "{}",
+            }
+
+    fake = RejectingFrameModel()
+    (tmp_path / "frame.raw").write_text("Marble Gate is guarded by Sena Rill.\n", encoding="utf-8")
+    monkeypatch.setenv("KMD_USE_LOCAL_MODEL", "0")
+    engine = KnowMoreDiRTEngine(tmp_path)
+    engine._model_client = fake
+    engine._semantic_cache = None
+    sentence = engine.sentences[0]
+
+    first = engine._materialize_sentence_semantics(sentence)
+    second = engine._materialize_sentence_semantics(sentence)
+
+    assert first == 0
+    assert second == 0
+    assert sum("Extract generic DRT/DSPG discourse frames" in prompt for prompt in fake.prompts) == 1
+    assert engine.store.execute("SELECT COUNT(*) FROM frames WHERE source='local_model'").fetchone()[0] == 0
+    attempt = engine.store.execute(
+        "SELECT accepted, materialized, reason FROM model_attempts WHERE task='chunk_frames'"
+    ).fetchone()
+    assert attempt is not None
+    assert bool(attempt["accepted"]) is False
+    assert bool(attempt["materialized"]) is False
+    assert attempt["reason"] == "grounding_validation_failed"
+
+
 def test_local_model_frame_arguments_bind_answer_variables_generically(tmp_path: Path, monkeypatch) -> None:
     fake = FakeFrameModel()
     (tmp_path / "frame.raw").write_text("Marble Gate is guarded by Sena Rill.\n", encoding="utf-8")
