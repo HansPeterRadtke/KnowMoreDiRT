@@ -877,14 +877,18 @@ class KnowMoreDiRTEngine:
                         self.store.execute(
                             """
                             INSERT OR IGNORE INTO identity_hypotheses(
-                              hypothesis_id, run_id, source_span_id, left_referent_id, right_referent_id,
+                              hypothesis_id, run_id, source_span_id, context_id, drs_box_id, box_external_id,
+                              left_referent_id, right_referent_id,
                               relation, evidence, confidence, source
-                            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+                            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
                             """,
                             (
                                 stable_id("idh", self.run_id, existing_referent_id, arg_referent_id, semantic_frame_id),
                                 self.run_id,
                                 span_id,
+                                semantic_context_id,
+                                None,
+                                None,
                                 existing_referent_id,
                                 arg_referent_id,
                                 "same_surface",
@@ -908,14 +912,18 @@ class KnowMoreDiRTEngine:
                 self.store.execute(
                     """
                     INSERT OR IGNORE INTO identity_hypotheses(
-                      hypothesis_id, run_id, source_span_id, left_referent_id, right_referent_id,
+                      hypothesis_id, run_id, source_span_id, context_id, drs_box_id, box_external_id,
+                      left_referent_id, right_referent_id,
                       relation, evidence, confidence, source
-                    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+                    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
                     """,
                     (
                         stable_id("idh", self.run_id, semantic_frame_id, "model_identity", hypothesis_index, left_text, right_text),
                         self.run_id,
                         span_id,
+                        semantic_context_id,
+                        None,
+                        None,
                         left_ref,
                         right_ref,
                         str(hypothesis.get("relation") or "same_referent").strip() or "same_referent",

@@ -62,7 +62,7 @@ CHUNK_FRAME_SCHEMA_VERSION = "chunk-frames-v5"
 CHUNK_DRS_SCHEMA_VERSION = "chunk-drs-v2"
 CHUNK_DRS_STAGED_FALLBACK_POLICY = "retry-invalid-json-schema-grounding-staged-temporal-scope-v3"
 CHUNK_DRS_GROUNDING_REPAIR_POLICY = "model-label-value-escaped-evidence-span-v3"
-CHUNK_DRS_IDENTITY_PROVENANCE_POLICY = "identity-evidence-bilateral-surface-v1"
+CHUNK_DRS_IDENTITY_PROVENANCE_POLICY = "identity-evidence-bilateral-surface-box-scope-v2"
 CHUNK_DRS_TEMPORAL_PROVENANCE_POLICY = "condition-stage-declared-temporal-records-v2"
 CHUNK_DRS_SPARSE_RETRY_POLICY = "retry-validated-sparse-drs-staged-v2"
 CHUNK_DRS_STRUCTURE_VALIDATION_POLICY = "single-root-acyclic-box-parent-condition-arguments-v4"
@@ -804,6 +804,7 @@ DRS_IDENTITY_JSON_SCHEMA = _schema_obj(
     {
         "left_referent_id": STRING_SCHEMA,
         "right_referent_id": STRING_SCHEMA,
+        "box_id": STRING_SCHEMA,
         "status": _schema_enum(DRS_IDENTITY_STATUSES),
         "evidence_text": STRING_SCHEMA,
         "confidence": NUMBER_SCHEMA,
@@ -930,6 +931,7 @@ def chunk_drs_json_schema(
         }
         identity_schema["properties"]["left_referent_id"] = {"type": "string", "enum": referent_ids}
         identity_schema["properties"]["right_referent_id"] = {"type": "string", "enum": referent_ids}
+        identity_schema["properties"]["box_id"] = {"type": "string", "enum": ["", *box_ids]}
         temporal_schema["properties"]["id"] = {"type": "string", "enum": temporal_ids}
     if evidence_text_values:
         evidence_values = list(dict.fromkeys(str(value) for value in evidence_text_values))
@@ -2882,7 +2884,9 @@ def build_chunk_drs_prompt(chunk_text: str, *, rel_path: str = "", context_budge
         "target_kind referent, box, or condition must match an id declared in the corresponding array. If a grounded "
         "participant has no declared id, declare it first or use target_kind literal or unknown; never emit undeclared "
         "ids. Identity hypotheses must reference declared distinct referents and should be [] unless the source "
-        "explicitly supports an identity, alias, or coreference link. Use temporal_records only for explicit "
+        "explicitly supports an identity, alias, or coreference link. When an identity belongs inside a subordinate "
+        "DRS context, put that context's declared box id in the hypothesis box_id; use box_id '' only for the root "
+        "asserted DRS. Use temporal_records only for explicit "
         "source-grounded temporal or ordering phrases; otherwise temporal_id must be ''. "
         "For compact records, key/value lists, JSON-like objects, TSV/CSV rows, and log entries, still emit "
         "grounded DRS conditions for visible source-supported field/value or row structure; do not leave "
@@ -3216,6 +3220,9 @@ def _validate_chunk_drs_payload(payload: Any, source_text: str) -> dict[str, Any
             errors.append(f"missing_identity_left:{left_id}")
         if right_id not in referent_ids:
             errors.append(f"missing_identity_right:{right_id}")
+        box_id = str(item.get("box_id") or "")
+        if box_id and box_id not in box_ids:
+            errors.append(f"missing_identity_box:{left_id}:{right_id}->{box_id}")
         if str(item.get("status") or "") not in DRS_IDENTITY_STATUSES:
             errors.append(f"bad_identity_status:{item.get('status')}")
         check_span(item.get("evidence_text"), f"identity:{left_id}:{right_id}")

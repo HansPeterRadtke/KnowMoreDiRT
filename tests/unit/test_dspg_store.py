@@ -1128,6 +1128,286 @@ def test_identity_expanded_retrieval_respects_reported_scope_against_asserted_st
     assert "cb-44" in reported_diagnostics["ranking"]["identity_expanded_target_terms"]
 
 
+def test_scattered_reported_identity_does_not_leak_into_unscoped_merge(
+    tmp_path: Path,
+    monkeypatch,
+) -> None:
+    (tmp_path / "begin").mkdir()
+    (tmp_path / "middle").mkdir()
+    (tmp_path / "ending").mkdir()
+    (tmp_path / "begin" / "registry.txt").write_text(
+        "Registry introduces North Lantern as the sealed device.",
+        encoding="utf-8",
+    )
+    (tmp_path / "middle" / "status.txt").write_text(
+        "Middle status board says NL-7 status is armed.",
+        encoding="utf-8",
+    )
+    (tmp_path / "ending" / "reported_crosswalk.txt").write_text(
+        "Iris Vale reports that NL-7 is North Lantern and NL-7 status is blue.",
+        encoding="utf-8",
+    )
+
+    class ReportedIdentityModel:
+        def context_size(self) -> int:
+            return 4096
+
+        def cache_fingerprint(self) -> dict[str, object]:
+            return {"model_id": "fake-reported-identity-scope", "context_size": 4096}
+
+        def complete_json(self, prompt: str, *, n_predict: int = 128, grammar=None, json_schema=None):
+            if "Registry introduces" in prompt:
+                text = "Registry introduces North Lantern as the sealed device."
+                referents = [
+                    {"id": "r0", "label": "North Lantern", "kind": "artifact", "evidence_text": "North Lantern"}
+                ]
+                conditions = [
+                    {
+                        "id": "c0",
+                        "predicate": "introduces",
+                        "box_id": "b0",
+                        "polarity": "positive",
+                        "modality": "asserted",
+                        "temporal_id": "",
+                        "arguments": [
+                            {
+                                "role": "object",
+                                "target_kind": "referent",
+                                "target_id": "r0",
+                                "value": "",
+                                "value_type": "artifact",
+                                "evidence_text": "North Lantern",
+                            }
+                        ],
+                        "evidence_text": text,
+                    }
+                ]
+                boxes = [
+                    {"id": "b0", "kind": "asserted", "parent_id": "", "holder_referent_id": "", "evidence_text": text}
+                ]
+                identities = []
+                temporals = []
+                source_id = "begin/registry.txt"
+            elif "Middle status board" in prompt:
+                text = "Middle status board says NL-7 status is armed."
+                referents = [{"id": "r0", "label": "NL-7", "kind": "identifier", "evidence_text": "NL-7"}]
+                conditions = [
+                    {
+                        "id": "c0",
+                        "predicate": "status",
+                        "box_id": "b0",
+                        "polarity": "positive",
+                        "modality": "asserted",
+                        "temporal_id": "",
+                        "arguments": [
+                            {
+                                "role": "subject",
+                                "target_kind": "referent",
+                                "target_id": "r0",
+                                "value": "",
+                                "value_type": "identifier",
+                                "evidence_text": "NL-7",
+                            },
+                            {
+                                "role": "state",
+                                "target_kind": "literal",
+                                "target_id": "",
+                                "value": "armed",
+                                "value_type": "state",
+                                "evidence_text": "armed",
+                            },
+                        ],
+                        "evidence_text": "NL-7 status is armed",
+                    }
+                ]
+                boxes = [
+                    {"id": "b0", "kind": "asserted", "parent_id": "", "holder_referent_id": "", "evidence_text": text}
+                ]
+                identities = []
+                temporals = []
+                source_id = "middle/status.txt"
+            else:
+                text = "Iris Vale reports that NL-7 is North Lantern and NL-7 status is blue."
+                reported = "NL-7 is North Lantern and NL-7 status is blue"
+                referents = [
+                    {"id": "r0", "label": "Iris Vale", "kind": "person", "evidence_text": "Iris Vale"},
+                    {"id": "r1", "label": "NL-7", "kind": "identifier", "evidence_text": "NL-7"},
+                    {"id": "r2", "label": "North Lantern", "kind": "artifact", "evidence_text": "North Lantern"},
+                ]
+                boxes = [
+                    {"id": "b0", "kind": "asserted", "parent_id": "", "holder_referent_id": "", "evidence_text": text},
+                    {
+                        "id": "b1",
+                        "kind": "reported",
+                        "parent_id": "b0",
+                        "holder_referent_id": "r0",
+                        "evidence_text": reported,
+                    },
+                ]
+                conditions = [
+                    {
+                        "id": "c0",
+                        "predicate": "report",
+                        "box_id": "b0",
+                        "polarity": "positive",
+                        "modality": "asserted",
+                        "temporal_id": "",
+                        "arguments": [
+                            {
+                                "role": "speaker",
+                                "target_kind": "referent",
+                                "target_id": "r0",
+                                "value": "",
+                                "value_type": "person",
+                                "evidence_text": "Iris Vale",
+                            },
+                            {
+                                "role": "content",
+                                "target_kind": "box",
+                                "target_id": "b1",
+                                "value": "",
+                                "value_type": "box",
+                                "evidence_text": reported,
+                            },
+                        ],
+                        "evidence_text": text,
+                    },
+                    {
+                        "id": "c1",
+                        "predicate": "same_artifact",
+                        "box_id": "b1",
+                        "polarity": "positive",
+                        "modality": "asserted",
+                        "temporal_id": "",
+                        "arguments": [
+                            {
+                                "role": "left",
+                                "target_kind": "referent",
+                                "target_id": "r1",
+                                "value": "",
+                                "value_type": "identifier",
+                                "evidence_text": "NL-7",
+                            },
+                            {
+                                "role": "right",
+                                "target_kind": "referent",
+                                "target_id": "r2",
+                                "value": "",
+                                "value_type": "artifact",
+                                "evidence_text": "North Lantern",
+                            },
+                        ],
+                        "evidence_text": "NL-7 is North Lantern",
+                    },
+                    {
+                        "id": "c2",
+                        "predicate": "status",
+                        "box_id": "b1",
+                        "polarity": "positive",
+                        "modality": "asserted",
+                        "temporal_id": "",
+                        "arguments": [
+                            {
+                                "role": "subject",
+                                "target_kind": "referent",
+                                "target_id": "r1",
+                                "value": "",
+                                "value_type": "identifier",
+                                "evidence_text": "NL-7",
+                            },
+                            {
+                                "role": "state",
+                                "target_kind": "literal",
+                                "target_id": "",
+                                "value": "blue",
+                                "value_type": "state",
+                                "evidence_text": "blue",
+                            },
+                        ],
+                        "evidence_text": "NL-7 status is blue",
+                    },
+                ]
+                identities = [
+                    {
+                        "left_referent_id": "r1",
+                        "right_referent_id": "r2",
+                        "box_id": "b1",
+                        "status": "accepted",
+                        "evidence_text": "NL-7 is North Lantern",
+                        "confidence": 0.93,
+                    }
+                ]
+                temporals = []
+                source_id = "ending/reported_crosswalk.txt"
+            return {
+                "drs": {
+                    "schema_version": "chunk-drs-v2",
+                    "source_id": source_id,
+                    "referents": referents,
+                    "boxes": boxes,
+                    "conditions": conditions,
+                    "identity_hypotheses": identities,
+                    "temporal_records": temporals,
+                },
+                "_model_raw": "{}",
+                "_model_elapsed_seconds": 0.01,
+            }
+
+    monkeypatch.setenv("KMD_CHUNK_DRS_CACHE_DIR", str(tmp_path / ".drs-cache"))
+    store, run_id, documents, sentences = ingest_folder(
+        tmp_path,
+        semantic_client=ReportedIdentityModel(),  # type: ignore[arg-type]
+        use_semantic_frames=False,
+        use_drs_semantics=True,
+    )
+    sentences_by_document: dict[str, dict[int, object]] = {}
+    for sentence in sentences:
+        sentences_by_document.setdefault(sentence.rel_path, {})[sentence.order] = sentence
+    unscoped_frame = QueryFrame(
+        question_text="What status is recorded for North Lantern?",
+        answer_type="state",
+        answer_variables=("state",),
+        target_anchors=("North Lantern",),
+        requested_relation="status",
+        relation_terms=("status",),
+        constraints=(),
+    )
+    reported_frame = QueryFrame(
+        question_text="What status did Iris Vale report for North Lantern?",
+        answer_type="state",
+        answer_variables=("state",),
+        target_anchors=("North Lantern",),
+        requested_relation="status",
+        relation_terms=("status",),
+        constraints=(),
+        scope_requirements=("reported",),
+    )
+
+    unscoped_answer, unscoped_diagnostics = execute_bounded_query(
+        store,
+        run_id,
+        documents,
+        sentences_by_document,  # type: ignore[arg-type]
+        unscoped_frame.question_text,
+        unscoped_frame,
+    )
+    reported_answer, reported_diagnostics = execute_bounded_query(
+        store,
+        run_id,
+        documents,
+        sentences_by_document,  # type: ignore[arg-type]
+        reported_frame.question_text,
+        reported_frame,
+    )
+
+    assert unscoped_answer is None
+    assert "nl-7" not in unscoped_diagnostics["ranking"].get("identity_expanded_target_terms", [])
+    assert reported_answer is not None
+    assert reported_answer.text == "blue"
+    assert reported_answer.evidence[0].rel_path == "ending/reported_crosswalk.txt"
+    assert "nl-7" in reported_diagnostics["ranking"]["identity_expanded_target_terms"]
+
+
 def test_scattered_identity_conflict_returns_unknown_with_source_provenance(
     tmp_path: Path,
     monkeypatch,

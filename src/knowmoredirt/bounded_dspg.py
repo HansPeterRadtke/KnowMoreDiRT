@@ -447,11 +447,28 @@ def _context_requested_by_relation(context_id: str, records: dict[str, Any], fra
     return _context_satisfies_terms(context_id, records, [requested], require_all=False)
 
 
+def _identity_context_accessible(context_id: str, records: dict[str, Any], frame: QueryFrame | None) -> bool:
+    if frame is None or not context_id:
+        return True
+    chain = _context_chain(context_id, records)
+    if not chain:
+        return True
+    for context in chain:
+        kind = normalize(str(context.get("kind") or "asserted"))
+        if kind and kind not in {"asserted", "drs:asserted"}:
+            return _context_accessible(context_id, records, frame)
+    return True
+
+
 def _referents_by_id(records: dict[str, Any]) -> dict[str, dict[str, Any]]:
     return _indexed_rows(records, "referents_by_id", "referents", "referent_id")
 
 
-def _identity_expanded_terms(records: dict[str, Any], terms: list[str]) -> list[str]:
+def _identity_expanded_terms(
+    records: dict[str, Any],
+    terms: list[str],
+    frame: QueryFrame | None = None,
+) -> list[str]:
     if not terms:
         return []
     referents = _referents_by_id(records)
@@ -481,6 +498,9 @@ def _identity_expanded_terms(records: dict[str, Any], terms: list[str]) -> list[
         next_frontier: set[str] = set()
         for hypothesis in records.get("identity_hypotheses", []):
             if not identity_relation_allows_expansion(str(hypothesis.get("relation") or "")):
+                continue
+            context_id = str(hypothesis.get("context_id") or "")
+            if not _identity_context_accessible(context_id, records, frame):
                 continue
             left = str(hypothesis.get("left_referent_id") or "")
             right = str(hypothesis.get("right_referent_id") or "")
@@ -1538,7 +1558,7 @@ def execute_bounded_query(
     identity_expanded_terms: list[str] = []
     identity_expansion_rounds = 0
     for _round in range(3):
-        identity_terms = _identity_expanded_terms(records, target_terms)
+        identity_terms = _identity_expanded_terms(records, target_terms, frame)
         new_identity_terms = [term for term in identity_terms if term and term not in target_terms]
         if not new_identity_terms:
             break

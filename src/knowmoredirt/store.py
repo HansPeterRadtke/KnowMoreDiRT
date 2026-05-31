@@ -32,7 +32,7 @@ DRS_CONTEXT_KINDS = {
     "dreamed",
 }
 DRS_POLARITIES = {"positive", "negative", "unknown"}
-SCHEMA_VERSION = 8
+SCHEMA_VERSION = 9
 IDENTITY_EXPANSION_RELATIONS = {"accepted", "same_referent", "same_surface", "alias", "coreference", "coreferent"}
 
 
@@ -145,6 +145,9 @@ class DSPGStore:
               hypothesis_id TEXT PRIMARY KEY,
               run_id TEXT NOT NULL,
               source_span_id TEXT,
+              context_id TEXT,
+              drs_box_id TEXT,
+              box_external_id TEXT,
               left_referent_id TEXT NOT NULL,
               right_referent_id TEXT NOT NULL,
               relation TEXT NOT NULL,
@@ -294,6 +297,9 @@ class DSPGStore:
               drs_hypothesis_id TEXT PRIMARY KEY,
               run_id TEXT NOT NULL,
               source_span_id TEXT NOT NULL,
+              context_id TEXT,
+              box_id TEXT,
+              box_external_id TEXT,
               left_external_referent_id TEXT NOT NULL,
               right_external_referent_id TEXT NOT NULL,
               left_referent_id TEXT NOT NULL,
@@ -370,6 +376,12 @@ class DSPGStore:
         for statement in statements:
             self.connection.execute(statement)
         self._ensure_column("identity_hypotheses", "source_span_id", "TEXT")
+        self._ensure_column("identity_hypotheses", "context_id", "TEXT")
+        self._ensure_column("identity_hypotheses", "drs_box_id", "TEXT")
+        self._ensure_column("identity_hypotheses", "box_external_id", "TEXT")
+        self._ensure_column("drs_identity_hypotheses", "context_id", "TEXT")
+        self._ensure_column("drs_identity_hypotheses", "box_id", "TEXT")
+        self._ensure_column("drs_identity_hypotheses", "box_external_id", "TEXT")
         if create_indexes:
             self.create_indexes()
         self.connection.execute(
@@ -393,6 +405,7 @@ class DSPGStore:
             "CREATE INDEX IF NOT EXISTS idx_mentions_entity ON mentions(entity_type)",
             "CREATE INDEX IF NOT EXISTS idx_referents_label ON referents(canonical_label_norm)",
             "CREATE INDEX IF NOT EXISTS idx_identity_span ON identity_hypotheses(run_id, source_span_id)",
+            "CREATE INDEX IF NOT EXISTS idx_identity_context ON identity_hypotheses(context_id)",
             "CREATE INDEX IF NOT EXISTS idx_identity_left ON identity_hypotheses(left_referent_id)",
             "CREATE INDEX IF NOT EXISTS idx_identity_right ON identity_hypotheses(right_referent_id)",
             "CREATE INDEX IF NOT EXISTS idx_context_kind ON contexts(kind)",
@@ -411,6 +424,7 @@ class DSPGStore:
             "CREATE INDEX IF NOT EXISTS idx_drs_args_ref ON drs_condition_arguments(referent_id)",
             "CREATE INDEX IF NOT EXISTS idx_drs_identity_left ON drs_identity_hypotheses(left_referent_id)",
             "CREATE INDEX IF NOT EXISTS idx_drs_identity_right ON drs_identity_hypotheses(right_referent_id)",
+            "CREATE INDEX IF NOT EXISTS idx_drs_identity_context ON drs_identity_hypotheses(context_id)",
             "CREATE INDEX IF NOT EXISTS idx_temporal_ref ON temporal_edges(referent_id)",
             "CREATE INDEX IF NOT EXISTS idx_temporal_relation ON temporal_edges(relation)",
             "CREATE INDEX IF NOT EXISTS idx_temporal_value ON temporal_edges(temporal_value)",
@@ -771,10 +785,13 @@ class DSPGStore:
         for item in identities:
             left_id = text_value(item, "left_referent_id")
             right_id = text_value(item, "right_referent_id")
+            identity_box_id = text_value(item, "box_id")
             if left_id not in referent_ids:
                 errors.append(f"missing_identity_left:{left_id}")
             if right_id not in referent_ids:
                 errors.append(f"missing_identity_right:{right_id}")
+            if identity_box_id and identity_box_id not in box_ids:
+                errors.append(f"missing_identity_box:{left_id}:{right_id}->{identity_box_id}")
             evidence = text_value(item, "evidence_text")
             if left_id and right_id and left_id != right_id:
                 left_surfaces = [
@@ -879,6 +896,11 @@ class DSPGStore:
         external_to_box: dict[str, str] = {}
         external_to_context: dict[str, str] = {}
         external_to_box_evidence: dict[str, str] = {}
+        root_asserted_box_ids = [
+            text_value(item, "id")
+            for item in boxes
+            if text_value(item, "kind") == "asserted" and not text_value(item, "parent_id")
+        ]
         for item in boxes:
             external_id = text_value(item, "id")
             kind = text_value(item, "kind") or "asserted"
@@ -1122,18 +1144,35 @@ class DSPGStore:
             relation = text_value(item, "status") or text_value(item, "relation") or "candidate"
             evidence = text_value(item, "evidence_text")
             conf = confidence(item.get("confidence"), 0.65)
+            identity_box_external = text_value(item, "box_id")
+            if not identity_box_external and evidence:
+                matching_condition_boxes = [
+                    text_value(condition, "box_id")
+                    for condition in conditions
+                    if text_value(condition, "evidence_text") == evidence and text_value(condition, "box_id")
+                ]
+                if len(set(matching_condition_boxes)) == 1:
+                    identity_box_external = matching_condition_boxes[0]
+            if not identity_box_external and len(root_asserted_box_ids) == 1:
+                identity_box_external = root_asserted_box_ids[0]
+            identity_context_id = external_to_context.get(identity_box_external)
+            identity_drs_box_id = external_to_box.get(identity_box_external)
             drs_hypothesis_id = stable_id("drsidh", run_id, source_span_id, index, left_external, right_external, relation, evidence)
             self.connection.execute(
                 """
                 INSERT OR IGNORE INTO drs_identity_hypotheses(
-                  drs_hypothesis_id, run_id, source_span_id, left_external_referent_id, right_external_referent_id,
+                  drs_hypothesis_id, run_id, source_span_id, context_id, box_id, box_external_id,
+                  left_external_referent_id, right_external_referent_id,
                   left_referent_id, right_referent_id, relation, evidence_surface, confidence, source, metadata_json
-                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
                 """,
                 (
                     drs_hypothesis_id,
                     run_id,
                     source_span_id,
+                    identity_context_id,
+                    identity_drs_box_id,
+                    identity_box_external or None,
                     left_external,
                     right_external,
                     left_ref,
@@ -1149,13 +1188,17 @@ class DSPGStore:
                 self.connection.execute(
                     """
                     INSERT OR IGNORE INTO identity_hypotheses(
-                      hypothesis_id, run_id, source_span_id, left_referent_id, right_referent_id, relation, evidence, confidence, source
-                    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+                      hypothesis_id, run_id, source_span_id, context_id, drs_box_id, box_external_id,
+                      left_referent_id, right_referent_id, relation, evidence, confidence, source
+                    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
                     """,
                     (
                         stable_id("idh", run_id, source_span_id, "drs", left_external, right_external, relation, evidence),
                         run_id,
                         source_span_id,
+                        identity_context_id,
+                        identity_drs_box_id,
+                        identity_box_external or None,
                         left_ref,
                         right_ref,
                         relation,
