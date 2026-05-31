@@ -81,6 +81,7 @@ CHUNK_DRS_STAGED_FIRST_POLICY = "field-like-source-spans-before-monolithic-v1"
 QUERY_DRS_SCHEMA_VERSION = "query-drs-v3"
 QUERY_DRS_VALIDATION_POLICY = "strict-query-drs-version-question-evidence-box-dag-repair-v9"
 QUERY_DRS_ARRAY_CAP_POLICY = "reserved_output_tokens_div_96_4_8-v1"
+QUERY_DRS_DYNAMIC_OUTPUT_BUDGET_POLICY = "surface-token-budget-short384-mid512-long-context-v1"
 QUERY_FRAME_SCHEMA_VERSION = "query-frame-v4"
 ANSWER_SCHEMA_VERSION = "answer-v4"
 
@@ -174,7 +175,7 @@ def default_chunk_drs_n_predict(client: LocalModelClient | None = None, chunk_te
     return min(max(base, 768), 768)
 
 
-def default_query_drs_n_predict(client: LocalModelClient | None = None) -> int:
+def default_query_drs_n_predict(client: LocalModelClient | None = None, question: str = "") -> int:
     configured = os.environ.get("KMD_QUERY_DRS_N_PREDICT")
     if configured:
         try:
@@ -182,9 +183,16 @@ def default_query_drs_n_predict(client: LocalModelClient | None = None) -> int:
         except ValueError:
             pass
     context_size = _client_context_size(client)
-    if context_size > 0:
-        return max(256, min(768, context_size // 48))
-    return 256
+    if context_size <= 0:
+        return 256
+    context_budget = max(256, min(768, context_size // 48))
+    token_count = len(content_tokens(question))
+    anchor_count = len(visible_anchors(question))
+    if question and token_count <= 14 and anchor_count <= 3:
+        return min(context_budget, 384)
+    if question and token_count <= 32 and anchor_count <= 6:
+        return min(context_budget, 512)
+    return context_budget
 
 
 ANSWER_TYPE_ALIASES = {
@@ -1986,7 +1994,7 @@ def _validate_query_drs_payload(payload: Any, question: str) -> dict[str, Any]:
 
 def call_model_query_drs(question: str, client: LocalModelClient, *, n_predict: int | None = None) -> dict[str, Any]:
     if n_predict is None:
-        n_predict = default_query_drs_n_predict(client)
+        n_predict = default_query_drs_n_predict(client, question)
     prompt = build_query_drs_prompt(question)
     max_array_items = query_drs_array_max_items(n_predict)
     json_schema = query_drs_json_schema(question, max_array_items=max_array_items)
@@ -2000,6 +2008,7 @@ def call_model_query_drs(question: str, client: LocalModelClient, *, n_predict: 
             "schema": QUERY_DRS_SCHEMA_VERSION,
             "validation_policy": QUERY_DRS_VALIDATION_POLICY,
             "array_cap_policy": QUERY_DRS_ARRAY_CAP_POLICY,
+            "output_budget_policy": QUERY_DRS_DYNAMIC_OUTPUT_BUDGET_POLICY,
             "max_array_items": max_array_items,
             **constraint,
         },
@@ -2028,6 +2037,7 @@ def call_model_query_drs(question: str, client: LocalModelClient, *, n_predict: 
             **constraint,
             "validation_policy": QUERY_DRS_VALIDATION_POLICY,
             "array_cap_policy": QUERY_DRS_ARRAY_CAP_POLICY,
+            "output_budget_policy": QUERY_DRS_DYNAMIC_OUTPUT_BUDGET_POLICY,
             "max_array_items": max_array_items,
             "elapsed": round(time.time() - start, 3),
         }
@@ -2042,6 +2052,7 @@ def call_model_query_drs(question: str, client: LocalModelClient, *, n_predict: 
             **constraint,
             "validation_policy": QUERY_DRS_VALIDATION_POLICY,
             "array_cap_policy": QUERY_DRS_ARRAY_CAP_POLICY,
+            "output_budget_policy": QUERY_DRS_DYNAMIC_OUTPUT_BUDGET_POLICY,
             "max_array_items": max_array_items,
             "elapsed": round(time.time() - start, 3),
         }
@@ -2057,6 +2068,7 @@ def call_model_query_drs(question: str, client: LocalModelClient, *, n_predict: 
             **constraint,
             "validation_policy": QUERY_DRS_VALIDATION_POLICY,
             "array_cap_policy": QUERY_DRS_ARRAY_CAP_POLICY,
+            "output_budget_policy": QUERY_DRS_DYNAMIC_OUTPUT_BUDGET_POLICY,
             "max_array_items": max_array_items,
             "elapsed": parsed.get("_model_elapsed_seconds", round(time.time() - start, 3)),
             "validation": validation,
@@ -2072,6 +2084,7 @@ def call_model_query_drs(question: str, client: LocalModelClient, *, n_predict: 
         **constraint,
         "validation_policy": QUERY_DRS_VALIDATION_POLICY,
         "array_cap_policy": QUERY_DRS_ARRAY_CAP_POLICY,
+        "output_budget_policy": QUERY_DRS_DYNAMIC_OUTPUT_BUDGET_POLICY,
         "max_array_items": max_array_items,
         "validation": validation,
         "output_hash": hashlib.sha256(raw.encode()).hexdigest(),

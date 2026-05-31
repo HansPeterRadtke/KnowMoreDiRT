@@ -7,12 +7,14 @@ from knowmoredirt.model import LocalModelClient, LocalModelJSONError
 from knowmoredirt.model_planner import (
     CHUNK_DRS_IDENTITY_PROVENANCE_POLICY,
     CHUNK_DRS_TEMPORAL_PROVENANCE_POLICY,
+    QUERY_DRS_DYNAMIC_OUTPUT_BUDGET_POLICY,
     build_answer_verification_prompt,
     call_model_chunk_drs,
     call_model_chunk_frames,
     call_model_query_drs,
     chunk_drs_cache_context,
     chunk_drs_json_schema,
+    default_query_drs_n_predict,
     query_drs_array_max_items,
     query_frame_from_query_drs,
 )
@@ -505,6 +507,84 @@ def test_query_drs_planner_uses_json_schema(monkeypatch, tmp_path) -> None:
         == query_drs_array_max_items(256)
     )
     assert "generic DRT query DRS" in model.prompt
+
+
+def test_short_query_drs_uses_smaller_surface_budget(monkeypatch, tmp_path) -> None:
+    class LargeContextQueryModel:
+        def __init__(self) -> None:
+            self.n_predict = 0
+            self.json_schema: dict[str, Any] | None = None
+
+        def context_size(self) -> int:
+            return 32768
+
+        def cache_fingerprint(self) -> dict[str, Any]:
+            return {"model_id": "fake-large-context-query-drs", "context_size": 32768}
+
+        def complete_json(
+            self,
+            prompt: str,
+            *,
+            n_predict: int = 128,
+            grammar: str | None = None,
+            json_schema: dict[str, Any] | None = None,
+        ) -> dict[str, object]:
+            self.n_predict = n_predict
+            self.json_schema = json_schema
+            assert grammar is None
+            return {
+                "query_drs": {
+                    "schema_version": "query-drs-v3",
+                    "question": "Who reviewed Aero Gate?",
+                    "answer_variables": ["reviewer"],
+                    "target_referents": [
+                        {"id": "qr0", "label": "Aero Gate", "kind": "entity", "evidence_text": "Aero Gate"}
+                    ],
+                    "requested_conditions": [
+                        {
+                            "id": "qc0",
+                            "predicate": "reviewed",
+                            "box_id": "",
+                            "polarity": "positive",
+                            "modality": "asserted",
+                            "temporal_id": "",
+                            "arguments": [
+                                {
+                                    "role": "object",
+                                    "target_kind": "referent",
+                                    "target_id": "qr0",
+                                    "value": "Aero Gate",
+                                    "value_type": "entity",
+                                    "evidence_text": "Aero Gate",
+                                }
+                            ],
+                            "evidence_text": "reviewed Aero Gate",
+                        }
+                    ],
+                    "constraints": [],
+                    "box_requirements": [],
+                    "temporal_scope": "",
+                    "aggregation": "",
+                    "answer_type": "person",
+                    "requires_evidence": True,
+                },
+                "_model_raw": "{}",
+                "_model_elapsed_seconds": 0.01,
+            }
+
+    monkeypatch.delenv("KMD_LOCAL_MODEL_JSON_SCHEMA", raising=False)
+    monkeypatch.setenv("KMD_QUERY_DRS_CACHE_DIR", str(tmp_path / "query-drs-cache"))
+    model = LargeContextQueryModel()
+
+    assert default_query_drs_n_predict(model, "Who reviewed Aero Gate?") == 384  # type: ignore[arg-type]
+    result = call_model_query_drs("Who reviewed Aero Gate?", model)  # type: ignore[arg-type]
+
+    assert result["accepted"] is True
+    assert result["output_budget_policy"] == QUERY_DRS_DYNAMIC_OUTPUT_BUDGET_POLICY
+    assert model.n_predict == 384
+    assert model.json_schema is not None
+    query_schema = model.json_schema["properties"]["query_drs"]
+    assert query_schema["properties"]["requested_conditions"]["maxItems"] == query_drs_array_max_items(384)
 
 
 def test_query_drs_request_failure_does_not_poison_cache(monkeypatch, tmp_path) -> None:
