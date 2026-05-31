@@ -732,6 +732,27 @@ def ingest_folder(
 
         if use_semantic_frames and semantic_client is not None:
             semantic_index += 1
+            existing_frames = store.execute(
+                """
+                SELECT COUNT(*)
+                FROM frames
+                WHERE run_id=? AND span_id=? AND source='local_model'
+                """,
+                (run_id, span_id),
+            ).fetchone()[0]
+            if existing_frames:
+                _log_progress(
+                    "kmd-ingest llm_done "
+                    f"chunk={semantic_index}/{semantic_total} "
+                    f"source={sentence.rel_path}:{sentence.order} "
+                    "result=already_materialized "
+                    "accepted=True "
+                    "reason=already_materialized "
+                    f"frames={int(existing_frames)} "
+                    "model_elapsed=0.0 "
+                    f"elapsed={time.monotonic() - ingest_started:.1f}s"
+                )
+                continue
             _log_progress(
                 "kmd-ingest llm_start "
                 f"chunk={semantic_index}/{semantic_total} "

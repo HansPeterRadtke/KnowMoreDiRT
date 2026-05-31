@@ -1301,6 +1301,68 @@ def test_incremental_drs_ingest_reuses_existing_materialized_chunks(tmp_path: Pa
     assert store.counts()["drs_conditions"] == 1
 
 
+def test_incremental_frame_ingest_reuses_existing_materialized_chunks(tmp_path: Path) -> None:
+    (tmp_path / "note.txt").write_text("Aero Gate is ready.\n", encoding="utf-8")
+
+    class CountingFrameModel:
+        def __init__(self) -> None:
+            self.calls = 0
+
+        def context_size(self) -> int:
+            return 4096
+
+        def cache_fingerprint(self) -> dict[str, object]:
+            return {"model_id": "fake-incremental-frames", "context_size": 4096}
+
+        def complete_json(self, prompt: str, *, n_predict: int = 128, grammar=None, json_schema=None):
+            self.calls += 1
+            assert "Aero Gate is ready" in prompt
+            return {
+                "frames": [
+                    {
+                        "frame_type": "state",
+                        "predicate": "ready",
+                        "arguments": [
+                            {"role": "entity", "text": "Aero Gate", "value_type": "entity"},
+                        ],
+                        "identity_hypotheses": [],
+                        "polarity": "positive",
+                        "modality": "asserted",
+                        "context_holder": "",
+                        "temporal_text": "",
+                        "evidence_text": "Aero Gate is ready.",
+                        "confidence": 0.9,
+                    }
+                ],
+                "_model_raw": "{}",
+                "_model_elapsed_seconds": 0.01,
+            }
+
+    model = CountingFrameModel()
+    store = DSPGStore()
+
+    store, first_run_id, _, _ = ingest_folder(
+        tmp_path,
+        store=store,
+        semantic_client=model,
+        use_semantic_frames=True,
+        use_drs_semantics=False,
+    )
+    calls_after_first_ingest = model.calls
+    store, second_run_id, _, _ = ingest_folder(
+        tmp_path,
+        store=store,
+        semantic_client=model,
+        use_semantic_frames=True,
+        use_drs_semantics=False,
+    )
+
+    assert first_run_id == second_run_id
+    assert calls_after_first_ingest == 1
+    assert model.calls == calls_after_first_ingest
+    assert store.execute("SELECT COUNT(*) FROM frames WHERE source='local_model'").fetchone()[0] == 1
+
+
 def test_temporal_query_drs_uses_latest_temporal_edge(tmp_path: Path) -> None:
     (tmp_path / "random_blob").write_text(
         "\n".join(
