@@ -33,11 +33,16 @@ DRS_CONTEXT_KINDS = {
 }
 DRS_POLARITIES = {"positive", "negative", "unknown"}
 SCHEMA_VERSION = 8
+IDENTITY_EXPANSION_RELATIONS = {"accepted", "same_referent", "same_surface", "alias", "coreference", "coreferent"}
 
 
 def stable_id(prefix: str, *parts: Any) -> str:
     material = "\x1f".join(str(part) for part in parts)
     return f"{prefix}_{hashlib.sha256(material.encode('utf-8')).hexdigest()[:24]}"
+
+
+def identity_relation_allows_expansion(relation: str) -> bool:
+    return normalize(relation) in IDENTITY_EXPANSION_RELATIONS
 
 
 class DSPGStore:
@@ -1140,7 +1145,7 @@ class DSPGStore:
                     json.dumps({"model_identity_hypothesis": item}, sort_keys=True),
                 ),
             )
-            if relation != "rejected":
+            if identity_relation_allows_expansion(relation):
                 self.connection.execute(
                     """
                     INSERT OR IGNORE INTO identity_hypotheses(

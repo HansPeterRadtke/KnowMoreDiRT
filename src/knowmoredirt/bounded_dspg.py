@@ -20,6 +20,7 @@ from .answer_types import ExpectedAnswer, canonicalize_answer, is_value_compatib
 from .extractors import identifiers, urls
 from .models import Answer, Document, Evidence, Sentence
 from .query import QueryFrame, expand_terms, frame_from_mapping, normalize_temporal_scope, plan_question
+from .store import identity_relation_allows_expansion
 from .text import clean_extracted_value, content_tokens, normalize, text_quality_metrics
 
 DATE_TIME_RE = re.compile(r"\b(?:\d{4}-\d{2}-\d{2}(?:[ T]\d{1,2}:\d{2})?|\d{1,2}:\d{2})\b")
@@ -479,6 +480,8 @@ def _identity_expanded_terms(records: dict[str, Any], terms: list[str]) -> list[
     for _depth in range(3):
         next_frontier: set[str] = set()
         for hypothesis in records.get("identity_hypotheses", []):
+            if not identity_relation_allows_expansion(str(hypothesis.get("relation") or "")):
+                continue
             left = str(hypothesis.get("left_referent_id") or "")
             right = str(hypothesis.get("right_referent_id") or "")
             if left in frontier and right and right not in visited:

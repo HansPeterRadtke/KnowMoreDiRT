@@ -395,6 +395,41 @@ def test_store_rejects_identity_hypothesis_without_bilateral_grounding() -> None
     assert any(str(error).startswith("identity_evidence_missing_side:") for error in result["errors"])
 
 
+def test_candidate_drs_identity_is_preserved_but_not_used_for_expansion() -> None:
+    store = DSPGStore()
+    text = "AX-9 may be the same artifact as Amber Kite."
+    payload = {
+        "drs": {
+            "schema_version": "chunk-drs-v2",
+            "source_id": "link.txt",
+            "referents": [
+                {"id": "r0", "label": "AX-9", "kind": "identifier", "evidence_text": "AX-9"},
+                {"id": "r1", "label": "Amber Kite", "kind": "artifact", "evidence_text": "Amber Kite"},
+            ],
+            "boxes": [
+                {"id": "b0", "kind": "asserted", "parent_id": "", "holder_referent_id": "", "evidence_text": text}
+            ],
+            "conditions": [],
+            "identity_hypotheses": [
+                {
+                    "left_referent_id": "r0",
+                    "right_referent_id": "r1",
+                    "status": "candidate",
+                    "evidence_text": "AX-9 may be the same artifact as Amber Kite",
+                    "confidence": 0.62,
+                }
+            ],
+            "temporal_records": [],
+        }
+    }
+
+    result = store.materialize_drs_payload("run", "span", text, payload)
+
+    assert result["accepted"] is True
+    assert store.counts()["drs_identity_hypotheses"] == 1
+    assert store.counts()["identity_hypotheses"] == 0
+
+
 def test_identity_expanded_retrieval_merges_scattered_drs_chunks(tmp_path: Path, monkeypatch) -> None:
     (tmp_path / "opening").mkdir()
     (tmp_path / "middle").mkdir()
