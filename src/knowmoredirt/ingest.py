@@ -966,6 +966,18 @@ def ingest_folder(
 
         if use_drs_semantics and semantic_client is not None:
             semantic_index += 1
+            if text_quality_metrics(sentence.text).get("low_semantic_noise"):
+                _log_progress(
+                    "kmd-ingest drs_done "
+                    f"chunk={semantic_index}/{semantic_total} "
+                    f"source={sentence.rel_path}:{sentence.order} "
+                    "accepted=False "
+                    "materialized=False "
+                    "reason=skipped_noise "
+                    "model_elapsed=0.0 "
+                    f"elapsed={time.monotonic() - ingest_started:.1f}s"
+                )
+                continue
             _log_progress(
                 "kmd-ingest drs_start "
                 f"chunk={semantic_index}/{semantic_total} "

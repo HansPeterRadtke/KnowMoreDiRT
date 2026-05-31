@@ -1086,6 +1086,82 @@ def test_ingest_can_materialize_schema_constrained_model_drs(tmp_path: Path, mon
     assert store.counts()["drs_condition_arguments"] == 1
 
 
+def test_drs_ingest_skips_low_semantic_noise_chunks(tmp_path: Path, monkeypatch) -> None:
+    noise = "\\x00\\x01@@@###%%%^^^^~~~~" + ("A7f!?" * 80)
+    (tmp_path / "noise.blob").write_text(noise, encoding="utf-8")
+    (tmp_path / "note.txt").write_text("Aero Gate is ready.\n", encoding="utf-8")
+
+    class CountingDrsModel:
+        def __init__(self) -> None:
+            self.calls: list[str] = []
+
+        def context_size(self) -> int:
+            return 4096
+
+        def cache_fingerprint(self) -> dict[str, object]:
+            return {"model_id": "fake-counting-drs", "context_size": 4096}
+
+        def complete_json(self, prompt: str, *, n_predict: int = 128, grammar=None, json_schema=None):
+            self.calls.append(prompt)
+            assert "Aero Gate is ready" in prompt
+            return {
+                "drs": {
+                    "schema_version": "chunk-drs-v2",
+                    "source_id": "note.txt",
+                    "referents": [
+                        {"id": "r0", "label": "Aero Gate", "kind": "entity", "evidence_text": "Aero Gate"},
+                    ],
+                    "boxes": [
+                        {
+                            "id": "b0",
+                            "kind": "asserted",
+                            "parent_id": "",
+                            "holder_referent_id": "",
+                            "evidence_text": "Aero Gate is ready.",
+                        },
+                    ],
+                    "conditions": [
+                        {
+                            "id": "c0",
+                            "predicate": "ready",
+                            "box_id": "b0",
+                            "polarity": "positive",
+                            "modality": "asserted",
+                            "temporal_id": "",
+                            "arguments": [
+                                {
+                                    "role": "entity",
+                                    "target_kind": "referent",
+                                    "target_id": "r0",
+                                    "value": "",
+                                    "value_type": "entity",
+                                    "evidence_text": "Aero Gate",
+                                }
+                            ],
+                            "evidence_text": "Aero Gate is ready.",
+                        }
+                    ],
+                    "identity_hypotheses": [],
+                    "temporal_records": [],
+                },
+                "_model_raw": "{}",
+                "_model_elapsed_seconds": 0.01,
+            }
+
+    monkeypatch.setenv("KMD_CHUNK_DRS_CACHE_DIR", str(tmp_path / ".drs-cache"))
+    model = CountingDrsModel()
+
+    store, _, _, _ = ingest_folder(
+        tmp_path,
+        semantic_client=model,
+        use_semantic_frames=False,
+        use_drs_semantics=True,
+    )
+
+    assert len(model.calls) == 1
+    assert store.counts()["drs_conditions"] == 1
+
+
 def test_temporal_query_drs_uses_latest_temporal_edge(tmp_path: Path) -> None:
     (tmp_path / "random_blob").write_text(
         "\n".join(
