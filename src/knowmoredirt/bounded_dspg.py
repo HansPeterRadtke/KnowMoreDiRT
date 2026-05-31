@@ -832,7 +832,7 @@ def _structured_source_row(row: dict[str, Any]) -> bool:
     metadata = _relation_metadata(row)
     return str(row.get("relation_type") or "") in {"record_value", "table_cell"} or str(
         metadata.get("surface_format") or ""
-    ) in {"json", "json_like", "object_like", "delimited_table"}
+    ) in {"json", "json_like", "object_like", "delimited_table", "label_url"}
 
 
 def _expected_from_frame(frame: QueryFrame) -> ExpectedAnswer:
@@ -920,6 +920,17 @@ def _compatible_values(expected: ExpectedAnswer, values: list[str]) -> list[str]
     return list(dict.fromkeys(value for value in cleaned if canonicalize_answer(expected, value)))
 
 
+def _unknown_query_requests_url(
+    expected: ExpectedAnswer,
+    relation_terms: list[str],
+    answer_slot_terms: list[str] | None = None,
+) -> bool:
+    if expected.answer_type != "unknown":
+        return False
+    terms = [normalize(term) for term in [*relation_terms, *(answer_slot_terms or [])]]
+    return any(term in {"url", "uri", "link"} for term in terms)
+
+
 def _value_is_target(value: str, target_terms: list[str]) -> bool:
     material = normalize(value)
     if not material or not target_terms:
@@ -989,7 +1000,8 @@ def _answer_values_from_relation(
         if relation_type in {"semantic_argument", "semantic_frame", "drs_condition"}
         else [str(row.get("subject") or "")]
     )
-    structural = expected.answer_type in {"url", "identifier", "file_path", "date_time", "count"}
+    url_requested = _unknown_query_requests_url(expected, relation_terms, answer_slot_terms)
+    structural = expected.answer_type in {"url", "identifier", "file_path", "date_time", "count"} or url_requested
     primary_values = [
         value for value in primary_values
         if value
@@ -1004,6 +1016,8 @@ def _answer_values_from_relation(
         and (structural or not _rejects_bound_target_value(expected, value, target_terms))
         and (structural or not _value_is_target(value, relation_terms))
     ]
+    if url_requested:
+        return list(dict.fromkeys(url.rstrip(".,;)") for value in [*primary_values, *fallback_values] for url in urls(value)))
     compatible = _compatible_values(expected, primary_values)
     if not compatible:
         compatible = _compatible_values(expected, fallback_values)
@@ -1049,7 +1063,8 @@ def _answer_values_from_frame(
                 return []
             candidate_args = []
     values = [str(arg.get("surface") or "") for arg in candidate_args]
-    structural = expected.answer_type in {"url", "identifier", "file_path", "date_time", "count"}
+    url_requested = _unknown_query_requests_url(expected, relation_terms, answer_slot_terms)
+    structural = expected.answer_type in {"url", "identifier", "file_path", "date_time", "count"} or url_requested
     values = [
         value for value in values
         if value
@@ -1057,6 +1072,8 @@ def _answer_values_from_frame(
         and (structural or not _rejects_bound_target_value(expected, value, target_terms))
         and (structural or not _value_is_target(value, relation_terms))
     ]
+    if url_requested:
+        return list(dict.fromkeys(url.rstrip(".,;)") for value in values for url in urls(value)))
     compatible = _compatible_values(expected, values)
     if compatible or structural:
         return compatible
@@ -1183,7 +1200,7 @@ def _bind_relation_conditions(records: dict[str, Any], frame: QueryFrame, expect
         if not _relation_scope_accessible(row, records, frame):
             continue
         evidence = _evidence_for_span(str(row.get("source_span_id") or ""), records)
-        if _source_is_low_priority(evidence.rel_path, evidence.text):
+        if _source_is_low_priority(evidence.rel_path, evidence.text) and not _structured_source_row(row):
             continue
         row_material = _relation_local_material(row, evidence, include_evidence=False, include_context=True, records=records)
         evidence_material = normalize(" ".join([row_material, evidence.rel_path, evidence.text]))

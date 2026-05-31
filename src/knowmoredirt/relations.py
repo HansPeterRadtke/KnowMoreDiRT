@@ -20,6 +20,7 @@ from .query import term_variants
 from .text import clean_extracted_value, normalize
 
 LABEL_VALUE_RE = re.compile(r'\s*"?([A-Za-z][A-Za-z0-9 _/-]{1,80})"?\s*[:=]\s*"?([^"{}\[\]\n;,|]+)"?')
+URL_LABEL_VALUE_RE = re.compile(r'\s*"?([A-Za-z][A-Za-z0-9 _/-]{1,80})"?\s*[:=]\s*(.+)$')
 JSON_SCALAR_PAIR_RE = re.compile(
     r'"([^"\n]{1,80})"\s*:\s*(?:"([^"\n]*)"|(-?\d+(?:\.\d+)?)|(true|false|null))',
     re.I,
@@ -95,7 +96,30 @@ def _extract_label_values(text: str) -> list[ExtractedRelation]:
     relations: list[ExtractedRelation] = []
     pieces = re.split(r"\s*(?:[|;,]|\n)\s*", text)
     for piece in pieces:
-        if any(marker in piece for marker in "{}[]") or "://" in piece:
+        if any(marker in piece for marker in "{}[]"):
+            continue
+        if "://" in piece:
+            match = URL_LABEL_VALUE_RE.match(piece)
+            if not match:
+                continue
+            label = clean_extracted_value(match.group(1))
+            value_text = match.group(2)
+            found_urls = urls(value_text)
+            if len(found_urls) != 1:
+                continue
+            remainder = clean_extracted_value(value_text.replace(found_urls[0], " "))
+            if remainder:
+                continue
+            for url in found_urls:
+                _append(
+                    relations,
+                    "label_value",
+                    "label",
+                    subject=label,
+                    value=url,
+                    confidence=0.86,
+                    surface_format="label_url",
+                )
             continue
         match = LABEL_VALUE_RE.match(piece)
         if not match:

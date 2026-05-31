@@ -55,6 +55,9 @@ QUESTION_WORDS = {
     "at",
     "about",
     "according",
+    "belong",
+    "belongs",
+    "only",
 }
 
 ANCHOR_SKIP = {

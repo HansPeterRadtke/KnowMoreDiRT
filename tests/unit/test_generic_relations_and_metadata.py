@@ -11,6 +11,7 @@ def test_generic_relation_extractor_covers_common_discourse_shapes() -> None:
     text = "\n".join(
         [
             "Author: Mira Sol.",
+            "Manual URL: https://manuals.example.invalid/shelf",
             "record_id|surface|value",
             "row-7|NOTE-314|Mira Sol",
             '{"object":{"status":"ready","count":3},"url":"https://example.invalid/a"}',
@@ -24,6 +25,7 @@ def test_generic_relation_extractor_covers_common_discourse_shapes() -> None:
     facts = {(item.relation_type, item.predicate, item.subject, item.object, item.value) for item in relations}
 
     assert ("label_value", "label", "Author", "", "Mira Sol") in facts
+    assert ("label_value", "label", "Manual URL", "", "https://manuals.example.invalid/shelf") in facts
     assert any(item.relation_type == "table_cell" and item.subject == "row-7" and item.value == "NOTE-314" for item in relations)
     assert any(item.relation_type == "record_value" and item.subject == "object.status" and item.value == "ready" for item in relations)
     assert any(item.relation_type == "identifier" and item.predicate == "url" and item.value == "https://example.invalid/a" for item in relations)
@@ -82,3 +84,31 @@ def test_generic_query_answers_new_raw_text_without_fixture_literals(tmp_path) -
 
     assert engine.answer("What is the reviewer for NOTE-314?").text == "Mira Sol"
     assert engine.answer("What is the shelf state?").text == "stable"
+
+
+def test_section_scoped_label_urls_return_urls_not_neighboring_prose(tmp_path, monkeypatch) -> None:
+    monkeypatch.setenv("KMD_USE_LOCAL_MODEL", "0")
+    (tmp_path / "records.txt").write_text(
+        "\n".join(
+            [
+                "Record: Quartz Harbor.",
+                "Manual URL: https://manuals.example.test/quartz-harbor",
+                "Warranty URL: https://warranty.example.test/quartz-harbor",
+                "Archive note: there is no archive URL for Quartz Harbor.",
+                "Record: Jasper Harbor.",
+                "Manual URL: https://manuals.example.test/jasper-harbor",
+                "Warranty URL: https://warranty.example.test/jasper-harbor",
+            ]
+        ),
+        encoding="utf-8",
+    )
+
+    engine = KnowMoreDiRTEngine(tmp_path)
+
+    assert engine.answer("Which warranty URL belongs to Quartz Harbor?").text == (
+        "https://warranty.example.test/quartz-harbor"
+    )
+    assert engine.answer("Which manual URL belongs to Quartz Harbor?").text == (
+        "https://manuals.example.test/quartz-harbor"
+    )
+    assert engine.answer("Which archive URL belongs to Quartz Harbor?").text == "unknown"
