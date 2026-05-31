@@ -568,6 +568,269 @@ def test_identity_expanded_retrieval_merges_scattered_drs_chunks(tmp_path: Path,
     assert diagnostics["ranking"]["identity_reranked_selected_document_count"] >= 3
 
 
+def test_identity_expanded_retrieval_respects_reported_scope_against_asserted_state(
+    tmp_path: Path,
+    monkeypatch,
+) -> None:
+    (tmp_path / "opening").mkdir()
+    (tmp_path / "middle").mkdir()
+    (tmp_path / "ending").mkdir()
+    (tmp_path / "opening" / "registry.txt").write_text(
+        "Opening registry introduces Cobalt Lens as the safety artifact.",
+        encoding="utf-8",
+    )
+    (tmp_path / "middle" / "report.txt").write_text(
+        "Rhea Vale reports that CB-44 status is green.",
+        encoding="utf-8",
+    )
+    (tmp_path / "ending" / "audit.txt").write_text(
+        "Audit states CB-44 is Cobalt Lens and CB-44 status is red.",
+        encoding="utf-8",
+    )
+
+    class ScopedScatteredModel:
+        def context_size(self) -> int:
+            return 4096
+
+        def cache_fingerprint(self) -> dict[str, object]:
+            return {"model_id": "fake-scoped-scattered-drs", "context_size": 4096}
+
+        def complete_json(self, prompt: str, *, n_predict: int = 128, grammar=None, json_schema=None):
+            if "Opening registry" in prompt:
+                text = "Opening registry introduces Cobalt Lens as the safety artifact."
+                return {
+                    "drs": {
+                        "schema_version": "chunk-drs-v2",
+                        "source_id": "opening/registry.txt",
+                        "referents": [
+                            {"id": "r0", "label": "Cobalt Lens", "kind": "artifact", "evidence_text": "Cobalt Lens"}
+                        ],
+                        "boxes": [
+                            {"id": "b0", "kind": "asserted", "parent_id": "", "holder_referent_id": "", "evidence_text": text}
+                        ],
+                        "conditions": [
+                            {
+                                "id": "c0",
+                                "predicate": "introduce",
+                                "box_id": "b0",
+                                "polarity": "positive",
+                                "modality": "asserted",
+                                "temporal_id": "",
+                                "arguments": [
+                                    {
+                                        "role": "object",
+                                        "target_kind": "referent",
+                                        "target_id": "r0",
+                                        "value": "",
+                                        "value_type": "artifact",
+                                        "evidence_text": "Cobalt Lens",
+                                    }
+                                ],
+                                "evidence_text": text,
+                            }
+                        ],
+                        "identity_hypotheses": [],
+                        "temporal_records": [],
+                    },
+                    "_model_raw": "{}",
+                    "_model_elapsed_seconds": 0.01,
+                }
+            if "reports that CB-44" in prompt:
+                text = "Rhea Vale reports that CB-44 status is green."
+                reported = "CB-44 status is green"
+                return {
+                    "drs": {
+                        "schema_version": "chunk-drs-v2",
+                        "source_id": "middle/report.txt",
+                        "referents": [
+                            {"id": "r0", "label": "Rhea Vale", "kind": "person", "evidence_text": "Rhea Vale"},
+                            {"id": "r1", "label": "CB-44", "kind": "identifier", "evidence_text": "CB-44"},
+                        ],
+                        "boxes": [
+                            {"id": "b0", "kind": "asserted", "parent_id": "", "holder_referent_id": "", "evidence_text": text},
+                            {
+                                "id": "b1",
+                                "kind": "reported",
+                                "parent_id": "b0",
+                                "holder_referent_id": "r0",
+                                "evidence_text": reported,
+                            },
+                        ],
+                        "conditions": [
+                            {
+                                "id": "c0",
+                                "predicate": "report",
+                                "box_id": "b0",
+                                "polarity": "positive",
+                                "modality": "asserted",
+                                "temporal_id": "",
+                                "arguments": [
+                                    {
+                                        "role": "speaker",
+                                        "target_kind": "referent",
+                                        "target_id": "r0",
+                                        "value": "",
+                                        "value_type": "person",
+                                        "evidence_text": "Rhea Vale",
+                                    },
+                                    {
+                                        "role": "content",
+                                        "target_kind": "box",
+                                        "target_id": "b1",
+                                        "value": "",
+                                        "value_type": "box",
+                                        "evidence_text": reported,
+                                    },
+                                ],
+                                "evidence_text": text,
+                            },
+                            {
+                                "id": "c1",
+                                "predicate": "status",
+                                "box_id": "b1",
+                                "polarity": "positive",
+                                "modality": "asserted",
+                                "temporal_id": "",
+                                "arguments": [
+                                    {
+                                        "role": "subject",
+                                        "target_kind": "referent",
+                                        "target_id": "r1",
+                                        "value": "",
+                                        "value_type": "identifier",
+                                        "evidence_text": "CB-44",
+                                    },
+                                    {
+                                        "role": "state",
+                                        "target_kind": "literal",
+                                        "target_id": "",
+                                        "value": "green",
+                                        "value_type": "state",
+                                        "evidence_text": "green",
+                                    },
+                                ],
+                                "evidence_text": reported,
+                            },
+                        ],
+                        "identity_hypotheses": [],
+                        "temporal_records": [],
+                    },
+                    "_model_raw": "{}",
+                    "_model_elapsed_seconds": 0.01,
+                }
+            text = "Audit states CB-44 is Cobalt Lens and CB-44 status is red."
+            return {
+                "drs": {
+                    "schema_version": "chunk-drs-v2",
+                    "source_id": "ending/audit.txt",
+                    "referents": [
+                        {"id": "r0", "label": "CB-44", "kind": "identifier", "evidence_text": "CB-44"},
+                        {"id": "r1", "label": "Cobalt Lens", "kind": "artifact", "evidence_text": "Cobalt Lens"},
+                    ],
+                    "boxes": [
+                        {"id": "b0", "kind": "asserted", "parent_id": "", "holder_referent_id": "", "evidence_text": text}
+                    ],
+                    "conditions": [
+                        {
+                            "id": "c0",
+                            "predicate": "status",
+                            "box_id": "b0",
+                            "polarity": "positive",
+                            "modality": "asserted",
+                            "temporal_id": "",
+                            "arguments": [
+                                {
+                                    "role": "subject",
+                                    "target_kind": "referent",
+                                    "target_id": "r0",
+                                    "value": "",
+                                    "value_type": "identifier",
+                                    "evidence_text": "CB-44",
+                                },
+                                {
+                                    "role": "state",
+                                    "target_kind": "literal",
+                                    "target_id": "",
+                                    "value": "red",
+                                    "value_type": "state",
+                                    "evidence_text": "red",
+                                },
+                            ],
+                            "evidence_text": "CB-44 status is red",
+                        }
+                    ],
+                    "identity_hypotheses": [
+                        {
+                            "left_referent_id": "r0",
+                            "right_referent_id": "r1",
+                            "status": "accepted",
+                            "evidence_text": "CB-44 is Cobalt Lens",
+                            "confidence": 0.93,
+                        }
+                    ],
+                    "temporal_records": [],
+                },
+                "_model_raw": "{}",
+                "_model_elapsed_seconds": 0.01,
+            }
+
+    monkeypatch.setenv("KMD_CHUNK_DRS_CACHE_DIR", str(tmp_path / ".drs-cache"))
+    store, run_id, documents, sentences = ingest_folder(
+        tmp_path,
+        semantic_client=ScopedScatteredModel(),  # type: ignore[arg-type]
+        use_semantic_frames=False,
+        use_drs_semantics=True,
+    )
+    sentences_by_document: dict[str, dict[int, object]] = {}
+    for sentence in sentences:
+        sentences_by_document.setdefault(sentence.rel_path, {})[sentence.order] = sentence
+    asserted_frame = QueryFrame(
+        question_text="What status is recorded for Cobalt Lens?",
+        answer_type="state",
+        answer_variables=("state",),
+        target_anchors=("Cobalt Lens",),
+        requested_relation="status",
+        relation_terms=("status",),
+        constraints=(),
+    )
+    reported_frame = QueryFrame(
+        question_text="What status did Rhea Vale report for Cobalt Lens?",
+        answer_type="state",
+        answer_variables=("state",),
+        target_anchors=("Cobalt Lens",),
+        requested_relation="status",
+        relation_terms=("status",),
+        constraints=(),
+        scope_requirements=("reported",),
+    )
+
+    asserted_answer, asserted_diagnostics = execute_bounded_query(
+        store,
+        run_id,
+        documents,
+        sentences_by_document,  # type: ignore[arg-type]
+        asserted_frame.question_text,
+        asserted_frame,
+    )
+    reported_answer, reported_diagnostics = execute_bounded_query(
+        store,
+        run_id,
+        documents,
+        sentences_by_document,  # type: ignore[arg-type]
+        reported_frame.question_text,
+        reported_frame,
+    )
+
+    assert asserted_answer is not None
+    assert asserted_answer.text == "red"
+    assert asserted_answer.evidence[0].rel_path == "ending/audit.txt"
+    assert reported_answer is not None
+    assert reported_answer.text == "green"
+    assert reported_answer.evidence[0].rel_path == "middle/report.txt"
+    assert "cb-44" in asserted_diagnostics["ranking"]["identity_expanded_target_terms"]
+    assert "cb-44" in reported_diagnostics["ranking"]["identity_expanded_target_terms"]
+
+
 def test_store_rejects_invalid_drs_condition_graphs() -> None:
     store = DSPGStore()
     payload = {
