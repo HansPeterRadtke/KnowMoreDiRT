@@ -73,6 +73,7 @@ CHUNK_DRS_COMPACT_UNDERCOVERAGE_POLICY = "retry-delimiter-rich-low-condition-den
 CHUNK_DRS_STAGED_RETRY_DIAGNOSTICS_POLICY = "record-non-improving-staged-retry-v1"
 CHUNK_DRS_STAGE_FAILURE_CACHE_POLICY = "cache-invalid-json-stage-failures-v1"
 CHUNK_DRS_DYNAMIC_SKELETON_BUDGET_POLICY = "field-like-source-spans-allow-768-v1"
+CHUNK_DRS_DYNAMIC_OUTPUT_BUDGET_POLICY = "source-aware-short-chunk-768-1024-v1"
 QUERY_DRS_SCHEMA_VERSION = "query-drs-v3"
 QUERY_DRS_VALIDATION_POLICY = "strict-query-drs-version-question-evidence-repair-v8"
 QUERY_DRS_ARRAY_CAP_POLICY = "reserved_output_tokens_div_96_4_8-v1"
@@ -144,7 +145,7 @@ def default_chunk_frame_n_predict(client: LocalModelClient | None = None) -> int
     return 192
 
 
-def default_chunk_drs_n_predict(client: LocalModelClient | None = None) -> int:
+def default_chunk_drs_n_predict(client: LocalModelClient | None = None, chunk_text: str = "") -> int:
     configured = os.environ.get("KMD_CHUNK_DRS_N_PREDICT")
     if configured:
         try:
@@ -152,9 +153,19 @@ def default_chunk_drs_n_predict(client: LocalModelClient | None = None) -> int:
         except ValueError:
             pass
     context_size = _client_context_size(client)
+    base = 384
     if context_size > 0:
-        return max(384, min(1536, context_size // 24))
-    return 384
+        base = max(384, min(1536, context_size // 24))
+    source_text = str(chunk_text or "")
+    if not source_text or context_size < 8192:
+        return base
+    source_tokens = _estimate_tokens(source_text)
+    field_like_count = _chunk_drs_structural_condition_floor(source_text)
+    if field_like_count > 8 or source_tokens > 192:
+        if source_tokens > 512 and field_like_count <= 8:
+            return base
+        return min(max(base, 1024), 1024)
+    return min(max(base, 768), 768)
 
 
 def default_query_drs_n_predict(client: LocalModelClient | None = None) -> int:
@@ -3849,6 +3860,7 @@ def chunk_drs_cache_context(client: LocalModelClient | None, *, n_predict: int |
         "staged_retry_diagnostics_policy": CHUNK_DRS_STAGED_RETRY_DIAGNOSTICS_POLICY,
         "stage_failure_cache_policy": CHUNK_DRS_STAGE_FAILURE_CACHE_POLICY,
         "dynamic_skeleton_budget_policy": CHUNK_DRS_DYNAMIC_SKELETON_BUDGET_POLICY,
+        "dynamic_output_budget_policy": CHUNK_DRS_DYNAMIC_OUTPUT_BUDGET_POLICY,
         "staged_skeleton_n_predict": default_staged_chunk_drs_skeleton_n_predict(int(n_predict)),
         "staged_condition_n_predict": default_staged_chunk_drs_condition_n_predict(int(n_predict)),
         "box_completion_n_predict": default_chunk_drs_box_completion_n_predict(int(n_predict)),
@@ -3866,7 +3878,7 @@ def call_model_chunk_drs(
     n_predict: int | None = None,
 ) -> dict[str, Any]:
     if n_predict is None:
-        n_predict = default_chunk_drs_n_predict(client)
+        n_predict = default_chunk_drs_n_predict(client, chunk_text)
     prompt_chunk, context_budget = _context_limited_chunk_drs_text(
         chunk_text,
         client,
@@ -3887,6 +3899,7 @@ def call_model_chunk_drs(
         "staged_retry_diagnostics_policy": CHUNK_DRS_STAGED_RETRY_DIAGNOSTICS_POLICY,
         "stage_failure_cache_policy": CHUNK_DRS_STAGE_FAILURE_CACHE_POLICY,
         "dynamic_skeleton_budget_policy": CHUNK_DRS_DYNAMIC_SKELETON_BUDGET_POLICY,
+        "dynamic_output_budget_policy": CHUNK_DRS_DYNAMIC_OUTPUT_BUDGET_POLICY,
     }
     prompt = build_chunk_drs_prompt(prompt_chunk, rel_path=rel_path, context_budget=context_budget)
     drs_json_schema = chunk_drs_json_schema(
@@ -3923,6 +3936,7 @@ def call_model_chunk_drs(
             "staged_retry_diagnostics_policy": CHUNK_DRS_STAGED_RETRY_DIAGNOSTICS_POLICY,
             "stage_failure_cache_policy": CHUNK_DRS_STAGE_FAILURE_CACHE_POLICY,
             "dynamic_skeleton_budget_policy": CHUNK_DRS_DYNAMIC_SKELETON_BUDGET_POLICY,
+            "dynamic_output_budget_policy": CHUNK_DRS_DYNAMIC_OUTPUT_BUDGET_POLICY,
             "source_span_candidate_count": len(source_span_candidates),
             "staged_skeleton_n_predict": default_staged_chunk_drs_skeleton_n_predict(
                 int(n_predict),

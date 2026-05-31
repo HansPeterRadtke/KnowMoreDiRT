@@ -8,6 +8,7 @@ from knowmoredirt.model_planner import (
     CHUNK_DRS_BOX_COMPLETION_POLICY,
     CHUNK_DRS_COMPACT_UNDERCOVERAGE_POLICY,
     CHUNK_DRS_DYNAMIC_SKELETON_BUDGET_POLICY,
+    CHUNK_DRS_DYNAMIC_OUTPUT_BUDGET_POLICY,
     CHUNK_DRS_GROUNDING_REPAIR_POLICY,
     CHUNK_DRS_MONOLITHIC_ID_POLICY,
     CHUNK_DRS_SPARSE_RETRY_POLICY,
@@ -22,6 +23,7 @@ from knowmoredirt.model_planner import (
     chunk_drs_cache_context,
     chunk_drs_skeleton_json_schema,
     chunk_drs_source_span_candidates,
+    default_chunk_drs_n_predict,
     default_staged_chunk_drs_skeleton_n_predict,
 )
 
@@ -178,6 +180,7 @@ def test_chunk_drs_staged_fallback_constrains_condition_targets(monkeypatch, tmp
     assert cache_context["skeleton_source_span_policy"] == CHUNK_DRS_SKELETON_SOURCE_SPAN_POLICY
     assert cache_context["stage_failure_cache_policy"] == CHUNK_DRS_STAGE_FAILURE_CACHE_POLICY
     assert cache_context["dynamic_skeleton_budget_policy"] == CHUNK_DRS_DYNAMIC_SKELETON_BUDGET_POLICY
+    assert cache_context["dynamic_output_budget_policy"] == CHUNK_DRS_DYNAMIC_OUTPUT_BUDGET_POLICY
     assert model.skeleton_schema is not None
     assert model.condition_schema is not None
 
@@ -889,6 +892,32 @@ def test_chunk_drs_dynamic_skeleton_budget_for_field_rich_chunks(monkeypatch) ->
 
     monkeypatch.setenv("KMD_CHUNK_DRS_STAGED_SKELETON_N_PREDICT", "512")
     assert default_staged_chunk_drs_skeleton_n_predict(384, field_rich, 96) == 512
+
+
+def test_chunk_drs_dynamic_output_budget_for_short_chunks(monkeypatch) -> None:
+    class LargeContextModel:
+        def context_size(self) -> int:
+            return 32768
+
+        def cache_fingerprint(self) -> dict[str, Any]:
+            return {"model_id": "fake-large-context-drs", "context_size": 32768}
+
+    model = LargeContextModel()
+    compact_record = "record: Aster Ridge | steward: Lina Sol | state: active"
+    field_dense = " | ".join(f"field{index}: value{index}" for index in range(10))
+    medium_text = " ".join(f"token{index}" for index in range(120))
+    long_text = " ".join(f"token{index}" for index in range(260))
+
+    monkeypatch.delenv("KMD_CHUNK_DRS_N_PREDICT", raising=False)
+
+    assert default_chunk_drs_n_predict(model) == 1365  # type: ignore[arg-type]
+    assert default_chunk_drs_n_predict(model, compact_record) == 768  # type: ignore[arg-type]
+    assert default_chunk_drs_n_predict(model, field_dense) == 1024  # type: ignore[arg-type]
+    assert default_chunk_drs_n_predict(model, medium_text) == 1024  # type: ignore[arg-type]
+    assert default_chunk_drs_n_predict(model, long_text) == 1365  # type: ignore[arg-type]
+
+    monkeypatch.setenv("KMD_CHUNK_DRS_N_PREDICT", "544")
+    assert default_chunk_drs_n_predict(model, compact_record) == 544  # type: ignore[arg-type]
 
 
 def test_chunk_drs_monolithic_schema_constrains_ids_and_condition_spans(monkeypatch, tmp_path) -> None:
