@@ -32,7 +32,7 @@ DRS_CONTEXT_KINDS = {
     "dreamed",
 }
 DRS_POLARITIES = {"positive", "negative", "unknown"}
-SCHEMA_VERSION = 7
+SCHEMA_VERSION = 8
 
 
 def stable_id(prefix: str, *parts: Any) -> str:
@@ -139,6 +139,7 @@ class DSPGStore:
             CREATE TABLE IF NOT EXISTS identity_hypotheses (
               hypothesis_id TEXT PRIMARY KEY,
               run_id TEXT NOT NULL,
+              source_span_id TEXT,
               left_referent_id TEXT NOT NULL,
               right_referent_id TEXT NOT NULL,
               relation TEXT NOT NULL,
@@ -363,6 +364,7 @@ class DSPGStore:
         ]
         for statement in statements:
             self.connection.execute(statement)
+        self._ensure_column("identity_hypotheses", "source_span_id", "TEXT")
         if create_indexes:
             self.create_indexes()
         self.connection.execute(
@@ -370,6 +372,11 @@ class DSPGStore:
             (str(SCHEMA_VERSION),),
         )
         self.connection.commit()
+
+    def _ensure_column(self, table: str, column: str, definition: str) -> None:
+        rows = self.connection.execute(f"PRAGMA table_info({table})").fetchall()
+        if column not in {str(row["name"]) for row in rows}:
+            self.connection.execute(f"ALTER TABLE {table} ADD COLUMN {column} {definition}")
 
     def create_indexes(self) -> None:
         statements = [
@@ -380,6 +387,7 @@ class DSPGStore:
             "CREATE INDEX IF NOT EXISTS idx_mentions_surface ON mentions(surface_norm)",
             "CREATE INDEX IF NOT EXISTS idx_mentions_entity ON mentions(entity_type)",
             "CREATE INDEX IF NOT EXISTS idx_referents_label ON referents(canonical_label_norm)",
+            "CREATE INDEX IF NOT EXISTS idx_identity_span ON identity_hypotheses(run_id, source_span_id)",
             "CREATE INDEX IF NOT EXISTS idx_identity_left ON identity_hypotheses(left_referent_id)",
             "CREATE INDEX IF NOT EXISTS idx_identity_right ON identity_hypotheses(right_referent_id)",
             "CREATE INDEX IF NOT EXISTS idx_context_kind ON contexts(kind)",
@@ -1136,12 +1144,13 @@ class DSPGStore:
                 self.connection.execute(
                     """
                     INSERT OR IGNORE INTO identity_hypotheses(
-                      hypothesis_id, run_id, left_referent_id, right_referent_id, relation, evidence, confidence, source
-                    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+                      hypothesis_id, run_id, source_span_id, left_referent_id, right_referent_id, relation, evidence, confidence, source
+                    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
                     """,
                     (
                         stable_id("idh", run_id, source_span_id, "drs", left_external, right_external, relation, evidence),
                         run_id,
+                        source_span_id,
                         left_ref,
                         right_ref,
                         relation,

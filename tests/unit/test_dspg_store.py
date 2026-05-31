@@ -1752,6 +1752,203 @@ def test_ingest_can_incrementally_merge_new_files_into_existing_store(tmp_path: 
     assert store.execute("SELECT COUNT(*) FROM extraction_runs").fetchone()[0] == 1
 
 
+def test_incremental_removed_identity_source_does_not_expand_current_query(
+    tmp_path: Path,
+    monkeypatch,
+) -> None:
+    (tmp_path / "link.txt").write_text(
+        "First link says AX-9 is the same artifact as Amber Kite.",
+        encoding="utf-8",
+    )
+
+    class IncrementalIdentityModel:
+        def context_size(self) -> int:
+            return 4096
+
+        def cache_fingerprint(self) -> dict[str, object]:
+            return {"model_id": "fake-incremental-identity-provenance", "context_size": 4096}
+
+        def complete_json(self, prompt: str, *, n_predict: int = 128, grammar=None, json_schema=None):
+            if "First link" in prompt:
+                text = "First link says AX-9 is the same artifact as Amber Kite."
+                referents = [
+                    {"id": "r0", "label": "AX-9", "kind": "identifier", "evidence_text": "AX-9"},
+                    {"id": "r1", "label": "Amber Kite", "kind": "artifact", "evidence_text": "Amber Kite"},
+                ]
+                conditions = [
+                    {
+                        "id": "c0",
+                        "predicate": "same_artifact",
+                        "box_id": "b0",
+                        "polarity": "positive",
+                        "modality": "asserted",
+                        "temporal_id": "",
+                        "arguments": [
+                            {
+                                "role": "left",
+                                "target_kind": "referent",
+                                "target_id": "r0",
+                                "value": "",
+                                "value_type": "identifier",
+                                "evidence_text": "AX-9",
+                            },
+                            {
+                                "role": "right",
+                                "target_kind": "referent",
+                                "target_id": "r1",
+                                "value": "",
+                                "value_type": "artifact",
+                                "evidence_text": "Amber Kite",
+                            },
+                        ],
+                        "evidence_text": "AX-9 is the same artifact as Amber Kite",
+                    }
+                ]
+                identities = [
+                    {
+                        "left_referent_id": "r0",
+                        "right_referent_id": "r1",
+                        "status": "accepted",
+                        "evidence_text": "AX-9 is the same artifact as Amber Kite",
+                        "confidence": 0.92,
+                    }
+                ]
+                source_id = "link.txt"
+            elif "Catalog mentions" in prompt:
+                text = "Catalog mentions Amber Kite as an archived item."
+                referents = [{"id": "r0", "label": "Amber Kite", "kind": "artifact", "evidence_text": "Amber Kite"}]
+                conditions = [
+                    {
+                        "id": "c0",
+                        "predicate": "mentions",
+                        "box_id": "b0",
+                        "polarity": "positive",
+                        "modality": "asserted",
+                        "temporal_id": "",
+                        "arguments": [
+                            {
+                                "role": "object",
+                                "target_kind": "referent",
+                                "target_id": "r0",
+                                "value": "",
+                                "value_type": "artifact",
+                                "evidence_text": "Amber Kite",
+                            }
+                        ],
+                        "evidence_text": text,
+                    }
+                ]
+                identities = []
+                source_id = "catalog.txt"
+            else:
+                text = "Current status note says AX-9 status is blue."
+                referents = [{"id": "r0", "label": "AX-9", "kind": "identifier", "evidence_text": "AX-9"}]
+                conditions = [
+                    {
+                        "id": "c0",
+                        "predicate": "status",
+                        "box_id": "b0",
+                        "polarity": "positive",
+                        "modality": "asserted",
+                        "temporal_id": "",
+                        "arguments": [
+                            {
+                                "role": "subject",
+                                "target_kind": "referent",
+                                "target_id": "r0",
+                                "value": "",
+                                "value_type": "identifier",
+                                "evidence_text": "AX-9",
+                            },
+                            {
+                                "role": "state",
+                                "target_kind": "literal",
+                                "target_id": "",
+                                "value": "blue",
+                                "value_type": "state",
+                                "evidence_text": "blue",
+                            },
+                        ],
+                        "evidence_text": "AX-9 status is blue",
+                    }
+                ]
+                identities = []
+                source_id = "status.txt"
+            return {
+                "drs": {
+                    "schema_version": "chunk-drs-v2",
+                    "source_id": source_id,
+                    "referents": referents,
+                    "boxes": [
+                        {"id": "b0", "kind": "asserted", "parent_id": "", "holder_referent_id": "", "evidence_text": text}
+                    ],
+                    "conditions": conditions,
+                    "identity_hypotheses": identities,
+                    "temporal_records": [],
+                },
+                "_model_raw": "{}",
+                "_model_elapsed_seconds": 0.01,
+            }
+
+    cache_dir = tmp_path.parent / f"{tmp_path.name}-incremental-identity-cache"
+    monkeypatch.setenv("KMD_CHUNK_DRS_CACHE_DIR", str(cache_dir))
+    store = DSPGStore()
+    model = IncrementalIdentityModel()
+    store, first_run_id, _, _ = ingest_folder(
+        tmp_path,
+        store=store,
+        semantic_client=model,
+        use_semantic_frames=False,
+        use_drs_semantics=True,
+    )
+    (tmp_path / "link.txt").unlink()
+    (tmp_path / "catalog.txt").write_text(
+        "Catalog mentions Amber Kite as an archived item.",
+        encoding="utf-8",
+    )
+    (tmp_path / "status.txt").write_text(
+        "Current status note says AX-9 status is blue.",
+        encoding="utf-8",
+    )
+    store, second_run_id, documents, sentences = ingest_folder(
+        tmp_path,
+        store=store,
+        semantic_client=model,
+        use_semantic_frames=False,
+        use_drs_semantics=True,
+    )
+
+    assert first_run_id == second_run_id
+    stale_identity = store.execute("SELECT source_span_id FROM identity_hypotheses").fetchone()
+    assert stale_identity["source_span_id"]
+    sentences_by_document: dict[str, dict[int, object]] = {}
+    for sentence in sentences:
+        sentences_by_document.setdefault(sentence.rel_path, {})[sentence.order] = sentence
+    frame = QueryFrame(
+        question_text="What status is recorded for Amber Kite?",
+        answer_type="state",
+        answer_variables=("state",),
+        target_anchors=("Amber Kite",),
+        requested_relation="status",
+        relation_terms=("status",),
+        constraints=(),
+    )
+
+    answer, diagnostics = execute_bounded_query(
+        store,
+        second_run_id,
+        documents,
+        sentences_by_document,  # type: ignore[arg-type]
+        frame.question_text,
+        frame,
+    )
+
+    assert answer is None
+    assert "identity_expanded_target_terms" not in diagnostics["ranking"]
+    provenance = diagnostics["execution"]["source_provenance_sample"]
+    assert {item["rel_path"] for item in provenance} == {"catalog.txt"}
+
+
 def test_incremental_drs_ingest_reuses_existing_materialized_chunks(tmp_path: Path, monkeypatch) -> None:
     (tmp_path / "note.txt").write_text("Aero Gate is ready.\n", encoding="utf-8")
 

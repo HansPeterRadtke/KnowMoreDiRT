@@ -292,7 +292,22 @@ def _load_records(store: Any, run_id: str, document_ids: list[str], chunk_keys: 
     relations = _fetch_by_ids(connection, "relations", "source_span_id", span_ids)
     temporal = _fetch_by_ids(connection, "temporal_edges", "source_span_id", span_ids)
     metadata_records = _fetch_by_ids(connection, "metadata_records", "document_id", document_ids)
-    identity_hypotheses = [dict(row) for row in connection.execute("SELECT * FROM identity_hypotheses WHERE run_id=?", (run_id,))]
+    if span_ids:
+        placeholders = ",".join("?" for _ in span_ids)
+        identity_hypotheses = [
+            dict(row)
+            for row in connection.execute(
+                f"""
+                SELECT *
+                FROM identity_hypotheses
+                WHERE run_id=?
+                  AND (source_span_id IN ({placeholders}) OR source_span_id IS NULL)
+                """,
+                [run_id, *span_ids],
+            )
+        ]
+    else:
+        identity_hypotheses = []
     identity_referent_ids = list(
         dict.fromkeys(
             str(row.get(key) or "")

@@ -677,13 +677,14 @@ def ingest_folder(
                             store.execute(
                                 """
                                 INSERT OR IGNORE INTO identity_hypotheses(
-                                  hypothesis_id, run_id, left_referent_id, right_referent_id,
+                                  hypothesis_id, run_id, source_span_id, left_referent_id, right_referent_id,
                                   relation, evidence, confidence, source
-                                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+                                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
                                 """,
                                 (
                                     stable_id("idh", run_id, existing_referent_id, arg_referent_id, sentence.sentence_id),
                                     run_id,
+                                    span_id,
                                     existing_referent_id,
                                     arg_referent_id,
                                     "same_surface",
@@ -954,13 +955,14 @@ def ingest_folder(
                             store.execute(
                                 """
                                 INSERT OR IGNORE INTO identity_hypotheses(
-                                  hypothesis_id, run_id, left_referent_id, right_referent_id,
+                                  hypothesis_id, run_id, source_span_id, left_referent_id, right_referent_id,
                                   relation, evidence, confidence, source
-                                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+                                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
                                 """,
                                 (
                                     stable_id("idh", run_id, existing_referent_id, arg_referent_id, semantic_frame_id),
                                     run_id,
+                                    span_id,
                                     existing_referent_id,
                                     arg_referent_id,
                                     "same_surface",
@@ -984,13 +986,14 @@ def ingest_folder(
                     store.execute(
                         """
                         INSERT OR IGNORE INTO identity_hypotheses(
-                          hypothesis_id, run_id, left_referent_id, right_referent_id,
+                          hypothesis_id, run_id, source_span_id, left_referent_id, right_referent_id,
                           relation, evidence, confidence, source
-                        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+                        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
                         """,
                         (
                             stable_id("idh", run_id, semantic_frame_id, "model_identity", hypothesis_index, left_text, right_text),
                             run_id,
+                            span_id,
                             left_ref,
                             right_ref,
                             clean_extracted_value(str(hypothesis.get("relation") or "same_referent")),
