@@ -309,7 +309,7 @@ def _load_records(store: Any, run_id: str, document_ids: list[str], chunk_keys: 
         ]
     else:
         identity_hypotheses = []
-    identity_referent_ids = list(
+    material_referent_ids = list(
         dict.fromkeys(
             str(row.get(key) or "")
             for row in identity_hypotheses
@@ -317,7 +317,19 @@ def _load_records(store: Any, run_id: str, document_ids: list[str], chunk_keys: 
             if str(row.get(key) or "")
         )
     )
-    referents = _fetch_by_ids(connection, "referents", "referent_id", identity_referent_ids)
+    material_referent_ids = list(
+        dict.fromkeys(
+            [
+                *material_referent_ids,
+                *[
+                    str(row.get("referent_id") or "")
+                    for row in temporal
+                    if str(row.get("referent_id") or "")
+                ],
+            ]
+        )
+    )
+    referents = _fetch_by_ids(connection, "referents", "referent_id", material_referent_ids)
     contexts = [dict(row) for row in connection.execute("SELECT * FROM contexts WHERE run_id=?", (run_id,))]
     context_carriers = _fetch_by_ids(connection, "context_carriers", "document_id", document_ids)
     docs_by_document_id = {str(doc.get("document_id")): doc for doc in documents}
@@ -1375,12 +1387,24 @@ def _bind_contexts(records: dict[str, Any], frame: QueryFrame, expected: Expecte
 def _temporal_candidates(records: dict[str, Any], frame: QueryFrame, expected: ExpectedAnswer, target_terms: list[str], relation_terms: list[str]) -> list[tuple[float, str, Evidence, str]]:
     if frame.temporal_scope not in {"latest", "earliest"} and expected.answer_type not in {"state", "date_time"}:
         return []
+    referents = _referents_by_id(records)
     rows: list[tuple[str, dict[str, Any], Evidence]] = []
     for row in records.get("temporal_edges", []):
         if not _context_accessible(str(row.get("context_id") or ""), records, frame):
             continue
         evidence = _evidence_for_span(str(row.get("source_span_id") or ""), records)
-        material = normalize(" ".join([str(row.get("relation") or ""), str(row.get("temporal_value") or ""), str(row.get("state_value") or ""), evidence.text]))
+        referent = referents.get(str(row.get("referent_id") or ""), {})
+        material = normalize(
+            " ".join(
+                [
+                    str(referent.get("canonical_label") or referent.get("canonical_label_norm") or ""),
+                    str(row.get("relation") or ""),
+                    str(row.get("temporal_value") or ""),
+                    str(row.get("state_value") or ""),
+                    evidence.text,
+                ]
+            )
+        )
         if target_terms and not _contains_any(material, target_terms):
             continue
         if relation_terms and not _contains_any(material, relation_terms):

@@ -2960,9 +2960,207 @@ def test_model_drs_temporal_records_project_latest_literal_values(tmp_path: Path
     answer, _diagnostics = execute_bounded_query(store, run_id, documents, sentences_by_document, frame.question_text, frame)
 
     assert store.counts()["temporal_edges"] == 2
+    temporal_refs = store.execute(
+        """
+        SELECT te.referent_id, r.canonical_label
+        FROM temporal_edges te
+        JOIN referents r ON r.referent_id=te.referent_id
+        ORDER BY te.temporal_value
+        """
+    ).fetchall()
+    assert [row["canonical_label"] for row in temporal_refs] == ["Lumen Core", "Lumen Core"]
     assert answer is not None
     assert answer.text == "green"
     assert answer.evidence[0].rel_path == "late.txt"
+
+
+def test_scattered_identity_temporal_latest_answer_keeps_crosswalk_provenance(
+    tmp_path: Path,
+    monkeypatch,
+) -> None:
+    (tmp_path / "begin").mkdir()
+    (tmp_path / "middle").mkdir()
+    (tmp_path / "timeline").mkdir()
+    (tmp_path / "begin" / "registry.txt").write_text(
+        "Registry introduces Cloud Dial as the weather artifact.",
+        encoding="utf-8",
+    )
+    (tmp_path / "middle" / "crosswalk.txt").write_text(
+        "Crosswalk states CD-2 is the same artifact as Cloud Dial.",
+        encoding="utf-8",
+    )
+    (tmp_path / "timeline" / "early.txt").write_text(
+        "Timeline entry: CD-2 marker T001 state draft.",
+        encoding="utf-8",
+    )
+    (tmp_path / "timeline" / "late.txt").write_text(
+        "Timeline entry: CD-2 marker T004 state final.",
+        encoding="utf-8",
+    )
+
+    class ScatteredTemporalIdentityModel:
+        def context_size(self) -> int:
+            return 4096
+
+        def cache_fingerprint(self) -> dict[str, object]:
+            return {"model_id": "fake-scattered-temporal-identity-drs", "context_size": 4096}
+
+        def complete_json(self, prompt: str, *, n_predict: int = 128, grammar=None, json_schema=None):
+            if "Registry introduces" in prompt:
+                text = "Registry introduces Cloud Dial as the weather artifact."
+                referents = [{"id": "r0", "label": "Cloud Dial", "kind": "artifact", "evidence_text": "Cloud Dial"}]
+                conditions = [
+                    {
+                        "id": "c0",
+                        "predicate": "introduces",
+                        "box_id": "b0",
+                        "polarity": "positive",
+                        "modality": "asserted",
+                        "temporal_id": "",
+                        "arguments": [
+                            {
+                                "role": "object",
+                                "target_kind": "referent",
+                                "target_id": "r0",
+                                "value": "",
+                                "value_type": "artifact",
+                                "evidence_text": "Cloud Dial",
+                            }
+                        ],
+                        "evidence_text": text,
+                    }
+                ]
+                identities = []
+                temporals = []
+            elif "Crosswalk states" in prompt:
+                text = "Crosswalk states CD-2 is the same artifact as Cloud Dial."
+                referents = [
+                    {"id": "r0", "label": "CD-2", "kind": "identifier", "evidence_text": "CD-2"},
+                    {"id": "r1", "label": "Cloud Dial", "kind": "artifact", "evidence_text": "Cloud Dial"},
+                ]
+                conditions = [
+                    {
+                        "id": "c0",
+                        "predicate": "same_artifact",
+                        "box_id": "b0",
+                        "polarity": "positive",
+                        "modality": "asserted",
+                        "temporal_id": "",
+                        "arguments": [
+                            {
+                                "role": "left",
+                                "target_kind": "referent",
+                                "target_id": "r0",
+                                "value": "",
+                                "value_type": "identifier",
+                                "evidence_text": "CD-2",
+                            },
+                            {
+                                "role": "right",
+                                "target_kind": "referent",
+                                "target_id": "r1",
+                                "value": "",
+                                "value_type": "artifact",
+                                "evidence_text": "Cloud Dial",
+                            },
+                        ],
+                        "evidence_text": "CD-2 is the same artifact as Cloud Dial",
+                    }
+                ]
+                identities = [
+                    {
+                        "left_referent_id": "r0",
+                        "right_referent_id": "r1",
+                        "status": "accepted",
+                        "evidence_text": "CD-2 is the same artifact as Cloud Dial",
+                        "confidence": 0.93,
+                    }
+                ]
+                temporals = []
+            else:
+                marker = "T001" if "T001" in prompt else "T004"
+                state = "draft" if marker == "T001" else "final"
+                text = f"Timeline entry: CD-2 marker {marker} state {state}."
+                referents = [{"id": "r0", "label": "CD-2", "kind": "identifier", "evidence_text": "CD-2"}]
+                conditions = [
+                    {
+                        "id": "c0",
+                        "predicate": "state",
+                        "box_id": "b0",
+                        "polarity": "positive",
+                        "modality": "asserted",
+                        "temporal_id": "t0",
+                        "arguments": [
+                            {
+                                "role": "subject",
+                                "target_kind": "referent",
+                                "target_id": "r0",
+                                "value": "",
+                                "value_type": "identifier",
+                                "evidence_text": "CD-2",
+                            },
+                            {
+                                "role": "state",
+                                "target_kind": "literal",
+                                "target_id": "",
+                                "value": state,
+                                "value_type": "state",
+                                "evidence_text": state,
+                            },
+                        ],
+                        "evidence_text": f"CD-2 marker {marker} state {state}",
+                    }
+                ]
+                identities = []
+                temporals = [{"id": "t0", "value": marker, "value_type": "sequence_marker", "evidence_text": marker}]
+            return {
+                "drs": {
+                    "schema_version": "chunk-drs-v2",
+                    "source_id": "scattered-temporal.txt",
+                    "referents": referents,
+                    "boxes": [
+                        {"id": "b0", "kind": "asserted", "parent_id": "", "holder_referent_id": "", "evidence_text": text}
+                    ],
+                    "conditions": conditions,
+                    "identity_hypotheses": identities,
+                    "temporal_records": temporals,
+                },
+                "_model_raw": "{}",
+                "_model_elapsed_seconds": 0.01,
+            }
+
+    monkeypatch.setenv("KMD_CHUNK_DRS_CACHE_DIR", str(tmp_path / ".drs-cache"))
+    store, run_id, documents, sentences = ingest_folder(
+        tmp_path,
+        semantic_client=ScatteredTemporalIdentityModel(),  # type: ignore[arg-type]
+        use_semantic_frames=False,
+        use_drs_semantics=True,
+    )
+    sentences_by_document: dict[str, dict[int, object]] = {}
+    for sentence in sentences:
+        sentences_by_document.setdefault(sentence.rel_path, {})[sentence.order] = sentence
+    frame = QueryFrame(
+        question_text="What is the latest state for Cloud Dial?",
+        answer_type="state",
+        answer_variables=("state",),
+        target_anchors=("Cloud Dial",),
+        requested_relation="state",
+        relation_terms=("state",),
+        constraints=(),
+        temporal_scope="latest",
+    )
+
+    answer, diagnostics = execute_bounded_query(store, run_id, documents, sentences_by_document, frame.question_text, frame)
+
+    temporal_refs = store.execute("SELECT referent_id FROM temporal_edges ORDER BY temporal_value").fetchall()
+    assert all(row["referent_id"] for row in temporal_refs)
+    assert answer is not None
+    assert answer.text == "final"
+    assert answer.evidence[0].rel_path == "timeline/late.txt"
+    assert "middle/crosswalk.txt" in {item.rel_path for item in answer.evidence}
+    assert "middle/crosswalk.txt" in {
+        item["rel_path"] for item in diagnostics["execution"]["identity_expansion_evidence"]
+    }
 
 
 def test_unscoped_model_temporal_values_return_unknown_even_with_same_source_span(
