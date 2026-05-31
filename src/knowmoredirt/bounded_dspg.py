@@ -511,7 +511,150 @@ def _evidence_for_span(span_id: str, records: dict[str, Any]) -> Evidence:
         chunk_order=chunk_order,
         char_start=char_start,
         char_end=char_end,
+        source_kind=str(span.get("span_kind") or "source_span"),
     )
+
+
+def _evidence_payload(item: Evidence, *, text_limit: int = 500) -> dict[str, Any]:
+    return {
+        "rel_path": item.rel_path,
+        "span_id": item.span_id,
+        "chunk_order": item.chunk_order,
+        "char_start": item.char_start,
+        "char_end": item.char_end,
+        "source_kind": item.source_kind,
+        "text": item.text[:text_limit],
+    }
+
+
+def _document_metadata_summary(row: dict[str, Any]) -> dict[str, Any]:
+    try:
+        metadata = json.loads(str(row.get("metadata_json") or "{}"))
+    except json.JSONDecodeError:
+        metadata = {}
+    if not isinstance(metadata, dict):
+        metadata = {}
+    summary: dict[str, Any] = {
+        "rel_path": row.get("rel_path"),
+        "size_bytes": row.get("size_bytes"),
+        "char_count": row.get("char_count"),
+    }
+    for key in ["file_name", "suffix", "parent_rel_path", "mime_type", "semantic_quality"]:
+        if key in metadata:
+            summary[key] = metadata[key]
+    return {key: value for key, value in summary.items() if value not in {"", None}}
+
+
+def _span_provenance_payload(span: dict[str, Any], records: dict[str, Any]) -> dict[str, Any]:
+    span_id = str(span.get("span_id") or "")
+    evidence = _evidence_for_span(span_id, records)
+    chunk = _chunks_by_id(records).get(str(span.get("chunk_id") or ""), {})
+    doc = _docs_by_id(records).get(str(span.get("document_id") or ""), {})
+    payload = _evidence_payload(evidence)
+    payload.update(
+        {
+            "document_id": span.get("document_id"),
+            "chunk_id": span.get("chunk_id"),
+            "span_kind": span.get("span_kind"),
+            "document": _document_metadata_summary(doc),
+        }
+    )
+    if chunk.get("token_estimate") is not None:
+        payload["token_estimate"] = chunk.get("token_estimate")
+    return payload
+
+
+def _source_provenance_sample(
+    records: dict[str, Any],
+    target_terms: list[str],
+    relation_terms: list[str],
+    *,
+    limit: int = 8,
+) -> list[dict[str, Any]]:
+    rows: list[tuple[float, int, str, int, str, dict[str, Any]]] = []
+    for span in records.get("source_spans", []):
+        span_id = str(span.get("span_id") or "")
+        if not span_id:
+            continue
+        evidence = _evidence_for_span(span_id, records)
+        material = normalize(" ".join([evidence.rel_path, evidence.text]))
+        target_hits = sum(1 for term in target_terms if _has_term(material, term))
+        relation_hits = sum(1 for term in relation_terms if _has_term(material, term))
+        if target_terms or relation_terms:
+            if target_terms and relation_terms and not (target_hits or relation_hits):
+                continue
+            if target_terms and not relation_terms and not target_hits:
+                continue
+            if relation_terms and not target_terms and not relation_hits:
+                continue
+        order = evidence.chunk_order if evidence.chunk_order is not None else -1
+        score = target_hits * 4.0 + relation_hits * 3.0 + 0.1
+        span_kind = str(span.get("span_kind") or "")
+        kind_priority = 0 if span_kind in {"chunk", "sentence"} else 1
+        rows.append((score, kind_priority, evidence.rel_path, order, span_id, _span_provenance_payload(span, records)))
+    rows.sort(key=lambda item: (-item[0], item[1], item[2], item[3], item[4]))
+    seen: set[tuple[str, str, int | None, str]] = set()
+    payloads: list[dict[str, Any]] = []
+    for _score, _kind_priority, _rel_path, _order, _span_id, payload in rows:
+        key = (
+            str(payload.get("rel_path") or ""),
+            str(payload.get("span_id") or ""),
+            payload.get("chunk_order") if isinstance(payload.get("chunk_order"), int) else None,
+            str(payload.get("text") or ""),
+        )
+        if key in seen:
+            continue
+        seen.add(key)
+        payloads.append(payload)
+        if len(payloads) >= limit:
+            break
+    return payloads
+
+
+def _candidate_evidence_sample(
+    candidates: list[tuple[float, str, Evidence, str]],
+    expected: ExpectedAnswer,
+    *,
+    limit: int = 8,
+) -> list[dict[str, Any]]:
+    rows: list[tuple[float, str, dict[str, Any]]] = []
+    for score, value, evidence, reason in candidates:
+        canonical = canonicalize_answer(expected, value) or clean_extracted_value(value)
+        if not canonical:
+            continue
+        rows.append(
+            (
+                float(score),
+                canonical,
+                {
+                    "value": canonical,
+                    "score": round(float(score), 3),
+                    "reason": reason,
+                    "evidence": _evidence_payload(evidence),
+                },
+            )
+        )
+    rows.sort(key=lambda item: (-item[0], len(item[1]), item[1]))
+    return [payload for _score, _value, payload in rows[:limit]]
+
+
+def _attach_no_answer_provenance(
+    diagnostics: dict[str, Any],
+    records: dict[str, Any],
+    target_terms: list[str],
+    relation_terms: list[str],
+    candidates: list[tuple[float, str, Evidence, str]],
+    expected: ExpectedAnswer,
+    reason: str,
+) -> None:
+    execution = diagnostics.setdefault("execution", {})
+    execution["no_answer_reason"] = reason
+    candidate_sample = _candidate_evidence_sample(candidates, expected)
+    if candidate_sample:
+        execution["candidate_evidence_sample"] = candidate_sample
+    provenance_sample = _source_provenance_sample(records, target_terms, relation_terms)
+    if provenance_sample:
+        execution["source_provenance_sample"] = provenance_sample
 
 
 def _metadata_evidence(record: dict[str, Any], records: dict[str, Any]) -> Evidence:
@@ -755,7 +898,7 @@ def _answer_values_from_relation(
     if relation_type == "semantic_frame":
         primary_values = []
     elif relation_type == "drs_condition":
-        primary_values = [str(row.get("value") or "")]
+        primary_values = [str(row.get("value") or "")] if expected.answer_type in {"content_phrase", "unknown"} else []
     else:
         primary_values = [str(row.get(key) or "") for key in ["value", "object"]]
     fallback_values = (
@@ -805,6 +948,8 @@ def _answer_values_from_frame(
         ]
         if slot_args:
             candidate_args = slot_args
+        elif expected.answer_type not in {"content_phrase", "unknown"}:
+            return []
     values = [str(arg.get("surface") or "") for arg in candidate_args]
     structural = expected.answer_type in {"url", "identifier", "file_path", "date_time", "count"}
     values = [
@@ -907,8 +1052,17 @@ def _bind_frame_conditions(records: dict[str, Any], frame: QueryFrame, expected:
                 [],
             )
         )
-        local_material = normalize(" ".join([frame_type_material, str(row.get("predicate") or ""), str(row.get("trigger_surface") or ""), arg_text, evidence.text]))
-        score = _split_match_score(local_material, local_material, target_terms, relation_terms)
+        local_material = normalize(
+            " ".join(
+                [
+                    frame_type_material,
+                    str(row.get("predicate") or ""),
+                    str(row.get("trigger_surface") or ""),
+                    arg_text,
+                ]
+            )
+        )
+        score = _match_score(local_material, target_terms, relation_terms)
         if score <= 0:
             continue
         for value in _answer_values_from_frame(
@@ -1267,17 +1421,6 @@ def _answer_conflict_diagnostics(
     if evidence_keys(top_bucket) & evidence_keys(next_bucket):
         return None
 
-    def evidence_payload(item: Evidence) -> dict[str, Any]:
-        return {
-            "rel_path": item.rel_path,
-            "span_id": item.span_id,
-            "chunk_order": item.chunk_order,
-            "char_start": item.char_start,
-            "char_end": item.char_end,
-            "source_kind": item.source_kind,
-            "text": item.text[:500],
-        }
-
     values = []
     for value, bucket in ordered[:4]:
         values.append(
@@ -1285,7 +1428,7 @@ def _answer_conflict_diagnostics(
                 "value": value,
                 "score": round(float(bucket["score"]), 3),
                 "reasons": sorted(bucket["reasons"]),
-                "evidence": [evidence_payload(item) for item in bucket["evidence"]],
+                "evidence": [_evidence_payload(item) for item in bucket["evidence"]],
             }
         )
     return {
@@ -1379,6 +1522,15 @@ def execute_bounded_query(
     diagnostics = {"ranking": ranking, "execution": {"record_counts": records["record_counts"], "query_frame": frame.as_dict()}}
 
     if expected.answer_type == "boolean":
+        _attach_no_answer_provenance(
+            diagnostics,
+            records,
+            target_terms,
+            relation_terms,
+            [],
+            expected,
+            "boolean_not_bound_by_bounded_executor",
+        )
         return None, diagnostics
 
     candidates: list[tuple[float, str, Evidence, str]] = []
@@ -1388,13 +1540,33 @@ def execute_bounded_query(
     temporal_candidates = _temporal_candidates(records, frame, expected, target_terms, relation_terms)
     temporal_candidates.extend(_temporal_relation_candidates(records, frame, expected, target_terms, relation_terms))
     if temporal_candidates and frame.temporal_scope in {"latest", "earliest"}:
-        return _choose_answer(temporal_candidates, expected), diagnostics
+        answer = _choose_answer(temporal_candidates, expected)
+        if answer is None:
+            _attach_no_answer_provenance(
+                diagnostics,
+                records,
+                target_terms,
+                relation_terms,
+                temporal_candidates,
+                expected,
+                "no_compatible_temporal_candidate",
+            )
+        return answer, diagnostics
     candidates.extend(temporal_candidates)
     candidates.extend(_bind_metadata(records, question, expected, target_terms, relation_terms))
     candidates.extend(_bind_contexts(records, frame, expected, target_terms, relation_terms))
 
     if not frame.temporal_scope and _has_unscoped_temporal_ambiguity(candidates):
         diagnostics["execution"]["temporal_ambiguity_without_query_scope"] = True
+        _attach_no_answer_provenance(
+            diagnostics,
+            records,
+            target_terms,
+            relation_terms,
+            candidates,
+            expected,
+            "temporal_ambiguity_without_query_scope",
+        )
         return None, diagnostics
 
     if expected.answer_type == "count" and frame.aggregation == "count":
@@ -1406,11 +1578,33 @@ def execute_bounded_query(
         evidence = [item[2] for item in candidates[:4]]
         return Answer(str(len(values)), 0.85, evidence, "aggregation DRS binding", "count"), diagnostics
     if frame.aggregation in {"list", "set"}:
-        return _choose_list_answer(candidates, expected), diagnostics
+        answer = _choose_list_answer(candidates, expected)
+        if answer is None:
+            _attach_no_answer_provenance(
+                diagnostics,
+                records,
+                target_terms,
+                relation_terms,
+                candidates,
+                expected,
+                "no_compatible_list_candidate",
+            )
+        return answer, diagnostics
     if not frame.temporal_scope and expected.answer_type != "count":
         conflict = _answer_conflict_diagnostics(candidates, expected)
         if conflict:
             diagnostics["execution"]["answer_conflict_without_query_scope"] = conflict
             return None, diagnostics
 
-    return _choose_answer(candidates, expected), diagnostics
+    answer = _choose_answer(candidates, expected)
+    if answer is None:
+        _attach_no_answer_provenance(
+            diagnostics,
+            records,
+            target_terms,
+            relation_terms,
+            candidates,
+            expected,
+            "no_compatible_candidate" if candidates else "no_candidate",
+        )
+    return answer, diagnostics

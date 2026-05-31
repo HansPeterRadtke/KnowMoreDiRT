@@ -1090,6 +1090,214 @@ def test_scattered_identity_conflict_returns_unknown_with_source_provenance(
     assert "ml-9" in diagnostics["ranking"]["identity_expanded_target_terms"]
 
 
+def test_scattered_unlinked_referent_status_returns_unknown_with_provenance(
+    tmp_path: Path,
+    monkeypatch,
+) -> None:
+    (tmp_path / "begin").mkdir()
+    (tmp_path / "middle").mkdir()
+    (tmp_path / "ending").mkdir()
+    (tmp_path / "begin" / "registry.txt").write_text(
+        "Registry introduces Lumen Core as the archive engine.",
+        encoding="utf-8",
+    )
+    (tmp_path / "middle" / "status.txt").write_text(
+        "Middle status log says LC-71 status is silver under sealed review.",
+        encoding="utf-8",
+    )
+    (tmp_path / "ending" / "crosswalk.txt").write_text(
+        "Ending crosswalk mentions Lumen Core while LC-71 status is silver and no confirmed identity link exists.",
+        encoding="utf-8",
+    )
+
+    class UnlinkedStatusModel:
+        def context_size(self) -> int:
+            return 4096
+
+        def cache_fingerprint(self) -> dict[str, object]:
+            return {"model_id": "fake-unlinked-scattered-drs", "context_size": 4096}
+
+        def complete_json(self, prompt: str, *, n_predict: int = 128, grammar=None, json_schema=None):
+            if "Registry introduces" in prompt:
+                text = "Registry introduces Lumen Core as the archive engine."
+                referents = [{"id": "r0", "label": "Lumen Core", "kind": "artifact", "evidence_text": "Lumen Core"}]
+                conditions = [
+                    {
+                        "id": "c0",
+                        "predicate": "introduces",
+                        "box_id": "b0",
+                        "polarity": "positive",
+                        "modality": "asserted",
+                        "temporal_id": "",
+                        "arguments": [
+                            {
+                                "role": "object",
+                                "target_kind": "referent",
+                                "target_id": "r0",
+                                "value": "",
+                                "value_type": "artifact",
+                                "evidence_text": "Lumen Core",
+                            }
+                        ],
+                        "evidence_text": text,
+                    }
+                ]
+                source_id = "begin/registry.txt"
+            elif "Middle status log" in prompt:
+                text = "Middle status log says LC-71 status is silver under sealed review."
+                referents = [{"id": "r0", "label": "LC-71", "kind": "identifier", "evidence_text": "LC-71"}]
+                conditions = [
+                    {
+                        "id": "c0",
+                        "predicate": "status",
+                        "box_id": "b0",
+                        "polarity": "positive",
+                        "modality": "asserted",
+                        "temporal_id": "",
+                        "arguments": [
+                            {
+                                "role": "subject",
+                                "target_kind": "referent",
+                                "target_id": "r0",
+                                "value": "",
+                                "value_type": "identifier",
+                                "evidence_text": "LC-71",
+                            },
+                            {
+                                "role": "state",
+                                "target_kind": "literal",
+                                "target_id": "",
+                                "value": "silver",
+                                "value_type": "state",
+                                "evidence_text": "silver",
+                            },
+                        ],
+                        "evidence_text": "LC-71 status is silver",
+                    }
+                ]
+                source_id = "middle/status.txt"
+            else:
+                text = "Ending crosswalk mentions Lumen Core while LC-71 status is silver and no confirmed identity link exists."
+                referents = [
+                    {"id": "r0", "label": "Lumen Core", "kind": "artifact", "evidence_text": "Lumen Core"},
+                    {"id": "r1", "label": "LC-71", "kind": "identifier", "evidence_text": "LC-71"},
+                ]
+                conditions = [
+                    {
+                        "id": "c0",
+                        "predicate": "status",
+                        "box_id": "b0",
+                        "polarity": "positive",
+                        "modality": "asserted",
+                        "temporal_id": "",
+                        "arguments": [
+                            {
+                                "role": "subject",
+                                "target_kind": "referent",
+                                "target_id": "r1",
+                                "value": "",
+                                "value_type": "identifier",
+                                "evidence_text": "LC-71",
+                            },
+                            {
+                                "role": "state",
+                                "target_kind": "literal",
+                                "target_id": "",
+                                "value": "silver",
+                                "value_type": "state",
+                                "evidence_text": "silver",
+                            },
+                        ],
+                        "evidence_text": "LC-71 status is silver",
+                    },
+                    {
+                        "id": "c1",
+                        "predicate": "identity_link",
+                        "box_id": "b0",
+                        "polarity": "negative",
+                        "modality": "asserted",
+                        "temporal_id": "",
+                        "arguments": [
+                            {
+                                "role": "left",
+                                "target_kind": "referent",
+                                "target_id": "r0",
+                                "value": "",
+                                "value_type": "artifact",
+                                "evidence_text": "Lumen Core",
+                            },
+                            {
+                                "role": "right",
+                                "target_kind": "referent",
+                                "target_id": "r1",
+                                "value": "",
+                                "value_type": "identifier",
+                                "evidence_text": "LC-71",
+                            },
+                        ],
+                        "evidence_text": "no confirmed identity link exists",
+                    },
+                ]
+                source_id = "ending/crosswalk.txt"
+            return {
+                "drs": {
+                    "schema_version": "chunk-drs-v2",
+                    "source_id": source_id,
+                    "referents": referents,
+                    "boxes": [
+                        {"id": "b0", "kind": "asserted", "parent_id": "", "holder_referent_id": "", "evidence_text": text}
+                    ],
+                    "conditions": conditions,
+                    "identity_hypotheses": [],
+                    "temporal_records": [],
+                },
+                "_model_raw": "{}",
+                "_model_elapsed_seconds": 0.01,
+            }
+
+    cache_dir = tmp_path.parent / f"{tmp_path.name}-unlinked-drs-cache"
+    monkeypatch.setenv("KMD_CHUNK_DRS_CACHE_DIR", str(cache_dir))
+    store, run_id, documents, sentences = ingest_folder(
+        tmp_path,
+        semantic_client=UnlinkedStatusModel(),  # type: ignore[arg-type]
+        use_semantic_frames=False,
+        use_drs_semantics=True,
+    )
+    sentences_by_document: dict[str, dict[int, object]] = {}
+    for sentence in sentences:
+        sentences_by_document.setdefault(sentence.rel_path, {})[sentence.order] = sentence
+    frame = QueryFrame(
+        question_text="What status is recorded for Lumen Core?",
+        answer_type="state",
+        answer_variables=("state",),
+        target_anchors=("Lumen Core",),
+        requested_relation="status",
+        relation_terms=("status",),
+        constraints=(),
+    )
+
+    answer, diagnostics = execute_bounded_query(
+        store,
+        run_id,
+        documents,
+        sentences_by_document,  # type: ignore[arg-type]
+        frame.question_text,
+        frame,
+    )
+
+    assert answer is None
+    assert diagnostics["execution"]["no_answer_reason"] == "no_candidate"
+    provenance = diagnostics["execution"]["source_provenance_sample"]
+    paths = {item["rel_path"] for item in provenance}
+    assert "ending/crosswalk.txt" in paths
+    crosswalk = next(item for item in provenance if item["rel_path"] == "ending/crosswalk.txt")
+    assert crosswalk["span_id"]
+    assert crosswalk["chunk_id"]
+    assert crosswalk["char_start"] == 0
+    assert crosswalk["document"]["file_name"] == "crosswalk.txt"
+    assert "LC-71 status is silver" in crosswalk["text"]
+
+
 def test_store_rejects_invalid_drs_condition_graphs() -> None:
     store = DSPGStore()
     payload = {
