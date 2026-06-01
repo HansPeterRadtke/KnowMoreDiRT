@@ -8,6 +8,7 @@ from knowmoredirt.answer_types import ExpectedAnswer
 from knowmoredirt.bounded_dspg import (
     _answer_conflict_diagnostics,
     _context_accessible,
+    _fetch_identity_hypotheses,
     _identity_expanded_terms,
     _load_records,
     _rank_scope,
@@ -4412,6 +4413,79 @@ def test_incremental_rechunk_excludes_stale_document_identity_hypotheses(
 
     assert answer is None
     assert "ag-1" not in diagnostics["ranking"].get("identity_expanded_target_terms", [])
+
+
+def test_identity_hypothesis_loading_batches_current_chunk_scope(tmp_path: Path) -> None:
+    store = DSPGStore()
+    run_id = store.start_run(tmp_path)
+    document_id = stable_id("doc", "large-current-scope")
+    store.execute(
+        """
+        INSERT INTO documents(
+          document_id, run_id, path, rel_path, content_hash, size_bytes, mtime, ctime, char_count, metadata_json
+        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+        """,
+        (document_id, run_id, str(tmp_path / "large.txt"), "large.txt", "hash", 0, 0.0, 0.0, 0, "{}"),
+    )
+    left_ref = store.upsert_referent(run_id, "Node Alpha", "artifact")
+    right_ref = store.upsert_referent(run_id, "Node Beta", "identifier")
+    current_chunk_ids: list[str] = []
+    for index in range(450):
+        chunk_id = stable_id("chunk", "current", index)
+        span_id = stable_id("span", "current", index)
+        current_chunk_ids.append(chunk_id)
+        store.execute(
+            "INSERT INTO chunks(chunk_id, document_id, chunk_order, char_start, char_end, text, token_estimate) VALUES (?, ?, ?, ?, ?, ?, ?)",
+            (chunk_id, document_id, index, index * 10, index * 10 + 5, f"chunk {index}", 1),
+        )
+        store.execute(
+            "INSERT INTO source_spans(span_id, document_id, chunk_id, char_start, char_end, surface, surface_norm, span_kind) VALUES (?, ?, ?, ?, ?, ?, ?, ?)",
+            (span_id, document_id, chunk_id, index * 10, index * 10 + 5, f"chunk {index}", f"chunk {index}", "sentence"),
+        )
+    current_span_id = stable_id("span", "current", 449)
+    stale_chunk_id = stable_id("chunk", "stale")
+    stale_span_id = stable_id("span", "stale")
+    store.execute(
+        "INSERT INTO chunks(chunk_id, document_id, chunk_order, char_start, char_end, text, token_estimate) VALUES (?, ?, ?, ?, ?, ?, ?)",
+        (stale_chunk_id, document_id, 999, 9990, 9999, "stale chunk", 1),
+    )
+    store.execute(
+        "INSERT INTO source_spans(span_id, document_id, chunk_id, char_start, char_end, surface, surface_norm, span_kind) VALUES (?, ?, ?, ?, ?, ?, ?, ?)",
+        (stale_span_id, document_id, stale_chunk_id, 9990, 9999, "stale chunk", "stale chunk", "sentence"),
+    )
+    for span_id, label in [(current_span_id, "current"), (stale_span_id, "stale")]:
+        store.execute(
+            """
+            INSERT INTO identity_hypotheses(
+              hypothesis_id, run_id, source_span_id, context_id, drs_box_id, box_external_id,
+              left_referent_id, right_referent_id, relation, evidence, confidence, source
+            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+            """,
+            (
+                stable_id("idh", label),
+                run_id,
+                span_id,
+                None,
+                None,
+                None,
+                left_ref,
+                right_ref,
+                "same_referent",
+                label,
+                0.9,
+                "test",
+            ),
+        )
+
+    rows = _fetch_identity_hypotheses(
+        store.connection,
+        run_id,
+        [],
+        [document_id],
+        current_document_chunk_ids=current_chunk_ids,
+    )
+
+    assert {row["source_span_id"] for row in rows} == {current_span_id}
 
 
 def test_incremental_drs_ingest_skips_previous_failed_attempts(tmp_path: Path, monkeypatch) -> None:

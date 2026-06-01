@@ -302,6 +302,11 @@ def _fetch_by_ids(connection: Any, table: str, key: str, ids: list[str]) -> list
     return rows
 
 
+def _batched_values(values: list[str], *, size: int = 400) -> list[list[str]]:
+    unique = list(dict.fromkeys(item for item in values if item))
+    return [unique[index:index + size] for index in range(0, len(unique), size)]
+
+
 def _fetch_chunks(connection: Any, chunk_ids: list[str]) -> list[dict[str, Any]]:
     return _fetch_by_ids(connection, "chunks", "chunk_id", chunk_ids)
 
@@ -322,34 +327,57 @@ def _fetch_identity_hypotheses(
     document_ids: list[str],
     current_document_chunk_ids: list[str] | None = None,
 ) -> list[dict[str, Any]]:
-    clauses = ["ih.source_span_id IS NULL"]
-    params: list[Any] = [run_id]
-    if span_ids:
-        placeholders = ",".join("?" for _ in span_ids)
-        clauses.append(f"ih.source_span_id IN ({placeholders})")
-        params.extend(span_ids)
-    if current_document_chunk_ids is not None:
-        if current_document_chunk_ids:
-            placeholders = ",".join("?" for _ in current_document_chunk_ids)
-            clauses.append(f"s.chunk_id IN ({placeholders})")
-            params.extend(current_document_chunk_ids)
-    elif document_ids:
-        placeholders = ",".join("?" for _ in document_ids)
-        clauses.append(f"s.document_id IN ({placeholders})")
-        params.extend(document_ids)
-    where = " OR ".join(f"({clause})" for clause in clauses)
-    return [
-        dict(row)
-        for row in connection.execute(
+    rows_by_id: dict[str, dict[str, Any]] = {}
+
+    def add_rows(sql: str, params: tuple[Any, ...]) -> None:
+        for row in connection.execute(sql, params):
+            payload = dict(row)
+            key = str(payload.get("hypothesis_id") or json.dumps(payload, sort_keys=True, default=str))
+            rows_by_id.setdefault(key, payload)
+
+    add_rows(
+        """
+        SELECT DISTINCT ih.*
+        FROM identity_hypotheses ih
+        WHERE ih.run_id=? AND ih.source_span_id IS NULL
+        """,
+        (run_id,),
+    )
+    for group in _batched_values(span_ids):
+        placeholders = ",".join("?" for _ in group)
+        add_rows(
             f"""
             SELECT DISTINCT ih.*
             FROM identity_hypotheses ih
-            LEFT JOIN source_spans s ON s.span_id=ih.source_span_id
-            WHERE ih.run_id=? AND ({where})
+            WHERE ih.run_id=? AND ih.source_span_id IN ({placeholders})
             """,
-            params,
+            (run_id, *group),
         )
-    ]
+    if current_document_chunk_ids is not None:
+        for group in _batched_values(current_document_chunk_ids):
+            placeholders = ",".join("?" for _ in group)
+            add_rows(
+                f"""
+                SELECT DISTINCT ih.*
+                FROM identity_hypotheses ih
+                JOIN source_spans s ON s.span_id=ih.source_span_id
+                WHERE ih.run_id=? AND s.chunk_id IN ({placeholders})
+                """,
+                (run_id, *group),
+            )
+    else:
+        for group in _batched_values(document_ids):
+            placeholders = ",".join("?" for _ in group)
+            add_rows(
+                f"""
+                SELECT DISTINCT ih.*
+                FROM identity_hypotheses ih
+                JOIN source_spans s ON s.span_id=ih.source_span_id
+                WHERE ih.run_id=? AND s.document_id IN ({placeholders})
+                """,
+                (run_id, *group),
+            )
+    return list(rows_by_id.values())
 
 
 def _load_records(
