@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import os
 from pathlib import Path
 
 
@@ -12,3 +13,7 @@ NOISE_FIXTURE_ROOT = REPO_ROOT / "tests" / "fixtures" / "hardcore_noise"
 NOISE_QA_PATH = REPO_ROOT / "tests" / "fixtures" / "hardcore_noise_qa.json"
 HARD_REASONING_ROOT = REPO_ROOT / "tests" / "fixtures" / "hard_raw_reasoning"
 HARD_REASONING_QA_PATH = REPO_ROOT / "tests" / "fixtures" / "hard_raw_reasoning_qa.json"
+
+
+def pytest_configure() -> None:
+    os.environ.setdefault("KMD_USE_LOCAL_MODEL", "0")
