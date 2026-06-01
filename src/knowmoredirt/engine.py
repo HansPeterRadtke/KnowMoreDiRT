@@ -43,7 +43,7 @@ from .model_planner import (
     normalize_model_plan,
     query_frame_from_query_drs,
 )
-from .models import Answer, Evidence, Sentence
+from .models import Answer, Document, Evidence, Sentence
 from .query import QueryFrame, frame_from_mapping, plan_question, term_variants
 from .semantic_cache import SemanticFrameCache
 from .store import stable_id
@@ -88,6 +88,7 @@ class KnowMoreDiRTEngine:
         )
         self.index = LexicalIndex(self.sentences)
         self.stats = EngineStats(len(self.documents), len(self.sentences))
+        self._documents_by_rel_path = {document.rel_path: document for document in self.documents}
         self._sentences_by_location = {
             (sentence.rel_path, sentence.order): sentence for sentence in self.sentences
         }
@@ -519,6 +520,100 @@ class KnowMoreDiRTEngine:
             for item in evidence[:limit]
             if item.rel_path and item.text
         ]
+
+    def _document_provenance_summary(self, document: Document | None) -> dict[str, object]:
+        if document is None:
+            return {}
+        metadata = document.metadata if isinstance(document.metadata, dict) else {}
+        text_quality = metadata.get("text_quality")
+        semantic_quality = (
+            text_quality.get("semantic_quality")
+            if isinstance(text_quality, dict)
+            else metadata.get("semantic_quality")
+        )
+        summary: dict[str, object] = {
+            "document_id": document.document_id,
+            "rel_path": document.rel_path,
+            "size_bytes": document.size_bytes,
+            "char_count": len(document.text),
+        }
+        for key in ["file_name", "suffix", "parent_rel_path", "mime_type"]:
+            value = metadata.get(key)
+            if value is not None and value != "":
+                summary[key] = value
+        if semantic_quality is not None and semantic_quality != "":
+            summary["semantic_quality"] = semantic_quality
+        return {key: value for key, value in summary.items() if value is not None and value != ""}
+
+    def _sentence_for_evidence(self, evidence: Evidence) -> Sentence | None:
+        if evidence.chunk_order is not None:
+            sentence = self._sentences_by_location.get((evidence.rel_path, evidence.chunk_order))
+            if sentence is not None:
+                return sentence
+        for sentence in self._sentences_by_document.get(evidence.rel_path, {}).values():
+            if sentence.text == evidence.text:
+                return sentence
+        return None
+
+    def _evidence_source_provenance_payload(self, evidence: Evidence) -> dict[str, object]:
+        sentence = self._sentence_for_evidence(evidence)
+        document = self._documents_by_rel_path.get(evidence.rel_path)
+        payload: dict[str, object] = {
+            "rel_path": evidence.rel_path,
+            "span_id": evidence.span_id,
+            "chunk_order": evidence.chunk_order,
+            "char_start": evidence.char_start,
+            "char_end": evidence.char_end,
+            "source_kind": evidence.source_kind,
+            "text": evidence.text[:500],
+            "score": round(float(evidence.score), 3),
+        }
+        if sentence is not None:
+            payload["document_id"] = sentence.document_id
+            payload["chunk_id"] = self._chunk_id(sentence)
+            payload["span_kind"] = evidence.source_kind
+            payload["token_estimate"] = len(content_tokens(sentence.text))
+            if payload.get("char_start") is None:
+                payload["char_start"] = sentence.char_start
+            if payload.get("char_end") is None:
+                payload["char_end"] = sentence.char_end
+            if document is None:
+                document = self._documents_by_rel_path.get(sentence.rel_path)
+        elif document is not None:
+            payload["document_id"] = document.document_id
+        document_summary = self._document_provenance_summary(document)
+        if document_summary:
+            payload["document"] = document_summary
+        return {key: value for key, value in payload.items() if value is not None and value != ""}
+
+    def _model_answer_source_provenance_sample(self, answer: Answer, *, limit: int = 8) -> list[dict[str, object]]:
+        rows: list[dict[str, object]] = []
+        seen: set[tuple[str, str, int | None, str]] = set()
+        for evidence in answer.evidence:
+            payload = self._evidence_source_provenance_payload(evidence)
+            key = (
+                str(payload.get("rel_path") or ""),
+                str(payload.get("span_id") or ""),
+                payload.get("chunk_order") if isinstance(payload.get("chunk_order"), int) else None,
+                str(payload.get("text") or ""),
+            )
+            if key in seen:
+                continue
+            seen.add(key)
+            rows.append(payload)
+            if len(rows) >= limit:
+                break
+        return rows
+
+    def _attach_model_answer_provenance(self, answer: Answer | None) -> None:
+        if answer is None:
+            return
+        provenance = self._model_answer_source_provenance_sample(answer)
+        if not provenance:
+            return
+        execution = self.last_bounded_diagnostics.setdefault("execution", {})
+        if isinstance(execution, dict):
+            execution["answer_source_provenance"] = provenance
 
     def _matching_evidence(self, evidence: list[Evidence], evidence_span: str, proposed: str) -> list[Evidence]:
         matches: list[Evidence] = []
@@ -1104,7 +1199,15 @@ class KnowMoreDiRTEngine:
         trace.evidence_parsed_count += 1
         if not model.get("sufficient_evidence"):
             trace.evidence_rejected_count += 1
-            return Answer("unknown", reason="local model query-DRS insufficient evidence")
+            unknown = Answer(
+                "unknown",
+                0.0,
+                [item for item in evidence[:6] if item.rel_path and item.text],
+                "local model query-DRS insufficient evidence",
+                "unknown",
+            )
+            self._attach_model_answer_provenance(unknown)
+            return unknown
         proposed = str(model.get("answer") or "")
         evidence_span = str(model.get("evidence_span") or "")
         answer_type = str(model.get("answer_type") or "content_phrase")
@@ -1147,6 +1250,7 @@ class KnowMoreDiRTEngine:
             return None
         trace.evidence_accepted_count += 1
         trace.model_answer_count += 1
+        self._attach_model_answer_provenance(finalized)
         return finalized
 
     def _answer_with_model_evidence_extraction(
@@ -1216,6 +1320,7 @@ class KnowMoreDiRTEngine:
             return None
         trace.evidence_accepted_count += 1
         trace.model_answer_count += 1
+        self._attach_model_answer_provenance(finalized)
         return finalized
 
     def _shortest_model_answer_value(self, proposed: str, answer_type: str, frame: QueryFrame) -> str:

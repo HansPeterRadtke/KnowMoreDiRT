@@ -2,8 +2,10 @@ from __future__ import annotations
 
 from pathlib import Path
 
+from knowmoredirt.answer_types import ExpectedAnswer
 from knowmoredirt.engine import KnowMoreDiRTEngine
 from knowmoredirt.model_planner import call_model_evidence_answer
+from knowmoredirt.query import QueryFrame
 
 
 class FakeEvidenceModel:
@@ -164,6 +166,46 @@ def test_fake_model_evidence_extraction_is_invoked_counted_and_grounded(tmp_path
     assert engine.model_query_trace.call_count == 1
     assert engine.model_query_trace.accepted_count == 1
     assert engine.model_query_trace.model_answer_count == 1
+
+
+def test_model_evidence_answer_attaches_source_metadata_provenance(tmp_path: Path) -> None:
+    (tmp_path / "notes").mkdir()
+    (tmp_path / "notes" / "source.raw").write_text(
+        "Ash Meadow conservator Lyra Fen\n",
+        encoding="utf-8",
+    )
+    engine = KnowMoreDiRTEngine(tmp_path)
+    engine._use_local_model = True
+    engine._model_client = FakeEvidenceModel()
+    engine.model_query_trace.enabled = True
+    frame = QueryFrame(
+        question_text="Who is the conservator for Ash Meadow?",
+        answer_type="person",
+        answer_variables=("person",),
+        target_anchors=("Ash Meadow",),
+        requested_relation="conservator",
+        relation_terms=("conservator",),
+        constraints=(),
+    )
+
+    answer = engine._answer_with_model_evidence_extraction(
+        "Who is the conservator for Ash Meadow?",
+        frame,
+        ExpectedAnswer("person"),
+    )
+
+    assert answer is not None
+    assert answer.text == "Lyra Fen"
+    provenance = engine.last_bounded_diagnostics["execution"]["answer_source_provenance"]
+    assert provenance[0]["rel_path"] == "notes/source.raw"
+    assert provenance[0]["chunk_order"] == 0
+    assert provenance[0]["char_start"] == 0
+    assert provenance[0]["span_id"]
+    assert provenance[0]["chunk_id"]
+    assert provenance[0]["document_id"] == provenance[0]["document"]["document_id"]
+    assert provenance[0]["document"]["file_name"] == "source.raw"
+    assert provenance[0]["document"]["parent_rel_path"] == "notes"
+    assert provenance[0]["token_estimate"] > 0
 
 
 def test_fake_model_evidence_extraction_rejects_incompatible_answer_type(tmp_path: Path) -> None:
