@@ -451,12 +451,6 @@ def _load_records(
         document_ids,
         current_document_chunk_ids,
     )
-    drs_identity_hypotheses = _fetch_by_ids(
-        connection,
-        "drs_identity_hypotheses",
-        "source_span_id",
-        span_ids,
-    )
     identity_span_ids = list(
         dict.fromkeys(
             str(row.get("source_span_id") or "")
@@ -477,6 +471,12 @@ def _load_records(
             chunks = _merge_rows_by_id(chunks, _fetch_by_ids(connection, "chunks", "chunk_id", extra_chunk_ids), "chunk_id")
         chunk_ids = [chunk["chunk_id"] for chunk in chunks]
         span_ids = [span["span_id"] for span in spans]
+    drs_identity_hypotheses = _fetch_by_ids(
+        connection,
+        "drs_identity_hypotheses",
+        "source_span_id",
+        span_ids,
+    )
     frames = _fetch_by_ids(connection, "frames", "span_id", span_ids)
     arguments = _fetch_by_ids(connection, "frame_arguments", "frame_id", [frame["frame_id"] for frame in frames])
     relations = _fetch_by_ids(connection, "relations", "source_span_id", span_ids)

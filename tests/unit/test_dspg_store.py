@@ -2903,6 +2903,212 @@ def test_reported_identity_without_box_id_does_not_expand_as_asserted(
     assert {"begin/intro.txt", "middle/state.txt", "end/reported_crosswalk.txt"}.issubset(provenance_paths)
 
 
+def test_extra_identity_spans_carry_blocked_drs_identity_provenance(
+    tmp_path: Path,
+    monkeypatch,
+) -> None:
+    (tmp_path / "registry.txt").write_text(
+        "\n".join(
+            [
+                "Boreal Node registry entry exists.",
+                "Filler alpha marker.",
+                "Filler beta marker.",
+                "Filler gamma marker.",
+                "Filler delta marker.",
+                "Filler epsilon marker.",
+                (
+                    "Bridge note says BN-2 is the same artifact as Boreal Node while "
+                    "the observer reported BN-2 matches Boreal Node only in a drill."
+                ),
+            ]
+        ),
+        encoding="utf-8",
+    )
+
+    class ExtraSpanIdentityModel:
+        def context_size(self) -> int:
+            return 4096
+
+        def cache_fingerprint(self) -> dict[str, object]:
+            return {"model_id": "fake-extra-span-blocked-identity", "context_size": 4096}
+
+        def complete_json(self, prompt: str, *, n_predict: int = 128, grammar=None, json_schema=None):
+            if "Bridge note says" in prompt:
+                text = (
+                    "Bridge note says BN-2 is the same artifact as Boreal Node while "
+                    "the observer reported BN-2 matches Boreal Node only in a drill."
+                )
+                root_evidence = "BN-2 is the same artifact as Boreal Node"
+                reported_evidence = "BN-2 matches Boreal Node"
+                return {
+                    "drs": {
+                        "schema_version": "chunk-drs-v2",
+                        "source_id": "registry.txt",
+                        "referents": [
+                            {"id": "r0", "label": "BN-2", "kind": "identifier", "evidence_text": "BN-2"},
+                            {
+                                "id": "r1",
+                                "label": "Boreal Node",
+                                "kind": "artifact",
+                                "evidence_text": "Boreal Node",
+                            },
+                            {"id": "r2", "label": "observer", "kind": "actor", "evidence_text": "observer"},
+                        ],
+                        "boxes": [
+                            {
+                                "id": "b0",
+                                "kind": "asserted",
+                                "parent_id": "",
+                                "holder_referent_id": "",
+                                "evidence_text": text,
+                            },
+                            {
+                                "id": "b1",
+                                "kind": "reported",
+                                "parent_id": "b0",
+                                "holder_referent_id": "r2",
+                                "evidence_text": "observer reported BN-2 matches Boreal Node only in a drill",
+                            },
+                        ],
+                        "conditions": [
+                            {
+                                "id": "c0",
+                                "predicate": "same_artifact",
+                                "box_id": "b0",
+                                "polarity": "positive",
+                                "modality": "asserted",
+                                "temporal_id": "",
+                                "arguments": [
+                                    {
+                                        "role": "left",
+                                        "target_kind": "referent",
+                                        "target_id": "r0",
+                                        "value": "",
+                                        "value_type": "identifier",
+                                        "evidence_text": "BN-2",
+                                    },
+                                    {
+                                        "role": "right",
+                                        "target_kind": "referent",
+                                        "target_id": "r1",
+                                        "value": "",
+                                        "value_type": "artifact",
+                                        "evidence_text": "Boreal Node",
+                                    },
+                                ],
+                                "evidence_text": root_evidence,
+                            },
+                        ],
+                        "identity_hypotheses": [
+                            {
+                                "left_referent_id": "r0",
+                                "right_referent_id": "r1",
+                                "status": "accepted",
+                                "box_id": "b0",
+                                "evidence_text": root_evidence,
+                                "confidence": 0.91,
+                            },
+                            {
+                                "left_referent_id": "r0",
+                                "right_referent_id": "r1",
+                                "status": "accepted",
+                                "evidence_text": reported_evidence,
+                                "confidence": 0.88,
+                            },
+                        ],
+                        "temporal_records": [],
+                    },
+                    "_model_raw": "{}",
+                    "_model_elapsed_seconds": 0.01,
+                }
+
+            text = "Boreal Node registry entry exists." if "Boreal Node" in prompt else "Filler alpha marker."
+            label = "Boreal Node" if "Boreal Node" in text else text.rstrip(".")
+            return {
+                "drs": {
+                    "schema_version": "chunk-drs-v2",
+                    "source_id": "registry.txt",
+                    "referents": [
+                        {"id": "r0", "label": label, "kind": "source_text", "evidence_text": label},
+                    ],
+                    "boxes": [
+                        {"id": "b0", "kind": "asserted", "parent_id": "", "holder_referent_id": "", "evidence_text": text}
+                    ],
+                    "conditions": [
+                        {
+                            "id": "c0",
+                            "predicate": "mentions",
+                            "box_id": "b0",
+                            "polarity": "positive",
+                            "modality": "asserted",
+                            "temporal_id": "",
+                            "arguments": [
+                                {
+                                    "role": "content",
+                                    "target_kind": "referent",
+                                    "target_id": "r0",
+                                    "value": "",
+                                    "value_type": "source_text",
+                                    "evidence_text": label,
+                                },
+                            ],
+                            "evidence_text": text,
+                        },
+                    ],
+                    "identity_hypotheses": [],
+                    "temporal_records": [],
+                },
+                "_model_raw": "{}",
+                "_model_elapsed_seconds": 0.01,
+            }
+
+    cache_dir = tmp_path.parent / f"{tmp_path.name}-extra-span-blocked-identity-cache"
+    monkeypatch.setenv("KMD_CHUNK_DRS_CACHE_DIR", str(cache_dir))
+    store, run_id, documents, sentences = ingest_folder(
+        tmp_path,
+        semantic_client=ExtraSpanIdentityModel(),
+        use_semantic_frames=False,
+        use_drs_semantics=True,
+    )
+    sentences_by_document: dict[str, dict[int, object]] = {}
+    for sentence in sentences:
+        sentences_by_document.setdefault(sentence.rel_path, {})[sentence.order] = sentence
+    frame = QueryFrame(
+        question_text="What status is recorded for Boreal Node?",
+        answer_type="state",
+        answer_variables=("state",),
+        target_anchors=("Boreal Node",),
+        requested_relation="status",
+        relation_terms=("status",),
+        constraints=(),
+    )
+    selected_docs, selected_chunks, _ranking = _rank_scope(
+        documents,
+        sentences_by_document,  # type: ignore[arg-type]
+        frame.question_text,
+        frame,
+        40,
+        1,
+    )
+    records = _load_records(store, run_id, selected_docs, selected_chunks)
+
+    bridge_spans = [
+        span for span in records["source_spans"] if "Bridge note says" in str(span.get("surface") or "")
+    ]
+    assert bridge_spans
+    assert all(span["chunk_id"] not in set(selected_chunks) for span in bridge_spans)
+    assert any("same artifact" in str(row.get("evidence") or "") for row in records["identity_hypotheses"])
+
+    blocked_rows = [
+        row
+        for row in records["drs_identity_hypotheses"]
+        if "BN-2 matches Boreal Node" in str(row.get("evidence_surface") or "")
+    ]
+    assert blocked_rows
+    blocked_metadata = json.loads(blocked_rows[0]["metadata_json"])
+    assert blocked_metadata["expansion_blocked_reason"] == "missing_grounded_box"
+
+
 def test_scattered_identity_reported_contradiction_respects_drs_scope(
     tmp_path: Path,
     monkeypatch,
