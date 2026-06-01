@@ -250,6 +250,26 @@ def test_chunk_frame_planner_prefers_json_schema_for_capable_clients(monkeypatch
     assert "frames" in model.json_schema["properties"]
 
 
+def test_chunk_frame_invalid_json_keeps_context_budget() -> None:
+    class InvalidFrameModel:
+        def context_size(self) -> int:
+            return 4096
+
+        def cache_fingerprint(self) -> dict[str, Any]:
+            return {"model_id": "fake-invalid-frame-budget", "context_size": 4096}
+
+        def complete_json(self, prompt: str, *, n_predict: int = 128, grammar=None, json_schema=None):
+            assert "Extract generic DRT/DSPG discourse frames" in prompt
+            return {"unexpected": [], "_model_raw": "{}"}
+
+    result = call_model_chunk_frames("Aero Gate is ready.", InvalidFrameModel())  # type: ignore[arg-type]
+
+    assert result["accepted"] is False
+    assert result["reason"] == "invalid_json"
+    assert result["context_budget"]["runtime_context_size"] == 4096
+    assert result["context_budget"]["context_budget_policy"] == CHUNK_FRAME_CONTEXT_BUDGET_POLICY
+
+
 def test_query_frame_schema_constrains_temporal_scope_operator(monkeypatch, tmp_path) -> None:
     class QueryFrameModel:
         def __init__(self) -> None:

@@ -2792,6 +2792,7 @@ def call_model_chunk_frames(
             "prompt_hash": prompt_hash,
             "grammar_hash": grammar_hash,
             "elapsed": round(time.time() - start, 3),
+            "context_budget": context_budget,
         }
     grounded: list[dict[str, Any]] = []
     rejected_for_grounding = 0
