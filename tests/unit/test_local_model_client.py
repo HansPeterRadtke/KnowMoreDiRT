@@ -8,6 +8,7 @@ from knowmoredirt.model_planner import (
     CHUNK_DRS_IDENTITY_PROVENANCE_POLICY,
     CHUNK_DRS_TEMPORAL_PROVENANCE_POLICY,
     QUERY_DRS_DYNAMIC_OUTPUT_BUDGET_POLICY,
+    QUERY_OPERATOR_SCHEMA_POLICY,
     build_answer_verification_prompt,
     call_model_chunk_drs,
     call_model_chunk_frames,
@@ -253,9 +254,12 @@ def test_query_frame_schema_constrains_temporal_scope_operator(monkeypatch, tmp_
     assert result["accepted"] is True
     assert result["temporal_scope"] == "latest"
     assert "temporal_scope must be" in model.prompt
+    assert "aggregation must be" in model.prompt
+    assert result["operator_schema_policy"] == QUERY_OPERATOR_SCHEMA_POLICY
     assert model.json_schema is not None
     query_schema = model.json_schema["properties"]["query_frame"]
     assert query_schema["properties"]["temporal_scope"]["enum"] == ["", "earliest", "latest"]
+    assert query_schema["properties"]["aggregation"]["enum"] == ["", "count", "list", "set"]
 
 
 def test_chunk_drs_planner_uses_json_schema_and_validates_grounding(monkeypatch, tmp_path) -> None:
@@ -558,6 +562,8 @@ def test_query_drs_planner_uses_json_schema(monkeypatch, tmp_path) -> None:
     query_schema = model.json_schema["properties"]["query_drs"]
     assert query_schema["properties"]["question"]["enum"] == ["Who reviewed Aero Gate?"]
     assert query_schema["properties"]["schema_version"]["enum"] == ["query-drs-v3"]
+    assert query_schema["properties"]["temporal_scope"]["enum"] == ["", "earliest", "latest"]
+    assert query_schema["properties"]["aggregation"]["enum"] == ["", "count", "list", "set"]
     assert query_schema["properties"]["requested_conditions"]["maxItems"] == query_drs_array_max_items(256)
     assert (
         query_schema["properties"]["requested_conditions"]["items"]["properties"]["arguments"]["maxItems"]
@@ -638,6 +644,7 @@ def test_short_query_drs_uses_smaller_surface_budget(monkeypatch, tmp_path) -> N
 
     assert result["accepted"] is True
     assert result["output_budget_policy"] == QUERY_DRS_DYNAMIC_OUTPUT_BUDGET_POLICY
+    assert result["operator_schema_policy"] == QUERY_OPERATOR_SCHEMA_POLICY
     assert model.n_predict == 384
     assert model.json_schema is not None
     query_schema = model.json_schema["properties"]["query_drs"]

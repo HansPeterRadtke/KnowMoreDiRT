@@ -79,10 +79,11 @@ CHUNK_DRS_DYNAMIC_OUTPUT_BUDGET_POLICY = "source-aware-tiny-prose-544-short-768-
 CHUNK_DRS_DYNAMIC_CONDITION_BUDGET_POLICY = "compact-nontemporal-condition-stage-floor-528-v2"
 CHUNK_DRS_STAGED_FIRST_POLICY = "field-like-source-spans-before-monolithic-v1"
 QUERY_DRS_SCHEMA_VERSION = "query-drs-v3"
-QUERY_DRS_VALIDATION_POLICY = "strict-query-drs-version-question-evidence-box-dag-repair-v9"
+QUERY_DRS_VALIDATION_POLICY = "strict-query-drs-version-question-evidence-box-dag-repair-operators-v10"
 QUERY_DRS_ARRAY_CAP_POLICY = "reserved_output_tokens_div_96_4_8-v1"
 QUERY_DRS_DYNAMIC_OUTPUT_BUDGET_POLICY = "surface-token-budget-short384-mid512-long-context-v1"
-QUERY_FRAME_SCHEMA_VERSION = "query-frame-v5"
+QUERY_OPERATOR_SCHEMA_POLICY = "query-temporal-aggregation-operator-enums-v1"
+QUERY_FRAME_SCHEMA_VERSION = "query-frame-v6"
 ANSWER_SCHEMA_VERSION = "answer-v4"
 
 QUERY_FRAME_GRAMMAR = r'''
@@ -373,9 +374,9 @@ def _valid_query_frame_payload(value: Any) -> bool:
         and _is_string_list(value.get("scope_requirements"))
         and _is_string_list(value.get("modality_requirements"))
         and str(value.get("answer_type")) in ANSWER_TYPES
-        and isinstance(value.get("temporal_scope"), str)
+        and str(value.get("temporal_scope") or "") in {"", "earliest", "latest"}
         and isinstance(value.get("negated"), bool)
-        and isinstance(value.get("aggregation"), str)
+        and str(value.get("aggregation") or "") in {"", "count", "list", "set"}
         and isinstance(value.get("requires_evidence"), bool)
     )
 
@@ -597,6 +598,7 @@ BOOL_SCHEMA = {"type": "boolean"}
 NUMBER_SCHEMA = {"type": "number"}
 ANSWER_TYPE_SCHEMA = _schema_enum(ANSWER_TYPES)
 TEMPORAL_SCOPE_SCHEMA = _schema_enum({"", "earliest", "latest"})
+AGGREGATION_SCHEMA = _schema_enum({"", "count", "list", "set"})
 STRING_ARRAY_SCHEMA = _schema_array(STRING_SCHEMA)
 
 QUERY_FRAME_JSON_SCHEMA = _schema_obj(
@@ -628,7 +630,7 @@ QUERY_FRAME_JSON_SCHEMA = _schema_obj(
                 "answer_type": ANSWER_TYPE_SCHEMA,
                 "temporal_scope": TEMPORAL_SCOPE_SCHEMA,
                 "negated": BOOL_SCHEMA,
-                "aggregation": STRING_SCHEMA,
+                "aggregation": AGGREGATION_SCHEMA,
                 "requires_evidence": BOOL_SCHEMA,
             },
         )
@@ -1318,8 +1320,8 @@ QUERY_DRS_JSON_SCHEMA = _schema_obj(
                 "requested_conditions": _schema_array(QUERY_DRS_CONDITION_JSON_SCHEMA),
                 "constraints": STRING_ARRAY_SCHEMA,
                 "box_requirements": _schema_array(DRS_BOX_JSON_SCHEMA),
-                "temporal_scope": STRING_SCHEMA,
-                "aggregation": STRING_SCHEMA,
+                "temporal_scope": TEMPORAL_SCOPE_SCHEMA,
+                "aggregation": AGGREGATION_SCHEMA,
                 "answer_type": ANSWER_TYPE_SCHEMA,
                 "requires_evidence": BOOL_SCHEMA,
             },
@@ -1518,7 +1520,8 @@ def build_query_plan_prompt(question: str) -> str:
         "boolean, content_phrase, metadata_value, or unknown. Use unknown only when the query DRS leaves the "
         "answer variable type underspecified. temporal_scope must be '', 'latest', or 'earliest'; put current, "
         "latest, final, first, earliest, or ordering requirements there as a normalized DRS operator rather "
-        "than leaving them only in requested_relation. Put any quantity, list, temporal, modal, polarity, or qualifier "
+        "than leaving them only in requested_relation. aggregation must be '', 'count', 'list', or 'set'. "
+        "Put any quantity, list, temporal, modal, polarity, or qualifier "
         "requirements into aggregation, temporal_scope, modality_requirements, scope_requirements, negated, "
         "constraints, and answer_variables as DRS data rather than as prose. If the answer is requested inside a "
         "subordinate or non-asserted DRS, represent that accessibility requirement in modality_requirements or "
@@ -1539,7 +1542,12 @@ def call_model_query_plan(question: str, client: LocalModelClient, *, n_predict:
         "query_frame",
         prompt,
         client,
-        {"n_predict": n_predict, "schema": QUERY_FRAME_SCHEMA_VERSION, **constraint},
+        {
+            "n_predict": n_predict,
+            "schema": QUERY_FRAME_SCHEMA_VERSION,
+            "operator_schema_policy": QUERY_OPERATOR_SCHEMA_POLICY,
+            **constraint,
+        },
     )
     cache_path = _cache_path("KMD_QUERY_PLAN_CACHE_DIR", prompt_hash)
     cached = _read_cache(cache_path)
@@ -1568,6 +1576,7 @@ def call_model_query_plan(question: str, client: LocalModelClient, *, n_predict:
             "error": str(exc),
             "prompt_hash": prompt_hash,
             **constraint,
+            "operator_schema_policy": QUERY_OPERATOR_SCHEMA_POLICY,
             "elapsed": round(time.time() - start, 3),
         }
         _write_cache(cache_path, payload)
@@ -1587,6 +1596,7 @@ def call_model_query_plan(question: str, client: LocalModelClient, *, n_predict:
             "raw_text": raw,
             "prompt_hash": prompt_hash,
             **constraint,
+            "operator_schema_policy": QUERY_OPERATOR_SCHEMA_POLICY,
             "elapsed": round(time.time() - start, 3),
         }
         _write_cache(cache_path, payload)
@@ -1603,6 +1613,7 @@ def call_model_query_plan(question: str, client: LocalModelClient, *, n_predict:
             "raw_text": raw,
             "prompt_hash": prompt_hash,
             **constraint,
+            "operator_schema_policy": QUERY_OPERATOR_SCHEMA_POLICY,
             "elapsed": round(time.time() - start, 3),
         }
         _write_cache(cache_path, payload)
@@ -1616,6 +1627,7 @@ def call_model_query_plan(question: str, client: LocalModelClient, *, n_predict:
         "stop_reason": "parsed_json",
         "prompt_hash": prompt_hash,
         **constraint,
+        "operator_schema_policy": QUERY_OPERATOR_SCHEMA_POLICY,
         "output_hash": hashlib.sha256(raw.encode()).hexdigest(),
         "fresh_or_cached": "fresh",
     }
@@ -1651,6 +1663,7 @@ def build_query_drs_prompt(question: str) -> str:
         "id for the answer slot. Choose the "
         "top-level answer_type from the schema values based on the answer variable requested by the question; use "
         "unknown only when the query DRS leaves the answer variable type underspecified. "
+        "temporal_scope must be '', 'latest', or 'earliest'. aggregation must be '', 'count', 'list', or 'set'. "
         "Arguments use target_kind and target_id exactly as declared in the query DRS namespace. "
         "Return this shape with schema_version query-drs-v3: {\"query_drs\":{\"schema_version\":\"query-drs-v3\","
         "\"question\":\"\",\"answer_variables\":[{\"id\":\"qv0\",\"label\":\"\",\"answer_type\":\"unknown\","
@@ -1881,6 +1894,10 @@ def _validate_query_drs_payload(payload: Any, question: str) -> dict[str, Any]:
         errors.append(f"schema_version_mismatch:{query_drs.get('schema_version')}")
     if str(query_drs.get("answer_type") or "") not in ANSWER_TYPES:
         errors.append(f"bad_answer_type:{query_drs.get('answer_type')}")
+    if str(query_drs.get("temporal_scope") or "") not in {"", "earliest", "latest"}:
+        errors.append(f"bad_temporal_scope:{query_drs.get('temporal_scope')}")
+    if str(query_drs.get("aggregation") or "") not in {"", "count", "list", "set"}:
+        errors.append(f"bad_aggregation:{query_drs.get('aggregation')}")
     raw_answer_variables = query_drs.get("answer_variables")
     if not isinstance(raw_answer_variables, list):
         errors.append("not_list:answer_variables")
@@ -2012,6 +2029,7 @@ def call_model_query_drs(question: str, client: LocalModelClient, *, n_predict: 
             "validation_policy": QUERY_DRS_VALIDATION_POLICY,
             "array_cap_policy": QUERY_DRS_ARRAY_CAP_POLICY,
             "output_budget_policy": QUERY_DRS_DYNAMIC_OUTPUT_BUDGET_POLICY,
+            "operator_schema_policy": QUERY_OPERATOR_SCHEMA_POLICY,
             "max_array_items": max_array_items,
             **constraint,
         },
@@ -2041,6 +2059,7 @@ def call_model_query_drs(question: str, client: LocalModelClient, *, n_predict: 
             "validation_policy": QUERY_DRS_VALIDATION_POLICY,
             "array_cap_policy": QUERY_DRS_ARRAY_CAP_POLICY,
             "output_budget_policy": QUERY_DRS_DYNAMIC_OUTPUT_BUDGET_POLICY,
+            "operator_schema_policy": QUERY_OPERATOR_SCHEMA_POLICY,
             "max_array_items": max_array_items,
             "elapsed": round(time.time() - start, 3),
         }
@@ -2056,6 +2075,7 @@ def call_model_query_drs(question: str, client: LocalModelClient, *, n_predict: 
             "validation_policy": QUERY_DRS_VALIDATION_POLICY,
             "array_cap_policy": QUERY_DRS_ARRAY_CAP_POLICY,
             "output_budget_policy": QUERY_DRS_DYNAMIC_OUTPUT_BUDGET_POLICY,
+            "operator_schema_policy": QUERY_OPERATOR_SCHEMA_POLICY,
             "max_array_items": max_array_items,
             "elapsed": round(time.time() - start, 3),
         }
@@ -2072,6 +2092,7 @@ def call_model_query_drs(question: str, client: LocalModelClient, *, n_predict: 
             "validation_policy": QUERY_DRS_VALIDATION_POLICY,
             "array_cap_policy": QUERY_DRS_ARRAY_CAP_POLICY,
             "output_budget_policy": QUERY_DRS_DYNAMIC_OUTPUT_BUDGET_POLICY,
+            "operator_schema_policy": QUERY_OPERATOR_SCHEMA_POLICY,
             "max_array_items": max_array_items,
             "elapsed": parsed.get("_model_elapsed_seconds", round(time.time() - start, 3)),
             "validation": validation,
@@ -2088,6 +2109,7 @@ def call_model_query_drs(question: str, client: LocalModelClient, *, n_predict: 
         "validation_policy": QUERY_DRS_VALIDATION_POLICY,
         "array_cap_policy": QUERY_DRS_ARRAY_CAP_POLICY,
         "output_budget_policy": QUERY_DRS_DYNAMIC_OUTPUT_BUDGET_POLICY,
+        "operator_schema_policy": QUERY_OPERATOR_SCHEMA_POLICY,
         "max_array_items": max_array_items,
         "validation": validation,
         "output_hash": hashlib.sha256(raw.encode()).hexdigest(),
