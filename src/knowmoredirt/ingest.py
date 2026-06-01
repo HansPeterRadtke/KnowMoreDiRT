@@ -245,7 +245,7 @@ def _grounded_model_frames(
     quality = text_quality_metrics(sentence.text)
     if quality.get("low_semantic_noise"):
         return [], {"source": "skipped_noise"}
-    cache_context = chunk_frame_cache_context(semantic_client, rel_path=sentence.rel_path)
+    cache_context = chunk_frame_cache_context(semantic_client, rel_path=sentence.rel_path, chunk_text=sentence.text)
     cached = semantic_cache.get(sentence.text, context=cache_context) if semantic_cache else None
     if cached is not None:
         frames = [frame for frame in cached.get("frames", []) if isinstance(frame, dict)]
@@ -952,7 +952,11 @@ def ingest_folder(
 
         if use_semantic_frames and semantic_client is not None:
             semantic_index += 1
-            frame_cache_context = chunk_frame_cache_context(semantic_client, rel_path=sentence.rel_path)
+            frame_cache_context = chunk_frame_cache_context(
+                semantic_client,
+                rel_path=sentence.rel_path,
+                chunk_text=sentence.text,
+            )
             frame_cache_key = stable_id("frame_attempt_context", json.dumps(frame_cache_context, sort_keys=True, default=str))
             previous_attempt = store.execute(
                 """

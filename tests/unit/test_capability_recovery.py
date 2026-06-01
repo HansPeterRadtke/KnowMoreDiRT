@@ -417,12 +417,19 @@ def test_frame_cache_context_separates_identical_text_by_source_path(tmp_path: P
     monkeypatch.setenv("KMD_FRAME_CACHE_DIR", str(tmp_path / ".frame-cache"))
     monkeypatch.setattr("knowmoredirt.engine.LocalModelClient", lambda: fake)
 
-    KnowMoreDiRTEngine(corpus)
+    engine = KnowMoreDiRTEngine(corpus)
 
     extraction_prompts = [prompt for prompt in fake.prompts if "Extract generic DRT/DSPG discourse frames" in prompt]
     assert len(extraction_prompts) == 2
     assert any('"source": "alpha/frame.raw"' in prompt for prompt in extraction_prompts)
     assert any('"source": "beta/frame.raw"' in prompt for prompt in extraction_prompts)
+    attempt_rows = engine.store.execute(
+        "SELECT metadata_json FROM model_attempts WHERE task='chunk_frames' ORDER BY cache_key"
+    ).fetchall()
+    contexts = [json.loads(row["metadata_json"])["cache_context"] for row in attempt_rows]
+    assert {context["source_rel_path"] for context in contexts} == {"alpha/frame.raw", "beta/frame.raw"}
+    assert all(context["context_budget"]["input_chars"] == len(text.strip()) for context in contexts)
+    assert all(context["context_budget"]["input_truncated"] is False for context in contexts)
 
 
 def test_drs_attempt_cache_context_separates_identical_text_by_source_path(tmp_path: Path, monkeypatch) -> None:
