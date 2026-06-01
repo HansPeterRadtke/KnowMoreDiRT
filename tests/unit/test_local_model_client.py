@@ -15,6 +15,7 @@ from knowmoredirt.model_planner import (
     build_answer_verification_prompt,
     call_model_chunk_drs,
     call_model_chunk_frames,
+    call_model_query_evidence_answer,
     call_model_query_plan,
     call_model_query_drs,
     chunk_drs_cache_context,
@@ -268,6 +269,41 @@ def test_chunk_frame_invalid_json_keeps_context_budget() -> None:
     assert result["reason"] == "invalid_json"
     assert result["context_budget"]["runtime_context_size"] == 4096
     assert result["context_budget"]["context_budget_policy"] == CHUNK_FRAME_CONTEXT_BUDGET_POLICY
+
+
+def test_query_evidence_invalid_json_after_failed_repair_is_bounded(monkeypatch, tmp_path) -> None:
+    class InvalidEvidenceAnswerModel:
+        def __init__(self) -> None:
+            self.calls = 0
+
+        def context_size(self) -> int:
+            return 4096
+
+        def cache_fingerprint(self) -> dict[str, Any]:
+            return {"model_id": "fake-query-evidence-invalid-repair", "context_size": 4096}
+
+        def complete_json(self, prompt: str, *, n_predict: int = 128, grammar=None, json_schema=None):
+            self.calls += 1
+            if "Repair the previous local-model output" in prompt:
+                return {"still_unexpected": True, "_model_raw": '{"still_unexpected":true}'}
+            assert "bounded DRT/DSPG question analysis" in prompt
+            return {"unexpected": True, "_model_raw": '{"unexpected":true}'}
+
+    monkeypatch.setenv("KMD_QUERY_EVIDENCE_CACHE_DIR", str(tmp_path / "query-evidence-cache"))
+    monkeypatch.setenv("KMD_QUERY_EVIDENCE_REPAIR_CACHE_DIR", str(tmp_path / "query-evidence-repair-cache"))
+    model = InvalidEvidenceAnswerModel()
+
+    result = call_model_query_evidence_answer(
+        "What is the state of Aero Gate?",
+        [{"rel_path": "note.txt", "text": "Aero Gate is ready."}],
+        model,  # type: ignore[arg-type]
+    )
+
+    assert result["accepted"] is False
+    assert result["reason"] == "invalid_json"
+    assert result["repair_failure_reason"] == "invalid_json"
+    assert result["repair_prompt_hash"]
+    assert model.calls == 2
 
 
 def test_query_frame_schema_constrains_temporal_scope_operator(monkeypatch, tmp_path) -> None:
