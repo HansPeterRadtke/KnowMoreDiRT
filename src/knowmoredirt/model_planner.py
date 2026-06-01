@@ -1565,20 +1565,23 @@ def call_model_query_plan(question: str, client: LocalModelClient, *, n_predict:
     prompt = build_query_plan_prompt(question)
     constraint = _constraint_settings(QUERY_FRAME_GRAMMAR, QUERY_FRAME_JSON_SCHEMA, QUERY_FRAME_SCHEMA_VERSION)
     grammar_hash = str(constraint["grammar_hash"])
+    cache_settings = {
+        "n_predict": n_predict,
+        "schema": QUERY_FRAME_SCHEMA_VERSION,
+        "operator_schema_policy": QUERY_OPERATOR_SCHEMA_POLICY,
+        **constraint,
+    }
+    cache_context = {**cache_settings, "model_fingerprint": _client_fingerprint(client)}
     prompt_hash = _cache_hash(
         "query_frame",
         prompt,
         client,
-        {
-            "n_predict": n_predict,
-            "schema": QUERY_FRAME_SCHEMA_VERSION,
-            "operator_schema_policy": QUERY_OPERATOR_SCHEMA_POLICY,
-            **constraint,
-        },
+        cache_settings,
     )
     cache_path = _cache_path("KMD_QUERY_PLAN_CACHE_DIR", prompt_hash)
     cached = _read_cache(cache_path)
     if cached is not None and not (cached.get("accepted") is False and cached.get("reason") == "request_failed"):
+        cached.setdefault("cache_context", cache_context)
         return cached
     start = time.time()
     try:
@@ -1601,6 +1604,7 @@ def call_model_query_plan(question: str, client: LocalModelClient, *, n_predict:
             "prompt_hash": prompt_hash,
             **constraint,
             "operator_schema_policy": QUERY_OPERATOR_SCHEMA_POLICY,
+            "cache_context": cache_context,
             "elapsed": round(time.time() - start, 3),
         }
         return payload
@@ -1620,6 +1624,7 @@ def call_model_query_plan(question: str, client: LocalModelClient, *, n_predict:
             "prompt_hash": prompt_hash,
             **constraint,
             "operator_schema_policy": QUERY_OPERATOR_SCHEMA_POLICY,
+            "cache_context": cache_context,
             "elapsed": round(time.time() - start, 3),
         }
         _write_cache(cache_path, payload)
@@ -1637,6 +1642,7 @@ def call_model_query_plan(question: str, client: LocalModelClient, *, n_predict:
             "prompt_hash": prompt_hash,
             **constraint,
             "operator_schema_policy": QUERY_OPERATOR_SCHEMA_POLICY,
+            "cache_context": cache_context,
             "elapsed": round(time.time() - start, 3),
         }
         _write_cache(cache_path, payload)
@@ -1651,6 +1657,7 @@ def call_model_query_plan(question: str, client: LocalModelClient, *, n_predict:
         "prompt_hash": prompt_hash,
         **constraint,
         "operator_schema_policy": QUERY_OPERATOR_SCHEMA_POLICY,
+        "cache_context": cache_context,
         "output_hash": hashlib.sha256(raw.encode()).hexdigest(),
         "fresh_or_cached": "fresh",
     }
@@ -4432,15 +4439,24 @@ def call_model_answer_verification(
     prompt = build_answer_verification_prompt(question, query_frame, candidate_answer, evidence_items, discourse_frames)
     constraint = _constraint_settings(ANSWER_VERIFICATION_GRAMMAR, VERIFICATION_JSON_SCHEMA, ANSWER_SCHEMA_VERSION)
     grammar_hash = str(constraint["grammar_hash"])
+    cache_settings = {"n_predict": n_predict, "schema": ANSWER_SCHEMA_VERSION, **constraint}
+    cache_context = {
+        **cache_settings,
+        "model_fingerprint": _client_fingerprint(client),
+        "expected_answer_type": str(query_frame.get("answer_type") or "unknown"),
+        "evidence_count": len(evidence_items),
+        "discourse_frame_count": len(discourse_frames),
+    }
     prompt_hash = _cache_hash(
         "answer_verification",
         prompt,
         client,
-        {"n_predict": n_predict, "schema": ANSWER_SCHEMA_VERSION, **constraint},
+        cache_settings,
     )
     cache_path = _cache_path("KMD_VERIFIER_CACHE_DIR", prompt_hash)
     cached = _read_cache(cache_path)
     if cached is not None and not _cached_request_failed(cached):
+        cached.setdefault("cache_context", cache_context)
         return cached
     start = time.time()
     try:
@@ -4458,6 +4474,7 @@ def call_model_answer_verification(
             "error": str(exc),
             "prompt_hash": prompt_hash,
             "grammar_hash": grammar_hash,
+            "cache_context": cache_context,
             "elapsed": round(time.time() - start, 3),
         }
     raw = str(parsed.get("_model_raw") or "") if isinstance(parsed, dict) else ""
@@ -4471,6 +4488,7 @@ def call_model_answer_verification(
             "raw_text": raw,
             "prompt_hash": prompt_hash,
             "grammar_hash": grammar_hash,
+            "cache_context": cache_context,
             "elapsed": round(time.time() - start, 3),
         }
     payload = {
@@ -4484,6 +4502,7 @@ def call_model_answer_verification(
         "elapsed": parsed.get("_model_elapsed_seconds", round(time.time() - start, 3)),
         "prompt_hash": prompt_hash,
         "grammar_hash": grammar_hash,
+        "cache_context": cache_context,
         "output_hash": hashlib.sha256(raw.encode()).hexdigest(),
         "fresh_or_cached": "fresh",
     }

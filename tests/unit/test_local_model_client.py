@@ -14,6 +14,7 @@ from knowmoredirt.model_planner import (
     CHUNK_DRS_TEMPORAL_PROVENANCE_POLICY,
     QUERY_DRS_DYNAMIC_OUTPUT_BUDGET_POLICY,
     QUERY_OPERATOR_SCHEMA_POLICY,
+    call_model_answer_verification,
     call_model_answer_canonicalization,
     build_answer_verification_prompt,
     call_model_chunk_drs,
@@ -48,6 +49,64 @@ def test_verifier_prompt_allows_scoped_embedded_bindings() -> None:
 
     assert "embedded proposition or scoped value" in prompt
     assert "instead of requiring the candidate text itself to repeat the target anchor" in prompt
+
+
+def test_answer_verification_old_request_failure_cache_is_ignored(monkeypatch) -> None:
+    class VerifierModel:
+        def __init__(self) -> None:
+            self.calls = 0
+
+        def context_size(self) -> int:
+            return 4096
+
+        def cache_fingerprint(self) -> dict[str, Any]:
+            return {"model_id": "fake-verifier-old-request-cache", "context_size": 4096}
+
+        def complete_json(self, prompt: str, *, n_predict: int = 128, grammar=None, json_schema=None):
+            self.calls += 1
+            assert "Verify whether the candidate answer" in prompt
+            return {
+                "verification": {
+                    "entailed": True,
+                    "answer_type": "state",
+                    "answer": "ready",
+                    "evidence_span": "Aero Gate is ready.",
+                    "reason": "grounded verifier answer",
+                },
+                "_model_raw": "{}",
+                "_model_elapsed_seconds": 0.01,
+            }
+
+    monkeypatch.setattr(
+        model_planner,
+        "_read_cache",
+        lambda path: {
+            "accepted": False,
+            "reason": "request_failed",
+            "fresh_or_cached": "cache",
+        },
+    )
+    monkeypatch.setattr(model_planner, "_write_cache", lambda path, payload: None)
+    model = VerifierModel()
+
+    result = call_model_answer_verification(
+        "What is the state of Aero Gate?",
+        {"answer_type": "state", "target_anchors": ["Aero Gate"], "requested_relation": "state"},
+        "ready",
+        [{"rel_path": "note.txt", "text": "Aero Gate is ready."}],
+        [{"record_kind": "condition", "predicate": "state"}],
+        model,  # type: ignore[arg-type]
+    )
+
+    assert result["accepted"] is True
+    assert result["entailed"] is True
+    assert result["answer"] == "ready"
+    assert result["cache_context"]["n_predict"] == 128
+    assert result["cache_context"]["expected_answer_type"] == "state"
+    assert result["cache_context"]["evidence_count"] == 1
+    assert result["cache_context"]["discourse_frame_count"] == 1
+    assert result["cache_context"]["model_fingerprint"]["model_id"] == "fake-verifier-old-request-cache"
+    assert model.calls == 1
 
 
 class FakeHTTPResponse:
@@ -630,6 +689,9 @@ def test_query_frame_schema_constrains_temporal_scope_operator(monkeypatch, tmp_
     assert "temporal_scope must be" in model.prompt
     assert "aggregation must be" in model.prompt
     assert result["operator_schema_policy"] == QUERY_OPERATOR_SCHEMA_POLICY
+    assert result["cache_context"]["n_predict"] == 64
+    assert result["cache_context"]["operator_schema_policy"] == QUERY_OPERATOR_SCHEMA_POLICY
+    assert result["cache_context"]["model_fingerprint"]["model_id"] == "fake-query-frame-temporal"
     assert model.json_schema is not None
     query_schema = model.json_schema["properties"]["query_frame"]
     assert query_schema["properties"]["temporal_scope"]["enum"] == ["", "earliest", "latest"]
@@ -659,8 +721,10 @@ def test_query_frame_invalid_json_failure_is_cached(monkeypatch, tmp_path) -> No
 
     assert first["accepted"] is False
     assert first["reason"] == "invalid_json"
+    assert first["cache_context"]["n_predict"] == 64
     assert second["accepted"] is False
     assert second["reason"] == "invalid_json"
+    assert second["cache_context"]["model_fingerprint"]["model_id"] == "fake-query-frame-invalid-cache"
     assert model.calls == 1
 
 
@@ -706,8 +770,10 @@ def test_query_frame_request_failure_does_not_poison_cache(monkeypatch, tmp_path
 
     assert first["accepted"] is False
     assert first["reason"] == "request_failed"
+    assert first["cache_context"]["n_predict"] == 64
     assert second["accepted"] is True
     assert second["temporal_scope"] == "latest"
+    assert second["cache_context"]["model_fingerprint"]["model_id"] == "fake-query-frame-request-retry"
     assert model.calls == 2
 
 
