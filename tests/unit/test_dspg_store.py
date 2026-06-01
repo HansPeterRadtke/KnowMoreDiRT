@@ -2673,6 +2673,228 @@ def test_incremental_reported_then_asserted_identity_preserves_scope_and_reuses_
     assert "reports/reported.txt" not in {item.rel_path for item in final_answer.evidence}
 
 
+def test_reported_identity_without_box_id_does_not_expand_as_asserted(
+    tmp_path: Path,
+    monkeypatch,
+) -> None:
+    (tmp_path / "begin").mkdir()
+    (tmp_path / "middle").mkdir()
+    (tmp_path / "end").mkdir()
+    (tmp_path / "begin" / "intro.txt").write_text(
+        "Registry introduces Nova Case as the inspected artifact.",
+        encoding="utf-8",
+    )
+    (tmp_path / "middle" / "state.txt").write_text(
+        "Maintenance code NC-1 status is silver.",
+        encoding="utf-8",
+    )
+    (tmp_path / "end" / "reported_crosswalk.txt").write_text(
+        "Mira report says NC-1 is the same artifact as Nova Case.",
+        encoding="utf-8",
+    )
+
+    class UngroundedReportedIdentityModel:
+        def context_size(self) -> int:
+            return 4096
+
+        def cache_fingerprint(self) -> dict[str, object]:
+            return {"model_id": "fake-ungrounded-reported-identity-drs", "context_size": 4096}
+
+        def complete_json(self, prompt: str, *, n_predict: int = 128, grammar=None, json_schema=None):
+            if "Registry introduces" in prompt:
+                text = "Registry introduces Nova Case as the inspected artifact."
+                referents = [{"id": "r0", "label": "Nova Case", "kind": "artifact", "evidence_text": "Nova Case"}]
+                boxes = [{"id": "b0", "kind": "asserted", "parent_id": "", "holder_referent_id": "", "evidence_text": text}]
+                conditions = [
+                    {
+                        "id": "c0",
+                        "predicate": "introduces",
+                        "box_id": "b0",
+                        "polarity": "positive",
+                        "modality": "asserted",
+                        "temporal_id": "",
+                        "arguments": [
+                            {
+                                "role": "object",
+                                "target_kind": "referent",
+                                "target_id": "r0",
+                                "value": "",
+                                "value_type": "artifact",
+                                "evidence_text": "Nova Case",
+                            }
+                        ],
+                        "evidence_text": text,
+                    }
+                ]
+                identities = []
+            elif "Maintenance code" in prompt:
+                text = "Maintenance code NC-1 status is silver."
+                referents = [{"id": "r0", "label": "NC-1", "kind": "identifier", "evidence_text": "NC-1"}]
+                boxes = [{"id": "b0", "kind": "asserted", "parent_id": "", "holder_referent_id": "", "evidence_text": text}]
+                conditions = [
+                    {
+                        "id": "c0",
+                        "predicate": "status",
+                        "box_id": "b0",
+                        "polarity": "positive",
+                        "modality": "asserted",
+                        "temporal_id": "",
+                        "arguments": [
+                            {
+                                "role": "subject",
+                                "target_kind": "referent",
+                                "target_id": "r0",
+                                "value": "",
+                                "value_type": "identifier",
+                                "evidence_text": "NC-1",
+                            },
+                            {
+                                "role": "state",
+                                "target_kind": "literal",
+                                "target_id": "",
+                                "value": "silver",
+                                "value_type": "state",
+                                "evidence_text": "silver",
+                            },
+                        ],
+                        "evidence_text": "NC-1 status is silver",
+                    }
+                ]
+                identities = []
+            else:
+                text = "Mira report says NC-1 is the same artifact as Nova Case."
+                reported = "NC-1 is the same artifact as Nova Case"
+                referents = [
+                    {"id": "r0", "label": "Mira report", "kind": "document", "evidence_text": "Mira report"},
+                    {"id": "r1", "label": "NC-1", "kind": "identifier", "evidence_text": "NC-1"},
+                    {"id": "r2", "label": "Nova Case", "kind": "artifact", "evidence_text": "Nova Case"},
+                ]
+                boxes = [
+                    {"id": "b0", "kind": "asserted", "parent_id": "", "holder_referent_id": "", "evidence_text": text},
+                    {"id": "b1", "kind": "reported", "parent_id": "b0", "holder_referent_id": "r0", "evidence_text": reported},
+                ]
+                conditions = [
+                    {
+                        "id": "c0",
+                        "predicate": "report",
+                        "box_id": "b0",
+                        "polarity": "positive",
+                        "modality": "asserted",
+                        "temporal_id": "",
+                        "arguments": [
+                            {
+                                "role": "source",
+                                "target_kind": "referent",
+                                "target_id": "r0",
+                                "value": "",
+                                "value_type": "document",
+                                "evidence_text": "Mira report",
+                            },
+                            {
+                                "role": "content",
+                                "target_kind": "box",
+                                "target_id": "b1",
+                                "value": "",
+                                "value_type": "box",
+                                "evidence_text": reported,
+                            },
+                        ],
+                        "evidence_text": text,
+                    },
+                    {
+                        "id": "c1",
+                        "predicate": "same_artifact",
+                        "box_id": "b1",
+                        "polarity": "positive",
+                        "modality": "asserted",
+                        "temporal_id": "",
+                        "arguments": [
+                            {
+                                "role": "left",
+                                "target_kind": "referent",
+                                "target_id": "r1",
+                                "value": "",
+                                "value_type": "identifier",
+                                "evidence_text": "NC-1",
+                            },
+                            {
+                                "role": "right",
+                                "target_kind": "referent",
+                                "target_id": "r2",
+                                "value": "",
+                                "value_type": "artifact",
+                                "evidence_text": "Nova Case",
+                            },
+                        ],
+                        "evidence_text": reported,
+                    },
+                ]
+                identities = [
+                    {
+                        "left_referent_id": "r1",
+                        "right_referent_id": "r2",
+                        "status": "accepted",
+                        "evidence_text": text,
+                        "confidence": 0.91,
+                    }
+                ]
+            return {
+                "drs": {
+                    "schema_version": "chunk-drs-v2",
+                    "source_id": "ungrounded-reported-identity",
+                    "referents": referents,
+                    "boxes": boxes,
+                    "conditions": conditions,
+                    "identity_hypotheses": identities,
+                    "temporal_records": [],
+                },
+                "_model_raw": "{}",
+                "_model_elapsed_seconds": 0.01,
+            }
+
+    monkeypatch.setenv("KMD_CHUNK_DRS_CACHE_DIR", str(tmp_path / ".drs-cache"))
+    store, run_id, documents, sentences = ingest_folder(
+        tmp_path,
+        semantic_client=UngroundedReportedIdentityModel(),  # type: ignore[arg-type]
+        use_semantic_frames=False,
+        use_drs_semantics=True,
+    )
+    grouped: dict[str, dict[int, object]] = {}
+    for sentence in sentences:
+        grouped.setdefault(sentence.rel_path, {})[sentence.order] = sentence
+    frame = QueryFrame(
+        question_text="What status is recorded for Nova Case?",
+        answer_type="state",
+        answer_variables=("state",),
+        target_anchors=("Nova Case",),
+        requested_relation="status",
+        relation_terms=("status",),
+        constraints=(),
+    )
+
+    answer, diagnostics = execute_bounded_query(
+        store,
+        run_id,
+        documents,
+        grouped,  # type: ignore[arg-type]
+        frame.question_text,
+        frame,
+    )
+
+    assert answer is None
+    assert "nc-1" not in diagnostics["ranking"].get("identity_expanded_target_terms", [])
+    assert store.execute(
+        "SELECT COUNT(*) FROM drs_identity_hypotheses WHERE source_span_id IS NOT NULL"
+    ).fetchone()[0] == 1
+    assert store.execute(
+        "SELECT COUNT(*) FROM identity_hypotheses WHERE source='local_model_drs'"
+    ).fetchone()[0] == 0
+    provenance_paths = {
+        item["rel_path"] for item in diagnostics["execution"].get("source_provenance_sample", [])
+    }
+    assert {"begin/intro.txt", "middle/state.txt", "end/reported_crosswalk.txt"}.issubset(provenance_paths)
+
+
 def test_scattered_identity_reported_contradiction_respects_drs_scope(
     tmp_path: Path,
     monkeypatch,

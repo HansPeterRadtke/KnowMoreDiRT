@@ -1243,6 +1243,10 @@ class DSPGStore:
             for item in boxes
             if text_value(item, "kind") == "asserted" and not text_value(item, "parent_id")
         ]
+        has_contextual_boxes = any(
+            text_value(item, "parent_id") or text_value(item, "kind") not in {"", "asserted"}
+            for item in boxes
+        )
         for item in boxes:
             external_id = text_value(item, "id")
             kind = text_value(item, "kind") or "asserted"
@@ -1316,6 +1320,18 @@ class DSPGStore:
                     "drscond", run_id, source_span_id, external_id, predicate, evidence
                 )
                 external_to_condition_evidence[external_id] = evidence
+
+        def condition_targets_identity_sides(
+            condition: dict[str, Any],
+            left_external: str,
+            right_external: str,
+        ) -> bool:
+            target_ids = {
+                text_value(arg, "target_id")
+                for arg in condition.get("arguments") or []
+                if isinstance(arg, dict) and text_value(arg, "target_kind") == "referent"
+            }
+            return bool(left_external and right_external and left_external in target_ids and right_external in target_ids)
 
         def resolved_argument_surface(arg: dict[str, Any]) -> str:
             value = text_value(arg, "value")
@@ -1514,11 +1530,15 @@ class DSPGStore:
                 matching_condition_boxes = [
                     text_value(condition, "box_id")
                     for condition in conditions
-                    if text_value(condition, "evidence_text") == evidence and text_value(condition, "box_id")
+                    if (
+                        text_value(condition, "evidence_text") == evidence
+                        and text_value(condition, "box_id")
+                        and condition_targets_identity_sides(condition, left_external, right_external)
+                    )
                 ]
                 if len(set(matching_condition_boxes)) == 1:
                     identity_box_external = matching_condition_boxes[0]
-            if not identity_box_external and len(root_asserted_box_ids) == 1:
+            if not identity_box_external and len(root_asserted_box_ids) == 1 and not has_contextual_boxes:
                 identity_box_external = root_asserted_box_ids[0]
             identity_context_id = external_to_context.get(identity_box_external)
             identity_drs_box_id = external_to_box.get(identity_box_external)
@@ -1549,7 +1569,7 @@ class DSPGStore:
                     json.dumps({"model_identity_hypothesis": item}, sort_keys=True),
                 ),
             )
-            if identity_relation_allows_expansion(relation):
+            if (identity_context_id or left_ref == right_ref) and identity_relation_allows_expansion(relation):
                 self.connection.execute(
                     """
                     INSERT OR IGNORE INTO identity_hypotheses(
