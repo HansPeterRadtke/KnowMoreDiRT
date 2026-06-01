@@ -2889,6 +2889,13 @@ def test_reported_identity_without_box_id_does_not_expand_as_asserted(
     assert store.execute(
         "SELECT COUNT(*) FROM identity_hypotheses WHERE source='local_model_drs'"
     ).fetchone()[0] == 0
+    blocked_identity = diagnostics["execution"]["blocked_identity_source_provenance"]
+    assert blocked_identity[0]["rel_path"] == "end/reported_crosswalk.txt"
+    assert blocked_identity[0]["expansion_blocked_reason"] == "missing_grounded_box"
+    assert (
+        blocked_identity[0]["identity_evidence"]
+        == "Mira report says NC-1 is the same artifact as Nova Case."
+    )
     provenance_paths = {
         item["rel_path"] for item in diagnostics["execution"].get("source_provenance_sample", [])
     }

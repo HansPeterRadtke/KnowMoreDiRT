@@ -1543,6 +1543,15 @@ class DSPGStore:
             identity_context_id = external_to_context.get(identity_box_external)
             identity_drs_box_id = external_to_box.get(identity_box_external)
             drs_hypothesis_id = stable_id("drsidh", run_id, source_span_id, index, left_external, right_external, relation, evidence)
+            can_materialize_identity = (
+                identity_context_id or left_ref == right_ref
+            ) and identity_relation_allows_expansion(relation)
+            identity_metadata: dict[str, Any] = {
+                "model_identity_hypothesis": item,
+                "resolved_box_external_id": identity_box_external or None,
+            }
+            if identity_relation_allows_expansion(relation) and not can_materialize_identity:
+                identity_metadata["expansion_blocked_reason"] = "missing_grounded_box"
             self.connection.execute(
                 """
                 INSERT OR IGNORE INTO drs_identity_hypotheses(
@@ -1566,10 +1575,10 @@ class DSPGStore:
                     evidence,
                     conf,
                     source,
-                    json.dumps({"model_identity_hypothesis": item}, sort_keys=True),
+                    json.dumps(identity_metadata, sort_keys=True),
                 ),
             )
-            if (identity_context_id or left_ref == right_ref) and identity_relation_allows_expansion(relation):
+            if can_materialize_identity:
                 self.connection.execute(
                     """
                     INSERT OR IGNORE INTO identity_hypotheses(

@@ -451,6 +451,12 @@ def _load_records(
         document_ids,
         current_document_chunk_ids,
     )
+    drs_identity_hypotheses = _fetch_by_ids(
+        connection,
+        "drs_identity_hypotheses",
+        "source_span_id",
+        span_ids,
+    )
     identity_span_ids = list(
         dict.fromkeys(
             str(row.get("source_span_id") or "")
@@ -526,6 +532,7 @@ def _load_records(
         "temporal_edges": temporal,
         "metadata_records": metadata_records,
         "identity_hypotheses": identity_hypotheses,
+        "drs_identity_hypotheses": drs_identity_hypotheses,
         "referents": referents,
         "contexts": contexts,
         "context_carriers": context_carriers,
@@ -540,6 +547,7 @@ def _load_records(
             "relations": len(relations),
             "metadata_records": len(metadata_records),
             "identity_hypotheses": len(identity_hypotheses),
+            "drs_identity_hypotheses": len(drs_identity_hypotheses),
             "referents": len(referents),
             "contexts": len(contexts),
             "context_carriers": len(context_carriers),
@@ -942,6 +950,59 @@ def _candidate_evidence_sample(
     return [payload for _score, _value, payload in rows[:limit]]
 
 
+def _identity_row_metadata(row: dict[str, Any]) -> dict[str, Any]:
+    try:
+        value = json.loads(str(row.get("metadata_json") or "{}"))
+    except json.JSONDecodeError:
+        return {}
+    return value if isinstance(value, dict) else {}
+
+
+def _blocked_identity_provenance_sample(
+    records: dict[str, Any],
+    target_terms: list[str],
+    *,
+    limit: int = 6,
+) -> list[dict[str, Any]]:
+    rows: list[tuple[str, int, str, dict[str, Any]]] = []
+    for row in records.get("drs_identity_hypotheses", []):
+        metadata = _identity_row_metadata(row)
+        reason = str(metadata.get("expansion_blocked_reason") or "")
+        if not reason:
+            continue
+        evidence = _evidence_for_span(str(row.get("source_span_id") or ""), records)
+        material = normalize(
+            " ".join(
+                [
+                    evidence.rel_path,
+                    evidence.text,
+                    str(row.get("evidence_surface") or ""),
+                ]
+            )
+        )
+        if target_terms and not _contains_any(material, target_terms):
+            continue
+        payload = _evidence_provenance_payload(evidence, records)
+        payload.update(
+            {
+                "expansion_blocked_reason": reason,
+                "identity_evidence": str(row.get("evidence_surface") or ""),
+                "box_external_id": row.get("box_external_id"),
+                "resolved_box_external_id": metadata.get("resolved_box_external_id"),
+            }
+        )
+        rows.append(
+            (
+                evidence.rel_path,
+                evidence.chunk_order if evidence.chunk_order is not None else -1,
+                str(row.get("drs_hypothesis_id") or ""),
+                payload,
+            )
+        )
+    rows.sort(key=lambda item: (item[0], item[1], item[2]))
+    return [payload for _rel_path, _chunk_order, _row_id, payload in rows[:limit]]
+
+
 def _provenance_payload_material(payload: dict[str, Any]) -> str:
     return normalize(" ".join([str(payload.get("rel_path") or ""), str(payload.get("text") or "")]))
 
@@ -1014,6 +1075,9 @@ def _attach_no_answer_provenance(
         )
         if scattered and not candidates:
             execution["scattered_source_provenance_without_binding"] = scattered
+    blocked_identity_sample = _blocked_identity_provenance_sample(records, target_terms)
+    if blocked_identity_sample:
+        execution["blocked_identity_source_provenance"] = blocked_identity_sample
 
 
 def _answer_source_provenance_sample(
