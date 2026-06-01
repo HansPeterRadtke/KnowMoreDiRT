@@ -5002,6 +5002,18 @@ def call_model_answer_verification(
             grammar=ANSWER_VERIFICATION_GRAMMAR,
             json_schema=VERIFICATION_JSON_SCHEMA,
         )
+    except LocalModelJSONError as exc:
+        return {
+            "accepted": False,
+            "reason": "invalid_json",
+            "error": str(exc),
+            "raw_text": exc.raw_text,
+            "snippet": exc.snippet,
+            "prompt_hash": prompt_hash,
+            "grammar_hash": grammar_hash,
+            "cache_context": cache_context,
+            "elapsed": round(time.time() - start, 3),
+        }
     except Exception as exc:
         return {
             "accepted": False,
@@ -5117,6 +5129,18 @@ def call_model_answer_canonicalization(
             grammar=ANSWER_CANONICALIZATION_GRAMMAR,
             json_schema=CANONICAL_ANSWER_JSON_SCHEMA,
         )
+    except LocalModelJSONError as exc:
+        return {
+            "accepted": False,
+            "reason": "invalid_json",
+            "error": str(exc),
+            "raw_text": exc.raw_text,
+            "snippet": exc.snippet,
+            "prompt_hash": prompt_hash,
+            "grammar_hash": grammar_hash,
+            "cache_context": cache_context,
+            "elapsed": round(time.time() - start, 3),
+        }
     except Exception as exc:
         return {
             "accepted": False,
@@ -5260,6 +5284,18 @@ def call_model_identity_canonicalization(
             grammar=IDENTITY_CANONICALIZATION_GRAMMAR,
             json_schema=IDENTITY_CANONICALIZATION_JSON_SCHEMA,
         )
+    except LocalModelJSONError as exc:
+        return {
+            "accepted": False,
+            "reason": "invalid_json",
+            "error": str(exc),
+            "raw_text": exc.raw_text,
+            "snippet": exc.snippet,
+            "prompt_hash": prompt_hash,
+            "grammar_hash": grammar_hash,
+            "cache_context": cache_context,
+            "elapsed": round(time.time() - start, 3),
+        }
     except Exception as exc:
         return {
             "accepted": False,

@@ -109,6 +109,41 @@ def test_answer_verification_old_request_failure_cache_is_ignored(monkeypatch) -
     assert model.calls == 1
 
 
+def test_answer_verification_invalid_json_is_not_request_failure(monkeypatch) -> None:
+    class VerifierModel:
+        def __init__(self) -> None:
+            self.calls = 0
+
+        def context_size(self) -> int:
+            return 4096
+
+        def cache_fingerprint(self) -> dict[str, Any]:
+            return {"model_id": "fake-verifier-invalid-json", "context_size": 4096}
+
+        def complete_json(self, prompt: str, *, n_predict: int = 128, grammar=None, json_schema=None):
+            self.calls += 1
+            raise LocalModelJSONError("bad json", raw_text='{"verification":"unterminated', snippet='{"verification"')
+
+    monkeypatch.setattr(model_planner, "_read_cache", lambda path: None)
+    monkeypatch.setattr(model_planner, "_write_cache", lambda path, payload: None)
+    model = VerifierModel()
+
+    result = call_model_answer_verification(
+        "What is the state of Aero Gate?",
+        {"answer_type": "state", "target_anchors": ["Aero Gate"], "requested_relation": "state"},
+        "ready",
+        [{"rel_path": "note.txt", "text": "Aero Gate is ready."}],
+        [{"record_kind": "condition", "predicate": "state"}],
+        model,  # type: ignore[arg-type]
+    )
+
+    assert result["accepted"] is False
+    assert result["reason"] == "invalid_json"
+    assert result["raw_text"].startswith('{"verification"')
+    assert result["cache_context"]["model_fingerprint"]["model_id"] == "fake-verifier-invalid-json"
+    assert model.calls == 1
+
+
 class FakeHTTPResponse:
     def __init__(self, payload: Any | None = None, lines: list[bytes] | None = None) -> None:
         self.payload = payload
@@ -598,6 +633,44 @@ def test_answer_canonicalization_old_request_failure_cache_is_ignored(monkeypatc
     assert model.calls == 1
 
 
+def test_answer_canonicalization_invalid_json_is_not_request_failure(monkeypatch) -> None:
+    class CanonicalizationModel:
+        def __init__(self) -> None:
+            self.calls = 0
+
+        def context_size(self) -> int:
+            return 4096
+
+        def cache_fingerprint(self) -> dict[str, Any]:
+            return {"model_id": "fake-canonicalization-invalid-json", "context_size": 4096}
+
+        def complete_json(self, prompt: str, *, n_predict: int = 128, grammar=None, json_schema=None):
+            self.calls += 1
+            raise LocalModelJSONError(
+                "bad json",
+                raw_text='{"canonical_answer":{"answer":"ready"',
+                snippet='{"canonical_answer"',
+            )
+
+    monkeypatch.setattr(model_planner, "_read_cache", lambda path: None)
+    monkeypatch.setattr(model_planner, "_write_cache", lambda path, payload: None)
+    model = CanonicalizationModel()
+
+    result = call_model_answer_canonicalization(
+        "What is the state of Aero Gate?",
+        "ready now",
+        "state",
+        [{"rel_path": "note.txt", "text": "Aero Gate is ready now."}],
+        model,  # type: ignore[arg-type]
+    )
+
+    assert result["accepted"] is False
+    assert result["reason"] == "invalid_json"
+    assert result["raw_text"].startswith('{"canonical_answer"')
+    assert result["cache_context"]["model_fingerprint"]["model_id"] == "fake-canonicalization-invalid-json"
+    assert model.calls == 1
+
+
 def test_identity_canonicalization_old_invalid_cache_is_ignored(monkeypatch) -> None:
     class IdentityModel:
         def __init__(self) -> None:
@@ -651,6 +724,44 @@ def test_identity_canonicalization_old_invalid_cache_is_ignored(monkeypatch) -> 
     assert result["cache_context"]["fuller_candidate_count"] == 1
     assert result["cache_context"]["evidence_count"] == 1
     assert result["cache_context"]["model_fingerprint"]["model_id"] == "fake-identity-old-invalid-cache"
+    assert model.calls == 1
+
+
+def test_identity_canonicalization_invalid_json_is_not_request_failure(monkeypatch) -> None:
+    class IdentityModel:
+        def __init__(self) -> None:
+            self.calls = 0
+
+        def context_size(self) -> int:
+            return 4096
+
+        def cache_fingerprint(self) -> dict[str, Any]:
+            return {"model_id": "fake-identity-invalid-json", "context_size": 4096}
+
+        def complete_json(self, prompt: str, *, n_predict: int = 128, grammar=None, json_schema=None):
+            self.calls += 1
+            raise LocalModelJSONError(
+                "bad json",
+                raw_text='{"canonicalization":{"same_referent":true',
+                snippet='{"canonicalization"',
+            )
+
+    monkeypatch.setattr(model_planner, "_read_cache", lambda path: None)
+    monkeypatch.setattr(model_planner, "_write_cache", lambda path, payload: None)
+    model = IdentityModel()
+
+    result = call_model_identity_canonicalization(
+        "Who is ready?",
+        "Aero",
+        ["Aero Gate"],
+        [{"rel_path": "note.txt", "text": "Aero Gate is ready."}],
+        model,  # type: ignore[arg-type]
+    )
+
+    assert result["accepted"] is False
+    assert result["reason"] == "invalid_json"
+    assert result["raw_text"].startswith('{"canonicalization"')
+    assert result["cache_context"]["model_fingerprint"]["model_id"] == "fake-identity-invalid-json"
     assert model.calls == 1
 
 
