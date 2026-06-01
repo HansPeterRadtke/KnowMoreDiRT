@@ -5975,6 +5975,24 @@ def test_latest_temporal_query_respects_reported_drs_scope(
         use_semantic_frames=False,
         use_drs_semantics=True,
     )
+    for index in range(25):
+        store.execute(
+            """
+            INSERT INTO contexts(
+              context_id, run_id, kind, parent_context_id, holder_surface, evidence_surface, confidence
+            ) VALUES (?, ?, ?, ?, ?, ?, ?)
+            """,
+            (
+                stable_id("ctx", run_id, "unrelated", index),
+                run_id,
+                f"drs:unrelated-{index}",
+                None,
+                None,
+                f"unrelated scoped material {index}",
+                0.1,
+            ),
+        )
+    store.commit()
     sentences_by_document: dict[str, dict[int, object]] = {}
     for sentence in sentences:
         sentences_by_document.setdefault(sentence.rel_path, {})[sentence.order] = sentence
@@ -6000,10 +6018,10 @@ def test_latest_temporal_query_respects_reported_drs_scope(
         scope_requirements=("reported",),
     )
 
-    unscoped_answer, _unscoped_diagnostics = execute_bounded_query(
+    unscoped_answer, unscoped_diagnostics = execute_bounded_query(
         store, run_id, documents, sentences_by_document, unscoped_frame.question_text, unscoped_frame
     )
-    reported_answer, _reported_diagnostics = execute_bounded_query(
+    reported_answer, reported_diagnostics = execute_bounded_query(
         store, run_id, documents, sentences_by_document, reported_frame.question_text, reported_frame
     )
 
@@ -6013,6 +6031,8 @@ def test_latest_temporal_query_respects_reported_drs_scope(
     assert reported_answer is not None
     assert reported_answer.text == "closed"
     assert reported_answer.evidence[0].rel_path == "reported.txt"
+    assert unscoped_diagnostics["execution"]["record_counts"]["contexts"] < store.counts()["contexts"]
+    assert reported_diagnostics["execution"]["record_counts"]["contexts"] < store.counts()["contexts"]
 
 
 def test_latest_temporal_query_with_boundary_conflict_returns_unknown_with_provenance(

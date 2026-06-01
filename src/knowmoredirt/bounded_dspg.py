@@ -380,6 +380,38 @@ def _fetch_identity_hypotheses(
     return list(rows_by_id.values())
 
 
+def _context_ids_from_rows(rows: list[dict[str, Any]], key: str = "context_id") -> list[str]:
+    return list(dict.fromkeys(str(row.get(key) or "") for row in rows if str(row.get(key) or "")))
+
+
+def _fetch_context_closure(connection: Any, run_id: str, seed_context_ids: list[str]) -> list[dict[str, Any]]:
+    pending = list(dict.fromkeys(context_id for context_id in seed_context_ids if context_id))
+    contexts_by_id: dict[str, dict[str, Any]] = {}
+    while pending:
+        next_pending: list[str] = []
+        for group in _batched_values([context_id for context_id in pending if context_id not in contexts_by_id]):
+            placeholders = ",".join("?" for _ in group)
+            rows = connection.execute(
+                f"""
+                SELECT *
+                FROM contexts
+                WHERE run_id=? AND context_id IN ({placeholders})
+                """,
+                (run_id, *group),
+            ).fetchall()
+            for row in rows:
+                context = dict(row)
+                context_id = str(context.get("context_id") or "")
+                if not context_id or context_id in contexts_by_id:
+                    continue
+                contexts_by_id[context_id] = context
+                parent_id = str(context.get("parent_context_id") or "")
+                if parent_id and parent_id not in contexts_by_id:
+                    next_pending.append(parent_id)
+        pending = list(dict.fromkeys(next_pending))
+    return list(contexts_by_id.values())
+
+
 def _load_records(
     store: Any,
     run_id: str,
@@ -447,8 +479,19 @@ def _load_records(
         )
     )
     referents = _fetch_by_ids(connection, "referents", "referent_id", material_referent_ids)
-    contexts = [dict(row) for row in connection.execute("SELECT * FROM contexts WHERE run_id=?", (run_id,))]
     context_carriers = _fetch_by_ids(connection, "context_carriers", "document_id", document_ids)
+    seed_context_ids = list(
+        dict.fromkeys(
+            [
+                *_context_ids_from_rows(frames),
+                *_context_ids_from_rows(relations),
+                *_context_ids_from_rows(temporal),
+                *_context_ids_from_rows(identity_hypotheses),
+                *_context_ids_from_rows(context_carriers),
+            ]
+        )
+    )
+    contexts = _fetch_context_closure(connection, run_id, seed_context_ids)
     docs_by_document_id = {str(doc.get("document_id")): doc for doc in documents}
     document_context_norm_by_rel_path: dict[str, str] = defaultdict(str)
     for chunk in chunks:
