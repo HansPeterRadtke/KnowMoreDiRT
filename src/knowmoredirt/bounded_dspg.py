@@ -822,19 +822,42 @@ def _answer_source_provenance_sample(
     *,
     limit: int = 8,
 ) -> list[dict[str, Any]]:
-    spans = _spans_by_id(records)
-    docs = _docs_by_rel_path(records)
     rows: list[dict[str, Any]] = []
     seen: set[tuple[str, str, int | None, str]] = set()
     for evidence in answer.evidence:
-        span = spans.get(evidence.span_id)
-        if span:
-            payload = _span_provenance_payload(span, records)
-        else:
-            payload = _evidence_payload(evidence)
-            doc = docs.get(evidence.rel_path)
-            if doc:
-                payload["document"] = _document_metadata_summary(doc)
+        payload = _evidence_provenance_payload(evidence, records)
+        key = (
+            str(payload.get("rel_path") or ""),
+            str(payload.get("span_id") or ""),
+            payload.get("chunk_order") if isinstance(payload.get("chunk_order"), int) else None,
+            str(payload.get("text") or ""),
+        )
+        if key in seen:
+            continue
+        seen.add(key)
+        rows.append(payload)
+        if len(rows) >= limit:
+            break
+    return rows
+
+
+def _evidence_provenance_payload(evidence: Evidence, records: dict[str, Any]) -> dict[str, Any]:
+    span = _spans_by_id(records).get(evidence.span_id)
+    if span:
+        return _span_provenance_payload(span, records)
+    payload = _evidence_payload(evidence)
+    doc = _docs_by_rel_path(records).get(evidence.rel_path)
+    if doc:
+        payload["document"] = _document_metadata_summary(doc)
+        if doc.get("document_id") is not None:
+            payload["document_id"] = doc.get("document_id")
+    return payload
+
+
+def _dedupe_provenance_payloads(payloads: list[dict[str, Any]], *, limit: int = 12) -> list[dict[str, Any]]:
+    rows: list[dict[str, Any]] = []
+    seen: set[tuple[str, str, int | None, str]] = set()
+    for payload in payloads:
         key = (
             str(payload.get("rel_path") or ""),
             str(payload.get("span_id") or ""),
@@ -1828,10 +1851,17 @@ def execute_bounded_query(
     records = _load_records(store, run_id, selected_docs, selected_chunks)
     identity_expanded_terms: list[str] = []
     identity_expansion_evidence: list[Evidence] = []
+    identity_expansion_provenance: list[dict[str, Any]] = []
     identity_expansion_rounds = 0
     for _round in range(3):
         identity_terms, identity_evidence = _identity_expansion(records, target_terms, frame)
         identity_expansion_evidence = _dedupe_evidence([*identity_expansion_evidence, *identity_evidence])
+        identity_expansion_provenance = _dedupe_provenance_payloads(
+            [
+                *identity_expansion_provenance,
+                *[_evidence_provenance_payload(item, records) for item in identity_evidence],
+            ]
+        )
         new_identity_terms = [term for term in identity_terms if term and term not in target_terms]
         if not new_identity_terms:
             break
@@ -1870,10 +1900,8 @@ def execute_bounded_query(
         selected_chunks = next_chunks
         records = _load_records(store, run_id, selected_docs, selected_chunks)
     diagnostics = {"ranking": ranking, "execution": {"record_counts": records["record_counts"], "query_frame": frame.as_dict()}}
-    if identity_expansion_evidence:
-        diagnostics["execution"]["identity_expansion_evidence"] = [
-            _evidence_payload(item) for item in identity_expansion_evidence
-        ]
+    if identity_expansion_provenance:
+        diagnostics["execution"]["identity_expansion_evidence"] = identity_expansion_provenance
 
     if expected.answer_type == "boolean":
         _attach_no_answer_provenance(

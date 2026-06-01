@@ -2376,6 +2376,13 @@ def test_incremental_reported_then_asserted_identity_preserves_scope_and_reuses_
     assert reported_answer is not None
     assert reported_answer.text == "green"
     assert "ca-9" in reported_diagnostics["ranking"]["identity_expanded_target_terms"]
+    reported_identity_source = next(
+        item
+        for item in reported_diagnostics["execution"]["identity_expansion_evidence"]
+        if item["rel_path"] == "reports/reported.txt"
+    )
+    assert reported_identity_source["document"]["document_id"] == reported_identity_source["document_id"]
+    assert reported_identity_source["chunk_id"]
     assert reported_answer.evidence[0].rel_path == "reports/reported.txt"
 
     (tmp_path / "end").mkdir()
@@ -2409,6 +2416,13 @@ def test_incremental_reported_then_asserted_identity_preserves_scope_and_reuses_
     assert final_answer is not None
     assert final_answer.text == "amber"
     assert "ca-9" in final_diagnostics["ranking"]["identity_expanded_target_terms"]
+    final_identity_source = next(
+        item
+        for item in final_diagnostics["execution"]["identity_expansion_evidence"]
+        if item["rel_path"] == "end/asserted_identity.txt"
+    )
+    assert final_identity_source["document"]["document_id"] == final_identity_source["document_id"]
+    assert final_identity_source["chunk_id"]
     assert {"end/asserted_identity.txt", "middle/state.txt"}.issubset(
         {item.rel_path for item in final_answer.evidence}
     )
