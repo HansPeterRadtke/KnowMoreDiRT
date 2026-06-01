@@ -4,11 +4,26 @@ from __future__ import annotations
 
 import hashlib
 import mimetypes
+import os
 import stat as stat_module
 from pathlib import Path
 
 from .models import Document, Sentence
 from .text import split_units, tokenize
+
+
+KMD_CACHE_DIR_ENV_VARS = (
+    "KMD_FRAME_CACHE_DIR",
+    "KMD_CHUNK_DRS_CACHE_DIR",
+    "KMD_QUERY_PLAN_CACHE_DIR",
+    "KMD_QUERY_DRS_CACHE_DIR",
+    "KMD_QUERY_EVIDENCE_REPAIR_CACHE_DIR",
+    "KMD_QUERY_EVIDENCE_CACHE_DIR",
+    "KMD_EVIDENCE_ANSWER_CACHE_DIR",
+    "KMD_VERIFIER_CACHE_DIR",
+    "KMD_ANSWER_CANONICALIZATION_CACHE_DIR",
+    "KMD_IDENTITY_CACHE_DIR",
+)
 
 
 def _stable_scan_id(prefix: str, *parts: object) -> str:
@@ -57,6 +72,36 @@ def read_text_file_with_metadata(path: Path) -> tuple[str, dict[str, object]] | 
         return None
 
 
+def _path_is_relative_to(path: Path, parent: Path) -> bool:
+    try:
+        path.relative_to(parent)
+        return True
+    except ValueError:
+        return False
+
+
+def _configured_cache_roots(root: Path) -> list[Path]:
+    if os.environ.get("KMD_SCAN_INCLUDE_GENERATED_CACHES", "").strip().lower() in {"1", "true", "yes", "on"}:
+        return []
+    values = [
+        os.environ.get(name, "").strip()
+        for name in KMD_CACHE_DIR_ENV_VARS
+        if os.environ.get(name, "").strip()
+    ]
+    values.append(str(Path.home() / ".cache" / "knowmoredirt"))
+    root_resolved = root.resolve()
+    cache_roots: list[Path] = []
+    for value in values:
+        candidate = Path(value).expanduser()
+        try:
+            resolved = candidate.resolve(strict=False)
+        except OSError:
+            continue
+        if resolved != root_resolved and _path_is_relative_to(resolved, root_resolved):
+            cache_roots.append(resolved)
+    return list(dict.fromkeys(cache_roots))
+
+
 def scan_folder(folder_path: str | Path, *, max_unit_chars: int = 0) -> tuple[list[Document], list[Sentence]]:
     root = Path(folder_path)
     if not root.exists():
@@ -64,11 +109,19 @@ def scan_folder(folder_path: str | Path, *, max_unit_chars: int = 0) -> tuple[li
     if not root.is_dir():
         raise NotADirectoryError(root)
 
+    cache_roots = _configured_cache_roots(root)
     documents: list[Document] = []
     sentences: list[Sentence] = []
     for path in sorted(root.rglob("*")):
         if not path.is_file():
             continue
+        if cache_roots:
+            try:
+                resolved_path = path.resolve(strict=False)
+            except OSError:
+                resolved_path = path
+            if any(_path_is_relative_to(resolved_path, cache_root) for cache_root in cache_roots):
+                continue
         read_result = read_text_file_with_metadata(path)
         if read_result is None:
             continue

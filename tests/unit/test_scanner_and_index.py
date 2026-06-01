@@ -39,3 +39,25 @@ def test_scanner_bounds_very_long_line_units(tmp_path: Path) -> None:
     assert all(len(sentence.text) <= 120 for sentence in sentences)
     assert "token000" in sentences[0].text
     assert "token079" in sentences[-1].text
+
+
+def test_scanner_skips_configured_kmd_cache_inside_source_root(tmp_path: Path, monkeypatch) -> None:
+    (tmp_path / "notes").mkdir()
+    (tmp_path / "notes" / "source.txt").write_text("Source fact Alpha state green.", encoding="utf-8")
+    cache_root = tmp_path / ".kmd-generated-cache"
+    cache_root.mkdir()
+    (cache_root / "cached.json").write_text(
+        '{"drs":{"conditions":[{"evidence_text":"Alpha state red"}]}}',
+        encoding="utf-8",
+    )
+    (tmp_path / "cache").mkdir()
+    (tmp_path / "cache" / "user-note.txt").write_text("User cache folder is raw source.", encoding="utf-8")
+    monkeypatch.setenv("KMD_CHUNK_DRS_CACHE_DIR", str(cache_root))
+
+    documents, sentences = scan_folder(tmp_path)
+
+    rel_paths = {document.rel_path for document in documents}
+    assert "notes/source.txt" in rel_paths
+    assert "cache/user-note.txt" in rel_paths
+    assert ".kmd-generated-cache/cached.json" not in rel_paths
+    assert all("Alpha state red" not in sentence.text for sentence in sentences)

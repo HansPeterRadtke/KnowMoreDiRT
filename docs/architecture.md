@@ -15,7 +15,7 @@ No metadata wrapper, manifest, semantic adapter, or external schema is part of t
 
 Initialization performs these steps:
 
-1. **Folder scan**: recursively traverse arbitrary folders and filenames.
+1. **Folder scan**: recursively traverse arbitrary folders and filenames, excluding only KMD's own configured/generated cache directories when they are inside the scanned root.
 2. **Text read**: read each readable file as text.
 3. **Natural metadata capture**: record filename, suffixes, parent path, directory depth, mode/permissions, uid/gid where available, inode/device where available, atime/ctime/mtime, symlink status, MIME guess, line count, word count, byte count, and SHA-256 content hash.
 4. **Chunking**: split text into sentence/line-sized units while preserving source offsets.
