@@ -18,6 +18,7 @@ from knowmoredirt.model_planner import (
     build_answer_verification_prompt,
     call_model_chunk_drs,
     call_model_chunk_frames,
+    call_model_identity_canonicalization,
     call_model_query_evidence_answer,
     call_model_query_plan,
     call_model_query_drs,
@@ -517,6 +518,62 @@ def test_answer_canonicalization_old_request_failure_cache_is_ignored(monkeypatc
     assert result["cache_context"]["answer_type"] == "state"
     assert result["cache_context"]["evidence_count"] == 1
     assert result["cache_context"]["model_fingerprint"]["model_id"] == "fake-canonicalization-old-request-cache"
+    assert model.calls == 1
+
+
+def test_identity_canonicalization_old_invalid_cache_is_ignored(monkeypatch) -> None:
+    class IdentityModel:
+        def __init__(self) -> None:
+            self.calls = 0
+
+        def context_size(self) -> int:
+            return 4096
+
+        def cache_fingerprint(self) -> dict[str, Any]:
+            return {"model_id": "fake-identity-old-invalid-cache", "context_size": 4096}
+
+        def complete_json(self, prompt: str, *, n_predict: int = 128, grammar=None, json_schema=None):
+            self.calls += 1
+            assert "same relevant DRS context" in prompt
+            return {
+                "canonicalization": {
+                    "same_referent": True,
+                    "answer": "Aero Gate",
+                    "evidence_span": "Aero Gate",
+                    "reason": "identity grounded in evidence",
+                },
+                "_model_raw": "{}",
+                "_model_elapsed_seconds": 0.01,
+            }
+
+    monkeypatch.setattr(
+        model_planner,
+        "_read_cache",
+        lambda path: {
+            "accepted": False,
+            "reason": "invalid_json",
+            "fresh_or_cached": "cache",
+        },
+    )
+    monkeypatch.setattr(model_planner, "_write_cache", lambda path, payload: None)
+    model = IdentityModel()
+
+    result = call_model_identity_canonicalization(
+        "Who is ready?",
+        "Aero",
+        ["Aero Gate"],
+        [{"rel_path": "note.txt", "text": "Aero Gate is ready."}],
+        model,  # type: ignore[arg-type]
+    )
+
+    assert result["accepted"] is True
+    assert result["same_referent"] is True
+    assert result["answer"] == "Aero Gate"
+    assert result["fresh_or_cached"] == "fresh"
+    assert result["cache_context"]["n_predict"] == 96
+    assert result["cache_context"]["fuller_candidate_count"] == 1
+    assert result["cache_context"]["evidence_count"] == 1
+    assert result["cache_context"]["model_fingerprint"]["model_id"] == "fake-identity-old-invalid-cache"
     assert model.calls == 1
 
 

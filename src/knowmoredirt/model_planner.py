@@ -4675,11 +4675,18 @@ def call_model_identity_canonicalization(
     prompt = build_identity_canonicalization_prompt(question, candidate_answer, fuller_candidates, evidence_items)
     constraint = _constraint_settings(IDENTITY_CANONICALIZATION_GRAMMAR, IDENTITY_CANONICALIZATION_JSON_SCHEMA, ANSWER_SCHEMA_VERSION)
     grammar_hash = str(constraint["grammar_hash"])
+    cache_settings = {"n_predict": n_predict, "schema": ANSWER_SCHEMA_VERSION, **constraint}
+    cache_context = {
+        **cache_settings,
+        "model_fingerprint": _client_fingerprint(client),
+        "fuller_candidate_count": len(fuller_candidates),
+        "evidence_count": len(evidence_items),
+    }
     prompt_hash = _cache_hash(
         "identity_canonicalization",
         prompt,
         client,
-        {"n_predict": n_predict, "schema": ANSWER_SCHEMA_VERSION, **constraint},
+        cache_settings,
     )
     cache_path = _cache_path("KMD_IDENTITY_CACHE_DIR", prompt_hash)
     cached = _read_cache(cache_path)
@@ -4688,6 +4695,7 @@ def call_model_identity_canonicalization(
             cached.get("accepted") is False
             and cached.get("reason") in {"request_failed", "invalid_json", "schema_validation_failed"}
         ):
+            cached.setdefault("cache_context", cache_context)
             return cached
     start = time.time()
     try:
@@ -4705,6 +4713,7 @@ def call_model_identity_canonicalization(
             "error": str(exc),
             "prompt_hash": prompt_hash,
             "grammar_hash": grammar_hash,
+            "cache_context": cache_context,
             "elapsed": round(time.time() - start, 3),
         }
     raw = str(parsed.get("_model_raw") or "") if isinstance(parsed, dict) else ""
@@ -4735,6 +4744,7 @@ def call_model_identity_canonicalization(
             "raw_text": raw,
             "prompt_hash": prompt_hash,
             "grammar_hash": grammar_hash,
+            "cache_context": cache_context,
             "elapsed": round(time.time() - start, 3),
         }
     answer = str(result.get("answer") or "")
@@ -4746,6 +4756,7 @@ def call_model_identity_canonicalization(
             "raw_text": raw,
             "prompt_hash": prompt_hash,
             "grammar_hash": grammar_hash,
+            "cache_context": cache_context,
             "elapsed": round(time.time() - start, 3),
         }
     if not span and answer != candidate_answer:
@@ -4761,6 +4772,7 @@ def call_model_identity_canonicalization(
             "raw_text": raw,
             "prompt_hash": prompt_hash,
             "grammar_hash": grammar_hash,
+            "cache_context": cache_context,
             "elapsed": round(time.time() - start, 3),
         }
     payload = {
@@ -4773,6 +4785,7 @@ def call_model_identity_canonicalization(
         "elapsed": parsed.get("_model_elapsed_seconds", round(time.time() - start, 3)),
         "prompt_hash": prompt_hash,
         "grammar_hash": grammar_hash,
+        "cache_context": cache_context,
         "output_hash": hashlib.sha256(raw.encode()).hexdigest(),
         "fresh_or_cached": "fresh",
     }
