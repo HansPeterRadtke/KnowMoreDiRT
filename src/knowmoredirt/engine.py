@@ -771,12 +771,6 @@ class KnowMoreDiRTEngine:
 
     def _materialize_sentence_semantics(self, sentence: Sentence) -> int:
         span_id = self._sentence_span_id(sentence)
-        existing = self.store.execute(
-            "SELECT COUNT(*) FROM frames WHERE run_id=? AND span_id=? AND source='local_model'",
-            (self.run_id, span_id),
-        ).fetchone()[0]
-        if existing:
-            return 0
         if self._model_client is None:
             return 0
         frame_cache_context = chunk_frame_cache_context(self._model_client)
@@ -793,6 +787,17 @@ class KnowMoreDiRTEngine:
             """,
             (self.run_id, span_id, "chunk_frames", "local_model", frame_cache_key),
         ).fetchone()
+        existing = self.store.execute(
+            "SELECT COUNT(*) FROM frames WHERE run_id=? AND span_id=? AND source='local_model'",
+            (self.run_id, span_id),
+        ).fetchone()[0]
+        if (
+            existing
+            and previous_attempt is not None
+            and bool(previous_attempt["accepted"])
+            and bool(previous_attempt["materialized"])
+        ):
+            return 0
         retry_failed = os.environ.get("KMD_FRAME_RETRY_FAILED_ATTEMPTS", "").strip().lower() in {
             "1",
             "true",

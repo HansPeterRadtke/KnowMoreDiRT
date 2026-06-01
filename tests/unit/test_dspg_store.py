@@ -2598,6 +2598,110 @@ def test_incremental_drs_ingest_reuses_existing_materialized_chunks(tmp_path: Pa
     assert store.counts()["drs_conditions"] == 1
 
 
+def test_incremental_drs_ingest_reprocesses_when_model_fingerprint_changes(
+    tmp_path: Path,
+    monkeypatch,
+) -> None:
+    (tmp_path / "note.txt").write_text("Aero Gate is ready.\n", encoding="utf-8")
+
+    class VersionedDrsModel:
+        def __init__(self) -> None:
+            self.calls = 0
+            self.version = "v1"
+
+        def context_size(self) -> int:
+            return 4096
+
+        def cache_fingerprint(self) -> dict[str, object]:
+            return {"model_id": f"fake-versioned-drs-{self.version}", "context_size": 4096}
+
+        def complete_json(self, prompt: str, *, n_predict: int = 128, grammar=None, json_schema=None):
+            self.calls += 1
+            predicate = f"ready_{self.version}"
+            return {
+                "drs": {
+                    "schema_version": "chunk-drs-v2",
+                    "source_id": "note.txt",
+                    "referents": [
+                        {"id": "r0", "label": "Aero Gate", "kind": "entity", "evidence_text": "Aero Gate"},
+                    ],
+                    "boxes": [
+                        {
+                            "id": "b0",
+                            "kind": "asserted",
+                            "parent_id": "",
+                            "holder_referent_id": "",
+                            "evidence_text": "Aero Gate is ready.",
+                        },
+                    ],
+                    "conditions": [
+                        {
+                            "id": "c0",
+                            "predicate": predicate,
+                            "box_id": "b0",
+                            "polarity": "positive",
+                            "modality": "asserted",
+                            "temporal_id": "",
+                            "arguments": [
+                                {
+                                    "role": "entity",
+                                    "target_kind": "referent",
+                                    "target_id": "r0",
+                                    "value": "",
+                                    "value_type": "entity",
+                                    "evidence_text": "Aero Gate",
+                                }
+                            ],
+                            "evidence_text": "Aero Gate is ready.",
+                        }
+                    ],
+                    "identity_hypotheses": [],
+                    "temporal_records": [],
+                },
+                "_model_raw": "{}",
+                "_model_elapsed_seconds": 0.01,
+            }
+
+    cache_dir = tmp_path.parent / f"{tmp_path.name}-versioned-drs-cache"
+    monkeypatch.setenv("KMD_CHUNK_DRS_CACHE_DIR", str(cache_dir))
+    model = VersionedDrsModel()
+    store = DSPGStore()
+
+    store, first_run_id, _, _ = ingest_folder(
+        tmp_path,
+        store=store,
+        semantic_client=model,
+        use_semantic_frames=False,
+        use_drs_semantics=True,
+    )
+    store, second_run_id, _, _ = ingest_folder(
+        tmp_path,
+        store=store,
+        semantic_client=model,
+        use_semantic_frames=False,
+        use_drs_semantics=True,
+    )
+    calls_after_same_fingerprint = model.calls
+    model.version = "v2"
+    store, third_run_id, _, _ = ingest_folder(
+        tmp_path,
+        store=store,
+        semantic_client=model,
+        use_semantic_frames=False,
+        use_drs_semantics=True,
+    )
+
+    assert first_run_id == second_run_id == third_run_id
+    assert calls_after_same_fingerprint == 1
+    assert model.calls == 2
+    predicates = {
+        row["predicate"]
+        for row in store.execute("SELECT predicate FROM drs_conditions WHERE source='local_model_drs'").fetchall()
+    }
+    assert predicates == {"ready_v1", "ready_v2"}
+    assert store.counts()["model_attempts"] == 2
+
+
 def test_incremental_ingest_uses_chunk_boundary_ids_when_scan_policy_changes(
     tmp_path: Path,
     monkeypatch,
@@ -2765,6 +2869,82 @@ def test_incremental_frame_ingest_reuses_existing_materialized_chunks(tmp_path: 
     assert calls_after_first_ingest == 1
     assert model.calls == calls_after_first_ingest
     assert store.execute("SELECT COUNT(*) FROM frames WHERE source='local_model'").fetchone()[0] == 1
+
+
+def test_incremental_frame_ingest_reprocesses_when_model_fingerprint_changes(tmp_path: Path) -> None:
+    (tmp_path / "note.txt").write_text("Aero Gate is ready.\n", encoding="utf-8")
+
+    class VersionedFrameModel:
+        def __init__(self) -> None:
+            self.calls = 0
+            self.version = "v1"
+
+        def context_size(self) -> int:
+            return 4096
+
+        def cache_fingerprint(self) -> dict[str, object]:
+            return {"model_id": f"fake-versioned-frames-{self.version}", "context_size": 4096}
+
+        def complete_json(self, prompt: str, *, n_predict: int = 128, grammar=None, json_schema=None):
+            self.calls += 1
+            assert "Aero Gate is ready" in prompt
+            return {
+                "frames": [
+                    {
+                        "frame_type": "state",
+                        "predicate": f"ready_{self.version}",
+                        "arguments": [
+                            {"role": "entity", "text": "Aero Gate", "value_type": "entity"},
+                        ],
+                        "identity_hypotheses": [],
+                        "polarity": "positive",
+                        "modality": "asserted",
+                        "context_holder": "",
+                        "temporal_text": "",
+                        "evidence_text": "Aero Gate is ready.",
+                        "confidence": 0.9,
+                    }
+                ],
+                "_model_raw": "{}",
+                "_model_elapsed_seconds": 0.01,
+            }
+
+    model = VersionedFrameModel()
+    store = DSPGStore()
+
+    store, first_run_id, _, _ = ingest_folder(
+        tmp_path,
+        store=store,
+        semantic_client=model,
+        use_semantic_frames=True,
+        use_drs_semantics=False,
+    )
+    store, second_run_id, _, _ = ingest_folder(
+        tmp_path,
+        store=store,
+        semantic_client=model,
+        use_semantic_frames=True,
+        use_drs_semantics=False,
+    )
+    calls_after_same_fingerprint = model.calls
+    model.version = "v2"
+    store, third_run_id, _, _ = ingest_folder(
+        tmp_path,
+        store=store,
+        semantic_client=model,
+        use_semantic_frames=True,
+        use_drs_semantics=False,
+    )
+
+    assert first_run_id == second_run_id == third_run_id
+    assert calls_after_same_fingerprint == 1
+    assert model.calls == 2
+    predicates = {
+        row["predicate"]
+        for row in store.execute("SELECT predicate FROM frames WHERE source='local_model'").fetchall()
+    }
+    assert predicates == {"ready_v1", "ready_v2"}
+    assert store.counts()["model_attempts"] == 2
 
 
 def test_incremental_frame_ingest_skips_previous_failed_attempts(tmp_path: Path) -> None:

@@ -39,6 +39,10 @@ def _env_true(name: str) -> bool:
     return os.environ.get(name, "").strip().lower() in PROGRESS_TRUE_VALUES
 
 
+def _attempt_materialized(row: Any | None) -> bool:
+    return row is not None and bool(row["accepted"]) and bool(row["materialized"])
+
+
 def _timestamp_value(value: float) -> str:
     try:
         return time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime(float(value)))
@@ -743,6 +747,15 @@ def ingest_folder(
             semantic_index += 1
             frame_cache_context = chunk_frame_cache_context(semantic_client)
             frame_cache_key = stable_id("frame_attempt_context", json.dumps(frame_cache_context, sort_keys=True, default=str))
+            previous_attempt = store.execute(
+                """
+                SELECT accepted, materialized, reason
+                FROM model_attempts
+                WHERE run_id=? AND source_span_id=? AND task=? AND source=? AND cache_key=?
+                LIMIT 1
+                """,
+                (run_id, span_id, "chunk_frames", "local_model", frame_cache_key),
+            ).fetchone()
             existing_frames = store.execute(
                 """
                 SELECT COUNT(*)
@@ -751,7 +764,7 @@ def ingest_folder(
                 """,
                 (run_id, span_id),
             ).fetchone()[0]
-            if existing_frames:
+            if existing_frames and _attempt_materialized(previous_attempt):
                 _log_progress(
                     "kmd-ingest llm_done "
                     f"chunk={semantic_index}/{semantic_total} "
@@ -764,15 +777,6 @@ def ingest_folder(
                     f"elapsed={time.monotonic() - ingest_started:.1f}s"
                 )
                 continue
-            previous_attempt = store.execute(
-                """
-                SELECT accepted, materialized, reason
-                FROM model_attempts
-                WHERE run_id=? AND source_span_id=? AND task=? AND source=? AND cache_key=?
-                LIMIT 1
-                """,
-                (run_id, span_id, "chunk_frames", "local_model", frame_cache_key),
-            ).fetchone()
             if previous_attempt is not None and not _env_true("KMD_FRAME_RETRY_FAILED_ATTEMPTS"):
                 _log_progress(
                     "kmd-ingest llm_done "
@@ -1081,6 +1085,15 @@ def ingest_folder(
                 continue
             drs_cache_context = chunk_drs_cache_context(semantic_client)
             drs_cache_key = stable_id("drs_attempt_context", json.dumps(drs_cache_context, sort_keys=True, default=str))
+            previous_attempt = store.execute(
+                """
+                SELECT accepted, materialized, reason
+                FROM model_attempts
+                WHERE run_id=? AND source_span_id=? AND task=? AND source=? AND cache_key=?
+                LIMIT 1
+                """,
+                (run_id, span_id, "chunk_drs", "local_model_drs", drs_cache_key),
+            ).fetchone()
             existing_drs = store.execute(
                 """
                 SELECT COUNT(*)
@@ -1089,7 +1102,7 @@ def ingest_folder(
                 """,
                 (run_id, span_id),
             ).fetchone()[0]
-            if existing_drs:
+            if existing_drs and _attempt_materialized(previous_attempt):
                 _log_progress(
                     "kmd-ingest drs_done "
                     f"chunk={semantic_index}/{semantic_total} "
@@ -1101,15 +1114,6 @@ def ingest_folder(
                     f"elapsed={time.monotonic() - ingest_started:.1f}s"
                 )
                 continue
-            previous_attempt = store.execute(
-                """
-                SELECT accepted, materialized, reason
-                FROM model_attempts
-                WHERE run_id=? AND source_span_id=? AND task=? AND source=? AND cache_key=?
-                LIMIT 1
-                """,
-                (run_id, span_id, "chunk_drs", "local_model_drs", drs_cache_key),
-            ).fetchone()
             if previous_attempt is not None and not _env_true("KMD_DRS_RETRY_FAILED_ATTEMPTS"):
                 _log_progress(
                     "kmd-ingest drs_done "
