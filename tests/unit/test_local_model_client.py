@@ -854,6 +854,9 @@ def test_chunk_drs_planner_uses_json_schema_and_validates_grounding(monkeypatch,
     assert result["accepted"] is True
     assert result["validation"]["condition_count"] == 1
     assert result["context_budget"]["runtime_context_size"] == 8192
+    assert result["cache_context"]["context_budget"]["runtime_context_size"] == 8192
+    assert result["cache_context"]["source_rel_path"] == "note.txt"
+    assert result["cache_context"]["model_fingerprint"]["model_id"] == "fake-drs"
     assert model.json_schema is not None
     assert "drs" in model.json_schema["properties"]
     assert "source-grounded DRS" in model.prompt
@@ -921,7 +924,10 @@ def test_chunk_drs_request_failure_keeps_context_budget_and_retries(monkeypatch,
     assert first["accepted"] is False
     assert first["reason"] == "request_failed"
     assert first["context_budget"]["runtime_context_size"] == 8192
+    assert first["cache_context"]["context_budget"]["runtime_context_size"] == 8192
+    assert first["cache_context"]["model_fingerprint"]["model_id"] == "fake-chunk-drs-request-retry"
     assert second["accepted"] is True
+    assert second["cache_context"]["source_rel_path"] == "note.txt"
     assert model.calls == 2
 
 

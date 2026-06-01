@@ -4153,51 +4153,60 @@ def call_model_chunk_drs(
         constrain_stable_ids=True,
     )
     constraint = _constraint_settings(CHUNK_DRS_GRAMMAR, drs_json_schema, CHUNK_DRS_SCHEMA_VERSION)
+    cache_settings = {
+        "n_predict": n_predict,
+        "schema": CHUNK_DRS_SCHEMA_VERSION,
+        **constraint,
+        "context_budget": context_budget,
+        "staged_fallback": _staged_chunk_drs_enabled(),
+        "staged_fallback_policy": CHUNK_DRS_STAGED_FALLBACK_POLICY,
+        "grounding_repair_policy": CHUNK_DRS_GROUNDING_REPAIR_POLICY,
+        "identity_provenance_policy": CHUNK_DRS_IDENTITY_PROVENANCE_POLICY,
+        "temporal_provenance_policy": CHUNK_DRS_TEMPORAL_PROVENANCE_POLICY,
+        "sparse_retry_policy": CHUNK_DRS_SPARSE_RETRY_POLICY,
+        "structure_validation_policy": CHUNK_DRS_STRUCTURE_VALIDATION_POLICY,
+        "box_completion_policy": CHUNK_DRS_BOX_COMPLETION_POLICY,
+        "source_span_policy": CHUNK_DRS_SOURCE_SPAN_POLICY,
+        "skeleton_source_span_policy": CHUNK_DRS_SKELETON_SOURCE_SPAN_POLICY,
+        "skeleton_id_policy": CHUNK_DRS_SKELETON_ID_POLICY,
+        "monolithic_id_policy": CHUNK_DRS_MONOLITHIC_ID_POLICY,
+        "compact_undercoverage_policy": CHUNK_DRS_COMPACT_UNDERCOVERAGE_POLICY,
+        "staged_retry_diagnostics_policy": CHUNK_DRS_STAGED_RETRY_DIAGNOSTICS_POLICY,
+        "stage_failure_cache_policy": CHUNK_DRS_STAGE_FAILURE_CACHE_POLICY,
+        "dynamic_skeleton_budget_policy": CHUNK_DRS_DYNAMIC_SKELETON_BUDGET_POLICY,
+        "dynamic_condition_budget_policy": CHUNK_DRS_DYNAMIC_CONDITION_BUDGET_POLICY,
+        "dynamic_output_budget_policy": CHUNK_DRS_DYNAMIC_OUTPUT_BUDGET_POLICY,
+        "staged_first_policy": CHUNK_DRS_STAGED_FIRST_POLICY,
+        "source_span_candidate_count": len(source_span_candidates),
+        "staged_skeleton_n_predict": default_staged_chunk_drs_skeleton_n_predict(
+            int(n_predict),
+            prompt_chunk,
+            context_budget.get("max_evidence_chars"),
+        ),
+        "staged_condition_n_predict": default_staged_chunk_drs_condition_n_predict(
+            int(n_predict),
+            prompt_chunk,
+            context_budget.get("max_evidence_chars"),
+        ),
+        "box_completion_n_predict": default_chunk_drs_box_completion_n_predict(int(n_predict)),
+    }
+    cache_context = {
+        **cache_settings,
+        "prompt_version": PROMPT_VERSION,
+        "model_fingerprint": _client_fingerprint(client),
+    }
+    if rel_path:
+        cache_context["source_rel_path"] = rel_path
     prompt_hash = _cache_hash(
         "chunk_drs",
         prompt,
         client,
-        {
-            "n_predict": n_predict,
-            "schema": CHUNK_DRS_SCHEMA_VERSION,
-            **constraint,
-            "context_budget": context_budget,
-            "staged_fallback": _staged_chunk_drs_enabled(),
-            "staged_fallback_policy": CHUNK_DRS_STAGED_FALLBACK_POLICY,
-            "grounding_repair_policy": CHUNK_DRS_GROUNDING_REPAIR_POLICY,
-            "identity_provenance_policy": CHUNK_DRS_IDENTITY_PROVENANCE_POLICY,
-            "temporal_provenance_policy": CHUNK_DRS_TEMPORAL_PROVENANCE_POLICY,
-            "sparse_retry_policy": CHUNK_DRS_SPARSE_RETRY_POLICY,
-            "structure_validation_policy": CHUNK_DRS_STRUCTURE_VALIDATION_POLICY,
-            "box_completion_policy": CHUNK_DRS_BOX_COMPLETION_POLICY,
-            "source_span_policy": CHUNK_DRS_SOURCE_SPAN_POLICY,
-            "skeleton_source_span_policy": CHUNK_DRS_SKELETON_SOURCE_SPAN_POLICY,
-            "skeleton_id_policy": CHUNK_DRS_SKELETON_ID_POLICY,
-            "monolithic_id_policy": CHUNK_DRS_MONOLITHIC_ID_POLICY,
-            "compact_undercoverage_policy": CHUNK_DRS_COMPACT_UNDERCOVERAGE_POLICY,
-            "staged_retry_diagnostics_policy": CHUNK_DRS_STAGED_RETRY_DIAGNOSTICS_POLICY,
-            "stage_failure_cache_policy": CHUNK_DRS_STAGE_FAILURE_CACHE_POLICY,
-            "dynamic_skeleton_budget_policy": CHUNK_DRS_DYNAMIC_SKELETON_BUDGET_POLICY,
-            "dynamic_condition_budget_policy": CHUNK_DRS_DYNAMIC_CONDITION_BUDGET_POLICY,
-            "dynamic_output_budget_policy": CHUNK_DRS_DYNAMIC_OUTPUT_BUDGET_POLICY,
-            "staged_first_policy": CHUNK_DRS_STAGED_FIRST_POLICY,
-            "source_span_candidate_count": len(source_span_candidates),
-            "staged_skeleton_n_predict": default_staged_chunk_drs_skeleton_n_predict(
-                int(n_predict),
-                prompt_chunk,
-                context_budget.get("max_evidence_chars"),
-            ),
-            "staged_condition_n_predict": default_staged_chunk_drs_condition_n_predict(
-                int(n_predict),
-                prompt_chunk,
-                context_budget.get("max_evidence_chars"),
-            ),
-            "box_completion_n_predict": default_chunk_drs_box_completion_n_predict(int(n_predict)),
-        },
+        cache_settings,
     )
     cache_path = _cache_path("KMD_CHUNK_DRS_CACHE_DIR", prompt_hash)
     cached = _read_cache(cache_path)
     if cached is not None and cached.get("reason") != "request_failed":
+        cached.setdefault("cache_context", cache_context)
         return cached
     staged_first_reason = _chunk_drs_staged_first_reason(prompt_chunk, context_budget)
     staged_first_summary: dict[str, Any] | None = None
@@ -4217,6 +4226,7 @@ def call_model_chunk_drs(
                 "monolithic_prompt_hash": prompt_hash,
                 "staged_first": True,
             }
+            payload.setdefault("cache_context", cache_context)
             _write_cache(cache_path, payload)
             return payload
         staged_first_summary = _staged_fallback_failure_summary(fallback)
@@ -4241,6 +4251,7 @@ def call_model_chunk_drs(
             **constraint,
             "elapsed": round(time.time() - start, 3),
             "context_budget": context_budget,
+            "cache_context": cache_context,
         }
         if _staged_chunk_drs_enabled():
             fallback = _call_model_chunk_drs_staged(
@@ -4253,6 +4264,7 @@ def call_model_chunk_drs(
             )
             if fallback.get("accepted"):
                 payload = {**fallback, "fallback_from_reason": "invalid_json", "monolithic_prompt_hash": prompt_hash}
+                payload.setdefault("cache_context", cache_context)
                 _write_cache(cache_path, payload)
                 return payload
             payload["staged_fallback"] = _staged_fallback_failure_summary(fallback)
@@ -4272,6 +4284,7 @@ def call_model_chunk_drs(
             **constraint,
             "elapsed": round(time.time() - start, 3),
             "context_budget": context_budget,
+            "cache_context": cache_context,
         }
         return payload
     raw = str(parsed.get("_model_raw") or "") if isinstance(parsed, dict) else ""
@@ -4290,6 +4303,7 @@ def call_model_chunk_drs(
             "elapsed": monolithic_elapsed,
             "validation": validation,
             "context_budget": context_budget,
+            "cache_context": cache_context,
         }
         if _staged_chunk_drs_enabled():
             fallback = _call_model_chunk_drs_staged(
@@ -4303,6 +4317,7 @@ def call_model_chunk_drs(
             staged_elapsed = float(fallback.get("elapsed") or 0.0)
             if fallback.get("accepted"):
                 payload = {**fallback, "fallback_from_reason": reason, "monolithic_prompt_hash": prompt_hash}
+                payload.setdefault("cache_context", cache_context)
                 _write_cache(cache_path, payload)
                 return payload
             payload["staged_fallback"] = _staged_fallback_failure_summary(fallback)
@@ -4323,6 +4338,7 @@ def call_model_chunk_drs(
                 "fallback_from_reason": reason,
                 "monolithic_prompt_hash": prompt_hash,
             }
+            payload.setdefault("cache_context", cache_context)
             _write_cache(cache_path, payload)
             return payload
         payload["box_completion"] = {
@@ -4344,6 +4360,7 @@ def call_model_chunk_drs(
             "elapsed": parsed.get("_model_elapsed_seconds", round(time.time() - start, 3)),
             "validation": validation,
             "context_budget": context_budget,
+            "cache_context": cache_context,
         }
         _write_cache(cache_path, payload)
         return payload
@@ -4363,6 +4380,7 @@ def call_model_chunk_drs(
             validation, "condition_count"
         ):
             payload = {**fallback, "fallback_from_reason": staged_retry_reason, "monolithic_prompt_hash": prompt_hash}
+            payload.setdefault("cache_context", cache_context)
             _write_cache(cache_path, payload)
             return payload
         staged_retry_summary = _staged_fallback_failure_summary(fallback)
@@ -4382,6 +4400,7 @@ def call_model_chunk_drs(
         "prompt_hash": prompt_hash,
         **constraint,
         "context_budget": context_budget,
+        "cache_context": cache_context,
         "validation": validation,
         "output_hash": hashlib.sha256(raw.encode()).hexdigest(),
         "fresh_or_cached": "fresh",
