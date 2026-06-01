@@ -138,6 +138,52 @@ def test_unknown_diagnostic_evidence_dedupes_same_chunk_with_span_upgrade() -> N
     assert evidence[0].char_start == 80
 
 
+def test_unknown_diagnostic_evidence_uses_scattered_source_groups() -> None:
+    engine = KnowMoreDiRTEngine.__new__(KnowMoreDiRTEngine)
+    engine.last_bounded_diagnostics = {
+        "execution": {
+            "scattered_source_provenance_without_binding": {
+                "target_rel_paths": ["begin/registry.txt"],
+                "relation_rel_paths": ["middle/state.txt"],
+                "target_sources": [
+                    {
+                        "rel_path": "begin/registry.txt",
+                        "span_id": "span-target",
+                        "chunk_order": 0,
+                        "char_start": 0,
+                        "char_end": 49,
+                        "text": "Registry introduces Iris Vault as the monitored artifact.",
+                    }
+                ],
+                "relation_sources": [
+                    {
+                        "rel_path": "middle/state.txt",
+                        "span_id": "span-relation",
+                        "chunk_order": 0,
+                        "char_start": 0,
+                        "char_end": 42,
+                        "text": "Maintenance lane IV-4 marker T002 state blue.",
+                    }
+                ],
+            },
+            "source_provenance_sample": [
+                {
+                    "rel_path": f"begin/filler_{index}.txt",
+                    "span_id": f"span-filler-{index}",
+                    "chunk_order": 0,
+                    "text": f"Filler target-only Iris Vault note {index}.",
+                }
+                for index in range(8)
+            ],
+        }
+    }
+
+    evidence = engine._diagnostic_unknown_evidence(limit=3)
+
+    assert [item.rel_path for item in evidence[:2]] == ["begin/registry.txt", "middle/state.txt"]
+    assert evidence[1].span_id == "span-relation"
+
+
 def test_document_metadata_is_retrieval_prior_not_answer_source(tmp_path: Path) -> None:
     (tmp_path / "random_a").mkdir()
     (tmp_path / "random_b").mkdir()
