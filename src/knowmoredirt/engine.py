@@ -255,6 +255,9 @@ class KnowMoreDiRTEngine:
         for candidate in execution.get("candidate_evidence_sample") or []:
             if isinstance(candidate, dict) and isinstance(candidate.get("evidence"), dict):
                 payloads.append(candidate["evidence"])
+        for blocked_identity in execution.get("blocked_identity_source_provenance") or []:
+            if isinstance(blocked_identity, dict):
+                payloads.append(blocked_identity)
         for source in execution.get("source_provenance_sample") or []:
             if isinstance(source, dict):
                 payloads.append(source)

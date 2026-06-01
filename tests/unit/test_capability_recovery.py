@@ -201,6 +201,35 @@ def test_unknown_answer_retains_bounded_source_provenance(tmp_path: Path, monkey
     assert engine.last_bounded_diagnostics["execution"]["source_provenance_sample"]
 
 
+def test_unknown_answer_surfaces_blocked_identity_provenance(tmp_path: Path, monkeypatch) -> None:
+    monkeypatch.setenv("KMD_USE_LOCAL_MODEL", "0")
+    (tmp_path / "note.txt").write_text("Mira report says NC-1 is Nova Case.\n", encoding="utf-8")
+    engine = KnowMoreDiRTEngine(tmp_path)
+    engine.last_bounded_diagnostics = {
+        "execution": {
+            "blocked_identity_source_provenance": [
+                {
+                    "rel_path": "note.txt",
+                    "text": "Mira report says NC-1 is Nova Case.",
+                    "span_id": "span-demo",
+                    "chunk_order": 0,
+                    "char_start": 0,
+                    "char_end": 36,
+                    "source_kind": "sentence",
+                    "expansion_blocked_reason": "missing_grounded_box",
+                }
+            ]
+        }
+    }
+
+    answer = engine._unknown_answer("missing grounded DRS identity scope")
+
+    assert answer.text == "unknown"
+    assert answer.evidence
+    assert answer.evidence[0].rel_path == "note.txt"
+    assert answer.evidence[0].span_id == "span-demo"
+
+
 def test_local_model_does_not_evidence_fallback_over_bounded_conflict(tmp_path: Path, monkeypatch) -> None:
     (tmp_path / "blue.txt").write_text("Blue note says Jade Pin state blue.", encoding="utf-8")
     (tmp_path / "green.txt").write_text("Green note says Jade Pin state green.", encoding="utf-8")
