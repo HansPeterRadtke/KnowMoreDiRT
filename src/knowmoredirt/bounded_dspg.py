@@ -20,7 +20,7 @@ from .answer_types import ExpectedAnswer, canonicalize_answer, is_value_compatib
 from .extractors import identifiers, urls
 from .models import Answer, Document, Evidence, Sentence
 from .query import QueryFrame, expand_terms, frame_from_mapping, normalize_temporal_scope, plan_question, term_variants
-from .store import identity_relation_allows_expansion
+from .store import identity_relation_allows_expansion, stable_id
 from .text import clean_extracted_value, content_tokens, normalize, text_quality_metrics
 
 DATE_TIME_RE = re.compile(r"\b(?:\d{4}-\d{2}-\d{2}(?:[ T]\d{1,2}:\d{2})?|\d{1,2}:\d{2})\b")
@@ -198,7 +198,7 @@ def _rank_scope(
     frame: QueryFrame,
     doc_limit: int,
     chunk_limit: int,
-) -> tuple[list[str], list[tuple[str, int]], dict[str, Any]]:
+) -> tuple[list[str], list[str], dict[str, Any]]:
     target_terms = _target_terms(frame, question)
     relation_terms = list(dict.fromkeys([*_relation_terms(frame, question), *_answer_slot_terms(frame)]))
     all_terms = _query_terms(question)
@@ -244,15 +244,19 @@ def _rank_scope(
             if score:
                 chunk_scores.append((score, document.document_id, order, document.rel_path))
     chunk_scores.sort(key=lambda item: (-item[0], item[3], item[2]))
-    selected_chunks: list[tuple[str, int]] = []
-    seen: set[tuple[str, int]] = set()
+    selected_chunks: list[str] = []
+    seen: set[str] = set()
     for _score, document_id, order, _rel_path in chunk_scores:
         if len(selected_chunks) >= chunk_limit:
             break
+        ordered = sentences_by_document.get(_rel_path, {})
         for nearby in range(order - 4, order + 5):
             if nearby < 0:
                 continue
-            key = (document_id, nearby)
+            sentence = ordered.get(nearby)
+            if sentence is None or sentence.document_id != document_id:
+                continue
+            key = stable_id("chunk", sentence.sentence_id)
             if key not in seen:
                 seen.add(key)
                 selected_chunks.append(key)
@@ -280,17 +284,8 @@ def _fetch_by_ids(connection: Any, table: str, key: str, ids: list[str]) -> list
     return rows
 
 
-def _fetch_chunks(connection: Any, chunk_keys: list[tuple[str, int]]) -> list[dict[str, Any]]:
-    rows: list[dict[str, Any]] = []
-    for index in range(0, len(chunk_keys), 120):
-        group = chunk_keys[index:index + 120]
-        clauses = " OR ".join("(document_id=? AND chunk_order=?)" for _ in group)
-        params: list[Any] = []
-        for document_id, order in group:
-            params.extend([document_id, int(order)])
-        if clauses:
-            rows.extend(dict(row) for row in connection.execute(f"SELECT * FROM chunks WHERE {clauses}", params))
-    return rows
+def _fetch_chunks(connection: Any, chunk_ids: list[str]) -> list[dict[str, Any]]:
+    return _fetch_by_ids(connection, "chunks", "chunk_id", chunk_ids)
 
 
 def _merge_rows_by_id(rows: list[dict[str, Any]], extra_rows: list[dict[str, Any]], id_key: str) -> list[dict[str, Any]]:
@@ -333,10 +328,10 @@ def _fetch_identity_hypotheses(
     ]
 
 
-def _load_records(store: Any, run_id: str, document_ids: list[str], chunk_keys: list[tuple[str, int]]) -> dict[str, Any]:
+def _load_records(store: Any, run_id: str, document_ids: list[str], chunk_ids: list[str]) -> dict[str, Any]:
     connection = store.connection
     documents = _fetch_by_ids(connection, "documents", "document_id", document_ids)
-    chunks = _fetch_chunks(connection, chunk_keys)
+    chunks = _fetch_chunks(connection, chunk_ids)
     chunk_ids = [chunk["chunk_id"] for chunk in chunks]
     spans = _fetch_by_ids(connection, "source_spans", "chunk_id", chunk_ids)
     span_ids = [span["span_id"] for span in spans]

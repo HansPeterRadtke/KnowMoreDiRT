@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+import os
+import time
 from pathlib import Path
 
 from knowmoredirt.answer_types import ExpectedAnswer
@@ -7,6 +9,8 @@ from knowmoredirt.bounded_dspg import (
     _answer_conflict_diagnostics,
     _context_accessible,
     _identity_expanded_terms,
+    _load_records,
+    _rank_scope,
     _terms_match_material,
     execute_bounded_query,
 )
@@ -3247,6 +3251,45 @@ def test_ingest_can_incrementally_merge_new_files_into_existing_store(tmp_path: 
     assert store.execute("SELECT COUNT(*) FROM extraction_runs").fetchone()[0] == 1
 
 
+def test_incremental_reingest_updates_current_document_metadata(tmp_path: Path) -> None:
+    path = tmp_path / "note.txt"
+    path.write_text("Stable source text for metadata refresh.", encoding="utf-8")
+    store = DSPGStore()
+
+    store, first_run_id, first_documents, _ = ingest_folder(tmp_path, store=store)
+    document_id = first_documents[0].document_id
+    refreshed_mtime = float(first_documents[0].mtime) + 20.0
+    os.utime(path, (refreshed_mtime, refreshed_mtime))
+    store, second_run_id, second_documents, _ = ingest_folder(tmp_path, store=store)
+
+    assert first_run_id == second_run_id
+    assert second_documents[0].document_id == document_id
+    stored_document = store.execute(
+        "SELECT mtime, metadata_json FROM documents WHERE document_id=?",
+        (document_id,),
+    ).fetchone()
+    assert stored_document is not None
+    assert float(stored_document["mtime"]) == float(second_documents[0].mtime)
+    metadata = store.execute(
+        "SELECT value FROM metadata_records WHERE document_id=? AND key='mtime'",
+        (document_id,),
+    ).fetchall()
+    assert [row["value"] for row in metadata] == [str(second_documents[0].metadata["mtime"])]
+    modified_time = store.execute(
+        """
+        SELECT temporal_value
+        FROM context_carriers
+        WHERE document_id=? AND temporal_value_type='file_modified_time'
+        """,
+        (document_id,),
+    ).fetchone()
+    assert modified_time is not None
+    assert modified_time["temporal_value"] == time.strftime(
+        "%Y-%m-%dT%H:%M:%SZ",
+        time.gmtime(float(second_documents[0].mtime)),
+    )
+
+
 def test_incremental_removed_identity_source_does_not_expand_current_query(
     tmp_path: Path,
     monkeypatch,
@@ -3888,9 +3931,10 @@ def test_incremental_ingest_uses_chunk_boundary_ids_when_scan_policy_changes(
     store, first_run_id, _, first_sentences = ingest_folder(tmp_path, store=store)
     assert len(first_sentences) == 1
     first_span_id = stable_id("span", first_sentences[0].sentence_id, "sentence")
+    first_chunk_id = stable_id("chunk", first_sentences[0].sentence_id)
 
     monkeypatch.setenv("KMD_SCAN_UNIT_MAX_CHARS", "48")
-    store, second_run_id, _, second_sentences = ingest_folder(tmp_path, store=store)
+    store, second_run_id, second_documents, second_sentences = ingest_folder(tmp_path, store=store)
 
     assert first_run_id == second_run_id
     assert len(second_sentences) > 1
@@ -3904,6 +3948,31 @@ def test_incremental_ingest_uses_chunk_boundary_ids_when_scan_policy_changes(
         assert stored["text"] == sentence.text
         assert stored["char_start"] == sentence.char_start
         assert stored["char_end"] == sentence.char_end
+    second_sentences_by_document: dict[str, dict[int, object]] = {}
+    for sentence in second_sentences:
+        second_sentences_by_document.setdefault(sentence.rel_path, {})[sentence.order] = sentence
+    frame = QueryFrame(
+        question_text="What status details are recorded for Aero Gate?",
+        answer_type="state",
+        answer_variables=("state",),
+        target_anchors=("Aero Gate",),
+        requested_relation="status",
+        relation_terms=("status",),
+        constraints=(),
+    )
+    selected_docs, selected_chunk_ids, _ranking = _rank_scope(
+        second_documents,
+        second_sentences_by_document,  # type: ignore[arg-type]
+        frame.question_text,
+        frame,
+        40,
+        160,
+    )
+    records = _load_records(store, second_run_id, selected_docs, selected_chunk_ids)
+    current_chunk_ids = {stable_id("chunk", sentence.sentence_id) for sentence in second_sentences}
+    loaded_chunk_ids = {row["chunk_id"] for row in records["chunks"]}
+    assert first_chunk_id not in loaded_chunk_ids
+    assert loaded_chunk_ids <= current_chunk_ids
 
 
 def test_incremental_drs_ingest_skips_previous_failed_attempts(tmp_path: Path, monkeypatch) -> None:

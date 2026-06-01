@@ -337,9 +337,19 @@ def ingest_folder(
         quality = text_quality_metrics(document.text)
         store.execute(
             """
-            INSERT OR IGNORE INTO documents(
+            INSERT INTO documents(
               document_id, run_id, path, rel_path, content_hash, size_bytes, mtime, ctime, char_count, metadata_json
             ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+            ON CONFLICT(document_id) DO UPDATE SET
+              run_id=excluded.run_id,
+              path=excluded.path,
+              rel_path=excluded.rel_path,
+              content_hash=excluded.content_hash,
+              size_bytes=excluded.size_bytes,
+              mtime=excluded.mtime,
+              ctime=excluded.ctime,
+              char_count=excluded.char_count,
+              metadata_json=excluded.metadata_json
             """,
             (
                 document.document_id,
@@ -365,10 +375,20 @@ def ingest_folder(
         quality_context_id = context_by_kind[quality_kind]
         store.execute(
             """
-            INSERT OR IGNORE INTO context_carriers(
+            INSERT INTO context_carriers(
               carrier_id, run_id, context_id, document_id, source_span_id, carrier_kind, carrier_surface,
               temporal_value, temporal_value_type, confidence
             ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+            ON CONFLICT(carrier_id) DO UPDATE SET
+              run_id=excluded.run_id,
+              context_id=excluded.context_id,
+              document_id=excluded.document_id,
+              source_span_id=excluded.source_span_id,
+              carrier_kind=excluded.carrier_kind,
+              carrier_surface=excluded.carrier_surface,
+              temporal_value=excluded.temporal_value,
+              temporal_value_type=excluded.temporal_value_type,
+              confidence=excluded.confidence
             """,
             (
                 stable_id("carrier", run_id, document.document_id, "quality", quality_kind),
@@ -388,10 +408,20 @@ def ingest_folder(
                 temporal_value = _timestamp_value(float(document.metadata[temporal_key]))
                 store.execute(
                     """
-                    INSERT OR IGNORE INTO context_carriers(
+                    INSERT INTO context_carriers(
                       carrier_id, run_id, context_id, document_id, source_span_id, carrier_kind, carrier_surface,
                       temporal_value, temporal_value_type, confidence
                     ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                    ON CONFLICT(carrier_id) DO UPDATE SET
+                      run_id=excluded.run_id,
+                      context_id=excluded.context_id,
+                      document_id=excluded.document_id,
+                      source_span_id=excluded.source_span_id,
+                      carrier_kind=excluded.carrier_kind,
+                      carrier_surface=excluded.carrier_surface,
+                      temporal_value=excluded.temporal_value,
+                      temporal_value_type=excluded.temporal_value_type,
+                      confidence=excluded.confidence
                     """,
                     (
                         stable_id("carrier", run_id, document.document_id, temporal_type),
@@ -406,6 +436,7 @@ def ingest_folder(
                         1.0,
                     ),
                 )
+        store.execute("DELETE FROM metadata_records WHERE run_id=? AND document_id=?", (run_id, document.document_id))
         for key, value in _metadata_pairs(document, quality):
             store.execute(
                 """
