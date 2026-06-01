@@ -305,6 +305,12 @@ class LocalModelClient:
             "repeat_penalty": _env_float("KMD_LOCAL_MODEL_REPEAT_PENALTY", float(defaults.get("repeat_penalty") or 1.0)),
         }
 
+    def transport_settings(self) -> dict[str, Any]:
+        return {
+            "api": os.environ.get("KMD_LOCAL_MODEL_API", "completion").strip().lower() or "completion",
+            "stream": os.environ.get("KMD_LOCAL_MODEL_STREAM", "1").strip().lower() not in {"0", "false", "no", "off"},
+        }
+
     def cache_fingerprint(self) -> dict[str, Any]:
         metadata = self.server_metadata()
         return {
@@ -314,6 +320,7 @@ class LocalModelClient:
             "context_source": self.context_source(metadata),
             "timeout_seconds": self.timeout_seconds,
             "request_settings": self.request_settings(),
+            "transport_settings": self.transport_settings(),
         }
 
     def complete_json(
@@ -420,4 +427,5 @@ class LocalModelClient:
         parsed["_model_context_size"] = self.context_size()
         parsed["_model_id"] = self.model_id()
         parsed["_model_request_settings"] = {**settings, "n_predict": int(n_predict)}
+        parsed["_model_transport_settings"] = {**self.transport_settings(), "stream": bool(use_stream)}
         return parsed

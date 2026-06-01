@@ -109,6 +109,13 @@ def _estimate_tokens(text: str) -> int:
     return max(1, (len(text) + 3) // 4)
 
 
+def _local_model_transport_fingerprint() -> dict[str, Any]:
+    return {
+        "api": os.environ.get("KMD_LOCAL_MODEL_API", "completion").strip().lower() or "completion",
+        "stream": os.environ.get("KMD_LOCAL_MODEL_STREAM", "1").strip().lower() not in {"0", "false", "no", "off"},
+    }
+
+
 def _client_fingerprint(client: LocalModelClient | None) -> dict[str, Any]:
     if client is None:
         return {}
@@ -123,6 +130,7 @@ def _client_fingerprint(client: LocalModelClient | None) -> dict[str, Any]:
         "endpoint": getattr(client, "endpoint", ""),
         "timeout_seconds": getattr(client, "timeout_seconds", ""),
         "seed": os.environ.get("KMD_LOCAL_MODEL_SEED", "1778779265"),
+        "transport_settings": _local_model_transport_fingerprint(),
     }
 
 

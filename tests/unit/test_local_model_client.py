@@ -101,6 +101,8 @@ def test_local_model_client_discovers_runtime_metadata(monkeypatch) -> None:
         raise AssertionError(f"unexpected URL {url}")
 
     monkeypatch.setattr("urllib.request.urlopen", fake_urlopen)
+    monkeypatch.setenv("KMD_LOCAL_MODEL_API", "chat")
+    monkeypatch.setenv("KMD_LOCAL_MODEL_STREAM", "0")
 
     client = LocalModelClient(endpoint="http://127.0.0.1:14829/v1", timeout_seconds=30)
 
@@ -109,7 +111,13 @@ def test_local_model_client_discovers_runtime_metadata(monkeypatch) -> None:
     assert client.context_source() == "/slots[0].n_ctx"
     assert client.request_settings()["top_k"] == 17
     assert client.request_settings()["min_p"] == 0.03
-    assert client.cache_fingerprint()["context_size"] == 24576
+    fingerprint = client.cache_fingerprint()
+    assert fingerprint["context_size"] == 24576
+    assert fingerprint["transport_settings"] == {"api": "chat", "stream": False}
+    assert chunk_drs_cache_context(client)["model_fingerprint"]["transport_settings"] == {
+        "api": "chat",
+        "stream": False,
+    }
 
 
 def test_local_model_client_uses_completion_stream_and_json_schema(monkeypatch) -> None:
