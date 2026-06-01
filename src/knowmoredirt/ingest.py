@@ -250,6 +250,9 @@ def _grounded_model_frames(
             "frame_count": len(frames),
             "accepted": accepted,
             "reason": str(metadata.get("reason") or ""),
+            "prompt_hash": metadata.get("prompt_hash"),
+            "output_hash": metadata.get("output_hash"),
+            "context_budget": metadata.get("context_budget"),
         }
     result = call_model_chunk_frames(sentence.text, semantic_client, rel_path=sentence.rel_path)
     frames = [frame for frame in result.get("frames", []) if isinstance(frame, dict)] if result.get("accepted") else []
@@ -1276,6 +1279,7 @@ def ingest_folder(
                             "frame_count": len(model_frames),
                             "inserted_frame_count": inserted_model_frames,
                             "replaced_prior_rows": replaced_frames,
+                            "context_budget": _frame_result.get("context_budget"),
                         },
                         sort_keys=True,
                         default=str,

@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import json
 from pathlib import Path
 
 from knowmoredirt.answer_types import ExpectedAnswer
@@ -480,6 +481,66 @@ def test_lazy_frame_materialization_skips_previous_failed_attempts(tmp_path: Pat
     assert bool(attempt["accepted"]) is False
     assert bool(attempt["materialized"]) is False
     assert attempt["reason"] == "grounding_validation_failed"
+
+
+def test_lazy_frame_materialization_retries_previous_request_failures(tmp_path: Path, monkeypatch) -> None:
+    class TransientFrameModel(FakeLocalModel):
+        def __init__(self) -> None:
+            self.calls = 0
+
+        def context_size(self) -> int:
+            return 4096
+
+        def cache_fingerprint(self) -> dict[str, object]:
+            return {"model_id": "fake-lazy-frame-request-retry", "context_size": 4096}
+
+        def complete_json(self, prompt: str, *, n_predict: int = 128, grammar=None, json_schema=None):
+            self.calls += 1
+            assert "Extract generic DRT/DSPG discourse frames" in prompt
+            if self.calls == 1:
+                raise RuntimeError("temporary lazy frame request failure")
+            return {
+                "frames": [
+                    {
+                        "frame_type": "state",
+                        "predicate": "ready",
+                        "arguments": [{"role": "entity", "text": "Aero Gate", "value_type": "entity"}],
+                        "identity_hypotheses": [],
+                        "polarity": "positive",
+                        "modality": "asserted",
+                        "context_holder": "",
+                        "temporal_text": "",
+                        "evidence_text": "Aero Gate is ready.",
+                        "confidence": 0.9,
+                    }
+                ],
+                "_model_raw": "{}",
+                "_model_elapsed_seconds": 0.01,
+            }
+
+    fake = TransientFrameModel()
+    (tmp_path / "frame.raw").write_text("Aero Gate is ready.\n", encoding="utf-8")
+    monkeypatch.setenv("KMD_USE_LOCAL_MODEL", "0")
+    engine = KnowMoreDiRTEngine(tmp_path)
+    engine._model_client = fake
+    engine._semantic_cache = None
+    sentence = engine.sentences[0]
+
+    first = engine._materialize_sentence_semantics(sentence)
+    second = engine._materialize_sentence_semantics(sentence)
+
+    assert first == 0
+    assert second == 1
+    assert fake.calls == 2
+    attempt = engine.store.execute(
+        "SELECT accepted, materialized, reason, metadata_json FROM model_attempts WHERE task='chunk_frames'"
+    ).fetchone()
+    assert attempt is not None
+    assert bool(attempt["accepted"]) is True
+    assert bool(attempt["materialized"]) is True
+    assert attempt["reason"] == ""
+    metadata = json.loads(attempt["metadata_json"])
+    assert metadata["context_budget"]["runtime_context_size"] == 4096
 
 
 def test_local_model_frame_arguments_bind_answer_variables_generically(tmp_path: Path, monkeypatch) -> None:

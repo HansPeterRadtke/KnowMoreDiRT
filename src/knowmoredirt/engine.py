@@ -14,6 +14,7 @@ import re
 import urllib.request
 from dataclasses import dataclass
 from pathlib import Path
+from typing import Any
 
 from .answer_types import (
     ExpectedAnswer,
@@ -48,6 +49,25 @@ from .query import QueryFrame, frame_from_mapping, plan_question, term_variants
 from .semantic_cache import SemanticFrameCache
 from .store import stable_id
 from .text import content_tokens, is_low_semantic_noise, normalize
+
+
+PROGRESS_TRUE_VALUES = {"1", "true", "yes", "on"}
+
+
+def _env_true(name: str) -> bool:
+    return os.environ.get(name, "").strip().lower() in PROGRESS_TRUE_VALUES
+
+
+def _attempt_was_request_failure(row: Any | None) -> bool:
+    if row is None:
+        return False
+    try:
+        reason = str(row["reason"] or "")
+        accepted = bool(row["accepted"])
+        materialized = bool(row["materialized"])
+    except Exception:
+        return False
+    return reason == "request_failed" and not accepted and not materialized
 
 
 @dataclass
@@ -871,6 +891,9 @@ class KnowMoreDiRTEngine:
                 "frame_count": len(frames),
                 "accepted": bool(metadata.get("accepted", True)),
                 "reason": str(metadata.get("reason") or ""),
+                "prompt_hash": metadata.get("prompt_hash"),
+                "output_hash": metadata.get("output_hash"),
+                "context_budget": metadata.get("context_budget"),
             }
         self._log_progress(f"kmd-llm-frame start {sentence.rel_path}:{sentence.order}")
         result = call_model_chunk_frames(sentence.text, self._model_client, rel_path=sentence.rel_path)
@@ -924,13 +947,11 @@ class KnowMoreDiRTEngine:
             and bool(previous_attempt["materialized"])
         ):
             return 0
-        retry_failed = os.environ.get("KMD_FRAME_RETRY_FAILED_ATTEMPTS", "").strip().lower() in {
-            "1",
-            "true",
-            "yes",
-            "on",
-        }
-        if previous_attempt is not None and not retry_failed:
+        if (
+            previous_attempt is not None
+            and not _attempt_was_request_failure(previous_attempt)
+            and not _env_true("KMD_FRAME_RETRY_FAILED_ATTEMPTS")
+        ):
             self._log_progress(
                 "kmd-answer lazy_frame previous_attempt "
                 f"{sentence.rel_path}:{sentence.order} "
@@ -1178,6 +1199,7 @@ class KnowMoreDiRTEngine:
                         "frame_count": len(model_frames),
                         "inserted_frame_count": inserted,
                         "result_source": result_source,
+                        "context_budget": result.get("context_budget"),
                     },
                     sort_keys=True,
                     default=str,
