@@ -947,6 +947,13 @@ class KnowMoreDiRTEngine:
             and bool(previous_attempt["materialized"])
         ):
             return 0
+        replaced_frames: dict[str, int] = {}
+        if existing:
+            replaced_frames = self.store.delete_frame_materialization_for_span(
+                self.run_id,
+                span_id,
+                source="local_model",
+            )
         if (
             previous_attempt is not None
             and not _attempt_was_request_failure(previous_attempt)
@@ -1200,6 +1207,7 @@ class KnowMoreDiRTEngine:
                         "inserted_frame_count": inserted,
                         "result_source": result_source,
                         "context_budget": result.get("context_budget"),
+                        "replaced_prior_rows": replaced_frames,
                     },
                     sort_keys=True,
                     default=str,

@@ -543,6 +543,74 @@ def test_lazy_frame_materialization_retries_previous_request_failures(tmp_path: 
     assert metadata["context_budget"]["runtime_context_size"] == 4096
 
 
+def test_lazy_frame_materialization_replaces_stale_cache_context_rows(tmp_path: Path, monkeypatch) -> None:
+    class VersionedFrameModel(FakeLocalModel):
+        def __init__(self, version: str, predicate: str) -> None:
+            self.version = version
+            self.predicate = predicate
+            self.calls = 0
+
+        def context_size(self) -> int:
+            return 4096
+
+        def cache_fingerprint(self) -> dict[str, object]:
+            return {"model_id": f"fake-lazy-frame-{self.version}", "context_size": 4096}
+
+        def complete_json(self, prompt: str, *, n_predict: int = 128, grammar=None, json_schema=None):
+            self.calls += 1
+            assert "Extract generic DRT/DSPG discourse frames" in prompt
+            return {
+                "frames": [
+                    {
+                        "frame_type": "state",
+                        "predicate": self.predicate,
+                        "arguments": [{"role": "entity", "text": "Aero Gate", "value_type": "entity"}],
+                        "identity_hypotheses": [],
+                        "polarity": "positive",
+                        "modality": "asserted",
+                        "context_holder": "",
+                        "temporal_text": "",
+                        "evidence_text": "Aero Gate is ready.",
+                        "confidence": 0.9,
+                    }
+                ],
+                "_model_raw": "{}",
+                "_model_elapsed_seconds": 0.01,
+            }
+
+    first_model = VersionedFrameModel("v1", "ready_v1")
+    second_model = VersionedFrameModel("v2", "ready_v2")
+    (tmp_path / "frame.raw").write_text("Aero Gate is ready.\n", encoding="utf-8")
+    monkeypatch.setenv("KMD_USE_LOCAL_MODEL", "0")
+    engine = KnowMoreDiRTEngine(tmp_path)
+    engine._semantic_cache = None
+    engine._model_client = first_model
+    sentence = engine.sentences[0]
+
+    assert engine._materialize_sentence_semantics(sentence) == 1
+    initial_predicates = [
+        row["predicate"]
+        for row in engine.store.execute("SELECT predicate FROM frames WHERE source='local_model'")
+    ]
+    assert initial_predicates == ["ready_v1"]
+
+    engine._model_client = second_model
+    assert engine._materialize_sentence_semantics(sentence) == 1
+
+    predicates = [
+        row["predicate"]
+        for row in engine.store.execute("SELECT predicate FROM frames WHERE source='local_model' ORDER BY predicate")
+    ]
+    assert predicates == ["ready_v2"]
+    assert first_model.calls == 1
+    assert second_model.calls == 1
+    attempt_rows = engine.store.execute(
+        "SELECT metadata_json FROM model_attempts WHERE task='chunk_frames'"
+    ).fetchall()
+    attempt_metadata = [json.loads(row["metadata_json"]) for row in attempt_rows]
+    assert any(metadata.get("replaced_prior_rows", {}).get("frames") == 1 for metadata in attempt_metadata)
+
+
 def test_local_model_frame_arguments_bind_answer_variables_generically(tmp_path: Path, monkeypatch) -> None:
     fake = FakeFrameModel()
     (tmp_path / "frame.raw").write_text("Marble Gate is guarded by Sena Rill.\n", encoding="utf-8")
