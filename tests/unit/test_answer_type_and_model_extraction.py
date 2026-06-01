@@ -147,6 +147,25 @@ def test_json_record_groups_do_not_merge_roots_across_documents(tmp_path: Path) 
     assert engine.answer("Where is the warranty for Lark Mirror?").text == "https://warranty.example.test/lark-mirror"
 
 
+def test_section_record_groups_bind_fields_across_source_spans(tmp_path: Path) -> None:
+    (tmp_path / "entry.txt").write_text(
+        "\n".join(
+            [
+                "Inspection ledger for a synthetic sample.",
+                "Item: Solar Reed.",
+                "Classification: mineral.",
+                "Recorder: Iva Dune.",
+            ]
+        )
+        + "\n",
+        encoding="utf-8",
+    )
+
+    engine = KnowMoreDiRTEngine(tmp_path)
+
+    assert engine.answer("What classification is Solar Reed?").text == "mineral"
+
+
 def test_low_semantic_noise_does_not_dominate_normal_fact_retrieval(tmp_path: Path) -> None:
     (tmp_path / "facts").mkdir()
     (tmp_path / "noise").mkdir()
