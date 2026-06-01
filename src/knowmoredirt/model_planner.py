@@ -2608,6 +2608,7 @@ def call_model_query_evidence_answer(
             "prompt_hash": prompt_hash,
             "grammar_hash": grammar_hash,
             "elapsed": round(time.time() - start, 3),
+            "context_budget": context_budget,
         }
         _write_cache(cache_path, payload)
         return payload
@@ -2772,6 +2773,7 @@ def call_model_chunk_frames(
             "prompt_hash": prompt_hash,
             "grammar_hash": grammar_hash,
             "elapsed": round(time.time() - start, 3),
+            "context_budget": context_budget,
         }
     raw = str(parsed.get("_model_raw") or "") if isinstance(parsed, dict) else ""
     frames = parsed.get("frames") if isinstance(parsed, dict) else None
@@ -4138,6 +4140,7 @@ def call_model_chunk_drs(
             "prompt_hash": prompt_hash,
             **constraint,
             "elapsed": round(time.time() - start, 3),
+            "context_budget": context_budget,
         }
         return payload
     raw = str(parsed.get("_model_raw") or "") if isinstance(parsed, dict) else ""

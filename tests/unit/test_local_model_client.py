@@ -457,6 +457,72 @@ def test_chunk_drs_planner_uses_json_schema_and_validates_grounding(monkeypatch,
     assert "source-grounded DRS" in model.prompt
 
 
+def test_chunk_drs_request_failure_keeps_context_budget_and_retries(monkeypatch, tmp_path) -> None:
+    class FailsThenSucceedsChunkDRSModel:
+        def __init__(self) -> None:
+            self.calls = 0
+
+        def context_size(self) -> int:
+            return 8192
+
+        def cache_fingerprint(self) -> dict[str, Any]:
+            return {"model_id": "fake-chunk-drs-request-retry", "context_size": 8192}
+
+        def complete_json(self, prompt: str, *, n_predict: int = 128, grammar=None, json_schema=None):
+            self.calls += 1
+            if self.calls == 1:
+                raise RuntimeError("temporary chunk DRS failure")
+            return {
+                "drs": {
+                    "schema_version": "chunk-drs-v2",
+                    "source_id": "note.txt",
+                    "referents": [
+                        {"id": "r0", "label": "Aero Gate", "kind": "artifact", "evidence_text": "Aero Gate"},
+                    ],
+                    "boxes": [
+                        {"id": "b0", "kind": "asserted", "parent_id": "", "holder_referent_id": "", "evidence_text": "Aero Gate is ready"},
+                    ],
+                    "conditions": [
+                        {
+                            "id": "c0",
+                            "predicate": "ready",
+                            "box_id": "b0",
+                            "polarity": "positive",
+                            "modality": "asserted",
+                            "temporal_id": "",
+                            "arguments": [
+                                {
+                                    "role": "subject",
+                                    "target_kind": "referent",
+                                    "target_id": "r0",
+                                    "value": "",
+                                    "value_type": "artifact",
+                                    "evidence_text": "Aero Gate",
+                                }
+                            ],
+                            "evidence_text": "Aero Gate is ready",
+                        }
+                    ],
+                    "identity_hypotheses": [],
+                    "temporal_records": [],
+                },
+                "_model_raw": "{}",
+                "_model_elapsed_seconds": 0.01,
+            }
+
+    monkeypatch.setenv("KMD_CHUNK_DRS_CACHE_DIR", str(tmp_path / "drs-request-cache"))
+    model = FailsThenSucceedsChunkDRSModel()
+
+    first = call_model_chunk_drs("Aero Gate is ready.", model, rel_path="note.txt")  # type: ignore[arg-type]
+    second = call_model_chunk_drs("Aero Gate is ready.", model, rel_path="note.txt")  # type: ignore[arg-type]
+
+    assert first["accepted"] is False
+    assert first["reason"] == "request_failed"
+    assert first["context_budget"]["runtime_context_size"] == 8192
+    assert second["accepted"] is True
+    assert model.calls == 2
+
+
 def test_chunk_drs_filters_identity_without_bilateral_evidence(monkeypatch, tmp_path) -> None:
     class IdentityModel:
         def context_size(self) -> int:
