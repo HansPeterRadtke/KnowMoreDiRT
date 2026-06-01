@@ -4279,6 +4279,49 @@ def test_count_aggregation_is_not_blocked_by_unscoped_temporal_candidates(tmp_pa
     assert "temporal_ambiguity_without_query_scope" not in diagnostics["execution"]
 
 
+def test_count_aggregation_ignores_query_unit_terms_for_record_groups(tmp_path: Path) -> None:
+    (tmp_path / "rows.tsv").write_text(
+        "\n".join(
+            [
+                "actor\titem\tstate\tid",
+                "Mira Sol\tAster One\topen\tAS-001",
+                "Mira Sol\tAster Two\topen\tAS-002",
+                "Pax Neri\tBeryl One\topen\tBY-001",
+                "Mira Sol\tCedar One\tclosed\tCD-001",
+            ]
+        ),
+        encoding="utf-8",
+    )
+    store, run_id, documents, sentences = ingest_folder(tmp_path)
+    sentences_by_document: dict[str, dict[int, object]] = {}
+    for sentence in sentences:
+        sentences_by_document.setdefault(sentence.rel_path, {})[sentence.order] = sentence
+    frame = QueryFrame(
+        question_text="How many rows for Mira Sol have state open?",
+        answer_type="count",
+        answer_variables=(),
+        target_anchors=("Mira Sol",),
+        requested_relation="count",
+        relation_terms=("rows", "state", "open"),
+        constraints=(),
+        aggregation="count",
+    )
+
+    answer, diagnostics = execute_bounded_query(
+        store,
+        run_id,
+        documents,
+        sentences_by_document,  # type: ignore[arg-type]
+        frame.question_text,
+        frame,
+    )
+
+    assert answer is not None
+    assert answer.text == "2"
+    assert answer.reason == "record-group aggregation DRS binding"
+    assert "no_answer_reason" not in diagnostics["execution"]
+
+
 def test_model_query_drs_compound_slot_matches_structural_record_field(tmp_path: Path) -> None:
     (tmp_path / "object.raw").write_text(
         '{ name: "Orchid Gamma", owner: "Tessa Noll", '

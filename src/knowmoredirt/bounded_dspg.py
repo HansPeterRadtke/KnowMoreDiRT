@@ -42,6 +42,18 @@ ANSWER_SLOT_SKIP_TERMS = {
     "who",
     "why",
 }
+COUNT_AGGREGATION_SKIP_TERMS = {
+    "count",
+    "counts",
+    "entry",
+    "entries",
+    "number",
+    "numbers",
+    "record",
+    "records",
+    "row",
+    "rows",
+}
 
 
 @lru_cache(maxsize=8192)
@@ -1359,6 +1371,8 @@ def _relation_term_groups_for_frame(frame: QueryFrame) -> list[list[str]]:
     seen: set[tuple[str, ...]] = set()
     raw_items = [*frame.relation_terms, *list(frame.constraints), *_query_terms(frame.requested_relation)]
     for item in raw_items:
+        if frame.aggregation == "count" and normalize(item) in COUNT_AGGREGATION_SKIP_TERMS:
+            continue
         variants = _compound_term_variants(item)
         if not variants:
             variants = [normalize(item)]
