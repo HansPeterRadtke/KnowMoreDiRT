@@ -6,7 +6,7 @@ from typing import Any
 import pytest
 
 from knowmoredirt.engine import KnowMoreDiRTEngine
-from knowmoredirt.model import LocalModelClient, LocalModelJSONError
+from knowmoredirt.model import LocalModelClient, LocalModelJSONError, LocalModelUnavailableError
 from knowmoredirt import model_planner
 from knowmoredirt.model_planner import (
     CHUNK_FRAME_CONTEXT_BUDGET_POLICY,
@@ -21,7 +21,7 @@ from knowmoredirt.model_planner import (
     call_model_chunk_frames,
     call_model_identity_canonicalization,
     call_model_query_evidence_answer,
-    call_model_query_plan,
+    call_model_query_plan_test_only,
     call_model_query_drs,
     chunk_drs_cache_context,
     chunk_drs_json_schema,
@@ -186,7 +186,7 @@ def test_local_model_client_discovers_runtime_metadata(monkeypatch) -> None:
     }
 
 
-def test_engine_auto_probe_uses_client_endpoint_normalization(monkeypatch) -> None:
+def test_engine_required_probe_uses_client_endpoint_normalization(monkeypatch) -> None:
     calls: list[str] = []
 
     def fake_urlopen(request, timeout: float = 0) -> FakeHTTPResponse:
@@ -197,14 +197,26 @@ def test_engine_auto_probe_uses_client_endpoint_normalization(monkeypatch) -> No
         raise AssertionError(f"unexpected URL {url}")
 
     monkeypatch.setattr("urllib.request.urlopen", fake_urlopen)
-    monkeypatch.delenv("KMD_USE_LOCAL_MODEL", raising=False)
-    monkeypatch.setenv("KMD_AUTO_LOCAL_MODEL", "1")
     monkeypatch.setenv("KMD_LOCAL_MODEL_ENDPOINT", "http://127.0.0.1:14829/completion")
 
     engine = KnowMoreDiRTEngine.__new__(KnowMoreDiRTEngine)
 
-    assert engine._should_use_local_model() is True
+    client = engine._required_local_model_client()
+    assert client.endpoint == "http://127.0.0.1:14829/completion"
     assert calls == ["http://127.0.0.1:14829/v1/models"]
+
+
+def test_engine_requires_reachable_local_model_in_normal_runtime(monkeypatch, tmp_path) -> None:
+    def fake_urlopen(request, timeout: float = 0) -> object:
+        raise OSError("connection refused")
+
+    monkeypatch.setattr("urllib.request.urlopen", fake_urlopen)
+    monkeypatch.delenv("KMD_TEST_ALLOW_NO_MODEL", raising=False)
+    monkeypatch.setenv("KMD_LOCAL_MODEL_ENDPOINT", "http://127.0.0.1:9/v1")
+    (tmp_path / "note.txt").write_text("Aster Lock is guarded by Mira Vale.\n", encoding="utf-8")
+
+    with pytest.raises(LocalModelUnavailableError, match="requires a reachable localhost llama.cpp"):
+        KnowMoreDiRTEngine(tmp_path)
 
 
 def test_local_model_client_uses_completion_stream_and_json_schema(monkeypatch) -> None:
@@ -230,6 +242,7 @@ def test_local_model_client_uses_completion_stream_and_json_schema(monkeypatch) 
         raise AssertionError(f"unexpected URL {url}")
 
     monkeypatch.setattr("urllib.request.urlopen", fake_urlopen)
+    monkeypatch.setenv("KMD_LOCAL_MODEL_API", "completion")
     client = LocalModelClient(endpoint="http://127.0.0.1:14829/v1", timeout_seconds=30)
     client.server_metadata()
 
@@ -273,6 +286,7 @@ def test_local_model_client_stream_enforces_wall_timeout(monkeypatch) -> None:
 
     monkeypatch.setattr("urllib.request.urlopen", fake_urlopen)
     monkeypatch.setattr("knowmoredirt.model.time.time", fake_time)
+    monkeypatch.setenv("KMD_LOCAL_MODEL_API", "completion")
     client = LocalModelClient(endpoint="http://127.0.0.1:14829/v1", timeout_seconds=2)
     client.server_metadata()
 
@@ -686,7 +700,7 @@ def test_query_frame_schema_constrains_temporal_scope_operator(monkeypatch, tmp_
     monkeypatch.setenv("KMD_QUERY_PLAN_CACHE_DIR", str(tmp_path / "query-frame-cache"))
     model = QueryFrameModel()
 
-    result = call_model_query_plan("What is the current state of Delta Well?", model, n_predict=64)  # type: ignore[arg-type]
+    result = call_model_query_plan_test_only("What is the current state of Delta Well?", model, n_predict=64)  # type: ignore[arg-type]
 
     assert result["accepted"] is True
     assert result["temporal_scope"] == "latest"
@@ -720,8 +734,8 @@ def test_query_frame_invalid_json_failure_is_cached(monkeypatch, tmp_path) -> No
     monkeypatch.setenv("KMD_QUERY_PLAN_CACHE_DIR", str(tmp_path / "query-frame-cache"))
     model = InvalidQueryFrameModel()
 
-    first = call_model_query_plan("What state is Delta Well in?", model, n_predict=64)  # type: ignore[arg-type]
-    second = call_model_query_plan("What state is Delta Well in?", model, n_predict=64)  # type: ignore[arg-type]
+    first = call_model_query_plan_test_only("What state is Delta Well in?", model, n_predict=64)  # type: ignore[arg-type]
+    second = call_model_query_plan_test_only("What state is Delta Well in?", model, n_predict=64)  # type: ignore[arg-type]
 
     assert first["accepted"] is False
     assert first["reason"] == "invalid_json"
@@ -769,8 +783,8 @@ def test_query_frame_request_failure_does_not_poison_cache(monkeypatch, tmp_path
     monkeypatch.setenv("KMD_QUERY_PLAN_CACHE_DIR", str(tmp_path / "query-frame-cache"))
     model = FailsThenSucceedsQueryFrameModel()
 
-    first = call_model_query_plan("What is the current state of Delta Well?", model, n_predict=64)  # type: ignore[arg-type]
-    second = call_model_query_plan("What is the current state of Delta Well?", model, n_predict=64)  # type: ignore[arg-type]
+    first = call_model_query_plan_test_only("What is the current state of Delta Well?", model, n_predict=64)  # type: ignore[arg-type]
+    second = call_model_query_plan_test_only("What is the current state of Delta Well?", model, n_predict=64)  # type: ignore[arg-type]
 
     assert first["accepted"] is False
     assert first["reason"] == "request_failed"

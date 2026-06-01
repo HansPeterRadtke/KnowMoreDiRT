@@ -22,20 +22,64 @@ class FakeLocalModel:
                 },
                 "_model_raw": '{"verification":{"entailed":true,"answer_type":"person","answer":"Nia Vale","evidence_span":"Owner: Nia Vale","reason":"fake grounded verifier"}}',
         }
-        assert "generic DRT/DSPG query frame" in prompt
+        if "Canonicalize a model-selected final answer" in prompt:
+            return {
+                "canonical_answer": {
+                    "answer": "Nia Vale",
+                    "evidence_span": "Owner: Nia Vale",
+                    "reason": "already canonical",
+                },
+                "_model_raw": '{"canonical_answer":{"answer":"Nia Vale","evidence_span":"Owner: Nia Vale","reason":"already canonical"}}',
+            }
+        assert "generic DRT query DRS" in prompt
         return {
-            "query_frame": {
-                "target_anchors": ["SequoiaLens"],
-                "requested_relation": "owns",
-                "relation_terms": ["owns"],
+            "query_drs": {
+                "schema_version": "query-drs-v3",
+                "question": "Who owns SequoiaLens?",
+                "answer_variables": [
+                    {"id": "qv0", "label": "owner", "answer_type": "person", "evidence_text": "Who"}
+                ],
+                "target_referents": [
+                    {"id": "qr0", "label": "SequoiaLens", "kind": "artifact", "evidence_text": "SequoiaLens"}
+                ],
+                "temporal_records": [],
+                "requested_conditions": [
+                    {
+                        "id": "qc0",
+                        "predicate": "owns",
+                        "box_id": "",
+                        "polarity": "positive",
+                        "modality": "asserted",
+                        "temporal_id": "",
+                        "evidence_text": "Who owns SequoiaLens?",
+                        "arguments": [
+                            {
+                                "role": "owner",
+                                "target_kind": "answer_variable",
+                                "target_id": "qv0",
+                                "value": "",
+                                "value_type": "person",
+                                "evidence_text": "Who",
+                            },
+                            {
+                                "role": "owned",
+                                "target_kind": "referent",
+                                "target_id": "qr0",
+                                "value": "",
+                                "value_type": "artifact",
+                                "evidence_text": "SequoiaLens",
+                            },
+                        ],
+                    }
+                ],
                 "constraints": [],
-                "answer_type": "person",
+                "box_requirements": [],
                 "temporal_scope": "",
-                "negated": False,
                 "aggregation": "",
+                "answer_type": "person",
                 "requires_evidence": True,
             },
-            "_model_raw": '{"query_frame":{"target_anchors":["SequoiaLens"],"requested_relation":"owns","relation_terms":["owns"],"constraints":[],"answer_type":"person","temporal_scope":"","negated":false,"aggregation":"","requires_evidence":true}}',
+            "_model_raw": '{"query_drs":{"schema_version":"query-drs-v3","question":"Who owns SequoiaLens?","answer_variables":[{"id":"qv0","label":"owner","answer_type":"person","evidence_text":"Who"}],"target_referents":[{"id":"qr0","label":"SequoiaLens","kind":"artifact","evidence_text":"SequoiaLens"}],"temporal_records":[],"requested_conditions":[{"id":"qc0","predicate":"owns","box_id":"","polarity":"positive","modality":"asserted","temporal_id":"","evidence_text":"Who owns SequoiaLens?","arguments":[{"role":"owner","target_kind":"answer_variable","target_id":"qv0","value":"","value_type":"person","evidence_text":"Who"},{"role":"owned","target_kind":"referent","target_id":"qr0","value":"","value_type":"artifact","evidence_text":"SequoiaLens"}]}],"constraints":[],"box_requirements":[],"temporal_scope":"","aggregation":"","answer_type":"person","requires_evidence":true}}',
             "_model_elapsed_seconds": 0.01,
         }
 
@@ -65,20 +109,55 @@ class FakeFrameModel(FakeLocalModel):
                 ],
                 "_model_raw": '{"frames":[{"frame_type":"relation","predicate":"guards","arguments":[{"role":"entity","text":"Marble Gate","value_type":"entity"},{"role":"participant","text":"Sena Rill","value_type":"person"}],"polarity":"positive","modality":"asserted","temporal_text":"","evidence_text":"Marble Gate is guarded by Sena Rill","confidence":0.91}]}',
             }
-        if "generic DRT/DSPG query frame" in prompt and "Marble Gate" in prompt:
+        if "generic DRT query DRS" in prompt and "Marble Gate" in prompt:
             return {
-                "query_frame": {
-                    "target_anchors": ["Marble Gate"],
-                    "requested_relation": "guards",
-                    "relation_terms": ["guards"],
+                "query_drs": {
+                    "schema_version": "query-drs-v3",
+                    "question": "Who guards Marble Gate?",
+                    "answer_variables": [
+                        {"id": "qv0", "label": "guard", "answer_type": "person", "evidence_text": "Who"}
+                    ],
+                    "target_referents": [
+                        {"id": "qr0", "label": "Marble Gate", "kind": "entity", "evidence_text": "Marble Gate"}
+                    ],
+                    "temporal_records": [],
+                    "requested_conditions": [
+                        {
+                            "id": "qc0",
+                            "predicate": "guards",
+                            "box_id": "",
+                            "polarity": "positive",
+                            "modality": "asserted",
+                            "temporal_id": "",
+                            "evidence_text": "Who guards Marble Gate?",
+                            "arguments": [
+                                {
+                                    "role": "guard",
+                                    "target_kind": "answer_variable",
+                                    "target_id": "qv0",
+                                    "value": "",
+                                    "value_type": "person",
+                                    "evidence_text": "Who",
+                                },
+                                {
+                                    "role": "guarded",
+                                    "target_kind": "referent",
+                                    "target_id": "qr0",
+                                    "value": "",
+                                    "value_type": "entity",
+                                    "evidence_text": "Marble Gate",
+                                },
+                            ],
+                        }
+                    ],
                     "constraints": [],
-                    "answer_type": "person",
+                    "box_requirements": [],
                     "temporal_scope": "",
-                    "negated": False,
                     "aggregation": "",
+                    "answer_type": "person",
                     "requires_evidence": True,
                 },
-                "_model_raw": '{"query_frame":{"target_anchors":["Marble Gate"],"requested_relation":"guards","relation_terms":["guards"],"constraints":[],"answer_type":"person","temporal_scope":"","negated":false,"aggregation":"","requires_evidence":true}}',
+                "_model_raw": '{"query_drs":{"schema_version":"query-drs-v3","question":"Who guards Marble Gate?","answer_variables":[{"id":"qv0","label":"guard","answer_type":"person","evidence_text":"Who"}],"target_referents":[{"id":"qr0","label":"Marble Gate","kind":"entity","evidence_text":"Marble Gate"}],"temporal_records":[],"requested_conditions":[{"id":"qc0","predicate":"guards","box_id":"","polarity":"positive","modality":"asserted","temporal_id":"","evidence_text":"Who guards Marble Gate?","arguments":[{"role":"guard","target_kind":"answer_variable","target_id":"qv0","value":"","value_type":"person","evidence_text":"Who"},{"role":"guarded","target_kind":"referent","target_id":"qr0","value":"","value_type":"entity","evidence_text":"Marble Gate"}]}],"constraints":[],"box_requirements":[],"temporal_scope":"","aggregation":"","answer_type":"person","requires_evidence":true}}',
             }
         if "Verify whether the candidate answer is entailed" in prompt and "Marble Gate" in prompt:
             return {
@@ -90,6 +169,15 @@ class FakeFrameModel(FakeLocalModel):
                     "reason": "fake grounded verifier",
                 },
                 "_model_raw": '{"verification":{"entailed":true,"answer_type":"person","answer":"Sena Rill","evidence_span":"Marble Gate is guarded by Sena Rill","reason":"fake grounded verifier"}}',
+            }
+        if "Canonicalize a model-selected final answer" in prompt and "Marble Gate" in prompt:
+            return {
+                "canonical_answer": {
+                    "answer": "Sena Rill",
+                    "evidence_span": "Marble Gate is guarded by Sena Rill",
+                    "reason": "already canonical",
+                },
+                "_model_raw": '{"canonical_answer":{"answer":"Sena Rill","evidence_span":"Marble Gate is guarded by Sena Rill","reason":"already canonical"}}',
             }
         return super().complete_json(prompt, n_predict=n_predict, grammar=grammar)
 

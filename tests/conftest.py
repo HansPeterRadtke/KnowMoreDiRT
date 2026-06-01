@@ -16,4 +16,5 @@ HARD_REASONING_QA_PATH = REPO_ROOT / "tests" / "fixtures" / "hard_raw_reasoning_
 
 
 def pytest_configure() -> None:
-    os.environ.setdefault("KMD_USE_LOCAL_MODEL", "0")
+    os.environ.setdefault("KMD_TEST_ALLOW_NO_MODEL", "1")
+    os.environ.setdefault("KMD_TEST_ALLOW_MODEL_EVIDENCE_TOOLS", "1")

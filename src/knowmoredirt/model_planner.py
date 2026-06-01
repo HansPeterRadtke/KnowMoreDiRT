@@ -1,4 +1,4 @@
-"""Optional local-model helpers for generic query frames.
+"""Local-model helpers for DRS/query planning.
 
 Model use is isolated and local-only.  The planner asks for a generic
 relation/query frame, never an external label or hardcoded semantic intent.
@@ -112,7 +112,7 @@ def _estimate_tokens(text: str) -> int:
 
 def _local_model_transport_fingerprint() -> dict[str, Any]:
     return {
-        "api": os.environ.get("KMD_LOCAL_MODEL_API", "completion").strip().lower() or "completion",
+        "api": os.environ.get("KMD_LOCAL_MODEL_API", "chat").strip().lower() or "chat",
         "stream": os.environ.get("KMD_LOCAL_MODEL_STREAM", "1").strip().lower() not in {"0", "false", "no", "off"},
     }
 
@@ -1559,7 +1559,7 @@ def build_query_plan_prompt(question: str) -> str:
     )
 
 
-def call_model_query_plan(question: str, client: LocalModelClient, *, n_predict: int | None = None) -> dict[str, Any]:
+def call_model_query_plan_test_only(question: str, client: LocalModelClient, *, n_predict: int | None = None) -> dict[str, Any]:
     if n_predict is None:
         n_predict = int(os.environ.get("KMD_QUERY_PLAN_N_PREDICT", "128"))
     prompt = build_query_plan_prompt(question)

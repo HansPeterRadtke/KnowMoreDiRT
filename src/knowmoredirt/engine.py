@@ -2,8 +2,8 @@
 
 The engine initializes from one arbitrary folder path, reads all readable files
 as raw text, builds grounded DSPG records, and answers questions by matching a
-generic query frame against bounded discourse structures.  Optional local-model
-use is restricted to query-frame refinement and evidence-only answer extraction.
+model-produced query DRS projection against bounded discourse structures.
+Normal runtime requires a reachable localhost llama.cpp-compatible model.
 """
 
 from __future__ import annotations
@@ -27,7 +27,7 @@ from .drs import frame_from_model_dict
 from .extractors import capitalized_phrases
 from .ingest import ingest_folder
 from .index import LexicalIndex
-from .model import LocalModelClient
+from .model import LocalModelClient, LocalModelUnavailableError
 from .model_planner import (
     ModelQueryTrace,
     call_model_answer_canonicalization,
@@ -37,10 +37,7 @@ from .model_planner import (
     call_model_identity_canonicalization,
     call_model_query_drs,
     call_model_query_evidence_answer,
-    call_model_query_plan,
     chunk_frame_cache_context,
-    deterministic_plan as deterministic_query_frame,
-    normalize_model_plan,
     query_frame_from_query_drs,
 )
 from .models import Answer, Document, Evidence, Sentence
@@ -80,14 +77,15 @@ class KnowMoreDiRTEngine:
 
     def __init__(self, folder_path: str | Path) -> None:
         self.folder_path = Path(folder_path)
-        self._use_local_model = self._should_use_local_model()
-        self._model_client = LocalModelClient() if self._use_local_model else None
+        self._test_no_model_runtime = self._test_no_model_allowed()
+        self._model_client = None if self._test_no_model_runtime else self._required_local_model_client()
+        self._use_local_model = self._model_client is not None
         self.model_query_trace = ModelQueryTrace(enabled=self._use_local_model, prompt_hashes=[], response_hashes=[])
         self._semantic_cache = SemanticFrameCache() if self._use_local_model else None
-        llm_ingest_setting = os.environ.get("KMD_LLM_INGEST", "1").strip().lower()
-        use_semantic_frames = self._use_local_model and llm_ingest_setting not in {"0", "false", "no", "off"}
-        drs_ingest_setting = os.environ.get("KMD_LLM_DRS_INGEST", "0").strip().lower()
-        use_drs_semantics = self._use_local_model and drs_ingest_setting in {"1", "true", "yes", "on"}
+        llm_ingest_setting = os.environ.get("KMD_LLM_INGEST", "0").strip().lower()
+        use_semantic_frames = self._use_local_model and llm_ingest_setting in {"1", "true", "yes", "on"}
+        drs_ingest_setting = os.environ.get("KMD_LLM_DRS_INGEST", "1").strip().lower()
+        use_drs_semantics = self._use_local_model and drs_ingest_setting not in {"0", "false", "no", "off"}
         self._log_progress(
             "kmd-init start "
             f"local_model={self._use_local_model} "
@@ -141,30 +139,50 @@ class KnowMoreDiRTEngine:
         self.last_answer: Answer | None = None
         self.last_bounded_diagnostics: dict[str, object] = {}
 
-    def _should_use_local_model(self) -> bool:
-        requested = os.environ.get("KMD_USE_LOCAL_MODEL", "").strip().lower()
-        if requested in {"0", "false", "no", "off"}:
-            return False
-        if requested in {"1", "true", "yes", "on"}:
-            return True
-        if os.environ.get("KMD_AUTO_LOCAL_MODEL", "1").strip().lower() in {"0", "false", "no", "off"}:
-            return False
+    def _test_no_model_allowed(self) -> bool:
+        return _env_true("KMD_TEST_ALLOW_NO_MODEL") and "PYTEST_CURRENT_TEST" in os.environ
+
+    def _test_model_evidence_helpers_allowed(self) -> bool:
+        return _env_true("KMD_TEST_ALLOW_MODEL_EVIDENCE_TOOLS") and "PYTEST_CURRENT_TEST" in os.environ
+
+    def _required_local_model_client(self) -> LocalModelClient:
         endpoint = os.environ.get("KMD_LOCAL_MODEL_ENDPOINT", "http://127.0.0.1:14829/v1").rstrip("/")
-        if not (
-            endpoint.startswith("http://127.0.0.1:")
-            or endpoint.startswith("http://localhost:")
-            or endpoint.startswith("http://[::1]:")
-        ):
-            return False
         try:
             probe_timeout = float(os.environ.get("KMD_MODEL_PROBE_TIMEOUT", "1.5"))
         except ValueError:
             probe_timeout = 1.5
+        client = LocalModelClient(endpoint=endpoint, timeout_seconds=probe_timeout)
         try:
-            models = LocalModelClient(endpoint=endpoint, timeout_seconds=probe_timeout).models()
-            return isinstance(models, dict)
+            models = client.models()
+        except Exception as exc:
+            disabled_hint = ""
+            if os.environ.get("KMD_USE_LOCAL_MODEL", "").strip().lower() in {"0", "false", "no", "off"}:
+                disabled_hint = " KMD_USE_LOCAL_MODEL=0 no longer disables the production model requirement."
+            raise LocalModelUnavailableError(
+                "KnowMoreDiRT requires a reachable localhost llama.cpp endpoint for initialize(folder_path). "
+                f"Failed to probe {endpoint!r}: {type(exc).__name__}: {exc}.{disabled_hint}"
+            ) from exc
+        if not isinstance(models, dict):
+            raise LocalModelUnavailableError(
+                "KnowMoreDiRT requires a reachable localhost llama.cpp endpoint for initialize(folder_path). "
+                f"Probe {endpoint!r} returned a non-JSON-object model listing."
+            )
+        return LocalModelClient(endpoint=endpoint)
+
+    def _raise_model_request_failed(self, result: dict[str, object], operation: str) -> None:
+        if str(result.get("reason") or "") != "request_failed":
+            return
+        cache_context = result.get("cache_context") if isinstance(result.get("cache_context"), dict) else {}
+        try:
+            cache_context_text = json.dumps(cache_context, sort_keys=True, default=str)[:4000]
         except Exception:
-            return False
+            cache_context_text = str(cache_context)[:4000]
+        raise LocalModelUnavailableError(
+            "KnowMoreDiRT requires reachable llama.cpp for normal question answering. "
+            f"Local model request failed during {operation}: {result.get('error') or 'request_failed'}. "
+            f"cache_context={cache_context_text}",
+            cache_context=cache_context,
+        )
 
     def _progress_enabled(self) -> bool:
         return os.environ.get("KMD_PROGRESS", "").strip().lower() in {"1", "true", "yes", "on"} or os.environ.get(
@@ -176,6 +194,7 @@ class KnowMoreDiRTEngine:
             print(message, flush=True)
 
     def _record_model_result(self, result: dict[str, object]) -> None:
+        self._raise_model_request_failed(result, "model operation")
         trace = self.model_query_trace
         cache_hit = result.get("fresh_or_cached") == "cache" or result.get("source") == "cache"
         if cache_hit:
@@ -699,41 +718,42 @@ class KnowMoreDiRTEngine:
             return None
         trace = self.model_query_trace
         trace.call_count += 1
-        det = deterministic_query_frame(question)
-        self._log_progress("kmd-answer model_plan_start")
-        use_query_drs_plan = os.environ.get("KMD_QUERY_DRS_PLAN", "0").strip().lower() in {"1", "true", "yes", "on"}
-        if use_query_drs_plan:
-            model = call_model_query_drs(question, self._model_client)
-            if model.get("accepted"):
-                query_drs_model = model
-                projected = query_frame_from_query_drs(
-                    question,
-                    model.get("query_drs") if isinstance(model.get("query_drs"), dict) else None,
-                )
-                if projected is not None:
-                    model = {
-                        **projected,
-                        "accepted": True,
-                        "query_drs": query_drs_model.get("query_drs"),
-                        "source": "model_query_drs",
-                        "prompt_hash": query_drs_model.get("prompt_hash"),
-                        "output_hash": query_drs_model.get("output_hash"),
-                        "elapsed": query_drs_model.get("elapsed"),
-                    }
-        else:
-            model = call_model_query_plan(question, self._model_client)
-        self._record_model_result(model)
+        if os.environ.get("KMD_QUERY_DRS_PLAN", "1").strip().lower() in {"0", "false", "no", "off"}:
+            raise LocalModelUnavailableError(
+                "KnowMoreDiRT production runtime requires query DRS planning; KMD_QUERY_DRS_PLAN=0 is not supported."
+            )
+        self._log_progress("kmd-answer query_drs_start")
+        query_drs_model = call_model_query_drs(question, self._model_client)
+        self._record_model_result(query_drs_model)
+        projected = None
+        if query_drs_model.get("accepted"):
+            projected = query_frame_from_query_drs(
+                question,
+                query_drs_model.get("query_drs") if isinstance(query_drs_model.get("query_drs"), dict) else None,
+            )
+        if projected is None:
+            trace.last_plan = {
+                "accepted": False,
+                "source": "model_query_drs",
+                "reason": query_drs_model.get("reason") or "query_drs_projection_failed",
+            }
+            return None
+        model = {
+            **projected,
+            "accepted": True,
+            "query_drs": query_drs_model.get("query_drs"),
+            "source": "model_query_drs",
+            "prompt_hash": query_drs_model.get("prompt_hash"),
+            "output_hash": query_drs_model.get("output_hash"),
+            "elapsed": query_drs_model.get("elapsed"),
+        }
         if model.get("prompt_hash"):
             trace.prompt_hashes = [*list(trace.prompt_hashes or []), str(model["prompt_hash"])][-20:]
         if model.get("output_hash"):
             trace.response_hashes = [*list(trace.response_hashes or []), str(model["output_hash"])][-20:]
-        if model.get("accepted"):
-            trace.parsed_count += 1
-            trace.accepted_count += 1
-        if model.get("accepted") and model.get("source") == "model_query_drs":
-            plan = model
-        else:
-            plan = normalize_model_plan(question, model, det) if model.get("accepted") else det
+        trace.parsed_count += 1
+        trace.accepted_count += 1
+        plan = model
         trace.last_plan = plan
         planned_frame = frame_from_mapping(question, plan)
         expected = self._expected_from_frame(planned_frame)
@@ -764,16 +784,7 @@ class KnowMoreDiRTEngine:
                 trace.model_answer_count += 1
                 answer.reason = "local model query-frame execution"
                 return answer
-        if self._bounded_conflict_blocks_model_evidence_fallback():
-            return None
-        self._log_progress("kmd-answer evidence_extraction_start")
-        evidence_answer = self._answer_with_model_evidence_extraction(question, planned_frame, expected)
-        if evidence_answer and normalize(evidence_answer.text) != "unknown":
-            if expected.answer_type != "boolean" or self._verify_with_local_model(question, planned_frame, evidence_answer, expected):
-                return evidence_answer
-        direct = self._answer_with_model_query_evidence(question, expected)
-        if direct:
-            return direct
+        self._bounded_conflict_blocks_model_evidence_fallback()
         return None
 
     def _bounded_conflict_blocks_model_evidence_fallback(self) -> bool:
@@ -1245,6 +1256,8 @@ class KnowMoreDiRTEngine:
         return inserted
 
     def _answer_with_model_query_evidence(self, question: str, expected_hint: ExpectedAnswer | None = None) -> Answer | None:
+        if not self._test_model_evidence_helpers_allowed():
+            return None
         if self._model_client is None:
             return None
         candidates = self._search(
@@ -1339,6 +1352,8 @@ class KnowMoreDiRTEngine:
         frame: QueryFrame,
         expected: ExpectedAnswer | None = None,
     ) -> Answer | None:
+        if not self._test_model_evidence_helpers_allowed():
+            return None
         if self._model_client is None:
             return None
         expected = expected or self._expected_from_frame(frame)

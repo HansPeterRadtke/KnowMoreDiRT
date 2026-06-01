@@ -18,6 +18,8 @@ KMD exposes only two intended user-facing operations:
 
 The input folder may contain nested folders, arbitrary filenames, arbitrary extensions, files without extensions, prose, logs, tables, transcripts, JSON-like text, and noisy text. KMD does not require schemas, metadata wrappers, manifests, or external source conversion.
 
+Normal runtime requires a reachable localhost llama.cpp-compatible model endpoint. KMD fails clearly during `initialize(folder_path)` or `question(text)` if that local model is unavailable; it does not silently replace missing model semantics with a deterministic semantic fallback.
+
 See [`docs/public_api.md`](docs/public_api.md) for the exact API contract.
 
 ## DRT and DSPG
@@ -53,7 +55,7 @@ KMD currently provides a first DSPG-backed vertical slice:
 - bounded lexical/referent retrieval,
 - text-quality/noise contexts for random-character, hex/blob-like, OCR-corrupted, word-salad, plausible-babble, and meaningful-discourse sources,
 - conservative source-grounded answering,
-- isolated optional local-model integration hooks.
+- required localhost local-model DRS/query integration for production runtime, with deterministic code limited to infrastructure, validation, graph execution, and answer formatting.
 
 This is not presented as a finished reasoning engine. The current fixture score is a regression baseline; broader generated and real-world holdouts are required before claiming general robustness. See [`docs/evaluation.md`](docs/evaluation.md).
 
@@ -61,6 +63,7 @@ This is not presented as a finished reasoning engine. The current fixture score 
 
 ```bash
 python3 -m pip install -e '.[test]'
+export KMD_LOCAL_MODEL_ENDPOINT=http://127.0.0.1:14829/v1
 PYTHONPATH=src pytest -q
 PYTHONPATH=src python3 scripts/evaluate_fixture.py --json-out /tmp/kmd_eval.json
 ```
@@ -76,7 +79,7 @@ PYTHONPATH=src python3 scripts/evaluate_fixture.py --json-out /tmp/kmd_eval.json
 
 ## Current Fixture Score
 
-Current regression scores:
+Current deterministic regression scores under the pytest-only no-model test hook:
 
 - original messy corpus: `60/60 (1.000)`
 - broad raw-world corpus: `65/65 (1.000)`

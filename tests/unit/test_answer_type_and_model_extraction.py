@@ -183,7 +183,7 @@ def test_low_semantic_noise_does_not_dominate_normal_fact_retrieval(tmp_path: Pa
     assert "cache.lock" not in answer.evidence[0].rel_path
 
 
-def test_fake_model_evidence_extraction_is_invoked_counted_and_grounded(tmp_path: Path) -> None:
+def test_fake_model_evidence_extraction_helper_is_test_only_counted_and_grounded(tmp_path: Path) -> None:
     (tmp_path / "source").write_text(
         "Ash Meadow conservator Lyra Fen\n",
         encoding="utf-8",
@@ -193,13 +193,28 @@ def test_fake_model_evidence_extraction_is_invoked_counted_and_grounded(tmp_path
     engine._model_client = FakeEvidenceModel()
     engine.model_query_trace.enabled = True
 
-    answer = engine.answer("Who is the conservator for Ash Meadow?")
+    frame = QueryFrame(
+        question_text="Who is the conservator for Ash Meadow?",
+        answer_type="person",
+        answer_variables=("person",),
+        target_anchors=("Ash Meadow",),
+        requested_relation="conservator",
+        relation_terms=("conservator",),
+        constraints=(),
+    )
 
+    answer = engine._answer_with_model_evidence_extraction(
+        "Who is the conservator for Ash Meadow?",
+        frame,
+        ExpectedAnswer("person"),
+    )
+
+    assert answer is not None
     assert answer.text == "Lyra Fen"
     assert answer.answer_type == "person"
     assert answer.evidence and "Ash Meadow conservator Lyra Fen" in answer.evidence[0].text
-    assert engine.model_query_trace.call_count == 1
-    assert engine.model_query_trace.accepted_count == 1
+    assert engine.model_query_trace.evidence_call_count == 1
+    assert engine.model_query_trace.evidence_accepted_count == 1
     assert engine.model_query_trace.model_answer_count == 1
 
 

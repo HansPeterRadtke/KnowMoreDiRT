@@ -1,8 +1,8 @@
-"""Optional local-model integration hooks.
+"""Local-model integration hooks.
 
-KMD never requires a cloud model. When enabled, this module talks only to a
-local llama.cpp-compatible endpoint and returns raw, source-grounded JSON
-objects to the engine. The public API remains ``initialize`` and ``question``.
+KMD never uses a cloud model. Normal runtime requires a reachable localhost
+llama.cpp-compatible endpoint and returns raw, source-grounded JSON objects to
+the engine. The public API remains ``initialize`` and ``question``.
 """
 
 from __future__ import annotations
@@ -182,6 +182,14 @@ class LocalModelJSONError(ValueError):
         self.snippet = snippet
 
 
+class LocalModelUnavailableError(RuntimeError):
+    """Raised when required localhost llama.cpp access is unavailable."""
+
+    def __init__(self, message: str, *, cache_context: dict[str, Any] | None = None) -> None:
+        super().__init__(message)
+        self.cache_context = cache_context or {}
+
+
 @dataclass
 class LocalModelClient:
     endpoint: str = os.environ.get("KMD_LOCAL_MODEL_ENDPOINT", "http://127.0.0.1:14829/v1")
@@ -307,7 +315,7 @@ class LocalModelClient:
 
     def transport_settings(self) -> dict[str, Any]:
         return {
-            "api": os.environ.get("KMD_LOCAL_MODEL_API", "completion").strip().lower() or "completion",
+            "api": os.environ.get("KMD_LOCAL_MODEL_API", "chat").strip().lower() or "chat",
             "stream": os.environ.get("KMD_LOCAL_MODEL_STREAM", "1").strip().lower() not in {"0", "false", "no", "off"},
         }
 
@@ -334,7 +342,7 @@ class LocalModelClient:
     ) -> dict[str, Any]:
         """Return a parsed JSON object from the local completion endpoint."""
 
-        api = os.environ.get("KMD_LOCAL_MODEL_API", "completion").strip().lower()
+        api = os.environ.get("KMD_LOCAL_MODEL_API", "chat").strip().lower()
         endpoint = _chat_endpoint(self.endpoint) if api == "chat" else _completion_endpoint(self.endpoint)
         if endpoint is None:
             endpoint = _completion_endpoint(self.endpoint)

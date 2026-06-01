@@ -11,6 +11,7 @@ from typing import Any
 
 from .drs import DiscourseArgument, DiscourseCondition, frame_from_model_dict
 from .extractors import capitalized_phrases, identifiers, urls
+from .model import LocalModelUnavailableError
 from .models import Document, Sentence
 from .model_planner import (
     call_model_chunk_drs,
@@ -55,6 +56,22 @@ def _attempt_was_nonrequest_failure(row: Any | None) -> bool:
         and not bool(row["accepted"])
         and not bool(row["materialized"])
         and str(row["reason"] or "") != "request_failed"
+    )
+
+
+def _raise_model_request_failed(result: dict[str, Any], operation: str) -> None:
+    if str(result.get("reason") or "") != "request_failed":
+        return
+    cache_context = result.get("cache_context") if isinstance(result.get("cache_context"), dict) else {}
+    try:
+        cache_context_text = json.dumps(cache_context, sort_keys=True, default=str)[:4000]
+    except Exception:
+        cache_context_text = str(cache_context)[:4000]
+    raise LocalModelUnavailableError(
+        "KnowMoreDiRT requires reachable llama.cpp during initialize(folder_path). "
+        f"Local model request failed during {operation}: {result.get('error') or 'request_failed'}. "
+        f"cache_context={cache_context_text}",
+        cache_context=cache_context,
     )
 
 
@@ -261,6 +278,7 @@ def _grounded_model_frames(
             "context_budget": metadata.get("context_budget"),
         }
     result = call_model_chunk_frames(sentence.text, semantic_client, rel_path=sentence.rel_path)
+    _raise_model_request_failed(result, "chunk frame ingest")
     frames = [frame for frame in result.get("frames", []) if isinstance(frame, dict)] if result.get("accepted") else []
     cacheable_failure = result.get("reason") in {"invalid_json", "schema_validation_failed", "grounding_validation_failed"}
     if semantic_cache is not None and (result.get("accepted") or cacheable_failure):
@@ -432,6 +450,7 @@ def _ingest_model_drs_for_sentence(
         rel_path=sentence.rel_path,
         n_predict=drs_n_predict,
     )
+    _raise_model_request_failed(drs_result, "chunk DRS ingest")
     materialized = {"accepted": False, "reason": "not_attempted", "inserted": {}}
     if drs_result.get("accepted") and isinstance(drs_result.get("drs"), dict):
         materialized = store.materialize_drs_payload(
