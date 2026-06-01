@@ -4,7 +4,7 @@ from pathlib import Path
 
 from knowmoredirt.answer_types import ExpectedAnswer
 from knowmoredirt.engine import KnowMoreDiRTEngine
-from knowmoredirt.model_planner import call_model_chunk_frames
+from knowmoredirt.model_planner import ModelQueryTrace, call_model_chunk_frames
 from knowmoredirt.query import QueryFrame
 
 
@@ -91,6 +91,17 @@ class FakeFrameModel(FakeLocalModel):
                 "_model_raw": '{"verification":{"entailed":true,"answer_type":"person","answer":"Sena Rill","evidence_span":"Marble Gate is guarded by Sena Rill","reason":"fake grounded verifier"}}',
             }
         return super().complete_json(prompt, n_predict=n_predict, grammar=grammar)
+
+
+def test_cached_model_results_do_not_add_fresh_model_time() -> None:
+    engine = KnowMoreDiRTEngine.__new__(KnowMoreDiRTEngine)
+    engine.model_query_trace = ModelQueryTrace(enabled=True, prompt_hashes=[], response_hashes=[])
+
+    engine._record_model_result({"fresh_or_cached": "cache", "elapsed": 83.5})
+    engine._record_model_result({"fresh_or_cached": "fresh", "elapsed": 1.25})
+
+    assert engine.model_query_trace.cache_hit_count == 1
+    assert engine.model_query_trace.time_spent_seconds == 1.25
 
 
 def test_document_metadata_is_retrieval_prior_not_answer_source(tmp_path: Path) -> None:

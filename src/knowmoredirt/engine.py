@@ -154,12 +154,14 @@ class KnowMoreDiRTEngine:
 
     def _record_model_result(self, result: dict[str, object]) -> None:
         trace = self.model_query_trace
-        if result.get("fresh_or_cached") == "cache" or result.get("source") == "cache":
+        cache_hit = result.get("fresh_or_cached") == "cache" or result.get("source") == "cache"
+        if cache_hit:
             trace.cache_hit_count += 1
-        try:
-            trace.time_spent_seconds += float(result.get("elapsed") or 0.0)
-        except (TypeError, ValueError):
-            pass
+        else:
+            try:
+                trace.time_spent_seconds += float(result.get("elapsed") or 0.0)
+            except (TypeError, ValueError):
+                pass
         if result.get("accepted") is False:
             trace.rejected_output_count += 1
             reason = str(result.get("reason") or "")
