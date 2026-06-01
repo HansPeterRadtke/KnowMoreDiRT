@@ -379,6 +379,8 @@ class LocalModelClient:
         with urllib.request.urlopen(request, timeout=self.timeout_seconds) as response:
             if use_stream:
                 for raw_line in response:
+                    if self.timeout_seconds > 0 and time.time() - started > self.timeout_seconds:
+                        raise TimeoutError(f"local model request exceeded {self.timeout_seconds:.1f}s wall timeout")
                     line = raw_line.decode("utf-8", errors="replace").strip()
                     if not line:
                         continue
@@ -396,6 +398,8 @@ class LocalModelClient:
                         if _extract_balanced_json(raw):
                             stream_closed_after_json = True
                             break
+                    if self.timeout_seconds > 0 and time.time() - started > self.timeout_seconds:
+                        raise TimeoutError(f"local model request exceeded {self.timeout_seconds:.1f}s wall timeout")
             else:
                 response_obj = json.loads(response.read().decode("utf-8", errors="replace"))
                 raw = _response_content(response_obj)

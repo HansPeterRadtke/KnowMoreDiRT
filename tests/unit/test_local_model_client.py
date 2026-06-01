@@ -3,6 +3,8 @@ from __future__ import annotations
 import json
 from typing import Any
 
+import pytest
+
 from knowmoredirt.model import LocalModelClient, LocalModelJSONError
 from knowmoredirt.model_planner import (
     CHUNK_DRS_IDENTITY_PROVENANCE_POLICY,
@@ -149,6 +151,38 @@ def test_local_model_client_uses_completion_stream_and_json_schema(monkeypatch) 
     assert requests[0]["body"]["stream"] is True
     assert requests[0]["body"]["json_schema"]["type"] == "object"
     assert "grammar" in requests[0]["body"]
+
+
+def test_local_model_client_stream_enforces_wall_timeout(monkeypatch) -> None:
+    def fake_urlopen(request, timeout: float = 0) -> FakeHTTPResponse:
+        url = getattr(request, "full_url", request)
+        if str(url).endswith("/v1/models"):
+            return FakeHTTPResponse({"data": [{"id": "test-model", "meta": {"n_ctx_train": 4096}}]})
+        if str(url).endswith("/slots"):
+            return FakeHTTPResponse([{"n_ctx": 4096, "params": {"top_k": 40, "min_p": 0.05, "repeat_penalty": 1.0}}])
+        if str(url).endswith("/props"):
+            return FakeHTTPResponse({"default_generation_settings": {"n_ctx": 4096, "params": {}}})
+        if str(url).endswith("/completion"):
+            return FakeHTTPResponse(
+                lines=[
+                    b'data: {"content":"{\\"ok\\":"}\n\n',
+                    b'data: {"content":"true"}\n\n',
+                ]
+            )
+        raise AssertionError(f"unexpected URL {url}")
+
+    ticks = iter([0.0, 0.5, 3.0])
+
+    def fake_time() -> float:
+        return next(ticks, 3.0)
+
+    monkeypatch.setattr("urllib.request.urlopen", fake_urlopen)
+    monkeypatch.setattr("knowmoredirt.model.time.time", fake_time)
+    client = LocalModelClient(endpoint="http://127.0.0.1:14829/v1", timeout_seconds=2)
+    client.server_metadata()
+
+    with pytest.raises(TimeoutError):
+        client.complete_json("return ok", n_predict=64)
 
 
 def test_chunk_frame_planner_prefers_json_schema_for_capable_clients(monkeypatch) -> None:
