@@ -1860,6 +1860,204 @@ def test_scattered_unlinked_referent_status_returns_unknown_with_provenance(
     assert "LC-71 status is silver" in crosswalk["text"]
 
 
+def test_incremental_new_identity_bridge_reaches_existing_drs_chunk(
+    tmp_path: Path,
+    monkeypatch,
+) -> None:
+    (tmp_path / "middle").mkdir()
+    (tmp_path / "middle" / "state.txt").write_text(
+        "Middle state says RG-4 status is amber.",
+        encoding="utf-8",
+    )
+
+    class IncrementalBridgeModel:
+        def context_size(self) -> int:
+            return 4096
+
+        def cache_fingerprint(self) -> dict[str, object]:
+            return {"model_id": "fake-incremental-bridge-drs", "context_size": 4096}
+
+        def complete_json(self, prompt: str, *, n_predict: int = 128, grammar=None, json_schema=None):
+            if "Middle state" in prompt:
+                text = "Middle state says RG-4 status is amber."
+                source_id = "middle/state.txt"
+                referents = [{"id": "r0", "label": "RG-4", "kind": "identifier", "evidence_text": "RG-4"}]
+                conditions = [
+                    {
+                        "id": "c0",
+                        "predicate": "status",
+                        "box_id": "b0",
+                        "polarity": "positive",
+                        "modality": "asserted",
+                        "temporal_id": "",
+                        "arguments": [
+                            {
+                                "role": "entity",
+                                "target_kind": "referent",
+                                "target_id": "r0",
+                                "value": "",
+                                "value_type": "identifier",
+                                "evidence_text": "RG-4",
+                            },
+                            {
+                                "role": "state",
+                                "target_kind": "literal",
+                                "target_id": "",
+                                "value": "amber",
+                                "value_type": "state",
+                                "evidence_text": "amber",
+                            },
+                        ],
+                        "evidence_text": "RG-4 status is amber",
+                    }
+                ]
+                identities = []
+            elif "Opening catalog" in prompt:
+                text = "Opening catalog introduces Raven Gate."
+                source_id = "begin/catalog.txt"
+                referents = [{"id": "r0", "label": "Raven Gate", "kind": "artifact", "evidence_text": "Raven Gate"}]
+                conditions = [
+                    {
+                        "id": "c0",
+                        "predicate": "introduces",
+                        "box_id": "b0",
+                        "polarity": "positive",
+                        "modality": "asserted",
+                        "temporal_id": "",
+                        "arguments": [
+                            {
+                                "role": "entity",
+                                "target_kind": "referent",
+                                "target_id": "r0",
+                                "value": "",
+                                "value_type": "artifact",
+                                "evidence_text": "Raven Gate",
+                            }
+                        ],
+                        "evidence_text": text,
+                    }
+                ]
+                identities = []
+            else:
+                text = "Ending crosswalk says RG-4 is the same artifact as Raven Gate."
+                source_id = "end/crosswalk.txt"
+                referents = [
+                    {"id": "r0", "label": "RG-4", "kind": "identifier", "evidence_text": "RG-4"},
+                    {"id": "r1", "label": "Raven Gate", "kind": "artifact", "evidence_text": "Raven Gate"},
+                ]
+                conditions = [
+                    {
+                        "id": "c0",
+                        "predicate": "same_artifact",
+                        "box_id": "b0",
+                        "polarity": "positive",
+                        "modality": "asserted",
+                        "temporal_id": "",
+                        "arguments": [
+                            {
+                                "role": "left",
+                                "target_kind": "referent",
+                                "target_id": "r0",
+                                "value": "",
+                                "value_type": "identifier",
+                                "evidence_text": "RG-4",
+                            },
+                            {
+                                "role": "right",
+                                "target_kind": "referent",
+                                "target_id": "r1",
+                                "value": "",
+                                "value_type": "artifact",
+                                "evidence_text": "Raven Gate",
+                            },
+                        ],
+                        "evidence_text": "RG-4 is the same artifact as Raven Gate",
+                    }
+                ]
+                identities = [
+                    {
+                        "left_referent_id": "r0",
+                        "right_referent_id": "r1",
+                        "status": "accepted",
+                        "evidence_text": "RG-4 is the same artifact as Raven Gate",
+                        "confidence": 0.93,
+                    }
+                ]
+            return {
+                "drs": {
+                    "schema_version": "chunk-drs-v2",
+                    "source_id": source_id,
+                    "referents": referents,
+                    "boxes": [
+                        {"id": "b0", "kind": "asserted", "parent_id": "", "holder_referent_id": "", "evidence_text": text}
+                    ],
+                    "conditions": conditions,
+                    "identity_hypotheses": identities,
+                    "temporal_records": [],
+                },
+                "_model_raw": "{}",
+                "_model_elapsed_seconds": 0.01,
+            }
+
+    cache_dir = tmp_path.parent / f"{tmp_path.name}-incremental-bridge-cache"
+    monkeypatch.setenv("KMD_CHUNK_DRS_CACHE_DIR", str(cache_dir))
+    store = DSPGStore()
+    model = IncrementalBridgeModel()
+    store, first_run_id, _, _ = ingest_folder(
+        tmp_path,
+        store=store,
+        semantic_client=model,
+        use_semantic_frames=False,
+        use_drs_semantics=True,
+    )
+    (tmp_path / "begin").mkdir()
+    (tmp_path / "begin" / "catalog.txt").write_text(
+        "Opening catalog introduces Raven Gate.",
+        encoding="utf-8",
+    )
+    (tmp_path / "end").mkdir()
+    (tmp_path / "end" / "crosswalk.txt").write_text(
+        "Ending crosswalk says RG-4 is the same artifact as Raven Gate.",
+        encoding="utf-8",
+    )
+    store, second_run_id, documents, sentences = ingest_folder(
+        tmp_path,
+        store=store,
+        semantic_client=model,
+        use_semantic_frames=False,
+        use_drs_semantics=True,
+    )
+    sentences_by_document: dict[str, dict[int, object]] = {}
+    for sentence in sentences:
+        sentences_by_document.setdefault(sentence.rel_path, {})[sentence.order] = sentence
+    frame = QueryFrame(
+        question_text="What status is recorded for Raven Gate?",
+        answer_type="state",
+        answer_variables=("state",),
+        target_anchors=("Raven Gate",),
+        requested_relation="status",
+        relation_terms=("status",),
+        constraints=(),
+    )
+
+    answer, diagnostics = execute_bounded_query(
+        store,
+        second_run_id,
+        documents,
+        sentences_by_document,  # type: ignore[arg-type]
+        frame.question_text,
+        frame,
+    )
+
+    assert first_run_id == second_run_id
+    assert answer is not None
+    assert answer.text == "amber"
+    assert "rg-4" in diagnostics["ranking"]["identity_expanded_target_terms"]
+    assert {"end/crosswalk.txt", "middle/state.txt"}.issubset(
+        {item.rel_path for item in answer.evidence}
+    )
+
+
 def test_store_rejects_invalid_drs_condition_graphs() -> None:
     store = DSPGStore()
     payload = {
