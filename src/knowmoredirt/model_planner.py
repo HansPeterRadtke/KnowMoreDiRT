@@ -341,6 +341,14 @@ def _read_cache(path: Path | None) -> dict[str, Any] | None:
     return None
 
 
+def _cached_request_failed(payload: dict[str, Any] | None) -> bool:
+    if payload is None:
+        return False
+    return str(payload.get("reason") or "") == "request_failed" or str(
+        payload.get("repair_failure_reason") or ""
+    ) == "request_failed"
+
+
 def _write_cache(path: Path | None, payload: dict[str, Any]) -> None:
     if path is None:
         return
@@ -2280,7 +2288,7 @@ def call_model_evidence_answer(
     )
     cache_path = _cache_path("KMD_EVIDENCE_ANSWER_CACHE_DIR", prompt_hash)
     cached = _read_cache(cache_path)
-    if cached is not None:
+    if cached is not None and not _cached_request_failed(cached):
         return cached
     start = time.time()
     try:
@@ -2579,7 +2587,7 @@ def call_model_query_evidence_answer(
     )
     cache_path = _cache_path("KMD_QUERY_EVIDENCE_CACHE_DIR", prompt_hash)
     cached = _read_cache(cache_path)
-    if cached is not None:
+    if cached is not None and not _cached_request_failed(cached):
         return cached
     start = time.time()
     try:
@@ -4342,7 +4350,7 @@ def call_model_answer_verification(
     )
     cache_path = _cache_path("KMD_VERIFIER_CACHE_DIR", prompt_hash)
     cached = _read_cache(cache_path)
-    if cached is not None:
+    if cached is not None and not _cached_request_failed(cached):
         return cached
     start = time.time()
     try:
@@ -4441,7 +4449,12 @@ def call_model_answer_canonicalization(
     )
     cache_path = _cache_path("KMD_ANSWER_CANONICALIZATION_CACHE_DIR", prompt_hash)
     cached = _read_cache(cache_path)
-    if cached is not None and cached.get("reason") not in {"ungrounded_answer", "schema_validation_failed", "invalid_json"}:
+    if cached is not None and cached.get("reason") not in {
+        "request_failed",
+        "ungrounded_answer",
+        "schema_validation_failed",
+        "invalid_json",
+    }:
         return cached
     start = time.time()
     try:
@@ -4568,7 +4581,10 @@ def call_model_identity_canonicalization(
     cache_path = _cache_path("KMD_IDENTITY_CACHE_DIR", prompt_hash)
     cached = _read_cache(cache_path)
     if cached is not None:
-        if not (cached.get("accepted") is False and cached.get("reason") in {"invalid_json", "schema_validation_failed"}):
+        if not (
+            cached.get("accepted") is False
+            and cached.get("reason") in {"request_failed", "invalid_json", "schema_validation_failed"}
+        ):
             return cached
     start = time.time()
     try:

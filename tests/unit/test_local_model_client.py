@@ -6,12 +6,14 @@ from typing import Any
 import pytest
 
 from knowmoredirt.model import LocalModelClient, LocalModelJSONError
+from knowmoredirt import model_planner
 from knowmoredirt.model_planner import (
     CHUNK_FRAME_CONTEXT_BUDGET_POLICY,
     CHUNK_DRS_IDENTITY_PROVENANCE_POLICY,
     CHUNK_DRS_TEMPORAL_PROVENANCE_POLICY,
     QUERY_DRS_DYNAMIC_OUTPUT_BUDGET_POLICY,
     QUERY_OPERATOR_SCHEMA_POLICY,
+    call_model_answer_canonicalization,
     build_answer_verification_prompt,
     call_model_chunk_drs,
     call_model_chunk_frames,
@@ -366,6 +368,121 @@ def test_query_evidence_repair_request_failure_does_not_poison_cache(monkeypatch
     assert second["fresh_or_cached"] == "fresh_repair"
     assert model.primary_calls == 2
     assert model.repair_calls == 2
+
+
+def test_query_evidence_old_repair_request_failure_cache_is_ignored(monkeypatch) -> None:
+    class EvidenceAnswerModel:
+        def __init__(self) -> None:
+            self.calls = 0
+
+        def context_size(self) -> int:
+            return 4096
+
+        def cache_fingerprint(self) -> dict[str, Any]:
+            return {"model_id": "fake-query-evidence-old-request-cache", "context_size": 4096}
+
+        def complete_json(self, prompt: str, *, n_predict: int = 128, grammar=None, json_schema=None):
+            self.calls += 1
+            assert "bounded DRT/DSPG question analysis" in prompt
+            return {
+                "result": {
+                    "query_frame": {
+                        "target_anchors": ["Aero Gate"],
+                        "answer_variables": ["state"],
+                        "requested_relation": "state",
+                        "relation_terms": ["state"],
+                        "constraints": [],
+                        "scope_requirements": [],
+                        "modality_requirements": [],
+                        "answer_type": "state",
+                        "temporal_scope": "",
+                        "negated": False,
+                        "aggregation": "",
+                        "requires_evidence": True,
+                    },
+                    "sufficient_evidence": True,
+                    "answer_type": "state",
+                    "answer": "ready",
+                    "evidence_span": "Aero Gate is ready.",
+                    "reason": "directly supported",
+                },
+                "_model_raw": "{}",
+                "_model_elapsed_seconds": 0.01,
+            }
+
+    monkeypatch.setattr(
+        model_planner,
+        "_read_cache",
+        lambda path: {
+            "accepted": False,
+            "reason": "invalid_json",
+            "repair_failure_reason": "request_failed",
+            "fresh_or_cached": "cache",
+        },
+    )
+    monkeypatch.setattr(model_planner, "_write_cache", lambda path, payload: None)
+    model = EvidenceAnswerModel()
+
+    result = call_model_query_evidence_answer(
+        "What is the state of Aero Gate?",
+        [{"rel_path": "note.txt", "text": "Aero Gate is ready."}],
+        model,  # type: ignore[arg-type]
+    )
+
+    assert result["accepted"] is True
+    assert result["answer"] == "ready"
+    assert result["fresh_or_cached"] == "fresh"
+    assert model.calls == 1
+
+
+def test_answer_canonicalization_old_request_failure_cache_is_ignored(monkeypatch) -> None:
+    class CanonicalizationModel:
+        def __init__(self) -> None:
+            self.calls = 0
+
+        def context_size(self) -> int:
+            return 4096
+
+        def cache_fingerprint(self) -> dict[str, Any]:
+            return {"model_id": "fake-canonicalization-old-request-cache", "context_size": 4096}
+
+        def complete_json(self, prompt: str, *, n_predict: int = 128, grammar=None, json_schema=None):
+            self.calls += 1
+            assert "Canonicalize a model-selected final answer" in prompt
+            return {
+                "canonical_answer": {
+                    "answer": "ready",
+                    "evidence_span": "Aero Gate is ready.",
+                    "reason": "already grounded",
+                },
+                "_model_raw": "{}",
+                "_model_elapsed_seconds": 0.01,
+            }
+
+    monkeypatch.setattr(
+        model_planner,
+        "_read_cache",
+        lambda path: {
+            "accepted": False,
+            "reason": "request_failed",
+            "fresh_or_cached": "cache",
+        },
+    )
+    monkeypatch.setattr(model_planner, "_write_cache", lambda path, payload: None)
+    model = CanonicalizationModel()
+
+    result = call_model_answer_canonicalization(
+        "What is the state of Aero Gate?",
+        "ready",
+        "state",
+        [{"rel_path": "note.txt", "text": "Aero Gate is ready."}],
+        model,  # type: ignore[arg-type]
+    )
+
+    assert result["accepted"] is True
+    assert result["answer"] == "ready"
+    assert result["fresh_or_cached"] == "fresh"
+    assert model.calls == 1
 
 
 def test_query_frame_schema_constrains_temporal_scope_operator(monkeypatch, tmp_path) -> None:
