@@ -329,7 +329,7 @@ def test_chunk_frame_planner_prefers_json_schema_for_capable_clients(monkeypatch
     assert result["accepted"] is True
     assert result["context_budget"]["context_budget_policy"] == CHUNK_FRAME_CONTEXT_BUDGET_POLICY
     assert result["cache_context"]["context_budget"]["context_budget_policy"] == CHUNK_FRAME_CONTEXT_BUDGET_POLICY
-    assert result["cache_context"]["model_fingerprint"]["model_id"] == "fake-frame-json-schema"
+    assert result["cache_context"]["model_fingerprint"]["model_id"] == "fake"
     cache_context = chunk_frame_cache_context(model)  # type: ignore[arg-type]
     assert cache_context["context_budget_policy"] == CHUNK_FRAME_CONTEXT_BUDGET_POLICY
     assert model.grammar is None
