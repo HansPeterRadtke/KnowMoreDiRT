@@ -200,6 +200,156 @@ def test_unknown_answer_retains_bounded_source_provenance(tmp_path: Path, monkey
     assert engine.last_bounded_diagnostics["execution"]["source_provenance_sample"]
 
 
+def test_local_model_does_not_evidence_fallback_over_bounded_conflict(tmp_path: Path, monkeypatch) -> None:
+    (tmp_path / "blue.txt").write_text("Blue note says Jade Pin state blue.", encoding="utf-8")
+    (tmp_path / "green.txt").write_text("Green note says Jade Pin state green.", encoding="utf-8")
+
+    class ConflictModel:
+        def __init__(self) -> None:
+            self.evidence_calls = 0
+            self.query_evidence_calls = 0
+
+        def context_size(self) -> int:
+            return 4096
+
+        def cache_fingerprint(self) -> dict[str, object]:
+            return {"model_id": "fake-conflict-no-evidence-fallback", "context_size": 4096}
+
+        def complete_json(self, prompt: str, *, n_predict: int = 128, grammar=None, json_schema=None):
+            if "Blue note" in prompt or "Green note" in prompt:
+                state = "blue" if "Blue note" in prompt else "green"
+                text = f"{state.title()} note says Jade Pin state {state}."
+                return {
+                    "drs": {
+                        "schema_version": "chunk-drs-v2",
+                        "source_id": f"{state}.txt",
+                        "referents": [
+                            {"id": "r0", "label": "Jade Pin", "kind": "artifact", "evidence_text": "Jade Pin"}
+                        ],
+                        "boxes": [
+                            {
+                                "id": "b0",
+                                "kind": "asserted",
+                                "parent_id": "",
+                                "holder_referent_id": "",
+                                "evidence_text": text,
+                            }
+                        ],
+                        "conditions": [
+                            {
+                                "id": "c0",
+                                "predicate": "state",
+                                "box_id": "b0",
+                                "polarity": "positive",
+                                "modality": "asserted",
+                                "temporal_id": "",
+                                "arguments": [
+                                    {
+                                        "role": "entity",
+                                        "target_kind": "referent",
+                                        "target_id": "r0",
+                                        "value": "",
+                                        "value_type": "artifact",
+                                        "evidence_text": "Jade Pin",
+                                    },
+                                    {
+                                        "role": "state",
+                                        "target_kind": "literal",
+                                        "target_id": "",
+                                        "value": state,
+                                        "value_type": "state",
+                                        "evidence_text": state,
+                                    },
+                                ],
+                                "evidence_text": f"Jade Pin state {state}",
+                            }
+                        ],
+                        "identity_hypotheses": [],
+                        "temporal_records": [],
+                    },
+                    "_model_raw": "{}",
+                    "_model_elapsed_seconds": 0.01,
+                }
+            if "generic DRT/DSPG query frame" in prompt:
+                return {
+                    "query_frame": {
+                        "target_anchors": ["Jade Pin"],
+                        "answer_variables": ["state"],
+                        "requested_relation": "state",
+                        "relation_terms": ["state"],
+                        "constraints": [],
+                        "scope_requirements": [],
+                        "modality_requirements": [],
+                        "answer_type": "state",
+                        "temporal_scope": "",
+                        "negated": False,
+                        "aggregation": "",
+                        "requires_evidence": True,
+                    },
+                    "_model_raw": "{}",
+                    "_model_elapsed_seconds": 0.01,
+                }
+            if "Answer the question only from the provided raw-text evidence" in prompt:
+                self.evidence_calls += 1
+                return {
+                    "answer": {
+                        "sufficient_evidence": True,
+                        "answer_type": "state",
+                        "answer": "blue",
+                        "evidence_span": "Jade Pin state blue",
+                    },
+                    "_model_raw": "{}",
+                    "_model_elapsed_seconds": 0.01,
+                }
+            if "bounded DRT/DSPG question analysis" in prompt:
+                self.query_evidence_calls += 1
+                return {
+                    "result": {
+                        "query_frame": {
+                            "target_anchors": ["Jade Pin"],
+                            "answer_variables": ["state"],
+                            "requested_relation": "state",
+                            "relation_terms": ["state"],
+                            "constraints": [],
+                            "scope_requirements": [],
+                            "modality_requirements": [],
+                            "answer_type": "state",
+                            "temporal_scope": "",
+                            "negated": False,
+                            "aggregation": "",
+                            "requires_evidence": True,
+                        },
+                        "sufficient_evidence": True,
+                        "answer_type": "state",
+                        "answer": "blue",
+                        "evidence_span": "Jade Pin state blue",
+                        "reason": "fake fallback should be blocked",
+                    },
+                    "_model_raw": "{}",
+                    "_model_elapsed_seconds": 0.01,
+                }
+            raise AssertionError(prompt[:200])
+
+    fake = ConflictModel()
+    monkeypatch.setenv("KMD_USE_LOCAL_MODEL", "1")
+    monkeypatch.setenv("KMD_LLM_INGEST", "0")
+    monkeypatch.setenv("KMD_LLM_DRS_INGEST", "1")
+    monkeypatch.setenv("KMD_QUERY_DRS_PLAN", "0")
+    monkeypatch.setenv("KMD_CHUNK_DRS_CACHE_DIR", str(tmp_path / ".drs-cache"))
+    monkeypatch.setenv("KMD_QUERY_PLAN_CACHE_DIR", str(tmp_path / ".query-cache"))
+    monkeypatch.setattr("knowmoredirt.engine.LocalModelClient", lambda: fake)
+
+    engine = KnowMoreDiRTEngine(tmp_path)
+    answer = engine.answer("What state is recorded for Jade Pin?")
+
+    assert answer.text == "unknown"
+    assert engine.last_bounded_diagnostics["execution"]["answer_conflict_without_query_scope"]
+    assert answer.evidence
+    assert {item.rel_path for item in answer.evidence} == {"blue.txt", "green.txt"}
+    assert fake.evidence_calls == 0
+    assert fake.query_evidence_calls == 0
+
+
 def test_local_model_ingest_builds_grounded_generic_frames(tmp_path: Path, monkeypatch) -> None:
     fake = FakeFrameModel()
     (tmp_path / "frame.raw").write_text("Marble Gate is guarded by Sena Rill.\n", encoding="utf-8")

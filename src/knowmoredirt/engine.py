@@ -732,6 +732,8 @@ class KnowMoreDiRTEngine:
                 trace.model_answer_count += 1
                 answer.reason = "local model query-frame execution"
                 return answer
+        if self._bounded_conflict_blocks_model_evidence_fallback():
+            return None
         self._log_progress("kmd-answer evidence_extraction_start")
         evidence_answer = self._answer_with_model_evidence_extraction(question, planned_frame, expected)
         if evidence_answer and normalize(evidence_answer.text) != "unknown":
@@ -741,6 +743,20 @@ class KnowMoreDiRTEngine:
         if direct:
             return direct
         return None
+
+    def _bounded_conflict_blocks_model_evidence_fallback(self) -> bool:
+        diagnostics = self.last_bounded_diagnostics if isinstance(self.last_bounded_diagnostics, dict) else {}
+        execution = diagnostics.get("execution") if isinstance(diagnostics.get("execution"), dict) else {}
+        if not isinstance(execution, dict):
+            return False
+        blocking_keys = {
+            "answer_conflict_without_query_scope",
+            "temporal_ambiguity_without_query_scope",
+            "temporal_answer_conflict_at_boundary",
+        }
+        if any(execution.get(key) for key in blocking_keys):
+            return True
+        return str(execution.get("no_answer_reason") or "") in blocking_keys
 
     def _lazy_semantic_frames_enabled(self) -> bool:
         return os.environ.get("KMD_LAZY_LLM_FRAMES", "0").strip().lower() in {"1", "true", "yes", "on"}
