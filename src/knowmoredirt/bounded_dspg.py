@@ -437,6 +437,16 @@ def _docs_by_id(records: dict[str, Any]) -> dict[str, dict[str, Any]]:
     return _indexed_rows(records, "documents_by_id", "documents", "document_id")
 
 
+def _docs_by_rel_path(records: dict[str, Any]) -> dict[str, dict[str, Any]]:
+    indexes = records.setdefault("_indexes", {})
+    if "documents_by_rel_path" not in indexes:
+        indexes["documents_by_rel_path"] = {
+            str(row.get("rel_path") or ""): row
+            for row in records.get("documents", [])
+        }
+    return indexes["documents_by_rel_path"]
+
+
 def _chunks_by_id(records: dict[str, Any]) -> dict[str, dict[str, Any]]:
     return _indexed_rows(records, "chunks_by_id", "chunks", "chunk_id")
 
@@ -795,6 +805,52 @@ def _attach_no_answer_provenance(
     provenance_sample = _source_provenance_sample(records, target_terms, relation_terms)
     if provenance_sample:
         execution["source_provenance_sample"] = provenance_sample
+
+
+def _answer_source_provenance_sample(
+    answer: Answer,
+    records: dict[str, Any],
+    *,
+    limit: int = 8,
+) -> list[dict[str, Any]]:
+    spans = _spans_by_id(records)
+    docs = _docs_by_rel_path(records)
+    rows: list[dict[str, Any]] = []
+    seen: set[tuple[str, str, int | None, str]] = set()
+    for evidence in answer.evidence:
+        span = spans.get(evidence.span_id)
+        if span:
+            payload = _span_provenance_payload(span, records)
+        else:
+            payload = _evidence_payload(evidence)
+            doc = docs.get(evidence.rel_path)
+            if doc:
+                payload["document"] = _document_metadata_summary(doc)
+        key = (
+            str(payload.get("rel_path") or ""),
+            str(payload.get("span_id") or ""),
+            payload.get("chunk_order") if isinstance(payload.get("chunk_order"), int) else None,
+            str(payload.get("text") or ""),
+        )
+        if key in seen:
+            continue
+        seen.add(key)
+        rows.append(payload)
+        if len(rows) >= limit:
+            break
+    return rows
+
+
+def _attach_answer_provenance(
+    diagnostics: dict[str, Any],
+    records: dict[str, Any],
+    answer: Answer | None,
+) -> None:
+    if answer is None:
+        return
+    provenance = _answer_source_provenance_sample(answer, records)
+    if provenance:
+        diagnostics.setdefault("execution", {})["answer_source_provenance"] = provenance
 
 
 def _metadata_evidence(record: dict[str, Any], records: dict[str, Any]) -> Evidence:
@@ -1853,6 +1909,8 @@ def execute_bounded_query(
                 expected,
                 "no_compatible_temporal_candidate",
             )
+        else:
+            _attach_answer_provenance(diagnostics, records, answer)
         return answer, diagnostics
     candidates.extend(temporal_candidates)
     candidates.extend(_bind_metadata(records, question, expected, target_terms, relation_terms))
@@ -1862,12 +1920,16 @@ def execute_bounded_query(
         group_count, group_evidence = _count_matching_record_groups(records, frame, target_terms, relation_terms)
         if group_count:
             answer = Answer(str(group_count), 0.86, group_evidence, "record-group aggregation DRS binding", "count")
-            return _with_supporting_evidence(answer, identity_expansion_evidence), diagnostics
+            answer = _with_supporting_evidence(answer, identity_expansion_evidence)
+            _attach_answer_provenance(diagnostics, records, answer)
+            return answer, diagnostics
     if expected.answer_type == "count" and frame.aggregation == "count" and candidates:
         values = sorted({canonicalize_answer(expected, value) or value for _score, value, _evidence, _reason in candidates})
         evidence = [item[2] for item in candidates[:4]]
         answer = Answer(str(len(values)), 0.85, evidence, "aggregation DRS binding", "count")
-        return _with_supporting_evidence(answer, identity_expansion_evidence), diagnostics
+        answer = _with_supporting_evidence(answer, identity_expansion_evidence)
+        _attach_answer_provenance(diagnostics, records, answer)
+        return answer, diagnostics
 
     if not frame.temporal_scope and _has_unscoped_temporal_ambiguity(candidates):
         diagnostics["execution"]["temporal_ambiguity_without_query_scope"] = True
@@ -1894,6 +1956,8 @@ def execute_bounded_query(
                 expected,
                 "no_compatible_list_candidate",
             )
+        else:
+            _attach_answer_provenance(diagnostics, records, answer)
         return answer, diagnostics
     if not frame.temporal_scope and expected.answer_type != "count":
         conflict = _answer_conflict_diagnostics(candidates, expected, target_terms)
@@ -1921,4 +1985,6 @@ def execute_bounded_query(
             expected,
             "no_compatible_candidate" if candidates else "no_candidate",
         )
+    else:
+        _attach_answer_provenance(diagnostics, records, answer)
     return answer, diagnostics

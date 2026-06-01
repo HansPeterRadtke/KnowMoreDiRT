@@ -2335,6 +2335,15 @@ def test_scattered_identity_reported_contradiction_respects_drs_scope(
         {item.rel_path for item in reported_answer.evidence}
     )
     assert "tn-8" in reported_diagnostics["ranking"]["identity_expanded_target_terms"]
+    reported_provenance = reported_diagnostics["execution"]["answer_source_provenance"]
+    assert {"end/identity.txt", "middle/reported.txt"}.issubset(
+        {item["rel_path"] for item in reported_provenance}
+    )
+    reported_source = next(item for item in reported_provenance if item["rel_path"] == "middle/reported.txt")
+    assert reported_source["document"]["file_name"] == "reported.txt"
+    assert reported_source["span_id"]
+    assert reported_source["chunk_id"]
+    assert "TN-8 status is orange" in reported_source["text"]
 
 
 def test_store_rejects_invalid_drs_condition_graphs() -> None:
