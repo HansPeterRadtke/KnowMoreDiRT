@@ -4207,6 +4207,213 @@ def test_incremental_ingest_uses_chunk_boundary_ids_when_scan_policy_changes(
     assert loaded_chunk_ids <= current_chunk_ids
 
 
+def test_incremental_rechunk_excludes_stale_document_identity_hypotheses(
+    tmp_path: Path,
+    monkeypatch,
+) -> None:
+    text = (
+        "Aero Gate begins the registry with neutral filler segment alpha bravo "
+        "charlie delta echo foxtrot golf hotel india juliet kilo lima before "
+        "the identifier AG-1 marker T001 state blue."
+    )
+    (tmp_path / "note.txt").write_text(text, encoding="utf-8")
+
+    class RechunkIdentityModel:
+        def context_size(self) -> int:
+            return 4096
+
+        def cache_fingerprint(self) -> dict[str, object]:
+            return {"model_id": "fake-rechunk-stale-identity-drs", "context_size": 4096}
+
+        def complete_json(self, prompt: str, *, n_predict: int = 128, grammar=None, json_schema=None):
+            if "Aero Gate begins" in prompt and "AG-1 marker T001 state blue" in prompt:
+                referents = [
+                    {"id": "r0", "label": "Aero Gate", "kind": "artifact", "evidence_text": "Aero Gate"},
+                    {"id": "r1", "label": "AG-1", "kind": "identifier", "evidence_text": "AG-1"},
+                ]
+                conditions = [
+                    {
+                        "id": "c0",
+                        "predicate": "state",
+                        "box_id": "b0",
+                        "polarity": "positive",
+                        "modality": "asserted",
+                        "temporal_id": "t0",
+                        "arguments": [
+                            {
+                                "role": "subject",
+                                "target_kind": "referent",
+                                "target_id": "r1",
+                                "value": "",
+                                "value_type": "identifier",
+                                "evidence_text": "AG-1",
+                            },
+                            {
+                                "role": "state",
+                                "target_kind": "literal",
+                                "target_id": "",
+                                "value": "blue",
+                                "value_type": "state",
+                                "evidence_text": "blue",
+                            },
+                        ],
+                        "evidence_text": "AG-1 marker T001 state blue",
+                    }
+                ]
+                identities = [
+                    {
+                        "left_referent_id": "r0",
+                        "right_referent_id": "r1",
+                        "status": "accepted",
+                        "evidence_text": text,
+                        "confidence": 0.94,
+                    }
+                ]
+                temporals = [{"id": "t0", "value": "T001", "value_type": "sequence_marker", "evidence_text": "T001"}]
+                box_evidence = text
+            elif "AG-1 marker T001 state blue" in prompt:
+                referents = [{"id": "r0", "label": "AG-1", "kind": "identifier", "evidence_text": "AG-1"}]
+                conditions = [
+                    {
+                        "id": "c0",
+                        "predicate": "state",
+                        "box_id": "b0",
+                        "polarity": "positive",
+                        "modality": "asserted",
+                        "temporal_id": "t0",
+                        "arguments": [
+                            {
+                                "role": "subject",
+                                "target_kind": "referent",
+                                "target_id": "r0",
+                                "value": "",
+                                "value_type": "identifier",
+                                "evidence_text": "AG-1",
+                            },
+                            {
+                                "role": "state",
+                                "target_kind": "literal",
+                                "target_id": "",
+                                "value": "blue",
+                                "value_type": "state",
+                                "evidence_text": "blue",
+                            },
+                        ],
+                        "evidence_text": "AG-1 marker T001 state blue",
+                    }
+                ]
+                identities = []
+                temporals = [{"id": "t0", "value": "T001", "value_type": "sequence_marker", "evidence_text": "T001"}]
+                box_evidence = "AG-1 marker T001 state blue"
+            elif "Aero Gate" in prompt:
+                referents = [{"id": "r0", "label": "Aero Gate", "kind": "artifact", "evidence_text": "Aero Gate"}]
+                conditions = []
+                identities = []
+                temporals = []
+                box_evidence = "Aero Gate"
+            else:
+                referents = []
+                conditions = []
+                identities = []
+                temporals = []
+                box_evidence = ""
+            return {
+                "drs": {
+                    "schema_version": "chunk-drs-v2",
+                    "source_id": "note.txt",
+                    "referents": referents,
+                    "boxes": [
+                        {
+                            "id": "b0",
+                            "kind": "asserted",
+                            "parent_id": "",
+                            "holder_referent_id": "",
+                            "evidence_text": box_evidence,
+                        }
+                    ],
+                    "conditions": conditions,
+                    "identity_hypotheses": identities,
+                    "temporal_records": temporals,
+                },
+                "_model_raw": "{}",
+                "_model_elapsed_seconds": 0.01,
+            }
+
+    monkeypatch.setenv("KMD_CHUNK_DRS_CACHE_DIR", str(tmp_path / ".drs-cache"))
+    store = DSPGStore()
+    monkeypatch.setenv("KMD_SCAN_UNIT_MAX_CHARS", "0")
+    store, first_run_id, _, first_sentences = ingest_folder(
+        tmp_path,
+        store=store,
+        semantic_client=RechunkIdentityModel(),  # type: ignore[arg-type]
+        use_semantic_frames=False,
+        use_drs_semantics=True,
+    )
+    assert len(first_sentences) == 1
+    first_span_id = stable_id("span", first_sentences[0].sentence_id, "sentence")
+    first_chunk_id = stable_id("chunk", first_sentences[0].sentence_id)
+    assert store.execute(
+        "SELECT COUNT(*) FROM identity_hypotheses WHERE source_span_id=?",
+        (first_span_id,),
+    ).fetchone()[0] >= 1
+
+    monkeypatch.setenv("KMD_SCAN_UNIT_MAX_CHARS", "64")
+    store, second_run_id, second_documents, second_sentences = ingest_folder(
+        tmp_path,
+        store=store,
+        semantic_client=RechunkIdentityModel(),  # type: ignore[arg-type]
+        use_semantic_frames=False,
+        use_drs_semantics=True,
+    )
+    assert first_run_id == second_run_id
+    assert len(second_sentences) > 1
+    current_chunk_ids = {stable_id("chunk", sentence.sentence_id) for sentence in second_sentences}
+    assert first_chunk_id not in current_chunk_ids
+
+    sentences_by_document: dict[str, dict[int, object]] = {}
+    for sentence in second_sentences:
+        sentences_by_document.setdefault(sentence.rel_path, {})[sentence.order] = sentence
+    frame = QueryFrame(
+        question_text="What is the latest state for Aero Gate?",
+        answer_type="state",
+        answer_variables=("state",),
+        target_anchors=("Aero Gate",),
+        requested_relation="state",
+        relation_terms=("state",),
+        constraints=(),
+        temporal_scope="latest",
+    )
+    selected_docs, selected_chunk_ids, _ranking = _rank_scope(
+        second_documents,
+        sentences_by_document,  # type: ignore[arg-type]
+        frame.question_text,
+        frame,
+        40,
+        160,
+    )
+    records = _load_records(
+        store,
+        second_run_id,
+        selected_docs,
+        selected_chunk_ids,
+        current_document_chunk_ids=list(current_chunk_ids),
+    )
+    assert first_chunk_id not in {row["chunk_id"] for row in records["chunks"]}
+    assert first_span_id not in {row["source_span_id"] for row in records["identity_hypotheses"]}
+
+    answer, diagnostics = execute_bounded_query(
+        store,
+        second_run_id,
+        second_documents,
+        sentences_by_document,  # type: ignore[arg-type]
+        frame.question_text,
+        frame,
+    )
+
+    assert answer is None
+    assert "ag-1" not in diagnostics["ranking"].get("identity_expanded_target_terms", [])
+
+
 def test_incremental_drs_ingest_skips_previous_failed_attempts(tmp_path: Path, monkeypatch) -> None:
     cache_dir = tmp_path.parent / f"{tmp_path.name}-failed-attempt-drs-cache"
     monkeypatch.setenv("KMD_CHUNK_DRS_CACHE_DIR", str(cache_dir))

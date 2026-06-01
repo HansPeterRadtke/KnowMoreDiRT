@@ -274,6 +274,22 @@ def _rank_scope(
     }
 
 
+def _current_chunk_ids_for_documents(
+    documents: list[Document],
+    sentences_by_document: dict[str, dict[int, Sentence]],
+    document_ids: list[str],
+) -> list[str]:
+    selected = set(document_ids)
+    chunk_ids: list[str] = []
+    for document in documents:
+        if document.document_id not in selected:
+            continue
+        for sentence in sentences_by_document.get(document.rel_path, {}).values():
+            if sentence.document_id == document.document_id:
+                chunk_ids.append(stable_id("chunk", sentence.sentence_id))
+    return list(dict.fromkeys(chunk_ids))
+
+
 def _fetch_by_ids(connection: Any, table: str, key: str, ids: list[str]) -> list[dict[str, Any]]:
     if not ids:
         return []
@@ -304,6 +320,7 @@ def _fetch_identity_hypotheses(
     run_id: str,
     span_ids: list[str],
     document_ids: list[str],
+    current_document_chunk_ids: list[str] | None = None,
 ) -> list[dict[str, Any]]:
     clauses = ["ih.source_span_id IS NULL"]
     params: list[Any] = [run_id]
@@ -311,7 +328,12 @@ def _fetch_identity_hypotheses(
         placeholders = ",".join("?" for _ in span_ids)
         clauses.append(f"ih.source_span_id IN ({placeholders})")
         params.extend(span_ids)
-    if document_ids:
+    if current_document_chunk_ids is not None:
+        if current_document_chunk_ids:
+            placeholders = ",".join("?" for _ in current_document_chunk_ids)
+            clauses.append(f"s.chunk_id IN ({placeholders})")
+            params.extend(current_document_chunk_ids)
+    elif document_ids:
         placeholders = ",".join("?" for _ in document_ids)
         clauses.append(f"s.document_id IN ({placeholders})")
         params.extend(document_ids)
@@ -330,14 +352,27 @@ def _fetch_identity_hypotheses(
     ]
 
 
-def _load_records(store: Any, run_id: str, document_ids: list[str], chunk_ids: list[str]) -> dict[str, Any]:
+def _load_records(
+    store: Any,
+    run_id: str,
+    document_ids: list[str],
+    chunk_ids: list[str],
+    *,
+    current_document_chunk_ids: list[str] | None = None,
+) -> dict[str, Any]:
     connection = store.connection
     documents = _fetch_by_ids(connection, "documents", "document_id", document_ids)
     chunks = _fetch_chunks(connection, chunk_ids)
     chunk_ids = [chunk["chunk_id"] for chunk in chunks]
     spans = _fetch_by_ids(connection, "source_spans", "chunk_id", chunk_ids)
     span_ids = [span["span_id"] for span in spans]
-    identity_hypotheses = _fetch_identity_hypotheses(connection, run_id, span_ids, document_ids)
+    identity_hypotheses = _fetch_identity_hypotheses(
+        connection,
+        run_id,
+        span_ids,
+        document_ids,
+        current_document_chunk_ids,
+    )
     identity_span_ids = list(
         dict.fromkeys(
             str(row.get("source_span_id") or "")
@@ -1866,7 +1901,14 @@ def execute_bounded_query(
     if answer_slot_terms:
         relation_terms = list(dict.fromkeys([*relation_terms, *answer_slot_terms]))
     selected_docs, selected_chunks, ranking = _rank_scope(documents, sentences_by_document, question, frame, doc_limit, chunk_limit)
-    records = _load_records(store, run_id, selected_docs, selected_chunks)
+    current_document_chunk_ids = _current_chunk_ids_for_documents(documents, sentences_by_document, selected_docs)
+    records = _load_records(
+        store,
+        run_id,
+        selected_docs,
+        selected_chunks,
+        current_document_chunk_ids=current_document_chunk_ids,
+    )
     identity_expanded_terms: list[str] = []
     identity_expansion_evidence: list[Evidence] = []
     identity_expansion_provenance: list[dict[str, Any]] = []
@@ -1916,7 +1958,14 @@ def execute_bounded_query(
             break
         selected_docs = next_docs
         selected_chunks = next_chunks
-        records = _load_records(store, run_id, selected_docs, selected_chunks)
+        current_document_chunk_ids = _current_chunk_ids_for_documents(documents, sentences_by_document, selected_docs)
+        records = _load_records(
+            store,
+            run_id,
+            selected_docs,
+            selected_chunks,
+            current_document_chunk_ids=current_document_chunk_ids,
+        )
     diagnostics = {"ranking": ranking, "execution": {"record_counts": records["record_counts"], "query_frame": frame.as_dict()}}
     if identity_expansion_provenance:
         diagnostics["execution"]["identity_expansion_evidence"] = identity_expansion_provenance
