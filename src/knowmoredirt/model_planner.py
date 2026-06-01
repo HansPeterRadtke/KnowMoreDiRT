@@ -2740,11 +2740,16 @@ def _context_limited_chunk_frame_text(
     return limited, budget
 
 
-def chunk_frame_cache_context(client: LocalModelClient | None, *, n_predict: int | None = None) -> dict[str, Any]:
+def chunk_frame_cache_context(
+    client: LocalModelClient | None,
+    *,
+    n_predict: int | None = None,
+    rel_path: str = "",
+) -> dict[str, Any]:
     constraint = _constraint_settings(FRAME_EXTRACTION_GRAMMAR, FRAME_JSON_SCHEMA, CHUNK_FRAME_SCHEMA_VERSION)
     if n_predict is None:
         n_predict = default_chunk_frame_n_predict(client)
-    return {
+    context = {
         "prompt_version": PROMPT_VERSION,
         "schema_version": CHUNK_FRAME_SCHEMA_VERSION,
         "context_budget_policy": CHUNK_FRAME_CONTEXT_BUDGET_POLICY,
@@ -2752,6 +2757,9 @@ def chunk_frame_cache_context(client: LocalModelClient | None, *, n_predict: int
         "n_predict": int(n_predict),
         "model_fingerprint": _client_fingerprint(client),
     }
+    if rel_path:
+        context["source_rel_path"] = rel_path
+    return context
 
 
 def call_model_chunk_frames(

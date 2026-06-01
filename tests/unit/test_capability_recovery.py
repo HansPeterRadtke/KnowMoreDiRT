@@ -375,6 +375,27 @@ def test_local_model_ingest_builds_grounded_generic_frames(tmp_path: Path, monke
     assert engine.model_query_trace.chunk_frame_accepted_count >= 1
 
 
+def test_frame_cache_context_separates_identical_text_by_source_path(tmp_path: Path, monkeypatch) -> None:
+    fake = FakeFrameModel()
+    corpus = tmp_path / "corpus"
+    (corpus / "alpha").mkdir(parents=True)
+    (corpus / "beta").mkdir()
+    text = "Marble Gate is guarded by Sena Rill.\n"
+    (corpus / "alpha" / "frame.raw").write_text(text, encoding="utf-8")
+    (corpus / "beta" / "frame.raw").write_text(text, encoding="utf-8")
+    monkeypatch.setenv("KMD_USE_LOCAL_MODEL", "1")
+    monkeypatch.setenv("KMD_LLM_INGEST", "1")
+    monkeypatch.setenv("KMD_FRAME_CACHE_DIR", str(tmp_path / ".frame-cache"))
+    monkeypatch.setattr("knowmoredirt.engine.LocalModelClient", lambda: fake)
+
+    KnowMoreDiRTEngine(corpus)
+
+    extraction_prompts = [prompt for prompt in fake.prompts if "Extract generic DRT/DSPG discourse frames" in prompt]
+    assert len(extraction_prompts) == 2
+    assert any('"source": "alpha/frame.raw"' in prompt for prompt in extraction_prompts)
+    assert any('"source": "beta/frame.raw"' in prompt for prompt in extraction_prompts)
+
+
 def test_local_model_ingest_logs_chunk_progress(tmp_path: Path, monkeypatch, capsys) -> None:
     fake = FakeFrameModel()
     (tmp_path / "frame.raw").write_text("Marble Gate is guarded by Sena Rill.\n", encoding="utf-8")

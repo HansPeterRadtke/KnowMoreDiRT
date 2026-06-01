@@ -881,7 +881,7 @@ class KnowMoreDiRTEngine:
             return [], {"source": "disabled"}
         if is_low_semantic_noise(sentence.text):
             return [], {"source": "skipped_noise"}
-        cache_context = chunk_frame_cache_context(self._model_client)
+        cache_context = chunk_frame_cache_context(self._model_client, rel_path=sentence.rel_path)
         cached = self._semantic_cache.get(sentence.text, context=cache_context) if self._semantic_cache else None
         if cached is not None:
             frames = [frame for frame in cached.get("frames", []) if isinstance(frame, dict)]
@@ -922,7 +922,7 @@ class KnowMoreDiRTEngine:
         span_id = self._sentence_span_id(sentence)
         if self._model_client is None:
             return 0
-        frame_cache_context = chunk_frame_cache_context(self._model_client)
+        frame_cache_context = chunk_frame_cache_context(self._model_client, rel_path=sentence.rel_path)
         frame_cache_key = stable_id(
             "frame_attempt_context",
             json.dumps(frame_cache_context, sort_keys=True, default=str),
