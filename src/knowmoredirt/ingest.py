@@ -1114,6 +1114,13 @@ def ingest_folder(
                     f"elapsed={time.monotonic() - ingest_started:.1f}s"
                 )
                 continue
+            replaced = {}
+            if existing_drs:
+                replaced = store.delete_drs_materialization_for_span(
+                    run_id,
+                    span_id,
+                    source="local_model_drs",
+                )
             if previous_attempt is not None and not _env_true("KMD_DRS_RETRY_FAILED_ATTEMPTS"):
                 _log_progress(
                     "kmd-ingest drs_done "
@@ -1122,6 +1129,7 @@ def ingest_folder(
                     f"accepted={bool(previous_attempt['accepted'])} "
                     f"materialized={bool(previous_attempt['materialized'])} "
                     "reason=previous_attempt "
+                    f"replaced_prior_rows={sum(replaced.values()) if replaced else 0} "
                     "model_elapsed=0.0 "
                     f"elapsed={time.monotonic() - ingest_started:.1f}s"
                 )
@@ -1167,6 +1175,7 @@ def ingest_folder(
                             "cache_context": drs_cache_context,
                             "context_budget": drs_result.get("context_budget"),
                             "materialized": materialized,
+                            "replaced_prior_rows": replaced,
                         },
                         sort_keys=True,
                         default=str,

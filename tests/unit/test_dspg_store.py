@@ -3260,8 +3260,246 @@ def test_incremental_drs_ingest_reprocesses_when_model_fingerprint_changes(
         row["predicate"]
         for row in store.execute("SELECT predicate FROM drs_conditions WHERE source='local_model_drs'").fetchall()
     }
-    assert predicates == {"ready_v1", "ready_v2"}
+    assert predicates == {"ready_v2"}
     assert store.counts()["model_attempts"] == 2
+
+
+def test_incremental_drs_reprocess_replaces_stale_scattered_semantics(
+    tmp_path: Path,
+    monkeypatch,
+) -> None:
+    (tmp_path / "begin").mkdir()
+    (tmp_path / "middle").mkdir()
+    (tmp_path / "end").mkdir()
+    (tmp_path / "begin" / "registry.txt").write_text(
+        "Registry introduces Helio Marker as the monitored artifact.",
+        encoding="utf-8",
+    )
+    (tmp_path / "middle" / "state.txt").write_text(
+        "State bulletin for HM-7 lists state green and archive state red.",
+        encoding="utf-8",
+    )
+    (tmp_path / "end" / "crosswalk.txt").write_text(
+        "Crosswalk states HM-7 is the same artifact as Helio Marker.",
+        encoding="utf-8",
+    )
+
+    class VersionedScatteredDrsModel:
+        def __init__(self) -> None:
+            self.calls = 0
+            self.version = "v1"
+
+        def context_size(self) -> int:
+            return 4096
+
+        def cache_fingerprint(self) -> dict[str, object]:
+            return {"model_id": f"fake-scattered-reprocess-{self.version}", "context_size": 4096}
+
+        def complete_json(self, prompt: str, *, n_predict: int = 128, grammar=None, json_schema=None):
+            self.calls += 1
+            if "Registry introduces Helio Marker" in prompt:
+                text = "Registry introduces Helio Marker as the monitored artifact."
+                referents = [
+                    {"id": "r0", "label": "Helio Marker", "kind": "artifact", "evidence_text": "Helio Marker"},
+                ]
+                conditions = [
+                    {
+                        "id": "c0",
+                        "predicate": "introduces",
+                        "box_id": "b0",
+                        "polarity": "positive",
+                        "modality": "asserted",
+                        "temporal_id": "",
+                        "arguments": [
+                            {
+                                "role": "object",
+                                "target_kind": "referent",
+                                "target_id": "r0",
+                                "value": "",
+                                "value_type": "artifact",
+                                "evidence_text": "Helio Marker",
+                            }
+                        ],
+                        "evidence_text": text,
+                    }
+                ]
+                identities = []
+            elif "State bulletin" in prompt:
+                text = "State bulletin for HM-7 lists state green and archive state red."
+                state = "red" if self.version == "v1" else "green"
+                referents = [
+                    {"id": "r0", "label": "HM-7", "kind": "identifier", "evidence_text": "HM-7"},
+                ]
+                conditions = [
+                    {
+                        "id": "c0",
+                        "predicate": "state",
+                        "box_id": "b0",
+                        "polarity": "positive",
+                        "modality": "asserted",
+                        "temporal_id": "",
+                        "arguments": [
+                            {
+                                "role": "subject",
+                                "target_kind": "referent",
+                                "target_id": "r0",
+                                "value": "",
+                                "value_type": "identifier",
+                                "evidence_text": "HM-7",
+                            },
+                            {
+                                "role": "state",
+                                "target_kind": "literal",
+                                "target_id": "",
+                                "value": state,
+                                "value_type": "state",
+                                "evidence_text": state,
+                            },
+                        ],
+                        "evidence_text": text,
+                    }
+                ]
+                identities = []
+            else:
+                text = "Crosswalk states HM-7 is the same artifact as Helio Marker."
+                referents = [
+                    {"id": "r0", "label": "HM-7", "kind": "identifier", "evidence_text": "HM-7"},
+                    {"id": "r1", "label": "Helio Marker", "kind": "artifact", "evidence_text": "Helio Marker"},
+                ]
+                conditions = [
+                    {
+                        "id": "c0",
+                        "predicate": "same_artifact",
+                        "box_id": "b0",
+                        "polarity": "positive",
+                        "modality": "asserted",
+                        "temporal_id": "",
+                        "arguments": [
+                            {
+                                "role": "left",
+                                "target_kind": "referent",
+                                "target_id": "r0",
+                                "value": "",
+                                "value_type": "identifier",
+                                "evidence_text": "HM-7",
+                            },
+                            {
+                                "role": "right",
+                                "target_kind": "referent",
+                                "target_id": "r1",
+                                "value": "",
+                                "value_type": "artifact",
+                                "evidence_text": "Helio Marker",
+                            },
+                        ],
+                        "evidence_text": "HM-7 is the same artifact as Helio Marker",
+                    }
+                ]
+                identities = [
+                    {
+                        "left_referent_id": "r0",
+                        "right_referent_id": "r1",
+                        "status": "accepted",
+                        "evidence_text": "HM-7 is the same artifact as Helio Marker",
+                        "confidence": 0.94,
+                    }
+                ]
+            return {
+                "drs": {
+                    "schema_version": "chunk-drs-v2",
+                    "source_id": "versioned-scattered",
+                    "referents": referents,
+                    "boxes": [
+                        {"id": "b0", "kind": "asserted", "parent_id": "", "holder_referent_id": "", "evidence_text": text}
+                    ],
+                    "conditions": conditions,
+                    "identity_hypotheses": identities,
+                    "temporal_records": [],
+                },
+                "_model_raw": "{}",
+                "_model_elapsed_seconds": 0.01,
+            }
+
+    cache_dir = tmp_path.parent / f"{tmp_path.name}-versioned-scattered-drs-cache"
+    monkeypatch.setenv("KMD_CHUNK_DRS_CACHE_DIR", str(cache_dir))
+    store = DSPGStore()
+    model = VersionedScatteredDrsModel()
+
+    store, run_id, documents, sentences = ingest_folder(
+        tmp_path,
+        store=store,
+        semantic_client=model,
+        use_semantic_frames=False,
+        use_drs_semantics=True,
+    )
+    sentences_by_document: dict[str, dict[int, object]] = {}
+    for sentence in sentences:
+        sentences_by_document.setdefault(sentence.rel_path, {})[sentence.order] = sentence
+    frame = QueryFrame(
+        question_text="What state is recorded for Helio Marker?",
+        answer_type="state",
+        answer_variables=("state",),
+        target_anchors=("Helio Marker",),
+        requested_relation="state",
+        relation_terms=("state",),
+        constraints=(),
+    )
+    first_answer, _first_diagnostics = execute_bounded_query(
+        store,
+        run_id,
+        documents,
+        sentences_by_document,  # type: ignore[arg-type]
+        frame.question_text,
+        frame,
+    )
+
+    model.version = "v2"
+    store, second_run_id, second_documents, second_sentences = ingest_folder(
+        tmp_path,
+        store=store,
+        semantic_client=model,
+        use_semantic_frames=False,
+        use_drs_semantics=True,
+    )
+    second_sentences_by_document: dict[str, dict[int, object]] = {}
+    for sentence in second_sentences:
+        second_sentences_by_document.setdefault(sentence.rel_path, {})[sentence.order] = sentence
+    second_answer, second_diagnostics = execute_bounded_query(
+        store,
+        second_run_id,
+        second_documents,
+        second_sentences_by_document,  # type: ignore[arg-type]
+        frame.question_text,
+        frame,
+    )
+
+    assert first_answer is not None
+    assert first_answer.text == "red"
+    assert second_answer is not None
+    assert second_answer.text == "green"
+    assert store.integrity_check() == "ok"
+    assert "answer_conflict_without_query_scope" not in second_diagnostics["execution"]
+    state_values = {
+        row["value"]
+        for row in store.execute(
+            """
+            SELECT a.value
+            FROM drs_condition_arguments a
+            JOIN drs_conditions c ON c.drs_condition_id=a.drs_condition_id
+            JOIN source_spans s ON s.span_id=c.source_span_id
+            JOIN chunks ch ON ch.chunk_id=s.chunk_id
+            JOIN documents d ON d.document_id=ch.document_id
+            WHERE c.source='local_model_drs'
+              AND c.predicate='state'
+              AND d.rel_path='middle/state.txt'
+              AND a.role='state'
+            """
+        ).fetchall()
+    }
+    assert state_values == {"green"}
+    assert "end/crosswalk.txt" in {
+        item["rel_path"] for item in second_diagnostics["execution"]["identity_expansion_evidence"]
+    }
 
 
 def test_incremental_ingest_uses_chunk_boundary_ids_when_scan_policy_changes(

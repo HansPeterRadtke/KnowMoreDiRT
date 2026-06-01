@@ -520,6 +520,159 @@ class DSPGStore:
         )
         return referent_id
 
+    def delete_drs_materialization_for_span(
+        self,
+        run_id: str,
+        source_span_id: str,
+        *,
+        source: str = "local_model_drs",
+    ) -> dict[str, int]:
+        """Remove one model DRS materialization without touching raw source rows.
+
+        Re-ingesting a source chunk with a different model/cache fingerprint must
+        not leave the old DRS live beside the new one.  The deletion is scoped to
+        the exact run, source span, and DRS source, so deterministic relations,
+        mentions, chunks, source spans, and unrelated model attempts remain
+        intact.
+        """
+
+        def id_rows(sql: str, params: tuple[Any, ...]) -> list[str]:
+            return [str(row[0]) for row in self.connection.execute(sql, params).fetchall() if str(row[0] or "")]
+
+        frame_ids = id_rows(
+            """
+            SELECT frame_id
+            FROM frames
+            WHERE run_id=? AND span_id=? AND source=?
+            """,
+            (run_id, source_span_id, source),
+        )
+        condition_ids = id_rows(
+            """
+            SELECT drs_condition_id
+            FROM drs_conditions
+            WHERE run_id=? AND source_span_id=? AND source=?
+            """,
+            (run_id, source_span_id, source),
+        )
+        context_ids = id_rows(
+            """
+            SELECT context_id
+            FROM drs_boxes
+            WHERE run_id=? AND source_span_id=? AND source=?
+            """,
+            (run_id, source_span_id, source),
+        )
+        referent_ids = id_rows(
+            """
+            SELECT DISTINCT referent_id
+            FROM drs_referents
+            WHERE run_id=? AND source_span_id=? AND source=?
+            """,
+            (run_id, source_span_id, source),
+        )
+        relation_ids = [
+            stable_id("rel", run_id, condition_id, "drs_condition")
+            for condition_id in condition_ids
+        ]
+
+        deleted: dict[str, int] = {}
+
+        def delete_where(table: str, where: str, params: tuple[Any, ...]) -> None:
+            cursor = self.connection.execute(f"DELETE FROM {table} WHERE {where}", params)
+            deleted[table] = deleted.get(table, 0) + max(0, int(cursor.rowcount if cursor.rowcount is not None else 0))
+
+        def delete_by_ids(table: str, key: str, ids: list[str]) -> None:
+            unique_ids = list(dict.fromkeys(item for item in ids if item))
+            for index in range(0, len(unique_ids), 400):
+                group = unique_ids[index:index + 400]
+                placeholders = ",".join("?" for _ in group)
+                delete_where(table, f"{key} IN ({placeholders})", tuple(group))
+
+        def delete_orphan_referents(ids: list[str]) -> None:
+            unique_ids = list(dict.fromkeys(item for item in ids if item))
+            for index in range(0, len(unique_ids), 400):
+                group = unique_ids[index:index + 400]
+                placeholders = ",".join("?" for _ in group)
+                delete_where(
+                    "referents",
+                    f"""
+                    referent_id IN ({placeholders})
+                    AND NOT EXISTS (
+                      SELECT 1 FROM drs_referents dr
+                      WHERE dr.referent_id=referents.referent_id
+                    )
+                    AND NOT EXISTS (
+                      SELECT 1 FROM frame_arguments fa
+                      WHERE fa.referent_id=referents.referent_id
+                    )
+                    AND NOT EXISTS (
+                      SELECT 1 FROM mention_referents mr
+                      WHERE mr.referent_id=referents.referent_id
+                    )
+                    AND NOT EXISTS (
+                      SELECT 1 FROM identity_hypotheses ih
+                      WHERE ih.left_referent_id=referents.referent_id
+                         OR ih.right_referent_id=referents.referent_id
+                    )
+                    AND NOT EXISTS (
+                      SELECT 1 FROM drs_identity_hypotheses dih
+                      WHERE dih.left_referent_id=referents.referent_id
+                         OR dih.right_referent_id=referents.referent_id
+                    )
+                    AND NOT EXISTS (
+                      SELECT 1 FROM temporal_edges te
+                      WHERE te.referent_id=referents.referent_id
+                    )
+                    """,
+                    tuple(group),
+                )
+
+        delete_by_ids("frame_arguments", "frame_id", frame_ids)
+        delete_by_ids("drs_condition_arguments", "drs_condition_id", condition_ids)
+        delete_by_ids("relations", "relation_id", relation_ids)
+        if context_ids:
+            placeholders = ",".join("?" for _ in context_ids)
+            delete_where(
+                "temporal_edges",
+                f"run_id=? AND source_span_id=? AND context_id IN ({placeholders})",
+                (run_id, source_span_id, *context_ids),
+            )
+        delete_where(
+            "identity_hypotheses",
+            "run_id=? AND source_span_id=? AND source=?",
+            (run_id, source_span_id, source),
+        )
+        delete_where(
+            "drs_identity_hypotheses",
+            "run_id=? AND source_span_id=? AND source=?",
+            (run_id, source_span_id, source),
+        )
+        delete_where(
+            "drs_conditions",
+            "run_id=? AND source_span_id=? AND source=?",
+            (run_id, source_span_id, source),
+        )
+        delete_where(
+            "frames",
+            "run_id=? AND span_id=? AND source=?",
+            (run_id, source_span_id, source),
+        )
+        delete_where(
+            "drs_referents",
+            "run_id=? AND source_span_id=? AND source=?",
+            (run_id, source_span_id, source),
+        )
+        delete_where(
+            "drs_boxes",
+            "run_id=? AND source_span_id=? AND source=?",
+            (run_id, source_span_id, source),
+        )
+        delete_by_ids("contexts", "context_id", context_ids)
+        delete_orphan_referents(referent_ids)
+        self.connection.commit()
+        return {table: count for table, count in deleted.items() if count}
+
     def referent_candidate_chunks(self, run_id: str, anchors: list[str], limit: int = 12) -> list[sqlite3.Row]:
         scores: dict[tuple[str, int], float] = {}
         rows_by_key: dict[tuple[str, int], sqlite3.Row] = {}
