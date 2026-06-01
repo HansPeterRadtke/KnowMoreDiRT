@@ -2503,7 +2503,12 @@ def _call_model_query_evidence_answer_repair(
     )
     cache_path = _cache_path("KMD_QUERY_EVIDENCE_REPAIR_CACHE_DIR", prompt_hash)
     cached = _read_cache(cache_path)
-    if cached is not None and cached.get("reason") not in {"invalid_json", "schema_validation_failed", "grounding_validation_failed"}:
+    if cached is not None and cached.get("reason") not in {
+        "invalid_json",
+        "schema_validation_failed",
+        "grounding_validation_failed",
+        "request_failed",
+    }:
         return cached
     start = time.time()
     try:
@@ -2523,7 +2528,6 @@ def _call_model_query_evidence_answer_repair(
             "grammar_hash": grammar_hash,
             "elapsed": round(time.time() - start, 3),
         }
-        _write_cache(cache_path, payload)
         return payload
     raw = str(parsed.get("_model_raw") or "") if isinstance(parsed, dict) else ""
     result = parsed.get("result") if isinstance(parsed, dict) else None
@@ -2622,7 +2626,8 @@ def call_model_query_evidence_answer(
             "repair_failure_reason": repaired.get("reason"),
             "repair_prompt_hash": repaired.get("prompt_hash"),
         }
-        _write_cache(cache_path, payload)
+        if repaired.get("reason") != "request_failed":
+            _write_cache(cache_path, payload)
         return payload
     missing_required = not {"query_frame", "sufficient_evidence", "answer_type", "answer", "evidence_span", "reason"}.issubset(result)
     payload = _query_evidence_payload_from_result(

@@ -306,6 +306,68 @@ def test_query_evidence_invalid_json_after_failed_repair_is_bounded(monkeypatch,
     assert model.calls == 2
 
 
+def test_query_evidence_repair_request_failure_does_not_poison_cache(monkeypatch, tmp_path) -> None:
+    class RepairFailsThenSucceedsModel:
+        def __init__(self) -> None:
+            self.primary_calls = 0
+            self.repair_calls = 0
+
+        def context_size(self) -> int:
+            return 4096
+
+        def cache_fingerprint(self) -> dict[str, Any]:
+            return {"model_id": "fake-query-evidence-repair-retry", "context_size": 4096}
+
+        def complete_json(self, prompt: str, *, n_predict: int = 128, grammar=None, json_schema=None):
+            if "Repair the previous local-model output" in prompt:
+                self.repair_calls += 1
+                if self.repair_calls == 1:
+                    raise RuntimeError("temporary repair failure")
+                return {
+                    "result": {
+                        "query_frame": {
+                            "target_anchors": ["Aero Gate"],
+                            "answer_variables": ["state"],
+                            "requested_relation": "state",
+                            "relation_terms": ["state"],
+                            "constraints": [],
+                            "scope_requirements": [],
+                            "modality_requirements": [],
+                            "answer_type": "state",
+                            "temporal_scope": "",
+                            "negated": False,
+                            "aggregation": "",
+                            "requires_evidence": True,
+                        },
+                        "sufficient_evidence": False,
+                        "answer_type": "state",
+                        "answer": "unknown",
+                        "evidence_span": "",
+                        "reason": "insufficient evidence",
+                    },
+                    "_model_raw": "{}",
+                    "_model_elapsed_seconds": 0.01,
+                }
+            self.primary_calls += 1
+            assert "bounded DRT/DSPG question analysis" in prompt
+            return {"unexpected": True, "_model_raw": '{"unexpected":true}'}
+
+    monkeypatch.setenv("KMD_QUERY_EVIDENCE_CACHE_DIR", str(tmp_path / "query-evidence-cache"))
+    monkeypatch.setenv("KMD_QUERY_EVIDENCE_REPAIR_CACHE_DIR", str(tmp_path / "query-evidence-repair-cache"))
+    model = RepairFailsThenSucceedsModel()
+    evidence = [{"rel_path": "note.txt", "text": "Aero Gate is ready."}]
+
+    first = call_model_query_evidence_answer("What is the state of Aero Gate?", evidence, model)  # type: ignore[arg-type]
+    second = call_model_query_evidence_answer("What is the state of Aero Gate?", evidence, model)  # type: ignore[arg-type]
+
+    assert first["accepted"] is False
+    assert first["repair_failure_reason"] == "request_failed"
+    assert second["accepted"] is True
+    assert second["fresh_or_cached"] == "fresh_repair"
+    assert model.primary_calls == 2
+    assert model.repair_calls == 2
+
+
 def test_query_frame_schema_constrains_temporal_scope_operator(monkeypatch, tmp_path) -> None:
     class QueryFrameModel:
         def __init__(self) -> None:
