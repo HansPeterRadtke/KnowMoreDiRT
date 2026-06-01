@@ -7047,6 +7047,14 @@ def test_unlinked_scattered_sources_return_unknown_with_source_provenance(
     scattered = diagnostics["execution"]["scattered_source_provenance_without_binding"]
     assert {"begin/registry.txt", "ending/similarity.txt"}.issubset(set(scattered["target_rel_paths"]))
     assert {"middle/state.txt", "reports/reported.txt"}.issubset(set(scattered["relation_rel_paths"]))
+    assert {"begin/registry.txt", "ending/similarity.txt"}.issubset(
+        {item["rel_path"] for item in scattered["target_sources"]}
+    )
+    assert {"middle/state.txt", "reports/reported.txt"}.issubset(
+        {item["rel_path"] for item in scattered["relation_sources"]}
+    )
+    assert all(item.get("chunk_id") and item.get("span_id") for item in scattered["target_sources"])
+    assert all(item.get("chunk_id") and item.get("span_id") for item in scattered["relation_sources"])
     provenance = diagnostics["execution"]["source_provenance_sample"]
     provenance_paths = {item["rel_path"] for item in provenance}
     assert {"begin/registry.txt", "middle/state.txt", "reports/reported.txt", "ending/similarity.txt"}.issubset(
@@ -7113,6 +7121,12 @@ def test_no_answer_provenance_balances_scattered_target_and_relation_sources(
     scattered = diagnostics["execution"]["scattered_source_provenance_without_binding"]
     assert scattered["target_rel_paths"] == ["begin/registry.txt", "ending/similarity.txt"]
     assert scattered["relation_rel_paths"] == ["middle/state.txt"]
+    assert {"begin/registry.txt", "ending/similarity.txt"}.issubset(
+        {item["rel_path"] for item in scattered["target_sources"]}
+    )
+    assert {item["rel_path"] for item in scattered["relation_sources"]} == {"middle/state.txt"}
+    assert all(item.get("document", {}).get("document_id") == item.get("document_id") for item in scattered["target_sources"])
+    assert all(item.get("document", {}).get("document_id") == item.get("document_id") for item in scattered["relation_sources"])
     assert all(item.get("chunk_id") and item.get("span_id") for item in provenance)
     assert all(item.get("document", {}).get("document_id") == item.get("document_id") for item in provenance)
 

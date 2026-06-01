@@ -1096,6 +1096,8 @@ def _scattered_source_provenance_without_binding(
         for relation_payload in relation_payloads
     ):
         return None
+    target_sources = _dedupe_provenance_payloads(target_payloads, limit=6)
+    relation_sources = _dedupe_provenance_payloads(relation_payloads, limit=6)
     return {
         "target_rel_paths": sorted(
             {str(payload.get("rel_path") or "") for payload in target_payloads if str(payload.get("rel_path") or "")}
@@ -1103,6 +1105,8 @@ def _scattered_source_provenance_without_binding(
         "relation_rel_paths": sorted(
             {str(payload.get("rel_path") or "") for payload in relation_payloads if str(payload.get("rel_path") or "")}
         )[:6],
+        "target_sources": target_sources,
+        "relation_sources": relation_sources,
     }
 
 
