@@ -11,7 +11,6 @@ from __future__ import annotations
 import json
 import os
 import re
-import urllib.request
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Any
@@ -157,10 +156,13 @@ class KnowMoreDiRTEngine:
             or endpoint.startswith("http://[::1]:")
         ):
             return False
-        models_url = endpoint + "/models" if endpoint.endswith("/v1") else endpoint + "/v1/models"
         try:
-            with urllib.request.urlopen(models_url, timeout=float(os.environ.get("KMD_MODEL_PROBE_TIMEOUT", "1.5"))) as response:
-                return response.status == 200
+            probe_timeout = float(os.environ.get("KMD_MODEL_PROBE_TIMEOUT", "1.5"))
+        except ValueError:
+            probe_timeout = 1.5
+        try:
+            models = LocalModelClient(endpoint=endpoint, timeout_seconds=probe_timeout).models()
+            return isinstance(models, dict)
         except Exception:
             return False
 

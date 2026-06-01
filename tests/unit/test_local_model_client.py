@@ -5,6 +5,7 @@ from typing import Any
 
 import pytest
 
+from knowmoredirt.engine import KnowMoreDiRTEngine
 from knowmoredirt.model import LocalModelClient, LocalModelJSONError
 from knowmoredirt import model_planner
 from knowmoredirt.model_planner import (
@@ -123,6 +124,27 @@ def test_local_model_client_discovers_runtime_metadata(monkeypatch) -> None:
         "api": "chat",
         "stream": False,
     }
+
+
+def test_engine_auto_probe_uses_client_endpoint_normalization(monkeypatch) -> None:
+    calls: list[str] = []
+
+    def fake_urlopen(request, timeout: float = 0) -> FakeHTTPResponse:
+        url = str(getattr(request, "full_url", request))
+        calls.append(url)
+        if url == "http://127.0.0.1:14829/v1/models":
+            return FakeHTTPResponse({"data": [{"id": "test-model", "meta": {"n_ctx_train": 4096}}]})
+        raise AssertionError(f"unexpected URL {url}")
+
+    monkeypatch.setattr("urllib.request.urlopen", fake_urlopen)
+    monkeypatch.delenv("KMD_USE_LOCAL_MODEL", raising=False)
+    monkeypatch.setenv("KMD_AUTO_LOCAL_MODEL", "1")
+    monkeypatch.setenv("KMD_LOCAL_MODEL_ENDPOINT", "http://127.0.0.1:14829/completion")
+
+    engine = KnowMoreDiRTEngine.__new__(KnowMoreDiRTEngine)
+
+    assert engine._should_use_local_model() is True
+    assert calls == ["http://127.0.0.1:14829/v1/models"]
 
 
 def test_local_model_client_uses_completion_stream_and_json_schema(monkeypatch) -> None:
