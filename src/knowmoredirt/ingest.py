@@ -43,12 +43,12 @@ def _attempt_materialized(row: Any | None) -> bool:
     return row is not None and bool(row["accepted"]) and bool(row["materialized"])
 
 
-def _attempt_was_request_failure(row: Any | None) -> bool:
+def _attempt_was_nonrequest_failure(row: Any | None) -> bool:
     return (
         row is not None
-        and str(row["reason"] or "") == "request_failed"
         and not bool(row["accepted"])
         and not bool(row["materialized"])
+        and str(row["reason"] or "") != "request_failed"
     )
 
 
@@ -383,9 +383,17 @@ def _ingest_model_drs_for_sentence(
             span_id,
             source="local_model_drs",
         )
+        inactive_attempts = store.deactivate_other_model_attempt_materializations(
+            run_id,
+            span_id,
+            "chunk_drs",
+            "local_model_drs",
+            drs_cache_key,
+        )
+        if inactive_attempts:
+            replaced["model_attempts"] = inactive_attempts
     if (
-        previous_attempt is not None
-        and not _attempt_was_request_failure(previous_attempt)
+        _attempt_was_nonrequest_failure(previous_attempt)
         and not _env_true("KMD_DRS_RETRY_FAILED_ATTEMPTS")
     ):
         _log_progress(
@@ -977,9 +985,17 @@ def ingest_folder(
                     span_id,
                     source="local_model",
                 )
+                inactive_attempts = store.deactivate_other_model_attempt_materializations(
+                    run_id,
+                    span_id,
+                    "chunk_frames",
+                    "local_model",
+                    frame_cache_key,
+                )
+                if inactive_attempts:
+                    replaced_frames["model_attempts"] = inactive_attempts
             if (
-                previous_attempt is not None
-                and not _attempt_was_request_failure(previous_attempt)
+                _attempt_was_nonrequest_failure(previous_attempt)
                 and not _env_true("KMD_FRAME_RETRY_FAILED_ATTEMPTS")
             ):
                 _log_progress(

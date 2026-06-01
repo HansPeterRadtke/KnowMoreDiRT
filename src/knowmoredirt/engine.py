@@ -58,7 +58,7 @@ def _env_true(name: str) -> bool:
     return os.environ.get(name, "").strip().lower() in PROGRESS_TRUE_VALUES
 
 
-def _attempt_was_request_failure(row: Any | None) -> bool:
+def _attempt_was_nonrequest_failure(row: Any | None) -> bool:
     if row is None:
         return False
     try:
@@ -67,7 +67,7 @@ def _attempt_was_request_failure(row: Any | None) -> bool:
         materialized = bool(row["materialized"])
     except Exception:
         return False
-    return reason == "request_failed" and not accepted and not materialized
+    return not accepted and not materialized and reason != "request_failed"
 
 
 @dataclass
@@ -954,9 +954,17 @@ class KnowMoreDiRTEngine:
                 span_id,
                 source="local_model",
             )
+            inactive_attempts = self.store.deactivate_other_model_attempt_materializations(
+                self.run_id,
+                span_id,
+                "chunk_frames",
+                "local_model",
+                frame_cache_key,
+            )
+            if inactive_attempts:
+                replaced_frames["model_attempts"] = inactive_attempts
         if (
-            previous_attempt is not None
-            and not _attempt_was_request_failure(previous_attempt)
+            _attempt_was_nonrequest_failure(previous_attempt)
             and not _env_true("KMD_FRAME_RETRY_FAILED_ATTEMPTS")
         ):
             self._log_progress(

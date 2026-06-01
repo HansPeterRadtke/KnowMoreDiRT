@@ -475,6 +475,29 @@ class DSPGStore:
     def commit(self) -> None:
         self.connection.commit()
 
+    def deactivate_other_model_attempt_materializations(
+        self,
+        run_id: str,
+        source_span_id: str,
+        task: str,
+        source: str,
+        active_cache_key: str,
+    ) -> int:
+        cursor = self.connection.execute(
+            """
+            UPDATE model_attempts
+            SET materialized=0
+            WHERE run_id=?
+              AND source_span_id=?
+              AND task=?
+              AND source=?
+              AND cache_key<>?
+              AND materialized<>0
+            """,
+            (run_id, source_span_id, task, source, active_cache_key),
+        )
+        return max(0, int(cursor.rowcount if cursor.rowcount is not None else 0))
+
     def counts(self) -> dict[str, int]:
         tables = [
             "documents",

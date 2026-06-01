@@ -4147,6 +4147,37 @@ def test_incremental_drs_reprocess_replaces_stale_scattered_semantics(
     assert "end/crosswalk.txt" in {
         item["rel_path"] for item in second_diagnostics["execution"]["identity_expansion_evidence"]
     }
+    assert store.execute(
+        "SELECT COUNT(*) FROM model_attempts WHERE task='chunk_drs' AND materialized=1"
+    ).fetchone()[0] == 3
+
+    model.version = "v1"
+    store, third_run_id, third_documents, third_sentences = ingest_folder(
+        tmp_path,
+        store=store,
+        semantic_client=model,
+        use_semantic_frames=False,
+        use_drs_semantics=True,
+    )
+    third_sentences_by_document: dict[str, dict[int, object]] = {}
+    for sentence in third_sentences:
+        third_sentences_by_document.setdefault(sentence.rel_path, {})[sentence.order] = sentence
+    third_answer, third_diagnostics = execute_bounded_query(
+        store,
+        third_run_id,
+        third_documents,
+        third_sentences_by_document,  # type: ignore[arg-type]
+        frame.question_text,
+        frame,
+    )
+
+    assert third_answer is not None
+    assert third_answer.text == "red"
+    assert "answer_conflict_without_query_scope" not in third_diagnostics["execution"]
+    assert store.integrity_check() == "ok"
+    assert store.execute(
+        "SELECT COUNT(*) FROM model_attempts WHERE task='chunk_drs' AND materialized=1"
+    ).fetchone()[0] == 3
 
 
 def test_incremental_ingest_uses_chunk_boundary_ids_when_scan_policy_changes(
@@ -4908,6 +4939,30 @@ def test_incremental_frame_ingest_reprocesses_when_model_fingerprint_changes(tmp
     assert relation_predicates == {"ready_v2"}
     assert store.integrity_check() == "ok"
     assert store.counts()["model_attempts"] == 2
+    assert store.execute(
+        "SELECT COUNT(*) FROM model_attempts WHERE task='chunk_frames' AND materialized=1"
+    ).fetchone()[0] == 1
+
+    model.version = "v1"
+    store, fourth_run_id, _, _ = ingest_folder(
+        tmp_path,
+        store=store,
+        semantic_client=model,
+        use_semantic_frames=True,
+        use_drs_semantics=False,
+    )
+
+    assert fourth_run_id == first_run_id
+    assert model.calls == 3
+    predicates = {
+        row["predicate"]
+        for row in store.execute("SELECT predicate FROM frames WHERE source='local_model'").fetchall()
+    }
+    assert predicates == {"ready_v1"}
+    assert store.counts()["model_attempts"] == 2
+    assert store.execute(
+        "SELECT COUNT(*) FROM model_attempts WHERE task='chunk_frames' AND materialized=1"
+    ).fetchone()[0] == 1
 
 
 def test_incremental_frame_ingest_skips_previous_failed_attempts(tmp_path: Path) -> None:

@@ -609,6 +609,21 @@ def test_lazy_frame_materialization_replaces_stale_cache_context_rows(tmp_path: 
     ).fetchall()
     attempt_metadata = [json.loads(row["metadata_json"]) for row in attempt_rows]
     assert any(metadata.get("replaced_prior_rows", {}).get("frames") == 1 for metadata in attempt_metadata)
+    assert engine.store.execute(
+        "SELECT COUNT(*) FROM model_attempts WHERE task='chunk_frames' AND materialized=1"
+    ).fetchone()[0] == 1
+
+    engine._model_client = first_model
+    assert engine._materialize_sentence_semantics(sentence) == 1
+    predicates = [
+        row["predicate"]
+        for row in engine.store.execute("SELECT predicate FROM frames WHERE source='local_model' ORDER BY predicate")
+    ]
+    assert predicates == ["ready_v1"]
+    assert first_model.calls == 2
+    assert engine.store.execute(
+        "SELECT COUNT(*) FROM model_attempts WHERE task='chunk_frames' AND materialized=1"
+    ).fetchone()[0] == 1
 
 
 def test_local_model_frame_arguments_bind_answer_variables_generically(tmp_path: Path, monkeypatch) -> None:
