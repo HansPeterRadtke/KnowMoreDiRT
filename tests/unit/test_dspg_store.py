@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import json
 import os
 import time
 from pathlib import Path
@@ -4823,6 +4824,84 @@ def test_incremental_drs_ingest_skips_previous_failed_attempts(tmp_path: Path, m
     assert attempt["accepted"] == 0
     assert attempt["materialized"] == 0
     assert attempt["reason"] == "grounding_validation_failed"
+
+
+def test_incremental_drs_ingest_retries_failed_attempt_when_output_budget_changes(
+    tmp_path: Path,
+    monkeypatch,
+) -> None:
+    cache_dir = tmp_path.parent / f"{tmp_path.name}-failed-budget-drs-cache"
+    monkeypatch.setenv("KMD_CHUNK_DRS_CACHE_DIR", str(cache_dir))
+    monkeypatch.setenv("KMD_CHUNK_DRS_STAGED_FALLBACK", "0")
+    (tmp_path / "note.txt").write_text("Aero Gate is ready.\n", encoding="utf-8")
+
+    class BudgetSensitiveFailingDrsModel:
+        def __init__(self) -> None:
+            self.calls = 0
+            self.n_predicts: list[int] = []
+
+        def context_size(self) -> int:
+            return 32768
+
+        def cache_fingerprint(self) -> dict[str, object]:
+            return {"model_id": "fake-failing-budget-drs", "context_size": 32768}
+
+        def complete_json(self, prompt: str, *, n_predict: int = 128, grammar=None, json_schema=None):
+            self.calls += 1
+            self.n_predicts.append(int(n_predict))
+            return {
+                "drs": {
+                    "schema_version": "chunk-drs-v2",
+                    "source_id": "note.txt",
+                    "referents": [
+                        {"id": "r0", "label": "Aero Gate", "kind": "entity", "evidence_text": "Aero Gate"},
+                    ],
+                    "boxes": [
+                        {
+                            "id": "b0",
+                            "kind": "asserted",
+                            "parent_id": "",
+                            "holder_referent_id": "",
+                            "evidence_text": "not in source",
+                        },
+                    ],
+                    "conditions": [],
+                    "identity_hypotheses": [],
+                    "temporal_records": [],
+                },
+                "_model_raw": "{}",
+                "_model_elapsed_seconds": 0.01,
+            }
+
+    model = BudgetSensitiveFailingDrsModel()
+    store = DSPGStore()
+
+    monkeypatch.setenv("KMD_CHUNK_DRS_N_PREDICT", "544")
+    store, first_run_id, _, _ = ingest_folder(
+        tmp_path,
+        store=store,
+        semantic_client=model,
+        use_semantic_frames=False,
+        use_drs_semantics=True,
+    )
+    monkeypatch.setenv("KMD_CHUNK_DRS_N_PREDICT", "768")
+    store, second_run_id, _, _ = ingest_folder(
+        tmp_path,
+        store=store,
+        semantic_client=model,
+        use_semantic_frames=False,
+        use_drs_semantics=True,
+    )
+
+    assert first_run_id == second_run_id
+    assert model.calls == 2
+    assert model.n_predicts == [544, 768]
+    rows = store.execute(
+        "SELECT cache_key, metadata_json FROM model_attempts WHERE task='chunk_drs' ORDER BY cache_key"
+    ).fetchall()
+    assert len(rows) == 2
+    contexts = [json.loads(row["metadata_json"])["cache_context"] for row in rows]
+    assert {context["n_predict"] for context in contexts} == {544, 768}
 
 
 def test_incremental_drs_ingest_retries_previous_request_failures(tmp_path: Path, monkeypatch) -> None:
