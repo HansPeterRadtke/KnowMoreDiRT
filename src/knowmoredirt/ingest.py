@@ -43,6 +43,15 @@ def _attempt_materialized(row: Any | None) -> bool:
     return row is not None and bool(row["accepted"]) and bool(row["materialized"])
 
 
+def _attempt_was_request_failure(row: Any | None) -> bool:
+    return (
+        row is not None
+        and str(row["reason"] or "") == "request_failed"
+        and not bool(row["accepted"])
+        and not bool(row["materialized"])
+    )
+
+
 def _timestamp_value(value: float) -> str:
     try:
         return time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime(float(value)))
@@ -371,7 +380,11 @@ def _ingest_model_drs_for_sentence(
             span_id,
             source="local_model_drs",
         )
-    if previous_attempt is not None and not _env_true("KMD_DRS_RETRY_FAILED_ATTEMPTS"):
+    if (
+        previous_attempt is not None
+        and not _attempt_was_request_failure(previous_attempt)
+        and not _env_true("KMD_DRS_RETRY_FAILED_ATTEMPTS")
+    ):
         _log_progress(
             "kmd-ingest drs_done "
             f"chunk={semantic_index}/{semantic_total} "
@@ -961,7 +974,11 @@ def ingest_folder(
                     span_id,
                     source="local_model",
                 )
-            if previous_attempt is not None and not _env_true("KMD_FRAME_RETRY_FAILED_ATTEMPTS"):
+            if (
+                previous_attempt is not None
+                and not _attempt_was_request_failure(previous_attempt)
+                and not _env_true("KMD_FRAME_RETRY_FAILED_ATTEMPTS")
+            ):
                 _log_progress(
                     "kmd-ingest llm_done "
                     f"chunk={semantic_index}/{semantic_total} "

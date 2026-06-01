@@ -4562,6 +4562,97 @@ def test_incremental_drs_ingest_skips_previous_failed_attempts(tmp_path: Path, m
     assert attempt["reason"] == "grounding_validation_failed"
 
 
+def test_incremental_drs_ingest_retries_previous_request_failures(tmp_path: Path, monkeypatch) -> None:
+    cache_dir = tmp_path.parent / f"{tmp_path.name}-request-failed-drs-cache"
+    monkeypatch.setenv("KMD_CHUNK_DRS_CACHE_DIR", str(cache_dir))
+    (tmp_path / "note.txt").write_text("Aero Gate is ready.\n", encoding="utf-8")
+
+    class TransientDrsModel:
+        def __init__(self) -> None:
+            self.calls = 0
+
+        def context_size(self) -> int:
+            return 4096
+
+        def cache_fingerprint(self) -> dict[str, object]:
+            return {"model_id": "fake-transient-incremental-drs", "context_size": 4096}
+
+        def complete_json(self, prompt: str, *, n_predict: int = 128, grammar=None, json_schema=None):
+            self.calls += 1
+            if self.calls == 1:
+                raise RuntimeError("temporary DRS request failure")
+            return {
+                "drs": {
+                    "schema_version": "chunk-drs-v2",
+                    "source_id": "note.txt",
+                    "referents": [
+                        {"id": "r0", "label": "Aero Gate", "kind": "artifact", "evidence_text": "Aero Gate"},
+                    ],
+                    "boxes": [
+                        {
+                            "id": "b0",
+                            "kind": "asserted",
+                            "parent_id": "",
+                            "holder_referent_id": "",
+                            "evidence_text": "Aero Gate is ready.",
+                        },
+                    ],
+                    "conditions": [
+                        {
+                            "id": "c0",
+                            "predicate": "ready",
+                            "box_id": "b0",
+                            "polarity": "positive",
+                            "modality": "asserted",
+                            "temporal_id": "",
+                            "arguments": [
+                                {
+                                    "role": "subject",
+                                    "target_kind": "referent",
+                                    "target_id": "r0",
+                                    "value": "",
+                                    "value_type": "artifact",
+                                    "evidence_text": "Aero Gate",
+                                }
+                            ],
+                            "evidence_text": "Aero Gate is ready",
+                        }
+                    ],
+                    "identity_hypotheses": [],
+                    "temporal_records": [],
+                },
+                "_model_raw": "{}",
+                "_model_elapsed_seconds": 0.01,
+            }
+
+    model = TransientDrsModel()
+    store = DSPGStore()
+
+    store, first_run_id, _, _ = ingest_folder(
+        tmp_path,
+        store=store,
+        semantic_client=model,
+        use_semantic_frames=False,
+        use_drs_semantics=True,
+    )
+    store, second_run_id, _, _ = ingest_folder(
+        tmp_path,
+        store=store,
+        semantic_client=model,
+        use_semantic_frames=False,
+        use_drs_semantics=True,
+    )
+
+    assert first_run_id == second_run_id
+    assert model.calls == 2
+    assert store.execute("SELECT COUNT(*) FROM drs_boxes WHERE source='local_model_drs'").fetchone()[0] == 1
+    attempt = store.execute(
+        "SELECT accepted, materialized, reason FROM model_attempts WHERE task='chunk_drs'"
+    ).fetchone()
+    assert attempt["accepted"] == 1
+    assert attempt["materialized"] == 1
+
+
 def test_incremental_frame_ingest_reuses_existing_materialized_chunks(tmp_path: Path) -> None:
     (tmp_path / "note.txt").write_text("Aero Gate is ready.\n", encoding="utf-8")
 
@@ -4886,6 +4977,73 @@ def test_incremental_frame_ingest_skips_previous_failed_attempts(tmp_path: Path)
     assert attempt["accepted"] == 0
     assert attempt["materialized"] == 0
     assert attempt["reason"] == "grounding_validation_failed"
+
+
+def test_incremental_frame_ingest_retries_previous_request_failures(tmp_path: Path) -> None:
+    (tmp_path / "note.txt").write_text("Aero Gate is ready.\n", encoding="utf-8")
+
+    class TransientFrameModel:
+        def __init__(self) -> None:
+            self.calls = 0
+
+        def context_size(self) -> int:
+            return 4096
+
+        def cache_fingerprint(self) -> dict[str, object]:
+            return {"model_id": "fake-transient-incremental-frames", "context_size": 4096}
+
+        def complete_json(self, prompt: str, *, n_predict: int = 128, grammar=None, json_schema=None):
+            self.calls += 1
+            if self.calls == 1:
+                raise RuntimeError("temporary frame request failure")
+            assert "Aero Gate is ready" in prompt
+            return {
+                "frames": [
+                    {
+                        "frame_type": "state",
+                        "predicate": "ready",
+                        "arguments": [
+                            {"role": "entity", "text": "Aero Gate", "value_type": "artifact"},
+                        ],
+                        "identity_hypotheses": [],
+                        "polarity": "positive",
+                        "modality": "asserted",
+                        "context_holder": "",
+                        "temporal_text": "",
+                        "evidence_text": "Aero Gate is ready.",
+                        "confidence": 0.9,
+                    }
+                ],
+                "_model_raw": "{}",
+                "_model_elapsed_seconds": 0.01,
+            }
+
+    model = TransientFrameModel()
+    store = DSPGStore()
+
+    store, first_run_id, _, _ = ingest_folder(
+        tmp_path,
+        store=store,
+        semantic_client=model,
+        use_semantic_frames=True,
+        use_drs_semantics=False,
+    )
+    store, second_run_id, _, _ = ingest_folder(
+        tmp_path,
+        store=store,
+        semantic_client=model,
+        use_semantic_frames=True,
+        use_drs_semantics=False,
+    )
+
+    assert first_run_id == second_run_id
+    assert model.calls == 2
+    assert store.execute("SELECT COUNT(*) FROM frames WHERE source='local_model'").fetchone()[0] == 1
+    attempt = store.execute(
+        "SELECT accepted, materialized, reason FROM model_attempts WHERE task='chunk_frames'"
+    ).fetchone()
+    assert attempt["accepted"] == 1
+    assert attempt["materialized"] == 1
 
 
 def test_temporal_query_drs_uses_latest_temporal_edge(tmp_path: Path) -> None:
