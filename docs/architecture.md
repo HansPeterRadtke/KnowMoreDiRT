@@ -116,6 +116,8 @@ Chunk DRS staged extraction uses the same cache discipline for non-request JSON 
 
 During re-ingest, current document rows, metadata records, and filesystem-time context carriers are refreshed when the same content-stable document ID is encountered again. Bounded retrieval carries current sentence-derived chunk IDs instead of only `(document_id, chunk_order)` pairs, so a scan-policy change cannot load stale chunks that share an old order with the current file.
 
+When both chunk-frame and chunk-DRS ingestion are enabled, cached or previously materialized frame attempts skip only the frame call. They no longer skip the DRS ingest path for that sentence, so enabling DRS after an earlier frames-only run can materialize the missing DRS rows without repeating the frame call.
+
 ## Provenance
 
 DSPG objects are grounded in exact source spans. Answers at the public boundary are strings, but internal answer records keep evidence objects with relative source path, source text, and score. Future public diagnostic APIs can expose provenance without changing the simple `question(text) -> string` user contract.

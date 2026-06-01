@@ -4338,6 +4338,113 @@ def test_incremental_frame_ingest_reuses_existing_materialized_chunks(tmp_path: 
     assert store.execute("SELECT COUNT(*) FROM frames WHERE source='local_model'").fetchone()[0] == 1
 
 
+def test_drs_ingest_runs_after_frames_only_materialization_is_reused(
+    tmp_path: Path,
+    monkeypatch,
+) -> None:
+    (tmp_path / "note.txt").write_text("Aero Gate is ready.\n", encoding="utf-8")
+
+    class FrameAndDrsModel:
+        def __init__(self) -> None:
+            self.calls = 0
+
+        def context_size(self) -> int:
+            return 4096
+
+        def cache_fingerprint(self) -> dict[str, object]:
+            return {"model_id": "fake-frame-drs-incremental", "context_size": 4096}
+
+        def complete_json(self, prompt: str, *, n_predict: int = 128, grammar=None, json_schema=None):
+            self.calls += 1
+            text = "Aero Gate is ready."
+            return {
+                "frames": [
+                    {
+                        "frame_type": "state",
+                        "predicate": "ready",
+                        "arguments": [
+                            {"role": "entity", "text": "Aero Gate", "value_type": "entity"},
+                        ],
+                        "identity_hypotheses": [],
+                        "polarity": "positive",
+                        "modality": "asserted",
+                        "context_holder": "",
+                        "temporal_text": "",
+                        "evidence_text": text,
+                        "confidence": 0.9,
+                    }
+                ],
+                "drs": {
+                    "schema_version": "chunk-drs-v2",
+                    "source_id": "note.txt",
+                    "referents": [
+                        {"id": "r0", "label": "Aero Gate", "kind": "entity", "evidence_text": "Aero Gate"},
+                    ],
+                    "boxes": [
+                        {
+                            "id": "b0",
+                            "kind": "asserted",
+                            "parent_id": "",
+                            "holder_referent_id": "",
+                            "evidence_text": text,
+                        },
+                    ],
+                    "conditions": [
+                        {
+                            "id": "c0",
+                            "predicate": "ready",
+                            "box_id": "b0",
+                            "polarity": "positive",
+                            "modality": "asserted",
+                            "temporal_id": "",
+                            "arguments": [
+                                {
+                                    "role": "entity",
+                                    "target_kind": "referent",
+                                    "target_id": "r0",
+                                    "value": "",
+                                    "value_type": "entity",
+                                    "evidence_text": "Aero Gate",
+                                }
+                            ],
+                            "evidence_text": text,
+                        }
+                    ],
+                    "identity_hypotheses": [],
+                    "temporal_records": [],
+                },
+                "_model_raw": "{}",
+                "_model_elapsed_seconds": 0.01,
+            }
+
+    monkeypatch.setenv("KMD_CHUNK_DRS_CACHE_DIR", str(tmp_path / ".drs-cache"))
+    model = FrameAndDrsModel()
+    store = DSPGStore()
+
+    store, first_run_id, _, _ = ingest_folder(
+        tmp_path,
+        store=store,
+        semantic_client=model,
+        use_semantic_frames=True,
+        use_drs_semantics=False,
+    )
+    calls_after_frame_only = model.calls
+    store, second_run_id, _, _ = ingest_folder(
+        tmp_path,
+        store=store,
+        semantic_client=model,
+        use_semantic_frames=True,
+        use_drs_semantics=True,
+    )
+
+    assert first_run_id == second_run_id
+    assert calls_after_frame_only == 1
+    assert model.calls == calls_after_frame_only + 1
+    assert store.execute("SELECT COUNT(*) FROM frames WHERE source='local_model'").fetchone()[0] == 1
+    assert store.counts()["drs_conditions"] == 1
+    assert store.counts()["model_attempts"] == 2
+
+
 def test_incremental_frame_ingest_reprocesses_when_model_fingerprint_changes(tmp_path: Path) -> None:
     (tmp_path / "note.txt").write_text("Aero Gate is ready.\n", encoding="utf-8")
 

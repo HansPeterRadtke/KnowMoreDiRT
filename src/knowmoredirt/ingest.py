@@ -310,6 +310,141 @@ def _scan_unit_max_chars(semantic_client: Any | None) -> int:
     return int(os.environ.get("KMD_SCAN_UNIT_FALLBACK_MAX_CHARS", "4000"))
 
 
+def _ingest_model_drs_for_sentence(
+    store: DSPGStore,
+    run_id: str,
+    sentence: Sentence,
+    span_id: str,
+    semantic_client: Any,
+    semantic_index: int,
+    semantic_total: int,
+    ingest_started: float,
+) -> int:
+    semantic_index += 1
+    if text_quality_metrics(sentence.text).get("low_semantic_noise"):
+        _log_progress(
+            "kmd-ingest drs_done "
+            f"chunk={semantic_index}/{semantic_total} "
+            f"source={sentence.rel_path}:{sentence.order} "
+            "accepted=False "
+            "materialized=False "
+            "reason=skipped_noise "
+            "model_elapsed=0.0 "
+            f"elapsed={time.monotonic() - ingest_started:.1f}s"
+        )
+        return semantic_index
+    drs_cache_context = chunk_drs_cache_context(semantic_client)
+    drs_cache_key = stable_id("drs_attempt_context", json.dumps(drs_cache_context, sort_keys=True, default=str))
+    previous_attempt = store.execute(
+        """
+        SELECT accepted, materialized, reason
+        FROM model_attempts
+        WHERE run_id=? AND source_span_id=? AND task=? AND source=? AND cache_key=?
+        LIMIT 1
+        """,
+        (run_id, span_id, "chunk_drs", "local_model_drs", drs_cache_key),
+    ).fetchone()
+    existing_drs = store.execute(
+        """
+        SELECT COUNT(*)
+        FROM drs_boxes
+        WHERE run_id=? AND source_span_id=? AND source='local_model_drs'
+        """,
+        (run_id, span_id),
+    ).fetchone()[0]
+    if existing_drs and _attempt_materialized(previous_attempt):
+        _log_progress(
+            "kmd-ingest drs_done "
+            f"chunk={semantic_index}/{semantic_total} "
+            f"source={sentence.rel_path}:{sentence.order} "
+            "accepted=True "
+            "materialized=True "
+            "reason=already_materialized "
+            "model_elapsed=0.0 "
+            f"elapsed={time.monotonic() - ingest_started:.1f}s"
+        )
+        return semantic_index
+    replaced: dict[str, int] = {}
+    if existing_drs:
+        replaced = store.delete_drs_materialization_for_span(
+            run_id,
+            span_id,
+            source="local_model_drs",
+        )
+    if previous_attempt is not None and not _env_true("KMD_DRS_RETRY_FAILED_ATTEMPTS"):
+        _log_progress(
+            "kmd-ingest drs_done "
+            f"chunk={semantic_index}/{semantic_total} "
+            f"source={sentence.rel_path}:{sentence.order} "
+            f"accepted={bool(previous_attempt['accepted'])} "
+            f"materialized={bool(previous_attempt['materialized'])} "
+            "reason=previous_attempt "
+            f"replaced_prior_rows={sum(replaced.values()) if replaced else 0} "
+            "model_elapsed=0.0 "
+            f"elapsed={time.monotonic() - ingest_started:.1f}s"
+        )
+        return semantic_index
+    _log_progress(
+        "kmd-ingest drs_start "
+        f"chunk={semantic_index}/{semantic_total} "
+        f"source={sentence.rel_path}:{sentence.order} "
+        f"elapsed={time.monotonic() - ingest_started:.1f}s"
+    )
+    drs_result = call_model_chunk_drs(sentence.text, semantic_client, rel_path=sentence.rel_path)
+    materialized = {"accepted": False, "reason": "not_attempted", "inserted": {}}
+    if drs_result.get("accepted") and isinstance(drs_result.get("drs"), dict):
+        materialized = store.materialize_drs_payload(
+            run_id,
+            span_id,
+            sentence.text,
+            {"drs": drs_result["drs"]},
+            source="local_model_drs",
+        )
+    store.execute(
+        """
+        INSERT OR REPLACE INTO model_attempts(
+          attempt_id, run_id, source_span_id, task, source, cache_key, accepted, materialized,
+          reason, prompt_hash, output_hash, elapsed, metadata_json
+        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+        """,
+        (
+            stable_id("attempt", run_id, span_id, "chunk_drs", "local_model_drs", drs_cache_key),
+            run_id,
+            span_id,
+            "chunk_drs",
+            "local_model_drs",
+            drs_cache_key,
+            int(bool(drs_result.get("accepted"))),
+            int(bool(materialized.get("accepted"))),
+            str(drs_result.get("reason") or materialized.get("reason") or ""),
+            str(drs_result.get("prompt_hash") or ""),
+            str(drs_result.get("output_hash") or ""),
+            float(drs_result.get("elapsed") or 0.0),
+            json.dumps(
+                {
+                    "cache_context": drs_cache_context,
+                    "context_budget": drs_result.get("context_budget"),
+                    "materialized": materialized,
+                    "replaced_prior_rows": replaced,
+                },
+                sort_keys=True,
+                default=str,
+            ),
+        ),
+    )
+    _log_progress(
+        "kmd-ingest drs_done "
+        f"chunk={semantic_index}/{semantic_total} "
+        f"source={sentence.rel_path}:{sentence.order} "
+        f"accepted={bool(drs_result.get('accepted'))} "
+        f"materialized={bool(materialized.get('accepted'))} "
+        f"reason={str(drs_result.get('reason') or materialized.get('reason') or '')} "
+        f"model_elapsed={float(drs_result.get('elapsed') or 0.0):.1f}s "
+        f"elapsed={time.monotonic() - ingest_started:.1f}s"
+    )
+    return semantic_index
+
+
 def ingest_folder(
     folder_path: str | Path,
     store: DSPGStore | None = None,
@@ -807,6 +942,17 @@ def ingest_folder(
                     "model_elapsed=0.0 "
                     f"elapsed={time.monotonic() - ingest_started:.1f}s"
                 )
+                if use_drs_semantics and semantic_client is not None:
+                    semantic_index = _ingest_model_drs_for_sentence(
+                        store,
+                        run_id,
+                        sentence,
+                        span_id,
+                        semantic_client,
+                        semantic_index,
+                        semantic_total,
+                        ingest_started,
+                    )
                 continue
             replaced_frames = {}
             if existing_frames:
@@ -828,6 +974,17 @@ def ingest_folder(
                     "model_elapsed=0.0 "
                     f"elapsed={time.monotonic() - ingest_started:.1f}s"
                 )
+                if use_drs_semantics and semantic_client is not None:
+                    semantic_index = _ingest_model_drs_for_sentence(
+                        store,
+                        run_id,
+                        sentence,
+                        span_id,
+                        semantic_client,
+                        semantic_index,
+                        semantic_total,
+                        ingest_started,
+                    )
                 continue
             _log_progress(
                 "kmd-ingest llm_start "
@@ -1110,127 +1267,15 @@ def ingest_folder(
             )
 
         if use_drs_semantics and semantic_client is not None:
-            semantic_index += 1
-            if text_quality_metrics(sentence.text).get("low_semantic_noise"):
-                _log_progress(
-                    "kmd-ingest drs_done "
-                    f"chunk={semantic_index}/{semantic_total} "
-                    f"source={sentence.rel_path}:{sentence.order} "
-                    "accepted=False "
-                    "materialized=False "
-                    "reason=skipped_noise "
-                    "model_elapsed=0.0 "
-                    f"elapsed={time.monotonic() - ingest_started:.1f}s"
-                )
-                continue
-            drs_cache_context = chunk_drs_cache_context(semantic_client)
-            drs_cache_key = stable_id("drs_attempt_context", json.dumps(drs_cache_context, sort_keys=True, default=str))
-            previous_attempt = store.execute(
-                """
-                SELECT accepted, materialized, reason
-                FROM model_attempts
-                WHERE run_id=? AND source_span_id=? AND task=? AND source=? AND cache_key=?
-                LIMIT 1
-                """,
-                (run_id, span_id, "chunk_drs", "local_model_drs", drs_cache_key),
-            ).fetchone()
-            existing_drs = store.execute(
-                """
-                SELECT COUNT(*)
-                FROM drs_boxes
-                WHERE run_id=? AND source_span_id=? AND source='local_model_drs'
-                """,
-                (run_id, span_id),
-            ).fetchone()[0]
-            if existing_drs and _attempt_materialized(previous_attempt):
-                _log_progress(
-                    "kmd-ingest drs_done "
-                    f"chunk={semantic_index}/{semantic_total} "
-                    f"source={sentence.rel_path}:{sentence.order} "
-                    "accepted=True "
-                    "materialized=True "
-                    "reason=already_materialized "
-                    "model_elapsed=0.0 "
-                    f"elapsed={time.monotonic() - ingest_started:.1f}s"
-                )
-                continue
-            replaced = {}
-            if existing_drs:
-                replaced = store.delete_drs_materialization_for_span(
-                    run_id,
-                    span_id,
-                    source="local_model_drs",
-                )
-            if previous_attempt is not None and not _env_true("KMD_DRS_RETRY_FAILED_ATTEMPTS"):
-                _log_progress(
-                    "kmd-ingest drs_done "
-                    f"chunk={semantic_index}/{semantic_total} "
-                    f"source={sentence.rel_path}:{sentence.order} "
-                    f"accepted={bool(previous_attempt['accepted'])} "
-                    f"materialized={bool(previous_attempt['materialized'])} "
-                    "reason=previous_attempt "
-                    f"replaced_prior_rows={sum(replaced.values()) if replaced else 0} "
-                    "model_elapsed=0.0 "
-                    f"elapsed={time.monotonic() - ingest_started:.1f}s"
-                )
-                continue
-            _log_progress(
-                "kmd-ingest drs_start "
-                f"chunk={semantic_index}/{semantic_total} "
-                f"source={sentence.rel_path}:{sentence.order} "
-                f"elapsed={time.monotonic() - ingest_started:.1f}s"
-            )
-            drs_result = call_model_chunk_drs(sentence.text, semantic_client, rel_path=sentence.rel_path)
-            materialized = {"accepted": False, "reason": "not_attempted", "inserted": {}}
-            if drs_result.get("accepted") and isinstance(drs_result.get("drs"), dict):
-                materialized = store.materialize_drs_payload(
-                    run_id,
-                    span_id,
-                    sentence.text,
-                    {"drs": drs_result["drs"]},
-                    source="local_model_drs",
-                )
-            store.execute(
-                """
-                INSERT OR REPLACE INTO model_attempts(
-                  attempt_id, run_id, source_span_id, task, source, cache_key, accepted, materialized,
-                  reason, prompt_hash, output_hash, elapsed, metadata_json
-                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-                """,
-                (
-                    stable_id("attempt", run_id, span_id, "chunk_drs", "local_model_drs", drs_cache_key),
-                    run_id,
-                    span_id,
-                    "chunk_drs",
-                    "local_model_drs",
-                    drs_cache_key,
-                    int(bool(drs_result.get("accepted"))),
-                    int(bool(materialized.get("accepted"))),
-                    str(drs_result.get("reason") or materialized.get("reason") or ""),
-                    str(drs_result.get("prompt_hash") or ""),
-                    str(drs_result.get("output_hash") or ""),
-                    float(drs_result.get("elapsed") or 0.0),
-                    json.dumps(
-                        {
-                            "cache_context": drs_cache_context,
-                            "context_budget": drs_result.get("context_budget"),
-                            "materialized": materialized,
-                            "replaced_prior_rows": replaced,
-                        },
-                        sort_keys=True,
-                        default=str,
-                    ),
-                ),
-            )
-            _log_progress(
-                "kmd-ingest drs_done "
-                f"chunk={semantic_index}/{semantic_total} "
-                f"source={sentence.rel_path}:{sentence.order} "
-                f"accepted={bool(drs_result.get('accepted'))} "
-                f"materialized={bool(materialized.get('accepted'))} "
-                f"reason={str(drs_result.get('reason') or materialized.get('reason') or '')} "
-                f"model_elapsed={float(drs_result.get('elapsed') or 0.0):.1f}s "
-                f"elapsed={time.monotonic() - ingest_started:.1f}s"
+            semantic_index = _ingest_model_drs_for_sentence(
+                store,
+                run_id,
+                sentence,
+                span_id,
+                semantic_client,
+                semantic_index,
+                semantic_total,
+                ingest_started,
             )
 
     metrics = {
