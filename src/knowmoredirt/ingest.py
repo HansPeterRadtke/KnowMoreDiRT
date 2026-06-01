@@ -46,6 +46,15 @@ def _env_true(name: str) -> bool:
     return os.environ.get(name, "").strip().lower() in PROGRESS_TRUE_VALUES
 
 
+def _skip_model_semantics_for_quality(quality: dict[str, object]) -> bool:
+    return bool(quality.get("low_semantic_noise")) or str(quality.get("semantic_quality") or "") in {
+        "base64_or_hex_blob",
+        "multilingual_word_salad",
+        "plausible_babble",
+        "word_salad",
+    }
+
+
 def _attempt_materialized(row: Any | None) -> bool:
     return row is not None and bool(row["accepted"]) and bool(row["materialized"])
 
@@ -260,7 +269,7 @@ def _grounded_model_frames(
     if semantic_client is None:
         return [], {"source": "disabled"}
     quality = text_quality_metrics(sentence.text)
-    if quality.get("low_semantic_noise"):
+    if _skip_model_semantics_for_quality(quality):
         return [], {"source": "skipped_noise"}
     cache_context = chunk_frame_cache_context(semantic_client, rel_path=sentence.rel_path, chunk_text=sentence.text)
     cached = semantic_cache.get(sentence.text, context=cache_context) if semantic_cache else None
@@ -357,7 +366,7 @@ def _ingest_model_drs_for_sentence(
     ingest_started: float,
 ) -> int:
     semantic_index += 1
-    if text_quality_metrics(sentence.text).get("low_semantic_noise"):
+    if _skip_model_semantics_for_quality(text_quality_metrics(sentence.text)):
         _log_progress(
             "kmd-ingest drs_done "
             f"chunk={semantic_index}/{semantic_total} "
@@ -451,6 +460,13 @@ def _ingest_model_drs_for_sentence(
         n_predict=drs_n_predict,
     )
     _raise_model_request_failed(drs_result, "chunk DRS ingest")
+    actual_drs_cache_context = (
+        drs_result.get("cache_context") if isinstance(drs_result.get("cache_context"), dict) else drs_cache_context
+    )
+    actual_drs_cache_key = stable_id(
+        "drs_attempt_context",
+        json.dumps(actual_drs_cache_context, sort_keys=True, default=str),
+    )
     materialized = {"accepted": False, "reason": "not_attempted", "inserted": {}}
     if drs_result.get("accepted") and isinstance(drs_result.get("drs"), dict):
         materialized = store.materialize_drs_payload(
@@ -473,7 +489,7 @@ def _ingest_model_drs_for_sentence(
             span_id,
             "chunk_drs",
             "local_model_drs",
-            drs_cache_key,
+            actual_drs_cache_key,
             int(bool(drs_result.get("accepted"))),
             int(bool(materialized.get("accepted"))),
             str(drs_result.get("reason") or materialized.get("reason") or ""),
@@ -482,7 +498,7 @@ def _ingest_model_drs_for_sentence(
             float(drs_result.get("elapsed") or 0.0),
             json.dumps(
                 {
-                    "cache_context": drs_cache_context,
+                    "cache_context": actual_drs_cache_context,
                     "context_budget": drs_result.get("context_budget"),
                     "materialized": materialized,
                     "replaced_prior_rows": replaced,

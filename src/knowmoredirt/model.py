@@ -317,6 +317,8 @@ class LocalModelClient:
         return {
             "api": os.environ.get("KMD_LOCAL_MODEL_API", "chat").strip().lower() or "chat",
             "stream": os.environ.get("KMD_LOCAL_MODEL_STREAM", "1").strip().lower() not in {"0", "false", "no", "off"},
+            "cache_prompt": os.environ.get("KMD_LOCAL_MODEL_CACHE_PROMPT", "1").strip().lower()
+            not in {"0", "false", "no", "off"},
         }
 
     def cache_fingerprint(self) -> dict[str, Any]:
@@ -353,6 +355,12 @@ class LocalModelClient:
             if stream is not None
             else os.environ.get("KMD_LOCAL_MODEL_STREAM", "1").strip().lower() not in {"0", "false", "no", "off"}
         )
+        use_cache_prompt = os.environ.get("KMD_LOCAL_MODEL_CACHE_PROMPT", "1").strip().lower() not in {
+            "0",
+            "false",
+            "no",
+            "off",
+        }
         if endpoint.endswith("/chat/completions"):
             body = {
                 "messages": [
@@ -364,6 +372,7 @@ class LocalModelClient:
                 "top_p": settings["top_p"],
                 "seed": settings["seed"],
                 "stream": bool(use_stream),
+                "cache_prompt": bool(use_cache_prompt),
             }
         else:
             body = {
@@ -376,6 +385,7 @@ class LocalModelClient:
                 "repeat_penalty": settings["repeat_penalty"],
                 "seed": settings["seed"],
                 "stream": bool(use_stream),
+                "cache_prompt": bool(use_cache_prompt),
             }
         if grammar:
             body["grammar"] = grammar
@@ -435,5 +445,9 @@ class LocalModelClient:
         parsed["_model_context_size"] = self.context_size()
         parsed["_model_id"] = self.model_id()
         parsed["_model_request_settings"] = {**settings, "n_predict": int(n_predict)}
-        parsed["_model_transport_settings"] = {**self.transport_settings(), "stream": bool(use_stream)}
+        parsed["_model_transport_settings"] = {
+            **self.transport_settings(),
+            "stream": bool(use_stream),
+            "cache_prompt": bool(use_cache_prompt),
+        }
         return parsed

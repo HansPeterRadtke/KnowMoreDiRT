@@ -79,10 +79,12 @@ CHUNK_DRS_DYNAMIC_SKELETON_BUDGET_POLICY = "nested-field-like-source-spans-allow
 CHUNK_DRS_DYNAMIC_OUTPUT_BUDGET_POLICY = "source-aware-tiny-prose-544-short-768-1024-v2"
 CHUNK_DRS_DYNAMIC_CONDITION_BUDGET_POLICY = "compact-nontemporal-condition-stage-floor-528-v2"
 CHUNK_DRS_STAGED_FIRST_POLICY = "field-like-source-spans-before-monolithic-v1"
+CHUNK_DRS_COMPACT_FACT_POLICY = "compact-model-facts-to-root-drs-v1"
 QUERY_DRS_SCHEMA_VERSION = "query-drs-v3"
 QUERY_DRS_VALIDATION_POLICY = "strict-query-drs-version-question-evidence-box-dag-repair-operators-v10"
 QUERY_DRS_ARRAY_CAP_POLICY = "reserved_output_tokens_div_96_4_8-v1"
 QUERY_DRS_DYNAMIC_OUTPUT_BUDGET_POLICY = "surface-token-budget-short384-mid512-long-context-v1"
+QUERY_DRS_COMPACT_PLAN_POLICY = "compact-model-plan-to-query-drs-v1"
 QUERY_OPERATOR_SCHEMA_POLICY = "query-temporal-aggregation-operator-enums-v1"
 QUERY_FRAME_SCHEMA_VERSION = "query-frame-v6"
 ANSWER_SCHEMA_VERSION = "answer-v4"
@@ -203,6 +205,32 @@ def default_query_drs_n_predict(client: LocalModelClient | None = None, question
     if question and token_count <= 32 and anchor_count <= 6:
         return min(context_budget, 512)
     return context_budget
+
+
+def default_compact_query_drs_n_predict(question: str = "") -> int:
+    configured = os.environ.get("KMD_QUERY_DRS_COMPACT_N_PREDICT")
+    if configured:
+        try:
+            return max(1, int(configured))
+        except ValueError:
+            pass
+    token_count = len(content_tokens(question))
+    return 64 if token_count <= 20 else 96
+
+
+def default_compact_chunk_drs_n_predict(chunk_text: str = "") -> int:
+    configured = os.environ.get("KMD_CHUNK_DRS_COMPACT_N_PREDICT")
+    if configured:
+        try:
+            return max(1, int(configured))
+        except ValueError:
+            pass
+    token_count = len(content_tokens(chunk_text))
+    if token_count <= 20:
+        return 72
+    if token_count <= 60:
+        return 112
+    return 160
 
 
 ANSWER_TYPE_ALIASES = {
@@ -1704,6 +1732,204 @@ def build_query_drs_prompt(question: str) -> str:
     )
 
 
+def build_compact_query_drs_prompt(question: str) -> str:
+    return (
+        "JSON only. Plan this question as compact DRS query data; do not answer it. "
+        "Output exactly one object with keys a, answer, targets, predicates, constraints, temporal_scope, aggregation. "
+        "a is one broad answer type: person, actor, organization, identifier, url, file_path, count, state, "
+        "date_time, boolean, content_phrase, metadata_value, or unknown. answer is the visible question word or "
+        "answer slot phrase. targets are non-answer noun phrases the answer is about, excluding verbs. predicates "
+        "are verbs or relation words requested by the question. constraints are other visible qualifiers. "
+        "temporal_scope is '', 'latest', or 'earliest'. aggregation is '', 'count', 'list', or 'set'. "
+        "Use only words visible in the question and no outside knowledge. "
+        + json.dumps({"question": question}, ensure_ascii=False)
+    )
+
+
+def _grounded_question_text(question: str, value: Any) -> str:
+    text = str(value or "").strip()
+    if not text:
+        return ""
+    if text in question:
+        return text
+    index = question.lower().find(text.lower())
+    if index >= 0:
+        return question[index : index + len(text)]
+    return ""
+
+
+def _compact_query_drs_to_payload(question: str, compact: dict[str, Any]) -> dict[str, Any]:
+    answer_type = _normalize_answer_type(compact.get("a") or compact.get("answer_type"))
+    answer_label = str(compact.get("answer") or compact.get("answer_label") or answer_type or "answer").strip()
+    answer_evidence = _grounded_question_text(question, answer_label) or question
+    raw_targets = compact.get("targets")
+    raw_predicates = compact.get("predicates") or compact.get("p")
+    raw_constraints = compact.get("constraints")
+    targets = [
+        grounded
+        for value in (raw_targets if isinstance(raw_targets, list) else [])
+        if (grounded := _grounded_question_text(question, value))
+    ]
+    predicates = [
+        grounded
+        for value in (raw_predicates if isinstance(raw_predicates, list) else [])
+        if (grounded := _grounded_question_text(question, value))
+    ]
+    constraints = [
+        grounded
+        for value in (raw_constraints if isinstance(raw_constraints, list) else [])
+        if (grounded := _grounded_question_text(question, value))
+    ]
+    temporal_scope = str(compact.get("temporal_scope") or compact.get("time") or "").strip()
+    if temporal_scope not in {"", "latest", "earliest"}:
+        temporal_scope = ""
+    aggregation = str(compact.get("aggregation") or "").strip()
+    if aggregation not in {"", "count", "list", "set"}:
+        aggregation = ""
+    answer_variables = [
+        {
+            "id": "qv0",
+            "label": answer_label or "answer",
+            "answer_type": answer_type,
+            "evidence_text": answer_evidence,
+        }
+    ]
+    target_referents = [
+        {"id": f"qr{index}", "label": target, "kind": "unknown", "evidence_text": target}
+        for index, target in enumerate(dict.fromkeys(targets))
+    ]
+    requested_conditions: list[dict[str, Any]] = []
+    condition_predicates = list(dict.fromkeys(predicates))
+    if condition_predicates:
+        arguments = [
+            {
+                "role": "answer",
+                "target_kind": "answer_variable",
+                "target_id": "qv0",
+                "value": "",
+                "value_type": answer_type,
+                "evidence_text": answer_evidence,
+            }
+        ]
+        for referent in target_referents:
+            arguments.append(
+                {
+                    "role": "argument",
+                    "target_kind": "referent",
+                    "target_id": referent["id"],
+                    "value": "",
+                    "value_type": "unknown",
+                    "evidence_text": str(referent["evidence_text"]),
+                }
+            )
+        requested_conditions.append(
+            {
+                "id": "qc0",
+                "box_id": "",
+                "predicate": " ".join(condition_predicates),
+                "polarity": "positive",
+                "modality": "asserted",
+                "temporal_id": "",
+                "evidence_text": question,
+                "arguments": arguments,
+            }
+        )
+    return {
+        "query_drs": {
+            "schema_version": QUERY_DRS_SCHEMA_VERSION,
+            "question": question,
+            "answer_variables": answer_variables,
+            "target_referents": target_referents,
+            "temporal_records": [],
+            "requested_conditions": requested_conditions,
+            "constraints": constraints,
+            "box_requirements": [],
+            "temporal_scope": temporal_scope,
+            "aggregation": aggregation,
+            "answer_type": answer_type,
+            "requires_evidence": True,
+        }
+    }
+
+
+def call_model_query_drs_compact(question: str, client: LocalModelClient, *, n_predict: int | None = None) -> dict[str, Any]:
+    if n_predict is None:
+        n_predict = default_compact_query_drs_n_predict(question)
+    prompt = build_compact_query_drs_prompt(question)
+    cache_settings = {
+        "n_predict": n_predict,
+        "schema": QUERY_DRS_SCHEMA_VERSION,
+        "compact_plan_policy": QUERY_DRS_COMPACT_PLAN_POLICY,
+        "constraint_mode": "validated_json_no_schema",
+    }
+    cache_context = {**cache_settings, "model_fingerprint": _client_fingerprint(client)}
+    prompt_hash = _cache_hash("query_drs_compact", prompt, client, cache_settings)
+    cache_path = _cache_path("KMD_QUERY_DRS_CACHE_DIR", prompt_hash)
+    cached = _read_cache(cache_path)
+    if cached is not None and cached.get("reason") != "request_failed":
+        cached.setdefault("cache_context", cache_context)
+        return cached
+    start = time.time()
+    try:
+        parsed = client.complete_json(prompt, n_predict=n_predict)
+    except LocalModelJSONError as exc:
+        payload = {
+            "accepted": False,
+            "reason": "invalid_json",
+            "error": str(exc),
+            "raw_text": exc.raw_text,
+            "raw_snippet": exc.snippet,
+            "prompt_hash": prompt_hash,
+            "compact_plan_policy": QUERY_DRS_COMPACT_PLAN_POLICY,
+            "cache_context": cache_context,
+            "elapsed": round(time.time() - start, 3),
+        }
+        _write_cache(cache_path, payload)
+        return payload
+    except Exception as exc:
+        return {
+            "accepted": False,
+            "reason": "request_failed",
+            "error": str(exc),
+            "prompt_hash": prompt_hash,
+            "compact_plan_policy": QUERY_DRS_COMPACT_PLAN_POLICY,
+            "cache_context": cache_context,
+            "elapsed": round(time.time() - start, 3),
+        }
+    raw = str(parsed.get("_model_raw") or "") if isinstance(parsed, dict) else ""
+    payload_drs = _compact_query_drs_to_payload(question, parsed if isinstance(parsed, dict) else {})
+    payload_drs = _repair_query_drs_payload(payload_drs, question)
+    validation = _validate_query_drs_payload(payload_drs, question)
+    if not validation.get("schema_valid"):
+        payload = {
+            "accepted": False,
+            "reason": "schema_validation_failed",
+            "raw_text": raw,
+            "prompt_hash": prompt_hash,
+            "compact_plan_policy": QUERY_DRS_COMPACT_PLAN_POLICY,
+            "cache_context": cache_context,
+            "elapsed": parsed.get("_model_elapsed_seconds", round(time.time() - start, 3)),
+            "validation": validation,
+        }
+        _write_cache(cache_path, payload)
+        return payload
+    payload = {
+        "accepted": True,
+        "query_drs": payload_drs["query_drs"],
+        "raw_text": raw,
+        "elapsed": parsed.get("_model_elapsed_seconds", round(time.time() - start, 3)),
+        "prompt_hash": prompt_hash,
+        "compact_plan_policy": QUERY_DRS_COMPACT_PLAN_POLICY,
+        "cache_context": cache_context,
+        "validation": validation,
+        "output_hash": hashlib.sha256(raw.encode()).hexdigest(),
+        "fresh_or_cached": "fresh",
+        "compact": True,
+    }
+    _write_cache(cache_path, payload)
+    return payload
+
+
 def _repair_query_drs_payload(payload: Any, question: str) -> Any:
     if not isinstance(payload, dict) or not isinstance(payload.get("query_drs"), dict):
         return payload
@@ -2043,6 +2269,13 @@ def _validate_query_drs_payload(payload: Any, question: str) -> dict[str, Any]:
 
 
 def call_model_query_drs(question: str, client: LocalModelClient, *, n_predict: int | None = None) -> dict[str, Any]:
+    if (
+        _compact_live_model_path_allowed(client)
+        and os.environ.get("KMD_QUERY_DRS_COMPACT_FIRST", "1").strip().lower() not in {"0", "false", "no", "off"}
+    ):
+        compact = call_model_query_drs_compact(question, client)
+        if compact.get("accepted") or compact.get("reason") == "request_failed":
+            return compact
     if n_predict is None:
         n_predict = default_query_drs_n_predict(client, question)
     prompt = build_query_drs_prompt(question)
@@ -2998,6 +3231,274 @@ def call_model_chunk_frames(
 
 
 CHUNK_DRS_GRAMMAR = ""
+
+
+def build_compact_chunk_drs_prompt(chunk_text: str, *, rel_path: str = "") -> str:
+    return (
+        "JSON only. Extract compact source-grounded DRS facts from this raw text chunk. "
+        "Output exactly {\"facts\":[{\"p\":\"\",\"agent\":\"\",\"patient\":\"\",\"value\":\"\",\"e\":\"\"}]}. "
+        "p is the model-chosen predicate or relation word. agent, patient, and value are exact source strings when "
+        "the source supports those roles; leave a field empty when unsupported. e is one exact contiguous source "
+        "span containing the non-empty role values. Use only source-grounded asserted, reported, negated, or scoped "
+        "conditions from the chunk. Return {\"facts\":[]} when the chunk asserts no useful source-grounded DRS "
+        "condition. Do not answer questions and do not use outside knowledge. "
+        + json.dumps({"source_id": rel_path, "chunk": chunk_text}, ensure_ascii=False)
+    )
+
+
+def _compact_fact_items(parsed: dict[str, Any]) -> list[dict[str, Any]]:
+    facts = parsed.get("facts")
+    if not isinstance(facts, list):
+        return []
+    return [item for item in facts if isinstance(item, dict)]
+
+
+def _source_segment_for_values(source_text: str, values: list[str], fallback: str = "") -> str:
+    fallback = str(fallback or "").strip()
+    if fallback and fallback in source_text:
+        return fallback
+    required = [value for value in values if value and value in source_text]
+    if not required:
+        return ""
+    candidates = [part.strip() for part in re.split(r"(?<=[.!?])\s+|\n+", source_text) if part.strip()]
+    candidates.append(source_text.strip())
+    for candidate in candidates:
+        if all(value in candidate for value in required) and candidate in source_text:
+            return candidate
+    return ""
+
+
+def _compact_fact_arguments(fact: dict[str, Any], source_text: str) -> list[tuple[str, str]]:
+    values: list[tuple[str, str]] = []
+    role_values = fact.get("roles")
+    if isinstance(role_values, dict):
+        for role, value in role_values.items():
+            text = str(value or "").strip()
+            if text and text in source_text:
+                values.append((str(role or "argument").strip() or "argument", text))
+    raw_arguments = fact.get("arguments")
+    if isinstance(raw_arguments, list):
+        for item in raw_arguments:
+            if isinstance(item, str):
+                text = item.strip()
+                if text and text in source_text:
+                    values.append(("argument", text))
+            elif isinstance(item, dict):
+                for role, value in item.items():
+                    text = str(value or "").strip()
+                    if text and text in source_text:
+                        values.append((str(role or "argument").strip() or "argument", text))
+    for role in ["agent", "patient", "theme", "holder", "topic", "value", "state", "identifier", "location", "time"]:
+        text = str(fact.get(role) or "").strip()
+        if text and text in source_text:
+            values.append((role, text))
+    deduped: list[tuple[str, str]] = []
+    seen: set[tuple[str, str]] = set()
+    for role, value in values:
+        key = (role, value)
+        if key not in seen:
+            seen.add(key)
+            deduped.append(key)
+    return deduped
+
+
+def _compact_chunk_drs_to_payload(parsed: dict[str, Any], source_text: str, *, rel_path: str = "") -> dict[str, Any]:
+    referents: list[dict[str, Any]] = []
+    referent_ids_by_value: dict[str, str] = {}
+    conditions: list[dict[str, Any]] = []
+    evidence_spans: list[str] = []
+
+    def referent_id_for(value: str) -> str:
+        key = normalize(value)
+        existing = referent_ids_by_value.get(key)
+        if existing:
+            return existing
+        referent_id = f"r{len(referents)}"
+        referent_ids_by_value[key] = referent_id
+        referents.append(
+            {
+                "id": referent_id,
+                "label": value,
+                "kind": "unknown",
+                "evidence_text": value,
+            }
+        )
+        return referent_id
+
+    for fact in _compact_fact_items(parsed):
+        predicate = str(fact.get("p") or fact.get("predicate") or "").strip()
+        arguments = _compact_fact_arguments(fact, source_text)
+        evidence = _source_segment_for_values(
+            source_text,
+            [value for _role, value in arguments],
+            str(fact.get("e") or fact.get("evidence_text") or ""),
+        )
+        if not predicate or not evidence:
+            continue
+        condition_arguments = []
+        for role, value in arguments:
+            condition_arguments.append(
+                {
+                    "role": role,
+                    "target_kind": "referent",
+                    "target_id": referent_id_for(value),
+                    "value": "",
+                    "value_type": "unknown",
+                    "evidence_text": value,
+                }
+            )
+        condition_id = f"c{len(conditions)}"
+        conditions.append(
+            {
+                "id": condition_id,
+                "box_id": "b0",
+                "predicate": predicate,
+                "polarity": "positive",
+                "modality": "asserted",
+                "temporal_id": "",
+                "evidence_text": evidence,
+                "arguments": condition_arguments,
+            }
+        )
+        if evidence not in evidence_spans:
+            evidence_spans.append(evidence)
+    return {
+        "drs": {
+            "schema_version": CHUNK_DRS_SCHEMA_VERSION,
+            "source_id": rel_path,
+            "referents": referents,
+            "boxes": [
+                {
+                    "id": "b0",
+                    "kind": "asserted",
+                    "parent_id": "",
+                    "holder_referent_id": "",
+                    "evidence_text": "",
+                    "confidence": 0.72,
+                }
+            ],
+            "conditions": conditions,
+            "identity_hypotheses": [],
+            "temporal_records": [],
+            "evidence_spans": evidence_spans,
+        }
+    }
+
+
+def _compact_chunk_drs_enabled() -> bool:
+    return os.environ.get("KMD_CHUNK_DRS_COMPACT_FIRST", "1").strip().lower() not in {"0", "false", "no", "off"}
+
+
+def _compact_live_model_path_allowed(client: LocalModelClient) -> bool:
+    return isinstance(client, LocalModelClient) or os.environ.get(
+        "KMD_FORCE_COMPACT_MODEL_PATH",
+        "",
+    ).strip().lower() in {"1", "true", "yes", "on"}
+
+
+def _compact_chunk_drs_eligible(chunk_text: str) -> bool:
+    configured = os.environ.get("KMD_CHUNK_DRS_COMPACT_MAX_CHARS", "")
+    try:
+        max_chars = int(configured) if configured else 1200
+    except ValueError:
+        max_chars = 1200
+    return len(str(chunk_text or "")) <= max_chars
+
+
+def call_model_chunk_drs_compact(
+    chunk_text: str,
+    client: LocalModelClient,
+    *,
+    rel_path: str = "",
+    n_predict: int | None = None,
+) -> dict[str, Any]:
+    if n_predict is None:
+        n_predict = default_compact_chunk_drs_n_predict(chunk_text)
+    prompt = build_compact_chunk_drs_prompt(chunk_text, rel_path=rel_path)
+    cache_settings = {
+        "n_predict": n_predict,
+        "schema": CHUNK_DRS_SCHEMA_VERSION,
+        "compact_fact_policy": CHUNK_DRS_COMPACT_FACT_POLICY,
+        "constraint_mode": "validated_json_no_schema",
+        "source_text_hash": hashlib.sha256(str(chunk_text or "").encode("utf-8", errors="replace")).hexdigest(),
+    }
+    cache_context = {
+        **cache_settings,
+        "model_fingerprint": _client_fingerprint(client),
+        "source_rel_path": rel_path,
+    }
+    prompt_hash = _cache_hash("chunk_drs_compact", prompt, client, cache_settings)
+    cache_path = _cache_path("KMD_CHUNK_DRS_CACHE_DIR", prompt_hash)
+    cached = _read_cache(cache_path)
+    if cached is not None and cached.get("reason") != "request_failed":
+        cached.setdefault("cache_context", cache_context)
+        return cached
+    start = time.time()
+    try:
+        parsed = client.complete_json(prompt, n_predict=n_predict)
+    except LocalModelJSONError as exc:
+        payload = {
+            "accepted": False,
+            "reason": "invalid_json",
+            "error": str(exc),
+            "raw_text": exc.raw_text,
+            "raw_snippet": exc.snippet,
+            "prompt_hash": prompt_hash,
+            "compact_fact_policy": CHUNK_DRS_COMPACT_FACT_POLICY,
+            "cache_context": cache_context,
+            "elapsed": round(time.time() - start, 3),
+        }
+        _write_cache(cache_path, payload)
+        return payload
+    except Exception as exc:
+        return {
+            "accepted": False,
+            "reason": "request_failed",
+            "error": str(exc),
+            "prompt_hash": prompt_hash,
+            "compact_fact_policy": CHUNK_DRS_COMPACT_FACT_POLICY,
+            "cache_context": cache_context,
+            "elapsed": round(time.time() - start, 3),
+        }
+    raw = str(parsed.get("_model_raw") or "") if isinstance(parsed, dict) else ""
+    drs_payload = _compact_chunk_drs_to_payload(parsed if isinstance(parsed, dict) else {}, chunk_text, rel_path=rel_path)
+    drs_payload = _repair_chunk_drs_payload(drs_payload, chunk_text)
+    validation = _validate_chunk_drs_payload(drs_payload, chunk_text)
+    if not validation.get("schema_valid"):
+        payload = {
+            "accepted": False,
+            "reason": "schema_validation_failed",
+            "raw_text": raw,
+            "prompt_hash": prompt_hash,
+            "compact_fact_policy": CHUNK_DRS_COMPACT_FACT_POLICY,
+            "cache_context": cache_context,
+            "elapsed": parsed.get("_model_elapsed_seconds", round(time.time() - start, 3)),
+            "validation": validation,
+        }
+        _write_cache(cache_path, payload)
+        return payload
+    payload = {
+        "accepted": True,
+        "reason": "compact_drs",
+        "drs": drs_payload["drs"],
+        "raw_text": raw,
+        "elapsed": parsed.get("_model_elapsed_seconds", round(time.time() - start, 3)),
+        "prompt_hash": prompt_hash,
+        "compact_fact_policy": CHUNK_DRS_COMPACT_FACT_POLICY,
+        "cache_context": cache_context,
+        "validation": validation,
+        "context_budget": {
+            "compact": True,
+            "input_chars": len(chunk_text),
+            "reserved_output_tokens": n_predict,
+            "source_text_hash": cache_settings["source_text_hash"],
+        },
+        "output_hash": hashlib.sha256(raw.encode()).hexdigest(),
+        "fresh_or_cached": "fresh",
+        "compact": True,
+    }
+    _write_cache(cache_path, payload)
+    return payload
 
 
 def build_chunk_drs_prompt(chunk_text: str, *, rel_path: str = "", context_budget: dict[str, Any] | None = None) -> str:
@@ -4081,6 +4582,9 @@ def chunk_drs_cache_context(
         "dynamic_condition_budget_policy": CHUNK_DRS_DYNAMIC_CONDITION_BUDGET_POLICY,
         "dynamic_output_budget_policy": CHUNK_DRS_DYNAMIC_OUTPUT_BUDGET_POLICY,
         "staged_first_policy": CHUNK_DRS_STAGED_FIRST_POLICY,
+        "compact_first": _compact_chunk_drs_enabled() and _compact_chunk_drs_eligible(chunk_text),
+        "compact_fact_policy": CHUNK_DRS_COMPACT_FACT_POLICY,
+        "compact_n_predict": default_compact_chunk_drs_n_predict(chunk_text),
         "staged_skeleton_n_predict": default_staged_chunk_drs_skeleton_n_predict(int(n_predict)),
         "staged_condition_n_predict": default_staged_chunk_drs_condition_n_predict(int(n_predict)),
         "box_completion_n_predict": default_chunk_drs_box_completion_n_predict(int(n_predict)),
@@ -4091,6 +4595,7 @@ def chunk_drs_cache_context(
     if rel_path:
         context["source_rel_path"] = rel_path
     if chunk_text:
+        context["source_text_hash"] = hashlib.sha256(str(chunk_text or "").encode("utf-8", errors="replace")).hexdigest()
         prompt_chunk, context_budget = _context_limited_chunk_drs_text(
             chunk_text,
             client,
@@ -4117,6 +4622,10 @@ def call_model_chunk_drs(
     rel_path: str = "",
     n_predict: int | None = None,
 ) -> dict[str, Any]:
+    if _compact_live_model_path_allowed(client) and _compact_chunk_drs_enabled() and _compact_chunk_drs_eligible(chunk_text):
+        compact = call_model_chunk_drs_compact(chunk_text, client, rel_path=rel_path)
+        if compact.get("accepted") or compact.get("reason") == "request_failed":
+            return compact
     if n_predict is None:
         n_predict = default_chunk_drs_n_predict(client, chunk_text)
     prompt_chunk, context_budget = _context_limited_chunk_drs_text(

@@ -44,7 +44,7 @@ from .models import Answer, Document, Evidence, Sentence
 from .query import QueryFrame, frame_from_mapping, plan_question, term_variants
 from .semantic_cache import SemanticFrameCache
 from .store import stable_id
-from .text import content_tokens, is_low_semantic_noise, normalize
+from .text import content_tokens, is_low_semantic_noise, normalize, text_quality_metrics
 
 
 PROGRESS_TRUE_VALUES = {"1", "true", "yes", "on"}
@@ -779,6 +779,14 @@ class KnowMoreDiRTEngine:
                 trace.model_answer_count += 1
                 answer.reason = "local model query-frame temporal binding"
                 return answer
+            elif self._answer_evidence_has_model_drs(answer) and os.environ.get(
+                "KMD_VERIFY_MODEL_DRS_BOUND_ANSWERS",
+                "0",
+            ).strip().lower() in {"0", "false", "no", "off"}:
+                trace.model_answer_count += 1
+                answer.reason = "local model DRS query-frame execution"
+                self._attach_model_answer_provenance(answer)
+                return answer
         if answer and normalize(answer.text) != "unknown":
             if self._verify_with_local_model(question, planned_frame, answer, expected):
                 trace.model_answer_count += 1
@@ -786,6 +794,41 @@ class KnowMoreDiRTEngine:
                 return answer
         self._bounded_conflict_blocks_model_evidence_fallback()
         return None
+
+    def _answer_evidence_has_model_drs(self, answer: Answer) -> bool:
+        span_ids = [evidence.span_id for evidence in answer.evidence if evidence.span_id]
+        if not span_ids:
+            return False
+        answer_norm = normalize(answer.text)
+        if not answer_norm:
+            return False
+        for span_id in span_ids[:8]:
+            row = self.store.execute(
+                """
+                SELECT 1
+                FROM drs_referents
+                WHERE run_id=? AND source_span_id=? AND source='local_model_drs'
+                  AND surface_norm=?
+                LIMIT 1
+                """,
+                (self.run_id, span_id, answer_norm),
+            ).fetchone()
+            if row is not None:
+                return True
+            row = self.store.execute(
+                """
+                SELECT 1
+                FROM drs_condition_arguments a
+                JOIN drs_conditions c ON c.drs_condition_id=a.drs_condition_id
+                WHERE a.run_id=? AND c.source_span_id=? AND c.source='local_model_drs'
+                  AND (a.value_norm=? OR lower(a.evidence_surface)=?)
+                LIMIT 1
+                """,
+                (self.run_id, span_id, answer_norm, answer_norm),
+            ).fetchone()
+            if row is not None:
+                return True
+        return False
 
     def _bounded_conflict_blocks_model_evidence_fallback(self) -> bool:
         diagnostics = self.last_bounded_diagnostics if isinstance(self.last_bounded_diagnostics, dict) else {}
@@ -902,7 +945,13 @@ class KnowMoreDiRTEngine:
     def _cached_or_fresh_chunk_frames(self, sentence: Sentence) -> tuple[list[dict[str, object]], dict[str, object]]:
         if self._model_client is None:
             return [], {"source": "disabled"}
-        if is_low_semantic_noise(sentence.text):
+        quality = text_quality_metrics(sentence.text)
+        if bool(quality.get("low_semantic_noise")) or str(quality.get("semantic_quality") or "") in {
+            "base64_or_hex_blob",
+            "multilingual_word_salad",
+            "plausible_babble",
+            "word_salad",
+        }:
             return [], {"source": "skipped_noise"}
         cache_context = chunk_frame_cache_context(
             self._model_client,
