@@ -184,6 +184,38 @@ def test_unknown_diagnostic_evidence_uses_scattered_source_groups() -> None:
     assert evidence[1].span_id == "span-relation"
 
 
+def test_unknown_diagnostic_evidence_balances_scattered_source_groups() -> None:
+    engine = KnowMoreDiRTEngine.__new__(KnowMoreDiRTEngine)
+    engine.last_bounded_diagnostics = {
+        "execution": {
+            "scattered_source_provenance_without_binding": {
+                "target_sources": [
+                    {
+                        "rel_path": f"begin/target_{index}.txt",
+                        "span_id": f"span-target-{index}",
+                        "chunk_order": index,
+                        "text": f"Iris Vault registry note {index}.",
+                    }
+                    for index in range(6)
+                ],
+                "relation_sources": [
+                    {
+                        "rel_path": "middle/state.txt",
+                        "span_id": "span-relation",
+                        "chunk_order": 0,
+                        "text": "Maintenance lane IV-4 marker T002 state blue.",
+                    }
+                ],
+            },
+        }
+    }
+
+    evidence = engine._diagnostic_unknown_evidence(limit=3)
+
+    assert any(item.rel_path == "middle/state.txt" for item in evidence)
+    assert evidence[1].span_id == "span-relation"
+
+
 def test_document_metadata_is_retrieval_prior_not_answer_source(tmp_path: Path) -> None:
     (tmp_path / "random_a").mkdir()
     (tmp_path / "random_b").mkdir()

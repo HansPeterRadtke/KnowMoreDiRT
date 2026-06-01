@@ -262,10 +262,11 @@ class KnowMoreDiRTEngine:
                 payloads.append(blocked_identity)
         scattered = execution.get("scattered_source_provenance_without_binding")
         if isinstance(scattered, dict):
-            for key in ["target_sources", "relation_sources"]:
-                for source in scattered.get(key) or []:
-                    if isinstance(source, dict):
-                        payloads.append(source)
+            target_sources = [source for source in scattered.get("target_sources") or [] if isinstance(source, dict)]
+            relation_sources = [source for source in scattered.get("relation_sources") or [] if isinstance(source, dict)]
+            if target_sources and relation_sources:
+                payloads.extend([target_sources[0], relation_sources[0]])
+            payloads.extend([*target_sources, *relation_sources])
         for source in execution.get("source_provenance_sample") or []:
             if isinstance(source, dict):
                 payloads.append(source)
