@@ -19,7 +19,7 @@ from typing import Any
 from .answer_types import ExpectedAnswer, canonicalize_answer, is_value_compatible
 from .extractors import identifiers, urls
 from .models import Answer, Document, Evidence, Sentence
-from .query import QueryFrame, expand_terms, frame_from_mapping, normalize_temporal_scope, plan_question
+from .query import QueryFrame, expand_terms, frame_from_mapping, normalize_temporal_scope, plan_question, term_variants
 from .store import identity_relation_allows_expansion
 from .text import clean_extracted_value, content_tokens, normalize, text_quality_metrics
 
@@ -492,15 +492,26 @@ def _context_requirements(frame: QueryFrame) -> list[str]:
     return list(dict.fromkeys(normalize(value) for value in values if normalize(value)))
 
 
-def _terms_match_material(terms: list[str], material: str) -> bool:
+def _terms_match_material(terms: list[str], material: str, *, use_morphology: bool = True) -> bool:
     if not terms or not material:
         return False
     material_tokens = set(content_tokens(material))
+    expanded_material_tokens = set(material_tokens)
+    if use_morphology:
+        for token in material_tokens:
+            expanded_material_tokens.update(term_variants(token))
     for term in terms:
         if term in material:
             return True
         term_tokens = [token for token in content_tokens(term) if token]
-        if term_tokens and all(token in material_tokens for token in term_tokens):
+        if term_tokens and all(
+            token in expanded_material_tokens
+            or (
+                use_morphology
+                and any(variant in expanded_material_tokens for variant in term_variants(token))
+            )
+            for token in term_tokens
+        ):
             return True
     return False
 
@@ -523,7 +534,8 @@ def _context_requested_by_relation(context_id: str, records: dict[str, Any], fra
     requested = normalize(frame.requested_relation)
     if not requested:
         return False
-    return _context_satisfies_terms(context_id, records, [requested], require_all=False)
+    material = _context_chain_material(context_id, records)
+    return _terms_match_material([requested], material, use_morphology=False)
 
 
 def _identity_context_accessible(context_id: str, records: dict[str, Any], frame: QueryFrame | None) -> bool:

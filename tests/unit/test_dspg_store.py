@@ -7,12 +7,13 @@ from knowmoredirt.bounded_dspg import (
     _answer_conflict_diagnostics,
     _context_accessible,
     _identity_expanded_terms,
+    _terms_match_material,
     execute_bounded_query,
 )
 from knowmoredirt.engine import KnowMoreDiRTEngine
 from knowmoredirt.ingest import ingest_folder
 from knowmoredirt.models import Evidence
-from knowmoredirt.query import QueryFrame
+from knowmoredirt.query import QueryFrame, term_variants
 from knowmoredirt.store import DSPGStore, stable_id
 
 from conftest import FIXTURE_ROOT
@@ -40,6 +41,12 @@ def test_ingest_builds_normalized_dspg_tables() -> None:
     assert "temporal_edges" in counts
     assert counts["relations"] > 20
     assert counts["metadata_records"] >= counts["documents"]
+
+
+def test_context_requirement_matching_uses_morphology_variants() -> None:
+    assert _terms_match_material(["report"], "drs:reported observer")
+    assert _terms_match_material(["believe"], "drs:believed Kalo Reed")
+    assert term_variants("state") == {"state"}
 
 
 def test_engine_exposes_internal_dspg_counts_for_diagnostics_only() -> None:
