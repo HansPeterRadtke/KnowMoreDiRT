@@ -2448,6 +2448,7 @@ def _query_evidence_payload_from_result(
     *,
     fresh_or_cached: str,
     repair_prompt_hash: str = "",
+    cache_context: dict[str, Any] | None = None,
 ) -> dict[str, Any]:
     frame_payload = result.get("query_frame") if isinstance(result.get("query_frame"), dict) else {}
     if not frame_payload and isinstance(result.get("generic_query_frame"), dict):
@@ -2465,6 +2466,7 @@ def _query_evidence_payload_from_result(
             "prompt_hash": prompt_hash,
             "grammar_hash": grammar_hash,
             "elapsed": elapsed,
+            "cache_context": cache_context or {},
         }
     sufficient = bool(answer_payload.get("sufficient_evidence"))
     evidence_span = str(answer_payload.get("evidence_span") or "")
@@ -2476,6 +2478,7 @@ def _query_evidence_payload_from_result(
             "prompt_hash": prompt_hash,
             "grammar_hash": grammar_hash,
             "elapsed": elapsed,
+            "cache_context": cache_context or {},
         }
     frame = frame_from_mapping(question, frame_payload, source="model").as_dict()
     payload = {
@@ -2492,6 +2495,7 @@ def _query_evidence_payload_from_result(
         "grammar_hash": grammar_hash,
         "output_hash": hashlib.sha256(raw.encode()).hexdigest(),
         "fresh_or_cached": fresh_or_cached,
+        "cache_context": cache_context or {},
     }
     if repair_prompt_hash:
         payload["repair_prompt_hash"] = repair_prompt_hash
@@ -2510,11 +2514,19 @@ def _call_model_query_evidence_answer_repair(
     prompt = build_query_evidence_answer_repair_prompt(question, evidence_items, raw_response, discourse_records)
     constraint = _constraint_settings(QUERY_EVIDENCE_ANSWER_GRAMMAR, QUERY_EVIDENCE_ANSWER_JSON_SCHEMA, ANSWER_SCHEMA_VERSION)
     grammar_hash = str(constraint["grammar_hash"])
+    cache_settings = {"n_predict": n_predict, "schema": ANSWER_SCHEMA_VERSION, **constraint}
+    cache_context = {
+        **cache_settings,
+        "model_fingerprint": _client_fingerprint(client),
+        "evidence_count": len(evidence_items),
+        "discourse_record_count": len(discourse_records or []),
+        "repair": True,
+    }
     prompt_hash = _cache_hash(
         "query_evidence_answer_repair",
         prompt,
         client,
-        {"n_predict": n_predict, "schema": ANSWER_SCHEMA_VERSION, **constraint},
+        cache_settings,
     )
     cache_path = _cache_path("KMD_QUERY_EVIDENCE_REPAIR_CACHE_DIR", prompt_hash)
     cached = _read_cache(cache_path)
@@ -2524,6 +2536,7 @@ def _call_model_query_evidence_answer_repair(
         "grounding_validation_failed",
         "request_failed",
     }:
+        cached.setdefault("cache_context", cache_context)
         return cached
     start = time.time()
     try:
@@ -2541,6 +2554,7 @@ def _call_model_query_evidence_answer_repair(
             "error": str(exc),
             "prompt_hash": prompt_hash,
             "grammar_hash": grammar_hash,
+            "cache_context": cache_context,
             "elapsed": round(time.time() - start, 3),
         }
         return payload
@@ -2555,6 +2569,7 @@ def _call_model_query_evidence_answer_repair(
             "raw_text": raw,
             "prompt_hash": prompt_hash,
             "grammar_hash": grammar_hash,
+            "cache_context": cache_context,
             "elapsed": round(time.time() - start, 3),
         }
         _write_cache(cache_path, payload)
@@ -2568,6 +2583,7 @@ def _call_model_query_evidence_answer_repair(
         prompt_hash,
         grammar_hash,
         fresh_or_cached="fresh_repair",
+        cache_context=cache_context,
     )
     _write_cache(cache_path, payload)
     return payload
@@ -2586,15 +2602,24 @@ def call_model_query_evidence_answer(
     prompt = build_query_evidence_answer_prompt(question, evidence_items, discourse_records)
     constraint = _constraint_settings(QUERY_EVIDENCE_ANSWER_GRAMMAR, QUERY_EVIDENCE_ANSWER_JSON_SCHEMA, ANSWER_SCHEMA_VERSION)
     grammar_hash = str(constraint["grammar_hash"])
+    cache_settings = {"n_predict": n_predict, "schema": ANSWER_SCHEMA_VERSION, **constraint}
+    cache_context = {
+        **cache_settings,
+        "model_fingerprint": _client_fingerprint(client),
+        "evidence_count": len(evidence_items),
+        "discourse_record_count": len(discourse_records or []),
+        "repair": False,
+    }
     prompt_hash = _cache_hash(
         "query_evidence_answer",
         prompt,
         client,
-        {"n_predict": n_predict, "schema": ANSWER_SCHEMA_VERSION, **constraint},
+        cache_settings,
     )
     cache_path = _cache_path("KMD_QUERY_EVIDENCE_CACHE_DIR", prompt_hash)
     cached = _read_cache(cache_path)
     if cached is not None and not _cached_request_failed(cached):
+        cached.setdefault("cache_context", cache_context)
         return cached
     start = time.time()
     try:
@@ -2612,6 +2637,7 @@ def call_model_query_evidence_answer(
             "error": str(exc),
             "prompt_hash": prompt_hash,
             "grammar_hash": grammar_hash,
+            "cache_context": cache_context,
             "elapsed": round(time.time() - start, 3),
         }
     raw = str(parsed.get("_model_raw") or "") if isinstance(parsed, dict) else ""
@@ -2637,9 +2663,11 @@ def call_model_query_evidence_answer(
             "raw_text": raw,
             "prompt_hash": prompt_hash,
             "grammar_hash": grammar_hash,
+            "cache_context": cache_context,
             "elapsed": round(time.time() - start, 3),
             "repair_failure_reason": repaired.get("reason"),
             "repair_prompt_hash": repaired.get("prompt_hash"),
+            "repair_cache_context": repaired.get("cache_context"),
         }
         if repaired.get("reason") != "request_failed":
             _write_cache(cache_path, payload)
@@ -2654,6 +2682,7 @@ def call_model_query_evidence_answer(
         prompt_hash,
         grammar_hash,
         fresh_or_cached="fresh",
+        cache_context=cache_context,
     )
     needs_repair = missing_required or payload.get("reason") in {"schema_validation_failed", "grounding_validation_failed"}
     if needs_repair:

@@ -327,6 +327,11 @@ def test_query_evidence_invalid_json_after_failed_repair_is_bounded(monkeypatch,
     assert result["reason"] == "invalid_json"
     assert result["repair_failure_reason"] == "invalid_json"
     assert result["repair_prompt_hash"]
+    assert result["cache_context"]["repair"] is False
+    assert result["cache_context"]["n_predict"] == 128
+    assert result["cache_context"]["model_fingerprint"]["model_id"] == "fake-query-evidence-invalid-repair"
+    assert result["repair_cache_context"]["repair"] is True
+    assert result["repair_cache_context"]["model_fingerprint"]["model_id"] == "fake-query-evidence-invalid-repair"
     assert model.calls == 2
 
 
@@ -386,8 +391,12 @@ def test_query_evidence_repair_request_failure_does_not_poison_cache(monkeypatch
 
     assert first["accepted"] is False
     assert first["repair_failure_reason"] == "request_failed"
+    assert first["cache_context"]["repair"] is False
+    assert first["repair_cache_context"]["repair"] is True
     assert second["accepted"] is True
     assert second["fresh_or_cached"] == "fresh_repair"
+    assert second["cache_context"]["repair"] is True
+    assert second["cache_context"]["model_fingerprint"]["model_id"] == "fake-query-evidence-repair-retry"
     assert model.primary_calls == 2
     assert model.repair_calls == 2
 
