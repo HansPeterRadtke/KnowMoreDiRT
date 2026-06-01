@@ -1733,6 +1733,7 @@ def _answer_conflict_diagnostics(
     candidates: list[tuple[float, str, Evidence, str]],
     expected: ExpectedAnswer,
     target_terms: list[str],
+    records: dict[str, Any] | None = None,
 ) -> dict[str, Any] | None:
     buckets: dict[str, dict[str, Any]] = {}
     for score, value, evidence, reason in candidates:
@@ -1790,7 +1791,10 @@ def _answer_conflict_diagnostics(
                 "value": value,
                 "score": round(float(bucket["score"]), 3),
                 "reasons": sorted(bucket["reasons"]),
-                "evidence": [_evidence_payload(item) for item in bucket["evidence"]],
+                "evidence": [
+                    _evidence_provenance_payload(item, records) if records is not None else _evidence_payload(item)
+                    for item in bucket["evidence"]
+                ],
             }
         )
     return {
@@ -1931,7 +1935,7 @@ def execute_bounded_query(
     temporal_candidates = _temporal_candidates(records, frame, expected, target_terms, relation_terms)
     temporal_candidates.extend(_temporal_relation_candidates(records, frame, expected, target_terms, relation_terms))
     if temporal_candidates and frame.temporal_scope in {"latest", "earliest"}:
-        conflict = _answer_conflict_diagnostics(temporal_candidates, expected, target_terms)
+        conflict = _answer_conflict_diagnostics(temporal_candidates, expected, target_terms, records)
         if conflict:
             diagnostics["execution"]["temporal_answer_conflict_at_boundary"] = conflict
             _attach_no_answer_provenance(
@@ -2006,7 +2010,7 @@ def execute_bounded_query(
             _attach_answer_provenance(diagnostics, records, answer)
         return answer, diagnostics
     if not frame.temporal_scope and expected.answer_type != "count":
-        conflict = _answer_conflict_diagnostics(candidates, expected, target_terms)
+        conflict = _answer_conflict_diagnostics(candidates, expected, target_terms, records)
         if conflict:
             diagnostics["execution"]["answer_conflict_without_query_scope"] = conflict
             _attach_no_answer_provenance(

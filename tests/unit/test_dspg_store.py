@@ -5747,6 +5747,13 @@ def test_latest_temporal_query_with_boundary_conflict_returns_unknown_with_prove
         for evidence in item["evidence"]
     }
     assert {"middle/state_a.txt", "middle/state_b.txt"}.issubset(evidence_paths)
+    conflict_evidence = [
+        evidence
+        for item in conflict["values"]
+        for evidence in item["evidence"]
+    ]
+    assert all(evidence.get("chunk_id") and evidence.get("span_id") for evidence in conflict_evidence)
+    assert all(evidence.get("document", {}).get("document_id") == evidence.get("document_id") for evidence in conflict_evidence)
     assert "ending/crosswalk.txt" in {
         item["rel_path"] for item in diagnostics["execution"]["identity_expansion_evidence"]
     }
