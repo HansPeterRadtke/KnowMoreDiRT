@@ -13,14 +13,14 @@ All fixtures are raw text only. They use arbitrary nested folders, arbitrary fil
 
 ## Current Score
 
-Current generic hybrid query-frame results after removing deterministic semantic event/assertion handlers and keeping only universal surface-structure extraction in the deterministic layer:
+Current local-model-disabled generic DSPG results after removing deterministic semantic event/assertion handlers and keeping only universal surface-structure extraction in the deterministic layer:
 
-- original messy corpus: `18/60 (0.300)`
-- broad raw-world corpus: `27/65 (0.415)`
-- hardcore noise corpus: `7/8 (0.875)`
-- hard raw-reasoning corpus: `45/134 (0.336)`
+- original messy corpus: `11/60 (0.183)`
+- broad raw-world corpus: `20/65 (0.308)`
+- hardcore noise corpus: `3/8 (0.375)`
+- hard raw-reasoning corpus: `62/134 (0.463)`
 
-These scores are intentionally reported after removing procedural semantic routing and relation-specific answer handlers from the core and keeping the fixture gates at exact correctness. The strict gates currently fail; the numbers above are the honest current state. The removed code was helping the fixtures by acting as hand-written semantic interpretation. The next implementation work is to recover accuracy through cacheable local-model DRS construction, graph traversal, context propagation, aggregation, and bounded entailment verification rather than semantic handler branches.
+These scores are intentionally reported after removing procedural semantic routing and relation-specific answer handlers from the core and keeping the fixture gates at exact correctness. The strict gates currently fail; the numbers above are the honest current state at KMD head `4ebdef8`. The removed code was helping the fixtures by acting as hand-written semantic interpretation. The next implementation work is to recover accuracy through cacheable local-model DRS construction, graph traversal, context propagation, aggregation, and bounded entailment verification rather than semantic handler branches.
 
 ## Categories Covered
 
