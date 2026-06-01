@@ -782,6 +782,7 @@ def _source_provenance_sample(
 def _candidate_evidence_sample(
     candidates: list[tuple[float, str, Evidence, str]],
     expected: ExpectedAnswer,
+    records: dict[str, Any] | None = None,
     *,
     limit: int = 8,
 ) -> list[dict[str, Any]]:
@@ -798,7 +799,11 @@ def _candidate_evidence_sample(
                     "value": canonical,
                     "score": round(float(score), 3),
                     "reason": reason,
-                    "evidence": _evidence_payload(evidence),
+                    "evidence": (
+                        _evidence_provenance_payload(evidence, records)
+                        if records is not None
+                        else _evidence_payload(evidence)
+                    ),
                 },
             )
         )
@@ -817,7 +822,7 @@ def _attach_no_answer_provenance(
 ) -> None:
     execution = diagnostics.setdefault("execution", {})
     execution["no_answer_reason"] = reason
-    candidate_sample = _candidate_evidence_sample(candidates, expected)
+    candidate_sample = _candidate_evidence_sample(candidates, expected, records)
     if candidate_sample:
         execution["candidate_evidence_sample"] = candidate_sample
     provenance_sample = _source_provenance_sample(records, target_terms, relation_terms)

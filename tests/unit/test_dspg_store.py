@@ -1893,6 +1893,11 @@ def test_scattered_identity_conflict_returns_unknown_with_source_provenance(
         item["evidence"]["rel_path"]
         for item in diagnostics["execution"]["candidate_evidence_sample"]
     }.issuperset({"middle/status.txt", "ending/correction.txt"})
+    for item in diagnostics["execution"]["candidate_evidence_sample"]:
+        evidence = item["evidence"]
+        assert evidence.get("chunk_id")
+        assert evidence.get("span_id")
+        assert evidence.get("document", {}).get("document_id") == evidence.get("document_id")
     assert {
         item["rel_path"]
         for item in diagnostics["execution"]["source_provenance_sample"]
