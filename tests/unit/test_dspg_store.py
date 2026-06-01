@@ -1650,6 +1650,15 @@ def test_scattered_identity_conflict_returns_unknown_with_source_provenance(
     assert "middle/status.txt" in evidence_paths
     assert "ending/correction.txt" in evidence_paths
     assert "ml-9" in diagnostics["ranking"]["identity_expanded_target_terms"]
+    assert diagnostics["execution"]["no_answer_reason"] == "answer_conflict_without_query_scope"
+    assert {
+        item["evidence"]["rel_path"]
+        for item in diagnostics["execution"]["candidate_evidence_sample"]
+    }.issuperset({"middle/status.txt", "ending/correction.txt"})
+    assert {
+        item["rel_path"]
+        for item in diagnostics["execution"]["source_provenance_sample"]
+    }.issuperset({"middle/status.txt", "ending/correction.txt"})
 
 
 def test_scattered_unlinked_referent_status_returns_unknown_with_provenance(

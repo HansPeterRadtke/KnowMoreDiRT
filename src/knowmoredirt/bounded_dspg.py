@@ -1899,6 +1899,15 @@ def execute_bounded_query(
         conflict = _answer_conflict_diagnostics(candidates, expected, target_terms)
         if conflict:
             diagnostics["execution"]["answer_conflict_without_query_scope"] = conflict
+            _attach_no_answer_provenance(
+                diagnostics,
+                records,
+                target_terms,
+                relation_terms,
+                candidates,
+                expected,
+                "answer_conflict_without_query_scope",
+            )
             return None, diagnostics
 
     answer = _with_supporting_evidence(_choose_answer(candidates, expected), identity_expansion_evidence)
