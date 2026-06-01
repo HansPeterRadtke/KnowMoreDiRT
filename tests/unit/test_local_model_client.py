@@ -1090,6 +1090,12 @@ def test_short_query_drs_uses_smaller_surface_budget(monkeypatch, tmp_path) -> N
     assert result["accepted"] is True
     assert result["output_budget_policy"] == QUERY_DRS_DYNAMIC_OUTPUT_BUDGET_POLICY
     assert result["operator_schema_policy"] == QUERY_OPERATOR_SCHEMA_POLICY
+    assert result["cache_context"]["n_predict"] == 384
+    assert result["cache_context"]["output_budget_policy"] == QUERY_DRS_DYNAMIC_OUTPUT_BUDGET_POLICY
+    assert result["cache_context"]["operator_schema_policy"] == QUERY_OPERATOR_SCHEMA_POLICY
+    assert result["cache_context"]["max_array_items"] == query_drs_array_max_items(384)
+    assert result["cache_context"]["model_fingerprint"]["model_id"] == "fake-large-context-query-drs"
+    assert result["cache_context"]["model_fingerprint"]["context_size"] == 32768
     assert model.n_predict == 384
     assert model.json_schema is not None
     query_schema = model.json_schema["properties"]["query_drs"]
@@ -1175,7 +1181,10 @@ def test_query_drs_request_failure_does_not_poison_cache(monkeypatch, tmp_path) 
 
     assert first["accepted"] is False
     assert first["reason"] == "request_failed"
+    assert first["cache_context"]["n_predict"] == 256
+    assert first["cache_context"]["model_fingerprint"]["model_id"] == "fake-query-drs-retry"
     assert second["accepted"] is True
+    assert second["cache_context"]["n_predict"] == 256
     assert model.calls == 2
 
 

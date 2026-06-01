@@ -2042,24 +2042,27 @@ def call_model_query_drs(question: str, client: LocalModelClient, *, n_predict: 
     max_array_items = query_drs_array_max_items(n_predict)
     json_schema = query_drs_json_schema(question, max_array_items=max_array_items)
     constraint = _constraint_settings(QUERY_DRS_GRAMMAR, json_schema, QUERY_DRS_SCHEMA_VERSION)
+    cache_settings = {
+        "n_predict": n_predict,
+        "schema": QUERY_DRS_SCHEMA_VERSION,
+        "validation_policy": QUERY_DRS_VALIDATION_POLICY,
+        "array_cap_policy": QUERY_DRS_ARRAY_CAP_POLICY,
+        "output_budget_policy": QUERY_DRS_DYNAMIC_OUTPUT_BUDGET_POLICY,
+        "operator_schema_policy": QUERY_OPERATOR_SCHEMA_POLICY,
+        "max_array_items": max_array_items,
+        **constraint,
+    }
+    cache_context = {**cache_settings, "model_fingerprint": _client_fingerprint(client)}
     prompt_hash = _cache_hash(
         "query_drs",
         prompt,
         client,
-        {
-            "n_predict": n_predict,
-            "schema": QUERY_DRS_SCHEMA_VERSION,
-            "validation_policy": QUERY_DRS_VALIDATION_POLICY,
-            "array_cap_policy": QUERY_DRS_ARRAY_CAP_POLICY,
-            "output_budget_policy": QUERY_DRS_DYNAMIC_OUTPUT_BUDGET_POLICY,
-            "operator_schema_policy": QUERY_OPERATOR_SCHEMA_POLICY,
-            "max_array_items": max_array_items,
-            **constraint,
-        },
+        cache_settings,
     )
     cache_path = _cache_path("KMD_QUERY_DRS_CACHE_DIR", prompt_hash)
     cached = _read_cache(cache_path)
     if cached is not None and cached.get("reason") != "request_failed":
+        cached.setdefault("cache_context", cache_context)
         return cached
     start = time.time()
     try:
@@ -2084,6 +2087,7 @@ def call_model_query_drs(question: str, client: LocalModelClient, *, n_predict: 
             "output_budget_policy": QUERY_DRS_DYNAMIC_OUTPUT_BUDGET_POLICY,
             "operator_schema_policy": QUERY_OPERATOR_SCHEMA_POLICY,
             "max_array_items": max_array_items,
+            "cache_context": cache_context,
             "elapsed": round(time.time() - start, 3),
         }
         _write_cache(cache_path, payload)
@@ -2100,6 +2104,7 @@ def call_model_query_drs(question: str, client: LocalModelClient, *, n_predict: 
             "output_budget_policy": QUERY_DRS_DYNAMIC_OUTPUT_BUDGET_POLICY,
             "operator_schema_policy": QUERY_OPERATOR_SCHEMA_POLICY,
             "max_array_items": max_array_items,
+            "cache_context": cache_context,
             "elapsed": round(time.time() - start, 3),
         }
     raw = str(parsed.get("_model_raw") or "") if isinstance(parsed, dict) else ""
@@ -2117,6 +2122,7 @@ def call_model_query_drs(question: str, client: LocalModelClient, *, n_predict: 
             "output_budget_policy": QUERY_DRS_DYNAMIC_OUTPUT_BUDGET_POLICY,
             "operator_schema_policy": QUERY_OPERATOR_SCHEMA_POLICY,
             "max_array_items": max_array_items,
+            "cache_context": cache_context,
             "elapsed": parsed.get("_model_elapsed_seconds", round(time.time() - start, 3)),
             "validation": validation,
         }
@@ -2134,6 +2140,7 @@ def call_model_query_drs(question: str, client: LocalModelClient, *, n_predict: 
         "output_budget_policy": QUERY_DRS_DYNAMIC_OUTPUT_BUDGET_POLICY,
         "operator_schema_policy": QUERY_OPERATOR_SCHEMA_POLICY,
         "max_array_items": max_array_items,
+        "cache_context": cache_context,
         "validation": validation,
         "output_hash": hashlib.sha256(raw.encode()).hexdigest(),
         "fresh_or_cached": "fresh",
