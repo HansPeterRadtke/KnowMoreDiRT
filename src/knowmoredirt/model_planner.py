@@ -59,6 +59,7 @@ DRS_IDENTITY_STATUSES = {"accepted", "candidate", "rejected", "ambiguous"}
 
 PROMPT_VERSION = "kmd-drt-2026-05-28-v35"
 CHUNK_FRAME_SCHEMA_VERSION = "chunk-frames-v5"
+CHUNK_FRAME_CONTEXT_BUDGET_POLICY = "runtime-context-minus-output-prompt-overhead-v1"
 CHUNK_DRS_SCHEMA_VERSION = "chunk-drs-v2"
 CHUNK_DRS_STAGED_FALLBACK_POLICY = "retry-invalid-json-schema-grounding-staged-temporal-scope-v3"
 CHUNK_DRS_GROUNDING_REPAIR_POLICY = "model-label-value-escaped-evidence-span-v3"
@@ -2674,6 +2675,7 @@ def _context_limited_chunk_frame_text(
         "runtime_context_size": context_size,
         "reserved_output_tokens": int(n_predict),
         "context_source": "client_metadata" if context_size > 0 else "unavailable",
+        "context_budget_policy": CHUNK_FRAME_CONTEXT_BUDGET_POLICY,
     }
     if context_size <= 0:
         configured_chars = os.environ.get("KMD_CHUNK_FRAME_MAX_CHARS")
@@ -2721,6 +2723,7 @@ def chunk_frame_cache_context(client: LocalModelClient | None, *, n_predict: int
     return {
         "prompt_version": PROMPT_VERSION,
         "schema_version": CHUNK_FRAME_SCHEMA_VERSION,
+        "context_budget_policy": CHUNK_FRAME_CONTEXT_BUDGET_POLICY,
         **constraint,
         "n_predict": int(n_predict),
         "model_fingerprint": _client_fingerprint(client),

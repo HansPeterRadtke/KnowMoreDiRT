@@ -7,6 +7,7 @@ import pytest
 
 from knowmoredirt.model import LocalModelClient, LocalModelJSONError
 from knowmoredirt.model_planner import (
+    CHUNK_FRAME_CONTEXT_BUDGET_POLICY,
     CHUNK_DRS_IDENTITY_PROVENANCE_POLICY,
     CHUNK_DRS_TEMPORAL_PROVENANCE_POLICY,
     QUERY_DRS_DYNAMIC_OUTPUT_BUDGET_POLICY,
@@ -18,6 +19,7 @@ from knowmoredirt.model_planner import (
     call_model_query_drs,
     chunk_drs_cache_context,
     chunk_drs_json_schema,
+    chunk_frame_cache_context,
     default_query_drs_n_predict,
     query_drs_array_max_items,
     query_frame_from_query_drs,
@@ -240,6 +242,9 @@ def test_chunk_frame_planner_prefers_json_schema_for_capable_clients(monkeypatch
     result = call_model_chunk_frames("Aero Gate is ready.", model)  # type: ignore[arg-type]
 
     assert result["accepted"] is True
+    assert result["context_budget"]["context_budget_policy"] == CHUNK_FRAME_CONTEXT_BUDGET_POLICY
+    cache_context = chunk_frame_cache_context(model)  # type: ignore[arg-type]
+    assert cache_context["context_budget_policy"] == CHUNK_FRAME_CONTEXT_BUDGET_POLICY
     assert model.grammar is None
     assert model.json_schema is not None
     assert "frames" in model.json_schema["properties"]
