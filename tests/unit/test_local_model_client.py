@@ -328,6 +328,8 @@ def test_chunk_frame_planner_prefers_json_schema_for_capable_clients(monkeypatch
 
     assert result["accepted"] is True
     assert result["context_budget"]["context_budget_policy"] == CHUNK_FRAME_CONTEXT_BUDGET_POLICY
+    assert result["cache_context"]["context_budget"]["context_budget_policy"] == CHUNK_FRAME_CONTEXT_BUDGET_POLICY
+    assert result["cache_context"]["model_fingerprint"]["model_id"] == "fake-frame-json-schema"
     cache_context = chunk_frame_cache_context(model)  # type: ignore[arg-type]
     assert cache_context["context_budget_policy"] == CHUNK_FRAME_CONTEXT_BUDGET_POLICY
     assert model.grammar is None
@@ -353,6 +355,8 @@ def test_chunk_frame_invalid_json_keeps_context_budget() -> None:
     assert result["reason"] == "invalid_json"
     assert result["context_budget"]["runtime_context_size"] == 4096
     assert result["context_budget"]["context_budget_policy"] == CHUNK_FRAME_CONTEXT_BUDGET_POLICY
+    assert result["cache_context"]["context_budget"]["runtime_context_size"] == 4096
+    assert result["cache_context"]["model_fingerprint"]["model_id"] == "fake-invalid-frame-budget"
 
 
 def test_query_evidence_invalid_json_after_failed_repair_is_bounded(monkeypatch, tmp_path) -> None:

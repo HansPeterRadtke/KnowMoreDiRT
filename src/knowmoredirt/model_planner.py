@@ -2843,16 +2843,18 @@ def call_model_chunk_frames(
     prompt = build_chunk_frame_prompt(prompt_chunk, rel_path=rel_path, context_budget=context_budget)
     constraint = _constraint_settings(FRAME_EXTRACTION_GRAMMAR, FRAME_JSON_SCHEMA, CHUNK_FRAME_SCHEMA_VERSION)
     grammar_hash = str(constraint["grammar_hash"])
+    cache_settings = {
+        "n_predict": n_predict,
+        "schema": CHUNK_FRAME_SCHEMA_VERSION,
+        **constraint,
+        "context_budget": context_budget,
+    }
+    cache_context = {**cache_settings, "model_fingerprint": _client_fingerprint(client)}
     prompt_hash = _cache_hash(
         "chunk_frames",
         prompt,
         client,
-        {
-            "n_predict": n_predict,
-            "schema": CHUNK_FRAME_SCHEMA_VERSION,
-            **constraint,
-            "context_budget": context_budget,
-        },
+        cache_settings,
     )
     start = time.time()
     try:
@@ -2872,6 +2874,7 @@ def call_model_chunk_frames(
             "grammar_hash": grammar_hash,
             "elapsed": round(time.time() - start, 3),
             "context_budget": context_budget,
+            "cache_context": cache_context,
         }
     raw = str(parsed.get("_model_raw") or "") if isinstance(parsed, dict) else ""
     frames = parsed.get("frames") if isinstance(parsed, dict) else None
@@ -2888,6 +2891,7 @@ def call_model_chunk_frames(
             "grammar_hash": grammar_hash,
             "elapsed": round(time.time() - start, 3),
             "context_budget": context_budget,
+            "cache_context": cache_context,
         }
     grounded: list[dict[str, Any]] = []
     rejected_for_grounding = 0
@@ -2976,6 +2980,7 @@ def call_model_chunk_frames(
             "elapsed": parsed.get("_model_elapsed_seconds", round(time.time() - start, 3)),
             "rejected_for_grounding": rejected_for_grounding,
             "context_budget": context_budget,
+            "cache_context": cache_context,
         }
     return {
         "accepted": True,
@@ -2985,6 +2990,7 @@ def call_model_chunk_frames(
         "prompt_hash": prompt_hash,
         "grammar_hash": grammar_hash,
         "context_budget": context_budget,
+        "cache_context": cache_context,
         "output_hash": hashlib.sha256(raw.encode()).hexdigest(),
         "fresh_or_cached": "fresh",
         "rejected_for_grounding": rejected_for_grounding,
