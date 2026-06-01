@@ -38,4 +38,4 @@ The fixture uses invented entities and values. It is structurally inspired by ob
 
 ## Current Result
 
-The hard fixture currently reports `62/134 (0.463)` with the local model disabled at KMD head `4ebdef8`. The strict gate remains intentionally higher than the current shallow deterministic fallback. This is a failure-driven internal regression suite, not a claim of external benchmark generalization.
+The hard fixture currently reports `62/134 (0.463)` with the local model disabled as of the 2026-06-01 score refresh. The strict gate remains intentionally higher than the current shallow deterministic fallback. This is a failure-driven internal regression suite, not a claim of external benchmark generalization.

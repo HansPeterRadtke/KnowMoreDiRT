@@ -20,7 +20,7 @@ Current local-model-disabled generic DSPG results after removing deterministic s
 - hardcore noise corpus: `3/8 (0.375)`
 - hard raw-reasoning corpus: `62/134 (0.463)`
 
-These scores are intentionally reported after removing procedural semantic routing and relation-specific answer handlers from the core and keeping the fixture gates at exact correctness. The strict gates currently fail; the numbers above are the honest current state at KMD head `4ebdef8`. The removed code was helping the fixtures by acting as hand-written semantic interpretation. The next implementation work is to recover accuracy through cacheable local-model DRS construction, graph traversal, context propagation, aggregation, and bounded entailment verification rather than semantic handler branches.
+These scores are intentionally reported after removing procedural semantic routing and relation-specific answer handlers from the core and keeping the fixture gates at exact correctness. The strict gates currently fail; the numbers above are the honest current state from the 2026-06-01 score refresh. The removed code was helping the fixtures by acting as hand-written semantic interpretation. The next implementation work is to recover accuracy through cacheable local-model DRS construction, graph traversal, context propagation, aggregation, and bounded entailment verification rather than semantic handler branches.
 
 ## Categories Covered
 
