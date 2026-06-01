@@ -3743,7 +3743,19 @@ def test_incremental_frame_ingest_reprocesses_when_model_fingerprint_changes(tmp
         row["predicate"]
         for row in store.execute("SELECT predicate FROM frames WHERE source='local_model'").fetchall()
     }
-    assert predicates == {"ready_v1", "ready_v2"}
+    assert predicates == {"ready_v2"}
+    relation_predicates = {
+        row["predicate"]
+        for row in store.execute(
+            """
+            SELECT predicate
+            FROM relations
+            WHERE relation_type IN ('semantic_frame', 'semantic_argument')
+            """
+        ).fetchall()
+    }
+    assert relation_predicates == {"ready_v2"}
+    assert store.integrity_check() == "ok"
     assert store.counts()["model_attempts"] == 2
 
 

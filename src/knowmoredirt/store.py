@@ -673,6 +673,172 @@ class DSPGStore:
         self.connection.commit()
         return {table: count for table, count in deleted.items() if count}
 
+    def delete_frame_materialization_for_span(
+        self,
+        run_id: str,
+        source_span_id: str,
+        *,
+        source: str = "local_model",
+    ) -> dict[str, int]:
+        """Remove one model-frame materialization for a source span."""
+
+        def id_rows(sql: str, params: tuple[Any, ...]) -> list[str]:
+            return [str(row[0]) for row in self.connection.execute(sql, params).fetchall() if str(row[0] or "")]
+
+        frame_rows = [
+            dict(row)
+            for row in self.connection.execute(
+                """
+                SELECT frame_id, context_id
+                FROM frames
+                WHERE run_id=? AND span_id=? AND source=?
+                """,
+                (run_id, source_span_id, source),
+            ).fetchall()
+        ]
+        frame_ids = [str(row.get("frame_id") or "") for row in frame_rows if str(row.get("frame_id") or "")]
+        context_ids = [str(row.get("context_id") or "") for row in frame_rows if str(row.get("context_id") or "")]
+        referent_ids: list[str] = []
+        if frame_ids:
+            for index in range(0, len(frame_ids), 400):
+                group = frame_ids[index:index + 400]
+                placeholders = ",".join("?" for _ in group)
+                referent_ids.extend(
+                    id_rows(
+                        f"""
+                        SELECT DISTINCT referent_id
+                        FROM frame_arguments
+                        WHERE frame_id IN ({placeholders}) AND referent_id IS NOT NULL
+                        """,
+                        tuple(group),
+                    )
+                )
+        relation_ids = id_rows(
+            """
+            SELECT relation_id
+            FROM relations
+            WHERE run_id=? AND source_span_id=? AND metadata_json LIKE ?
+            """,
+            (run_id, source_span_id, f'%"source": "{source}"%'),
+        )
+        deleted: dict[str, int] = {}
+
+        def delete_where(table: str, where: str, params: tuple[Any, ...]) -> None:
+            cursor = self.connection.execute(f"DELETE FROM {table} WHERE {where}", params)
+            deleted[table] = deleted.get(table, 0) + max(0, int(cursor.rowcount if cursor.rowcount is not None else 0))
+
+        def delete_by_ids(table: str, key: str, ids: list[str]) -> None:
+            unique_ids = list(dict.fromkeys(item for item in ids if item))
+            for index in range(0, len(unique_ids), 400):
+                group = unique_ids[index:index + 400]
+                placeholders = ",".join("?" for _ in group)
+                delete_where(table, f"{key} IN ({placeholders})", tuple(group))
+
+        def delete_orphan_contexts(ids: list[str]) -> None:
+            unique_ids = list(dict.fromkeys(item for item in ids if item))
+            for index in range(0, len(unique_ids), 400):
+                group = unique_ids[index:index + 400]
+                placeholders = ",".join("?" for _ in group)
+                delete_where(
+                    "contexts",
+                    f"""
+                    context_id IN ({placeholders})
+                    AND NOT EXISTS (
+                      SELECT 1 FROM frames f
+                      WHERE f.context_id=contexts.context_id
+                    )
+                    AND NOT EXISTS (
+                      SELECT 1 FROM relations r
+                      WHERE r.context_id=contexts.context_id
+                    )
+                    AND NOT EXISTS (
+                      SELECT 1 FROM identity_hypotheses ih
+                      WHERE ih.context_id=contexts.context_id
+                    )
+                    AND NOT EXISTS (
+                      SELECT 1 FROM temporal_edges te
+                      WHERE te.context_id=contexts.context_id
+                    )
+                    AND NOT EXISTS (
+                      SELECT 1 FROM context_carriers cc
+                      WHERE cc.context_id=contexts.context_id
+                    )
+                    AND NOT EXISTS (
+                      SELECT 1 FROM context_assignments ca
+                      WHERE ca.context_id=contexts.context_id
+                    )
+                    AND NOT EXISTS (
+                      SELECT 1 FROM drs_boxes box
+                      WHERE box.context_id=contexts.context_id
+                    )
+                    """,
+                    tuple(group),
+                )
+
+        def delete_orphan_referents(ids: list[str]) -> None:
+            unique_ids = list(dict.fromkeys(item for item in ids if item))
+            for index in range(0, len(unique_ids), 400):
+                group = unique_ids[index:index + 400]
+                placeholders = ",".join("?" for _ in group)
+                delete_where(
+                    "referents",
+                    f"""
+                    referent_id IN ({placeholders})
+                    AND NOT EXISTS (
+                      SELECT 1 FROM drs_referents dr
+                      WHERE dr.referent_id=referents.referent_id
+                    )
+                    AND NOT EXISTS (
+                      SELECT 1 FROM frame_arguments fa
+                      WHERE fa.referent_id=referents.referent_id
+                    )
+                    AND NOT EXISTS (
+                      SELECT 1 FROM mention_referents mr
+                      WHERE mr.referent_id=referents.referent_id
+                    )
+                    AND NOT EXISTS (
+                      SELECT 1 FROM identity_hypotheses ih
+                      WHERE ih.left_referent_id=referents.referent_id
+                         OR ih.right_referent_id=referents.referent_id
+                    )
+                    AND NOT EXISTS (
+                      SELECT 1 FROM drs_identity_hypotheses dih
+                      WHERE dih.left_referent_id=referents.referent_id
+                         OR dih.right_referent_id=referents.referent_id
+                    )
+                    AND NOT EXISTS (
+                      SELECT 1 FROM temporal_edges te
+                      WHERE te.referent_id=referents.referent_id
+                    )
+                    """,
+                    tuple(group),
+                )
+
+        delete_by_ids("frame_arguments", "frame_id", frame_ids)
+        delete_by_ids("relations", "relation_id", relation_ids)
+        identity_source = "local_model_frame" if source == "local_model" else source
+        delete_where(
+            "identity_hypotheses",
+            "run_id=? AND source_span_id=? AND source=?",
+            (run_id, source_span_id, identity_source),
+        )
+        if context_ids:
+            placeholders = ",".join("?" for _ in context_ids)
+            delete_where(
+                "temporal_edges",
+                f"run_id=? AND source_span_id=? AND relation=? AND context_id IN ({placeholders})",
+                (run_id, source_span_id, "frame_temporal_scope", *context_ids),
+            )
+        delete_where(
+            "frames",
+            "run_id=? AND span_id=? AND source=?",
+            (run_id, source_span_id, source),
+        )
+        delete_orphan_contexts(context_ids)
+        delete_orphan_referents(referent_ids)
+        self.connection.commit()
+        return {table: count for table, count in deleted.items() if count}
+
     def referent_candidate_chunks(self, run_id: str, anchors: list[str], limit: int = 12) -> list[sqlite3.Row]:
         scores: dict[tuple[str, int], float] = {}
         rows_by_key: dict[tuple[str, int], sqlite3.Row] = {}

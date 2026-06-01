@@ -777,6 +777,13 @@ def ingest_folder(
                     f"elapsed={time.monotonic() - ingest_started:.1f}s"
                 )
                 continue
+            replaced_frames = {}
+            if existing_frames:
+                replaced_frames = store.delete_frame_materialization_for_span(
+                    run_id,
+                    span_id,
+                    source="local_model",
+                )
             if previous_attempt is not None and not _env_true("KMD_FRAME_RETRY_FAILED_ATTEMPTS"):
                 _log_progress(
                     "kmd-ingest llm_done "
@@ -786,6 +793,7 @@ def ingest_folder(
                     f"accepted={bool(previous_attempt['accepted'])} "
                     f"reason={str(previous_attempt['reason'] or 'previous_attempt')} "
                     "frames=0 "
+                    f"replaced_prior_rows={sum(replaced_frames.values()) if replaced_frames else 0} "
                     "model_elapsed=0.0 "
                     f"elapsed={time.monotonic() - ingest_started:.1f}s"
                 )
@@ -1062,6 +1070,7 @@ def ingest_folder(
                             "cache_context": frame_cache_context,
                             "frame_count": len(model_frames),
                             "inserted_frame_count": inserted_model_frames,
+                            "replaced_prior_rows": replaced_frames,
                         },
                         sort_keys=True,
                         default=str,
