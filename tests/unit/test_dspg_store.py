@@ -1865,7 +1865,9 @@ def test_scattered_unlinked_referent_status_returns_unknown_with_provenance(
     assert crosswalk["span_id"]
     assert crosswalk["chunk_id"]
     assert crosswalk["char_start"] == 0
+    assert crosswalk["document"]["document_id"] == crosswalk["document_id"]
     assert crosswalk["document"]["file_name"] == "crosswalk.txt"
+    assert crosswalk["document"]["semantic_quality"]
     assert "LC-71 status is silver" in crosswalk["text"]
 
 
@@ -2686,7 +2688,9 @@ def test_scattered_identity_reported_contradiction_respects_drs_scope(
         {item["rel_path"] for item in reported_provenance}
     )
     reported_source = next(item for item in reported_provenance if item["rel_path"] == "middle/reported.txt")
+    assert reported_source["document"]["document_id"] == reported_source["document_id"]
     assert reported_source["document"]["file_name"] == "reported.txt"
+    assert reported_source["document"]["semantic_quality"]
     assert reported_source["span_id"]
     assert reported_source["chunk_id"]
     assert "TN-8 status is orange" in reported_source["text"]

@@ -684,15 +684,24 @@ def _document_metadata_summary(row: dict[str, Any]) -> dict[str, Any]:
         metadata = {}
     if not isinstance(metadata, dict):
         metadata = {}
+    text_quality = metadata.get("text_quality")
+    semantic_quality = (
+        text_quality.get("semantic_quality")
+        if isinstance(text_quality, dict)
+        else metadata.get("semantic_quality")
+    )
     summary: dict[str, Any] = {
+        "document_id": row.get("document_id"),
         "rel_path": row.get("rel_path"),
         "size_bytes": row.get("size_bytes"),
         "char_count": row.get("char_count"),
     }
-    for key in ["file_name", "suffix", "parent_rel_path", "mime_type", "semantic_quality"]:
+    for key in ["file_name", "suffix", "parent_rel_path", "mime_type"]:
         if key in metadata:
             summary[key] = metadata[key]
-    return {key: value for key, value in summary.items() if value not in {"", None}}
+    if semantic_quality is not None and semantic_quality != "":
+        summary["semantic_quality"] = semantic_quality
+    return {key: value for key, value in summary.items() if value is not None and value != ""}
 
 
 def _span_provenance_payload(span: dict[str, Any], records: dict[str, Any]) -> dict[str, Any]:
