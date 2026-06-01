@@ -3982,9 +3982,10 @@ def chunk_drs_cache_context(
     *,
     n_predict: int | None = None,
     rel_path: str = "",
+    chunk_text: str = "",
 ) -> dict[str, Any]:
     if n_predict is None:
-        n_predict = default_chunk_drs_n_predict(client)
+        n_predict = default_chunk_drs_n_predict(client, chunk_text)
     production_schema = chunk_drs_json_schema(include_auxiliary_fields=False)
     constraint = _constraint_settings(CHUNK_DRS_GRAMMAR, production_schema, CHUNK_DRS_SCHEMA_VERSION)
     context = {
@@ -4020,6 +4021,23 @@ def chunk_drs_cache_context(
     }
     if rel_path:
         context["source_rel_path"] = rel_path
+    if chunk_text:
+        prompt_chunk, context_budget = _context_limited_chunk_drs_text(
+            chunk_text,
+            client,
+            rel_path=rel_path,
+            n_predict=n_predict,
+        )
+        source_span_candidates = chunk_drs_source_span_candidates(
+            prompt_chunk,
+            context_budget.get("max_evidence_chars"),
+        )
+        context["context_budget"] = {
+            **context_budget,
+            "source_span_policy": CHUNK_DRS_SOURCE_SPAN_POLICY,
+            "source_span_candidate_count": len(source_span_candidates),
+            "skeleton_source_span_policy": CHUNK_DRS_SKELETON_SOURCE_SPAN_POLICY,
+        }
     return context
 
 

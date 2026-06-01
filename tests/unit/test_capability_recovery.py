@@ -478,6 +478,8 @@ def test_drs_attempt_cache_context_separates_identical_text_by_source_path(tmp_p
     assert len({row["cache_key"] for row in rows}) == 2
     assert {context["n_predict"] for context in contexts} == set(fake.n_predicts)
     assert set(fake.n_predicts) == {544}
+    assert all(context["context_budget"]["input_chars"] == len("Aero Gate is ready.") for context in contexts)
+    assert all(context["context_budget"]["source_span_candidate_count"] >= 1 for context in contexts)
     assert {context["source_rel_path"] for context in contexts} == {
         "alpha/note.raw",
         "beta/note.raw",

@@ -356,6 +356,7 @@ def _ingest_model_drs_for_sentence(
         semantic_client,
         n_predict=drs_n_predict,
         rel_path=sentence.rel_path,
+        chunk_text=sentence.text,
     )
     drs_cache_key = stable_id("drs_attempt_context", json.dumps(drs_cache_context, sort_keys=True, default=str))
     previous_attempt = store.execute(
