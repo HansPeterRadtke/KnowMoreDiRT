@@ -205,6 +205,7 @@ def _rank_scope(
     relation_terms = list(dict.fromkeys([*_relation_terms(frame, question), *_answer_slot_terms(frame)]))
     all_terms = _query_terms(question)
     doc_scores: list[tuple[float, str, str]] = []
+    relation_doc_scores: list[tuple[float, str, str]] = []
     document_material_by_id: dict[str, str] = {}
     document_low_priority_by_id: dict[str, bool] = {}
     for document in documents:
@@ -214,8 +215,6 @@ def _rank_scope(
         target_hits = sum(1 for term in target_terms if _has_term(material, term))
         relation_hits = sum(1 for term in relation_terms if _has_term(material, term))
         lexical_hits = sum(1 for term in all_terms if _has_term(material, term))
-        if target_terms and not target_hits:
-            continue
         score = target_hits * 16 + relation_hits * 8 + lexical_hits
         document_low_priority_by_id[document.document_id] = _source_is_low_priority(
             document.rel_path,
@@ -223,10 +222,27 @@ def _rank_scope(
         )
         if document_low_priority_by_id[document.document_id]:
             score *= 0.2
+        if target_terms and not target_hits:
+            if relation_hits and score:
+                relation_doc_scores.append((score, document.document_id, document.rel_path))
+            continue
         if score:
             doc_scores.append((score, document.document_id, document.rel_path))
     doc_scores.sort(key=lambda item: (-item[0], item[2]))
+    relation_doc_scores.sort(key=lambda item: (-item[0], item[2]))
     selected_docs = [doc_id for _score, doc_id, _rel_path in doc_scores[:doc_limit]]
+    relation_only_selected = 0
+    if relation_doc_scores and len(selected_docs) < doc_limit:
+        relation_budget = min(doc_limit - len(selected_docs), max(1, min(12, doc_limit // 4)))
+        selected_doc_set = set(selected_docs)
+        for _score, doc_id, _rel_path in relation_doc_scores:
+            if doc_id in selected_doc_set:
+                continue
+            selected_docs.append(doc_id)
+            selected_doc_set.add(doc_id)
+            relation_only_selected += 1
+            if relation_only_selected >= relation_budget:
+                break
     selected_set = set(selected_docs)
     chunk_scores: list[tuple[float, str, int, str]] = []
     for document in documents:
@@ -267,6 +283,8 @@ def _rank_scope(
     return selected_docs, selected_chunks, {
         "candidate_document_rows": len(doc_scores),
         "selected_document_count": len(selected_docs),
+        "relation_only_candidate_document_rows": len(relation_doc_scores),
+        "relation_only_selected_document_count": relation_only_selected,
         "candidate_chunk_rows": len(chunk_scores),
         "selected_chunk_count": len(selected_chunks),
         "target_terms": target_terms[:32],
@@ -868,6 +886,7 @@ def _source_provenance_sample(
         rows.append((score, kind_priority, evidence.rel_path, order, span_id, _span_provenance_payload(span, records)))
     rows.sort(key=lambda item: (-item[0], item[1], item[2], item[3], item[4]))
     seen: set[tuple[str, str, int | None, str]] = set()
+    seen_chunks: set[tuple[str, int | None, str]] = set()
     payloads: list[dict[str, Any]] = []
     for _score, _kind_priority, _rel_path, _order, _span_id, payload in rows:
         key = (
@@ -876,9 +895,15 @@ def _source_provenance_sample(
             payload.get("chunk_order") if isinstance(payload.get("chunk_order"), int) else None,
             str(payload.get("text") or ""),
         )
-        if key in seen:
+        chunk_key = (
+            str(payload.get("rel_path") or ""),
+            payload.get("chunk_order") if isinstance(payload.get("chunk_order"), int) else None,
+            normalize(str(payload.get("text") or "")),
+        )
+        if key in seen or chunk_key in seen_chunks:
             continue
         seen.add(key)
+        seen_chunks.add(chunk_key)
         payloads.append(payload)
         if len(payloads) >= limit:
             break
@@ -917,6 +942,54 @@ def _candidate_evidence_sample(
     return [payload for _score, _value, payload in rows[:limit]]
 
 
+def _provenance_payload_material(payload: dict[str, Any]) -> str:
+    return normalize(" ".join([str(payload.get("rel_path") or ""), str(payload.get("text") or "")]))
+
+
+def _provenance_payload_key(payload: dict[str, Any]) -> tuple[str, str, int | None, str]:
+    return (
+        str(payload.get("rel_path") or ""),
+        str(payload.get("span_id") or ""),
+        payload.get("chunk_order") if isinstance(payload.get("chunk_order"), int) else None,
+        str(payload.get("text") or ""),
+    )
+
+
+def _scattered_source_provenance_without_binding(
+    provenance_sample: list[dict[str, Any]],
+    target_terms: list[str],
+    relation_terms: list[str],
+) -> dict[str, Any] | None:
+    if not target_terms or not relation_terms:
+        return None
+    target_payloads = [
+        payload
+        for payload in provenance_sample
+        if _contains_any(_provenance_payload_material(payload), target_terms)
+    ]
+    relation_payloads = [
+        payload
+        for payload in provenance_sample
+        if _contains_any(_provenance_payload_material(payload), relation_terms)
+    ]
+    if not target_payloads or not relation_payloads:
+        return None
+    if not any(
+        _provenance_payload_key(target_payload) != _provenance_payload_key(relation_payload)
+        for target_payload in target_payloads
+        for relation_payload in relation_payloads
+    ):
+        return None
+    return {
+        "target_rel_paths": sorted(
+            {str(payload.get("rel_path") or "") for payload in target_payloads if str(payload.get("rel_path") or "")}
+        )[:6],
+        "relation_rel_paths": sorted(
+            {str(payload.get("rel_path") or "") for payload in relation_payloads if str(payload.get("rel_path") or "")}
+        )[:6],
+    }
+
+
 def _attach_no_answer_provenance(
     diagnostics: dict[str, Any],
     records: dict[str, Any],
@@ -934,6 +1007,13 @@ def _attach_no_answer_provenance(
     provenance_sample = _source_provenance_sample(records, target_terms, relation_terms)
     if provenance_sample:
         execution["source_provenance_sample"] = provenance_sample
+        scattered = _scattered_source_provenance_without_binding(
+            provenance_sample,
+            target_terms,
+            relation_terms,
+        )
+        if scattered and not candidates:
+            execution["scattered_source_provenance_without_binding"] = scattered
 
 
 def _answer_source_provenance_sample(

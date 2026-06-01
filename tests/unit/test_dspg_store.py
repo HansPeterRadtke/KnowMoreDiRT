@@ -3717,7 +3717,10 @@ def test_incremental_removed_identity_source_does_not_expand_current_query(
     assert answer is None
     assert "identity_expanded_target_terms" not in diagnostics["ranking"]
     provenance = diagnostics["execution"]["source_provenance_sample"]
-    assert {item["rel_path"] for item in provenance} == {"catalog.txt"}
+    assert {item["rel_path"] for item in provenance} == {"catalog.txt", "status.txt"}
+    scattered = diagnostics["execution"]["scattered_source_provenance_without_binding"]
+    assert scattered["target_rel_paths"] == ["catalog.txt"]
+    assert scattered["relation_rel_paths"] == ["status.txt"]
 
 
 def test_incremental_drs_ingest_reuses_existing_materialized_chunks(tmp_path: Path, monkeypatch) -> None:
@@ -6276,6 +6279,267 @@ def test_latest_temporal_query_with_boundary_conflict_returns_unknown_with_prove
     assert "ending/crosswalk.txt" in {
         item["rel_path"] for item in diagnostics["execution"]["identity_expansion_evidence"]
     }
+
+
+def test_unlinked_scattered_sources_return_unknown_with_source_provenance(
+    tmp_path: Path,
+    monkeypatch,
+) -> None:
+    (tmp_path / "begin").mkdir()
+    (tmp_path / "middle").mkdir()
+    (tmp_path / "reports").mkdir()
+    (tmp_path / "ending").mkdir()
+    (tmp_path / "begin" / "registry.txt").write_text(
+        "Registry introduces Ember Array as the monitored artifact.",
+        encoding="utf-8",
+    )
+    (tmp_path / "middle" / "state.txt").write_text(
+        "Maintenance row EA-7 marker T002 state amber.",
+        encoding="utf-8",
+    )
+    (tmp_path / "reports" / "reported.txt").write_text(
+        "Observer report says EA-7 marker T003 state green.",
+        encoding="utf-8",
+    )
+    (tmp_path / "ending" / "similarity.txt").write_text(
+        "Closing note says EA-7 resembles Ember Array.",
+        encoding="utf-8",
+    )
+
+    class UnlinkedScatteredModel:
+        def context_size(self) -> int:
+            return 4096
+
+        def cache_fingerprint(self) -> dict[str, object]:
+            return {"model_id": "fake-unlinked-scattered-drs", "context_size": 4096}
+
+        def complete_json(self, prompt: str, *, n_predict: int = 128, grammar=None, json_schema=None):
+            if "Registry introduces" in prompt:
+                text = "Registry introduces Ember Array as the monitored artifact."
+                referents = [{"id": "r0", "label": "Ember Array", "kind": "artifact", "evidence_text": "Ember Array"}]
+                conditions = [
+                    {
+                        "id": "c0",
+                        "predicate": "introduces",
+                        "box_id": "b0",
+                        "polarity": "positive",
+                        "modality": "asserted",
+                        "temporal_id": "",
+                        "arguments": [
+                            {
+                                "role": "object",
+                                "target_kind": "referent",
+                                "target_id": "r0",
+                                "value": "",
+                                "value_type": "artifact",
+                                "evidence_text": "Ember Array",
+                            }
+                        ],
+                        "evidence_text": text,
+                    }
+                ]
+                temporals = []
+                identities = []
+                boxes = [{"id": "b0", "kind": "asserted", "parent_id": "", "holder_referent_id": "", "evidence_text": text}]
+            elif "T002" in prompt:
+                text = "Maintenance row EA-7 marker T002 state amber."
+                referents = [{"id": "r0", "label": "EA-7", "kind": "identifier", "evidence_text": "EA-7"}]
+                conditions = [
+                    {
+                        "id": "c0",
+                        "predicate": "state",
+                        "box_id": "b0",
+                        "polarity": "positive",
+                        "modality": "asserted",
+                        "temporal_id": "t0",
+                        "arguments": [
+                            {
+                                "role": "subject",
+                                "target_kind": "referent",
+                                "target_id": "r0",
+                                "value": "",
+                                "value_type": "identifier",
+                                "evidence_text": "EA-7",
+                            },
+                            {
+                                "role": "state",
+                                "target_kind": "literal",
+                                "target_id": "",
+                                "value": "amber",
+                                "value_type": "state",
+                                "evidence_text": "amber",
+                            },
+                        ],
+                        "evidence_text": "EA-7 marker T002 state amber",
+                    }
+                ]
+                temporals = [{"id": "t0", "value": "T002", "value_type": "sequence_marker", "evidence_text": "T002"}]
+                identities = []
+                boxes = [{"id": "b0", "kind": "asserted", "parent_id": "", "holder_referent_id": "", "evidence_text": text}]
+            elif "T003" in prompt:
+                text = "Observer report says EA-7 marker T003 state green."
+                reported = "EA-7 marker T003 state green"
+                referents = [
+                    {"id": "r0", "label": "Observer report", "kind": "document", "evidence_text": "Observer report"},
+                    {"id": "r1", "label": "EA-7", "kind": "identifier", "evidence_text": "EA-7"},
+                ]
+                conditions = [
+                    {
+                        "id": "c0",
+                        "predicate": "report",
+                        "box_id": "b0",
+                        "polarity": "positive",
+                        "modality": "asserted",
+                        "temporal_id": "",
+                        "arguments": [
+                            {
+                                "role": "source",
+                                "target_kind": "referent",
+                                "target_id": "r0",
+                                "value": "",
+                                "value_type": "document",
+                                "evidence_text": "Observer report",
+                            },
+                            {
+                                "role": "content",
+                                "target_kind": "box",
+                                "target_id": "b1",
+                                "value": "",
+                                "value_type": "box",
+                                "evidence_text": reported,
+                            },
+                        ],
+                        "evidence_text": text,
+                    },
+                    {
+                        "id": "c1",
+                        "predicate": "state",
+                        "box_id": "b1",
+                        "polarity": "positive",
+                        "modality": "asserted",
+                        "temporal_id": "t0",
+                        "arguments": [
+                            {
+                                "role": "subject",
+                                "target_kind": "referent",
+                                "target_id": "r1",
+                                "value": "",
+                                "value_type": "identifier",
+                                "evidence_text": "EA-7",
+                            },
+                            {
+                                "role": "state",
+                                "target_kind": "literal",
+                                "target_id": "",
+                                "value": "green",
+                                "value_type": "state",
+                                "evidence_text": "green",
+                            },
+                        ],
+                        "evidence_text": reported,
+                    },
+                ]
+                temporals = [{"id": "t0", "value": "T003", "value_type": "sequence_marker", "evidence_text": "T003"}]
+                identities = []
+                boxes = [
+                    {"id": "b0", "kind": "asserted", "parent_id": "", "holder_referent_id": "", "evidence_text": text},
+                    {"id": "b1", "kind": "reported", "parent_id": "b0", "holder_referent_id": "r0", "evidence_text": reported},
+                ]
+            else:
+                text = "Closing note says EA-7 resembles Ember Array."
+                referents = [
+                    {"id": "r0", "label": "EA-7", "kind": "identifier", "evidence_text": "EA-7"},
+                    {"id": "r1", "label": "Ember Array", "kind": "artifact", "evidence_text": "Ember Array"},
+                ]
+                conditions = [
+                    {
+                        "id": "c0",
+                        "predicate": "resembles",
+                        "box_id": "b0",
+                        "polarity": "positive",
+                        "modality": "asserted",
+                        "temporal_id": "",
+                        "arguments": [
+                            {
+                                "role": "left",
+                                "target_kind": "referent",
+                                "target_id": "r0",
+                                "value": "",
+                                "value_type": "identifier",
+                                "evidence_text": "EA-7",
+                            },
+                            {
+                                "role": "right",
+                                "target_kind": "referent",
+                                "target_id": "r1",
+                                "value": "",
+                                "value_type": "artifact",
+                                "evidence_text": "Ember Array",
+                            },
+                        ],
+                        "evidence_text": "EA-7 resembles Ember Array",
+                    }
+                ]
+                temporals = []
+                identities = []
+                boxes = [{"id": "b0", "kind": "asserted", "parent_id": "", "holder_referent_id": "", "evidence_text": text}]
+            return {
+                "drs": {
+                    "schema_version": "chunk-drs-v2",
+                    "source_id": "unlinked-scattered",
+                    "referents": referents,
+                    "boxes": boxes,
+                    "conditions": conditions,
+                    "identity_hypotheses": identities,
+                    "temporal_records": temporals,
+                },
+                "_model_raw": "{}",
+                "_model_elapsed_seconds": 0.01,
+            }
+
+    monkeypatch.setenv("KMD_CHUNK_DRS_CACHE_DIR", str(tmp_path / ".drs-cache"))
+    store, run_id, documents, sentences = ingest_folder(
+        tmp_path,
+        semantic_client=UnlinkedScatteredModel(),  # type: ignore[arg-type]
+        use_semantic_frames=False,
+        use_drs_semantics=True,
+    )
+    sentences_by_document: dict[str, dict[int, object]] = {}
+    for sentence in sentences:
+        sentences_by_document.setdefault(sentence.rel_path, {})[sentence.order] = sentence
+    frame = QueryFrame(
+        question_text="What is the latest state for Ember Array?",
+        answer_type="state",
+        answer_variables=("state",),
+        target_anchors=("Ember Array",),
+        requested_relation="state",
+        relation_terms=("state",),
+        constraints=(),
+        temporal_scope="latest",
+    )
+
+    answer, diagnostics = execute_bounded_query(
+        store,
+        run_id,
+        documents,
+        sentences_by_document,  # type: ignore[arg-type]
+        frame.question_text,
+        frame,
+    )
+
+    assert answer is None
+    assert diagnostics["execution"]["no_answer_reason"] == "no_candidate"
+    assert "ea-7" not in diagnostics["ranking"].get("identity_expanded_target_terms", [])
+    scattered = diagnostics["execution"]["scattered_source_provenance_without_binding"]
+    assert {"begin/registry.txt", "ending/similarity.txt"}.issubset(set(scattered["target_rel_paths"]))
+    assert {"middle/state.txt", "reports/reported.txt"}.issubset(set(scattered["relation_rel_paths"]))
+    provenance = diagnostics["execution"]["source_provenance_sample"]
+    provenance_paths = {item["rel_path"] for item in provenance}
+    assert {"begin/registry.txt", "middle/state.txt", "reports/reported.txt", "ending/similarity.txt"}.issubset(
+        provenance_paths
+    )
+    assert all(item.get("chunk_id") and item.get("span_id") for item in provenance)
+    assert all(item.get("document", {}).get("document_id") == item.get("document_id") for item in provenance)
 
 
 def test_ingest_skips_cartesian_temporal_edges_for_dense_time_chunks(tmp_path: Path, monkeypatch) -> None:
