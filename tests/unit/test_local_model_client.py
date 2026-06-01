@@ -513,6 +513,10 @@ def test_answer_canonicalization_old_request_failure_cache_is_ignored(monkeypatc
     assert result["accepted"] is True
     assert result["answer"] == "ready"
     assert result["fresh_or_cached"] == "fresh"
+    assert result["cache_context"]["n_predict"] == 96
+    assert result["cache_context"]["answer_type"] == "state"
+    assert result["cache_context"]["evidence_count"] == 1
+    assert result["cache_context"]["model_fingerprint"]["model_id"] == "fake-canonicalization-old-request-cache"
     assert model.calls == 1
 
 

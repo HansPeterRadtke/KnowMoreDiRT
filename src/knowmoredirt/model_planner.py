@@ -4531,11 +4531,18 @@ def call_model_answer_canonicalization(
     prompt = build_answer_canonicalization_prompt(question, candidate_answer, answer_type, evidence_items)
     constraint = _constraint_settings(ANSWER_CANONICALIZATION_GRAMMAR, CANONICAL_ANSWER_JSON_SCHEMA, ANSWER_SCHEMA_VERSION)
     grammar_hash = str(constraint["grammar_hash"])
+    cache_settings = {"n_predict": n_predict, "schema": ANSWER_SCHEMA_VERSION, **constraint}
+    cache_context = {
+        **cache_settings,
+        "model_fingerprint": _client_fingerprint(client),
+        "answer_type": answer_type,
+        "evidence_count": len(evidence_items),
+    }
     prompt_hash = _cache_hash(
         "answer_canonicalization",
         prompt,
         client,
-        {"n_predict": n_predict, "schema": ANSWER_SCHEMA_VERSION, **constraint},
+        cache_settings,
     )
     cache_path = _cache_path("KMD_ANSWER_CANONICALIZATION_CACHE_DIR", prompt_hash)
     cached = _read_cache(cache_path)
@@ -4545,6 +4552,7 @@ def call_model_answer_canonicalization(
         "schema_validation_failed",
         "invalid_json",
     }:
+        cached.setdefault("cache_context", cache_context)
         return cached
     start = time.time()
     try:
@@ -4562,6 +4570,7 @@ def call_model_answer_canonicalization(
             "error": str(exc),
             "prompt_hash": prompt_hash,
             "grammar_hash": grammar_hash,
+            "cache_context": cache_context,
             "elapsed": round(time.time() - start, 3),
         }
     raw = str(parsed.get("_model_raw") or "") if isinstance(parsed, dict) else ""
@@ -4575,6 +4584,7 @@ def call_model_answer_canonicalization(
             "raw_text": raw,
             "prompt_hash": prompt_hash,
             "grammar_hash": grammar_hash,
+            "cache_context": cache_context,
             "elapsed": round(time.time() - start, 3),
         }
     answer = str(result.get("answer") or "").strip()
@@ -4587,6 +4597,7 @@ def call_model_answer_canonicalization(
             "raw_text": raw,
             "prompt_hash": prompt_hash,
             "grammar_hash": grammar_hash,
+            "cache_context": cache_context,
             "elapsed": round(time.time() - start, 3),
         }
     span_grounded = False
@@ -4607,6 +4618,7 @@ def call_model_answer_canonicalization(
             "raw_text": raw,
             "prompt_hash": prompt_hash,
             "grammar_hash": grammar_hash,
+            "cache_context": cache_context,
             "elapsed": round(time.time() - start, 3),
         }
     payload = {
@@ -4618,6 +4630,7 @@ def call_model_answer_canonicalization(
         "elapsed": parsed.get("_model_elapsed_seconds", round(time.time() - start, 3)),
         "prompt_hash": prompt_hash,
         "grammar_hash": grammar_hash,
+        "cache_context": cache_context,
         "output_hash": hashlib.sha256(raw.encode()).hexdigest(),
         "fresh_or_cached": "fresh",
     }
