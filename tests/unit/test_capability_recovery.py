@@ -104,6 +104,39 @@ def test_cached_model_results_do_not_add_fresh_model_time() -> None:
     assert engine.model_query_trace.time_spent_seconds == 1.25
 
 
+def test_unknown_diagnostic_evidence_dedupes_same_chunk_with_span_upgrade() -> None:
+    engine = KnowMoreDiRTEngine.__new__(KnowMoreDiRTEngine)
+    engine.last_bounded_diagnostics = {
+        "execution": {
+            "candidate_evidence_sample": [
+                {
+                    "evidence": {
+                        "rel_path": "logs/state.txt",
+                        "chunk_order": 2,
+                        "text": "2026-03-09 status: closed for Delta Well.",
+                    }
+                }
+            ],
+            "source_provenance_sample": [
+                {
+                    "rel_path": "logs/state.txt",
+                    "span_id": "span-final",
+                    "chunk_order": 2,
+                    "char_start": 80,
+                    "char_end": 121,
+                    "text": "2026-03-09 status: closed for Delta Well.",
+                }
+            ],
+        }
+    }
+
+    evidence = engine._diagnostic_unknown_evidence()
+
+    assert len(evidence) == 1
+    assert evidence[0].span_id == "span-final"
+    assert evidence[0].char_start == 80
+
+
 def test_document_metadata_is_retrieval_prior_not_answer_source(tmp_path: Path) -> None:
     (tmp_path / "random_a").mkdir()
     (tmp_path / "random_b").mkdir()

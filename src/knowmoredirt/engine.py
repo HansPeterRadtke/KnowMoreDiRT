@@ -240,13 +240,19 @@ class KnowMoreDiRTEngine:
 
         evidence_items: list[Evidence] = []
         seen: set[tuple[str, str, str]] = set()
+        chunk_indexes: dict[tuple[str, int | None, str], int] = {}
         for payload in payloads:
             rel_path = str(payload.get("rel_path") or payload.get("source") or "")
             text = str(payload.get("text") or "")
             span_id = str(payload.get("span_id") or "")
             if not rel_path or not text:
                 continue
+            try:
+                chunk_order = int(payload["chunk_order"]) if payload.get("chunk_order") not in {"", None} else None
+            except (TypeError, ValueError):
+                chunk_order = None
             key = (rel_path, span_id, text)
+            chunk_key = (rel_path, chunk_order, normalize(text))
             if key in seen:
                 continue
             seen.add(key)
@@ -255,10 +261,6 @@ class KnowMoreDiRTEngine:
             except (TypeError, ValueError):
                 score = 0.45
             try:
-                chunk_order = int(payload["chunk_order"]) if payload.get("chunk_order") not in {"", None} else None
-            except (TypeError, ValueError):
-                chunk_order = None
-            try:
                 char_start = int(payload["char_start"]) if payload.get("char_start") not in {"", None} else None
             except (TypeError, ValueError):
                 char_start = None
@@ -266,18 +268,23 @@ class KnowMoreDiRTEngine:
                 char_end = int(payload["char_end"]) if payload.get("char_end") not in {"", None} else None
             except (TypeError, ValueError):
                 char_end = None
-            evidence_items.append(
-                Evidence(
-                    rel_path,
-                    text,
-                    score,
-                    span_id=span_id,
-                    chunk_order=chunk_order,
-                    char_start=char_start,
-                    char_end=char_end,
-                    source_kind=str(payload.get("source_kind") or payload.get("span_kind") or "source_span"),
-                )
+            evidence = Evidence(
+                rel_path,
+                text,
+                score,
+                span_id=span_id,
+                chunk_order=chunk_order,
+                char_start=char_start,
+                char_end=char_end,
+                source_kind=str(payload.get("source_kind") or payload.get("span_kind") or "source_span"),
             )
+            existing_index = chunk_indexes.get(chunk_key)
+            if existing_index is not None:
+                if span_id and not evidence_items[existing_index].span_id:
+                    evidence_items[existing_index] = evidence
+                continue
+            chunk_indexes[chunk_key] = len(evidence_items)
+            evidence_items.append(evidence)
             if len(evidence_items) >= limit:
                 break
         return evidence_items
