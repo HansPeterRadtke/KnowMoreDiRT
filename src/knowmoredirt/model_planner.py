@@ -2282,20 +2282,27 @@ def call_model_evidence_answer(
     prompt = build_evidence_extraction_prompt(question, expected_answer_type, evidence_items)
     constraint = _constraint_settings(EVIDENCE_EXTRACTION_GRAMMAR, ANSWER_JSON_SCHEMA, ANSWER_SCHEMA_VERSION)
     grammar_hash = str(constraint["grammar_hash"])
+    cache_settings = {
+        "n_predict": n_predict,
+        "schema": ANSWER_SCHEMA_VERSION,
+        "expected_answer_type": expected_answer_type,
+        **constraint,
+    }
+    cache_context = {
+        **cache_settings,
+        "model_fingerprint": _client_fingerprint(client),
+        "evidence_count": len(evidence_items),
+    }
     prompt_hash = _cache_hash(
         "evidence_answer",
         prompt,
         client,
-        {
-            "n_predict": n_predict,
-            "schema": ANSWER_SCHEMA_VERSION,
-            "expected_answer_type": expected_answer_type,
-            **constraint,
-        },
+        cache_settings,
     )
     cache_path = _cache_path("KMD_EVIDENCE_ANSWER_CACHE_DIR", prompt_hash)
     cached = _read_cache(cache_path)
     if cached is not None and not _cached_request_failed(cached):
+        cached.setdefault("cache_context", cache_context)
         return cached
     start = time.time()
     try:
@@ -2313,6 +2320,7 @@ def call_model_evidence_answer(
             "error": str(exc),
             "prompt_hash": prompt_hash,
             **constraint,
+            "cache_context": cache_context,
             "elapsed": round(time.time() - start, 3),
         }
     answer = parsed.get("answer") if isinstance(parsed, dict) else None
@@ -2331,6 +2339,7 @@ def call_model_evidence_answer(
             "raw_text": raw,
             "prompt_hash": prompt_hash,
             **constraint,
+            "cache_context": cache_context,
             "elapsed": round(time.time() - start, 3),
         }
         _write_cache(cache_path, payload)
@@ -2344,6 +2353,7 @@ def call_model_evidence_answer(
             "raw_text": raw,
             "prompt_hash": prompt_hash,
             **constraint,
+            "cache_context": cache_context,
             "elapsed": round(time.time() - start, 3),
         }
         _write_cache(cache_path, payload)
@@ -2358,6 +2368,7 @@ def call_model_evidence_answer(
         "elapsed": parsed.get("_model_elapsed_seconds", round(time.time() - start, 3)),
         "prompt_hash": prompt_hash,
         **constraint,
+        "cache_context": cache_context,
         "output_hash": hashlib.sha256(raw.encode()).hexdigest(),
         "fresh_or_cached": "fresh",
     }

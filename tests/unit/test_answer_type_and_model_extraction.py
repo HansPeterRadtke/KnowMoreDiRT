@@ -349,5 +349,9 @@ def test_invalid_model_evidence_answer_is_cached(tmp_path: Path, monkeypatch) ->
 
     assert model.calls == 1
     assert first["accepted"] is False
+    assert first["cache_context"]["expected_answer_type"] == "person"
+    assert first["cache_context"]["n_predict"] == 128
+    assert first["cache_context"]["evidence_count"] == 1
     assert second["accepted"] is False
     assert second["fresh_or_cached"] == "cache"
+    assert second["cache_context"]["expected_answer_type"] == "person"
