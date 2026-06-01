@@ -262,6 +262,81 @@ def test_query_frame_schema_constrains_temporal_scope_operator(monkeypatch, tmp_
     assert query_schema["properties"]["aggregation"]["enum"] == ["", "count", "list", "set"]
 
 
+def test_query_frame_invalid_json_failure_is_cached(monkeypatch, tmp_path) -> None:
+    class InvalidQueryFrameModel:
+        def __init__(self) -> None:
+            self.calls = 0
+
+        def context_size(self) -> int:
+            return 4096
+
+        def cache_fingerprint(self) -> dict[str, Any]:
+            return {"model_id": "fake-query-frame-invalid-cache", "context_size": 4096}
+
+        def complete_json(self, prompt: str, *, n_predict: int = 128, grammar=None, json_schema=None):
+            self.calls += 1
+            return {"_model_raw": "{}"}
+
+    monkeypatch.setenv("KMD_QUERY_PLAN_CACHE_DIR", str(tmp_path / "query-frame-cache"))
+    model = InvalidQueryFrameModel()
+
+    first = call_model_query_plan("What state is Delta Well in?", model, n_predict=64)  # type: ignore[arg-type]
+    second = call_model_query_plan("What state is Delta Well in?", model, n_predict=64)  # type: ignore[arg-type]
+
+    assert first["accepted"] is False
+    assert first["reason"] == "invalid_json"
+    assert second["accepted"] is False
+    assert second["reason"] == "invalid_json"
+    assert model.calls == 1
+
+
+def test_query_frame_request_failure_does_not_poison_cache(monkeypatch, tmp_path) -> None:
+    class FailsThenSucceedsQueryFrameModel:
+        def __init__(self) -> None:
+            self.calls = 0
+
+        def context_size(self) -> int:
+            return 4096
+
+        def cache_fingerprint(self) -> dict[str, Any]:
+            return {"model_id": "fake-query-frame-request-retry", "context_size": 4096}
+
+        def complete_json(self, prompt: str, *, n_predict: int = 128, grammar=None, json_schema=None):
+            self.calls += 1
+            if self.calls == 1:
+                raise RuntimeError("temporary local model failure")
+            return {
+                "query_frame": {
+                    "target_anchors": ["Delta Well"],
+                    "answer_variables": ["state"],
+                    "requested_relation": "state",
+                    "relation_terms": ["state"],
+                    "constraints": [],
+                    "scope_requirements": [],
+                    "modality_requirements": [],
+                    "answer_type": "state",
+                    "temporal_scope": "latest",
+                    "negated": False,
+                    "aggregation": "",
+                    "requires_evidence": True,
+                },
+                "_model_raw": "{}",
+                "_model_elapsed_seconds": 0.01,
+            }
+
+    monkeypatch.setenv("KMD_QUERY_PLAN_CACHE_DIR", str(tmp_path / "query-frame-cache"))
+    model = FailsThenSucceedsQueryFrameModel()
+
+    first = call_model_query_plan("What is the current state of Delta Well?", model, n_predict=64)  # type: ignore[arg-type]
+    second = call_model_query_plan("What is the current state of Delta Well?", model, n_predict=64)  # type: ignore[arg-type]
+
+    assert first["accepted"] is False
+    assert first["reason"] == "request_failed"
+    assert second["accepted"] is True
+    assert second["temporal_scope"] == "latest"
+    assert model.calls == 2
+
+
 def test_chunk_drs_planner_uses_json_schema_and_validates_grounding(monkeypatch, tmp_path) -> None:
     class JsonSchemaCapableModel:
         def __init__(self) -> None:

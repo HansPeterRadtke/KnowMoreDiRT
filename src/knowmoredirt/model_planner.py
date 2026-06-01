@@ -1551,10 +1551,7 @@ def call_model_query_plan(question: str, client: LocalModelClient, *, n_predict:
     )
     cache_path = _cache_path("KMD_QUERY_PLAN_CACHE_DIR", prompt_hash)
     cached = _read_cache(cache_path)
-    if cached is not None and not (
-        cached.get("accepted") is False
-        and cached.get("reason") in {"invalid_json", "schema_validation_failed", "request_failed"}
-    ):
+    if cached is not None and not (cached.get("accepted") is False and cached.get("reason") == "request_failed"):
         return cached
     start = time.time()
     try:
@@ -1579,7 +1576,6 @@ def call_model_query_plan(question: str, client: LocalModelClient, *, n_predict:
             "operator_schema_policy": QUERY_OPERATOR_SCHEMA_POLICY,
             "elapsed": round(time.time() - start, 3),
         }
-        _write_cache(cache_path, payload)
         return payload
     raw = str(parsed.get("_model_raw") or "") if isinstance(parsed, dict) else ""
     frame_payload = parsed.get("query_frame") if isinstance(parsed, dict) else None
