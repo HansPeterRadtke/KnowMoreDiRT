@@ -26,6 +26,8 @@ from .text import clean_extracted_value, content_tokens, normalize, text_quality
 DATE_TIME_RE = re.compile(r"\b(?:\d{4}-\d{2}-\d{2}(?:[ T]\d{1,2}:\d{2})?|\d{1,2}:\d{2})\b")
 PATH_RE = re.compile(r"\b[A-Za-z0-9_-]+(?:/[A-Za-z0-9_.-]+)+\b|\b[A-Za-z0-9_.-]+\.[A-Za-z0-9]{1,12}\b")
 INACCESSIBLE_CONTEXT_PREFIXES = ("modality:",)
+IDENTITY_GRAPH_MAX_DEPTH = 3
+IDENTITY_RERANK_MAX_ROUNDS = 6
 ANSWER_SLOT_SKIP_TERMS = {
     "answer",
     "content",
@@ -605,7 +607,7 @@ def _identity_expansion(
     seen_edges: set[str] = set()
     frontier = set(seed_ids)
     visited = set(seed_ids)
-    for _depth in range(3):
+    for _depth in range(IDENTITY_GRAPH_MAX_DEPTH):
         next_frontier: set[str] = set()
         for hypothesis in records.get("identity_hypotheses", []):
             if not identity_relation_allows_expansion(str(hypothesis.get("relation") or "")):
@@ -1860,7 +1862,7 @@ def execute_bounded_query(
     identity_expansion_evidence: list[Evidence] = []
     identity_expansion_provenance: list[dict[str, Any]] = []
     identity_expansion_rounds = 0
-    for _round in range(3):
+    for _round in range(IDENTITY_RERANK_MAX_ROUNDS):
         identity_terms, identity_evidence = _identity_expansion(records, target_terms, frame)
         identity_expansion_evidence = _dedupe_evidence([*identity_expansion_evidence, *identity_evidence])
         identity_expansion_provenance = _dedupe_provenance_payloads(

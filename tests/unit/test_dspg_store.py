@@ -887,6 +887,233 @@ def test_identity_expansion_iterates_across_scattered_drs_sources(
     assert diagnostics["ranking"]["identity_expansion_rounds"] >= 2
 
 
+def test_identity_expansion_reaches_deep_scattered_crosswalk_fixed_point(
+    tmp_path: Path,
+    monkeypatch,
+) -> None:
+    (tmp_path / "beginning").mkdir()
+    (tmp_path / "links").mkdir()
+    (tmp_path / "ending").mkdir()
+    (tmp_path / "beginning" / "intro.txt").write_text(
+        "Opening register introduces Aurora Relay as the target artifact.",
+        encoding="utf-8",
+    )
+    (tmp_path / "links" / "a.txt").write_text(
+        "Crosswalk A says AR-1 is the same artifact as Aurora Relay.",
+        encoding="utf-8",
+    )
+    (tmp_path / "links" / "b.txt").write_text(
+        "Crosswalk B says Beacon-2 is the same artifact as AR-1.",
+        encoding="utf-8",
+    )
+    (tmp_path / "links" / "c.txt").write_text(
+        "Crosswalk C says Cedar-3 is the same artifact as Beacon-2.",
+        encoding="utf-8",
+    )
+    (tmp_path / "links" / "d.txt").write_text(
+        "Crosswalk D says Delta-4 is the same artifact as Cedar-3.",
+        encoding="utf-8",
+    )
+    (tmp_path / "ending" / "status.txt").write_text(
+        "Final status note says Delta-4 status is stable.",
+        encoding="utf-8",
+    )
+
+    def identity_drs(left: str, right: str, text: str) -> dict[str, object]:
+        evidence = f"{left} is the same artifact as {right}"
+        return {
+            "schema_version": "chunk-drs-v2",
+            "source_id": "deep-crosswalk",
+            "referents": [
+                {"id": "r0", "label": left, "kind": "identifier", "evidence_text": left},
+                {"id": "r1", "label": right, "kind": "artifact", "evidence_text": right},
+            ],
+            "boxes": [
+                {"id": "b0", "kind": "asserted", "parent_id": "", "holder_referent_id": "", "evidence_text": text}
+            ],
+            "conditions": [
+                {
+                    "id": "c0",
+                    "predicate": "same_artifact",
+                    "box_id": "b0",
+                    "polarity": "positive",
+                    "modality": "asserted",
+                    "temporal_id": "",
+                    "arguments": [
+                        {
+                            "role": "left",
+                            "target_kind": "referent",
+                            "target_id": "r0",
+                            "value": "",
+                            "value_type": "identifier",
+                            "evidence_text": left,
+                        },
+                        {
+                            "role": "right",
+                            "target_kind": "referent",
+                            "target_id": "r1",
+                            "value": "",
+                            "value_type": "artifact",
+                            "evidence_text": right,
+                        },
+                    ],
+                    "evidence_text": evidence,
+                }
+            ],
+            "identity_hypotheses": [
+                {
+                    "left_referent_id": "r0",
+                    "right_referent_id": "r1",
+                    "status": "accepted",
+                    "evidence_text": evidence,
+                    "confidence": 0.93,
+                }
+            ],
+            "temporal_records": [],
+        }
+
+    class DeepCrosswalkModel:
+        def context_size(self) -> int:
+            return 4096
+
+        def cache_fingerprint(self) -> dict[str, object]:
+            return {"model_id": "fake-deep-crosswalk-drs", "context_size": 4096}
+
+        def complete_json(self, prompt: str, *, n_predict: int = 128, grammar=None, json_schema=None):
+            if "Opening register" in prompt:
+                text = "Opening register introduces Aurora Relay as the target artifact."
+                drs = {
+                    "schema_version": "chunk-drs-v2",
+                    "source_id": "deep-crosswalk",
+                    "referents": [
+                        {"id": "r0", "label": "Aurora Relay", "kind": "artifact", "evidence_text": "Aurora Relay"},
+                    ],
+                    "boxes": [
+                        {"id": "b0", "kind": "asserted", "parent_id": "", "holder_referent_id": "", "evidence_text": text}
+                    ],
+                    "conditions": [
+                        {
+                            "id": "c0",
+                            "predicate": "introduce",
+                            "box_id": "b0",
+                            "polarity": "positive",
+                            "modality": "asserted",
+                            "temporal_id": "",
+                            "arguments": [
+                                {
+                                    "role": "object",
+                                    "target_kind": "referent",
+                                    "target_id": "r0",
+                                    "value": "",
+                                    "value_type": "artifact",
+                                    "evidence_text": "Aurora Relay",
+                                }
+                            ],
+                            "evidence_text": text,
+                        }
+                    ],
+                    "identity_hypotheses": [],
+                    "temporal_records": [],
+                }
+            elif "Crosswalk A" in prompt:
+                text = "Crosswalk A says AR-1 is the same artifact as Aurora Relay."
+                drs = identity_drs("AR-1", "Aurora Relay", text)
+            elif "Crosswalk B" in prompt:
+                text = "Crosswalk B says Beacon-2 is the same artifact as AR-1."
+                drs = identity_drs("Beacon-2", "AR-1", text)
+            elif "Crosswalk C" in prompt:
+                text = "Crosswalk C says Cedar-3 is the same artifact as Beacon-2."
+                drs = identity_drs("Cedar-3", "Beacon-2", text)
+            elif "Crosswalk D" in prompt:
+                text = "Crosswalk D says Delta-4 is the same artifact as Cedar-3."
+                drs = identity_drs("Delta-4", "Cedar-3", text)
+            else:
+                text = "Final status note says Delta-4 status is stable."
+                drs = {
+                    "schema_version": "chunk-drs-v2",
+                    "source_id": "deep-crosswalk",
+                    "referents": [
+                        {"id": "r0", "label": "Delta-4", "kind": "identifier", "evidence_text": "Delta-4"},
+                    ],
+                    "boxes": [
+                        {"id": "b0", "kind": "asserted", "parent_id": "", "holder_referent_id": "", "evidence_text": text}
+                    ],
+                    "conditions": [
+                        {
+                            "id": "c0",
+                            "predicate": "status",
+                            "box_id": "b0",
+                            "polarity": "positive",
+                            "modality": "asserted",
+                            "temporal_id": "",
+                            "arguments": [
+                                {
+                                    "role": "subject",
+                                    "target_kind": "referent",
+                                    "target_id": "r0",
+                                    "value": "",
+                                    "value_type": "identifier",
+                                    "evidence_text": "Delta-4",
+                                },
+                                {
+                                    "role": "state",
+                                    "target_kind": "literal",
+                                    "target_id": "",
+                                    "value": "stable",
+                                    "value_type": "state",
+                                    "evidence_text": "stable",
+                                },
+                            ],
+                            "evidence_text": "Delta-4 status is stable",
+                        }
+                    ],
+                    "identity_hypotheses": [],
+                    "temporal_records": [],
+                }
+            return {"drs": drs, "_model_raw": "{}", "_model_elapsed_seconds": 0.01}
+
+    monkeypatch.setenv("KMD_CHUNK_DRS_CACHE_DIR", str(tmp_path / ".drs-cache"))
+    store, run_id, documents, sentences = ingest_folder(
+        tmp_path,
+        semantic_client=DeepCrosswalkModel(),  # type: ignore[arg-type]
+        use_semantic_frames=False,
+        use_drs_semantics=True,
+    )
+    sentences_by_document: dict[str, dict[int, object]] = {}
+    for sentence in sentences:
+        sentences_by_document.setdefault(sentence.rel_path, {})[sentence.order] = sentence
+    frame = QueryFrame(
+        question_text="What status is recorded for Aurora Relay?",
+        answer_type="state",
+        answer_variables=("state",),
+        target_anchors=("Aurora Relay",),
+        requested_relation="status",
+        relation_terms=("status",),
+        constraints=(),
+    )
+
+    answer, diagnostics = execute_bounded_query(
+        store,
+        run_id,
+        documents,
+        sentences_by_document,  # type: ignore[arg-type]
+        frame.question_text,
+        frame,
+    )
+
+    assert answer is not None
+    assert answer.text == "stable"
+    assert answer.evidence[0].rel_path == "ending/status.txt"
+    assert "delta-4" in diagnostics["ranking"]["identity_expanded_target_terms"]
+    assert diagnostics["ranking"]["identity_expansion_rounds"] >= 4
+    assert {
+        "links/a.txt",
+        "links/b.txt",
+        "links/c.txt",
+        "links/d.txt",
+    }.issubset({item["rel_path"] for item in diagnostics["execution"]["identity_expansion_evidence"]})
+
+
 def test_identity_expanded_retrieval_respects_reported_scope_against_asserted_state(
     tmp_path: Path,
     monkeypatch,
