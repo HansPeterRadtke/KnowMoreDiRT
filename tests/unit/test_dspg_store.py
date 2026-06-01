@@ -4322,6 +4322,52 @@ def test_count_aggregation_ignores_query_unit_terms_for_record_groups(tmp_path: 
     assert "no_answer_reason" not in diagnostics["execution"]
 
 
+def test_row_count_aggregation_excludes_non_table_state_mentions(tmp_path: Path) -> None:
+    (tmp_path / "rows.tsv").write_text(
+        "\n".join(
+            [
+                "actor\titem\tstate",
+                "Mira Sol\tAster One\topen",
+                "Mira Sol\tAster Two\topen",
+            ]
+        ),
+        encoding="utf-8",
+    )
+    (tmp_path / "notes.txt").write_text(
+        "Delta marker state open in prose but not as a table row.",
+        encoding="utf-8",
+    )
+    store, run_id, documents, sentences = ingest_folder(tmp_path)
+    sentences_by_document: dict[str, dict[int, object]] = {}
+    for sentence in sentences:
+        sentences_by_document.setdefault(sentence.rel_path, {})[sentence.order] = sentence
+    frame = QueryFrame(
+        question_text="How many rows have state open?",
+        answer_type="count",
+        answer_variables=(),
+        target_anchors=(),
+        requested_relation="count",
+        relation_terms=("state", "open"),
+        constraints=(),
+        aggregation="count",
+    )
+
+    answer, diagnostics = execute_bounded_query(
+        store,
+        run_id,
+        documents,
+        sentences_by_document,  # type: ignore[arg-type]
+        frame.question_text,
+        frame,
+    )
+
+    assert answer is not None
+    assert answer.text == "2"
+    assert answer.reason == "record-group aggregation DRS binding"
+    assert {item.rel_path for item in answer.evidence} == {"rows.tsv"}
+    assert "no_answer_reason" not in diagnostics["execution"]
+
+
 def test_model_query_drs_compound_slot_matches_structural_record_field(tmp_path: Path) -> None:
     (tmp_path / "object.raw").write_text(
         '{ name: "Orchid Gamma", owner: "Tessa Noll", '

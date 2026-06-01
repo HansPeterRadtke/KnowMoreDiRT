@@ -1389,7 +1389,16 @@ def _material_matches_all_term_groups(material: str, groups: list[list[str]]) ->
 
 
 def _frame_requests_row_units(frame: QueryFrame) -> bool:
-    material = normalize(" ".join(frame.answer_variables))
+    material = normalize(
+        " ".join(
+            [
+                frame.question_text,
+                frame.requested_relation,
+                *frame.answer_variables,
+                *frame.relation_terms,
+            ]
+        )
+    )
     return bool(re.search(r"\brows?\b", material))
 
 
