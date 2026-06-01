@@ -2067,6 +2067,352 @@ def test_incremental_new_identity_bridge_reaches_existing_drs_chunk(
     )
 
 
+def test_incremental_reported_then_asserted_identity_preserves_scope_and_reuses_chunks(
+    tmp_path: Path,
+    monkeypatch,
+) -> None:
+    (tmp_path / "begin").mkdir()
+    (tmp_path / "middle").mkdir()
+    (tmp_path / "begin" / "catalog.txt").write_text(
+        "Opening registry names Cerulean Anchor.",
+        encoding="utf-8",
+    )
+    (tmp_path / "middle" / "state.txt").write_text(
+        "Asserted record CA-9 marker T002 state amber.",
+        encoding="utf-8",
+    )
+
+    class IncrementalScopedIdentityModel:
+        def __init__(self) -> None:
+            self.calls: list[str] = []
+
+        def context_size(self) -> int:
+            return 4096
+
+        def cache_fingerprint(self) -> dict[str, object]:
+            return {"model_id": "fake-incremental-scoped-identity-drs", "context_size": 4096}
+
+        def complete_json(self, prompt: str, *, n_predict: int = 128, grammar=None, json_schema=None):
+            def referent(ref_id: str, label: str, kind: str) -> dict[str, object]:
+                return {"id": ref_id, "label": label, "kind": kind, "evidence_text": label}
+
+            def ref_arg(role: str, target_id: str, value_type: str, evidence_text: str) -> dict[str, object]:
+                return {
+                    "role": role,
+                    "target_kind": "referent",
+                    "target_id": target_id,
+                    "value": "",
+                    "value_type": value_type,
+                    "evidence_text": evidence_text,
+                }
+
+            def literal_arg(role: str, value: str, value_type: str) -> dict[str, object]:
+                return {
+                    "role": role,
+                    "target_kind": "literal",
+                    "target_id": "",
+                    "value": value,
+                    "value_type": value_type,
+                    "evidence_text": value,
+                }
+
+            if "Opening registry" in prompt:
+                self.calls.append("begin/catalog.txt")
+                text = "Opening registry names Cerulean Anchor."
+                referents = [referent("r0", "Cerulean Anchor", "artifact")]
+                boxes = [
+                    {"id": "b0", "kind": "asserted", "parent_id": "", "holder_referent_id": "", "evidence_text": text}
+                ]
+                conditions = [
+                    {
+                        "id": "c0",
+                        "predicate": "names",
+                        "box_id": "b0",
+                        "polarity": "positive",
+                        "modality": "asserted",
+                        "temporal_id": "",
+                        "arguments": [ref_arg("entity", "r0", "artifact", "Cerulean Anchor")],
+                        "evidence_text": text,
+                    }
+                ]
+                identities = []
+                temporals = []
+            elif "Asserted record" in prompt:
+                self.calls.append("middle/state.txt")
+                text = "Asserted record CA-9 marker T002 state amber."
+                referents = [referent("r0", "CA-9", "identifier")]
+                boxes = [
+                    {"id": "b0", "kind": "asserted", "parent_id": "", "holder_referent_id": "", "evidence_text": text}
+                ]
+                conditions = [
+                    {
+                        "id": "c0",
+                        "predicate": "state",
+                        "box_id": "b0",
+                        "polarity": "positive",
+                        "modality": "asserted",
+                        "temporal_id": "t0",
+                        "arguments": [
+                            ref_arg("entity", "r0", "identifier", "CA-9"),
+                            literal_arg("state", "amber", "state"),
+                        ],
+                        "evidence_text": "CA-9 marker T002 state amber",
+                    }
+                ]
+                identities = []
+                temporals = [{"id": "t0", "value": "T002", "value_type": "sequence_marker", "evidence_text": "T002"}]
+            elif "Reporter says" in prompt:
+                self.calls.append("reports/reported.txt")
+                text = "Reporter says CA-9 is Cerulean Anchor and CA-9 marker T003 state green."
+                reported = "CA-9 is Cerulean Anchor and CA-9 marker T003 state green"
+                referents = [
+                    referent("r0", "Reporter", "person"),
+                    referent("r1", "CA-9", "identifier"),
+                    referent("r2", "Cerulean Anchor", "artifact"),
+                ]
+                boxes = [
+                    {"id": "b0", "kind": "asserted", "parent_id": "", "holder_referent_id": "", "evidence_text": text},
+                    {
+                        "id": "b1",
+                        "kind": "reported",
+                        "parent_id": "b0",
+                        "holder_referent_id": "r0",
+                        "evidence_text": reported,
+                    },
+                ]
+                conditions = [
+                    {
+                        "id": "c0",
+                        "predicate": "report",
+                        "box_id": "b0",
+                        "polarity": "positive",
+                        "modality": "asserted",
+                        "temporal_id": "",
+                        "arguments": [
+                            ref_arg("source", "r0", "person", "Reporter"),
+                            {
+                                "role": "content",
+                                "target_kind": "box",
+                                "target_id": "b1",
+                                "value": "",
+                                "value_type": "box",
+                                "evidence_text": reported,
+                            },
+                        ],
+                        "evidence_text": text,
+                    },
+                    {
+                        "id": "c1",
+                        "predicate": "same_artifact",
+                        "box_id": "b1",
+                        "polarity": "positive",
+                        "modality": "asserted",
+                        "temporal_id": "",
+                        "arguments": [
+                            ref_arg("left", "r1", "identifier", "CA-9"),
+                            ref_arg("right", "r2", "artifact", "Cerulean Anchor"),
+                        ],
+                        "evidence_text": "CA-9 is Cerulean Anchor",
+                    },
+                    {
+                        "id": "c2",
+                        "predicate": "state",
+                        "box_id": "b1",
+                        "polarity": "positive",
+                        "modality": "asserted",
+                        "temporal_id": "t0",
+                        "arguments": [
+                            ref_arg("entity", "r1", "identifier", "CA-9"),
+                            literal_arg("state", "green", "state"),
+                        ],
+                        "evidence_text": "CA-9 marker T003 state green",
+                    },
+                ]
+                identities = [
+                    {
+                        "left_referent_id": "r1",
+                        "right_referent_id": "r2",
+                        "status": "accepted",
+                        "evidence_text": "CA-9 is Cerulean Anchor",
+                        "confidence": 0.91,
+                    }
+                ]
+                temporals = [{"id": "t0", "value": "T003", "value_type": "sequence_marker", "evidence_text": "T003"}]
+            else:
+                self.calls.append("end/asserted_identity.txt")
+                text = "Final registry confirms CA-9 is Cerulean Anchor."
+                referents = [
+                    referent("r0", "CA-9", "identifier"),
+                    referent("r1", "Cerulean Anchor", "artifact"),
+                ]
+                boxes = [
+                    {"id": "b0", "kind": "asserted", "parent_id": "", "holder_referent_id": "", "evidence_text": text}
+                ]
+                conditions = [
+                    {
+                        "id": "c0",
+                        "predicate": "same_artifact",
+                        "box_id": "b0",
+                        "polarity": "positive",
+                        "modality": "asserted",
+                        "temporal_id": "",
+                        "arguments": [
+                            ref_arg("left", "r0", "identifier", "CA-9"),
+                            ref_arg("right", "r1", "artifact", "Cerulean Anchor"),
+                        ],
+                        "evidence_text": "CA-9 is Cerulean Anchor",
+                    }
+                ]
+                identities = [
+                    {
+                        "left_referent_id": "r0",
+                        "right_referent_id": "r1",
+                        "status": "accepted",
+                        "evidence_text": "CA-9 is Cerulean Anchor",
+                        "confidence": 0.94,
+                    }
+                ]
+                temporals = []
+            return {
+                "drs": {
+                    "schema_version": "chunk-drs-v2",
+                    "source_id": "incremental-scoped-identity",
+                    "referents": referents,
+                    "boxes": boxes,
+                    "conditions": conditions,
+                    "identity_hypotheses": identities,
+                    "temporal_records": temporals,
+                },
+                "_model_raw": "{}",
+                "_model_elapsed_seconds": 0.01,
+            }
+
+    def sentences_by_document(sentences) -> dict[str, dict[int, object]]:
+        grouped: dict[str, dict[int, object]] = {}
+        for sentence in sentences:
+            grouped.setdefault(sentence.rel_path, {})[sentence.order] = sentence
+        return grouped
+
+    unscoped_frame = QueryFrame(
+        question_text="What is the latest state for Cerulean Anchor?",
+        answer_type="state",
+        answer_variables=("state",),
+        target_anchors=("Cerulean Anchor",),
+        requested_relation="state",
+        relation_terms=("state",),
+        constraints=(),
+        temporal_scope="latest",
+    )
+    reported_frame = QueryFrame(
+        question_text="What is the latest reported state for Cerulean Anchor?",
+        answer_type="state",
+        answer_variables=("state",),
+        target_anchors=("Cerulean Anchor",),
+        requested_relation="state",
+        relation_terms=("state",),
+        constraints=(),
+        temporal_scope="latest",
+        scope_requirements=("reported",),
+    )
+
+    cache_dir = tmp_path.parent / f"{tmp_path.name}-incremental-scoped-cache"
+    monkeypatch.setenv("KMD_CHUNK_DRS_CACHE_DIR", str(cache_dir))
+    store = DSPGStore()
+    model = IncrementalScopedIdentityModel()
+    store, first_run_id, documents, sentences = ingest_folder(
+        tmp_path,
+        store=store,
+        semantic_client=model,
+        use_semantic_frames=False,
+        use_drs_semantics=True,
+    )
+    initial_answer, initial_diagnostics = execute_bounded_query(
+        store,
+        first_run_id,
+        documents,
+        sentences_by_document(sentences),  # type: ignore[arg-type]
+        unscoped_frame.question_text,
+        unscoped_frame,
+    )
+    assert initial_answer is None
+    assert initial_diagnostics["execution"]["no_answer_reason"] == "no_candidate"
+    assert model.calls == ["begin/catalog.txt", "middle/state.txt"]
+
+    (tmp_path / "reports").mkdir()
+    (tmp_path / "reports" / "reported.txt").write_text(
+        "Reporter says CA-9 is Cerulean Anchor and CA-9 marker T003 state green.",
+        encoding="utf-8",
+    )
+    store, second_run_id, documents, sentences = ingest_folder(
+        tmp_path,
+        store=store,
+        semantic_client=model,
+        use_semantic_frames=False,
+        use_drs_semantics=True,
+    )
+    grouped = sentences_by_document(sentences)
+    unscoped_after_report, unscoped_reported_diagnostics = execute_bounded_query(
+        store,
+        second_run_id,
+        documents,
+        grouped,  # type: ignore[arg-type]
+        unscoped_frame.question_text,
+        unscoped_frame,
+    )
+    reported_answer, reported_diagnostics = execute_bounded_query(
+        store,
+        second_run_id,
+        documents,
+        grouped,  # type: ignore[arg-type]
+        reported_frame.question_text,
+        reported_frame,
+    )
+    assert first_run_id == second_run_id
+    assert model.calls == ["begin/catalog.txt", "middle/state.txt", "reports/reported.txt"]
+    assert unscoped_after_report is None
+    assert "ca-9" not in unscoped_reported_diagnostics["ranking"].get("identity_expanded_target_terms", [])
+    assert reported_answer is not None
+    assert reported_answer.text == "green"
+    assert "ca-9" in reported_diagnostics["ranking"]["identity_expanded_target_terms"]
+    assert reported_answer.evidence[0].rel_path == "reports/reported.txt"
+
+    (tmp_path / "end").mkdir()
+    (tmp_path / "end" / "asserted_identity.txt").write_text(
+        "Final registry confirms CA-9 is Cerulean Anchor.",
+        encoding="utf-8",
+    )
+    store, third_run_id, documents, sentences = ingest_folder(
+        tmp_path,
+        store=store,
+        semantic_client=model,
+        use_semantic_frames=False,
+        use_drs_semantics=True,
+    )
+    final_answer, final_diagnostics = execute_bounded_query(
+        store,
+        third_run_id,
+        documents,
+        sentences_by_document(sentences),  # type: ignore[arg-type]
+        unscoped_frame.question_text,
+        unscoped_frame,
+    )
+
+    assert third_run_id == first_run_id
+    assert model.calls == [
+        "begin/catalog.txt",
+        "middle/state.txt",
+        "reports/reported.txt",
+        "end/asserted_identity.txt",
+    ]
+    assert final_answer is not None
+    assert final_answer.text == "amber"
+    assert "ca-9" in final_diagnostics["ranking"]["identity_expanded_target_terms"]
+    assert {"end/asserted_identity.txt", "middle/state.txt"}.issubset(
+        {item.rel_path for item in final_answer.evidence}
+    )
+    assert "reports/reported.txt" not in {item.rel_path for item in final_answer.evidence}
+
+
 def test_scattered_identity_reported_contradiction_respects_drs_scope(
     tmp_path: Path,
     monkeypatch,
