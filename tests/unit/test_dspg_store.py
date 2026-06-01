@@ -7056,6 +7056,67 @@ def test_unlinked_scattered_sources_return_unknown_with_source_provenance(
     assert all(item.get("document", {}).get("document_id") == item.get("document_id") for item in provenance)
 
 
+def test_no_answer_provenance_balances_scattered_target_and_relation_sources(
+    tmp_path: Path,
+    monkeypatch,
+) -> None:
+    monkeypatch.setenv("KMD_USE_LOCAL_MODEL", "0")
+    (tmp_path / "begin").mkdir()
+    (tmp_path / "middle").mkdir()
+    (tmp_path / "ending").mkdir()
+    (tmp_path / "begin" / "registry.txt").write_text(
+        "\n".join(
+            f"Registry target line {index:02d}: Iris Vault remains the monitored artifact."
+            for index in range(14)
+        ),
+        encoding="utf-8",
+    )
+    (tmp_path / "middle" / "state.txt").write_text(
+        "Maintenance lane IV-4 marker T002 state blue.",
+        encoding="utf-8",
+    )
+    (tmp_path / "ending" / "similarity.txt").write_text(
+        "Closing note says IV-4 resembles Iris Vault.",
+        encoding="utf-8",
+    )
+
+    store, run_id, documents, sentences = ingest_folder(tmp_path)
+    sentences_by_document: dict[str, dict[int, object]] = {}
+    for sentence in sentences:
+        sentences_by_document.setdefault(sentence.rel_path, {})[sentence.order] = sentence
+    frame = QueryFrame(
+        question_text="What is the latest state for Iris Vault?",
+        answer_type="state",
+        answer_variables=("state",),
+        target_anchors=("Iris Vault",),
+        requested_relation="state",
+        relation_terms=("state",),
+        constraints=(),
+        temporal_scope="latest",
+    )
+
+    answer, diagnostics = execute_bounded_query(
+        store,
+        run_id,
+        documents,
+        sentences_by_document,  # type: ignore[arg-type]
+        frame.question_text,
+        frame,
+    )
+
+    assert answer is None
+    assert diagnostics["execution"]["no_answer_reason"] == "no_candidate"
+    provenance = diagnostics["execution"]["source_provenance_sample"]
+    provenance_paths = {item["rel_path"] for item in provenance}
+    assert "begin/registry.txt" in provenance_paths
+    assert "middle/state.txt" in provenance_paths
+    scattered = diagnostics["execution"]["scattered_source_provenance_without_binding"]
+    assert scattered["target_rel_paths"] == ["begin/registry.txt", "ending/similarity.txt"]
+    assert scattered["relation_rel_paths"] == ["middle/state.txt"]
+    assert all(item.get("chunk_id") and item.get("span_id") for item in provenance)
+    assert all(item.get("document", {}).get("document_id") == item.get("document_id") for item in provenance)
+
+
 def test_ingest_skips_cartesian_temporal_edges_for_dense_time_chunks(tmp_path: Path, monkeypatch) -> None:
     monkeypatch.setenv("KMD_TEMPORAL_SAME_SPAN_MAX_VALUES", "2")
     (tmp_path / "dense.log").write_text(

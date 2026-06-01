@@ -895,7 +895,7 @@ def _source_provenance_sample(
     rows.sort(key=lambda item: (-item[0], item[1], item[2], item[3], item[4]))
     seen: set[tuple[str, str, int | None, str]] = set()
     seen_chunks: set[tuple[str, int | None, str]] = set()
-    payloads: list[dict[str, Any]] = []
+    ranked_payloads: list[dict[str, Any]] = []
     for _score, _kind_priority, _rel_path, _order, _span_id, payload in rows:
         key = (
             str(payload.get("rel_path") or ""),
@@ -912,10 +912,65 @@ def _source_provenance_sample(
             continue
         seen.add(key)
         seen_chunks.add(chunk_key)
-        payloads.append(payload)
-        if len(payloads) >= limit:
-            break
-    return payloads
+        ranked_payloads.append(payload)
+
+    if target_terms and relation_terms and limit >= 2:
+        selected: list[dict[str, Any]] = []
+        selected_keys: set[tuple[str, str, int | None, str]] = set()
+
+        def add(payload: dict[str, Any]) -> None:
+            key = _provenance_payload_key(payload)
+            if key in selected_keys or len(selected) >= limit:
+                return
+            selected_keys.add(key)
+            selected.append(payload)
+
+        quota = max(1, min(3, limit // 3))
+        target_payloads = [
+            payload
+            for payload in ranked_payloads
+            if _contains_any(_provenance_payload_material(payload), target_terms)
+        ]
+        relation_payloads = [
+            payload
+            for payload in ranked_payloads
+            if _contains_any(_provenance_payload_material(payload), relation_terms)
+        ]
+
+        def diverse(payloads: list[dict[str, Any]]) -> list[dict[str, Any]]:
+            values: list[dict[str, Any]] = []
+            value_keys: set[tuple[str, str, int | None, str]] = set()
+            seen_paths: set[str] = set()
+            for payload in payloads:
+                rel_path = str(payload.get("rel_path") or "")
+                if rel_path and rel_path in seen_paths:
+                    continue
+                key = _provenance_payload_key(payload)
+                value_keys.add(key)
+                values.append(payload)
+                if rel_path:
+                    seen_paths.add(rel_path)
+                if len(values) >= quota:
+                    return values
+            for payload in payloads:
+                key = _provenance_payload_key(payload)
+                if key in value_keys:
+                    continue
+                value_keys.add(key)
+                values.append(payload)
+                if len(values) >= quota:
+                    break
+            return values
+
+        for payload in diverse(target_payloads):
+            add(payload)
+        for payload in diverse(relation_payloads):
+            add(payload)
+        for payload in ranked_payloads:
+            add(payload)
+        return selected[:limit]
+
+    return ranked_payloads[:limit]
 
 
 def _candidate_evidence_sample(
