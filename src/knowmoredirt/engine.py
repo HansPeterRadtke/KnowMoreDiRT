@@ -749,14 +749,20 @@ class KnowMoreDiRTEngine:
         execution = diagnostics.get("execution") if isinstance(diagnostics.get("execution"), dict) else {}
         if not isinstance(execution, dict):
             return False
-        blocking_keys = {
+        blocking_keys = (
             "answer_conflict_without_query_scope",
             "temporal_ambiguity_without_query_scope",
             "temporal_answer_conflict_at_boundary",
-        }
-        if any(execution.get(key) for key in blocking_keys):
+        )
+        for key in blocking_keys:
+            if execution.get(key):
+                execution["model_evidence_fallback_blocked_reason"] = key
+                return True
+        no_answer_reason = str(execution.get("no_answer_reason") or "")
+        if no_answer_reason in blocking_keys:
+            execution["model_evidence_fallback_blocked_reason"] = no_answer_reason
             return True
-        return str(execution.get("no_answer_reason") or "") in blocking_keys
+        return False
 
     def _lazy_semantic_frames_enabled(self) -> bool:
         return os.environ.get("KMD_LAZY_LLM_FRAMES", "0").strip().lower() in {"1", "true", "yes", "on"}

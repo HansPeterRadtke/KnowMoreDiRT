@@ -344,6 +344,10 @@ def test_local_model_does_not_evidence_fallback_over_bounded_conflict(tmp_path: 
 
     assert answer.text == "unknown"
     assert engine.last_bounded_diagnostics["execution"]["answer_conflict_without_query_scope"]
+    assert (
+        engine.last_bounded_diagnostics["execution"]["model_evidence_fallback_blocked_reason"]
+        == "answer_conflict_without_query_scope"
+    )
     assert answer.evidence
     assert {item.rel_path for item in answer.evidence} == {"blue.txt", "green.txt"}
     assert fake.evidence_calls == 0
