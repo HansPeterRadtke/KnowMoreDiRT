@@ -1594,7 +1594,8 @@ def _record_groups(records: dict[str, Any]) -> dict[str, list[dict[str, Any]]]:
         group = str(metadata.get("record_group") or "")
         if not group:
             continue
-        groups[group].append(row)
+        source_scope = str(metadata.get("sentence_group") or row.get("source_span_id") or "")
+        groups["|".join([source_scope, group]) if source_scope else group].append(row)
     return groups
 
 

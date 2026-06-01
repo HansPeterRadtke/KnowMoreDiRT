@@ -131,6 +131,22 @@ def test_nested_json_like_raw_text_creates_queryable_key_value_relations(tmp_pat
     assert engine.dspg_counts()["relations"] >= 3
 
 
+def test_json_record_groups_do_not_merge_roots_across_documents(tmp_path: Path) -> None:
+    (tmp_path / "moss.raw").write_text(
+        '{"bundle":{"name":"Moss Beacon","links":{"manual":"https://manuals.example.test/moss-beacon"}}}\n',
+        encoding="utf-8",
+    )
+    (tmp_path / "lark.raw").write_text(
+        '{"bundle":{"name":"Lark Mirror","links":{"warranty":"https://warranty.example.test/lark-mirror"}}}\n',
+        encoding="utf-8",
+    )
+
+    engine = KnowMoreDiRTEngine(tmp_path)
+
+    assert engine.answer("Where is the warranty for Moss Beacon?").text == "unknown"
+    assert engine.answer("Where is the warranty for Lark Mirror?").text == "https://warranty.example.test/lark-mirror"
+
+
 def test_low_semantic_noise_does_not_dominate_normal_fact_retrieval(tmp_path: Path) -> None:
     (tmp_path / "facts").mkdir()
     (tmp_path / "noise").mkdir()
