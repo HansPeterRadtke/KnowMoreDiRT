@@ -1460,6 +1460,9 @@ def test_chunk_drs_failed_staged_fallback_keeps_stage_diagnostics(monkeypatch, t
     assert result["staged_fallback"]["stage"] == "skeleton"
     assert result["staged_fallback"]["error"] == "bad skeleton json"
     assert result["staged_fallback"]["raw_snippet"] == '{"drs_skeleton":'
+    assert result["staged_fallback"]["prompt_hash"]
+    assert result["staged_fallback"]["json_schema_hash"]
+    assert result["staged_fallback"]["constraint_mode"] in {"json_schema", "gbnf", "none"}
 
 
 def test_chunk_drs_staged_invalid_json_failure_is_cached(monkeypatch, tmp_path) -> None:

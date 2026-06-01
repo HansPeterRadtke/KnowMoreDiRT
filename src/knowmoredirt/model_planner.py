@@ -1016,7 +1016,17 @@ def _staged_fallback_failure_summary(fallback: dict[str, Any]) -> dict[str, Any]
         "reason": fallback.get("reason"),
         "stage": fallback.get("stage"),
     }
-    for key in ("error", "raw_snippet", "grounding_failures", "validation", "elapsed"):
+    for key in (
+        "error",
+        "raw_snippet",
+        "grounding_failures",
+        "validation",
+        "elapsed",
+        "prompt_hash",
+        "grammar_hash",
+        "json_schema_hash",
+        "constraint_mode",
+    ):
         value = fallback.get(key)
         if value:
             summary[key] = value
