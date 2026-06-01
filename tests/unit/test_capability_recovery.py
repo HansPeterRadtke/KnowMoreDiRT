@@ -400,15 +400,17 @@ def test_drs_attempt_cache_context_separates_identical_text_by_source_path(tmp_p
     class FakeDrsModel:
         def __init__(self) -> None:
             self.prompts: list[str] = []
+            self.n_predicts: list[int] = []
 
         def context_size(self) -> int:
-            return 4096
+            return 32768
 
         def cache_fingerprint(self) -> dict[str, object]:
-            return {"model_id": "fake-drs-source-cache-context", "context_size": 4096}
+            return {"model_id": "fake-drs-source-cache-context", "context_size": 32768}
 
         def complete_json(self, prompt: str, *, n_predict: int = 128, grammar=None, json_schema=None):
             self.prompts.append(prompt)
+            self.n_predicts.append(int(n_predict))
             text = "Aero Gate is ready."
             return {
                 "drs": {
@@ -474,6 +476,8 @@ def test_drs_attempt_cache_context_separates_identical_text_by_source_path(tmp_p
     contexts = [json.loads(row["metadata_json"])["cache_context"] for row in rows]
     assert len(rows) == 2
     assert len({row["cache_key"] for row in rows}) == 2
+    assert {context["n_predict"] for context in contexts} == set(fake.n_predicts)
+    assert set(fake.n_predicts) == {544}
     assert {context["source_rel_path"] for context in contexts} == {
         "alpha/note.raw",
         "beta/note.raw",

@@ -12,7 +12,13 @@ from typing import Any
 from .drs import DiscourseArgument, DiscourseCondition, frame_from_model_dict
 from .extractors import capitalized_phrases, identifiers, urls
 from .models import Document, Sentence
-from .model_planner import call_model_chunk_drs, call_model_chunk_frames, chunk_drs_cache_context, chunk_frame_cache_context
+from .model_planner import (
+    call_model_chunk_drs,
+    call_model_chunk_frames,
+    chunk_drs_cache_context,
+    chunk_frame_cache_context,
+    default_chunk_drs_n_predict,
+)
 from .relations import ExtractedRelation, extract_relations
 from .scanner import scan_folder
 from .semantic_cache import SemanticFrameCache
@@ -345,7 +351,12 @@ def _ingest_model_drs_for_sentence(
             f"elapsed={time.monotonic() - ingest_started:.1f}s"
         )
         return semantic_index
-    drs_cache_context = chunk_drs_cache_context(semantic_client, rel_path=sentence.rel_path)
+    drs_n_predict = default_chunk_drs_n_predict(semantic_client, sentence.text)
+    drs_cache_context = chunk_drs_cache_context(
+        semantic_client,
+        n_predict=drs_n_predict,
+        rel_path=sentence.rel_path,
+    )
     drs_cache_key = stable_id("drs_attempt_context", json.dumps(drs_cache_context, sort_keys=True, default=str))
     previous_attempt = store.execute(
         """
@@ -414,7 +425,12 @@ def _ingest_model_drs_for_sentence(
         f"source={sentence.rel_path}:{sentence.order} "
         f"elapsed={time.monotonic() - ingest_started:.1f}s"
     )
-    drs_result = call_model_chunk_drs(sentence.text, semantic_client, rel_path=sentence.rel_path)
+    drs_result = call_model_chunk_drs(
+        sentence.text,
+        semantic_client,
+        rel_path=sentence.rel_path,
+        n_predict=drs_n_predict,
+    )
     materialized = {"accepted": False, "reason": "not_attempted", "inserted": {}}
     if drs_result.get("accepted") and isinstance(drs_result.get("drs"), dict):
         materialized = store.materialize_drs_payload(
