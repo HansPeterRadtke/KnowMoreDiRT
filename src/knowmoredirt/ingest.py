@@ -345,7 +345,7 @@ def _ingest_model_drs_for_sentence(
             f"elapsed={time.monotonic() - ingest_started:.1f}s"
         )
         return semantic_index
-    drs_cache_context = chunk_drs_cache_context(semantic_client)
+    drs_cache_context = chunk_drs_cache_context(semantic_client, rel_path=sentence.rel_path)
     drs_cache_key = stable_id("drs_attempt_context", json.dumps(drs_cache_context, sort_keys=True, default=str))
     previous_attempt = store.execute(
         """

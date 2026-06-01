@@ -3977,12 +3977,17 @@ def _call_model_chunk_drs_staged(
     }
 
 
-def chunk_drs_cache_context(client: LocalModelClient | None, *, n_predict: int | None = None) -> dict[str, Any]:
+def chunk_drs_cache_context(
+    client: LocalModelClient | None,
+    *,
+    n_predict: int | None = None,
+    rel_path: str = "",
+) -> dict[str, Any]:
     if n_predict is None:
         n_predict = default_chunk_drs_n_predict(client)
     production_schema = chunk_drs_json_schema(include_auxiliary_fields=False)
     constraint = _constraint_settings(CHUNK_DRS_GRAMMAR, production_schema, CHUNK_DRS_SCHEMA_VERSION)
-    return {
+    context = {
         "prompt_version": PROMPT_VERSION,
         "schema_version": CHUNK_DRS_SCHEMA_VERSION,
         "evidence_cap_policy": "min_chunk_or_reserved_output_quarter_96_256",
@@ -4013,6 +4018,9 @@ def chunk_drs_cache_context(client: LocalModelClient | None, *, n_predict: int |
         "n_predict": int(n_predict),
         "model_fingerprint": _client_fingerprint(client),
     }
+    if rel_path:
+        context["source_rel_path"] = rel_path
+    return context
 
 
 def call_model_chunk_drs(

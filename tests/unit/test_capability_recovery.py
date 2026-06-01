@@ -396,6 +396,90 @@ def test_frame_cache_context_separates_identical_text_by_source_path(tmp_path: P
     assert any('"source": "beta/frame.raw"' in prompt for prompt in extraction_prompts)
 
 
+def test_drs_attempt_cache_context_separates_identical_text_by_source_path(tmp_path: Path, monkeypatch) -> None:
+    class FakeDrsModel:
+        def __init__(self) -> None:
+            self.prompts: list[str] = []
+
+        def context_size(self) -> int:
+            return 4096
+
+        def cache_fingerprint(self) -> dict[str, object]:
+            return {"model_id": "fake-drs-source-cache-context", "context_size": 4096}
+
+        def complete_json(self, prompt: str, *, n_predict: int = 128, grammar=None, json_schema=None):
+            self.prompts.append(prompt)
+            text = "Aero Gate is ready."
+            return {
+                "drs": {
+                    "schema_version": "chunk-drs-v2",
+                    "source_id": "fake",
+                    "referents": [
+                        {"id": "r0", "label": "Aero Gate", "kind": "artifact", "evidence_text": "Aero Gate"},
+                    ],
+                    "boxes": [
+                        {"id": "b0", "kind": "asserted", "parent_id": "", "holder_referent_id": "", "evidence_text": text}
+                    ],
+                    "conditions": [
+                        {
+                            "id": "c0",
+                            "predicate": "ready",
+                            "box_id": "b0",
+                            "polarity": "positive",
+                            "modality": "asserted",
+                            "temporal_id": "",
+                            "arguments": [
+                                {
+                                    "role": "subject",
+                                    "target_kind": "referent",
+                                    "target_id": "r0",
+                                    "value": "",
+                                    "value_type": "artifact",
+                                    "evidence_text": "Aero Gate",
+                                }
+                            ],
+                            "evidence_text": "Aero Gate is ready",
+                        }
+                    ],
+                    "identity_hypotheses": [],
+                    "temporal_records": [],
+                },
+                "_model_raw": "{}",
+                "_model_elapsed_seconds": 0.01,
+            }
+
+    fake = FakeDrsModel()
+    corpus = tmp_path / "corpus"
+    (corpus / "alpha").mkdir(parents=True)
+    (corpus / "beta").mkdir()
+    text = "Aero Gate is ready.\n"
+    (corpus / "alpha" / "note.raw").write_text(text, encoding="utf-8")
+    (corpus / "beta" / "note.raw").write_text(text, encoding="utf-8")
+    monkeypatch.setenv("KMD_USE_LOCAL_MODEL", "1")
+    monkeypatch.setenv("KMD_LLM_INGEST", "0")
+    monkeypatch.setenv("KMD_LLM_DRS_INGEST", "1")
+    monkeypatch.setenv("KMD_CHUNK_DRS_CACHE_DIR", str(tmp_path / ".drs-cache"))
+    monkeypatch.setattr("knowmoredirt.engine.LocalModelClient", lambda: fake)
+
+    engine = KnowMoreDiRTEngine(corpus)
+
+    rows = engine.store.execute(
+        """
+        SELECT cache_key, metadata_json
+        FROM model_attempts
+        WHERE task='chunk_drs'
+        ORDER BY source_span_id
+        """
+    ).fetchall()
+    contexts = [json.loads(row["metadata_json"])["cache_context"] for row in rows]
+    assert len(rows) == 2
+    assert len({row["cache_key"] for row in rows}) == 2
+    assert {context["source_rel_path"] for context in contexts} == {
+        "alpha/note.raw",
+        "beta/note.raw",
+    }
+
+
 def test_local_model_ingest_logs_chunk_progress(tmp_path: Path, monkeypatch, capsys) -> None:
     fake = FakeFrameModel()
     (tmp_path / "frame.raw").write_text("Marble Gate is guarded by Sena Rill.\n", encoding="utf-8")
