@@ -904,14 +904,23 @@ class DSPGStore:
         for item in boxes:
             external_id = text_value(item, "id")
             kind = text_value(item, "kind") or "asserted"
+            evidence = text_value(item, "evidence_text")
+            external_to_context[external_id] = stable_id(
+                "ctx", run_id, "drs_box", source_span_id, external_id, kind, evidence
+            )
+            external_to_box[external_id] = stable_id(
+                "drsbox", run_id, source_span_id, external_id, kind, evidence
+            )
+            external_to_box_evidence[external_id] = evidence
+
+        for item in boxes:
+            external_id = text_value(item, "id")
+            kind = text_value(item, "kind") or "asserted"
             parent_external = text_value(item, "parent_id")
             holder_external = text_value(item, "holder_referent_id")
             evidence = text_value(item, "evidence_text")
-            context_id = stable_id("ctx", run_id, "drs_box", source_span_id, external_id, kind, evidence)
-            drs_box_id = stable_id("drsbox", run_id, source_span_id, external_id, kind, evidence)
-            external_to_context[external_id] = context_id
-            external_to_box[external_id] = drs_box_id
-            external_to_box_evidence[external_id] = evidence
+            context_id = external_to_context[external_id]
+            drs_box_id = external_to_box[external_id]
             self.connection.execute(
                 """
                 INSERT OR IGNORE INTO contexts(

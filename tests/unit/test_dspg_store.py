@@ -2067,6 +2067,276 @@ def test_incremental_new_identity_bridge_reaches_existing_drs_chunk(
     )
 
 
+def test_scattered_identity_reported_contradiction_respects_drs_scope(
+    tmp_path: Path,
+    monkeypatch,
+) -> None:
+    (tmp_path / "begin").mkdir()
+    (tmp_path / "middle").mkdir()
+    (tmp_path / "late").mkdir()
+    (tmp_path / "end").mkdir()
+    (tmp_path / "begin" / "intro.txt").write_text(
+        "Opening ledger introduces Thistle Node as the field object.",
+        encoding="utf-8",
+    )
+    (tmp_path / "middle" / "reported.txt").write_text(
+        "Mira Sol reports that TN-8 status is orange.",
+        encoding="utf-8",
+    )
+    (tmp_path / "late" / "audit.txt").write_text(
+        "Final audit asserts TN-8 status is blue.",
+        encoding="utf-8",
+    )
+    (tmp_path / "end" / "identity.txt").write_text(
+        "Ending bridge states TN-8 is the same artifact as Thistle Node.",
+        encoding="utf-8",
+    )
+
+    class ScatteredReportedContradictionModel:
+        def context_size(self) -> int:
+            return 4096
+
+        def cache_fingerprint(self) -> dict[str, object]:
+            return {"model_id": "fake-scattered-reported-contradiction-drs", "context_size": 4096}
+
+        def complete_json(self, prompt: str, *, n_predict: int = 128, grammar=None, json_schema=None):
+            if "Opening ledger" in prompt:
+                text = "Opening ledger introduces Thistle Node as the field object."
+                source_id = "begin/intro.txt"
+                referents = [
+                    {"id": "r0", "label": "Thistle Node", "kind": "artifact", "evidence_text": "Thistle Node"}
+                ]
+                boxes = [
+                    {"id": "b0", "kind": "asserted", "parent_id": "", "holder_referent_id": "", "evidence_text": text}
+                ]
+                conditions = [
+                    {
+                        "id": "c0",
+                        "predicate": "introduces",
+                        "box_id": "b0",
+                        "polarity": "positive",
+                        "modality": "asserted",
+                        "temporal_id": "",
+                        "arguments": [
+                            {
+                                "role": "entity",
+                                "target_kind": "referent",
+                                "target_id": "r0",
+                                "value": "",
+                                "value_type": "artifact",
+                                "evidence_text": "Thistle Node",
+                            }
+                        ],
+                        "evidence_text": text,
+                    }
+                ]
+                identities = []
+            elif "Mira Sol reports" in prompt:
+                text = "Mira Sol reports that TN-8 status is orange."
+                source_id = "middle/reported.txt"
+                referents = [
+                    {"id": "r0", "label": "Mira Sol", "kind": "person", "evidence_text": "Mira Sol"},
+                    {"id": "r1", "label": "TN-8", "kind": "identifier", "evidence_text": "TN-8"},
+                ]
+                boxes = [
+                    {
+                        "id": "b1",
+                        "kind": "reported",
+                        "parent_id": "b0",
+                        "holder_referent_id": "r0",
+                        "evidence_text": "TN-8 status is orange",
+                    },
+                    {"id": "b0", "kind": "asserted", "parent_id": "", "holder_referent_id": "", "evidence_text": text},
+                ]
+                conditions = [
+                    {
+                        "id": "c0",
+                        "predicate": "status",
+                        "box_id": "b1",
+                        "polarity": "positive",
+                        "modality": "asserted",
+                        "temporal_id": "",
+                        "arguments": [
+                            {
+                                "role": "subject",
+                                "target_kind": "referent",
+                                "target_id": "r1",
+                                "value": "",
+                                "value_type": "identifier",
+                                "evidence_text": "TN-8",
+                            },
+                            {
+                                "role": "state",
+                                "target_kind": "literal",
+                                "target_id": "",
+                                "value": "orange",
+                                "value_type": "state",
+                                "evidence_text": "orange",
+                            },
+                        ],
+                        "evidence_text": "TN-8 status is orange",
+                    }
+                ]
+                identities = []
+            elif "Final audit" in prompt:
+                text = "Final audit asserts TN-8 status is blue."
+                source_id = "late/audit.txt"
+                referents = [{"id": "r0", "label": "TN-8", "kind": "identifier", "evidence_text": "TN-8"}]
+                boxes = [
+                    {"id": "b0", "kind": "asserted", "parent_id": "", "holder_referent_id": "", "evidence_text": text}
+                ]
+                conditions = [
+                    {
+                        "id": "c0",
+                        "predicate": "status",
+                        "box_id": "b0",
+                        "polarity": "positive",
+                        "modality": "asserted",
+                        "temporal_id": "",
+                        "arguments": [
+                            {
+                                "role": "subject",
+                                "target_kind": "referent",
+                                "target_id": "r0",
+                                "value": "",
+                                "value_type": "identifier",
+                                "evidence_text": "TN-8",
+                            },
+                            {
+                                "role": "state",
+                                "target_kind": "literal",
+                                "target_id": "",
+                                "value": "blue",
+                                "value_type": "state",
+                                "evidence_text": "blue",
+                            },
+                        ],
+                        "evidence_text": "TN-8 status is blue",
+                    }
+                ]
+                identities = []
+            else:
+                text = "Ending bridge states TN-8 is the same artifact as Thistle Node."
+                source_id = "end/identity.txt"
+                referents = [
+                    {"id": "r0", "label": "TN-8", "kind": "identifier", "evidence_text": "TN-8"},
+                    {"id": "r1", "label": "Thistle Node", "kind": "artifact", "evidence_text": "Thistle Node"},
+                ]
+                boxes = [
+                    {"id": "b0", "kind": "asserted", "parent_id": "", "holder_referent_id": "", "evidence_text": text}
+                ]
+                conditions = [
+                    {
+                        "id": "c0",
+                        "predicate": "same_artifact",
+                        "box_id": "b0",
+                        "polarity": "positive",
+                        "modality": "asserted",
+                        "temporal_id": "",
+                        "arguments": [
+                            {
+                                "role": "left",
+                                "target_kind": "referent",
+                                "target_id": "r0",
+                                "value": "",
+                                "value_type": "identifier",
+                                "evidence_text": "TN-8",
+                            },
+                            {
+                                "role": "right",
+                                "target_kind": "referent",
+                                "target_id": "r1",
+                                "value": "",
+                                "value_type": "artifact",
+                                "evidence_text": "Thistle Node",
+                            },
+                        ],
+                        "evidence_text": "TN-8 is the same artifact as Thistle Node",
+                    }
+                ]
+                identities = [
+                    {
+                        "left_referent_id": "r0",
+                        "right_referent_id": "r1",
+                        "status": "accepted",
+                        "evidence_text": "TN-8 is the same artifact as Thistle Node",
+                        "confidence": 0.92,
+                    }
+                ]
+            return {
+                "drs": {
+                    "schema_version": "chunk-drs-v2",
+                    "source_id": source_id,
+                    "referents": referents,
+                    "boxes": boxes,
+                    "conditions": conditions,
+                    "identity_hypotheses": identities,
+                    "temporal_records": [],
+                },
+                "_model_raw": "{}",
+                "_model_elapsed_seconds": 0.01,
+            }
+
+    cache_dir = tmp_path.parent / f"{tmp_path.name}-reported-contradiction-cache"
+    monkeypatch.setenv("KMD_CHUNK_DRS_CACHE_DIR", str(cache_dir))
+    store, run_id, documents, sentences = ingest_folder(
+        tmp_path,
+        semantic_client=ScatteredReportedContradictionModel(),  # type: ignore[arg-type]
+        use_semantic_frames=False,
+        use_drs_semantics=True,
+    )
+    sentences_by_document: dict[str, dict[int, object]] = {}
+    for sentence in sentences:
+        sentences_by_document.setdefault(sentence.rel_path, {})[sentence.order] = sentence
+    unscoped_frame = QueryFrame(
+        question_text="What status is recorded for Thistle Node?",
+        answer_type="state",
+        answer_variables=("state",),
+        target_anchors=("Thistle Node",),
+        requested_relation="status",
+        relation_terms=("status",),
+        constraints=(),
+    )
+    reported_frame = QueryFrame(
+        question_text="What status did Mira Sol report for Thistle Node?",
+        answer_type="state",
+        answer_variables=("state",),
+        target_anchors=("Thistle Node",),
+        requested_relation="status",
+        relation_terms=("status",),
+        constraints=(),
+        scope_requirements=("reported",),
+    )
+
+    unscoped_answer, unscoped_diagnostics = execute_bounded_query(
+        store,
+        run_id,
+        documents,
+        sentences_by_document,  # type: ignore[arg-type]
+        unscoped_frame.question_text,
+        unscoped_frame,
+    )
+    reported_answer, reported_diagnostics = execute_bounded_query(
+        store,
+        run_id,
+        documents,
+        sentences_by_document,  # type: ignore[arg-type]
+        reported_frame.question_text,
+        reported_frame,
+    )
+
+    assert unscoped_answer is not None
+    assert unscoped_answer.text == "blue"
+    assert "answer_conflict_without_query_scope" not in unscoped_diagnostics["execution"]
+    assert "late/audit.txt" in {item.rel_path for item in unscoped_answer.evidence}
+    assert reported_answer is not None
+    assert reported_answer.text == "orange"
+    assert {"end/identity.txt", "middle/reported.txt"}.issubset(
+        {item.rel_path for item in reported_answer.evidence}
+    )
+    assert "tn-8" in reported_diagnostics["ranking"]["identity_expanded_target_terms"]
+
+
 def test_store_rejects_invalid_drs_condition_graphs() -> None:
     store = DSPGStore()
     payload = {
@@ -2197,6 +2467,82 @@ def test_store_rejects_cyclic_drs_box_parent_graphs() -> None:
     assert result["accepted"] is False
     assert result["reason"] == "schema_validation_failed"
     assert "cyclic_box_parent:b0->b1->b0" in result["errors"]
+
+
+def test_store_preserves_out_of_order_drs_box_parent_links() -> None:
+    store = DSPGStore()
+    text = "Rhea Vale reports that CB-44 status is green."
+    payload = {
+        "drs": {
+            "schema_version": "chunk-drs-v2",
+            "source_id": "report.txt",
+            "referents": [
+                {"id": "r0", "label": "Rhea Vale", "kind": "person", "evidence_text": "Rhea Vale"},
+                {"id": "r1", "label": "CB-44", "kind": "identifier", "evidence_text": "CB-44"},
+            ],
+            "boxes": [
+                {
+                    "id": "b1",
+                    "kind": "reported",
+                    "parent_id": "b0",
+                    "holder_referent_id": "r0",
+                    "evidence_text": "CB-44 status is green",
+                },
+                {"id": "b0", "kind": "asserted", "parent_id": "", "holder_referent_id": "", "evidence_text": text},
+            ],
+            "conditions": [
+                {
+                    "id": "c0",
+                    "predicate": "status",
+                    "box_id": "b1",
+                    "polarity": "positive",
+                    "modality": "asserted",
+                    "temporal_id": "",
+                    "arguments": [
+                        {
+                            "role": "subject",
+                            "target_kind": "referent",
+                            "target_id": "r1",
+                            "value": "",
+                            "value_type": "identifier",
+                            "evidence_text": "CB-44",
+                        },
+                        {
+                            "role": "state",
+                            "target_kind": "literal",
+                            "target_id": "",
+                            "value": "green",
+                            "value_type": "state",
+                            "evidence_text": "green",
+                        },
+                    ],
+                    "evidence_text": "CB-44 status is green",
+                }
+            ],
+            "identity_hypotheses": [],
+            "temporal_records": [],
+        }
+    }
+
+    result = store.materialize_drs_payload("run", "span", text, payload)
+
+    assert result["accepted"] is True
+    row = store.execute(
+        """
+        SELECT child.parent_external_box_id, child.parent_drs_box_id, parent.external_box_id AS stored_parent,
+               child_ctx.parent_context_id AS child_parent_context_id,
+               parent.context_id AS stored_parent_context_id
+        FROM drs_boxes child
+        JOIN drs_boxes parent ON parent.drs_box_id = child.parent_drs_box_id
+        JOIN contexts child_ctx ON child_ctx.context_id = child.context_id
+        WHERE child.external_box_id='b1'
+        """
+    ).fetchone()
+    assert row is not None
+    assert row["parent_external_box_id"] == "b0"
+    assert row["stored_parent"] == "b0"
+    assert row["child_parent_context_id"] is not None
+    assert row["child_parent_context_id"] == row["stored_parent_context_id"]
 
 
 def test_store_rejects_multiple_drs_root_boxes() -> None:
