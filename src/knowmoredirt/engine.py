@@ -448,6 +448,13 @@ class KnowMoreDiRTEngine:
     def _diagnostic_frames_for_answer(self, answer: Answer) -> list[dict[str, object]]:
         if not answer.evidence:
             return []
+        try:
+            frame_limit = int(os.environ.get("KMD_VERIFIER_DISCOURSE_FRAME_LIMIT", "8"))
+        except ValueError:
+            frame_limit = 8
+        frame_limit = max(0, min(32, frame_limit))
+        if frame_limit <= 0:
+            return []
         rel_paths = list({evidence.rel_path for evidence in answer.evidence if evidence.rel_path})
         if not rel_paths:
             return []
@@ -460,9 +467,9 @@ class KnowMoreDiRTEngine:
             JOIN documents d ON d.document_id=s.document_id
             LEFT JOIN contexts c ON c.context_id=f.context_id
             WHERE d.rel_path IN ({placeholders})
-            LIMIT 32
+            LIMIT ?
             """,
-            tuple(rel_paths[:8]),
+            (*rel_paths[:8], frame_limit),
         ).fetchall()
         return [dict(row) for row in rows]
 

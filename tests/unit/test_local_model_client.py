@@ -7,6 +7,7 @@ import pytest
 
 from knowmoredirt.engine import KnowMoreDiRTEngine
 from knowmoredirt.model import LocalModelClient, LocalModelJSONError, LocalModelUnavailableError
+from knowmoredirt.models import Answer, Evidence
 from knowmoredirt import model_planner
 from knowmoredirt.model_planner import (
     CHUNK_FRAME_CONTEXT_BUDGET_POLICY,
@@ -239,6 +240,44 @@ def test_engine_required_probe_uses_client_endpoint_normalization(monkeypatch) -
     client = engine._required_local_model_client()
     assert client.endpoint == "http://127.0.0.1:14829/completion"
     assert calls == ["http://127.0.0.1:14829/v1/models"]
+
+
+def test_verifier_diagnostic_frames_are_capped(monkeypatch) -> None:
+    class FakeCursor:
+        def __init__(self, rows: list[dict[str, object]]) -> None:
+            self.rows = rows
+
+        def fetchall(self) -> list[dict[str, object]]:
+            return self.rows
+
+    class FakeStore:
+        def __init__(self) -> None:
+            self.params: tuple[object, ...] | None = None
+
+        def execute(self, query: str, params: tuple[object, ...]) -> FakeCursor:
+            self.params = params
+            limit = int(params[-1])
+            rows = [
+                {
+                    "rel_path": "note.txt",
+                    "predicate": f"predicate_{index}",
+                    "trigger_surface": f"trigger_{index}",
+                    "source": "model",
+                    "kind": "asserted",
+                }
+                for index in range(20)
+            ]
+            return FakeCursor(rows[:limit])
+
+    monkeypatch.delenv("KMD_VERIFIER_DISCOURSE_FRAME_LIMIT", raising=False)
+    engine = KnowMoreDiRTEngine.__new__(KnowMoreDiRTEngine)
+    store = FakeStore()
+    engine.store = store
+
+    frames = engine._diagnostic_frames_for_answer(Answer("ready", evidence=[Evidence("note.txt", "Aero Gate is ready.")]))
+
+    assert len(frames) == 8
+    assert store.params == ("note.txt", 8)
 
 
 def test_engine_requires_reachable_local_model_in_normal_runtime(monkeypatch, tmp_path) -> None:
