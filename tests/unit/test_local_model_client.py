@@ -269,7 +269,7 @@ def test_verifier_diagnostic_frames_are_capped(monkeypatch) -> None:
             ]
             return FakeCursor(rows[:limit])
 
-    monkeypatch.delenv("KMD_VERIFIER_DISCOURSE_FRAME_LIMIT", raising=False)
+    monkeypatch.setenv("KMD_VERIFIER_DISCOURSE_FRAME_LIMIT", "8")
     engine = KnowMoreDiRTEngine.__new__(KnowMoreDiRTEngine)
     store = FakeStore()
     engine.store = store

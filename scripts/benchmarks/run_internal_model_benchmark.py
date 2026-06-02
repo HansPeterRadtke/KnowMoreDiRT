@@ -49,6 +49,7 @@ MODEL_ENV_KEYS = (
     "KMD_LOCAL_MODEL_TOP_K",
     "KMD_LOCAL_MODEL_MIN_P",
     "KMD_LOCAL_MODEL_REPEAT_PENALTY",
+    "KMD_VERIFIER_DISCOURSE_FRAME_LIMIT",
     "KMD_LLM_DRS_INGEST",
     "KMD_LLM_INGEST",
     "KMD_QUERY_DRS_PLAN",
@@ -149,6 +150,7 @@ def _configure_environment(output_root: Path) -> None:
     os.environ.setdefault("KMD_LOCAL_MODEL_SEED", "1778779265")
     os.environ.setdefault("KMD_LOCAL_MODEL_TEMPERATURE", "0.0")
     os.environ.setdefault("KMD_LOCAL_MODEL_TOP_P", "1.0")
+    os.environ.setdefault("KMD_VERIFIER_DISCOURSE_FRAME_LIMIT", "0")
     os.environ.setdefault("KMD_LLM_DRS_INGEST", "1")
     os.environ.setdefault("KMD_QUERY_DRS_PLAN", "1")
     os.environ.setdefault("KMD_CHUNK_DRS_COMPACT_FIRST", "1")

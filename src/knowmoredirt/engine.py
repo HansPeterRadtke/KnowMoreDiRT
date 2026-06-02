@@ -449,7 +449,7 @@ class KnowMoreDiRTEngine:
         if not answer.evidence:
             return []
         try:
-            frame_limit = int(os.environ.get("KMD_VERIFIER_DISCOURSE_FRAME_LIMIT", "8"))
+            frame_limit = int(os.environ.get("KMD_VERIFIER_DISCOURSE_FRAME_LIMIT", "0"))
         except ValueError:
             frame_limit = 8
         frame_limit = max(0, min(32, frame_limit))
