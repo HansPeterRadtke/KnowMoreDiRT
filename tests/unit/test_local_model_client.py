@@ -24,6 +24,7 @@ from knowmoredirt.model_planner import (
     call_model_answer_canonicalization,
     build_answer_verification_prompt,
     call_model_chunk_drs,
+    call_model_chunk_drs_compact,
     call_model_chunk_frames,
     call_model_identity_canonicalization,
     call_model_query_evidence_answer,
@@ -1701,6 +1702,52 @@ def test_chunk_drs_schema_caps_evidence_strings_to_chunk_length() -> None:
     assert condition_schema["properties"]["evidence_text"]["maxLength"] == 19
     assert argument_schema["properties"]["evidence_text"]["maxLength"] == 19
     assert drs_schema["properties"]["evidence_spans"]["items"]["maxLength"] == 19
+
+
+def test_compact_chunk_drs_retries_truncated_json_with_larger_budget(monkeypatch, tmp_path) -> None:
+    class TruncatedThenValidCompactModel:
+        def __init__(self) -> None:
+            self.calls: list[int] = []
+
+        def context_size(self) -> int:
+            return 8192
+
+        def cache_fingerprint(self) -> dict[str, Any]:
+            return {"model_id": "fake-compact-chunk-retry", "context_size": 8192}
+
+        def complete_json(self, prompt: str, *, n_predict: int = 128, grammar=None, json_schema=None):
+            self.calls.append(n_predict)
+            if len(self.calls) == 1:
+                raise LocalModelJSONError(
+                    "unterminated string",
+                    raw_text='{"facts":[{"p":"depends on","agent":"Sample Project","patient":"',
+                    snippet='{"facts":[{"p":"depends on","agent":"Sample Project","patient":"',
+                )
+            return {
+                "facts": [
+                    {
+                        "p": "depends on",
+                        "agent": "Sample Project",
+                        "patient": "ITEM-1",
+                        "e": "Sample Project depends on ITEM-1.",
+                    }
+                ],
+                "_model_raw": "{}",
+                "_model_elapsed_seconds": 0.01,
+            }
+
+    monkeypatch.setenv("KMD_CHUNK_DRS_CACHE_DIR", str(tmp_path / "chunk-drs-cache"))
+    result = call_model_chunk_drs_compact(
+        "Sample Project depends on ITEM-1.",
+        TruncatedThenValidCompactModel(),  # type: ignore[arg-type]
+        rel_path="samples/project-plan.note",
+        n_predict=72,
+    )
+
+    assert result["accepted"] is True
+    assert result["reason"] == "compact_drs"
+    assert result["compact_retry_index"] == 1
+    assert result["compact_retry_attempts"][0]["reason"] == "invalid_json"
 
 
 def test_chunk_drs_planner_repairs_model_referent_argument_records(monkeypatch, tmp_path) -> None:

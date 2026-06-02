@@ -81,6 +81,7 @@ CHUNK_DRS_DYNAMIC_OUTPUT_BUDGET_POLICY = "source-aware-tiny-prose-544-short-768-
 CHUNK_DRS_DYNAMIC_CONDITION_BUDGET_POLICY = "compact-nontemporal-condition-stage-floor-528-v2"
 CHUNK_DRS_STAGED_FIRST_POLICY = "field-like-source-spans-before-monolithic-v1"
 CHUNK_DRS_COMPACT_FACT_POLICY = "compact-model-facts-to-root-drs-v1"
+CHUNK_DRS_COMPACT_RETRY_POLICY = "retry-compact-invalid-json-larger-budget-v1"
 QUERY_DRS_SCHEMA_VERSION = "query-drs-v3"
 QUERY_DRS_VALIDATION_POLICY = "strict-query-drs-version-question-evidence-box-dag-repair-operators-v10"
 QUERY_DRS_ARRAY_CAP_POLICY = "reserved_output_tokens_div_96_4_8-v1"
@@ -3508,6 +3509,22 @@ def _compact_chunk_drs_eligible(chunk_text: str) -> bool:
     return len(str(chunk_text or "")) <= max_chars
 
 
+def _compact_chunk_drs_retry_budgets(n_predict: int) -> list[int]:
+    configured = os.environ.get("KMD_CHUNK_DRS_COMPACT_RETRY_N_PREDICTS", "").strip()
+    if configured:
+        budgets: list[int] = []
+        for item in configured.split(","):
+            try:
+                value = int(item.strip())
+            except ValueError:
+                continue
+            if value > 0 and value != n_predict and value not in budgets:
+                budgets.append(value)
+        return budgets
+    budgets = [max(160, n_predict * 2), 256]
+    return [value for value in dict.fromkeys(budgets) if value > n_predict]
+
+
 def call_model_chunk_drs_compact(
     chunk_text: str,
     client: LocalModelClient,
@@ -3518,90 +3535,157 @@ def call_model_chunk_drs_compact(
     if n_predict is None:
         n_predict = default_compact_chunk_drs_n_predict(chunk_text)
     prompt = build_compact_chunk_drs_prompt(chunk_text, rel_path=rel_path)
-    cache_settings = {
-        "n_predict": n_predict,
-        "schema": CHUNK_DRS_SCHEMA_VERSION,
-        "compact_fact_policy": CHUNK_DRS_COMPACT_FACT_POLICY,
-        "constraint_mode": "validated_json_no_schema",
-        "source_text_hash": hashlib.sha256(str(chunk_text or "").encode("utf-8", errors="replace")).hexdigest(),
-    }
-    cache_context = {
-        **cache_settings,
-        "model_fingerprint": _client_fingerprint(client),
-        "source_rel_path": rel_path,
-    }
-    prompt_hash = _cache_hash("chunk_drs_compact", prompt, client, cache_settings)
-    cache_path = _cache_path("KMD_CHUNK_DRS_CACHE_DIR", prompt_hash)
-    cached = _read_cache(cache_path)
-    if cached is not None and cached.get("reason") != "request_failed":
-        cached.setdefault("cache_context", cache_context)
-        return cached
-    start = time.time()
-    try:
-        parsed = client.complete_json(prompt, n_predict=n_predict)
-    except LocalModelJSONError as exc:
-        payload = {
-            "accepted": False,
-            "reason": "invalid_json",
-            "error": str(exc),
-            "raw_text": exc.raw_text,
-            "raw_snippet": exc.snippet,
-            "prompt_hash": prompt_hash,
+    source_text_hash = hashlib.sha256(str(chunk_text or "").encode("utf-8", errors="replace")).hexdigest()
+    budgets = [n_predict, *_compact_chunk_drs_retry_budgets(n_predict)]
+    failures: list[dict[str, Any]] = []
+    last_payload: dict[str, Any] | None = None
+    for retry_index, budget in enumerate(budgets):
+        cache_settings = {
+            "n_predict": budget,
+            "schema": CHUNK_DRS_SCHEMA_VERSION,
             "compact_fact_policy": CHUNK_DRS_COMPACT_FACT_POLICY,
-            "cache_context": cache_context,
-            "elapsed": round(time.time() - start, 3),
+            "constraint_mode": "validated_json_no_schema",
+            "source_text_hash": source_text_hash,
         }
-        _write_cache(cache_path, payload)
-        return payload
-    except Exception as exc:
-        return {
-            "accepted": False,
-            "reason": "request_failed",
-            "error": str(exc),
-            "prompt_hash": prompt_hash,
-            "compact_fact_policy": CHUNK_DRS_COMPACT_FACT_POLICY,
-            "cache_context": cache_context,
-            "elapsed": round(time.time() - start, 3),
+        if retry_index:
+            cache_settings = {
+                **cache_settings,
+                "compact_retry_policy": CHUNK_DRS_COMPACT_RETRY_POLICY,
+                "compact_retry_index": retry_index,
+                "compact_retry_after": failures[-1] if failures else {},
+            }
+        cache_context = {
+            **cache_settings,
+            "model_fingerprint": _client_fingerprint(client),
+            "source_rel_path": rel_path,
         }
-    raw = str(parsed.get("_model_raw") or "") if isinstance(parsed, dict) else ""
-    drs_payload = _compact_chunk_drs_to_payload(parsed if isinstance(parsed, dict) else {}, chunk_text, rel_path=rel_path)
-    drs_payload = _repair_chunk_drs_payload(drs_payload, chunk_text)
-    validation = _validate_chunk_drs_payload(drs_payload, chunk_text)
-    if not validation.get("schema_valid"):
+        prompt_hash = _cache_hash("chunk_drs_compact", prompt, client, cache_settings)
+        cache_path = _cache_path("KMD_CHUNK_DRS_CACHE_DIR", prompt_hash)
+        cached = _read_cache(cache_path)
+        if cached is not None and not _query_drs_cached_retryable_failure(cached):
+            cached.setdefault("cache_context", cache_context)
+            return cached
+        start = time.time()
+        try:
+            parsed = client.complete_json(prompt, n_predict=budget)
+        except LocalModelJSONError as exc:
+            payload = {
+                "accepted": False,
+                "reason": "invalid_json",
+                "error": str(exc),
+                "raw_text": exc.raw_text,
+                "raw_snippet": exc.snippet,
+                "prompt_hash": prompt_hash,
+                "compact_fact_policy": CHUNK_DRS_COMPACT_FACT_POLICY,
+                "cache_context": cache_context,
+                "elapsed": round(time.time() - start, 3),
+            }
+            if retry_index:
+                payload["compact_retry_policy"] = CHUNK_DRS_COMPACT_RETRY_POLICY
+                payload["compact_retry_index"] = retry_index
+            _write_cache(cache_path, payload)
+            failures.append(
+                {
+                    "n_predict": budget,
+                    "reason": payload.get("reason"),
+                    "error": payload.get("error"),
+                    "elapsed": payload.get("elapsed"),
+                    "prompt_hash": prompt_hash,
+                }
+            )
+            last_payload = payload
+            continue
+        except Exception as exc:
+            payload = {
+                "accepted": False,
+                "reason": "request_failed",
+                "error": str(exc),
+                "prompt_hash": prompt_hash,
+                "compact_fact_policy": CHUNK_DRS_COMPACT_FACT_POLICY,
+                "cache_context": cache_context,
+                "elapsed": round(time.time() - start, 3),
+            }
+            if retry_index:
+                payload["compact_retry_policy"] = CHUNK_DRS_COMPACT_RETRY_POLICY
+                payload["compact_retry_index"] = retry_index
+            failures.append(
+                {
+                    "n_predict": budget,
+                    "reason": payload.get("reason"),
+                    "error": payload.get("error"),
+                    "elapsed": payload.get("elapsed"),
+                    "prompt_hash": prompt_hash,
+                }
+            )
+            last_payload = payload
+            continue
+        raw = str(parsed.get("_model_raw") or "") if isinstance(parsed, dict) else ""
+        drs_payload = _compact_chunk_drs_to_payload(parsed if isinstance(parsed, dict) else {}, chunk_text, rel_path=rel_path)
+        drs_payload = _repair_chunk_drs_payload(drs_payload, chunk_text)
+        validation = _validate_chunk_drs_payload(drs_payload, chunk_text)
+        if not validation.get("schema_valid"):
+            payload = {
+                "accepted": False,
+                "reason": "schema_validation_failed",
+                "raw_text": raw,
+                "prompt_hash": prompt_hash,
+                "compact_fact_policy": CHUNK_DRS_COMPACT_FACT_POLICY,
+                "cache_context": cache_context,
+                "elapsed": parsed.get("_model_elapsed_seconds", round(time.time() - start, 3)),
+                "validation": validation,
+            }
+            if retry_index:
+                payload["compact_retry_policy"] = CHUNK_DRS_COMPACT_RETRY_POLICY
+                payload["compact_retry_index"] = retry_index
+            _write_cache(cache_path, payload)
+            failures.append(
+                {
+                    "n_predict": budget,
+                    "reason": payload.get("reason"),
+                    "elapsed": payload.get("elapsed"),
+                    "prompt_hash": prompt_hash,
+                    "validation": validation,
+                }
+            )
+            last_payload = payload
+            continue
         payload = {
-            "accepted": False,
-            "reason": "schema_validation_failed",
+            "accepted": True,
+            "reason": "compact_drs",
+            "drs": drs_payload["drs"],
             "raw_text": raw,
+            "elapsed": parsed.get("_model_elapsed_seconds", round(time.time() - start, 3)),
             "prompt_hash": prompt_hash,
             "compact_fact_policy": CHUNK_DRS_COMPACT_FACT_POLICY,
             "cache_context": cache_context,
-            "elapsed": parsed.get("_model_elapsed_seconds", round(time.time() - start, 3)),
             "validation": validation,
+            "context_budget": {
+                "compact": True,
+                "input_chars": len(chunk_text),
+                "reserved_output_tokens": budget,
+                "source_text_hash": source_text_hash,
+            },
+            "output_hash": hashlib.sha256(raw.encode()).hexdigest(),
+            "fresh_or_cached": "fresh",
+            "compact": True,
         }
+        if failures:
+            payload["compact_retry_attempts"] = failures
+        if retry_index:
+            payload["compact_retry_policy"] = CHUNK_DRS_COMPACT_RETRY_POLICY
+            payload["compact_retry_index"] = retry_index
         _write_cache(cache_path, payload)
         return payload
-    payload = {
-        "accepted": True,
-        "reason": "compact_drs",
-        "drs": drs_payload["drs"],
-        "raw_text": raw,
-        "elapsed": parsed.get("_model_elapsed_seconds", round(time.time() - start, 3)),
-        "prompt_hash": prompt_hash,
+    if last_payload is not None:
+        if failures:
+            last_payload["compact_retry_attempts"] = failures
+        return last_payload
+    return {
+        "accepted": False,
+        "reason": "schema_validation_failed",
         "compact_fact_policy": CHUNK_DRS_COMPACT_FACT_POLICY,
-        "cache_context": cache_context,
-        "validation": validation,
-        "context_budget": {
-            "compact": True,
-            "input_chars": len(chunk_text),
-            "reserved_output_tokens": n_predict,
-            "source_text_hash": cache_settings["source_text_hash"],
-        },
-        "output_hash": hashlib.sha256(raw.encode()).hexdigest(),
-        "fresh_or_cached": "fresh",
-        "compact": True,
+        "cache_context": {"source_rel_path": rel_path, "source_text_hash": source_text_hash},
     }
-    _write_cache(cache_path, payload)
-    return payload
 
 
 def build_chunk_drs_prompt(chunk_text: str, *, rel_path: str = "", context_budget: dict[str, Any] | None = None) -> str:
