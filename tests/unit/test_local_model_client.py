@@ -67,6 +67,55 @@ def test_json_fragment_repair_appends_missing_trailing_closer() -> None:
     assert _append_missing_json_closers("not json") is None
 
 
+def test_engine_chunk_stage_timeout_can_differ_from_default_timeout(monkeypatch) -> None:
+    created: list[tuple[str, float]] = []
+
+    class FakeClient:
+        def __init__(self, endpoint: str, timeout_seconds: float) -> None:
+            self.endpoint = endpoint
+            self.timeout_seconds = timeout_seconds
+
+    def fake_local_model_client(endpoint: str, timeout_seconds: float) -> FakeClient:
+        created.append((endpoint, timeout_seconds))
+        return FakeClient(endpoint, timeout_seconds)
+
+    monkeypatch.setenv("KMD_CHUNK_MODEL_TIMEOUT_SECONDS", "420")
+    monkeypatch.setattr("knowmoredirt.engine.LocalModelClient", fake_local_model_client)
+    engine = KnowMoreDiRTEngine.__new__(KnowMoreDiRTEngine)
+    default_client = FakeClient("http://127.0.0.1:14829/v1", 240)
+
+    chunk_client = engine._chunk_stage_model_client(default_client)
+
+    assert chunk_client is not default_client
+    assert chunk_client.timeout_seconds == 420
+    assert default_client.timeout_seconds == 240
+    assert created == [("http://127.0.0.1:14829/v1", 420.0)]
+
+
+def test_engine_question_stage_timeout_uses_shared_positive_validation(monkeypatch) -> None:
+    class FakeClient:
+        endpoint = "http://127.0.0.1:14829/v1"
+        timeout_seconds = 240
+
+    engine = KnowMoreDiRTEngine.__new__(KnowMoreDiRTEngine)
+    monkeypatch.setenv("KMD_QUESTION_MODEL_TIMEOUT_SECONDS", "not-a-number")
+
+    with pytest.raises(LocalModelUnavailableError, match="KMD_QUESTION_MODEL_TIMEOUT_SECONDS"):
+        engine._question_stage_model_client(FakeClient())  # type: ignore[arg-type]
+
+
+def test_engine_chunk_stage_timeout_rejects_non_positive_values(monkeypatch) -> None:
+    class FakeClient:
+        endpoint = "http://127.0.0.1:14829/v1"
+        timeout_seconds = 240
+
+    engine = KnowMoreDiRTEngine.__new__(KnowMoreDiRTEngine)
+    monkeypatch.setenv("KMD_CHUNK_MODEL_TIMEOUT_SECONDS", "0")
+
+    with pytest.raises(LocalModelUnavailableError, match="KMD_CHUNK_MODEL_TIMEOUT_SECONDS"):
+        engine._chunk_stage_model_client(FakeClient())  # type: ignore[arg-type]
+
+
 def test_answer_verification_old_request_failure_cache_is_ignored(monkeypatch) -> None:
     class VerifierModel:
         def __init__(self) -> None:

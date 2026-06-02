@@ -93,9 +93,13 @@ class KnowMoreDiRTEngine:
             f"drs_ingest={use_drs_semantics} "
             f"root={self.folder_path}"
         )
+        ingest_model_client = self._model_client
+        if ingest_model_client is not None and (use_semantic_frames or use_drs_semantics):
+            ingest_model_client = self._chunk_stage_model_client(ingest_model_client)
+            self._model_client = ingest_model_client
         self.store, self.run_id, self.documents, self.sentences = ingest_folder(
             self.folder_path,
-            semantic_client=self._model_client if use_semantic_frames or use_drs_semantics else None,
+            semantic_client=ingest_model_client if use_semantic_frames or use_drs_semantics else None,
             use_semantic_frames=use_semantic_frames,
             use_drs_semantics=use_drs_semantics,
             semantic_cache=self._semantic_cache if use_semantic_frames else None,
@@ -172,25 +176,51 @@ class KnowMoreDiRTEngine:
         return LocalModelClient(endpoint=endpoint)
 
     def _question_stage_model_client(self, client: LocalModelClient) -> LocalModelClient:
-        raw_timeout = os.environ.get("KMD_QUESTION_MODEL_TIMEOUT_SECONDS", "").strip()
+        return self._stage_timeout_model_client(
+            client,
+            env_name="KMD_QUESTION_MODEL_TIMEOUT_SECONDS",
+            progress_label="question_model_timeout",
+            previous_label="ingest_timeout",
+            next_label="question_timeout",
+        )
+
+    def _chunk_stage_model_client(self, client: LocalModelClient) -> LocalModelClient:
+        return self._stage_timeout_model_client(
+            client,
+            env_name="KMD_CHUNK_MODEL_TIMEOUT_SECONDS",
+            progress_label="chunk_model_timeout",
+            previous_label="default_timeout",
+            next_label="chunk_timeout",
+        )
+
+    def _stage_timeout_model_client(
+        self,
+        client: LocalModelClient,
+        *,
+        env_name: str,
+        progress_label: str,
+        previous_label: str,
+        next_label: str,
+    ) -> LocalModelClient:
+        raw_timeout = os.environ.get(env_name, "").strip()
         if not raw_timeout:
             return client
         try:
             timeout = float(raw_timeout)
         except ValueError as exc:
             raise LocalModelUnavailableError(
-                "KMD_QUESTION_MODEL_TIMEOUT_SECONDS must be a positive number when set."
+                f"{env_name} must be a positive number when set."
             ) from exc
         if timeout <= 0:
             raise LocalModelUnavailableError(
-                "KMD_QUESTION_MODEL_TIMEOUT_SECONDS must be a positive number when set."
+                f"{env_name} must be a positive number when set."
             )
         if abs(timeout - float(getattr(client, "timeout_seconds", timeout))) < 0.001:
             return client
         self._log_progress(
-            "kmd-init question_model_timeout "
-            f"ingest_timeout={getattr(client, 'timeout_seconds', '')} "
-            f"question_timeout={timeout:g}"
+            f"kmd-init {progress_label} "
+            f"{previous_label}={getattr(client, 'timeout_seconds', '')} "
+            f"{next_label}={timeout:g}"
         )
         return LocalModelClient(endpoint=client.endpoint, timeout_seconds=timeout)
 
