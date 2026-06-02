@@ -86,6 +86,7 @@ QUERY_DRS_VALIDATION_POLICY = "strict-query-drs-version-question-evidence-box-da
 QUERY_DRS_ARRAY_CAP_POLICY = "reserved_output_tokens_div_96_4_8-v1"
 QUERY_DRS_DYNAMIC_OUTPUT_BUDGET_POLICY = "surface-token-budget-short384-mid512-long-context-v1"
 QUERY_DRS_COMPACT_PLAN_POLICY = "compact-model-plan-to-query-drs-v1"
+QUERY_DRS_REQUEST_FAILURE_RETRY_POLICY = "smaller-full-query-drs-output-budget-v1"
 QUERY_OPERATOR_SCHEMA_POLICY = "query-temporal-aggregation-operator-enums-v1"
 QUERY_FRAME_SCHEMA_VERSION = "query-frame-v6"
 ANSWER_SCHEMA_VERSION = "answer-v4"
@@ -376,6 +377,15 @@ def _cached_request_failed(payload: dict[str, Any] | None) -> bool:
     return str(payload.get("reason") or "") == "request_failed" or str(
         payload.get("repair_failure_reason") or ""
     ) == "request_failed"
+
+
+def _query_drs_cached_retryable_failure(payload: dict[str, Any] | None) -> bool:
+    if payload is None:
+        return False
+    return payload.get("accepted") is False and str(payload.get("reason") or "") in {
+        "request_failed",
+        "invalid_json",
+    }
 
 
 def _write_cache(path: Path | None, payload: dict[str, Any]) -> None:
@@ -1867,7 +1877,7 @@ def call_model_query_drs_compact(question: str, client: LocalModelClient, *, n_p
     prompt_hash = _cache_hash("query_drs_compact", prompt, client, cache_settings)
     cache_path = _cache_path("KMD_QUERY_DRS_CACHE_DIR", prompt_hash)
     cached = _read_cache(cache_path)
-    if cached is not None and cached.get("reason") != "request_failed":
+    if cached is not None and not _query_drs_cached_retryable_failure(cached):
         cached.setdefault("cache_context", cache_context)
         return cached
     start = time.time()
@@ -2269,16 +2279,31 @@ def _validate_query_drs_payload(payload: Any, question: str) -> dict[str, Any]:
     }
 
 
-def call_model_query_drs(question: str, client: LocalModelClient, *, n_predict: int | None = None) -> dict[str, Any]:
-    if (
-        _compact_live_model_path_allowed(client)
-        and os.environ.get("KMD_QUERY_DRS_COMPACT_FIRST", "1").strip().lower() not in {"0", "false", "no", "off"}
-    ):
-        compact = call_model_query_drs_compact(question, client)
-        if compact.get("accepted") or compact.get("reason") == "request_failed":
-            return compact
-    if n_predict is None:
-        n_predict = default_query_drs_n_predict(client, question)
+def _query_drs_retry_budgets(n_predict: int) -> list[int]:
+    configured = os.environ.get("KMD_QUERY_DRS_RETRY_N_PREDICTS", "").strip()
+    if configured:
+        budgets: list[int] = []
+        for item in configured.split(","):
+            try:
+                value = int(item.strip())
+            except ValueError:
+                continue
+            if value > 0 and value != n_predict and value not in budgets:
+                budgets.append(value)
+        return budgets
+    if n_predict > 256:
+        return [256]
+    return []
+
+
+def _call_model_query_drs_full_once(
+    question: str,
+    client: LocalModelClient,
+    *,
+    n_predict: int,
+    retry_index: int = 0,
+    retry_after: dict[str, Any] | None = None,
+) -> dict[str, Any]:
     prompt = build_query_drs_prompt(question)
     max_array_items = query_drs_array_max_items(n_predict)
     json_schema = query_drs_json_schema(question, max_array_items=max_array_items)
@@ -2293,6 +2318,13 @@ def call_model_query_drs(question: str, client: LocalModelClient, *, n_predict: 
         "max_array_items": max_array_items,
         **constraint,
     }
+    if retry_index:
+        cache_settings = {
+            **cache_settings,
+            "request_failure_retry_policy": QUERY_DRS_REQUEST_FAILURE_RETRY_POLICY,
+            "request_failure_retry_index": retry_index,
+            "request_failure_retry_after": retry_after or {},
+        }
     cache_context = {**cache_settings, "model_fingerprint": _client_fingerprint(client)}
     prompt_hash = _cache_hash(
         "query_drs",
@@ -2302,7 +2334,7 @@ def call_model_query_drs(question: str, client: LocalModelClient, *, n_predict: 
     )
     cache_path = _cache_path("KMD_QUERY_DRS_CACHE_DIR", prompt_hash)
     cached = _read_cache(cache_path)
-    if cached is not None and cached.get("reason") != "request_failed":
+    if cached is not None and not _query_drs_cached_retryable_failure(cached):
         cached.setdefault("cache_context", cache_context)
         return cached
     start = time.time()
@@ -2331,10 +2363,14 @@ def call_model_query_drs(question: str, client: LocalModelClient, *, n_predict: 
             "cache_context": cache_context,
             "elapsed": round(time.time() - start, 3),
         }
+        if retry_index:
+            payload["request_failure_retry_policy"] = QUERY_DRS_REQUEST_FAILURE_RETRY_POLICY
+            payload["request_failure_retry_index"] = retry_index
+            payload["request_failure_retry_after"] = retry_after or {}
         _write_cache(cache_path, payload)
         return payload
     except Exception as exc:
-        return {
+        payload = {
             "accepted": False,
             "reason": "request_failed",
             "error": str(exc),
@@ -2348,6 +2384,11 @@ def call_model_query_drs(question: str, client: LocalModelClient, *, n_predict: 
             "cache_context": cache_context,
             "elapsed": round(time.time() - start, 3),
         }
+        if retry_index:
+            payload["request_failure_retry_policy"] = QUERY_DRS_REQUEST_FAILURE_RETRY_POLICY
+            payload["request_failure_retry_index"] = retry_index
+            payload["request_failure_retry_after"] = retry_after or {}
+        return payload
     raw = str(parsed.get("_model_raw") or "") if isinstance(parsed, dict) else ""
     parsed = _repair_query_drs_payload(parsed, question)
     validation = _validate_query_drs_payload(parsed, question)
@@ -2367,6 +2408,10 @@ def call_model_query_drs(question: str, client: LocalModelClient, *, n_predict: 
             "elapsed": parsed.get("_model_elapsed_seconds", round(time.time() - start, 3)),
             "validation": validation,
         }
+        if retry_index:
+            payload["request_failure_retry_policy"] = QUERY_DRS_REQUEST_FAILURE_RETRY_POLICY
+            payload["request_failure_retry_index"] = retry_index
+            payload["request_failure_retry_after"] = retry_after or {}
         _write_cache(cache_path, payload)
         return payload
     payload = {
@@ -2386,8 +2431,65 @@ def call_model_query_drs(question: str, client: LocalModelClient, *, n_predict: 
         "output_hash": hashlib.sha256(raw.encode()).hexdigest(),
         "fresh_or_cached": "fresh",
     }
+    if retry_index:
+        payload["request_failure_retry_policy"] = QUERY_DRS_REQUEST_FAILURE_RETRY_POLICY
+        payload["request_failure_retry_index"] = retry_index
+        payload["request_failure_retry_after"] = retry_after or {}
     _write_cache(cache_path, payload)
     return payload
+
+
+def call_model_query_drs(question: str, client: LocalModelClient, *, n_predict: int | None = None) -> dict[str, Any]:
+    if (
+        _compact_live_model_path_allowed(client)
+        and os.environ.get("KMD_QUERY_DRS_COMPACT_FIRST", "1").strip().lower() not in {"0", "false", "no", "off"}
+    ):
+        compact = call_model_query_drs_compact(question, client)
+        if compact.get("accepted"):
+            return compact
+    if n_predict is None:
+        n_predict = default_query_drs_n_predict(client, question)
+    result = _call_model_query_drs_full_once(question, client, n_predict=n_predict)
+    if result.get("reason") != "request_failed":
+        return result
+    retry_attempts: list[dict[str, Any]] = [
+        {
+            "n_predict": n_predict,
+            "reason": result.get("reason"),
+            "error": result.get("error"),
+            "elapsed": result.get("elapsed"),
+            "prompt_hash": result.get("prompt_hash"),
+        }
+    ]
+    last = result
+    for retry_index, retry_budget in enumerate(_query_drs_retry_budgets(n_predict), start=1):
+        retry_after = {
+            "n_predict": n_predict if retry_index == 1 else retry_attempts[-1].get("n_predict"),
+            "reason": last.get("reason"),
+            "error": last.get("error"),
+            "prompt_hash": last.get("prompt_hash"),
+        }
+        last = _call_model_query_drs_full_once(
+            question,
+            client,
+            n_predict=retry_budget,
+            retry_index=retry_index,
+            retry_after=retry_after,
+        )
+        retry_attempts.append(
+            {
+                "n_predict": retry_budget,
+                "reason": last.get("reason"),
+                "error": last.get("error"),
+                "elapsed": last.get("elapsed"),
+                "prompt_hash": last.get("prompt_hash"),
+            }
+        )
+        if last.get("reason") != "request_failed":
+            last["query_drs_retry_attempts"] = retry_attempts
+            return last
+    last["query_drs_retry_attempts"] = retry_attempts
+    return last
 
 
 def query_frame_from_query_drs(question: str, query_drs: dict[str, Any] | None) -> dict[str, Any] | None:

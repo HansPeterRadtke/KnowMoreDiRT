@@ -173,6 +173,42 @@ def _extract_balanced_json(raw: str) -> str | None:
     return None
 
 
+def _append_missing_json_closers(snippet: str) -> str | None:
+    text = snippet.strip()
+    if not text or text[0] not in "{[":
+        return None
+    expected: list[str] = []
+    in_string = False
+    escape = False
+    for char in text:
+        if in_string:
+            if escape:
+                escape = False
+            elif char == "\\":
+                escape = True
+            elif char == '"':
+                in_string = False
+            continue
+        if char == '"':
+            in_string = True
+        elif char == "{":
+            expected.append("}")
+        elif char == "[":
+            expected.append("]")
+        elif char in "}]":
+            if not expected or expected[-1] != char:
+                return None
+            expected.pop()
+    if in_string or escape or not expected or len(expected) > 8:
+        return None
+    candidate = text + "".join(reversed(expected))
+    try:
+        json.loads(candidate)
+    except json.JSONDecodeError:
+        return None
+    return candidate
+
+
 class LocalModelJSONError(ValueError):
     """Raised when the local model response cannot be parsed as JSON."""
 
@@ -432,7 +468,11 @@ class LocalModelClient:
         try:
             parsed = json.loads(snippet)
         except json.JSONDecodeError as exc:
-            raise LocalModelJSONError(str(exc), raw_text=raw, snippet=snippet) from exc
+            repaired_snippet = _append_missing_json_closers(snippet)
+            if repaired_snippet is None:
+                raise LocalModelJSONError(str(exc), raw_text=raw, snippet=snippet) from exc
+            snippet = repaired_snippet
+            parsed = json.loads(snippet)
         if isinstance(parsed, list):
             parsed = {"items": parsed}
         if not isinstance(parsed, dict):

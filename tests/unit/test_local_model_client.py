@@ -6,7 +6,12 @@ from typing import Any
 import pytest
 
 from knowmoredirt.engine import KnowMoreDiRTEngine
-from knowmoredirt.model import LocalModelClient, LocalModelJSONError, LocalModelUnavailableError
+from knowmoredirt.model import (
+    LocalModelClient,
+    LocalModelJSONError,
+    LocalModelUnavailableError,
+    _append_missing_json_closers,
+)
 from knowmoredirt.models import Answer, Evidence
 from knowmoredirt import model_planner
 from knowmoredirt.model_planner import (
@@ -50,6 +55,15 @@ def test_verifier_prompt_allows_scoped_embedded_bindings() -> None:
 
     assert "embedded proposition or scoped value" in prompt
     assert "instead of requiring the candidate text itself to repeat the target anchor" in prompt
+
+
+def test_json_fragment_repair_appends_missing_trailing_closer() -> None:
+    repaired = _append_missing_json_closers(
+        '{"a":"content_phrase","targets":["Mist Vale"],"predicates":["say"]'
+    )
+
+    assert repaired == '{"a":"content_phrase","targets":["Mist Vale"],"predicates":["say"]}'
+    assert _append_missing_json_closers("not json") is None
 
 
 def test_answer_verification_old_request_failure_cache_is_ignored(monkeypatch) -> None:
@@ -1517,6 +1531,161 @@ def test_query_drs_invalid_json_is_not_request_failure(monkeypatch, tmp_path) ->
     assert result["reason"] == "invalid_json"
     assert result["raw_text"] == "not json"
     assert result["raw_snippet"] == "not json"
+
+
+def test_query_drs_invalid_json_cache_is_retried(monkeypatch, tmp_path) -> None:
+    class InvalidThenValidModel:
+        def __init__(self) -> None:
+            self.calls = 0
+
+        def context_size(self) -> int:
+            return 8192
+
+        def cache_fingerprint(self) -> dict[str, Any]:
+            return {"model_id": "fake-query-drs-invalid-json-retry", "context_size": 8192}
+
+        def complete_json(self, prompt: str, *, n_predict: int = 128, grammar=None, json_schema=None):
+            self.calls += 1
+            if self.calls == 1:
+                raise LocalModelJSONError("bad json", raw_text="not json", snippet="not json")
+            return {
+                "query_drs": {
+                    "schema_version": "query-drs-v3",
+                    "question": "Who reviewed Aero Gate?",
+                    "answer_variables": [
+                        {"id": "qv0", "label": "reviewer", "answer_type": "person", "evidence_text": "Who"}
+                    ],
+                    "target_referents": [
+                        {"id": "qr0", "label": "Aero Gate", "kind": "entity", "evidence_text": "Aero Gate"}
+                    ],
+                    "temporal_records": [],
+                    "requested_conditions": [
+                        {
+                            "id": "qc0",
+                            "predicate": "reviewed",
+                            "box_id": "",
+                            "polarity": "positive",
+                            "modality": "asserted",
+                            "temporal_id": "",
+                            "arguments": [
+                                {
+                                    "role": "agent",
+                                    "target_kind": "answer_variable",
+                                    "target_id": "qv0",
+                                    "value": "",
+                                    "value_type": "person",
+                                    "evidence_text": "Who",
+                                },
+                                {
+                                    "role": "theme",
+                                    "target_kind": "referent",
+                                    "target_id": "qr0",
+                                    "value": "Aero Gate",
+                                    "value_type": "entity",
+                                    "evidence_text": "Aero Gate",
+                                },
+                            ],
+                            "evidence_text": "reviewed Aero Gate",
+                        }
+                    ],
+                    "constraints": [],
+                    "box_requirements": [],
+                    "temporal_scope": "",
+                    "aggregation": "",
+                    "answer_type": "person",
+                    "requires_evidence": True,
+                },
+                "_model_raw": "{}",
+                "_model_elapsed_seconds": 0.01,
+            }
+
+    monkeypatch.setenv("KMD_QUERY_DRS_CACHE_DIR", str(tmp_path / "query-drs-cache"))
+    model = InvalidThenValidModel()
+
+    first = call_model_query_drs("Who reviewed Aero Gate?", model)  # type: ignore[arg-type]
+    second = call_model_query_drs("Who reviewed Aero Gate?", model)  # type: ignore[arg-type]
+
+    assert first["accepted"] is False
+    assert first["reason"] == "invalid_json"
+    assert second["accepted"] is True
+    assert model.calls == 2
+
+
+def test_query_drs_request_failure_retries_smaller_budget(monkeypatch, tmp_path) -> None:
+    class TimeoutThenSucceedsModel:
+        def __init__(self) -> None:
+            self.calls: list[int] = []
+
+        def context_size(self) -> int:
+            return 32768
+
+        def cache_fingerprint(self) -> dict[str, Any]:
+            return {"model_id": "fake-query-drs-staged-retry", "context_size": 32768}
+
+        def complete_json(self, prompt: str, *, n_predict: int = 128, grammar=None, json_schema=None):
+            self.calls.append(n_predict)
+            if len(self.calls) == 1:
+                raise TimeoutError("local model request exceeded 240.0s wall timeout")
+            return {
+                "query_drs": {
+                    "schema_version": "query-drs-v3",
+                    "question": "Who reviewed Aero Gate?",
+                    "answer_variables": [
+                        {"id": "qv0", "label": "reviewer", "answer_type": "person", "evidence_text": "Who"}
+                    ],
+                    "target_referents": [
+                        {"id": "qr0", "label": "Aero Gate", "kind": "entity", "evidence_text": "Aero Gate"}
+                    ],
+                    "temporal_records": [],
+                    "requested_conditions": [
+                        {
+                            "id": "qc0",
+                            "predicate": "reviewed",
+                            "box_id": "",
+                            "polarity": "positive",
+                            "modality": "asserted",
+                            "temporal_id": "",
+                            "arguments": [
+                                {
+                                    "role": "agent",
+                                    "target_kind": "answer_variable",
+                                    "target_id": "qv0",
+                                    "value": "",
+                                    "value_type": "person",
+                                    "evidence_text": "Who",
+                                },
+                                {
+                                    "role": "theme",
+                                    "target_kind": "referent",
+                                    "target_id": "qr0",
+                                    "value": "Aero Gate",
+                                    "value_type": "entity",
+                                    "evidence_text": "Aero Gate",
+                                },
+                            ],
+                            "evidence_text": "reviewed Aero Gate",
+                        }
+                    ],
+                    "constraints": [],
+                    "box_requirements": [],
+                    "temporal_scope": "",
+                    "aggregation": "",
+                    "answer_type": "person",
+                    "requires_evidence": True,
+                },
+                "_model_raw": "{}",
+                "_model_elapsed_seconds": 0.01,
+            }
+
+    monkeypatch.setenv("KMD_QUERY_DRS_CACHE_DIR", str(tmp_path / "query-drs-cache"))
+    model = TimeoutThenSucceedsModel()
+
+    result = call_model_query_drs("Who reviewed Aero Gate?", model)  # type: ignore[arg-type]
+
+    assert result["accepted"] is True
+    assert model.calls == [384, 256]
+    assert result["request_failure_retry_index"] == 1
+    assert result["query_drs_retry_attempts"][0]["reason"] == "request_failed"
 
 
 def test_chunk_drs_schema_caps_evidence_strings_to_chunk_length() -> None:

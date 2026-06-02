@@ -103,6 +103,8 @@ class KnowMoreDiRTEngine:
         self._log_progress(
             f"kmd-init indexed documents={len(self.documents)} chunks={len(self.sentences)} run_id={self.run_id}"
         )
+        if self._model_client is not None:
+            self._model_client = self._question_stage_model_client(self._model_client)
         self.index = LexicalIndex(self.sentences)
         self.stats = EngineStats(len(self.documents), len(self.sentences))
         self._documents_by_rel_path = {document.rel_path: document for document in self.documents}
@@ -168,6 +170,29 @@ class KnowMoreDiRTEngine:
                 f"Probe {endpoint!r} returned a non-JSON-object model listing."
             )
         return LocalModelClient(endpoint=endpoint)
+
+    def _question_stage_model_client(self, client: LocalModelClient) -> LocalModelClient:
+        raw_timeout = os.environ.get("KMD_QUESTION_MODEL_TIMEOUT_SECONDS", "").strip()
+        if not raw_timeout:
+            return client
+        try:
+            timeout = float(raw_timeout)
+        except ValueError as exc:
+            raise LocalModelUnavailableError(
+                "KMD_QUESTION_MODEL_TIMEOUT_SECONDS must be a positive number when set."
+            ) from exc
+        if timeout <= 0:
+            raise LocalModelUnavailableError(
+                "KMD_QUESTION_MODEL_TIMEOUT_SECONDS must be a positive number when set."
+            )
+        if abs(timeout - float(getattr(client, "timeout_seconds", timeout))) < 0.001:
+            return client
+        self._log_progress(
+            "kmd-init question_model_timeout "
+            f"ingest_timeout={getattr(client, 'timeout_seconds', '')} "
+            f"question_timeout={timeout:g}"
+        )
+        return LocalModelClient(endpoint=client.endpoint, timeout_seconds=timeout)
 
     def _raise_model_request_failed(self, result: dict[str, object], operation: str) -> None:
         if str(result.get("reason") or "") != "request_failed":
