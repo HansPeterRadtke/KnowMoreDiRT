@@ -2,10 +2,18 @@ from __future__ import annotations
 
 from pathlib import Path
 
-from knowmoredirt.answer_types import ExpectedAnswer
+from knowmoredirt.answer_types import ExpectedAnswer, canonicalize_answer
 from knowmoredirt.engine import KnowMoreDiRTEngine
 from knowmoredirt.model_planner import call_model_evidence_answer
 from knowmoredirt.query import QueryFrame
+
+
+
+
+def test_identifier_answer_accepts_url_shaped_structural_identifier() -> None:
+    expected = ExpectedAnswer("identifier")
+
+    assert canonicalize_answer(expected, "https://manuals.example.test/lark-mirror") == "https://manuals.example.test/lark-mirror"
 
 
 class FakeEvidenceModel:

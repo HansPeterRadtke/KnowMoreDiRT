@@ -128,6 +128,12 @@ def is_value_compatible(expected: ExpectedAnswer, value: str) -> bool:
         return value_type not in {"url", "file_path", "identifier", "count", "date_time"}
     if expected_type == "metadata_value":
         return True
+    if expected_type == "identifier" and value_type == "url":
+        # A URL is a structured identifier.  Some model query DRS payloads use
+        # the broader identifier type for "where is the link/runbook/manual"
+        # questions, and the executor should not discard an otherwise correctly
+        # scoped URL value because of that harmless type coarseness.
+        return True
     return value_type == expected_type
 
 
@@ -163,8 +169,13 @@ def _canonical_part(expected: ExpectedAnswer, value: str) -> str:
         found = urls(cleaned)
         return found[0].rstrip(".,;)") if found else ""
     if expected.answer_type == "identifier":
+        found_urls = urls(cleaned)
+        if found_urls and cleaned.strip().startswith(found_urls[0]):
+            return found_urls[0].rstrip(".,;)")
         found = identifiers(cleaned)
-        return found[0].rstrip(".,;)") if found else ""
+        if found:
+            return found[0].rstrip(".,;)")
+        return found_urls[0].rstrip(".,;)") if found_urls else ""
     if expected.answer_type == "file_path":
         without_urls = cleaned
         for url in urls(cleaned):

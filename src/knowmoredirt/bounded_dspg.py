@@ -1382,7 +1382,14 @@ def _compatible_values(expected: ExpectedAnswer, values: list[str]) -> list[str]
         if expected.answer_type == "url":
             cleaned.extend(url.rstrip(".,;)") for url in urls(text))
         elif expected.answer_type == "identifier":
-            cleaned.extend(identifier.rstrip(".,;)") for identifier in identifiers(text))
+            found_urls = [url.rstrip(".,;)") for url in urls(text)]
+            if found_urls and text.strip().startswith(found_urls[0]):
+                cleaned.extend(found_urls)
+            else:
+                found_ids = [identifier.rstrip(".,;)") for identifier in identifiers(text)]
+                cleaned.extend(found_ids)
+                if not found_ids:
+                    cleaned.extend(found_urls)
         elif expected.answer_type == "file_path":
             without_urls = text
             for url in urls(text):
