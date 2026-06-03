@@ -1726,6 +1726,62 @@ def _bind_relation_conditions(records: dict[str, Any], frame: QueryFrame, expect
     return candidates
 
 
+def _bind_document_scoped_label_values(
+    records: dict[str, Any],
+    frame: QueryFrame,
+    expected: ExpectedAnswer,
+    target_terms: list[str],
+    relation_terms: list[str],
+) -> list[tuple[float, str, Evidence, str]]:
+    """Bind field values from a small source-local structural record cluster.
+
+    This covers a general document pattern such as ``Name: X. Field: Y.`` where
+    the target anchor and requested field are adjacent structural label/value
+    rows rather than one table/object row.  It is intentionally conservative:
+    the document must contain exactly one accessible structural row matching the
+    target terms, avoiding multi-object documents where a field could belong to
+    the wrong entity.
+    """
+
+    if not target_terms:
+        return []
+    answer_slot_terms = _answer_slot_terms(frame)
+    rows_by_document: dict[str, list[dict[str, Any]]] = defaultdict(list)
+    for row in records.get("relations", []):
+        if not _relation_scope_accessible(row, records, frame):
+            continue
+        if str(row.get("relation_type") or "") not in {"label_value", "record_value", "table_cell"}:
+            continue
+        if not _structured_source_row(row) and str(row.get("relation_type") or "") != "label_value":
+            continue
+        rows_by_document[str(row.get("document_id") or "")].append(row)
+    candidates: list[tuple[float, str, Evidence, str]] = []
+    for _document_id, rows in rows_by_document.items():
+        target_rows: list[dict[str, Any]] = []
+        for row in rows:
+            evidence = _evidence_for_span(str(row.get("source_span_id") or ""), records)
+            material = _relation_local_material(row, evidence, include_evidence=True, include_context=True, records=records)
+            if _contains_any(material, target_terms):
+                target_rows.append(row)
+        if len(target_rows) != 1:
+            continue
+        target_evidence = _evidence_for_span(str(target_rows[0].get("source_span_id") or ""), records)
+        for row in rows:
+            if row is target_rows[0]:
+                continue
+            evidence = _evidence_for_span(str(row.get("source_span_id") or ""), records)
+            if _source_is_low_priority(evidence.rel_path, evidence.text) and not _structured_source_row(row):
+                continue
+            local_material = _relation_local_material(row, evidence, include_evidence=False, include_context=True, records=records)
+            relation_hit = _contains_any(local_material, relation_terms) or _contains_any(local_material, answer_slot_terms)
+            if not relation_hit:
+                continue
+            for value in _answer_values_from_relation(row, evidence, expected, [], relation_terms, answer_slot_terms):
+                candidates.append((6.5 * float(row.get("confidence") or 0.7), value, target_evidence, "document_scoped_label_binding"))
+                candidates.append((6.5 * float(row.get("confidence") or 0.7), value, evidence, "document_scoped_label_binding"))
+    return candidates
+
+
 def _record_groups(records: dict[str, Any]) -> dict[str, list[dict[str, Any]]]:
     groups: dict[str, list[dict[str, Any]]] = defaultdict(list)
     for row in records.get("relations", []):
@@ -2309,6 +2365,7 @@ def execute_bounded_query(
     candidates.extend(_bind_record_groups(records, frame, expected, target_terms, relation_terms))
     candidates.extend(_bind_frame_conditions(records, frame, expected, target_terms, relation_terms))
     candidates.extend(_bind_relation_conditions(records, frame, expected, target_terms, relation_terms))
+    candidates.extend(_bind_document_scoped_label_values(records, frame, expected, target_terms, relation_terms))
     temporal_candidates = _temporal_candidates(records, frame, expected, target_terms, relation_terms)
     temporal_candidates.extend(_temporal_relation_candidates(records, frame, expected, target_terms, relation_terms))
     if temporal_candidates and frame.temporal_scope in {"latest", "earliest"}:

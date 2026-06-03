@@ -7333,6 +7333,33 @@ def test_row_count_aggregation_excludes_non_table_state_mentions(tmp_path: Path)
     assert "no_answer_reason" not in diagnostics["execution"]
 
 
+def test_document_scoped_label_values_bind_single_target_field(tmp_path: Path) -> None:
+    (tmp_path / "recipe.txt").write_text(
+        "Recipe: pear oat cakes. Oven temperature: 180C. Bake time: 22 minutes. Author: Aunt Mira.",
+        encoding="utf-8",
+    )
+    engine = KnowMoreDiRTEngine(tmp_path)
+    frame = QueryFrame(
+        question_text="What is the oven temperature for pear oat cakes?",
+        answer_type="identifier",
+        answer_variables=("oven temperature",),
+        target_anchors=("pear oat cakes",),
+        requested_relation="is",
+        relation_terms=("is", "oven temperature", "answer", "argument"),
+        constraints=(),
+    )
+
+    answer = engine._answer_with_bounded_dspg(
+        frame.question_text,
+        frame,
+        ExpectedAnswer("identifier"),
+    )
+
+    assert answer is not None
+    assert answer.text == "180C"
+    assert answer.reason == "bounded DSPG query-frame execution"
+
+
 def test_model_query_drs_compound_slot_matches_structural_record_field(tmp_path: Path) -> None:
     (tmp_path / "object.raw").write_text(
         '{ name: "Orchid Gamma", owner: "Tessa Noll", '
