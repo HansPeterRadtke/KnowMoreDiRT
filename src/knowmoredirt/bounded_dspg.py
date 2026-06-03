@@ -1389,7 +1389,7 @@ def _compatible_values(expected: ExpectedAnswer, values: list[str]) -> list[str]
                 found_ids = [identifier.rstrip(".,;)") for identifier in identifiers(text)]
                 cleaned.extend(found_ids)
                 if not found_ids:
-                    cleaned.extend(found_urls)
+                    cleaned.extend(found_urls or [text])
         elif expected.answer_type == "file_path":
             without_urls = text
             for url in urls(text):

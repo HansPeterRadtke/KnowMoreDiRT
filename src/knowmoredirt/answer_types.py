@@ -130,10 +130,12 @@ def is_value_compatible(expected: ExpectedAnswer, value: str) -> bool:
         return True
     if expected_type == "identifier" and value_type == "url":
         # A URL is a structured identifier.  Some model query DRS payloads use
-        # the broader identifier type for "where is the link/runbook/manual"
-        # questions, and the executor should not discard an otherwise correctly
-        # scoped URL value because of that harmless type coarseness.
+        # the broader identifier type for link-like questions, and the executor
+        # should not discard an otherwise correctly scoped URL value because of
+        # that harmless type coarseness.
         return True
+    if expected_type == "identifier" and value_type == "content_phrase":
+        return _is_short_literal_identifier_fallback(value)
     return value_type == expected_type
 
 
@@ -175,7 +177,9 @@ def _canonical_part(expected: ExpectedAnswer, value: str) -> str:
         found = identifiers(cleaned)
         if found:
             return found[0].rstrip(".,;)")
-        return found_urls[0].rstrip(".,;)") if found_urls else ""
+        if found_urls:
+            return found_urls[0].rstrip(".,;)")
+        return cleaned if _is_short_literal_identifier_fallback(cleaned) else ""
     if expected.answer_type == "file_path":
         without_urls = cleaned
         for url in urls(cleaned):
@@ -228,6 +232,16 @@ def _strip_role_title_prefix(value: str) -> str:
     if len(parts) >= 2 and parts[0].rstrip(".").lower() in prefixes:
         return " ".join(parts[1:]).strip()
     return text
+
+
+def _is_short_literal_identifier_fallback(value: str) -> bool:
+    text = clean_extracted_value(value).strip()
+    if not text or len(text) > 80:
+        return False
+    if re.search(r"[.!?]", text):
+        return False
+    words = [part for part in re.split(r"\s+", text) if part]
+    return 1 <= len(words) <= 6
 
 def _format_literal_list(value: str) -> str:
     text = str(value or "").strip()

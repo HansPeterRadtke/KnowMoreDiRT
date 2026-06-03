@@ -14,6 +14,7 @@ def test_identifier_answer_accepts_url_shaped_structural_identifier() -> None:
     expected = ExpectedAnswer("identifier")
 
     assert canonicalize_answer(expected, "https://manuals.example.test/lark-mirror") == "https://manuals.example.test/lark-mirror"
+    assert canonicalize_answer(expected, "copper sulfate") == "copper sulfate"
 
 
 class FakeEvidenceModel:
