@@ -145,6 +145,8 @@ def canonicalize_answer(expected: ExpectedAnswer, value: str) -> str:
     if expected.answer_type in {"person", "actor", "organization", "state", "content_phrase", "metadata_value"}:
         text = clean_extracted_value(str(value or "").strip().strip('"')).strip(" .;:")
         text = _format_literal_list(text) or text
+        if expected.answer_type in {"person", "actor", "organization"}:
+            text = _strip_role_title_prefix(text)
         return text if is_value_compatible(expected, text) else ""
     parts = compatible_answer_parts(expected, value)
     if not parts:
@@ -183,6 +185,38 @@ def _canonical_part(expected: ExpectedAnswer, value: str) -> str:
         return match.group(0) if match else ""
     return text
 
+
+
+def _strip_role_title_prefix(value: str) -> str:
+    """Remove non-semantic title prefixes from model-selected names.
+
+    This is answer formatting, not relation interpretation: the candidate value
+    has already been selected and type-checked.  Keeping generic titles such as
+    "Officer" or "Plaintiff" caused grounded person/organization answers to
+    fail exact canonical output checks even when the correct name was present.
+    """
+
+    text = clean_extracted_value(value).strip()
+    prefixes = (
+        "officer",
+        "farmer",
+        "plaintiff",
+        "defendant",
+        "witness",
+        "doctor",
+        "dr",
+        "professor",
+        "teacher",
+        "engineer",
+        "owner",
+        "reviewer",
+        "author",
+        "inspector",
+    )
+    parts = text.split()
+    if len(parts) >= 2 and parts[0].rstrip(".").lower() in prefixes:
+        return " ".join(parts[1:]).strip()
+    return text
 
 def _format_literal_list(value: str) -> str:
     text = str(value or "").strip()

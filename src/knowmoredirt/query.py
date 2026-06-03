@@ -277,14 +277,28 @@ def frame_from_mapping(question: str, mapping: dict[str, Any] | None, *, source:
     relation_terms_supplied = isinstance(relation_terms_raw, (list, tuple))
     if isinstance(relation_terms_raw, (list, tuple)):
         relation_values = [str(value).strip() for value in relation_terms_raw if str(value).strip()]
-        relation_terms = tuple(relation_values if source == "model" else expand_terms(relation_values))
+        if source == "model":
+            # Model query DRS owns semantic interpretation, but the executor still
+            # needs the exact surface terms from the user's question for bounded
+            # retrieval.  A valid model payload can otherwise collapse many field
+            # questions to generic predicates such as "is" or "was", causing
+            # deterministic binding to miss source-local labels like "species",
+            # "bake time", "warranty", or "current state".  Adding the lexical
+            # skeleton is not a semantic handler; it preserves source/question
+            # words as retrieval constraints over the model-produced query.
+            relation_terms = tuple(dict.fromkeys([*relation_values, *base.relation_terms]))
+        else:
+            relation_terms = tuple(expand_terms(relation_values))
     else:
         relation_terms = base.relation_terms
     constraints_raw = raw.get("constraints")
     constraints_supplied = isinstance(constraints_raw, (list, tuple))
     if isinstance(constraints_raw, (list, tuple)):
         constraint_values = [str(value).strip() for value in constraints_raw if str(value).strip()]
-        constraints = tuple(constraint_values if source == "model" else expand_terms(constraint_values))
+        if source == "model":
+            constraints = tuple(dict.fromkeys([*constraint_values, *base.constraints]))
+        else:
+            constraints = tuple(expand_terms(constraint_values))
     else:
         constraints = base.constraints
     answer_variables_raw = raw.get("answer_variables")

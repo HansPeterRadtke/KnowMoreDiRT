@@ -19,7 +19,7 @@ from typing import Any
 from .answer_types import ExpectedAnswer, canonicalize_answer, is_value_compatible
 from .extractors import identifiers, urls
 from .models import Answer, Document, Evidence, Sentence
-from .query import QueryFrame, expand_terms, frame_from_mapping, normalize_temporal_scope, plan_question, term_variants
+from .query import QueryFrame, expand_terms, frame_from_mapping, normalize_temporal_scope, plan_question, term_variants, visible_anchors
 from .store import identity_relation_allows_expansion, stable_id
 from .text import clean_extracted_value, content_tokens, normalize, text_quality_metrics
 
@@ -114,9 +114,18 @@ def _query_terms(text: str) -> list[str]:
 
 def _target_terms(frame: QueryFrame, question: str) -> list[str]:
     values: list[str] = []
+    visible = set(visible_anchors(question))
+    answer_material = normalize(" ".join([*frame.answer_variables, *frame.relation_terms]))
+    answer_tokens = _normalized_token_set(answer_material)
     for anchor in frame.target_anchors:
         norm = normalize(anchor)
         if not norm:
+            continue
+        anchor_tokens = _normalized_token_set(norm)
+        if anchor_tokens and anchor_tokens.issubset(answer_tokens) and anchor not in visible:
+            # The model can put the answer slot itself into target_anchors, e.g.
+            # target="catalyst" for "What catalyst...".  That is not a source
+            # referent to bind; keeping it here blocks the actual answer value.
             continue
         values.append(norm)
         if " " in norm:
@@ -1785,16 +1794,45 @@ def _relation_term_groups_for_frame(frame: QueryFrame) -> list[list[str]]:
     groups: list[list[str]] = []
     seen: set[tuple[str, ...]] = set()
     raw_items = [*frame.relation_terms, *list(frame.constraints), *_query_terms(frame.requested_relation)]
+    generic = {
+        "answer",
+        "argument",
+        "value",
+        "values",
+        "row",
+        "rows",
+        "entry",
+        "entries",
+        "have",
+        "has",
+        "had",
+        "is",
+        "are",
+        "was",
+        "were",
+        "be",
+    }
     for item in raw_items:
-        if frame.aggregation == "count" and normalize(item) in COUNT_AGGREGATION_SKIP_TERMS:
+        item_norm = normalize(item)
+        if not item_norm:
             continue
+        if frame.aggregation == "count":
+            if item_norm in COUNT_AGGREGATION_SKIP_TERMS or item_norm in generic:
+                continue
+            # Model answer variables sometimes contain the whole question, e.g.
+            # "How many Finch rows have status active".  Treating that as a
+            # required relation group makes exact counting impossible.  The
+            # operands for counting come from target anchors, constraints, and
+            # the non-generic requested relation, not the full question string.
+            if item_norm.startswith("how many ") or item_norm.startswith("how much "):
+                continue
         variants = _compound_term_variants(item)
         if not variants:
-            variants = [normalize(item)]
-        variants = list(dict.fromkeys(variant for variant in expand_terms(variants) if variant))
+            variants = [item_norm]
+        variants = [variant for variant in expand_terms(variants) if variant and variant not in generic]
         key = tuple(sorted(variants))
         if variants and key not in seen:
-            groups.append(variants)
+            groups.append(list(dict.fromkeys(variants)))
             seen.add(key)
     return groups
 
@@ -2306,12 +2344,21 @@ def execute_bounded_query(
             _attach_answer_provenance(diagnostics, records, answer)
             return answer, diagnostics
     if expected.answer_type == "count" and frame.aggregation == "count" and candidates:
-        values = sorted({canonicalize_answer(expected, value) or value for _score, value, _evidence, _reason in candidates})
-        evidence = [item[2] for item in candidates[:4]]
-        answer = Answer(str(len(values)), 0.85, evidence, "aggregation DRS binding", "count")
-        answer = _with_supporting_evidence(answer, identity_expansion_evidence)
-        _attach_answer_provenance(diagnostics, records, answer)
-        return answer, diagnostics
+        # Count over provenance-bearing bindings, not over raw extracted numeric
+        # values.  Counting the values themselves caused row-count questions to
+        # return unrelated numbers found in the corpus.
+        provenance_keys: list[str] = []
+        evidence: list[Evidence] = []
+        for _score, _value, item_evidence, _reason in candidates:
+            key = "|".join([item_evidence.rel_path, item_evidence.text])
+            if key not in provenance_keys:
+                provenance_keys.append(key)
+                evidence.append(item_evidence)
+        if provenance_keys:
+            answer = Answer(str(len(provenance_keys)), 0.82, evidence[:4], "binding-provenance aggregation DRS binding", "count")
+            answer = _with_supporting_evidence(answer, identity_expansion_evidence)
+            _attach_answer_provenance(diagnostics, records, answer)
+            return answer, diagnostics
 
     if not frame.temporal_scope and _has_unscoped_temporal_ambiguity(candidates):
         diagnostics["execution"]["temporal_ambiguity_without_query_scope"] = True
