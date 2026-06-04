@@ -1928,7 +1928,7 @@ def _frame_requests_row_units(frame: QueryFrame) -> bool:
             ]
         )
     )
-    return bool(re.search(r"\brows?\b", material))
+    return bool(re.search(r"\b(?:rows?|entries|records?)\b", material))
 
 
 def _rows_are_table_like(rows: list[dict[str, Any]]) -> bool:
