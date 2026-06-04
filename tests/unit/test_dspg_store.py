@@ -7333,6 +7333,23 @@ def test_row_count_aggregation_excludes_non_table_state_mentions(tmp_path: Path)
     assert "no_answer_reason" not in diagnostics["execution"]
 
 
+def test_target_terms_keep_real_anchors_that_also_appear_in_relation_terms() -> None:
+    frame = QueryFrame(
+        question_text="Who drafted the volcano homework essay for Meadow Class?",
+        answer_type="person",
+        answer_variables=("Who",),
+        target_anchors=("volcano homework essay", "Meadow Class"),
+        requested_relation="drafted",
+        relation_terms=("drafted", "who", "answer", "argument", "volcano", "homework", "essay"),
+        constraints=("drafted", "volcano", "homework", "essay"),
+    )
+
+    terms = _target_terms(frame, frame.question_text)
+
+    assert "volcano homework essay" in terms
+    assert "meadow class" in terms
+
+
 def test_count_aggregation_ignores_how_many_relation_term_from_model_query(tmp_path: Path) -> None:
     (tmp_path / "noise.log").write_text(
         "Bell Finch active owner: BAD-1234 0000 ==== //// ++++ !!!!\n",
