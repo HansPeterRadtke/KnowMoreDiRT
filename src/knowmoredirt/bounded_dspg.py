@@ -1882,13 +1882,26 @@ def _relation_term_groups_for_frame(frame: QueryFrame) -> list[list[str]]:
         if frame.aggregation == "count":
             if item_norm in COUNT_AGGREGATION_SKIP_TERMS or item_norm in generic:
                 continue
-            # Model answer variables sometimes contain the whole question, e.g.
-            # "How many Finch rows have status active".  Treating that as a
-            # required relation group makes exact counting impossible.  The
-            # operands for counting come from target anchors, constraints, and
-            # the non-generic requested relation, not the full question string.
             if item_norm.startswith("how many ") or item_norm.startswith("how much "):
                 continue
+            if item_norm.startswith("have ") or item_norm.startswith("has ") or item_norm.startswith("had "):
+                item_norm = normalize(re.sub(r"^(?:have|has|had)\s+", "", item_norm))
+            # Count queries need field/value groups, not whole surface clauses.
+            # Requiring a row to contain "have status active" rejected exact
+            # table rows that correctly contain only "status active".
+            tokens = [
+                token for token in content_tokens(item_norm)
+                if token not in generic and token not in COUNT_AGGREGATION_SKIP_TERMS
+            ]
+            if not tokens:
+                continue
+            for token in tokens:
+                variants = [variant for variant in expand_terms([token]) if variant and variant not in generic]
+                key = tuple(sorted(variants))
+                if variants and key not in seen:
+                    groups.append(list(dict.fromkeys(variants)))
+                    seen.add(key)
+            continue
         variants = _compound_term_variants(item)
         if not variants:
             variants = [item_norm]

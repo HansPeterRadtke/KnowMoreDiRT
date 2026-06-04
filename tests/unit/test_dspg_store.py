@@ -7333,6 +7333,34 @@ def test_row_count_aggregation_excludes_non_table_state_mentions(tmp_path: Path)
     assert "no_answer_reason" not in diagnostics["execution"]
 
 
+def test_count_aggregation_matches_field_value_tokens_not_whole_verb_phrase(tmp_path: Path) -> None:
+    (tmp_path / "rows.tsv").write_text(
+        "name\tstatus\n"
+        "Bell Finch\tactive\n"
+        "Dune Finch\tactive\n"
+        "Lake Finch\tactive\n"
+        "Oak Finch\tarchived\n"
+        "Mira Sol\topen\n",
+        encoding="utf-8",
+    )
+    engine = KnowMoreDiRTEngine(tmp_path)
+    frame = QueryFrame(
+        question_text="How many Finch rows have status active?",
+        answer_type="count",
+        answer_variables=("How many Finch rows",),
+        target_anchors=("Finch",),
+        requested_relation="have status active",
+        relation_terms=("have status active", "status active", "rows"),
+        constraints=(),
+        aggregation="count",
+    )
+
+    answer = engine._answer_with_bounded_dspg(frame.question_text, frame, ExpectedAnswer("count"))
+
+    assert answer is not None
+    assert answer.text == "3"
+
+
 def test_document_scoped_label_values_bind_single_target_field(tmp_path: Path) -> None:
     (tmp_path / "recipe.txt").write_text(
         "Recipe: pear oat cakes. Oven temperature: 180C. Bake time: 22 minutes. Author: Aunt Mira.",
