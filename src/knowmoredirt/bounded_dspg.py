@@ -1672,7 +1672,11 @@ def _answer_values_from_frame(
     if evidence is not None:
         locative = _locative_phrase_from_evidence(evidence, target_terms, relation_terms)
         if locative:
-            values = [locative, *values]
+            # For where-questions, the evidence sentence preserves articles and
+            # prepositions better than decomposed frame arguments.  Prefer the
+            # complete grounded locative phrase rather than letting a shorter
+            # argument such as "on red desk" win tie-breaking.
+            values = [locative]
     compatible = _compatible_values(expected, values)
     if compatible or structural:
         return compatible
