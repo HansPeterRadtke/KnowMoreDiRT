@@ -1625,6 +1625,7 @@ def _answer_values_from_frame(
     relation_terms: list[str],
     answer_slot_terms: list[str] | None = None,
     frame_type_material: str = "",
+    evidence: Evidence | None = None,
 ) -> list[str]:
     candidate_args = args
     if answer_slot_terms:
@@ -1668,9 +1669,10 @@ def _answer_values_from_frame(
     ]
     if url_requested:
         return list(dict.fromkeys(url.rstrip(".,;)") for value in values for url in urls(value)))
-    locative = _locative_phrase_from_evidence(evidence, target_terms, relation_terms)
-    if locative:
-        values = [locative, *values]
+    if evidence is not None:
+        locative = _locative_phrase_from_evidence(evidence, target_terms, relation_terms)
+        if locative:
+            values = [locative, *values]
     compatible = _compatible_values(expected, values)
     if compatible or structural:
         return compatible
@@ -1785,6 +1787,7 @@ def _bind_frame_conditions(records: dict[str, Any], frame: QueryFrame, expected:
             relation_terms,
             answer_slot_terms,
             frame_type_material,
+            evidence,
         ):
             candidates.append((score, value, evidence, "frame_argument_binding"))
     return candidates
