@@ -224,6 +224,11 @@ def _looks_like_named_entity_value(value: str) -> bool:
     words = [part for part in re.split(r"\s+", text) if part]
     if len(words) > 8 and _preferred_entity_name_phrase(text) == text:
         return False
+    if len(words) > 1:
+        capitalized_word_count = sum(1 for part in words if part[:1].isupper())
+        has_honorific = words[0].rstrip(".").lower() in {"dr", "ms", "mr", "mrs", "prof"}
+        if not has_honorific and capitalized_word_count < 2:
+            return False
     return True
 
 def _preferred_entity_name_phrase(value: str) -> str:

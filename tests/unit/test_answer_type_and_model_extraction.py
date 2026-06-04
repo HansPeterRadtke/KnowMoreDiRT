@@ -13,6 +13,7 @@ from knowmoredirt.query import QueryFrame
 def test_person_compatibility_rejects_plain_state_words() -> None:
     assert canonicalize_answer(ExpectedAnswer("person"), "healthy") == ""
     assert canonicalize_answer(ExpectedAnswer("person"), "person") == ""
+    assert canonicalize_answer(ExpectedAnswer("person"), "Meaningful note") == ""
     assert canonicalize_answer(ExpectedAnswer("person"), "wat3r3d maybe //// Clear correction") == ""
     assert canonicalize_answer(ExpectedAnswer("person"), "Dr. Pella") == "Dr. Pella"
 
