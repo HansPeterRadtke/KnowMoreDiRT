@@ -10,6 +10,12 @@ from knowmoredirt.query import QueryFrame
 
 
 
+def test_person_canonicalization_preserves_honorifics() -> None:
+    assert canonicalize_answer(ExpectedAnswer("person"), "Dr. Pella") == "Dr. Pella"
+    assert canonicalize_answer(ExpectedAnswer("person"), "the fern owner is Dr. Pella") == "Dr. Pella"
+    assert canonicalize_answer(ExpectedAnswer("person"), "Officer Talen") == "Talen"
+
+
 def test_identifier_answer_accepts_url_shaped_structural_identifier() -> None:
     expected = ExpectedAnswer("identifier")
 

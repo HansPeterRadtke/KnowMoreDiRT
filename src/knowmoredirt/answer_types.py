@@ -12,7 +12,7 @@ import re
 from dataclasses import dataclass
 from typing import Literal
 
-from .extractors import identifiers, urls
+from .extractors import capitalized_phrases, identifiers, urls
 from .text import clean_extracted_value, normalize
 
 
@@ -154,6 +154,7 @@ def canonicalize_answer(expected: ExpectedAnswer, value: str) -> str:
         text = clean_extracted_value(str(value or "").strip().strip('"')).strip(" .;:")
         text = _format_literal_list(text) or text
         if expected.answer_type in {"person", "actor", "organization"}:
+            text = _preferred_entity_name_phrase(text)
             text = _strip_role_title_prefix(text)
         return text if is_value_compatible(expected, text) else ""
     parts = compatible_answer_parts(expected, value)
@@ -202,6 +203,19 @@ def _canonical_part(expected: ExpectedAnswer, value: str) -> str:
 
 
 
+
+def _preferred_entity_name_phrase(value: str) -> str:
+    text = clean_extracted_value(value).strip()
+    if not text:
+        return text
+    phrases = [phrase.strip() for phrase in capitalized_phrases(text) if phrase.strip()]
+    if not phrases:
+        return text
+    lowered = text.lower()
+    if any(marker in lowered for marker in (" is ", " was ", " by ", " owner ", " reviewer ", " author ", " contact ")):
+        return phrases[-1]
+    return text
+
 def _strip_role_title_prefix(value: str) -> str:
     """Remove non-semantic title prefixes from model-selected names.
 
@@ -218,10 +232,8 @@ def _strip_role_title_prefix(value: str) -> str:
         "plaintiff",
         "defendant",
         "witness",
-        "doctor",
-        "dr",
-        "professor",
-        "teacher",
+        # Preserve honorifics such as Dr./Doctor/Professor; they may be part
+        # of the grounded canonical name.  Strip role labels only.
         "engineer",
         "owner",
         "reviewer",
