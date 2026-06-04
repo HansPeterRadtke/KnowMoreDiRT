@@ -135,7 +135,7 @@ def _target_terms(frame: QueryFrame, question: str) -> list[str]:
             # and answer="greenhouse pump state".
             if not (remainder & field_words):
                 continue
-        if anchor_tokens and len(anchor_tokens) == 1 and _has_term(relation_material, anchor_norm) and anchor_norm not in visible:
+        if anchor_tokens and len(anchor_tokens) == 1 and _has_term(relation_material, norm) and norm not in visible:
             # Model query DRS can put a requested relation/slot such as
             # "feedback" into target_anchors.  That is not an entity target and
             # should stay available through relation terms instead.
