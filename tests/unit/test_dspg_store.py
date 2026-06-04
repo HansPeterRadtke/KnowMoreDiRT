@@ -14,6 +14,7 @@ from knowmoredirt.bounded_dspg import (
     _load_records,
     _rank_scope,
     _terms_match_material,
+    _target_terms,
     execute_bounded_query,
 )
 from knowmoredirt.engine import KnowMoreDiRTEngine
