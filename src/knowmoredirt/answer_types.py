@@ -208,6 +208,24 @@ def _canonical_part(expected: ExpectedAnswer, value: str) -> str:
 
 
 
+
+def _looks_like_named_entity_value(value: str) -> bool:
+    text = clean_extracted_value(value).strip()
+    if not text:
+        return False
+    lowered = text.lower()
+    if lowered in {"person", "actor", "organization", "none", "unknown", "healthy", "unpaid", "paid"}:
+        return False
+    if re.search(r"[/:=]|\d", text):
+        return False
+    phrases = [phrase.strip() for phrase in capitalized_phrases(text) if phrase.strip()]
+    if not phrases:
+        return False
+    words = [part for part in re.split(r"\s+", text) if part]
+    if len(words) > 8 and _preferred_entity_name_phrase(text) == text:
+        return False
+    return True
+
 def _preferred_entity_name_phrase(value: str) -> str:
     text = clean_extracted_value(value).strip()
     if not text:
