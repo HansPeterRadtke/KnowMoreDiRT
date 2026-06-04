@@ -121,7 +121,11 @@ def is_value_compatible(expected: ExpectedAnswer, value: str) -> bool:
     if expected_type == "unknown":
         return value_type != "unknown"
     if expected_type in {"person", "actor", "organization"}:
-        return value_type not in {"url", "file_path", "identifier", "count", "date_time", "unknown"} and not _is_structural_reference(value)
+        if value_type in {"url", "file_path", "identifier", "count", "date_time", "unknown"}:
+            return False
+        if _is_structural_reference(value):
+            return False
+        return _looks_like_named_entity_value(value)
     if expected_type == "content_phrase":
         return value_type not in {"url", "file_path", "identifier"}
     if expected_type == "state":
