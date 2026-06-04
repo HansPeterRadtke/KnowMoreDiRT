@@ -123,11 +123,17 @@ def _target_terms(frame: QueryFrame, question: str) -> list[str]:
             continue
         anchor_tokens = _normalized_token_set(norm)
         if anchor_tokens and anchor_tokens.issubset(answer_tokens) and anchor not in visible:
-            # The model can put the answer slot itself into target_anchors, e.g.
-            # target="catalyst" for "What catalyst...".  Only answer-variable
-            # wording is used for this check; relation terms may contain real
-            # target anchors such as "volcano homework essay".
-            continue
+            field_words = {
+                "state", "status", "code", "id", "identifier", "url", "link", "owner",
+                "reviewer", "author", "contact", "date", "time", "model", "confirmation",
+                "temperature", "location", "where",
+            }
+            remainder = answer_tokens - anchor_tokens
+            # Drop true answer-slot anchors, but keep real target entities when
+            # the answer variable is target+field, e.g. target="greenhouse pump"
+            # and answer="greenhouse pump state".
+            if not (remainder & field_words):
+                continue
         values.append(norm)
         if " " in norm:
             values.append(norm.replace(" ", "_"))
@@ -1306,6 +1312,15 @@ def _relation_metadata(row: dict[str, Any]) -> dict[str, Any]:
     return value if isinstance(value, dict) else {}
 
 
+
+def _surface_format_alias_material(metadata: dict[str, Any]) -> str:
+    surface_format = normalize(str(metadata.get("surface_format") or ""))
+    if surface_format in {"object_like", "json_like", "json"}:
+        return "raw json json-like object-like text"
+    if surface_format == "delimited_table":
+        return "table row rows entries records"
+    return surface_format
+
 def _structured_source_row(row: dict[str, Any]) -> bool:
     metadata = _relation_metadata(row)
     return str(row.get("relation_type") or "") in {"record_value", "table_cell"} or str(
@@ -1365,6 +1380,8 @@ def _relation_local_material(
         metadata.get("section_anchor"),
         metadata.get("argument_role"),
         metadata.get("argument_value_type"),
+        metadata.get("surface_format"),
+        _surface_format_alias_material(metadata),
     ]
     if include_evidence and evidence is not None:
         fields.append(evidence.rel_path)
@@ -1474,6 +1491,59 @@ def _rejects_bound_target_value(expected: ExpectedAnswer, value: str, target_ter
     return _value_contains_target(value, target_terms)
 
 
+
+def _row_subject_answers_selector(
+    row: dict[str, Any],
+    expected: ExpectedAnswer,
+    relation_terms: list[str],
+    answer_slot_terms: list[str] | None,
+) -> bool:
+    relation_type = str(row.get("relation_type") or "")
+    if relation_type not in {"table_cell", "record_value"}:
+        return False
+    subject_value = str(row.get("subject") or "")
+    value = str(row.get("value") or row.get("object") or "")
+    if not subject_value or not value:
+        return False
+    if not canonicalize_answer(expected, subject_value):
+        return False
+    if not answer_slot_terms:
+        return False
+    value_material = normalize(value)
+    slot_material = normalize(" ".join(answer_slot_terms or []))
+    relation_signal = [
+        term for term in relation_terms
+        if normalize(term) not in {"is", "are", "was", "were", "answer", "argument"}
+        and not _has_term(slot_material, term)
+    ]
+    return bool(relation_signal and _contains_any(value_material, relation_signal))
+
+
+
+def _locative_phrase_from_evidence(evidence: Evidence, target_terms: list[str], relation_terms: list[str]) -> str:
+    if not _contains_any(" ".join(relation_terms), ["where"]):
+        return ""
+    text = clean_extracted_value(evidence.text)
+    if target_terms and not _contains_any(normalize(text), target_terms):
+        return ""
+    match = re.search(
+        r"\b(?:is|was|are|were|located|remains?)\s+"
+        r"((?:on|in|under|behind|beside|near|inside|outside|above|below|at)\s+[^.;,]+)",
+        text,
+        re.I,
+    )
+    return clean_extracted_value(match.group(1)).strip() if match else ""
+
+def _locative_answer_value(frame_row: dict[str, Any], value: str, relation_terms: list[str]) -> str:
+    if not value or not _contains_any(" ".join(relation_terms), ["where"]):
+        return value
+    predicate = normalize(str(frame_row.get("predicate") or frame_row.get("trigger_surface") or ""))
+    if predicate in {"on", "in", "under", "behind", "beside", "near", "inside", "outside", "above", "below", "at"}:
+        value_norm = normalize(value)
+        if value_norm and not value_norm.startswith(predicate + " "):
+            return f"{predicate} {value}"
+    return value
+
 def _answer_values_from_relation(
     row: dict[str, Any],
     evidence: Evidence,
@@ -1502,6 +1572,12 @@ def _answer_values_from_relation(
         primary_values = [str(row.get("value") or "")] if expected.answer_type in {"content_phrase", "unknown"} else []
     else:
         primary_values = [str(row.get(key) or "") for key in ["value", "object"]]
+        subject_value = str(row.get("subject") or "")
+        if _row_subject_answers_selector(row, expected, relation_terms, answer_slot_terms):
+            # The row value matched the requested selector, so the row subject is
+            # the answer.  Do not also return the selector value itself, e.g.
+            # status=unpaid should answer INV-101, not unpaid.
+            primary_values = [subject_value]
     fallback_values = (
         []
         if relation_type in {"semantic_argument", "semantic_frame", "drs_condition"}
@@ -1577,7 +1653,10 @@ def _answer_values_from_frame(
             ):
                 return []
             candidate_args = []
-    values = [str(arg.get("surface") or "") for arg in candidate_args]
+    values = [
+        _locative_answer_value(frame_row, str(arg.get("surface") or ""), relation_terms)
+        for arg in candidate_args
+    ]
     url_requested = _unknown_query_requests_url(expected, relation_terms, answer_slot_terms)
     structural = expected.answer_type in {"url", "identifier", "file_path", "date_time", "count"} or url_requested
     values = [
@@ -1589,6 +1668,9 @@ def _answer_values_from_frame(
     ]
     if url_requested:
         return list(dict.fromkeys(url.rstrip(".,;)") for value in values for url in urls(value)))
+    locative = _locative_phrase_from_evidence(evidence, target_terms, relation_terms)
+    if locative:
+        values = [locative, *values]
     compatible = _compatible_values(expected, values)
     if compatible or structural:
         return compatible

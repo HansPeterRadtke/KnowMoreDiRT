@@ -15,6 +15,7 @@ from knowmoredirt.bounded_dspg import (
     _rank_scope,
     _terms_match_material,
     _target_terms,
+    _locative_answer_value,
     execute_bounded_query,
 )
 from knowmoredirt.engine import KnowMoreDiRTEngine
@@ -7332,6 +7333,77 @@ def test_row_count_aggregation_excludes_non_table_state_mentions(tmp_path: Path)
     assert answer.reason == "record-group aggregation DRS binding"
     assert {item.rel_path for item in answer.evidence} == {"rows.tsv"}
     assert "no_answer_reason" not in diagnostics["execution"]
+
+
+def test_target_entity_kept_when_answer_variable_is_entity_plus_field(tmp_path: Path) -> None:
+    frame = QueryFrame(
+        question_text="What is the greenhouse pump state?",
+        answer_type="state",
+        answer_variables=("greenhouse pump state",),
+        target_anchors=("greenhouse pump",),
+        requested_relation="state",
+        relation_terms=("state", "greenhouse", "pump"),
+        constraints=("greenhouse", "pump", "state"),
+    )
+
+    assert "greenhouse pump" in _target_terms(frame, frame.question_text)
+
+
+def test_table_selector_returns_subject_identifier_when_value_matches_requested_state(tmp_path: Path) -> None:
+    (tmp_path / "invoice.csvish").write_text(
+        "invoice_id|customer|amount|status\n"
+        "INV-101|River Clinic|125|unpaid\n"
+        "INV-102|River Clinic|125|paid\n",
+        encoding="utf-8",
+    )
+    engine = KnowMoreDiRTEngine(tmp_path)
+    frame = QueryFrame(
+        question_text="Which invoice is unpaid?",
+        answer_type="identifier",
+        answer_variables=("invoice",),
+        target_anchors=("invoice",),
+        requested_relation="is unpaid",
+        relation_terms=("is unpaid", "invoice", "unpaid"),
+        constraints=("invoice", "unpaid"),
+    )
+
+    answer = engine._answer_with_bounded_dspg(frame.question_text, frame, ExpectedAnswer("identifier"))
+
+    assert answer is not None
+    assert answer.text == "INV-101"
+
+
+def test_where_frame_preserves_locative_preposition() -> None:
+    assert (
+        _locative_answer_value(
+            {"predicate": "on", "trigger_surface": "on"},
+            "the red desk",
+            ["where", "brass", "lamp"],
+        )
+        == "on the red desk"
+    )
+
+
+def test_object_like_source_format_terms_bind_raw_json_owner(tmp_path: Path) -> None:
+    (tmp_path / "raw_json_like.blob").write_text(
+        '{ project: "Not a schema", owner: "Zia Fern", status: "observed", ticket: "TXT-991" }',
+        encoding="utf-8",
+    )
+    engine = KnowMoreDiRTEngine(tmp_path)
+    frame = QueryFrame(
+        question_text="Who is the owner in the raw JSON-like text?",
+        answer_type="person",
+        answer_variables=("owner",),
+        target_anchors=("owner", "JSON-like"),
+        requested_relation="",
+        relation_terms=("owner", "raw"),
+        constraints=("raw", "json-like", "text", "owner"),
+    )
+
+    answer = engine._answer_with_bounded_dspg(frame.question_text, frame, ExpectedAnswer("person"))
+
+    assert answer is not None
+    assert answer.text == "Zia Fern"
 
 
 def test_clear_structural_candidate_not_blocked_by_unrelated_dated_evidence(tmp_path: Path) -> None:
