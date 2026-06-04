@@ -324,6 +324,9 @@ def run_benchmark(args: argparse.Namespace) -> dict[str, Any]:
         corpus = Path(suite["corpus"])
         qa_path = Path(suite["qa"])
         questions = _load_questions(qa_path)
+        selected_question_ids = {str(value) for value in getattr(args, "question_id", []) or []}
+        if selected_question_ids:
+            questions = [item for item in questions if str(item.get("id") or "") in selected_question_ids]
         suite_started = time.time()
         print(
             f"kmd-model-benchmark suite_start {suite_name} "
@@ -449,6 +452,12 @@ def main() -> int:
         help="Directory for resumable results, metadata, logs, and model caches.",
     )
     parser.add_argument("--force", action="store_true", help="Ignore existing results.jsonl entries.")
+    parser.add_argument(
+        "--question-id",
+        nargs="*",
+        default=[],
+        help="Optional question ids to run within the selected suite(s).",
+    )
     args = parser.parse_args()
     summary = run_benchmark(args)
     overall = summary["overall"]
