@@ -7334,6 +7334,28 @@ def test_row_count_aggregation_excludes_non_table_state_mentions(tmp_path: Path)
     assert "no_answer_reason" not in diagnostics["execution"]
 
 
+def test_clear_structural_candidate_not_blocked_by_unrelated_dated_evidence(tmp_path: Path) -> None:
+    (tmp_path / "hotel.txt").write_text(
+        "Hotel confirmation code: HTL-7712. 2026-07-12 picnic state: planned.",
+        encoding="utf-8",
+    )
+    engine = KnowMoreDiRTEngine(tmp_path)
+    frame = QueryFrame(
+        question_text="What is the hotel confirmation code?",
+        answer_type="identifier",
+        answer_variables=("hotel confirmation code",),
+        target_anchors=("hotel confirmation code",),
+        requested_relation="is",
+        relation_terms=("is", "answer", "argument", "hotel", "confirmation", "code"),
+        constraints=("hotel", "confirmation", "code"),
+    )
+
+    answer = engine._answer_with_bounded_dspg(frame.question_text, frame, ExpectedAnswer("identifier"))
+
+    assert answer is not None
+    assert answer.text == "HTL-7712"
+
+
 def test_target_terms_keep_real_anchors_that_also_appear_in_relation_terms() -> None:
     frame = QueryFrame(
         question_text="Who drafted the volcano homework essay for Meadow Class?",

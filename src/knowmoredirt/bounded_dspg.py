@@ -2258,7 +2258,10 @@ def _choose_list_answer(candidates: list[tuple[float, str, Evidence, str]], expe
     return Answer("; ".join(values), 0.86, evidence[:6], "list aggregation DRS binding", expected.answer_type)
 
 
-def _has_unscoped_temporal_ambiguity(candidates: list[tuple[float, str, Evidence, str]]) -> bool:
+def _has_unscoped_temporal_ambiguity(
+    candidates: list[tuple[float, str, Evidence, str]],
+    expected: ExpectedAnswer | None = None,
+) -> bool:
     temporal_candidate_values = {
         normalize(value)
         for _score, value, _evidence, reason in candidates
@@ -2266,6 +2269,29 @@ def _has_unscoped_temporal_ambiguity(candidates: list[tuple[float, str, Evidence
     }
     if len(temporal_candidate_values) > 1:
         return True
+
+    # Do not let unrelated dated evidence block a clear structural answer.
+    # The guard exists to avoid guessing between competing dated states, not to
+    # reject a dominant label/table/identifier candidate merely because other
+    # selected chunks contain dates.
+    if expected is not None:
+        scored: dict[str, tuple[float, str]] = {}
+        for score, value, _evidence, reason in candidates:
+            canonical = canonicalize_answer(expected, value)
+            if not canonical:
+                continue
+            choice = _choice_score(score, reason, expected)
+            prev = scored.get(canonical)
+            scored[canonical] = (choice + (prev[0] if prev else 0.0), reason)
+        if scored:
+            ordered = sorted(scored.items(), key=lambda item: (-item[1][0], len(item[0]), item[0]))
+            top_value, (top_score, top_reason) = ordered[0]
+            next_score = ordered[1][1][0] if len(ordered) > 1 else 0.0
+            if top_reason not in {"temporal_binding", "temporal_relation_binding"} and (
+                len(ordered) == 1 or top_score >= max(8.0, next_score * 1.35)
+            ):
+                return False
+
     values_by_time: dict[str, set[str]] = defaultdict(set)
     for _score, value, evidence, _reason in candidates:
         match = DATE_TIME_RE.search(evidence.text)
@@ -2440,7 +2466,7 @@ def execute_bounded_query(
             _attach_answer_provenance(diagnostics, records, answer)
             return answer, diagnostics
 
-    if not frame.temporal_scope and _has_unscoped_temporal_ambiguity(candidates):
+    if not frame.temporal_scope and _has_unscoped_temporal_ambiguity(candidates, expected):
         diagnostics["execution"]["temporal_ambiguity_without_query_scope"] = True
         _attach_no_answer_provenance(
             diagnostics,
