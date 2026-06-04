@@ -7333,6 +7333,38 @@ def test_row_count_aggregation_excludes_non_table_state_mentions(tmp_path: Path)
     assert "no_answer_reason" not in diagnostics["execution"]
 
 
+def test_count_aggregation_ignores_how_many_relation_term_from_model_query(tmp_path: Path) -> None:
+    (tmp_path / "noise.log").write_text(
+        "Bell Finch active owner: BAD-1234 0000 ==== //// ++++ !!!!\n",
+        encoding="utf-8",
+    )
+    (tmp_path / "rows.tsv").write_text(
+        "item\tstatus\towner\treference\n"
+        "Bell Finch\tactive\tOla Nym\tBF-1201\n"
+        "Bell Finch\tarchived\tLio Fern\tBF-1200\n"
+        "Cedar Finch\tactive\tPax Neri\tCF-2201\n"
+        "Dune Finch\tblocked\tRae Sol\tDF-3301\n"
+        "Ember Finch\tactive\tUma Korr\tEF-4401\n",
+        encoding="utf-8",
+    )
+    engine = KnowMoreDiRTEngine(tmp_path)
+    frame = QueryFrame(
+        question_text="How many Finch rows have status active?",
+        answer_type="count",
+        answer_variables=("How many",),
+        target_anchors=("Finch rows", "Finch"),
+        requested_relation="have status",
+        relation_terms=("have status", "how many", "answer", "argument", "status", "active"),
+        constraints=("active", "status"),
+        aggregation="count",
+    )
+
+    answer = engine._answer_with_bounded_dspg(frame.question_text, frame, ExpectedAnswer("count"))
+
+    assert answer is not None
+    assert answer.text == "3"
+
+
 def test_count_aggregation_treats_entries_as_row_units_and_skips_noise(tmp_path: Path) -> None:
     (tmp_path / "noise.log").write_text(
         "Bell Finch active owner: BAD-1234 0000 ==== //// ++++ !!!!\n",

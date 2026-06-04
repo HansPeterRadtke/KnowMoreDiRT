@@ -1862,6 +1862,8 @@ def _relation_term_groups_for_frame(frame: QueryFrame) -> list[list[str]]:
         "argument",
         "value",
         "values",
+        "many",
+        "much",
         "row",
         "rows",
         "entry",
@@ -1882,7 +1884,7 @@ def _relation_term_groups_for_frame(frame: QueryFrame) -> list[list[str]]:
         if frame.aggregation == "count":
             if item_norm in COUNT_AGGREGATION_SKIP_TERMS or item_norm in generic:
                 continue
-            if item_norm.startswith("how many ") or item_norm.startswith("how much "):
+            if item_norm in {"how many", "how much"} or item_norm.startswith("how many ") or item_norm.startswith("how much "):
                 continue
             if item_norm.startswith("have ") or item_norm.startswith("has ") or item_norm.startswith("had "):
                 item_norm = normalize(re.sub(r"^(?:have|has|had)\s+", "", item_norm))
