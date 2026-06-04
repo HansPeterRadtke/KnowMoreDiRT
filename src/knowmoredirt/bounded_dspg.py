@@ -115,7 +115,7 @@ def _query_terms(text: str) -> list[str]:
 def _target_terms(frame: QueryFrame, question: str) -> list[str]:
     values: list[str] = []
     visible = set(visible_anchors(question))
-    answer_material = normalize(" ".join([*frame.answer_variables, *frame.relation_terms]))
+    answer_material = normalize(" ".join(frame.answer_variables))
     answer_tokens = _normalized_token_set(answer_material)
     for anchor in frame.target_anchors:
         norm = normalize(anchor)
@@ -124,8 +124,9 @@ def _target_terms(frame: QueryFrame, question: str) -> list[str]:
         anchor_tokens = _normalized_token_set(norm)
         if anchor_tokens and anchor_tokens.issubset(answer_tokens) and anchor not in visible:
             # The model can put the answer slot itself into target_anchors, e.g.
-            # target="catalyst" for "What catalyst...".  That is not a source
-            # referent to bind; keeping it here blocks the actual answer value.
+            # target="catalyst" for "What catalyst...".  Only answer-variable
+            # wording is used for this check; relation terms may contain real
+            # target anchors such as "volcano homework essay".
             continue
         values.append(norm)
         if " " in norm:
