@@ -7428,6 +7428,23 @@ def test_clear_structural_candidate_not_blocked_by_unrelated_dated_evidence(tmp_
     assert answer.text == "HTL-7712"
 
 
+def test_target_terms_drop_relation_slot_anchors_from_model_query() -> None:
+    frame = QueryFrame(
+        question_text="Who wrote feedback on the volcano homework essay?",
+        answer_type="person",
+        answer_variables=("Who",),
+        target_anchors=("feedback", "volcano homework essay"),
+        requested_relation="wrote",
+        relation_terms=("wrote", "who", "answer", "argument", "feedback", "volcano", "homework", "essay"),
+        constraints=("wrote", "feedback", "volcano", "homework", "essay"),
+    )
+
+    terms = _target_terms(frame, frame.question_text)
+
+    assert "feedback" not in terms
+    assert "volcano homework essay" in terms
+
+
 def test_target_terms_keep_real_anchors_that_also_appear_in_relation_terms() -> None:
     frame = QueryFrame(
         question_text="Who drafted the volcano homework essay for Meadow Class?",
