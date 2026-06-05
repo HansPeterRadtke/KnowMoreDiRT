@@ -1586,7 +1586,10 @@ class KnowMoreDiRTEngine:
         self.last_bounded_diagnostics = diagnostics
         if not bounded_answer:
             return None
-        return self._finalize_answer(question, bounded_answer, expected, "bounded DSPG query-frame execution")
+        final_expected = expected
+        if bounded_answer.reason == "deterministic arithmetic binding":
+            final_expected = ExpectedAnswer("count")
+        return self._finalize_answer(question, bounded_answer, final_expected, "bounded DSPG query-frame execution")
 
     def _answer_has_source_grounding(self, answer: Answer) -> bool:
         if normalize(answer.text) == "unknown":
