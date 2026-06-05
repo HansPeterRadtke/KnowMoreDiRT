@@ -44,7 +44,7 @@ from .models import Answer, Document, Evidence, Sentence
 from .query import QueryFrame, frame_from_mapping, plan_question, term_variants
 from .semantic_cache import SemanticFrameCache
 from .store import stable_id
-from .text import content_tokens, is_low_semantic_noise, normalize, text_quality_metrics
+from .text import clean_extracted_value, content_tokens, is_low_semantic_noise, normalize, text_quality_metrics
 
 
 PROGRESS_TRUE_VALUES = {"1", "true", "yes", "on"}
@@ -291,6 +291,7 @@ class KnowMoreDiRTEngine:
         if self._use_local_model:
             model_answer = self._answer_with_local_model(text)
             if model_answer:
+                model_answer = self._cleanup_public_answer(text, model_answer)
                 self.last_answer = model_answer
                 return model_answer
             answer = self._unknown_answer("local model DRT path found no complete grounded answer")
@@ -306,11 +307,24 @@ class KnowMoreDiRTEngine:
             if bounded is None:
                 pass
             else:
+                bounded = self._cleanup_public_answer(text, bounded)
                 self.last_answer = bounded
                 return bounded
 
         answer = self._unknown_answer("no complete grounded DSPG match")
         self.last_answer = answer
+        return answer
+
+    def _cleanup_public_answer(self, question: str, answer: Answer) -> Answer:
+        if normalize(answer.text) == "unknown":
+            return answer
+        if self._looks_like_no_answer_phrase(question, answer.text):
+            return Answer("unknown", 0.0, answer.evidence, answer.reason, "unknown")
+        expected_type = answer.answer_type if answer.answer_type not in {"", "unknown"} else classify_value(answer.text)
+        expected = ExpectedAnswer(expected_type)  # type: ignore[arg-type]
+        cleaned = self._cleanup_canonical_answer(question, answer.text, expected)
+        if cleaned and cleaned != answer.text:
+            return Answer(cleaned, answer.confidence, answer.evidence, answer.reason, answer.answer_type)
         return answer
 
     def _unknown_answer(self, reason: str) -> Answer:
@@ -1602,9 +1616,60 @@ class KnowMoreDiRTEngine:
             return True
         return any(evidence.rel_path and evidence.text for evidence in answer.evidence)
 
+    def _looks_like_no_answer_phrase(self, question: str, value: str) -> bool:
+        text = normalize(value)
+        if not text:
+            return False
+        no_answer_markers = (
+            "no final decision",
+            "no stated translation",
+            "has no stated translation",
+            "no translation",
+            "not stated",
+            "not specified",
+            "not provided",
+            "no answer",
+            "unanswered",
+        )
+        return any(marker in text for marker in no_answer_markers)
+
+    def _cleanup_canonical_answer(self, question: str, canonical: str, expected: ExpectedAnswer) -> str:
+        text = clean_extracted_value(canonical).strip()
+        if not text:
+            return text
+        q = normalize(question)
+        low = normalize(text)
+        if expected.answer_type in {"identifier", "content_phrase", "metadata_value"}:
+            if "what scale" in q or "which scale" in q:
+                scale_match = re.search(r"\b([A-G](?:\s+(?:sharp|flat))?\s+(?:major|minor))\s+scale\b", text, re.I)
+                if scale_match:
+                    return scale_match.group(1).strip()
+            slot_words = ["scale", "state", "status", "result", "answer", "value"]
+            for slot in slot_words:
+                if f"what {slot}" in q or f"which {slot}" in q or f" {slot} " in q:
+                    suffix = " " + slot
+                    if low.endswith(suffix) and len(text.split()) <= 8:
+                        return text[: -len(suffix)].strip()
+        if expected.answer_type in {"content_phrase", "metadata_value", "identifier"}:
+            match = re.search(r"\bfor\s+([^?]+)\?*$", question, re.I)
+            if match:
+                target = clean_extracted_value(match.group(1)).strip(" ?.:")
+                if target and normalize(text).endswith(" for " + normalize(target)):
+                    return text[: -(len(" for ") + len(target))].strip()
+        if expected.answer_type in {"content_phrase", "state", "metadata_value"}:
+            words = text.split()
+            low_words = [word.lower().strip(".,;:") for word in words]
+            if len(words) <= 4 and low_words and low_words[0] in {"the", "a", "an"}:
+                verbish = {"is", "was", "were", "are", "be", "been", "being", "should", "would", "could", "did", "does", "do", "has", "have", "had"}
+                if not any(word in verbish for word in low_words[1:]):
+                    return " ".join(words[1:]).strip()
+        return text
+
     def _finalize_answer(self, question: str, answer: Answer, expected: ExpectedAnswer, source: str) -> Answer | None:
         if normalize(answer.text) == "unknown":
             return answer
+        if self._looks_like_no_answer_phrase(question, answer.text):
+            return Answer("unknown", 0.0, answer.evidence, source, "unknown")
         has_metadata_evidence = any(is_metadata_evidence_text(evidence.text) for evidence in answer.evidence)
         if expected.answer_type == "unknown":
             model_type = answer.answer_type if answer.answer_type not in {"", "unknown"} else classify_value(answer.text)
@@ -1629,6 +1694,9 @@ class KnowMoreDiRTEngine:
             and answer.evidence
         ):
             canonical = self._canonicalize_identity_with_local_model(question, canonical, answer.evidence) or canonical
+        if not canonical:
+            return None
+        canonical = self._cleanup_canonical_answer(question, canonical, expected)
         if not canonical:
             return None
         return Answer(canonical, answer.confidence, answer.evidence, source, expected.answer_type)

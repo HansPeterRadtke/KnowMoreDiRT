@@ -20,7 +20,7 @@ from knowmoredirt.bounded_dspg import (
 )
 from knowmoredirt.engine import KnowMoreDiRTEngine
 from knowmoredirt.ingest import ingest_folder
-from knowmoredirt.models import Evidence
+from knowmoredirt.models import Answer, Evidence
 from knowmoredirt.query import QueryFrame, term_variants
 from knowmoredirt.store import DSPGStore, stable_id
 
@@ -7426,6 +7426,43 @@ def test_clear_structural_candidate_not_blocked_by_unrelated_dated_evidence(tmp_
 
     assert answer is not None
     assert answer.text == "HTL-7712"
+
+
+def test_finalize_answer_cleans_slot_suffix_and_no_answer_phrases(tmp_path: Path) -> None:
+    (tmp_path / "source.txt").write_text("placeholder", encoding="utf-8")
+    engine = KnowMoreDiRTEngine(tmp_path)
+    evidence = [Evidence("source.txt", "placeholder", "span", 0, 0, None, "synthetic")]
+
+    assert engine._finalize_answer(
+        "What scale did Arlo practice?",
+        Answer("D minor scale", 0.9, evidence, "manual", "identifier"),
+        ExpectedAnswer("identifier"),
+        "manual",
+    ).text == "D minor"
+    assert engine._finalize_answer(
+        "What was the audit result for Fern Vault?",
+        Answer("only humidity readings were stored for Fern Vault", 0.9, evidence, "manual", "content_phrase"),
+        ExpectedAnswer("content_phrase"),
+        "manual",
+    ).text == "only humidity readings were stored"
+    assert engine._finalize_answer(
+        "What did Runa say snapped during loading?",
+        Answer("the blue latch", 0.9, evidence, "manual", "content_phrase"),
+        ExpectedAnswer("content_phrase"),
+        "manual",
+    ).text == "blue latch"
+    assert engine._finalize_answer(
+        "What final decision was made about library hours?",
+        Answer("No final decision was made", 0.9, evidence, "manual", "content_phrase"),
+        ExpectedAnswer("unknown"),
+        "manual",
+    ).text == "unknown"
+    assert engine._finalize_answer(
+        "What does sola miri tahu mean?",
+        Answer("has no stated translation", 0.9, evidence, "manual", "content_phrase"),
+        ExpectedAnswer("unknown"),
+        "manual",
+    ).text == "unknown"
 
 
 def test_direct_label_slot_binding_returns_structural_identifier(tmp_path: Path) -> None:
