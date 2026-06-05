@@ -7428,6 +7428,95 @@ def test_clear_structural_candidate_not_blocked_by_unrelated_dated_evidence(tmp_
     assert answer.text == "HTL-7712"
 
 
+def test_direct_label_slot_binding_returns_structural_identifier(tmp_path: Path) -> None:
+    (tmp_path / "leaf_lab.notes").write_text(
+        "Biology notebook page. Maya Chen observed onion cells. Specimen code: BIO-22.",
+        encoding="utf-8",
+    )
+    engine = KnowMoreDiRTEngine(tmp_path)
+    frame = QueryFrame(
+        question_text="What is the biology specimen code?",
+        answer_type="identifier",
+        answer_variables=("biology specimen code",),
+        target_anchors=("biology specimen",),
+        requested_relation="is",
+        relation_terms=("is", "biology", "specimen", "code"),
+        constraints=("biology", "specimen", "code"),
+    )
+
+    answer = engine._answer_with_bounded_dspg(frame.question_text, frame, ExpectedAnswer("identifier"))
+
+    assert answer is not None
+    assert answer.text == "BIO-22"
+
+
+def test_direct_label_slot_binding_returns_numeric_unit_value(tmp_path: Path) -> None:
+    (tmp_path / "recipe.txt").write_text(
+        "Recipe: pear oat cakes. Oven temperature: 180C. Bake time: 22 minutes.",
+        encoding="utf-8",
+    )
+    engine = KnowMoreDiRTEngine(tmp_path)
+    frame = QueryFrame(
+        question_text="What is the bake time for pear oat cakes?",
+        answer_type="identifier",
+        answer_variables=("bake time",),
+        target_anchors=("pear oat cakes",),
+        requested_relation="is",
+        relation_terms=("is", "bake", "time"),
+        constraints=("bake", "time"),
+    )
+
+    answer = engine._answer_with_bounded_dspg(frame.question_text, frame, ExpectedAnswer("identifier"))
+
+    assert answer is not None
+    assert answer.text == "22 minutes"
+
+
+def test_relation_label_value_binding_extracts_person_from_value_clause(tmp_path: Path) -> None:
+    (tmp_path / "homework.txt").write_text(
+        "Lina Soto drafted the volcano homework essay for Meadow Class. "
+        "Teacher feedback: Ms. Orin wrote that the conclusion needs one more evidence sentence.",
+        encoding="utf-8",
+    )
+    engine = KnowMoreDiRTEngine(tmp_path)
+    frame = QueryFrame(
+        question_text="Who wrote feedback on the volcano homework essay?",
+        answer_type="person",
+        answer_variables=("Who",),
+        target_anchors=("feedback", "volcano homework essay"),
+        requested_relation="wrote",
+        relation_terms=("wrote", "feedback"),
+        constraints=("feedback",),
+    )
+
+    answer = engine._answer_with_bounded_dspg(frame.question_text, frame, ExpectedAnswer("person"))
+
+    assert answer is not None
+    assert answer.text == "Ms. Orin"
+
+
+def test_arithmetic_answer_uses_interpreted_plus_expression(tmp_path: Path) -> None:
+    (tmp_path / "homework.txt").write_text(
+        "Math word problem: 7 apples plus 5 apples equals 12 apples.",
+        encoding="utf-8",
+    )
+    engine = KnowMoreDiRTEngine(tmp_path)
+    frame = QueryFrame(
+        question_text="What does 7 plus 5 equal in the homework note?",
+        answer_type="identifier",
+        answer_variables=("7 plus 5",),
+        target_anchors=("7", "5"),
+        requested_relation="equal",
+        relation_terms=("equal", "7 plus 5", "plus"),
+        constraints=("homework", "equal"),
+    )
+
+    answer = engine._answer_with_bounded_dspg(frame.question_text, frame, ExpectedAnswer("identifier"))
+
+    assert answer is not None
+    assert answer.text == "12"
+
+
 def test_target_terms_drop_relation_slot_anchors_from_model_query() -> None:
     frame = QueryFrame(
         question_text="Who wrote feedback on the volcano homework essay?",

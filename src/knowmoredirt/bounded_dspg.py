@@ -17,7 +17,7 @@ from functools import lru_cache
 from typing import Any
 
 from .answer_types import ExpectedAnswer, canonicalize_answer, is_value_compatible
-from .extractors import identifiers, urls
+from .extractors import capitalized_phrases, identifiers, urls
 from .models import Answer, Document, Evidence, Sentence
 from .query import QueryFrame, expand_terms, frame_from_mapping, normalize_temporal_scope, plan_question, term_variants, visible_anchors
 from .store import identity_relation_allows_expansion, stable_id
@@ -2398,6 +2398,115 @@ def _has_unscoped_temporal_ambiguity(
     return len(distinct_values) > 1
 
 
+
+def _arithmetic_answer(
+    records: dict[str, Any],
+    frame: QueryFrame,
+    expected: ExpectedAnswer,
+    relation_terms: list[str],
+) -> Answer | None:
+    if expected.answer_type not in {"identifier", "count", "metadata_value", "unknown"}:
+        return None
+    material = normalize(" ".join([frame.question_text, *frame.answer_variables, *relation_terms]))
+    if not any(op in material for op in (" plus ", " minus ", " times ", " multiplied by ", " divided by ")):
+        return None
+    match = re.search(
+        r"(?:^|\s)(\d+)\s+(plus|minus|times|multiplied by|divided by)\s+(\d+)(?:\s|$)",
+        material,
+    )
+    if not match:
+        return None
+    left = int(match.group(1)); op = match.group(2); right = int(match.group(3))
+    if op == "plus":
+        value = left + right
+    elif op == "minus":
+        value = left - right
+    elif op in {"times", "multiplied by"}:
+        value = left * right
+    elif op == "divided by" and right:
+        if left % right:
+            return None
+        value = left // right
+    else:
+        return None
+    answer_text = str(value)
+    evidence: list[Evidence] = []
+    for span in records.get("source_spans", []):
+        evidence_item = _evidence_for_span(str(span.get("span_id") or span.get("source_span_id") or ""), records)
+        text = evidence_item.text
+        text_norm = normalize(text)
+        if str(left) in text_norm and str(right) in text_norm and answer_text in text_norm:
+            evidence.append(evidence_item)
+            break
+    if not evidence:
+        return None
+    return Answer(answer_text, 0.9, evidence[:1], "deterministic arithmetic binding", expected.answer_type)
+
+
+def _person_values_from_relation_text(value: str, expected: ExpectedAnswer) -> list[str]:
+    if expected.answer_type not in {"person", "actor", "organization"}:
+        return []
+    values: list[str] = []
+    for phrase in capitalized_phrases(value):
+        canonical = canonicalize_answer(expected, phrase)
+        if canonical and canonical not in values:
+            values.append(canonical)
+    return values
+
+
+def _direct_label_slot_candidates(
+    records: dict[str, Any],
+    frame: QueryFrame,
+    expected: ExpectedAnswer,
+    relation_terms: list[str],
+) -> list[tuple[float, str, Evidence, str]]:
+    answer_slot_terms = _answer_slot_terms(frame)
+    if not answer_slot_terms:
+        return []
+    slot_material = normalize(" ".join(answer_slot_terms))
+    candidates: list[tuple[float, str, Evidence, str]] = []
+    for row in records.get("relations", []):
+        if str(row.get("relation_type") or "") != "label_value":
+            continue
+        if not _relation_scope_accessible(row, records, frame):
+            continue
+        evidence = _evidence_for_span(str(row.get("source_span_id") or ""), records)
+        metadata = _relation_metadata(row)
+        label_material = normalize(" ".join([str(row.get("subject") or ""), str(metadata.get("section_anchor") or "")]))
+        if not _contains_any(label_material, answer_slot_terms):
+            continue
+        value = str(row.get("value") or row.get("object") or "")
+        values = _person_values_from_relation_text(value, expected) or _compatible_values(expected, [value])
+        for item in values:
+            candidates.append((7.5, item, evidence, "direct_label_slot_binding"))
+    return candidates
+
+
+def _relation_label_value_candidates(
+    records: dict[str, Any],
+    frame: QueryFrame,
+    expected: ExpectedAnswer,
+    relation_terms: list[str],
+) -> list[tuple[float, str, Evidence, str]]:
+    candidates: list[tuple[float, str, Evidence, str]] = []
+    relation_signal = [term for term in relation_terms if normalize(term) not in {"is", "are", "was", "were", "answer", "argument", "who", "what", "which", "where"}]
+    if not relation_signal:
+        return candidates
+    for row in records.get("relations", []):
+        if str(row.get("relation_type") or "") != "label_value":
+            continue
+        if not _relation_scope_accessible(row, records, frame):
+            continue
+        evidence = _evidence_for_span(str(row.get("source_span_id") or ""), records)
+        material = _relation_local_material(row, evidence, include_evidence=True, include_context=True, records=records)
+        if not _contains_any(material, relation_signal):
+            continue
+        value = str(row.get("value") or row.get("object") or "")
+        values = _person_values_from_relation_text(value, expected) or _compatible_values(expected, [value])
+        for item in values:
+            candidates.append((6.8, item, evidence, "relation_label_value_binding"))
+    return candidates
+
 def execute_bounded_query(
     store: Any,
     run_id: str,
@@ -2498,7 +2607,14 @@ def execute_bounded_query(
         )
         return None, diagnostics
 
+    arithmetic_answer = _arithmetic_answer(records, frame, expected, relation_terms)
+    if arithmetic_answer is not None:
+        _attach_answer_provenance(diagnostics, records, arithmetic_answer)
+        return arithmetic_answer, diagnostics
+
     candidates: list[tuple[float, str, Evidence, str]] = []
+    candidates.extend(_direct_label_slot_candidates(records, frame, expected, relation_terms))
+    candidates.extend(_relation_label_value_candidates(records, frame, expected, relation_terms))
     candidates.extend(_bind_record_groups(records, frame, expected, target_terms, relation_terms))
     candidates.extend(_bind_frame_conditions(records, frame, expected, target_terms, relation_terms))
     candidates.extend(_bind_relation_conditions(records, frame, expected, target_terms, relation_terms))

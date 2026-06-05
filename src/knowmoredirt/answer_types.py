@@ -138,6 +138,8 @@ def is_value_compatible(expected: ExpectedAnswer, value: str) -> bool:
         # should not discard an otherwise correctly scoped URL value because of
         # that harmless type coarseness.
         return True
+    if expected_type == "identifier" and value_type == "date_time" and _is_numeric_unit_identifier(value):
+        return True
     if expected_type == "identifier" and value_type == "content_phrase":
         return _is_short_literal_identifier_fallback(value)
     return value_type == expected_type
@@ -179,6 +181,8 @@ def _canonical_part(expected: ExpectedAnswer, value: str) -> str:
         found_urls = urls(cleaned)
         if found_urls and cleaned.strip().startswith(found_urls[0]):
             return found_urls[0].rstrip(".,;)")
+        if _is_numeric_unit_identifier(cleaned):
+            return cleaned
         found = identifiers(cleaned)
         if found:
             return found[0].rstrip(".,;)")
@@ -272,6 +276,13 @@ def _strip_role_title_prefix(value: str) -> str:
         return " ".join(parts[1:]).strip()
     return text
 
+
+
+def _is_numeric_unit_identifier(value: str) -> bool:
+    text = clean_extracted_value(value).strip()
+    if not text or len(text) > 60:
+        return False
+    return bool(re.fullmatch(r"[0-9]+(?:\.[0-9]+)?\s*[A-Za-z°%]+(?:\s+[A-Za-z]+)?", text))
 
 def _is_short_literal_identifier_fallback(value: str) -> bool:
     text = clean_extracted_value(value).strip()
