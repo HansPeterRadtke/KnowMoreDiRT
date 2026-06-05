@@ -255,7 +255,7 @@ def _rank_scope(
     selected_docs = [doc_id for _score, doc_id, _rel_path in doc_scores[:doc_limit]]
     relation_only_selected = 0
     if relation_doc_scores and len(selected_docs) < doc_limit:
-        relation_budget = min(doc_limit - len(selected_docs), max(1, min(12, doc_limit // 4)))
+        relation_budget = doc_limit - len(selected_docs)
         selected_doc_set = set(selected_docs)
         for _score, doc_id, _rel_path in relation_doc_scores:
             if doc_id in selected_doc_set:
@@ -2226,6 +2226,10 @@ def _temporal_relation_candidates(
 
 
 def _choice_score(score: float, reason: str, expected: ExpectedAnswer) -> float:
+    if reason == "direct_label_slot_binding":
+        score += 45.0
+    if reason == "relation_label_value_binding":
+        score += 22.0
     if reason == "frame_argument_binding":
         score += 3.0
     if reason == "relation_condition_binding" and expected.answer_type in {"content_phrase", "unknown"}:
@@ -2382,6 +2386,8 @@ def _has_unscoped_temporal_ambiguity(
             ordered = sorted(scored.items(), key=lambda item: (-item[1][0], len(item[0]), item[0]))
             top_value, (top_score, top_reason) = ordered[0]
             next_score = ordered[1][1][0] if len(ordered) > 1 else 0.0
+            if top_reason == "direct_label_slot_binding" and top_score > next_score:
+                return False
             if top_reason not in {"temporal_binding", "temporal_relation_binding"} and (
                 len(ordered) == 1 or top_score >= max(8.0, next_score * 1.35)
             ):
@@ -2489,7 +2495,14 @@ def _relation_label_value_candidates(
     relation_terms: list[str],
 ) -> list[tuple[float, str, Evidence, str]]:
     candidates: list[tuple[float, str, Evidence, str]] = []
-    relation_signal = [term for term in relation_terms if normalize(term) not in {"is", "are", "was", "were", "answer", "argument", "who", "what", "which", "where"}]
+    generic = {"is", "are", "was", "were", "answer", "argument", "who", "what", "which", "where"}
+    relation_signal = [term for term in relation_terms if normalize(term) not in generic]
+    strong_signal = [*content_tokens(frame.requested_relation)]
+    for anchor in frame.target_anchors:
+        anchor_terms = content_tokens(anchor)
+        if 1 <= len(anchor_terms) <= 2:
+            strong_signal.extend(anchor_terms)
+    strong_signal = list(dict.fromkeys([term for term in strong_signal if term and term not in generic]))
     if not relation_signal:
         return candidates
     for row in records.get("relations", []):
@@ -2499,6 +2512,8 @@ def _relation_label_value_candidates(
             continue
         evidence = _evidence_for_span(str(row.get("source_span_id") or ""), records)
         material = _relation_local_material(row, evidence, include_evidence=True, include_context=True, records=records)
+        if strong_signal and not _contains_any(material, strong_signal):
+            continue
         if not _contains_any(material, relation_signal):
             continue
         value = str(row.get("value") or row.get("object") or "")

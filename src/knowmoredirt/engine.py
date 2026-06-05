@@ -823,6 +823,9 @@ class KnowMoreDiRTEngine:
         self._log_progress("kmd-answer bounded_query_start")
         answer = self._answer_with_bounded_dspg(question, planned_frame, expected)
         if answer and normalize(answer.text) != "unknown":
+            if answer.reason == "bounded DSPG deterministic arithmetic execution":
+                trace.model_answer_count += 1
+                return answer
             if planned_frame.aggregation in {"list", "set"} and expected.answer_type == "content_phrase":
                 answer = None
             elif (
@@ -1589,7 +1592,10 @@ class KnowMoreDiRTEngine:
         final_expected = expected
         if bounded_answer.reason == "deterministic arithmetic binding":
             final_expected = ExpectedAnswer("count")
-        return self._finalize_answer(question, bounded_answer, final_expected, "bounded DSPG query-frame execution")
+        source = "bounded DSPG query-frame execution"
+        if bounded_answer.reason == "deterministic arithmetic binding":
+            source = "bounded DSPG deterministic arithmetic execution"
+        return self._finalize_answer(question, bounded_answer, final_expected, source)
 
     def _answer_has_source_grounding(self, answer: Answer) -> bool:
         if normalize(answer.text) == "unknown":
