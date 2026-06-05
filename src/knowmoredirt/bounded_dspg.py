@@ -2381,7 +2381,15 @@ def _has_unscoped_temporal_ambiguity(
                 continue
             choice = _choice_score(score, reason, expected)
             prev = scored.get(canonical)
-            scored[canonical] = (choice + (prev[0] if prev else 0.0), reason)
+            if prev and prev[1] == "direct_label_slot_binding":
+                merged_reason = prev[1]
+            elif reason == "direct_label_slot_binding":
+                merged_reason = reason
+            elif prev:
+                merged_reason = prev[1]
+            else:
+                merged_reason = reason
+            scored[canonical] = (choice + (prev[0] if prev else 0.0), merged_reason)
         if scored:
             ordered = sorted(scored.items(), key=lambda item: (-item[1][0], len(item[0]), item[0]))
             top_value, (top_score, top_reason) = ordered[0]
