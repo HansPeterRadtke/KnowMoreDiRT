@@ -1642,6 +1642,79 @@ def _slot_adjacent_identifier_values(
     return list(dict.fromkeys(identifier for _distance, _index, identifier in ranked))
 
 
+def _answer_slot_class_tokens(
+    frame: QueryFrame,
+    target_terms: list[str],
+) -> list[str]:
+    excluded_tokens: set[str] = set()
+    for term in [*target_terms, *frame.target_anchors, frame.requested_relation]:
+        excluded_tokens.update(content_tokens(term))
+    generic = {
+        *ANSWER_SLOT_SKIP_TERMS,
+        *STRUCTURAL_CHAIN_GENERIC_TERMS,
+        "about",
+        "despite",
+        "implement",
+        "implements",
+        "implemented",
+        "fix",
+        "fixed",
+        "listed",
+    }
+    values: list[str] = []
+    for variable in frame.answer_variables:
+        variable_tokens = [
+            token
+            for token in re.split(r"[^a-z0-9]+", normalize(variable))
+            if len(token) >= 2
+        ]
+        for token in [*content_tokens(variable), *variable_tokens]:
+            if len(token) < 2 or token in generic or token in excluded_tokens:
+                continue
+            values.append(token)
+    return list(dict.fromkeys(values))
+
+
+def _identifier_slot_alignment_bonus(
+    value: str,
+    evidence: Evidence,
+    frame: QueryFrame,
+    target_terms: list[str],
+) -> float:
+    class_tokens = _answer_slot_class_tokens(frame, target_terms)
+    if not class_tokens:
+        return 0.0
+    value_text = clean_extracted_value(value)
+    value_norm = normalize(value_text)
+    if not value_norm:
+        return 0.0
+    value_tokens = _normalized_token_set(value_norm)
+    bonus = 0.0
+    for token in class_tokens:
+        token_variants = set(expand_terms([token]))
+        if token_variants & value_tokens:
+            bonus = max(bonus, 9.0)
+    evidence_text = evidence.text or ""
+    lowered = evidence_text.lower()
+    value_index = lowered.find(value_text.lower())
+    if value_index < 0:
+        return bonus
+    for token in class_tokens:
+        token_norm = normalize(token)
+        if not token_norm:
+            continue
+        for match in re.finditer(rf"\b{re.escape(token_norm)}\b", lowered):
+            if match.end() <= value_index:
+                distance = value_index - match.end()
+            elif value_index + len(value_text) <= match.start():
+                distance = match.start() - (value_index + len(value_text))
+            else:
+                distance = 0
+            if distance <= 18:
+                bonus = max(bonus, 13.0 - min(distance, 12) * 0.5)
+    return bonus
+
+
 def _unknown_query_requests_url(
     expected: ExpectedAnswer,
     relation_terms: list[str],
@@ -2288,9 +2361,11 @@ def _document_scoped_relation_value_candidates(
     relation_terms: list[str],
 ) -> list[tuple[float, str, Evidence, str]]:
     target_document_ids = _document_context_target_document_ids(records, target_terms)
-    if len(target_document_ids) != 1:
+    if not target_document_ids:
         return []
-    target_document_id = next(iter(target_document_ids))
+    require_slot_aligned_identifier = len(target_document_ids) > 1
+    if require_slot_aligned_identifier and expected.answer_type != "identifier":
+        return []
     spans = _spans_by_id(records)
     answer_slot_terms = _answer_slot_terms(frame)
     candidates: list[tuple[float, str, Evidence, str]] = []
@@ -2301,7 +2376,7 @@ def _document_scoped_relation_value_candidates(
         if not _relation_scope_accessible(row, records, frame):
             continue
         span_id = str(row.get("source_span_id") or "")
-        if str(spans.get(span_id, {}).get("document_id") or "") != target_document_id:
+        if str(spans.get(span_id, {}).get("document_id") or "") not in target_document_ids:
             continue
         evidence = _evidence_for_span(span_id, records)
         if _source_is_low_priority(evidence.rel_path, evidence.text) and not _structured_source_row(row):
@@ -2315,9 +2390,16 @@ def _document_scoped_relation_value_candidates(
         ):
             continue
         for value in _answer_values_from_relation(row, evidence, expected, target_terms, relation_terms, answer_slot_terms):
+            slot_bonus = (
+                _identifier_slot_alignment_bonus(value, evidence, frame, target_terms)
+                if expected.answer_type == "identifier"
+                else 0.0
+            )
+            if require_slot_aligned_identifier and slot_bonus <= 0.0:
+                continue
             candidates.append(
                 (
-                    7.0 * float(row.get("confidence") or 0.7),
+                    7.0 * float(row.get("confidence") or 0.7) + slot_bonus,
                     value,
                     evidence,
                     "document_scoped_relation_value_binding",
@@ -2629,6 +2711,8 @@ def _bind_record_groups(
                 score = 5.0 + target_hits * 5.0 + relation_hits * 6.0 + group_relation_hits * 1.5
                 score += value_hits * 4.0
                 score *= float(row.get("confidence") or 0.7)
+                if expected.answer_type == "identifier":
+                    score += _identifier_slot_alignment_bonus(value, evidence, frame, target_terms)
                 candidates.append((score, value, evidence, "record_group_drs_binding"))
     return candidates
 
@@ -3467,7 +3551,12 @@ def _direct_label_slot_candidates(
             )
         ]
         for item in values:
-            candidates.append((7.5, item, evidence, "direct_label_slot_binding"))
+            slot_bonus = (
+                _identifier_slot_alignment_bonus(item, evidence, frame, target_terms)
+                if expected.answer_type == "identifier"
+                else 0.0
+            )
+            candidates.append((7.5 + slot_bonus, item, evidence, "direct_label_slot_binding"))
     return candidates
 
 
@@ -3520,7 +3609,12 @@ def _relation_label_value_candidates(
             )
         ]
         for item in values:
-            candidates.append((6.8, item, evidence, "relation_label_value_binding"))
+            slot_bonus = (
+                _identifier_slot_alignment_bonus(item, evidence, frame, target_terms)
+                if expected.answer_type == "identifier"
+                else 0.0
+            )
+            candidates.append((6.8 + slot_bonus, item, evidence, "relation_label_value_binding"))
     return candidates
 
 def execute_bounded_query(

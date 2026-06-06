@@ -9,6 +9,7 @@ from knowmoredirt.answer_types import ExpectedAnswer
 from knowmoredirt.bounded_dspg import (
     _answer_conflict_diagnostics,
     _context_accessible,
+    _document_scoped_relation_value_candidates,
     _fetch_identity_hypotheses,
     _identity_expanded_terms,
     _load_records,
@@ -196,6 +197,70 @@ def test_slot_adjacent_identifier_prefers_requested_identifier_not_target(tmp_pa
         "document_scoped_relation_value_binding",
         "relation_label_value_binding",
     }
+
+
+def test_identifier_binding_prefers_short_answer_slot_class_over_code_artifact(tmp_path: Path) -> None:
+    (tmp_path / "design.txt").write_text(
+        "Nova Widget design note.\n"
+        "PR-9021 implements the importer and touches importer_core.rs.\n",
+        encoding="utf-8",
+    )
+    (tmp_path / "incident.log").write_text(
+        "Tracker BUG-3100 opened for Nova Widget importer timeout.\n",
+        encoding="utf-8",
+    )
+
+    store, run_id, documents, sentences = ingest_folder(tmp_path)
+    sentences_by_document: dict[str, dict[int, Sentence]] = {}
+    for sentence in sentences:
+        sentences_by_document.setdefault(sentence.rel_path, {})[sentence.order] = sentence
+    frame = QueryFrame(
+        question_text="Which PR implements the Nova Widget importer?",
+        answer_type="identifier",
+        answer_variables=("PR implements the Nova Widget importer",),
+        target_anchors=("Nova Widget importer", "Nova Widget"),
+        requested_relation="implements",
+        relation_terms=("implements", "PR implements the nova widget importer"),
+        constraints=(),
+    )
+
+    answer, diagnostics = execute_bounded_query(
+        store,
+        run_id,
+        documents,
+        sentences_by_document,
+        frame.question_text,
+        frame,
+    )
+
+    assert answer is not None
+    assert answer.text == "PR-9021"
+    assert diagnostics["execution"]["answer_binding_reason"] in {
+        "document_scoped_relation_value_binding",
+        "record_group_drs_binding",
+    }
+
+    selected_docs, selected_chunks, _ranking = _rank_scope(
+        documents,
+        sentences_by_document,
+        frame.question_text,
+        frame,
+        40,
+        160,
+    )
+    records = _load_records(store, run_id, selected_docs, selected_chunks)
+    document_scoped_values = {
+        value
+        for _score, value, _evidence, _reason in _document_scoped_relation_value_candidates(
+            records,
+            frame,
+            ExpectedAnswer("identifier"),
+            _target_terms(frame, frame.question_text),
+            list(frame.relation_terms),
+        )
+    }
+    assert "PR-9021" in document_scoped_values
+    assert "BUG-3100" not in document_scoped_values
 
 
 def test_context_requirement_matching_uses_morphology_variants() -> None:
