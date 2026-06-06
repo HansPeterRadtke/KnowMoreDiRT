@@ -114,7 +114,7 @@ def _query_terms(text: str) -> list[str]:
 
 def _target_terms(frame: QueryFrame, question: str) -> list[str]:
     values: list[str] = []
-    visible = set(visible_anchors(question))
+    visible = {normalize(anchor) for anchor in visible_anchors(question)}
     answer_material = normalize(" ".join(frame.answer_variables))
     answer_tokens = _normalized_token_set(answer_material)
     for anchor in frame.target_anchors:
@@ -123,10 +123,10 @@ def _target_terms(frame: QueryFrame, question: str) -> list[str]:
             continue
         anchor_tokens = _normalized_token_set(norm)
         relation_material = normalize(" ".join([frame.requested_relation, *frame.relation_terms, *frame.constraints]))
-        if anchor_tokens and anchor_tokens.issubset(answer_tokens) and anchor not in visible:
+        if anchor_tokens and anchor_tokens.issubset(answer_tokens) and norm not in visible:
             field_words = {
-                "state", "status", "code", "id", "identifier", "url", "link", "owner",
-                "reviewer", "author", "contact", "date", "time", "model", "confirmation",
+                "state", "status", "code", "id", "identifier", "url", "link",
+                "date", "time", "model", "confirmation",
                 "temperature", "location", "where",
             }
             remainder = answer_tokens - anchor_tokens
@@ -140,6 +140,13 @@ def _target_terms(frame: QueryFrame, question: str) -> list[str]:
             # "feedback" into target_anchors.  That is not an entity target and
             # should stay available through relation terms instead.
             continue
+        if frame.aggregation == "count" and anchor_tokens and norm not in visible:
+            relation_group_tokens: set[str] = set()
+            for group in _relation_term_groups_for_frame(frame, target_terms=[]):
+                for term in group:
+                    relation_group_tokens.update(_normalized_token_set(term))
+            if anchor_tokens.issubset(relation_group_tokens):
+                continue
         values.append(norm)
         if " " in norm:
             values.append(norm.replace(" ", "_"))
@@ -169,6 +176,19 @@ def _answer_slot_terms(frame: QueryFrame) -> list[str]:
             if token not in ANSWER_SLOT_SKIP_TERMS:
                 terms.append(token)
     return list(dict.fromkeys(term for term in expand_terms(terms) if term))
+
+
+def _count_answer_unit_tokens(frame: QueryFrame) -> set[str]:
+    requested_tokens = set(content_tokens(frame.requested_relation))
+    unit_tokens: list[str] = []
+    for variable in frame.answer_variables:
+        for token in content_tokens(variable):
+            if token in requested_tokens:
+                continue
+            if token in ANSWER_SLOT_SKIP_TERMS or token in COUNT_AGGREGATION_SKIP_TERMS:
+                continue
+            unit_tokens.append(token)
+    return set(expand_terms(unit_tokens))
 
 
 def _has_term(material: str, term: str) -> bool:
@@ -1893,11 +1913,20 @@ def _record_groups(records: dict[str, Any]) -> dict[str, list[dict[str, Any]]]:
     return groups
 
 
-def _group_material(rows: list[dict[str, Any]], records: dict[str, Any]) -> str:
+def _group_material(
+    rows: list[dict[str, Any]],
+    records: dict[str, Any],
+    *,
+    include_document_context: bool = False,
+) -> str:
     parts: list[str] = []
+    context_rel_paths: set[str] = set()
     for row in rows:
         evidence = _evidence_for_span(str(row.get("source_span_id") or ""), records)
         parts.append(_relation_local_material(row, evidence, include_evidence=True))
+        if include_document_context and evidence.rel_path not in context_rel_paths:
+            context_rel_paths.add(evidence.rel_path)
+            parts.append((records.get("document_context_norm_by_rel_path") or {}).get(evidence.rel_path, ""))
     return normalize(" ".join(parts))
 
 
@@ -1949,10 +1978,30 @@ def _bind_record_groups(
     return candidates
 
 
-def _relation_term_groups_for_frame(frame: QueryFrame) -> list[list[str]]:
+def _relation_term_groups_for_frame(frame: QueryFrame, target_terms: list[str] | None = None) -> list[list[str]]:
     groups: list[list[str]] = []
     seen: set[tuple[str, ...]] = set()
+
+    def add_group(variants: list[str]) -> None:
+        variants = list(dict.fromkeys(variant for variant in variants if variant))
+        if not variants:
+            return
+        variant_set = set(variants)
+        if any(variant_set.issubset(set(group)) for group in groups):
+            return
+        groups[:] = [group for group in groups if not set(group).issubset(variant_set)]
+        seen.clear()
+        seen.update(tuple(sorted(group)) for group in groups)
+        key = tuple(sorted(variants))
+        if key not in seen:
+            groups.append(variants)
+            seen.add(key)
+
     raw_items = [*frame.relation_terms, *list(frame.constraints), *_query_terms(frame.requested_relation)]
+    count_unit_tokens = _count_answer_unit_tokens(frame) if frame.aggregation == "count" else set()
+    target_tokens: set[str] = set()
+    for term in target_terms or []:
+        target_tokens.update(content_tokens(term))
     generic = {
         "answer",
         "argument",
@@ -1990,29 +2039,28 @@ def _relation_term_groups_for_frame(frame: QueryFrame) -> list[list[str]]:
             tokens = [
                 token for token in content_tokens(item_norm)
                 if token not in generic and token not in COUNT_AGGREGATION_SKIP_TERMS
+                and token not in count_unit_tokens and token not in target_tokens
             ]
             if not tokens:
                 continue
             for token in tokens:
                 variants = [variant for variant in expand_terms([token]) if variant and variant not in generic]
-                key = tuple(sorted(variants))
-                if variants and key not in seen:
-                    groups.append(list(dict.fromkeys(variants)))
-                    seen.add(key)
+                add_group(variants)
             continue
         variants = _compound_term_variants(item)
         if not variants:
             variants = [item_norm]
         variants = [variant for variant in expand_terms(variants) if variant and variant not in generic]
-        key = tuple(sorted(variants))
-        if variants and key not in seen:
-            groups.append(list(dict.fromkeys(variants)))
-            seen.add(key)
+        add_group(variants)
     return groups
 
 
 def _material_matches_all_term_groups(material: str, groups: list[list[str]]) -> bool:
     return all(any(_has_term(material, term) for term in group) for group in groups)
+
+
+def _material_matches_term_group(material: str, group: list[str]) -> bool:
+    return any(_has_term(material, term) for term in group)
 
 
 def _frame_requests_row_units(frame: QueryFrame) -> bool:
@@ -2041,6 +2089,55 @@ def _rows_are_table_like(rows: list[dict[str, Any]]) -> bool:
     return False
 
 
+def _rows_are_countable_structured_units(rows: list[dict[str, Any]]) -> bool:
+    for row in rows:
+        metadata = _relation_metadata(row)
+        if str(row.get("relation_type") or "") == "record_value":
+            return True
+        if str(metadata.get("surface_format") or "") in {"delimited_table", "json", "json_like", "object_like"}:
+            return True
+    return False
+
+
+def _countable_structured_rel_paths(records: dict[str, Any]) -> set[str]:
+    rel_paths: set[str] = set()
+    for rows in _record_groups(records).values():
+        if not _rows_are_countable_structured_units(rows):
+            continue
+        span_ids = {str(row.get("source_span_id") or "") for row in rows}
+        for span_id in span_ids:
+            evidence = _evidence_for_span(span_id, records)
+            if evidence.rel_path:
+                rel_paths.add(evidence.rel_path)
+    return rel_paths
+
+
+def _row_local_count_match_rel_paths(
+    records: dict[str, Any],
+    target_terms: list[str],
+    required_relation_groups: list[list[str]],
+) -> tuple[set[str], dict[int, set[str]]]:
+    target_rel_paths: set[str] = set()
+    relation_group_rel_paths: dict[int, set[str]] = defaultdict(set)
+    for rows in _record_groups(records).values():
+        if not rows:
+            continue
+        rows_by_span: dict[str, list[dict[str, Any]]] = defaultdict(list)
+        for row in rows:
+            rows_by_span[str(row.get("source_span_id") or "")].append(row)
+        for span_id, span_rows in rows_by_span.items():
+            if not span_rows or not _rows_are_countable_structured_units(span_rows):
+                continue
+            evidence = _evidence_for_span(span_id, records)
+            local_material = _group_material(span_rows, records)
+            if target_terms and _contains_any(local_material, target_terms):
+                target_rel_paths.add(evidence.rel_path)
+            for index, group in enumerate(required_relation_groups):
+                if _material_matches_term_group(local_material, group):
+                    relation_group_rel_paths[index].add(evidence.rel_path)
+    return target_rel_paths, relation_group_rel_paths
+
+
 def _count_matching_record_groups(
     records: dict[str, Any],
     frame: QueryFrame,
@@ -2048,7 +2145,13 @@ def _count_matching_record_groups(
     relation_terms: list[str],
 ) -> tuple[int, list[Evidence]]:
     groups = _record_groups(records)
-    required_relation_groups = _relation_term_groups_for_frame(frame)
+    required_relation_groups = _relation_term_groups_for_frame(frame, target_terms)
+    target_row_local_rel_paths, relation_group_row_local_rel_paths = _row_local_count_match_rel_paths(
+        records,
+        target_terms,
+        required_relation_groups,
+    )
+    countable_rel_paths = _countable_structured_rel_paths(records)
     require_table_row = _frame_requests_row_units(frame)
     matched: list[tuple[str, Evidence]] = []
     for group_id, rows in groups.items():
@@ -2066,12 +2169,31 @@ def _count_matching_record_groups(
             if require_table_row and not _rows_are_table_like(span_rows):
                 continue
             evidence = _evidence_for_span(span_id, records)
+            if evidence.rel_path in countable_rel_paths and not _rows_are_countable_structured_units(span_rows):
+                continue
             if _source_is_low_priority(evidence.rel_path, evidence.text) and not any(_structured_source_row(row) for row in span_rows):
                 continue
             span_material = _group_material(span_rows, records)
+            scoped_material = ""
             if target_terms and not _contains_any(span_material, target_terms):
-                continue
-            if required_relation_groups and not _material_matches_all_term_groups(span_material, required_relation_groups):
+                if evidence.rel_path in target_row_local_rel_paths:
+                    continue
+                scoped_material = _group_material(span_rows, records, include_document_context=True)
+                if not _contains_any(scoped_material, target_terms):
+                    continue
+            group_failed = False
+            for index, group in enumerate(required_relation_groups):
+                if _material_matches_term_group(span_material, group):
+                    continue
+                if evidence.rel_path in relation_group_row_local_rel_paths.get(index, set()):
+                    group_failed = True
+                    break
+                if not scoped_material:
+                    scoped_material = _group_material(span_rows, records, include_document_context=True)
+                if not _material_matches_term_group(scoped_material, group):
+                    group_failed = True
+                    break
+            if group_failed:
                 continue
             provenance_key = span_id or group_id
             matched.append((provenance_key, evidence))

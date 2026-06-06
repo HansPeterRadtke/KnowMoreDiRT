@@ -77,6 +77,10 @@ FORBIDDEN_SEMANTIC_BRANCH_WORDS = {
     "author",
     "maintainer",
     "assignee",
+    "decision",
+    "scale",
+    "snapped",
+    "translation",
 }
 
 CORE_BRANCH_FILES = {
@@ -138,22 +142,26 @@ def test_core_has_no_string_triggered_semantic_relation_branches() -> None:
     for path in (REPO_ROOT / "src" / "knowmoredirt").glob("*.py"):
         if path.name not in CORE_BRANCH_FILES:
             continue
-        tree = ast.parse(path.read_text(encoding="utf-8"), filename=str(path))
+        source = path.read_text(encoding="utf-8")
+        tree = ast.parse(source, filename=str(path))
         for node in ast.walk(tree):
             if not isinstance(node, (ast.If, ast.IfExp, ast.While)):
                 continue
-            condition = ast.get_source_segment(path.read_text(encoding="utf-8"), node.test) or ""
             literals = [
                 child.value.lower()
                 for child in ast.walk(node.test)
                 if isinstance(child, ast.Constant) and isinstance(child.value, str)
             ]
+            literal_tokens = set(re.findall(r"[a-z0-9_]+", " ".join(literals)))
             branch_words = [
                 word for word in FORBIDDEN_SEMANTIC_BRANCH_WORDS
-                if any(re.search(rf"\b{re.escape(word)}\b", literal) for literal in literals)
+                if word in literal_tokens
             ]
             if branch_words:
-                findings.append(f"{path.relative_to(REPO_ROOT)}:{node.lineno}:{','.join(sorted(branch_words))}:{condition}")
+                findings.append(
+                    f"{path.relative_to(REPO_ROOT)}:{node.lineno}:{','.join(sorted(branch_words))}:"
+                    f"{ast.dump(node.test, include_attributes=False)}"
+                )
     assert findings == []
 
 

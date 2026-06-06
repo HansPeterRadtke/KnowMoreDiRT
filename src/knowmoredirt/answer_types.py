@@ -243,7 +243,7 @@ def _preferred_entity_name_phrase(value: str) -> str:
     if not phrases:
         return text
     lowered = text.lower()
-    if any(marker in lowered for marker in (" is ", " was ", " by ", " owner ", " reviewer ", " author ", " contact ")):
+    if any(marker in lowered for marker in (" is ", " was ", " by ")):
         return phrases[-1]
     return text
 
@@ -266,9 +266,6 @@ def _strip_role_title_prefix(value: str) -> str:
         # Preserve honorifics such as Dr./Doctor/Professor; they may be part
         # of the grounded canonical name.  Strip role labels only.
         "engineer",
-        "owner",
-        "reviewer",
-        "author",
         "inspector",
     )
     parts = text.split()

@@ -291,7 +291,7 @@ class KnowMoreDiRTEngine:
         if self._use_local_model:
             model_answer = self._answer_with_local_model(text)
             if model_answer:
-                model_answer = self._cleanup_public_answer(text, model_answer)
+                model_answer = self._cleanup_public_answer(model_answer)
                 self.last_answer = model_answer
                 return model_answer
             answer = self._unknown_answer("local model DRT path found no complete grounded answer")
@@ -307,7 +307,7 @@ class KnowMoreDiRTEngine:
             if bounded is None:
                 pass
             else:
-                bounded = self._cleanup_public_answer(text, bounded)
+                bounded = self._cleanup_public_answer(bounded)
                 self.last_answer = bounded
                 return bounded
 
@@ -315,18 +315,12 @@ class KnowMoreDiRTEngine:
         self.last_answer = answer
         return answer
 
-    def _cleanup_public_answer(self, question: str, answer: Answer) -> Answer:
+    def _cleanup_public_answer(self, answer: Answer) -> Answer:
         if normalize(answer.text) == "unknown":
             return answer
-        if self._looks_like_no_answer_phrase(question, answer.text):
-            return Answer("unknown", 0.0, answer.evidence, answer.reason, "unknown")
-        q_norm = normalize(question)
-        text_norm = normalize(answer.text)
-        if "date" in q_norm and re.fullmatch(r"\d{1,2}:\d{2}", text_norm):
-            return Answer("unknown", 0.0, answer.evidence, answer.reason, "unknown")
         expected_type = answer.answer_type if answer.answer_type not in {"", "unknown"} else classify_value(answer.text)
         expected = ExpectedAnswer(expected_type)  # type: ignore[arg-type]
-        cleaned = self._cleanup_canonical_answer(question, answer.text, expected)
+        cleaned = self._cleanup_canonical_answer(answer.text, expected)
         if cleaned and cleaned != answer.text:
             return Answer(cleaned, answer.confidence, answer.evidence, answer.reason, answer.answer_type)
         return answer
@@ -1469,7 +1463,7 @@ class KnowMoreDiRTEngine:
                 if len(support) >= 6:
                     break
         answer = Answer(proposed, 0.78, support[:6], "local model query-DRS evidence verification", expected.answer_type)
-        finalized = self._finalize_answer(question, answer, expected, "local model query-DRS evidence verification")
+        finalized = self._finalize_answer(question, answer, expected, "local model query-DRS evidence verification", frame)
         if not finalized:
             trace.evidence_rejected_count += 1
             return None
@@ -1541,7 +1535,7 @@ class KnowMoreDiRTEngine:
             "local model bounded evidence extraction",
             str(model.get("answer_type") or "unknown"),
         )
-        finalized = self._finalize_answer(question, answer, expected, "local model bounded evidence extraction")
+        finalized = self._finalize_answer(question, answer, expected, "local model bounded evidence extraction", frame)
         if not finalized:
             trace.evidence_rejected_count += 1
             return None
@@ -1613,57 +1607,29 @@ class KnowMoreDiRTEngine:
         source = "bounded DSPG query-frame execution"
         if bounded_answer.reason == "deterministic arithmetic binding":
             source = "bounded DSPG deterministic arithmetic execution"
-        return self._finalize_answer(question, bounded_answer, final_expected, source)
+        return self._finalize_answer(question, bounded_answer, final_expected, source, frame)
 
     def _answer_has_source_grounding(self, answer: Answer) -> bool:
         if normalize(answer.text) == "unknown":
             return True
         return any(evidence.rel_path and evidence.text for evidence in answer.evidence)
 
-    def _looks_like_no_answer_phrase(self, question: str, value: str) -> bool:
-        text = normalize(value)
-        if not text:
-            return False
-        no_answer_markers = (
-            "no final decision",
-            "no stated translation",
-            "has no stated translation",
-            "no translation",
-            "not stated",
-            "not specified",
-            "not provided",
-            "no answer",
-            "unanswered",
-        )
-        return any(marker in text for marker in no_answer_markers)
-
-    def _cleanup_canonical_answer(self, question: str, canonical: str, expected: ExpectedAnswer) -> str:
+    def _cleanup_canonical_answer(
+        self,
+        canonical: str,
+        expected: ExpectedAnswer,
+        frame: QueryFrame | None = None,
+    ) -> str:
         text = clean_extracted_value(canonical).strip()
         if not text:
             return text
-        q = normalize(question)
         low = normalize(text)
-        if expected.answer_type in {"identifier", "content_phrase", "metadata_value"}:
-            if "what scale" in q or "which scale" in q:
-                scale_match = re.search(r"\b([A-G](?:\s+(?:sharp|flat))?\s+(?:major|minor))\s+scale\b", text, re.I)
-                if scale_match:
-                    return scale_match.group(1).strip()
-            if "snapped" in q:
-                snapped_match = re.search(r"^(?:[^:.;]+\s+said\s+)?(?:that\s+)?(?:the\s+|a\s+|an\s+)?(.+?)\s+snapped\b", text, re.I)
-                if snapped_match:
-                    return snapped_match.group(1).strip()
-            slot_words = ["scale", "state", "status", "result", "answer", "value"]
-            for slot in slot_words:
-                if f"what {slot}" in q or f"which {slot}" in q or f" {slot} " in q:
-                    suffix = " " + slot
-                    if low.endswith(suffix) and len(text.split()) <= 8:
-                        return text[: -len(suffix)].strip()
-        if expected.answer_type in {"content_phrase", "metadata_value", "identifier"}:
-            match = re.search(r"\bfor\s+([^?]+)\?*$", question, re.I)
-            if match:
-                target = clean_extracted_value(match.group(1)).strip(" ?.:")
-                if target and normalize(text).endswith(" for " + normalize(target)):
-                    return text[: -(len(" for ") + len(target))].strip()
+        if frame is not None and expected.answer_type in {"identifier", "content_phrase", "metadata_value"}:
+            text = self._strip_redundant_answer_slot_suffix(text, frame)
+            low = normalize(text)
+        if frame is not None and expected.answer_type in {"content_phrase", "metadata_value", "identifier"}:
+            text = self._strip_redundant_target_tail(text, frame)
+            low = normalize(text)
         if expected.answer_type in {"content_phrase", "state", "metadata_value"}:
             words = text.split()
             low_words = [word.lower().strip(".,;:") for word in words]
@@ -1673,13 +1639,63 @@ class KnowMoreDiRTEngine:
                     return " ".join(words[1:]).strip()
         return text
 
-    def _finalize_answer(self, question: str, answer: Answer, expected: ExpectedAnswer, source: str) -> Answer | None:
+    def _strip_redundant_answer_slot_suffix(self, text: str, frame: QueryFrame) -> str:
+        slot_terms = [
+            term
+            for variable in frame.answer_variables
+            for term in [variable, *content_tokens(variable)]
+            if normalize(term)
+        ]
+        if not slot_terms:
+            return text
+        current = text
+        for slot in sorted(dict.fromkeys(slot_terms), key=lambda value: len(value), reverse=True):
+            suffix = " " + normalize(slot)
+            if normalize(current).endswith(suffix) and len(current.split()) <= 8:
+                trimmed = current[: -len(suffix)].strip()
+                if trimmed:
+                    current = trimmed
+                    break
+        return current
+
+    def _strip_redundant_target_tail(self, text: str, frame: QueryFrame) -> str:
+        current = text
+        for target in sorted(dict.fromkeys(frame.target_anchors), key=lambda value: len(value), reverse=True):
+            target_clean = clean_extracted_value(target).strip(" ?.:")
+            if not target_clean:
+                continue
+            suffix = " for " + normalize(target_clean)
+            if normalize(current).endswith(suffix):
+                trimmed = current[: -(len(" for ") + len(target_clean))].strip()
+                if trimmed:
+                    current = trimmed
+                    break
+        return current
+
+    def _date_time_shape_compatible(self, frame: QueryFrame | None, value: str) -> bool:
+        if frame is None:
+            return True
+        answer_material = normalize(
+            " ".join([*frame.answer_variables, frame.requested_relation, *frame.relation_terms, *frame.constraints])
+        )
+        if not answer_material:
+            return True
+        asks_for_calendar_date = any(term in answer_material.split() for term in ("date", "day"))
+        asks_for_clock_time = any(term in answer_material.split() for term in ("time", "hour", "minute"))
+        if not asks_for_calendar_date or asks_for_clock_time:
+            return True
+        return re.fullmatch(r"\d{1,2}:\d{2}", normalize(value)) is None
+
+    def _finalize_answer(
+        self,
+        question: str,
+        answer: Answer,
+        expected: ExpectedAnswer,
+        source: str,
+        frame: QueryFrame | None = None,
+    ) -> Answer | None:
         if normalize(answer.text) == "unknown":
             return answer
-        if self._looks_like_no_answer_phrase(question, answer.text):
-            return Answer("unknown", 0.0, answer.evidence, source, "unknown")
-        if "date" in normalize(question) and re.fullmatch(r"\d{1,2}:\d{2}", normalize(answer.text)):
-            return Answer("unknown", 0.0, answer.evidence, source, "unknown")
         has_metadata_evidence = any(is_metadata_evidence_text(evidence.text) for evidence in answer.evidence)
         if expected.answer_type == "unknown":
             model_type = answer.answer_type if answer.answer_type not in {"", "unknown"} else classify_value(answer.text)
@@ -1696,6 +1712,8 @@ class KnowMoreDiRTEngine:
         canonical = canonicalize_answer(expected, answer.text)
         if canonical and source.startswith("local model") and expected.answer_type in {"boolean", "content_phrase", "state", "metadata_value"}:
             canonical = self._canonicalize_model_answer_with_local_model(question, canonical, expected, answer.evidence) or canonical
+        if normalize(canonical) == "unknown":
+            return Answer("unknown", 0.0, answer.evidence, source, "unknown")
         if (
             canonical
             and source.startswith("local model")
@@ -1706,7 +1724,9 @@ class KnowMoreDiRTEngine:
             canonical = self._canonicalize_identity_with_local_model(question, canonical, answer.evidence) or canonical
         if not canonical:
             return None
-        canonical = self._cleanup_canonical_answer(question, canonical, expected)
+        if expected.answer_type == "date_time" and not self._date_time_shape_compatible(frame, canonical):
+            return None
+        canonical = self._cleanup_canonical_answer(canonical, expected, frame)
         if not canonical:
             return None
         return Answer(canonical, answer.confidence, answer.evidence, source, expected.answer_type)
@@ -1745,6 +1765,9 @@ class KnowMoreDiRTEngine:
             trace.canonicalization_rejected_count += 1
             return value
         proposed = str(result.get("answer") or "")
+        if normalize(proposed) == "unknown":
+            trace.canonicalization_accepted_count += 1
+            return "unknown"
         canonical = canonicalize_answer(expected, proposed)
         if not canonical:
             trace.canonicalization_rejected_count += 1

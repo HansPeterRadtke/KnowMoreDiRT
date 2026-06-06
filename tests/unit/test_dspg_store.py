@@ -51,6 +51,39 @@ def test_ingest_builds_normalized_dspg_tables() -> None:
     assert counts["metadata_records"] >= counts["documents"]
 
 
+def test_ingest_keeps_lower_underscore_table_headers_as_labels(tmp_path: Path) -> None:
+    (tmp_path / "sheet.txt").write_text(
+        "name | item_code | state_value\n"
+        "Blue Dune | SearchSprout | requested\n"
+        "Green Fork | LeafPlan | queued\n",
+        encoding="utf-8",
+    )
+
+    store, _, _, _ = ingest_folder(tmp_path)
+    rows = [
+        (str(row[0]), str(row[1]), str(row[2]), json.loads(str(row[3] or "{}")))
+        for row in store.execute(
+            """
+            SELECT subject, predicate, value, metadata_json
+            FROM relations
+            WHERE relation_type='table_cell'
+            ORDER BY subject, predicate
+            """
+        ).fetchall()
+    ]
+    header_rows = [
+        (subject, predicate, value, metadata)
+        for subject, predicate, value, metadata in rows
+        if metadata.get("surface_format") == "delimited_table"
+    ]
+    triples = [(subject, predicate, value) for subject, predicate, value, _ in header_rows]
+
+    assert ("Blue Dune", "item_code", "SearchSprout") in triples
+    assert ("Blue Dune", "state_value", "requested") in triples
+    assert not any(predicate == "searchsprout" for _, predicate, _, _ in header_rows)
+    assert {metadata.get("column_header") for _, _, _, metadata in header_rows} == {"item_code", "state_value"}
+
+
 def test_context_requirement_matching_uses_morphology_variants() -> None:
     assert _terms_match_material(["report"], "drs:reported observer")
     assert _terms_match_material(["believe"], "drs:believed Kalo Reed")
@@ -7349,6 +7382,21 @@ def test_target_entity_kept_when_answer_variable_is_entity_plus_field(tmp_path: 
     assert "greenhouse pump" in _target_terms(frame, frame.question_text)
 
 
+def test_target_terms_keep_visible_target_inside_count_answer_slot() -> None:
+    frame = QueryFrame(
+        question_text="How many Quartz panels are ready?",
+        answer_type="count",
+        answer_variables=("How many Quartz panels",),
+        target_anchors=("Quartz",),
+        requested_relation="are ready",
+        relation_terms=("ready", "panels"),
+        constraints=(),
+        aggregation="count",
+    )
+
+    assert "quartz" in _target_terms(frame, frame.question_text)
+
+
 def test_table_selector_returns_subject_identifier_when_value_matches_requested_state(tmp_path: Path) -> None:
     (tmp_path / "invoice.csvish").write_text(
         "invoice_id|customer|amount|status\n"
@@ -7428,56 +7476,64 @@ def test_clear_structural_candidate_not_blocked_by_unrelated_dated_evidence(tmp_
     assert answer.text == "HTL-7712"
 
 
-def test_finalize_answer_cleans_snapped_clause_and_time_only_date_answer(tmp_path: Path) -> None:
+def test_finalize_answer_uses_frame_slots_for_structural_cleanup(tmp_path: Path) -> None:
     (tmp_path / "source.txt").write_text("placeholder", encoding="utf-8")
     engine = KnowMoreDiRTEngine(tmp_path)
     evidence = [Evidence("source.txt", "placeholder", "span", 0, 0, None, "synthetic")]
+    frame = QueryFrame(
+        question_text="Which bound value is requested?",
+        answer_type="content_phrase",
+        answer_variables=("marker",),
+        target_anchors=("North Panel",),
+        requested_relation="",
+        relation_terms=("marker",),
+        constraints=(),
+    )
 
-    assert engine._cleanup_public_answer(
-        "What did Runa say snapped during loading?",
-        Answer("the blue latch snapped during loading", 0.9, evidence, "manual", "content_phrase"),
-    ).text == "blue latch"
-    assert engine._cleanup_public_answer(
-        "What is the release date for west archive shelf?",
-        Answer("12:20", 0.9, evidence, "manual", "date_time"),
-    ).text == "unknown"
+    assert engine._finalize_answer(
+        frame.question_text,
+        Answer("amber marker", 0.9, evidence, "synthetic", "content_phrase"),
+        ExpectedAnswer("content_phrase"),
+        "synthetic",
+        frame,
+    ).text == "amber"
+    assert engine._finalize_answer(
+        frame.question_text,
+        Answer("stored beside the cabinet for North Panel", 0.9, evidence, "synthetic", "content_phrase"),
+        ExpectedAnswer("content_phrase"),
+        "synthetic",
+        frame,
+    ).text == "stored beside the cabinet"
 
 
-def test_finalize_answer_cleans_slot_suffix_and_no_answer_phrases(tmp_path: Path) -> None:
+def test_finalize_answer_rejects_time_only_value_for_frame_calendar_date_slot(tmp_path: Path) -> None:
     (tmp_path / "source.txt").write_text("placeholder", encoding="utf-8")
     engine = KnowMoreDiRTEngine(tmp_path)
     evidence = [Evidence("source.txt", "placeholder", "span", 0, 0, None, "synthetic")]
+    frame = QueryFrame(
+        question_text="Which calendar value is requested?",
+        answer_type="date_time",
+        answer_variables=("date",),
+        target_anchors=("West Shelf",),
+        requested_relation="",
+        relation_terms=("date",),
+        constraints=(),
+    )
 
     assert engine._finalize_answer(
-        "What scale did Arlo practice?",
-        Answer("D minor scale", 0.9, evidence, "manual", "identifier"),
-        ExpectedAnswer("identifier"),
-        "manual",
-    ).text == "D minor"
+        frame.question_text,
+        Answer("12:20", 0.9, evidence, "synthetic", "date_time"),
+        ExpectedAnswer("date_time"),
+        "synthetic",
+        frame,
+    ) is None
     assert engine._finalize_answer(
-        "What was the audit result for Fern Vault?",
-        Answer("only humidity readings were stored for Fern Vault", 0.9, evidence, "manual", "content_phrase"),
-        ExpectedAnswer("content_phrase"),
-        "manual",
-    ).text == "only humidity readings were stored"
-    assert engine._finalize_answer(
-        "What did Runa say snapped during loading?",
-        Answer("the blue latch", 0.9, evidence, "manual", "content_phrase"),
-        ExpectedAnswer("content_phrase"),
-        "manual",
-    ).text == "blue latch"
-    assert engine._finalize_answer(
-        "What final decision was made about library hours?",
-        Answer("No final decision was made", 0.9, evidence, "manual", "content_phrase"),
-        ExpectedAnswer("unknown"),
-        "manual",
-    ).text == "unknown"
-    assert engine._finalize_answer(
-        "What does sola miri tahu mean?",
-        Answer("has no stated translation", 0.9, evidence, "manual", "content_phrase"),
-        ExpectedAnswer("unknown"),
-        "manual",
-    ).text == "unknown"
+        frame.question_text,
+        Answer("2026-07-12", 0.9, evidence, "synthetic", "date_time"),
+        ExpectedAnswer("date_time"),
+        "synthetic",
+        frame,
+    ).text == "2026-07-12"
 
 
 def test_direct_label_slot_binding_returns_structural_identifier(tmp_path: Path) -> None:
@@ -7605,27 +7661,27 @@ def test_target_terms_keep_real_anchors_that_also_appear_in_relation_terms() -> 
 
 def test_count_aggregation_ignores_how_many_relation_term_from_model_query(tmp_path: Path) -> None:
     (tmp_path / "noise.log").write_text(
-        "Bell Finch active owner: BAD-1234 0000 ==== //// ++++ !!!!\n",
+        "Blue Quartz ready note: BAD-1234 0000 ==== //// ++++ !!!!\n",
         encoding="utf-8",
     )
     (tmp_path / "rows.tsv").write_text(
-        "item\tstatus\towner\treference\n"
-        "Bell Finch\tactive\tOla Nym\tBF-1201\n"
-        "Bell Finch\tarchived\tLio Fern\tBF-1200\n"
-        "Cedar Finch\tactive\tPax Neri\tCF-2201\n"
-        "Dune Finch\tblocked\tRae Sol\tDF-3301\n"
-        "Ember Finch\tactive\tUma Korr\tEF-4401\n",
+        "item\tstate\tnote\treference\n"
+        "Blue Quartz\tready\talpha\tBQ-1201\n"
+        "Blue Quartz\tretired\tbeta\tBQ-1200\n"
+        "Green Quartz\tready\tgamma\tGQ-2201\n"
+        "Silver Quartz\tblocked\tdelta\tSQ-3301\n"
+        "Gold Quartz\tready\tepsilon\tGQ-4401\n",
         encoding="utf-8",
     )
     engine = KnowMoreDiRTEngine(tmp_path)
     frame = QueryFrame(
-        question_text="How many Finch rows have status active?",
+        question_text="How many Quartz rows have state ready?",
         answer_type="count",
         answer_variables=("How many",),
-        target_anchors=("Finch rows", "Finch"),
-        requested_relation="have status",
-        relation_terms=("have status", "how many", "answer", "argument", "status", "active"),
-        constraints=("active", "status"),
+        target_anchors=("Quartz rows", "Quartz"),
+        requested_relation="have state",
+        relation_terms=("have state", "how many", "answer", "argument", "state", "ready"),
+        constraints=("ready", "state"),
         aggregation="count",
     )
 
@@ -7637,25 +7693,25 @@ def test_count_aggregation_ignores_how_many_relation_term_from_model_query(tmp_p
 
 def test_count_aggregation_treats_entries_as_row_units_and_skips_noise(tmp_path: Path) -> None:
     (tmp_path / "noise.log").write_text(
-        "Bell Finch active owner: BAD-1234 0000 ==== //// ++++ !!!!\n",
+        "North Vela ready note: BAD-1234 0000 ==== //// ++++ !!!!\n",
         encoding="utf-8",
     )
     (tmp_path / "rows.tsv").write_text(
-        "item\tstatus\towner\n"
-        "Bell Finch\tactive\tOla Nym\n"
-        "Bell Finch\tarchived\tLio Fern\n"
-        "Cedar Finch\tactive\tPax Neri\n"
-        "Ember Finch\tactive\tUma Korr\n",
+        "item\tstate\tnote\n"
+        "North Vela\tready\tone\n"
+        "North Vela\tarchived\ttwo\n"
+        "East Vela\tready\tthree\n"
+        "West Vela\tready\tfour\n",
         encoding="utf-8",
     )
     engine = KnowMoreDiRTEngine(tmp_path)
     frame = QueryFrame(
-        question_text="How many Finch entries are active?",
+        question_text="How many Vela entries are ready?",
         answer_type="count",
-        answer_variables=("How many Finch entries",),
-        target_anchors=("Finch",),
-        requested_relation="are active",
-        relation_terms=("are active", "active", "entries"),
+        answer_variables=("How many Vela entries",),
+        target_anchors=("Vela",),
+        requested_relation="are ready",
+        relation_terms=("are ready", "ready", "entries"),
         constraints=(),
         aggregation="count",
     )
@@ -7664,6 +7720,60 @@ def test_count_aggregation_treats_entries_as_row_units_and_skips_noise(tmp_path:
 
     assert answer is not None
     assert answer.text == "3"
+
+
+def test_count_aggregation_keeps_target_and_state_constraints_row_local(tmp_path: Path) -> None:
+    (tmp_path / "rows.tsv").write_text(
+        "Table: station state.\n"
+        "team\titem\tstate\n"
+        "North Team\tGauge One\topen\n"
+        "North Team\tGauge Two\tclosed\n"
+        "South Team\tGauge Three\topen\n",
+        encoding="utf-8",
+    )
+    engine = KnowMoreDiRTEngine(tmp_path)
+    frame = QueryFrame(
+        question_text="How many rows for North Team have state open?",
+        answer_type="count",
+        answer_variables=("How many rows",),
+        target_anchors=("North Team", "state open"),
+        requested_relation="have",
+        relation_terms=("have", "rows", "state", "open"),
+        constraints=("state", "open"),
+        aggregation="count",
+    )
+
+    answer = engine._answer_with_bounded_dspg(frame.question_text, frame, ExpectedAnswer("count"))
+
+    assert answer is not None
+    assert answer.text == "1"
+
+
+def test_count_aggregation_uses_document_context_without_counting_heading_rows(tmp_path: Path) -> None:
+    (tmp_path / "roster.txt").write_text(
+        "Ledger for Acme Bridge.\n"
+        "A table below lists monitors:\n"
+        "name | role | lane\n"
+        "Lio Reed | primary monitor | north\n"
+        "Mira Vale | backup monitor | south\n",
+        encoding="utf-8",
+    )
+    engine = KnowMoreDiRTEngine(tmp_path)
+    frame = QueryFrame(
+        question_text="How many monitors are listed for Acme Bridge?",
+        answer_type="count",
+        answer_variables=("How many monitors",),
+        target_anchors=("monitors", "Acme Bridge"),
+        requested_relation="are listed for",
+        relation_terms=("are listed for", "monitors", "listed", "list"),
+        constraints=("Acme Bridge",),
+        aggregation="count",
+    )
+
+    answer = engine._answer_with_bounded_dspg(frame.question_text, frame, ExpectedAnswer("count"))
+
+    assert answer is not None
+    assert answer.text == "2"
 
 
 def test_count_aggregation_matches_field_value_tokens_not_whole_verb_phrase(tmp_path: Path) -> None:

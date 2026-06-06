@@ -736,6 +736,42 @@ def test_answer_canonicalization_old_request_failure_cache_is_ignored(monkeypatc
     assert model.calls == 1
 
 
+def test_answer_canonicalization_accepts_grounded_unknown(monkeypatch) -> None:
+    class CanonicalizationModel:
+        def context_size(self) -> int:
+            return 4096
+
+        def cache_fingerprint(self) -> dict[str, Any]:
+            return {"model_id": "fake-canonicalization-grounded-unknown", "context_size": 4096}
+
+        def complete_json(self, prompt: str, *, n_predict: int = 128, grammar=None, json_schema=None):
+            assert "return answer='unknown'" in prompt
+            return {
+                "canonical_answer": {
+                    "answer": "unknown",
+                    "evidence_span": "The note says no complete binding is available.",
+                    "reason": "candidate is an absence statement",
+                },
+                "_model_raw": "{}",
+                "_model_elapsed_seconds": 0.01,
+            }
+
+    monkeypatch.setattr(model_planner, "_read_cache", lambda path: None)
+    monkeypatch.setattr(model_planner, "_write_cache", lambda path, payload: None)
+
+    result = call_model_answer_canonicalization(
+        "Which bound value is requested?",
+        "The note says no complete binding is available.",
+        "content_phrase",
+        [{"rel_path": "note.txt", "text": "The note says no complete binding is available."}],
+        CanonicalizationModel(),  # type: ignore[arg-type]
+    )
+
+    assert result["accepted"] is True
+    assert result["answer"] == "unknown"
+    assert result["evidence_span"] == "The note says no complete binding is available."
+
+
 def test_answer_canonicalization_invalid_json_is_not_request_failure(monkeypatch) -> None:
     class CanonicalizationModel:
         def __init__(self) -> None:

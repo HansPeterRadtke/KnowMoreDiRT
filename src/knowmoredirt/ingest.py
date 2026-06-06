@@ -177,10 +177,19 @@ def _table_cells(text: str) -> list[str]:
     return [cell for cell in cells if cell]
 
 
+TABLE_HEADER_LABEL_ID_RE = re.compile(r"^[a-z][a-z0-9]*(?:[_-][a-z][a-z0-9]*)+$")
+
+
+def _is_table_header_label_identifier(cell: str) -> bool:
+    return bool(TABLE_HEADER_LABEL_ID_RE.fullmatch(clean_extracted_value(cell).strip()))
+
+
 def _looks_like_table_header(cells: list[str]) -> bool:
     if len(cells) < 2:
         return False
-    return all(re.search(r"[A-Za-z]", cell) for cell in cells) and not any(urls(cell) or identifiers(cell) for cell in cells)
+    if not all(re.search(r"[A-Za-z]", cell) for cell in cells):
+        return False
+    return not any(urls(cell) or (identifiers(cell) and not _is_table_header_label_identifier(cell)) for cell in cells)
 
 
 def _is_structural_heading(text: str) -> bool:

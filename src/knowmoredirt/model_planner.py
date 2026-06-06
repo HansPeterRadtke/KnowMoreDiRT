@@ -5254,7 +5254,9 @@ def build_answer_canonicalization_prompt(
         "Return the shortest grounded public answer that preserves the same DRS binding, answer type, polarity, "
         "modality, temporal scope, and provenance. The canonical answer may remove only redundant wording that is "
         "not part of the bound value or required aggregate. It must not introduce new referents, choose a sibling "
-        "condition, change a scoped proposition into an asserted one, or use outside knowledge. evidence_span must "
+        "condition, change a scoped proposition into an asserted one, or use outside knowledge. If the candidate is "
+        "not a complete answer binding but instead states that no binding is available, return answer='unknown' and "
+        "copy the evidence_span that supports that absence. evidence_span must "
         "be copied exactly from one provided evidence item whenever the answer is changed. Return exactly "
         "{\"canonical_answer\":{\"answer\":\"\",\"evidence_span\":\"\",\"reason\":\"\"}}."
         + json.dumps(
@@ -5374,7 +5376,10 @@ def call_model_answer_canonicalization(
                 span = answer
                 span_grounded = True
                 break
-    answer_grounded = any(answer in str(item.get("text") or "") for item in evidence_items)
+    if normalize(answer) == "unknown":
+        answer_grounded = bool(span_grounded)
+    else:
+        answer_grounded = any(answer in str(item.get("text") or "") for item in evidence_items)
     if not span_grounded and not answer_grounded:
         return {
             "accepted": False,
@@ -5496,15 +5501,6 @@ def call_model_identity_canonicalization(
     result = parsed.get("canonicalization") if isinstance(parsed, dict) else None
     if result is None and isinstance(parsed, dict) and any(key in parsed for key in ["same_referent", "answer"]):
         result = parsed
-    if result is None and isinstance(parsed, dict) and any(key in parsed for key in ["decision", "justified_answer", "canonical_answer"]):
-        decision = str(parsed.get("decision") or "").strip().lower()
-        answer = str(parsed.get("justified_answer") or parsed.get("canonical_answer") or parsed.get("answer") or candidate_answer)
-        result = {
-            "same_referent": decision in {"accept", "accepted", "true", "yes", "same", "same_referent"},
-            "answer": answer,
-            "evidence_span": str(parsed.get("evidence_span") or ""),
-            "reason": str(parsed.get("rationale") or parsed.get("reason") or ""),
-        }
     if result is None and isinstance(parsed, dict) and any(key in parsed for key in ["identity_hypothesis_accepted", "fuller_candidate", "fuller_answer"]):
         answer = str(parsed.get("answer") or parsed.get("fuller_candidate") or parsed.get("fuller_answer") or candidate_answer)
         result = {
