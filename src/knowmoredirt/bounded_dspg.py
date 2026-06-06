@@ -79,6 +79,31 @@ STRUCTURAL_CHAIN_GENERIC_TERMS = {
     "were",
     "with",
 }
+STRUCTURAL_CHAIN_SOURCE_ARG_ROLES = {
+    "agent",
+    "entity",
+    "holder",
+    "item",
+    "key",
+    "name",
+    "record",
+    "source",
+    "subject",
+    "topic",
+}
+STRUCTURAL_CHAIN_TARGET_ARG_ROLES = {
+    "content",
+    "destination",
+    "identifier",
+    "location",
+    "object",
+    "patient",
+    "result",
+    "state",
+    "target",
+    "theme",
+    "value",
+}
 
 
 @lru_cache(maxsize=8192)
@@ -2108,6 +2133,73 @@ def _structural_chain_group_hits(material: str, groups: list[list[str]]) -> froz
     return frozenset(index for index, group in enumerate(groups) if _material_matches_term_group(material, group))
 
 
+def _structural_chain_frame_rows(records: dict[str, Any], frame: QueryFrame) -> list[tuple[dict[str, Any], Evidence, str, str, str, str]]:
+    args_by_frame: dict[str, list[dict[str, Any]]] = defaultdict(list)
+    for arg in records.get("frame_arguments", []):
+        args_by_frame[str(arg.get("frame_id") or "")].append(arg)
+    spans = _spans_by_id(records)
+    rows: list[tuple[dict[str, Any], Evidence, str, str, str, str]] = []
+    for row in records.get("frames", []):
+        source = str(row.get("source") or "")
+        if source not in {"local_model", "local_model_drs"}:
+            continue
+        if not _context_accessible(str(row.get("context_id") or ""), records, frame):
+            continue
+        evidence = _evidence_for_span(str(row.get("span_id") or ""), records)
+        arguments = [
+            arg for arg in args_by_frame.get(str(row.get("frame_id") or ""), [])
+            if clean_extracted_value(str(arg.get("surface") or ""))
+        ]
+        if len(arguments) < 2 or len(arguments) > 8:
+            continue
+        source_args = [
+            arg for arg in arguments
+            if normalize(str(arg.get("role") or "")) in STRUCTURAL_CHAIN_SOURCE_ARG_ROLES
+        ]
+        target_args = [
+            arg for arg in arguments
+            if normalize(str(arg.get("role") or "")) in STRUCTURAL_CHAIN_TARGET_ARG_ROLES
+        ]
+        if not source_args:
+            continue
+        if not target_args and len(arguments) == 2:
+            target_args = [arg for arg in arguments if arg not in source_args]
+        if not target_args:
+            continue
+        span = spans.get(str(row.get("span_id") or ""), {})
+        edge_base = {
+            "document_id": str(span.get("document_id") or ""),
+            "source_span_id": str(row.get("span_id") or ""),
+            "context_id": str(row.get("context_id") or ""),
+            "relation_type": "semantic_frame",
+            "predicate": str(row.get("predicate") or ""),
+        }
+        for source_arg in source_args:
+            subject = clean_extracted_value(str(source_arg.get("surface") or ""))
+            subject_norm = normalize(subject)
+            if not subject_norm:
+                continue
+            for target_arg in target_args:
+                value = clean_extracted_value(str(target_arg.get("surface") or ""))
+                value_norm = normalize(value)
+                if not value_norm or value_norm == subject_norm:
+                    continue
+                material = normalize(
+                    " ".join(
+                        [
+                            str(row.get("predicate") or ""),
+                            str(row.get("trigger_surface") or ""),
+                            str(source_arg.get("role") or ""),
+                            subject,
+                            str(target_arg.get("role") or ""),
+                            value,
+                        ]
+                    )
+                )
+                rows.append(({**edge_base, "subject": subject, "value": value}, evidence, subject_norm, value_norm, value, material))
+    return rows
+
+
 def _structural_chain_candidates(
     records: dict[str, Any],
     frame: QueryFrame,
@@ -2122,11 +2214,12 @@ def _structural_chain_candidates(
     if not groups:
         return []
     rows = _structural_chain_rows(records, frame)
+    rows.extend(_structural_chain_frame_rows(records, frame))
     if not rows:
         return []
     rows_by_document: dict[str, list[tuple[dict[str, Any], Evidence, str, str, str, str]]] = defaultdict(list)
     for item in rows:
-        rows_by_document[str(item[0].get("document_id") or "")].append(item)
+        rows_by_document[item[1].rel_path].append(item)
     candidates: list[tuple[float, str, Evidence, str]] = []
     required = frozenset(range(len(groups)))
     max_depth = 4
@@ -2515,15 +2608,47 @@ def _bind_contexts(records: dict[str, Any], frame: QueryFrame, expected: Expecte
     return candidates
 
 
+def _temporal_constraint_terms(frame: QueryFrame) -> list[str]:
+    terms: list[str] = []
+    for value in frame.constraints:
+        for match in DATE_TIME_RE.finditer(str(value or "")):
+            terms.append(normalize(match.group(0)))
+    return list(dict.fromkeys(term for term in terms if term))
+
+
+def _effective_temporal_scope(frame: QueryFrame) -> str:
+    scope = normalize_temporal_scope(frame.temporal_scope)
+    if scope in {"latest", "earliest"}:
+        return scope
+    for value in frame.constraints:
+        scope = normalize_temporal_scope(str(value or ""))
+        if scope in {"latest", "earliest"}:
+            return scope
+    return ""
+
+
+def _temporal_row_matches_constraints(row: dict[str, Any], evidence: Evidence, constraint_terms: list[str]) -> bool:
+    if not constraint_terms:
+        return True
+    material = normalize(" ".join([str(row.get("temporal_value") or ""), evidence.text]))
+    return any(term and term in material for term in constraint_terms)
+
+
 def _temporal_candidates(records: dict[str, Any], frame: QueryFrame, expected: ExpectedAnswer, target_terms: list[str], relation_terms: list[str]) -> list[tuple[float, str, Evidence, str]]:
-    if frame.temporal_scope not in {"latest", "earliest"} and expected.answer_type not in {"state", "date_time"}:
+    if expected.answer_type not in {"state", "date_time", "content_phrase", "unknown"}:
+        return []
+    temporal_scope = _effective_temporal_scope(frame)
+    if temporal_scope not in {"latest", "earliest"} and expected.answer_type not in {"state", "date_time"}:
         return []
     referents = _referents_by_id(records)
+    temporal_constraints = _temporal_constraint_terms(frame)
     rows: list[tuple[str, dict[str, Any], Evidence]] = []
     for row in records.get("temporal_edges", []):
         if not _context_accessible(str(row.get("context_id") or ""), records, frame):
             continue
         evidence = _evidence_for_span(str(row.get("source_span_id") or ""), records)
+        if not _temporal_row_matches_constraints(row, evidence, temporal_constraints):
+            continue
         referent = referents.get(str(row.get("referent_id") or ""), {})
         material = normalize(
             " ".join(
@@ -2538,13 +2663,13 @@ def _temporal_candidates(records: dict[str, Any], frame: QueryFrame, expected: E
         )
         if target_terms and not _contains_any(material, target_terms):
             continue
-        if relation_terms and not _contains_any(material, relation_terms):
+        if relation_terms and not _contains_any(material, relation_terms) and not temporal_constraints:
             continue
         rows.append((str(row.get("temporal_value") or ""), row, evidence))
-    rows.sort(key=lambda item: item[0], reverse=frame.temporal_scope != "earliest")
+    rows.sort(key=lambda item: item[0], reverse=temporal_scope != "earliest")
     candidates: list[tuple[float, str, Evidence, str]] = []
     selected_rows = rows[:3]
-    if frame.temporal_scope in {"latest", "earliest"} and rows:
+    if temporal_scope in {"latest", "earliest"} and rows:
         boundary_value = rows[0][0]
         selected_rows = [item for item in rows if item[0] == boundary_value]
     for _time_value, row, evidence in selected_rows:
@@ -2565,7 +2690,8 @@ def _temporal_relation_candidates(
     target_terms: list[str],
     relation_terms: list[str],
 ) -> list[tuple[float, str, Evidence, str]]:
-    if frame.temporal_scope not in {"latest", "earliest"}:
+    temporal_scope = _effective_temporal_scope(frame)
+    if temporal_scope not in {"latest", "earliest"}:
         return []
     if expected.answer_type not in {"state", "date_time", "content_phrase", "unknown"}:
         return []
@@ -2597,7 +2723,7 @@ def _temporal_relation_candidates(
         if relation_terms and not _contains_any(material, relation_terms):
             continue
         ordered.append((max(temporal_values), span_id, accessible_rows, evidence))
-    ordered.sort(key=lambda item: item[0], reverse=frame.temporal_scope != "earliest")
+    ordered.sort(key=lambda item: item[0], reverse=temporal_scope != "earliest")
     candidates: list[tuple[float, str, Evidence, str]] = []
     selected_rows = ordered[:1]
     if ordered:
@@ -2611,6 +2737,96 @@ def _temporal_relation_candidates(
                 continue
             for value in _answer_values_from_relation(row, evidence, expected, target_terms, relation_terms, answer_slot_terms):
                 candidates.append((9.0 * float(row.get("confidence") or 0.7), value, evidence, "temporal_relation_binding"))
+    return candidates
+
+
+def _selected_temporal_span_ids(
+    records: dict[str, Any],
+    frame: QueryFrame,
+    target_terms: list[str],
+    relation_terms: list[str],
+) -> set[str]:
+    temporal_scope = _effective_temporal_scope(frame)
+    if temporal_scope not in {"latest", "earliest"} and not _temporal_constraint_terms(frame):
+        return set()
+    referents = _referents_by_id(records)
+    temporal_constraints = _temporal_constraint_terms(frame)
+    ordered: list[tuple[str, str, Evidence]] = []
+    for row in records.get("temporal_edges", []):
+        if not _context_accessible(str(row.get("context_id") or ""), records, frame):
+            continue
+        span_id = str(row.get("source_span_id") or "")
+        if not span_id:
+            continue
+        evidence = _evidence_for_span(span_id, records)
+        if _source_is_low_priority(evidence.rel_path, evidence.text):
+            continue
+        if not _temporal_row_matches_constraints(row, evidence, temporal_constraints):
+            continue
+        referent = referents.get(str(row.get("referent_id") or ""), {})
+        material = normalize(
+            " ".join(
+                [
+                    str(referent.get("canonical_label") or referent.get("canonical_label_norm") or ""),
+                    str(row.get("relation") or ""),
+                    str(row.get("temporal_value") or ""),
+                    str(row.get("state_value") or ""),
+                    evidence.text,
+                ]
+            )
+        )
+        if target_terms and not _contains_any(material, target_terms):
+            continue
+        if relation_terms and not _contains_any(material, relation_terms) and not temporal_constraints:
+            continue
+        ordered.append((str(row.get("temporal_value") or ""), span_id, evidence))
+    if not ordered:
+        return set()
+    ordered.sort(key=lambda item: item[0], reverse=temporal_scope != "earliest")
+    if temporal_constraints:
+        return {span_id for _time_value, span_id, _evidence in ordered}
+    boundary_value = ordered[0][0]
+    return {span_id for time_value, span_id, _evidence in ordered if time_value == boundary_value}
+
+
+def _temporal_frame_argument_candidates(
+    records: dict[str, Any],
+    frame: QueryFrame,
+    expected: ExpectedAnswer,
+    target_terms: list[str],
+    relation_terms: list[str],
+) -> list[tuple[float, str, Evidence, str]]:
+    selected_span_ids = _selected_temporal_span_ids(records, frame, target_terms, relation_terms)
+    if not selected_span_ids:
+        return []
+    args_by_frame: dict[str, list[dict[str, Any]]] = defaultdict(list)
+    for arg in records.get("frame_arguments", []):
+        args_by_frame[str(arg.get("frame_id") or "")].append(arg)
+    candidates: list[tuple[float, str, Evidence, str]] = []
+    for row in records.get("frames", []):
+        span_id = str(row.get("span_id") or "")
+        if span_id not in selected_span_ids:
+            continue
+        if not _context_accessible(str(row.get("context_id") or ""), records, frame):
+            continue
+        evidence = _evidence_for_span(span_id, records)
+        arg_text = " ".join(str(arg.get("surface") or "") for arg in args_by_frame.get(str(row.get("frame_id") or ""), []))
+        material = normalize(" ".join([str(row.get("predicate") or ""), str(row.get("trigger_surface") or ""), arg_text, evidence.text]))
+        if target_terms and not _contains_any(material, target_terms):
+            continue
+        if relation_terms and not _contains_any(material, relation_terms) and not _temporal_constraint_terms(frame):
+            continue
+        for value in _answer_values_from_frame(
+            row,
+            args_by_frame.get(str(row.get("frame_id") or ""), []),
+            expected,
+            target_terms,
+            relation_terms,
+            None,
+            "",
+            evidence,
+        ):
+            candidates.append((11.0, value, evidence, "temporal_frame_argument_binding"))
     return candidates
 
 
@@ -2907,6 +3123,10 @@ def _direct_label_slot_candidates(
         if not _relation_scope_accessible(row, records, frame):
             continue
         evidence = _evidence_for_span(str(row.get("source_span_id") or ""), records)
+        if target_terms:
+            material = _relation_local_material(row, evidence, include_evidence=True, include_context=True, records=records)
+            if not _contains_any(material, target_terms):
+                continue
         metadata = _relation_metadata(row)
         label_material = normalize(" ".join([str(row.get("subject") or ""), str(metadata.get("section_anchor") or "")]))
         if not _answer_slot_label_matches(label_material, answer_slot_terms, target_terms):
@@ -3073,7 +3293,9 @@ def execute_bounded_query(
     candidates.extend(_bind_document_scoped_label_values(records, frame, expected, target_terms, relation_terms))
     temporal_candidates = _temporal_candidates(records, frame, expected, target_terms, relation_terms)
     temporal_candidates.extend(_temporal_relation_candidates(records, frame, expected, target_terms, relation_terms))
-    if temporal_candidates and frame.temporal_scope in {"latest", "earliest"}:
+    temporal_candidates.extend(_temporal_frame_argument_candidates(records, frame, expected, target_terms, relation_terms))
+    effective_temporal_scope = _effective_temporal_scope(frame)
+    if temporal_candidates and effective_temporal_scope in {"latest", "earliest"}:
         conflict = _answer_conflict_diagnostics(temporal_candidates, expected, target_terms, records)
         if conflict:
             diagnostics["execution"]["temporal_answer_conflict_at_boundary"] = conflict

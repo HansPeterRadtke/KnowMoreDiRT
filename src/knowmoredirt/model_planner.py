@@ -134,7 +134,9 @@ CHUNK_DRS_DYNAMIC_SKELETON_BUDGET_POLICY = "nested-field-like-source-spans-allow
 CHUNK_DRS_DYNAMIC_OUTPUT_BUDGET_POLICY = "source-aware-tiny-prose-544-short-768-1024-v2"
 CHUNK_DRS_DYNAMIC_CONDITION_BUDGET_POLICY = "compact-nontemporal-condition-stage-floor-528-v2"
 CHUNK_DRS_STAGED_FIRST_POLICY = "field-like-source-spans-before-monolithic-v1"
-CHUNK_DRS_COMPACT_FACT_POLICY = "compact-model-facts-to-root-drs-v1"
+CHUNK_DRS_COMPACT_FACT_POLICY_LEGACY = "compact-model-facts-to-root-drs-v1"
+CHUNK_DRS_COMPACT_FACT_POLICY = "compact-model-facts-to-root-drs-v2"
+CHUNK_DRS_COMPACT_TEMPORAL_SOURCE_POLICY = "compact-source-span-explicit-timestamp-v1"
 CHUNK_DRS_COMPACT_RETRY_POLICY = "retry-compact-invalid-json-larger-budget-v1"
 QUERY_DRS_SCHEMA_VERSION = "query-drs-v3"
 QUERY_DRS_VALIDATION_POLICY = "strict-query-drs-version-question-evidence-box-dag-repair-operators-v10"
@@ -3447,15 +3449,30 @@ def call_model_chunk_frames(
 
 
 CHUNK_DRS_GRAMMAR = ""
+COMPACT_SOURCE_TEMPORAL_RE = re.compile(r"\b(?:\d{4}-\d{2}-\d{2}(?:[ T]\d{1,2}:\d{2})?|\d{1,2}:\d{2})\b")
 
 
-def build_compact_chunk_drs_prompt(chunk_text: str, *, rel_path: str = "") -> str:
+def _build_compact_chunk_drs_prompt_v1(chunk_text: str, *, rel_path: str = "") -> str:
     return (
         "JSON only. Extract compact source-grounded DRS facts from this raw text chunk. "
         "Output exactly {\"facts\":[{\"p\":\"\",\"agent\":\"\",\"patient\":\"\",\"value\":\"\",\"e\":\"\"}]}. "
         "p is the model-chosen predicate or relation word. agent, patient, and value are exact source strings when "
         "the source supports those roles; leave a field empty when unsupported. e is one exact contiguous source "
         "span containing the non-empty role values. Use only source-grounded asserted, reported, negated, or scoped "
+        "conditions from the chunk. Return {\"facts\":[]} when the chunk asserts no useful source-grounded DRS "
+        "condition. Do not answer questions and do not use outside knowledge. "
+        + json.dumps({"source_id": rel_path, "chunk": chunk_text}, ensure_ascii=False)
+    )
+
+
+def build_compact_chunk_drs_prompt(chunk_text: str, *, rel_path: str = "") -> str:
+    return (
+        "JSON only. Extract compact source-grounded DRS facts from this raw text chunk. "
+        "Output exactly {\"facts\":[{\"p\":\"\",\"agent\":\"\",\"patient\":\"\",\"value\":\"\",\"time\":\"\",\"e\":\"\"}]}. "
+        "p is the model-chosen predicate or relation word. agent, patient, and value are exact source strings when "
+        "the source supports those roles; time is an exact source string only when an explicit timestamp, date, or "
+        "ordering phrase scopes the fact; leave a field empty when unsupported. e is one exact contiguous source "
+        "span containing the non-empty role values and time when present. Use only source-grounded asserted, reported, negated, or scoped "
         "conditions from the chunk. Return {\"facts\":[]} when the chunk asserts no useful source-grounded DRS "
         "condition. Do not answer questions and do not use outside knowledge. "
         + json.dumps({"source_id": rel_path, "chunk": chunk_text}, ensure_ascii=False)
@@ -3484,11 +3501,50 @@ def _source_segment_for_values(source_text: str, values: list[str], fallback: st
     return ""
 
 
+COMPACT_TEMPORAL_FIELDS = {"time", "timestamp", "temporal", "temporal_text"}
+COMPACT_LITERAL_ARGUMENT_ROLES = {"state", "value"}
+
+
+def _compact_fact_temporal_text(fact: dict[str, Any], source_text: str) -> str:
+    for key in COMPACT_TEMPORAL_FIELDS:
+        text = str(fact.get(key) or "").strip()
+        if text and text in source_text:
+            return text
+    role_values = fact.get("roles")
+    if isinstance(role_values, dict):
+        for key in COMPACT_TEMPORAL_FIELDS:
+            text = str(role_values.get(key) or "").strip()
+            if text and text in source_text:
+                return text
+    raw_arguments = fact.get("arguments")
+    if isinstance(raw_arguments, list):
+        for item in raw_arguments:
+            if not isinstance(item, dict):
+                continue
+            for key in COMPACT_TEMPORAL_FIELDS:
+                text = str(item.get(key) or "").strip()
+                if text and text in source_text:
+                    return text
+    return ""
+
+
+def _source_temporal_text_for_evidence(source_text: str, evidence: str) -> str:
+    evidence = str(evidence or "").strip()
+    if not evidence or evidence not in source_text:
+        return ""
+    start = source_text.find(evidence)
+    search_text = source_text[max(0, start - 80) : start + min(len(evidence), 80)]
+    matches = [match.group(0) for match in COMPACT_SOURCE_TEMPORAL_RE.finditer(search_text)]
+    return matches[-1] if matches else ""
+
+
 def _compact_fact_arguments(fact: dict[str, Any], source_text: str) -> list[tuple[str, str]]:
     values: list[tuple[str, str]] = []
     role_values = fact.get("roles")
     if isinstance(role_values, dict):
         for role, value in role_values.items():
+            if str(role or "").strip() in COMPACT_TEMPORAL_FIELDS:
+                continue
             text = str(value or "").strip()
             if text and text in source_text:
                 values.append((str(role or "argument").strip() or "argument", text))
@@ -3501,10 +3557,12 @@ def _compact_fact_arguments(fact: dict[str, Any], source_text: str) -> list[tupl
                     values.append(("argument", text))
             elif isinstance(item, dict):
                 for role, value in item.items():
+                    if str(role or "").strip() in COMPACT_TEMPORAL_FIELDS:
+                        continue
                     text = str(value or "").strip()
                     if text and text in source_text:
                         values.append((str(role or "argument").strip() or "argument", text))
-    for role in ["agent", "patient", "theme", "holder", "topic", "value", "state", "identifier", "location", "time"]:
+    for role in ["agent", "patient", "theme", "holder", "topic", "value", "state", "identifier", "location"]:
         text = str(fact.get(role) or "").strip()
         if text and text in source_text:
             values.append((role, text))
@@ -3518,10 +3576,77 @@ def _compact_fact_arguments(fact: dict[str, Any], source_text: str) -> list[tupl
     return deduped
 
 
+def _compact_literal_argument_value(argument: dict[str, Any], referents_by_id: dict[str, dict[str, Any]]) -> str:
+    value = str(argument.get("value") or "").strip()
+    if value:
+        return value
+    referent = referents_by_id.get(str(argument.get("target_id") or ""))
+    if not referent:
+        return ""
+    return str(referent.get("label") or referent.get("evidence_text") or "").strip()
+
+
+def _attach_compact_source_temporals(payload: dict[str, Any], source_text: str) -> dict[str, Any]:
+    if not isinstance(payload, dict) or not isinstance(payload.get("drs"), dict):
+        return payload
+    drs = {**payload["drs"]}
+    conditions = [dict(item) for item in drs.get("conditions", []) if isinstance(item, dict)]
+    referents = [dict(item) for item in drs.get("referents", []) if isinstance(item, dict)]
+    temporals = [dict(item) for item in drs.get("temporal_records", []) if isinstance(item, dict)]
+    referents_by_id = {str(item.get("id") or ""): item for item in referents}
+    temporal_ids_by_value = {str(item.get("value") or ""): str(item.get("id") or "") for item in temporals}
+    changed = False
+    for condition in conditions:
+        temporal_id = str(condition.get("temporal_id") or "").strip()
+        if not temporal_id:
+            temporal_text = _source_temporal_text_for_evidence(source_text, str(condition.get("evidence_text") or ""))
+            if temporal_text:
+                temporal_id = temporal_ids_by_value.get(temporal_text, "")
+                if not temporal_id:
+                    temporal_id = f"t{len(temporals)}"
+                    temporal_ids_by_value[temporal_text] = temporal_id
+                    temporals.append(
+                        {
+                            "id": temporal_id,
+                            "value": temporal_text,
+                            "value_type": "timestamp",
+                            "evidence_text": temporal_text,
+                        }
+                    )
+                condition["temporal_id"] = temporal_id
+                changed = True
+        if temporal_id and isinstance(condition.get("arguments"), list):
+            repaired_args = []
+            for argument in condition["arguments"]:
+                if not isinstance(argument, dict):
+                    continue
+                argument = {**argument}
+                role_norm = normalize(str(argument.get("role") or ""))
+                if role_norm in COMPACT_LITERAL_ARGUMENT_ROLES and str(argument.get("target_kind") or "") == "referent":
+                    value = _compact_literal_argument_value(argument, referents_by_id)
+                    if value:
+                        argument["target_kind"] = "literal"
+                        argument["target_id"] = ""
+                        argument["value"] = value
+                        argument["value_type"] = role_norm
+                        argument["evidence_text"] = str(argument.get("evidence_text") or value)
+                        changed = True
+                repaired_args.append(argument)
+            condition["arguments"] = repaired_args
+    if not changed:
+        return payload
+    drs["conditions"] = conditions
+    drs["referents"] = referents
+    drs["temporal_records"] = temporals
+    return {**payload, "drs": drs, "compact_temporal_source_policy": CHUNK_DRS_COMPACT_TEMPORAL_SOURCE_POLICY}
+
+
 def _compact_chunk_drs_to_payload(parsed: dict[str, Any], source_text: str, *, rel_path: str = "") -> dict[str, Any]:
     referents: list[dict[str, Any]] = []
     referent_ids_by_value: dict[str, str] = {}
     conditions: list[dict[str, Any]] = []
+    temporal_records: list[dict[str, Any]] = []
+    temporal_ids_by_value: dict[str, str] = {}
     evidence_spans: list[str] = []
 
     def referent_id_for(value: str) -> str:
@@ -3544,25 +3669,52 @@ def _compact_chunk_drs_to_payload(parsed: dict[str, Any], source_text: str, *, r
     for fact in _compact_fact_items(parsed):
         predicate = str(fact.get("p") or fact.get("predicate") or "").strip()
         arguments = _compact_fact_arguments(fact, source_text)
+        temporal_text = _compact_fact_temporal_text(fact, source_text)
         evidence = _source_segment_for_values(
             source_text,
-            [value for _role, value in arguments],
+            [*[value for _role, value in arguments], temporal_text],
             str(fact.get("e") or fact.get("evidence_text") or ""),
         )
         if not predicate or not evidence:
             continue
+        temporal_id = ""
+        if temporal_text:
+            temporal_id = temporal_ids_by_value.get(temporal_text, "")
+            if not temporal_id:
+                temporal_id = f"t{len(temporal_records)}"
+                temporal_ids_by_value[temporal_text] = temporal_id
+                temporal_records.append(
+                    {
+                        "id": temporal_id,
+                        "value": temporal_text,
+                        "value_type": "timestamp",
+                        "evidence_text": temporal_text,
+                    }
+                )
         condition_arguments = []
         for role, value in arguments:
-            condition_arguments.append(
-                {
-                    "role": role,
-                    "target_kind": "referent",
-                    "target_id": referent_id_for(value),
-                    "value": "",
-                    "value_type": "unknown",
-                    "evidence_text": value,
-                }
-            )
+            if normalize(role) in COMPACT_LITERAL_ARGUMENT_ROLES:
+                condition_arguments.append(
+                    {
+                        "role": role,
+                        "target_kind": "literal",
+                        "target_id": "",
+                        "value": value,
+                        "value_type": normalize(role) or "unknown",
+                        "evidence_text": value,
+                    }
+                )
+            else:
+                condition_arguments.append(
+                    {
+                        "role": role,
+                        "target_kind": "referent",
+                        "target_id": referent_id_for(value),
+                        "value": "",
+                        "value_type": "unknown",
+                        "evidence_text": value,
+                    }
+                )
         condition_id = f"c{len(conditions)}"
         conditions.append(
             {
@@ -3571,14 +3723,14 @@ def _compact_chunk_drs_to_payload(parsed: dict[str, Any], source_text: str, *, r
                 "predicate": predicate,
                 "polarity": "positive",
                 "modality": "asserted",
-                "temporal_id": "",
+                "temporal_id": temporal_id,
                 "evidence_text": evidence,
                 "arguments": condition_arguments,
             }
         )
         if evidence not in evidence_spans:
             evidence_spans.append(evidence)
-    return {
+    return _attach_compact_source_temporals({
         "drs": {
             "schema_version": CHUNK_DRS_SCHEMA_VERSION,
             "source_id": rel_path,
@@ -3595,10 +3747,10 @@ def _compact_chunk_drs_to_payload(parsed: dict[str, Any], source_text: str, *, r
             ],
             "conditions": conditions,
             "identity_hypotheses": [],
-            "temporal_records": [],
+            "temporal_records": temporal_records,
             "evidence_spans": evidence_spans,
         }
-    }
+    }, source_text)
 
 
 def _compact_chunk_drs_enabled() -> bool:
@@ -3635,6 +3787,41 @@ def _compact_chunk_drs_retry_budgets(n_predict: int) -> list[int]:
         return budgets
     budgets = [max(160, n_predict * 2), 256]
     return [value for value in dict.fromkeys(budgets) if value > n_predict]
+
+
+def _finalize_compact_cached_payload(
+    payload: dict[str, Any],
+    chunk_text: str,
+    cache_context: dict[str, Any],
+    *,
+    cache_path: Path | None = None,
+    migrated_from_prompt_hash: str = "",
+) -> dict[str, Any]:
+    payload = {**payload}
+    payload.setdefault("cache_context", cache_context)
+    if not payload.get("accepted") or not isinstance(payload.get("drs"), dict):
+        return payload
+    upgraded = _attach_compact_source_temporals(payload, chunk_text)
+    repaired = _repair_chunk_drs_payload({"drs": upgraded["drs"]}, chunk_text)
+    validation = _validate_chunk_drs_payload(repaired, chunk_text)
+    if not validation.get("schema_valid"):
+        return payload
+    finalized = {
+        **upgraded,
+        "drs": repaired["drs"],
+        "validation": validation,
+        "cache_context": cache_context,
+        "compact_fact_policy": CHUNK_DRS_COMPACT_FACT_POLICY,
+        "fresh_or_cached": "cache",
+    }
+    if migrated_from_prompt_hash:
+        finalized["compact_legacy_cache_migration"] = {
+            "from_policy": CHUNK_DRS_COMPACT_FACT_POLICY_LEGACY,
+            "from_prompt_hash": migrated_from_prompt_hash,
+        }
+    if cache_path is not None and finalized != payload:
+        _write_cache(cache_path, finalized)
+    return finalized
 
 
 def call_model_chunk_drs_compact(
@@ -3675,8 +3862,24 @@ def call_model_chunk_drs_compact(
         cache_path = _cache_path("KMD_CHUNK_DRS_CACHE_DIR", prompt_hash)
         cached = _read_cache(cache_path)
         if cached is not None and not _query_drs_cached_retryable_failure(cached):
-            cached.setdefault("cache_context", cache_context)
-            return cached
+            return _finalize_compact_cached_payload(cached, chunk_text, cache_context, cache_path=cache_path)
+        if not retry_index:
+            legacy_prompt = _build_compact_chunk_drs_prompt_v1(chunk_text, rel_path=rel_path)
+            legacy_settings = {
+                **cache_settings,
+                "compact_fact_policy": CHUNK_DRS_COMPACT_FACT_POLICY_LEGACY,
+            }
+            legacy_prompt_hash = _cache_hash("chunk_drs_compact", legacy_prompt, client, legacy_settings)
+            legacy_cache_path = _cache_path("KMD_CHUNK_DRS_CACHE_DIR", legacy_prompt_hash)
+            legacy_cached = _read_cache(legacy_cache_path)
+            if legacy_cached is not None and not _query_drs_cached_retryable_failure(legacy_cached):
+                return _finalize_compact_cached_payload(
+                    legacy_cached,
+                    chunk_text,
+                    cache_context,
+                    cache_path=cache_path,
+                    migrated_from_prompt_hash=legacy_prompt_hash,
+                )
         start = time.time()
         try:
             parsed = client.complete_json(prompt, n_predict=budget)

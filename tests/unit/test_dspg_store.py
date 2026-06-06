@@ -8058,3 +8058,230 @@ def test_structural_label_chain_uses_query_selected_intermediate_slot(tmp_path: 
     assert answer is not None
     assert answer.text == "person_lio334455"
     assert answer.reason == "bounded DSPG query-frame execution"
+
+
+def test_targeted_direct_slot_does_not_beat_grounded_structural_chain(tmp_path: Path) -> None:
+    (tmp_path / "chain.txt").write_text(
+        "The reference for Aster Tray is AST-17. "
+        "AST-17 final state: approved.",
+        encoding="utf-8",
+    )
+    (tmp_path / "unrelated.txt").write_text(
+        "final state: closed.",
+        encoding="utf-8",
+    )
+    store, run_id, documents, sentences = ingest_folder(tmp_path)
+    span = store.execute(
+        "SELECT span_id FROM source_spans WHERE surface=?",
+        ("The reference for Aster Tray is AST-17.",),
+    ).fetchone()
+    assert span is not None
+    store.materialize_drs_payload(
+        run_id,
+        span["span_id"],
+        "The reference for Aster Tray is AST-17.",
+        {
+            "drs": {
+                "schema_version": "chunk-drs-v2",
+                "source_id": "chain.txt",
+                "referents": [
+                    {"id": "r0", "label": "Aster Tray", "kind": "unknown", "evidence_text": "Aster Tray"},
+                    {"id": "r1", "label": "AST-17", "kind": "unknown", "evidence_text": "AST-17"},
+                ],
+                "boxes": [
+                    {
+                        "id": "b0",
+                        "kind": "asserted",
+                        "parent_id": "",
+                        "holder_referent_id": "",
+                        "evidence_text": "",
+                    }
+                ],
+                "conditions": [
+                    {
+                        "id": "c0",
+                        "predicate": "reference",
+                        "box_id": "b0",
+                        "polarity": "positive",
+                        "modality": "asserted",
+                        "temporal_id": "",
+                        "arguments": [
+                            {
+                                "role": "agent",
+                                "target_kind": "referent",
+                                "target_id": "r0",
+                                "value": "",
+                                "value_type": "unknown",
+                                "evidence_text": "Aster Tray",
+                            },
+                            {
+                                "role": "value",
+                                "target_kind": "referent",
+                                "target_id": "r1",
+                                "value": "",
+                                "value_type": "unknown",
+                                "evidence_text": "AST-17",
+                            },
+                        ],
+                        "evidence_text": "The reference for Aster Tray is AST-17.",
+                    }
+                ],
+                "identity_hypotheses": [],
+                "temporal_records": [],
+                "evidence_spans": ["The reference for Aster Tray is AST-17."],
+            }
+        },
+        source="local_model_drs",
+    )
+    sentences_by_document: dict[str, dict[int, Sentence]] = {}
+    for sentence in sentences:
+        sentences_by_document.setdefault(sentence.rel_path, {})[sentence.order] = sentence
+    frame = QueryFrame(
+        question_text="What is the final state of Aster Tray?",
+        answer_type="state",
+        answer_variables=("final state",),
+        target_anchors=("Aster Tray",),
+        requested_relation="",
+        relation_terms=(),
+        constraints=(),
+        temporal_scope="latest",
+    )
+
+    answer, diagnostics = execute_bounded_query(
+        store,
+        run_id,
+        documents,
+        sentences_by_document,
+        frame.question_text,
+        frame,
+    )
+
+    assert answer is not None
+    assert answer.text == "approved"
+    assert answer.reason == "structural_chain_drs_binding"
+    assert "answer_conflict_without_query_scope" not in diagnostics["execution"]
+
+
+def test_temporal_frame_argument_binding_selects_latest_and_specific_timestamp(tmp_path: Path) -> None:
+    (tmp_path / "state.log").write_text(
+        "2026-01-01 Aster Task assigned to Ada Ray.\n"
+        "2026-01-02 Aster Task reassigned to Bea Sol.\n",
+        encoding="utf-8",
+    )
+    store, run_id, documents, sentences = ingest_folder(tmp_path)
+    sentences_by_document: dict[str, dict[int, Sentence]] = {}
+    for sentence in sentences:
+        sentences_by_document.setdefault(sentence.rel_path, {})[sentence.order] = sentence
+
+    def materialize(surface: str, date_text: str, predicate: str, assignee: str) -> None:
+        span = store.execute(
+            "SELECT span_id FROM source_spans WHERE surface=?",
+            (surface,),
+        ).fetchone()
+        assert span is not None
+        payload = {
+            "drs": {
+                "schema_version": "chunk-drs-v2",
+                "source_id": "state.log",
+                "referents": [
+                    {"id": "r0", "label": "Aster Task", "kind": "unknown", "evidence_text": "Aster Task"},
+                    {"id": "r1", "label": assignee, "kind": "person", "evidence_text": assignee},
+                ],
+                "boxes": [
+                    {
+                        "id": "b0",
+                        "kind": "asserted",
+                        "parent_id": "",
+                        "holder_referent_id": "",
+                        "evidence_text": "",
+                    }
+                ],
+                "conditions": [
+                    {
+                        "id": "c0",
+                        "predicate": predicate,
+                        "box_id": "b0",
+                        "polarity": "positive",
+                        "modality": "asserted",
+                        "temporal_id": "t0",
+                        "arguments": [
+                            {
+                                "role": "agent",
+                                "target_kind": "referent",
+                                "target_id": "r0",
+                                "value": "",
+                                "value_type": "unknown",
+                                "evidence_text": "Aster Task",
+                            },
+                            {
+                                "role": "patient",
+                                "target_kind": "referent",
+                                "target_id": "r1",
+                                "value": "",
+                                "value_type": "person",
+                                "evidence_text": assignee,
+                            },
+                        ],
+                        "evidence_text": surface,
+                    }
+                ],
+                "identity_hypotheses": [],
+                "temporal_records": [
+                    {"id": "t0", "value": date_text, "value_type": "timestamp", "evidence_text": date_text}
+                ],
+                "evidence_spans": [surface],
+            }
+        }
+        result = store.materialize_drs_payload(run_id, span["span_id"], surface, payload)
+        assert result["accepted"] is True
+
+    materialize("2026-01-01 Aster Task assigned to Ada Ray.", "2026-01-01", "assigned to", "Ada Ray")
+    materialize("2026-01-02 Aster Task reassigned to Bea Sol.", "2026-01-02", "reassigned to", "Bea Sol")
+
+    latest_frame = QueryFrame(
+        question_text="Who is Aster Task currently assigned to?",
+        answer_type="person",
+        answer_variables=("assignee",),
+        target_anchors=("Aster Task",),
+        requested_relation="assigned to",
+        relation_terms=("assigned",),
+        constraints=(),
+        temporal_scope="latest",
+    )
+    latest_answer, latest_diagnostics = execute_bounded_query(
+        store,
+        run_id,
+        documents,
+        sentences_by_document,
+        latest_frame.question_text,
+        latest_frame,
+    )
+
+    assert latest_answer is not None
+    assert latest_answer.text == "Bea Sol"
+    assert latest_answer.reason == "temporal_frame_argument_binding"
+    assert "answer_conflict_without_query_scope" not in latest_diagnostics["execution"]
+
+    dated_frame = QueryFrame(
+        question_text="Who was Aster Task assigned to on 2026-01-01?",
+        answer_type="person",
+        answer_variables=("assignee",),
+        target_anchors=("Aster Task",),
+        requested_relation="assigned to",
+        relation_terms=("assigned",),
+        constraints=("2026-01-01",),
+        temporal_scope="latest",
+    )
+    dated_answer, dated_diagnostics = execute_bounded_query(
+        store,
+        run_id,
+        documents,
+        sentences_by_document,
+        dated_frame.question_text,
+        dated_frame,
+    )
+
+    assert dated_answer is not None
+    assert dated_answer.text == "Ada Ray"
+    assert dated_answer.reason == "temporal_frame_argument_binding"
+    assert "answer_conflict_without_query_scope" not in dated_diagnostics["execution"]

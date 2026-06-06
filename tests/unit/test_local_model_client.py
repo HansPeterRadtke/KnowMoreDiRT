@@ -1934,6 +1934,94 @@ def test_compact_chunk_drs_retries_truncated_json_with_larger_budget(monkeypatch
     assert result["compact_retry_attempts"][0]["reason"] == "invalid_json"
 
 
+def test_compact_chunk_drs_materializes_model_emitted_temporal_values(monkeypatch, tmp_path) -> None:
+    class TimestampedCompactModel:
+        def context_size(self) -> int:
+            return 4096
+
+        def cache_fingerprint(self) -> dict[str, Any]:
+            return {"model_id": "fake-compact-timestamp", "context_size": 4096}
+
+        def complete_json(self, prompt: str, *, n_predict: int = 128, grammar=None, json_schema=None):
+            return {
+                "facts": [
+                    {
+                        "p": "status",
+                        "patient": "Aster Well",
+                        "value": "closed",
+                        "time": "2026-03-09",
+                        "e": "2026-03-09 status: closed for Aster Well.",
+                    }
+                ],
+                "_model_raw": "{}",
+                "_model_elapsed_seconds": 0.01,
+            }
+
+    monkeypatch.setenv("KMD_CHUNK_DRS_CACHE_DIR", str(tmp_path / "chunk-drs-cache"))
+    result = call_model_chunk_drs_compact(
+        "2026-03-09 status: closed for Aster Well.",
+        TimestampedCompactModel(),  # type: ignore[arg-type]
+        rel_path="logs/state.log",
+        n_predict=72,
+    )
+
+    assert result["accepted"] is True
+    drs = result["drs"]
+    assert drs["temporal_records"] == [
+        {"id": "t0", "value": "2026-03-09", "value_type": "timestamp", "evidence_text": "2026-03-09"}
+    ]
+    condition = drs["conditions"][0]
+    assert condition["temporal_id"] == "t0"
+    assert {
+        "role": "value",
+        "target_kind": "literal",
+        "target_id": "",
+        "value": "closed",
+        "value_type": "value",
+        "evidence_text": "closed",
+    } in condition["arguments"]
+
+
+def test_compact_chunk_drs_attaches_source_span_temporal_prefix(monkeypatch, tmp_path) -> None:
+    class UntimedCompactModel:
+        def context_size(self) -> int:
+            return 4096
+
+        def cache_fingerprint(self) -> dict[str, Any]:
+            return {"model_id": "fake-compact-source-time", "context_size": 4096}
+
+        def complete_json(self, prompt: str, *, n_predict: int = 128, grammar=None, json_schema=None):
+            return {
+                "facts": [
+                    {
+                        "p": "status",
+                        "patient": "Beryl Well",
+                        "value": "stable",
+                        "e": "status: stable for Beryl Well.",
+                    }
+                ],
+                "_model_raw": "{}",
+                "_model_elapsed_seconds": 0.01,
+            }
+
+    monkeypatch.setenv("KMD_CHUNK_DRS_CACHE_DIR", str(tmp_path / "chunk-drs-cache"))
+    result = call_model_chunk_drs_compact(
+        "2026-04-11 status: stable for Beryl Well.",
+        UntimedCompactModel(),  # type: ignore[arg-type]
+        rel_path="logs/state.log",
+        n_predict=72,
+    )
+
+    assert result["accepted"] is True
+    drs = result["drs"]
+    assert drs["temporal_records"][0]["value"] == "2026-04-11"
+    assert drs["conditions"][0]["temporal_id"] == drs["temporal_records"][0]["id"]
+    assert any(
+        argument["target_kind"] == "literal" and argument["value"] == "stable"
+        for argument in drs["conditions"][0]["arguments"]
+    )
+
+
 def test_chunk_drs_planner_repairs_model_referent_argument_records(monkeypatch, tmp_path) -> None:
     class MissingReferentModel:
         def context_size(self) -> int:
