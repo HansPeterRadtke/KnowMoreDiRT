@@ -56,6 +56,29 @@ COUNT_AGGREGATION_SKIP_TERMS = {
     "row",
     "rows",
 }
+STRUCTURAL_CHAIN_GENERIC_TERMS = {
+    *ANSWER_SLOT_SKIP_TERMS,
+    "a",
+    "an",
+    "and",
+    "argument",
+    "are",
+    "be",
+    "belongs",
+    "for",
+    "from",
+    "has",
+    "have",
+    "in",
+    "is",
+    "listed",
+    "of",
+    "the",
+    "to",
+    "was",
+    "were",
+    "with",
+}
 
 
 @lru_cache(maxsize=8192)
@@ -1990,6 +2013,158 @@ def _bind_document_scoped_label_values(
     return candidates
 
 
+def _visible_target_terms(frame: QueryFrame, question: str) -> list[str]:
+    visible = {normalize(anchor) for anchor in visible_anchors(question)}
+    values: list[str] = []
+    for anchor in frame.target_anchors:
+        norm = normalize(anchor)
+        if norm and norm in visible:
+            values.append(norm)
+            if " " in norm:
+                values.append(norm.replace(" ", "_"))
+                values.append(norm.replace(" ", "-"))
+    return list(dict.fromkeys(values))
+
+
+def _structural_chain_term_groups(
+    frame: QueryFrame,
+    target_terms: list[str],
+    visible_target_terms: list[str],
+) -> list[list[str]]:
+    visible_tokens: set[str] = set()
+    for term in visible_target_terms:
+        visible_tokens.update(content_tokens(term))
+    visible_term_set = _normalized_term_set(tuple(visible_target_terms))
+    raw_terms = [
+        *frame.relation_terms,
+        *frame.constraints,
+        *_answer_slot_terms(frame),
+        *[term for term in target_terms if normalize(term) not in visible_term_set],
+    ]
+    groups: list[list[str]] = []
+    seen: set[tuple[str, ...]] = set()
+    for term in raw_terms:
+        tokens = [
+            token
+            for token in content_tokens(term)
+            if token not in STRUCTURAL_CHAIN_GENERIC_TERMS
+            and token not in visible_tokens
+            and token not in COUNT_AGGREGATION_SKIP_TERMS
+        ]
+        for token in tokens:
+            variants = [
+                variant
+                for variant in expand_terms([token])
+                if variant and variant not in STRUCTURAL_CHAIN_GENERIC_TERMS
+            ]
+            key = tuple(sorted(variants))
+            if variants and key not in seen:
+                groups.append(variants)
+                seen.add(key)
+    return groups
+
+
+def _structural_chain_label_material(row: dict[str, Any]) -> str:
+    metadata = _relation_metadata(row)
+    return normalize(
+        " ".join(
+            str(item or "")
+            for item in [
+                row.get("subject"),
+                row.get("predicate"),
+                metadata.get("record_path"),
+                metadata.get("row_key"),
+                metadata.get("column_header"),
+                metadata.get("section_anchor"),
+            ]
+        )
+    )
+
+
+def _structural_chain_rows(records: dict[str, Any], frame: QueryFrame) -> list[tuple[dict[str, Any], Evidence, str, str, str, str]]:
+    rows: list[tuple[dict[str, Any], Evidence, str, str, str, str]] = []
+    for row in records.get("relations", []):
+        relation_type = str(row.get("relation_type") or "")
+        if relation_type not in {"label_value", "record_value", "table_cell"}:
+            continue
+        if not _relation_scope_accessible(row, records, frame):
+            continue
+        if relation_type != "label_value" and not _structured_source_row(row):
+            continue
+        value = clean_extracted_value(str(row.get("value") or row.get("object") or ""))
+        subject = clean_extracted_value(str(row.get("subject") or ""))
+        if not subject or not value:
+            continue
+        evidence = _evidence_for_span(str(row.get("source_span_id") or ""), records)
+        if _source_is_low_priority(evidence.rel_path, evidence.text) and relation_type != "label_value" and not _structured_source_row(row):
+            continue
+        label_material = _structural_chain_label_material(row)
+        local_material = _relation_local_material(row, evidence, include_evidence=False, include_context=True, records=records)
+        rows.append((row, evidence, normalize(subject), normalize(value), value, normalize(" ".join([label_material, local_material]))))
+    return rows
+
+
+def _structural_chain_group_hits(material: str, groups: list[list[str]]) -> frozenset[int]:
+    return frozenset(index for index, group in enumerate(groups) if _material_matches_term_group(material, group))
+
+
+def _structural_chain_candidates(
+    records: dict[str, Any],
+    frame: QueryFrame,
+    expected: ExpectedAnswer,
+    target_terms: list[str],
+) -> list[tuple[float, str, Evidence, str]]:
+    visible_terms = _visible_target_terms(frame, frame.question_text)
+    start_terms = visible_terms or target_terms
+    if not start_terms:
+        return []
+    groups = _structural_chain_term_groups(frame, target_terms, visible_terms)
+    if not groups:
+        return []
+    rows = _structural_chain_rows(records, frame)
+    if not rows:
+        return []
+    rows_by_document: dict[str, list[tuple[dict[str, Any], Evidence, str, str, str, str]]] = defaultdict(list)
+    for item in rows:
+        rows_by_document[str(item[0].get("document_id") or "")].append(item)
+    candidates: list[tuple[float, str, Evidence, str]] = []
+    required = frozenset(range(len(groups)))
+    max_depth = 4
+    for document_rows in rows_by_document.values():
+        for index, (_row, evidence, subject_norm, value_norm, value_text, material) in enumerate(document_rows):
+            if not any(term and _has_term(subject_norm, term) for term in start_terms):
+                continue
+            stack: list[tuple[int, str, str, frozenset[int], list[int], Evidence]] = [
+                (
+                    1,
+                    value_norm,
+                    value_text,
+                    _structural_chain_group_hits(material, groups),
+                    [index],
+                    evidence,
+                )
+            ]
+            while stack:
+                depth, current_value_norm, current_value_text, covered, path, final_evidence = stack.pop()
+                if required.issubset(covered):
+                    for value in _compatible_values(expected, [current_value_text]):
+                        if not _rejects_bound_target_value(expected, value, start_terms):
+                            score = 34.0 + len(covered) * 5.0 - max(0, depth - 1) * 1.5
+                            candidates.append((score, value, final_evidence, "structural_chain_drs_binding"))
+                if depth >= max_depth or not current_value_norm:
+                    continue
+                for next_index, (_next_row, next_evidence, next_subject, next_value_norm, next_value_text, next_material) in enumerate(document_rows):
+                    if next_index in path:
+                        continue
+                    if not _has_term(next_subject, current_value_norm):
+                        continue
+                    next_covered = frozenset([*covered, *_structural_chain_group_hits(next_material, groups)])
+                    if next_covered == covered:
+                        continue
+                    stack.append((depth + 1, next_value_norm, next_value_text, next_covered, [*path, next_index], next_evidence))
+    return candidates
+
+
 def _record_groups(records: dict[str, Any]) -> dict[str, list[dict[str, Any]]]:
     groups: dict[str, list[dict[str, Any]]] = defaultdict(list)
     for row in records.get("relations", []):
@@ -2892,6 +3067,7 @@ def execute_bounded_query(
     candidates.extend(_direct_label_slot_candidates(records, frame, expected, relation_terms, target_terms))
     candidates.extend(_relation_label_value_candidates(records, frame, expected, relation_terms, target_terms))
     candidates.extend(_bind_record_groups(records, frame, expected, target_terms, relation_terms))
+    candidates.extend(_structural_chain_candidates(records, frame, expected, target_terms))
     candidates.extend(_bind_frame_conditions(records, frame, expected, target_terms, relation_terms))
     candidates.extend(_bind_relation_conditions(records, frame, expected, target_terms, relation_terms))
     candidates.extend(_bind_document_scoped_label_values(records, frame, expected, target_terms, relation_terms))

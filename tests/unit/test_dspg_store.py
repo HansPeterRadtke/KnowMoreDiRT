@@ -7997,3 +7997,64 @@ def test_model_query_drs_answer_slot_terms_participate_in_structural_binding(tmp
     assert answer is not None
     assert answer.text == "OV-8801"
     assert answer.reason == "bounded DSPG query-frame execution"
+
+
+def test_structural_label_chain_joins_intermediate_field_values(tmp_path: Path) -> None:
+    (tmp_path / "ledger.txt").write_text(
+        "Aster Glyph handle: AG-42. "
+        "AG-42 steward: Nia Tole. "
+        "Nia Tole marker code: person_nia001122. "
+        "Pax Vale marker code: person_pax445566.",
+        encoding="utf-8",
+    )
+    engine = KnowMoreDiRTEngine(tmp_path)
+    frame = QueryFrame(
+        question_text="What marker code is listed for the steward of Aster Glyph?",
+        answer_type="identifier",
+        answer_variables=("marker code",),
+        target_anchors=("steward", "Aster Glyph"),
+        requested_relation="listed",
+        relation_terms=("listed", "marker code"),
+        constraints=(),
+    )
+
+    answer = engine._answer_with_bounded_dspg(
+        frame.question_text,
+        frame,
+        ExpectedAnswer("identifier"),
+    )
+
+    assert answer is not None
+    assert answer.text == "person_nia001122"
+    assert answer.reason == "bounded DSPG query-frame execution"
+
+
+def test_structural_label_chain_uses_query_selected_intermediate_slot(tmp_path: Path) -> None:
+    (tmp_path / "crosswalk.txt").write_text(
+        "Cedar Widget relay: CW-19. "
+        "Cedar Widget auditor: Ria Pell. "
+        "CW-19 steward: Lio Voss. "
+        "Ria Pell marker code: person_ria889900. "
+        "Lio Voss marker code: person_lio334455.",
+        encoding="utf-8",
+    )
+    engine = KnowMoreDiRTEngine(tmp_path)
+    frame = QueryFrame(
+        question_text="What marker code is listed for the steward of Cedar Widget?",
+        answer_type="identifier",
+        answer_variables=("marker code",),
+        target_anchors=("steward", "Cedar Widget"),
+        requested_relation="listed",
+        relation_terms=("listed", "marker code"),
+        constraints=(),
+    )
+
+    answer = engine._answer_with_bounded_dspg(
+        frame.question_text,
+        frame,
+        ExpectedAnswer("identifier"),
+    )
+
+    assert answer is not None
+    assert answer.text == "person_lio334455"
+    assert answer.reason == "bounded DSPG query-frame execution"
