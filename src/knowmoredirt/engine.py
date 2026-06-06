@@ -48,6 +48,14 @@ from .text import clean_extracted_value, content_tokens, is_low_semantic_noise, 
 
 
 PROGRESS_TRUE_VALUES = {"1", "true", "yes", "on"}
+TRUSTED_STRUCTURAL_BINDING_REASONS = {
+    "direct_label_slot_binding",
+    "document_scoped_label_binding",
+    "record_group_drs_binding",
+    "relation_label_value_binding",
+    "structural_chain_drs_binding",
+}
+TRUSTED_STRUCTURAL_ANSWER_TYPES = {"url", "identifier", "file_path", "date_time"}
 
 
 def _env_true(name: str) -> bool:
@@ -864,6 +872,11 @@ class KnowMoreDiRTEngine:
                 answer.reason = "local model DRS query-frame execution"
                 self._attach_model_answer_provenance(answer)
                 return answer
+            elif self._trusted_exact_structural_bounded_answer(answer, expected):
+                trace.model_answer_count += 1
+                answer.reason = "local model exact structural query-frame execution"
+                self._attach_model_answer_provenance(answer)
+                return answer
         if answer and normalize(answer.text) != "unknown":
             if self._verify_with_local_model(question, planned_frame, answer, expected):
                 trace.model_answer_count += 1
@@ -906,6 +919,25 @@ class KnowMoreDiRTEngine:
             if row is not None:
                 return True
         return False
+
+    def _trusted_exact_structural_bounded_answer(self, answer: Answer, expected: ExpectedAnswer) -> bool:
+        if expected.answer_type not in TRUSTED_STRUCTURAL_ANSWER_TYPES:
+            return False
+        if answer.reason != "bounded DSPG query-frame execution":
+            return False
+        if not self._answer_has_source_grounding(answer):
+            return False
+        if not canonicalize_answer(expected, answer.text):
+            return False
+        diagnostics = self.last_bounded_diagnostics if isinstance(self.last_bounded_diagnostics, dict) else {}
+        execution = diagnostics.get("execution") if isinstance(diagnostics.get("execution"), dict) else {}
+        if not isinstance(execution, dict):
+            return False
+        binding_reason = str(execution.get("answer_binding_reason") or "")
+        if binding_reason not in TRUSTED_STRUCTURAL_BINDING_REASONS:
+            return False
+        provenance = execution.get("answer_source_provenance")
+        return isinstance(provenance, list) and bool(provenance)
 
     def _bounded_conflict_blocks_model_evidence_fallback(self) -> bool:
         diagnostics = self.last_bounded_diagnostics if isinstance(self.last_bounded_diagnostics, dict) else {}

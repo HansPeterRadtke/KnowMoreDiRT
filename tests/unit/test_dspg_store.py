@@ -22,6 +22,7 @@ from knowmoredirt.engine import KnowMoreDiRTEngine
 from knowmoredirt.ingest import ingest_folder
 from knowmoredirt.models import Answer, Evidence, Sentence
 from knowmoredirt.query import QueryFrame, term_variants
+from knowmoredirt.relations import extract_relations
 from knowmoredirt.store import DSPGStore, stable_id
 
 from conftest import FIXTURE_ROOT
@@ -7395,6 +7396,122 @@ def test_count_aggregation_ignores_query_unit_terms_for_record_groups(tmp_path: 
     assert answer.text == "2"
     assert answer.reason == "record-group aggregation DRS binding"
     assert "no_answer_reason" not in diagnostics["execution"]
+
+
+def test_record_value_dedupe_preserves_repeated_values_in_distinct_object_groups() -> None:
+    relations = extract_relations(
+        '[{ item: "Shared Widget", reviewer: "Ada Vale" }, '
+        '{ item: "Shared Widget", approver: "Ben Vale" }]'
+    )
+    item_rows = [
+        relation
+        for relation in relations
+        if relation.relation_type == "record_value"
+        and relation.subject == "item"
+        and relation.value == "Shared Widget"
+    ]
+
+    assert len(item_rows) == 2
+    assert len({row.metadata.get("record_group") for row in item_rows}) == 2
+
+
+def test_count_aggregation_counts_object_records_not_summary_mentions(tmp_path: Path) -> None:
+    (tmp_path / "object_rows.raw").write_text(
+        "\n".join(
+            [
+                'group: "Aster Set"',
+                "records: [",
+                '{ name: "Aster One", state: "ready", link: "https://example.test/one" }',
+                '{ name: "Aster Two", state: "paused", link: "https://example.test/two" }',
+                '{ name: "Aster Three", state: "ready", link: "https://example.test/three" }',
+                "]",
+                'summary: "Only ready records move forward."',
+            ]
+        ),
+        encoding="utf-8",
+    )
+    store, run_id, documents, sentences = ingest_folder(tmp_path)
+    sentences_by_document: dict[str, dict[int, object]] = {}
+    for sentence in sentences:
+        sentences_by_document.setdefault(sentence.rel_path, {})[sentence.order] = sentence
+    frame = QueryFrame(
+        question_text="How many Aster records are ready?",
+        answer_type="count",
+        answer_variables=("Aster records",),
+        target_anchors=("Aster records", "Aster"),
+        requested_relation="are ready",
+        relation_terms=("ready",),
+        constraints=(),
+        aggregation="count",
+    )
+
+    answer, diagnostics = execute_bounded_query(
+        store,
+        run_id,
+        documents,
+        sentences_by_document,  # type: ignore[arg-type]
+        frame.question_text,
+        frame,
+    )
+
+    assert answer is not None
+    assert answer.text == "2"
+    assert answer.reason == "record-group aggregation DRS binding"
+    assert "no_answer_reason" not in diagnostics["execution"]
+
+
+def test_object_group_binding_uses_repeated_target_inside_second_object(tmp_path: Path) -> None:
+    (tmp_path / "objects.dump").write_text(
+        '[{ item: "Shared Widget", reviewer: "Ada Vale" }, '
+        '{ item: "Shared Widget", approver: "Ben Vale" }]',
+        encoding="utf-8",
+    )
+    (tmp_path / "unrelated.note").write_text(
+        "approval: Cara Vale\n"
+        "This source does not mention the shared widget.",
+        encoding="utf-8",
+    )
+    engine = KnowMoreDiRTEngine(tmp_path)
+    frame = QueryFrame(
+        question_text="Who approved Shared Widget?",
+        answer_type="person",
+        answer_variables=("Who",),
+        target_anchors=("Shared Widget",),
+        requested_relation="approved",
+        relation_terms=("approved", "approve", "approv"),
+        constraints=(),
+    )
+
+    answer = engine._answer_with_bounded_dspg(frame.question_text, frame, ExpectedAnswer("person"))
+
+    assert answer is not None
+    assert answer.text == "Ben Vale"
+
+
+def test_exact_structural_url_binding_can_bypass_verifier(tmp_path: Path) -> None:
+    (tmp_path / "source.txt").write_text("report: https://example.test/report", encoding="utf-8")
+    engine = KnowMoreDiRTEngine(tmp_path)
+    engine.last_bounded_diagnostics = {
+        "execution": {
+            "answer_binding_reason": "record_group_drs_binding",
+            "answer_source_provenance": [
+                {
+                    "rel_path": "source.txt",
+                    "text": "report: https://example.test/report",
+                }
+            ],
+        }
+    }
+    answer = Answer(
+        "https://example.test/report",
+        0.9,
+        [Evidence("source.txt", "report: https://example.test/report")],
+        "bounded DSPG query-frame execution",
+        "url",
+    )
+
+    assert engine._trusted_exact_structural_bounded_answer(answer, ExpectedAnswer("url"))
+    assert not engine._trusted_exact_structural_bounded_answer(answer, ExpectedAnswer("content_phrase"))
 
 
 def test_row_count_aggregation_excludes_non_table_state_mentions(tmp_path: Path) -> None:

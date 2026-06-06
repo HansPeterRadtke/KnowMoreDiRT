@@ -235,7 +235,7 @@ def _extract_table_row_relations(text: str) -> list[ExtractedRelation]:
 
 
 def _dedupe(relations: list[ExtractedRelation]) -> list[ExtractedRelation]:
-    seen: set[tuple[str, str, str, str, str]] = set()
+    seen: set[tuple[str, str, str, str, str, str, str, str, str]] = set()
     unique: list[ExtractedRelation] = []
     for relation in relations:
         key = (
@@ -244,6 +244,10 @@ def _dedupe(relations: list[ExtractedRelation]) -> list[ExtractedRelation]:
             normalize(relation.subject),
             normalize(relation.object),
             normalize(relation.value),
+            normalize(str(relation.metadata.get("record_group") or "")),
+            normalize(str(relation.metadata.get("record_path") or "")),
+            normalize(str(relation.metadata.get("row_key") or "")),
+            normalize(str(relation.metadata.get("column_header") or "")),
         )
         if key not in seen:
             seen.add(key)

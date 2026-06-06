@@ -1346,9 +1346,12 @@ def _attach_answer_provenance(
 ) -> None:
     if answer is None:
         return
+    execution = diagnostics.setdefault("execution", {})
+    execution["answer_binding_reason"] = answer.reason
+    execution["answer_binding_type"] = answer.answer_type
     provenance = _answer_source_provenance_sample(answer, records)
     if provenance:
-        diagnostics.setdefault("execution", {})["answer_source_provenance"] = provenance
+        execution["answer_source_provenance"] = provenance
 
 
 def _metadata_evidence(record: dict[str, Any], records: dict[str, Any]) -> Evidence:
@@ -2278,12 +2281,18 @@ def _group_material(
     records: dict[str, Any],
     *,
     include_document_context: bool = False,
+    include_source_evidence: bool = True,
 ) -> str:
     parts: list[str] = []
     context_rel_paths: set[str] = set()
     for row in rows:
         evidence = _evidence_for_span(str(row.get("source_span_id") or ""), records)
-        parts.append(_relation_local_material(row, evidence, include_evidence=True))
+        if include_source_evidence:
+            parts.append(_relation_local_material(row, evidence, include_evidence=True))
+        else:
+            parts.append(_relation_local_material(row, evidence, include_evidence=False))
+            if _structured_source_row(row) and evidence.rel_path:
+                parts.append(evidence.rel_path)
         if include_document_context and evidence.rel_path not in context_rel_paths:
             context_rel_paths.add(evidence.rel_path)
             parts.append((records.get("document_context_norm_by_rel_path") or {}).get(evidence.rel_path, ""))
@@ -2311,7 +2320,8 @@ def _bind_record_groups(
     for _group_id, rows in _record_groups(records).items():
         if not rows:
             continue
-        group_material = _group_material(rows, records)
+        structured_group = _rows_are_countable_structured_units(rows)
+        group_material = _group_material(rows, records, include_source_evidence=not structured_group)
         if target_terms and not _contains_any(group_material, target_terms):
             continue
         group_relation_hits = sum(1 for term in relation_terms if _has_term(group_material, term))
@@ -2489,7 +2499,7 @@ def _row_local_count_match_rel_paths(
             if not span_rows or not _rows_are_countable_structured_units(span_rows):
                 continue
             evidence = _evidence_for_span(span_id, records)
-            local_material = _group_material(span_rows, records)
+            local_material = _group_material(span_rows, records, include_source_evidence=False)
             if target_terms and _contains_any(local_material, target_terms):
                 target_rel_paths.add(evidence.rel_path)
             for index, group in enumerate(required_relation_groups):
@@ -2512,7 +2522,7 @@ def _count_matching_record_groups(
         required_relation_groups,
     )
     countable_rel_paths = _countable_structured_rel_paths(records)
-    require_table_row = _frame_requests_row_units(frame)
+    require_structured_unit = _frame_requests_row_units(frame)
     matched: list[tuple[str, Evidence]] = []
     for group_id, rows in groups.items():
         accessible_rows = [
@@ -2526,19 +2536,19 @@ def _count_matching_record_groups(
         for span_id, span_rows in rows_by_span.items():
             if not span_rows:
                 continue
-            if require_table_row and not _rows_are_table_like(span_rows):
+            if require_structured_unit and not _rows_are_countable_structured_units(span_rows):
                 continue
             evidence = _evidence_for_span(span_id, records)
             if evidence.rel_path in countable_rel_paths and not _rows_are_countable_structured_units(span_rows):
                 continue
             if _source_is_low_priority(evidence.rel_path, evidence.text) and not any(_structured_source_row(row) for row in span_rows):
                 continue
-            span_material = _group_material(span_rows, records)
+            span_material = _group_material(span_rows, records, include_source_evidence=False)
             scoped_material = ""
             if target_terms and not _contains_any(span_material, target_terms):
                 if evidence.rel_path in target_row_local_rel_paths:
                     continue
-                scoped_material = _group_material(span_rows, records, include_document_context=True)
+                scoped_material = _group_material(span_rows, records, include_document_context=True, include_source_evidence=False)
                 if not _contains_any(scoped_material, target_terms):
                     continue
             group_failed = False
@@ -2549,7 +2559,7 @@ def _count_matching_record_groups(
                     group_failed = True
                     break
                 if not scoped_material:
-                    scoped_material = _group_material(span_rows, records, include_document_context=True)
+                    scoped_material = _group_material(span_rows, records, include_document_context=True, include_source_evidence=False)
                 if not _material_matches_term_group(scoped_material, group):
                     group_failed = True
                     break
@@ -3168,6 +3178,8 @@ def _relation_label_value_candidates(
             if label_material and not _answer_slot_label_matches(label_material, answer_slot_terms, target_terms):
                 continue
         material = _relation_local_material(row, evidence, include_evidence=True, include_context=True, records=records)
+        if target_terms and not _contains_any(material, target_terms):
+            continue
         if strong_signal and not _contains_any(material, strong_signal):
             continue
         if not _contains_any(material, relation_signal):
