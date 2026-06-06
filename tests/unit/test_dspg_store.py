@@ -20,7 +20,7 @@ from knowmoredirt.bounded_dspg import (
 )
 from knowmoredirt.engine import KnowMoreDiRTEngine
 from knowmoredirt.ingest import ingest_folder
-from knowmoredirt.models import Answer, Evidence
+from knowmoredirt.models import Answer, Evidence, Sentence
 from knowmoredirt.query import QueryFrame, term_variants
 from knowmoredirt.store import DSPGStore, stable_id
 
@@ -88,6 +88,81 @@ def test_context_requirement_matching_uses_morphology_variants() -> None:
     assert _terms_match_material(["report"], "drs:reported observer")
     assert _terms_match_material(["believe"], "drs:believed Kalo Reed")
     assert term_variants("state") == {"state"}
+
+
+def test_source_anchor_provenance_reranks_structural_url_conflicts(tmp_path: Path) -> None:
+    (tmp_path / "records").mkdir()
+    (tmp_path / "scratch").mkdir()
+    (tmp_path / "records" / "alpha_node.txt").write_text(
+        "Record: Alpha Node.\nGuide URL: https://good.example.test/alpha-node\n",
+        encoding="utf-8",
+    )
+    (tmp_path / "scratch" / "incidental.tmp").write_text(
+        "Alpha Node guide URL: https://bad.example.test/alpha-node\n",
+        encoding="utf-8",
+    )
+    store, run_id, documents, sentences = ingest_folder(tmp_path)
+    sentences_by_document: dict[str, dict[int, Sentence]] = {}
+    for sentence in sentences:
+        sentences_by_document.setdefault(sentence.rel_path, {})[sentence.order] = sentence
+    frame = QueryFrame(
+        question_text="Which guide URL belongs to Alpha Node?",
+        answer_type="url",
+        answer_variables=("guide URL",),
+        target_anchors=("Alpha Node",),
+        requested_relation="belongs to",
+        relation_terms=("belongs to", "guide URL", "url"),
+        constraints=(),
+    )
+
+    answer, diagnostics = execute_bounded_query(
+        store,
+        run_id,
+        documents,
+        sentences_by_document,
+        frame.question_text,
+        frame,
+    )
+
+    assert answer is not None
+    assert answer.text == "https://good.example.test/alpha-node"
+    assert "answer_conflict_without_query_scope" not in diagnostics["execution"]
+
+
+def test_compound_answer_slot_selects_matching_structural_field(tmp_path: Path) -> None:
+    (tmp_path / "records").mkdir()
+    (tmp_path / "records" / "alpha_node.txt").write_text(
+        "Record: Alpha Node.\n"
+        "Primary URL: https://primary.example.test/alpha-node\n"
+        "Backup URL: https://backup.example.test/alpha-node\n",
+        encoding="utf-8",
+    )
+    store, run_id, documents, sentences = ingest_folder(tmp_path)
+    sentences_by_document: dict[str, dict[int, Sentence]] = {}
+    for sentence in sentences:
+        sentences_by_document.setdefault(sentence.rel_path, {})[sentence.order] = sentence
+    frame = QueryFrame(
+        question_text="Which primary URL belongs to Alpha Node?",
+        answer_type="url",
+        answer_variables=("primary URL",),
+        target_anchors=("Alpha Node",),
+        requested_relation="belongs to",
+        relation_terms=("belongs to", "primary URL", "url"),
+        constraints=(),
+    )
+
+    answer, diagnostics = execute_bounded_query(
+        store,
+        run_id,
+        documents,
+        sentences_by_document,
+        frame.question_text,
+        frame,
+    )
+
+    assert answer is not None
+    assert answer.text == "https://primary.example.test/alpha-node"
+    assert "answer_conflict_without_query_scope" not in diagnostics["execution"]
 
 
 def test_engine_exposes_internal_dspg_counts_for_diagnostics_only() -> None:

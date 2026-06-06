@@ -57,6 +57,60 @@ DRS_CONTEXT_KINDS = {
 }
 DRS_POLARITIES = {"positive", "negative", "unknown"}
 DRS_IDENTITY_STATUSES = {"accepted", "candidate", "rejected", "ambiguous"}
+QUERY_SLOT_GENERIC_TERMS = {
+    "actor",
+    "answer",
+    "code",
+    "content",
+    "count",
+    "date",
+    "entity",
+    "file",
+    "identifier",
+    "id",
+    "item",
+    "link",
+    "metadata",
+    "number",
+    "organization",
+    "path",
+    "person",
+    "state",
+    "status",
+    "time",
+    "unknown",
+    "url",
+    "value",
+}
+QUERY_QUESTION_COVERAGE_SKIP_TERMS = {
+    "a",
+    "an",
+    "and",
+    "are",
+    "by",
+    "did",
+    "do",
+    "does",
+    "for",
+    "from",
+    "how",
+    "in",
+    "is",
+    "of",
+    "on",
+    "or",
+    "the",
+    "to",
+    "was",
+    "were",
+    "what",
+    "when",
+    "where",
+    "which",
+    "who",
+    "why",
+    "with",
+}
 
 PROMPT_VERSION = "kmd-drt-2026-05-28-v35"
 CHUNK_FRAME_SCHEMA_VERSION = "chunk-frames-v5"
@@ -86,7 +140,8 @@ QUERY_DRS_SCHEMA_VERSION = "query-drs-v3"
 QUERY_DRS_VALIDATION_POLICY = "strict-query-drs-version-question-evidence-box-dag-repair-operators-v10"
 QUERY_DRS_ARRAY_CAP_POLICY = "reserved_output_tokens_div_96_4_8-v1"
 QUERY_DRS_DYNAMIC_OUTPUT_BUDGET_POLICY = "surface-token-budget-short384-mid512-long-context-v1"
-QUERY_DRS_COMPACT_PLAN_POLICY = "compact-model-plan-to-query-drs-v1"
+QUERY_DRS_COMPACT_PLAN_POLICY = "compact-model-plan-to-query-drs-v2"
+QUERY_DRS_COMPACT_UNDERCOVERAGE_POLICY = "broad-slot-uncovered-token-full-fallback-v1"
 QUERY_DRS_REQUEST_FAILURE_RETRY_POLICY = "smaller-full-query-drs-output-budget-v1"
 QUERY_OPERATOR_SCHEMA_POLICY = "query-temporal-aggregation-operator-enums-v1"
 QUERY_FRAME_SCHEMA_VERSION = "query-frame-v6"
@@ -1724,7 +1779,9 @@ def build_query_drs_prompt(question: str) -> str:
         "content. If a requested condition is in the main asserted query scope and no explicit box_requirement is "
         "needed, set its box_id to the empty string; do not invent a box id without declaring that box. "
         "Declare answer variables as objects with stable local ids such as qv0, a short label for the requested "
-        "answer variable, a broad answer_type, and evidence_text copied exactly from the question. Put visible "
+        "answer variable, a broad answer_type, and evidence_text copied exactly from the question. The label must "
+        "preserve visible modifiers that distinguish the requested slot from neighboring slots; do not reduce it "
+        "to only a broad type word when the question includes a narrower phrase. Put visible "
         "non-answer discourse anchors that the requested condition is about into target_referents, including named "
         "and common-noun anchors, and put visible temporal phrases into "
         "temporal_records with ids such as qt0. Make condition arguments point to those ids when they are the same "
@@ -1750,7 +1807,8 @@ def build_compact_query_drs_prompt(question: str) -> str:
         "Output exactly one object with keys a, answer, targets, predicates, constraints, temporal_scope, aggregation. "
         "a is one broad answer type: person, actor, organization, identifier, url, file_path, count, state, "
         "date_time, boolean, content_phrase, metadata_value, or unknown. answer is the visible question word or "
-        "answer slot phrase. targets are non-answer noun phrases the answer is about, excluding verbs. predicates "
+        "answer slot phrase; preserve visible modifiers that distinguish the slot, instead of only the broad type "
+        "word, when a narrower phrase appears. targets are non-answer noun phrases the answer is about, excluding verbs. predicates "
         "are verbs or relation words requested by the question. constraints are other visible qualifiers. "
         "temporal_scope is '', 'latest', or 'earliest'. aggregation is '', 'count', 'list', or 'set'. "
         "Use only words visible in the question and no outside knowledge. "
@@ -1862,6 +1920,46 @@ def _compact_query_drs_to_payload(question: str, compact: dict[str, Any]) -> dic
             "requires_evidence": True,
         }
     }
+
+
+def _compact_query_drs_answer_slot_undercovered(question: str, payload: dict[str, Any]) -> bool:
+    query_drs = payload.get("query_drs") if isinstance(payload.get("query_drs"), dict) else {}
+    answer_variables = query_drs.get("answer_variables") if isinstance(query_drs, dict) else []
+    if not isinstance(answer_variables, list):
+        return False
+    answer_tokens: set[str] = set()
+    generic_answer = False
+    for variable in answer_variables:
+        if not isinstance(variable, dict):
+            continue
+        label_tokens = set(content_tokens(str(variable.get("label") or "")))
+        evidence_tokens = set(content_tokens(str(variable.get("evidence_text") or "")))
+        tokens = label_tokens or evidence_tokens
+        answer_tokens.update(tokens)
+        answer_type = normalize(str(variable.get("answer_type") or ""))
+        if len(tokens) <= 1 and ((tokens and next(iter(tokens)) in QUERY_SLOT_GENERIC_TERMS) or answer_type in QUERY_SLOT_GENERIC_TERMS):
+            generic_answer = True
+    if not generic_answer:
+        return False
+    covered = set(answer_tokens) | QUERY_QUESTION_COVERAGE_SKIP_TERMS
+    for item in query_drs.get("target_referents") or []:
+        if isinstance(item, dict):
+            covered.update(content_tokens(str(item.get("label") or "")))
+            covered.update(content_tokens(str(item.get("evidence_text") or "")))
+    for condition in query_drs.get("requested_conditions") or []:
+        if not isinstance(condition, dict):
+            continue
+        covered.update(content_tokens(str(condition.get("predicate") or "")))
+        for argument in condition.get("arguments") or []:
+            if not isinstance(argument, dict):
+                continue
+            covered.update(content_tokens(str(argument.get("role") or "")))
+            if str(argument.get("target_kind") or "") != "answer_variable":
+                covered.update(content_tokens(str(argument.get("value") or "")))
+                covered.update(content_tokens(str(argument.get("evidence_text") or "")))
+    for value in query_drs.get("constraints") or []:
+        covered.update(content_tokens(str(value or "")))
+    return any(token not in covered for token in content_tokens(question))
 
 
 def call_model_query_drs_compact(question: str, client: LocalModelClient, *, n_predict: int | None = None) -> dict[str, Any]:
@@ -2447,6 +2545,20 @@ def call_model_query_drs(question: str, client: LocalModelClient, *, n_predict: 
     ):
         compact = call_model_query_drs_compact(question, client)
         if compact.get("accepted"):
+            if _compact_query_drs_answer_slot_undercovered(question, compact):
+                fallback_n_predict = default_query_drs_n_predict(client, question) if n_predict is None else n_predict
+                full = _call_model_query_drs_full_once(question, client, n_predict=fallback_n_predict)
+                fallback_attempt = {
+                    "policy": QUERY_DRS_COMPACT_UNDERCOVERAGE_POLICY,
+                    "compact_prompt_hash": compact.get("prompt_hash"),
+                    "full_prompt_hash": full.get("prompt_hash"),
+                    "full_reason": full.get("reason"),
+                    "full_accepted": bool(full.get("accepted")),
+                }
+                if full.get("accepted"):
+                    full["compact_fallback_attempt"] = fallback_attempt
+                    return full
+                compact["compact_fallback_attempt"] = fallback_attempt
             return compact
     if n_predict is None:
         n_predict = default_query_drs_n_predict(client, question)

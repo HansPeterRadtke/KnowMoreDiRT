@@ -178,6 +178,59 @@ def _answer_slot_terms(frame: QueryFrame) -> list[str]:
     return list(dict.fromkeys(term for term in expand_terms(terms) if term))
 
 
+def _target_token_variants(target_terms: list[str] | None) -> set[str]:
+    variants: set[str] = set()
+    for term in target_terms or []:
+        for token in content_tokens(term):
+            variants.update(expand_terms([token]))
+    return variants
+
+
+def _answer_slot_constraints(
+    answer_slot_terms: list[str],
+    target_terms: list[str] | None = None,
+) -> list[tuple[str, tuple[str, ...]]]:
+    target_tokens = _target_token_variants(target_terms)
+    constraints: list[tuple[str, tuple[str, ...]]] = []
+    for term in answer_slot_terms:
+        tokens: list[str] = []
+        for token in content_tokens(term):
+            if token in ANSWER_SLOT_SKIP_TERMS:
+                continue
+            token_variants = expand_terms([token])
+            if target_tokens and any(variant in target_tokens for variant in token_variants):
+                continue
+            if token not in tokens:
+                tokens.append(token)
+        if 1 < len(tokens) <= 4:
+            constraints.append((normalize(term), tuple(tokens)))
+    return constraints
+
+
+def _slot_token_matches(label_material: str, token: str) -> bool:
+    return any(_has_term(label_material, variant) for variant in expand_terms([token]))
+
+
+def _answer_slot_label_matches(
+    label_material: str,
+    answer_slot_terms: list[str],
+    target_terms: list[str] | None = None,
+) -> bool:
+    material = normalize(label_material)
+    if not material or not answer_slot_terms:
+        return False
+    constraints = _answer_slot_constraints(answer_slot_terms, target_terms)
+    if constraints:
+        material_tokens = _normalized_token_set(material)
+        for term, tokens in constraints:
+            if term and _has_term(material, term):
+                return True
+            if all(token in material_tokens or _slot_token_matches(material, token) for token in tokens):
+                return True
+        return False
+    return _contains_any(material, answer_slot_terms)
+
+
 def _count_answer_unit_tokens(frame: QueryFrame) -> set[str]:
     requested_tokens = set(content_tokens(frame.requested_relation))
     unit_tokens: list[str] = []
@@ -1463,6 +1516,7 @@ def _matching_structural_label_values(
     value: str,
     relation_terms: list[str],
     answer_slot_terms: list[str] | None = None,
+    target_terms: list[str] | None = None,
 ) -> list[str]:
     text = clean_extracted_value(value)
     if not text:
@@ -1475,10 +1529,46 @@ def _matching_structural_label_values(
     answer_text = clean_extracted_value(rest)
     if not label_material or not answer_text:
         return []
-    terms = list(dict.fromkeys([*relation_terms, *(answer_slot_terms or [])]))
-    if terms and not _contains_any(label_material, terms):
-        return []
+    if answer_slot_terms and _answer_slot_constraints(answer_slot_terms, target_terms):
+        if not _answer_slot_label_matches(label_material, answer_slot_terms, target_terms):
+            return []
+    else:
+        terms = list(dict.fromkeys([*relation_terms, *(answer_slot_terms or [])]))
+        if terms and not _contains_any(label_material, terms):
+            return []
     return [answer_text]
+
+
+def _row_slot_label_material(row: dict[str, Any]) -> str:
+    metadata = _relation_metadata(row)
+    return normalize(
+        " ".join(
+            str(item or "")
+            for item in [
+                row.get("subject"),
+                row.get("predicate"),
+                metadata.get("column_header"),
+                metadata.get("section_anchor"),
+                metadata.get("record_path"),
+            ]
+        )
+    )
+
+
+def _structured_row_matches_answer_slot(
+    row: dict[str, Any],
+    answer_slot_terms: list[str] | None,
+    target_terms: list[str] | None,
+) -> bool:
+    if not answer_slot_terms or not _answer_slot_constraints(answer_slot_terms, target_terms):
+        return True
+    relation_type = str(row.get("relation_type") or "")
+    if relation_type not in {"label_value", "record_value", "table_cell"}:
+        return True
+    label_material = _row_slot_label_material(row)
+    if not label_material:
+        return True
+    return _answer_slot_label_matches(label_material, answer_slot_terms, target_terms)
 
 
 def _value_is_target(value: str, target_terms: list[str]) -> bool:
@@ -1579,6 +1669,8 @@ def _answer_values_from_relation(
     answer_slot_terms: list[str] | None = None,
 ) -> list[str]:
     relation_type = str(row.get("relation_type") or "")
+    if not _structured_row_matches_answer_slot(row, answer_slot_terms, target_terms):
+        return []
     if relation_type == "semantic_argument" and answer_slot_terms:
         metadata = _relation_metadata(row)
         slot_material = normalize(
@@ -1612,7 +1704,7 @@ def _answer_values_from_relation(
     label_values = [
         split_value
         for value in [*primary_values, *fallback_values]
-        for split_value in _matching_structural_label_values(value, relation_terms, answer_slot_terms)
+        for split_value in _matching_structural_label_values(value, relation_terms, answer_slot_terms, target_terms)
     ]
     if label_values:
         primary_values = label_values
@@ -2347,7 +2439,32 @@ def _temporal_relation_candidates(
     return candidates
 
 
-def _choice_score(score: float, reason: str, expected: ExpectedAnswer) -> float:
+def _source_anchor_match_bonus(evidence: Evidence | None, target_terms: list[str] | None) -> float:
+    if evidence is None or not target_terms:
+        return 0.0
+    source_material = normalize(evidence.rel_path)
+    if not source_material:
+        return 0.0
+    strong_terms = [
+        term
+        for term in target_terms
+        if term and (len(_normalized_token_set(term)) >= 2 or any(separator in term for separator in "_-/."))
+    ]
+    hits = sum(1 for term in strong_terms if _has_term(source_material, term))
+    if hits <= 0:
+        return 0.0
+    # Source-local records are often named for the object they describe.  Treat a
+    # path/stem anchor match as provenance, not as semantics, and cap its impact.
+    return min(24.0, 14.0 + hits * 6.0)
+
+
+def _choice_score(
+    score: float,
+    reason: str,
+    expected: ExpectedAnswer,
+    evidence: Evidence | None = None,
+    target_terms: list[str] | None = None,
+) -> float:
     if reason == "direct_label_slot_binding":
         score += 45.0
     if reason == "relation_label_value_binding":
@@ -2356,16 +2473,21 @@ def _choice_score(score: float, reason: str, expected: ExpectedAnswer) -> float:
         score += 3.0
     if reason == "relation_condition_binding" and expected.answer_type in {"content_phrase", "unknown"}:
         score += 7.0
+    score += _source_anchor_match_bonus(evidence, target_terms)
     return score
 
 
-def _choose_answer(candidates: list[tuple[float, str, Evidence, str]], expected: ExpectedAnswer) -> Answer | None:
+def _choose_answer(
+    candidates: list[tuple[float, str, Evidence, str]],
+    expected: ExpectedAnswer,
+    target_terms: list[str] | None = None,
+) -> Answer | None:
     scored: dict[str, tuple[float, list[Evidence], str]] = {}
     for score, value, evidence, reason in candidates:
         canonical = canonicalize_answer(expected, value)
         if not canonical:
             continue
-        score = _choice_score(score, reason, expected)
+        score = _choice_score(score, reason, expected, evidence, target_terms)
         previous = scored.get(canonical)
         if previous is None:
             scored[canonical] = (score, [evidence], reason)
@@ -2397,7 +2519,7 @@ def _answer_conflict_diagnostics(
         if not canonical:
             continue
         bucket = buckets.setdefault(canonical, {"score": 0.0, "evidence": [], "reasons": set()})
-        bucket["score"] = float(bucket["score"]) + _choice_score(score, reason, expected)
+        bucket["score"] = float(bucket["score"]) + _choice_score(score, reason, expected, evidence, target_terms)
         bucket["reasons"].add(reason)
         if len(bucket["evidence"]) < 4:
             bucket["evidence"].append(evidence)
@@ -2409,6 +2531,8 @@ def _answer_conflict_diagnostics(
     top_score = float(top_bucket["score"])
     next_score = float(next_bucket["score"])
     if top_score <= 0.0 or next_score < top_score * 0.85:
+        return None
+    if top_score - next_score >= max(10.0, top_score * 0.05):
         return None
 
     def target_coverage(bucket: dict[str, Any]) -> int:
@@ -2501,7 +2625,7 @@ def _has_unscoped_temporal_ambiguity(
             canonical = canonicalize_answer(expected, value)
             if not canonical:
                 continue
-            choice = _choice_score(score, reason, expected)
+            choice = _choice_score(score, reason, expected, _evidence, None)
             prev = scored.get(canonical)
             if prev and prev[1] == "direct_label_slot_binding":
                 merged_reason = prev[1]
@@ -2595,6 +2719,7 @@ def _direct_label_slot_candidates(
     frame: QueryFrame,
     expected: ExpectedAnswer,
     relation_terms: list[str],
+    target_terms: list[str],
 ) -> list[tuple[float, str, Evidence, str]]:
     answer_slot_terms = _answer_slot_terms(frame)
     if not answer_slot_terms:
@@ -2609,7 +2734,7 @@ def _direct_label_slot_candidates(
         evidence = _evidence_for_span(str(row.get("source_span_id") or ""), records)
         metadata = _relation_metadata(row)
         label_material = normalize(" ".join([str(row.get("subject") or ""), str(metadata.get("section_anchor") or "")]))
-        if not _contains_any(label_material, answer_slot_terms):
+        if not _answer_slot_label_matches(label_material, answer_slot_terms, target_terms):
             continue
         value = str(row.get("value") or row.get("object") or "")
         values = _person_values_from_relation_text(value, expected) or _compatible_values(expected, [value])
@@ -2623,8 +2748,10 @@ def _relation_label_value_candidates(
     frame: QueryFrame,
     expected: ExpectedAnswer,
     relation_terms: list[str],
+    target_terms: list[str],
 ) -> list[tuple[float, str, Evidence, str]]:
     candidates: list[tuple[float, str, Evidence, str]] = []
+    answer_slot_terms = _answer_slot_terms(frame)
     generic = {"is", "are", "was", "were", "answer", "argument", "who", "what", "which", "where"}
     relation_signal = [term for term in relation_terms if normalize(term) not in generic]
     strong_signal = [*content_tokens(frame.requested_relation)]
@@ -2641,6 +2768,10 @@ def _relation_label_value_candidates(
         if not _relation_scope_accessible(row, records, frame):
             continue
         evidence = _evidence_for_span(str(row.get("source_span_id") or ""), records)
+        if answer_slot_terms and _answer_slot_constraints(answer_slot_terms, target_terms):
+            label_material = _row_slot_label_material(row)
+            if label_material and not _answer_slot_label_matches(label_material, answer_slot_terms, target_terms):
+                continue
         material = _relation_local_material(row, evidence, include_evidence=True, include_context=True, records=records)
         if strong_signal and not _contains_any(material, strong_signal):
             continue
@@ -2758,8 +2889,8 @@ def execute_bounded_query(
         return arithmetic_answer, diagnostics
 
     candidates: list[tuple[float, str, Evidence, str]] = []
-    candidates.extend(_direct_label_slot_candidates(records, frame, expected, relation_terms))
-    candidates.extend(_relation_label_value_candidates(records, frame, expected, relation_terms))
+    candidates.extend(_direct_label_slot_candidates(records, frame, expected, relation_terms, target_terms))
+    candidates.extend(_relation_label_value_candidates(records, frame, expected, relation_terms, target_terms))
     candidates.extend(_bind_record_groups(records, frame, expected, target_terms, relation_terms))
     candidates.extend(_bind_frame_conditions(records, frame, expected, target_terms, relation_terms))
     candidates.extend(_bind_relation_conditions(records, frame, expected, target_terms, relation_terms))
@@ -2780,7 +2911,7 @@ def execute_bounded_query(
                 "temporal_answer_conflict_at_boundary",
             )
             return None, diagnostics
-        answer = _with_supporting_evidence(_choose_answer(temporal_candidates, expected), identity_expansion_evidence)
+        answer = _with_supporting_evidence(_choose_answer(temporal_candidates, expected, target_terms), identity_expansion_evidence)
         if answer is None:
             _attach_no_answer_provenance(
                 diagnostics,
@@ -2865,7 +2996,7 @@ def execute_bounded_query(
             )
             return None, diagnostics
 
-    answer = _with_supporting_evidence(_choose_answer(candidates, expected), identity_expansion_evidence)
+    answer = _with_supporting_evidence(_choose_answer(candidates, expected, target_terms), identity_expansion_evidence)
     if answer is None:
         _attach_no_answer_provenance(
             diagnostics,

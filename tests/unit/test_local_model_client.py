@@ -1427,6 +1427,105 @@ def test_query_drs_planner_uses_json_schema(monkeypatch, tmp_path) -> None:
     assert "generic DRT query DRS" in model.prompt
 
 
+def test_compact_query_drs_undercovered_slot_falls_back_to_full_model(monkeypatch, tmp_path) -> None:
+    class CompactUndercoverageModel:
+        def __init__(self) -> None:
+            self.prompts: list[str] = []
+
+        def context_size(self) -> int:
+            return 8192
+
+        def cache_fingerprint(self) -> dict[str, Any]:
+            return {"model_id": "fake-compact-undercoverage", "context_size": 8192}
+
+        def complete_json(
+            self,
+            prompt: str,
+            *,
+            n_predict: int = 128,
+            grammar: str | None = None,
+            json_schema: dict[str, Any] | None = None,
+        ) -> dict[str, object]:
+            self.prompts.append(prompt)
+            if "compact DRS query data" in prompt:
+                return {
+                    "a": "identifier",
+                    "answer": "code",
+                    "targets": ["Alpha Node"],
+                    "predicates": ["belongs to"],
+                    "constraints": [],
+                    "temporal_scope": "",
+                    "aggregation": "",
+                    "_model_raw": "{}",
+                    "_model_elapsed_seconds": 0.01,
+                }
+            return {
+                "query_drs": {
+                    "schema_version": "query-drs-v3",
+                    "question": "Which priority code belongs to Alpha Node?",
+                    "answer_variables": [
+                        {
+                            "id": "qv0",
+                            "label": "priority code",
+                            "answer_type": "identifier",
+                            "evidence_text": "priority code",
+                        }
+                    ],
+                    "target_referents": [
+                        {"id": "qr0", "label": "Alpha Node", "kind": "entity", "evidence_text": "Alpha Node"}
+                    ],
+                    "requested_conditions": [
+                        {
+                            "id": "qc0",
+                            "predicate": "belongs to",
+                            "box_id": "",
+                            "polarity": "positive",
+                            "modality": "asserted",
+                            "temporal_id": "",
+                            "arguments": [
+                                {
+                                    "role": "answer",
+                                    "target_kind": "answer_variable",
+                                    "target_id": "qv0",
+                                    "value": "",
+                                    "value_type": "identifier",
+                                    "evidence_text": "priority code",
+                                },
+                                {
+                                    "role": "argument",
+                                    "target_kind": "referent",
+                                    "target_id": "qr0",
+                                    "value": "",
+                                    "value_type": "entity",
+                                    "evidence_text": "Alpha Node",
+                                },
+                            ],
+                            "evidence_text": "Which priority code belongs to Alpha Node?",
+                        }
+                    ],
+                    "constraints": [],
+                    "box_requirements": [],
+                    "temporal_scope": "",
+                    "aggregation": "",
+                    "answer_type": "identifier",
+                    "requires_evidence": True,
+                },
+                "_model_raw": "{}",
+                "_model_elapsed_seconds": 0.01,
+            }
+
+    monkeypatch.setenv("KMD_FORCE_COMPACT_MODEL_PATH", "1")
+    monkeypatch.setenv("KMD_QUERY_DRS_CACHE_DIR", str(tmp_path / "query-drs-cache"))
+    model = CompactUndercoverageModel()
+
+    result = call_model_query_drs("Which priority code belongs to Alpha Node?", model)  # type: ignore[arg-type]
+
+    assert result["accepted"] is True
+    assert result["query_drs"]["answer_variables"][0]["label"] == "priority code"
+    assert result["compact_fallback_attempt"]["full_accepted"] is True
+    assert len(model.prompts) == 2
+
+
 def test_short_query_drs_uses_smaller_surface_budget(monkeypatch, tmp_path) -> None:
     class LargeContextQueryModel:
         def __init__(self) -> None:
