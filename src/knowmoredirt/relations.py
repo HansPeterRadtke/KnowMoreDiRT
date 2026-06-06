@@ -30,6 +30,26 @@ LOOSE_SCALAR_PAIR_RE = re.compile(
     re.I,
 )
 TIMESTAMP_RE = re.compile(r"\b(\d{4}-\d{2}-\d{2}(?:[ T]\d{2}:\d{2})?)\b")
+TRANSCRIPT_TURN_RE = re.compile(r"^\s*(?:(\[[^\]\n]{1,32}\])\s*)?([^:\n]{1,80})\s*:\s*(\S.*)$", re.S)
+NON_SPEAKER_LABEL_TOKENS = {
+    "code",
+    "date",
+    "field",
+    "id",
+    "item",
+    "key",
+    "name",
+    "note",
+    "project",
+    "record",
+    "section",
+    "state",
+    "status",
+    "time",
+    "title",
+    "url",
+    "value",
+}
 
 
 @dataclass(frozen=True)
@@ -80,6 +100,18 @@ def _append(
 def extract_relations(text: str) -> list[ExtractedRelation]:
     value = str(text or "")
     relations: list[ExtractedRelation] = []
+    speaker, utterance = transcript_turn_parts(value)
+    if speaker and utterance:
+        _append(
+            relations,
+            "speaker_turn",
+            "utterance",
+            subject=speaker,
+            value=utterance,
+            confidence=0.82,
+            speaker_label=speaker,
+            surface_format="labeled_turn",
+        )
     relations.extend(_extract_record_values(value))
     relations.extend(_extract_label_values(value))
     relations.extend(_extract_table_row_relations(value))
@@ -90,6 +122,33 @@ def extract_relations(text: str) -> list[ExtractedRelation]:
     for match in TIMESTAMP_RE.finditer(value):
         _append(relations, "temporal", "timestamp", value=match.group(1), confidence=0.8)
     return _dedupe(relations)
+
+
+def transcript_turn_parts(text: str) -> tuple[str, str]:
+    """Return speaker label and utterance for a structurally labeled turn."""
+
+    match = TRANSCRIPT_TURN_RE.match(str(text or "").strip())
+    if not match:
+        return "", ""
+    marker = match.group(1) or ""
+    speaker = clean_extracted_value(match.group(2))
+    utterance = clean_extracted_value(match.group(3))
+    if not speaker or not utterance or "://" in speaker:
+        return "", ""
+    speaker_words = [part for part in re.split(r"\s+", speaker) if part]
+    if not speaker_words or len(speaker_words) > 5:
+        return "", ""
+    if not marker and len(speaker_words) < 2:
+        return "", ""
+    if not marker and len(speaker_words) > 2:
+        return "", ""
+    if not marker and any(normalize(word) in NON_SPEAKER_LABEL_TOKENS for word in speaker_words):
+        return "", ""
+    if not any(part[:1].isupper() for part in speaker_words):
+        return "", ""
+    if not re.search(r"[A-Za-z]", utterance):
+        return "", ""
+    return speaker, utterance
 
 
 def _extract_label_values(text: str) -> list[ExtractedRelation]:

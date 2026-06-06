@@ -836,6 +836,46 @@ def _identity_expanded_terms(
     return expanded_terms
 
 
+def _identity_labels_for_referent(
+    records: dict[str, Any],
+    referent_id: str,
+    frame: QueryFrame | None = None,
+) -> list[str]:
+    if not referent_id:
+        return []
+    referents = _referents_by_id(records)
+    if referent_id not in referents:
+        return []
+    visited = {referent_id}
+    frontier = {referent_id}
+    for _depth in range(IDENTITY_GRAPH_MAX_DEPTH):
+        next_frontier: set[str] = set()
+        for hypothesis in records.get("identity_hypotheses", []):
+            if not identity_relation_allows_expansion(str(hypothesis.get("relation") or "")):
+                continue
+            context_id = str(hypothesis.get("context_id") or "")
+            if not _identity_context_accessible(context_id, records, frame):
+                continue
+            left = str(hypothesis.get("left_referent_id") or "")
+            right = str(hypothesis.get("right_referent_id") or "")
+            if left in frontier and right and right not in visited:
+                next_frontier.add(right)
+            if right in frontier and left and left not in visited:
+                next_frontier.add(left)
+        if not next_frontier:
+            break
+        visited.update(next_frontier)
+        frontier = next_frontier
+    labels: list[str] = []
+    for identity_ref in visited:
+        if identity_ref == referent_id:
+            continue
+        label = str(referents.get(identity_ref, {}).get("canonical_label") or "")
+        if label and label not in labels:
+            labels.append(label)
+    return labels
+
+
 def _dedupe_evidence(items: list[Evidence], *, limit: int = 12) -> list[Evidence]:
     values: list[Evidence] = []
     seen: set[tuple[str, str, int | None, str]] = set()
@@ -1552,6 +1592,56 @@ def _compatible_values(expected: ExpectedAnswer, values: list[str]) -> list[str]
     return list(dict.fromkeys(value for value in cleaned if canonicalize_answer(expected, value)))
 
 
+def _slot_adjacent_identifier_values(
+    value: str,
+    answer_slot_terms: list[str] | None,
+    target_terms: list[str],
+    relation_terms: list[str],
+) -> list[str]:
+    if not answer_slot_terms:
+        return []
+    text = clean_extracted_value(value)
+    if not text:
+        return []
+    slot_terms = [
+        term
+        for term in answer_slot_terms
+        if term and term not in ANSWER_SLOT_SKIP_TERMS and not _value_is_target(term, target_terms)
+    ]
+    if not slot_terms:
+        return []
+    lowered = text.lower()
+    ranked: list[tuple[int, int, str]] = []
+    for identifier in identifiers(text):
+        cleaned = identifier.rstrip(".,;)")
+        if not cleaned:
+            continue
+        if _value_is_target(cleaned, target_terms) or _rejects_bound_target_value(
+            ExpectedAnswer("identifier"),
+            cleaned,
+            target_terms,
+        ):
+            continue
+        if _value_is_target(cleaned, relation_terms):
+            continue
+        index = lowered.find(cleaned.lower())
+        if index < 0:
+            continue
+        best_distance: int | None = None
+        for term in slot_terms:
+            term_norm = normalize(term)
+            if not term_norm:
+                continue
+            for match in re.finditer(re.escape(term_norm), normalize(text)):
+                distance = abs(index - match.start())
+                if best_distance is None or distance < best_distance:
+                    best_distance = distance
+        if best_distance is not None:
+            ranked.append((best_distance, index, cleaned))
+    ranked.sort()
+    return list(dict.fromkeys(identifier for _distance, _index, identifier in ranked))
+
+
 def _unknown_query_requests_url(
     expected: ExpectedAnswer,
     relation_terms: list[str],
@@ -1615,6 +1705,9 @@ def _structured_row_matches_answer_slot(
         return True
     relation_type = str(row.get("relation_type") or "")
     if relation_type not in {"label_value", "record_value", "table_cell"}:
+        return True
+    value_material = normalize(str(row.get("value") or row.get("object") or ""))
+    if value_material and _answer_slot_label_matches(value_material, answer_slot_terms, target_terms):
         return True
     label_material = _row_slot_label_material(row)
     if not label_material:
@@ -1778,6 +1871,14 @@ def _answer_values_from_relation(
     ]
     if url_requested:
         return list(dict.fromkeys(url.rstrip(".,;)") for value in [*primary_values, *fallback_values] for url in urls(value)))
+    if expected.answer_type == "identifier":
+        slot_identifiers = [
+            identifier
+            for value in [*primary_values, *fallback_values]
+            for identifier in _slot_adjacent_identifier_values(value, answer_slot_terms, target_terms, relation_terms)
+        ]
+        if slot_identifiers:
+            return slot_identifiers
     compatible = _compatible_values(expected, primary_values)
     if not compatible:
         compatible = _compatible_values(expected, fallback_values)
@@ -1795,6 +1896,8 @@ def _answer_values_from_frame(
     answer_slot_terms: list[str] | None = None,
     frame_type_material: str = "",
     evidence: Evidence | None = None,
+    records: dict[str, Any] | None = None,
+    query_frame: QueryFrame | None = None,
 ) -> list[str]:
     candidate_args = args
     if answer_slot_terms:
@@ -1823,10 +1926,16 @@ def _answer_values_from_frame(
             ):
                 return []
             candidate_args = []
-    values = [
-        _locative_answer_value(frame_row, str(arg.get("surface") or ""), relation_terms)
-        for arg in candidate_args
-    ]
+    values: list[str] = []
+    for arg in candidate_args:
+        surface = _locative_answer_value(frame_row, str(arg.get("surface") or ""), relation_terms)
+        if surface:
+            values.append(surface)
+        if records is not None:
+            for label in _identity_labels_for_referent(records, str(arg.get("referent_id") or ""), query_frame):
+                identity_value = _locative_answer_value(frame_row, label, relation_terms)
+                if identity_value:
+                    values.append(identity_value)
     url_requested = _unknown_query_requests_url(expected, relation_terms, answer_slot_terms)
     structural = expected.answer_type in {"url", "identifier", "file_path", "date_time", "count"} or url_requested
     values = [
@@ -1961,6 +2070,8 @@ def _bind_frame_conditions(records: dict[str, Any], frame: QueryFrame, expected:
             answer_slot_terms,
             frame_type_material,
             evidence,
+            records,
+            frame,
         ):
             candidates.append((score, value, evidence, "frame_argument_binding"))
     return candidates
@@ -2038,6 +2149,180 @@ def _bind_document_scoped_label_values(
             for value in _answer_values_from_relation(row, evidence, expected, [], relation_terms, answer_slot_terms):
                 candidates.append((6.5 * float(row.get("confidence") or 0.7), value, target_evidence, "document_scoped_label_binding"))
                 candidates.append((6.5 * float(row.get("confidence") or 0.7), value, evidence, "document_scoped_label_binding"))
+    return candidates
+
+
+def _material_matches_compound_term_constraints(
+    material: str,
+    terms: list[str],
+    target_terms: list[str] | None = None,
+) -> bool:
+    constraints = _answer_slot_constraints(terms, target_terms)
+    if not constraints:
+        return False
+    material_norm = normalize(material)
+    if not material_norm:
+        return False
+    material_tokens = _normalized_token_set(material_norm)
+    for term, tokens in constraints:
+        if term and _has_term(material_norm, term):
+            return True
+        if all(token in material_tokens or _slot_token_matches(material_norm, token) for token in tokens):
+            return True
+    return False
+
+
+def _document_context_target_document_ids(records: dict[str, Any], target_terms: list[str]) -> set[str]:
+    if not target_terms:
+        return set()
+    docs_by_rel_path = _docs_by_rel_path(records)
+    document_ids: set[str] = set()
+    for rel_path, material in (records.get("document_context_norm_by_rel_path") or {}).items():
+        if not _contains_any(normalize(str(material or "")), target_terms):
+            continue
+        document_id = str(docs_by_rel_path.get(str(rel_path), {}).get("document_id") or "")
+        if document_id:
+            document_ids.add(document_id)
+    return document_ids
+
+
+def _rows_document_id(rows: list[dict[str, Any]], records: dict[str, Any]) -> str:
+    spans = _spans_by_id(records)
+    document_ids = {
+        str(spans.get(str(row.get("source_span_id") or ""), {}).get("document_id") or "")
+        for row in rows
+    }
+    document_ids.discard("")
+    return next(iter(document_ids)) if len(document_ids) == 1 else ""
+
+
+def _document_scoped_row_selector_matches(
+    material: str,
+    relation_terms: list[str],
+    answer_slot_terms: list[str],
+    target_terms: list[str],
+) -> bool:
+    compound_terms = [*relation_terms, *answer_slot_terms]
+    if _material_matches_compound_term_constraints(material, compound_terms, target_terms):
+        return True
+    if _answer_slot_constraints(compound_terms, target_terms):
+        return False
+    return _contains_any(material, list(dict.fromkeys(compound_terms)))
+
+
+def _document_scoped_structural_row_candidates(
+    records: dict[str, Any],
+    frame: QueryFrame,
+    expected: ExpectedAnswer,
+    target_terms: list[str],
+    relation_terms: list[str],
+) -> list[tuple[float, str, Evidence, str]]:
+    """Bind rows in a table/object whose document carries the target anchor.
+
+    Some sources introduce the entity once in prose and then provide a compact
+    table of properties or participants.  The entity is document-scoped rather
+    than repeated in each row.  This operator only activates when exactly one
+    selected document carries the target terms, then uses ordinary structural
+    row groups and compound selector terms to choose answer rows.
+    """
+
+    target_document_ids = _document_context_target_document_ids(records, target_terms)
+    if len(target_document_ids) != 1:
+        return []
+    target_document_id = next(iter(target_document_ids))
+    answer_slot_terms = _answer_slot_terms(frame)
+    candidates: list[tuple[float, str, Evidence, str]] = []
+    for _group_id, rows in _record_groups(records).items():
+        if not rows or not _rows_are_countable_structured_units(rows):
+            continue
+        if _rows_document_id(rows, records) != target_document_id:
+            continue
+        group_material = _group_material(rows, records, include_source_evidence=False)
+        if not _document_scoped_row_selector_matches(
+            group_material,
+            relation_terms,
+            answer_slot_terms,
+            target_terms,
+        ):
+            continue
+        for row in rows:
+            if not _relation_scope_accessible(row, records, frame):
+                continue
+            evidence = _evidence_for_span(str(row.get("source_span_id") or ""), records)
+            local_material = _relation_local_material(row, evidence, include_evidence=False)
+            value_material = normalize(str(row.get("value") or row.get("object") or ""))
+            row_slot_match = bool(
+                answer_slot_terms
+                and (
+                    _answer_slot_label_matches(local_material, answer_slot_terms, target_terms)
+                    or _answer_slot_label_matches(value_material, answer_slot_terms, target_terms)
+                )
+            )
+            row_selector_match = _document_scoped_row_selector_matches(
+                normalize(" ".join([local_material, value_material])),
+                relation_terms,
+                answer_slot_terms,
+                target_terms,
+            )
+            if not row_slot_match and not row_selector_match:
+                continue
+            slot_terms = answer_slot_terms if row_slot_match else None
+            for value in _answer_values_from_relation(row, evidence, expected, [], relation_terms, slot_terms):
+                score = 8.0 + (3.0 if row_slot_match else 0.0) + (2.0 if row_selector_match else 0.0)
+                candidates.append(
+                    (
+                        score * float(row.get("confidence") or 0.7),
+                        value,
+                        evidence,
+                        "document_scoped_structural_row_binding",
+                    )
+                )
+    return candidates
+
+
+def _document_scoped_relation_value_candidates(
+    records: dict[str, Any],
+    frame: QueryFrame,
+    expected: ExpectedAnswer,
+    target_terms: list[str],
+    relation_terms: list[str],
+) -> list[tuple[float, str, Evidence, str]]:
+    target_document_ids = _document_context_target_document_ids(records, target_terms)
+    if len(target_document_ids) != 1:
+        return []
+    target_document_id = next(iter(target_document_ids))
+    spans = _spans_by_id(records)
+    answer_slot_terms = _answer_slot_terms(frame)
+    candidates: list[tuple[float, str, Evidence, str]] = []
+    for row in records.get("relations", []):
+        relation_type = str(row.get("relation_type") or "")
+        if relation_type not in {"identifier", "label_value", "record_value", "table_cell"}:
+            continue
+        if not _relation_scope_accessible(row, records, frame):
+            continue
+        span_id = str(row.get("source_span_id") or "")
+        if str(spans.get(span_id, {}).get("document_id") or "") != target_document_id:
+            continue
+        evidence = _evidence_for_span(span_id, records)
+        if _source_is_low_priority(evidence.rel_path, evidence.text) and not _structured_source_row(row):
+            continue
+        local_material = _relation_local_material(row, evidence, include_evidence=True)
+        if not _document_scoped_row_selector_matches(
+            local_material,
+            relation_terms,
+            answer_slot_terms,
+            target_terms,
+        ):
+            continue
+        for value in _answer_values_from_relation(row, evidence, expected, target_terms, relation_terms, answer_slot_terms):
+            candidates.append(
+                (
+                    7.0 * float(row.get("confidence") or 0.7),
+                    value,
+                    evidence,
+                    "document_scoped_relation_value_binding",
+                )
+            )
     return candidates
 
 
@@ -2536,10 +2821,11 @@ def _count_matching_record_groups(
         for span_id, span_rows in rows_by_span.items():
             if not span_rows:
                 continue
-            if require_structured_unit and not _rows_are_countable_structured_units(span_rows):
+            span_is_structured = _rows_are_countable_structured_units(span_rows)
+            if require_structured_unit and not span_is_structured:
                 continue
             evidence = _evidence_for_span(span_id, records)
-            if evidence.rel_path in countable_rel_paths and not _rows_are_countable_structured_units(span_rows):
+            if evidence.rel_path in countable_rel_paths and not span_is_structured:
                 continue
             if _source_is_low_priority(evidence.rel_path, evidence.text) and not any(_structured_source_row(row) for row in span_rows):
                 continue
@@ -2555,6 +2841,9 @@ def _count_matching_record_groups(
             for index, group in enumerate(required_relation_groups):
                 if _material_matches_term_group(span_material, group):
                     continue
+                if not span_is_structured:
+                    group_failed = True
+                    break
                 if evidence.rel_path in relation_group_row_local_rel_paths.get(index, set()):
                     group_failed = True
                     break
@@ -2878,26 +3167,42 @@ def _choice_score(
     return score
 
 
+def _candidate_evidence_key(evidence: Evidence) -> tuple[str, str, int | None, str]:
+    return (evidence.rel_path, evidence.span_id, evidence.chunk_order, evidence.text)
+
+
 def _choose_answer(
     candidates: list[tuple[float, str, Evidence, str]],
     expected: ExpectedAnswer,
     target_terms: list[str] | None = None,
 ) -> Answer | None:
-    scored: dict[str, tuple[float, list[Evidence], str]] = {}
+    scored: dict[str, dict[str, Any]] = {}
     for score, value, evidence, reason in candidates:
         canonical = canonicalize_answer(expected, value)
         if not canonical:
             continue
         score = _choice_score(score, reason, expected, evidence, target_terms)
-        previous = scored.get(canonical)
-        if previous is None:
-            scored[canonical] = (score, [evidence], reason)
-        else:
-            scored[canonical] = (previous[0] + score, [*previous[1], evidence][:4], previous[2])
+        bucket = scored.setdefault(
+            canonical,
+            {"scores_by_evidence": {}, "evidence_by_key": {}, "reasons": []},
+        )
+        evidence_key = _candidate_evidence_key(evidence)
+        previous_score = float(bucket["scores_by_evidence"].get(evidence_key, 0.0))
+        if score > previous_score:
+            bucket["scores_by_evidence"][evidence_key] = score
+            bucket["evidence_by_key"][evidence_key] = evidence
+        if reason not in bucket["reasons"]:
+            bucket["reasons"].append(reason)
     if not scored:
         return None
-    ordered = sorted(scored.items(), key=lambda item: (-item[1][0], len(item[0]), item[0]))
-    value, (score, evidence, reason) = ordered[0]
+    ordered = sorted(
+        scored.items(),
+        key=lambda item: (-sum(float(value) for value in item[1]["scores_by_evidence"].values()), len(item[0]), item[0]),
+    )
+    value, bucket = ordered[0]
+    score = sum(float(value) for value in bucket["scores_by_evidence"].values())
+    evidence = list(bucket["evidence_by_key"].values())[:4]
+    reason = str((bucket["reasons"] or ["bounded_drs_binding"])[0])
     return Answer(value, min(0.95, max(0.0, score / 10.0)), evidence, reason, expected.answer_type)
 
 
@@ -2919,11 +3224,19 @@ def _answer_conflict_diagnostics(
         canonical = canonicalize_answer(expected, value)
         if not canonical:
             continue
-        bucket = buckets.setdefault(canonical, {"score": 0.0, "evidence": [], "reasons": set()})
-        bucket["score"] = float(bucket["score"]) + _choice_score(score, reason, expected, evidence, target_terms)
+        bucket = buckets.setdefault(
+            canonical,
+            {"score": 0.0, "scores_by_evidence": {}, "evidence": [], "evidence_by_key": {}, "reasons": set()},
+        )
+        evidence_key = _candidate_evidence_key(evidence)
+        choice_score = _choice_score(score, reason, expected, evidence, target_terms)
+        previous_score = float(bucket["scores_by_evidence"].get(evidence_key, 0.0))
+        if choice_score > previous_score:
+            bucket["scores_by_evidence"][evidence_key] = choice_score
+            bucket["evidence_by_key"][evidence_key] = evidence
+            bucket["score"] = sum(float(value) for value in bucket["scores_by_evidence"].values())
         bucket["reasons"].add(reason)
-        if len(bucket["evidence"]) < 4:
-            bucket["evidence"].append(evidence)
+        bucket["evidence"] = list(bucket["evidence_by_key"].values())[:4]
     if len(buckets) < 2:
         return None
     ordered = sorted(buckets.items(), key=lambda item: (-float(item[1]["score"]), len(item[0]), item[0]))
@@ -3143,6 +3456,16 @@ def _direct_label_slot_candidates(
             continue
         value = str(row.get("value") or row.get("object") or "")
         values = _person_values_from_relation_text(value, expected) or _compatible_values(expected, [value])
+        structural = expected.answer_type in {"url", "identifier", "file_path", "date_time", "count"}
+        values = [
+            item for item in values
+            if structural
+            or (
+                not _value_is_target(item, target_terms)
+                and not _rejects_bound_target_value(expected, item, target_terms)
+                and not _value_is_target(item, relation_terms)
+            )
+        ]
         for item in values:
             candidates.append((7.5, item, evidence, "direct_label_slot_binding"))
     return candidates
@@ -3186,6 +3509,16 @@ def _relation_label_value_candidates(
             continue
         value = str(row.get("value") or row.get("object") or "")
         values = _person_values_from_relation_text(value, expected) or _compatible_values(expected, [value])
+        structural = expected.answer_type in {"url", "identifier", "file_path", "date_time", "count"}
+        values = [
+            item for item in values
+            if structural
+            or (
+                not _value_is_target(item, target_terms)
+                and not _rejects_bound_target_value(expected, item, target_terms)
+                and not _value_is_target(item, relation_signal)
+            )
+        ]
         for item in values:
             candidates.append((6.8, item, evidence, "relation_label_value_binding"))
     return candidates
@@ -3303,6 +3636,8 @@ def execute_bounded_query(
     candidates.extend(_bind_frame_conditions(records, frame, expected, target_terms, relation_terms))
     candidates.extend(_bind_relation_conditions(records, frame, expected, target_terms, relation_terms))
     candidates.extend(_bind_document_scoped_label_values(records, frame, expected, target_terms, relation_terms))
+    candidates.extend(_document_scoped_structural_row_candidates(records, frame, expected, target_terms, relation_terms))
+    candidates.extend(_document_scoped_relation_value_candidates(records, frame, expected, target_terms, relation_terms))
     temporal_candidates = _temporal_candidates(records, frame, expected, target_terms, relation_terms)
     temporal_candidates.extend(_temporal_relation_candidates(records, frame, expected, target_terms, relation_terms))
     temporal_candidates.extend(_temporal_frame_argument_candidates(records, frame, expected, target_terms, relation_terms))

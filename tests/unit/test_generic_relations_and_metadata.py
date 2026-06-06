@@ -4,7 +4,7 @@ import json
 
 from knowmoredirt.engine import KnowMoreDiRTEngine
 from knowmoredirt.ingest import ingest_folder
-from knowmoredirt.relations import extract_relations
+from knowmoredirt.relations import extract_relations, transcript_turn_parts
 
 
 def test_generic_relation_extractor_covers_common_discourse_shapes() -> None:
@@ -30,6 +30,23 @@ def test_generic_relation_extractor_covers_common_discourse_shapes() -> None:
     assert any(item.relation_type == "record_value" and item.subject == "object.status" and item.value == "ready" for item in relations)
     assert any(item.relation_type == "identifier" and item.predicate == "url" and item.value == "https://example.invalid/a" for item in relations)
     assert any(item.relation_type == "temporal" and item.predicate == "timestamp" and item.value == "2026-02-03" for item in relations)
+
+
+def test_generic_relation_extractor_covers_labeled_transcript_turns() -> None:
+    speaker, utterance = transcript_turn_parts("[08:15] Nia: I tested WidgetFlux cold start.")
+
+    assert speaker == "Nia"
+    assert utterance == "I tested WidgetFlux cold start"
+    assert transcript_turn_parts("Record: Quartz Harbor.") == ("", "")
+    assert transcript_turn_parts("Important fact survives: Nia tested WidgetFlux.") == ("", "")
+
+    relations = extract_relations("[08:15] Nia: I tested WidgetFlux cold start.")
+    assert any(
+        relation.relation_type == "speaker_turn"
+        and relation.subject == "Nia"
+        and relation.value == "I tested WidgetFlux cold start"
+        for relation in relations
+    )
 
 
 def test_ingest_stores_relations_and_enriched_file_metadata(tmp_path) -> None:

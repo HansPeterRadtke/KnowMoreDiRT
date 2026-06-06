@@ -20,7 +20,7 @@ from .model_planner import (
     chunk_frame_cache_context,
     default_chunk_drs_n_predict,
 )
-from .relations import ExtractedRelation, extract_relations
+from .relations import ExtractedRelation, extract_relations, transcript_turn_parts
 from .scanner import scan_folder
 from .semantic_cache import SemanticFrameCache
 from .store import DSPGStore, stable_id
@@ -29,6 +29,7 @@ from .text import clean_extracted_value, normalize, text_quality_metrics, tokeni
 
 TABLE_SPLIT_RE = re.compile(r"\s*(?:\||\t)\s*")
 PROGRESS_TRUE_VALUES = {"1", "true", "yes", "on"}
+FIRST_PERSON_REFERENCE_NORMS = {"i", "me", "myself", "we", "us", "ourselves"}
 
 
 def _progress_enabled() -> bool:
@@ -343,6 +344,72 @@ def _condition_from_deterministic_relation(relation: ExtractedRelation, evidence
     )
 
 
+def _link_labeled_turn_speaker_referents(
+    store: DSPGStore,
+    run_id: str,
+    source_span_id: str,
+    sentence: Sentence,
+) -> int:
+    speaker, _utterance = transcript_turn_parts(sentence.text)
+    if not speaker:
+        return 0
+    context_row = store.execute(
+        """
+        SELECT context_id
+        FROM context_assignments
+        WHERE run_id=? AND applies_to_type='source_span' AND applies_to_id=?
+        LIMIT 1
+        """,
+        (run_id, source_span_id),
+    ).fetchone()
+    context_id = str(context_row["context_id"] or "") if context_row is not None else ""
+    speaker_ref = store.upsert_referent(run_id, speaker, mention_entity_type(speaker))
+    rows = store.execute(
+        """
+        SELECT referent_id
+        FROM drs_referents
+        WHERE run_id=? AND source_span_id=?
+        """,
+        (run_id, source_span_id),
+    ).fetchall()
+    inserted = 0
+    for row in rows:
+        pronoun_ref = str(row["referent_id"] or "")
+        if not pronoun_ref or pronoun_ref == speaker_ref:
+            continue
+        surface_row = store.execute(
+            "SELECT canonical_label_norm FROM referents WHERE referent_id=?",
+            (pronoun_ref,),
+        ).fetchone()
+        surface_norm = str(surface_row["canonical_label_norm"] or "") if surface_row is not None else ""
+        if surface_norm not in FIRST_PERSON_REFERENCE_NORMS:
+            continue
+        store.execute(
+            """
+            INSERT OR IGNORE INTO identity_hypotheses(
+              hypothesis_id, run_id, source_span_id, context_id, drs_box_id, box_external_id,
+              left_referent_id, right_referent_id, relation, evidence, confidence, source
+            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+            """,
+            (
+                stable_id("idh", run_id, source_span_id, "speaker_turn", speaker_ref, pronoun_ref),
+                run_id,
+                source_span_id,
+                context_id,
+                None,
+                None,
+                speaker_ref,
+                pronoun_ref,
+                "coreference",
+                sentence.text,
+                0.9,
+                "deterministic_speaker_turn",
+            ),
+        )
+        inserted += 1
+    return inserted
+
+
 def _scan_unit_max_chars(semantic_client: Any | None) -> int:
     configured = os.environ.get("KMD_SCAN_UNIT_MAX_CHARS", "").strip()
     if configured:
@@ -485,6 +552,16 @@ def _ingest_model_drs_for_sentence(
             {"drs": drs_result["drs"]},
             source="local_model_drs",
         )
+        if materialized.get("accepted"):
+            linked_speakers = _link_labeled_turn_speaker_referents(store, run_id, span_id, sentence)
+            if linked_speakers:
+                materialized = {
+                    **materialized,
+                    "inserted": {
+                        **dict(materialized.get("inserted") or {}),
+                        "speaker_turn_identity_hypotheses": linked_speakers,
+                    },
+                }
     store.execute(
         """
         INSERT OR REPLACE INTO model_attempts(
@@ -789,6 +866,9 @@ def ingest_folder(
                 deterministic_relations.extend(_table_header_relations(sentence, current_header, cells))
             elif _looks_like_table_header(cells):
                 table_headers_by_document[sentence.document_id] = cells
+                deterministic_relations = [
+                    relation for relation in deterministic_relations if relation.relation_type != "table_cell"
+                ]
         if not is_structural_heading:
             pending_label_heading = _label_heading_value_from_relations(sentence.text, deterministic_relations)
 

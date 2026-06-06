@@ -81,14 +81,231 @@ def test_ingest_keeps_lower_underscore_table_headers_as_labels(tmp_path: Path) -
 
     assert ("Blue Dune", "item_code", "SearchSprout") in triples
     assert ("Blue Dune", "state_value", "requested") in triples
+    assert not any(subject == "name" and value in {"item_code", "state_value"} for subject, _, value, _ in rows)
     assert not any(predicate == "searchsprout" for _, predicate, _, _ in header_rows)
     assert {metadata.get("column_header") for _, _, _, metadata in header_rows} == {"item_code", "state_value"}
+
+
+def test_document_scoped_table_row_binds_compound_selector_subject(tmp_path: Path) -> None:
+    (tmp_path / "inventory.txt").write_text(
+        "Inventory memo.\n"
+        "Account AC-77 belongs to organization Luma Forge.\n"
+        "A table below lists roles:\n"
+        "name | role | email\n"
+        "Ira Noll | invoice coordinator | ira.noll@luma.example\n"
+        "Tess Rune | release coordinator | tess.rune@luma.example\n",
+        encoding="utf-8",
+    )
+
+    store, run_id, documents, sentences = ingest_folder(tmp_path)
+    sentences_by_document: dict[str, dict[int, Sentence]] = {}
+    for sentence in sentences:
+        sentences_by_document.setdefault(sentence.rel_path, {})[sentence.order] = sentence
+    frame = QueryFrame(
+        question_text="Who is the release coordinator for Luma Forge?",
+        answer_type="person",
+        answer_variables=("release coordinator",),
+        target_anchors=("Luma Forge",),
+        requested_relation="release coordinator",
+        relation_terms=("release coordinator", "coordinator"),
+        constraints=(),
+    )
+
+    answer, diagnostics = execute_bounded_query(
+        store,
+        run_id,
+        documents,
+        sentences_by_document,
+        frame.question_text,
+        frame,
+    )
+
+    assert answer is not None
+    assert answer.text == "Tess Rune"
+    assert diagnostics["execution"]["answer_binding_reason"] == "document_scoped_structural_row_binding"
+
+
+def test_document_scoped_relation_value_binds_url_from_later_row(tmp_path: Path) -> None:
+    (tmp_path / "plan.txt").write_text(
+        "Quartz Spindle design note.\n"
+        "Mira Vale drafted the design summary.\n"
+        "The primary plan URL is https://plans.example.test/quartz-spindle.\n",
+        encoding="utf-8",
+    )
+
+    store, run_id, documents, sentences = ingest_folder(tmp_path)
+    sentences_by_document: dict[str, dict[int, Sentence]] = {}
+    for sentence in sentences:
+        sentences_by_document.setdefault(sentence.rel_path, {})[sentence.order] = sentence
+    frame = QueryFrame(
+        question_text="What is the primary plan URL for the Quartz Spindle design?",
+        answer_type="url",
+        answer_variables=("primary plan URL",),
+        target_anchors=("Quartz Spindle design",),
+        requested_relation="is",
+        relation_terms=("is", "primary plan URL"),
+        constraints=(),
+    )
+
+    answer, diagnostics = execute_bounded_query(
+        store,
+        run_id,
+        documents,
+        sentences_by_document,
+        frame.question_text,
+        frame,
+    )
+
+    assert answer is not None
+    assert answer.text == "https://plans.example.test/quartz-spindle"
+    assert diagnostics["execution"]["answer_binding_reason"] == "document_scoped_relation_value_binding"
+
+
+def test_slot_adjacent_identifier_prefers_requested_identifier_not_target(tmp_path: Path) -> None:
+    (tmp_path / "log.txt").write_text(
+        "line 002: change a1b2c3d4 fixed WidgetFlux crash BUG-7777\n",
+        encoding="utf-8",
+    )
+
+    store, run_id, documents, sentences = ingest_folder(tmp_path)
+    sentences_by_document: dict[str, dict[int, Sentence]] = {}
+    for sentence in sentences:
+        sentences_by_document.setdefault(sentence.rel_path, {})[sentence.order] = sentence
+    frame = QueryFrame(
+        question_text="Which change fixed WidgetFlux crash BUG-7777?",
+        answer_type="identifier",
+        answer_variables=("change",),
+        target_anchors=("WidgetFlux", "BUG-7777"),
+        requested_relation="fixed",
+        relation_terms=("fixed", "change"),
+        constraints=(),
+    )
+
+    answer, diagnostics = execute_bounded_query(
+        store,
+        run_id,
+        documents,
+        sentences_by_document,
+        frame.question_text,
+        frame,
+    )
+
+    assert answer is not None
+    assert answer.text == "a1b2c3d4"
+    assert diagnostics["execution"]["answer_binding_reason"] in {
+        "document_scoped_relation_value_binding",
+        "relation_label_value_binding",
+    }
 
 
 def test_context_requirement_matching_uses_morphology_variants() -> None:
     assert _terms_match_material(["report"], "drs:reported observer")
     assert _terms_match_material(["believe"], "drs:believed Kalo Reed")
     assert term_variants("state") == {"state"}
+
+
+def test_labeled_turn_identity_resolves_first_person_drs_answer(tmp_path: Path, monkeypatch) -> None:
+    (tmp_path / "standup.log").write_text(
+        "[08:15] Nia: I tested WidgetFlux cold start.",
+        encoding="utf-8",
+    )
+
+    class TurnModel:
+        def context_size(self) -> int:
+            return 4096
+
+        def cache_fingerprint(self) -> dict[str, object]:
+            return {"model_id": "fake-turn-drs", "context_size": 4096}
+
+        def complete_json(self, prompt: str, *, n_predict: int = 128, grammar=None, json_schema=None):
+            text = "[08:15] Nia: I tested WidgetFlux cold start."
+            return {
+                "drs": {
+                    "schema_version": "chunk-drs-v2",
+                    "source_id": "standup.log",
+                    "referents": [
+                        {"id": "r0", "label": "I", "kind": "person", "evidence_text": "I"},
+                        {
+                            "id": "r1",
+                            "label": "WidgetFlux cold start",
+                            "kind": "entity",
+                            "evidence_text": "WidgetFlux cold start",
+                        },
+                    ],
+                    "boxes": [
+                        {"id": "b0", "kind": "asserted", "parent_id": "", "holder_referent_id": "", "evidence_text": text}
+                    ],
+                    "conditions": [
+                        {
+                            "id": "c0",
+                            "predicate": "test",
+                            "box_id": "b0",
+                            "polarity": "positive",
+                            "modality": "asserted",
+                            "temporal_id": "",
+                            "arguments": [
+                                {
+                                    "role": "agent",
+                                    "target_kind": "referent",
+                                    "target_id": "r0",
+                                    "value": "",
+                                    "value_type": "person",
+                                    "evidence_text": "I",
+                                },
+                                {
+                                    "role": "patient",
+                                    "target_kind": "referent",
+                                    "target_id": "r1",
+                                    "value": "",
+                                    "value_type": "entity",
+                                    "evidence_text": "WidgetFlux cold start",
+                                },
+                            ],
+                            "evidence_text": "I tested WidgetFlux cold start.",
+                        }
+                    ],
+                    "identity_hypotheses": [],
+                    "temporal_records": [],
+                },
+                "_model_raw": "{}",
+                "_model_elapsed_seconds": 0.01,
+            }
+
+    monkeypatch.setenv("KMD_CHUNK_DRS_CACHE_DIR", str(tmp_path / ".drs-cache"))
+    store, run_id, documents, sentences = ingest_folder(
+        tmp_path,
+        semantic_client=TurnModel(),  # type: ignore[arg-type]
+        use_semantic_frames=False,
+        use_drs_semantics=True,
+    )
+    sentences_by_document: dict[str, dict[int, Sentence]] = {}
+    for sentence in sentences:
+        sentences_by_document.setdefault(sentence.rel_path, {})[sentence.order] = sentence
+    frame = QueryFrame(
+        question_text="Who tested WidgetFlux cold start?",
+        answer_type="person",
+        answer_variables=("who",),
+        target_anchors=("WidgetFlux",),
+        requested_relation="tested",
+        relation_terms=("tested", "cold start"),
+        constraints=(),
+    )
+
+    answer, _diagnostics = execute_bounded_query(
+        store,
+        run_id,
+        documents,
+        sentences_by_document,
+        frame.question_text,
+        frame,
+    )
+
+    assert answer is not None
+    assert answer.text == "Nia"
+    identity_count = store.execute(
+        "SELECT COUNT(*) FROM identity_hypotheses WHERE source='deterministic_speaker_turn'"
+    ).fetchone()[0]
+    assert identity_count == 1
 
 
 def test_source_anchor_provenance_reranks_structural_url_conflicts(tmp_path: Path) -> None:
