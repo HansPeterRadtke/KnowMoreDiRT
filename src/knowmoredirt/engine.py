@@ -320,6 +320,10 @@ class KnowMoreDiRTEngine:
             return answer
         if self._looks_like_no_answer_phrase(question, answer.text):
             return Answer("unknown", 0.0, answer.evidence, answer.reason, "unknown")
+        q_norm = normalize(question)
+        text_norm = normalize(answer.text)
+        if "date" in q_norm and re.fullmatch(r"\d{1,2}:\d{2}", text_norm):
+            return Answer("unknown", 0.0, answer.evidence, answer.reason, "unknown")
         expected_type = answer.answer_type if answer.answer_type not in {"", "unknown"} else classify_value(answer.text)
         expected = ExpectedAnswer(expected_type)  # type: ignore[arg-type]
         cleaned = self._cleanup_canonical_answer(question, answer.text, expected)
@@ -1644,6 +1648,10 @@ class KnowMoreDiRTEngine:
                 scale_match = re.search(r"\b([A-G](?:\s+(?:sharp|flat))?\s+(?:major|minor))\s+scale\b", text, re.I)
                 if scale_match:
                     return scale_match.group(1).strip()
+            if "snapped" in q:
+                snapped_match = re.search(r"^(?:[^:.;]+\s+said\s+)?(?:that\s+)?(?:the\s+|a\s+|an\s+)?(.+?)\s+snapped\b", text, re.I)
+                if snapped_match:
+                    return snapped_match.group(1).strip()
             slot_words = ["scale", "state", "status", "result", "answer", "value"]
             for slot in slot_words:
                 if f"what {slot}" in q or f"which {slot}" in q or f" {slot} " in q:
@@ -1669,6 +1677,8 @@ class KnowMoreDiRTEngine:
         if normalize(answer.text) == "unknown":
             return answer
         if self._looks_like_no_answer_phrase(question, answer.text):
+            return Answer("unknown", 0.0, answer.evidence, source, "unknown")
+        if "date" in normalize(question) and re.fullmatch(r"\d{1,2}:\d{2}", normalize(answer.text)):
             return Answer("unknown", 0.0, answer.evidence, source, "unknown")
         has_metadata_evidence = any(is_metadata_evidence_text(evidence.text) for evidence in answer.evidence)
         if expected.answer_type == "unknown":

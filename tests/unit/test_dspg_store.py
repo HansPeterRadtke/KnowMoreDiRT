@@ -7428,6 +7428,21 @@ def test_clear_structural_candidate_not_blocked_by_unrelated_dated_evidence(tmp_
     assert answer.text == "HTL-7712"
 
 
+def test_finalize_answer_cleans_snapped_clause_and_time_only_date_answer(tmp_path: Path) -> None:
+    (tmp_path / "source.txt").write_text("placeholder", encoding="utf-8")
+    engine = KnowMoreDiRTEngine(tmp_path)
+    evidence = [Evidence("source.txt", "placeholder", "span", 0, 0, None, "synthetic")]
+
+    assert engine._cleanup_public_answer(
+        "What did Runa say snapped during loading?",
+        Answer("the blue latch snapped during loading", 0.9, evidence, "manual", "content_phrase"),
+    ).text == "blue latch"
+    assert engine._cleanup_public_answer(
+        "What is the release date for west archive shelf?",
+        Answer("12:20", 0.9, evidence, "manual", "date_time"),
+    ).text == "unknown"
+
+
 def test_finalize_answer_cleans_slot_suffix_and_no_answer_phrases(tmp_path: Path) -> None:
     (tmp_path / "source.txt").write_text("placeholder", encoding="utf-8")
     engine = KnowMoreDiRTEngine(tmp_path)
