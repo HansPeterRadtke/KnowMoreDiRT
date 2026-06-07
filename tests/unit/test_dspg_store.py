@@ -553,6 +553,41 @@ def test_trusted_exact_structural_answer_accepts_grounded_person_binding() -> No
     assert engine._trusted_exact_structural_bounded_answer(answer, ExpectedAnswer("person"))
 
 
+def test_identifier_typed_content_cleanup_returns_clause_residual_and_strips_article() -> None:
+    engine = KnowMoreDiRTEngine.__new__(KnowMoreDiRTEngine)
+    clause_frame = QueryFrame(
+        question_text="What shade remains on the beacon?",
+        answer_type="identifier",
+        answer_variables=("shade remains on the beacon",),
+        target_anchors=("beacon",),
+        requested_relation="remains",
+        relation_terms=("remains",),
+        constraints=(),
+        source="model",
+    )
+    article_frame = QueryFrame(
+        question_text="What mode did Iva practice?",
+        answer_type="identifier",
+        answer_variables=("mode",),
+        target_anchors=("Iva",),
+        requested_relation="practice",
+        relation_terms=("practice",),
+        constraints=(),
+        source="model",
+    )
+
+    assert engine._cleanup_canonical_answer(
+        "the beacon shade remains amber",
+        ExpectedAnswer("identifier"),
+        clause_frame,
+    ) == "amber"
+    assert engine._cleanup_canonical_answer(
+        "the Lydian mode",
+        ExpectedAnswer("identifier"),
+        article_frame,
+    ) == "Lydian"
+
+
 def test_full_clause_answer_variable_keeps_visible_target_out_of_slot_terms() -> None:
     frame = QueryFrame(
         question_text="Who signed the copper lease?",

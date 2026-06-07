@@ -1720,7 +1720,14 @@ class KnowMoreDiRTEngine:
         if frame is not None and expected.answer_type in {"content_phrase", "metadata_value", "identifier"}:
             text = self._strip_redundant_target_tail(text, frame)
             low = normalize(text)
-        if expected.answer_type in {"content_phrase", "state", "metadata_value"}:
+        if frame is not None and expected.answer_type in {"content_phrase", "state", "metadata_value", "identifier"}:
+            text = self._strip_answer_clause_residual(text, frame)
+            low = normalize(text)
+        article_strippable = expected.answer_type in {"content_phrase", "state", "metadata_value"}
+        article_strippable = article_strippable or (
+            expected.answer_type == "identifier" and classify_value(text) == "content_phrase"
+        )
+        if article_strippable:
             words = text.split()
             low_words = [word.lower().strip(".,;:") for word in words]
             if len(words) <= 4 and low_words and low_words[0] in {"the", "a", "an"}:
@@ -1728,6 +1735,50 @@ class KnowMoreDiRTEngine:
                 if not any(word in verbish for word in low_words[1:]):
                     return " ".join(words[1:]).strip()
         return text
+
+    def _strip_answer_clause_residual(self, text: str, frame: QueryFrame) -> str:
+        words = [word for word in text.split() if word]
+        if len(words) < 4 or len(words) > 12:
+            return text
+        normalized_words = [normalize(word.strip(".,;:")) for word in words]
+        target_tokens = {
+            token
+            for anchor in frame.target_anchors
+            for token in content_tokens(anchor)
+            if token
+        }
+        slot_tokens = {
+            token
+            for variable in frame.answer_variables
+            for token in content_tokens(variable)
+            if token and token not in target_tokens
+        }
+        relation_tokens = {
+            variant
+            for token in content_tokens(frame.requested_relation)
+            for variant in term_variants(token)
+        }
+        if not target_tokens or not relation_tokens:
+            return text
+        relation_indexes = [
+            index for index, token in enumerate(normalized_words)
+            if token in relation_tokens
+        ]
+        if not relation_indexes:
+            return text
+        relation_index = relation_indexes[-1]
+        if relation_index >= len(words) - 1:
+            return text
+        prefix_tokens = set(normalized_words[: relation_index + 1])
+        if not (prefix_tokens & target_tokens):
+            return text
+        if slot_tokens and not (prefix_tokens & slot_tokens):
+            return text
+        residual_words = words[relation_index + 1 :]
+        if len(residual_words) > 4:
+            return text
+        residual = clean_extracted_value(" ".join(residual_words)).strip(" .;:")
+        return residual or text
 
     def _strip_redundant_answer_slot_suffix(self, text: str, frame: QueryFrame) -> str:
         slot_terms = [
