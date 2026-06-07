@@ -332,7 +332,7 @@ def _target_anchor_groups_covered(material: str, frame: QueryFrame, target_terms
     groups = _target_anchor_term_groups(frame, frame.question_text, target_terms)
     if len(groups) <= 1:
         return True
-    return all(any(_has_term(material, term) for term in group) for group in groups)
+    return all(any(_terms_match_material([term], material) for term in group) for group in groups)
 
 
 def _target_token_variants(target_terms: list[str] | None) -> set[str]:
@@ -520,6 +520,14 @@ def _has_term(material: str, term: str) -> bool:
 
 def _contains_any(material: str, terms: list[str]) -> bool:
     return any(_has_term(material, term) for term in terms)
+
+
+def _morphology_keys(token: str) -> set[str]:
+    keys = set(term_variants(token))
+    for value in list(keys):
+        if value.endswith("ure") and len(value) > 5:
+            keys.add(value[:-3])
+    return {value for value in keys if len(value) > 1}
 
 
 def _document_material(document: Document, sentences: list[Sentence]) -> str:
@@ -998,7 +1006,7 @@ def _terms_match_material(terms: list[str], material: str, *, use_morphology: bo
     expanded_material_tokens = set(material_tokens)
     if use_morphology:
         for token in material_tokens:
-            expanded_material_tokens.update(term_variants(token))
+            expanded_material_tokens.update(_morphology_keys(token))
     for term in terms:
         if term in material:
             return True
@@ -1007,7 +1015,7 @@ def _terms_match_material(terms: list[str], material: str, *, use_morphology: bo
             token in expanded_material_tokens
             or (
                 use_morphology
-                and any(variant in expanded_material_tokens for variant in term_variants(token))
+                and any(variant in expanded_material_tokens for variant in _morphology_keys(token))
             )
             for token in term_tokens
         ):
@@ -2473,6 +2481,8 @@ def _value_contains_target(value: str, target_terms: list[str]) -> bool:
             continue
         if term_tokens and term_tokens.issubset(material_tokens):
             return True
+        if _terms_match_material([term_norm], material):
+            return True
         if " " in term_norm and term_norm in material:
             return True
     return False
@@ -2742,7 +2752,7 @@ def _answer_values_from_frame(
 
 
 def _match_score(material: str, target_terms: list[str], relation_terms: list[str]) -> float:
-    target_hits = sum(1 for term in target_terms if _has_term(material, term))
+    target_hits = sum(1 for term in target_terms if _terms_match_material([term], material))
     relation_matches = {term[:5] for term in relation_terms if _has_term(material, term)}
     relation_hits = len(relation_matches)
     if target_terms and target_hits == 0:
@@ -2755,7 +2765,7 @@ def _match_score(material: str, target_terms: list[str], relation_terms: list[st
 
 
 def _split_match_score(full_material: str, local_material: str, target_terms: list[str], relation_terms: list[str]) -> float:
-    target_hits = sum(1 for term in target_terms if _has_term(full_material, term))
+    target_hits = sum(1 for term in target_terms if _terms_match_material([term], full_material))
     relation_matches = {term[:5] for term in relation_terms if _has_term(local_material, term)}
     relation_hits = len(relation_matches)
     if target_terms and target_hits == 0:

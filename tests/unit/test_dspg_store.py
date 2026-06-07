@@ -612,6 +612,136 @@ def test_relation_condition_binding_returns_non_target_content_argument(tmp_path
     assert "clear ridge" in relation_values
 
 
+def test_drs_relation_target_matches_nominalized_compound_argument(tmp_path: Path) -> None:
+    source_surface = "Witness Lyra Vale reported that the west pump failed."
+    (tmp_path / "claims.txt").write_text(
+        source_surface + "\n"
+        "Officer Noa Venn recorded the west pump failure at 08:10.\n",
+        encoding="utf-8",
+    )
+
+    store, run_id, documents, sentences = ingest_folder(tmp_path)
+    row = store.execute(
+        "SELECT span_id, surface FROM source_spans WHERE surface=? LIMIT 1",
+        (source_surface,),
+    ).fetchone()
+    assert row is not None
+    materialized = store.materialize_drs_payload(
+        run_id,
+        str(row[0]),
+        str(row[1]),
+        {
+            "drs": {
+                "schema_version": "chunk-drs-v2",
+                "source_id": "claims.txt",
+                "evidence_spans": [source_surface],
+                "referents": [
+                    {
+                        "id": "r0",
+                        "label": "Witness Lyra Vale",
+                        "kind": "person",
+                        "evidence_text": "Witness Lyra Vale",
+                    },
+                    {
+                        "id": "r1",
+                        "label": "that the west pump failed",
+                        "kind": "event",
+                        "evidence_text": "that the west pump failed",
+                    },
+                ],
+                "boxes": [
+                    {
+                        "id": "b0",
+                        "kind": "asserted",
+                        "parent_id": "",
+                        "holder_referent_id": "",
+                        "evidence_text": source_surface,
+                    }
+                ],
+                "conditions": [
+                    {
+                        "id": "c0",
+                        "box_id": "b0",
+                        "predicate": "report",
+                        "polarity": "positive",
+                        "modality": "asserted",
+                        "temporal_id": "",
+                        "evidence_text": source_surface,
+                        "arguments": [
+                            {
+                                "role": "agent",
+                                "target_kind": "referent",
+                                "target_id": "r0",
+                                "value": "",
+                                "value_type": "person",
+                                "evidence_text": "Witness Lyra Vale",
+                            },
+                            {
+                                "role": "patient",
+                                "target_kind": "referent",
+                                "target_id": "r1",
+                                "value": "",
+                                "value_type": "event",
+                                "evidence_text": "that the west pump failed",
+                            },
+                        ],
+                    }
+                ],
+                "identity_hypotheses": [],
+                "temporal_records": [],
+            }
+        },
+    )
+    assert materialized["accepted"] is True
+    frame = QueryFrame(
+        question_text="Who reported the west pump failure?",
+        answer_type="person",
+        answer_variables=("Who",),
+        target_anchors=("west pump failure",),
+        requested_relation="reported",
+        relation_terms=("reported", "report"),
+        constraints=(),
+    )
+
+    assert _terms_match_material(["west pump failure"], "that the west pump failed")
+    selected_docs, selected_chunks, _ranking = _rank_scope(
+        documents,
+        _sentences_by_document(sentences),
+        frame.question_text,
+        frame,
+        40,
+        160,
+    )
+    records = _load_records(store, run_id, selected_docs, selected_chunks)
+    relation_values = {
+        value
+        for _score, value, _evidence, _reason in _bind_relation_conditions(
+            records,
+            frame,
+            ExpectedAnswer("person"),
+            _target_terms(frame, frame.question_text),
+            _relation_terms(frame, frame.question_text),
+        )
+    }
+    assert "Lyra Vale" in relation_values
+
+    answer, diagnostics = execute_bounded_query(
+        store,
+        run_id,
+        documents,
+        _sentences_by_document(sentences),
+        frame.question_text,
+        frame,
+    )
+
+    assert answer is not None
+    assert answer.text == "Lyra Vale"
+    assert diagnostics["execution"]["answer_binding_reason"] in {
+        "frame_argument_binding",
+        "relation_condition_binding",
+    }
+
+
 def test_scope_marker_target_anchor_does_not_block_asserted_followup_fact(tmp_path: Path) -> None:
     source_surface = "Real inventory: tavil arch remains installed."
     (tmp_path / "inventory.log").write_text(
