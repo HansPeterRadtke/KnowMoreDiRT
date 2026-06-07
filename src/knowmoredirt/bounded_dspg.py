@@ -3836,6 +3836,103 @@ def _choice_score(
     return score
 
 
+CURRENT_STRUCTURED_STATE_VALUES = {
+    "active",
+    "current",
+    "live",
+    "valid",
+}
+
+STALE_STRUCTURED_STATE_VALUES = {
+    "archived",
+    "deprecated",
+    "expired",
+    "inactive",
+    "obsolete",
+    "old",
+    "previous",
+    "retired",
+    "superseded",
+}
+
+STRUCTURED_STATE_SELECTORS = {"state", "status"}
+
+
+def _frame_requests_explicit_structured_state(frame: QueryFrame) -> bool:
+    material = normalize(
+        " ".join(
+            [
+                frame.temporal_scope,
+                frame.requested_relation,
+                *frame.answer_variables,
+                *frame.relation_terms,
+                *frame.constraints,
+                *frame.modality_requirements,
+                *frame.scope_requirements,
+            ]
+        )
+    )
+    if normalize_temporal_scope(frame.temporal_scope) in {"latest", "earliest"}:
+        return True
+    markers = CURRENT_STRUCTURED_STATE_VALUES | STALE_STRUCTURED_STATE_VALUES
+    return any(_has_term(material, marker) for marker in markers)
+
+
+def _structured_row_state_rank(value: str, evidence: Evidence, records: dict[str, Any]) -> int:
+    if not evidence.span_id:
+        return 0
+    value_norm = normalize(value)
+    rows_by_group: dict[str, list[dict[str, Any]]] = defaultdict(list)
+    for row in records.get("relations", []):
+        if str(row.get("source_span_id") or "") != evidence.span_id:
+            continue
+        if not _structured_source_row(row):
+            continue
+        metadata = _relation_metadata(row)
+        group = str(metadata.get("record_group") or "")
+        if not group:
+            continue
+        rows_by_group[group].append(row)
+    ranks: list[int] = []
+    for rows in rows_by_group.values():
+        if value_norm and not _has_term(_group_material(rows, records, include_source_evidence=False), value_norm):
+            continue
+        group_rank = 0
+        for row in rows:
+            metadata = _relation_metadata(row)
+            selector = normalize(str(row.get("predicate") or metadata.get("column_header") or ""))
+            if selector not in STRUCTURED_STATE_SELECTORS:
+                continue
+            state_value = normalize(str(row.get("value") or row.get("object") or ""))
+            if state_value in CURRENT_STRUCTURED_STATE_VALUES:
+                group_rank = max(group_rank, 1)
+            if state_value in STALE_STRUCTURED_STATE_VALUES:
+                group_rank = min(group_rank, -1)
+        if group_rank:
+            ranks.append(group_rank)
+    if 1 in ranks and -1 not in ranks:
+        return 1
+    if -1 in ranks and 1 not in ranks:
+        return -1
+    return 0
+
+
+def _apply_structured_current_state_preference(
+    candidates: list[tuple[float, str, Evidence, str]],
+    records: dict[str, Any],
+    frame: QueryFrame,
+) -> list[tuple[float, str, Evidence, str]]:
+    if not candidates or _frame_requests_explicit_structured_state(frame):
+        return candidates
+    ranks = [_structured_row_state_rank(value, evidence, records) for _score, value, evidence, _reason in candidates]
+    if 1 not in ranks or -1 not in ranks:
+        return candidates
+    adjusted: list[tuple[float, str, Evidence, str]] = []
+    for (score, value, evidence, reason), rank in zip(candidates, ranks):
+        adjusted.append((score + rank * 18.0, value, evidence, reason))
+    return adjusted
+
+
 def _candidate_evidence_key(evidence: Evidence) -> tuple[str, str, int | None, str]:
     return (evidence.rel_path, evidence.span_id, evidence.chunk_order, evidence.text)
 
@@ -4521,6 +4618,7 @@ def execute_bounded_query(
     candidates.extend(temporal_candidates)
     candidates.extend(_bind_metadata(records, question, expected, target_terms, relation_terms))
     candidates.extend(_bind_contexts(records, frame, expected, target_terms, relation_terms))
+    candidates = _apply_structured_current_state_preference(candidates, records, frame)
 
     if expected.answer_type == "count" and frame.aggregation == "count":
         group_count, group_evidence = _count_matching_record_groups(records, frame, target_terms, relation_terms)

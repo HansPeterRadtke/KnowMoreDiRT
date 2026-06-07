@@ -9058,6 +9058,41 @@ def test_count_aggregation_matches_field_value_tokens_not_whole_verb_phrase(tmp_
     assert answer.text == "3"
 
 
+def test_unscoped_table_lookup_prefers_current_structured_row(tmp_path: Path) -> None:
+    (tmp_path / "rows.tsv").write_text(
+        "item\tstatus\tcontact\treference\n"
+        "Copper Gate\tarchived\tMara Fen\tCG-100\n"
+        "Copper Gate\tactive\tIra Sol\tCG-101\n",
+        encoding="utf-8",
+    )
+    store, run_id, documents, sentences = ingest_folder(tmp_path)
+    sentences_by_document: dict[str, dict[int, Sentence]] = {}
+    for sentence in sentences:
+        sentences_by_document.setdefault(sentence.rel_path, {})[sentence.order] = sentence
+    frame = QueryFrame(
+        question_text="Who is the contact for Copper Gate?",
+        answer_type="person",
+        answer_variables=("contact",),
+        target_anchors=("Copper Gate",),
+        requested_relation="contact",
+        relation_terms=("contact",),
+        constraints=(),
+    )
+
+    answer, diagnostics = execute_bounded_query(
+        store,
+        run_id,
+        documents,
+        sentences_by_document,
+        frame.question_text,
+        frame,
+    )
+
+    assert answer is not None
+    assert answer.text == "Ira Sol"
+    assert "answer_conflict_without_query_scope" not in diagnostics["execution"]
+
+
 def test_document_scoped_label_values_bind_single_target_field(tmp_path: Path) -> None:
     (tmp_path / "recipe.txt").write_text(
         "Recipe: pear oat cakes. Oven temperature: 180C. Bake time: 22 minutes. Author: Aunt Mira.",
