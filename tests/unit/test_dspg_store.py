@@ -1283,6 +1283,108 @@ def test_list_aggregation_uses_semicolon_fallback_for_scattered_evidence() -> No
     assert answer.text == "SPEC-1; PR-2"
 
 
+def test_drs_target_condition_binds_untyped_literal_value_for_typed_answer(tmp_path: Path) -> None:
+    (tmp_path / "launch.txt").write_text(
+        "The status portal for Project Lumen is not published yet.\n"
+        "Project Lumen rollout coordinator is Nila Park.\n",
+        encoding="utf-8",
+    )
+    store, run_id, documents, sentences = ingest_folder(tmp_path)
+    source_surface = "Project Lumen rollout coordinator is Nila Park."
+    row = store.execute(
+        "SELECT span_id, surface FROM source_spans WHERE surface=? LIMIT 1",
+        (source_surface,),
+    ).fetchone()
+    assert row is not None
+    materialized = store.materialize_drs_payload(
+        run_id,
+        str(row[0]),
+        str(row[1]),
+        {
+            "drs": {
+                "schema_version": "chunk-drs-v2",
+                "source_id": "launch.txt",
+                "evidence_spans": [source_surface],
+                "referents": [
+                    {
+                        "id": "r0",
+                        "label": "Project Lumen",
+                        "kind": "role",
+                        "evidence_text": "Project Lumen",
+                    }
+                ],
+                "boxes": [
+                    {
+                        "id": "b0",
+                        "kind": "asserted",
+                        "parent_id": "",
+                        "holder_referent_id": "",
+                        "evidence_text": source_surface,
+                    }
+                ],
+                "conditions": [
+                    {
+                        "id": "c0",
+                        "box_id": "b0",
+                        "predicate": "rollout coordinator",
+                        "polarity": "positive",
+                        "modality": "asserted",
+                        "temporal_id": "",
+                        "evidence_text": source_surface,
+                        "arguments": [
+                            {
+                                "role": "patient",
+                                "target_kind": "referent",
+                                "target_id": "r0",
+                                "value": "",
+                                "value_type": "role",
+                                "evidence_text": "Project Lumen",
+                            },
+                            {
+                                "role": "value",
+                                "target_kind": "literal",
+                                "target_id": "",
+                                "value": "Nila Park",
+                                "value_type": "value",
+                                "evidence_text": "Nila Park",
+                            },
+                        ],
+                    }
+                ],
+                "identity_hypotheses": [],
+                "temporal_records": [],
+            }
+        },
+    )
+    assert materialized["accepted"] is True
+    frame = QueryFrame(
+        question_text="Who is the Project Lumen rollout coordinator?",
+        answer_type="person",
+        answer_variables=("Project Lumen rollout coordinator",),
+        target_anchors=("Project Lumen",),
+        requested_relation="",
+        relation_terms=(),
+        constraints=(),
+    )
+
+    answer, diagnostics = execute_bounded_query(
+        store,
+        run_id,
+        documents,
+        _sentences_by_document(sentences),
+        frame.question_text,
+        frame,
+    )
+
+    assert answer is not None
+    assert answer.text == "Nila Park"
+    assert diagnostics["execution"]["answer_binding_reason"] in {
+        "document_scoped_drs_condition_binding",
+        "relation_condition_binding",
+        "structural_chain_drs_binding",
+    }
+
+
 def test_scope_marker_target_anchor_does_not_block_asserted_followup_fact(tmp_path: Path) -> None:
     source_surface = "Real inventory: tavil arch remains installed."
     (tmp_path / "inventory.log").write_text(

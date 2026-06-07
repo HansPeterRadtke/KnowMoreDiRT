@@ -2158,6 +2158,19 @@ def _drs_condition_argument_values(
                 )
             if condition_added:
                 continue
+        if target_arg_ids and expected.answer_type not in {"content_phrase", "unknown", "metadata_value"}:
+            complement_args = [
+                arg
+                for arg in raw_args
+                if id(arg) not in target_arg_ids and _drs_argument_is_answer_value_carrier(arg, expected)
+            ]
+            for arg in complement_args:
+                condition_added += append_surface_values(
+                    _drs_argument_surface_values(arg, records, frame),
+                    negated=negated,
+                )
+            if condition_added:
+                continue
         if target_arg_ids and expected.answer_type in {"content_phrase", "unknown", "metadata_value"}:
             complement_args = [arg for arg in raw_args if id(arg) not in target_arg_ids]
             if answer_slot_terms:
