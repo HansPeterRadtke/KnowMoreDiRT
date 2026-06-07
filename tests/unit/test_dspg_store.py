@@ -18,6 +18,7 @@ from knowmoredirt.bounded_dspg import (
     _rank_scope,
     _answer_slot_terms,
     _bind_relation_conditions,
+    _choose_answer,
     _choose_list_answer,
     _relation_terms,
     _terms_match_material,
@@ -1383,6 +1384,44 @@ def test_drs_target_condition_binds_untyped_literal_value_for_typed_answer(tmp_p
         "relation_condition_binding",
         "structural_chain_drs_binding",
     }
+
+
+def test_identifier_choice_prefers_entity_like_drs_value_over_structural_label() -> None:
+    evidence = Evidence("notes/source.txt", "Note survives: River Stone confirmed the repair.", 0.8)
+    answer = _choose_answer(
+        [
+            (30.0, "REPAIR-1234", evidence, "document_scoped_relation_value_binding"),
+            (18.0, "Note survives", evidence, "record_group_drs_binding"),
+            (5.0, "River Stone", evidence, "document_scoped_drs_condition_binding"),
+            (5.0, "the repair", evidence, "document_scoped_drs_condition_binding"),
+        ],
+        ExpectedAnswer("identifier"),
+        ["REPAIR-1234"],
+    )
+
+    assert answer is not None
+    assert answer.text == "River Stone"
+
+
+def test_label_value_subject_fallback_requires_answer_slot_match() -> None:
+    values = _answer_values_from_relation(
+        {
+            "relation_type": "label_value",
+            "subject": "Note survives",
+            "predicate": "label",
+            "object": "",
+            "value": "River Stone confirmed REPAIR-1234",
+            "confidence": 0.84,
+            "metadata_json": "{}",
+        },
+        Evidence("notes/source.txt", "Note survives: River Stone confirmed REPAIR-1234.", 0.8),
+        ExpectedAnswer("identifier"),
+        ["REPAIR-1234"],
+        ["confirmed", "customer"],
+        ["customer"],
+    )
+
+    assert values == []
 
 
 def test_scope_marker_target_anchor_does_not_block_asserted_followup_fact(tmp_path: Path) -> None:

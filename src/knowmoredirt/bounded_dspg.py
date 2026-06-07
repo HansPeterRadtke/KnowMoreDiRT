@@ -2705,6 +2705,12 @@ def _answer_values_from_relation(
         if relation_type in {"semantic_argument", "semantic_frame", "drs_condition"}
         else [str(row.get("subject") or "")]
     )
+    label_subject_fallback_blocked = False
+    if relation_type == "label_value" and fallback_values and answer_slot_terms:
+        subject_material = normalize(str(row.get("subject") or ""))
+        if subject_material and not _answer_slot_label_matches(subject_material, answer_slot_terms, target_terms):
+            fallback_values = []
+            label_subject_fallback_blocked = True
     label_values = [
         split_value
         for value in [*primary_values, *fallback_values]
@@ -2765,6 +2771,8 @@ def _answer_values_from_relation(
     if compatible or not structural:
         return compatible
     if relation_type == "drs_condition":
+        return []
+    if label_subject_fallback_blocked:
         return []
     return _compatible_values(expected, [evidence.text])
 
@@ -4227,12 +4235,33 @@ def _source_anchor_match_bonus(evidence: Evidence | None, target_terms: list[str
     return min(24.0, 14.0 + hits * 6.0)
 
 
+def _identifier_value_shape_bonus(value: str) -> float:
+    text = clean_extracted_value(value).strip()
+    if not text:
+        return 0.0
+    found_urls = urls(text)
+    found_ids = identifiers(text)
+    if found_urls or found_ids:
+        return 16.0
+    phrases = [phrase.strip() for phrase in capitalized_phrases(text) if phrase.strip()]
+    if any(len(phrase.split()) >= 2 for phrase in phrases):
+        return 18.0
+    has_upper = any(char.isupper() for char in text)
+    if not has_upper:
+        return -8.0
+    words = [part for part in re.split(r"\s+", text) if part]
+    if len(words) > 1 and len(phrases) <= 1:
+        return -5.0
+    return 0.0
+
+
 def _choice_score(
     score: float,
     reason: str,
     expected: ExpectedAnswer,
     evidence: Evidence | None = None,
     target_terms: list[str] | None = None,
+    value: str | None = None,
 ) -> float:
     if reason == "direct_label_slot_binding":
         score += 45.0
@@ -4242,6 +4271,8 @@ def _choice_score(
         score += 3.0
     if reason == "relation_condition_binding" and expected.answer_type in {"content_phrase", "unknown"}:
         score += 7.0
+    if expected.answer_type == "identifier" and value:
+        score += _identifier_value_shape_bonus(value)
     score += _source_anchor_match_bonus(evidence, target_terms)
     return score
 
@@ -4388,7 +4419,12 @@ def _choose_answer(
         canonical = canonicalize_answer(expected, value)
         if not canonical:
             continue
-        score = _choice_score(score, reason, expected, evidence, target_terms)
+        if target_terms and (
+            _value_is_target(canonical, target_terms)
+            or _rejects_bound_target_value(expected, canonical, target_terms)
+        ):
+            continue
+        score = _choice_score(score, reason, expected, evidence, target_terms, canonical)
         bucket = scored.setdefault(
             canonical,
             {"scores_by_evidence": {}, "evidence_by_key": {}, "reasons": []},
@@ -4431,12 +4467,17 @@ def _answer_conflict_diagnostics(
         canonical = canonicalize_answer(expected, value)
         if not canonical:
             continue
+        if target_terms and (
+            _value_is_target(canonical, target_terms)
+            or _rejects_bound_target_value(expected, canonical, target_terms)
+        ):
+            continue
         bucket = buckets.setdefault(
             canonical,
             {"score": 0.0, "scores_by_evidence": {}, "evidence": [], "evidence_by_key": {}, "reasons": set()},
         )
         evidence_key = _candidate_evidence_key(evidence)
-        choice_score = _choice_score(score, reason, expected, evidence, target_terms)
+        choice_score = _choice_score(score, reason, expected, evidence, target_terms, canonical)
         previous_score = float(bucket["scores_by_evidence"].get(evidence_key, 0.0))
         if choice_score > previous_score:
             bucket["scores_by_evidence"][evidence_key] = choice_score
@@ -4612,7 +4653,7 @@ def _has_unscoped_temporal_ambiguity(
             canonical = canonicalize_answer(expected, value)
             if not canonical:
                 continue
-            choice = _choice_score(score, reason, expected, _evidence, None)
+            choice = _choice_score(score, reason, expected, _evidence, None, canonical)
             prev = scored.get(canonical)
             if prev and prev[1] == "direct_label_slot_binding":
                 merged_reason = prev[1]
