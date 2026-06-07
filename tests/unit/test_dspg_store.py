@@ -11,12 +11,14 @@ from knowmoredirt.bounded_dspg import (
     _context_accessible,
     _document_scoped_drs_condition_candidates,
     _document_scoped_relation_value_candidates,
+    _answer_values_from_relation,
     _fetch_identity_hypotheses,
     _identity_expanded_terms,
     _load_records,
     _rank_scope,
     _answer_slot_terms,
     _bind_relation_conditions,
+    _choose_list_answer,
     _relation_terms,
     _terms_match_material,
     _target_terms,
@@ -924,6 +926,44 @@ def test_document_scoped_drs_condition_binds_value_from_answer_slot(tmp_path: Pa
         "document_scoped_drs_condition_binding",
         "record_group_drs_binding",
     }
+
+
+def test_answer_values_strip_model_answer_slot_prefix_from_structural_value() -> None:
+    row = {
+        "relation_type": "record_value",
+        "subject": "CASE-77",
+        "predicate": "reported",
+        "value": "recipient Bright Harbor",
+        "object": "",
+        "confidence": 0.9,
+    }
+    evidence = Evidence("notes/status.txt", "s1", "CASE-77 was reported by recipient Bright Harbor.")
+
+    values = _answer_values_from_relation(
+        row,
+        evidence,
+        ExpectedAnswer("identifier"),
+        ["case-77"],
+        ["reported", "recipient"],
+        ["recipient"],
+    )
+
+    assert values == ["Bright Harbor"]
+
+
+def test_list_aggregation_filters_exact_target_echoes() -> None:
+    evidence = Evidence("notes/status.txt", "CASE-77 reported recipient Bright Harbor.", 0.8)
+    answer = _choose_list_answer(
+        [
+            (9.0, "CASE-77", evidence, "document_scoped_relation_value_binding"),
+            (8.0, "Bright Harbor", evidence, "relation_condition_binding"),
+        ],
+        ExpectedAnswer("identifier"),
+        ["CASE-77"],
+    )
+
+    assert answer is not None
+    assert answer.text == "Bright Harbor"
 
 
 def test_scope_marker_target_anchor_does_not_block_asserted_followup_fact(tmp_path: Path) -> None:

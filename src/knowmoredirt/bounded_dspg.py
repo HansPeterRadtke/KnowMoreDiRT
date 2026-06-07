@@ -2260,6 +2260,60 @@ def _compatible_values(expected: ExpectedAnswer, values: list[str]) -> list[str]
     return list(dict.fromkeys(value for value in cleaned if canonicalize_answer(expected, value)))
 
 
+def _answer_slot_prefix_variants(
+    values: list[str],
+    expected: ExpectedAnswer,
+    answer_slot_terms: list[str] | None,
+    target_terms: list[str],
+) -> list[str]:
+    if not answer_slot_terms or expected.answer_type not in {
+        "identifier",
+        "person",
+        "actor",
+        "organization",
+        "metadata_value",
+    }:
+        return values
+    slot_token_sets = []
+    for term in sorted(dict.fromkeys(answer_slot_terms), key=len, reverse=True):
+        term_norm = normalize(term)
+        if not term_norm or term_norm in ANSWER_SLOT_SKIP_TERMS or _value_is_target(term_norm, target_terms):
+            continue
+        tokens = [token for token in term_norm.split() if token]
+        if tokens:
+            slot_token_sets.append(tokens)
+    if not slot_token_sets:
+        return values
+
+    expanded: list[str] = []
+    for value in values:
+        text = clean_extracted_value(str(value or ""))
+        if not text:
+            continue
+        parts = [part for part in text.split() if part]
+        norm_parts = [normalize(part.rstrip(".:;,")) for part in parts]
+        stripped_variant = ""
+        for slot_tokens in slot_token_sets:
+            if len(norm_parts) <= len(slot_tokens):
+                continue
+            if norm_parts[: len(slot_tokens)] != slot_tokens:
+                continue
+            stripped = clean_extracted_value(" ".join(parts[len(slot_tokens) :])).strip(" .;:,")
+            if not stripped or _value_is_target(stripped, target_terms):
+                continue
+            if canonicalize_answer(expected, stripped):
+                stripped_variant = stripped
+                break
+        expanded.append(stripped_variant or text)
+    return list(dict.fromkeys(expanded))
+
+
+def _without_exact_target_values(values: list[str], target_terms: list[str]) -> list[str]:
+    if not target_terms:
+        return values
+    return [value for value in values if not _value_is_target(value, target_terms)]
+
+
 def _slot_adjacent_identifier_values(
     value: str,
     answer_slot_terms: list[str] | None,
@@ -2608,6 +2662,8 @@ def _answer_values_from_relation(
     if label_values:
         primary_values = label_values
         fallback_values = []
+    primary_values = _answer_slot_prefix_variants(primary_values, expected, answer_slot_terms, target_terms)
+    fallback_values = _answer_slot_prefix_variants(fallback_values, expected, answer_slot_terms, target_terms)
     url_requested = _unknown_query_requests_url(expected, relation_terms, answer_slot_terms)
     structural = expected.answer_type in {"url", "identifier", "file_path", "date_time", "count"} or url_requested
     primary_values = [
@@ -2625,13 +2681,17 @@ def _answer_values_from_relation(
         and (structural or not _value_is_target(value, relation_terms))
     ]
     if url_requested:
-        return list(dict.fromkeys(url.rstrip(".,;)") for value in [*primary_values, *fallback_values] for url in urls(value)))
+        return _without_exact_target_values(
+            list(dict.fromkeys(url.rstrip(".,;)") for value in [*primary_values, *fallback_values] for url in urls(value))),
+            target_terms,
+        )
     if expected.answer_type == "identifier":
         slot_identifiers = [
             identifier
             for value in [*primary_values, *fallback_values]
             for identifier in _slot_adjacent_identifier_values(value, answer_slot_terms, target_terms, relation_terms)
         ]
+        slot_identifiers = _without_exact_target_values(slot_identifiers, target_terms)
         if slot_identifiers:
             return slot_identifiers
     compatible = [
@@ -2641,6 +2701,7 @@ def _answer_values_from_relation(
     ]
     if not compatible:
         compatible = _compatible_values(expected, primary_values)
+    compatible = _without_exact_target_values(compatible, target_terms)
     if not compatible:
         compatible = [
             person_value
@@ -2649,6 +2710,7 @@ def _answer_values_from_relation(
         ]
     if not compatible:
         compatible = _compatible_values(expected, fallback_values)
+    compatible = _without_exact_target_values(compatible, target_terms)
     if compatible or not structural:
         return compatible
     if relation_type == "drs_condition":
@@ -2709,6 +2771,7 @@ def _answer_values_from_frame(
                 identity_value = _locative_answer_value(frame_row, label, relation_terms)
                 if identity_value:
                     values.append(identity_value)
+    values = _answer_slot_prefix_variants(values, expected, answer_slot_terms, target_terms)
     url_requested = _unknown_query_requests_url(expected, relation_terms, answer_slot_terms)
     structural = expected.answer_type in {"url", "identifier", "file_path", "date_time", "count"} or url_requested
     values = [
@@ -2723,7 +2786,10 @@ def _answer_values_from_frame(
         )
     ]
     if url_requested:
-        return list(dict.fromkeys(url.rstrip(".,;)") for value in values for url in urls(value)))
+        return _without_exact_target_values(
+            list(dict.fromkeys(url.rstrip(".,;)") for value in values for url in urls(value))),
+            target_terms,
+        )
     if evidence is not None:
         locative = _locative_phrase_from_evidence(evidence, target_terms, relation_terms)
         if locative:
@@ -2733,6 +2799,7 @@ def _answer_values_from_frame(
             # argument such as "on red desk" win tie-breaking.
             values = [locative]
     compatible = _compatible_values(expected, values)
+    compatible = _without_exact_target_values(compatible, target_terms)
     if compatible or structural:
         return compatible
     if str(frame_row.get("source") or "") != "local_model":
@@ -4358,7 +4425,11 @@ def _answer_conflict_diagnostics(
     }
 
 
-def _choose_list_answer(candidates: list[tuple[float, str, Evidence, str]], expected: ExpectedAnswer) -> Answer | None:
+def _choose_list_answer(
+    candidates: list[tuple[float, str, Evidence, str]],
+    expected: ExpectedAnswer,
+    target_terms: list[str] | None = None,
+) -> Answer | None:
     values: list[str] = []
     evidence: list[Evidence] = []
     for _score, value, item_evidence, _reason in candidates:
@@ -4367,6 +4438,8 @@ def _choose_list_answer(candidates: list[tuple[float, str, Evidence, str]], expe
             continue
         parts = [part.strip() for part in canonical.split(";") if part.strip()]
         for part in parts or [canonical]:
+            if target_terms and _value_is_target(part, target_terms):
+                continue
             if part not in values:
                 values.append(part)
                 evidence.append(item_evidence)
@@ -4954,7 +5027,7 @@ def execute_bounded_query(
         return None, diagnostics
 
     if frame.aggregation in {"list", "set"}:
-        answer = _with_supporting_evidence(_choose_list_answer(candidates, expected), identity_expansion_evidence)
+        answer = _with_supporting_evidence(_choose_list_answer(candidates, expected, target_terms), identity_expansion_evidence)
         if answer is None:
             _attach_no_answer_provenance(
                 diagnostics,
