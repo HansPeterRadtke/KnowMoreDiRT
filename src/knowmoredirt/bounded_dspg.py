@@ -133,6 +133,7 @@ BOOLEAN_GENERIC_TERMS = {
     "were",
     "would",
 }
+RELATION_TERM_SKIP_TERMS = {"answer", "argument", "what", "which", "who", "why"}
 
 
 @lru_cache(maxsize=8192)
@@ -192,15 +193,17 @@ def _query_terms(text: str) -> list[str]:
 def _target_terms(frame: QueryFrame, question: str) -> list[str]:
     values: list[str] = []
     visible = {normalize(anchor) for anchor in visible_anchors(question)}
+    question_material = normalize(question)
     answer_material = normalize(" ".join(frame.answer_variables))
     answer_tokens = _normalized_token_set(answer_material)
     for anchor in frame.target_anchors:
         norm = normalize(anchor)
         if not norm:
             continue
+        anchor_visible = norm in visible or norm in question_material
         anchor_tokens = _normalized_token_set(norm)
         relation_material = normalize(" ".join([frame.requested_relation, *frame.relation_terms, *frame.constraints]))
-        if anchor_tokens and anchor_tokens.issubset(answer_tokens) and norm not in visible:
+        if anchor_tokens and anchor_tokens.issubset(answer_tokens) and not anchor_visible:
             field_words = {
                 "state", "status", "code", "id", "identifier", "url", "link",
                 "date", "time", "model", "confirmation",
@@ -212,12 +215,12 @@ def _target_terms(frame: QueryFrame, question: str) -> list[str]:
             # and answer="greenhouse pump state".
             if not (remainder & field_words):
                 continue
-        if anchor_tokens and len(anchor_tokens) == 1 and _has_term(relation_material, norm) and norm not in visible:
+        if anchor_tokens and len(anchor_tokens) == 1 and _has_term(relation_material, norm) and not anchor_visible:
             # Model query DRS can put a requested relation/slot such as
             # "feedback" into target_anchors.  That is not an entity target and
             # should stay available through relation terms instead.
             continue
-        if frame.aggregation == "count" and anchor_tokens and norm not in visible:
+        if frame.aggregation == "count" and anchor_tokens and not anchor_visible:
             relation_group_tokens: set[str] = set()
             for group in _relation_term_groups_for_frame(frame, target_terms=[]):
                 for term in group:
@@ -231,36 +234,98 @@ def _target_terms(frame: QueryFrame, question: str) -> list[str]:
     return list(dict.fromkeys(values))
 
 
-def _relation_terms(frame: QueryFrame, question: str) -> list[str]:
-    target = set(_target_terms(frame, question))
-    raw_terms = list(frame.relation_terms) + _query_terms(frame.requested_relation) + list(frame.constraints)
-    terms = [variant for term in raw_terms for variant in _compound_term_variants(term)]
-    filtered = [
-        term
-        for term in terms
-        if term and term not in target and normalize_temporal_scope(term) not in {"latest", "earliest"}
-    ]
-    return list(dict.fromkeys(term for term in expand_terms(filtered) if term and term not in target))
-
-
-def _answer_slot_terms(frame: QueryFrame) -> list[str]:
-    terms: list[str] = []
-    for variable in frame.answer_variables:
-        for term in _compound_term_variants(variable):
-            if term not in ANSWER_SLOT_SKIP_TERMS:
-                terms.append(term)
-        for token in content_tokens(variable):
-            if token not in ANSWER_SLOT_SKIP_TERMS:
-                terms.append(token)
-    return list(dict.fromkeys(term for term in expand_terms(terms) if term))
-
-
 def _target_token_variants(target_terms: list[str] | None) -> set[str]:
     variants: set[str] = set()
     for term in target_terms or []:
         for token in content_tokens(term):
             variants.update(expand_terms([token]))
     return variants
+
+
+def _term_covered_by_target_tokens(term: str, target_terms: list[str] | None) -> bool:
+    tokens = [token for token in content_tokens(term) if token]
+    if not tokens:
+        return False
+    target_tokens = _target_token_variants(target_terms)
+    if not target_tokens:
+        return False
+    return all(any(variant in target_tokens for variant in expand_terms([token])) for token in tokens)
+
+
+def _term_has_answer_wrapper(term: str) -> bool:
+    return any(part in ANSWER_SLOT_SKIP_TERMS for part in _material_parts(normalize(term)))
+
+
+def _skip_relation_term(term: str) -> bool:
+    parts = _material_parts(normalize(term))
+    if not parts:
+        return True
+    if len(parts) == 1 and parts[0] in RELATION_TERM_SKIP_TERMS:
+        return True
+    return any(part in RELATION_TERM_SKIP_TERMS for part in parts) and len(parts) > 1
+
+
+def _relation_terms(frame: QueryFrame, question: str) -> list[str]:
+    target_terms = _target_terms(frame, question)
+    target = set(target_terms)
+    raw_terms = list(frame.relation_terms) + _query_terms(frame.requested_relation) + list(frame.constraints)
+    terms = [variant for term in raw_terms for variant in _compound_term_variants(term)]
+    filtered = [
+        term
+        for term in terms
+        if term
+        and term not in target
+        and not _skip_relation_term(term)
+        and not _term_covered_by_target_tokens(term, target_terms)
+        and normalize_temporal_scope(term) not in {"latest", "earliest"}
+    ]
+    return list(
+        dict.fromkeys(
+            term
+            for term in expand_terms(filtered)
+            if term
+            and term not in target
+            and not _skip_relation_term(term)
+            and not _term_covered_by_target_tokens(term, target_terms)
+        )
+    )
+
+
+def _answer_slot_terms(frame: QueryFrame, target_terms: list[str] | None = None) -> list[str]:
+    terms: list[str] = []
+    target_tokens = _target_token_variants(target_terms)
+    requested_tokens = set(content_tokens(frame.requested_relation))
+    for variable in frame.answer_variables:
+        reduced_tokens: list[str] = []
+        for token in content_tokens(variable):
+            if token in ANSWER_SLOT_SKIP_TERMS:
+                continue
+            if token in requested_tokens:
+                continue
+            if target_tokens and any(variant in target_tokens for variant in expand_terms([token])):
+                continue
+            if token not in reduced_tokens:
+                reduced_tokens.append(token)
+        if len(reduced_tokens) > 1:
+            terms.append(" ".join(reduced_tokens))
+        elif len(reduced_tokens) == 1:
+            terms.append(reduced_tokens[0])
+        for term in _compound_term_variants(variable):
+            if term in ANSWER_SLOT_SKIP_TERMS:
+                continue
+            if _term_has_answer_wrapper(term):
+                continue
+            if _term_covered_by_target_tokens(term, target_terms):
+                continue
+            term_tokens = [token for token in content_tokens(term) if token]
+            if any(token in ANSWER_SLOT_SKIP_TERMS for token in term_tokens):
+                continue
+            if requested_tokens and all(token in requested_tokens for token in term_tokens):
+                continue
+            if term_tokens and all(token in reduced_tokens for token in term_tokens):
+                continue
+            terms.append(term)
+    return list(dict.fromkeys(term for term in expand_terms(terms) if term))
 
 
 def _answer_slot_constraints(
@@ -374,7 +439,7 @@ def _rank_scope(
     chunk_limit: int,
 ) -> tuple[list[str], list[str], dict[str, Any]]:
     target_terms = _target_terms(frame, question)
-    relation_terms = list(dict.fromkeys([*_relation_terms(frame, question), *_answer_slot_terms(frame)]))
+    relation_terms = list(dict.fromkeys([*_relation_terms(frame, question), *_answer_slot_terms(frame, target_terms)]))
     all_terms = _query_terms(question)
     doc_scores: list[tuple[float, str, str]] = []
     relation_doc_scores: list[tuple[float, str, str]] = []
@@ -1657,6 +1722,32 @@ RELATION_BINDING_GENERIC_TERMS = {
     "positive",
 }
 
+UNRESOLVED_PRONOUN_ANSWER_VALUES = {
+    "he",
+    "her",
+    "hers",
+    "him",
+    "his",
+    "i",
+    "it",
+    "its",
+    "me",
+    "mine",
+    "my",
+    "our",
+    "ours",
+    "she",
+    "their",
+    "theirs",
+    "them",
+    "they",
+    "us",
+    "we",
+    "you",
+    "your",
+    "yours",
+}
+
 
 def _specific_relation_terms(relation_terms: list[str], target_terms: list[str]) -> list[str]:
     target_tokens = _target_token_variants(target_terms)
@@ -1865,22 +1956,90 @@ def _drs_condition_argument_values(
         return []
     args_by_condition = _drs_arguments_by_condition_id(records)
     values: list[str] = []
+
+    def append_surface_values(surface_values: list[str], *, negated: bool) -> int:
+        before = len(values)
+        for value in surface_values:
+            if _value_is_target(value, relation_terms):
+                continue
+            stripped = _strip_condition_polarity_prefix(value, negated=negated)
+            for candidate in [stripped, value]:
+                for answer_value in _drs_argument_answer_values(
+                    candidate,
+                    expected,
+                    target_terms,
+                    relation_terms,
+                ):
+                    if answer_value and answer_value not in values:
+                        values.append(answer_value)
+        return len(values) - before
+
     for condition in conditions:
         negated = _drs_condition_is_negated(row, condition)
         raw_args = args_by_condition.get(str(condition.get("drs_condition_id") or ""), [])
         candidate_args = _select_drs_answer_arguments(raw_args, expected, answer_slot_terms, target_terms)
+        condition_added = 0
         for arg in candidate_args:
             arg_values = _drs_argument_surface_values(arg, records, frame)
             if target_terms and _argument_values_match_target(arg_values, target_terms):
                 continue
-            for value in arg_values:
-                if _value_is_target(value, relation_terms):
-                    continue
-                stripped = _strip_condition_polarity_prefix(value, negated=negated)
-                for candidate in [stripped, value]:
-                    if candidate and candidate not in values:
-                        values.append(candidate)
+            condition_added += append_surface_values(arg_values, negated=negated)
+        if condition_added:
+            continue
+        candidate_arg_ids = {id(arg) for arg in candidate_args}
+        for arg in raw_args:
+            if id(arg) in candidate_arg_ids:
+                continue
+            arg_values = _drs_argument_surface_values(arg, records, frame)
+            if not _drs_argument_matches_requested_clause(arg_values, target_terms, relation_terms):
+                continue
+            append_surface_values(arg_values, negated=negated)
     return values
+
+
+def _drs_argument_answer_values(
+    value: str,
+    expected: ExpectedAnswer,
+    target_terms: list[str],
+    relation_terms: list[str],
+) -> list[str]:
+    text = clean_extracted_value(value)
+    if not text:
+        return []
+    answer_type = expected.answer_type
+    if answer_type in {"person", "actor", "organization"}:
+        values: list[str] = []
+        for phrase in capitalized_phrases(text):
+            canonical = canonicalize_answer(expected, phrase)
+            if not canonical:
+                continue
+            if normalize(canonical) in UNRESOLVED_PRONOUN_ANSWER_VALUES:
+                continue
+            if _value_is_target(canonical, target_terms) or _rejects_bound_target_value(expected, canonical, target_terms):
+                continue
+            if _value_is_target(canonical, relation_terms):
+                continue
+            if canonical not in values:
+                values.append(canonical)
+        return values
+    canonical = canonicalize_answer(expected, text)
+    if canonical:
+        return [canonical]
+    return [text] if answer_type in {"content_phrase", "metadata_value", "unknown"} else []
+
+
+def _drs_argument_matches_requested_clause(
+    values: list[str],
+    target_terms: list[str],
+    relation_terms: list[str],
+) -> bool:
+    if not values:
+        return False
+    if target_terms and not _argument_values_match_target(values, target_terms):
+        return False
+    material = normalize(" ".join(values))
+    specific_terms = _specific_relation_terms(relation_terms, target_terms)
+    return bool(specific_terms and _contains_any(material, specific_terms))
 
 
 def _drs_condition_has_target_argument(
@@ -2289,7 +2448,7 @@ def _answer_values_from_relation(
     primary_values = [
         value for value in primary_values
         if value
-        and (structural or not _value_is_target(value, target_terms))
+        and not _value_is_target(value, target_terms)
         and (structural or not _rejects_bound_target_value(expected, value, target_terms))
         and (structural or not _value_is_target(value, relation_terms))
     ]
@@ -2390,9 +2549,13 @@ def _answer_values_from_frame(
     values = [
         value for value in values
         if value
-        and (structural or not _value_is_target(value, target_terms))
+        and not _value_is_target(value, target_terms)
         and (structural or not _rejects_bound_target_value(expected, value, target_terms))
         and (structural or not _value_is_target(value, relation_terms))
+        and (
+            expected.answer_type not in {"person", "actor", "organization"}
+            or normalize(value) not in UNRESOLVED_PRONOUN_ANSWER_VALUES
+        )
     ]
     if url_requested:
         return list(dict.fromkeys(url.rstrip(".,;)") for value in values for url in urls(value)))
@@ -2450,7 +2613,7 @@ def _split_match_score(full_material: str, local_material: str, target_terms: li
 
 
 def _bind_frame_conditions(records: dict[str, Any], frame: QueryFrame, expected: ExpectedAnswer, target_terms: list[str], relation_terms: list[str]) -> list[tuple[float, str, Evidence, str]]:
-    answer_slot_terms = _answer_slot_terms(frame)
+    answer_slot_terms = _answer_slot_terms(frame, target_terms)
     args_by_frame: dict[str, list[dict[str, Any]]] = defaultdict(list)
     for arg in records.get("frame_arguments", []):
         args_by_frame[str(arg.get("frame_id"))].append(arg)
@@ -2527,7 +2690,7 @@ def _bind_frame_conditions(records: dict[str, Any], frame: QueryFrame, expected:
 
 
 def _bind_relation_conditions(records: dict[str, Any], frame: QueryFrame, expected: ExpectedAnswer, target_terms: list[str], relation_terms: list[str]) -> list[tuple[float, str, Evidence, str]]:
-    answer_slot_terms = _answer_slot_terms(frame)
+    answer_slot_terms = _answer_slot_terms(frame, target_terms)
     candidates: list[tuple[float, str, Evidence, str]] = []
     for row in records.get("relations", []):
         if not _relation_scope_accessible(row, records, frame):
@@ -2580,7 +2743,7 @@ def _bind_document_scoped_label_values(
 
     if not target_terms:
         return []
-    answer_slot_terms = _answer_slot_terms(frame)
+    answer_slot_terms = _answer_slot_terms(frame, target_terms)
     spans = _spans_by_id(records)
     target_document_ids = _document_context_target_document_ids(records, target_terms)
 
@@ -2725,7 +2888,7 @@ def _document_scoped_structural_row_candidates(
     if len(target_document_ids) != 1:
         return []
     target_document_id = next(iter(target_document_ids))
-    answer_slot_terms = _answer_slot_terms(frame)
+    answer_slot_terms = _answer_slot_terms(frame, target_terms)
     candidates: list[tuple[float, str, Evidence, str]] = []
     for _group_id, rows in _record_groups(records).items():
         if not rows or not _rows_are_countable_structured_units(rows):
@@ -2789,7 +2952,7 @@ def _document_scoped_relation_value_candidates(
     if require_slot_aligned_identifier and expected.answer_type != "identifier":
         return []
     spans = _spans_by_id(records)
-    answer_slot_terms = _answer_slot_terms(frame)
+    answer_slot_terms = _answer_slot_terms(frame, target_terms)
     candidates: list[tuple[float, str, Evidence, str]] = []
     for row in records.get("relations", []):
         relation_type = str(row.get("relation_type") or "")
@@ -2855,7 +3018,7 @@ def _structural_chain_term_groups(
     raw_terms = [
         *frame.relation_terms,
         *frame.constraints,
-        *_answer_slot_terms(frame),
+        *_answer_slot_terms(frame, target_terms),
         *[term for term in target_terms if normalize(term) not in visible_term_set],
     ]
     groups: list[list[str]] = []
@@ -3105,7 +3268,7 @@ def _bind_record_groups(
     """
 
     candidates: list[tuple[float, str, Evidence, str]] = []
-    answer_slot_terms = _answer_slot_terms(frame)
+    answer_slot_terms = _answer_slot_terms(frame, target_terms)
     for _group_id, rows in _record_groups(records).items():
         if not rows:
             continue
@@ -3500,7 +3663,7 @@ def _temporal_relation_candidates(
         return []
     if expected.answer_type not in {"state", "date_time", "content_phrase", "unknown"}:
         return []
-    answer_slot_terms = _answer_slot_terms(frame)
+    answer_slot_terms = _answer_slot_terms(frame, target_terms)
     rows_by_span: dict[str, list[dict[str, Any]]] = defaultdict(list)
     for row in records.get("relations", []):
         rows_by_span[str(row.get("source_span_id") or "")].append(row)
@@ -4089,6 +4252,8 @@ def _person_values_from_relation_text(value: str, expected: ExpectedAnswer) -> l
         return []
     values: list[str] = []
     for phrase in capitalized_phrases(value):
+        if normalize(phrase) in UNRESOLVED_PRONOUN_ANSWER_VALUES:
+            continue
         canonical = canonicalize_answer(expected, phrase)
         if canonical and canonical not in values:
             values.append(canonical)
@@ -4102,7 +4267,7 @@ def _direct_label_slot_candidates(
     relation_terms: list[str],
     target_terms: list[str],
 ) -> list[tuple[float, str, Evidence, str]]:
-    answer_slot_terms = _answer_slot_terms(frame)
+    answer_slot_terms = _answer_slot_terms(frame, target_terms)
     if not answer_slot_terms:
         return []
     slot_material = normalize(" ".join(answer_slot_terms))
@@ -4151,7 +4316,7 @@ def _relation_label_value_candidates(
     target_terms: list[str],
 ) -> list[tuple[float, str, Evidence, str]]:
     candidates: list[tuple[float, str, Evidence, str]] = []
-    answer_slot_terms = _answer_slot_terms(frame)
+    answer_slot_terms = _answer_slot_terms(frame, target_terms)
     generic = {"is", "are", "was", "were", "answer", "argument", "who", "what", "which", "where"}
     relation_signal = [term for term in relation_terms if normalize(term) not in generic]
     strong_signal = [*content_tokens(frame.requested_relation)]
@@ -4215,7 +4380,7 @@ def execute_bounded_query(
     expected = _expected_from_frame(frame)
     target_terms = _target_terms(frame, question)
     relation_terms = _relation_terms(frame, question)
-    answer_slot_terms = _answer_slot_terms(frame)
+    answer_slot_terms = _answer_slot_terms(frame, target_terms)
     if answer_slot_terms:
         relation_terms = list(dict.fromkeys([*relation_terms, *answer_slot_terms]))
     selected_docs, selected_chunks, ranking = _rank_scope(documents, sentences_by_document, question, frame, doc_limit, chunk_limit)

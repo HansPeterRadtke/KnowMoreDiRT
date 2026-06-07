@@ -14,6 +14,8 @@ from knowmoredirt.bounded_dspg import (
     _identity_expanded_terms,
     _load_records,
     _rank_scope,
+    _answer_slot_terms,
+    _relation_terms,
     _terms_match_material,
     _target_terms,
     _locative_answer_value,
@@ -383,6 +385,113 @@ def test_frame_argument_binding_ignores_section_inherited_label_selectors(tmp_pa
     assert diagnostics["execution"]["answer_binding_reason"] == "frame_argument_binding"
 
 
+def test_relation_condition_binding_uses_embedded_model_clause_after_pronoun_agent(tmp_path: Path) -> None:
+    source_surface = "She said the cobalt lease was signed by Mira Hale."
+    (tmp_path / "memo.txt").write_text(source_surface + "\n", encoding="utf-8")
+
+    store, run_id, documents, sentences = ingest_folder(tmp_path)
+    row = store.execute(
+        "SELECT span_id, surface FROM source_spans WHERE surface=? LIMIT 1",
+        (source_surface,),
+    ).fetchone()
+    assert row is not None
+    materialized = store.materialize_drs_payload(
+        run_id,
+        str(row[0]),
+        str(row[1]),
+        {
+            "drs": {
+                "schema_version": "chunk-drs-v2",
+                "source_id": "memo.txt",
+                "evidence_spans": [source_surface],
+                "referents": [
+                    {
+                        "id": "r0",
+                        "label": "She",
+                        "kind": "person",
+                        "evidence_text": "She",
+                    }
+                ],
+                "boxes": [
+                    {
+                        "id": "b0",
+                        "kind": "asserted",
+                        "parent_id": "",
+                        "holder_referent_id": "",
+                        "evidence_text": source_surface,
+                    }
+                ],
+                "conditions": [
+                    {
+                        "id": "c0",
+                        "box_id": "b0",
+                        "predicate": "said",
+                        "polarity": "positive",
+                        "modality": "asserted",
+                        "temporal_id": "",
+                        "evidence_text": source_surface,
+                        "arguments": [
+                            {
+                                "role": "agent",
+                                "target_kind": "referent",
+                                "target_id": "r0",
+                                "value": "",
+                                "value_type": "person",
+                                "evidence_text": "She",
+                            },
+                            {
+                                "role": "patient",
+                                "target_kind": "literal",
+                                "target_id": "",
+                                "value": "the cobalt lease was signed by Mira Hale",
+                                "value_type": "content_phrase",
+                                "evidence_text": "the cobalt lease was signed by Mira Hale",
+                            },
+                        ],
+                    }
+                ],
+                "identity_hypotheses": [],
+                "temporal_records": [],
+            }
+        },
+    )
+    assert materialized["accepted"] is True
+    frame = QueryFrame(
+        question_text="Who signed the cobalt lease?",
+        answer_type="person",
+        answer_variables=("Who",),
+        target_anchors=("cobalt lease",),
+        requested_relation="signed",
+        relation_terms=("signed", "sign"),
+        constraints=(),
+    )
+
+    answer, diagnostics = execute_bounded_query(
+        store,
+        run_id,
+        documents,
+        _sentences_by_document(sentences),
+        frame.question_text,
+        frame,
+    )
+
+    assert answer is not None
+    assert answer.text == "Mira Hale"
+    assert diagnostics["execution"]["answer_binding_reason"] == "relation_condition_binding"
+    probe_engine = KnowMoreDiRTEngine.__new__(KnowMoreDiRTEngine)
+    probe_engine.store = store
+    probe_engine.run_id = run_id
+    assert probe_engine._answer_evidence_has_model_drs(
+        Answer(
+            "Mira Hale",
+            0.9,
+            [Evidence("memo.txt", source_surface, 0.9, span_id=str(row[0]))],
+            "bounded DSPG query-frame execution",
+            "person",
+        )
+    )
+
+
 def test_frame_argument_binding_uses_predicate_matched_full_question_slot(tmp_path: Path) -> None:
     source_surface = "Nia Vale did not ship the copper bracket."
     (tmp_path / "memo.txt").write_text(source_surface + "\n", encoding="utf-8")
@@ -421,6 +530,60 @@ def test_frame_argument_binding_uses_predicate_matched_full_question_slot(tmp_pa
         "frame_argument_binding",
         "structural_chain_drs_binding",
     }
+
+
+def test_trusted_exact_structural_answer_accepts_grounded_person_binding() -> None:
+    engine = KnowMoreDiRTEngine.__new__(KnowMoreDiRTEngine)
+    engine.last_bounded_diagnostics = {
+        "execution": {
+            "answer_binding_reason": "document_scoped_label_binding",
+            "answer_source_provenance": [
+                {"rel_path": "memo.txt", "text": "Inspector: Tessa Rune."}
+            ],
+        }
+    }
+    answer = Answer(
+        "Tessa Rune",
+        0.9,
+        [Evidence("memo.txt", "Inspector: Tessa Rune.", 0.9)],
+        "bounded DSPG query-frame execution",
+        "person",
+    )
+
+    assert engine._trusted_exact_structural_bounded_answer(answer, ExpectedAnswer("person"))
+
+
+def test_full_clause_answer_variable_keeps_visible_target_out_of_slot_terms() -> None:
+    frame = QueryFrame(
+        question_text="Who signed the copper lease?",
+        answer_type="person",
+        answer_variables=("Who signed the copper lease",),
+        target_anchors=("copper lease",),
+        requested_relation="signed",
+        relation_terms=("signed", "who signed the copper lease", "copper", "lease"),
+        constraints=(),
+        source="model",
+    )
+
+    target_terms = _target_terms(frame, frame.question_text)
+
+    assert "copper lease" in target_terms
+    assert set(_relation_terms(frame, frame.question_text)) == {"sign", "signe", "signed"}
+    assert _answer_slot_terms(frame, target_terms) == []
+
+    slot_frame = QueryFrame(
+        question_text="What report link is listed for Copper Lease?",
+        answer_type="url",
+        answer_variables=("the report link",),
+        target_anchors=("Copper Lease",),
+        requested_relation="listed",
+        relation_terms=("listed",),
+        constraints=(),
+        source="model",
+    )
+    slot_targets = _target_terms(slot_frame, slot_frame.question_text)
+
+    assert _answer_slot_terms(slot_frame, slot_targets) == ["report link"]
 
 
 def test_relation_condition_binding_uses_negated_drs_arguments_and_speaker_identity(tmp_path: Path) -> None:

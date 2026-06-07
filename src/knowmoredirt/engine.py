@@ -55,7 +55,17 @@ TRUSTED_STRUCTURAL_BINDING_REASONS = {
     "relation_label_value_binding",
     "structural_chain_drs_binding",
 }
-TRUSTED_STRUCTURAL_ANSWER_TYPES = {"url", "identifier", "file_path", "date_time"}
+TRUSTED_STRUCTURAL_ANSWER_TYPES = {
+    "actor",
+    "content_phrase",
+    "date_time",
+    "file_path",
+    "identifier",
+    "organization",
+    "person",
+    "state",
+    "url",
+}
 
 
 def _env_true(name: str) -> bool:
@@ -942,6 +952,20 @@ class KnowMoreDiRTEngine:
             ).fetchone()
             if row is not None:
                 return True
+            if len(answer_norm.split()) >= 2:
+                rows = self.store.execute(
+                    """
+                    SELECT a.value, a.evidence_surface
+                    FROM drs_condition_arguments a
+                    JOIN drs_conditions c ON c.drs_condition_id=a.drs_condition_id
+                    WHERE a.run_id=? AND c.source_span_id=? AND c.source='local_model_drs'
+                    """,
+                    (self.run_id, span_id),
+                ).fetchall()
+                for arg_value, evidence_surface in rows:
+                    material = normalize(" ".join([str(arg_value or ""), str(evidence_surface or "")]))
+                    if answer_norm in material:
+                        return True
         return False
 
     def _trusted_exact_structural_bounded_answer(self, answer: Answer, expected: ExpectedAnswer) -> bool:
