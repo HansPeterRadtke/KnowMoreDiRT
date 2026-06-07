@@ -162,6 +162,284 @@ def test_document_scoped_relation_value_binds_url_from_later_row(tmp_path: Path)
     assert diagnostics["execution"]["answer_binding_reason"] == "document_scoped_relation_value_binding"
 
 
+def _sentences_by_document(sentences: list[Sentence]) -> dict[str, dict[int, Sentence]]:
+    grouped: dict[str, dict[int, Sentence]] = {}
+    for sentence in sentences:
+        grouped.setdefault(sentence.rel_path, {})[sentence.order] = sentence
+    return grouped
+
+
+def _materialize_boolean_probe_drs(
+    store: DSPGStore,
+    run_id: str,
+    source_surface: str,
+    *,
+    patient_value: str,
+    predicate: str = "find",
+    entity_label: str = "Quartz Pump",
+    agent_value: str = "Inspection",
+) -> None:
+    row = store.execute(
+        "SELECT span_id, surface FROM source_spans WHERE surface_norm=? LIMIT 1",
+        (source_surface.lower(),),
+    ).fetchone()
+    assert row is not None
+    span_id = str(row[0])
+    source_text = str(row[1])
+    materialized = store.materialize_drs_payload(
+        run_id,
+        span_id,
+        source_text,
+        {
+            "drs": {
+                "schema_version": "chunk-drs-v2",
+                "source_id": "inspection.txt",
+                "evidence_spans": [source_surface],
+                "referents": [
+                    {
+                        "id": "r0",
+                        "label": entity_label,
+                        "kind": "entity",
+                        "evidence_text": entity_label,
+                    }
+                ],
+                "boxes": [
+                    {
+                        "id": "b0",
+                        "kind": "asserted",
+                        "parent_id": "",
+                        "holder_referent_id": "",
+                        "evidence_text": source_surface,
+                    }
+                ],
+                "conditions": [
+                    {
+                        "id": "c0",
+                        "box_id": "b0",
+                        "predicate": predicate,
+                        "polarity": "positive",
+                        "modality": "asserted",
+                        "temporal_id": "",
+                        "evidence_text": source_surface,
+                        "arguments": [
+                            {
+                                "role": "agent",
+                                "target_kind": "literal",
+                                "target_id": "",
+                                "value": agent_value,
+                                "value_type": "process",
+                                "evidence_text": agent_value,
+                            },
+                            {
+                                "role": "patient",
+                                "target_kind": "literal",
+                                "target_id": "",
+                                "value": patient_value,
+                                "value_type": "state",
+                                "evidence_text": patient_value,
+                            },
+                            {
+                                "role": "entity",
+                                "target_kind": "referent",
+                                "target_id": "r0",
+                                "value": "",
+                                "value_type": "entity",
+                                "evidence_text": entity_label,
+                            },
+                        ],
+                    }
+                ],
+                "identity_hypotheses": [],
+                "temporal_records": [],
+            }
+        },
+    )
+    assert materialized["accepted"] is True
+
+
+def test_boolean_query_rejects_affirmative_condition_without_requested_predicate(tmp_path: Path) -> None:
+    source_surface = "Cobalt Hoist still contained latch.cfg in the archive."
+    (tmp_path / "state.txt").write_text(source_surface + "\n", encoding="utf-8")
+
+    store, run_id, documents, sentences = ingest_folder(tmp_path)
+    _materialize_boolean_probe_drs(
+        store,
+        run_id,
+        source_surface,
+        patient_value="latch.cfg",
+        predicate="contain",
+        entity_label="Cobalt Hoist",
+        agent_value="Cobalt Hoist",
+    )
+    frame = QueryFrame(
+        question_text="Did Cobalt Hoist delete latch.cfg?",
+        answer_type="boolean",
+        answer_variables=("Did Cobalt Hoist delete latch.cfg",),
+        target_anchors=("Cobalt Hoist", "latch.cfg"),
+        requested_relation="delete",
+        relation_terms=("delete",),
+        constraints=(),
+    )
+
+    answer, diagnostics = execute_bounded_query(
+        store,
+        run_id,
+        documents,
+        _sentences_by_document(sentences),
+        frame.question_text,
+        frame,
+    )
+
+    assert answer is None
+    assert diagnostics["execution"]["no_answer_reason"] == "boolean_not_bound_by_bounded_executor"
+
+
+def test_boolean_query_rejects_affirmative_condition_without_all_target_anchors(tmp_path: Path) -> None:
+    source_surface = "Lumen Counter automatically deletes stale sheets."
+    (tmp_path / "state.txt").write_text(source_surface + "\n", encoding="utf-8")
+
+    store, run_id, documents, sentences = ingest_folder(tmp_path)
+    _materialize_boolean_probe_drs(
+        store,
+        run_id,
+        source_surface,
+        patient_value="stale sheets",
+        predicate="delete",
+        entity_label="Lumen Counter",
+        agent_value="Lumen Counter",
+    )
+    frame = QueryFrame(
+        question_text="Does Lumen Counter runtime delete stale sheets?",
+        answer_type="boolean",
+        answer_variables=("Does Lumen Counter runtime delete stale sheets",),
+        target_anchors=("Lumen Counter runtime", "stale sheets"),
+        requested_relation="delete",
+        relation_terms=("delete",),
+        constraints=(),
+    )
+
+    answer, diagnostics = execute_bounded_query(
+        store,
+        run_id,
+        documents,
+        _sentences_by_document(sentences),
+        frame.question_text,
+        frame,
+    )
+
+    assert answer is None
+    assert diagnostics["execution"]["no_answer_reason"] == "boolean_not_bound_by_bounded_executor"
+
+
+def test_boolean_query_rejects_negative_condition_without_target_anchor(tmp_path: Path) -> None:
+    source_surface = "An unrelated belief should not be treated as the audit result."
+    (tmp_path / "state.txt").write_text(source_surface + "\n", encoding="utf-8")
+
+    store, run_id, documents, sentences = ingest_folder(tmp_path)
+    _materialize_boolean_probe_drs(
+        store,
+        run_id,
+        source_surface,
+        patient_value="audit result",
+        predicate="should not be treated as",
+        entity_label="belief",
+        agent_value="belief",
+    )
+    frame = QueryFrame(
+        question_text="Should the lunar drawing be treated as an engineering record?",
+        answer_type="boolean",
+        answer_variables=("Should the lunar drawing be treated as an engineering record?",),
+        target_anchors=("lunar drawing",),
+        requested_relation="be treated as",
+        relation_terms=("be treated as",),
+        constraints=("engineering record",),
+    )
+
+    answer, diagnostics = execute_bounded_query(
+        store,
+        run_id,
+        documents,
+        _sentences_by_document(sentences),
+        frame.question_text,
+        frame,
+    )
+
+    assert answer is None
+    assert diagnostics["execution"]["no_answer_reason"] == "boolean_not_bound_by_bounded_executor"
+
+
+def test_boolean_query_binds_positive_model_drs_condition(tmp_path: Path) -> None:
+    source_surface = "Inspection found a fracture in Quartz Pump."
+    (tmp_path / "inspection.txt").write_text(source_surface + "\n", encoding="utf-8")
+
+    store, run_id, documents, sentences = ingest_folder(tmp_path)
+    _materialize_boolean_probe_drs(store, run_id, source_surface, patient_value="fracture")
+    frame = QueryFrame(
+        question_text="Did inspection find a fracture in Quartz Pump?",
+        answer_type="boolean",
+        answer_variables=("Did inspection find a fracture",),
+        target_anchors=("Quartz Pump",),
+        requested_relation="find",
+        relation_terms=("find", "fracture"),
+        constraints=("inspection", "fracture"),
+    )
+
+    answer, diagnostics = execute_bounded_query(
+        store,
+        run_id,
+        documents,
+        _sentences_by_document(sentences),
+        frame.question_text,
+        frame,
+    )
+
+    assert answer is not None
+    assert answer.text == "Yes; Inspection found a fracture in Quartz Pump."
+    assert diagnostics["execution"]["answer_binding_reason"] == "boolean_drs_condition_binding"
+
+
+def test_boolean_query_binds_negative_model_drs_argument(tmp_path: Path) -> None:
+    source_surface = "Inspection found no fracture in Quartz Pump."
+    (tmp_path / "inspection.txt").write_text(source_surface + "\n", encoding="utf-8")
+
+    store, run_id, documents, sentences = ingest_folder(tmp_path)
+    _materialize_boolean_probe_drs(store, run_id, source_surface, patient_value="no fracture")
+    frame = QueryFrame(
+        question_text="Did inspection find a fracture in Quartz Pump?",
+        answer_type="boolean",
+        answer_variables=("Did inspection find a fracture",),
+        target_anchors=("Quartz Pump",),
+        requested_relation="find",
+        relation_terms=("find", "fracture"),
+        constraints=("inspection", "fracture"),
+    )
+
+    answer, diagnostics = execute_bounded_query(
+        store,
+        run_id,
+        documents,
+        _sentences_by_document(sentences),
+        frame.question_text,
+        frame,
+    )
+
+    assert answer is not None
+    assert answer.text == "No; Inspection found no fracture in Quartz Pump."
+    assert diagnostics["execution"]["answer_binding_reason"] == "boolean_drs_condition_binding"
+
+
+def test_boolean_cleanup_preserves_grounded_sentence_punctuation(tmp_path: Path) -> None:
+    (tmp_path / "note.txt").write_text("No; Inspection found no fracture in Quartz Pump.\n", encoding="utf-8")
+    engine = KnowMoreDiRTEngine(tmp_path)
+
+    cleaned = engine._cleanup_canonical_answer(
+        "No; Inspection found no fracture in Quartz Pump.",
+        ExpectedAnswer("boolean"),
+    )
+
+    assert cleaned == "No; Inspection found no fracture in Quartz Pump."
+
+
 def test_slot_adjacent_identifier_prefers_requested_identifier_not_target(tmp_path: Path) -> None:
     (tmp_path / "log.txt").write_text(
         "line 002: change a1b2c3d4 fixed WidgetFlux crash BUG-7777\n",

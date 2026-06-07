@@ -156,8 +156,16 @@ class KnowMoreDiRTEngine:
     def _test_no_model_allowed(self) -> bool:
         return _env_true("KMD_TEST_ALLOW_NO_MODEL") and "PYTEST_CURRENT_TEST" in os.environ
 
+    def _model_evidence_tools_allowed(self) -> bool:
+        value = os.environ.get("KMD_MODEL_EVIDENCE_TOOLS", "0").strip().lower()
+        if value in {"0", "false", "no", "off"}:
+            return False
+        return True
+
     def _test_model_evidence_helpers_allowed(self) -> bool:
-        return _env_true("KMD_TEST_ALLOW_MODEL_EVIDENCE_TOOLS") and "PYTEST_CURRENT_TEST" in os.environ
+        if _env_true("KMD_TEST_ALLOW_MODEL_EVIDENCE_TOOLS") and "PYTEST_CURRENT_TEST" in os.environ:
+            return True
+        return self._model_evidence_tools_allowed()
 
     def _required_local_model_client(self) -> LocalModelClient:
         endpoint = os.environ.get("KMD_LOCAL_MODEL_ENDPOINT", "http://127.0.0.1:14829/v1").rstrip("/")
@@ -280,7 +288,8 @@ class KnowMoreDiRTEngine:
     def _fallback_model_client(self) -> LocalModelClient | None:
         if self._model_client is None:
             return None
-        timeout = float(os.environ.get("KMD_FALLBACK_MODEL_TIMEOUT_SECONDS", "35"))
+        timeout_default = os.environ.get("KMD_QUESTION_MODEL_TIMEOUT_SECONDS", os.environ.get("KMD_LOCAL_MODEL_TIMEOUT", "120"))
+        timeout = float(os.environ.get("KMD_FALLBACK_MODEL_TIMEOUT_SECONDS", timeout_default))
         if timeout <= 0 or abs(timeout - float(getattr(self._model_client, "timeout_seconds", timeout))) < 0.001:
             return self._model_client
         return LocalModelClient(endpoint=self._model_client.endpoint, timeout_seconds=timeout)
@@ -882,7 +891,10 @@ class KnowMoreDiRTEngine:
                 trace.model_answer_count += 1
                 answer.reason = "local model query-frame execution"
                 return answer
-        self._bounded_conflict_blocks_model_evidence_fallback()
+        if not self._bounded_conflict_blocks_model_evidence_fallback():
+            evidence_answer = self._answer_with_model_query_evidence(question, expected)
+            if evidence_answer and normalize(evidence_answer.text) != "unknown":
+                return evidence_answer
         return None
 
     def _answer_evidence_has_model_drs(self, answer: Answer) -> bool:
@@ -893,6 +905,18 @@ class KnowMoreDiRTEngine:
         if not answer_norm:
             return False
         for span_id in span_ids[:8]:
+            if answer.answer_type == "boolean":
+                row = self.store.execute(
+                    """
+                    SELECT 1
+                    FROM drs_conditions
+                    WHERE run_id=? AND source_span_id=? AND source='local_model_drs'
+                    LIMIT 1
+                    """,
+                    (self.run_id, span_id),
+                ).fetchone()
+                if row is not None:
+                    return True
             row = self.store.execute(
                 """
                 SELECT 1
@@ -1438,7 +1462,11 @@ class KnowMoreDiRTEngine:
         if fallback_client is None:
             return None
         model = call_model_query_evidence_answer(question, payload, fallback_client, discourse_records=discourse_payload)
-        self._record_model_result(model)
+        try:
+            self._record_model_result(model)
+        except LocalModelUnavailableError:
+            trace.evidence_rejected_count += 1
+            return None
         if model.get("prompt_hash"):
             trace.prompt_hashes = [*list(trace.prompt_hashes or []), str(model["prompt_hash"])][-20:]
         if model.get("output_hash"):
@@ -1531,7 +1559,11 @@ class KnowMoreDiRTEngine:
         if fallback_client is None:
             return None
         model = call_model_evidence_answer(question, expected.answer_type, payload, fallback_client)
-        self._record_model_result(model)
+        try:
+            self._record_model_result(model)
+        except LocalModelUnavailableError:
+            trace.evidence_rejected_count += 1
+            return None
         if model.get("prompt_hash"):
             trace.prompt_hashes = [*list(trace.prompt_hashes or []), str(model["prompt_hash"])][-20:]
         if model.get("output_hash"):
@@ -1652,6 +1684,8 @@ class KnowMoreDiRTEngine:
         expected: ExpectedAnswer,
         frame: QueryFrame | None = None,
     ) -> str:
+        if expected.answer_type == "boolean":
+            return str(canonical or "").strip()
         text = clean_extracted_value(canonical).strip()
         if not text:
             return text
@@ -1742,7 +1776,7 @@ class KnowMoreDiRTEngine:
         if has_metadata_evidence and not expected.allow_metadata_evidence:
             return None
         canonical = canonicalize_answer(expected, answer.text)
-        if canonical and source.startswith("local model") and expected.answer_type in {"boolean", "content_phrase", "state", "metadata_value"}:
+        if canonical and source.startswith("local model") and expected.answer_type in {"content_phrase", "state", "metadata_value"}:
             canonical = self._canonicalize_model_answer_with_local_model(question, canonical, expected, answer.evidence) or canonical
         if normalize(canonical) == "unknown":
             return Answer("unknown", 0.0, answer.evidence, source, "unknown")

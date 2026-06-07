@@ -2,6 +2,7 @@ from __future__ import annotations
 
 from pathlib import Path
 
+import knowmoredirt.engine as engine_module
 from knowmoredirt.answer_types import ExpectedAnswer, canonicalize_answer
 from knowmoredirt.engine import KnowMoreDiRTEngine
 from knowmoredirt.model_planner import call_model_evidence_answer
@@ -38,7 +39,7 @@ class FakeEvidenceModel:
 
     def complete_json(self, prompt: str, *, n_predict: int = 128, grammar: str | None = None) -> dict[str, object]:
         self.calls.append(prompt)
-        if "generic DRT/DSPG query frame" in prompt:
+        if "generic DRT query DRS" in prompt or "generic DRT/DSPG query frame" in prompt:
             return {
                 "query_frame": {
                     "target_anchors": ["Ash Meadow"],
@@ -290,10 +291,23 @@ def test_fake_model_evidence_extraction_rejects_incompatible_answer_type(tmp_pat
     engine._use_local_model = True
     engine._model_client = FakeEvidenceModel(incompatible=True)
     engine.model_query_trace.enabled = True
+    frame = QueryFrame(
+        question_text="Who is the conservator for Ash Meadow?",
+        answer_type="person",
+        answer_variables=("person",),
+        target_anchors=("Ash Meadow",),
+        requested_relation="conservator",
+        relation_terms=("conservator",),
+        constraints=(),
+    )
 
-    answer = engine.answer("Who is the conservator for Ash Meadow?")
+    answer = engine._answer_with_model_evidence_extraction(
+        "Who is the conservator for Ash Meadow?",
+        frame,
+        ExpectedAnswer("person"),
+    )
 
-    assert answer.text == "unknown"
+    assert answer is None
     assert engine.model_query_trace.evidence_call_count == 1
     assert engine.model_query_trace.evidence_rejected_count >= 1
 
@@ -301,7 +315,7 @@ def test_fake_model_evidence_extraction_rejects_incompatible_answer_type(tmp_pat
 def test_count_evidence_extraction_accepts_grounded_multiline_aggregate(tmp_path: Path) -> None:
     class CountEvidenceModel:
         def complete_json(self, prompt: str, *, n_predict: int = 128, grammar: str | None = None) -> dict[str, object]:
-            if "generic DRT/DSPG query frame" in prompt:
+            if "generic DRT query DRS" in prompt or "generic DRT/DSPG query frame" in prompt:
                 return {
                     "query_frame": {
                         "target_anchors": [],
@@ -361,12 +375,135 @@ def test_count_evidence_extraction_accepts_grounded_multiline_aggregate(tmp_path
     engine._use_local_model = True
     engine._model_client = CountEvidenceModel()  # type: ignore[assignment]
     engine.model_query_trace.enabled = True
+    frame = QueryFrame(
+        question_text="How many items have open status?",
+        answer_type="count",
+        answer_variables=("count",),
+        target_anchors=(),
+        requested_relation="open status",
+        relation_terms=("open", "status"),
+        constraints=("open status",),
+        aggregation="count",
+    )
 
-    answer = engine.answer("How many items have open status?")
+    answer = engine._answer_with_model_evidence_extraction(
+        "How many items have open status?",
+        frame,
+        ExpectedAnswer("count"),
+    )
 
+    assert answer is not None
     assert answer.text == "2"
     assert answer.answer_type == "count"
     assert answer.evidence
+
+
+def test_query_drs_bounded_miss_uses_grounded_query_evidence_fallback(tmp_path: Path, monkeypatch) -> None:
+    (tmp_path / "note.txt").write_text(
+        "Cedar Ledger is unrelated to any migration plan.\n",
+        encoding="utf-8",
+    )
+    query_frame = {
+        "target_anchors": ["Cedar Ledger", "migration plan"],
+        "answer_variables": ["Cedar Ledger migration plan target"],
+        "requested_relation": "is target",
+        "relation_terms": ["is target"],
+        "constraints": ["migration plan"],
+        "scope_requirements": [],
+        "modality_requirements": [],
+        "answer_type": "boolean",
+        "temporal_scope": "",
+        "negated": False,
+        "aggregation": "",
+        "requires_evidence": True,
+    }
+
+    def fake_query_drs(_question: str, _client: object) -> dict[str, object]:
+        return {
+            "accepted": True,
+            "query_drs": {
+                "schema_version": "query-drs-v3",
+                "question": "Is Cedar Ledger a migration plan target?",
+                "answer_type": "boolean",
+                "answer_variables": [
+                    {
+                        "id": "qv0",
+                        "label": "Cedar Ledger migration plan target",
+                        "answer_type": "boolean",
+                        "evidence_text": "Cedar Ledger migration plan target",
+                    }
+                ],
+                "target_referents": [
+                    {"id": "qr0", "label": "Cedar Ledger", "kind": "unknown", "evidence_text": "Cedar Ledger"},
+                    {"id": "qr1", "label": "migration plan", "kind": "unknown", "evidence_text": "migration plan"},
+                ],
+                "requested_conditions": [
+                    {
+                        "id": "qc0",
+                        "predicate": "is target",
+                        "box_id": "",
+                        "polarity": "positive",
+                        "modality": "asserted",
+                        "temporal_id": "",
+                        "evidence_text": "Is Cedar Ledger a migration plan target?",
+                        "arguments": [
+                            {
+                                "role": "answer",
+                                "target_kind": "answer_variable",
+                                "target_id": "qv0",
+                                "value": "",
+                                "value_type": "boolean",
+                                "evidence_text": "Cedar Ledger migration plan target",
+                            },
+                            {
+                                "role": "argument",
+                                "target_kind": "referent",
+                                "target_id": "qr0",
+                                "value": "",
+                                "value_type": "unknown",
+                                "evidence_text": "Cedar Ledger",
+                            },
+                        ],
+                    }
+                ],
+                "constraints": ["migration plan"],
+                "box_requirements": [],
+                "temporal_records": [],
+                "temporal_scope": "",
+                "aggregation": "",
+                "requires_evidence": True,
+            },
+        }
+
+    def fake_query_evidence(
+        _question: str,
+        _evidence: list[dict[str, object]],
+        _client: object,
+        *,
+        discourse_records: list[dict[str, object]] | None = None,
+    ) -> dict[str, object]:
+        return {
+            "accepted": True,
+            "query_frame": query_frame,
+            "sufficient_evidence": True,
+            "answer_type": "boolean",
+            "answer": "No; Cedar Ledger is unrelated to any migration plan.",
+            "evidence_span": "Cedar Ledger is unrelated to any migration plan.",
+            "reason": "grounded negative evidence",
+        }
+
+    monkeypatch.setenv("KMD_MODEL_EVIDENCE_TOOLS", "1")
+    monkeypatch.setattr(engine_module, "call_model_query_drs", fake_query_drs)
+    monkeypatch.setattr(engine_module, "call_model_query_evidence_answer", fake_query_evidence)
+    engine = KnowMoreDiRTEngine(tmp_path)
+    engine._use_local_model = True
+    engine._model_client = object()  # type: ignore[assignment]
+
+    answer = engine.answer("Is Cedar Ledger a migration plan target?")
+
+    assert answer.text == "No; Cedar Ledger is unrelated to any migration plan."
+    assert answer.reason == "local model query-DRS evidence verification"
+    assert engine.model_query_trace.evidence_call_count == 1
 
 
 def test_invalid_model_evidence_answer_is_cached(tmp_path: Path, monkeypatch) -> None:

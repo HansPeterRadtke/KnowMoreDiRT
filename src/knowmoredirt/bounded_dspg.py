@@ -104,6 +104,35 @@ STRUCTURAL_CHAIN_TARGET_ARG_ROLES = {
     "theme",
     "value",
 }
+MODEL_NEGATION_TOKENS = {
+    "cannot",
+    "cant",
+    "neither",
+    "never",
+    "no",
+    "none",
+    "not",
+    "without",
+}
+BOOLEAN_GENERIC_TERMS = {
+    "be",
+    "been",
+    "being",
+    "can",
+    "could",
+    "did",
+    "do",
+    "does",
+    "had",
+    "has",
+    "have",
+    "is",
+    "really",
+    "should",
+    "was",
+    "were",
+    "would",
+}
 
 
 @lru_cache(maxsize=8192)
@@ -3457,6 +3486,167 @@ def _has_unscoped_temporal_ambiguity(
 
 
 
+def _frame_arguments_by_condition_key(records: dict[str, Any]) -> dict[tuple[str, str, str], list[dict[str, Any]]]:
+    args_by_frame: dict[str, list[dict[str, Any]]] = defaultdict(list)
+    for arg in records.get("frame_arguments", []):
+        args_by_frame[str(arg.get("frame_id") or "")].append(arg)
+    values: dict[tuple[str, str, str], list[dict[str, Any]]] = defaultdict(list)
+    for frame_row in records.get("frames", []):
+        key = (
+            str(frame_row.get("span_id") or ""),
+            normalize(str(frame_row.get("predicate") or "")),
+            str(frame_row.get("context_id") or ""),
+        )
+        values[key].extend(args_by_frame.get(str(frame_row.get("frame_id") or ""), []))
+    return values
+
+
+def _model_surface_has_negative_polarity(value: str) -> bool:
+    tokens = [token for token in re.split(r"[^a-z0-9]+", normalize(value)) if token]
+    return any(token in MODEL_NEGATION_TOKENS for token in tokens)
+
+
+def _condition_row_is_negative(row: dict[str, Any], args: list[dict[str, Any]]) -> bool:
+    if normalize(str(row.get("object") or "")) == "negative":
+        return True
+    model_surfaces = [
+        str(row.get("predicate") or ""),
+        str(row.get("value") or ""),
+        *[
+            str(arg.get(key) or "")
+            for arg in args
+            for key in ("surface", "value", "evidence_surface")
+        ],
+    ]
+    return any(_model_surface_has_negative_polarity(surface) for surface in model_surfaces)
+
+
+def _boolean_structural_terms(values: Iterable[str], target_terms: list[str]) -> list[str]:
+    target = set(target_terms)
+    terms: list[str] = []
+    for value in values:
+        for term in _compound_term_variants(value):
+            if term and term not in target and term not in BOOLEAN_GENERIC_TERMS:
+                terms.append(term)
+        for token in content_tokens(value):
+            if token and token not in target and token not in BOOLEAN_GENERIC_TERMS:
+                terms.append(token)
+    return list(dict.fromkeys(term for term in expand_terms(terms) if term and term not in target and term not in BOOLEAN_GENERIC_TERMS))
+
+
+def _boolean_predicate_terms(frame: QueryFrame, target_terms: list[str]) -> list[str]:
+    return _boolean_structural_terms([frame.requested_relation, *frame.relation_terms], target_terms)
+
+
+def _boolean_constraint_terms(frame: QueryFrame, target_terms: list[str]) -> list[str]:
+    return _boolean_structural_terms(frame.constraints, target_terms)
+
+
+def _boolean_terms_covered(material: str, terms: list[str], *, require_all: bool) -> bool:
+    if not terms:
+        return True
+    if require_all:
+        return all(_has_term(material, term) for term in terms)
+    return any(_has_term(material, term) for term in terms)
+
+
+def _boolean_target_anchors_covered(material: str, frame: QueryFrame, target_terms: list[str]) -> bool:
+    groups: list[list[str]] = []
+    for anchor in frame.target_anchors:
+        norm = normalize(anchor)
+        if not norm:
+            continue
+        tokens = [token for token in content_tokens(norm) if token and token not in BOOLEAN_GENERIC_TERMS]
+        if not tokens:
+            continue
+        groups.append(list(dict.fromkeys(token for token in expand_terms(tokens) if token)))
+    if not groups and target_terms:
+        for term in target_terms:
+            tokens = [token for token in content_tokens(term) if token and token not in BOOLEAN_GENERIC_TERMS]
+            if tokens:
+                groups.append(list(dict.fromkeys(token for token in expand_terms(tokens) if token)))
+    if not groups:
+        return True
+    for group in groups:
+        if not all(_has_term(material, term) for term in group):
+            return False
+    return True
+
+
+def _boolean_candidate_time_key(evidence: Evidence) -> str:
+    match = DATE_TIME_RE.search(evidence.text)
+    return match.group(0) if match else ""
+
+
+def _select_temporal_boundary_candidates(
+    candidates: list[tuple[float, str, Evidence, str]],
+    frame: QueryFrame,
+) -> list[tuple[float, str, Evidence, str]]:
+    scope = _effective_temporal_scope(frame)
+    if scope not in {"latest", "earliest"}:
+        return candidates
+    keyed = [(item, _boolean_candidate_time_key(item[2])) for item in candidates]
+    keyed = [(item, key) for item, key in keyed if key]
+    if not keyed:
+        return candidates
+    boundary = sorted({key for _item, key in keyed}, reverse=scope != "earliest")[0]
+    return [item for item, key in keyed if key == boundary]
+
+
+def _boolean_condition_candidates(
+    records: dict[str, Any],
+    frame: QueryFrame,
+    target_terms: list[str],
+    relation_terms: list[str],
+) -> list[tuple[float, str, Evidence, str]]:
+    args_by_key = _frame_arguments_by_condition_key(records)
+    predicate_terms = _boolean_predicate_terms(frame, target_terms)
+    constraint_terms = _boolean_constraint_terms(frame, target_terms)
+    candidates: list[tuple[float, str, Evidence, str]] = []
+    for row in records.get("relations", []):
+        if str(row.get("relation_type") or "") != "drs_condition":
+            continue
+        if not _relation_scope_accessible(row, records, frame):
+            continue
+        evidence = _evidence_for_span(str(row.get("source_span_id") or ""), records)
+        key = (
+            str(row.get("source_span_id") or ""),
+            normalize(str(row.get("predicate") or "")),
+            str(row.get("context_id") or ""),
+        )
+        args = args_by_key.get(key, [])
+        arg_material = normalize(" ".join(str(arg.get("surface") or "") for arg in args))
+        row_material = normalize(
+            " ".join(
+                [
+                    _relation_local_material(row, evidence, include_evidence=False, include_context=True, records=records),
+                    arg_material,
+                ]
+            )
+        )
+        evidence_material = normalize(" ".join([row_material, evidence.rel_path, evidence.text]))
+        score = _split_match_score(evidence_material, row_material, target_terms, relation_terms)
+        if score <= 0:
+            continue
+        condition_true = not _condition_row_is_negative(row, args)
+        if frame.negated:
+            condition_true = not condition_true
+        predicate_supported = _boolean_terms_covered(row_material, predicate_terms, require_all=False)
+        target_supported = _boolean_target_anchors_covered(evidence_material, frame, target_terms)
+        constraints_supported = _boolean_terms_covered(evidence_material, constraint_terms, require_all=True)
+        if not target_supported:
+            continue
+        if condition_true and (not predicate_supported or not constraints_supported):
+            continue
+        prefix = "Yes" if condition_true else "No"
+        evidence_text = clean_extracted_value(str(row.get("value") or "") or evidence.text).strip(" .;:")
+        if not evidence_text:
+            evidence_text = clean_extracted_value(evidence.text).strip(" .;:")
+        answer = f"{prefix}; {evidence_text}." if evidence_text else prefix
+        candidates.append((score * float(row.get("confidence") or 0.7), answer, evidence, "boolean_drs_condition_binding"))
+    return _select_temporal_boundary_candidates(candidates, frame)
+
+
 def _arithmetic_answer(
     records: dict[str, Any],
     frame: QueryFrame,
@@ -3706,12 +3896,18 @@ def execute_bounded_query(
         diagnostics["execution"]["identity_expansion_evidence"] = identity_expansion_provenance
 
     if expected.answer_type == "boolean":
+        boolean_relation_terms = _relation_terms(frame, question)
+        boolean_candidates = _boolean_condition_candidates(records, frame, target_terms, boolean_relation_terms)
+        answer = _with_supporting_evidence(_choose_answer(boolean_candidates, expected, target_terms), identity_expansion_evidence)
+        if answer is not None:
+            _attach_answer_provenance(diagnostics, records, answer)
+            return answer, diagnostics
         _attach_no_answer_provenance(
             diagnostics,
             records,
             target_terms,
-            relation_terms,
-            [],
+            boolean_relation_terms,
+            boolean_candidates,
             expected,
             "boolean_not_bound_by_bounded_executor",
         )
