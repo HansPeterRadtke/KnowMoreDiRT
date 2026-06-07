@@ -3202,21 +3202,21 @@ def _document_scoped_structural_row_candidates(
 
     Some sources introduce the entity once in prose and then provide a compact
     table of properties or participants.  The entity is document-scoped rather
-    than repeated in each row.  This operator only activates when exactly one
-    selected document carries the target terms, then uses ordinary structural
-    row groups and compound selector terms to choose answer rows.
+    than repeated in each row.  When several selected documents carry the
+    target terms, the structured selector must still yield an unambiguous
+    document/value set before candidates are admitted.
     """
 
     target_document_ids = _document_context_target_document_ids(records, target_terms)
-    if len(target_document_ids) != 1:
+    if not target_document_ids:
         return []
-    target_document_id = next(iter(target_document_ids))
     answer_slot_terms = _answer_slot_terms(frame, target_terms)
-    candidates: list[tuple[float, str, Evidence, str]] = []
+    scoped_candidates: list[tuple[float, str, Evidence, str, str]] = []
     for _group_id, rows in _record_groups(records).items():
         if not rows or not _rows_are_countable_structured_units(rows):
             continue
-        if _rows_document_id(rows, records) != target_document_id:
+        document_id = _rows_document_id(rows, records)
+        if document_id not in target_document_ids:
             continue
         group_material = _group_material(rows, records, include_source_evidence=False)
         if not _document_scoped_row_selector_matches(
@@ -3250,15 +3250,30 @@ def _document_scoped_structural_row_candidates(
             slot_terms = answer_slot_terms if row_slot_match else None
             for value in _answer_values_from_relation(row, evidence, expected, [], relation_terms, slot_terms):
                 score = 8.0 + (3.0 if row_slot_match else 0.0) + (2.0 if row_selector_match else 0.0)
-                candidates.append(
+                scoped_candidates.append(
                     (
                         score * float(row.get("confidence") or 0.7),
                         value,
                         evidence,
                         "document_scoped_structural_row_binding",
+                        document_id,
                     )
                 )
-    return candidates
+    return _unambiguous_document_scoped_candidates(scoped_candidates)
+
+
+def _unambiguous_document_scoped_candidates(
+    candidates: list[tuple[float, str, Evidence, str, str]],
+) -> list[tuple[float, str, Evidence, str]]:
+    if not candidates:
+        return []
+    document_ids = {document_id for *_rest, document_id in candidates if document_id}
+    if len(document_ids) <= 1:
+        return [(score, value, evidence, reason) for score, value, evidence, reason, _document_id in candidates]
+    value_keys = {normalize(value) for _score, value, _evidence, _reason, _document_id in candidates if normalize(value)}
+    if len(value_keys) == 1:
+        return [(score, value, evidence, reason) for score, value, evidence, reason, _document_id in candidates]
+    return []
 
 
 def _document_scoped_drs_condition_candidates(
@@ -3271,25 +3286,22 @@ def _document_scoped_drs_condition_candidates(
     target_document_ids = _document_context_target_document_ids(records, target_terms)
     if not target_document_ids:
         return []
-    require_relation_predicate = len(target_document_ids) > 1
     spans = _spans_by_id(records)
     answer_slot_terms = _answer_slot_terms(frame, target_terms)
-    relation_only_terms = _relation_terms_without_answer_slot_terms(relation_terms, answer_slot_terms, target_terms)
-    candidates: list[tuple[float, str, Evidence, str]] = []
+    scoped_candidates: list[tuple[float, str, Evidence, str, str]] = []
     for row in records.get("relations", []):
         if str(row.get("relation_type") or "") != "drs_condition":
             continue
         if not _relation_scope_accessible(row, records, frame):
             continue
         span_id = str(row.get("source_span_id") or "")
-        if str(spans.get(span_id, {}).get("document_id") or "") not in target_document_ids:
+        document_id = str(spans.get(span_id, {}).get("document_id") or "")
+        if document_id not in target_document_ids:
             continue
         evidence = _evidence_for_span(span_id, records)
         if _source_is_low_priority(evidence.rel_path, evidence.text) and not _structured_source_row(row):
             continue
         row_material = _relation_selector_material(row, evidence, include_evidence=False)
-        if require_relation_predicate and relation_only_terms and not _contains_any(row_material, relation_only_terms):
-            continue
         if not _document_scoped_row_selector_matches(
             row_material,
             relation_terms,
@@ -3307,15 +3319,16 @@ def _document_scoped_drs_condition_candidates(
             records,
             frame,
         ):
-            candidates.append(
+            scoped_candidates.append(
                 (
                     6.9 * float(row.get("confidence") or 0.7),
                     value,
                     evidence,
                     "document_scoped_drs_condition_binding",
+                    document_id,
                 )
             )
-    return candidates
+    return _unambiguous_document_scoped_candidates(scoped_candidates)
 
 
 def _document_scoped_relation_value_candidates(

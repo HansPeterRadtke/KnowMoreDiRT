@@ -9,8 +9,10 @@ from knowmoredirt.answer_types import ExpectedAnswer
 from knowmoredirt.bounded_dspg import (
     _answer_conflict_diagnostics,
     _context_accessible,
+    _document_context_target_document_ids,
     _document_scoped_drs_condition_candidates,
     _document_scoped_relation_value_candidates,
+    _document_scoped_structural_row_candidates,
     _answer_values_from_relation,
     _fetch_identity_hypotheses,
     _identity_expanded_terms,
@@ -130,6 +132,64 @@ def test_document_scoped_table_row_binds_compound_selector_subject(tmp_path: Pat
 
     assert answer is not None
     assert answer.text == "Tess Rune"
+    assert diagnostics["execution"]["answer_binding_reason"] == "document_scoped_structural_row_binding"
+
+
+def test_document_scoped_table_row_binds_when_other_selected_document_mentions_target(tmp_path: Path) -> None:
+    (tmp_path / "review.txt").write_text(
+        "Orion Credit appears in the quarterly risk review.\n"
+        "The review does not list operational contacts.\n",
+        encoding="utf-8",
+    )
+    (tmp_path / "contacts.txt").write_text(
+        "Account OR-42 belongs to organization Orion Credit.\n"
+        "The following table lists current contacts.\n"
+        "name | role | email\n"
+        "Mara Keel | billing contact | mara.keel@orion.example\n"
+        "Niko Vale | technical contact | niko.vale@orion.example\n",
+        encoding="utf-8",
+    )
+
+    store, run_id, documents, sentences = ingest_folder(tmp_path)
+    frame = QueryFrame(
+        question_text="Who is the technical contact for Orion Credit?",
+        answer_type="person",
+        answer_variables=("technical contact",),
+        target_anchors=("Orion Credit",),
+        requested_relation="is",
+        relation_terms=("is", "technical contact", "contact"),
+        constraints=(),
+    )
+    selected_docs = [document.document_id for document in documents]
+    selected_chunks = [stable_id("chunk", sentence.sentence_id) for sentence in sentences]
+    records = _load_records(store, run_id, selected_docs, selected_chunks)
+    target_terms = _target_terms(frame, frame.question_text)
+
+    assert len(_document_context_target_document_ids(records, target_terms)) == 2
+    values = {
+        value
+        for _score, value, _evidence, _reason in _document_scoped_structural_row_candidates(
+            records,
+            frame,
+            ExpectedAnswer("person"),
+            target_terms,
+            _relation_terms(frame, frame.question_text),
+        )
+    }
+    assert "Niko Vale" in values
+    assert "Mara Keel" not in values
+
+    answer, diagnostics = execute_bounded_query(
+        store,
+        run_id,
+        documents,
+        _sentences_by_document(sentences),
+        frame.question_text,
+        frame,
+    )
+
+    assert answer is not None
+    assert answer.text == "Niko Vale"
     assert diagnostics["execution"]["answer_binding_reason"] == "document_scoped_structural_row_binding"
 
 
