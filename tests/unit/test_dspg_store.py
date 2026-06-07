@@ -1212,6 +1212,41 @@ def test_list_aggregation_filters_exact_target_echoes() -> None:
     assert answer.text == "Bright Harbor"
 
 
+def test_person_list_aggregation_prefers_full_name_over_alias_and_marker() -> None:
+    evidence = Evidence(
+        "notes/review.txt",
+        "Correction: Omar reviewed the change. Omar Kestrel performed the risk review.",
+        0.8,
+    )
+    answer = _choose_list_answer(
+        [
+            (8.0, "Correction", evidence, "frame_argument_binding"),
+            (8.0, "Omar", evidence, "frame_argument_binding"),
+            (5.0, "Omar Kestrel", evidence, "document_scoped_drs_condition_binding"),
+        ],
+        ExpectedAnswer("person"),
+        ["change"],
+    )
+
+    assert answer is not None
+    assert answer.text == "Omar Kestrel"
+
+
+def test_person_list_aggregation_keeps_unrelated_single_name_person() -> None:
+    evidence = Evidence("notes/review.txt", "Ava and Omar Kestrel reviewed separate changes.", 0.8)
+    answer = _choose_list_answer(
+        [
+            (8.0, "Ava", evidence, "frame_argument_binding"),
+            (8.0, "Omar Kestrel", evidence, "frame_argument_binding"),
+        ],
+        ExpectedAnswer("person"),
+        ["change"],
+    )
+
+    assert answer is not None
+    assert answer.text == "Ava; Omar Kestrel"
+
+
 def test_scope_marker_target_anchor_does_not_block_asserted_followup_fact(tmp_path: Path) -> None:
     source_surface = "Real inventory: tavil arch remains installed."
     (tmp_path / "inventory.log").write_text(

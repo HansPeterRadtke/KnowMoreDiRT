@@ -1877,6 +1877,14 @@ UNRESOLVED_PRONOUN_ANSWER_VALUES = {
     "yours",
 }
 
+NON_PERSON_SINGLETON_VALUES = {
+    "correction",
+    "note",
+    "notice",
+    "summary",
+    "update",
+}
+
 
 def _specific_relation_terms(relation_terms: list[str], target_terms: list[str]) -> list[str]:
     target_tokens = _target_token_variants(target_terms)
@@ -4506,7 +4514,38 @@ def _choose_list_answer(
                 evidence.append(item_evidence)
     if not values:
         return None
+    values, evidence = _filter_named_entity_list_parts(expected, values, evidence)
     return Answer("; ".join(values), 0.86, evidence[:6], "list aggregation DRS binding", expected.answer_type)
+
+
+def _filter_named_entity_list_parts(
+    expected: ExpectedAnswer,
+    values: list[str],
+    evidence: list[Evidence],
+) -> tuple[list[str], list[Evidence]]:
+    if expected.answer_type not in {"person", "actor", "organization"}:
+        return values, evidence
+    multi_token_values: list[tuple[str, set[str]]] = []
+    for value in values:
+        tokens = _normalized_token_set(normalize(value))
+        if len(tokens) > 1:
+            multi_token_values.append((value, tokens))
+    if not multi_token_values:
+        return values, evidence
+    filtered_values: list[str] = []
+    filtered_evidence: list[Evidence] = []
+    for value, item_evidence in zip(values, evidence):
+        value_norm = normalize(value)
+        tokens = _normalized_token_set(value_norm)
+        if len(tokens) == 1:
+            token = next(iter(tokens), "")
+            if token in NON_PERSON_SINGLETON_VALUES:
+                continue
+            if any(token in multi_tokens for _multi_value, multi_tokens in multi_token_values):
+                continue
+        filtered_values.append(value)
+        filtered_evidence.append(item_evidence)
+    return (filtered_values, filtered_evidence) if filtered_values else (values, evidence)
 
 
 def _has_unscoped_temporal_ambiguity(
