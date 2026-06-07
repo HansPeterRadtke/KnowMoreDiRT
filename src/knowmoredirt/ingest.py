@@ -57,7 +57,19 @@ def _skip_model_semantics_for_quality(quality: dict[str, object]) -> bool:
 
 
 def _attempt_materialized(row: Any | None) -> bool:
-    return row is not None and bool(row["accepted"]) and bool(row["materialized"])
+    if row is None or not bool(row["accepted"]) or not bool(row["materialized"]):
+        return False
+    try:
+        metadata = json.loads(str(row["metadata_json"] or "{}"))
+    except (KeyError, TypeError, json.JSONDecodeError):
+        return True
+    inserted = metadata.get("materialized", {}).get("inserted", {}) if isinstance(metadata, dict) else {}
+    if isinstance(inserted, dict) and "drs_conditions" in inserted:
+        try:
+            return int(inserted.get("drs_conditions") or 0) > 0
+        except (TypeError, ValueError):
+            return False
+    return True
 
 
 def _attempt_was_nonrequest_failure(row: Any | None) -> bool:
@@ -440,6 +452,7 @@ def _ingest_model_drs_for_sentence(
     semantic_index: int,
     semantic_total: int,
     ingest_started: float,
+    refresh_empty_compact_legacy: bool = False,
 ) -> int:
     semantic_index += 1
     if _skip_model_semantics_for_quality(text_quality_metrics(sentence.text)):
@@ -464,7 +477,7 @@ def _ingest_model_drs_for_sentence(
     drs_cache_key = stable_id("drs_attempt_context", json.dumps(drs_cache_context, sort_keys=True, default=str))
     previous_attempt = store.execute(
         """
-        SELECT accepted, materialized, reason
+        SELECT accepted, materialized, reason, metadata_json
         FROM model_attempts
         WHERE run_id=? AND source_span_id=? AND task=? AND source=? AND cache_key=?
         LIMIT 1
@@ -474,7 +487,7 @@ def _ingest_model_drs_for_sentence(
     existing_drs = store.execute(
         """
         SELECT COUNT(*)
-        FROM drs_boxes
+        FROM drs_conditions
         WHERE run_id=? AND source_span_id=? AND source='local_model_drs'
         """,
         (run_id, span_id),
@@ -534,6 +547,7 @@ def _ingest_model_drs_for_sentence(
         semantic_client,
         rel_path=sentence.rel_path,
         n_predict=drs_n_predict,
+        refresh_empty_compact_legacy=refresh_empty_compact_legacy,
     )
     _raise_model_request_failed(drs_result, "chunk DRS ingest")
     actual_drs_cache_context = (
@@ -1074,6 +1088,11 @@ def ingest_folder(
             section_anchor_by_document[sentence.document_id] = pending_label_heading
             section_group_by_document[sentence.document_id] = stable_id("section_group", sentence.document_id, pending_label_heading)
 
+        refresh_empty_compact_legacy = _env_true("KMD_DRS_REFRESH_EMPTY_STRUCTURAL_LEGACY") and any(
+            relation.relation_type in {"label_value", "record_value"} and bool(relation.value)
+            for relation in deterministic_relations
+        )
+
         if use_semantic_frames and semantic_client is not None:
             semantic_index += 1
             frame_cache_context = chunk_frame_cache_context(
@@ -1121,6 +1140,7 @@ def ingest_folder(
                         semantic_index,
                         semantic_total,
                         ingest_started,
+                        refresh_empty_compact_legacy=refresh_empty_compact_legacy,
                     )
                 continue
             replaced_frames = {}
@@ -1165,6 +1185,7 @@ def ingest_folder(
                         semantic_index,
                         semantic_total,
                         ingest_started,
+                        refresh_empty_compact_legacy=refresh_empty_compact_legacy,
                     )
                 continue
             _log_progress(
@@ -1458,6 +1479,7 @@ def ingest_folder(
                 semantic_index,
                 semantic_total,
                 ingest_started,
+                refresh_empty_compact_legacy=refresh_empty_compact_legacy,
             )
 
     metrics = {

@@ -1978,14 +1978,35 @@ def _drs_condition_argument_values(
         negated = _drs_condition_is_negated(row, condition)
         raw_args = args_by_condition.get(str(condition.get("drs_condition_id") or ""), [])
         candidate_args = _select_drs_answer_arguments(raw_args, expected, answer_slot_terms, target_terms)
+        target_arg_ids = {
+            id(arg)
+            for arg in raw_args
+            if target_terms and _argument_values_match_target(_drs_argument_surface_values(arg, records, frame), target_terms)
+        }
         condition_added = 0
         for arg in candidate_args:
             arg_values = _drs_argument_surface_values(arg, records, frame)
-            if target_terms and _argument_values_match_target(arg_values, target_terms):
+            if id(arg) in target_arg_ids:
                 continue
             condition_added += append_surface_values(arg_values, negated=negated)
         if condition_added:
             continue
+        if target_arg_ids and expected.answer_type in {"content_phrase", "unknown", "metadata_value"}:
+            complement_args = [arg for arg in raw_args if id(arg) not in target_arg_ids]
+            if answer_slot_terms:
+                slot_args = [
+                    arg for arg in complement_args
+                    if _drs_argument_matches_answer_slot(arg, answer_slot_terms, target_terms)
+                ]
+                if slot_args:
+                    complement_args = slot_args
+            for arg in complement_args:
+                condition_added += append_surface_values(
+                    _drs_argument_surface_values(arg, records, frame),
+                    negated=negated,
+                )
+            if condition_added:
+                continue
         candidate_arg_ids = {id(arg) for arg in candidate_args}
         for arg in raw_args:
             if id(arg) in candidate_arg_ids:
@@ -2967,12 +2988,25 @@ def _document_scoped_relation_value_candidates(
         if _source_is_low_priority(evidence.rel_path, evidence.text) and not _structured_source_row(row):
             continue
         local_material = _relation_selector_material(row, evidence, include_evidence=True)
-        if not _document_scoped_row_selector_matches(
-            local_material,
+        row_material = _relation_selector_material(row, evidence, include_evidence=False)
+        row_selector_matches = _document_scoped_row_selector_matches(
+            row_material,
             relation_terms,
             answer_slot_terms,
             target_terms,
+        )
+        if (
+            not row_selector_matches
+            and expected.answer_type in {"identifier", "url"}
+            and relation_type == "identifier"
         ):
+            row_selector_matches = _document_scoped_row_selector_matches(
+                local_material,
+                relation_terms,
+                answer_slot_terms,
+                target_terms,
+            )
+        if not row_selector_matches:
             continue
         for value in _answer_values_from_relation(row, evidence, expected, target_terms, relation_terms, answer_slot_terms):
             slot_bonus = (

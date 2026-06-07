@@ -15,6 +15,7 @@ from knowmoredirt.bounded_dspg import (
     _load_records,
     _rank_scope,
     _answer_slot_terms,
+    _bind_relation_conditions,
     _relation_terms,
     _terms_match_material,
     _target_terms,
@@ -490,6 +491,125 @@ def test_relation_condition_binding_uses_embedded_model_clause_after_pronoun_age
             "person",
         )
     )
+
+
+def test_relation_condition_binding_returns_non_target_content_argument(tmp_path: Path) -> None:
+    source_surface = 'Lexicon: "lumo" means clear ridge.'
+    (tmp_path / "terms.txt").write_text(
+        source_surface + "\n"
+        'Lexicon: "tavin" means red thread.\n',
+        encoding="utf-8",
+    )
+
+    store, run_id, documents, sentences = ingest_folder(tmp_path)
+    row = store.execute(
+        "SELECT span_id, surface FROM source_spans WHERE surface=? LIMIT 1",
+        (source_surface,),
+    ).fetchone()
+    assert row is not None
+    materialized = store.materialize_drs_payload(
+        run_id,
+        str(row[0]),
+        str(row[1]),
+        {
+            "drs": {
+                "schema_version": "chunk-drs-v2",
+                "source_id": "terms.txt",
+                "evidence_spans": ['"lumo" means clear ridge.'],
+                "referents": [
+                    {"id": "r0", "label": "lumo", "kind": "term", "evidence_text": "lumo"},
+                    {"id": "r1", "label": "clear ridge", "kind": "content_phrase", "evidence_text": "clear ridge"},
+                ],
+                "boxes": [
+                    {
+                        "id": "b0",
+                        "kind": "asserted",
+                        "parent_id": "",
+                        "holder_referent_id": "",
+                        "evidence_text": source_surface,
+                    }
+                ],
+                "conditions": [
+                    {
+                        "id": "c0",
+                        "box_id": "b0",
+                        "predicate": "means",
+                        "polarity": "positive",
+                        "modality": "asserted",
+                        "temporal_id": "",
+                        "evidence_text": '"lumo" means clear ridge.',
+                        "arguments": [
+                            {
+                                "role": "agent",
+                                "target_kind": "referent",
+                                "target_id": "r0",
+                                "value": "",
+                                "value_type": "term",
+                                "evidence_text": "lumo",
+                            },
+                            {
+                                "role": "patient",
+                                "target_kind": "referent",
+                                "target_id": "r1",
+                                "value": "",
+                                "value_type": "content_phrase",
+                                "evidence_text": "clear ridge",
+                            },
+                        ],
+                    }
+                ],
+                "identity_hypotheses": [],
+                "temporal_records": [],
+            }
+        },
+    )
+    assert materialized["accepted"] is True
+    frame = QueryFrame(
+        question_text="What does lumo mean?",
+        answer_type="content_phrase",
+        answer_variables=("lumo",),
+        target_anchors=("lumo",),
+        requested_relation="mean",
+        relation_terms=("mean", "answer", "argument"),
+        constraints=(),
+    )
+
+    answer, diagnostics = execute_bounded_query(
+        store,
+        run_id,
+        documents,
+        _sentences_by_document(sentences),
+        frame.question_text,
+        frame,
+    )
+
+    assert answer is not None
+    assert answer.text == "clear ridge"
+    assert diagnostics["execution"]["answer_binding_reason"] in {
+        "relation_condition_binding",
+        "structural_chain_drs_binding",
+    }
+
+    selected_docs, selected_chunks, _ranking = _rank_scope(
+        documents,
+        _sentences_by_document(sentences),
+        frame.question_text,
+        frame,
+        40,
+        160,
+    )
+    records = _load_records(store, run_id, selected_docs, selected_chunks)
+    relation_values = {
+        value
+        for _score, value, _evidence, _reason in _bind_relation_conditions(
+            records,
+            frame,
+            ExpectedAnswer("content_phrase"),
+            _target_terms(frame, frame.question_text),
+            _relation_terms(frame, frame.question_text),
+        )
+    }
+    assert "clear ridge" in relation_values
 
 
 def test_frame_argument_binding_uses_predicate_matched_full_question_slot(tmp_path: Path) -> None:

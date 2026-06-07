@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import hashlib
 import json
 from typing import Any
 
@@ -23,6 +24,7 @@ from knowmoredirt.model_planner import (
     call_model_answer_verification,
     call_model_answer_canonicalization,
     build_answer_verification_prompt,
+    build_compact_chunk_drs_prompt,
     call_model_chunk_drs,
     call_model_chunk_drs_compact,
     call_model_chunk_frames,
@@ -1526,6 +1528,235 @@ def test_compact_query_drs_undercovered_slot_falls_back_to_full_model(monkeypatc
     assert len(model.prompts) == 2
 
 
+def test_compact_query_drs_missing_relation_is_repaired_from_uncovered_tokens(monkeypatch, tmp_path) -> None:
+    class MissingRelationCompactModel:
+        def __init__(self) -> None:
+            self.prompts: list[str] = []
+
+        def context_size(self) -> int:
+            return 8192
+
+        def cache_fingerprint(self) -> dict[str, Any]:
+            return {"model_id": "fake-compact-missing-relation", "context_size": 8192}
+
+        def complete_json(
+            self,
+            prompt: str,
+            *,
+            n_predict: int = 128,
+            grammar: str | None = None,
+            json_schema: dict[str, Any] | None = None,
+        ) -> dict[str, object]:
+            self.prompts.append(prompt)
+            if "compact DRS query data" in prompt:
+                return {
+                    "a": "content_phrase",
+                    "answer": "lumo",
+                    "targets": ["lumo"],
+                    "predicates": [],
+                    "constraints": [],
+                    "temporal_scope": "",
+                    "aggregation": "",
+                    "_model_raw": "{}",
+                    "_model_elapsed_seconds": 0.01,
+            }
+            raise AssertionError("compact query repair should avoid full query call")
+
+    monkeypatch.setenv("KMD_FORCE_COMPACT_MODEL_PATH", "1")
+    monkeypatch.setenv("KMD_QUERY_DRS_CACHE_DIR", str(tmp_path / "query-drs-cache"))
+    model = MissingRelationCompactModel()
+
+    result = call_model_query_drs("What does lumo mean?", model)  # type: ignore[arg-type]
+
+    assert result["accepted"] is True
+    assert result["query_drs"]["requested_conditions"][0]["predicate"] == "mean"
+    assert "compact_fallback_attempt" not in result
+    assert len(model.prompts) == 1
+
+
+def test_compact_query_drs_repairs_cached_missing_relation(monkeypatch, tmp_path) -> None:
+    class CachedMissingRelationModel:
+        def __init__(self) -> None:
+            self.calls = 0
+            self.timeout_seconds = 420
+
+        def context_size(self) -> int:
+            return 4096
+
+        def cache_fingerprint(self) -> dict[str, Any]:
+            return {"model_id": "fake-cached-missing-query-relation", "context_size": 4096}
+
+        def complete_json(self, prompt: str, *, n_predict: int = 128, grammar=None, json_schema=None):
+            self.calls += 1
+            raise AssertionError("cached query repair should avoid live model call")
+
+    question = "What does mave mean?"
+    model = CachedMissingRelationModel()
+    monkeypatch.setenv("KMD_FORCE_COMPACT_MODEL_PATH", "1")
+    monkeypatch.setenv("KMD_QUERY_DRS_CACHE_DIR", str(tmp_path / "query-drs-cache"))
+    settings = {
+        "n_predict": 64,
+        "schema": model_planner.QUERY_DRS_SCHEMA_VERSION,
+        "compact_plan_policy": model_planner.QUERY_DRS_COMPACT_PLAN_POLICY,
+        "constraint_mode": "validated_json_no_schema",
+    }
+    prompt_hash = model_planner._cache_hash(
+        "query_drs_compact",
+        model_planner.build_compact_query_drs_prompt(question),
+        model,  # type: ignore[arg-type]
+        settings,
+    )
+    cache_path = model_planner._cache_path("KMD_QUERY_DRS_CACHE_DIR", prompt_hash)
+    assert cache_path is not None
+    cache_path.parent.mkdir(parents=True, exist_ok=True)
+    cache_path.write_text(
+        json.dumps(
+            {
+                "accepted": True,
+                "prompt_hash": prompt_hash,
+                "query_drs": {
+                    "schema_version": "query-drs-v3",
+                    "question": question,
+                    "answer_variables": [
+                        {
+                            "id": "qv0",
+                            "label": "mave",
+                            "answer_type": "content_phrase",
+                            "evidence_text": "mave",
+                        }
+                    ],
+                    "target_referents": [
+                        {"id": "qr0", "label": "mave", "kind": "unknown", "evidence_text": "mave"}
+                    ],
+                    "requested_conditions": [],
+                    "constraints": [],
+                    "box_requirements": [],
+                    "temporal_records": [],
+                    "temporal_scope": "",
+                    "aggregation": "",
+                    "answer_type": "content_phrase",
+                    "requires_evidence": True,
+                },
+                "raw_text": "{}",
+            }
+        ),
+        encoding="utf-8",
+    )
+
+    result = call_model_query_drs(question, model)  # type: ignore[arg-type]
+
+    assert model.calls == 0
+    assert result["query_drs"]["requested_conditions"][0]["predicate"] == "mean"
+    assert result["query_drs"]["requested_conditions"][0]["arguments"][0]["target_kind"] == "answer_variable"
+
+
+def test_compact_query_drs_repairs_cached_answer_argument_kind(monkeypatch, tmp_path) -> None:
+    class CachedWrongAnswerArgumentModel:
+        def __init__(self) -> None:
+            self.calls = 0
+            self.timeout_seconds = 420
+
+        def context_size(self) -> int:
+            return 4096
+
+        def cache_fingerprint(self) -> dict[str, Any]:
+            return {"model_id": "fake-cached-wrong-answer-argument", "context_size": 4096}
+
+        def complete_json(self, prompt: str, *, n_predict: int = 128, grammar=None, json_schema=None):
+            self.calls += 1
+            raise AssertionError("cached query repair should avoid live model call")
+
+    question = "What does mave mean?"
+    model = CachedWrongAnswerArgumentModel()
+    monkeypatch.setenv("KMD_FORCE_COMPACT_MODEL_PATH", "1")
+    monkeypatch.setenv("KMD_QUERY_DRS_CACHE_DIR", str(tmp_path / "query-drs-cache"))
+    settings = {
+        "n_predict": 64,
+        "schema": model_planner.QUERY_DRS_SCHEMA_VERSION,
+        "compact_plan_policy": model_planner.QUERY_DRS_COMPACT_PLAN_POLICY,
+        "constraint_mode": "validated_json_no_schema",
+    }
+    prompt_hash = model_planner._cache_hash(
+        "query_drs_compact",
+        model_planner.build_compact_query_drs_prompt(question),
+        model,  # type: ignore[arg-type]
+        settings,
+    )
+    cache_path = model_planner._cache_path("KMD_QUERY_DRS_CACHE_DIR", prompt_hash)
+    assert cache_path is not None
+    cache_path.parent.mkdir(parents=True, exist_ok=True)
+    cache_path.write_text(
+        json.dumps(
+            {
+                "accepted": True,
+                "prompt_hash": prompt_hash,
+                "query_drs": {
+                    "schema_version": "query-drs-v3",
+                    "question": question,
+                    "answer_variables": [
+                        {
+                            "id": "qv0",
+                            "label": "mave",
+                            "answer_type": "content_phrase",
+                            "evidence_text": "mave",
+                        }
+                    ],
+                    "target_referents": [
+                        {"id": "qr0", "label": "mave", "kind": "unknown", "evidence_text": "mave"}
+                    ],
+                    "requested_conditions": [
+                        {
+                            "id": "qc0",
+                            "predicate": "mean",
+                            "box_id": "",
+                            "polarity": "positive",
+                            "modality": "asserted",
+                            "temporal_id": "",
+                            "arguments": [
+                                {
+                                    "role": "answer",
+                                    "target_kind": "referent",
+                                    "target_id": "qr0",
+                                    "value": "",
+                                    "value_type": "content_phrase",
+                                    "evidence_text": "mave",
+                                },
+                                {
+                                    "role": "argument",
+                                    "target_kind": "referent",
+                                    "target_id": "qr0",
+                                    "value": "",
+                                    "value_type": "unknown",
+                                    "evidence_text": "mave",
+                                },
+                            ],
+                            "evidence_text": question,
+                        }
+                    ],
+                    "constraints": [],
+                    "box_requirements": [],
+                    "temporal_records": [],
+                    "temporal_scope": "",
+                    "aggregation": "",
+                    "answer_type": "content_phrase",
+                    "requires_evidence": True,
+                },
+                "raw_text": "{}",
+            }
+        ),
+        encoding="utf-8",
+    )
+
+    result = call_model_query_drs(question, model)  # type: ignore[arg-type]
+
+    assert model.calls == 0
+    arguments = result["query_drs"]["requested_conditions"][0]["arguments"]
+    assert arguments[0]["role"] == "answer"
+    assert arguments[0]["target_kind"] == "answer_variable"
+    assert arguments[0]["target_id"] == "qv0"
+    assert arguments[1]["target_kind"] == "referent"
+
+
 def test_short_query_drs_uses_smaller_surface_budget(monkeypatch, tmp_path) -> None:
     class LargeContextQueryModel:
         def __init__(self) -> None:
@@ -1886,6 +2117,447 @@ def test_chunk_drs_schema_caps_evidence_strings_to_chunk_length() -> None:
     assert condition_schema["properties"]["evidence_text"]["maxLength"] == 19
     assert argument_schema["properties"]["evidence_text"]["maxLength"] == 19
     assert drs_schema["properties"]["evidence_spans"]["items"]["maxLength"] == 19
+
+
+def test_compact_chunk_drs_prompt_keeps_source_stated_definitions() -> None:
+    prompt = build_compact_chunk_drs_prompt(
+        'Glossary: "kave" means bright river.',
+        rel_path="notes/terms.txt",
+    )
+
+    assert "definitions, meanings, names, aliases, and terminology" in prompt
+    assert "bright river" in prompt
+    assert "notes/terms.txt" in prompt
+
+
+def test_compact_chunk_drs_regenerates_empty_legacy_definition_cache(monkeypatch, tmp_path) -> None:
+    class DefinitionCompactModel:
+        def __init__(self) -> None:
+            self.calls = 0
+            self.timeout_seconds = 240
+
+        def context_size(self) -> int:
+            return 4096
+
+        def cache_fingerprint(self) -> dict[str, Any]:
+            return {"model_id": "fake-definition-compact", "context_size": 4096}
+
+        def complete_json(self, prompt: str, *, n_predict: int = 128, grammar=None, json_schema=None):
+            self.calls += 1
+            return {
+                "facts": [
+                    {
+                        "p": "means",
+                        "agent": "kave",
+                        "value": "bright river",
+                        "e": '"kave" means bright river.',
+                    }
+                ],
+                "_model_raw": "{}",
+                "_model_elapsed_seconds": 0.01,
+            }
+
+    text = 'Glossary: "kave" means bright river.'
+    rel_path = "notes/terms.txt"
+    model = DefinitionCompactModel()
+    monkeypatch.setenv("KMD_CHUNK_DRS_CACHE_DIR", str(tmp_path / "chunk-drs-cache"))
+    source_text_hash = hashlib.sha256(text.encode("utf-8", errors="replace")).hexdigest()
+    settings = {
+        "n_predict": 72,
+        "schema": model_planner.CHUNK_DRS_SCHEMA_VERSION,
+        "compact_fact_policy": model_planner.CHUNK_DRS_COMPACT_FACT_POLICY_PREVIOUS,
+        "constraint_mode": "validated_json_no_schema",
+        "source_text_hash": source_text_hash,
+    }
+    legacy_hash = model_planner._cache_hash(
+        "chunk_drs_compact",
+        model_planner._build_compact_chunk_drs_prompt_v2(text, rel_path=rel_path),
+        model,  # type: ignore[arg-type]
+        settings,
+    )
+    legacy_path = model_planner._cache_path("KMD_CHUNK_DRS_CACHE_DIR", legacy_hash)
+    assert legacy_path is not None
+    legacy_path.parent.mkdir(parents=True, exist_ok=True)
+    legacy_path.write_text(
+        json.dumps(
+            {
+                "accepted": True,
+                "drs": {
+                    "schema_version": "chunk-drs-v2",
+                    "source_id": rel_path,
+                    "referents": [],
+                    "boxes": [{"id": "b0", "kind": "asserted", "parent_id": ""}],
+                    "conditions": [],
+                    "identity_hypotheses": [],
+                    "temporal_records": [],
+                    "evidence_spans": [],
+                },
+                "raw_text": '{"facts":[]}',
+            }
+        ),
+        encoding="utf-8",
+    )
+
+    result = call_model_chunk_drs_compact(  # type: ignore[arg-type]
+        text,
+        model,
+        rel_path=rel_path,
+        n_predict=72,
+        refresh_empty_legacy=True,
+    )
+
+    assert model.calls == 1
+    assert result["accepted"] is True
+    assert result["drs"]["conditions"][0]["predicate"] == "means"
+
+
+def test_compact_chunk_drs_retries_empty_current_cache(monkeypatch, tmp_path) -> None:
+    class EmptyCacheRetryCompactModel:
+        def __init__(self) -> None:
+            self.calls: list[int] = []
+            self.timeout_seconds = 240
+
+        def context_size(self) -> int:
+            return 4096
+
+        def cache_fingerprint(self) -> dict[str, Any]:
+            return {"model_id": "fake-current-empty-compact", "context_size": 4096}
+
+        def complete_json(self, prompt: str, *, n_predict: int = 128, grammar=None, json_schema=None):
+            self.calls.append(n_predict)
+            return {
+                "facts": [
+                    {
+                        "p": "means",
+                        "agent": "luro",
+                        "patient": "silver path",
+                        "e": '"luro" means silver path.',
+                    }
+                ],
+                "_model_raw": "{}",
+                "_model_elapsed_seconds": 0.01,
+            }
+
+    text = 'Glossary: "luro" means silver path.'
+    rel_path = "notes/terms.txt"
+    model = EmptyCacheRetryCompactModel()
+    monkeypatch.setenv("KMD_CHUNK_DRS_CACHE_DIR", str(tmp_path / "chunk-drs-cache"))
+    source_text_hash = hashlib.sha256(text.encode("utf-8", errors="replace")).hexdigest()
+    settings = {
+        "n_predict": 72,
+        "schema": model_planner.CHUNK_DRS_SCHEMA_VERSION,
+        "compact_fact_policy": model_planner.CHUNK_DRS_COMPACT_FACT_POLICY,
+        "constraint_mode": "validated_json_no_schema",
+        "source_text_hash": source_text_hash,
+    }
+    current_hash = model_planner._cache_hash(
+        "chunk_drs_compact",
+        build_compact_chunk_drs_prompt(text, rel_path=rel_path),
+        model,  # type: ignore[arg-type]
+        settings,
+    )
+    current_path = model_planner._cache_path("KMD_CHUNK_DRS_CACHE_DIR", current_hash)
+    assert current_path is not None
+    current_path.parent.mkdir(parents=True, exist_ok=True)
+    current_path.write_text(
+        json.dumps(
+            {
+                "accepted": True,
+                "drs": {
+                    "schema_version": "chunk-drs-v2",
+                    "source_id": rel_path,
+                    "referents": [],
+                    "boxes": [{"id": "b0", "kind": "asserted", "parent_id": ""}],
+                    "conditions": [],
+                    "identity_hypotheses": [],
+                    "temporal_records": [],
+                    "evidence_spans": [],
+                },
+                "raw_text": '{"facts":[]}',
+            }
+        ),
+        encoding="utf-8",
+    )
+
+    result = call_model_chunk_drs_compact(  # type: ignore[arg-type]
+        text,
+        model,
+        rel_path=rel_path,
+        n_predict=72,
+        refresh_empty_legacy=True,
+    )
+
+    assert model.calls == [160]
+    assert result["accepted"] is True
+    assert result["drs"]["conditions"][0]["predicate"] == "means"
+    assert result["compact_retry_attempts"][0]["reason"] == "empty_compact_drs_cache"
+
+
+def test_compact_chunk_drs_reuses_condition_retry_cache_after_empty_current_cache(monkeypatch, tmp_path) -> None:
+    class CachedRetryCompactModel:
+        def __init__(self) -> None:
+            self.calls = 0
+            self.timeout_seconds = 240
+
+        def context_size(self) -> int:
+            return 4096
+
+        def cache_fingerprint(self) -> dict[str, Any]:
+            return {"model_id": "fake-retry-cache-compact", "context_size": 4096}
+
+        def complete_json(self, prompt: str, *, n_predict: int = 128, grammar=None, json_schema=None):
+            self.calls += 1
+            raise AssertionError("retry cache should avoid live model call")
+
+    text = 'Glossary: "mave" means quiet hill.'
+    rel_path = "notes/terms.txt"
+    model = CachedRetryCompactModel()
+    monkeypatch.setenv("KMD_CHUNK_DRS_CACHE_DIR", str(tmp_path / "chunk-drs-cache"))
+    source_text_hash = hashlib.sha256(text.encode("utf-8", errors="replace")).hexdigest()
+    base_settings = {
+        "n_predict": 72,
+        "schema": model_planner.CHUNK_DRS_SCHEMA_VERSION,
+        "compact_fact_policy": model_planner.CHUNK_DRS_COMPACT_FACT_POLICY,
+        "constraint_mode": "validated_json_no_schema",
+        "source_text_hash": source_text_hash,
+    }
+    prompt = build_compact_chunk_drs_prompt(text, rel_path=rel_path)
+    current_hash = model_planner._cache_hash("chunk_drs_compact", prompt, model, base_settings)  # type: ignore[arg-type]
+    current_path = model_planner._cache_path("KMD_CHUNK_DRS_CACHE_DIR", current_hash)
+    assert current_path is not None
+    current_path.parent.mkdir(parents=True, exist_ok=True)
+    current_path.write_text(
+        json.dumps(
+            {
+                "accepted": True,
+                "elapsed": None,
+                "prompt_hash": current_hash,
+                "drs": {
+                    "schema_version": "chunk-drs-v2",
+                    "source_id": rel_path,
+                    "referents": [],
+                    "boxes": [{"id": "b0", "kind": "asserted", "parent_id": ""}],
+                    "conditions": [],
+                    "identity_hypotheses": [],
+                    "temporal_records": [],
+                    "evidence_spans": [],
+                },
+                "raw_text": '{"facts":[]}',
+            }
+        ),
+        encoding="utf-8",
+    )
+    retry_settings = {
+        **base_settings,
+        "n_predict": 160,
+        "compact_retry_policy": model_planner.CHUNK_DRS_COMPACT_RETRY_POLICY,
+        "compact_retry_index": 1,
+        "compact_retry_after": {
+            "n_predict": 72,
+            "reason": "empty_compact_drs_cache",
+            "elapsed": None,
+            "prompt_hash": current_hash,
+        },
+    }
+    retry_hash = model_planner._cache_hash("chunk_drs_compact", prompt, model, retry_settings)  # type: ignore[arg-type]
+    retry_path = model_planner._cache_path("KMD_CHUNK_DRS_CACHE_DIR", retry_hash)
+    assert retry_path is not None
+    retry_path.write_text(
+        json.dumps(
+            {
+                "accepted": True,
+                "prompt_hash": retry_hash,
+                "drs": {
+                    "schema_version": "chunk-drs-v2",
+                    "source_id": rel_path,
+                    "referents": [
+                        {"id": "r0", "label": "mave", "kind": "unknown", "evidence_text": "mave"},
+                        {"id": "r1", "label": "quiet hill", "kind": "unknown", "evidence_text": "quiet hill"},
+                    ],
+                    "boxes": [{"id": "b0", "kind": "asserted", "parent_id": ""}],
+                    "conditions": [
+                        {
+                            "id": "c0",
+                            "box_id": "b0",
+                            "predicate": "means",
+                            "polarity": "positive",
+                            "modality": "asserted",
+                            "temporal_id": "",
+                            "evidence_text": '"mave" means quiet hill.',
+                            "arguments": [
+                                {
+                                    "role": "agent",
+                                    "target_kind": "referent",
+                                    "target_id": "r0",
+                                    "value": "",
+                                    "value_type": "unknown",
+                                    "evidence_text": "mave",
+                                },
+                                {
+                                    "role": "patient",
+                                    "target_kind": "referent",
+                                    "target_id": "r1",
+                                    "value": "",
+                                    "value_type": "unknown",
+                                    "evidence_text": "quiet hill",
+                                },
+                            ],
+                        }
+                    ],
+                    "identity_hypotheses": [],
+                    "temporal_records": [],
+                    "evidence_spans": ['"mave" means quiet hill.'],
+                },
+                "raw_text": "{}",
+            }
+        ),
+        encoding="utf-8",
+    )
+
+    result = call_model_chunk_drs_compact(  # type: ignore[arg-type]
+        text,
+        model,
+        rel_path=rel_path,
+        n_predict=72,
+    )
+
+    assert model.calls == 0
+    assert result["prompt_hash"] == retry_hash
+    assert result["drs"]["conditions"][0]["predicate"] == "means"
+
+
+def test_compact_chunk_drs_reuses_equivalent_condition_cache_after_empty_current_cache(monkeypatch, tmp_path) -> None:
+    class EquivalentCacheCompactModel:
+        def __init__(self) -> None:
+            self.calls = 0
+            self.timeout_seconds = 240.0
+
+        def context_size(self) -> int:
+            return 4096
+
+        def cache_fingerprint(self) -> dict[str, Any]:
+            return {"model_id": "fake-equivalent-cache-compact", "context_size": 4096, "timeout_seconds": 240.0}
+
+        def complete_json(self, prompt: str, *, n_predict: int = 128, grammar=None, json_schema=None):
+            self.calls += 1
+            raise AssertionError("equivalent condition cache should avoid live model call")
+
+    text = 'Glossary: "tavil" means clear meadow.'
+    rel_path = "notes/terms.txt"
+    model = EquivalentCacheCompactModel()
+    monkeypatch.setenv("KMD_CHUNK_DRS_CACHE_DIR", str(tmp_path / "chunk-drs-cache"))
+    source_text_hash = hashlib.sha256(text.encode("utf-8", errors="replace")).hexdigest()
+    base_settings = {
+        "n_predict": 72,
+        "schema": model_planner.CHUNK_DRS_SCHEMA_VERSION,
+        "compact_fact_policy": model_planner.CHUNK_DRS_COMPACT_FACT_POLICY,
+        "constraint_mode": "validated_json_no_schema",
+        "source_text_hash": source_text_hash,
+    }
+    prompt = build_compact_chunk_drs_prompt(text, rel_path=rel_path)
+    current_hash = model_planner._cache_hash("chunk_drs_compact", prompt, model, base_settings)  # type: ignore[arg-type]
+    current_path = model_planner._cache_path("KMD_CHUNK_DRS_CACHE_DIR", current_hash)
+    assert current_path is not None
+    current_path.parent.mkdir(parents=True, exist_ok=True)
+    current_path.write_text(
+        json.dumps(
+            {
+                "accepted": True,
+                "elapsed": 0.01,
+                "prompt_hash": current_hash,
+                "cache_context": {
+                    **base_settings,
+                    "model_fingerprint": model.cache_fingerprint(),
+                    "source_rel_path": rel_path,
+                },
+                "drs": {
+                    "schema_version": "chunk-drs-v2",
+                    "source_id": rel_path,
+                    "referents": [],
+                    "boxes": [{"id": "b0", "kind": "asserted", "parent_id": ""}],
+                    "conditions": [],
+                    "identity_hypotheses": [],
+                    "temporal_records": [],
+                    "evidence_spans": [],
+                },
+                "raw_text": '{"facts":[]}',
+            }
+        ),
+        encoding="utf-8",
+    )
+    equivalent_path = current_path.parent / "equivalent-condition-cache.json"
+    equivalent_path.write_text(
+        json.dumps(
+            {
+                "accepted": True,
+                "prompt_hash": "different-equivalent-cache-key",
+                "compact_fact_policy": model_planner.CHUNK_DRS_COMPACT_FACT_POLICY,
+                "cache_context": {
+                    **base_settings,
+                    "model_fingerprint": {
+                        "model_id": "fake-equivalent-cache-compact",
+                        "context_size": 4096,
+                        "timeout_seconds": 240,
+                    },
+                    "source_rel_path": rel_path,
+                },
+                "drs": {
+                    "schema_version": "chunk-drs-v2",
+                    "source_id": rel_path,
+                    "referents": [
+                        {"id": "r0", "label": "tavil", "kind": "unknown", "evidence_text": "tavil"},
+                        {"id": "r1", "label": "clear meadow", "kind": "unknown", "evidence_text": "clear meadow"},
+                    ],
+                    "boxes": [{"id": "b0", "kind": "asserted", "parent_id": ""}],
+                    "conditions": [
+                        {
+                            "id": "c0",
+                            "box_id": "b0",
+                            "predicate": "means",
+                            "polarity": "positive",
+                            "modality": "asserted",
+                            "temporal_id": "",
+                            "evidence_text": '"tavil" means clear meadow.',
+                            "arguments": [
+                                {
+                                    "role": "agent",
+                                    "target_kind": "referent",
+                                    "target_id": "r0",
+                                    "value": "",
+                                    "value_type": "unknown",
+                                    "evidence_text": "tavil",
+                                },
+                                {
+                                    "role": "patient",
+                                    "target_kind": "referent",
+                                    "target_id": "r1",
+                                    "value": "",
+                                    "value_type": "unknown",
+                                    "evidence_text": "clear meadow",
+                                },
+                            ],
+                        }
+                    ],
+                    "identity_hypotheses": [],
+                    "temporal_records": [],
+                    "evidence_spans": ['"tavil" means clear meadow.'],
+                },
+                "raw_text": "{}",
+            }
+        ),
+        encoding="utf-8",
+    )
+
+    result = call_model_chunk_drs_compact(  # type: ignore[arg-type]
+        text,
+        model,
+        rel_path=rel_path,
+        n_predict=72,
+    )
+
+    assert model.calls == 0
+    assert result["drs"]["conditions"][0]["predicate"] == "means"
+    assert result["compact_source_cache_reuse"]["from_prompt_hash"] == "different-equivalent-cache-key"
 
 
 def test_compact_chunk_drs_retries_truncated_json_with_larger_budget(monkeypatch, tmp_path) -> None:
