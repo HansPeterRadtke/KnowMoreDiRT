@@ -4387,6 +4387,25 @@ def _apply_structured_current_state_preference(
     return adjusted
 
 
+def _apply_answer_slot_evidence_preference(
+    candidates: list[tuple[float, str, Evidence, str]],
+    frame: QueryFrame,
+    target_terms: list[str],
+) -> list[tuple[float, str, Evidence, str]]:
+    if not candidates:
+        return candidates
+    answer_slot_terms = _answer_slot_terms(frame, target_terms)
+    if not _answer_slot_constraints(answer_slot_terms, target_terms):
+        return candidates
+    adjusted: list[tuple[float, str, Evidence, str]] = []
+    for score, value, evidence, reason in candidates:
+        material = normalize(" ".join([value, evidence.text, evidence.rel_path]))
+        if _material_matches_compound_term_constraints(material, answer_slot_terms, target_terms):
+            score += 18.0
+        adjusted.append((score, value, evidence, reason))
+    return adjusted
+
+
 def _prefer_drs_argument_values(
     candidates: list[tuple[float, str, Evidence, str]],
     expected: ExpectedAnswer,
@@ -5183,6 +5202,7 @@ def execute_bounded_query(
     candidates.extend(_bind_metadata(records, question, expected, target_terms, relation_terms))
     candidates.extend(_bind_contexts(records, frame, expected, target_terms, relation_terms))
     candidates = _apply_structured_current_state_preference(candidates, records, frame)
+    candidates = _apply_answer_slot_evidence_preference(candidates, frame, target_terms)
     candidates = _prefer_drs_argument_values(candidates, expected, relation_terms)
 
     if expected.answer_type == "count" and frame.aggregation == "count":

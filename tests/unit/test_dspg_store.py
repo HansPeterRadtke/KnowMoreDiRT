@@ -8,6 +8,7 @@ from pathlib import Path
 from knowmoredirt.answer_types import ExpectedAnswer
 from knowmoredirt.bounded_dspg import (
     _answer_conflict_diagnostics,
+    _apply_answer_slot_evidence_preference,
     _context_accessible,
     _document_context_target_document_ids,
     _document_scoped_drs_condition_candidates,
@@ -1482,6 +1483,60 @@ def test_label_value_subject_fallback_requires_answer_slot_match() -> None:
     )
 
     assert values == []
+
+
+def test_answer_slot_evidence_preference_prefers_slot_labeled_final_value() -> None:
+    frame = QueryFrame(
+        question_text="What was the final cause of the incident?",
+        answer_type="content_phrase",
+        answer_variables=("the final cause of the incident",),
+        target_anchors=("incident",),
+        requested_relation="was",
+        relation_terms=("was", "final cause"),
+        constraints=(),
+    )
+    target_terms = _target_terms(frame, frame.question_text)
+    candidates = [
+        (
+            8.0,
+            "Lin",
+            Evidence("notes.txt", "Lin: The incident was caused by queue pressure.", 0.8),
+            "frame_argument_binding",
+        ),
+        (
+            1.0,
+            "final cause was the bad certificate",
+            Evidence("notes.txt", "Review lead: final cause was the bad certificate, not queue pressure.", 0.8),
+            "frame_argument_binding",
+        ),
+    ]
+
+    adjusted = _apply_answer_slot_evidence_preference(candidates, frame, target_terms)
+    answer = _choose_answer(adjusted, ExpectedAnswer("content_phrase"), target_terms)
+
+    assert answer is not None
+    assert answer.text == "final cause was the bad certificate"
+
+
+def test_cleanup_strips_answer_slot_clause_prefix() -> None:
+    engine = object.__new__(KnowMoreDiRTEngine)
+    frame = QueryFrame(
+        question_text="What was the final cause of the incident?",
+        answer_type="content_phrase",
+        answer_variables=("the final cause of the incident",),
+        target_anchors=("incident",),
+        requested_relation="was",
+        relation_terms=("was", "final cause"),
+        constraints=(),
+    )
+
+    cleaned = engine._cleanup_canonical_answer(
+        "final cause was the bad certificate",
+        ExpectedAnswer("content_phrase"),
+        frame,
+    )
+
+    assert cleaned == "bad certificate"
 
 
 def test_scope_marker_target_anchor_does_not_block_asserted_followup_fact(tmp_path: Path) -> None:

@@ -1753,11 +1753,16 @@ class KnowMoreDiRTEngine:
             for token in content_tokens(variable)
             if token and token not in target_tokens
         }
-        relation_tokens = {
-            variant
-            for token in content_tokens(frame.requested_relation)
-            for variant in term_variants(token)
-        }
+        relation_tokens: set[str] = set()
+        for source in [frame.requested_relation, *frame.relation_terms]:
+            source_tokens = content_tokens(source)
+            if source_tokens:
+                for token in source_tokens:
+                    relation_tokens.update(term_variants(token))
+                continue
+            source_norm = normalize(source)
+            if source_norm:
+                relation_tokens.add(source_norm)
         if not target_tokens or not relation_tokens:
             return text
         relation_indexes = [
@@ -1770,9 +1775,11 @@ class KnowMoreDiRTEngine:
         if relation_index >= len(words) - 1:
             return text
         prefix_tokens = set(normalized_words[: relation_index + 1])
-        if not (prefix_tokens & target_tokens):
+        prefix_has_target = bool(prefix_tokens & target_tokens)
+        prefix_has_slot = bool(slot_tokens and (prefix_tokens & slot_tokens))
+        if not prefix_has_target and not prefix_has_slot:
             return text
-        if slot_tokens and not (prefix_tokens & slot_tokens):
+        if slot_tokens and prefix_has_target and not prefix_has_slot:
             return text
         residual_words = words[relation_index + 1 :]
         if len(residual_words) > 4:
