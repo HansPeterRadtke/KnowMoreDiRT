@@ -137,6 +137,51 @@ class QueryFrame:
         return asdict(self)
 
 
+IRREGULAR_TERM_VARIANTS: dict[str, set[str]] = {
+    "bought": {"buy"},
+    "buy": {"bought"},
+    "brought": {"bring"},
+    "bring": {"brought"},
+    "built": {"build"},
+    "build": {"built"},
+    "caught": {"catch"},
+    "catch": {"caught"},
+    "found": {"find"},
+    "find": {"found"},
+    "gave": {"give"},
+    "give": {"gave", "given"},
+    "given": {"give", "gave"},
+    "kept": {"keep"},
+    "keep": {"kept"},
+    "left": {"leave"},
+    "leave": {"left"},
+    "made": {"make"},
+    "make": {"made"},
+    "paid": {"pay"},
+    "pay": {"paid"},
+    "read": {"read"},
+    "said": {"say"},
+    "say": {"said"},
+    "saw": {"see"},
+    "see": {"saw", "seen"},
+    "seen": {"see", "saw"},
+    "sent": {"send"},
+    "send": {"sent"},
+    "sold": {"sell"},
+    "sell": {"sold"},
+    "taught": {"teach"},
+    "teach": {"taught"},
+    "told": {"tell"},
+    "tell": {"told"},
+    "took": {"take"},
+    "take": {"took", "taken"},
+    "taken": {"take", "took"},
+    "wrote": {"write"},
+    "write": {"wrote", "written"},
+    "written": {"write", "wrote"},
+}
+
+
 def term_variants(term: str) -> set[str]:
     """Return small morphology-only variants without semantic labels."""
 
@@ -146,6 +191,7 @@ def term_variants(term: str) -> set[str]:
     if not re.fullmatch(r"[a-z]+", token):
         return {token}
     variants = {token}
+    variants.update(IRREGULAR_TERM_VARIANTS.get(token, set()))
     for suffix in ("ing", "ied", "ed", "ies", "s"):
         if token.endswith(suffix) and len(token) > len(suffix) + 2:
             if suffix == "s" and token.endswith(("ss", "us", "is")):

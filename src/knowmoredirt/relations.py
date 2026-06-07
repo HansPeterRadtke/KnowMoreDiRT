@@ -31,6 +31,7 @@ LOOSE_SCALAR_PAIR_RE = re.compile(
 )
 TIMESTAMP_RE = re.compile(r"\b(\d{4}-\d{2}-\d{2}(?:[ T]\d{2}:\d{2})?)\b")
 TRANSCRIPT_TURN_RE = re.compile(r"^\s*(?:(\[[^\]\n]{1,32}\])\s*)?([^:\n]{1,80})\s*:\s*(\S.*)$", re.S)
+BRACKETED_SPEAKER_TURN_RE = re.compile(r"^\s*\[([^\]\n]{1,32})\]\s+(\S.*)$", re.S)
 NON_SPEAKER_LABEL_TOKENS = {
     "code",
     "date",
@@ -127,12 +128,19 @@ def extract_relations(text: str) -> list[ExtractedRelation]:
 def transcript_turn_parts(text: str) -> tuple[str, str]:
     """Return speaker label and utterance for a structurally labeled turn."""
 
-    match = TRANSCRIPT_TURN_RE.match(str(text or "").strip())
-    if not match:
-        return "", ""
-    marker = match.group(1) or ""
-    speaker = clean_extracted_value(match.group(2))
-    utterance = clean_extracted_value(match.group(3))
+    source = str(text or "").strip()
+    match = TRANSCRIPT_TURN_RE.match(source)
+    if match:
+        marker = match.group(1) or ""
+        speaker = clean_extracted_value(match.group(2))
+        utterance = clean_extracted_value(match.group(3))
+    else:
+        bracketed_match = BRACKETED_SPEAKER_TURN_RE.match(source)
+        if not bracketed_match:
+            return "", ""
+        marker = "[]"
+        speaker = clean_extracted_value(bracketed_match.group(1))
+        utterance = clean_extracted_value(bracketed_match.group(2))
     if not speaker or not utterance or "://" in speaker:
         return "", ""
     speaker_words = [part for part in re.split(r"\s+", speaker) if part]

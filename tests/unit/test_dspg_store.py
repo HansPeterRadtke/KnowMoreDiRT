@@ -23,7 +23,7 @@ from knowmoredirt.engine import KnowMoreDiRTEngine
 from knowmoredirt.ingest import ingest_folder
 from knowmoredirt.models import Answer, Evidence, Sentence
 from knowmoredirt.query import QueryFrame, term_variants
-from knowmoredirt.relations import extract_relations
+from knowmoredirt.relations import extract_relations, transcript_turn_parts
 from knowmoredirt.store import DSPGStore, stable_id
 
 from conftest import FIXTURE_ROOT
@@ -255,6 +255,300 @@ def _materialize_boolean_probe_drs(
         },
     )
     assert materialized["accepted"] is True
+
+
+def _materialize_person_relation_drs(
+    store: DSPGStore,
+    run_id: str,
+    source_surface: str,
+    *,
+    predicate: str,
+    person_label: str,
+    target_label: str,
+) -> None:
+    row = store.execute(
+        "SELECT span_id, surface FROM source_spans WHERE surface=? LIMIT 1",
+        (source_surface,),
+    ).fetchone()
+    assert row is not None
+    span_id = str(row[0])
+    materialized = store.materialize_drs_payload(
+        run_id,
+        span_id,
+        str(row[1]),
+        {
+            "drs": {
+                "schema_version": "chunk-drs-v2",
+                "source_id": "memo.txt",
+                "evidence_spans": [source_surface],
+                "referents": [
+                    {
+                        "id": "r0",
+                        "label": person_label,
+                        "kind": "person",
+                        "evidence_text": person_label,
+                    },
+                    {
+                        "id": "r1",
+                        "label": target_label,
+                        "kind": "entity",
+                        "evidence_text": target_label,
+                    },
+                ],
+                "boxes": [
+                    {
+                        "id": "b0",
+                        "kind": "asserted",
+                        "parent_id": "",
+                        "holder_referent_id": "",
+                        "evidence_text": source_surface,
+                    }
+                ],
+                "conditions": [
+                    {
+                        "id": "c0",
+                        "box_id": "b0",
+                        "predicate": predicate,
+                        "polarity": "positive",
+                        "modality": "asserted",
+                        "temporal_id": "",
+                        "evidence_text": source_surface,
+                        "arguments": [
+                            {
+                                "role": "agent",
+                                "target_kind": "referent",
+                                "target_id": "r0",
+                                "value": "",
+                                "value_type": "person",
+                                "evidence_text": person_label,
+                            },
+                            {
+                                "role": "patient",
+                                "target_kind": "referent",
+                                "target_id": "r1",
+                                "value": "",
+                                "value_type": "entity",
+                                "evidence_text": target_label,
+                            },
+                        ],
+                    }
+                ],
+                "identity_hypotheses": [],
+                "temporal_records": [],
+            }
+        },
+    )
+    assert materialized["accepted"] is True
+
+
+def test_frame_argument_binding_ignores_section_inherited_label_selectors(tmp_path: Path) -> None:
+    source_surface = "Ivy Lark approved the cobalt primer plan."
+    (tmp_path / "memo.txt").write_text(
+        source_surface + "\n"
+        "Summary: Juno Vale objected to schedule.\n"
+        "Note: Keep drawings nearby.\n",
+        encoding="utf-8",
+    )
+
+    store, run_id, documents, sentences = ingest_folder(tmp_path)
+    _materialize_person_relation_drs(
+        store,
+        run_id,
+        source_surface,
+        predicate="approved",
+        person_label="Ivy Lark",
+        target_label="cobalt primer plan",
+    )
+    frame = QueryFrame(
+        question_text="Who approved the cobalt primer plan?",
+        answer_type="person",
+        answer_variables=("Who",),
+        target_anchors=("cobalt primer plan",),
+        requested_relation="approved",
+        relation_terms=("approved", "approve"),
+        constraints=(),
+    )
+
+    answer, diagnostics = execute_bounded_query(
+        store,
+        run_id,
+        documents,
+        _sentences_by_document(sentences),
+        frame.question_text,
+        frame,
+    )
+
+    assert answer is not None
+    assert answer.text == "Ivy Lark"
+    assert diagnostics["execution"]["answer_binding_reason"] == "frame_argument_binding"
+
+
+def test_frame_argument_binding_uses_predicate_matched_full_question_slot(tmp_path: Path) -> None:
+    source_surface = "Nia Vale did not ship the copper bracket."
+    (tmp_path / "memo.txt").write_text(source_surface + "\n", encoding="utf-8")
+
+    store, run_id, documents, sentences = ingest_folder(tmp_path)
+    _materialize_person_relation_drs(
+        store,
+        run_id,
+        source_surface,
+        predicate="not shipped",
+        person_label="Nia Vale",
+        target_label="copper bracket",
+    )
+    frame = QueryFrame(
+        question_text="What did Nia Vale not ship?",
+        answer_type="identifier",
+        answer_variables=("What did Nia Vale not ship",),
+        target_anchors=("Nia Vale",),
+        requested_relation="not ship",
+        relation_terms=("not ship", "ship"),
+        constraints=(),
+    )
+
+    answer, diagnostics = execute_bounded_query(
+        store,
+        run_id,
+        documents,
+        _sentences_by_document(sentences),
+        frame.question_text,
+        frame,
+    )
+
+    assert answer is not None
+    assert answer.text == "copper bracket"
+    assert diagnostics["execution"]["answer_binding_reason"] in {
+        "frame_argument_binding",
+        "structural_chain_drs_binding",
+    }
+
+
+def test_relation_condition_binding_uses_negated_drs_arguments_and_speaker_identity(tmp_path: Path) -> None:
+    source_surface = "[Rae] I bought paper clips but not gray latch."
+    (tmp_path / "memo.txt").write_text(source_surface + "\n", encoding="utf-8")
+
+    store, run_id, documents, sentences = ingest_folder(tmp_path)
+    row = store.execute(
+        "SELECT span_id, surface FROM source_spans WHERE surface=? LIMIT 1",
+        (source_surface,),
+    ).fetchone()
+    assert row is not None
+    materialized = store.materialize_drs_payload(
+        run_id,
+        str(row[0]),
+        str(row[1]),
+        {
+            "drs": {
+                "schema_version": "chunk-drs-v2",
+                "source_id": "memo.txt",
+                "evidence_spans": [source_surface],
+                "referents": [
+                    {"id": "r0", "label": "Rae", "kind": "person", "evidence_text": "Rae"},
+                    {"id": "r1", "label": "I", "kind": "person", "evidence_text": "I"},
+                    {"id": "r2", "label": "gray latch", "kind": "entity", "evidence_text": "gray latch"},
+                    {"id": "r3", "label": "paper clips", "kind": "entity", "evidence_text": "paper clips"},
+                ],
+                "boxes": [
+                    {
+                        "id": "b0",
+                        "kind": "asserted",
+                        "parent_id": "",
+                        "holder_referent_id": "",
+                        "evidence_text": source_surface,
+                    }
+                ],
+                "conditions": [
+                    {
+                        "id": "c1",
+                        "box_id": "b0",
+                        "predicate": "bought",
+                        "polarity": "positive",
+                        "modality": "asserted",
+                        "temporal_id": "",
+                        "evidence_text": "I bought paper clips",
+                        "arguments": [
+                            {
+                                "role": "agent",
+                                "target_kind": "referent",
+                                "target_id": "r1",
+                                "value": "",
+                                "value_type": "person",
+                                "evidence_text": "I",
+                            },
+                            {
+                                "role": "patient",
+                                "target_kind": "referent",
+                                "target_id": "r3",
+                                "value": "",
+                                "value_type": "entity",
+                                "evidence_text": "paper clips",
+                            },
+                        ],
+                    },
+                    {
+                        "id": "c0",
+                        "box_id": "b0",
+                        "predicate": "not bought",
+                        "polarity": "positive",
+                        "modality": "asserted",
+                        "temporal_id": "",
+                        "evidence_text": "not gray latch",
+                        "arguments": [
+                            {
+                                "role": "agent",
+                                "target_kind": "referent",
+                                "target_id": "r1",
+                                "value": "",
+                                "value_type": "person",
+                                "evidence_text": "I",
+                            },
+                            {
+                                "role": "patient",
+                                "target_kind": "referent",
+                                "target_id": "r2",
+                                "value": "not gray latch",
+                                "value_type": "entity",
+                                "evidence_text": "not gray latch",
+                            },
+                        ],
+                    }
+                ],
+                "identity_hypotheses": [
+                    {
+                        "left_referent_id": "r0",
+                        "right_referent_id": "r1",
+                        "status": "accepted",
+                        "evidence_text": source_surface,
+                        "confidence": 0.92,
+                    }
+                ],
+                "temporal_records": [],
+            }
+        },
+    )
+    assert materialized["accepted"] is True
+    frame = QueryFrame(
+        question_text="What did Rae not buy?",
+        answer_type="identifier",
+        answer_variables=("What did Rae not buy",),
+        target_anchors=("Rae",),
+        requested_relation="not buy",
+        relation_terms=("not buy", "buy"),
+        constraints=(),
+    )
+
+    answer, diagnostics = execute_bounded_query(
+        store,
+        run_id,
+        documents,
+        _sentences_by_document(sentences),
+        frame.question_text,
+        frame,
+    )
+
+    assert answer is not None
+    assert answer.text == "gray latch"
+    assert diagnostics["execution"]["answer_binding_reason"] == "relation_condition_binding"
 
 
 def test_boolean_query_rejects_affirmative_condition_without_requested_predicate(tmp_path: Path) -> None:
@@ -516,6 +810,7 @@ def test_identifier_binding_prefers_short_answer_slot_class_over_code_artifact(t
     assert diagnostics["execution"]["answer_binding_reason"] in {
         "document_scoped_relation_value_binding",
         "record_group_drs_binding",
+        "relation_condition_binding",
     }
 
     selected_docs, selected_chunks, _ranking = _rank_scope(
@@ -545,6 +840,15 @@ def test_context_requirement_matching_uses_morphology_variants() -> None:
     assert _terms_match_material(["report"], "drs:reported observer")
     assert _terms_match_material(["believe"], "drs:believed Kalo Reed")
     assert term_variants("state") == {"state"}
+    assert "bought" in term_variants("buy")
+    assert "buy" in term_variants("bought")
+
+
+def test_transcript_turn_parts_accepts_bracketed_speaker_label() -> None:
+    assert transcript_turn_parts("[Dana] I filed the field report.") == (
+        "Dana",
+        "I filed the field report",
+    )
 
 
 def test_labeled_turn_identity_resolves_first_person_drs_answer(tmp_path: Path, monkeypatch) -> None:
