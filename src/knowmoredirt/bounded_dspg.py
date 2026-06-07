@@ -171,6 +171,31 @@ BOOLEAN_GENERIC_TERMS = {
     "were",
     "would",
 }
+SCOPE_CARRIER_PREDICATE_SCOPES = {
+    "allege": "reported",
+    "alleges": "reported",
+    "alleged": "reported",
+    "belief": "believed",
+    "believe": "believed",
+    "believes": "believed",
+    "believed": "believed",
+    "dream": "dreamed",
+    "dreamed": "dreamed",
+    "fiction": "fictional",
+    "fictional": "fictional",
+    "hypothesize": "hypothetical",
+    "hypothesizes": "hypothetical",
+    "hypothesized": "hypothetical",
+    "quote": "quoted",
+    "quotes": "quoted",
+    "quoted": "quoted",
+    "report": "reported",
+    "reports": "reported",
+    "reported": "reported",
+    "say": "reported",
+    "says": "reported",
+    "said": "reported",
+}
 RELATION_TERM_SKIP_TERMS = {"answer", "argument", "what", "which", "who", "why"}
 
 
@@ -2787,6 +2812,8 @@ def _value_contains_target(value: str, target_terms: list[str]) -> bool:
 
 
 def _rejects_bound_target_value(expected: ExpectedAnswer, value: str, target_terms: list[str]) -> bool:
+    if expected.answer_type == "boolean":
+        return False
     if expected.answer_type in {"content_phrase", "metadata_value", "unknown"}:
         return False
     return _value_contains_target(value, target_terms)
@@ -5047,6 +5074,60 @@ def _condition_row_is_negative(row: dict[str, Any], args: list[dict[str, Any]]) 
     return any(_model_surface_has_negative_polarity(surface) for surface in model_surfaces)
 
 
+def _context_chain_kinds(context_id: str, records: dict[str, Any]) -> set[str]:
+    return {
+        normalize(str(context.get("kind") or "asserted"))
+        for context in _context_chain(context_id, records)
+        if normalize(str(context.get("kind") or "asserted"))
+    }
+
+
+def _boolean_context_negates_condition(context_id: str, records: dict[str, Any]) -> bool:
+    kinds = _context_chain_kinds(context_id, records)
+    return "drs:negated" in kinds or "polarity:negative" in kinds
+
+
+def _boolean_inaccessible_scope_can_answer_no(
+    row: dict[str, Any],
+    records: dict[str, Any],
+    frame: QueryFrame,
+) -> bool:
+    if frame.negated or _context_requirements(frame):
+        return False
+    context_id = str(row.get("context_id") or "")
+    if not context_id:
+        return False
+    kinds = _context_chain_kinds(context_id, records)
+    if not kinds:
+        return False
+    return any(kind.startswith(INACCESSIBLE_CONTEXT_PREFIXES) for kind in kinds) or any(
+        kind.startswith("drs:") and kind not in {"drs:asserted", "drs:negated"}
+        for kind in kinds
+    )
+
+
+def _boolean_scope_carrier_can_answer_no(
+    row: dict[str, Any],
+    frame: QueryFrame,
+    row_material: str,
+    predicate_terms: list[str],
+) -> bool:
+    if frame.negated or _context_requirements(frame):
+        return False
+    predicate = normalize(str(row.get("predicate") or ""))
+    if predicate not in SCOPE_CARRIER_PREDICATE_SCOPES:
+        return False
+    requested_material = normalize(" ".join([frame.requested_relation, *frame.relation_terms]))
+    if _terms_match_material([predicate], requested_material):
+        return False
+    content_terms = [
+        term
+        for term in predicate_terms
+        if term and term not in BOOLEAN_GENERIC_TERMS and term != predicate
+    ]
+    return bool(content_terms) and _boolean_terms_covered(row_material, content_terms, require_all=False)
+
+
 def _boolean_structural_terms(values: Iterable[str], target_terms: list[str]) -> list[str]:
     target = set(target_terms)
     terms: list[str] = []
@@ -5132,7 +5213,11 @@ def _boolean_condition_candidates(
     for row in records.get("relations", []):
         if str(row.get("relation_type") or "") != "drs_condition":
             continue
-        if not _relation_scope_accessible(row, records, frame):
+        accessible = _relation_scope_accessible(row, records, frame)
+        inaccessible_scope_no = False
+        if not accessible:
+            inaccessible_scope_no = _boolean_inaccessible_scope_can_answer_no(row, records, frame)
+        if not accessible and not inaccessible_scope_no:
             continue
         evidence = _evidence_for_span(str(row.get("source_span_id") or ""), records)
         key = (
@@ -5150,11 +5235,20 @@ def _boolean_condition_candidates(
                 ]
             )
         )
+        scope_carrier_no = False
         evidence_material = normalize(" ".join([row_material, evidence.rel_path, evidence.text]))
         score = _split_match_score(evidence_material, row_material, target_terms, relation_terms)
         if score <= 0:
             continue
         condition_true = not _condition_row_is_negative(row, args)
+        if _boolean_context_negates_condition(str(row.get("context_id") or ""), records):
+            condition_true = not condition_true
+        if inaccessible_scope_no:
+            condition_true = False
+        elif accessible:
+            scope_carrier_no = _boolean_scope_carrier_can_answer_no(row, frame, row_material, predicate_terms)
+            if scope_carrier_no:
+                condition_true = False
         if frame.negated:
             condition_true = not condition_true
         predicate_supported = _boolean_terms_covered(row_material, predicate_terms, require_all=False)
@@ -5162,14 +5256,22 @@ def _boolean_condition_candidates(
         constraints_supported = _boolean_terms_covered(evidence_material, constraint_terms, require_all=True)
         if not target_supported:
             continue
-        if condition_true and (not predicate_supported or not constraints_supported):
+        if (condition_true or inaccessible_scope_no or scope_carrier_no) and (
+            not predicate_supported or not constraints_supported
+        ):
             continue
         prefix = "Yes" if condition_true else "No"
         evidence_text = clean_extracted_value(str(row.get("value") or "") or evidence.text).strip(" .;:")
         if not evidence_text:
             evidence_text = clean_extracted_value(evidence.text).strip(" .;:")
         answer = f"{prefix}; {evidence_text}." if evidence_text else prefix
-        candidates.append((score * float(row.get("confidence") or 0.7), answer, evidence, "boolean_drs_condition_binding"))
+        if inaccessible_scope_no:
+            reason = "boolean_inaccessible_scope_binding"
+        elif scope_carrier_no:
+            reason = "boolean_scope_carrier_binding"
+        else:
+            reason = "boolean_drs_condition_binding"
+        candidates.append((score * float(row.get("confidence") or 0.7), answer, evidence, reason))
     return _select_temporal_boundary_candidates(candidates, frame)
 
 

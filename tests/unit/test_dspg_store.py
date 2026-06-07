@@ -31,7 +31,7 @@ from knowmoredirt.bounded_dspg import (
 )
 from knowmoredirt.engine import KnowMoreDiRTEngine
 from knowmoredirt.ingest import ingest_folder
-from knowmoredirt.model_planner import ModelQueryTrace
+from knowmoredirt.model_planner import ModelQueryTrace, _compact_chunk_drs_to_payload
 from knowmoredirt.models import Answer, Evidence, Sentence
 from knowmoredirt.query import QueryFrame, term_variants
 from knowmoredirt.relations import extract_relations, transcript_turn_parts
@@ -314,6 +314,93 @@ def _materialize_boolean_probe_drs(
                                 "value": "",
                                 "value_type": "entity",
                                 "evidence_text": entity_label,
+                            },
+                        ],
+                    }
+                ],
+                "identity_hypotheses": [],
+                "temporal_records": [],
+            }
+        },
+    )
+    assert materialized["accepted"] is True
+
+
+def _materialize_scoped_boolean_probe_drs(
+    store: DSPGStore,
+    run_id: str,
+    source_surface: str,
+    *,
+    scope: str,
+    patient_value: str,
+    predicate: str = "delete",
+    entity_label: str = "Cobalt Hoist",
+) -> None:
+    row = store.execute(
+        "SELECT span_id, surface FROM source_spans WHERE surface_norm=? LIMIT 1",
+        (source_surface.lower(),),
+    ).fetchone()
+    assert row is not None
+    span_id = str(row[0])
+    source_text = str(row[1])
+    materialized = store.materialize_drs_payload(
+        run_id,
+        span_id,
+        source_text,
+        {
+            "drs": {
+                "schema_version": "chunk-drs-v2",
+                "source_id": "note.txt",
+                "evidence_spans": [source_surface],
+                "referents": [
+                    {
+                        "id": "r0",
+                        "label": entity_label,
+                        "kind": "entity",
+                        "evidence_text": entity_label,
+                    }
+                ],
+                "boxes": [
+                    {
+                        "id": "b0",
+                        "kind": "asserted",
+                        "parent_id": "",
+                        "holder_referent_id": "",
+                        "evidence_text": "",
+                    },
+                    {
+                        "id": "b1",
+                        "kind": scope,
+                        "parent_id": "b0",
+                        "holder_referent_id": "",
+                        "evidence_text": source_surface,
+                    },
+                ],
+                "conditions": [
+                    {
+                        "id": "c0",
+                        "box_id": "b1",
+                        "predicate": predicate,
+                        "polarity": "positive",
+                        "modality": "asserted",
+                        "temporal_id": "",
+                        "evidence_text": source_surface,
+                        "arguments": [
+                            {
+                                "role": "agent",
+                                "target_kind": "referent",
+                                "target_id": "r0",
+                                "value": "",
+                                "value_type": "entity",
+                                "evidence_text": entity_label,
+                            },
+                            {
+                                "role": "patient",
+                                "target_kind": "literal",
+                                "target_id": "",
+                                "value": patient_value,
+                                "value_type": "file_path",
+                                "evidence_text": patient_value,
                             },
                         ],
                     }
@@ -2512,6 +2599,154 @@ def test_boolean_query_binds_negative_model_drs_argument(tmp_path: Path) -> None
     assert answer is not None
     assert answer.text == "No; Inspection found no fracture in Quartz Pump."
     assert diagnostics["execution"]["answer_binding_reason"] == "boolean_drs_condition_binding"
+
+
+def test_boolean_query_allows_target_terms_in_explanatory_answer() -> None:
+    evidence = Evidence("inspection.txt", "Inspection found a fracture in Quartz Pump.", 0.9)
+
+    answer = _choose_answer(
+        [(8.0, "Yes; Inspection found a fracture in Quartz Pump.", evidence, "boolean_drs_condition_binding")],
+        ExpectedAnswer("boolean"),
+        ["quartz pump"],
+    )
+
+    assert answer is not None
+    assert answer.text == "Yes; Inspection found a fracture in Quartz Pump."
+
+
+def test_boolean_query_returns_no_for_unscoped_inaccessible_drs_condition(tmp_path: Path) -> None:
+    source_surface = "Operator dreamed that Cobalt Hoist deleted latch.cfg."
+    (tmp_path / "note.txt").write_text(source_surface + "\n", encoding="utf-8")
+
+    store, run_id, documents, sentences = ingest_folder(tmp_path)
+    _materialize_scoped_boolean_probe_drs(
+        store,
+        run_id,
+        source_surface,
+        scope="dreamed",
+        patient_value="latch.cfg",
+    )
+    frame = QueryFrame(
+        question_text="Did Cobalt Hoist delete latch.cfg?",
+        answer_type="boolean",
+        answer_variables=("Did Cobalt Hoist delete latch.cfg",),
+        target_anchors=("Cobalt Hoist", "latch.cfg"),
+        requested_relation="delete",
+        relation_terms=("delete",),
+        constraints=(),
+    )
+
+    answer, diagnostics = execute_bounded_query(
+        store,
+        run_id,
+        documents,
+        _sentences_by_document(sentences),
+        frame.question_text,
+        frame,
+    )
+
+    assert answer is not None
+    assert answer.text == "No; Operator dreamed that Cobalt Hoist deleted latch.cfg."
+    assert diagnostics["execution"]["answer_binding_reason"] == "boolean_inaccessible_scope_binding"
+
+
+def test_boolean_query_can_request_inaccessible_drs_scope(tmp_path: Path) -> None:
+    source_surface = "Operator dreamed that Cobalt Hoist deleted latch.cfg."
+    (tmp_path / "note.txt").write_text(source_surface + "\n", encoding="utf-8")
+
+    store, run_id, documents, sentences = ingest_folder(tmp_path)
+    _materialize_scoped_boolean_probe_drs(
+        store,
+        run_id,
+        source_surface,
+        scope="dreamed",
+        patient_value="latch.cfg",
+    )
+    frame = QueryFrame(
+        question_text="In the dream, did Cobalt Hoist delete latch.cfg?",
+        answer_type="boolean",
+        answer_variables=("did Cobalt Hoist delete latch.cfg",),
+        target_anchors=("Cobalt Hoist", "latch.cfg"),
+        requested_relation="delete",
+        relation_terms=("delete",),
+        constraints=(),
+        scope_requirements=("dreamed",),
+    )
+
+    answer, diagnostics = execute_bounded_query(
+        store,
+        run_id,
+        documents,
+        _sentences_by_document(sentences),
+        frame.question_text,
+        frame,
+    )
+
+    assert answer is not None
+    assert answer.text == "Yes; Operator dreamed that Cobalt Hoist deleted latch.cfg."
+    assert diagnostics["execution"]["answer_binding_reason"] == "boolean_drs_condition_binding"
+
+
+def test_boolean_query_returns_no_for_model_scope_carrier_argument(tmp_path: Path) -> None:
+    source_surface = "Operator dreamed that Cobalt Hoist deleted latch.cfg."
+    (tmp_path / "note.txt").write_text(source_surface + "\n", encoding="utf-8")
+
+    store, run_id, documents, sentences = ingest_folder(tmp_path)
+    _materialize_boolean_probe_drs(
+        store,
+        run_id,
+        source_surface,
+        predicate="dream",
+        entity_label="Operator",
+        agent_value="Operator",
+        patient_value="that Cobalt Hoist deleted latch.cfg",
+    )
+    frame = QueryFrame(
+        question_text="Did Cobalt Hoist delete latch.cfg?",
+        answer_type="boolean",
+        answer_variables=("Did Cobalt Hoist delete latch.cfg",),
+        target_anchors=("Cobalt Hoist", "latch.cfg"),
+        requested_relation="delete",
+        relation_terms=("delete",),
+        constraints=(),
+    )
+
+    answer, diagnostics = execute_bounded_query(
+        store,
+        run_id,
+        documents,
+        _sentences_by_document(sentences),
+        frame.question_text,
+        frame,
+    )
+
+    assert answer is not None
+    assert answer.text == "No; Operator dreamed that Cobalt Hoist deleted latch.cfg."
+    assert diagnostics["execution"]["answer_binding_reason"] == "boolean_scope_carrier_binding"
+
+
+def test_compact_chunk_drs_materializes_model_scope_as_subordinate_box() -> None:
+    source_text = "Operator dreamed that Cobalt Hoist deleted latch.cfg."
+
+    payload = _compact_chunk_drs_to_payload(
+        {
+            "facts": [
+                {
+                    "p": "delete",
+                    "agent": "Cobalt Hoist",
+                    "patient": "latch.cfg",
+                    "scope": "dream",
+                    "e": source_text,
+                }
+            ]
+        },
+        source_text,
+        rel_path="note.txt",
+    )
+
+    drs = payload["drs"]
+    assert [box["kind"] for box in drs["boxes"]] == ["asserted", "dreamed"]
+    assert drs["conditions"][0]["box_id"] == "b1"
 
 
 def test_boolean_cleanup_preserves_grounded_sentence_punctuation(tmp_path: Path) -> None:

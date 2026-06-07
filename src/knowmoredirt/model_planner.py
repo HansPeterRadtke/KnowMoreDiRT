@@ -136,7 +136,7 @@ CHUNK_DRS_DYNAMIC_CONDITION_BUDGET_POLICY = "compact-nontemporal-condition-stage
 CHUNK_DRS_STAGED_FIRST_POLICY = "field-like-source-spans-before-monolithic-v1"
 CHUNK_DRS_COMPACT_FACT_POLICY_LEGACY = "compact-model-facts-to-root-drs-v1"
 CHUNK_DRS_COMPACT_FACT_POLICY_PREVIOUS = "compact-model-facts-to-root-drs-v2"
-CHUNK_DRS_COMPACT_FACT_POLICY = "compact-model-facts-to-root-drs-v3"
+CHUNK_DRS_COMPACT_FACT_POLICY = "compact-model-facts-with-embedded-scope-predicate-v5"
 CHUNK_DRS_COMPACT_TEMPORAL_SOURCE_POLICY = "compact-source-span-explicit-timestamp-v1"
 CHUNK_DRS_COMPACT_RETRY_POLICY = "retry-compact-invalid-json-larger-budget-v1"
 QUERY_DRS_SCHEMA_VERSION = "query-drs-v3"
@@ -3586,11 +3586,18 @@ def _build_compact_chunk_drs_prompt_v2(chunk_text: str, *, rel_path: str = "") -
 def build_compact_chunk_drs_prompt(chunk_text: str, *, rel_path: str = "") -> str:
     return (
         "JSON only. Extract compact source-grounded DRS facts from this raw text chunk. "
-        "Output exactly {\"facts\":[{\"p\":\"\",\"agent\":\"\",\"patient\":\"\",\"value\":\"\",\"time\":\"\",\"e\":\"\"}]}. "
+        "Output exactly {\"facts\":[{\"p\":\"\",\"agent\":\"\",\"patient\":\"\",\"value\":\"\",\"time\":\"\",\"scope\":\"asserted\",\"e\":\"\"}]}. "
         "p is the model-chosen predicate or relation word. agent, patient, and value are exact source strings when "
         "the source supports those roles; time is an exact source string only when an explicit timestamp, date, or "
         "ordering phrase scopes the fact; leave a field empty when unsupported. e is one exact contiguous source "
-        "span containing the non-empty role values and time when present. Use only source-grounded asserted, reported, negated, or scoped "
+        "span containing the non-empty role values and time when present. scope must be one of asserted, negated, "
+        "reported, quoted, believed, possible, uncertain, hypothetical, fictional, dreamed, "
+        "conditional_antecedent, or conditional_consequent. Use scope='asserted' only for propositions asserted "
+        "as facts by the chunk. If the chunk states that a proposition is inside a report, quote, belief, dream, "
+        "fiction, hypothesis, uncertainty, condition, modality, or negation, emit that embedded proposition as a "
+        "fact with the corresponding non-asserted scope and the embedded proposition's own predicate; do not emit "
+        "only the scope-introducing predicate when the embedded proposition has visible predicate/arguments. Use only "
+        "source-grounded asserted, reported, negated, or scoped "
         "conditions from the chunk. Include source-stated definitions, meanings, names, aliases, and terminology as ordinary "
         "relations when the chunk asserts them. Return {\"facts\":[]} when the chunk asserts no useful source-grounded DRS "
         "condition. Do not answer questions and do not use outside knowledge. "
@@ -3630,6 +3637,24 @@ def _source_segment_for_values(source_text: str, values: list[str], fallback: st
 
 COMPACT_TEMPORAL_FIELDS = {"time", "timestamp", "temporal", "temporal_text"}
 COMPACT_LITERAL_ARGUMENT_ROLES = {"state", "value"}
+COMPACT_SCOPE_FIELDS = {"scope", "context", "modality", "box_kind"}
+COMPACT_SCOPE_ALIASES = {
+    "assert": "asserted",
+    "assertion": "asserted",
+    "belief": "believed",
+    "believe": "believed",
+    "conditional antecedent": "conditional_antecedent",
+    "conditional consequent": "conditional_consequent",
+    "dream": "dreamed",
+    "fiction": "fictional",
+    "hypothesis": "hypothetical",
+    "negation": "negated",
+    "possibility": "possible",
+    "quotation": "quoted",
+    "quote": "quoted",
+    "report": "reported",
+    "uncertainty": "uncertain",
+}
 
 
 def _compact_fact_temporal_text(fact: dict[str, Any], source_text: str) -> str:
@@ -3655,6 +3680,26 @@ def _compact_fact_temporal_text(fact: dict[str, Any], source_text: str) -> str:
     return ""
 
 
+def _compact_fact_scope(fact: dict[str, Any]) -> str:
+    for key in COMPACT_SCOPE_FIELDS:
+        raw = normalize(str(fact.get(key) or ""))
+        if not raw:
+            continue
+        value = COMPACT_SCOPE_ALIASES.get(raw, raw)
+        if value in DRS_CONTEXT_KINDS:
+            return value
+    role_values = fact.get("roles")
+    if isinstance(role_values, dict):
+        for key in COMPACT_SCOPE_FIELDS:
+            raw = normalize(str(role_values.get(key) or ""))
+            if not raw:
+                continue
+            value = COMPACT_SCOPE_ALIASES.get(raw, raw)
+            if value in DRS_CONTEXT_KINDS:
+                return value
+    return "asserted"
+
+
 def _source_temporal_text_for_evidence(source_text: str, evidence: str) -> str:
     evidence = str(evidence or "").strip()
     if not evidence or evidence not in source_text:
@@ -3670,11 +3715,12 @@ def _compact_fact_arguments(fact: dict[str, Any], source_text: str) -> list[tupl
     role_values = fact.get("roles")
     if isinstance(role_values, dict):
         for role, value in role_values.items():
-            if str(role or "").strip() in COMPACT_TEMPORAL_FIELDS:
+            role_key = str(role or "").strip()
+            if role_key in COMPACT_TEMPORAL_FIELDS or role_key in COMPACT_SCOPE_FIELDS:
                 continue
             text = str(value or "").strip()
             if text and text in source_text:
-                values.append((str(role or "argument").strip() or "argument", text))
+                values.append((role_key or "argument", text))
     raw_arguments = fact.get("arguments")
     if isinstance(raw_arguments, list):
         for item in raw_arguments:
@@ -3684,11 +3730,12 @@ def _compact_fact_arguments(fact: dict[str, Any], source_text: str) -> list[tupl
                     values.append(("argument", text))
             elif isinstance(item, dict):
                 for role, value in item.items():
-                    if str(role or "").strip() in COMPACT_TEMPORAL_FIELDS:
+                    role_key = str(role or "").strip()
+                    if role_key in COMPACT_TEMPORAL_FIELDS or role_key in COMPACT_SCOPE_FIELDS:
                         continue
                     text = str(value or "").strip()
                     if text and text in source_text:
-                        values.append((str(role or "argument").strip() or "argument", text))
+                        values.append((role_key or "argument", text))
     for role in ["agent", "patient", "theme", "holder", "topic", "value", "state", "identifier", "location"]:
         text = str(fact.get(role) or "").strip()
         if text and text in source_text:
@@ -3775,6 +3822,17 @@ def _compact_chunk_drs_to_payload(parsed: dict[str, Any], source_text: str, *, r
     temporal_records: list[dict[str, Any]] = []
     temporal_ids_by_value: dict[str, str] = {}
     evidence_spans: list[str] = []
+    boxes: list[dict[str, Any]] = [
+        {
+            "id": "b0",
+            "kind": "asserted",
+            "parent_id": "",
+            "holder_referent_id": "",
+            "evidence_text": "",
+            "confidence": 0.72,
+        }
+    ]
+    box_ids_by_scope_evidence: dict[tuple[str, str], str] = {}
 
     def referent_id_for(value: str) -> str:
         key = normalize(value)
@@ -3804,6 +3862,24 @@ def _compact_chunk_drs_to_payload(parsed: dict[str, Any], source_text: str, *, r
         )
         if not predicate or not evidence:
             continue
+        scope = _compact_fact_scope(fact)
+        box_id = "b0"
+        if scope != "asserted":
+            box_key = (scope, evidence)
+            box_id = box_ids_by_scope_evidence.get(box_key, "")
+            if not box_id:
+                box_id = f"b{len(boxes)}"
+                box_ids_by_scope_evidence[box_key] = box_id
+                boxes.append(
+                    {
+                        "id": box_id,
+                        "kind": scope,
+                        "parent_id": "b0",
+                        "holder_referent_id": "",
+                        "evidence_text": evidence,
+                        "confidence": 0.72,
+                    }
+                )
         temporal_id = ""
         if temporal_text:
             temporal_id = temporal_ids_by_value.get(temporal_text, "")
@@ -3846,7 +3922,7 @@ def _compact_chunk_drs_to_payload(parsed: dict[str, Any], source_text: str, *, r
         conditions.append(
             {
                 "id": condition_id,
-                "box_id": "b0",
+                "box_id": box_id,
                 "predicate": predicate,
                 "polarity": "positive",
                 "modality": "asserted",
@@ -3862,16 +3938,7 @@ def _compact_chunk_drs_to_payload(parsed: dict[str, Any], source_text: str, *, r
             "schema_version": CHUNK_DRS_SCHEMA_VERSION,
             "source_id": rel_path,
             "referents": referents,
-            "boxes": [
-                {
-                    "id": "b0",
-                    "kind": "asserted",
-                    "parent_id": "",
-                    "holder_referent_id": "",
-                    "evidence_text": "",
-                    "confidence": 0.72,
-                }
-            ],
+            "boxes": boxes,
             "conditions": conditions,
             "identity_hypotheses": [],
             "temporal_records": temporal_records,
@@ -4287,8 +4354,11 @@ def build_chunk_drs_prompt(chunk_text: str, *, rel_path: str = "", context_budge
         "JSON only. Convert the raw text chunk into one source-grounded DRS object. "
         "Every semantic decision must be represented as referents, boxes, conditions, temporal_records, "
         "and identity_hypotheses. Do not answer questions, use outside knowledge, infer hidden answers, "
-        "or use handler names. Emit exactly one root asserted box with id b0 and parent_id ''. Use subordinate boxes "
-        "for negation, reports, quotes, beliefs, conditionals, uncertainty, dreams, fiction, and modality. "
+        "or use handler names. Emit exactly one root asserted box with id b0 and parent_id ''; that root is only "
+        "the containing discourse, not permission to flatten embedded scoped propositions into asserted fact. "
+        "Use subordinate boxes for negation, reports, quotes, beliefs, conditionals, uncertainty, dreams, fiction, "
+        "and modality. Conditions for embedded propositions inside those contexts must use the subordinate box_id, "
+        "not b0, unless the chunk separately asserts that proposition as fact. "
         "Box parent links must be acyclic. "
         "A condition must not use target_kind=box with target_id equal to its own box_id; scoped complements "
         "belong in a distinct subordinate box whose parent_id is the containing box. "
@@ -4348,11 +4418,14 @@ def build_chunk_drs_skeleton_prompt(chunk_text: str, *, rel_path: str = "", cont
     return (
         "JSON only. Stage 1 of source-grounded DRS extraction. Extract only declared discourse referents "
         "DRS boxes, and explicit temporal records from the chunk. Do not emit conditions, identity hypotheses, answers, "
-        "outside knowledge, or handler names. Declare exactly one root asserted box with id b0 and parent_id ''. Use "
+        "outside knowledge, or handler names. Declare exactly one root asserted box with id b0 and parent_id ''; "
+        "that root is only the containing discourse, not permission to flatten embedded scoped propositions into "
+        "asserted fact. Use "
         "stable referent ids r0, r1, ...; box ids b0, b1, ...; and temporal ids t0, t1, ... in order. Use "
         "subordinate boxes only for scoped DRS contexts such as reports, quotes, beliefs, negation, conditionals, "
         "uncertainty, dreams, fiction, and modality; subordinate boxes must be distinct from the containing box "
-        "and parent links must be acyclic. "
+        "and parent links must be acyclic. Conditions for embedded propositions inside those contexts must use "
+        "the subordinate box_id, not b0, unless the chunk separately asserts that proposition as fact. "
         "When a scoped context contains embedded proposition content, declare a distinct subordinate box for that "
         "content so stage 2 can reference it; do not require a condition to point back to its own box. "
         + span_candidate_text
@@ -4402,6 +4475,9 @@ def build_chunk_drs_condition_prompt(
         "phrase in value and/or evidence_text. Do not emit identity hypotheses or temporal records in this stage. "
         "When a declared temporal record scopes a condition, set that condition's temporal_id to the declared "
         "temporal id; otherwise temporal_id must be ''. "
+        "If a condition is an embedded proposition inside a declared non-asserted box, use that subordinate "
+        "box_id; do not flatten reported, quoted, believed, negated, hypothetical, fictional, dreamed, uncertain, "
+        "conditional, or modal content into b0 unless the chunk separately asserts it as fact. "
         "A condition must not point a target_kind=box argument at its own box_id; use a distinct declared "
         "subordinate box for scoped content, a declared condition, or a literal argument. "
         "For compact records, key/value lists, JSON-like objects, TSV/CSV rows, and log entries, emit grounded "
