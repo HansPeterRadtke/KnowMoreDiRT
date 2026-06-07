@@ -1247,6 +1247,42 @@ def test_person_list_aggregation_keeps_unrelated_single_name_person() -> None:
     assert answer.text == "Ava; Omar Kestrel"
 
 
+def test_list_aggregation_preserves_source_ordered_phrase() -> None:
+    evidence = Evidence(
+        "notes/plan.txt",
+        "The plan depends on three artifacts: SPEC-1, PR-2, and https://plans.example/item.",
+        0.8,
+    )
+    answer = _choose_list_answer(
+        [
+            (8.0, "SPEC-1", evidence, "frame_argument_binding"),
+            (8.0, "PR-2", evidence, "frame_argument_binding"),
+            (8.0, "https://plans.example/item", evidence, "frame_argument_binding"),
+        ],
+        ExpectedAnswer("identifier"),
+        ["plan"],
+    )
+
+    assert answer is not None
+    assert answer.text == "SPEC-1, PR-2, and https://plans.example/item"
+
+
+def test_list_aggregation_uses_semicolon_fallback_for_scattered_evidence() -> None:
+    first = Evidence("notes/a.txt", "First artifact SPEC-1.", 0.8)
+    second = Evidence("notes/b.txt", "Second artifact PR-2.", 0.8)
+    answer = _choose_list_answer(
+        [
+            (8.0, "SPEC-1", first, "frame_argument_binding"),
+            (8.0, "PR-2", second, "frame_argument_binding"),
+        ],
+        ExpectedAnswer("identifier"),
+        ["plan"],
+    )
+
+    assert answer is not None
+    assert answer.text == "SPEC-1; PR-2"
+
+
 def test_scope_marker_target_anchor_does_not_block_asserted_followup_fact(tmp_path: Path) -> None:
     source_surface = "Real inventory: tavil arch remains installed."
     (tmp_path / "inventory.log").write_text(

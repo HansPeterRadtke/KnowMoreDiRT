@@ -4515,7 +4515,8 @@ def _choose_list_answer(
     if not values:
         return None
     values, evidence = _filter_named_entity_list_parts(expected, values, evidence)
-    return Answer("; ".join(values), 0.86, evidence[:6], "list aggregation DRS binding", expected.answer_type)
+    text = _source_ordered_list_phrase(values, evidence) or "; ".join(values)
+    return Answer(text, 0.86, evidence[:6], "list aggregation DRS binding", expected.answer_type)
 
 
 def _filter_named_entity_list_parts(
@@ -4546,6 +4547,34 @@ def _filter_named_entity_list_parts(
         filtered_values.append(value)
         filtered_evidence.append(item_evidence)
     return (filtered_values, filtered_evidence) if filtered_values else (values, evidence)
+
+
+def _source_ordered_list_phrase(values: list[str], evidence: list[Evidence]) -> str:
+    if len(values) < 2:
+        return ""
+    cleaned_values = [clean_extracted_value(value) for value in values if clean_extracted_value(value)]
+    if len(cleaned_values) != len(values):
+        return ""
+    for item in evidence:
+        text = str(item.text or "")
+        lowered = text.lower()
+        positions: list[tuple[int, int, str]] = []
+        for value in cleaned_values:
+            start = lowered.find(value.lower())
+            if start < 0:
+                positions = []
+                break
+            positions.append((start, start + len(value), value))
+        if len(positions) != len(cleaned_values):
+            continue
+        positions.sort(key=lambda part: part[0])
+        phrase = clean_extracted_value(text[positions[0][0] : positions[-1][1]]).strip(" .;:")
+        if len(phrase) > 240:
+            continue
+        if not any(separator in phrase for separator in [",", ";"]):
+            continue
+        return phrase
+    return ""
 
 
 def _has_unscoped_temporal_ambiguity(

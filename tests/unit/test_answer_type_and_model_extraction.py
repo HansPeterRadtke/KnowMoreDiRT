@@ -32,6 +32,21 @@ def test_identifier_answer_accepts_url_shaped_structural_identifier() -> None:
     assert canonicalize_answer(expected, "copper sulfate") == "copper sulfate"
 
 
+def test_identifier_answer_accepts_structured_source_list_phrase() -> None:
+    expected = ExpectedAnswer("identifier")
+
+    assert (
+        canonicalize_answer(expected, "SPEC-1, PR-2, and https://plans.example.test/item")
+        == "SPEC-1, PR-2, and https://plans.example.test/item"
+    )
+
+
+def test_identifier_answer_rejects_unstructured_comma_list_phrase() -> None:
+    expected = ExpectedAnswer("identifier")
+
+    assert canonicalize_answer(expected, "alpha, beta, and gamma") == ""
+
+
 class FakeEvidenceModel:
     def __init__(self, *, incompatible: bool = False) -> None:
         self.incompatible = incompatible

@@ -163,6 +163,13 @@ def canonicalize_answer(expected: ExpectedAnswer, value: str) -> str:
             text = _preferred_entity_name_phrase(text)
             text = _strip_role_title_prefix(text)
         return text if is_value_compatible(expected, text) else ""
+    if expected.answer_type == "identifier":
+        text = clean_extracted_value(str(value or "").strip().strip('"')).strip(" .;:")
+        list_phrase = _identifier_list_phrase(text)
+        if list_phrase:
+            return list_phrase
+        if any(separator in text for separator in [",", ";"]):
+            return ""
     parts = compatible_answer_parts(expected, value)
     if not parts:
         return ""
@@ -289,6 +296,29 @@ def _is_short_literal_identifier_fallback(value: str) -> bool:
         return False
     words = [part for part in re.split(r"\s+", text) if part]
     return 1 <= len(words) <= 6
+
+def _identifier_list_phrase(value: str) -> str:
+    text = clean_extracted_value(value).strip()
+    if not text or not any(separator in text for separator in [",", ";"]):
+        return ""
+    parts = [
+        clean_extracted_value(part).strip()
+        for part in re.split(r"\s*(?:,\s+and\s+|\s+and\s+|[;,])\s*", text)
+    ]
+    parts = [part for part in parts if part]
+    if len(parts) < 2:
+        return ""
+    for part in parts:
+        if urls(part):
+            found_urls = [item.rstrip(".,;)") for item in urls(part)]
+            if len(found_urls) == 1 and found_urls[0] == part.rstrip(".,;)"):
+                continue
+        if _is_numeric_unit_identifier(part):
+            continue
+        found_ids = [item.rstrip(".,;)") for item in identifiers(part)]
+        if not found_ids or not any(identifier == part.rstrip(".,;)") for identifier in found_ids):
+            return ""
+    return text
 
 def _format_literal_list(value: str) -> str:
     text = str(value or "").strip()
