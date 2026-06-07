@@ -612,6 +612,94 @@ def test_relation_condition_binding_returns_non_target_content_argument(tmp_path
     assert "clear ridge" in relation_values
 
 
+def test_scope_marker_target_anchor_does_not_block_asserted_followup_fact(tmp_path: Path) -> None:
+    source_surface = "Real inventory: tavil arch remains installed."
+    (tmp_path / "inventory.log").write_text(
+        "Dream note: Kira dreamed that the tavil arch was deleted.\n"
+        + source_surface
+        + "\nInspection note: maren lamp remains green."
+        + "\n",
+        encoding="utf-8",
+    )
+
+    store, run_id, documents, sentences = ingest_folder(tmp_path)
+    row = store.execute(
+        "SELECT span_id, surface FROM source_spans WHERE surface=? LIMIT 1",
+        (source_surface,),
+    ).fetchone()
+    assert row is not None
+    materialized = store.materialize_drs_payload(
+        run_id,
+        str(row[0]),
+        str(row[1]),
+        {
+            "drs": {
+                "schema_version": "chunk-drs-v2",
+                "source_id": "inventory.log",
+                "evidence_spans": ["tavil arch remains installed"],
+                "referents": [
+                    {"id": "r0", "label": "tavil arch", "kind": "artifact", "evidence_text": "tavil arch"}
+                ],
+                "boxes": [
+                    {
+                        "id": "b0",
+                        "kind": "asserted",
+                        "parent_id": "",
+                        "holder_referent_id": "",
+                        "evidence_text": source_surface,
+                    }
+                ],
+                "conditions": [
+                    {
+                        "id": "c0",
+                        "box_id": "b0",
+                        "predicate": "remains installed",
+                        "polarity": "positive",
+                        "modality": "asserted",
+                        "temporal_id": "",
+                        "evidence_text": "tavil arch remains installed",
+                        "arguments": [
+                            {
+                                "role": "subject",
+                                "target_kind": "referent",
+                                "target_id": "r0",
+                                "value": "",
+                                "value_type": "artifact",
+                                "evidence_text": "tavil arch",
+                            }
+                        ],
+                    }
+                ],
+                "identity_hypotheses": [],
+                "temporal_records": [],
+            }
+        },
+    )
+    assert materialized["accepted"] is True
+    frame = QueryFrame(
+        question_text="What remains installed after the dream?",
+        answer_type="unknown",
+        answer_variables=("What remains installed after the dream",),
+        target_anchors=("dream",),
+        requested_relation="remains installed",
+        relation_terms=("remains installed", "answer", "argument"),
+        constraints=(),
+    )
+
+    assert "dream" not in _target_terms(frame, frame.question_text)
+    answer, _diagnostics = execute_bounded_query(
+        store,
+        run_id,
+        documents,
+        _sentences_by_document(sentences),
+        frame.question_text,
+        frame,
+    )
+
+    assert answer is not None
+    assert answer.text == "tavil arch"
+
+
 def test_frame_argument_binding_uses_predicate_matched_full_question_slot(tmp_path: Path) -> None:
     source_surface = "Nia Vale did not ship the copper bracket."
     (tmp_path / "memo.txt").write_text(source_surface + "\n", encoding="utf-8")
