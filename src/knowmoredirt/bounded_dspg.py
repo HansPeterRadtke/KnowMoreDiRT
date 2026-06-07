@@ -3111,6 +3111,60 @@ def _document_scoped_structural_row_candidates(
     return candidates
 
 
+def _document_scoped_drs_condition_candidates(
+    records: dict[str, Any],
+    frame: QueryFrame,
+    expected: ExpectedAnswer,
+    target_terms: list[str],
+    relation_terms: list[str],
+) -> list[tuple[float, str, Evidence, str]]:
+    target_document_ids = _document_context_target_document_ids(records, target_terms)
+    if len(target_document_ids) != 1:
+        return []
+    target_document_id = next(iter(target_document_ids))
+    spans = _spans_by_id(records)
+    answer_slot_terms = _answer_slot_terms(frame, target_terms)
+    candidates: list[tuple[float, str, Evidence, str]] = []
+    for row in records.get("relations", []):
+        if str(row.get("relation_type") or "") != "drs_condition":
+            continue
+        if not _relation_scope_accessible(row, records, frame):
+            continue
+        span_id = str(row.get("source_span_id") or "")
+        if str(spans.get(span_id, {}).get("document_id") or "") != target_document_id:
+            continue
+        evidence = _evidence_for_span(span_id, records)
+        if _source_is_low_priority(evidence.rel_path, evidence.text) and not _structured_source_row(row):
+            continue
+        row_material = _relation_selector_material(row, evidence, include_evidence=True)
+        if not _document_scoped_row_selector_matches(
+            row_material,
+            relation_terms,
+            answer_slot_terms,
+            target_terms,
+        ):
+            continue
+        for value in _answer_values_from_relation(
+            row,
+            evidence,
+            expected,
+            [],
+            relation_terms,
+            answer_slot_terms,
+            records,
+            frame,
+        ):
+            candidates.append(
+                (
+                    6.9 * float(row.get("confidence") or 0.7),
+                    value,
+                    evidence,
+                    "document_scoped_drs_condition_binding",
+                )
+            )
+    return candidates
+
+
 def _document_scoped_relation_value_candidates(
     records: dict[str, Any],
     frame: QueryFrame,
@@ -4822,6 +4876,7 @@ def execute_bounded_query(
     candidates.extend(_bind_relation_conditions(records, frame, expected, target_terms, relation_terms))
     candidates.extend(_bind_document_scoped_label_values(records, frame, expected, target_terms, relation_terms))
     candidates.extend(_document_scoped_structural_row_candidates(records, frame, expected, target_terms, relation_terms))
+    candidates.extend(_document_scoped_drs_condition_candidates(records, frame, expected, target_terms, relation_terms))
     candidates.extend(_document_scoped_relation_value_candidates(records, frame, expected, target_terms, relation_terms))
     temporal_candidates = _temporal_candidates(records, frame, expected, target_terms, relation_terms)
     temporal_candidates.extend(_temporal_relation_candidates(records, frame, expected, target_terms, relation_terms))

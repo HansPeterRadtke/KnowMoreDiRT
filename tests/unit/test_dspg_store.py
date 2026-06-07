@@ -9,6 +9,7 @@ from knowmoredirt.answer_types import ExpectedAnswer
 from knowmoredirt.bounded_dspg import (
     _answer_conflict_diagnostics,
     _context_accessible,
+    _document_scoped_drs_condition_candidates,
     _document_scoped_relation_value_candidates,
     _fetch_identity_hypotheses,
     _identity_expanded_terms,
@@ -739,6 +740,189 @@ def test_drs_relation_target_matches_nominalized_compound_argument(tmp_path: Pat
     assert diagnostics["execution"]["answer_binding_reason"] in {
         "frame_argument_binding",
         "relation_condition_binding",
+    }
+
+
+def test_document_scoped_drs_condition_binds_value_from_answer_slot(tmp_path: Path) -> None:
+    target_surface = "Rhea Vale drafted the amber relay spec."
+    url_surface = "The canonical spec URL is https://docs.example.test/amber-relay-r2."
+    (tmp_path / "design.txt").write_text(
+        "Design memo.\n"
+        f"{target_surface}\n"
+        f"{url_surface}\n",
+        encoding="utf-8",
+    )
+
+    store, run_id, documents, sentences = ingest_folder(tmp_path)
+    for surface, payload in [
+        (
+            target_surface,
+            {
+                "referents": [
+                    {"id": "r0", "label": "Rhea Vale", "kind": "person", "evidence_text": "Rhea Vale"},
+                    {
+                        "id": "r1",
+                        "label": "the amber relay spec",
+                        "kind": "artifact",
+                        "evidence_text": "the amber relay spec",
+                    },
+                ],
+                "conditions": [
+                    {
+                        "id": "c0",
+                        "box_id": "b0",
+                        "predicate": "drafted",
+                        "polarity": "positive",
+                        "modality": "asserted",
+                        "temporal_id": "",
+                        "evidence_text": target_surface,
+                        "arguments": [
+                            {
+                                "role": "agent",
+                                "target_kind": "referent",
+                                "target_id": "r0",
+                                "value": "",
+                                "value_type": "person",
+                                "evidence_text": "Rhea Vale",
+                            },
+                            {
+                                "role": "patient",
+                                "target_kind": "referent",
+                                "target_id": "r1",
+                                "value": "",
+                                "value_type": "artifact",
+                                "evidence_text": "the amber relay spec",
+                            },
+                        ],
+                    }
+                ],
+            },
+        ),
+        (
+            url_surface,
+            {
+                "referents": [
+                    {
+                        "id": "r0",
+                        "label": "canonical spec URL",
+                        "kind": "field",
+                        "evidence_text": "canonical spec URL",
+                    },
+                    {
+                        "id": "r1",
+                        "label": "https://docs.example.test/amber-relay-r2",
+                        "kind": "url",
+                        "evidence_text": "https://docs.example.test/amber-relay-r2",
+                    },
+                ],
+                "conditions": [
+                    {
+                        "id": "c0",
+                        "box_id": "b0",
+                        "predicate": "is",
+                        "polarity": "positive",
+                        "modality": "asserted",
+                        "temporal_id": "",
+                        "evidence_text": url_surface,
+                        "arguments": [
+                            {
+                                "role": "field",
+                                "target_kind": "referent",
+                                "target_id": "r0",
+                                "value": "",
+                                "value_type": "field",
+                                "evidence_text": "canonical spec URL",
+                            },
+                            {
+                                "role": "value",
+                                "target_kind": "referent",
+                                "target_id": "r1",
+                                "value": "",
+                                "value_type": "url",
+                                "evidence_text": "https://docs.example.test/amber-relay-r2",
+                            },
+                        ],
+                    }
+                ],
+            },
+        ),
+    ]:
+        row = store.execute(
+            "SELECT span_id, surface FROM source_spans WHERE surface=? LIMIT 1",
+            (surface,),
+        ).fetchone()
+        assert row is not None
+        materialized = store.materialize_drs_payload(
+            run_id,
+            str(row[0]),
+            str(row[1]),
+            {
+                "drs": {
+                    "schema_version": "chunk-drs-v2",
+                    "source_id": "design.txt",
+                    "evidence_spans": [surface],
+                    "referents": payload["referents"],
+                    "boxes": [
+                        {
+                            "id": "b0",
+                            "kind": "asserted",
+                            "parent_id": "",
+                            "holder_referent_id": "",
+                            "evidence_text": surface,
+                        }
+                    ],
+                    "conditions": payload["conditions"],
+                    "identity_hypotheses": [],
+                    "temporal_records": [],
+                }
+            },
+        )
+        assert materialized["accepted"] is True
+
+    frame = QueryFrame(
+        question_text="What is the canonical spec URL for the amber relay spec?",
+        answer_type="url",
+        answer_variables=("canonical spec URL",),
+        target_anchors=("amber relay spec",),
+        requested_relation="is",
+        relation_terms=("is", "canonical spec URL", "answer", "argument"),
+        constraints=(),
+    )
+    selected_docs, selected_chunks, _ranking = _rank_scope(
+        documents,
+        _sentences_by_document(sentences),
+        frame.question_text,
+        frame,
+        40,
+        160,
+    )
+    records = _load_records(store, run_id, selected_docs, selected_chunks)
+    scoped_values = {
+        value
+        for _score, value, _evidence, _reason in _document_scoped_drs_condition_candidates(
+            records,
+            frame,
+            ExpectedAnswer("url"),
+            _target_terms(frame, frame.question_text),
+            _relation_terms(frame, frame.question_text),
+        )
+    }
+    assert "https://docs.example.test/amber-relay-r2" in scoped_values
+
+    answer, diagnostics = execute_bounded_query(
+        store,
+        run_id,
+        documents,
+        _sentences_by_document(sentences),
+        frame.question_text,
+        frame,
+    )
+
+    assert answer is not None
+    assert answer.text == "https://docs.example.test/amber-relay-r2"
+    assert diagnostics["execution"]["answer_binding_reason"] in {
+        "document_scoped_drs_condition_binding",
+        "record_group_drs_binding",
     }
 
 

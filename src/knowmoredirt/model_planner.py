@@ -4110,6 +4110,9 @@ def call_model_chunk_drs_compact(
                         if source_cached is not None:
                             return source_cached
                     return finalized_legacy
+        source_cached = condition_source_cache(cache_path, cache_context)
+        if source_cached is not None:
+            return source_cached
         if cached_empty_undercoverage:
             continue
         start = time.time()

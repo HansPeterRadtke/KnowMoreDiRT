@@ -2560,6 +2560,102 @@ def test_compact_chunk_drs_reuses_equivalent_condition_cache_after_empty_current
     assert result["compact_source_cache_reuse"]["from_prompt_hash"] == "different-equivalent-cache-key"
 
 
+def test_compact_chunk_drs_reuses_equivalent_condition_cache_before_live_call(monkeypatch, tmp_path) -> None:
+    class EquivalentCacheOnlyCompactModel:
+        def __init__(self) -> None:
+            self.calls = 0
+            self.timeout_seconds = 240.0
+
+        def context_size(self) -> int:
+            return 4096
+
+        def cache_fingerprint(self) -> dict[str, Any]:
+            return {"model_id": "fake-equivalent-cache-only-compact", "context_size": 4096}
+
+        def complete_json(self, prompt: str, *, n_predict: int = 128, grammar=None, json_schema=None):
+            self.calls += 1
+            raise AssertionError("same-source condition cache should avoid live model call")
+
+    text = 'Glossary: "pavin" means bright harbor.'
+    rel_path = "notes/terms.txt"
+    model = EquivalentCacheOnlyCompactModel()
+    cache_dir = tmp_path / "chunk-drs-cache"
+    monkeypatch.setenv("KMD_CHUNK_DRS_CACHE_DIR", str(cache_dir))
+    source_text_hash = hashlib.sha256(text.encode("utf-8", errors="replace")).hexdigest()
+    cache_dir.mkdir(parents=True, exist_ok=True)
+    (cache_dir / "accepted-source-cache.json").write_text(
+        json.dumps(
+            {
+                "accepted": True,
+                "prompt_hash": "accepted-source-cache",
+                "compact_fact_policy": model_planner.CHUNK_DRS_COMPACT_FACT_POLICY,
+                "cache_context": {
+                    "n_predict": 160,
+                    "schema": model_planner.CHUNK_DRS_SCHEMA_VERSION,
+                    "compact_fact_policy": model_planner.CHUNK_DRS_COMPACT_FACT_POLICY,
+                    "constraint_mode": "validated_json_no_schema",
+                    "source_text_hash": source_text_hash,
+                    "source_rel_path": rel_path,
+                },
+                "drs": {
+                    "schema_version": "chunk-drs-v2",
+                    "source_id": rel_path,
+                    "referents": [
+                        {"id": "r0", "label": "pavin", "kind": "unknown", "evidence_text": "pavin"},
+                        {"id": "r1", "label": "bright harbor", "kind": "unknown", "evidence_text": "bright harbor"},
+                    ],
+                    "boxes": [{"id": "b0", "kind": "asserted", "parent_id": ""}],
+                    "conditions": [
+                        {
+                            "id": "c0",
+                            "box_id": "b0",
+                            "predicate": "means",
+                            "polarity": "positive",
+                            "modality": "asserted",
+                            "temporal_id": "",
+                            "evidence_text": '"pavin" means bright harbor.',
+                            "arguments": [
+                                {
+                                    "role": "agent",
+                                    "target_kind": "referent",
+                                    "target_id": "r0",
+                                    "value": "",
+                                    "value_type": "unknown",
+                                    "evidence_text": "pavin",
+                                },
+                                {
+                                    "role": "patient",
+                                    "target_kind": "referent",
+                                    "target_id": "r1",
+                                    "value": "",
+                                    "value_type": "unknown",
+                                    "evidence_text": "bright harbor",
+                                },
+                            ],
+                        }
+                    ],
+                    "identity_hypotheses": [],
+                    "temporal_records": [],
+                    "evidence_spans": ['"pavin" means bright harbor.'],
+                },
+                "raw_text": "{}",
+            }
+        ),
+        encoding="utf-8",
+    )
+
+    result = call_model_chunk_drs_compact(  # type: ignore[arg-type]
+        text,
+        model,
+        rel_path=rel_path,
+        n_predict=72,
+    )
+
+    assert model.calls == 0
+    assert result["drs"]["conditions"][0]["predicate"] == "means"
+    assert result["compact_source_cache_reuse"]["from_prompt_hash"] == "accepted-source-cache"
+
+
 def test_compact_chunk_drs_retries_truncated_json_with_larger_budget(monkeypatch, tmp_path) -> None:
     class TruncatedThenValidCompactModel:
         def __init__(self) -> None:
