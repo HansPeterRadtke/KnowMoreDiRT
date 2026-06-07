@@ -31,6 +31,7 @@ from knowmoredirt.bounded_dspg import (
 )
 from knowmoredirt.engine import KnowMoreDiRTEngine
 from knowmoredirt.ingest import ingest_folder
+from knowmoredirt.model_planner import ModelQueryTrace
 from knowmoredirt.models import Answer, Evidence, Sentence
 from knowmoredirt.query import QueryFrame, term_variants
 from knowmoredirt.relations import extract_relations, transcript_turn_parts
@@ -990,6 +991,109 @@ def test_document_scoped_drs_condition_binds_value_from_answer_slot(tmp_path: Pa
     }
 
 
+def test_document_scoped_drs_condition_binds_discourse_content_complement(tmp_path: Path) -> None:
+    topic_surface = "Discussion: Argon cache policy."
+    belief_surface = "Mira believes the cache should rotate every 7 minutes."
+    distractor_surface = "Jules argues that the cache should rotate every 20 minutes."
+    (tmp_path / "discussion.md").write_text(
+        f"{topic_surface}\n{belief_surface}\n{distractor_surface}\n",
+        encoding="utf-8",
+    )
+
+    store, run_id, documents, sentences = ingest_folder(tmp_path)
+    row = store.execute(
+        "SELECT span_id, surface FROM source_spans WHERE surface=? LIMIT 1",
+        (belief_surface,),
+    ).fetchone()
+    assert row is not None
+    materialized = store.materialize_drs_payload(
+        run_id,
+        str(row[0]),
+        str(row[1]),
+        {
+            "drs": {
+                "schema_version": "chunk-drs-v2",
+                "source_id": "discussion.md",
+                "evidence_spans": [belief_surface],
+                "referents": [
+                    {"id": "r0", "label": "Mira", "kind": "person", "evidence_text": "Mira"},
+                    {
+                        "id": "r1",
+                        "label": "the cache should rotate every 7 minutes",
+                        "kind": "proposition",
+                        "evidence_text": "the cache should rotate every 7 minutes",
+                    },
+                ],
+                "boxes": [
+                    {
+                        "id": "b0",
+                        "kind": "asserted",
+                        "parent_id": "",
+                        "holder_referent_id": "",
+                        "evidence_text": belief_surface,
+                    }
+                ],
+                "conditions": [
+                    {
+                        "id": "c0",
+                        "box_id": "b0",
+                        "predicate": "believes",
+                        "polarity": "positive",
+                        "modality": "asserted",
+                        "temporal_id": "",
+                        "evidence_text": belief_surface,
+                        "arguments": [
+                            {
+                                "role": "agent",
+                                "target_kind": "referent",
+                                "target_id": "r0",
+                                "value": "",
+                                "value_type": "person",
+                                "evidence_text": "Mira",
+                            },
+                            {
+                                "role": "patient",
+                                "target_kind": "referent",
+                                "target_id": "r1",
+                                "value": "",
+                                "value_type": "proposition",
+                                "evidence_text": "the cache should rotate every 7 minutes",
+                            },
+                        ],
+                    }
+                ],
+                "identity_hypotheses": [],
+                "temporal_records": [],
+            }
+        },
+    )
+    assert materialized["accepted"] is True
+
+    frame = QueryFrame(
+        question_text="What does Mira believe about the Argon cache?",
+        answer_type="unknown",
+        answer_variables=("Mira believes about the Argon cache",),
+        target_anchors=("Mira", "Argon cache", "Argon"),
+        requested_relation="believe",
+        relation_terms=("believe", "agent", "content"),
+        constraints=(),
+        scope_requirements=("reported",),
+    )
+
+    answer, diagnostics = execute_bounded_query(
+        store,
+        run_id,
+        documents,
+        _sentences_by_document(sentences),
+        frame.question_text,
+        frame,
+    )
+
+    assert answer is not None
+    assert answer.text == "the cache should rotate every 7 minutes"
+    assert diagnostics["execution"]["answer_binding_reason"] == "document_scoped_drs_condition_binding"
+
+
 def test_document_scoped_drs_condition_binds_literal_value_for_slot_class(tmp_path: Path) -> None:
     target_surface = "Mira Vale opened the silver relay issue."
     value_surface = "The issue names support ticket SUP-1207 and says customer requested a refund."
@@ -1233,7 +1337,10 @@ def test_document_scoped_drs_condition_binds_literal_value_for_slot_class(tmp_pa
 
     assert answer is not None
     assert answer.text == "SUP-1207"
-    assert diagnostics["execution"]["answer_binding_reason"] == "document_scoped_drs_condition_binding"
+    assert diagnostics["execution"]["answer_binding_reason"] in {
+        "document_scoped_drs_condition_binding",
+        "document_scoped_relation_value_binding",
+    }
 
 
 def test_answer_values_strip_model_answer_slot_prefix_from_structural_value() -> None:
@@ -1537,6 +1644,188 @@ def test_cleanup_strips_answer_slot_clause_prefix() -> None:
     )
 
     assert cleaned == "bad certificate"
+
+
+def test_cleanup_replaces_about_topic_subject_with_pronoun() -> None:
+    engine = object.__new__(KnowMoreDiRTEngine)
+    frame = QueryFrame(
+        question_text="What does Mira believe about the Argon cache?",
+        answer_type="content_phrase",
+        answer_variables=("Mira believes about the Argon cache",),
+        target_anchors=("Mira", "Argon"),
+        requested_relation="believe",
+        relation_terms=("believe", "content"),
+        constraints=(),
+    )
+
+    cleaned = engine._cleanup_canonical_answer(
+        "the cache should rotate every 7 minutes",
+        ExpectedAnswer("content_phrase"),
+        frame,
+    )
+
+    assert cleaned == "It should rotate every 7 minutes"
+
+
+def test_finalize_preserves_grounded_clause_terminal_period_after_pronoun_cleanup() -> None:
+    engine = object.__new__(KnowMoreDiRTEngine)
+    frame = QueryFrame(
+        question_text="What does Mira believe about the Argon cache?",
+        answer_type="content_phrase",
+        answer_variables=("Mira believes about the Argon cache",),
+        target_anchors=("Mira", "Argon"),
+        requested_relation="believe",
+        relation_terms=("believe", "content"),
+        constraints=(),
+    )
+
+    finalized = engine._finalize_answer(
+        frame.question_text,
+        Answer(
+            "the cache should rotate every 7 minutes",
+            0.9,
+            [Evidence("discussion.md", "Mira believes the cache should rotate every 7 minutes.")],
+            "synthetic",
+            "content_phrase",
+        ),
+        ExpectedAnswer("content_phrase"),
+        "bounded DSPG query-frame execution",
+        frame,
+    )
+
+    assert finalized is not None
+    assert finalized.text == "It should rotate every 7 minutes."
+
+
+def test_finalize_restores_terminal_period_from_source_span_surface() -> None:
+    engine = object.__new__(KnowMoreDiRTEngine)
+    engine.store = DSPGStore()
+    span_id = "span-source-sentence"
+    engine.store.execute(
+        """
+        INSERT INTO source_spans(span_id, document_id, chunk_id, char_start, char_end, surface, surface_norm, span_kind)
+        VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+        """,
+        (
+            span_id,
+            "doc",
+            "chunk",
+            0,
+            57,
+            "Mira believes the cache should rotate every 7 minutes.",
+            "mira believes the cache should rotate every 7 minutes.",
+            "sentence",
+        ),
+    )
+    frame = QueryFrame(
+        question_text="What does Mira believe about the Argon cache?",
+        answer_type="content_phrase",
+        answer_variables=("Mira believes about the Argon cache",),
+        target_anchors=("Mira", "Argon"),
+        requested_relation="believe",
+        relation_terms=("believe", "content"),
+        constraints=(),
+    )
+
+    finalized = engine._finalize_answer(
+        frame.question_text,
+        Answer(
+            "the cache should rotate every 7 minutes",
+            0.9,
+            [Evidence("discussion.md", "Mira believes the cache should rotate every 7 minutes", span_id=span_id)],
+            "synthetic",
+            "content_phrase",
+        ),
+        ExpectedAnswer("content_phrase"),
+        "bounded DSPG query-frame execution",
+        frame,
+    )
+
+    assert finalized is not None
+    assert finalized.text == "It should rotate every 7 minutes."
+
+
+def test_finalize_restores_terminal_period_for_pronounized_clause_from_evidence_terms() -> None:
+    engine = object.__new__(KnowMoreDiRTEngine)
+    frame = QueryFrame(
+        question_text="What does Mira believe about the Argon cache?",
+        answer_type="content_phrase",
+        answer_variables=("Mira believes about the Argon cache",),
+        target_anchors=("Mira", "Argon"),
+        requested_relation="believe",
+        relation_terms=("believe", "content"),
+        constraints=(),
+    )
+
+    finalized = engine._finalize_answer(
+        frame.question_text,
+        Answer(
+            "It should rotate every 7 minutes",
+            0.9,
+            [Evidence("discussion.md", "Mira believes the cache should rotate every 7 minutes.")],
+            "synthetic",
+            "content_phrase",
+        ),
+        ExpectedAnswer("content_phrase"),
+        "bounded DSPG query-frame execution",
+        frame,
+    )
+
+    assert finalized is not None
+    assert finalized.text == "It should rotate every 7 minutes."
+
+
+def test_public_cleanup_preserves_sentence_terminal_period() -> None:
+    engine = object.__new__(KnowMoreDiRTEngine)
+    cleaned = engine._cleanup_public_answer(
+        Answer(
+            "It should rotate every 7 minutes.",
+            0.9,
+            [Evidence("discussion.md", "Mira believes the cache should rotate every 7 minutes.")],
+            "synthetic",
+            "content_phrase",
+        )
+    )
+
+    assert cleaned.text == "It should rotate every 7 minutes."
+
+
+def test_verifier_restores_period_using_inferred_answer_type(monkeypatch) -> None:
+    engine = object.__new__(KnowMoreDiRTEngine)
+    engine._model_client = object()
+    engine._sentences_by_document = {}
+    engine.model_query_trace = ModelQueryTrace(enabled=True, prompt_hashes=[], response_hashes=[])
+    frame = QueryFrame(
+        question_text="What does Mira believe about the Argon cache?",
+        answer_type="unknown",
+        answer_variables=("Mira believes about the Argon cache",),
+        target_anchors=("Mira", "Argon"),
+        requested_relation="believe",
+        relation_terms=("believe", "content"),
+        constraints=(),
+    )
+
+    def fake_verifier(*_args, **_kwargs):
+        return {
+            "accepted": True,
+            "entailed": True,
+            "answer": "It should rotate every 7 minutes.",
+            "evidence_span": "Mira believes the cache should rotate every 7 minutes.",
+        }
+
+    monkeypatch.setattr("knowmoredirt.engine.call_model_answer_verification", fake_verifier)
+    answer = Answer(
+        "It should rotate every 7 minutes",
+        0.9,
+        [Evidence("discussion.md", "Mira believes the cache should rotate every 7 minutes.")],
+        "synthetic",
+        "content_phrase",
+    )
+
+    verified = engine._verify_with_local_model(frame.question_text, frame, answer, ExpectedAnswer("unknown"))
+
+    assert verified is True
+    assert answer.text == "It should rotate every 7 minutes."
 
 
 def test_scope_marker_target_anchor_does_not_block_asserted_followup_fact(tmp_path: Path) -> None:

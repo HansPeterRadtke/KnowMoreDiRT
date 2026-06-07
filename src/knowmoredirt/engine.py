@@ -349,6 +349,9 @@ class KnowMoreDiRTEngine:
         expected = ExpectedAnswer(expected_type)  # type: ignore[arg-type]
         cleaned = self._cleanup_canonical_answer(answer.text, expected)
         if cleaned and cleaned != answer.text:
+            original = str(answer.text or "").strip()
+            if original and original[-1] in ".!?" and cleaned == original[:-1].strip():
+                return answer
             return Answer(cleaned, answer.confidence, answer.evidence, answer.reason, answer.answer_type)
         return answer
 
@@ -496,11 +499,17 @@ class KnowMoreDiRTEngine:
             if not entailed or not proposed or (span and not any(span in item.get("text", "") for item in evidence_payload)):
                 trace.verifier_rejected_count += 1
                 continue
-            canonical = canonicalize_answer(expected, proposed)
+            canonical_expected = expected
+            if canonical_expected.answer_type == "unknown":
+                inferred_type = answer.answer_type if answer.answer_type not in {"", "unknown"} else classify_value(proposed)
+                if inferred_type != "unknown":
+                    canonical_expected = ExpectedAnswer(inferred_type)  # type: ignore[arg-type]
+            canonical = canonicalize_answer(canonical_expected, proposed)
             if not canonical:
                 trace.verifier_rejected_count += 1
                 continue
-            if canonical and expected.answer_type in {"person", "actor"}:
+            canonical = self._restore_sentence_terminal_punctuation(canonical, proposed, canonical_expected, answer.evidence)
+            if canonical and canonical_expected.answer_type in {"person", "actor"}:
                 if len(str(canonical).split()) == 1:
                     canonical = self._canonicalize_identity_with_local_model(question, canonical, answer.evidence) or canonical
             if canonical and normalize(canonical) != normalize(answer.text):
@@ -1720,6 +1729,9 @@ class KnowMoreDiRTEngine:
         if frame is not None and expected.answer_type in {"content_phrase", "metadata_value", "identifier"}:
             text = self._strip_redundant_target_tail(text, frame)
             low = normalize(text)
+        if frame is not None and expected.answer_type in {"content_phrase", "metadata_value"}:
+            text = self._replace_redundant_topic_subject_with_pronoun(text, frame)
+            low = normalize(text)
         if frame is not None and expected.answer_type in {"content_phrase", "state", "metadata_value", "identifier"}:
             text = self._strip_answer_clause_residual(text, frame)
             low = normalize(text)
@@ -1735,6 +1747,52 @@ class KnowMoreDiRTEngine:
                 if not any(word in verbish for word in low_words[1:]):
                     return " ".join(words[1:]).strip()
         return text
+
+    def _replace_redundant_topic_subject_with_pronoun(self, text: str, frame: QueryFrame) -> str:
+        topic_heads: list[str] = []
+        for source in [frame.question_text, *frame.answer_variables]:
+            norm = normalize(source)
+            if " about " not in f" {norm} ":
+                continue
+            after_about = norm.split(" about ", 1)[1]
+            tokens = content_tokens(after_about)
+            if tokens:
+                topic_heads.append(tokens[-1])
+        topic_heads = list(dict.fromkeys(topic_heads))
+        if not topic_heads:
+            return text
+        words = [word for word in text.split() if word]
+        if len(words) < 3:
+            return text
+        first = normalize(words[0].strip(".,;:"))
+        second = normalize(words[1].strip(".,;:"))
+        if first == "the" and second in topic_heads:
+            remainder = words[2:]
+        elif first in topic_heads:
+            remainder = words[1:]
+        else:
+            return text
+        if not remainder:
+            return text
+        next_word = normalize(remainder[0].strip(".,;:"))
+        if next_word not in {
+            "are",
+            "can",
+            "could",
+            "does",
+            "has",
+            "is",
+            "may",
+            "might",
+            "must",
+            "needs",
+            "should",
+            "was",
+            "will",
+            "would",
+        }:
+            return text
+        return " ".join(["It", *remainder]).strip()
 
     def _strip_answer_clause_residual(self, text: str, frame: QueryFrame) -> str:
         words = [word for word in text.split() if word]
@@ -1874,10 +1932,97 @@ class KnowMoreDiRTEngine:
             return None
         if expected.answer_type == "date_time" and not self._date_time_shape_compatible(frame, canonical):
             return None
+        pre_cleanup_canonical = canonical
         canonical = self._cleanup_canonical_answer(canonical, expected, frame)
+        canonical = self._restore_sentence_terminal_punctuation(
+            canonical,
+            pre_cleanup_canonical,
+            expected,
+            answer.evidence,
+        )
         if not canonical:
             return None
         return Answer(canonical, answer.confidence, answer.evidence, source, expected.answer_type)
+
+    def _restore_sentence_terminal_punctuation(
+        self,
+        text: str,
+        source_value: str,
+        expected: ExpectedAnswer,
+        evidence: list[Evidence],
+    ) -> str:
+        if expected.answer_type not in {"content_phrase", "state", "metadata_value"}:
+            return text
+        value = str(text or "").strip()
+        if not value or value[-1] in ".!?":
+            return value
+        words = [word for word in value.split() if word]
+        if len(words) < 4 or not words[0][:1].isupper():
+            return value
+        low_words = [normalize(word.strip(".,;:!?")) for word in words]
+        finite_or_modal = {
+            "are",
+            "can",
+            "could",
+            "did",
+            "does",
+            "has",
+            "is",
+            "may",
+            "might",
+            "must",
+            "needs",
+            "should",
+            "was",
+            "were",
+            "will",
+            "would",
+        }
+        if not any(word in finite_or_modal for word in low_words[1:]):
+            return value
+        source_norm = normalize(str(source_value or "").strip(" .;:!?"))
+        value_norm = normalize(value.strip(" .;:!?"))
+        if not source_norm and not value_norm:
+            return value
+        for evidence_text in self._terminal_punctuation_evidence_texts(evidence):
+            if evidence_text[-1] not in ".!?":
+                continue
+            evidence_norm = normalize(evidence_text.strip(" .;:!?"))
+            if source_norm and source_norm in evidence_norm:
+                return value + evidence_text[-1]
+            if value_norm and value_norm in evidence_norm:
+                return value + evidence_text[-1]
+            value_terms = content_tokens(value)
+            evidence_terms = set(content_tokens(evidence_text))
+            if len(value_terms) >= 3 and all(term in evidence_terms for term in value_terms):
+                return value + evidence_text[-1]
+        return value
+
+    def _terminal_punctuation_evidence_texts(self, evidence: list[Evidence]) -> list[str]:
+        values: list[str] = []
+        for item in evidence:
+            evidence_text = str(item.text or "").strip()
+            if evidence_text:
+                values.append(evidence_text)
+            span_id = str(item.span_id or "")
+            if not span_id or not hasattr(self, "store"):
+                continue
+            try:
+                row = self.store.execute(
+                    "SELECT surface FROM source_spans WHERE span_id=? LIMIT 1",
+                    (span_id,),
+                ).fetchone()
+            except Exception:
+                row = None
+            if row is None:
+                continue
+            try:
+                surface = str(row["surface"] or "").strip()
+            except Exception:
+                surface = str(row[0] or "").strip()
+            if surface:
+                values.append(surface)
+        return list(dict.fromkeys(values))
 
     def _canonicalize_model_answer_with_local_model(
         self,

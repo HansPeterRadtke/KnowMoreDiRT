@@ -456,6 +456,8 @@ def _answer_slot_constraints(
         for token in content_tokens(term):
             if token in ANSWER_SLOT_SKIP_TERMS:
                 continue
+            if token in DISCOURSE_SCOPE_LINK_TERMS:
+                continue
             token_variants = expand_terms([token])
             if target_tokens and any(variant in target_tokens for variant in token_variants):
                 continue
@@ -1697,6 +1699,23 @@ def _relation_scope_accessible(row: dict[str, Any], records: dict[str, Any], fra
             return False
     if _context_accessible(context_id, records, frame):
         return True
+    if requirements and relation_type == "drs_condition" and declared_scope in {"", "asserted"}:
+        chain_kinds = {
+            normalize(str(context.get("kind") or "asserted"))
+            for context in _context_chain(context_id, records)
+        }
+        if chain_kinds.issubset({"", "asserted", "drs:asserted"}):
+            relation_material = normalize(
+                " ".join(
+                    [
+                        str(row.get("predicate") or ""),
+                        str(row.get("value") or ""),
+                        scope_material,
+                    ]
+                )
+            )
+            if frame.requested_relation and _terms_match_material([frame.requested_relation], relation_material):
+                return True
     if not requirements:
         return False
     chain = _context_chain(context_id, records)
@@ -3164,6 +3183,18 @@ def _document_scoped_row_selector_matches(
         return True
     if _answer_slot_constraints(compound_terms, target_terms):
         return False
+    target_tokens = _target_token_variants(target_terms)
+    token_terms: list[str] = []
+    for term in compound_terms:
+        for token in content_tokens(term):
+            if token in ANSWER_SLOT_SKIP_TERMS or token in DISCOURSE_SCOPE_LINK_TERMS:
+                continue
+            if target_tokens and any(variant in target_tokens for variant in expand_terms([token])):
+                continue
+            token_terms.extend(expand_terms([token]))
+    token_terms = list(dict.fromkeys(term for term in token_terms if term))
+    if token_terms and _contains_any(material, token_terms):
+        return True
     return _contains_any(material, list(dict.fromkeys(compound_terms)))
 
 
@@ -3313,7 +3344,7 @@ def _document_scoped_drs_condition_candidates(
             row,
             evidence,
             expected,
-            [],
+            target_terms,
             relation_terms,
             answer_slot_terms,
             records,
