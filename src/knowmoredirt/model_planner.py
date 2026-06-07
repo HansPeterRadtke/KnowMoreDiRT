@@ -21,7 +21,7 @@ from typing import Any
 from .drs_validation import box_parent_cycle_errors, box_root_errors, condition_argument_cycle_errors
 from .model import LocalModelClient, LocalModelJSONError
 from .extractors import identifiers, urls
-from .query import QueryFrame, frame_from_mapping, visible_anchors
+from .query import QueryFrame, frame_from_mapping, term_variants, visible_anchors
 from .relations import extract_relations
 from .text import content_tokens, normalize
 
@@ -672,6 +672,13 @@ ws ::= [ \t\n\r]*
 
 ANSWER_CANONICALIZATION_GRAMMAR = r'''
 root ::= "{" ws "\"canonical_answer\"" ws ":" ws "{" ws "\"answer\"" ws ":" ws string ws "," ws "\"evidence_span\"" ws ":" ws string ws "," ws "\"reason\"" ws ":" ws string ws "}" ws "}"
+string ::= "\"" chars "\""
+chars ::= ([^"\\] | "\\" ["\\/bfnrt])*
+ws ::= [ \t\n\r]*
+'''
+
+SOURCE_RESOLVED_ANSWER_GRAMMAR = r'''
+root ::= "{" ws "\"source_resolved_answer\"" ws ":" ws "{" ws "\"answer\"" ws ":" ws string ws "," ws "\"evidence_span\"" ws ":" ws string ws "," ws "\"reason\"" ws ":" ws string ws "}" ws "}"
 string ::= "\"" chars "\""
 chars ::= ([^"\\] | "\\" ["\\/bfnrt])*
 ws ::= [ \t\n\r]*
@@ -1517,6 +1524,16 @@ CANONICAL_ANSWER_JSON_SCHEMA = _schema_obj(
     ["canonical_answer"],
     {
         "canonical_answer": _schema_obj(
+            ["answer", "evidence_span", "reason"],
+            {"answer": STRING_SCHEMA, "evidence_span": STRING_SCHEMA, "reason": STRING_SCHEMA},
+        )
+    },
+)
+
+SOURCE_RESOLVED_ANSWER_JSON_SCHEMA = _schema_obj(
+    ["source_resolved_answer"],
+    {
+        "source_resolved_answer": _schema_obj(
             ["answer", "evidence_span", "reason"],
             {"answer": STRING_SCHEMA, "evidence_span": STRING_SCHEMA, "reason": STRING_SCHEMA},
         )
@@ -5822,7 +5839,12 @@ def build_answer_canonicalization_prompt(
         "Return the shortest grounded public answer that preserves the same DRS binding, answer type, polarity, "
         "modality, temporal scope, and provenance. The canonical answer may remove only redundant wording that is "
         "not part of the bound value or required aggregate. It must not introduce new referents, choose a sibling "
-        "condition, change a scoped proposition into an asserted one, or use outside knowledge. If the candidate is "
+        "condition, change a scoped proposition into an asserted one, or use outside knowledge. When evidence "
+        "contains explicit speaker/source identity for quoted, reported, or message content, the canonical answer "
+        "should normalize first-person or second-person deictic wording into a public source-resolved answer when "
+        "the question asks what the source says/reports/believes rather than asking for exact wording. Use the "
+        "referent surface requested by the question when that surface is grounded, and keep the same scoped "
+        "proposition. If the candidate is "
         "not a complete answer binding but instead states that no binding is available, return answer='unknown' and "
         "copy the evidence_span that supports that absence. evidence_span must "
         "be copied exactly from one provided evidence item whenever the answer is changed. Return exactly "
@@ -5948,6 +5970,13 @@ def call_model_answer_canonicalization(
         answer_grounded = bool(span_grounded)
     else:
         answer_grounded = any(answer in str(item.get("text") or "") for item in evidence_items)
+        if (
+            not answer_grounded
+            and span_grounded
+            and answer_type in {"content_phrase", "metadata_value", "state"}
+            and _answer_terms_grounded_by_evidence(answer, evidence_items)
+        ):
+            answer_grounded = True
     if not span_grounded and not answer_grounded:
         return {
             "accepted": False,
@@ -5973,6 +6002,205 @@ def call_model_answer_canonicalization(
     }
     _write_cache(cache_path, payload)
     return payload
+
+
+def build_source_resolved_answer_prompt(
+    question: str,
+    candidate_answer: str,
+    answer_type: str,
+    evidence_items: list[dict[str, str]],
+) -> str:
+    return (
+        "JSON only. Convert a quoted/reported/message-content candidate into a public reported answer for the "
+        "question. This task is not quote extraction. If evidence gives a source identity, answer as an outside "
+        "narrator reporting what that source said/reported/believed; do not keep the quote's grammatical "
+        "perspective. For questions phrased with past reporting auxiliaries such as did/was/were, the public "
+        "reported answer must use past-tense reported wording for the main finite predicate when fluent, even "
+        "when the quoted content itself uses present-tense wording. Preserve future and relative time words "
+        "separately; tense alignment must not delete or alter those time words. Use a shorter "
+        "source surface from the question when it is grounded inside the evidence identity. Preserve proposition, "
+        "polarity, modality, object names, file paths, URLs, IDs, and negation. If exact words or a quote are "
+        "requested, keep exact wording. If no grounded public reported answer is entailed, return the candidate "
+        "unchanged. evidence_span must be copied exactly from one evidence item. Return exactly "
+        "{\"source_resolved_answer\":{\"answer\":\"\",\"evidence_span\":\"\",\"reason\":\"\"}}."
+        + json.dumps(
+            {
+                "question": question,
+                "candidate_answer": candidate_answer,
+                "answer_type": answer_type,
+                "evidence": evidence_items,
+            },
+            ensure_ascii=False,
+        )
+    )
+
+
+def _source_resolution_cache_path(prompt_hash: str) -> Path | None:
+    cache_dir = os.environ.get("KMD_SOURCE_RESOLUTION_CACHE_DIR", "").strip()
+    if not cache_dir:
+        cache_dir = os.environ.get("KMD_ANSWER_CANONICALIZATION_CACHE_DIR", "").strip()
+    if cache_dir:
+        return Path(cache_dir) / f"{prompt_hash}.json"
+    return _cache_path("KMD_SOURCE_RESOLUTION_CACHE_DIR", prompt_hash)
+
+
+def call_model_source_resolved_answer(
+    question: str,
+    candidate_answer: str,
+    answer_type: str,
+    evidence_items: list[dict[str, str]],
+    client: LocalModelClient,
+    *,
+    n_predict: int | None = None,
+) -> dict[str, Any]:
+    if n_predict is None:
+        n_predict = int(os.environ.get("KMD_SOURCE_RESOLUTION_N_PREDICT", "160"))
+    prompt = build_source_resolved_answer_prompt(question, candidate_answer, answer_type, evidence_items)
+    constraint = _constraint_settings(SOURCE_RESOLVED_ANSWER_GRAMMAR, None, ANSWER_SCHEMA_VERSION)
+    grammar_hash = str(constraint["grammar_hash"])
+    cache_settings = {"n_predict": n_predict, "schema": ANSWER_SCHEMA_VERSION, **constraint}
+    cache_context = {
+        **cache_settings,
+        "model_fingerprint": _client_fingerprint(client),
+        "answer_type": answer_type,
+        "evidence_count": len(evidence_items),
+    }
+    prompt_hash = _cache_hash(
+        "source_resolved_answer",
+        prompt,
+        client,
+        cache_settings,
+    )
+    cache_path = _source_resolution_cache_path(prompt_hash)
+    cached = _read_cache(cache_path)
+    if cached is not None and cached.get("reason") not in {
+        "request_failed",
+        "ungrounded_answer",
+        "schema_validation_failed",
+        "invalid_json",
+    }:
+        cached.setdefault("cache_context", cache_context)
+        return cached
+    start = time.time()
+    try:
+        parsed = _complete_structured(
+            client,
+            prompt,
+            n_predict=n_predict,
+            grammar=SOURCE_RESOLVED_ANSWER_GRAMMAR,
+            json_schema=None,
+        )
+    except LocalModelJSONError as exc:
+        return {
+            "accepted": False,
+            "reason": "invalid_json",
+            "error": str(exc),
+            "raw_text": exc.raw_text,
+            "snippet": exc.snippet,
+            "prompt_hash": prompt_hash,
+            "grammar_hash": grammar_hash,
+            "cache_context": cache_context,
+            "elapsed": round(time.time() - start, 3),
+        }
+    except Exception as exc:
+        return {
+            "accepted": False,
+            "reason": "request_failed",
+            "error": str(exc),
+            "prompt_hash": prompt_hash,
+            "grammar_hash": grammar_hash,
+            "cache_context": cache_context,
+            "elapsed": round(time.time() - start, 3),
+        }
+    raw = str(parsed.get("_model_raw") or "") if isinstance(parsed, dict) else ""
+    result = parsed.get("source_resolved_answer") if isinstance(parsed, dict) else None
+    if result is None and isinstance(parsed, dict) and "answer" in parsed:
+        result = parsed
+    if not isinstance(result, dict):
+        return {
+            "accepted": False,
+            "reason": "invalid_json",
+            "raw_text": raw,
+            "prompt_hash": prompt_hash,
+            "grammar_hash": grammar_hash,
+            "cache_context": cache_context,
+            "elapsed": round(time.time() - start, 3),
+        }
+    answer = str(result.get("answer") or "").strip()
+    reason_text = str(result.get("reason") or "").strip()
+    span = str(result.get("evidence_span") or "").strip()
+    if not answer:
+        return {
+            "accepted": False,
+            "reason": "schema_validation_failed",
+            "raw_text": raw,
+            "prompt_hash": prompt_hash,
+            "grammar_hash": grammar_hash,
+            "cache_context": cache_context,
+            "elapsed": round(time.time() - start, 3),
+        }
+    span_grounded = False
+    if span:
+        span_grounded = any(span in str(item.get("text") or "") for item in evidence_items)
+    if not span:
+        for item in evidence_items:
+            text = str(item.get("text") or "")
+            if answer in text:
+                span = answer
+                span_grounded = True
+                break
+    if normalize(answer) == "unknown":
+        answer_grounded = bool(span_grounded)
+    else:
+        answer_grounded = any(answer in str(item.get("text") or "") for item in evidence_items)
+        if (
+            not answer_grounded
+            and span_grounded
+            and answer_type in {"content_phrase", "metadata_value", "state"}
+            and _answer_terms_grounded_by_evidence(answer, evidence_items)
+        ):
+            answer_grounded = True
+    if not span_grounded and not answer_grounded:
+        return {
+            "accepted": False,
+            "reason": "ungrounded_answer",
+            "raw_text": raw,
+            "prompt_hash": prompt_hash,
+            "grammar_hash": grammar_hash,
+            "cache_context": cache_context,
+            "elapsed": round(time.time() - start, 3),
+        }
+    payload = {
+        "accepted": True,
+        "answer": answer,
+        "evidence_span": span,
+        "reason": reason_text,
+        "raw_text": raw,
+        "elapsed": parsed.get("_model_elapsed_seconds", round(time.time() - start, 3)),
+        "prompt_hash": prompt_hash,
+        "grammar_hash": grammar_hash,
+        "cache_context": cache_context,
+        "output_hash": hashlib.sha256(raw.encode()).hexdigest(),
+        "fresh_or_cached": "fresh",
+    }
+    _write_cache(cache_path, payload)
+    return payload
+
+
+def _answer_terms_grounded_by_evidence(answer: str, evidence_items: list[dict[str, str]]) -> bool:
+    answer_terms = [term for term in content_tokens(answer) if term]
+    if not answer_terms:
+        return False
+    evidence_terms: set[str] = set()
+    for item in evidence_items:
+        for term in content_tokens(str(item.get("text") or "")):
+            evidence_terms.update(term_variants(term))
+    if not evidence_terms:
+        return False
+    for term in answer_terms:
+        if not (term_variants(term) & evidence_terms):
+            return False
+    return True
 
 
 def build_identity_canonicalization_prompt(

@@ -1775,6 +1775,84 @@ def test_finalize_restores_terminal_period_for_pronounized_clause_from_evidence_
     assert finalized.text == "It should rotate every 7 minutes."
 
 
+def test_finalize_restores_period_for_source_grounded_deictic_rewrite() -> None:
+    engine = object.__new__(KnowMoreDiRTEngine)
+    frame = QueryFrame(
+        question_text="What did the forwarded Drew message say about repairing valve.py?",
+        answer_type="content_phrase",
+        answer_variables=("the forwarded Drew message said about repairing valve.py",),
+        target_anchors=("Drew", "message", "valve.py"),
+        requested_relation="say about",
+        relation_terms=("say about", "forwarded", "message", "repairing", "repair"),
+        constraints=(),
+    )
+
+    finalized = engine._finalize_answer(
+        frame.question_text,
+        Answer(
+            "Drew planned to repair valve.py tomorrow, not today",
+            0.9,
+            [Evidence("thread.eml", "From: Drew Lane\nI plan to repair valve.py tomorrow, not today.")],
+            "synthetic",
+            "content_phrase",
+        ),
+        ExpectedAnswer("content_phrase"),
+        "bounded DSPG query-frame execution",
+        frame,
+    )
+
+    assert finalized is not None
+    assert finalized.text == "Drew planned to repair valve.py tomorrow, not today."
+
+
+def test_model_canonicalization_source_resolves_deictic_reported_content(
+    tmp_path: Path,
+    monkeypatch,
+) -> None:
+    class SourceResolutionModel:
+        def __init__(self) -> None:
+            self.prompts: list[str] = []
+
+        def context_size(self) -> int:
+            return 4096
+
+        def cache_fingerprint(self) -> dict[str, object]:
+            return {"model_id": "fake-engine-source-resolution", "context_size": 4096}
+
+        def complete_json(self, prompt: str, *, n_predict: int = 128, grammar=None, json_schema=None):
+            self.prompts.append(prompt)
+            assert "source_resolved_answer" in prompt
+            assert json_schema is None
+            return {
+                "source_resolved_answer": {
+                    "answer": "Taylor expected patch.py to land tomorrow.",
+                    "evidence_span": "I expect patch.py to land tomorrow.",
+                    "reason": "source identity grounds the public paraphrase",
+                },
+                "_model_raw": "{}",
+                "_model_elapsed_seconds": 0.01,
+            }
+
+    model = SourceResolutionModel()
+    monkeypatch.setenv("KMD_SOURCE_RESOLUTION_CACHE_DIR", str(tmp_path / ".source-resolution-cache"))
+    engine = object.__new__(KnowMoreDiRTEngine)
+    engine._model_client = model
+    engine._sentences_by_document = {}
+    engine.model_query_trace = ModelQueryTrace(enabled=True, prompt_hashes=[], response_hashes=[])
+
+    canonical = engine._canonicalize_model_answer_with_local_model(
+        "What did the forwarded Taylor message say about patch.py?",
+        "I expect patch.py to land tomorrow.",
+        ExpectedAnswer("content_phrase"),
+        [Evidence("thread.eml", "From: Taylor Quinn\nI expect patch.py to land tomorrow.")],
+    )
+
+    assert canonical == "Taylor expected patch.py to land tomorrow"
+    assert len(model.prompts) == 1
+    assert engine.model_query_trace.canonicalization_call_count == 1
+    assert engine.model_query_trace.canonicalization_accepted_count == 1
+
+
 def test_public_cleanup_preserves_sentence_terminal_period() -> None:
     engine = object.__new__(KnowMoreDiRTEngine)
     cleaned = engine._cleanup_public_answer(
@@ -1788,6 +1866,24 @@ def test_public_cleanup_preserves_sentence_terminal_period() -> None:
     )
 
     assert cleaned.text == "It should rotate every 7 minutes."
+
+
+def test_public_cleanup_restores_source_grounded_reported_period() -> None:
+    engine = object.__new__(KnowMoreDiRTEngine)
+    cleaned = engine._cleanup_public_answer(
+        Answer(
+            "Taylor expected patch.py to land tomorrow",
+            0.9,
+            [
+                Evidence("thread.eml", "I expect patch.py to land tomorrow."),
+                Evidence("thread.eml", "From: Taylor Quinn I expect patch.py to land tomorrow"),
+            ],
+            "synthetic",
+            "content_phrase",
+        )
+    )
+
+    assert cleaned.text == "Taylor expected patch.py to land tomorrow."
 
 
 def test_verifier_restores_period_using_inferred_answer_type(monkeypatch) -> None:
@@ -1826,6 +1922,50 @@ def test_verifier_restores_period_using_inferred_answer_type(monkeypatch) -> Non
 
     assert verified is True
     assert answer.text == "It should rotate every 7 minutes."
+
+
+def test_verifier_preserves_entailed_canonical_candidate(monkeypatch) -> None:
+    engine = object.__new__(KnowMoreDiRTEngine)
+    engine._model_client = object()
+    engine._sentences_by_document = {}
+    engine.model_query_trace = ModelQueryTrace(enabled=True, prompt_hashes=[], response_hashes=[])
+    frame = QueryFrame(
+        question_text="What did the forwarded Taylor message say about patch.py?",
+        answer_type="content_phrase",
+        answer_variables=("the forwarded Taylor message said about patch.py",),
+        target_anchors=("Taylor", "message", "patch.py"),
+        requested_relation="say about",
+        relation_terms=("say about", "message", "patch.py"),
+        constraints=(),
+    )
+
+    monkeypatch.setattr(
+        engine,
+        "_canonicalize_model_answer_with_local_model",
+        lambda *_args, **_kwargs: "Taylor expected patch.py to land tomorrow",
+    )
+
+    def fake_verifier(*_args, **_kwargs):
+        return {
+            "accepted": True,
+            "entailed": True,
+            "answer": "I expect patch.py to land tomorrow.",
+            "evidence_span": "I expect patch.py to land tomorrow.",
+        }
+
+    monkeypatch.setattr("knowmoredirt.engine.call_model_answer_verification", fake_verifier)
+    answer = Answer(
+        "I expect patch.py to land tomorrow",
+        0.9,
+        [Evidence("thread.eml", "From: Taylor Quinn\nI expect patch.py to land tomorrow.")],
+        "synthetic",
+        "content_phrase",
+    )
+
+    verified = engine._verify_with_local_model(frame.question_text, frame, answer, ExpectedAnswer("content_phrase"))
+
+    assert verified is True
+    assert answer.text == "Taylor expected patch.py to land tomorrow."
 
 
 def test_scope_marker_target_anchor_does_not_block_asserted_followup_fact(tmp_path: Path) -> None:
@@ -2605,6 +2745,268 @@ def test_labeled_turn_identity_resolves_first_person_drs_answer(tmp_path: Path, 
         "SELECT COUNT(*) FROM identity_hypotheses WHERE source='deterministic_speaker_turn'"
     ).fetchone()[0]
     assert identity_count == 1
+
+
+def test_structural_sender_identity_resolves_first_person_message_content(
+    tmp_path: Path,
+    monkeypatch,
+) -> None:
+    content_surface = "I plan to fix module.py tomorrow, not today."
+    (tmp_path / "message.eml").write_text(
+        f"--- forwarded message ---\nFrom: Casey Lane\n{content_surface}\n",
+        encoding="utf-8",
+    )
+
+    class SenderModel:
+        def context_size(self) -> int:
+            return 4096
+
+        def cache_fingerprint(self) -> dict[str, object]:
+            return {"model_id": "fake-structural-sender-drs", "context_size": 4096}
+
+        def complete_json(self, prompt: str, *, n_predict: int = 128, grammar=None, json_schema=None):
+            if content_surface not in prompt:
+                surface = "From: Casey Lane" if "From: Casey Lane" in prompt else "--- forwarded message ---"
+                return {
+                    "drs": {
+                        "schema_version": "chunk-drs-v2",
+                        "source_id": "message.eml",
+                        "referents": [],
+                        "boxes": [
+                            {"id": "b0", "kind": "asserted", "parent_id": "", "holder_referent_id": "", "evidence_text": surface}
+                        ],
+                        "conditions": [],
+                        "identity_hypotheses": [],
+                        "temporal_records": [],
+                    },
+                    "_model_raw": "{}",
+                    "_model_elapsed_seconds": 0.01,
+                }
+            return {
+                "drs": {
+                    "schema_version": "chunk-drs-v2",
+                    "source_id": "message.eml",
+                    "referents": [
+                        {"id": "r0", "label": "I", "kind": "person", "evidence_text": "I"},
+                        {"id": "r1", "label": "module.py", "kind": "file_path", "evidence_text": "module.py"},
+                    ],
+                    "boxes": [
+                        {
+                            "id": "b0",
+                            "kind": "asserted",
+                            "parent_id": "",
+                            "holder_referent_id": "",
+                            "evidence_text": content_surface,
+                        }
+                    ],
+                    "conditions": [
+                        {
+                            "id": "c0",
+                            "predicate": "plan",
+                            "box_id": "b0",
+                            "polarity": "positive",
+                            "modality": "asserted",
+                            "temporal_id": "",
+                            "arguments": [
+                                {
+                                    "role": "agent",
+                                    "target_kind": "referent",
+                                    "target_id": "r0",
+                                    "value": "",
+                                    "value_type": "person",
+                                    "evidence_text": "I",
+                                },
+                                {
+                                    "role": "patient",
+                                    "target_kind": "referent",
+                                    "target_id": "r1",
+                                    "value": "",
+                                    "value_type": "file_path",
+                                    "evidence_text": "module.py",
+                                },
+                                {
+                                    "role": "event",
+                                    "target_kind": "literal",
+                                    "target_id": "",
+                                    "value": "fix module.py",
+                                    "value_type": "content_phrase",
+                                    "evidence_text": "fix module.py",
+                                },
+                            ],
+                            "evidence_text": content_surface,
+                        }
+                    ],
+                    "identity_hypotheses": [],
+                    "temporal_records": [],
+                },
+                "_model_raw": "{}",
+                "_model_elapsed_seconds": 0.01,
+            }
+
+    monkeypatch.setenv("KMD_CHUNK_DRS_CACHE_DIR", str(tmp_path / ".drs-cache"))
+    store, run_id, documents, sentences = ingest_folder(
+        tmp_path,
+        semantic_client=SenderModel(),  # type: ignore[arg-type]
+        use_semantic_frames=False,
+        use_drs_semantics=True,
+    )
+    frame = QueryFrame(
+        question_text="What did the forwarded Casey message say about fixing module.py?",
+        answer_type="content_phrase",
+        answer_variables=("the forwarded Casey message said about fixing module.py",),
+        target_anchors=("Casey", "message", "module.py"),
+        requested_relation="say about",
+        relation_terms=("say about", "forwarded", "message", "fixing", "fix"),
+        constraints=("forwarded", "fixing module.py",),
+    )
+
+    answer, diagnostics = execute_bounded_query(
+        store,
+        run_id,
+        documents,
+        _sentences_by_document(sentences),
+        frame.question_text,
+        frame,
+    )
+
+    assert answer is not None
+    assert answer.text == content_surface.rstrip(".")
+    assert any("From: Casey Lane" in item.text for item in answer.evidence)
+    assert diagnostics["execution"]["answer_binding_reason"] == "document_scoped_drs_condition_binding"
+    identity_count = store.execute(
+        "SELECT COUNT(*) FROM identity_hypotheses WHERE source='deterministic_structural_speaker'"
+    ).fetchone()[0]
+    assert identity_count == 1
+
+
+def test_term_variants_include_doubled_consonant_past_tense() -> None:
+    assert "plan" in term_variants("planned")
+    assert "run" in term_variants("running")
+
+
+def test_structural_sender_identity_uses_latest_sender_label(
+    tmp_path: Path,
+    monkeypatch,
+) -> None:
+    first_surface = "I plan to fix alpha.py tomorrow."
+    second_surface = "I plan to fix beta.py tomorrow."
+    (tmp_path / "thread.eml").write_text(
+        f"From: Avery Stone\n{first_surface}\nFrom: Blake Reed\n{second_surface}\n",
+        encoding="utf-8",
+    )
+
+    def drs_for(surface: str, file_name: str) -> dict[str, object]:
+        return {
+            "schema_version": "chunk-drs-v2",
+            "source_id": "thread.eml",
+            "referents": [
+                {"id": "r0", "label": "I", "kind": "person", "evidence_text": "I"},
+                {"id": "r1", "label": file_name, "kind": "file_path", "evidence_text": file_name},
+            ],
+            "boxes": [
+                {"id": "b0", "kind": "asserted", "parent_id": "", "holder_referent_id": "", "evidence_text": surface}
+            ],
+            "conditions": [
+                {
+                    "id": "c0",
+                    "predicate": "plan",
+                    "box_id": "b0",
+                    "polarity": "positive",
+                    "modality": "asserted",
+                    "temporal_id": "",
+                    "arguments": [
+                        {
+                            "role": "agent",
+                            "target_kind": "referent",
+                            "target_id": "r0",
+                            "value": "",
+                            "value_type": "person",
+                            "evidence_text": "I",
+                        },
+                        {
+                            "role": "patient",
+                            "target_kind": "referent",
+                            "target_id": "r1",
+                            "value": "",
+                            "value_type": "file_path",
+                            "evidence_text": file_name,
+                        },
+                    ],
+                    "evidence_text": surface,
+                }
+            ],
+            "identity_hypotheses": [],
+            "temporal_records": [],
+        }
+
+    class MultiSenderModel:
+        def context_size(self) -> int:
+            return 4096
+
+        def cache_fingerprint(self) -> dict[str, object]:
+            return {"model_id": "fake-multi-structural-sender-drs", "context_size": 4096}
+
+        def complete_json(self, prompt: str, *, n_predict: int = 128, grammar=None, json_schema=None):
+            if first_surface in prompt:
+                drs = drs_for(first_surface, "alpha.py")
+            elif second_surface in prompt:
+                drs = drs_for(second_surface, "beta.py")
+            else:
+                surface = "From: Blake Reed" if "Blake Reed" in prompt else "From: Avery Stone"
+                drs = {
+                    "schema_version": "chunk-drs-v2",
+                    "source_id": "thread.eml",
+                    "referents": [],
+                    "boxes": [
+                        {"id": "b0", "kind": "asserted", "parent_id": "", "holder_referent_id": "", "evidence_text": surface}
+                    ],
+                    "conditions": [],
+                    "identity_hypotheses": [],
+                    "temporal_records": [],
+                }
+            return {"drs": drs, "_model_raw": "{}", "_model_elapsed_seconds": 0.01}
+
+    monkeypatch.setenv("KMD_CHUNK_DRS_CACHE_DIR", str(tmp_path / ".drs-cache"))
+    store, run_id, documents, sentences = ingest_folder(
+        tmp_path,
+        semantic_client=MultiSenderModel(),  # type: ignore[arg-type]
+        use_semantic_frames=False,
+        use_drs_semantics=True,
+    )
+    frame = QueryFrame(
+        question_text="Who plans to fix beta.py?",
+        answer_type="person",
+        answer_variables=("who",),
+        target_anchors=("beta.py",),
+        requested_relation="plans to fix",
+        relation_terms=("plan", "fix"),
+        constraints=(),
+    )
+
+    answer, _diagnostics = execute_bounded_query(
+        store,
+        run_id,
+        documents,
+        _sentences_by_document(sentences),
+        frame.question_text,
+        frame,
+    )
+
+    assert answer is not None
+    assert answer.text == "Blake Reed"
+    identity_rows = [
+        str(row[0])
+        for row in store.execute(
+            """
+            SELECT r.canonical_label
+            FROM identity_hypotheses AS h
+            JOIN referents AS r ON r.referent_id=h.left_referent_id
+            WHERE h.source='deterministic_structural_speaker'
+            ORDER BY r.canonical_label
+            """
+        ).fetchall()
+    ]
+    assert identity_rows == ["Avery Stone", "Blake Reed"]
 
 
 def test_source_anchor_provenance_reranks_structural_url_conflicts(tmp_path: Path) -> None:

@@ -23,6 +23,7 @@ from knowmoredirt.model_planner import (
     QUERY_OPERATOR_SCHEMA_POLICY,
     call_model_answer_verification,
     call_model_answer_canonicalization,
+    call_model_source_resolved_answer,
     build_answer_verification_prompt,
     build_compact_chunk_drs_prompt,
     call_model_chunk_drs,
@@ -772,6 +773,82 @@ def test_answer_canonicalization_accepts_grounded_unknown(monkeypatch) -> None:
     assert result["accepted"] is True
     assert result["answer"] == "unknown"
     assert result["evidence_span"] == "The note says no complete binding is available."
+
+
+def test_answer_canonicalization_accepts_source_grounded_deictic_rewrite(monkeypatch) -> None:
+    class CanonicalizationModel:
+        def context_size(self) -> int:
+            return 4096
+
+        def cache_fingerprint(self) -> dict[str, Any]:
+            return {"model_id": "fake-canonicalization-deictic-rewrite", "context_size": 4096}
+
+        def complete_json(self, prompt: str, *, n_predict: int = 128, grammar=None, json_schema=None):
+            assert "speaker/source identity" in prompt
+            assert "source-resolved answer" in prompt
+            return {
+                "canonical_answer": {
+                    "answer": "Drew planned to repair valve.py tomorrow, not today.",
+                    "evidence_span": "I plan to repair valve.py tomorrow, not today.",
+                    "reason": "speaker evidence grounds the deictic rewrite",
+                },
+                "_model_raw": "{}",
+                "_model_elapsed_seconds": 0.01,
+            }
+
+    monkeypatch.setattr(model_planner, "_read_cache", lambda path: None)
+    monkeypatch.setattr(model_planner, "_write_cache", lambda path, payload: None)
+
+    result = call_model_answer_canonicalization(
+        "What did the forwarded Drew message say about repairing valve.py?",
+        "I plan to repair valve.py tomorrow, not today",
+        "content_phrase",
+        [{"rel_path": "thread.eml", "text": "From: Drew Lane\nI plan to repair valve.py tomorrow, not today."}],
+        CanonicalizationModel(),  # type: ignore[arg-type]
+    )
+
+    assert result["accepted"] is True
+    assert result["answer"] == "Drew planned to repair valve.py tomorrow, not today."
+
+
+def test_source_resolved_answer_rewrites_deictic_reported_content(monkeypatch) -> None:
+    class SourceResolutionModel:
+        def context_size(self) -> int:
+            return 4096
+
+        def cache_fingerprint(self) -> dict[str, Any]:
+            return {"model_id": "fake-source-resolution-rewrite", "context_size": 4096}
+
+        def complete_json(self, prompt: str, *, n_predict: int = 128, grammar=None, json_schema=None):
+            assert "public reported answer" in prompt
+            assert "past reporting auxiliaries" in prompt
+            assert json_schema is None
+            return {
+                "source_resolved_answer": {
+                    "answer": "Taylor expected patch.py to land tomorrow.",
+                    "evidence_span": "I expect patch.py to land tomorrow.",
+                    "reason": "source identity grounds the deictic paraphrase",
+                },
+                "_model_raw": "{}",
+                "_model_elapsed_seconds": 0.01,
+            }
+
+    monkeypatch.setattr(model_planner, "_read_cache", lambda path: None)
+    monkeypatch.setattr(model_planner, "_write_cache", lambda path, payload: None)
+    monkeypatch.setenv("KMD_LOCAL_MODEL_GRAMMAR", "1")
+
+    result = call_model_source_resolved_answer(
+        "What did the forwarded Taylor message say about patch.py?",
+        "I expect patch.py to land tomorrow.",
+        "content_phrase",
+        [{"rel_path": "thread.eml", "text": "From: Taylor Quinn\nI expect patch.py to land tomorrow."}],
+        SourceResolutionModel(),  # type: ignore[arg-type]
+    )
+
+    assert result["accepted"] is True
+    assert result["answer"] == "Taylor expected patch.py to land tomorrow."
+    assert result["cache_context"]["n_predict"] == 160
+    assert result["cache_context"]["constraint_mode"] == "gbnf"
 
 
 def test_answer_canonicalization_invalid_json_is_not_request_failure(monkeypatch) -> None:

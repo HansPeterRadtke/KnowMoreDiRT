@@ -30,6 +30,7 @@ from .text import clean_extracted_value, normalize, text_quality_metrics, tokeni
 TABLE_SPLIT_RE = re.compile(r"\s*(?:\||\t)\s*")
 PROGRESS_TRUE_VALUES = {"1", "true", "yes", "on"}
 FIRST_PERSON_REFERENCE_NORMS = {"i", "me", "myself", "we", "us", "ourselves"}
+STRUCTURAL_SPEAKER_LABEL_NORMS = {"author", "from", "sender", "speaker"}
 
 
 def _progress_enabled() -> bool:
@@ -374,13 +375,17 @@ def _condition_from_deterministic_relation(relation: ExtractedRelation, evidence
     )
 
 
-def _link_labeled_turn_speaker_referents(
+def _link_first_person_referents_to_speaker_surface(
     store: DSPGStore,
     run_id: str,
     source_span_id: str,
-    sentence: Sentence,
+    speaker_surface: str,
+    evidence_surface: str,
+    *,
+    source: str,
+    confidence: float,
 ) -> int:
-    speaker, _utterance = transcript_turn_parts(sentence.text)
+    speaker = clean_extracted_value(speaker_surface)
     if not speaker:
         return 0
     context_row = store.execute(
@@ -422,7 +427,7 @@ def _link_labeled_turn_speaker_referents(
             ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
             """,
             (
-                stable_id("idh", run_id, source_span_id, "speaker_turn", speaker_ref, pronoun_ref),
+                stable_id("idh", run_id, source_span_id, source, speaker_ref, pronoun_ref),
                 run_id,
                 source_span_id,
                 context_id,
@@ -431,13 +436,41 @@ def _link_labeled_turn_speaker_referents(
                 speaker_ref,
                 pronoun_ref,
                 "coreference",
-                sentence.text,
-                0.9,
-                "deterministic_speaker_turn",
+                evidence_surface,
+                confidence,
+                source,
             ),
         )
         inserted += 1
     return inserted
+
+
+def _link_labeled_turn_speaker_referents(
+    store: DSPGStore,
+    run_id: str,
+    source_span_id: str,
+    sentence: Sentence,
+) -> int:
+    speaker, _utterance = transcript_turn_parts(sentence.text)
+    return _link_first_person_referents_to_speaker_surface(
+        store,
+        run_id,
+        source_span_id,
+        speaker,
+        sentence.text,
+        source="deterministic_speaker_turn",
+        confidence=0.9,
+    )
+
+
+def _structural_speaker_surface_from_relations(relations: list[ExtractedRelation]) -> str:
+    for relation in relations:
+        if relation.relation_type != "label_value" or not relation.value:
+            continue
+        label_norm = normalize(relation.subject or relation.predicate)
+        if label_norm in STRUCTURAL_SPEAKER_LABEL_NORMS:
+            return clean_extracted_value(relation.value)
+    return ""
 
 
 def _scan_unit_max_chars(semantic_client: Any | None) -> int:
@@ -471,6 +504,8 @@ def _ingest_model_drs_for_sentence(
     semantic_total: int,
     ingest_started: float,
     refresh_empty_compact_legacy: bool = False,
+    structural_speaker_surface: str = "",
+    structural_speaker_evidence: str = "",
 ) -> int:
     semantic_index += 1
     if _skip_model_semantics_for_quality(text_quality_metrics(sentence.text), sentence.text):
@@ -586,12 +621,29 @@ def _ingest_model_drs_for_sentence(
         )
         if materialized.get("accepted"):
             linked_speakers = _link_labeled_turn_speaker_referents(store, run_id, span_id, sentence)
+            linked_structural_speakers = _link_first_person_referents_to_speaker_surface(
+                store,
+                run_id,
+                span_id,
+                structural_speaker_surface,
+                structural_speaker_evidence,
+                source="deterministic_structural_speaker",
+                confidence=0.84,
+            )
             if linked_speakers:
                 materialized = {
                     **materialized,
                     "inserted": {
                         **dict(materialized.get("inserted") or {}),
                         "speaker_turn_identity_hypotheses": linked_speakers,
+                    },
+                }
+            if linked_structural_speakers:
+                materialized = {
+                    **materialized,
+                    "inserted": {
+                        **dict(materialized.get("inserted") or {}),
+                        "structural_speaker_identity_hypotheses": linked_structural_speakers,
                     },
                 }
     store.execute(
@@ -788,6 +840,7 @@ def ingest_folder(
     table_headers_by_document: dict[str, list[str]] = {}
     section_anchor_by_document: dict[str, str] = {}
     section_group_by_document: dict[str, str] = {}
+    structural_speaker_by_document: dict[str, tuple[str, str]] = {}
     semantic_passes = int(bool(use_semantic_frames and semantic_client is not None)) + int(
         bool(use_drs_semantics and semantic_client is not None)
     )
@@ -903,6 +956,10 @@ def ingest_folder(
                 ]
         if not is_structural_heading:
             pending_label_heading = _label_heading_value_from_relations(sentence.text, deterministic_relations)
+        structural_speaker_surface = _structural_speaker_surface_from_relations(deterministic_relations)
+        if structural_speaker_surface:
+            structural_speaker_by_document[sentence.document_id] = (structural_speaker_surface, sentence.text)
+        active_structural_speaker = structural_speaker_by_document.get(sentence.document_id, ("", ""))
 
         temporal_values = [
             relation.value
@@ -1159,6 +1216,8 @@ def ingest_folder(
                         semantic_total,
                         ingest_started,
                         refresh_empty_compact_legacy=refresh_empty_compact_legacy,
+                        structural_speaker_surface=active_structural_speaker[0],
+                        structural_speaker_evidence=f"{active_structural_speaker[1]}\n{sentence.text}".strip(),
                     )
                 continue
             replaced_frames = {}
@@ -1204,6 +1263,8 @@ def ingest_folder(
                         semantic_total,
                         ingest_started,
                         refresh_empty_compact_legacy=refresh_empty_compact_legacy,
+                        structural_speaker_surface=active_structural_speaker[0],
+                        structural_speaker_evidence=f"{active_structural_speaker[1]}\n{sentence.text}".strip(),
                     )
                 continue
             _log_progress(
@@ -1498,6 +1559,8 @@ def ingest_folder(
                 semantic_total,
                 ingest_started,
                 refresh_empty_compact_legacy=refresh_empty_compact_legacy,
+                structural_speaker_surface=active_structural_speaker[0],
+                structural_speaker_evidence=f"{active_structural_speaker[1]}\n{sentence.text}".strip(),
             )
 
     metrics = {

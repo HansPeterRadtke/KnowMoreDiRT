@@ -71,6 +71,17 @@ DISCOURSE_SCOPE_LINK_TERMS = {
     "under",
     "within",
 }
+SOURCE_SCOPE_NOUN_TERMS = {"email", "letter", "memo", "message", "note", "quote", "report", "thread"}
+IDENTITY_SINGLE_TOKEN_SKIP_TERMS = {
+    *ANSWER_SLOT_SKIP_TERMS,
+    *DISCOURSE_SCOPE_LINK_TERMS,
+    *SOURCE_SCOPE_NOUN_TERMS,
+    "argument",
+    "condition",
+    "context",
+    "predicate",
+    "relation",
+}
 COUNT_AGGREGATION_SKIP_TERMS = {
     "count",
     "counts",
@@ -398,6 +409,10 @@ def _answer_slot_terms(frame: QueryFrame, target_terms: list[str] | None = None)
     terms: list[str] = []
     target_tokens = _target_token_variants(target_terms)
     requested_tokens = set(content_tokens(frame.requested_relation))
+    requested_token_variants: set[str] = set()
+    for requested_token in requested_tokens:
+        requested_token_variants.update(_morphology_keys(requested_token))
+        requested_token_variants.update(expand_terms([requested_token]))
 
     def is_scope_carrier(tokens: list[str]) -> bool:
         if not tokens:
@@ -413,7 +428,9 @@ def _answer_slot_terms(frame: QueryFrame, target_terms: list[str] | None = None)
         for token in content_tokens(variable):
             if token in ANSWER_SLOT_SKIP_TERMS:
                 continue
-            if token in requested_tokens:
+            token_variants = set(expand_terms([token]))
+            token_variants.update(_morphology_keys(token))
+            if token in requested_tokens or token_variants.intersection(requested_token_variants):
                 continue
             if target_tokens and any(variant in target_tokens for variant in expand_terms([token])):
                 continue
@@ -459,7 +476,11 @@ def _answer_slot_constraints(
             if token in DISCOURSE_SCOPE_LINK_TERMS:
                 continue
             token_variants = expand_terms([token])
-            if target_tokens and any(variant in target_tokens for variant in token_variants):
+            if (
+                token not in SOURCE_SCOPE_NOUN_TERMS
+                and target_tokens
+                and any(variant in target_tokens for variant in token_variants)
+            ):
                 continue
             if token not in tokens:
                 tokens.append(token)
@@ -1141,8 +1162,6 @@ def _identity_expansion(
         term for term in normalized_terms
         if " " in term or "_" in term or "-" in term or "/" in term or "." in term
     ]
-    if not seed_terms:
-        return [], []
     seed_token_sets = [_normalized_token_set(term) for term in seed_terms]
     for referent_id, row in referents.items():
         label_norm = normalize(str(row.get("canonical_label") or row.get("canonical_label_norm") or ""))
@@ -1152,6 +1171,36 @@ def _identity_expansion(
             for term, term_tokens in zip(seed_terms, seed_token_sets)
         ):
             seed_ids.add(referent_id)
+    edge_referent_ids = {
+        str(hypothesis.get(key) or "")
+        for hypothesis in records.get("identity_hypotheses", [])
+        for key in ("left_referent_id", "right_referent_id")
+        if str(hypothesis.get(key) or "")
+    }
+    single_token_terms = [
+        term
+        for term in normalized_terms
+        if term
+        and term not in IDENTITY_SINGLE_TOKEN_SKIP_TERMS
+        and " " not in term
+        and "_" not in term
+        and "-" not in term
+        and "/" not in term
+        and "." not in term
+    ]
+    for term in single_token_terms:
+        matched_ids: list[str] = []
+        for referent_id, row in referents.items():
+            if referent_id not in edge_referent_ids:
+                continue
+            label_norm = normalize(str(row.get("canonical_label") or row.get("canonical_label_norm") or ""))
+            label_tokens = _normalized_token_set(label_norm)
+            if not label_tokens:
+                continue
+            if label_norm == term or term in label_tokens:
+                matched_ids.append(referent_id)
+        if matched_ids and len(set(matched_ids)) <= 4:
+            seed_ids.update(matched_ids)
     if not seed_ids:
         return [], []
     expanded: list[str] = []
@@ -1174,13 +1223,13 @@ def _identity_expansion(
                 edge_id = str(hypothesis.get("hypothesis_id") or f"{left}->{right}")
                 if edge_id not in seen_edges:
                     seen_edges.add(edge_id)
-                    expansion_evidence.append(_evidence_for_span(str(hypothesis.get("source_span_id") or ""), records))
+                    expansion_evidence.append(_identity_hypothesis_evidence(hypothesis, records))
             if right in frontier and left and left not in visited:
                 next_frontier.add(left)
                 edge_id = str(hypothesis.get("hypothesis_id") or f"{right}->{left}")
                 if edge_id not in seen_edges:
                     seen_edges.add(edge_id)
-                    expansion_evidence.append(_evidence_for_span(str(hypothesis.get("source_span_id") or ""), records))
+                    expansion_evidence.append(_identity_hypothesis_evidence(hypothesis, records))
         if not next_frontier:
             break
         visited.update(next_frontier)
@@ -1195,6 +1244,41 @@ def _identity_expansion(
                 expanded.append(label_norm.replace(" ", "_"))
                 expanded.append(label_norm.replace(" ", "-"))
     return list(dict.fromkeys(term for term in expanded if term)), _dedupe_evidence(expansion_evidence)
+
+
+def _identity_terms_for_binding(terms: list[str]) -> list[str]:
+    values: list[str] = []
+    for term in terms:
+        term_norm = normalize(term)
+        if not term_norm:
+            continue
+        if term_norm in UNRESOLVED_PRONOUN_ANSWER_VALUES:
+            continue
+        if len(term_norm) <= 1:
+            continue
+        values.append(term)
+    return list(dict.fromkeys(values))
+
+
+def _identity_hypothesis_evidence(hypothesis: dict[str, Any], records: dict[str, Any]) -> Evidence:
+    base = _evidence_for_span(str(hypothesis.get("source_span_id") or ""), records)
+    evidence_text = clean_extracted_value(str(hypothesis.get("evidence") or ""))
+    if not evidence_text:
+        return base
+    try:
+        score = max(base.score, float(hypothesis.get("confidence") or 0.0))
+    except (TypeError, ValueError):
+        score = base.score
+    return Evidence(
+        base.rel_path,
+        evidence_text,
+        score,
+        span_id=base.span_id,
+        chunk_order=base.chunk_order,
+        char_start=base.char_start,
+        char_end=base.char_end,
+        source_kind=base.source_kind,
+    )
 
 
 def _evidence_for_span(span_id: str, records: dict[str, Any]) -> Evidence:
@@ -2192,6 +2276,11 @@ def _drs_condition_argument_values(
                 continue
         if target_arg_ids and expected.answer_type in {"content_phrase", "unknown", "metadata_value"}:
             complement_args = [arg for arg in raw_args if id(arg) not in target_arg_ids]
+            complement_args = [
+                arg
+                for arg in complement_args
+                if not _drs_argument_is_unmatched_content_holder(arg, records, frame, target_terms)
+            ]
             if answer_slot_terms:
                 slot_args = [
                     arg for arg in complement_args
@@ -2223,11 +2312,96 @@ def _drs_condition_argument_values(
         for arg in raw_args:
             if id(arg) in candidate_arg_ids:
                 continue
+            if (
+                expected.answer_type in {"content_phrase", "unknown", "metadata_value"}
+                and _drs_argument_is_unmatched_content_holder(arg, records, frame, target_terms)
+            ):
+                continue
             arg_values = _drs_argument_surface_values(arg, records, frame)
             if not _drs_argument_matches_requested_clause(arg_values, target_terms, relation_terms):
                 continue
             append_surface_values(arg_values, negated=negated)
     return values
+
+
+def _drs_argument_is_unmatched_content_holder(
+    arg: dict[str, Any],
+    records: dict[str, Any],
+    frame: QueryFrame | None,
+    target_terms: list[str],
+) -> bool:
+    holder_roles = {"agent", "author", "holder", "reporter", "source", "speaker"}
+    material = _drs_argument_role_material(arg)
+    value_type = normalize(str(arg.get("value_type") or ""))
+    if not (
+        any(_has_term(material, role) for role in holder_roles)
+        or value_type in {"actor", "organization", "person"}
+    ):
+        return False
+    if target_terms and _argument_values_match_target(_drs_argument_surface_values(arg, records, frame), target_terms):
+        return False
+    return True
+
+
+def _drs_condition_has_unmatched_content_holder(
+    raw_args: list[dict[str, Any]],
+    records: dict[str, Any],
+    frame: QueryFrame | None,
+    target_terms: list[str],
+) -> bool:
+    return any(_drs_argument_is_unmatched_content_holder(arg, records, frame, target_terms) for arg in raw_args)
+
+
+def _complete_drs_content_phrase_values(
+    row: dict[str, Any],
+    evidence: Evidence,
+    records: dict[str, Any] | None,
+    frame: QueryFrame | None,
+    target_terms: list[str],
+    relation_terms: list[str],
+    primary_values: list[str],
+) -> list[str]:
+    if not records or not primary_values:
+        return primary_values
+    conditions = _drs_conditions_for_relation(row, records)
+    if not conditions:
+        return primary_values
+    args_by_condition = _drs_arguments_by_condition_id(records)
+    surfaces: list[str] = []
+    for condition in conditions:
+        raw_args = args_by_condition.get(str(condition.get("drs_condition_id") or ""), [])
+        if _drs_condition_has_unmatched_content_holder(raw_args, records, frame, target_terms):
+            continue
+        if not any(_drs_argument_matches_requested_clause([value], target_terms, relation_terms) for value in primary_values):
+            continue
+        condition_surface = clean_extracted_value(str(condition.get("evidence_surface") or ""))
+        row_surface = clean_extracted_value(str(row.get("value") or ""))
+        source_surface = clean_extracted_value(evidence.text)
+        if source_surface:
+            source_norm = normalize(source_surface)
+            if any(
+                candidate
+                and source_norm.startswith(normalize(candidate))
+                and normalize(candidate) != source_norm
+                for candidate in [condition_surface, row_surface]
+            ):
+                surfaces.append(source_surface)
+        surfaces.extend([condition_surface, row_surface])
+    completed: list[str] = []
+    primary_norms = [normalize(value) for value in primary_values if normalize(value)]
+    for surface in surfaces:
+        surface = clean_extracted_value(surface)
+        surface_norm = normalize(surface)
+        if not surface or not surface_norm:
+            continue
+        if not any(primary_norm and primary_norm in surface_norm for primary_norm in primary_norms):
+            continue
+        for value in _drs_argument_answer_values(surface, ExpectedAnswer("content_phrase"), target_terms, relation_terms):
+            if value and value not in completed:
+                completed.append(value)
+    if completed:
+        return [max(completed, key=lambda value: (len(normalize(value)), len(value)))]
+    return primary_values
 
 
 def _drs_argument_answer_values(
@@ -2709,8 +2883,31 @@ def _answer_values_from_relation(
             answer_slot_terms,
             query_frame,
         )
+        if primary_values and expected.answer_type == "content_phrase":
+            primary_values = _complete_drs_content_phrase_values(
+                row,
+                evidence,
+                records,
+                query_frame,
+                target_terms,
+                relation_terms,
+                primary_values,
+            )
         if not primary_values and expected.answer_type in {"content_phrase", "unknown"}:
-            primary_values = [str(row.get("value") or "")]
+            allow_row_value_fallback = True
+            if expected.answer_type == "content_phrase" and records is not None:
+                args_by_condition = _drs_arguments_by_condition_id(records)
+                allow_row_value_fallback = not any(
+                    _drs_condition_has_unmatched_content_holder(
+                        args_by_condition.get(str(condition.get("drs_condition_id") or ""), []),
+                        records,
+                        query_frame,
+                        target_terms,
+                    )
+                    for condition in _drs_conditions_for_relation(row, records)
+                )
+            if allow_row_value_fallback:
+                primary_values = [str(row.get("value") or "")]
     else:
         primary_values = [str(row.get(key) or "") for key in ["value", "object"]]
         subject_value = str(row.get("subject") or "")
@@ -3162,6 +3359,60 @@ def _document_context_target_document_ids(records: dict[str, Any], target_terms:
     return document_ids
 
 
+def _document_scope_markers_allow_candidate(
+    records: dict[str, Any],
+    span_id: str,
+    row_material: str,
+    relation_terms: list[str],
+    target_terms: list[str],
+) -> bool:
+    spans = _spans_by_id(records)
+    chunks = _chunks_by_id(records)
+    candidate_span = spans.get(span_id, {})
+    document_id = str(candidate_span.get("document_id") or "")
+    if not document_id:
+        return True
+    try:
+        candidate_order = int(chunks.get(str(candidate_span.get("chunk_id") or ""), {}).get("chunk_order"))
+    except (TypeError, ValueError):
+        return True
+    target_tokens = _target_token_variants(target_terms)
+    marker_terms: list[str] = []
+    for term in relation_terms:
+        for token in content_tokens(term):
+            if token in ANSWER_SLOT_SKIP_TERMS or token in DISCOURSE_SCOPE_LINK_TERMS:
+                continue
+            token_variants = expand_terms([token])
+            if (
+                token not in SOURCE_SCOPE_NOUN_TERMS
+                and target_tokens
+                and any(variant in target_tokens for variant in token_variants)
+            ):
+                continue
+            if any(_has_term(row_material, variant) for variant in token_variants):
+                continue
+            marker_terms.extend(token_variants)
+    marker_terms = list(dict.fromkeys(term for term in marker_terms if term))
+    if not marker_terms:
+        return True
+    for marker_term in marker_terms:
+        marker_orders: list[int] = []
+        for span in records.get("source_spans", []):
+            if str(span.get("document_id") or "") != document_id:
+                continue
+            span_material = normalize(str(span.get("surface") or ""))
+            if not _has_term(span_material, marker_term):
+                continue
+            chunk = chunks.get(str(span.get("chunk_id") or ""), {})
+            try:
+                marker_orders.append(int(chunk.get("chunk_order")))
+            except (TypeError, ValueError):
+                continue
+        if marker_orders and not any(order <= candidate_order for order in marker_orders):
+            return False
+    return True
+
+
 def _rows_document_id(rows: list[dict[str, Any]], records: dict[str, Any]) -> str:
     spans = _spans_by_id(records)
     document_ids = {
@@ -3319,6 +3570,7 @@ def _document_scoped_drs_condition_candidates(
         return []
     spans = _spans_by_id(records)
     answer_slot_terms = _answer_slot_terms(frame, target_terms)
+    relation_only_terms = _relation_terms_without_answer_slot_terms(relation_terms, answer_slot_terms, target_terms)
     scoped_candidates: list[tuple[float, str, Evidence, str, str]] = []
     for row in records.get("relations", []):
         if str(row.get("relation_type") or "") != "drs_condition":
@@ -3333,12 +3585,22 @@ def _document_scoped_drs_condition_candidates(
         if _source_is_low_priority(evidence.rel_path, evidence.text) and not _structured_source_row(row):
             continue
         row_material = _relation_selector_material(row, evidence, include_evidence=False)
-        if not _document_scoped_row_selector_matches(
+        row_selector_matches = _document_scoped_row_selector_matches(
             row_material,
             relation_terms,
             answer_slot_terms,
             target_terms,
-        ):
+        )
+        if not row_selector_matches:
+            row_selector_matches = _document_scoped_row_selector_matches(
+                row_material,
+                relation_only_terms,
+                [],
+                target_terms,
+            )
+        if not row_selector_matches:
+            continue
+        if not _document_scope_markers_allow_candidate(records, span_id, row_material, relation_terms, target_terms):
             continue
         for value in _answer_values_from_relation(
             row,
@@ -5120,7 +5382,10 @@ def execute_bounded_query(
             break
         identity_expansion_rounds += 1
         identity_expanded_terms = list(dict.fromkeys([*identity_expanded_terms, *new_identity_terms]))
-        target_terms = list(dict.fromkeys([*target_terms, *new_identity_terms]))
+        binding_identity_terms = _identity_terms_for_binding(new_identity_terms)
+        if not binding_identity_terms:
+            break
+        target_terms = list(dict.fromkeys([*target_terms, *binding_identity_terms]))
         ranking["identity_expanded_target_terms"] = identity_expanded_terms[:32]
         expanded_frame = replace(
             frame,

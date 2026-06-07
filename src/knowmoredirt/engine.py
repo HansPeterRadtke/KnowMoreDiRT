@@ -37,6 +37,7 @@ from .model_planner import (
     call_model_identity_canonicalization,
     call_model_query_drs,
     call_model_query_evidence_answer,
+    call_model_source_resolved_answer,
     chunk_frame_cache_context,
     query_frame_from_query_drs,
 )
@@ -48,6 +49,23 @@ from .text import clean_extracted_value, content_tokens, is_low_semantic_noise, 
 
 
 PROGRESS_TRUE_VALUES = {"1", "true", "yes", "on"}
+SOURCE_DEICTIC_TOKENS = {
+    "i",
+    "me",
+    "my",
+    "mine",
+    "myself",
+    "we",
+    "us",
+    "our",
+    "ours",
+    "ourselves",
+    "you",
+    "your",
+    "yours",
+    "yourself",
+    "yourselves",
+}
 TRUSTED_STRUCTURAL_BINDING_REASONS = {
     "direct_label_slot_binding",
     "document_scoped_label_binding",
@@ -348,6 +366,7 @@ class KnowMoreDiRTEngine:
         expected_type = answer.answer_type if answer.answer_type not in {"", "unknown"} else classify_value(answer.text)
         expected = ExpectedAnswer(expected_type)  # type: ignore[arg-type]
         cleaned = self._cleanup_canonical_answer(answer.text, expected)
+        cleaned = self._restore_sentence_terminal_punctuation(cleaned, answer.text, expected, answer.evidence)
         if cleaned and cleaned != answer.text:
             original = str(answer.text or "").strip()
             if original and original[-1] in ".!?" and cleaned == original[:-1].strip():
@@ -504,6 +523,10 @@ class KnowMoreDiRTEngine:
                 inferred_type = answer.answer_type if answer.answer_type not in {"", "unknown"} else classify_value(proposed)
                 if inferred_type != "unknown":
                     canonical_expected = ExpectedAnswer(inferred_type)  # type: ignore[arg-type]
+            if normalize(candidate_answer) != normalize(answer.text) and normalize(proposed) != normalize(candidate_answer):
+                candidate_canonical = canonicalize_answer(canonical_expected, candidate_answer)
+                if candidate_canonical:
+                    proposed = candidate_answer
             canonical = canonicalize_answer(canonical_expected, proposed)
             if not canonical:
                 trace.verifier_rejected_count += 1
@@ -1978,13 +2001,21 @@ class KnowMoreDiRTEngine:
             "will",
             "would",
         }
-        if not any(word in finite_or_modal for word in low_words[1:]):
-            return value
         source_norm = normalize(str(source_value or "").strip(" .;:!?"))
         value_norm = normalize(value.strip(" .;:!?"))
         if not source_norm and not value_norm:
             return value
-        for evidence_text in self._terminal_punctuation_evidence_texts(evidence):
+        evidence_texts = self._terminal_punctuation_evidence_texts(evidence)
+        for evidence_text in evidence_texts:
+            if evidence_text[-1] in ".!?" and value_norm == normalize(evidence_text.strip(" .;:!?")):
+                return value + evidence_text[-1]
+        has_sentence_predicate = any(
+            word in finite_or_modal or word.endswith(("ed", "ing"))
+            for word in low_words[1:]
+        )
+        if not has_sentence_predicate:
+            return value
+        for evidence_text in evidence_texts:
             if evidence_text[-1] not in ".!?":
                 continue
             evidence_norm = normalize(evidence_text.strip(" .;:!?"))
@@ -1993,9 +2024,20 @@ class KnowMoreDiRTEngine:
             if value_norm and value_norm in evidence_norm:
                 return value + evidence_text[-1]
             value_terms = content_tokens(value)
-            evidence_terms = set(content_tokens(evidence_text))
-            if len(value_terms) >= 3 and all(term in evidence_terms for term in value_terms):
+            evidence_terms: set[str] = set()
+            for term in content_tokens(evidence_text):
+                evidence_terms.update(term_variants(term))
+            if len(value_terms) >= 3 and all(term_variants(term) & evidence_terms for term in value_terms):
                 return value + evidence_text[-1]
+        terminal = next((text[-1] for text in evidence_texts if text and text[-1] in ".!?"), "")
+        if terminal:
+            value_terms = content_tokens(value)
+            combined_terms: set[str] = set()
+            for evidence_text in evidence_texts:
+                for term in content_tokens(evidence_text):
+                    combined_terms.update(term_variants(term))
+            if len(value_terms) >= 3 and all(term_variants(term) & combined_terms for term in value_terms):
+                return value + terminal
         return value
 
     def _terminal_punctuation_evidence_texts(self, evidence: list[Evidence]) -> list[str]:
@@ -2040,6 +2082,14 @@ class KnowMoreDiRTEngine:
         evidence_payload = self._evidence_payload(evidence, limit=6)
         if not evidence_payload:
             return value
+        source_resolved = self._source_resolve_model_answer_with_local_model(
+            question,
+            value,
+            expected,
+            evidence_payload,
+        )
+        if source_resolved and normalize(source_resolved) != normalize(value):
+            return source_resolved
         trace = self.model_query_trace
         trace.canonicalization_call_count += 1
         result = call_model_answer_canonicalization(
@@ -2067,6 +2117,51 @@ class KnowMoreDiRTEngine:
             return value
         trace.canonicalization_accepted_count += 1
         return canonical
+
+    def _source_resolve_model_answer_with_local_model(
+        self,
+        question: str,
+        value: str,
+        expected: ExpectedAnswer,
+        evidence_payload: list[dict[str, str]],
+    ) -> str:
+        if self._model_client is None:
+            return value
+        if expected.answer_type not in {"content_phrase", "state", "metadata_value"}:
+            return value
+        if not self._answer_has_source_deictic_terms(value):
+            return value
+        trace = self.model_query_trace
+        trace.canonicalization_call_count += 1
+        result = call_model_source_resolved_answer(
+            question,
+            value,
+            expected.answer_type,
+            evidence_payload,
+            self._model_client,
+        )
+        self._record_model_result(result)
+        if result.get("prompt_hash"):
+            trace.prompt_hashes = [*list(trace.prompt_hashes or []), str(result["prompt_hash"])][-20:]
+        if result.get("output_hash"):
+            trace.response_hashes = [*list(trace.response_hashes or []), str(result["output_hash"])][-20:]
+        if not result.get("accepted"):
+            trace.canonicalization_rejected_count += 1
+            return value
+        proposed = str(result.get("answer") or "")
+        if normalize(proposed) == "unknown":
+            trace.canonicalization_accepted_count += 1
+            return "unknown"
+        canonical = canonicalize_answer(expected, proposed)
+        if not canonical:
+            trace.canonicalization_rejected_count += 1
+            return value
+        trace.canonicalization_accepted_count += 1
+        return canonical
+
+    def _answer_has_source_deictic_terms(self, value: str) -> bool:
+        tokens = [token.lower().strip(".,;:!?()[]{}\"'`") for token in re.findall(r"[A-Za-z]+", value or "")]
+        return any(token in SOURCE_DEICTIC_TOKENS for token in tokens)
 
     def _search(self, question: str, limit: int = 12, required: list[str] | None = None) -> list[tuple[Sentence, float]]:
         frame = plan_question(question)

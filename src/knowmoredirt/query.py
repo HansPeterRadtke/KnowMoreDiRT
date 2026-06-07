@@ -200,6 +200,8 @@ def term_variants(term: str) -> set[str]:
             if suffix == "ies":
                 stem = f"{stem}y"
             variants.add(stem)
+            if suffix in {"ing", "ed"} and len(stem) > 2 and stem[-1:] == stem[-2:-1]:
+                variants.add(stem[:-1])
             if suffix == "ed" and stem and not stem.endswith("e"):
                 variants.add(f"{stem}e")
     return {value for value in variants if len(value) > 1}
