@@ -2049,6 +2049,23 @@ def _drs_argument_matches_expected_type(arg: dict[str, Any], expected: ExpectedA
     return False
 
 
+def _drs_argument_is_answer_value_carrier(arg: dict[str, Any], expected: ExpectedAnswer) -> bool:
+    role = normalize(str(arg.get("role") or ""))
+    target_kind = normalize(str(arg.get("target_kind") or ""))
+    value_type = normalize(str(arg.get("value_type") or ""))
+    if role == "value" or target_kind == "literal" or value_type in {
+        "value",
+        "literal",
+        "identifier",
+        "url",
+        "file_path",
+        "date_time",
+        "count",
+    }:
+        return True
+    return _drs_argument_matches_expected_type(arg, expected)
+
+
 def _select_drs_answer_arguments(
     args: list[dict[str, Any]],
     expected: ExpectedAnswer,
@@ -2120,6 +2137,19 @@ def _drs_condition_argument_values(
             condition_added += append_surface_values(arg_values, negated=negated)
         if condition_added:
             continue
+        if candidate_args:
+            candidate_arg_ids = {id(arg) for arg in candidate_args}
+            for arg in raw_args:
+                if id(arg) in candidate_arg_ids or id(arg) in target_arg_ids:
+                    continue
+                if not _drs_argument_is_answer_value_carrier(arg, expected):
+                    continue
+                condition_added += append_surface_values(
+                    _drs_argument_surface_values(arg, records, frame),
+                    negated=negated,
+                )
+            if condition_added:
+                continue
         if target_arg_ids and expected.answer_type in {"content_phrase", "unknown", "metadata_value"}:
             complement_args = [arg for arg in raw_args if id(arg) not in target_arg_ids]
             if answer_slot_terms:
@@ -3108,6 +3138,30 @@ def _document_scoped_row_selector_matches(
     return _contains_any(material, list(dict.fromkeys(compound_terms)))
 
 
+def _relation_terms_without_answer_slot_terms(
+    relation_terms: list[str],
+    answer_slot_terms: list[str],
+    target_terms: list[str],
+) -> list[str]:
+    if not answer_slot_terms:
+        return relation_terms
+    slot_tokens: set[str] = set()
+    for term in answer_slot_terms:
+        slot_tokens.update(_normalized_token_set(normalize(term)))
+    values: list[str] = []
+    for term in relation_terms:
+        term_norm = normalize(term)
+        if not term_norm:
+            continue
+        term_tokens = _normalized_token_set(term_norm)
+        if term_tokens and term_tokens.issubset(slot_tokens):
+            continue
+        if _answer_slot_label_matches(term_norm, answer_slot_terms, target_terms):
+            continue
+        values.append(term)
+    return list(dict.fromkeys(values))
+
+
 def _document_scoped_structural_row_candidates(
     records: dict[str, Any],
     frame: QueryFrame,
@@ -3186,11 +3240,12 @@ def _document_scoped_drs_condition_candidates(
     relation_terms: list[str],
 ) -> list[tuple[float, str, Evidence, str]]:
     target_document_ids = _document_context_target_document_ids(records, target_terms)
-    if len(target_document_ids) != 1:
+    if not target_document_ids:
         return []
-    target_document_id = next(iter(target_document_ids))
+    require_relation_predicate = len(target_document_ids) > 1
     spans = _spans_by_id(records)
     answer_slot_terms = _answer_slot_terms(frame, target_terms)
+    relation_only_terms = _relation_terms_without_answer_slot_terms(relation_terms, answer_slot_terms, target_terms)
     candidates: list[tuple[float, str, Evidence, str]] = []
     for row in records.get("relations", []):
         if str(row.get("relation_type") or "") != "drs_condition":
@@ -3198,12 +3253,14 @@ def _document_scoped_drs_condition_candidates(
         if not _relation_scope_accessible(row, records, frame):
             continue
         span_id = str(row.get("source_span_id") or "")
-        if str(spans.get(span_id, {}).get("document_id") or "") != target_document_id:
+        if str(spans.get(span_id, {}).get("document_id") or "") not in target_document_ids:
             continue
         evidence = _evidence_for_span(span_id, records)
         if _source_is_low_priority(evidence.rel_path, evidence.text) and not _structured_source_row(row):
             continue
-        row_material = _relation_selector_material(row, evidence, include_evidence=True)
+        row_material = _relation_selector_material(row, evidence, include_evidence=False)
+        if require_relation_predicate and relation_only_terms and not _contains_any(row_material, relation_only_terms):
+            continue
         if not _document_scoped_row_selector_matches(
             row_material,
             relation_terms,
@@ -3245,8 +3302,10 @@ def _document_scoped_relation_value_candidates(
     require_slot_aligned_identifier = len(target_document_ids) > 1
     if require_slot_aligned_identifier and expected.answer_type != "identifier":
         return []
+    require_relation_predicate = len(target_document_ids) > 1
     spans = _spans_by_id(records)
     answer_slot_terms = _answer_slot_terms(frame, target_terms)
+    relation_only_terms = _relation_terms_without_answer_slot_terms(relation_terms, answer_slot_terms, target_terms)
     candidates: list[tuple[float, str, Evidence, str]] = []
     for row in records.get("relations", []):
         relation_type = str(row.get("relation_type") or "")
@@ -3262,6 +3321,8 @@ def _document_scoped_relation_value_candidates(
             continue
         local_material = _relation_selector_material(row, evidence, include_evidence=True)
         if not _target_anchor_groups_covered(local_material, frame, target_terms):
+            continue
+        if require_relation_predicate and relation_only_terms and not _contains_any(local_material, relation_only_terms):
             continue
         row_material = _relation_selector_material(row, evidence, include_evidence=False)
         row_selector_matches = _document_scoped_row_selector_matches(

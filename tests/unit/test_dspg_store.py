@@ -928,6 +928,252 @@ def test_document_scoped_drs_condition_binds_value_from_answer_slot(tmp_path: Pa
     }
 
 
+def test_document_scoped_drs_condition_binds_literal_value_for_slot_class(tmp_path: Path) -> None:
+    target_surface = "Mira Vale opened the silver relay issue."
+    value_surface = "The issue names support ticket SUP-1207 and says customer requested a refund."
+    distractor_surface = "The silver relay issue confirms support ticket SUP-9999."
+    (tmp_path / "issue.txt").write_text(
+        f"{target_surface}\n{value_surface}\n",
+        encoding="utf-8",
+    )
+    (tmp_path / "audit.txt").write_text(distractor_surface + "\n", encoding="utf-8")
+
+    store, run_id, documents, sentences = ingest_folder(tmp_path)
+    for surface, payload in [
+        (
+            target_surface,
+            {
+                "referents": [
+                    {"id": "r0", "label": "Mira Vale", "kind": "person", "evidence_text": "Mira Vale"},
+                    {
+                        "id": "r1",
+                        "label": "silver relay issue",
+                        "kind": "artifact",
+                        "evidence_text": "silver relay issue",
+                    },
+                ],
+                "conditions": [
+                    {
+                        "id": "c0",
+                        "box_id": "b0",
+                        "predicate": "opened",
+                        "polarity": "positive",
+                        "modality": "asserted",
+                        "temporal_id": "",
+                        "evidence_text": target_surface,
+                        "arguments": [
+                            {
+                                "role": "agent",
+                                "target_kind": "referent",
+                                "target_id": "r0",
+                                "value": "",
+                                "value_type": "person",
+                                "evidence_text": "Mira Vale",
+                            },
+                            {
+                                "role": "patient",
+                                "target_kind": "referent",
+                                "target_id": "r1",
+                                "value": "",
+                                "value_type": "artifact",
+                                "evidence_text": "silver relay issue",
+                            },
+                        ],
+                    }
+                ],
+            },
+        ),
+        (
+            value_surface,
+            {
+                "referents": [
+                    {"id": "r0", "label": "issue", "kind": "artifact", "evidence_text": "issue"},
+                    {
+                        "id": "r1",
+                        "label": "support ticket",
+                        "kind": "field",
+                        "evidence_text": "support ticket",
+                    },
+                    {"id": "r2", "label": "refund", "kind": "item", "evidence_text": "refund"},
+                ],
+                "conditions": [
+                    {
+                        "id": "c0",
+                        "box_id": "b0",
+                        "predicate": "names",
+                        "polarity": "positive",
+                        "modality": "asserted",
+                        "temporal_id": "",
+                        "evidence_text": "The issue names support ticket SUP-1207",
+                        "arguments": [
+                            {
+                                "role": "agent",
+                                "target_kind": "referent",
+                                "target_id": "r0",
+                                "value": "",
+                                "value_type": "artifact",
+                                "evidence_text": "issue",
+                            },
+                            {
+                                "role": "patient",
+                                "target_kind": "referent",
+                                "target_id": "r1",
+                                "value": "",
+                                "value_type": "field",
+                                "evidence_text": "support ticket",
+                            },
+                            {
+                                "role": "value",
+                                "target_kind": "literal",
+                                "target_id": "",
+                                "value": "SUP-1207",
+                                "value_type": "value",
+                                "evidence_text": "SUP-1207",
+                            },
+                        ],
+                    },
+                    {
+                        "id": "c1",
+                        "box_id": "b0",
+                        "predicate": "requested",
+                        "polarity": "positive",
+                        "modality": "asserted",
+                        "temporal_id": "",
+                        "evidence_text": "customer requested a refund",
+                        "arguments": [
+                            {
+                                "role": "agent",
+                                "target_kind": "literal",
+                                "target_id": "",
+                                "value": "customer",
+                                "value_type": "role",
+                                "evidence_text": "customer",
+                            },
+                            {
+                                "role": "patient",
+                                "target_kind": "referent",
+                                "target_id": "r2",
+                                "value": "",
+                                "value_type": "unknown",
+                                "evidence_text": "refund",
+                            },
+                        ],
+                    },
+                ],
+            },
+        ),
+        (
+            distractor_surface,
+            {
+                "referents": [
+                    {
+                        "id": "r0",
+                        "label": "silver relay issue",
+                        "kind": "artifact",
+                        "evidence_text": "silver relay issue",
+                    },
+                    {
+                        "id": "r1",
+                        "label": "support ticket",
+                        "kind": "field",
+                        "evidence_text": "support ticket",
+                    },
+                ],
+                "conditions": [
+                    {
+                        "id": "c0",
+                        "box_id": "b0",
+                        "predicate": "confirms",
+                        "polarity": "positive",
+                        "modality": "asserted",
+                        "temporal_id": "",
+                        "evidence_text": distractor_surface,
+                        "arguments": [
+                            {
+                                "role": "agent",
+                                "target_kind": "referent",
+                                "target_id": "r0",
+                                "value": "",
+                                "value_type": "artifact",
+                                "evidence_text": "silver relay issue",
+                            },
+                            {
+                                "role": "patient",
+                                "target_kind": "referent",
+                                "target_id": "r1",
+                                "value": "",
+                                "value_type": "field",
+                                "evidence_text": "support ticket",
+                            },
+                            {
+                                "role": "value",
+                                "target_kind": "literal",
+                                "target_id": "",
+                                "value": "SUP-9999",
+                                "value_type": "value",
+                                "evidence_text": "SUP-9999",
+                            },
+                        ],
+                    }
+                ],
+            },
+        ),
+    ]:
+        row = store.execute(
+            "SELECT span_id, surface FROM source_spans WHERE surface=? LIMIT 1",
+            (surface,),
+        ).fetchone()
+        assert row is not None
+        materialized = store.materialize_drs_payload(
+            run_id,
+            str(row[0]),
+            str(row[1]),
+            {
+                "drs": {
+                    "schema_version": "chunk-drs-v2",
+                    "source_id": "issue.txt",
+                    "evidence_spans": [surface],
+                    "referents": payload["referents"],
+                    "boxes": [
+                        {
+                            "id": "b0",
+                            "kind": "asserted",
+                            "parent_id": "",
+                            "holder_referent_id": "",
+                            "evidence_text": surface,
+                        }
+                    ],
+                    "conditions": payload["conditions"],
+                    "identity_hypotheses": [],
+                    "temporal_records": [],
+                }
+            },
+        )
+        assert materialized["accepted"] is True
+
+    frame = QueryFrame(
+        question_text="Which support ticket is named for the silver relay issue?",
+        answer_type="identifier",
+        answer_variables=("support ticket",),
+        target_anchors=("silver relay issue",),
+        requested_relation="named",
+        relation_terms=("named", "name", "nam", "support ticket", "answer", "argument"),
+        constraints=(),
+    )
+    answer, diagnostics = execute_bounded_query(
+        store,
+        run_id,
+        documents,
+        _sentences_by_document(sentences),
+        frame.question_text,
+        frame,
+    )
+
+    assert answer is not None
+    assert answer.text == "SUP-1207"
+    assert diagnostics["execution"]["answer_binding_reason"] == "document_scoped_drs_condition_binding"
+
+
 def test_answer_values_strip_model_answer_slot_prefix_from_structural_value() -> None:
     row = {
         "relation_type": "record_value",

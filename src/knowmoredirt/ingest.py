@@ -47,7 +47,25 @@ def _env_true(name: str) -> bool:
     return os.environ.get(name, "").strip().lower() in PROGRESS_TRUE_VALUES
 
 
-def _skip_model_semantics_for_quality(quality: dict[str, object]) -> bool:
+def _identifier_bearing_discourse_span(text: str, quality: dict[str, object]) -> bool:
+    if not (identifiers(text) or urls(text)):
+        return False
+    try:
+        token_count = int(quality.get("token_count") or 0)
+        char_count = int(quality.get("char_count") or 0)
+        symbol_ratio = float(quality.get("symbol_ratio") or 0.0)
+    except (TypeError, ValueError):
+        return False
+    return 5 <= token_count <= 40 and char_count <= 600 and symbol_ratio <= 0.18
+
+
+def _skip_model_semantics_for_quality(quality: dict[str, object], text: str = "") -> bool:
+    if (
+        str(quality.get("semantic_quality") or "") == "word_salad"
+        and not bool(quality.get("low_semantic_noise"))
+        and _identifier_bearing_discourse_span(text, quality)
+    ):
+        return False
     return bool(quality.get("low_semantic_noise")) or str(quality.get("semantic_quality") or "") in {
         "base64_or_hex_blob",
         "multilingual_word_salad",
@@ -291,7 +309,7 @@ def _grounded_model_frames(
     if semantic_client is None:
         return [], {"source": "disabled"}
     quality = text_quality_metrics(sentence.text)
-    if _skip_model_semantics_for_quality(quality):
+    if _skip_model_semantics_for_quality(quality, sentence.text):
         return [], {"source": "skipped_noise"}
     cache_context = chunk_frame_cache_context(semantic_client, rel_path=sentence.rel_path, chunk_text=sentence.text)
     cached = semantic_cache.get(sentence.text, context=cache_context) if semantic_cache else None
@@ -455,7 +473,7 @@ def _ingest_model_drs_for_sentence(
     refresh_empty_compact_legacy: bool = False,
 ) -> int:
     semantic_index += 1
-    if _skip_model_semantics_for_quality(text_quality_metrics(sentence.text)):
+    if _skip_model_semantics_for_quality(text_quality_metrics(sentence.text), sentence.text):
         _log_progress(
             "kmd-ingest drs_done "
             f"chunk={semantic_index}/{semantic_total} "
