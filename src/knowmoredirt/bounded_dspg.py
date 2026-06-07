@@ -306,6 +306,35 @@ def _target_terms(frame: QueryFrame, question: str) -> list[str]:
     return list(dict.fromkeys(values))
 
 
+def _target_anchor_term_groups(frame: QueryFrame, question: str, target_terms: list[str] | None = None) -> list[list[str]]:
+    available = set(target_terms if target_terms is not None else _target_terms(frame, question))
+    groups: list[list[str]] = []
+    seen: set[tuple[str, ...]] = set()
+    for anchor in frame.target_anchors:
+        norm = normalize(anchor)
+        if not norm:
+            continue
+        variants = [norm]
+        if " " in norm:
+            variants.extend([norm.replace(" ", "_"), norm.replace(" ", "-")])
+        variants = [variant for variant in variants if variant in available]
+        if not variants:
+            continue
+        key = tuple(variants)
+        if key in seen:
+            continue
+        seen.add(key)
+        groups.append(variants)
+    return groups
+
+
+def _target_anchor_groups_covered(material: str, frame: QueryFrame, target_terms: list[str]) -> bool:
+    groups = _target_anchor_term_groups(frame, frame.question_text, target_terms)
+    if len(groups) <= 1:
+        return True
+    return all(any(_has_term(material, term) for term in group) for group in groups)
+
+
 def _target_token_variants(target_terms: list[str] | None) -> set[str]:
     variants: set[str] = set()
     for term in target_terms or []:
@@ -1794,6 +1823,7 @@ def _relation_selector_material(
 
 RELATION_BINDING_GENERIC_TERMS = {
     *ANSWER_SLOT_SKIP_TERMS,
+    "about",
     "answer",
     "argument",
     "did",
@@ -2795,7 +2825,13 @@ def _bind_frame_conditions(records: dict[str, Any], frame: QueryFrame, expected:
                 ]
             )
         )
+        local_target_covered = _target_anchor_groups_covered(local_material, frame, target_terms)
+        if not local_target_covered:
+            continue
         score = _match_score(local_material, target_terms, relation_terms)
+        if score <= 0 and local_target_covered and not _specific_relation_terms(relation_terms, target_terms):
+            target_hits = sum(1 for term in target_terms if _has_term(local_material, term))
+            score = target_hits * 4.0 + 1.0
         if score <= 0:
             continue
         for value in _answer_values_from_frame(
@@ -2832,6 +2868,8 @@ def _bind_relation_conditions(records: dict[str, Any], frame: QueryFrame, expect
             if not _drs_condition_has_target_argument(row, records, target_terms, frame):
                 continue
         evidence_material = normalize(" ".join([row_material, evidence.rel_path, evidence.text]))
+        if not _target_anchor_groups_covered(evidence_material, frame, target_terms):
+            continue
         score = _split_match_score(evidence_material, row_material, target_terms, relation_terms)
         if score <= 0:
             continue
@@ -3092,6 +3130,8 @@ def _document_scoped_relation_value_candidates(
         if _source_is_low_priority(evidence.rel_path, evidence.text) and not _structured_source_row(row):
             continue
         local_material = _relation_selector_material(row, evidence, include_evidence=True)
+        if not _target_anchor_groups_covered(local_material, frame, target_terms):
+            continue
         row_material = _relation_selector_material(row, evidence, include_evidence=False)
         row_selector_matches = _document_scoped_row_selector_matches(
             row_material,
@@ -3415,7 +3455,9 @@ def _bind_record_groups(
         if target_terms and not _contains_any(group_material, target_terms):
             continue
         group_relation_hits = sum(1 for term in relation_terms if _has_term(group_material, term))
-        if relation_terms and group_relation_hits == 0:
+        group_target_covered = _target_anchor_groups_covered(group_material, frame, target_terms)
+        has_specific_relation_terms = bool(_specific_relation_terms(relation_terms, target_terms))
+        if relation_terms and group_relation_hits == 0 and (has_specific_relation_terms or not group_target_covered):
             continue
         target_hits = sum(1 for term in target_terms if _has_term(group_material, term))
         for row in rows:
@@ -3426,9 +3468,15 @@ def _bind_record_groups(
                 continue
             local_material = _relation_selector_material(row, evidence)
             relation_hits = sum(1 for term in relation_terms if _has_term(local_material, term))
-            if relation_terms and relation_hits == 0:
+            local_target_covered = _target_anchor_groups_covered(local_material, frame, target_terms)
+            if not local_target_covered:
                 continue
-            if not _has_specific_relation_hit(local_material, relation_terms, target_terms):
+            if relation_terms and relation_hits == 0 and (has_specific_relation_terms or not local_target_covered):
+                continue
+            if (
+                not _has_specific_relation_hit(local_material, relation_terms, target_terms)
+                and (has_specific_relation_terms or not local_target_covered)
+            ):
                 continue
             values = _answer_values_from_relation(
                 row,

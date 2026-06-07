@@ -700,6 +700,36 @@ def test_scope_marker_target_anchor_does_not_block_asserted_followup_fact(tmp_pa
     assert answer.text == "tavil arch"
 
 
+def test_generic_relation_binds_value_when_all_target_anchors_share_row(tmp_path: Path) -> None:
+    (tmp_path / "updates.log").write_text(
+        "Earlier report: blue ferry was delayed.\n"
+        "Rowan correction: blue ferry departed on time.\n",
+        encoding="utf-8",
+    )
+    store, run_id, documents, sentences = ingest_folder(tmp_path)
+    frame = QueryFrame(
+        question_text="What was the correction about blue ferry?",
+        answer_type="content_phrase",
+        answer_variables=("correction about blue ferry",),
+        target_anchors=("correction", "blue ferry"),
+        requested_relation="was",
+        relation_terms=("was", "correction about blue ferry", "answer", "argument"),
+        constraints=("correction",),
+    )
+
+    answer, _diagnostics = execute_bounded_query(
+        store,
+        run_id,
+        documents,
+        _sentences_by_document(sentences),
+        frame.question_text,
+        frame,
+    )
+
+    assert answer is not None
+    assert answer.text == "blue ferry departed on time"
+
+
 def test_frame_argument_binding_uses_predicate_matched_full_question_slot(tmp_path: Path) -> None:
     source_surface = "Nia Vale did not ship the copper bracket."
     (tmp_path / "memo.txt").write_text(source_surface + "\n", encoding="utf-8")
