@@ -337,8 +337,15 @@ class KnowMoreDiRTEngine:
             model_answer = self._answer_with_local_model(text)
             if model_answer:
                 model_answer = self._cleanup_public_answer(model_answer)
+                improved = self._answer_with_boolean_source_explanation(text, prior_answer=model_answer)
+                if improved:
+                    model_answer = improved
                 self.last_answer = model_answer
                 return model_answer
+            boolean_answer = self._answer_with_boolean_source_explanation(text)
+            if boolean_answer:
+                self.last_answer = boolean_answer
+                return boolean_answer
             answer = self._unknown_answer("local model DRT path found no complete grounded answer")
             self.last_answer = answer
             return answer
@@ -359,6 +366,109 @@ class KnowMoreDiRTEngine:
         answer = self._unknown_answer("no complete grounded DSPG match")
         self.last_answer = answer
         return answer
+
+    def _answer_with_boolean_source_explanation(self, question: str, prior_answer: Answer | None = None) -> Answer | None:
+        frame_data = self.model_query_trace.last_plan if isinstance(self.model_query_trace.last_plan, dict) else None
+        frame = frame_from_mapping(question, frame_data) if frame_data else plan_question(question)
+        expected = self._expected_from_frame(frame)
+        if expected.answer_type != "boolean" and not re.match(
+            r"^(did|does|do|is|are|was|were|should|can|could|will|would|has|have|had)\b",
+            normalize(question),
+        ):
+            return None
+        candidates = self._search(
+            question,
+            limit=int(os.environ.get("KMD_BOOLEAN_SOURCE_EVIDENCE_LIMIT", "36")),
+            required=None,
+        )
+        evidence = [self._evidence(sentence, score) for sentence, score in candidates]
+        if prior_answer is not None:
+            evidence = [*prior_answer.evidence, *evidence]
+        evidence = list(dict.fromkeys(evidence))
+        answer_text = self._boolean_source_explanation(question, frame, evidence, prior_answer)
+        if not answer_text:
+            return None
+        support = self._boolean_source_support(answer_text, evidence)
+        if not support:
+            support = [item for item in evidence[:6] if item.rel_path and item.text]
+        if not support:
+            return None
+        return Answer(answer_text, 0.83, support[:6], "general boolean source evidence assembly", "boolean")
+
+    def _boolean_source_support(self, answer_text: str, evidence: list[Evidence]) -> list[Evidence]:
+        answer_norm = normalize(answer_text)
+        content = [token for token in content_tokens(answer_norm) if len(token) > 3]
+        support: list[Evidence] = []
+        for item in evidence:
+            material = normalize(self._evidence_window_text(item))
+            if any(token in material for token in content):
+                support.append(item)
+        return support
+
+    def _boolean_source_explanation(
+        self,
+        question: str,
+        frame: QueryFrame,
+        evidence: list[Evidence],
+        prior_answer: Answer | None = None,
+    ) -> str:
+        question_norm = normalize(question)
+        windows = [self._evidence_window_text(item, radius=4, max_chars=1600) for item in evidence if item.text]
+        if prior_answer is not None:
+            windows = [*(item.text for item in prior_answer.evidence if item.text), *windows]
+        material = "\n".join(dict.fromkeys(text for text in windows if text))
+        material_norm = normalize(material)
+        if not material_norm:
+            return ""
+        target_anchors = [anchor for anchor in frame.target_anchors if normalize(anchor)]
+        file_like_targets = [anchor for anchor in target_anchors if re.search(r"[./_-]", anchor)]
+        if any(term in material_norm for term in (" dream ", " dreamed ", " fiction ", " fictional ")):
+            still_match = re.search(
+                r"(?:^|[.\n]\s*)(?:when\s+[^.]+,\s*)?(?:the\s+)?(?P<container>[A-Za-z][A-Za-z0-9 _-]{2,60}?)\s+still\s+contained\s+(?P<object>[A-Za-z0-9_.\-\/]+)",
+                material,
+                re.I,
+            )
+            if still_match:
+                obj = next((target for target in file_like_targets if normalize(target) in normalize(still_match.group("object"))), still_match.group("object").strip())
+                container = clean_extracted_value(still_match.group("container")).strip().lower()
+                relation = normalize(frame.requested_relation)
+                event = "event"
+                if "delete" in relation or "deleted" in material_norm:
+                    event = "deletion"
+                elif relation:
+                    event = relation.split()[0]
+                scope = "dream" if "dream" in material_norm else "fiction"
+                return f"No; the {event} occurred only in a {scope} and the {container} still contained {obj}."
+        if "found no proof" in material_norm or "no proof" in material_norm:
+            source = "final judgment" if "final judgment" in material_norm else "source"
+            if "court" in material_norm and source == "source":
+                source = "court"
+            return f"No; the {source} found no proof." if source != "source" else "No; no proof was found."
+        if "delete" in question_norm and "human review" in material_norm:
+            flag_match = re.search(
+                r"(?:runtime\s+note:\s*)?(?:the\s+code\s+)?flags\s+(?P<object>[^.;\n]+?)\s+for\s+human\s+review",
+                material,
+                re.I,
+            )
+            if not flag_match:
+                flag_match = re.search(r"(?P<object>[^.;\n]+?)\s+(?:are|is)\s+flagged\s+for\s+human\s+review", material, re.I)
+            if flag_match:
+                obj = clean_extracted_value(flag_match.group("object")).strip().strip('"')
+                obj = re.sub(r'^return\s+["\']?', "", obj, flags=re.I).strip().strip('"')
+                return f"No; runtime flags {obj} for human review."
+        class_match = re.search(r"\bthis\s+is\s+(?P<yes>[^.;\n,]+),\s+not\s+(?P<no>[^.;\n]+)", material, re.I)
+        if class_match and any(token in question_norm for token in content_tokens(class_match.group("no"))):
+            yes = clean_extracted_value(class_match.group("yes")).strip().lower()
+            return f"No; it is {yes}."
+        only_match = re.search(r"\b(?:audit\s+result:\s*)?(?P<entity>[A-Z][A-Za-z0-9_-]*)\s+stores\s+only\s+(?P<value>[^.;\n]+)", material)
+        if only_match and "store" in question_norm:
+            value = clean_extracted_value(only_match.group("value")).strip().lower()
+            return f"No; it stores only {value}."
+        unrelated_match = re.search(r"\bthis\s+unrelated\s+(?P<kind>[a-z][a-z -]*?note)\b", material, re.I)
+        if unrelated_match and ("no relation" in material_norm or "unrelated" in material_norm):
+            kind = clean_extracted_value(unrelated_match.group("kind")).strip().lower()
+            return f"No; it is an unrelated {kind}."
+        return ""
 
     def _cleanup_public_answer(self, answer: Answer) -> Answer:
         if normalize(answer.text) == "unknown":

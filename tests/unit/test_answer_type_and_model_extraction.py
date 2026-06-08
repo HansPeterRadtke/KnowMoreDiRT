@@ -545,3 +545,26 @@ def test_invalid_model_evidence_answer_is_cached(tmp_path: Path, monkeypatch) ->
     assert second["accepted"] is False
     assert second["fresh_or_cached"] == "cache"
     assert second["cache_context"]["expected_answer_type"] == "person"
+
+
+
+def test_general_boolean_source_explanation_patterns(tmp_path: Path, monkeypatch) -> None:
+    (tmp_path / "dream.txt").write_text(
+        "I had a dream that Crane deleted lock.key.\nWhen I woke up, the repository still contained lock.key.\n",
+        encoding="utf-8",
+    )
+    (tmp_path / "judgment.txt").write_text("Final judgment summary.\nThe court found no proof that Widget caused drift.\n", encoding="utf-8")
+    (tmp_path / "runtime.txt").write_text("Runtime note: the code flags stale rows for human review; it does not delete them.\n", encoding="utf-8")
+    (tmp_path / "fiction.txt").write_text("School story: The candy bridge drawing floated.\nTeacher note: this is fiction homework, not an engineering record.\n", encoding="utf-8")
+    (tmp_path / "audit.txt").write_text("Sora believes CacheBox stores plaintext secrets.\nAudit result: CacheBox stores only salted secret hashes.\n", encoding="utf-8")
+    (tmp_path / "garden.txt").write_text("Market sketch for PlantBoard.\nThis unrelated gardening note mentions market research but has no relation to any product roadmap.\n", encoding="utf-8")
+    monkeypatch.setenv("KMD_TEST_ALLOW_NO_MODEL", "1")
+    monkeypatch.setenv("PYTEST_CURRENT_TEST", "1")
+    engine = KnowMoreDiRTEngine(tmp_path)
+
+    assert engine._answer_with_boolean_source_explanation("Did Crane really delete lock.key?").text == "No; the deletion occurred only in a dream and the repository still contained lock.key."
+    assert engine._answer_with_boolean_source_explanation("Was Widget proven to have caused drift?").text == "No; the final judgment found no proof."
+    assert engine._answer_with_boolean_source_explanation("Does the runtime delete stale rows?").text == "No; runtime flags stale rows for human review."
+    assert engine._answer_with_boolean_source_explanation("Should the candy bridge drawing be treated as an engineering record?").text == "No; it is fiction homework."
+    assert engine._answer_with_boolean_source_explanation("Does the audit say CacheBox stores plaintext secrets?").text == "No; it stores only salted secret hashes."
+    assert engine._answer_with_boolean_source_explanation("Is PlantBoard a product roadmap target?").text == "No; it is an unrelated gardening note."
