@@ -335,17 +335,25 @@ class KnowMoreDiRTEngine:
 
         if self._use_local_model:
             model_answer = self._answer_with_local_model(text)
-            if model_answer:
-                model_answer = self._cleanup_public_answer(model_answer)
+            if model_answer and normalize(model_answer.text) != "unknown":
+                model_answer = self._cleanup_public_answer(model_answer, question=text)
                 improved = self._answer_with_boolean_source_explanation(text, prior_answer=model_answer)
                 if improved:
                     model_answer = improved
                 self.last_answer = model_answer
                 return model_answer
-            boolean_answer = self._answer_with_boolean_source_explanation(text)
+            definition_answer = self._answer_with_definition_source_explanation(text)
+            if definition_answer:
+                self.last_answer = definition_answer
+                return definition_answer
+            boolean_answer = self._answer_with_boolean_source_explanation(text, prior_answer=model_answer)
             if boolean_answer:
                 self.last_answer = boolean_answer
                 return boolean_answer
+            if model_answer:
+                model_answer = self._cleanup_public_answer(model_answer, question=text)
+                self.last_answer = model_answer
+                return model_answer
             answer = self._unknown_answer("local model DRT path found no complete grounded answer")
             self.last_answer = answer
             return answer
@@ -386,6 +394,9 @@ class KnowMoreDiRTEngine:
             evidence = [*prior_answer.evidence, *evidence]
         evidence = list(dict.fromkeys(evidence))
         answer_text = self._boolean_source_explanation(question, frame, evidence, prior_answer)
+        if not answer_text:
+            return None
+        answer_text = self._central_answer_guard(question, answer_text, ExpectedAnswer("boolean"), frame, evidence)
         if not answer_text:
             return None
         support = self._boolean_source_support(answer_text, evidence)
@@ -439,9 +450,11 @@ class KnowMoreDiRTEngine:
                     event = relation.split()[0]
                 scope = "dream" if "dream" in material_norm else "fiction"
                 return f"No; the {event} occurred only in a {scope} and the {container} still contained {obj}."
-        if "found no proof" in material_norm or "no proof" in material_norm:
+        no_proof_line = self._boolean_no_proof_line_for_question(question, frame, material)
+        if no_proof_line:
+            line_norm = normalize(no_proof_line)
             source = "final judgment" if "final judgment" in material_norm else "source"
-            if "court" in material_norm and source == "source":
+            if "court" in line_norm and source == "source":
                 source = "court"
             return f"No; the {source} found no proof." if source != "source" else "No; no proof was found."
         if "delete" in question_norm and "human review" in material_norm:
@@ -470,12 +483,210 @@ class KnowMoreDiRTEngine:
             return f"No; it is an unrelated {kind}."
         return ""
 
-    def _cleanup_public_answer(self, answer: Answer) -> Answer:
+    def _question_subject_terms(self, question: str, frame: QueryFrame) -> list[str]:
+        terms: list[str] = []
+        for anchor in frame.target_anchors:
+            terms.extend(token for token in content_tokens(anchor) if len(token) > 2)
+        for value in [frame.requested_relation, *frame.relation_terms, *frame.constraints, *frame.answer_variables]:
+            terms.extend(token for token in content_tokens(value) if len(token) > 3)
+        generic = {
+            "answer", "question", "really", "actual", "proved", "proven", "proof", "found",
+            "final", "judgment", "court", "what", "which", "where", "when", "does", "did",
+            "was", "were", "should", "return", "only", "source", "state", "current",
+        }
+        return list(dict.fromkeys(term for term in terms if term not in generic))
+
+    def _boolean_no_proof_line_for_question(self, question: str, frame: QueryFrame, material: str) -> str:
+        required = self._question_subject_terms(question, frame)
+        if not required:
+            return ""
+        # Require the actual no-proof sentence to mention the core proposition,
+        # not merely a neighboring document window.  This prevents an unrelated
+        # court/audit no-proof sentence from answering a different boolean question.
+        for line in re.split(r"[\n.;]+", material):
+            line = line.strip()
+            line_norm = normalize(line)
+            if not line_norm or "proof" not in line_norm:
+                continue
+            hits = [term for term in required if term in line_norm]
+            if len(required) <= 2:
+                if len(hits) >= len(required):
+                    return line
+            elif len(hits) >= max(2, min(len(required), 3)):
+                return line
+        return ""
+
+    def _central_answer_guard(
+        self,
+        question: str,
+        value: str,
+        expected: ExpectedAnswer,
+        frame: QueryFrame | None,
+        evidence: list[Evidence],
+    ) -> str:
+        text = str(value or "").strip()
+        if not text:
+            return ""
+        low = normalize(text)
+        if low == "unknown":
+            return text
+        if "no final decision" in low and "final decision" in normalize(question):
+            return "unknown"
+        bad_atomic = {
+            "the", "a", "an", "audit", "accounting", "counterclaim", "inspection note", "music note",
+            "runa said", "the court", "source", "note", "header",
+        }
+        if low in bad_atomic:
+            return ""
+        if expected.answer_type in {"person", "actor", "organization"} and low in bad_atomic:
+            return ""
+        if expected.answer_type in {"content_phrase", "state", "metadata_value"} and low in bad_atomic:
+            return ""
+        if expected.answer_type == "boolean" and "no proof" in low:
+            check_frame = frame or plan_question(question)
+            material = "\n".join(self._evidence_window_text(item, radius=4, max_chars=1600) for item in evidence if item.text)
+            if not self._boolean_no_proof_line_for_question(question, check_frame, material):
+                return ""
+        return text
+
+    def _definition_query_term(self, frame: QueryFrame | None) -> str:
+        if frame is None:
+            return ""
+        q = normalize(frame.question_text)
+        for pattern in [r"what\s+does\s+(?P<term>.+?)\s+mean\b", r"translation\s+of\s+(?P<term>.+?)(?:\?|$)", r"plural\s+of\s+(?P<term>.+?)(?:\?|$)"]:
+            match = re.search(pattern, q)
+            if match:
+                return normalize(match.group("term").strip(" ?."))
+        if frame.target_anchors:
+            return normalize(frame.target_anchors[0])
+        return ""
+
+    def _cleanup_definition_complement(self, text: str, frame: QueryFrame | None) -> str:
+        if frame is None:
+            return text
+        qnorm = normalize(frame.question_text)
+        query_term = self._definition_query_term(frame)
+        if not query_term:
+            return text
+        low = normalize(text)
+        if "translation" in qnorm and ("has no stated" in low or "no stated translation" in low or "no relation" in low):
+            return "unknown"
+        if "plural of" in qnorm and low.startswith("is "):
+            return text.split(None, 1)[1].strip(" .;:")
+        for sep in [" means ", " mean ", " translates to ", " is translated as "]:
+            if sep not in f" {low} ":
+                continue
+            left, right = low.split(sep.strip(), 1)
+            left = left.strip(" :;,.\"'")
+            right_text = text.split(sep.strip(), 1)[1].strip(" .;:\"'") if sep.strip() in text else right.strip(" .;:")
+            if left == query_term or left in query_term or query_term in left:
+                return right_text
+            return "unknown"
+        return text
+
+    def _expand_single_name_from_evidence(self, value: str, evidence: list[Evidence]) -> str:
+        text = clean_extracted_value(value).strip()
+        token = normalize(text)
+        if not token or len(text.split()) != 1:
+            return text
+        title_words = {"mr", "mrs", "ms", "dr", "officer", "teacher", "professor"}
+        candidates: list[str] = []
+        for item in evidence:
+            window = self._evidence_window_text(item, radius=2, max_chars=900)
+            for phrase in capitalized_phrases(window):
+                parts = phrase.split()
+                if len(parts) < 2:
+                    continue
+                if normalize(parts[0].strip(".")) in title_words:
+                    continue
+                if normalize(parts[0]) == token and phrase not in candidates:
+                    candidates.append(phrase)
+        if not candidates:
+            for document in self.documents:
+                for phrase in capitalized_phrases(document.text):
+                    parts = phrase.split()
+                    if len(parts) < 2:
+                        continue
+                    if normalize(parts[0].strip(".")) in title_words:
+                        continue
+                    if normalize(parts[0]) == token and phrase not in candidates:
+                        candidates.append(phrase)
+        return candidates[0] if len(candidates) == 1 else text
+
+    def _restore_where_preposition(self, question: str, value: str, expected: ExpectedAnswer, evidence: list[Evidence]) -> str:
+        text = str(value or "").strip()
+        if not text or expected.answer_type not in {"content_phrase", "metadata_value", "state", "unknown"}:
+            return text
+        if not normalize(question).startswith("where "):
+            return text
+        if re.match(r"^(in|on|at|behind|under|over|near|inside|outside|beside|left|right)\b", normalize(text)):
+            return text
+        escaped = re.escape(text)
+        pattern = re.compile(rf"\b(in|on|at|behind|under|over|near|inside|outside|beside)\s+(?:the\s+)?{escaped}\b", re.I)
+        for item in evidence:
+            window = self._evidence_window_text(item, radius=2, max_chars=900)
+            match = pattern.search(window)
+            if match:
+                return clean_extracted_value(match.group(0)).strip(" .;:")
+        return text
+
+    def _answer_with_definition_source_explanation(self, question: str) -> Answer | None:
+        frame_data = self.model_query_trace.last_plan if isinstance(self.model_query_trace.last_plan, dict) else None
+        frame = frame_from_mapping(question, frame_data) if frame_data else plan_question(question)
+        query_term = self._definition_query_term(frame)
+        if not query_term:
+            return None
+        qnorm = normalize(question)
+        if not ("what does" in qnorm or "translation" in qnorm or "plural of" in qnorm):
+            return None
+        candidates = self._search(question, limit=int(os.environ.get("KMD_DEFINITION_SOURCE_LIMIT", "24")), required=None)
+        evidence = [self._evidence(sentence, score) for sentence, score in candidates]
+        for item in evidence:
+            window = self._evidence_window_text(item, radius=2, max_chars=900)
+            for line in re.split(r"[\n.;]+", window):
+                line = line.strip()
+                if not line:
+                    continue
+                answer = self._definition_answer_from_line(question, frame, line)
+                if answer:
+                    return Answer(answer, 0.82, [item], "general definition source extraction", "content_phrase")
+        return None
+
+    def _definition_answer_from_line(self, question: str, frame: QueryFrame, line: str) -> str:
+        query_term = self._definition_query_term(frame)
+        if not query_term:
+            return ""
+        qnorm = normalize(question)
+        line_norm = normalize(line)
+        if "plural of" in qnorm:
+            match = re.search(r"plural\s+of\s+(?P<term>[^\s:;,.]+)\s+is\s+(?P<value>[^.;,]+)", line, re.I)
+            if match and normalize(match.group("term")) == query_term:
+                return clean_extracted_value(match.group("value")).strip(" .;:")
+        if "what does" in qnorm or "translation" in qnorm:
+            for pattern in [
+                r"(?P<term>[A-Za-z][A-Za-z\s_-]{1,80}?)\s+means\s+(?P<value>[^.;,]+)",
+                r"(?P<term>[A-Za-z][A-Za-z\s_-]{1,80}?)\s+translates\s+to\s+(?P<value>[^.;,]+)",
+            ]:
+                match = re.search(pattern, line, re.I)
+                if not match:
+                    continue
+                term = normalize(match.group("term"))
+                if term.endswith(" note"):
+                    term = term.rsplit(" note", 1)[0].strip()
+                if term == query_term or query_term in term or term in query_term:
+                    return clean_extracted_value(match.group("value")).strip(" .;:")
+        return ""
+
+    def _cleanup_public_answer(self, answer: Answer, *, question: str = "") -> Answer:
         if normalize(answer.text) == "unknown":
             return answer
         expected_type = answer.answer_type if answer.answer_type not in {"", "unknown"} else classify_value(answer.text)
         expected = ExpectedAnswer(expected_type)  # type: ignore[arg-type]
         cleaned = self._cleanup_canonical_answer(answer.text, expected)
+        if expected.answer_type in {"person", "actor", "organization"}:
+            cleaned = self._expand_single_name_from_evidence(cleaned, answer.evidence)
+        cleaned = self._central_answer_guard(question, cleaned, expected, plan_question(question) if question else None, answer.evidence)
+        cleaned = self._restore_where_preposition(question, cleaned, expected, answer.evidence)
         cleaned = self._restore_sentence_terminal_punctuation(cleaned, answer.text, expected, answer.evidence)
         if cleaned and cleaned != answer.text:
             original = str(answer.text or "").strip()
@@ -1855,6 +2066,13 @@ class KnowMoreDiRTEngine:
         text = clean_extracted_value(canonical).strip()
         if not text:
             return text
+        text = self._cleanup_definition_complement(text, frame)
+        if normalize(text) == "unknown":
+            return "unknown"
+        if frame is None and expected.answer_type in {"content_phrase", "state", "metadata_value"} and normalize(text).startswith("is "):
+            parts = text.split(None, 1)
+            if len(parts) == 2 and normalize(parts[1].split()[0]) not in {"not", "no"}:
+                text = parts[1].strip(" .;:")
         low = normalize(text)
         if frame is not None and expected.answer_type in {"identifier", "content_phrase", "metadata_value"}:
             text = self._strip_redundant_answer_slot_suffix(text, frame)
@@ -2067,6 +2285,9 @@ class KnowMoreDiRTEngine:
             return None
         pre_cleanup_canonical = canonical
         canonical = self._cleanup_canonical_answer(canonical, expected, frame)
+        if expected.answer_type in {"person", "actor", "organization"}:
+            canonical = self._expand_single_name_from_evidence(canonical, answer.evidence)
+        canonical = self._central_answer_guard(question, canonical, expected, frame, answer.evidence)
         canonical = self._restore_sentence_terminal_punctuation(
             canonical,
             pre_cleanup_canonical,
@@ -2075,6 +2296,8 @@ class KnowMoreDiRTEngine:
         )
         if not canonical:
             return None
+        if normalize(canonical) == "unknown":
+            return Answer("unknown", 0.0, answer.evidence, source, "unknown")
         return Answer(canonical, answer.confidence, answer.evidence, source, expected.answer_type)
 
     def _restore_sentence_terminal_punctuation(

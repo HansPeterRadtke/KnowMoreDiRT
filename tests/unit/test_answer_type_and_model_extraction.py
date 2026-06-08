@@ -6,6 +6,7 @@ import knowmoredirt.engine as engine_module
 from knowmoredirt.answer_types import ExpectedAnswer, canonicalize_answer
 from knowmoredirt.engine import KnowMoreDiRTEngine
 from knowmoredirt.model_planner import call_model_evidence_answer
+from knowmoredirt.models import Answer
 from knowmoredirt.query import QueryFrame
 
 
@@ -568,3 +569,93 @@ def test_general_boolean_source_explanation_patterns(tmp_path: Path, monkeypatch
     assert engine._answer_with_boolean_source_explanation("Should the candy bridge drawing be treated as an engineering record?").text == "No; it is fiction homework."
     assert engine._answer_with_boolean_source_explanation("Does the audit say CacheBox stores plaintext secrets?").text == "No; it stores only salted secret hashes."
     assert engine._answer_with_boolean_source_explanation("Is PlantBoard a product roadmap target?").text == "No; it is an unrelated gardening note."
+
+
+
+def test_central_answer_guard_rejects_unrelated_no_proof(tmp_path: Path, monkeypatch) -> None:
+    (tmp_path / "judgment.txt").write_text(
+        "Final judgment summary.\nThe court found no proof that Widget caused invoice drift.\n",
+        encoding="utf-8",
+    )
+    monkeypatch.setenv("KMD_TEST_ALLOW_NO_MODEL", "1")
+    monkeypatch.setenv("PYTEST_CURRENT_TEST", "1")
+    engine = KnowMoreDiRTEngine(tmp_path)
+
+    assert engine._answer_with_boolean_source_explanation("Was Widget proven to have caused invoice drift?").text == "No; the final judgment found no proof."
+    assert engine._answer_with_boolean_source_explanation("Was Ardent Mill refund request proven by the judgment?") is None
+
+
+def test_definition_cleanup_requires_queried_term(tmp_path: Path, monkeypatch) -> None:
+    monkeypatch.setenv("KMD_TEST_ALLOW_NO_MODEL", "1")
+    monkeypatch.setenv("PYTEST_CURRENT_TEST", "1")
+    engine = KnowMoreDiRTEngine(tmp_path)
+    frame = QueryFrame(
+        question_text="What does buenos dias mean?",
+        answer_type="content_phrase",
+        answer_variables=("meaning",),
+        target_anchors=("buenos dias",),
+        requested_relation="mean",
+        relation_terms=("mean",),
+        constraints=(),
+    )
+    wrong_frame = QueryFrame(
+        question_text="What does sola miri tahu mean?",
+        answer_type="content_phrase",
+        answer_variables=("meaning",),
+        target_anchors=("sola miri tahu",),
+        requested_relation="mean",
+        relation_terms=("mean",),
+        constraints=(),
+    )
+    plural_frame = QueryFrame(
+        question_text="What is the plural of tiro?",
+        answer_type="content_phrase",
+        answer_variables=("plural",),
+        target_anchors=("tiro",),
+        requested_relation="plural",
+        relation_terms=("plural",),
+        constraints=(),
+    )
+
+    assert engine._cleanup_canonical_answer("buenos dias means good morning", ExpectedAnswer("content_phrase"), frame) == "good morning"
+    assert engine._cleanup_canonical_answer("danke means thank you", ExpectedAnswer("content_phrase"), wrong_frame) == "unknown"
+    assert engine._cleanup_canonical_answer("is tiros", ExpectedAnswer("content_phrase"), plural_frame) == "tiros"
+
+
+def test_public_cleanup_expands_single_first_name_when_unambiguous(tmp_path: Path, monkeypatch) -> None:
+    (tmp_path / "review.txt").write_text("Review line: Omar Kestrel reviewed PR-8042.\n", encoding="utf-8")
+    monkeypatch.setenv("KMD_TEST_ALLOW_NO_MODEL", "1")
+    monkeypatch.setenv("PYTEST_CURRENT_TEST", "1")
+    engine = KnowMoreDiRTEngine(tmp_path)
+    evidence = [engine._evidence(next(iter(engine._sentences_by_document["review.txt"].values())), 1.0)]
+    answer = Answer("Omar", 0.8, evidence, "unit", "person")
+
+    assert engine._cleanup_public_answer(answer).text == "Omar Kestrel"
+
+
+
+def test_definition_source_extraction_and_where_cleanup(tmp_path: Path, monkeypatch) -> None:
+    (tmp_path / "defs.txt").write_text("French note: bonsoir means good evening.\nGrammar: plural of tiro is tiros.\n", encoding="utf-8")
+    (tmp_path / "place.txt").write_text("The brass lamp is on the red desk.\n", encoding="utf-8")
+    monkeypatch.setenv("KMD_TEST_ALLOW_NO_MODEL", "1")
+    monkeypatch.setenv("PYTEST_CURRENT_TEST", "1")
+    engine = KnowMoreDiRTEngine(tmp_path)
+
+    assert engine._answer_with_definition_source_explanation("What does bonsoir mean?").text == "good evening"
+    assert engine._answer_with_definition_source_explanation("What is the plural of tiro?").text == "tiros"
+    evidence = [engine._evidence(next(iter(engine._sentences_by_document["place.txt"].values())), 1.0)]
+    assert engine._restore_where_preposition("Where is the brass lamp?", "red desk", ExpectedAnswer("content_phrase"), evidence) == "on the red desk"
+
+
+def test_final_decision_statement_canonicalizes_to_unknown(tmp_path: Path, monkeypatch) -> None:
+    monkeypatch.setenv("KMD_TEST_ALLOW_NO_MODEL", "1")
+    monkeypatch.setenv("PYTEST_CURRENT_TEST", "1")
+    engine = KnowMoreDiRTEngine(tmp_path)
+    answer = engine._central_answer_guard(
+        "What final decision was made about library hours?",
+        "No final decision was made.",
+        ExpectedAnswer("content_phrase"),
+        None,
+        [],
+    )
+    assert answer == "unknown"
