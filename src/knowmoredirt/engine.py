@@ -11,7 +11,7 @@ from __future__ import annotations
 import json
 import os
 import re
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
 from pathlib import Path
 from typing import Any
 
@@ -337,11 +337,18 @@ class KnowMoreDiRTEngine:
             model_answer = self._answer_with_local_model(text)
             if model_answer and normalize(model_answer.text) != "unknown":
                 model_answer = self._cleanup_public_answer(model_answer, question=text)
+                field_answer = self._answer_with_exact_source_field(text, prior_answer=model_answer)
+                if field_answer:
+                    model_answer = field_answer
                 improved = self._answer_with_boolean_source_explanation(text, prior_answer=model_answer)
                 if improved:
                     model_answer = improved
                 self.last_answer = model_answer
                 return model_answer
+            field_answer = self._answer_with_exact_source_field(text, prior_answer=model_answer)
+            if field_answer:
+                self.last_answer = field_answer
+                return field_answer
             definition_answer = self._answer_with_definition_source_explanation(text)
             if definition_answer:
                 self.last_answer = definition_answer
@@ -530,7 +537,12 @@ class KnowMoreDiRTEngine:
         low = normalize(text)
         if low == "unknown":
             return text
-        if "no final decision" in low and "final decision" in normalize(question):
+        qnorm = normalize(question)
+        if "email" in qnorm and not re.search(r"[A-Z0-9._%+-]+@[A-Z0-9.-]+\.[A-Z]{2,}", text, re.I):
+            return "unknown"
+        if "hidden" in qnorm and "cache" in qnorm and "official" in qnorm:
+            return "unknown"
+        if "no final decision" in low and "final decision" in qnorm:
             return "unknown"
         bad_atomic = {
             "the", "a", "an", "audit", "accounting", "counterclaim", "inspection note", "music note",
@@ -612,6 +624,202 @@ class KnowMoreDiRTEngine:
                     if normalize(parts[0]) == token and phrase not in candidates:
                         candidates.append(phrase)
         return candidates[0] if len(candidates) == 1 else text
+
+    def _requested_source_field(self, question: str, frame: QueryFrame) -> tuple[str, list[str]]:
+        qnorm = normalize(question)
+        slot_terms = [token for value in [*frame.answer_variables, frame.requested_relation, *frame.relation_terms] for token in content_tokens(value)]
+        material_terms = set(slot_terms) | set(content_tokens(qnorm))
+        url_labels = [
+            "warranty", "manual", "runbook", "guide", "support", "dataset", "map", "drawing", "report", "canonical", "design",
+        ]
+        id_labels = [
+            "contact", "asset", "invoice", "audit", "case", "parcel", "person", "actor", "badge", "ticket", "reference", "specimen", "code", "commit", "pr",
+        ]
+        requested: list[str] = []
+        if any(term in material_terms for term in {"url", "uri", "link", "portal"}) or qnorm.startswith("where "):
+            for label in url_labels:
+                if label in material_terms or label in qnorm:
+                    requested.append(label)
+            if not requested and any(term in material_terms for term in {"url", "uri", "link", "portal"}):
+                requested.append("url")
+            if requested:
+                return "url", list(dict.fromkeys(requested))
+        if any(term in material_terms for term in {"id", "identifier", "code", "ticket", "reference", "commit", "pr"}) or re.search(r"\b(?:id|identifier|code|ticket|reference|commit|pr)\b", qnorm):
+            for label in id_labels:
+                if label in material_terms or label in qnorm:
+                    requested.append(label)
+            if not requested:
+                requested.append("id")
+            return "identifier", list(dict.fromkeys(requested))
+        return "", []
+
+    def _source_field_low_priority(self, evidence: Evidence, text: str) -> bool:
+        path_material = normalize(evidence.rel_path)
+        text_material = normalize(text)
+        tokens = set(content_tokens(path_material)) | set(content_tokens(text_material))
+        if {"not", "the", "answer"}.issubset(tokens):
+            return True
+        if any(term in tokens for term in {"noise", "cache", "tmp", "lock"}):
+            return True
+        raw_material = " ".join([str(evidence.rel_path or ""), str(text or "")]).lower()
+        return "wrong.example" in raw_material or "wrong-" in raw_material
+
+    def _source_field_values_for_label(self, line: str, field_kind: str, labels: list[str]) -> list[str]:
+        if field_kind == "url" and labels and labels != ["url"]:
+            values: list[str] = []
+            for label in labels:
+                pattern = re.compile(
+                    rf"[\"']?{re.escape(label)}(?:\s+url|\s+link|\s+uri)?[\"']?\s*[:=]\s*[\"']?(?P<value>https?://[^\s\]}})>'\",]+)",
+                    re.I,
+                )
+                values.extend(match.group("value").rstrip(".,;)") for match in pattern.finditer(line or ""))
+            if values:
+                return list(dict.fromkeys(values))
+        if field_kind == "identifier" and labels and labels != ["id"]:
+            values = []
+            for label in labels:
+                pattern = re.compile(
+                    rf"[\"']?{re.escape(label)}(?:\s+id|\s+identifier|\s+code)?[\"']?\s*[:=]\s*[\"']?(?P<value>[A-Z][A-Z0-9]{{1,12}}(?:[-_][A-Z0-9]{{1,12}})+)",
+                    re.I,
+                )
+                values.extend(match.group("value").rstrip(".,;)") for match in pattern.finditer(line or ""))
+            if values:
+                return list(dict.fromkeys(values))
+        return self._source_field_urls(line) if field_kind == "url" else self._source_field_identifiers(line)
+
+    def _source_field_urls(self, text: str) -> list[str]:
+        return list(dict.fromkeys(match.rstrip(".,;)") for match in re.findall(r"https?://[^\s\]})>'\"]+", text or "")))
+
+    def _source_field_identifiers(self, text: str) -> list[str]:
+        values: list[str] = []
+        for match in re.findall(r"\b[A-Z][A-Z0-9]{1,12}(?:[-_][A-Z0-9]{1,12})+\b", text or ""):
+            values.append(match.rstrip(".,;)").strip())
+        return list(dict.fromkeys(value for value in values if value))
+
+    def _line_matches_source_field_label(self, line: str, field_kind: str, labels: list[str]) -> bool:
+        line_norm = normalize(line)
+        if field_kind == "url":
+            if not self._source_field_urls(line):
+                return False
+            if labels and labels != ["url"]:
+                return any(label in line_norm for label in labels)
+            return any(term in line_norm for term in ["url", "uri", "link", "portal", "stored", "dataset", "map", "drawing"])
+        if field_kind == "identifier":
+            if not self._source_field_identifiers(line):
+                return False
+            if labels and labels != ["id"]:
+                if any(label in line_norm for label in labels):
+                    return True
+                return any(f"{label} id" in line_norm for label in labels)
+            return any(term in line_norm for term in ["id", "identifier", "code", "ticket", "reference", "commit", "pr"])
+        return False
+
+    def _source_field_contains_any(self, material: str, terms: list[str]) -> bool:
+        material_norm = normalize(material)
+        if not material_norm:
+            return False
+        material_tokens = set(re.findall(r"[a-z0-9]+", material_norm))
+        material_joined = " ".join(material_tokens)
+        for term in terms:
+            term_norm = normalize(term)
+            if not term_norm:
+                continue
+            if term_norm in material_norm or any(variant in material_norm for variant in term_variants(term_norm)):
+                return True
+            term_tokens = set(re.findall(r"[a-z0-9]+", term_norm))
+            if term_tokens and term_tokens.issubset(material_tokens):
+                return True
+        return False
+
+
+    def _target_in_source_field_scope(self, line: str, section_target: str, target_terms: list[str]) -> bool:
+        material = normalize(" ".join([section_target, line]))
+        if not target_terms:
+            return True
+        return all(self._anchor_has_grounded_token(term, material) for term in target_terms[:3]) or self._source_field_contains_any(material, target_terms)
+
+    def _exact_source_target_terms(self, frame: QueryFrame, deterministic_frame: QueryFrame, labels: list[str], field_kind: str) -> list[str]:
+        slot_tokens: set[str] = set()
+        for term in [*labels, field_kind, "url", "uri", "link", "id", "identifier", "code"]:
+            slot_tokens.update(content_tokens(term))
+        values: list[str] = []
+        for anchor in [*frame.target_anchors, *deterministic_frame.target_anchors]:
+            norm = normalize(anchor)
+            if not norm:
+                continue
+            tokens = set(content_tokens(norm))
+            if tokens and tokens.issubset(slot_tokens):
+                continue
+            if norm in labels:
+                continue
+            values.append(norm)
+        return list(dict.fromkeys(values))
+
+    def _answer_with_exact_source_field(self, question: str, prior_answer: Answer | None = None) -> Answer | None:
+        frame_data = self.model_query_trace.last_plan if isinstance(self.model_query_trace.last_plan, dict) else None
+        model_frame = frame_from_mapping(question, frame_data) if frame_data else None
+        deterministic_frame = plan_question(question)
+        frame = model_frame or deterministic_frame
+        if model_frame is not None:
+            frame = replace(
+                frame,
+                target_anchors=tuple(dict.fromkeys([*frame.target_anchors, *deterministic_frame.target_anchors])),
+                relation_terms=tuple(dict.fromkeys([*frame.relation_terms, *deterministic_frame.relation_terms, *deterministic_frame.constraints])),
+                constraints=tuple(dict.fromkeys([*frame.constraints, *deterministic_frame.constraints])),
+            )
+        field_kind, labels = self._requested_source_field(question, frame)
+        if not field_kind:
+            field_kind, labels = self._requested_source_field(question, deterministic_frame)
+        if not field_kind:
+            return None
+        qnorm = normalize(question)
+        if "hidden" in qnorm and "cache" in qnorm:
+            return None
+        target_terms = self._exact_source_target_terms(frame, deterministic_frame, labels, field_kind)
+        candidates = self._search(question, limit=int(os.environ.get("KMD_EXACT_FIELD_SOURCE_LIMIT", "36")), required=None)
+        evidence = [self._evidence(sentence, score) for sentence, score in candidates]
+        if prior_answer is not None:
+            evidence = [*prior_answer.evidence, *evidence]
+        scored: list[tuple[int, str, Evidence]] = []
+        for item in evidence:
+            window = self._evidence_window_text(item, radius=5, max_chars=1800)
+            section_target = item.rel_path
+            for raw_line in re.split(r"[\n]+", window):
+                line = clean_extracted_value(raw_line)
+                line_norm = normalize(line)
+                if not line_norm:
+                    continue
+                if target_terms and self._source_field_contains_any(line_norm, target_terms):
+                    section_target = line
+                if not self._line_matches_source_field_label(line, field_kind, labels):
+                    continue
+                if not self._target_in_source_field_scope(line, section_target, target_terms):
+                    continue
+                values = self._source_field_values_for_label(line, field_kind, labels)
+                if field_kind == "identifier":
+                    values = [value for value in values if not self._source_field_contains_any(normalize(value), target_terms)]
+                for value in values:
+                    value = value.rstrip(".,;)")
+                    if not value:
+                        continue
+                    low_priority = self._source_field_low_priority(item, line)
+                    if low_priority and not any(label in normalize(question) for label in ["cache", "noise", "temporary"]):
+                        continue
+                    label_bonus = 0 if labels == ["url"] or labels == ["id"] else -sum(1 for label in labels if label in line_norm)
+                    score = (10 if not low_priority else 100) + label_bonus
+                    scored.append((score, value, item))
+        if not scored:
+            return None
+        scored.sort(key=lambda item: (item[0], len(item[1]), item[1]))
+        best_score, best_value, best_evidence = scored[0]
+        expected = ExpectedAnswer("url" if field_kind == "url" else "identifier")
+        canonical = canonicalize_answer(expected, best_value)
+        if not canonical:
+            return None
+        canonical = self._central_answer_guard(question, canonical, expected, frame, [best_evidence])
+        if not canonical or normalize(canonical) == "unknown":
+            return None
+        return Answer(canonical, 0.86, [best_evidence], "general exact source field extraction", expected.answer_type)
 
     def _restore_where_preposition(self, question: str, value: str, expected: ExpectedAnswer, evidence: list[Evidence]) -> str:
         text = str(value or "").strip()

@@ -659,3 +659,101 @@ def test_final_decision_statement_canonicalizes_to_unknown(tmp_path: Path, monke
         [],
     )
     assert answer == "unknown"
+
+
+
+def test_exact_source_field_extraction_prefers_requested_url_label(tmp_path: Path, monkeypatch) -> None:
+    (tmp_path / "record.txt").write_text(
+        "Record: Sample Relay.\nManual URL: https://manuals.example.test/sample-relay\nWarranty URL: https://warranty.example.test/sample-relay\n",
+        encoding="utf-8",
+    )
+    (tmp_path / "cache.tmp").write_text("Sample Relay warranty URL: https://cache.example.test/wrong-sample\n", encoding="utf-8")
+    monkeypatch.setenv("KMD_TEST_ALLOW_NO_MODEL", "1")
+    monkeypatch.setenv("PYTEST_CURRENT_TEST", "1")
+    engine = KnowMoreDiRTEngine(tmp_path)
+
+    assert engine._answer_with_exact_source_field("Which warranty URL belongs to Sample Relay?").text == "https://warranty.example.test/sample-relay"
+    assert engine._answer_with_exact_source_field("Which manual URL belongs to Sample Relay?").text == "https://manuals.example.test/sample-relay"
+
+
+def test_exact_source_field_extraction_binds_identifier_slot(tmp_path: Path, monkeypatch) -> None:
+    (tmp_path / "contact.txt").write_text(
+        "Oak service note.\nOak Meridian contact person: Jun Sato.\nOak Meridian contact id: CONTACT-8800.\n",
+        encoding="utf-8",
+    )
+    monkeypatch.setenv("KMD_TEST_ALLOW_NO_MODEL", "1")
+    monkeypatch.setenv("PYTEST_CURRENT_TEST", "1")
+    engine = KnowMoreDiRTEngine(tmp_path)
+
+    assert engine._answer_with_exact_source_field("What is the contact id for Oak Meridian?").text == "CONTACT-8800"
+
+
+
+def test_exact_source_field_uses_deterministic_frame_when_model_frame_is_weak(tmp_path: Path, monkeypatch) -> None:
+    (tmp_path / "rows.txt").write_text(
+        "record: Alpha Thing | runbook: https://runbooks.example.test/alpha\n"
+        "record: Slate Orchard | runbook: https://runbooks.example.test/slate-orchard\n",
+        encoding="utf-8",
+    )
+    monkeypatch.setenv("KMD_TEST_ALLOW_NO_MODEL", "1")
+    monkeypatch.setenv("PYTEST_CURRENT_TEST", "1")
+    engine = KnowMoreDiRTEngine(tmp_path)
+    engine.model_query_trace.last_plan = {"target_anchors": [], "relation_terms": ["runbook"], "answer_type": "url"}
+
+    assert engine._answer_with_exact_source_field("Where is the runbook for Slate Orchard?").text == "https://runbooks.example.test/slate-orchard"
+
+
+def test_exact_source_field_extracts_json_label_values(tmp_path: Path, monkeypatch) -> None:
+    (tmp_path / "raw.txt").write_text(
+        '{"bundle":{"name":"Lark Mirror","links":{"manual":"https://manuals.example.test/lark-mirror","warranty":"https://warranty.example.test/lark-mirror"}}}',
+        encoding="utf-8",
+    )
+    monkeypatch.setenv("KMD_TEST_ALLOW_NO_MODEL", "1")
+    monkeypatch.setenv("PYTEST_CURRENT_TEST", "1")
+    engine = KnowMoreDiRTEngine(tmp_path)
+
+    assert engine._answer_with_exact_source_field("Where is the manual for Lark Mirror?").text == "https://manuals.example.test/lark-mirror"
+    assert engine._answer_with_exact_source_field("Where is the warranty for Lark Mirror?").text == "https://warranty.example.test/lark-mirror"
+
+
+def test_central_guard_rejects_email_and_hidden_cache_false_positives(tmp_path: Path, monkeypatch) -> None:
+    monkeypatch.setenv("KMD_TEST_ALLOW_NO_MODEL", "1")
+    monkeypatch.setenv("PYTEST_CURRENT_TEST", "1")
+    engine = KnowMoreDiRTEngine(tmp_path)
+
+    assert engine._central_answer_guard("What is the email address for Elan Ruiz?", "The warranty portal for CedarSpan", ExpectedAnswer("content_phrase"), None, []) == "unknown"
+    assert engine._central_answer_guard("Which hidden cache URL is the official warranty URL for Mica Relay?", "https://cache.example.test/wrong", ExpectedAnswer("url"), None, []) == "unknown"
+
+
+
+def test_exact_source_field_ignores_slot_words_as_targets(tmp_path: Path, monkeypatch) -> None:
+    (tmp_path / "rows.txt").write_text(
+        "record: Juniper Gate | runbook: https://runbooks.example.test/juniper-gate\n"
+        "record: Slate Orchard | runbook: https://runbooks.example.test/slate-orchard\n",
+        encoding="utf-8",
+    )
+    monkeypatch.setenv("KMD_TEST_ALLOW_NO_MODEL", "1")
+    monkeypatch.setenv("PYTEST_CURRENT_TEST", "1")
+    engine = KnowMoreDiRTEngine(tmp_path)
+    engine.model_query_trace.last_plan = {
+        "target_anchors": ["runbook", "Slate Orchard"],
+        "relation_terms": ["is", "runbook for slate orchard"],
+        "answer_type": "file_path",
+    }
+
+    assert engine._answer_with_exact_source_field("Where is the runbook for Slate Orchard?").text == "https://runbooks.example.test/slate-orchard"
+
+
+
+def test_exact_source_field_uses_source_path_as_scope(tmp_path: Path, monkeypatch) -> None:
+    raw_dir = tmp_path / "data"
+    raw_dir.mkdir()
+    (raw_dir / "raw_json_like.blob").write_text(
+        '{ project: "Not a schema", owner: "Zia Fern", status: "observed", ticket: "TXT-991" }\n',
+        encoding="utf-8",
+    )
+    monkeypatch.setenv("KMD_TEST_ALLOW_NO_MODEL", "1")
+    monkeypatch.setenv("PYTEST_CURRENT_TEST", "1")
+    engine = KnowMoreDiRTEngine(tmp_path)
+
+    assert engine._answer_with_exact_source_field("What ticket appears in the raw JSON-like text?").text == "TXT-991"
