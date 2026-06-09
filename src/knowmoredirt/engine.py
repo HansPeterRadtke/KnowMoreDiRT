@@ -357,6 +357,10 @@ class KnowMoreDiRTEngine:
                 if row_answer:
                     self.last_answer = row_answer
                     return row_answer
+                row_field_answer = self._answer_with_row_field_source(text, prior_answer=model_answer)
+                if row_field_answer:
+                    self.last_answer = row_field_answer
+                    return row_field_answer
                 field_answer = self._answer_with_exact_source_field(text, prior_answer=model_answer)
                 if field_answer:
                     model_answer = field_answer
@@ -385,6 +389,10 @@ class KnowMoreDiRTEngine:
             if row_answer:
                 self.last_answer = row_answer
                 return row_answer
+            row_field_answer = self._answer_with_row_field_source(text, prior_answer=model_answer)
+            if row_field_answer:
+                self.last_answer = row_field_answer
+                return row_field_answer
             field_answer = self._answer_with_exact_source_field(text, prior_answer=model_answer)
             if field_answer:
                 self.last_answer = field_answer
@@ -710,7 +718,7 @@ class KnowMoreDiRTEngine:
         qnorm = normalize(question)
         if not qnorm.startswith("who "):
             return None
-        verbs = ["argued", "claimed", "disagreed", "believed", "reported", "said"]
+        verbs = ["argued", "claimed", "disagreed", "believed", "reported", "said", "closed", "merged", "approved", "reviewed", "accepted"]
         if not any(verb in qnorm or verb[:-1] in qnorm for verb in verbs):
             return None
         terms = self._question_content_terms(question)
@@ -722,20 +730,26 @@ class KnowMoreDiRTEngine:
                 continue
             seen.add((item.rel_path, item.text))
             window = self._evidence_window_text(item, radius=1, max_chars=800)
+            window_norm = normalize(window)
             for line in re.split(r"[\n.;]+", window):
                 line = clean_extracted_value(line).strip()
                 line_norm = normalize(line)
                 if not line_norm:
                     continue
-                if terms and not all(self._source_field_contains_any(line_norm, [term]) for term in terms[:4]):
+                if terms and not all(self._source_field_contains_any(window_norm, [term]) for term in terms[:4]):
                     continue
                 holder_match = re.search(
-                    r"(?:^|[:\]\s])(?P<holder>[A-Z][a-z]+(?:\s+[A-Z][a-z]+)?)\s+(?:argued|claimed|disagreed|believed|reported|said)\b",
+                    r"(?:^|[:\]\s])(?P<holder>[A-Z][a-z]+(?:\s+[A-Z][a-z]+)?)\s+(?:argued|claimed|disagreed|believed|reported|said|closed|merged|approved|reviewed|accepted)\b",
                     line,
                 )
                 if not holder_match:
                     holder_match = re.search(
-                        r"\b(?:argued|claimed|reported|said|believed|disagreed)\s+by\s+(?P<holder>[A-Z][a-z]+(?:\s+[A-Z][a-z]+)?)\b",
+                        r"(?:^|[\n.;])\s*(?P<holder>[A-Z][a-z]+(?:\s+[A-Z][a-z]+)?)\s*:\s*(?:I\s+)?(?:argue|argued|claim|claimed|disagree|disagreed|believe|believed|report|reported|say|said|closed|merged|approved|reviewed|accepted)\b",
+                        line,
+                    )
+                if not holder_match:
+                    holder_match = re.search(
+                        r"\b(?:argued|claimed|reported|said|believed|disagreed|closed|merged|approved|reviewed|accepted)\s+by\s+(?P<holder>[A-Z][a-z]+(?:\s+[A-Z][a-z]+)?)\b",
                         line,
                     )
                 if not holder_match:
@@ -745,6 +759,7 @@ class KnowMoreDiRTEngine:
                     continue
                 return Answer(holder, 0.86, [item], "source action holder binding", "person")
         return None
+
 
     def _answer_with_negated_action_source(self, question: str, prior_answer: Answer | None = None) -> Answer | None:
         qnorm = normalize(question)
@@ -994,6 +1009,48 @@ class KnowMoreDiRTEngine:
         if candidates:
             candidates.sort(key=lambda item: self._timestamp_sort_key(item[0]), reverse=True)
             return Answer(candidates[0][0]["state"], 0.88, [candidates[0][1]], "source temporal state binding", "state")
+        return None
+
+    def _answer_with_row_field_source(self, question: str, prior_answer: Answer | None = None) -> Answer | None:
+        qnorm = normalize(question)
+        rows = self._source_row_records()
+        if not rows:
+            return None
+        # Generic "which <record-type> is <status>" table lookup.
+        which_match = re.search(r"\bwhich\s+(?P<field>[a-z0-9_ -]+?)\s+(?:is|has|was)\s+(?P<value>[a-z0-9_-]+)\b", qnorm)
+        if which_match:
+            field_hint = normalize(which_match.group("field")).replace(" ", "_")
+            status_value = normalize(which_match.group("value"))
+            for row, evidence in rows:
+                if not self._row_matches_filters(row, [("status", status_value)], []):
+                    continue
+                value = self._row_field_value(row, [field_hint, f"{field_hint}_id", "id", "identifier", "code"])
+                if value:
+                    return Answer(value, 0.86, [evidence], "source-row field lookup", classify_value(value) if classify_value(value) != "unknown" else "identifier")
+        # Generic "who <verb> <identifier>" from prose/key-value rows.
+        who_match = re.search(r"\bwho\s+(?P<verb>closed|merged|approved|reviewed|accepted)\s+(?P<target>[A-Z0-9][A-Z0-9_-]+)\b", question, re.I)
+        if who_match:
+            verb = normalize(who_match.group("verb"))
+            target = normalize(who_match.group("target"))
+            evidence = list(prior_answer.evidence if prior_answer else [])
+            evidence.extend(ev for _row, ev in rows)
+            seen: set[tuple[str, str]] = set()
+            for item in evidence:
+                if (item.rel_path, item.text) in seen:
+                    continue
+                seen.add((item.rel_path, item.text))
+                window = self._evidence_window_text(item, radius=1, max_chars=800)
+                for line in re.split(r"[\n.;]+", window):
+                    line = clean_extracted_value(line).strip()
+                    line_norm = normalize(line)
+                    if verb not in line_norm or target not in line_norm:
+                        continue
+                    match = re.search(r"(?P<person>[A-Z][a-z]+(?:\s+[A-Z][a-z]+)?)\s+(?:closed|merged|approved|reviewed|accepted)\b", line)
+                    if match:
+                        return Answer(match.group("person").strip(), 0.86, [item], "source-row prose actor binding", "person")
+                    match = re.search(r"\b(?:closed|merged|approved|reviewed|accepted)\s+by\s+(?P<person>[A-Z][a-z]+(?:\s+[A-Z][a-z]+)?)\b", line)
+                    if match:
+                        return Answer(match.group("person").strip(), 0.86, [item], "source-row prose actor binding", "person")
         return None
 
     def _source_row_records(self) -> list[tuple[dict[str, str], Evidence]]:

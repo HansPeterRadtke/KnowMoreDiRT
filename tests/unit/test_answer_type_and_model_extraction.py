@@ -942,3 +942,23 @@ def test_source_arithmetic_action_negation_and_specific_code_helpers(tmp_path: P
     assert engine._answer_with_negated_action_source("What did Owen not buy?").text == "blue soap"
     assert engine._answer_with_exact_source_field("What is the hotel confirmation code?").text == "HTL-7712"
     assert engine._answer_with_exact_source_field("What specimen code is in the note?").text == "BIO-22"
+
+
+
+def test_source_action_holder_and_row_field_protections(tmp_path: Path, monkeypatch) -> None:
+    (tmp_path / "records.txt").write_text(
+        "Debate topic: library hours.\n"
+        "Ben: I disagree; families need evening hours.\n"
+        "invoice_id|customer|amount|status\n"
+        "INV-100|Cedar Theater|410|paid\n"
+        "INV-101|River Clinic|125|unpaid\n"
+        "Accounting note: Mara closed INV-100.\n",
+        encoding="utf-8",
+    )
+    monkeypatch.setenv("KMD_TEST_ALLOW_NO_MODEL", "1")
+    monkeypatch.setenv("PYTEST_CURRENT_TEST", "1")
+    engine = KnowMoreDiRTEngine(tmp_path)
+
+    assert engine._answer_with_action_holder_source("Who disagreed about library hours?").text == "Ben"
+    assert engine._answer_with_row_field_source("Which invoice is unpaid?").text == "INV-101"
+    assert engine._answer_with_row_field_source("Who closed INV-100?").text == "Mara"
