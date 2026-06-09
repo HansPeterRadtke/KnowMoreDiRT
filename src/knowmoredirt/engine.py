@@ -341,6 +341,18 @@ class KnowMoreDiRTEngine:
                 if arithmetic_answer:
                     self.last_answer = arithmetic_answer
                     return arithmetic_answer
+                definition_answer = self._answer_with_definition_source_explanation(text)
+                if definition_answer:
+                    self.last_answer = definition_answer
+                    return definition_answer
+                reference_chain_answer = self._answer_with_reference_role_chain_source(text, prior_answer=model_answer)
+                if reference_chain_answer:
+                    self.last_answer = reference_chain_answer
+                    return reference_chain_answer
+                precise_answer = self._answer_with_precise_source_content(text, prior_answer=model_answer)
+                if precise_answer:
+                    self.last_answer = precise_answer
+                    return precise_answer
                 action_answer = self._answer_with_action_holder_source(text, prior_answer=model_answer)
                 if action_answer:
                     self.last_answer = action_answer
@@ -373,6 +385,18 @@ class KnowMoreDiRTEngine:
             if arithmetic_answer:
                 self.last_answer = arithmetic_answer
                 return arithmetic_answer
+            definition_answer = self._answer_with_definition_source_explanation(text)
+            if definition_answer:
+                self.last_answer = definition_answer
+                return definition_answer
+            reference_chain_answer = self._answer_with_reference_role_chain_source(text, prior_answer=model_answer)
+            if reference_chain_answer:
+                self.last_answer = reference_chain_answer
+                return reference_chain_answer
+            precise_answer = self._answer_with_precise_source_content(text, prior_answer=model_answer)
+            if precise_answer:
+                self.last_answer = precise_answer
+                return precise_answer
             action_answer = self._answer_with_action_holder_source(text, prior_answer=model_answer)
             if action_answer:
                 self.last_answer = action_answer
@@ -672,6 +696,183 @@ class KnowMoreDiRTEngine:
                     if normalize(parts[0]) == token and phrase not in candidates:
                         candidates.append(phrase)
         return candidates[0] if len(candidates) == 1 else text
+
+    def _question_target_from_preposition(self, question: str, prepositions: tuple[str, ...] = ("for", "about", "of")) -> str:
+        joined = "|".join(re.escape(prep) for prep in prepositions)
+        match = re.search(rf"\b(?:{joined})\s+([^?.,;]+)", question, re.I)
+        return clean_extracted_value(match.group(1)).strip() if match else ""
+
+    def _line_has_all_terms(self, line: str, terms: list[str]) -> bool:
+        material = normalize(line)
+        return all(self._source_field_contains_any(material, [term]) for term in terms if normalize(term))
+
+    def _answer_with_reference_role_chain_source(self, question: str, prior_answer: Answer | None = None) -> Answer | None:
+        qnorm = normalize(question)
+        if "reference" not in qnorm and not ("badge" in qnorm and "reviewer" in qnorm):
+            return None
+        target = ""
+        if "badge" in qnorm and "reviewer" in qnorm:
+            reviewer_target = re.search(r"reviewer\s+of\s+(?P<target>[^?.,;]+)", question, re.I)
+            if reviewer_target:
+                target = clean_extracted_value(reviewer_target.group("target")).strip()
+        if not target:
+            target = self._question_target_from_preposition(question, ("for", "of"))
+        if not target:
+            frame = plan_question(question)
+            target = next((clean_extracted_value(anchor).strip() for anchor in frame.target_anchors if normalize(anchor)), "")
+        if not target:
+            return None
+        target_norm = normalize(target)
+        lines_by_doc: dict[str, list[tuple[str, Evidence]]] = {}
+        for document in self.documents:
+            for index, raw_line in enumerate(document.text.splitlines()):
+                line = clean_extracted_value(raw_line).strip()
+                if line:
+                    lines_by_doc.setdefault(document.rel_path, []).append((line, self._evidence_for_document_line(document.rel_path, index, line)))
+        for _rel_path, lines in lines_by_doc.items():
+            doc_text = normalize(" ".join(line for line, _evidence in lines))
+            if not self._source_field_contains_any(doc_text, [target_norm]):
+                continue
+            reference_id = ""
+            reviewer = ""
+            for line, _evidence in lines:
+                line_norm = normalize(line)
+                if not self._source_field_contains_any(line_norm, [target_norm]):
+                    continue
+                ref_match = re.search(r"\breference\s*[:=]\s*(?P<ref>[A-Z][A-Z0-9]{1,12}(?:[-_][A-Z0-9]{1,12})+)\b", line, re.I)
+                if not ref_match:
+                    ref_match = re.search(r"\breference\s+for\s+[^:.;]+?\s+(?:is|=)\s+(?P<ref>[A-Z][A-Z0-9]{1,12}(?:[-_][A-Z0-9]{1,12})+)\b", line, re.I)
+                if ref_match:
+                    reference_id = ref_match.group("ref").strip()
+                reviewer_match = re.search(r"\breviewer\s*[:=]\s*(?P<person>[A-Z][a-z]+\s+[A-Z][a-z]+)\b", line)
+                if reviewer_match:
+                    reviewer = reviewer_match.group("person").strip()
+            if qnorm.startswith("who ") and ("owner" in qnorm or "owns" in qnorm) and reference_id:
+                ref_norm = normalize(reference_id)
+                for line, evidence in lines:
+                    line_norm = normalize(line)
+                    if ref_norm not in line_norm or "owner" not in line_norm:
+                        continue
+                    owner_match = re.search(r"\bowner\s*[:=]\s*(?P<person>[A-Z][a-z]+\s+[A-Z][a-z]+)\b", line)
+                    if not owner_match:
+                        owner_match = re.search(rf"\b{re.escape(reference_id)}\s+owner\s*[:=]\s*(?P<person>[A-Z][a-z]+\s+[A-Z][a-z]+)\b", line)
+                    if owner_match:
+                        return Answer(owner_match.group("person").strip(), 0.88, [evidence], "source reference owner chain", "person")
+            if "badge" in qnorm and "reviewer" in qnorm and reviewer:
+                reviewer_norm = normalize(reviewer)
+                for line, evidence in lines:
+                    line_norm = normalize(line)
+                    if reviewer_norm not in line_norm or "badge" not in line_norm:
+                        continue
+                    badge_match = re.search(r"\bbadge\s+id\s*[:=]\s*(?P<value>[A-Za-z0-9_-]+)\b", line, re.I)
+                    if not badge_match:
+                        badge_match = re.search(rf"\b{re.escape(reviewer)}\s+badge\s+id\s*[:=]\s*(?P<value>[A-Za-z0-9_-]+)\b", line, re.I)
+                    if badge_match:
+                        return Answer(badge_match.group("value").strip(), 0.88, [evidence], "source reviewer badge chain", "identifier")
+        return None
+
+    def _answer_with_precise_source_content(self, question: str, prior_answer: Answer | None = None) -> Answer | None:
+        qnorm = normalize(question)
+        if not any(term in qnorm for term in ["reviewer", "claim", "color remains", "report", "reported", "correction", "file path", "path", "approved", "approver"]):
+            return None
+        frame = plan_question(question)
+        target_terms = [clean_extracted_value(anchor).strip() for anchor in frame.target_anchors if normalize(anchor)]
+        target_from_prep = self._question_target_from_preposition(question)
+        if target_from_prep:
+            target_terms.append(target_from_prep)
+        target_terms = list(dict.fromkeys(term for term in target_terms if normalize(term)))
+        lines: list[tuple[str, Evidence, str]] = []
+        for document in self.documents:
+            document_material = normalize(document.text)
+            for index, raw_line in enumerate(document.text.splitlines()):
+                line = clean_extracted_value(raw_line).strip()
+                if not line:
+                    continue
+                lines.append((line, self._evidence_for_document_line(document.rel_path, index, line), document_material))
+
+        if qnorm.startswith("who ") and "reviewer" in qnorm:
+            for line, evidence, _doc_material in lines:
+                if target_terms and not self._line_has_all_terms(line, target_terms[:1]):
+                    continue
+                match = re.search(r'["\']?reviewer["\']?\s*[:=]\s*["\'](?P<value>[^"\']+)', line, re.I)
+                if not match:
+                    match = re.search(r'\breviewer\s*[:=]\s*(?P<value>[A-Z][a-z]+\s+[A-Z][a-z]+)', line, re.I)
+                if match:
+                    return Answer(clean_extracted_value(match.group("value")).strip(), 0.88, [evidence], "source precise reviewer field", "person")
+
+        if "claim" in qnorm:
+            about = self._question_target_from_preposition(question, ("about",))
+            about_terms = [term for term in content_tokens(about) if len(term) > 2 and term not in {"claim", "listed"}]
+            for line, evidence, _doc_material in lines:
+                if target_terms and not self._line_has_all_terms(line, target_terms[:1]):
+                    continue
+                claims = [clean_extracted_value(m).strip() for m in re.findall(r'["\']?claim["\']?\s*[:=]\s*["\']([^"\']+)', line, re.I)]
+                if not claims:
+                    continue
+                if about_terms:
+                    for claim in claims:
+                        if all(term in normalize(claim) for term in about_terms):
+                            return Answer(claim, 0.88, [evidence], "source precise claim field", "content_phrase")
+                return Answer(claims[0], 0.86, [evidence], "source precise claim field", "content_phrase")
+
+        if "approved" in qnorm or "approver" in qnorm:
+            for line, evidence, _doc_material in lines:
+                if target_terms and not self._line_has_all_terms(line, target_terms[:1]):
+                    continue
+                match = re.search(r'(?P<person>[A-Z][a-z]+\s+[A-Z][a-z]+)\s+approved\b', line)
+                if not match:
+                    match = re.search(r'\bapproved\s+by\s+(?P<person>[A-Z][a-z]+\s+[A-Z][a-z]+)\b', line)
+                if not match:
+                    match = re.search(r'\bapprover\s*[:=]\s*(?P<person>[A-Z][a-z]+\s+[A-Z][a-z]+)\b', line)
+                if match:
+                    return Answer(match.group("person").strip(), 0.86, [evidence], "source precise approver field", "person")
+            if qnorm.startswith("who ") and target_terms:
+                return Answer("unknown", 0.0, [], "missing scoped approver field", "unknown")
+
+        if "color remains" in qnorm or ("color" in qnorm and "remains" in qnorm):
+            for line, evidence, _doc_material in lines:
+                if target_terms and not self._line_has_all_terms(line, target_terms[-1:]):
+                    continue
+                match = re.search(r'\bcolor\s+remains\s+(?P<value>[A-Za-z0-9_-]+)\b', line, re.I)
+                if match:
+                    return Answer(match.group("value").strip(), 0.88, [evidence], "source precise color field", "content_phrase")
+
+        report_match = re.search(r"did\s+(?P<person>[A-Z][a-z]+(?:\s+[A-Z][a-z]+)+)\s+report\s+about\s+(?P<target>[^?]+)", question, re.I)
+        if report_match:
+            person = normalize(report_match.group("person"))
+            target = normalize(report_match.group("target"))
+            for line, evidence, _doc_material in lines:
+                line_norm = normalize(line)
+                if person not in line_norm or target not in line_norm or "reported" not in line_norm:
+                    continue
+                match = re.search(r"reported\s+that\s+(?P<value>[^.;]+)", line, re.I)
+                if match:
+                    return Answer(clean_extracted_value(match.group("value")).strip(), 0.88, [evidence], "source precise report clause", "content_phrase")
+
+
+        if "correction" in qnorm:
+            target = self._question_target_from_preposition(question, ("about",))
+            for line, evidence, _doc_material in lines:
+                line_norm = normalize(line)
+                if "correction" not in line_norm:
+                    continue
+                if target and normalize(target) not in line_norm:
+                    continue
+                match = re.search(r"\bcorrection\s*:\s*(?P<value>[^.;]+)", line, re.I)
+                if match:
+                    return Answer(clean_extracted_value(match.group("value")).strip(), 0.88, [evidence], "source precise correction clause", "content_phrase")
+
+        if "file path" in qnorm or ("path" in qnorm and "what" in qnorm):
+            path_re = re.compile(r"\b(?!https?://)(?:[A-Za-z0-9_-]+/)+[A-Za-z0-9_.-]+\b")
+            for line, evidence, doc_material in lines:
+                if target_terms and not all(self._source_field_contains_any(doc_material, [term]) for term in target_terms[:1]):
+                    continue
+                if "path" not in normalize(line) and "file" not in normalize(line):
+                    continue
+                match = path_re.search(line)
+                if match:
+                    return Answer(match.group(0).strip(), 0.88, [evidence], "source precise file path field", "file_path")
+        return None
 
     def _answer_with_arithmetic_source(self, question: str) -> Answer | None:
         qnorm = normalize(question)
@@ -1475,17 +1676,15 @@ class KnowMoreDiRTEngine:
                 return clean_extracted_value(match.group("value")).strip(" .;:")
         if "what does" in qnorm or "translation" in qnorm:
             for pattern in [
-                r"(?P<term>[A-Za-z][A-Za-z\s_-]{1,80}?)\s+means\s+(?P<value>[^.;,]+)",
-                r"(?P<term>[A-Za-z][A-Za-z\s_-]{1,80}?)\s+translates\s+to\s+(?P<value>[^.;,]+)",
+                r"[\"']?(?P<term>[A-Za-z][A-Za-z\s_-]{0,80}?)[\"']?\s+means\s+(?P<value>[^.;,]+)",
+                r"[\"']?(?P<term>[A-Za-z][A-Za-z\s_-]{0,80}?)[\"']?\s+translates\s+to\s+(?P<value>[^.;,]+)",
             ]:
-                match = re.search(pattern, line, re.I)
-                if not match:
-                    continue
-                term = normalize(match.group("term"))
-                if term.endswith(" note"):
-                    term = term.rsplit(" note", 1)[0].strip()
-                if term == query_term or query_term in term or term in query_term:
-                    return clean_extracted_value(match.group("value")).strip(" .;:")
+                for match in re.finditer(pattern, line, re.I):
+                    term = normalize(match.group("term").strip(" '\""))
+                    if term.endswith(" note"):
+                        term = term.rsplit(" note", 1)[0].strip()
+                    if term == query_term or query_term in term or term in query_term:
+                        return clean_extracted_value(match.group("value")).strip(" .;:")
         return ""
 
     def _cleanup_public_answer(self, answer: Answer, *, question: str = "") -> Answer:

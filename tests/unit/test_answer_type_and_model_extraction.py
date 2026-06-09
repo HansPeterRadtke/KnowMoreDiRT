@@ -962,3 +962,49 @@ def test_source_action_holder_and_row_field_protections(tmp_path: Path, monkeypa
     assert engine._answer_with_action_holder_source("Who disagreed about library hours?").text == "Ben"
     assert engine._answer_with_row_field_source("Which invoice is unpaid?").text == "INV-101"
     assert engine._answer_with_row_field_source("Who closed INV-100?").text == "Mara"
+
+
+
+def test_precise_source_content_fields_and_unscoped_roles(tmp_path: Path, monkeypatch) -> None:
+    (tmp_path / "records.raw").write_text(
+        '{"bundle":{"name":"Glass Lamp","owner":"Ila Nore","reviewer":"Oren Pax","notes":[{"claim":"mirror needs velvet pad"},{"claim":"do not use blue solvent"}]}}\n'
+        "Mara Vell reviewed the safety addendum for Amber Loom.\n"
+        "approver: Eri Noam\n"
+        "Silver Nest reference: SVN-5001. SVN-5001 owner: Leda Cross.\n"
+        "[12:00] Otho Vale reported that Mist Rail was delayed.\n"
+        "[12:10] Otho Vale correction: Mist Rail departed on time.\n"
+        "Glossary: \"naur\" means north water.\n"
+        "archive path: vault/cinder_atlas_notes.md\n",
+        encoding="utf-8",
+    )
+    monkeypatch.setenv("KMD_TEST_ALLOW_NO_MODEL", "1")
+    monkeypatch.setenv("PYTEST_CURRENT_TEST", "1")
+    engine = KnowMoreDiRTEngine(tmp_path)
+
+    assert engine._answer_with_precise_source_content("Who is reviewer for Glass Lamp?").text == "Oren Pax"
+    assert engine._answer_with_precise_source_content("What claim is listed for Glass Lamp about the pad?").text == "mirror needs velvet pad"
+    assert engine._answer_with_precise_source_content("What claim is listed for Glass Lamp about solvent?").text == "do not use blue solvent"
+    assert engine._answer_with_precise_source_content("Who approved Amber Loom?").text == "unknown"
+    assert engine._answer_with_precise_source_content("What did Otho Vale report about Mist Rail?").text == "Mist Rail was delayed"
+    assert engine._answer_with_precise_source_content("What was the correction about Mist Rail?").text == "Mist Rail departed on time"
+    assert engine._answer_with_precise_source_content("What file path is listed for Glass Lamp?").text == "vault/cinder_atlas_notes.md"
+    assert engine._answer_with_definition_source_explanation("What does naur mean?").text == "north water"
+
+
+
+def test_reference_role_chain_source_binding(tmp_path: Path, monkeypatch) -> None:
+    (tmp_path / "references.txt").write_text(
+        "Silver Nest reference: SVN-5001. SVN-5001 owner: Leda Cross. Leda Cross badge id: person_leda777000.\n"
+        "Silver Nest reviewer: Orin Cale. Orin Cale badge id: person_orin228800.\n"
+        "Copper Nest reference: CPN-6001. CPN-6001 owner: Milo Thane. Milo Thane badge id: person_milo993300.\n"
+        "Copper Nest reviewer: Anya Reeve. Anya Reeve badge id: person_anya882200.\n",
+        encoding="utf-8",
+    )
+    monkeypatch.setenv("KMD_TEST_ALLOW_NO_MODEL", "1")
+    monkeypatch.setenv("PYTEST_CURRENT_TEST", "1")
+    engine = KnowMoreDiRTEngine(tmp_path)
+
+    assert engine._answer_with_reference_role_chain_source("Who owns the reference for Silver Nest?").text == "Leda Cross"
+    assert engine._answer_with_reference_role_chain_source("What is the badge id for the reviewer of Silver Nest?").text == "person_orin228800"
+    assert engine._answer_with_reference_role_chain_source("Who owns the reference for Copper Nest?").text == "Milo Thane"
+    assert engine._answer_with_reference_role_chain_source("What is the badge id for the reviewer of Copper Nest?").text == "person_anya882200"
