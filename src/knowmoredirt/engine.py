@@ -338,6 +338,10 @@ class KnowMoreDiRTEngine:
             if pre_actor_role_answer:
                 self.last_answer = pre_actor_role_answer
                 return pre_actor_role_answer
+            pre_reference_chain_answer = self._answer_with_reference_role_chain_source(text)
+            if pre_reference_chain_answer:
+                self.last_answer = pre_reference_chain_answer
+                return pre_reference_chain_answer
             pre_table_field_answer = self._answer_with_table_field_source(text)
             if pre_table_field_answer:
                 self.last_answer = pre_table_field_answer
@@ -802,6 +806,8 @@ class KnowMoreDiRTEngine:
 
     def _answer_with_table_field_source(self, question: str, prior_answer: Answer | None = None) -> Answer | None:
         qnorm = normalize(question)
+        if qnorm.startswith("who ") and ("owner" in qnorm or "owns" in qnorm):
+            return None
         if not any(term in qnorm for term in ["reference", "url", "link"]):
             return None
         frame = plan_question(question)
@@ -955,17 +961,29 @@ class KnowMoreDiRTEngine:
                 reviewer_match = re.search(r"\breviewer\s*[:=]\s*(?P<person>[A-Z][a-z]+\s+[A-Z][a-z]+)\b", line)
                 if reviewer_match:
                     reviewer = reviewer_match.group("person").strip()
-            if qnorm.startswith("who ") and ("owner" in qnorm or "owns" in qnorm) and reference_id:
-                ref_norm = normalize(reference_id)
+            if qnorm.startswith("who ") and ("owner" in qnorm or "owns" in qnorm):
                 for line, evidence in lines:
                     line_norm = normalize(line)
-                    if ref_norm not in line_norm or "owner" not in line_norm:
+                    if target_norm not in line_norm or "reference" not in line_norm or "owner" not in line_norm:
                         continue
-                    owner_match = re.search(r"\bowner\s*[:=]\s*(?P<person>[A-Z][a-z]+\s+[A-Z][a-z]+)\b", line)
-                    if not owner_match:
-                        owner_match = re.search(rf"\b{re.escape(reference_id)}\s+owner\s*[:=]\s*(?P<person>[A-Z][a-z]+\s+[A-Z][a-z]+)\b", line)
-                    if owner_match:
-                        return Answer(owner_match.group("person").strip(), 0.88, [evidence], "source reference owner chain", "person")
+                    inline_owner = re.search(
+                        r"\breference\s*[:=]\s*(?P<ref>[A-Z][A-Z0-9]{1,12}(?:[-_][A-Z0-9]{1,12})+)\b.*?\b(?:\1\s+)?owner\s*[:=]\s*(?P<person>[A-Z][a-z]+\s+[A-Z][a-z]+)",
+                        line,
+                        re.I,
+                    )
+                    if inline_owner:
+                        return Answer(inline_owner.group("person").strip(), 0.88, [evidence], "source reference owner chain", "person")
+                if reference_id:
+                    ref_norm = normalize(reference_id)
+                    for line, evidence in lines:
+                        line_norm = normalize(line)
+                        if ref_norm not in line_norm or "owner" not in line_norm:
+                            continue
+                        owner_match = re.search(r"\bowner\s*[:=]\s*(?P<person>[A-Z][a-z]+\s+[A-Z][a-z]+)\b", line)
+                        if not owner_match:
+                            owner_match = re.search(rf"\b{re.escape(reference_id)}\s+owner\s*[:=]\s*(?P<person>[A-Z][a-z]+\s+[A-Z][a-z]+)\b", line)
+                        if owner_match:
+                            return Answer(owner_match.group("person").strip(), 0.88, [evidence], "source reference owner chain", "person")
             if "badge" in qnorm and "reviewer" in qnorm and reviewer:
                 reviewer_norm = normalize(reviewer)
                 for line, evidence in lines:
