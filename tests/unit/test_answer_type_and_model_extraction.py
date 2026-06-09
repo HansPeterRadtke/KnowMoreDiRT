@@ -757,3 +757,79 @@ def test_exact_source_field_uses_source_path_as_scope(tmp_path: Path, monkeypatc
     engine = KnowMoreDiRTEngine(tmp_path)
 
     assert engine._answer_with_exact_source_field("What ticket appears in the raw JSON-like text?").text == "TXT-991"
+
+
+
+def test_source_row_count_aggregation_counts_row_local_filters(tmp_path: Path, monkeypatch) -> None:
+    (tmp_path / "status.tsv").write_text(
+        "item\tstatus\towner\treference\n"
+        "Bell Finch\tactive\tOla Nym\tBF-1201\n"
+        "Bell Finch\tarchived\tLio Fern\tBF-1200\n"
+        "Cedar Finch\tactive\tPax Neri\tCF-2201\n"
+        "Dune Finch\tblocked\tRae Sol\tDF-3301\n"
+        "Ember Finch\tactive\tUma Korr\tEF-4401\n",
+        encoding="utf-8",
+    )
+    monkeypatch.setenv("KMD_TEST_ALLOW_NO_MODEL", "1")
+    monkeypatch.setenv("PYTEST_CURRENT_TEST", "1")
+    engine = KnowMoreDiRTEngine(tmp_path)
+
+    assert engine._answer_with_source_rows("How many Finch rows have status active?").text == "3"
+    assert engine._answer_with_source_rows("How many rows have status blocked?").text == "1"
+    assert engine._answer_with_source_rows("How many rows have status archived?").text == "1"
+
+
+def test_source_row_count_aggregation_owner_state_and_argmax(tmp_path: Path, monkeypatch) -> None:
+    (tmp_path / "owner_state.tsv").write_text(
+        "owner\titem\tstate\tasset\n"
+        "Mira Sol\tAster One\topen\tAS-001\n"
+        "Mira Sol\tAster Two\topen\tAS-002\n"
+        "Mira Sol\tAster Three\tclosed\tAS-003\n"
+        "Pax Neri\tBeryl One\topen\tBY-001\n"
+        "Pax Neri\tBeryl Two\topen\tBY-002\n"
+        "Pax Neri\tBeryl Three\topen\tBY-003\n"
+        "Tavi Moss\tCedar One\tpaused\tCD-001\n",
+        encoding="utf-8",
+    )
+    monkeypatch.setenv("KMD_TEST_ALLOW_NO_MODEL", "1")
+    monkeypatch.setenv("PYTEST_CURRENT_TEST", "1")
+    engine = KnowMoreDiRTEngine(tmp_path)
+
+    assert engine._answer_with_source_rows("How many rows have state open?").text == "5"
+    assert engine._answer_with_source_rows("How many rows for Mira Sol have state open?").text == "2"
+    assert engine._answer_with_source_rows("Which actor has the most open rows?").text == "Pax Neri"
+    assert engine._answer_with_source_rows("How many open rows does Pax Neri have?").text == "3"
+    assert engine._answer_with_source_rows("How many rows have state paused?").text == "1"
+
+
+def test_source_row_object_and_pipe_table_counts(tmp_path: Path, monkeypatch) -> None:
+    (tmp_path / "objects.raw").write_text(
+        'group: "Frame"\n'
+        '{ name: "Orchid Alpha", owner: "Ila Voss", status: "ready", ids: { asset: "OA-7001" } }\n'
+        '{ name: "Orchid Beta", owner: "Niko Rell", status: "paused", ids: { asset: "OB-7002" } }\n'
+        '{ name: "Orchid Gamma", owner: "Tessa Noll", status: "ready", ids: { asset: "OG-7003" } }\n',
+        encoding="utf-8",
+    )
+    (tmp_path / "refunds.txt").write_text(
+        "Sheet: refunds\n"
+        "customer | product | refund_status\n"
+        "Blue Dune Retail | SearchSprout | requested\n"
+        "Helio Works | MistHarbor | requested\n"
+        "Ardent Mill | FlowQuill | alleged\n",
+        encoding="utf-8",
+    )
+    (tmp_path / "contacts.txt").write_text(
+        "Crate ID CR-18 belongs to customer Northstar Credit.\n"
+        "name | role | email\n"
+        "Ari Moss | invoice contact | ari.moss@northstar.example\n"
+        "Bex Vale | technical contact | bex.vale@northstar.example\n",
+        encoding="utf-8",
+    )
+    monkeypatch.setenv("KMD_TEST_ALLOW_NO_MODEL", "1")
+    monkeypatch.setenv("PYTEST_CURRENT_TEST", "1")
+    engine = KnowMoreDiRTEngine(tmp_path)
+
+    assert engine._answer_with_source_rows("How many Orchid records are ready?").text == "2"
+    assert engine._answer_with_source_rows("Which asset id belongs to the paused Orchid record?").text == "OB-7002"
+    assert engine._answer_with_source_rows("How many customers have requested refund status in the refunds sheet?").text == "2"
+    assert engine._answer_with_source_rows("How many contacts are listed for Northstar Credit?") is None

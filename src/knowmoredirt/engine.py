@@ -337,6 +337,10 @@ class KnowMoreDiRTEngine:
             model_answer = self._answer_with_local_model(text)
             if model_answer and normalize(model_answer.text) != "unknown":
                 model_answer = self._cleanup_public_answer(model_answer, question=text)
+                row_answer = self._answer_with_source_rows(text, prior_answer=model_answer)
+                if row_answer:
+                    self.last_answer = row_answer
+                    return row_answer
                 field_answer = self._answer_with_exact_source_field(text, prior_answer=model_answer)
                 if field_answer:
                     model_answer = field_answer
@@ -345,6 +349,10 @@ class KnowMoreDiRTEngine:
                     model_answer = improved
                 self.last_answer = model_answer
                 return model_answer
+            row_answer = self._answer_with_source_rows(text, prior_answer=model_answer)
+            if row_answer:
+                self.last_answer = row_answer
+                return row_answer
             field_answer = self._answer_with_exact_source_field(text, prior_answer=model_answer)
             if field_answer:
                 self.last_answer = field_answer
@@ -624,6 +632,178 @@ class KnowMoreDiRTEngine:
                     if normalize(parts[0]) == token and phrase not in candidates:
                         candidates.append(phrase)
         return candidates[0] if len(candidates) == 1 else text
+
+    def _source_row_records(self) -> list[tuple[dict[str, str], Evidence]]:
+        records: list[tuple[dict[str, str], Evidence]] = []
+        for document in self.documents:
+            headers: list[str] = []
+            for index, raw_line in enumerate(document.text.splitlines()):
+                line = raw_line.strip()
+                if not line:
+                    continue
+                row: dict[str, str] = {}
+                delimiter = "\t" if "\t" in line else "|" if "|" in line and ":" not in line else ""
+                if delimiter:
+                    cells = [cell.strip() for cell in line.split(delimiter)]
+                    if len(cells) >= 2 and all(cells):
+                        looks_like_header = all(
+                            not re.search(r"\d", cell)
+                            and not re.search(r"https?://", cell, re.I)
+                            and ":" not in cell
+                            for cell in cells
+                        )
+                        if looks_like_header and not headers:
+                            headers = [normalize(cell).replace(" ", "_") for cell in cells]
+                            continue
+                        if headers and len(headers) == len(cells):
+                            row = {headers[i]: cells[i] for i in range(len(headers))}
+                if not row and "{" in line and ":" in line:
+                    for key, value in re.findall(r'([A-Za-z_][A-Za-z0-9_ -]*)\s*:\s*"([^"]+)"', line):
+                        key_norm = normalize(key).split()[-1].replace(" ", "_")
+                        if key_norm:
+                            row[key_norm] = value.strip()
+                if not row:
+                    for part in [part.strip() for part in line.split("|")]:
+                        if not part:
+                            continue
+                        if ":" in part:
+                            key, value = part.split(":", 1)
+                        elif "=" in part:
+                            key, value = part.split("=", 1)
+                        else:
+                            continue
+                        key_norm = normalize(key).replace(" ", "_")
+                        if key_norm:
+                            row[key_norm] = value.strip().strip('"')
+                if row:
+                    row["_text"] = line
+                    row["_source"] = document.rel_path
+                    records.append((row, self._evidence_for_document_line(document.rel_path, index, line)))
+        return records
+
+    def _evidence_for_document_line(self, rel_path: str, line_index: int, text: str) -> Evidence:
+        sentences = list(self._sentences_by_document.get(rel_path, {}).values())
+        if line_index < len(sentences):
+            return self._evidence(sentences[line_index], 1.0)
+        for sentence in sentences:
+            if sentence.text.strip() == text.strip():
+                return self._evidence(sentence, 1.0)
+        if sentences:
+            return self._evidence(sentences[min(line_index, len(sentences) - 1)], 1.0)
+        return Evidence(rel_path=rel_path, text=text, score=1.0)
+
+    def _row_material(self, row: dict[str, str]) -> str:
+        return normalize(" ".join([row.get("_source", ""), row.get("_text", ""), *row.keys(), *row.values()]))
+
+    def _row_field_value(self, row: dict[str, str], labels: list[str]) -> str:
+        for label in labels:
+            label_norm = normalize(label).replace(" ", "_")
+            for key, value in row.items():
+                if key.startswith("_"):
+                    continue
+                key_norm = normalize(key).replace(" ", "_")
+                if key_norm == label_norm or label_norm in key_norm or key_norm in label_norm:
+                    return value
+        return ""
+
+    def _row_matches_terms(self, row: dict[str, str], terms: list[str]) -> bool:
+        material = self._row_material(row)
+        return all(self._source_field_contains_any(material, [term]) for term in terms if normalize(term))
+
+    def _row_target_terms_from_question(self, question: str, frame: QueryFrame) -> list[str]:
+        qnorm = normalize(question)
+        generic = {"How", "Which", "What", "When", "Where", "Rows", "Row", "Entries", "Entry", "Records", "Record"}
+        values: list[str] = []
+        for anchor in frame.target_anchors:
+            anchor_clean = clean_extracted_value(anchor).strip()
+            if anchor_clean and normalize(anchor_clean) not in {"row", "rows", "entry", "entries", "record", "records", "status", "state"}:
+                values.append(anchor_clean)
+        for match in re.finditer(r"how many\s+([A-Z][A-Za-z0-9_-]*(?:\s+[A-Z][A-Za-z0-9_-]*)*)\s+(?:rows?|entries|records?)", question):
+            phrase = match.group(1).strip()
+            if phrase and phrase not in generic:
+                values.append(phrase)
+        for match in re.finditer(r"(?:paused|ready|blocked|active|archived|open)\s+([A-Z][A-Za-z0-9_-]*(?:\s+[A-Z][A-Za-z0-9_-]*)*)\s+(?:rows?|entries|records?)", question):
+            phrase = match.group(1).strip()
+            if phrase and phrase not in generic:
+                values.append(phrase)
+        for owner in re.findall(r"for\s+([A-Z][a-z]+\s+[A-Z][a-z]+)", question):
+            if normalize(owner) not in {"refund status"}:
+                values.append(owner)
+        for owner in re.findall(r"does\s+([A-Z][a-z]+\s+[A-Z][a-z]+)\s+have", question):
+            values.append(owner)
+        return list(dict.fromkeys(value for value in values if normalize(value)))
+
+    def _row_count_request(self, question: str, frame: QueryFrame) -> tuple[list[str], list[tuple[str, str]], str]:
+        qnorm = normalize(question)
+        target_terms: list[str] = self._row_target_terms_from_question(question, frame)
+        filters: list[tuple[str, str]] = []
+        for field in ["status", "state"]:
+            match = re.search(rf"\b{field}\s+([a-z0-9_-]+)", qnorm)
+            if match and match.group(1) not in {"in", "for", "of", "on"}:
+                filters.append((field, match.group(1)))
+        for value in ["active", "blocked", "archived", "open", "paused", "ready", "requested"]:
+            if value in qnorm and not any(v == value for _f, v in filters):
+                if value == "requested" and "refund" in qnorm:
+                    filters.append(("refund_status", "requested"))
+                elif value in {"open", "paused", "ready"}:
+                    filters.append(("state", value))
+                else:
+                    filters.append(("status", value))
+        mode = "argmax_open" if "most open" in qnorm else "count"
+        return list(dict.fromkeys(target_terms)), filters, mode
+
+    def _row_matches_filters(self, row: dict[str, str], filters: list[tuple[str, str]], target_terms: list[str] | None = None) -> bool:
+        target_terms = target_terms or []
+        for field, value in filters:
+            field_value = self._row_field_value(row, [field])
+            if not field_value and field == "state" and target_terms:
+                field_value = self._row_field_value(row, ["status"])
+            if not field_value or normalize(field_value) != normalize(value):
+                return False
+        return True
+
+    def _answer_with_source_rows(self, question: str, prior_answer: Answer | None = None) -> Answer | None:
+        frame = plan_question(question)
+        qnorm = normalize(question)
+        if not ("how many" in qnorm or "most open" in qnorm or ("paused" in qnorm and "asset" in qnorm)):
+            return None
+        target_terms, filters, mode = self._row_count_request(question, frame)
+        rows = self._source_row_records()
+        matched: list[tuple[dict[str, str], Evidence]] = []
+        for row, evidence in rows:
+            if target_terms and not self._row_matches_terms(row, target_terms):
+                continue
+            if filters and not self._row_matches_filters(row, filters, target_terms):
+                continue
+            matched.append((row, evidence))
+        if "asset" in qnorm and "paused" in qnorm:
+            for row, evidence in matched:
+                value = self._row_field_value(row, ["asset", "asset_id"])
+                if value:
+                    return Answer(value, 0.86, [evidence], "source-row local field binding", "identifier")
+            return None
+        if mode == "argmax_open":
+            counts: dict[str, int] = {}
+            evidence_by_owner: dict[str, Evidence] = {}
+            for row, evidence in matched:
+                owner = self._row_field_value(row, ["owner", "actor", "person"])
+                if not owner:
+                    continue
+                counts[owner] = counts.get(owner, 0) + 1
+                evidence_by_owner.setdefault(owner, evidence)
+            if not counts:
+                return None
+            ordered = sorted(counts.items(), key=lambda item: (-item[1], item[0]))
+            if len(ordered) > 1 and ordered[0][1] == ordered[1][1]:
+                return None
+            return Answer(ordered[0][0], 0.86, [evidence_by_owner[ordered[0][0]]], "source-row argmax aggregation", "person")
+        if "how many" in qnorm:
+            if not filters and "contact" in qnorm:
+                return None
+            if not matched:
+                return None
+            return Answer(str(len(matched)), 0.86, [e for _r, e in matched[:4]], "source-row count aggregation", "count")
+        return None
 
     def _requested_source_field(self, question: str, frame: QueryFrame) -> tuple[str, list[str]]:
         qnorm = normalize(question)
