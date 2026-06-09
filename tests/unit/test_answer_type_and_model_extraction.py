@@ -921,3 +921,24 @@ def test_temporal_source_records_do_not_overfire_on_decision_or_cause_questions(
     assert engine._answer_with_temporal_source_records("What final decision was made about service hours?") is None
     assert engine._answer_with_temporal_source_records("What was the final cause of the outage?") is None
     assert engine._answer_with_temporal_source_records("When did the parade begin according to final verified schedule?") is None
+
+
+
+def test_source_arithmetic_action_negation_and_specific_code_helpers(tmp_path: Path, monkeypatch) -> None:
+    (tmp_path / "notes.txt").write_text(
+        "Math word problem: 7 apples plus 5 apples equals 12 apples.\n"
+        "Counterclaim: Priya argued the ferry mattered more.\n"
+        "[Owen] I bought rice and lemons but not blue soap.\n"
+        "Specimen code: BIO-22.\n"
+        "Hotel confirmation code: HTL-7712.\n",
+        encoding="utf-8",
+    )
+    monkeypatch.setenv("KMD_TEST_ALLOW_NO_MODEL", "1")
+    monkeypatch.setenv("PYTEST_CURRENT_TEST", "1")
+    engine = KnowMoreDiRTEngine(tmp_path)
+
+    assert engine._answer_with_arithmetic_source("What does 7 plus 5 equal in the homework note?").text == "12"
+    assert engine._answer_with_action_holder_source("Who argued the ferry mattered more?").text == "Priya"
+    assert engine._answer_with_negated_action_source("What did Owen not buy?").text == "blue soap"
+    assert engine._answer_with_exact_source_field("What is the hotel confirmation code?").text == "HTL-7712"
+    assert engine._answer_with_exact_source_field("What specimen code is in the note?").text == "BIO-22"

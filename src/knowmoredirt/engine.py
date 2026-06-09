@@ -337,6 +337,18 @@ class KnowMoreDiRTEngine:
             model_answer = self._answer_with_local_model(text)
             if model_answer and normalize(model_answer.text) != "unknown":
                 model_answer = self._cleanup_public_answer(model_answer, question=text)
+                arithmetic_answer = self._answer_with_arithmetic_source(text)
+                if arithmetic_answer:
+                    self.last_answer = arithmetic_answer
+                    return arithmetic_answer
+                action_answer = self._answer_with_action_holder_source(text, prior_answer=model_answer)
+                if action_answer:
+                    self.last_answer = action_answer
+                    return action_answer
+                negated_answer = self._answer_with_negated_action_source(text, prior_answer=model_answer)
+                if negated_answer:
+                    self.last_answer = negated_answer
+                    return negated_answer
                 temporal_answer = self._answer_with_temporal_source_records(text, prior_answer=model_answer)
                 if temporal_answer:
                     self.last_answer = temporal_answer
@@ -353,6 +365,18 @@ class KnowMoreDiRTEngine:
                     model_answer = improved
                 self.last_answer = model_answer
                 return model_answer
+            arithmetic_answer = self._answer_with_arithmetic_source(text)
+            if arithmetic_answer:
+                self.last_answer = arithmetic_answer
+                return arithmetic_answer
+            action_answer = self._answer_with_action_holder_source(text, prior_answer=model_answer)
+            if action_answer:
+                self.last_answer = action_answer
+                return action_answer
+            negated_answer = self._answer_with_negated_action_source(text, prior_answer=model_answer)
+            if negated_answer:
+                self.last_answer = negated_answer
+                return negated_answer
             temporal_answer = self._answer_with_temporal_source_records(text, prior_answer=model_answer)
             if temporal_answer:
                 self.last_answer = temporal_answer
@@ -640,6 +664,124 @@ class KnowMoreDiRTEngine:
                     if normalize(parts[0]) == token and phrase not in candidates:
                         candidates.append(phrase)
         return candidates[0] if len(candidates) == 1 else text
+
+    def _answer_with_arithmetic_source(self, question: str) -> Answer | None:
+        qnorm = normalize(question)
+        op_words = {"plus": "+", "minus": "-", "times": "*", "multiplied by": "*", "divided by": "/"}
+        if not any(op in qnorm for op in op_words):
+            return None
+        match = re.search(r"\b(?P<a>\d+)\s+(?P<op>plus|minus|times|multiplied by|divided by)\s+(?P<b>\d+)\b", qnorm)
+        if not match:
+            return None
+        a = int(match.group("a")); b = int(match.group("b")); op = match.group("op")
+        if op == "plus":
+            value = a + b
+        elif op == "minus":
+            value = a - b
+        elif op in {"times", "multiplied by"}:
+            value = a * b
+        elif op == "divided by" and b:
+            if a % b:
+                return None
+            value = a // b
+        else:
+            return None
+        evidence_items: list[Evidence] = []
+        for sentence, score in self._search(question, limit=12):
+            material = normalize(sentence.text)
+            if str(a) in material and str(b) in material and (op in material or op.replace(" ", " ") in material):
+                evidence_items.append(self._evidence(sentence, score))
+                break
+        if not evidence_items:
+            return None
+        return Answer(str(value), 0.9, evidence_items, "source arithmetic binding", "count")
+
+    def _question_content_terms(self, question: str, exclude: set[str] | None = None) -> list[str]:
+        exclude = exclude or set()
+        generic = {
+            "what", "which", "who", "where", "when", "does", "did", "was", "were", "is", "are", "the", "about",
+            "according", "source", "line", "listed", "made", "more", "matter", "mattered", "argue", "argued",
+            "claim", "claimed", "say", "said", "report", "reported", "believe", "believed", "disagree", "disagreed",
+            "not", "buy", "bought", "purchase", "purchased", "equal", "equals", "code", "id", "identifier",
+        } | exclude
+        return [tok for tok in content_tokens(question) if len(tok) > 2 and tok not in generic]
+
+    def _answer_with_action_holder_source(self, question: str, prior_answer: Answer | None = None) -> Answer | None:
+        qnorm = normalize(question)
+        if not qnorm.startswith("who "):
+            return None
+        verbs = ["argued", "claimed", "disagreed", "believed", "reported", "said"]
+        if not any(verb in qnorm or verb[:-1] in qnorm for verb in verbs):
+            return None
+        terms = self._question_content_terms(question)
+        evidence = list(prior_answer.evidence if prior_answer else [])
+        evidence.extend(self._evidence(sentence, score) for sentence, score in self._search(question, limit=18))
+        seen: set[tuple[str, str]] = set()
+        for item in evidence:
+            if (item.rel_path, item.text) in seen:
+                continue
+            seen.add((item.rel_path, item.text))
+            window = self._evidence_window_text(item, radius=1, max_chars=800)
+            for line in re.split(r"[\n.;]+", window):
+                line = clean_extracted_value(line).strip()
+                line_norm = normalize(line)
+                if not line_norm:
+                    continue
+                if terms and not all(self._source_field_contains_any(line_norm, [term]) for term in terms[:4]):
+                    continue
+                holder_match = re.search(
+                    r"(?:^|[:\]\s])(?P<holder>[A-Z][a-z]+(?:\s+[A-Z][a-z]+)?)\s+(?:argued|claimed|disagreed|believed|reported|said)\b",
+                    line,
+                )
+                if not holder_match:
+                    holder_match = re.search(
+                        r"\b(?:argued|claimed|reported|said|believed|disagreed)\s+by\s+(?P<holder>[A-Z][a-z]+(?:\s+[A-Z][a-z]+)?)\b",
+                        line,
+                    )
+                if not holder_match:
+                    continue
+                holder = holder_match.group("holder").strip()
+                if normalize(holder) in {"counterclaim", "audit", "the"}:
+                    continue
+                return Answer(holder, 0.86, [item], "source action holder binding", "person")
+        return None
+
+    def _answer_with_negated_action_source(self, question: str, prior_answer: Answer | None = None) -> Answer | None:
+        qnorm = normalize(question)
+        if "not" not in qnorm or not any(term in qnorm for term in ["buy", "bought", "purchase", "purchased"]):
+            return None
+        frame = plan_question(question)
+        target_terms = [normalize(anchor) for anchor in frame.target_anchors if normalize(anchor)]
+        for match in re.finditer(r"did\s+([A-Z][a-z]+(?:\s+[A-Z][a-z]+)?)\s+not", question):
+            target_terms.append(normalize(match.group(1)))
+        target_terms = list(dict.fromkeys(target_terms))
+        evidence = list(prior_answer.evidence if prior_answer else [])
+        evidence.extend(self._evidence(sentence, score) for sentence, score in self._search(question, limit=18))
+        seen: set[tuple[str, str]] = set()
+        for item in evidence:
+            if (item.rel_path, item.text) in seen:
+                continue
+            seen.add((item.rel_path, item.text))
+            window = self._evidence_window_text(item, radius=1, max_chars=800)
+            for line in re.split(r"[\n.;]+", window):
+                line = clean_extracted_value(line).strip()
+                line_norm = normalize(line)
+                if not line_norm or "not" not in line_norm:
+                    continue
+                if target_terms and not self._source_field_contains_any(line_norm, target_terms):
+                    continue
+                value = ""
+                for pattern in [r"\bbut\s+not\s+(?P<value>[^.;,]+)", r"\bnot\s+(?:buy|bought|purchase|purchased)\s+(?P<value>[^.;,]+)"]:
+                    found = re.search(pattern, line, re.I)
+                    if found:
+                        value = clean_extracted_value(found.group("value")).strip(" .;:")
+                        break
+                if not value:
+                    continue
+                value = re.sub(r"^(?:the|a|an)\s+", "", value, flags=re.I).strip()
+                if value:
+                    return Answer(value, 0.86, [item], "source negated action binding", "content_phrase")
+        return None
 
     def _temporal_target_terms(self, question: str, frame: QueryFrame) -> list[str]:
         generic = {
@@ -1034,7 +1176,7 @@ class KnowMoreDiRTEngine:
             "warranty", "manual", "runbook", "guide", "support", "dataset", "map", "drawing", "report", "canonical", "design",
         ]
         id_labels = [
-            "contact", "asset", "invoice", "audit", "case", "parcel", "person", "actor", "badge", "ticket", "reference", "specimen", "code", "commit", "pr",
+            "contact", "asset", "invoice", "audit", "case", "parcel", "person", "actor", "badge", "ticket", "reference", "specimen", "confirmation", "hotel", "reservation", "booking", "model", "code", "commit", "pr",
         ]
         requested: list[str] = []
         if any(term in material_terms for term in {"url", "uri", "link", "portal"}) or qnorm.startswith("where "):
@@ -1109,6 +1251,9 @@ class KnowMoreDiRTEngine:
             if not self._source_field_identifiers(line):
                 return False
             if labels and labels != ["id"]:
+                specific = [label for label in labels if label not in {"id", "identifier", "code"}]
+                if specific:
+                    return any(label in line_norm for label in specific)
                 if any(label in line_norm for label in labels):
                     return True
                 return any(f"{label} id" in line_norm for label in labels)
