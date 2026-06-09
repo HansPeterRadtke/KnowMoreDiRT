@@ -1035,3 +1035,22 @@ def test_table_field_and_actor_role_id_source_binding(tmp_path: Path, monkeypatc
     assert engine._answer_with_actor_role_ids_source("Which actor id belongs to the key reviewer of Aurora Loom Safety Note?").text == "ACT-411"
     assert engine._answer_with_actor_role_ids_source("Find actor IDs of the author and reviewers of Aurora Loom Safety Note.").text == "ACT-410; ACT-411; ACT-412"
     assert engine._answer_with_actor_role_ids_source("Which actor id belongs to the nonexistent approver of Aurora Loom Safety Note?").text == "unknown"
+
+
+
+def test_labeled_attribute_source_binding(tmp_path: Path, monkeypatch) -> None:
+    (tmp_path / "attrs.txt").write_text(
+        "Oak Meridian organization: Sable Harbor Institute.\n"
+        "Oak Meridian contact person: Jun Sato.\n"
+        "Oak Meridian contact id: CONTACT-8800.\n"
+        "Oak Meridian support URL: https://support.example.test/oak-meridian.\n",
+        encoding="utf-8",
+    )
+    monkeypatch.setenv("KMD_TEST_ALLOW_NO_MODEL", "1")
+    monkeypatch.setenv("PYTEST_CURRENT_TEST", "1")
+    engine = KnowMoreDiRTEngine(tmp_path)
+
+    assert engine._answer_with_labeled_attribute_source("Which organization is listed for Oak Meridian?").text == "Sable Harbor Institute"
+    assert engine._answer_with_labeled_attribute_source("Who is the contact person for Oak Meridian?").text == "Jun Sato"
+    assert engine._answer_with_labeled_attribute_source("What is the contact id for Oak Meridian?").text == "CONTACT-8800"
+    assert engine._answer_with_labeled_attribute_source("Where is the support URL for Oak Meridian?").text == "https://support.example.test/oak-meridian"

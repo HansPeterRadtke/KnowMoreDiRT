@@ -342,6 +342,10 @@ class KnowMoreDiRTEngine:
             if pre_table_field_answer:
                 self.last_answer = pre_table_field_answer
                 return pre_table_field_answer
+            pre_labeled_attribute_answer = self._answer_with_labeled_attribute_source(text)
+            if pre_labeled_attribute_answer:
+                self.last_answer = pre_labeled_attribute_answer
+                return pre_labeled_attribute_answer
             model_answer = self._answer_with_local_model(text)
             if model_answer and normalize(model_answer.text) != "unknown":
                 model_answer = self._cleanup_public_answer(model_answer, question=text)
@@ -365,6 +369,10 @@ class KnowMoreDiRTEngine:
                 if table_field_answer:
                     self.last_answer = table_field_answer
                     return table_field_answer
+                labeled_attribute_answer = self._answer_with_labeled_attribute_source(text, prior_answer=model_answer)
+                if labeled_attribute_answer:
+                    self.last_answer = labeled_attribute_answer
+                    return labeled_attribute_answer
                 precise_answer = self._answer_with_precise_source_content(text, prior_answer=model_answer)
                 if precise_answer:
                     self.last_answer = precise_answer
@@ -417,6 +425,10 @@ class KnowMoreDiRTEngine:
             if table_field_answer:
                 self.last_answer = table_field_answer
                 return table_field_answer
+            labeled_attribute_answer = self._answer_with_labeled_attribute_source(text, prior_answer=model_answer)
+            if labeled_attribute_answer:
+                self.last_answer = labeled_attribute_answer
+                return labeled_attribute_answer
             precise_answer = self._answer_with_precise_source_content(text, prior_answer=model_answer)
             if precise_answer:
                 self.last_answer = precise_answer
@@ -730,6 +742,64 @@ class KnowMoreDiRTEngine:
         material = normalize(line)
         return all(self._source_field_contains_any(material, [term]) for term in terms if normalize(term))
 
+    def _answer_with_labeled_attribute_source(self, question: str, prior_answer: Answer | None = None) -> Answer | None:
+        qnorm = normalize(question)
+        label_aliases: list[str] = []
+        answer_type = "metadata_value"
+        if "organization" in qnorm:
+            label_aliases = ["organization", "org"]
+            answer_type = "organization"
+        elif "contact person" in qnorm or (qnorm.startswith("who ") and "contact" in qnorm):
+            label_aliases = ["contact person", "contact"]
+            answer_type = "person"
+        elif "contact id" in qnorm:
+            label_aliases = ["contact id", "contact identifier"]
+            answer_type = "identifier"
+        elif "support url" in qnorm or "support link" in qnorm:
+            label_aliases = ["support url", "support link"]
+            answer_type = "url"
+        else:
+            return None
+        frame = plan_question(question)
+        target_terms = [clean_extracted_value(anchor).strip() for anchor in frame.target_anchors if normalize(anchor)]
+        if not target_terms:
+            prep_target = self._question_target_from_preposition(question, ("for", "of"))
+            if prep_target:
+                target_terms.append(prep_target)
+        if not target_terms:
+            return None
+        evidence_pool = list(prior_answer.evidence if prior_answer else [])
+        evidence_pool.extend(self._evidence(sentence, score) for sentence, score in self._search(question, limit=24))
+        seen: set[tuple[str, str]] = set()
+        for item in evidence_pool:
+            if (item.rel_path, item.text) in seen:
+                continue
+            seen.add((item.rel_path, item.text))
+            window = self._evidence_window_text(item, radius=1, max_chars=1000)
+            for raw_line in window.splitlines():
+                line = clean_extracted_value(raw_line).strip()
+                line_norm = normalize(line)
+                if not line_norm:
+                    continue
+                if not all(self._source_field_contains_any(line_norm, [term]) for term in target_terms[:1]):
+                    continue
+                for label in label_aliases:
+                    label_pattern = re.escape(label).replace("\\ ", r"\s+")
+                    if answer_type == "url":
+                        match = re.search(rf"\b{label_pattern}\s*[:=]\s*(?P<value>https?://[^\s.;]+(?:\.[^\s.;]+)*(?:/[^\s.;]+)?)", line, re.I)
+                    else:
+                        match = re.search(rf"\b{label_pattern}\s*[:=]\s*(?P<value>[^.;|]+)", line, re.I)
+                    if not match:
+                        continue
+                    value = clean_extracted_value(match.group("value")).strip(" .;:")
+                    value = value.strip('"\'')
+                    if not value:
+                        continue
+                    if answer_type == "url" and not value.startswith("http"):
+                        continue
+                    return Answer(value, 0.89, [item], "source labeled attribute binding", answer_type)
+        return None
+
     def _answer_with_table_field_source(self, question: str, prior_answer: Answer | None = None) -> Answer | None:
         qnorm = normalize(question)
         if not any(term in qnorm for term in ["reference", "url", "link"]):
@@ -749,10 +819,12 @@ class KnowMoreDiRTEngine:
             if "reference" in qnorm:
                 value = self._row_field_value(row, ["reference", "ref", "reference_id", "id"])
                 if value:
+                    value = clean_extracted_value(value).strip(" .;:")
                     return Answer(value, 0.88, [evidence], "source table reference field", "identifier")
             if "url" in qnorm or "link" in qnorm:
                 value = self._row_field_value(row, ["url", "link", "uri"])
                 if value:
+                    value = clean_extracted_value(value).strip(" .;:")
                     return Answer(value, 0.88, [evidence], "source table url field", "url")
         return None
 
