@@ -833,3 +833,91 @@ def test_source_row_object_and_pipe_table_counts(tmp_path: Path, monkeypatch) ->
     assert engine._answer_with_source_rows("Which asset id belongs to the paused Orchid record?").text == "OB-7002"
     assert engine._answer_with_source_rows("How many customers have requested refund status in the refunds sheet?").text == "2"
     assert engine._answer_with_source_rows("How many contacts are listed for Northstar Credit?") is None
+
+
+
+def test_temporal_source_records_select_target_local_latest_state(tmp_path: Path, monkeypatch) -> None:
+    (tmp_path / "states.log").write_text(
+        "2026-03-01 status: opened for Delta Well.\n"
+        "2026-03-09 status: closed for Delta Well.\n"
+        "2026-03-12 status: stable for Ibis Well.\n",
+        encoding="utf-8",
+    )
+    monkeypatch.setenv("KMD_TEST_ALLOW_NO_MODEL", "1")
+    monkeypatch.setenv("PYTEST_CURRENT_TEST", "1")
+    engine = KnowMoreDiRTEngine(tmp_path)
+
+    assert engine._answer_with_temporal_source_records("What is the current state of Delta Well?").text == "closed"
+    assert engine._answer_with_temporal_source_records("What is the final state of Ibis Well?").text == "stable"
+
+
+def test_temporal_source_records_preserve_datetime_and_document_final_state(tmp_path: Path, monkeypatch) -> None:
+    (tmp_path / "incident.log").write_text(
+        "2026-02-01 09:00 BUG-100 opened.\n"
+        "2026-02-03 16:45 BUG-100 reopened after customer report.\n"
+        "Final incident state: closed.\n",
+        encoding="utf-8",
+    )
+    (tmp_path / "camera.log").write_text(
+        "Officer Talen recorded the north camera failure at 2026-04-10 07:15.\n",
+        encoding="utf-8",
+    )
+    monkeypatch.setenv("KMD_TEST_ALLOW_NO_MODEL", "1")
+    monkeypatch.setenv("PYTEST_CURRENT_TEST", "1")
+    engine = KnowMoreDiRTEngine(tmp_path)
+
+    assert engine._answer_with_temporal_source_records("What is the final state of BUG-100?").text == "closed"
+    assert engine._answer_with_temporal_source_records("When did Officer Talen record the north camera failure?").text == "2026-04-10 07:15"
+
+
+
+def test_temporal_source_records_do_not_override_non_state_temporal_questions(tmp_path: Path, monkeypatch) -> None:
+    (tmp_path / "mixed.txt").write_text(
+        "2026-04-01 RampCart state: revised.\n"
+        "Current state: approved.\n"
+        "Vaccine due date: 2026-08-02.\n",
+        encoding="utf-8",
+    )
+    monkeypatch.setenv("KMD_TEST_ALLOW_NO_MODEL", "1")
+    monkeypatch.setenv("PYTEST_CURRENT_TEST", "1")
+    engine = KnowMoreDiRTEngine(tmp_path)
+
+    assert engine._answer_with_temporal_source_records("What final decision was made about library hours?") is None
+    assert engine._answer_with_temporal_source_records("When did the parade begin according to final verified schedule?") is None
+    assert engine._answer_with_temporal_source_records("What was the final cause of the outage?") is None
+
+
+def test_temporal_source_records_parse_timestamped_record_rows(tmp_path: Path, monkeypatch) -> None:
+    (tmp_path / "records.txt").write_text(
+        "record: Juniper Gate | final state: monitoring | timestamp: 2026-04-11 09:30\n"
+        "record: Slate Orchard | final state: closed | timestamp: 2026-04-12 16:00\n"
+        "2026-01-10 algae jar B state: cloudy.\n"
+        "2026-01-12 algae jar B state: clear.\n",
+        encoding="utf-8",
+    )
+    monkeypatch.setenv("KMD_TEST_ALLOW_NO_MODEL", "1")
+    monkeypatch.setenv("PYTEST_CURRENT_TEST", "1")
+    engine = KnowMoreDiRTEngine(tmp_path)
+
+    assert engine._answer_with_temporal_source_records("When was Juniper Gate final state recorded?").text == "2026-04-11 09:30"
+    assert engine._answer_with_temporal_source_records("When was Slate Orchard final state recorded?").text == "2026-04-12 16:00"
+    assert engine._answer_with_temporal_source_records("What is the current state of algae jar B?").text == "clear"
+
+
+
+def test_temporal_source_records_do_not_overfire_on_decision_or_cause_questions(tmp_path: Path, monkeypatch) -> None:
+    (tmp_path / "mixed.log").write_text(
+        "2026-04-01 Cart state: planned.\n"
+        "2026-04-04 Cart state: revised.\n"
+        "No final decision was made about service hours.\n"
+        "Final cause: bad certificate.\n"
+        "Final verified schedule: parade began at 13:00.\n",
+        encoding="utf-8",
+    )
+    monkeypatch.setenv("KMD_TEST_ALLOW_NO_MODEL", "1")
+    monkeypatch.setenv("PYTEST_CURRENT_TEST", "1")
+    engine = KnowMoreDiRTEngine(tmp_path)
+
+    assert engine._answer_with_temporal_source_records("What final decision was made about service hours?") is None
+    assert engine._answer_with_temporal_source_records("What was the final cause of the outage?") is None
+    assert engine._answer_with_temporal_source_records("When did the parade begin according to final verified schedule?") is None

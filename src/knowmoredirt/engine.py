@@ -337,6 +337,10 @@ class KnowMoreDiRTEngine:
             model_answer = self._answer_with_local_model(text)
             if model_answer and normalize(model_answer.text) != "unknown":
                 model_answer = self._cleanup_public_answer(model_answer, question=text)
+                temporal_answer = self._answer_with_temporal_source_records(text, prior_answer=model_answer)
+                if temporal_answer:
+                    self.last_answer = temporal_answer
+                    return temporal_answer
                 row_answer = self._answer_with_source_rows(text, prior_answer=model_answer)
                 if row_answer:
                     self.last_answer = row_answer
@@ -349,6 +353,10 @@ class KnowMoreDiRTEngine:
                     model_answer = improved
                 self.last_answer = model_answer
                 return model_answer
+            temporal_answer = self._answer_with_temporal_source_records(text, prior_answer=model_answer)
+            if temporal_answer:
+                self.last_answer = temporal_answer
+                return temporal_answer
             row_answer = self._answer_with_source_rows(text, prior_answer=model_answer)
             if row_answer:
                 self.last_answer = row_answer
@@ -632,6 +640,219 @@ class KnowMoreDiRTEngine:
                     if normalize(parts[0]) == token and phrase not in candidates:
                         candidates.append(phrase)
         return candidates[0] if len(candidates) == 1 else text
+
+    def _temporal_target_terms(self, question: str, frame: QueryFrame) -> list[str]:
+        generic = {
+            "current", "final", "latest", "state", "status", "when", "recorded", "record", "assigned",
+            "assignment", "time", "date", "failure", "source", "file", "copied", "reopen", "reopened",
+        }
+        values: list[str] = []
+        for anchor in frame.target_anchors:
+            clean = clean_extracted_value(anchor).strip()
+            norm = normalize(clean)
+            if norm and norm not in generic:
+                values.append(clean)
+        # Add explicit state subjects, including lowercase scientific/object labels.
+        for match in re.finditer(r"(?:current|final|latest)?\s*state\s+of\s+(?P<target>[^?.,;]+)", question, re.I):
+            phrase = clean_extracted_value(match.group("target")).strip()
+            if normalize(phrase) not in generic:
+                values.append(phrase)
+        # Add visible title-like spans after prepositions, while skipping generic role words.
+        for match in re.finditer(r"(?:of|for|to|did)\s+([A-Z][A-Za-z0-9_-]*(?:\s+[A-Z][A-Za-z0-9_-]*)*)", question):
+            phrase = match.group(1).strip()
+            if normalize(phrase) not in generic:
+                values.append(phrase)
+        return list(dict.fromkeys(value for value in values if normalize(value)))
+
+    def _temporal_question_should_bind(self, question: str) -> bool:
+        qnorm = normalize(question)
+        if "final decision" in qnorm or "decision finalized" in qnorm or "archive decision" in qnorm:
+            return False
+        if "final cause" in qnorm:
+            return False
+        if "assigned" in qnorm or "currently assigned" in qnorm:
+            return True
+        if "reopen" in qnorm or "reopened" in qnorm:
+            return True
+        if "recorded" in qnorm or "record " in f" {qnorm} ":
+            return True
+        if "state" in qnorm and any(term in qnorm for term in ["current", "currently", "latest", "final"]):
+            return True
+        return False
+
+    def _parse_temporal_key_value_line(self, line: str) -> dict[str, str]:
+        row: dict[str, str] = {}
+        parts = [part.strip() for part in line.split("|")]
+        for part in parts:
+            if ":" not in part:
+                continue
+            key, value = part.split(":", 1)
+            key_norm = normalize(key).replace(" ", "_")
+            value = value.strip().strip('"')
+            if not key_norm or not value:
+                continue
+            if key_norm in {"record", "item", "name", "target", "subject"}:
+                row["target"] = value
+            elif key_norm in {"state", "status"}:
+                row["state"] = value
+            elif key_norm in {"current_state", "current_status"}:
+                row["state"] = value
+                row["state_label"] = "current"
+            elif key_norm in {"final_state", "final_status"}:
+                row["state"] = value
+                row["state_label"] = "final"
+            elif key_norm in {"timestamp", "time", "datetime", "date_time"}:
+                row["timestamp"] = value
+        return row
+
+    def _temporal_line_records(self) -> list[tuple[dict[str, str], Evidence]]:
+        records: list[tuple[dict[str, str], Evidence]] = []
+        dt_pattern = r"(?P<date>\d{4}-\d{2}-\d{2})(?:\s+(?P<time>\d{2}:\d{2}))?"
+        for document in self.documents:
+            document_target_material = normalize(document.text[:800])
+            for index, raw_line in enumerate(document.text.splitlines()):
+                line = clean_extracted_value(raw_line).strip()
+                if not line:
+                    continue
+                line_norm = normalize(line)
+                evidence = self._evidence_for_document_line(document.rel_path, index, line)
+                base: dict[str, str] = {"_text": line, "_source": document.rel_path, "_doc_material": document_target_material}
+                has_timestamp = bool(re.search(dt_pattern, line))
+                for match in re.finditer(dt_pattern, line):
+                    timestamp = match.group("date") + ((" " + match.group("time")) if match.group("time") else "")
+                    prefix = line[:match.start()].strip(" :-")
+                    suffix = line[match.end():].strip(" :-")
+                    row = dict(base)
+                    row["timestamp"] = timestamp
+                    row["date"] = match.group("date")
+                    if match.group("time"):
+                        row["time"] = match.group("time")
+                    kv_row = self._parse_temporal_key_value_line(line)
+                    if kv_row:
+                        row.update(kv_row)
+                        row.setdefault("timestamp", timestamp)
+                    material = suffix or prefix
+                    status_match = re.search(r"(?:status|state)\s*:\s*(?P<state>[A-Za-z0-9_-]+)(?:\s+for\s+(?P<target>[^.;]+))?(?:[.;]|$)", material, re.I)
+                    target_state_match = re.search(r"(?P<target>[^:.;]+?)\s+(?:(?P<label>current|final)\s+)?(?:status|state)\s*:\s*(?P<state>[A-Za-z0-9_-]+)(?:[.;]|$)", material, re.I)
+                    if target_state_match:
+                        target = clean_extracted_value(target_state_match.group("target")).strip()
+                        if target and normalize(target) not in {"current", "final", "status", "state"}:
+                            row["target"] = target
+                        row["state"] = target_state_match.group("state").strip()
+                        if target_state_match.group("label"):
+                            row["state_label"] = normalize(target_state_match.group("label"))
+                    elif status_match:
+                        row["state"] = status_match.group("state").strip()
+                        if status_match.group("target"):
+                            row["target"] = status_match.group("target").strip()
+                    assign_match = re.search(r"(?P<target>[A-Z][A-Za-z0-9_-]*(?:\s+[A-Z][A-Za-z0-9_-]*)*)\s+(?:re)?assigned\s+to\s+(?P<person>[A-Z][a-z]+\s+[A-Z][a-z]+)", material, re.I)
+                    if assign_match:
+                        row["target"] = assign_match.group("target").strip()
+                        row["assigned_to"] = assign_match.group("person").strip()
+                    if "recorded" in line_norm and " at " in line_norm:
+                        row["event_text"] = normalize(line)
+                    records.append((row, evidence))
+                # Non-timestamped explicit current/final state lines.
+                state_match = None if has_timestamp else re.search(r"(?:(?P<target>[A-Z][A-Za-z0-9_-]*(?:\s+[A-Z][A-Za-z0-9_-]*)*)\s+)?(?P<label>current|final)?\s*(?:incident\s+|rollout\s+)?state\s*:\s*(?P<state>[A-Za-z0-9_-]+)", line, re.I)
+                if state_match:
+                    row = dict(base)
+                    row["state"] = state_match.group("state").strip()
+                    if state_match.group("label"):
+                        row["state_label"] = normalize(state_match.group("label"))
+                    if state_match.group("target"):
+                        target = state_match.group("target").strip()
+                        target_tokens = set(re.findall(r"[a-z0-9]+", normalize(target)))
+                        if not (target_tokens & {"current", "final", "incident", "rollout"}):
+                            row["target"] = target
+                    records.append((row, evidence))
+                # JSON-style current/previous state/status pairs.
+                if "current" in line_norm and ("status" in line_norm or "state" in line_norm):
+                    current = re.search(r'"current"\s*:\s*"(?P<state>[^"]+)"', line)
+                    if current:
+                        row = dict(base)
+                        row["state"] = current.group("state").strip()
+                        row["state_label"] = "current"
+                        name = re.search(r'"name"\s*:\s*"(?P<target>[^"]+)"', line)
+                        if name:
+                            row["target"] = name.group("target").strip()
+                        records.append((row, evidence))
+        return records
+
+    def _temporal_row_matches_target(self, row: dict[str, str], target_terms: list[str]) -> bool:
+        if not target_terms:
+            return True
+        explicit_material = normalize(" ".join([row.get("target", ""), row.get("_text", ""), row.get("_source", "")]))
+        if row.get("target"):
+            target_material = normalize(row.get("target", ""))
+            target_tokens = set(re.findall(r"[a-z0-9]+", target_material))
+            for term in target_terms:
+                term_norm = normalize(term)
+                if not term_norm:
+                    continue
+                term_tokens = set(re.findall(r"[a-z0-9]+", term_norm))
+                if term_norm == target_material or term_norm in target_material or target_material in term_norm:
+                    continue
+                if term_tokens and term_tokens.issubset(target_tokens):
+                    continue
+                return False
+            return True
+        document_material = normalize(" ".join([explicit_material, row.get("_doc_material", "")]))
+        return all(self._source_field_contains_any(document_material, [term]) for term in target_terms if normalize(term))
+
+
+    def _timestamp_sort_key(self, row: dict[str, str]) -> str:
+        return row.get("timestamp") or row.get("date") or ""
+
+    def _answer_with_temporal_source_records(self, question: str, prior_answer: Answer | None = None) -> Answer | None:
+        frame = plan_question(question)
+        qnorm = normalize(question)
+        if not self._temporal_question_should_bind(question):
+            return None
+        target_terms = self._temporal_target_terms(question, frame)
+        if "state" in qnorm and not target_terms:
+            return None
+        rows = [item for item in self._temporal_line_records() if self._temporal_row_matches_target(item[0], target_terms)]
+        if not rows:
+            return None
+        # Preserve full timestamp for explicit when-questions.
+        if qnorm.startswith("when") or " when " in f" {qnorm} ":
+            if "reopen" in qnorm or "reopened" in qnorm:
+                candidates = [(row, ev) for row, ev in rows if "reopen" in normalize(row.get("_text", ""))]
+            elif "record" in qnorm or "recorded" in qnorm:
+                candidates = [(row, ev) for row, ev in rows if "record" in normalize(row.get("_text", "")) or row.get("timestamp")]
+            elif "final state" in qnorm:
+                candidates = [(row, ev) for row, ev in rows if "final state" in normalize(row.get("_text", "")) or row.get("state_label") == "final"]
+            else:
+                candidates = rows
+            candidates = [(row, ev) for row, ev in candidates if row.get("timestamp") or row.get("date")]
+            if not candidates:
+                return None
+            candidates.sort(key=lambda item: self._timestamp_sort_key(item[0]), reverse=True)
+            value = candidates[0][0].get("timestamp") or candidates[0][0].get("date") or ""
+            if value:
+                return Answer(value, 0.88, [candidates[0][1]], "source temporal timestamp binding", "date_time")
+        if "assigned" in qnorm:
+            candidates = [(row, ev) for row, ev in rows if row.get("assigned_to")]
+            date_match = re.search(r"\b\d{4}-\d{2}-\d{2}\b", question)
+            if date_match:
+                candidates = [(row, ev) for row, ev in candidates if row.get("date") == date_match.group(0)]
+            if candidates:
+                candidates.sort(key=lambda item: self._timestamp_sort_key(item[0]), reverse=True)
+                return Answer(candidates[0][0]["assigned_to"], 0.88, [candidates[0][1]], "source temporal assignment binding", "person")
+        if "final" in qnorm:
+            candidates = [(row, ev) for row, ev in rows if row.get("state") and (row.get("state_label") == "final" or "final state" in normalize(row.get("_text", "")))]
+            if not candidates:
+                candidates = [(row, ev) for row, ev in rows if row.get("state")]
+        elif "current" in qnorm or "latest" in qnorm:
+            candidates = [(row, ev) for row, ev in rows if row.get("state") and (row.get("state_label") == "current" or "current state" in normalize(row.get("_text", "")))]
+            if not candidates:
+                candidates = [(row, ev) for row, ev in rows if row.get("state")]
+        else:
+            candidates = []
+        if candidates:
+            candidates.sort(key=lambda item: self._timestamp_sort_key(item[0]), reverse=True)
+            return Answer(candidates[0][0]["state"], 0.88, [candidates[0][1]], "source temporal state binding", "state")
+        return None
 
     def _source_row_records(self) -> list[tuple[dict[str, str], Evidence]]:
         records: list[tuple[dict[str, str], Evidence]] = []
