@@ -1054,3 +1054,38 @@ def test_labeled_attribute_source_binding(tmp_path: Path, monkeypatch) -> None:
     assert engine._answer_with_labeled_attribute_source("Who is the contact person for Oak Meridian?").text == "Jun Sato"
     assert engine._answer_with_labeled_attribute_source("What is the contact id for Oak Meridian?").text == "CONTACT-8800"
     assert engine._answer_with_labeled_attribute_source("Where is the support URL for Oak Meridian?").text == "https://support.example.test/oak-meridian"
+
+
+
+def test_cache_safe_reference_urls_and_organization_labels(tmp_path: Path, monkeypatch) -> None:
+    (tmp_path / "cache.tmp").write_text(
+        "Mica Relay warranty URL: https://cache.example.test/wrong-mica\n"
+        "Garnet Bridge owning organization: Fake Cache Org.\n",
+        encoding="utf-8",
+    )
+    (tmp_path / "mica.txt").write_text(
+        "Record: Mica Relay.\n"
+        "Manual URL: https://manuals.example.test/mica-relay\n"
+        "Warranty URL: https://warranty.example.test/mica-relay\n"
+        "Archive note: there is no archive URL for Mica Relay.\n",
+        encoding="utf-8",
+    )
+    (tmp_path / "lantern.txt").write_text(
+        "Record: North Lantern.\n"
+        "Guide URL: https://guides.example.test/north-lantern\n"
+        "Runbook URL: https://runbooks.example.test/north-lantern\n",
+        encoding="utf-8",
+    )
+    (tmp_path / "org.txt").write_text(
+        "Entity: Garnet Bridge.\nOwning organization: Morrow Slate Guild.\n",
+        encoding="utf-8",
+    )
+    monkeypatch.setenv("KMD_TEST_ALLOW_NO_MODEL", "1")
+    monkeypatch.setenv("PYTEST_CURRENT_TEST", "1")
+    engine = KnowMoreDiRTEngine(tmp_path)
+
+    assert engine._answer_with_exact_source_field("Which warranty URL belongs to Mica Relay?").text == "https://warranty.example.test/mica-relay"
+    assert engine._answer_with_exact_source_field("Which manual URL belongs to Mica Relay?").text == "https://manuals.example.test/mica-relay"
+    assert engine._answer_with_exact_source_field("Which runbook URL belongs to North Lantern?").text == "https://runbooks.example.test/north-lantern"
+    assert engine._answer_with_exact_source_field("Which archive URL belongs to Mica Relay?").text == "unknown"
+    assert engine._answer_with_labeled_attribute_source("Which organization owns Garnet Bridge?").text == "Morrow Slate Guild"

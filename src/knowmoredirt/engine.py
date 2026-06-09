@@ -346,6 +346,10 @@ class KnowMoreDiRTEngine:
             if pre_table_field_answer:
                 self.last_answer = pre_table_field_answer
                 return pre_table_field_answer
+            pre_exact_field_answer = self._answer_with_exact_source_field(text)
+            if pre_exact_field_answer:
+                self.last_answer = pre_exact_field_answer
+                return pre_exact_field_answer
             pre_labeled_attribute_answer = self._answer_with_labeled_attribute_source(text)
             if pre_labeled_attribute_answer:
                 self.last_answer = pre_labeled_attribute_answer
@@ -785,7 +789,10 @@ class KnowMoreDiRTEngine:
                 line_norm = normalize(line)
                 if not line_norm:
                     continue
-                if not all(self._source_field_contains_any(line_norm, [term]) for term in target_terms[:1]):
+                if self._source_field_low_priority(item, line) and "cache" not in qnorm:
+                    continue
+                window_norm = normalize(window)
+                if not all(self._source_field_contains_any(window_norm, [term]) for term in target_terms[:1]):
                     continue
                 for label in label_aliases:
                     label_pattern = re.escape(label).replace("\\ ", r"\s+")
@@ -810,6 +817,8 @@ class KnowMoreDiRTEngine:
             return None
         if not any(term in qnorm for term in ["reference", "url", "link"]):
             return None
+        if "url" in qnorm and any(term in qnorm for term in ["warranty", "manual", "runbook", "guide", "support", "dataset", "map", "drawing", "report", "archive"]):
+            return None
         frame = plan_question(question)
         target_terms = [clean_extracted_value(anchor).strip() for anchor in frame.target_anchors if normalize(anchor)]
         if not target_terms:
@@ -821,6 +830,8 @@ class KnowMoreDiRTEngine:
         rows = self._source_row_records()
         for row, evidence in rows:
             if not self._row_matches_terms(row, target_terms):
+                continue
+            if self._source_field_low_priority(evidence, row.get("_text", "")) and "cache" not in qnorm:
                 continue
             if "reference" in qnorm:
                 value = self._row_field_value(row, ["reference", "ref", "reference_id", "id"])
@@ -1657,7 +1668,7 @@ class KnowMoreDiRTEngine:
         slot_terms = [token for value in [*frame.answer_variables, frame.requested_relation, *frame.relation_terms] for token in content_tokens(value)]
         material_terms = set(slot_terms) | set(content_tokens(qnorm))
         url_labels = [
-            "warranty", "manual", "runbook", "guide", "support", "dataset", "map", "drawing", "report", "canonical", "design",
+            "warranty", "manual", "runbook", "guide", "support", "dataset", "map", "drawing", "report", "archive", "canonical", "design",
         ]
         id_labels = [
             "contact", "asset", "invoice", "audit", "case", "parcel", "person", "actor", "badge", "ticket", "reference", "specimen", "confirmation", "hotel", "reservation", "booking", "model", "code", "commit", "pr",
@@ -1805,6 +1816,14 @@ class KnowMoreDiRTEngine:
         qnorm = normalize(question)
         if "hidden" in qnorm and "cache" in qnorm:
             return None
+        specific_missing_labels = [label for label in labels if label not in {"url", "uri", "link", "id", "identifier", "code"}]
+        if specific_missing_labels and any(label in qnorm for label in specific_missing_labels):
+            for sentence, score in self._search(question, limit=12, required=None):
+                ev = self._evidence(sentence, score)
+                line_norm = normalize(sentence.text)
+                line_tokens = set(re.findall(r"[a-z0-9]+", line_norm))
+                if any(label in line_norm for label in specific_missing_labels) and "no" in line_tokens and ("url" in line_tokens or "link" in line_tokens):
+                    return Answer("unknown", 0.0, [ev], "explicit missing source field", "unknown")
         target_terms = self._exact_source_target_terms(frame, deterministic_frame, labels, field_kind)
         candidates = self._search(question, limit=int(os.environ.get("KMD_EXACT_FIELD_SOURCE_LIMIT", "36")), required=None)
         evidence = [self._evidence(sentence, score) for sentence, score in candidates]
