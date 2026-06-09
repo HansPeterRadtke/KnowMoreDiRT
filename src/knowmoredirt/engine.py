@@ -334,6 +334,14 @@ class KnowMoreDiRTEngine:
             return Answer("unknown", reason="empty question")
 
         if self._use_local_model:
+            pre_actor_role_answer = self._answer_with_actor_role_ids_source(text)
+            if pre_actor_role_answer:
+                self.last_answer = pre_actor_role_answer
+                return pre_actor_role_answer
+            pre_table_field_answer = self._answer_with_table_field_source(text)
+            if pre_table_field_answer:
+                self.last_answer = pre_table_field_answer
+                return pre_table_field_answer
             model_answer = self._answer_with_local_model(text)
             if model_answer and normalize(model_answer.text) != "unknown":
                 model_answer = self._cleanup_public_answer(model_answer, question=text)
@@ -349,6 +357,14 @@ class KnowMoreDiRTEngine:
                 if reference_chain_answer:
                     self.last_answer = reference_chain_answer
                     return reference_chain_answer
+                actor_role_answer = self._answer_with_actor_role_ids_source(text, prior_answer=model_answer)
+                if actor_role_answer:
+                    self.last_answer = actor_role_answer
+                    return actor_role_answer
+                table_field_answer = self._answer_with_table_field_source(text, prior_answer=model_answer)
+                if table_field_answer:
+                    self.last_answer = table_field_answer
+                    return table_field_answer
                 precise_answer = self._answer_with_precise_source_content(text, prior_answer=model_answer)
                 if precise_answer:
                     self.last_answer = precise_answer
@@ -393,6 +409,14 @@ class KnowMoreDiRTEngine:
             if reference_chain_answer:
                 self.last_answer = reference_chain_answer
                 return reference_chain_answer
+            actor_role_answer = self._answer_with_actor_role_ids_source(text, prior_answer=model_answer)
+            if actor_role_answer:
+                self.last_answer = actor_role_answer
+                return actor_role_answer
+            table_field_answer = self._answer_with_table_field_source(text, prior_answer=model_answer)
+            if table_field_answer:
+                self.last_answer = table_field_answer
+                return table_field_answer
             precise_answer = self._answer_with_precise_source_content(text, prior_answer=model_answer)
             if precise_answer:
                 self.last_answer = precise_answer
@@ -705,6 +729,118 @@ class KnowMoreDiRTEngine:
     def _line_has_all_terms(self, line: str, terms: list[str]) -> bool:
         material = normalize(line)
         return all(self._source_field_contains_any(material, [term]) for term in terms if normalize(term))
+
+    def _answer_with_table_field_source(self, question: str, prior_answer: Answer | None = None) -> Answer | None:
+        qnorm = normalize(question)
+        if not any(term in qnorm for term in ["reference", "url", "link"]):
+            return None
+        frame = plan_question(question)
+        target_terms = [clean_extracted_value(anchor).strip() for anchor in frame.target_anchors if normalize(anchor)]
+        if not target_terms:
+            prep_target = self._question_target_from_preposition(question, ("for", "of"))
+            if prep_target:
+                target_terms.append(prep_target)
+        if not target_terms:
+            return None
+        rows = self._source_row_records()
+        for row, evidence in rows:
+            if not self._row_matches_terms(row, target_terms):
+                continue
+            if "reference" in qnorm:
+                value = self._row_field_value(row, ["reference", "ref", "reference_id", "id"])
+                if value:
+                    return Answer(value, 0.88, [evidence], "source table reference field", "identifier")
+            if "url" in qnorm or "link" in qnorm:
+                value = self._row_field_value(row, ["url", "link", "uri"])
+                if value:
+                    return Answer(value, 0.88, [evidence], "source table url field", "url")
+        return None
+
+    def _actor_role_rows_by_document(self) -> dict[str, list[tuple[dict[str, str], Evidence]]]:
+        docs: dict[str, list[tuple[dict[str, str], Evidence]]] = {}
+        role_pattern = re.compile(
+            r"^(?P<role>author|key reviewer|reviewer|approver)\s*:\s*(?P<person>[A-Z][a-z]+\s+[A-Z][a-z]+)\s*\|\s*actor\s+id\s*:\s*(?P<actor>ACT-[A-Z0-9]+)\b",
+            re.I,
+        )
+        dossier_pattern = re.compile(r"\b(?:dossier|record|note)\s*:\s*(?P<target>[^.;]+)", re.I)
+        for document in self.documents:
+            current_target = ""
+            for index, raw_line in enumerate(document.text.splitlines()):
+                line = clean_extracted_value(raw_line).strip()
+                if not line:
+                    continue
+                dossier = dossier_pattern.search(line)
+                if dossier:
+                    current_target = clean_extracted_value(dossier.group("target")).strip()
+                match = role_pattern.search(line)
+                if not match:
+                    continue
+                row = {
+                    "role": normalize(match.group("role")),
+                    "person": match.group("person").strip(),
+                    "actor_id": match.group("actor").strip(),
+                    "target": current_target,
+                    "_text": line,
+                    "_source": document.rel_path,
+                }
+                docs.setdefault(document.rel_path, []).append((row, self._evidence_for_document_line(document.rel_path, index, line)))
+        return docs
+
+    def _answer_with_actor_role_ids_source(self, question: str, prior_answer: Answer | None = None) -> Answer | None:
+        qnorm = normalize(question)
+        if "actor" not in qnorm or "id" not in qnorm:
+            return None
+        frame = plan_question(question)
+        target = ""
+        target_match = re.search(r"(?:of|for)\s+(?P<target>[A-Z][A-Za-z0-9_-]*(?:\s+[A-Z][A-Za-z0-9_-]*)+)(?:\?|$)", question)
+        if target_match:
+            target = clean_extracted_value(target_match.group("target")).strip()
+        if not target:
+            target = next((clean_extracted_value(anchor).strip() for anchor in frame.target_anchors if normalize(anchor)), "")
+        target_norm = normalize(target)
+        if "author and reviewer" in qnorm or "author and reviewers" in qnorm or "authors and reviewers" in qnorm:
+            wanted_roles = ["author", "key reviewer", "reviewer"]
+        elif "key reviewer" in qnorm:
+            wanted_roles = ["key reviewer"]
+        elif "reviewer" in qnorm:
+            wanted_roles = ["reviewer", "key reviewer"]
+        elif "author" in qnorm:
+            wanted_roles = ["author"]
+        elif "approver" in qnorm:
+            wanted_roles = ["approver"]
+        else:
+            return None
+        person_match = re.search(r"named\s+(?P<person>[A-Z][a-z]+\s+[A-Z][a-z]+)", question)
+        named_person = normalize(person_match.group("person")) if person_match else ""
+        for _rel_path, rows in self._actor_role_rows_by_document().items():
+            doc_material = normalize(" ".join([row.get("target", "") + " " + row.get("_text", "") for row, _ev in rows]))
+            if target_norm and not self._source_field_contains_any(doc_material, [target_norm]):
+                continue
+            selected: list[tuple[str, Evidence]] = []
+            for role in wanted_roles:
+                for row, evidence in rows:
+                    if target_norm and row.get("target") and not self._source_field_contains_any(row.get("target", ""), [target_norm]):
+                        continue
+                    if row.get("role") != role:
+                        continue
+                    if named_person and normalize(row.get("person", "")) != named_person:
+                        continue
+                    selected.append((row["actor_id"], evidence))
+            if named_person:
+                if selected:
+                    return Answer(selected[0][0], 0.88, [selected[0][1]], "source actor role id binding", "identifier")
+                return None
+            if "approver" in qnorm and not selected:
+                return Answer("unknown", 0.0, [], "missing scoped actor role", "unknown")
+            if selected:
+                values: list[str] = []
+                evidences: list[Evidence] = []
+                for value, evidence in selected:
+                    if value not in values:
+                        values.append(value)
+                        evidences.append(evidence)
+                return Answer("; ".join(values), 0.88, evidences, "source actor role id binding", "identifier")
+        return None
 
     def _answer_with_reference_role_chain_source(self, question: str, prior_answer: Answer | None = None) -> Answer | None:
         qnorm = normalize(question)

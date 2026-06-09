@@ -1008,3 +1008,30 @@ def test_reference_role_chain_source_binding(tmp_path: Path, monkeypatch) -> Non
     assert engine._answer_with_reference_role_chain_source("What is the badge id for the reviewer of Silver Nest?").text == "person_orin228800"
     assert engine._answer_with_reference_role_chain_source("Who owns the reference for Copper Nest?").text == "Milo Thane"
     assert engine._answer_with_reference_role_chain_source("What is the badge id for the reviewer of Copper Nest?").text == "person_anya882200"
+
+
+
+def test_table_field_and_actor_role_id_source_binding(tmp_path: Path, monkeypatch) -> None:
+    (tmp_path / "status.tsv").write_text(
+        "item\tstatus\towner\treference\turl\n"
+        "Cedar Finch\tactive\tPax Neri\tCF-2201\thttps://items.example.test/cedar-finch\n"
+        "Dune Finch\tblocked\tRae Sol\tDF-3301\thttps://items.example.test/dune-finch\n",
+        encoding="utf-8",
+    )
+    (tmp_path / "actors.txt").write_text(
+        "Dossier: Aurora Loom Safety Note.\n"
+        "Author: Nira Sol | actor id: ACT-410\n"
+        "Key reviewer: Olan Vex | actor id: ACT-411\n"
+        "Reviewer: Pema Rill | actor id: ACT-412\n"
+        "No approver is listed for Aurora Loom Safety Note.\n",
+        encoding="utf-8",
+    )
+    monkeypatch.setenv("KMD_TEST_ALLOW_NO_MODEL", "1")
+    monkeypatch.setenv("PYTEST_CURRENT_TEST", "1")
+    engine = KnowMoreDiRTEngine(tmp_path)
+
+    assert engine._answer_with_table_field_source("What reference is listed for Cedar Finch?").text == "CF-2201"
+    assert engine._answer_with_table_field_source("Where is the URL for Dune Finch?").text == "https://items.example.test/dune-finch"
+    assert engine._answer_with_actor_role_ids_source("Which actor id belongs to the key reviewer of Aurora Loom Safety Note?").text == "ACT-411"
+    assert engine._answer_with_actor_role_ids_source("Find actor IDs of the author and reviewers of Aurora Loom Safety Note.").text == "ACT-410; ACT-411; ACT-412"
+    assert engine._answer_with_actor_role_ids_source("Which actor id belongs to the nonexistent approver of Aurora Loom Safety Note?").text == "unknown"
