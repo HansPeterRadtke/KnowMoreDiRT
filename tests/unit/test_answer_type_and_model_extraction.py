@@ -1145,6 +1145,8 @@ def test_review_approval_source_binding_and_ambiguity(tmp_path: Path, monkeypatc
         "A later note says Morgan approved it, but the note does not say which Morgan.\n"
         "Jo Sen: Keep Morgan Ives and Morgan Hale separate until the approval note is clarified.\n"
         "Iris Park accepted responsibility for BUG-7301 after Zed Labs escalated it.\n"
+        "Blue Dune Retail reported that SearchSprout returned duplicate invoices.\n"
+        "Wednesday: PR-1201 merged by Tomas Vale.\n"
         "  \"owner_sentence\": \"Iris Park accepted responsibility for BUG-7301 after Zed Labs escalated it.\"\n"
         "The canonical design URL is https://docs.luma.example/ledger/escrow-import-r7.\n",
         encoding="utf-8",
@@ -1157,6 +1159,7 @@ def test_review_approval_source_binding_and_ambiguity(tmp_path: Path, monkeypatc
     assert engine._answer_with_review_or_approval_source("Who reviewed PR-9910 for BeaconQueue docs?").text == "Morgan Hale"
     assert engine._answer_with_review_or_approval_source("Which Morgan approved PR-9910?").text == "unknown"
     assert engine._answer_with_review_or_approval_source("Who accepted responsibility for BUG-7301?").text == "Iris Park"
+    assert engine._answer_with_review_or_approval_source("Who merged PR-1201?").text == "Tomas Vale"
     assert engine._answer_with_exact_source_field("What is the canonical design URL for the escrow import design?").text == "https://docs.luma.example/ledger/escrow-import-r7"
 
 
@@ -1164,7 +1167,8 @@ def test_review_approval_source_binding_and_ambiguity(tmp_path: Path, monkeypatc
 def test_clause_table_message_source_binding(tmp_path: Path, monkeypatch) -> None:
     (tmp_path / "case.txt").write_text(
         "Plaintiff Ardent Mill alleges that FlowQuill caused invoice drift on 2026-03-12.\n"
-        "The allegation names support ticket SUP-1207.\n",
+        "The allegation names support ticket SUP-1207.\n"
+        "Blue Dune Retail reported that SearchSprout returned duplicate invoices.\n",
         encoding="utf-8",
     )
     (tmp_path / "measurements.tsv").write_text(
@@ -1191,6 +1195,7 @@ def test_clause_table_message_source_binding(tmp_path: Path, monkeypatch) -> Non
     engine = KnowMoreDiRTEngine(tmp_path)
 
     assert engine._answer_with_clause_table_message_source("Who alleged that FlowQuill caused invoice drift?").text == "Ardent Mill"
+    assert engine._answer_with_clause_table_message_source("Which customer reported duplicate invoices in SearchSprout?").text == "Blue Dune Retail"
     assert engine._answer_with_clause_table_message_source("What is the measurement date for the DeltaPier sensor readings?").text == "1986-07-14"
     assert engine._answer_with_clause_table_message_source("Which DeltaPier sensor had critical status?").text == "S-3"
     assert engine._answer_with_clause_table_message_source("When was the DeltaPier source file copied?").text == "2010-05-20"

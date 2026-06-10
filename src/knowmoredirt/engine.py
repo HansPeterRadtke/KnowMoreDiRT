@@ -804,6 +804,19 @@ class KnowMoreDiRTEngine:
                 if match:
                     name = re.sub(r"^(?:Plaintiff|Customer|Party)\s+", "", match.group("name").strip())
                     return Answer(name, 0.9, [self._evidence(sentence, score)], "source allegation holder", "organization")
+        if qnorm.startswith("which ") and "customer" in qnorm and "reported" in qnorm:
+            target_terms = [term for term in content_tokens(question) if term not in {"which", "customer", "reported", "report", "returned", "duplicate", "duplicates", "invoice", "invoices", "in"}]
+            for sentence, score in self._search(question, limit=24):
+                line = clean_extracted_value(sentence.text).strip()
+                line_norm = normalize(line)
+                if "reported" not in line_norm:
+                    continue
+                if target_terms and not all(self._source_field_contains_any(line_norm, [term]) for term in target_terms[:3]):
+                    continue
+                match = re.search(r"(?P<customer>[A-Z][A-Za-z0-9_-]*(?:\s+[A-Z][A-Za-z0-9_-]*)*)\s+reported\b", line)
+                if match:
+                    return Answer(match.group("customer").strip(), 0.9, [self._evidence(sentence, score)], "source reported customer", "organization")
+
         # Labeled document attributes like measurement date / source file copied.
         label_specs: list[tuple[list[str], str]] = []
         if "measurement date" in qnorm:
@@ -896,7 +909,8 @@ class KnowMoreDiRTEngine:
         is_review = "review" in qnorm or "reviewed" in qnorm
         is_approve = "approve" in qnorm or "approved" in qnorm
         is_accept = "accepted" in qnorm and "responsibility" in qnorm
-        if not (is_review or is_approve or is_accept):
+        is_merge = "merged" in qnorm or "merge" in qnorm
+        if not (is_review or is_approve or is_accept or is_merge):
             return None
         target_ids = re.findall(r"\b[A-Z]{2,}-\d+\b", question)
         target_terms = [term for term in content_tokens(question) if term not in {"who", "which", "review", "reviewed", "approve", "approved", "for", "the", "docs", "document", "documents"}]
@@ -929,8 +943,10 @@ class KnowMoreDiRTEngine:
             verb_pattern = "review(?:ed)?"
         elif is_approve:
             verb_pattern = "approv(?:ed|e)"
+        elif is_accept:
+            verb_pattern = r"accepted\s+responsibility"
         else:
-            verb_pattern = "accepted\s+responsibility"
+            verb_pattern = "merged"
         for line, evidence_item, window_norm in lines:
             line_norm = normalize(line)
             if target_ids and not any(normalize(target) in window_norm for target in target_ids):
