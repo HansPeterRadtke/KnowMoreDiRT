@@ -350,6 +350,10 @@ class KnowMoreDiRTEngine:
             if pre_clause_table_message_answer:
                 self.last_answer = pre_clause_table_message_answer
                 return pre_clause_table_message_answer
+            pre_discussion_belief_answer = self._answer_with_discussion_belief_source(text)
+            if pre_discussion_belief_answer:
+                self.last_answer = pre_discussion_belief_answer
+                return pre_discussion_belief_answer
             pre_precise_answer = self._answer_with_precise_source_content(text)
             if pre_precise_answer:
                 self.last_answer = pre_precise_answer
@@ -793,6 +797,98 @@ class KnowMoreDiRTEngine:
     def _line_has_all_terms(self, line: str, terms: list[str]) -> bool:
         material = normalize(line)
         return all(self._source_field_contains_any(material, [term]) for term in terms if normalize(term))
+
+    def _answer_with_discussion_belief_source(self, question: str, prior_answer: Answer | None = None) -> Answer | None:
+        qnorm = normalize(question)
+        evidence = list(prior_answer.evidence if prior_answer else [])
+        evidence.extend(self._evidence(sentence, score) for sentence, score in self._search(question, limit=28))
+        lines: list[tuple[str, Evidence, str]] = []
+        seen: set[tuple[str, str]] = set()
+        for item in evidence:
+            if (item.rel_path, item.text) in seen:
+                continue
+            seen.add((item.rel_path, item.text))
+            window = self._evidence_window_text(item, radius=1, max_chars=1200)
+            for raw_line in window.splitlines():
+                line = clean_extracted_value(raw_line).strip()
+                if line:
+                    lines.append((line, item, normalize(window)))
+        if any(term in qnorm for term in ["owner", "ticket", "date", "id"]):
+            missing_targets = [term for term in content_tokens(question) if term not in {"what", "which", "who", "is", "the", "for", "listed", "release", "date", "owner", "ticket", "support", "id", "identifier", "customer"}]
+            requested_missing_terms = [term for term in ["owner", "ticket", "date", "id"] if term in qnorm]
+            for line, evidence_item, window_norm in lines:
+                line_norm = normalize(line)
+                line_tokens = set(re.findall(r"[a-z0-9]+", line_norm))
+                if "no" not in line_tokens:
+                    continue
+                if missing_targets and not all(self._source_field_contains_any(window_norm, [term]) for term in missing_targets[:3]):
+                    continue
+                if requested_missing_terms and not any(term in line_tokens or term in line_norm for term in requested_missing_terms):
+                    continue
+                return Answer("unknown", 0.0, [evidence_item], "explicit missing noisy field", "unknown")
+        if "customer" in qnorm and "id" in qnorm:
+            target_terms = [term for term in content_tokens(question) if term not in {"what", "which", "customer", "id", "identifier", "for", "the"}]
+            matching_target: Evidence | None = None
+            for line, evidence_item, window_norm in lines:
+                line_norm = normalize(line)
+                if target_terms and not all(self._source_field_contains_any(window_norm, [term]) for term in target_terms[:3]):
+                    continue
+                if "customer id" in line_norm or "customer identifier" in line_norm:
+                    match = re.search(r"customer\s+(?:id|identifier)\s*[:=]\s*(?P<value>[A-Za-z0-9_-]+)", line, re.I)
+                    if match:
+                        return Answer(match.group("value"), 0.9, [evidence_item], "source customer id field", "identifier")
+                matching_target = evidence_item
+            if matching_target:
+                return Answer("unknown", 0.0, [matching_target], "missing customer id field", "unknown")
+        if qnorm.startswith("who ") and "disagreed" in qnorm:
+            about_terms = [term for term in content_tokens(question) if term not in {"who", "disagreed", "disagree", "with", "about", "cause", "outage"}]
+            for line, evidence_item, window_norm in lines:
+                line_norm = normalize(line)
+                if "disagree" not in line_norm:
+                    continue
+                if about_terms and not all(self._source_field_contains_any(window_norm, [term]) for term in about_terms[:2]):
+                    continue
+                match = re.search(r"^(?P<person>[A-Z][a-z]+(?:\s+[A-Z][a-z]+)?)\s*:\s*I\s+disagree\b", line, re.I)
+                if match:
+                    return Answer(match.group("person").strip(), 0.9, [evidence_item], "source disagreement speaker", "person")
+        if qnorm.startswith("who ") and ("believed" in qnorm or "believes" in qnorm):
+            belief_terms = [term for term in content_tokens(question) if term not in {"who", "believed", "believes", "belief", "that", "was", "were", "in", "the"}]
+            for line, evidence_item, _window_norm in lines:
+                line_norm = normalize(line)
+                if "believes" not in line_norm and "believed" not in line_norm:
+                    continue
+                if belief_terms and not all(self._source_field_contains_any(line_norm, [term]) for term in belief_terms[:4]):
+                    continue
+                match = re.search(r"^(?P<person>[A-Z][a-z]+(?:\s+[A-Z][a-z]+)?)\s+believ", line, re.I)
+                if match:
+                    return Answer(match.group("person").strip(), 0.9, [evidence_item], "source belief speaker", "person")
+        if qnorm.startswith("which ") and "file" in qnorm and any(term in qnorm for term in ["fixed", "touch", "touched"]):
+            target_ids = re.findall(r"\b[A-Z]{2,}-\d+\b", question)
+            related_ids: set[str] = set(target_ids)
+            all_lines: list[tuple[str, Evidence, str]] = []
+            for document in self.documents:
+                doc_norm = normalize(document.text)
+                for index, raw_line in enumerate(document.text.splitlines()):
+                    line = clean_extracted_value(raw_line).strip()
+                    if line:
+                        all_lines.append((line, self._evidence_for_document_line(document.rel_path, index, line), doc_norm))
+            for line, _evidence_item, window_norm in [*lines, *all_lines]:
+                line_norm = normalize(line)
+                if target_ids and any(normalize(target) in line_norm or normalize(target) in window_norm for target in target_ids):
+                    related_ids.update(re.findall(r"\b[A-Z]{2,}-\d+\b", line))
+                    related_ids.update(re.findall(r"\b[A-Z]{2,}-\d+\b", window_norm.upper()))
+            for line, evidence_item, window_norm in [*lines, *all_lines]:
+                line_norm = normalize(line)
+                if related_ids and not any(normalize(target) in line_norm or normalize(target) in window_norm for target in related_ids):
+                    continue
+                if "touches" not in line_norm and "touched" not in line_norm:
+                    continue
+                match = re.search(r"\btouches\s+(?P<file>[A-Za-z0-9_.-]+\.[A-Za-z0-9]+)\b", line, re.I)
+                if not match:
+                    match = re.search(r"\btouched\s+(?P<file>[A-Za-z0-9_.-]+\.[A-Za-z0-9]+)\b", line, re.I)
+                if match:
+                    return Answer(match.group("file"), 0.9, [evidence_item], "source touched file binding", "file_path")
+        return None
 
     def _answer_with_commit_hash_source(self, question: str, prior_answer: Answer | None = None) -> Answer | None:
         qnorm = normalize(question)

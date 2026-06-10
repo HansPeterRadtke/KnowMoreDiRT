@@ -1249,3 +1249,28 @@ def test_owner_label_and_quoted_approver_source_binding(tmp_path: Path, monkeypa
 
     assert engine._answer_with_labeled_attribute_source("Who is the CedarSpan launch owner?").text == "Elan Ruiz"
     assert engine._answer_with_precise_source_content("Who approved RippleDesk?").text == "Gus North"
+
+
+
+def test_messy_discussion_belief_and_source_file_bindings(tmp_path: Path, monkeypatch) -> None:
+    (tmp_path / "notes.txt").write_text(
+        "This note mentions no release date for VioletForge and no owner for MoonCrate.\n"
+        "This note has no support ticket for MoonCrate.\n"
+        "Dana: The outage was caused by gateway overload.\n"
+        "Rui: I disagree; the outage was caused by a bad certificate.\n"
+        "Sora believes QuillCache stores passwords in plaintext.\n"
+        "Blue Dune Retail reported that SearchSprout returned duplicate invoices.\n"
+        "PR-8042 implements the importer and touches ledger_importer.rs.\n"
+        "2026-02-04 10:15 BUG-4481 closed again after PR-8042 was merged.\n",
+        encoding="utf-8",
+    )
+    monkeypatch.setenv("KMD_TEST_ALLOW_NO_MODEL", "1")
+    monkeypatch.setenv("PYTEST_CURRENT_TEST", "1")
+    engine = KnowMoreDiRTEngine(tmp_path)
+
+    assert engine._answer_with_discussion_belief_source("What support ticket is listed for MoonCrate?").text == "unknown"
+    assert engine._answer_with_discussion_belief_source("What is the customer ID for Blue Dune Retail?").text == "unknown"
+    assert engine._answer_with_discussion_belief_source("Which source file fixed BUG-4481?").text == "ledger_importer.rs"
+    assert engine._answer_with_discussion_belief_source("Which file did PR-8042 touch?").text == "ledger_importer.rs"
+    assert engine._answer_with_discussion_belief_source("Who disagreed with Dana about the outage cause?").text == "Rui"
+    assert engine._answer_with_discussion_belief_source("Who believed QuillCache stored passwords in plaintext?").text == "Sora"
