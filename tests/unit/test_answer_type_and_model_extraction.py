@@ -1133,3 +1133,25 @@ def test_correction_owner_source_strips_ocr_prefix(tmp_path: Path, monkeypatch) 
     engine = KnowMoreDiRTEngine(tmp_path)
 
     assert engine._answer_with_correction_owner_source("Who owns the greenhouse fern according to the OCR correction?").text == "Dr. Pella"
+
+
+
+def test_review_approval_source_binding_and_ambiguity(tmp_path: Path, monkeypatch) -> None:
+    (tmp_path / "reviews.txt").write_text(
+        "Omar Kestrel performed the risk review.\n"
+        "[Nina] Correction: Omar reviewed PR-8042; Nina authored the design.\n"
+        "Morgan Ives: I can test the cold-start patch for BeaconQueue.\n"
+        "Morgan Hale: I will review PR-9910 for BeaconQueue docs.\n"
+        "A later note says Morgan approved it, but the note does not say which Morgan.\n"
+        "Jo Sen: Keep Morgan Ives and Morgan Hale separate until the approval note is clarified.\n"
+        "The canonical design URL is https://docs.luma.example/ledger/escrow-import-r7.\n",
+        encoding="utf-8",
+    )
+    monkeypatch.setenv("KMD_TEST_ALLOW_NO_MODEL", "1")
+    monkeypatch.setenv("PYTEST_CURRENT_TEST", "1")
+    engine = KnowMoreDiRTEngine(tmp_path)
+
+    assert engine._answer_with_review_or_approval_source("Who reviewed PR-8042?").text == "Omar Kestrel"
+    assert engine._answer_with_review_or_approval_source("Who reviewed PR-9910 for BeaconQueue docs?").text == "Morgan Hale"
+    assert engine._answer_with_review_or_approval_source("Which Morgan approved PR-9910?").text == "unknown"
+    assert engine._answer_with_exact_source_field("What is the canonical design URL for the escrow import design?").text == "https://docs.luma.example/ledger/escrow-import-r7"

@@ -342,6 +342,10 @@ class KnowMoreDiRTEngine:
             if pre_reference_chain_answer:
                 self.last_answer = pre_reference_chain_answer
                 return pre_reference_chain_answer
+            pre_review_answer = self._answer_with_review_or_approval_source(text)
+            if pre_review_answer:
+                self.last_answer = pre_review_answer
+                return pre_review_answer
             pre_table_field_answer = self._answer_with_table_field_source(text)
             if pre_table_field_answer:
                 self.last_answer = pre_table_field_answer
@@ -778,6 +782,63 @@ class KnowMoreDiRTEngine:
         material = normalize(line)
         return all(self._source_field_contains_any(material, [term]) for term in terms if normalize(term))
 
+    def _answer_with_review_or_approval_source(self, question: str, prior_answer: Answer | None = None) -> Answer | None:
+        qnorm = normalize(question)
+        if not (qnorm.startswith("who ") or qnorm.startswith("which ")):
+            return None
+        is_review = "review" in qnorm or "reviewed" in qnorm
+        is_approve = "approve" in qnorm or "approved" in qnorm
+        if not (is_review or is_approve):
+            return None
+        target_ids = re.findall(r"\b[A-Z]{2,}-\d+\b", question)
+        target_terms = [term for term in content_tokens(question) if term not in {"who", "which", "review", "reviewed", "approve", "approved", "for", "the", "docs", "document", "documents"}]
+        evidence = list(prior_answer.evidence if prior_answer else [])
+        evidence.extend(self._evidence(sentence, score) for sentence, score in self._search(question, limit=28))
+        seen: set[tuple[str, str]] = set()
+        lines: list[tuple[str, Evidence, str]] = []
+        for item in evidence:
+            if (item.rel_path, item.text) in seen:
+                continue
+            seen.add((item.rel_path, item.text))
+            window = self._evidence_window_text(item, radius=1, max_chars=1200)
+            for raw_line in window.splitlines():
+                line = clean_extracted_value(raw_line).strip()
+                if line:
+                    lines.append((line, item, normalize(window)))
+        if is_approve and qnorm.startswith("which "):
+            name_match = re.search(r"which\s+(?P<name>[A-Z][a-z]+)\s+approved", question, re.I)
+            if name_match:
+                name = normalize(name_match.group("name"))
+                for line, evidence_item, window_norm in lines:
+                    line_norm = normalize(line)
+                    if name not in line_norm:
+                        continue
+                    if target_ids and not any(normalize(target) in window_norm for target in target_ids):
+                        continue
+                    if any(phrase in window_norm for phrase in ["does not say which", "not say which", "approval note is clarified", "ambiguous"]):
+                        return Answer("unknown", 0.0, [evidence_item], "source ambiguous approval guard", "unknown")
+        verb_pattern = "review(?:ed)?" if is_review else "approv(?:ed|e)"
+        for line, evidence_item, window_norm in lines:
+            line_norm = normalize(line)
+            if target_ids and not any(normalize(target) in window_norm for target in target_ids):
+                continue
+            if target_terms and not all(self._source_field_contains_any(window_norm, [term]) for term in target_terms[:4]):
+                continue
+            # Speaker/chat style: Full Name: I will review PR-1234 ...
+            chat_match = re.search(rf"^(?P<person>[A-Z][a-z]+(?:\s+[A-Z][a-z]+)+)\s*:\s*(?:I\s+)?(?:will\s+)?{verb_pattern}\b", line, re.I)
+            if chat_match:
+                return Answer(chat_match.group("person").strip(), 0.9, [evidence_item], "source review/approval actor binding", "person")
+            # Prose style: Full Name reviewed PR-1234, or Correction: Omar reviewed PR-1234.
+            prose_match = re.search(rf"(?:^|[:;.]\s*)(?P<person>[A-Z][a-z]+(?:\s+[A-Z][a-z]+)?)\s+{verb_pattern}\b", line, re.I)
+            if prose_match:
+                person = prose_match.group("person").strip()
+                person = self._expand_single_name_from_evidence(person, [evidence_item])
+                return Answer(person, 0.9, [evidence_item], "source review/approval actor binding", "person")
+            by_match = re.search(rf"\b{verb_pattern}\s+by\s+(?P<person>[A-Z][a-z]+(?:\s+[A-Z][a-z]+)+)\b", line, re.I)
+            if by_match:
+                return Answer(by_match.group("person").strip(), 0.9, [evidence_item], "source review/approval actor binding", "person")
+        return None
+
     def _answer_with_correction_owner_source(self, question: str, prior_answer: Answer | None = None) -> Answer | None:
         qnorm = normalize(question)
         if not (qnorm.startswith("who ") and ("owner" in qnorm or "owns" in qnorm) and "correction" in qnorm):
@@ -1009,7 +1070,7 @@ class KnowMoreDiRTEngine:
             return None
         if not any(term in qnorm for term in ["reference", "url", "link"]):
             return None
-        if "url" in qnorm and any(term in qnorm for term in ["warranty", "manual", "runbook", "guide", "support", "dataset", "map", "drawing", "report", "archive"]):
+        if "url" in qnorm and any(term in qnorm for term in ["warranty", "manual", "runbook", "guide", "support", "dataset", "map", "drawing", "report", "archive", "canonical", "design"]):
             return None
         frame = plan_question(question)
         target_terms = [clean_extracted_value(anchor).strip() for anchor in frame.target_anchors if normalize(anchor)]
@@ -2006,6 +2067,8 @@ class KnowMoreDiRTEngine:
         if not field_kind:
             return None
         qnorm = normalize(question)
+        if qnorm.startswith("who "):
+            return None
         if "hidden" in qnorm and "cache" in qnorm:
             return None
         specific_missing_labels = [label for label in labels if label not in {"url", "uri", "link", "id", "identifier", "code"}]
