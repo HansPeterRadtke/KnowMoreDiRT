@@ -845,7 +845,10 @@ class KnowMoreDiRTEngine:
                     continue
                 if target_terms and not all(self._source_field_contains_any(line_norm, [term]) for term in target_terms[:3]):
                     continue
-                body = re.sub(r"^correction\s*:\s*", "", line, flags=re.I)
+                body = line
+                body = re.sub(r"^\s*\[?\d{1,2}:\d{2}\]?\s*", "", body)
+                body = re.sub(r"^[A-Z][a-z]+(?:\s+[A-Z][a-z]+)*\s+correction\s*:\s*", "", body, flags=re.I)
+                body = re.sub(r"^correction\s*:\s*", "", body, flags=re.I)
                 clause = body.split(";")[0].strip(" .;:")
                 if clause:
                     return Answer(clause, 0.9, [evidence_item], "source correction clause", "content_phrase")
