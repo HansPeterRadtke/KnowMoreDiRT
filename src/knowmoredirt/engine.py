@@ -354,6 +354,10 @@ class KnowMoreDiRTEngine:
             if pre_clause_table_message_answer:
                 self.last_answer = pre_clause_table_message_answer
                 return pre_clause_table_message_answer
+            pre_missing_org_owner_answer = self._answer_with_missing_organization_owner_source(text)
+            if pre_missing_org_owner_answer:
+                self.last_answer = pre_missing_org_owner_answer
+                return pre_missing_org_owner_answer
             pre_labeled_attribute_answer = self._answer_with_labeled_attribute_source(text)
             if pre_labeled_attribute_answer:
                 self.last_answer = pre_labeled_attribute_answer
@@ -1272,10 +1276,77 @@ class KnowMoreDiRTEngine:
         value = clean_extracted_value(value).strip(" .;:")
         return Answer(value, 0.9, [evidence_item], "source structured object field", answer_type)
 
+    def _answer_with_missing_organization_owner_source(self, question: str, prior_answer: Answer | None = None) -> Answer | None:
+        qnorm = normalize(question)
+        if "organization" not in qnorm or not any(term in qnorm for term in ["own", "owns", "owner", "owning"]):
+            return None
+        target_terms = [
+            term for term in content_tokens(question)
+            if term not in {"which", "what", "who", "organization", "owns", "own", "owner", "owning", "does", "the", "is", "for"}
+        ]
+        if not target_terms:
+            return None
+        missing_re = re.compile(
+            r"\b(?:no\s+(?:owning\s+)?organization\s+(?:is\s+)?(?:stated|listed|given|named|provided)|"
+            r"no\s+organization\s+(?:relation|owner|ownership)|not\s+an\s+organization\s+relation)\b",
+            re.I,
+        )
+        documents_by_path = {document.rel_path: document for document in self.documents}
+        evidence_pool = list(prior_answer.evidence if prior_answer else [])
+        evidence_pool.extend(self._evidence(sentence, score) for sentence, score in self._search(question, limit=24))
+        seen_paths: set[str] = set()
+        for item in evidence_pool:
+            document = documents_by_path.get(item.rel_path)
+            if not document or document.rel_path in seen_paths:
+                continue
+            seen_paths.add(document.rel_path)
+            lines = [clean_extracted_value(line).strip() for line in document.text.splitlines()]
+            for index, line in enumerate(lines):
+                line_norm = normalize(line)
+                if not missing_re.search(line_norm):
+                    continue
+                local_scope = "\n".join(lines[max(0, index - 2): index + 1])
+                local_norm = normalize(local_scope)
+                if all(self._source_field_contains_any(local_norm, [term]) for term in target_terms[:3]):
+                    return Answer("unknown", 0.0, [self._evidence_for_document_line(document.rel_path, index, line)], "explicit missing organization owner", "unknown")
+        return None
+
     def _answer_with_labeled_attribute_source(self, question: str, prior_answer: Answer | None = None) -> Answer | None:
         qnorm = normalize(question)
         label_aliases: list[str] = []
         answer_type = "metadata_value"
+        if qnorm.startswith("which ") and "organization" in qnorm and ("own" in qnorm or "owns" in qnorm):
+            target_terms = [term for term in content_tokens(question) if term not in {"which", "what", "organization", "owns", "own", "owner", "owning", "is", "the", "for"}]
+            for document in self.documents:
+                current_section: list[tuple[int, str]] = []
+                sections: list[list[tuple[int, str]]] = []
+                for index, raw_line in enumerate(document.text.splitlines()):
+                    line = clean_extracted_value(raw_line).strip()
+                    if not line:
+                        continue
+                    if re.search(r"^(?:Entity|Record)\s*:", line, re.I) and current_section:
+                        sections.append(current_section)
+                        current_section = []
+                    current_section.append((index, line))
+                if current_section:
+                    sections.append(current_section)
+                for section in sections:
+                    section_text = "\n".join(line for _index, line in section)
+                    section_norm = normalize(section_text)
+                    if target_terms and not all(self._source_field_contains_any(section_norm, [term]) for term in target_terms[:3]):
+                        continue
+                    for index, line in section:
+                        line_norm = normalize(line)
+                        if "owning organization" in line_norm or "organization" in line_norm:
+                            if "no" in set(re.findall(r"[a-z0-9]+", line_norm)) and ("owning organization" in line_norm or "organization relation" in line_norm or "organization is stated" in line_norm):
+                                return Answer("unknown", 0.0, [self._evidence_for_document_line(document.rel_path, index, line)], "explicit missing organization relation", "unknown")
+                            match = re.search(r"\b(?:owning\s+)?organization\s*[:=]\s*(?P<value>[^.;|]+)", line, re.I)
+                            if not match:
+                                match = re.search(r"\b(?:owning\s+)?organization\s+(?:is|was)\s+(?P<value>[^.;|]+)", line, re.I)
+                            if match:
+                                value = clean_extracted_value(match.group("value")).strip(" .;:")
+                                if value:
+                                    return Answer(value, 0.9, [self._evidence_for_document_line(document.rel_path, index, line)], "source labeled attribute binding", "organization")
         if "contact person" in qnorm or (qnorm.startswith("who ") and "contact" in qnorm):
             label_aliases = ["contact person", "contact"]
             answer_type = "person"
@@ -1322,10 +1393,18 @@ class KnowMoreDiRTEngine:
                     continue
                 window_norm = normalize(window)
                 target_material = window_norm
-                if item.rel_path in document_material_by_path:
+                if answer_type == "identifier" and "person" in qnorm and item.rel_path in document_material_by_path:
                     target_material = " ".join([target_material, document_material_by_path[item.rel_path]])
                 if not all(self._source_field_contains_any(target_material, [term]) for term in target_terms[:1]):
                     continue
+                if answer_type == "organization" and any(term in qnorm for term in ["own", "owns", "owner", "owning"]):
+                    missing_owner_org = (
+                        re.search(r"\bno\s+(?:owning\s+)?organization\s+(?:is\s+)?(?:stated|listed|given|named|provided)\b", line_norm)
+                        or re.search(r"\bno\s+organization\s+(?:relation|owner|ownership)\b", line_norm)
+                        or re.search(r"\bnot\s+an\s+organization\s+relation\b", line_norm)
+                    )
+                    if missing_owner_org:
+                        continue
                 for label in label_aliases:
                     label_pattern = re.escape(label).replace("\\ ", r"\s+")
                     if answer_type == "url":

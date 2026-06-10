@@ -1297,3 +1297,39 @@ def test_cross_suite_pre_model_priority_and_cache_filtering(tmp_path: Path, monk
     assert engine._answer_with_labeled_attribute_source("What is the person id for Cinder Atlas?").text == "actor_mara884211"
     assert engine._answer_with_labeled_attribute_source("Who is owner for Lark Mirror?").text == "Ila Nore"
     assert engine._answer_with_correction_owner_source("Who owns the greenhouse fern according to the OCR correction?").text == "Dr. Pella"
+
+
+
+def test_missing_organization_owner_guard(tmp_path: Path, monkeypatch) -> None:
+    (tmp_path / "orgs.txt").write_text(
+        "Entity: Ember Reed.\n"
+        "No owning organization is stated. A person named Organization Vale appears in a quote, but that is not an organization relation.\n"
+        "Entity: Garnet Bridge.\n"
+        "Owning organization: Morrow Slate Guild.\n",
+        encoding="utf-8",
+    )
+    monkeypatch.setenv("KMD_TEST_ALLOW_NO_MODEL", "1")
+    monkeypatch.setenv("PYTEST_CURRENT_TEST", "1")
+    engine = KnowMoreDiRTEngine(tmp_path)
+
+    assert engine._answer_with_missing_organization_owner_source("Which organization owns Ember Reed?").text == "unknown"
+    assert engine._answer_with_labeled_attribute_source("Which organization owns Ember Reed?").text == "unknown"
+    assert engine._answer_with_missing_organization_owner_source("Which organization owns Garnet Bridge?") is None
+    assert engine._answer_with_labeled_attribute_source("Which organization owns Garnet Bridge?").text == "Morrow Slate Guild"
+
+
+
+def test_missing_organization_relation_returns_unknown(tmp_path: Path, monkeypatch) -> None:
+    (tmp_path / "org.txt").write_text(
+        "Entity: Brass Wheel.\n"
+        "No owning organization is stated. A person named Organization Vale appears in a quote, but that is not an organization relation.\n"
+        "Entity: Garnet Bridge.\n"
+        "Owning organization: Morrow Slate Guild.\n",
+        encoding="utf-8",
+    )
+    monkeypatch.setenv("KMD_TEST_ALLOW_NO_MODEL", "1")
+    monkeypatch.setenv("PYTEST_CURRENT_TEST", "1")
+    engine = KnowMoreDiRTEngine(tmp_path)
+
+    assert engine._answer_with_labeled_attribute_source("Which organization owns Brass Wheel?").text == "unknown"
+    assert engine._answer_with_labeled_attribute_source("Which organization owns Garnet Bridge?").text == "Morrow Slate Guild"
