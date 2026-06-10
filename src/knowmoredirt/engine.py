@@ -1317,6 +1317,8 @@ class KnowMoreDiRTEngine:
         answer_type = "metadata_value"
         if qnorm.startswith("which ") and "organization" in qnorm and ("own" in qnorm or "owns" in qnorm):
             target_terms = [term for term in content_tokens(question) if term not in {"which", "what", "organization", "owns", "own", "owner", "owning", "is", "the", "for"}]
+            positive_candidates: list[tuple[int, str, Evidence]] = []
+            missing_candidates: list[Evidence] = []
             for document in self.documents:
                 current_section: list[tuple[int, str]] = []
                 sections: list[list[tuple[int, str]]] = []
@@ -1337,16 +1339,27 @@ class KnowMoreDiRTEngine:
                         continue
                     for index, line in section:
                         line_norm = normalize(line)
-                        if "owning organization" in line_norm or "organization" in line_norm:
-                            if "no" in set(re.findall(r"[a-z0-9]+", line_norm)) and ("owning organization" in line_norm or "organization relation" in line_norm or "organization is stated" in line_norm):
-                                return Answer("unknown", 0.0, [self._evidence_for_document_line(document.rel_path, index, line)], "explicit missing organization relation", "unknown")
-                            match = re.search(r"\b(?:owning\s+)?organization\s*[:=]\s*(?P<value>[^.;|]+)", line, re.I)
-                            if not match:
-                                match = re.search(r"\b(?:owning\s+)?organization\s+(?:is|was)\s+(?P<value>[^.;|]+)", line, re.I)
-                            if match:
-                                value = clean_extracted_value(match.group("value")).strip(" .;:")
-                                if value:
-                                    return Answer(value, 0.9, [self._evidence_for_document_line(document.rel_path, index, line)], "source labeled attribute binding", "organization")
+                        if "owning organization" not in line_norm and "organization" not in line_norm:
+                            continue
+                        evidence = self._evidence_for_document_line(document.rel_path, index, line)
+                        if "no" in set(re.findall(r"[a-z0-9]+", line_norm)) and ("owning organization" in line_norm or "organization relation" in line_norm or "organization is stated" in line_norm):
+                            if not self._source_field_low_priority(evidence, line) or "cache" in qnorm:
+                                missing_candidates.append(evidence)
+                            continue
+                        match = re.search(r"\b(?:owning\s+)?organization\s*[:=]\s*(?P<value>[^.;|]+)", line, re.I)
+                        if not match:
+                            match = re.search(r"\b(?:owning\s+)?organization\s+(?:is|was)\s+(?P<value>[^.;|]+)", line, re.I)
+                        if match:
+                            value = clean_extracted_value(match.group("value")).strip(" .;:")
+                            if value:
+                                score = 100 if self._source_field_low_priority(evidence, line) and "cache" not in qnorm else 0
+                                positive_candidates.append((score, value, evidence))
+            if positive_candidates:
+                positive_candidates.sort(key=lambda item: (item[0], len(item[1]), item[1]))
+                _score, value, evidence = positive_candidates[0]
+                return Answer(value, 0.9, [evidence], "source labeled attribute binding", "organization")
+            if missing_candidates:
+                return Answer("unknown", 0.0, [missing_candidates[0]], "explicit missing organization relation", "unknown")
         if "contact person" in qnorm or (qnorm.startswith("who ") and "contact" in qnorm):
             label_aliases = ["contact person", "contact"]
             answer_type = "person"
