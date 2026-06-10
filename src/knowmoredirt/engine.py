@@ -346,6 +346,14 @@ class KnowMoreDiRTEngine:
             if pre_table_field_answer:
                 self.last_answer = pre_table_field_answer
                 return pre_table_field_answer
+            pre_discourse_answer = self._answer_with_discourse_clause_source(text)
+            if pre_discourse_answer:
+                self.last_answer = pre_discourse_answer
+                return pre_discourse_answer
+            pre_structured_object_answer = self._answer_with_structured_object_source(text)
+            if pre_structured_object_answer:
+                self.last_answer = pre_structured_object_answer
+                return pre_structured_object_answer
             pre_exact_field_answer = self._answer_with_exact_source_field(text)
             if pre_exact_field_answer:
                 self.last_answer = pre_exact_field_answer
@@ -377,6 +385,14 @@ class KnowMoreDiRTEngine:
                 if table_field_answer:
                     self.last_answer = table_field_answer
                     return table_field_answer
+                discourse_answer = self._answer_with_discourse_clause_source(text, prior_answer=model_answer)
+                if discourse_answer:
+                    self.last_answer = discourse_answer
+                    return discourse_answer
+                structured_object_answer = self._answer_with_structured_object_source(text, prior_answer=model_answer)
+                if structured_object_answer:
+                    self.last_answer = structured_object_answer
+                    return structured_object_answer
                 labeled_attribute_answer = self._answer_with_labeled_attribute_source(text, prior_answer=model_answer)
                 if labeled_attribute_answer:
                     self.last_answer = labeled_attribute_answer
@@ -433,6 +449,14 @@ class KnowMoreDiRTEngine:
             if table_field_answer:
                 self.last_answer = table_field_answer
                 return table_field_answer
+            discourse_answer = self._answer_with_discourse_clause_source(text, prior_answer=model_answer)
+            if discourse_answer:
+                self.last_answer = discourse_answer
+                return discourse_answer
+            structured_object_answer = self._answer_with_structured_object_source(text, prior_answer=model_answer)
+            if structured_object_answer:
+                self.last_answer = structured_object_answer
+                return structured_object_answer
             labeled_attribute_answer = self._answer_with_labeled_attribute_source(text, prior_answer=model_answer)
             if labeled_attribute_answer:
                 self.last_answer = labeled_attribute_answer
@@ -749,6 +773,140 @@ class KnowMoreDiRTEngine:
     def _line_has_all_terms(self, line: str, terms: list[str]) -> bool:
         material = normalize(line)
         return all(self._source_field_contains_any(material, [term]) for term in terms if normalize(term))
+
+    def _answer_with_discourse_clause_source(self, question: str, prior_answer: Answer | None = None) -> Answer | None:
+        qnorm = normalize(question)
+        if not any(term in qnorm for term in ["really", "proven", "say", "said", "snapped", "corrected", "correction"]):
+            return None
+        evidence = list(prior_answer.evidence if prior_answer else [])
+        evidence.extend(self._evidence(sentence, score) for sentence, score in self._search(question, limit=24))
+        seen: set[tuple[str, str]] = set()
+        lines: list[tuple[str, Evidence, str]] = []
+        for item in evidence:
+            if (item.rel_path, item.text) in seen:
+                continue
+            seen.add((item.rel_path, item.text))
+            window = self._evidence_window_text(item, radius=1, max_chars=1200)
+            for raw_line in window.splitlines():
+                line = clean_extracted_value(raw_line).strip()
+                if line:
+                    lines.append((line, item, normalize(window)))
+        if "really" in qnorm:
+            terms = [term for term in content_tokens(question) if term not in {"did", "really", "open", "opened", "was", "were", "the"}]
+            for line, evidence_item, window_norm in lines:
+                if terms and not all(self._source_field_contains_any(window_norm, [term]) for term in terms[:3]):
+                    continue
+                if any(scope in window_norm for scope in ["dream", "fiction", "homework", "imagined"]) and any(marker in window_norm for marker in ["no real", "not real", "not recorded", "no actual"]):
+                    return Answer("unknown", 0.0, [evidence_item], "source discourse non-real guard", "unknown")
+        if "proven" in qnorm:
+            terms = [term for term in content_tokens(question) if term not in {"was", "were", "proven", "proof", "the"}]
+            for line, evidence_item, _window_norm in lines:
+                line_norm = normalize(line)
+                if terms and not all(self._source_field_contains_any(line_norm, [term]) for term in terms[:3]):
+                    continue
+                if re.search(r"\bnot\s+proven\b", line_norm):
+                    return Answer("unknown", 0.0, [evidence_item], "source discourse not-proven guard", "unknown")
+        say_match = re.search(r"what\s+did\s+(?P<person>[A-Z][a-z]+(?:\s+[A-Z][a-z]+)*)\s+say\b", question, re.I)
+        if say_match:
+            person = normalize(say_match.group("person"))
+            for line, evidence_item, _window_norm in lines:
+                line_norm = normalize(line)
+                if person not in line_norm or "said" not in line_norm:
+                    continue
+                quote_match = re.search(r"[\"“](?P<quote>[^\"”]+)[\"”]", line)
+                quote = quote_match.group("quote").strip() if quote_match else ""
+                if "snapped" in qnorm:
+                    snap_source = quote
+                    if not snap_source:
+                        said_match = re.search(r"\bsaid\s*,?\s*(?P<value>[^.;]+?\bsnapped\b[^.;]*)", line, re.I)
+                        snap_source = said_match.group("value").strip() if said_match else ""
+                    if snap_source:
+                        snap_match = re.search(r"(?:the\s+)?(?P<value>[^.;]+?)\s+snapped\b", snap_source, re.I)
+                        if snap_match:
+                            value = clean_extracted_value(snap_match.group("value")).strip(" .;:")
+                            value = re.sub(r"^(?:the|a|an)\s+", "", value, flags=re.I)
+                            return Answer(value, 0.9, [evidence_item], "source quoted speech clause", "content_phrase")
+                if quote:
+                    return Answer(quote, 0.86, [evidence_item], "source quoted speech clause", "content_phrase")
+        if "corrected" in qnorm and "color" in qnorm:
+            target_terms = [term for term in content_tokens(question) if term not in {"what", "was", "the", "corrected", "crate", "color"}]
+            for line, evidence_item, _window_norm in lines:
+                line_norm = normalize(line)
+                if target_terms and not all(self._source_field_contains_any(line_norm, [term]) for term in target_terms[:2]):
+                    continue
+                match = re.search(r"corrected\s+[^.;]*?color\s+was\s+(?P<value>[A-Za-z0-9_-]+)", line, re.I)
+                if match:
+                    return Answer(match.group("value").strip(), 0.9, [evidence_item], "source correction color clause", "content_phrase")
+        if "correction" in qnorm:
+            target_terms = [term for term in content_tokens(question) if term not in {"what", "did", "the", "correction", "say", "about"}]
+            for line, evidence_item, _window_norm in lines:
+                line_norm = normalize(line)
+                if "correction" not in line_norm:
+                    continue
+                if target_terms and not all(self._source_field_contains_any(line_norm, [term]) for term in target_terms[:3]):
+                    continue
+                body = re.sub(r"^correction\s*:\s*", "", line, flags=re.I)
+                clause = body.split(";")[0].strip(" .;:")
+                if clause:
+                    return Answer(clause, 0.9, [evidence_item], "source correction clause", "content_phrase")
+        return None
+
+    def _answer_with_structured_object_source(self, question: str, prior_answer: Answer | None = None) -> Answer | None:
+        qnorm = normalize(question)
+        if not any(term in qnorm for term in ["asset", "audit", "report", "record", "owned", "owner"]):
+            return None
+        rows = self._source_row_records()
+        if not rows:
+            return None
+        desired_field = ""
+        answer_type = "identifier"
+        if "asset" in qnorm and "id" in qnorm:
+            desired_field = "asset"
+            answer_type = "identifier"
+        elif "audit" in qnorm and "id" in qnorm:
+            desired_field = "audit"
+            answer_type = "identifier"
+        elif "report" in qnorm and ("url" in qnorm or "link" in qnorm):
+            desired_field = "report"
+            answer_type = "url"
+        else:
+            return None
+        explicit_name = ""
+        name_match = re.search(r"belongs\s+to\s+(?P<name>[A-Z][A-Za-z0-9_-]*(?:\s+[A-Z][A-Za-z0-9_-]*)*)", question)
+        if name_match:
+            explicit_name = clean_extracted_value(name_match.group("name")).strip()
+        type_match = re.search(r"\b(?P<kind>[A-Z][A-Za-z0-9_-]*)\s+record\b", question)
+        record_kind = type_match.group("kind") if type_match else ""
+        owner_match = re.search(r"owned\s+by\s+(?P<owner>[A-Z][a-z]+\s+[A-Z][a-z]+)", question)
+        owner = owner_match.group("owner").strip() if owner_match else ""
+        status = ""
+        for candidate in ["ready", "paused", "blocked", "active", "released"]:
+            if candidate in qnorm:
+                status = candidate
+                break
+        matches: list[tuple[dict[str, str], Evidence]] = []
+        for row, evidence_item in rows:
+            material = self._row_material(row)
+            if explicit_name and not self._source_field_contains_any(material, [explicit_name]):
+                continue
+            if record_kind and not self._source_field_contains_any(material, [record_kind]):
+                continue
+            if owner and normalize(row.get("owner", "")) != normalize(owner):
+                continue
+            if status and normalize(row.get("status", "")) != status and normalize(row.get("state", "")) != status:
+                continue
+            value = self._row_field_value(row, [desired_field, f"{desired_field}_id", f"{desired_field}_url"])
+            if not value:
+                continue
+            matches.append((row, evidence_item))
+        if not matches:
+            return None
+        if len(matches) > 1 and not (explicit_name or owner or status):
+            return None
+        row, evidence_item = matches[0]
+        value = self._row_field_value(row, [desired_field, f"{desired_field}_id", f"{desired_field}_url"])
+        value = clean_extracted_value(value).strip(" .;:")
+        return Answer(value, 0.9, [evidence_item], "source structured object field", answer_type)
 
     def _answer_with_labeled_attribute_source(self, question: str, prior_answer: Answer | None = None) -> Answer | None:
         qnorm = normalize(question)

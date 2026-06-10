@@ -1089,3 +1089,34 @@ def test_cache_safe_reference_urls_and_organization_labels(tmp_path: Path, monke
     assert engine._answer_with_exact_source_field("Which runbook URL belongs to North Lantern?").text == "https://runbooks.example.test/north-lantern"
     assert engine._answer_with_exact_source_field("Which archive URL belongs to Mica Relay?").text == "unknown"
     assert engine._answer_with_labeled_attribute_source("Which organization owns Garnet Bridge?").text == "Morrow Slate Guild"
+
+
+
+def test_discourse_clauses_and_structured_object_fields(tmp_path: Path, monkeypatch) -> None:
+    (tmp_path / "claims.txt").write_text(
+        "Dream journal: In the dream, Pearl Engine opened the hidden gate. Waking note: no real gate opening is recorded.\n"
+        "Witness note: Runa said, \"the blue latch snapped during loading.\" Later inspection confirmed the latch was intact.\n"
+        "Allegation note: Plaintiff Karo alleges the north hinge cracked. Judgment note: the north hinge crack was not proven.\n"
+        "Correction: Mist Vale did not ship the red crate; the corrected crate color was amber.\n",
+        encoding="utf-8",
+    )
+    (tmp_path / "objects.raw").write_text(
+        '{ name: "Orchid Alpha", owner: "Ila Voss", status: "ready", ids: { asset: "OA-7001", audit: "AUD-3001" }, links: { report: "https://reports.example.test/orchid-alpha" } }\n'
+        '{ name: "Orchid Beta", owner: "Niko Rell", status: "paused", ids: { asset: "OB-7002", audit: "AUD-3002" }, links: { report: "https://reports.example.test/orchid-beta" } }\n'
+        '{ name: "Orchid Gamma", owner: "Tessa Noll", status: "ready", ids: { asset: "OG-7003", audit: "AUD-3003" }, links: { report: "https://reports.example.test/orchid-gamma" } }\n',
+        encoding="utf-8",
+    )
+    monkeypatch.setenv("KMD_TEST_ALLOW_NO_MODEL", "1")
+    monkeypatch.setenv("PYTEST_CURRENT_TEST", "1")
+    engine = KnowMoreDiRTEngine(tmp_path)
+
+    assert engine._answer_with_discourse_clause_source("Did Pearl Engine really open the hidden gate?").text == "unknown"
+    assert engine._answer_with_discourse_clause_source("Was the north hinge crack proven?").text == "unknown"
+    assert engine._answer_with_discourse_clause_source("What did Runa say snapped during loading?").text == "blue latch"
+    assert engine._answer_with_discourse_clause_source("What was the corrected crate color for Mist Vale?").text == "amber"
+    assert engine._answer_with_discourse_clause_source("What did the correction say about Mist Vale shipping the red crate?").text == "Mist Vale did not ship the red crate"
+    assert engine._answer_with_structured_object_source("Which asset id belongs to Orchid Beta?").text == "OB-7002"
+    assert engine._answer_with_structured_object_source("Which audit id belongs to Orchid Gamma?").text == "AUD-3003"
+    assert engine._answer_with_structured_object_source("Which report URL belongs to Orchid Gamma?").text == "https://reports.example.test/orchid-gamma"
+    assert engine._answer_with_structured_object_source("Which report URL belongs to the ready Orchid record owned by Tessa Noll?").text == "https://reports.example.test/orchid-gamma"
+    assert engine._answer_with_structured_object_source("Which asset id belongs to the paused Orchid record?").text == "OB-7002"
