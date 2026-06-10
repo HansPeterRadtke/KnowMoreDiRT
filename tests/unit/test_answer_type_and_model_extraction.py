@@ -1201,3 +1201,36 @@ def test_clause_table_message_source_binding(tmp_path: Path, monkeypatch) -> Non
     assert engine._answer_with_clause_table_message_source("When was the DeltaPier source file copied?").text == "2010-05-20"
     assert engine._answer_with_clause_table_message_source("According to Mira's top-level note, who fixed parser.cpp?").text == "Rowan"
     assert engine._answer_with_clause_table_message_source("What did the forwarded Rowan message say about fixing parser.cpp?").text == "Rowan planned to fix parser.cpp tomorrow, not today."
+
+
+
+def test_approval_by_role_person_source_binding(tmp_path: Path, monkeypatch) -> None:
+    (tmp_path / "drawing.txt").write_text(
+        "Project CopperHollow has construction drawing CH-77.\n"
+        "Revision C was approved by engineer Veda Lin on 2025-11-09.\n",
+        encoding="utf-8",
+    )
+    monkeypatch.setenv("KMD_TEST_ALLOW_NO_MODEL", "1")
+    monkeypatch.setenv("PYTEST_CURRENT_TEST", "1")
+    engine = KnowMoreDiRTEngine(tmp_path)
+
+    assert engine._answer_with_review_or_approval_source("Who approved CopperHollow revision C?").text == "Veda Lin"
+
+
+
+def test_claim_request_and_commit_hash_source_binding(tmp_path: Path, monkeypatch) -> None:
+    (tmp_path / "claims.txt").write_text(
+        "Dana: The outage was caused by gateway overload.\n"
+        "Rui: I disagree; the outage was caused by a bad certificate.\n"
+        "Project MarlinKind depends on three artifacts: SPEC-22, PR-7788, and https://plans.marlin.example/kind.\n"
+        "Reese Vale requested the plan; Noor Bell approved it.\n"
+        "line 002: commit b16b00b5 fixed NullMoss crash BUG-5150\n",
+        encoding="utf-8",
+    )
+    monkeypatch.setenv("KMD_TEST_ALLOW_NO_MODEL", "1")
+    monkeypatch.setenv("PYTEST_CURRENT_TEST", "1")
+    engine = KnowMoreDiRTEngine(tmp_path)
+
+    assert engine._answer_with_action_holder_source("Who claimed the outage was caused by gateway overload?").text == "Dana"
+    assert engine._answer_with_review_or_approval_source("Who requested the Marlin plan bundle?").text == "Reese Vale"
+    assert engine._answer_with_commit_hash_source("Which commit fixed NullMoss crash BUG-5150?").text == "b16b00b5"

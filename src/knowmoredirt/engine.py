@@ -366,6 +366,10 @@ class KnowMoreDiRTEngine:
             if pre_structured_object_answer:
                 self.last_answer = pre_structured_object_answer
                 return pre_structured_object_answer
+            pre_commit_hash_answer = self._answer_with_commit_hash_source(text)
+            if pre_commit_hash_answer:
+                self.last_answer = pre_commit_hash_answer
+                return pre_commit_hash_answer
             pre_exact_field_answer = self._answer_with_exact_source_field(text)
             if pre_exact_field_answer:
                 self.last_answer = pre_exact_field_answer
@@ -786,6 +790,35 @@ class KnowMoreDiRTEngine:
         material = normalize(line)
         return all(self._source_field_contains_any(material, [term]) for term in terms if normalize(term))
 
+    def _answer_with_commit_hash_source(self, question: str, prior_answer: Answer | None = None) -> Answer | None:
+        qnorm = normalize(question)
+        if "commit" not in qnorm:
+            return None
+        target_ids = re.findall(r"\b[A-Z]{2,}-\d+\b", question)
+        target_terms = [term for term in content_tokens(question) if term not in {"which", "what", "commit", "hash", "listed", "fixed", "fix", "for", "the"}]
+        evidence = list(prior_answer.evidence if prior_answer else [])
+        evidence.extend(self._evidence(sentence, score) for sentence, score in self._search(question, limit=28))
+        seen: set[tuple[str, str]] = set()
+        for item in evidence:
+            if (item.rel_path, item.text) in seen:
+                continue
+            seen.add((item.rel_path, item.text))
+            window = self._evidence_window_text(item, radius=1, max_chars=1000)
+            window_norm = normalize(window)
+            if target_ids and not any(normalize(target) in window_norm for target in target_ids):
+                continue
+            if target_terms and not all(self._source_field_contains_any(window_norm, [term]) for term in target_terms[:4]):
+                continue
+            for raw_line in window.splitlines():
+                line = clean_extracted_value(raw_line).strip()
+                line_norm = normalize(line)
+                if "commit" not in line_norm:
+                    continue
+                hash_match = re.search(r"\bcommit\s+(?P<hash>[a-f0-9]{7,40})\b", line, re.I)
+                if hash_match:
+                    return Answer(hash_match.group("hash"), 0.9, [item], "source commit hash binding", "identifier")
+        return None
+
     def _answer_with_clause_table_message_source(self, question: str, prior_answer: Answer | None = None) -> Answer | None:
         qnorm = normalize(question)
         # Legal / allegation holder: Plaintiff X alleges that Y.
@@ -910,10 +943,12 @@ class KnowMoreDiRTEngine:
         is_approve = "approve" in qnorm or "approved" in qnorm
         is_accept = "accepted" in qnorm and "responsibility" in qnorm
         is_merge = "merged" in qnorm or "merge" in qnorm
-        if not (is_review or is_approve or is_accept or is_merge):
+        is_request = "requested" in qnorm or "request" in qnorm
+        if not (is_review or is_approve or is_accept or is_merge or is_request):
             return None
         target_ids = re.findall(r"\b[A-Z]{2,}-\d+\b", question)
-        target_terms = [term for term in content_tokens(question) if term not in {"who", "which", "review", "reviewed", "approve", "approved", "for", "the", "docs", "document", "documents"}]
+        generic = {"who", "which", "review", "reviewed", "approve", "approved", "request", "requested", "merge", "merged", "accepted", "responsibility", "for", "the", "docs", "document", "documents", "bundle", "plan"}
+        target_terms = [term for term in content_tokens(question) if term not in generic]
         evidence = list(prior_answer.evidence if prior_answer else [])
         evidence.extend(self._evidence(sentence, score) for sentence, score in self._search(question, limit=28))
         seen: set[tuple[str, str]] = set()
@@ -940,33 +975,34 @@ class KnowMoreDiRTEngine:
                     if any(phrase in window_norm for phrase in ["does not say which", "not say which", "approval note is clarified", "ambiguous"]):
                         return Answer("unknown", 0.0, [evidence_item], "source ambiguous approval guard", "unknown")
         if is_review:
-            verb_pattern = "review(?:ed)?"
+            verb_pattern = r"review(?:ed)?"
         elif is_approve:
-            verb_pattern = "approv(?:ed|e)"
+            verb_pattern = r"approv(?:ed|e)"
         elif is_accept:
             verb_pattern = r"accepted\s+responsibility"
+        elif is_merge:
+            verb_pattern = r"merged"
         else:
-            verb_pattern = "merged"
+            verb_pattern = r"requested"
         for line, evidence_item, window_norm in lines:
             line_norm = normalize(line)
             if target_ids and not any(normalize(target) in window_norm for target in target_ids):
                 continue
             if target_terms and not all(self._source_field_contains_any(window_norm, [term]) for term in target_terms[:4]):
                 continue
-            # Speaker/chat style: Full Name: I will review PR-1234 ...
             chat_match = re.search(rf"^(?P<person>[A-Z][a-z]+(?:\s+[A-Z][a-z]+)+)\s*:\s*(?:I\s+)?(?:will\s+)?{verb_pattern}\b", line, re.I)
             if chat_match:
                 return Answer(chat_match.group("person").strip(), 0.9, [evidence_item], "source review/approval actor binding", "person")
-            # Prose style: Full Name reviewed PR-1234, or Correction: Omar reviewed PR-1234.
             prose_match = re.search(rf"(?:^|[:;.][\s\"']*)[\"']?(?P<person>[A-Z][a-z]+(?:\s+[A-Z][a-z]+)?)\s+{verb_pattern}\b", line, re.I)
             if prose_match:
                 person = prose_match.group("person").strip()
                 person = self._expand_single_name_from_evidence(person, [evidence_item])
                 return Answer(person, 0.9, [evidence_item], "source review/approval actor binding", "person")
-            by_match = re.search(rf"\b{verb_pattern}\s+by\s+(?P<person>[A-Z][a-z]+(?:\s+[A-Z][a-z]+)+)\b", line, re.I)
+            by_match = re.search(rf"\b{verb_pattern}\s+by\s+(?:(?:engineer|reviewer|approver|author|developer)\s+)?(?P<person>[A-Z][a-z]+(?:\s+[A-Z][a-z]+)+)(?:\s+on\b|\s+at\b|[.;,]|$)", line, re.I)
             if by_match:
                 return Answer(by_match.group("person").strip(), 0.9, [evidence_item], "source review/approval actor binding", "person")
         return None
+
 
     def _answer_with_correction_owner_source(self, question: str, prior_answer: Answer | None = None) -> Answer | None:
         qnorm = normalize(question)
@@ -1556,8 +1592,14 @@ class KnowMoreDiRTEngine:
                 line_norm = normalize(line)
                 if not line_norm:
                     continue
-                if terms and not all(self._source_field_contains_any(window_norm, [term]) for term in terms[:4]):
+                term_material = line_norm if ("claim" in qnorm or "caused" in qnorm or "cause" in qnorm) else window_norm
+                if terms and not all(self._source_field_contains_any(term_material, [term]) for term in terms[:4]):
                     continue
+                if "claim" in qnorm:
+                    speaker_match = re.search(r"^(?P<holder>[A-Z][a-z]+(?:\s+[A-Z][a-z]+)?)\s*:\s+", line)
+                    if speaker_match:
+                        holder = speaker_match.group("holder").strip()
+                        return Answer(holder, 0.86, [item], "source action holder binding", "person")
                 holder_match = re.search(
                     r"(?:^|[:\]\s])(?P<holder>[A-Z][a-z]+(?:\s+[A-Z][a-z]+)?)\s+(?:argued|claimed|disagreed|believed|reported|said|closed|merged|approved|reviewed|accepted)\b",
                     line,
