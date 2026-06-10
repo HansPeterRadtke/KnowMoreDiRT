@@ -1120,3 +1120,16 @@ def test_discourse_clauses_and_structured_object_fields(tmp_path: Path, monkeypa
     assert engine._answer_with_structured_object_source("Which report URL belongs to Orchid Gamma?").text == "https://reports.example.test/orchid-gamma"
     assert engine._answer_with_structured_object_source("Which report URL belongs to the ready Orchid record owned by Tessa Noll?").text == "https://reports.example.test/orchid-gamma"
     assert engine._answer_with_structured_object_source("Which asset id belongs to the paused Orchid record?").text == "OB-7002"
+
+
+
+def test_correction_owner_source_strips_ocr_prefix(tmp_path: Path, monkeypatch) -> None:
+    (tmp_path / "ocr.txt").write_text(
+        "wat3r3d maybe //// Clear correction: greenhouse fern owner is Dr. Pella.\n",
+        encoding="utf-8",
+    )
+    monkeypatch.setenv("KMD_TEST_ALLOW_NO_MODEL", "1")
+    monkeypatch.setenv("PYTEST_CURRENT_TEST", "1")
+    engine = KnowMoreDiRTEngine(tmp_path)
+
+    assert engine._answer_with_correction_owner_source("Who owns the greenhouse fern according to the OCR correction?").text == "Dr. Pella"

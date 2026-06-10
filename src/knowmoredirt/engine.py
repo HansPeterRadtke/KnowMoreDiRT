@@ -346,6 +346,10 @@ class KnowMoreDiRTEngine:
             if pre_table_field_answer:
                 self.last_answer = pre_table_field_answer
                 return pre_table_field_answer
+            pre_correction_owner_answer = self._answer_with_correction_owner_source(text)
+            if pre_correction_owner_answer:
+                self.last_answer = pre_correction_owner_answer
+                return pre_correction_owner_answer
             pre_discourse_answer = self._answer_with_discourse_clause_source(text)
             if pre_discourse_answer:
                 self.last_answer = pre_discourse_answer
@@ -774,8 +778,35 @@ class KnowMoreDiRTEngine:
         material = normalize(line)
         return all(self._source_field_contains_any(material, [term]) for term in terms if normalize(term))
 
+    def _answer_with_correction_owner_source(self, question: str, prior_answer: Answer | None = None) -> Answer | None:
+        qnorm = normalize(question)
+        if not (qnorm.startswith("who ") and ("owner" in qnorm or "owns" in qnorm) and "correction" in qnorm):
+            return None
+        target_terms = [term for term in content_tokens(question) if term not in {"who", "owns", "owner", "according", "correction", "ocr", "the"}]
+        evidence = list(prior_answer.evidence if prior_answer else [])
+        evidence.extend(self._evidence(sentence, score) for sentence, score in self._search(question, limit=24))
+        seen: set[tuple[str, str]] = set()
+        for item in evidence:
+            if (item.rel_path, item.text) in seen:
+                continue
+            seen.add((item.rel_path, item.text))
+            window = self._evidence_window_text(item, radius=1, max_chars=1000)
+            for raw_line in window.splitlines():
+                line = clean_extracted_value(raw_line).strip()
+                line_norm = normalize(line)
+                if "correction" not in line_norm or "owner" not in line_norm:
+                    continue
+                if target_terms and not all(self._source_field_contains_any(line_norm, [term]) for term in target_terms[:3]):
+                    continue
+                match = re.search(r"\bowner\s+(?:is|=|:)\s+(?P<person>(?:Dr\.\s*)?[A-Z][a-z]+(?:\s+[A-Z][a-z]+)*)\b", line)
+                if match:
+                    return Answer(clean_extracted_value(match.group("person")).strip(" .;:"), 0.9, [item], "source correction owner binding", "person")
+        return None
+
     def _answer_with_discourse_clause_source(self, question: str, prior_answer: Answer | None = None) -> Answer | None:
         qnorm = normalize(question)
+        if qnorm.startswith("who ") and ("owner" in qnorm or "owns" in qnorm) and "correction" in qnorm:
+            return None
         if not any(term in qnorm for term in ["really", "proven", "say", "said", "snapped", "corrected", "correction"]):
             return None
         evidence = list(prior_answer.evidence if prior_answer else [])
