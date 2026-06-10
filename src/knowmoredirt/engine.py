@@ -334,6 +334,10 @@ class KnowMoreDiRTEngine:
             return Answer("unknown", reason="empty question")
 
         if self._use_local_model:
+            pre_labeled_fast_answer = self._answer_with_labeled_attribute_source(text)
+            if pre_labeled_fast_answer:
+                self.last_answer = pre_labeled_fast_answer
+                return pre_labeled_fast_answer
             pre_actor_role_answer = self._answer_with_actor_role_ids_source(text)
             if pre_actor_role_answer:
                 self.last_answer = pre_actor_role_answer
@@ -350,10 +354,18 @@ class KnowMoreDiRTEngine:
             if pre_clause_table_message_answer:
                 self.last_answer = pre_clause_table_message_answer
                 return pre_clause_table_message_answer
+            pre_labeled_attribute_answer = self._answer_with_labeled_attribute_source(text)
+            if pre_labeled_attribute_answer:
+                self.last_answer = pre_labeled_attribute_answer
+                return pre_labeled_attribute_answer
             pre_discussion_belief_answer = self._answer_with_discussion_belief_source(text)
             if pre_discussion_belief_answer:
                 self.last_answer = pre_discussion_belief_answer
                 return pre_discussion_belief_answer
+            pre_correction_owner_answer = self._answer_with_correction_owner_source(text)
+            if pre_correction_owner_answer:
+                self.last_answer = pre_correction_owner_answer
+                return pre_correction_owner_answer
             pre_precise_answer = self._answer_with_precise_source_content(text)
             if pre_precise_answer:
                 self.last_answer = pre_precise_answer
@@ -362,10 +374,6 @@ class KnowMoreDiRTEngine:
             if pre_table_field_answer:
                 self.last_answer = pre_table_field_answer
                 return pre_table_field_answer
-            pre_correction_owner_answer = self._answer_with_correction_owner_source(text)
-            if pre_correction_owner_answer:
-                self.last_answer = pre_correction_owner_answer
-                return pre_correction_owner_answer
             pre_discourse_answer = self._answer_with_discourse_clause_source(text)
             if pre_discourse_answer:
                 self.last_answer = pre_discourse_answer
@@ -382,10 +390,6 @@ class KnowMoreDiRTEngine:
             if pre_exact_field_answer:
                 self.last_answer = pre_exact_field_answer
                 return pre_exact_field_answer
-            pre_labeled_attribute_answer = self._answer_with_labeled_attribute_source(text)
-            if pre_labeled_attribute_answer:
-                self.last_answer = pre_labeled_attribute_answer
-                return pre_labeled_attribute_answer
             model_answer = self._answer_with_local_model(text)
             if model_answer and normalize(model_answer.text) != "unknown":
                 model_answer = self._cleanup_public_answer(model_answer, question=text)
@@ -813,7 +817,7 @@ class KnowMoreDiRTEngine:
                 line = clean_extracted_value(raw_line).strip()
                 if line:
                     lines.append((line, item, normalize(window)))
-        if any(term in qnorm for term in ["owner", "ticket", "date", "id"]):
+        if any(term in qnorm for term in ["owner", "ticket", "date", "id"]) and not ("person" in qnorm and "id" in qnorm):
             missing_targets = [term for term in content_tokens(question) if term not in {"what", "which", "who", "is", "the", "for", "listed", "release", "date", "owner", "ticket", "support", "id", "identifier", "customer"}]
             requested_missing_terms = [term for term in ["owner", "ticket", "date", "id"] if term in qnorm]
             for line, evidence_item, window_norm in lines:
@@ -1272,14 +1276,17 @@ class KnowMoreDiRTEngine:
         qnorm = normalize(question)
         label_aliases: list[str] = []
         answer_type = "metadata_value"
-        if "organization" in qnorm:
+        if "contact person" in qnorm or (qnorm.startswith("who ") and "contact" in qnorm):
+            label_aliases = ["contact person", "contact"]
+            answer_type = "person"
+        elif "person" in qnorm and "id" in qnorm:
+            label_aliases = ["person id", "person identifier"]
+            answer_type = "identifier"
+        elif "organization" in qnorm:
             label_aliases = ["organization", "org"]
             answer_type = "organization"
         elif qnorm.startswith("who ") and "owner" in qnorm:
             label_aliases = ["launch owner", "owner"]
-            answer_type = "person"
-        elif "contact person" in qnorm or (qnorm.startswith("who ") and "contact" in qnorm):
-            label_aliases = ["contact person", "contact"]
             answer_type = "person"
         elif "contact id" in qnorm:
             label_aliases = ["contact id", "contact identifier"]
@@ -1299,6 +1306,7 @@ class KnowMoreDiRTEngine:
             return None
         evidence_pool = list(prior_answer.evidence if prior_answer else [])
         evidence_pool.extend(self._evidence(sentence, score) for sentence, score in self._search(question, limit=24))
+        document_material_by_path = {document.rel_path: normalize(document.text) for document in self.documents}
         seen: set[tuple[str, str]] = set()
         for item in evidence_pool:
             if (item.rel_path, item.text) in seen:
@@ -1313,7 +1321,10 @@ class KnowMoreDiRTEngine:
                 if self._source_field_low_priority(item, line) and "cache" not in qnorm:
                     continue
                 window_norm = normalize(window)
-                if not all(self._source_field_contains_any(window_norm, [term]) for term in target_terms[:1]):
+                target_material = window_norm
+                if item.rel_path in document_material_by_path:
+                    target_material = " ".join([target_material, document_material_by_path[item.rel_path]])
+                if not all(self._source_field_contains_any(target_material, [term]) for term in target_terms[:1]):
                     continue
                 for label in label_aliases:
                     label_pattern = re.escape(label).replace("\\ ", r"\s+")
@@ -1321,6 +1332,8 @@ class KnowMoreDiRTEngine:
                         match = re.search(rf"\b{label_pattern}\s*[:=]\s*(?P<value>https?://[^\s.;]+(?:\.[^\s.;]+)*(?:/[^\s.;]+)?)", line, re.I)
                     else:
                         match = re.search(rf"\b{label_pattern}\s*[:=]\s*(?P<value>[^.;|]+)", line, re.I)
+                        if not match:
+                            match = re.search(rf"[\"']{label_pattern}[\"']\s*:\s*[\"'](?P<value>[^\"']+)[\"']", line, re.I)
                         if not match:
                             match = re.search(rf"\b{label_pattern}\s+(?:is|was)\s+(?P<value>[^.;|]+)", line, re.I)
                     if not match:
@@ -2223,7 +2236,7 @@ class KnowMoreDiRTEngine:
     def _source_field_low_priority(self, evidence: Evidence, text: str) -> bool:
         path_material = normalize(evidence.rel_path)
         text_material = normalize(text)
-        tokens = set(content_tokens(path_material)) | set(content_tokens(text_material))
+        tokens = set(content_tokens(path_material)) | set(content_tokens(text_material)) | set(re.findall(r"[a-z0-9]+", path_material)) | set(re.findall(r"[a-z0-9]+", text_material))
         if {"not", "the", "answer"}.issubset(tokens):
             return True
         if any(term in tokens for term in {"noise", "cache", "tmp", "lock"}):

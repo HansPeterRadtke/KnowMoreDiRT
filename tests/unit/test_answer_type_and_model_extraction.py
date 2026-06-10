@@ -1274,3 +1274,26 @@ def test_messy_discussion_belief_and_source_file_bindings(tmp_path: Path, monkey
     assert engine._answer_with_discussion_belief_source("Which file did PR-8042 touch?").text == "ledger_importer.rs"
     assert engine._answer_with_discussion_belief_source("Who disagreed with Dana about the outage cause?").text == "Rui"
     assert engine._answer_with_discussion_belief_source("Who believed QuillCache stored passwords in plaintext?").text == "Sora"
+
+
+
+def test_cross_suite_pre_model_priority_and_cache_filtering(tmp_path: Path, monkeypatch) -> None:
+    (tmp_path / "cache.lock").write_text(
+        "Lark Mirror owner: ERROR-0000 random random random.\n",
+        encoding="utf-8",
+    )
+    (tmp_path / "record.txt").write_text(
+        "Cinder Atlas dossier.\n"
+        "owner: Mara Vell\n"
+        "person id: actor_mara884211\n"
+        '{"bundle":{"name":"Lark Mirror","owner":"Ila Nore","reviewer":"Oren Pax"}}\n'
+        "wat3r3d maybe //// Clear correction: greenhouse fern owner is Dr. Pella.\n",
+        encoding="utf-8",
+    )
+    monkeypatch.setenv("KMD_TEST_ALLOW_NO_MODEL", "1")
+    monkeypatch.setenv("PYTEST_CURRENT_TEST", "1")
+    engine = KnowMoreDiRTEngine(tmp_path)
+
+    assert engine._answer_with_labeled_attribute_source("What is the person id for Cinder Atlas?").text == "actor_mara884211"
+    assert engine._answer_with_labeled_attribute_source("Who is owner for Lark Mirror?").text == "Ila Nore"
+    assert engine._answer_with_correction_owner_source("Who owns the greenhouse fern according to the OCR correction?").text == "Dr. Pella"
