@@ -1144,6 +1144,8 @@ def test_review_approval_source_binding_and_ambiguity(tmp_path: Path, monkeypatc
         "Morgan Hale: I will review PR-9910 for BeaconQueue docs.\n"
         "A later note says Morgan approved it, but the note does not say which Morgan.\n"
         "Jo Sen: Keep Morgan Ives and Morgan Hale separate until the approval note is clarified.\n"
+        "Iris Park accepted responsibility for BUG-7301 after Zed Labs escalated it.\n"
+        "  \"owner_sentence\": \"Iris Park accepted responsibility for BUG-7301 after Zed Labs escalated it.\"\n"
         "The canonical design URL is https://docs.luma.example/ledger/escrow-import-r7.\n",
         encoding="utf-8",
     )
@@ -1154,4 +1156,43 @@ def test_review_approval_source_binding_and_ambiguity(tmp_path: Path, monkeypatc
     assert engine._answer_with_review_or_approval_source("Who reviewed PR-8042?").text == "Omar Kestrel"
     assert engine._answer_with_review_or_approval_source("Who reviewed PR-9910 for BeaconQueue docs?").text == "Morgan Hale"
     assert engine._answer_with_review_or_approval_source("Which Morgan approved PR-9910?").text == "unknown"
+    assert engine._answer_with_review_or_approval_source("Who accepted responsibility for BUG-7301?").text == "Iris Park"
     assert engine._answer_with_exact_source_field("What is the canonical design URL for the escrow import design?").text == "https://docs.luma.example/ledger/escrow-import-r7"
+
+
+
+def test_clause_table_message_source_binding(tmp_path: Path, monkeypatch) -> None:
+    (tmp_path / "case.txt").write_text(
+        "Plaintiff Ardent Mill alleges that FlowQuill caused invoice drift on 2026-03-12.\n"
+        "The allegation names support ticket SUP-1207.\n",
+        encoding="utf-8",
+    )
+    (tmp_path / "measurements.tsv").write_text(
+        "Table: bridge sensor readings for DeltaPier\n"
+        "measurement date: 1986-07-14\n"
+        "source file copied: 2010-05-20\n"
+        "sensor\treading_mm\tstatus\n"
+        "S-1\t33\tok\n"
+        "S-3\t91\tcritical\n",
+        encoding="utf-8",
+    )
+    (tmp_path / "thread.eml").write_text(
+        "From: Mira Holt\n"
+        "Mira wrote: Rowan fixed parser.cpp in PR-3307.\n"
+        "--- forwarded message ---\n"
+        "From: Rowan Pike\n"
+        "I plan to fix parser.cpp tomorrow, not today.\n"
+        "--- end forwarded message ---\n"
+        "Mira's top-level note is the asserted statement in this email.\n",
+        encoding="utf-8",
+    )
+    monkeypatch.setenv("KMD_TEST_ALLOW_NO_MODEL", "1")
+    monkeypatch.setenv("PYTEST_CURRENT_TEST", "1")
+    engine = KnowMoreDiRTEngine(tmp_path)
+
+    assert engine._answer_with_clause_table_message_source("Who alleged that FlowQuill caused invoice drift?").text == "Ardent Mill"
+    assert engine._answer_with_clause_table_message_source("What is the measurement date for the DeltaPier sensor readings?").text == "1986-07-14"
+    assert engine._answer_with_clause_table_message_source("Which DeltaPier sensor had critical status?").text == "S-3"
+    assert engine._answer_with_clause_table_message_source("When was the DeltaPier source file copied?").text == "2010-05-20"
+    assert engine._answer_with_clause_table_message_source("According to Mira's top-level note, who fixed parser.cpp?").text == "Rowan"
+    assert engine._answer_with_clause_table_message_source("What did the forwarded Rowan message say about fixing parser.cpp?").text == "Rowan planned to fix parser.cpp tomorrow, not today."

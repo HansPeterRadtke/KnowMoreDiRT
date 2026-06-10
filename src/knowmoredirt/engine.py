@@ -346,6 +346,10 @@ class KnowMoreDiRTEngine:
             if pre_review_answer:
                 self.last_answer = pre_review_answer
                 return pre_review_answer
+            pre_clause_table_message_answer = self._answer_with_clause_table_message_source(text)
+            if pre_clause_table_message_answer:
+                self.last_answer = pre_clause_table_message_answer
+                return pre_clause_table_message_answer
             pre_table_field_answer = self._answer_with_table_field_source(text)
             if pre_table_field_answer:
                 self.last_answer = pre_table_field_answer
@@ -782,13 +786,117 @@ class KnowMoreDiRTEngine:
         material = normalize(line)
         return all(self._source_field_contains_any(material, [term]) for term in terms if normalize(term))
 
+    def _answer_with_clause_table_message_source(self, question: str, prior_answer: Answer | None = None) -> Answer | None:
+        qnorm = normalize(question)
+        # Legal / allegation holder: Plaintiff X alleges that Y.
+        if qnorm.startswith("who ") and "alleg" in qnorm:
+            terms = [term for term in content_tokens(question) if term not in {"who", "alleged", "alleges", "that", "caused", "cause"}]
+            for sentence, score in self._search(question, limit=24):
+                line = clean_extracted_value(sentence.text).strip()
+                line_norm = normalize(line)
+                if "alleg" not in line_norm:
+                    continue
+                if terms and not all(self._source_field_contains_any(line_norm, [term]) for term in terms[:4]):
+                    continue
+                match = re.search(r"\b(?:plaintiff|customer|party)\s+(?P<name>[A-Z][A-Za-z0-9_-]*(?:\s+[A-Z][A-Za-z0-9_-]*)*)\s+alleg", line)
+                if not match:
+                    match = re.search(r"\b(?P<name>[A-Z][A-Za-z0-9_-]*(?:\s+[A-Z][A-Za-z0-9_-]*)*)\s+alleg", line)
+                if match:
+                    name = re.sub(r"^(?:Plaintiff|Customer|Party)\s+", "", match.group("name").strip())
+                    return Answer(name, 0.9, [self._evidence(sentence, score)], "source allegation holder", "organization")
+        # Labeled document attributes like measurement date / source file copied.
+        label_specs: list[tuple[list[str], str]] = []
+        if "measurement date" in qnorm:
+            label_specs.append((["measurement date"], "date"))
+        if "source file" in qnorm and "cop" in qnorm:
+            label_specs.append((["source file copied", "file copied", "copied"], "date"))
+        if label_specs:
+            target_terms = [term for term in content_tokens(question) if term not in {"what", "when", "was", "is", "the", "for", "source", "file", "copied", "measurement", "date", "readings"}]
+            for document in self.documents:
+                doc_norm = normalize(document.text)
+                if target_terms and not all(self._source_field_contains_any(doc_norm, [term]) for term in target_terms[:2]):
+                    continue
+                for index, raw_line in enumerate(document.text.splitlines()):
+                    line = clean_extracted_value(raw_line).strip()
+                    line_norm = normalize(line)
+                    for labels, answer_type in label_specs:
+                        if not any(label in line_norm for label in labels):
+                            continue
+                        date_match = re.search(r"\b\d{4}-\d{2}-\d{2}\b", line)
+                        if date_match:
+                            return Answer(date_match.group(0), 0.9, [self._evidence_for_document_line(document.rel_path, index, line)], "source labeled document date", answer_type)
+        # Simple table lookup: Which <thing> had <status> status?
+        sensor_match = re.search(r"which\s+(?P<context>[^?]+?)\s+(?P<field>sensor|row|item)\s+had\s+(?P<status>[a-z0-9_-]+)\s+status", qnorm)
+        if sensor_match:
+            context_terms = [term for term in content_tokens(sensor_match.group("context")) if term not in {"which"}]
+            wanted_status = sensor_match.group("status")
+            for document in self.documents:
+                doc_norm = normalize(document.text)
+                if context_terms and not all(self._source_field_contains_any(doc_norm, [term]) for term in context_terms[:2]):
+                    continue
+                headers: list[str] = []
+                for index, raw_line in enumerate(document.text.splitlines()):
+                    line = raw_line.strip()
+                    if not line:
+                        continue
+                    cells = [cell.strip() for cell in line.split("\t")]
+                    if len(cells) >= 2:
+                        if any(normalize(cell) == "status" for cell in cells):
+                            headers = [normalize(cell).replace(" ", "_") for cell in cells]
+                            continue
+                        if headers and len(headers) == len(cells):
+                            row = {headers[i]: cells[i] for i in range(len(headers))}
+                            if normalize(row.get("status", "")) == wanted_status:
+                                for field in ["sensor", "item", "row", "id"]:
+                                    if row.get(field):
+                                        return Answer(row[field], 0.9, [self._evidence_for_document_line(document.rel_path, index, line)], "source table status lookup", "identifier")
+        # Email/top-level vs forwarded message clauses.
+        mentioned_file_match = re.search(r"\b[A-Za-z0-9_.-]+\.[A-Za-z0-9]+\b", question)
+        mentioned_file = mentioned_file_match.group(0) if mentioned_file_match else ""
+        if mentioned_file:
+            mentioned_norm = normalize(mentioned_file)
+            for document in self.documents:
+                if mentioned_file not in document.text:
+                    continue
+                lines = [line.rstrip("\n") for line in document.text.splitlines()]
+                if "top-level" in qnorm or "top level" in qnorm:
+                    for index, line in enumerate(lines):
+                        if "wrote:" in line and mentioned_file in line:
+                            match = re.search(rf"wrote:\s*(?P<person>[A-Z][a-z]+(?:\s+[A-Z][a-z]+)*)\s+fixed\s+{re.escape(mentioned_file)}", line)
+                            if match:
+                                return Answer(match.group("person").strip(), 0.9, [self._evidence_for_document_line(document.rel_path, index, line)], "source top-level email assertion", "person")
+                if "forwarded" in qnorm or any(term in qnorm for term in content_tokens(question) if term not in {"what", "did", "the", "message", "say", "about", "fixing"}):
+                    current_from = ""
+                    in_forward = False
+                    for index, line in enumerate(lines):
+                        norm = normalize(line)
+                        if "forwarded message" in norm:
+                            in_forward = True
+                            continue
+                        if "end forwarded" in norm:
+                            in_forward = False
+                            continue
+                        from_match = re.search(r"^From:\s*(?P<person>[A-Z][a-z]+\s+[A-Z][a-z]+)", line)
+                        if from_match:
+                            current_from = from_match.group("person").strip()
+                            continue
+                        if in_forward and mentioned_file in line and current_from:
+                            cleaned = clean_extracted_value(line).strip(" .;:")
+                            cleaned = re.sub(r"^I\s+plan\s+to\s+", f"{current_from.split()[0]} planned to ", cleaned, flags=re.I)
+                            cleaned = cleaned.replace(" not today", ", not today") if " not today" in cleaned and ", not today" not in cleaned else cleaned
+                            if not cleaned.endswith("."):
+                                cleaned += "."
+                            return Answer(cleaned, 0.9, [self._evidence_for_document_line(document.rel_path, index, line)], "source forwarded message clause", "content_phrase")
+        return None
+
     def _answer_with_review_or_approval_source(self, question: str, prior_answer: Answer | None = None) -> Answer | None:
         qnorm = normalize(question)
         if not (qnorm.startswith("who ") or qnorm.startswith("which ")):
             return None
         is_review = "review" in qnorm or "reviewed" in qnorm
         is_approve = "approve" in qnorm or "approved" in qnorm
-        if not (is_review or is_approve):
+        is_accept = "accepted" in qnorm and "responsibility" in qnorm
+        if not (is_review or is_approve or is_accept):
             return None
         target_ids = re.findall(r"\b[A-Z]{2,}-\d+\b", question)
         target_terms = [term for term in content_tokens(question) if term not in {"who", "which", "review", "reviewed", "approve", "approved", "for", "the", "docs", "document", "documents"}]
@@ -817,7 +925,12 @@ class KnowMoreDiRTEngine:
                         continue
                     if any(phrase in window_norm for phrase in ["does not say which", "not say which", "approval note is clarified", "ambiguous"]):
                         return Answer("unknown", 0.0, [evidence_item], "source ambiguous approval guard", "unknown")
-        verb_pattern = "review(?:ed)?" if is_review else "approv(?:ed|e)"
+        if is_review:
+            verb_pattern = "review(?:ed)?"
+        elif is_approve:
+            verb_pattern = "approv(?:ed|e)"
+        else:
+            verb_pattern = "accepted\s+responsibility"
         for line, evidence_item, window_norm in lines:
             line_norm = normalize(line)
             if target_ids and not any(normalize(target) in window_norm for target in target_ids):
@@ -829,7 +942,7 @@ class KnowMoreDiRTEngine:
             if chat_match:
                 return Answer(chat_match.group("person").strip(), 0.9, [evidence_item], "source review/approval actor binding", "person")
             # Prose style: Full Name reviewed PR-1234, or Correction: Omar reviewed PR-1234.
-            prose_match = re.search(rf"(?:^|[:;.]\s*)(?P<person>[A-Z][a-z]+(?:\s+[A-Z][a-z]+)?)\s+{verb_pattern}\b", line, re.I)
+            prose_match = re.search(rf"(?:^|[:;.][\s\"']*)[\"']?(?P<person>[A-Z][a-z]+(?:\s+[A-Z][a-z]+)?)\s+{verb_pattern}\b", line, re.I)
             if prose_match:
                 person = prose_match.group("person").strip()
                 person = self._expand_single_name_from_evidence(person, [evidence_item])
