@@ -350,6 +350,10 @@ class KnowMoreDiRTEngine:
             if pre_clause_table_message_answer:
                 self.last_answer = pre_clause_table_message_answer
                 return pre_clause_table_message_answer
+            pre_precise_answer = self._answer_with_precise_source_content(text)
+            if pre_precise_answer:
+                self.last_answer = pre_precise_answer
+                return pre_precise_answer
             pre_table_field_answer = self._answer_with_table_field_source(text)
             if pre_table_field_answer:
                 self.last_answer = pre_table_field_answer
@@ -1175,6 +1179,9 @@ class KnowMoreDiRTEngine:
         if "organization" in qnorm:
             label_aliases = ["organization", "org"]
             answer_type = "organization"
+        elif qnorm.startswith("who ") and "owner" in qnorm:
+            label_aliases = ["launch owner", "owner"]
+            answer_type = "person"
         elif "contact person" in qnorm or (qnorm.startswith("who ") and "contact" in qnorm):
             label_aliases = ["contact person", "contact"]
             answer_type = "person"
@@ -1218,6 +1225,8 @@ class KnowMoreDiRTEngine:
                         match = re.search(rf"\b{label_pattern}\s*[:=]\s*(?P<value>https?://[^\s.;]+(?:\.[^\s.;]+)*(?:/[^\s.;]+)?)", line, re.I)
                     else:
                         match = re.search(rf"\b{label_pattern}\s*[:=]\s*(?P<value>[^.;|]+)", line, re.I)
+                        if not match:
+                            match = re.search(rf"\b{label_pattern}\s+(?:is|was)\s+(?P<value>[^.;|]+)", line, re.I)
                     if not match:
                         continue
                     value = clean_extracted_value(match.group("value")).strip(" .;:")
@@ -1478,7 +1487,7 @@ class KnowMoreDiRTEngine:
                 if not match:
                     match = re.search(r'\bapproved\s+by\s+(?P<person>[A-Z][a-z]+\s+[A-Z][a-z]+)\b', line)
                 if not match:
-                    match = re.search(r'\bapprover\s*[:=]\s*(?P<person>[A-Z][a-z]+\s+[A-Z][a-z]+)\b', line)
+                    match = re.search(r'\bapprover\s*[:=]\s*["\']?(?P<person>[A-Z][a-z]+\s+[A-Z][a-z]+)["\']?\b', line)
                 if match:
                     return Answer(match.group("person").strip(), 0.86, [evidence], "source precise approver field", "person")
             if qnorm.startswith("who ") and target_terms:

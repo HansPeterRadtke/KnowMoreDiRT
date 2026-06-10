@@ -1234,3 +1234,18 @@ def test_claim_request_and_commit_hash_source_binding(tmp_path: Path, monkeypatc
     assert engine._answer_with_action_holder_source("Who claimed the outage was caused by gateway overload?").text == "Dana"
     assert engine._answer_with_review_or_approval_source("Who requested the Marlin plan bundle?").text == "Reese Vale"
     assert engine._answer_with_commit_hash_source("Which commit fixed NullMoss crash BUG-5150?").text == "b16b00b5"
+
+
+
+def test_owner_label_and_quoted_approver_source_binding(tmp_path: Path, monkeypatch) -> None:
+    (tmp_path / "mixed.txt").write_text(
+        "CedarSpan launch owner is Elan Ruiz.\n"
+        '[{product: "RippleDesk", pr: "PR-6402", reviewer: "Iona Gray"}, {product: "RippleDesk", approver: "Gus North"}]\n',
+        encoding="utf-8",
+    )
+    monkeypatch.setenv("KMD_TEST_ALLOW_NO_MODEL", "1")
+    monkeypatch.setenv("PYTEST_CURRENT_TEST", "1")
+    engine = KnowMoreDiRTEngine(tmp_path)
+
+    assert engine._answer_with_labeled_attribute_source("Who is the CedarSpan launch owner?").text == "Elan Ruiz"
+    assert engine._answer_with_precise_source_content("Who approved RippleDesk?").text == "Gus North"
