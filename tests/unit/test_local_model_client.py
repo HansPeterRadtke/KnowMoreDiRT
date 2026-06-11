@@ -402,7 +402,7 @@ def test_local_model_client_uses_completion_stream_and_json_schema(monkeypatch) 
     assert "grammar" in requests[0]["body"]
 
 
-def test_local_model_client_stream_enforces_wall_timeout(monkeypatch) -> None:
+def test_local_model_client_stream_does_not_enforce_total_wall_timeout(monkeypatch) -> None:
     def fake_urlopen(request, timeout: float = 0) -> FakeHTTPResponse:
         url = getattr(request, "full_url", request)
         if str(url).endswith("/v1/models"):
@@ -412,10 +412,11 @@ def test_local_model_client_stream_enforces_wall_timeout(monkeypatch) -> None:
         if str(url).endswith("/props"):
             return FakeHTTPResponse({"default_generation_settings": {"n_ctx": 4096, "params": {}}})
         if str(url).endswith("/completion"):
+            assert timeout == 2
             return FakeHTTPResponse(
                 lines=[
-                    b'data: {"content":"{\\"ok\\":"}\n\n',
-                    b'data: {"content":"true"}\n\n',
+                    b'data: {"content": "{\\"ok\\":"}\n\n',
+                    b'data: {"content": "true}"}\n\n',
                 ]
             )
         raise AssertionError(f"unexpected URL {url}")
@@ -431,8 +432,9 @@ def test_local_model_client_stream_enforces_wall_timeout(monkeypatch) -> None:
     client = LocalModelClient(endpoint="http://127.0.0.1:14829/v1", timeout_seconds=2)
     client.server_metadata()
 
-    with pytest.raises(TimeoutError):
-        client.complete_json("return ok", n_predict=64)
+    parsed = client.complete_json("return ok", n_predict=64)
+
+    assert parsed["ok"] is True
 
 
 def test_chunk_frame_planner_prefers_json_schema_for_capable_clients(monkeypatch) -> None:
