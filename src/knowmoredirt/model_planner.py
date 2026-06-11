@@ -176,7 +176,7 @@ def _estimate_tokens(text: str) -> int:
 def _local_model_transport_fingerprint() -> dict[str, Any]:
     return {
         "api": os.environ.get("KMD_LOCAL_MODEL_API", "chat").strip().lower() or "chat",
-        "stream": os.environ.get("KMD_LOCAL_MODEL_STREAM", "1").strip().lower() not in {"0", "false", "no", "off"},
+        "stream": True,
     }
 
 

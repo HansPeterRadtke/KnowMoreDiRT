@@ -352,7 +352,7 @@ class LocalModelClient:
     def transport_settings(self) -> dict[str, Any]:
         return {
             "api": os.environ.get("KMD_LOCAL_MODEL_API", "chat").strip().lower() or "chat",
-            "stream": os.environ.get("KMD_LOCAL_MODEL_STREAM", "1").strip().lower() not in {"0", "false", "no", "off"},
+            "stream": True,
             "cache_prompt": os.environ.get("KMD_LOCAL_MODEL_CACHE_PROMPT", "1").strip().lower()
             not in {"0", "false", "no", "off"},
         }
@@ -386,11 +386,12 @@ class LocalModelClient:
             endpoint = _completion_endpoint(self.endpoint)
         _local_endpoint_required(endpoint)
         settings = self.request_settings()
-        use_stream = (
-            stream
-            if stream is not None
-            else os.environ.get("KMD_LOCAL_MODEL_STREAM", "1").strip().lower() not in {"0", "false", "no", "off"}
-        )
+        # Local model calls must stream.  The timeout below is therefore the
+        # socket/read timeout between streamed chunks, not a whole-answer wall
+        # timeout.  The deprecated ``stream`` argument and KMD_LOCAL_MODEL_STREAM
+        # environment variable are intentionally ignored for production safety.
+        del stream
+        use_stream = True
         use_cache_prompt = os.environ.get("KMD_LOCAL_MODEL_CACHE_PROMPT", "1").strip().lower() not in {
             "0",
             "false",

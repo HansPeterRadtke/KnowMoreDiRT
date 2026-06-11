@@ -230,7 +230,7 @@ class FakeHTTPResponse:
         return iter(self.lines)
 
 
-def test_local_model_client_discovers_runtime_metadata(monkeypatch) -> None:
+def test_local_model_client_discovers_runtime_metadata_and_forces_streaming(monkeypatch) -> None:
     def fake_urlopen(request, timeout: float = 0) -> FakeHTTPResponse:
         url = getattr(request, "full_url", request)
         if str(url).endswith("/v1/models"):
@@ -282,10 +282,11 @@ def test_local_model_client_discovers_runtime_metadata(monkeypatch) -> None:
     assert client.request_settings()["min_p"] == 0.03
     fingerprint = client.cache_fingerprint()
     assert fingerprint["context_size"] == 24576
-    assert fingerprint["transport_settings"] == {"api": "chat", "stream": False}
+    assert fingerprint["transport_settings"] == {"api": "chat", "stream": True, "cache_prompt": True}
     assert chunk_drs_cache_context(client)["model_fingerprint"]["transport_settings"] == {
         "api": "chat",
-        "stream": False,
+        "stream": True,
+        "cache_prompt": True,
     }
 
 
@@ -432,7 +433,7 @@ def test_local_model_client_stream_does_not_enforce_total_wall_timeout(monkeypat
     client = LocalModelClient(endpoint="http://127.0.0.1:14829/v1", timeout_seconds=2)
     client.server_metadata()
 
-    parsed = client.complete_json("return ok", n_predict=64)
+    parsed = client.complete_json("return ok", n_predict=64, stream=False)
 
     assert parsed["ok"] is True
 
