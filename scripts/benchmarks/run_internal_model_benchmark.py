@@ -41,7 +41,6 @@ MODEL_ENV_KEYS = (
     "KMD_CHUNK_MODEL_TIMEOUT_SECONDS",
     "KMD_QUESTION_MODEL_TIMEOUT_SECONDS",
     "KMD_LOCAL_MODEL_API",
-    "KMD_LOCAL_MODEL_STREAM",
     "KMD_LOCAL_MODEL_CACHE_PROMPT",
     "KMD_LOCAL_MODEL_JSON_SCHEMA",
     "KMD_LOCAL_MODEL_GRAMMAR",
@@ -147,7 +146,6 @@ def _configure_environment(output_root: Path) -> None:
     os.environ.setdefault("KMD_CHUNK_MODEL_TIMEOUT_SECONDS", "420")
     os.environ.setdefault("KMD_QUESTION_MODEL_TIMEOUT_SECONDS", "420")
     os.environ.setdefault("KMD_LOCAL_MODEL_API", "chat")
-    os.environ.setdefault("KMD_LOCAL_MODEL_STREAM", "1")
     os.environ.setdefault("KMD_LOCAL_MODEL_CACHE_PROMPT", "1")
     os.environ.setdefault("KMD_LOCAL_MODEL_JSON_SCHEMA", "1")
     os.environ.setdefault("KMD_LOCAL_MODEL_GRAMMAR", "1")

@@ -230,7 +230,7 @@ class FakeHTTPResponse:
         return iter(self.lines)
 
 
-def test_local_model_client_discovers_runtime_metadata_and_forces_streaming(monkeypatch) -> None:
+def test_local_model_client_discovers_runtime_metadata(monkeypatch) -> None:
     def fake_urlopen(request, timeout: float = 0) -> FakeHTTPResponse:
         url = getattr(request, "full_url", request)
         if str(url).endswith("/v1/models"):
@@ -271,7 +271,6 @@ def test_local_model_client_discovers_runtime_metadata_and_forces_streaming(monk
 
     monkeypatch.setattr("urllib.request.urlopen", fake_urlopen)
     monkeypatch.setenv("KMD_LOCAL_MODEL_API", "chat")
-    monkeypatch.setenv("KMD_LOCAL_MODEL_STREAM", "0")
 
     client = LocalModelClient(endpoint="http://127.0.0.1:14829/v1", timeout_seconds=30)
 
@@ -282,10 +281,9 @@ def test_local_model_client_discovers_runtime_metadata_and_forces_streaming(monk
     assert client.request_settings()["min_p"] == 0.03
     fingerprint = client.cache_fingerprint()
     assert fingerprint["context_size"] == 24576
-    assert fingerprint["transport_settings"] == {"api": "chat", "stream": True, "cache_prompt": True}
+    assert fingerprint["transport_settings"] == {"api": "chat", "cache_prompt": True}
     assert chunk_drs_cache_context(client)["model_fingerprint"]["transport_settings"] == {
         "api": "chat",
-        "stream": True,
         "cache_prompt": True,
     }
 
@@ -433,7 +431,7 @@ def test_local_model_client_stream_does_not_enforce_total_wall_timeout(monkeypat
     client = LocalModelClient(endpoint="http://127.0.0.1:14829/v1", timeout_seconds=2)
     client.server_metadata()
 
-    parsed = client.complete_json("return ok", n_predict=64, stream=False)
+    parsed = client.complete_json("return ok", n_predict=64)
 
     assert parsed["ok"] is True
 
@@ -2121,7 +2119,7 @@ def test_query_drs_request_failure_retries_smaller_budget(monkeypatch, tmp_path)
         def complete_json(self, prompt: str, *, n_predict: int = 128, grammar=None, json_schema=None):
             self.calls.append(n_predict)
             if len(self.calls) == 1:
-                raise TimeoutError("local model request exceeded 240.0s wall timeout")
+                raise TimeoutError("local model request timed out waiting for the next streamed chunk")
             return {
                 "query_drs": {
                     "schema_version": "query-drs-v3",

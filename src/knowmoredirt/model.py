@@ -352,7 +352,6 @@ class LocalModelClient:
     def transport_settings(self) -> dict[str, Any]:
         return {
             "api": os.environ.get("KMD_LOCAL_MODEL_API", "chat").strip().lower() or "chat",
-            "stream": True,
             "cache_prompt": os.environ.get("KMD_LOCAL_MODEL_CACHE_PROMPT", "1").strip().lower()
             not in {"0", "false", "no", "off"},
         }
@@ -376,7 +375,6 @@ class LocalModelClient:
         n_predict: int = 128,
         grammar: str | None = None,
         json_schema: dict[str, Any] | None = None,
-        stream: bool | None = None,
     ) -> dict[str, Any]:
         """Return a parsed JSON object from the local completion endpoint."""
 
@@ -388,10 +386,7 @@ class LocalModelClient:
         settings = self.request_settings()
         # Local model calls must stream.  The timeout below is therefore the
         # socket/read timeout between streamed chunks, not a whole-answer wall
-        # timeout.  The deprecated ``stream`` argument and KMD_LOCAL_MODEL_STREAM
-        # environment variable are intentionally ignored for production safety.
-        del stream
-        use_stream = True
+        # timeout.
         use_cache_prompt = os.environ.get("KMD_LOCAL_MODEL_CACHE_PROMPT", "1").strip().lower() not in {
             "0",
             "false",
@@ -408,7 +403,7 @@ class LocalModelClient:
                 "temperature": settings["temperature"],
                 "top_p": settings["top_p"],
                 "seed": settings["seed"],
-                "stream": bool(use_stream),
+                "stream": True,
                 "cache_prompt": bool(use_cache_prompt),
             }
         else:
@@ -421,7 +416,7 @@ class LocalModelClient:
                 "min_p": settings["min_p"],
                 "repeat_penalty": settings["repeat_penalty"],
                 "seed": settings["seed"],
-                "stream": bool(use_stream),
+                "stream": True,
                 "cache_prompt": bool(use_cache_prompt),
             }
         if grammar:
@@ -439,28 +434,24 @@ class LocalModelClient:
         response_obj: dict[str, Any] = {}
         stream_closed_after_json = False
         with urllib.request.urlopen(request, timeout=self.timeout_seconds) as response:
-            if use_stream:
-                for raw_line in response:
-                    line = raw_line.decode("utf-8", errors="replace").strip()
-                    if not line:
-                        continue
-                    if line.startswith("data:"):
-                        line = line[5:].strip()
-                    if line == "[DONE]":
+            for raw_line in response:
+                line = raw_line.decode("utf-8", errors="replace").strip()
+                if not line:
+                    continue
+                if line.startswith("data:"):
+                    line = line[5:].strip()
+                if line == "[DONE]":
+                    break
+                try:
+                    event = json.loads(line)
+                except json.JSONDecodeError:
+                    continue
+                if isinstance(event, dict):
+                    response_obj = event
+                    raw += _event_content(event) or ""
+                    if _extract_balanced_json(raw):
+                        stream_closed_after_json = True
                         break
-                    try:
-                        event = json.loads(line)
-                    except json.JSONDecodeError:
-                        continue
-                    if isinstance(event, dict):
-                        response_obj = event
-                        raw += _event_content(event) or ""
-                        if _extract_balanced_json(raw):
-                            stream_closed_after_json = True
-                            break
-            else:
-                response_obj = json.loads(response.read().decode("utf-8", errors="replace"))
-                raw = _response_content(response_obj)
         snippet = _extract_balanced_json(raw) or raw
         try:
             parsed = json.loads(snippet)
@@ -477,14 +468,13 @@ class LocalModelClient:
         parsed["_model_raw"] = raw
         parsed["_model_elapsed_seconds"] = round(time.time() - started, 3)
         parsed["_model_endpoint"] = endpoint
-        parsed["_model_stream"] = bool(use_stream)
+        parsed["_model_stream"] = True
         parsed["_model_stream_closed_after_json"] = stream_closed_after_json
         parsed["_model_context_size"] = self.context_size()
         parsed["_model_id"] = self.model_id()
         parsed["_model_request_settings"] = {**settings, "n_predict": int(n_predict)}
         parsed["_model_transport_settings"] = {
             **self.transport_settings(),
-            "stream": bool(use_stream),
             "cache_prompt": bool(use_cache_prompt),
         }
         return parsed
