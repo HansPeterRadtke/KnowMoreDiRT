@@ -281,16 +281,19 @@ def test_local_model_client_discovers_runtime_metadata(monkeypatch) -> None:
     assert client.request_settings()["min_p"] == 0.03
     fingerprint = client.cache_fingerprint()
     assert fingerprint["context_size"] == 24576
-    assert fingerprint["transport_settings"] == {
-        "api": "chat",
-        "cache_prompt": True,
-        "min_constrained_json_tokens": 4096,
-    }
-    assert chunk_drs_cache_context(client)["model_fingerprint"]["transport_settings"] == {
-        "api": "chat",
-        "cache_prompt": True,
-        "min_constrained_json_tokens": 4096,
-    }
+    transport = fingerprint["transport_settings"]
+    assert transport["api"] == "chat"
+    assert transport["cache_prompt"] is True
+    assert transport["min_constrained_json_tokens"] == 4096
+    assert transport["constraint_mode"] == "auto"
+    assert transport["native_constraints"] is True
+    assert transport["reasoning_control_token_model"] is False
+    chunk_transport = chunk_drs_cache_context(client)["model_fingerprint"]["transport_settings"]
+    assert chunk_transport["api"] == "chat"
+    assert chunk_transport["cache_prompt"] is True
+    assert chunk_transport["min_constrained_json_tokens"] == 4096
+    assert chunk_transport["constraint_mode"] == "auto"
+    assert chunk_transport["native_constraints"] is True
 
 
 def test_engine_required_probe_uses_client_endpoint_normalization(monkeypatch) -> None:

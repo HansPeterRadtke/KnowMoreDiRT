@@ -159,6 +159,52 @@ def _event_content(event: dict[str, Any]) -> str | None:
     return None
 
 
+
+def _event_reasoning_content(event: dict[str, Any]) -> str:
+    choices = event.get("choices")
+    if isinstance(choices, list) and choices:
+        choice = choices[0]
+        if isinstance(choice, dict):
+            delta = choice.get("delta")
+            if isinstance(delta, dict):
+                return str(delta.get("reasoning_content") or "")
+            message = choice.get("message")
+            if isinstance(message, dict):
+                return str(message.get("reasoning_content") or "")
+    return ""
+
+
+def _model_id_looks_like_reasoning_control_token_model(model_id: str) -> bool:
+    normalized = model_id.lower()
+    compact = normalized.replace("-", "").replace("_", "")
+    return ("gpt" in compact and "oss" in compact) or "harmony" in compact
+
+
+def _schema_hint(json_schema: dict[str, Any] | None) -> str:
+    if not json_schema:
+        return ""
+    try:
+        rendered = json.dumps(json_schema, ensure_ascii=True, sort_keys=True)
+    except TypeError:
+        return ""
+    if len(rendered) > 6000:
+        rendered = rendered[:6000] + " ...TRUNCATED_SCHEMA"
+    return (
+        "\nReturn JSON that validates against this schema. "
+        "All required fields must be present. Do not add prose, markdown, comments, "
+        "reasoning, or fields outside the schema.\nSCHEMA:\n"
+        + rendered
+    )
+
+
+def _json_only_user_prompt(prompt: str, json_schema: dict[str, Any] | None) -> str:
+    return (
+        prompt.rstrip()
+        + _schema_hint(json_schema)
+        + "\nOutput exactly one complete JSON object or JSON array as the final answer. "
+        "Do not include analysis, chain of thought, markdown fences, or explanatory text."
+    )
+
 def _extract_balanced_json(raw: str) -> str | None:
     object_start = raw.find("{")
     array_start = raw.find("[")
@@ -369,11 +415,20 @@ class LocalModelClient:
         }
 
     def transport_settings(self) -> dict[str, Any]:
+        model_id = self.model_id()
+        constrained_mode = os.environ.get("KMD_LOCAL_MODEL_CONSTRAINT_MODE", "auto").strip().lower() or "auto"
+        if constrained_mode not in {"auto", "native", "prompt"}:
+            constrained_mode = "auto"
+        reasoning_control_model = _model_id_looks_like_reasoning_control_token_model(model_id)
+        native_constraints = constrained_mode == "native" or (constrained_mode == "auto" and not reasoning_control_model)
         return {
             "api": os.environ.get("KMD_LOCAL_MODEL_API", "chat").strip().lower() or "chat",
             "cache_prompt": os.environ.get("KMD_LOCAL_MODEL_CACHE_PROMPT", "1").strip().lower()
             not in {"0", "false", "no", "off"},
             "min_constrained_json_tokens": _default_min_constrained_json_tokens(),
+            "constraint_mode": constrained_mode,
+            "native_constraints": native_constraints,
+            "reasoning_control_token_model": reasoning_control_model,
         }
 
     def cache_fingerprint(self) -> dict[str, Any]:
@@ -403,6 +458,15 @@ class LocalModelClient:
             endpoint = _completion_endpoint(self.endpoint)
         _local_endpoint_required(endpoint)
         settings = self.request_settings()
+        transport = self.transport_settings()
+        native_constraints = bool(transport.get("native_constraints"))
+        effective_prompt = _json_only_user_prompt(prompt, json_schema)
+        send_thinking_controls = os.environ.get("KMD_LOCAL_MODEL_SEND_THINKING_CONTROLS", "0").strip().lower() in {
+            "1",
+            "true",
+            "yes",
+            "on",
+        }
         # Local model calls must stream. The timeout below is only the socket/read
         # timeout while waiting for the next streamed token chunk. There is no
         # whole-answer, whole-question, or whole-chunk wall timeout here.
@@ -419,8 +483,14 @@ class LocalModelClient:
         if endpoint.endswith("/chat/completions"):
             body = {
                 "messages": [
-                    {"role": "system", "content": "Return one valid JSON object or array and no prose."},
-                    {"role": "user", "content": prompt},
+                    {
+                        "role": "system",
+                        "content": (
+                            "Return exactly one valid JSON object or array in the final answer. "
+                            "Do not reveal reasoning, do not use markdown fences, and do not add prose."
+                        ),
+                    },
+                    {"role": "user", "content": effective_prompt},
                 ],
                 "max_tokens": effective_n_predict,
                 "temperature": settings["temperature"],
@@ -431,7 +501,7 @@ class LocalModelClient:
             }
         else:
             body = {
-                "prompt": prompt,
+                "prompt": effective_prompt,
                 "n_predict": effective_n_predict,
                 "temperature": settings["temperature"],
                 "top_p": settings["top_p"],
@@ -443,7 +513,7 @@ class LocalModelClient:
                 "cache_prompt": bool(use_cache_prompt),
             }
         constraint_settings: dict[str, Any] = {"mode": "none"}
-        if json_schema:
+        if native_constraints and json_schema:
             if endpoint.endswith("/chat/completions"):
                 body["response_format"] = {
                     "type": "json_schema",
@@ -457,9 +527,16 @@ class LocalModelClient:
             else:
                 body["json_schema"] = json_schema
                 constraint_settings = {"mode": "completion_json_schema"}
-        elif grammar:
+        elif native_constraints and grammar:
             body["grammar"] = grammar
             constraint_settings = {"mode": "grammar"}
+        elif json_schema:
+            constraint_settings = {"mode": "prompt_json_schema"}
+        elif grammar:
+            constraint_settings = {"mode": "prompt_grammar"}
+        if send_thinking_controls:
+            body["reasoning_format"] = "hidden"
+            body["enable_thinking"] = False
         started = time.time()
         request = urllib.request.Request(
             endpoint,
@@ -486,6 +563,8 @@ class LocalModelClient:
                 if isinstance(event, dict):
                     response_obj = event
                     raw += _event_content(event) or ""
+                    if not raw and not native_constraints:
+                        _event_reasoning_content(event)
                     if _extract_balanced_json(raw):
                         stream_closed_after_json = True
                         break
@@ -519,9 +598,13 @@ class LocalModelClient:
             **constraint_settings,
             "requested_n_predict": requested_n_predict,
             "effective_n_predict": effective_n_predict,
+            "native_constraints_applied": native_constraints,
+            "schema_prompt_hint": bool(json_schema and not native_constraints),
+            "grammar_prompt_only": bool(grammar and not native_constraints),
         }
         parsed["_model_transport_settings"] = {
-            **self.transport_settings(),
+            **transport,
             "cache_prompt": bool(use_cache_prompt),
+            "thinking_controls_sent": send_thinking_controls,
         }
         return parsed

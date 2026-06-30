@@ -2967,7 +2967,7 @@ def call_model_evidence_answer(
     )
     cache_path = _cache_path("KMD_EVIDENCE_ANSWER_CACHE_DIR", prompt_hash)
     cached = _read_cache(cache_path)
-    if cached is not None and not _cached_request_failed(cached):
+    if cached is not None and str(cached.get("reason") or "") != "request_failed":
         cached.setdefault("cache_context", cache_context)
         return cached
     start = time.time()
