@@ -144,10 +144,10 @@ QUERY_DRS_VALIDATION_POLICY = "strict-query-drs-version-question-evidence-box-da
 QUERY_DRS_ARRAY_CAP_POLICY = "reserved_output_tokens_div_96_4_8-v1"
 QUERY_DRS_DYNAMIC_OUTPUT_BUDGET_POLICY = "surface-token-budget-short384-mid512-long-context-v1"
 QUERY_DRS_COMPACT_PLAN_POLICY = "compact-model-plan-to-query-drs-v2"
-CONSTRAINT_TRANSPORT_POLICY = "bounded-json-schema-min4096-structured-json-skip-v4"
+CONSTRAINT_TRANSPORT_POLICY = "bounded-json-schema-min4096-structured-record-route-v1"
 QUERY_DRS_COMPACT_UNDERCOVERAGE_POLICY = "broad-slot-uncovered-token-full-fallback-v1"
 QUERY_DRS_REQUEST_FAILURE_RETRY_POLICY = "smaller-full-query-drs-output-budget-v1"
-CHUNK_DRS_STRUCTURED_JSON_MODEL_SKIP_POLICY = "skip-json-like-structured-records-before-drs-model-v1"
+CHUNK_DRS_STRUCTURED_RECORD_ROUTE_POLICY = "structured-records-use-deterministic-extraction-no-drs-skip-v1"
 QUERY_OPERATOR_SCHEMA_POLICY = "query-temporal-aggregation-operator-enums-v1"
 QUERY_FRAME_SCHEMA_VERSION = "query-frame-v6"
 ANSWER_SCHEMA_VERSION = "answer-v4"
@@ -448,6 +448,14 @@ def _cached_structured_failure_retryable(payload: dict[str, Any] | None) -> bool
 
 def _cached_request_failed(payload: dict[str, Any] | None) -> bool:
     return _cached_structured_failure_retryable(payload)
+
+
+def _cached_evidence_answer_retryable(payload: dict[str, Any] | None) -> bool:
+    if payload is None:
+        return False
+    return str(payload.get("reason") or "") == "request_failed" or str(
+        payload.get("repair_failure_reason") or ""
+    ) == "request_failed"
 
 
 def _query_drs_cached_retryable_failure(payload: dict[str, Any] | None) -> bool:
@@ -2967,7 +2975,7 @@ def call_model_evidence_answer(
     )
     cache_path = _cache_path("KMD_EVIDENCE_ANSWER_CACHE_DIR", prompt_hash)
     cached = _read_cache(cache_path)
-    if cached is not None and str(cached.get("reason") or "") != "request_failed":
+    if cached is not None and not _cached_evidence_answer_retryable(cached):
         cached.setdefault("cache_context", cache_context)
         return cached
     start = time.time()
@@ -5560,7 +5568,7 @@ def chunk_drs_cache_context(
         "skeleton_id_policy": CHUNK_DRS_SKELETON_ID_POLICY,
         "monolithic_id_policy": CHUNK_DRS_MONOLITHIC_ID_POLICY,
         "compact_undercoverage_policy": CHUNK_DRS_COMPACT_UNDERCOVERAGE_POLICY,
-        "structured_json_skip_policy": CHUNK_DRS_STRUCTURED_JSON_MODEL_SKIP_POLICY,
+        "structured_record_route_policy": CHUNK_DRS_STRUCTURED_RECORD_ROUTE_POLICY,
         "staged_retry_diagnostics_policy": CHUNK_DRS_STAGED_RETRY_DIAGNOSTICS_POLICY,
         "stage_failure_cache_policy": CHUNK_DRS_STAGE_FAILURE_CACHE_POLICY,
         "dynamic_skeleton_budget_policy": CHUNK_DRS_DYNAMIC_SKELETON_BUDGET_POLICY,
@@ -5602,22 +5610,6 @@ def chunk_drs_cache_context(
 
 
 
-def _chunk_drs_structured_json_skip_reason(chunk_text: str, rel_path: str = "") -> str:
-    if os.environ.get("KMD_MODEL_DRS_FOR_STRUCTURED_JSON_RECORDS", "").strip().lower() in {"1", "true", "yes", "on"}:
-        return ""
-    value = str(chunk_text or "").strip()
-    if len(value) < 80:
-        return ""
-    rel = str(rel_path or "").lower()
-    starts_structured = value.startswith(("{", "["))
-    json_path = rel.endswith((".json", ".jsonl")) or rel.startswith("metadata/") or rel.startswith("products/")
-    quote_colon_pairs = len(re.findall(r'"[^"\n]{1,100}"\s*:', value))
-    brace_count = value.count("{") + value.count("[")
-    comma_count = value.count(",")
-    if (starts_structured or json_path) and quote_colon_pairs >= 4 and (brace_count >= 2 or comma_count >= 3):
-        return "skipped_structured_record"
-    return ""
-
 def call_model_chunk_drs(
     chunk_text: str,
     client: LocalModelClient,
@@ -5626,20 +5618,6 @@ def call_model_chunk_drs(
     n_predict: int | None = None,
     refresh_empty_compact_legacy: bool = False,
 ) -> dict[str, Any]:
-    structured_skip_reason = _chunk_drs_structured_json_skip_reason(chunk_text, rel_path)
-    if structured_skip_reason:
-        return {
-            "accepted": False,
-            "materialized": False,
-            "reason": structured_skip_reason,
-            "structured_json_skip_policy": CHUNK_DRS_STRUCTURED_JSON_MODEL_SKIP_POLICY,
-            "elapsed": 0.0,
-            "context_budget": {
-                "structured_json_skip": True,
-                "input_chars": len(str(chunk_text or "")),
-                "source_rel_path": rel_path,
-            },
-        }
     if _compact_live_model_path_allowed(client) and _compact_chunk_drs_enabled() and _compact_chunk_drs_eligible(chunk_text):
         compact = call_model_chunk_drs_compact(
             chunk_text,
@@ -5668,7 +5646,7 @@ def call_model_chunk_drs(
         "skeleton_source_span_policy": CHUNK_DRS_SKELETON_SOURCE_SPAN_POLICY,
         "monolithic_id_policy": CHUNK_DRS_MONOLITHIC_ID_POLICY,
         "compact_undercoverage_policy": CHUNK_DRS_COMPACT_UNDERCOVERAGE_POLICY,
-        "structured_json_skip_policy": CHUNK_DRS_STRUCTURED_JSON_MODEL_SKIP_POLICY,
+        "structured_record_route_policy": CHUNK_DRS_STRUCTURED_RECORD_ROUTE_POLICY,
         "staged_retry_diagnostics_policy": CHUNK_DRS_STAGED_RETRY_DIAGNOSTICS_POLICY,
         "stage_failure_cache_policy": CHUNK_DRS_STAGE_FAILURE_CACHE_POLICY,
         "dynamic_skeleton_budget_policy": CHUNK_DRS_DYNAMIC_SKELETON_BUDGET_POLICY,
@@ -5704,7 +5682,7 @@ def call_model_chunk_drs(
         "skeleton_id_policy": CHUNK_DRS_SKELETON_ID_POLICY,
         "monolithic_id_policy": CHUNK_DRS_MONOLITHIC_ID_POLICY,
         "compact_undercoverage_policy": CHUNK_DRS_COMPACT_UNDERCOVERAGE_POLICY,
-        "structured_json_skip_policy": CHUNK_DRS_STRUCTURED_JSON_MODEL_SKIP_POLICY,
+        "structured_record_route_policy": CHUNK_DRS_STRUCTURED_RECORD_ROUTE_POLICY,
         "staged_retry_diagnostics_policy": CHUNK_DRS_STAGED_RETRY_DIAGNOSTICS_POLICY,
         "stage_failure_cache_policy": CHUNK_DRS_STAGE_FAILURE_CACHE_POLICY,
         "dynamic_skeleton_budget_policy": CHUNK_DRS_DYNAMIC_SKELETON_BUDGET_POLICY,

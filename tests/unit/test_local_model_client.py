@@ -2517,27 +2517,76 @@ def test_compact_chunk_drs_does_not_reuse_source_cache_from_old_constraint_polic
 
 
 
-def test_chunk_drs_skips_structured_json_records_before_model(monkeypatch, tmp_path) -> None:
-    class ShouldNotCallModel:
-        timeout_seconds = 240
+def test_chunk_drs_does_not_skip_structured_json_records_before_model(monkeypatch, tmp_path) -> None:
+    class StructuredRecordModel:
+        def __init__(self) -> None:
+            self.calls = 0
+            self.timeout_seconds = 240
 
         def context_size(self) -> int:
             return 4096
 
         def cache_fingerprint(self) -> dict[str, object]:
-            return {"model_id": "fake-no-call", "context_size": 4096}
+            return {"model_id": "fake-structured-record-call", "context_size": 4096}
 
-        def complete_json(self, *args, **kwargs):
-            raise AssertionError("structured JSON records should not call the DRS model")
+        def complete_json(self, prompt: str, *, n_predict: int = 128, grammar=None, json_schema=None):
+            self.calls += 1
+            assert "products/ActionGenie.json" in prompt
+            return {
+                "drs": {
+                    "schema_version": "chunk-drs-v2",
+                    "source_id": "products/ActionGenie.json",
+                    "referents": [
+                        {"id": "r0", "label": "sales", "kind": "unknown", "evidence_text": '"channel":"sales"'}
+                    ],
+                    "boxes": [
+                        {
+                            "id": "b0",
+                            "kind": "asserted",
+                            "parent_id": "",
+                            "holder_referent_id": "",
+                            "evidence_text": '"channel":"sales"',
+                        }
+                    ],
+                    "conditions": [
+                        {
+                            "id": "c0",
+                            "predicate": "channel",
+                            "box_id": "b0",
+                            "polarity": "positive",
+                            "modality": "asserted",
+                            "temporal_id": "",
+                            "arguments": [
+                                {
+                                    "role": "value",
+                                    "target_kind": "referent",
+                                    "target_id": "r0",
+                                    "value": "sales",
+                                    "value_type": "unknown",
+                                    "evidence_text": '"channel":"sales"',
+                                }
+                            ],
+                            "evidence_text": '"channel":"sales"',
+                        }
+                    ],
+                    "identity_hypotheses": [],
+                    "temporal_records": [],
+                },
+                "_model_raw": "{}",
+                "_model_elapsed_seconds": 0.01,
+            }
 
     monkeypatch.delenv("KMD_MODEL_DRS_FOR_STRUCTURED_JSON_RECORDS", raising=False)
     monkeypatch.setenv("KMD_CHUNK_DRS_CACHE_DIR", str(tmp_path / "chunk-drs-cache"))
     text = '{"messages":[{"user":"alice","text":"hello team","ts":"2026-01-01T00:00:00"},{"user":"bob","text":"ack","ts":"2026-01-01T00:01:00"}],"channel":"sales"}'
-    result = call_model_chunk_drs(text, ShouldNotCallModel(), rel_path="products/ActionGenie.json")  # type: ignore[arg-type]
+    model = StructuredRecordModel()
 
-    assert result["accepted"] is False
-    assert result["reason"] == "skipped_structured_record"
-    assert result["context_budget"]["structured_json_skip"] is True
+    result = call_model_chunk_drs(text, model, rel_path="products/ActionGenie.json")  # type: ignore[arg-type]
+
+    assert model.calls >= 1
+    assert result["accepted"] is True
+    assert str(result.get("reason") or "") != "skipped_structured_record"
+    assert "structured_json_skip" not in result["context_budget"]
 
 
 def test_compact_chunk_schema_is_bounded() -> None:

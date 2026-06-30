@@ -60,24 +60,7 @@ def _identifier_bearing_discourse_span(text: str, quality: dict[str, object]) ->
     return 5 <= token_count <= 40 and char_count <= 600 and symbol_ratio <= 0.18
 
 
-def _looks_like_large_structured_record(text: str) -> bool:
-    if _env_true("KMD_MODEL_DRS_FOR_LARGE_STRUCTURED_RECORDS"):
-        return False
-    value = str(text or "").strip()
-    if len(value) < int(os.environ.get("KMD_STRUCTURED_RECORD_MODEL_SKIP_MIN_CHARS", "8000")):
-        return False
-    lines = value.count("\n") + 1
-    if lines < 40:
-        return False
-    starts_structured = value.startswith(("{", "["))
-    quote_colon_pairs = len(re.findall(r'"[^"\n]{1,80}"\s*:', value))
-    delimiter_lines = sum(1 for line in value.splitlines()[:300] if line.count(":") >= 1 or "\t" in line or "|" in line)
-    return starts_structured and quote_colon_pairs >= 20 and delimiter_lines >= 20
-
-
 def _model_semantic_skip_reason(quality: dict[str, object], text: str = "") -> str:
-    if _looks_like_large_structured_record(text):
-        return "skipped_structured_record"
     if (
         str(quality.get("semantic_quality") or "") == "word_salad"
         and not bool(quality.get("low_semantic_noise"))
