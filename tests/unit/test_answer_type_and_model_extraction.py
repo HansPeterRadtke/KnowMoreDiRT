@@ -647,6 +647,74 @@ def test_definition_source_extraction_and_where_cleanup(tmp_path: Path, monkeypa
     assert engine._restore_where_preposition("Where is the brass lamp?", "red desk", ExpectedAnswer("content_phrase"), evidence) == "on the red desk"
 
 
+def test_missing_meaning_cleanup_returns_unknown(tmp_path: Path, monkeypatch) -> None:
+    monkeypatch.setenv("KMD_TEST_ALLOW_NO_MODEL", "1")
+    monkeypatch.setenv("PYTEST_CURRENT_TEST", "1")
+    engine = KnowMoreDiRTEngine(tmp_path)
+    frame = QueryFrame(
+        question_text="What does mave lora mean?",
+        answer_type="content_phrase",
+        answer_variables=("meaning",),
+        target_anchors=("mave lora",),
+        requested_relation="mean",
+        relation_terms=("mean",),
+        constraints=(),
+    )
+
+    assert engine._cleanup_canonical_answer("has no stated translation", ExpectedAnswer("content_phrase"), frame) == "unknown"
+
+
+def test_post_model_source_pass_corrects_grounded_clause_answer(tmp_path: Path, monkeypatch) -> None:
+    (tmp_path / "beliefs.txt").write_text(
+        "Cora believes routers are social contracts.\n",
+        encoding="utf-8",
+    )
+    monkeypatch.setenv("KMD_TEST_ALLOW_NO_MODEL", "1")
+    monkeypatch.setenv("PYTEST_CURRENT_TEST", "1")
+    engine = KnowMoreDiRTEngine(tmp_path)
+    engine._use_local_model = True
+    monkeypatch.setattr(
+        engine,
+        "_answer_with_local_model",
+        lambda _question: Answer("routers", 0.5, [], "fake local model answer", "content_phrase"),
+    )
+
+    answer = engine.answer("What does Cora believe?")
+
+    assert answer.text == "routers are social contracts"
+    assert answer.reason == "generic source belief clause"
+
+
+def test_post_model_source_pass_uses_generic_labeled_fields_after_model_miss(tmp_path: Path, monkeypatch) -> None:
+    (tmp_path / "note.txt").write_text(
+        "Delta Relay note.\nReview summary: replace the worn seal before launch\n",
+        encoding="utf-8",
+    )
+    monkeypatch.setenv("KMD_TEST_ALLOW_NO_MODEL", "1")
+    monkeypatch.setenv("PYTEST_CURRENT_TEST", "1")
+    engine = KnowMoreDiRTEngine(tmp_path)
+    engine._use_local_model = True
+    monkeypatch.setattr(engine, "_answer_with_local_model", lambda _question: None)
+
+    answer = engine.answer("What is the review summary for Delta Relay?")
+
+    assert answer.text == "replace the worn seal before launch"
+    assert answer.reason == "generic source labeled field"
+
+
+def test_generic_labeled_field_does_not_split_url_scheme(tmp_path: Path, monkeypatch) -> None:
+    (tmp_path / "note.txt").write_text(
+        "The canonical design URL is https://docs.example.test/design-r7.\n",
+        encoding="utf-8",
+    )
+    monkeypatch.setenv("KMD_TEST_ALLOW_NO_MODEL", "1")
+    monkeypatch.setenv("PYTEST_CURRENT_TEST", "1")
+    engine = KnowMoreDiRTEngine(tmp_path)
+
+    assert engine._answer_with_generic_labeled_field_source("What is the canonical design URL?") is None
+    assert engine.answer("What is the canonical design URL?").text == "https://docs.example.test/design-r7"
+
+
 def test_final_decision_statement_canonicalizes_to_unknown(tmp_path: Path, monkeypatch) -> None:
     monkeypatch.setenv("KMD_TEST_ALLOW_NO_MODEL", "1")
     monkeypatch.setenv("PYTEST_CURRENT_TEST", "1")

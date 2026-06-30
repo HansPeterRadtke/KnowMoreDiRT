@@ -11,12 +11,16 @@ predictions.
 from __future__ import annotations
 
 import argparse
+import atexit
+import faulthandler
 import json
 import os
 import re
+import signal
 import sys
 import threading
 import time
+import traceback
 from pathlib import Path
 from typing import Any
 
@@ -28,12 +32,64 @@ DEFAULT_KMD_REPORT_ROOT = Path("/data/var/knowmoredirt/reports")
 DEFAULT_KMD_RUN_ROOT = Path("/data/var/knowmoredirt/herb_runs")
 
 
+_RUN_STATE: dict[str, Any] = {"stage": "startup"}
+_TERMINATION_LOGGED = False
+
+
+def configure_process_io() -> None:
+    """Make benchmark logs useful even when stdout is redirected."""
+
+    for stream in (sys.stdout, sys.stderr):
+        reconfigure = getattr(stream, "reconfigure", None)
+        if callable(reconfigure):
+            try:
+                reconfigure(line_buffering=True, write_through=True)
+            except Exception:
+                pass
+    try:
+        faulthandler.enable(file=sys.stderr, all_threads=True)
+    except Exception:
+        pass
+
+
+def _flush_file(handle: Any) -> None:
+    handle.flush()
+    try:
+        os.fsync(handle.fileno())
+    except OSError:
+        pass
+
+
 def log_event(log_path: Path, event: str, **payload: Any) -> None:
     log_path.parent.mkdir(parents=True, exist_ok=True)
-    row = {"ts": time.strftime("%Y-%m-%dT%H:%M:%S%z"), "event": event, **payload}
+    row = {"ts": time.strftime("%Y-%m-%dT%H:%M:%S%z"), "pid": os.getpid(), "event": event, **payload}
     with log_path.open("a", encoding="utf-8") as handle:
         handle.write(json.dumps(row, ensure_ascii=False, sort_keys=True) + "\n")
-        handle.flush()
+        _flush_file(handle)
+    print("kmd-herb " + json.dumps(row, ensure_ascii=False, sort_keys=True), flush=True)
+
+
+def register_process_diagnostics(log_path: Path) -> None:
+    def record_exit() -> None:
+        global _TERMINATION_LOGGED
+        if _TERMINATION_LOGGED:
+            return
+        _TERMINATION_LOGGED = True
+        log_event(log_path, "process_exit", state=dict(_RUN_STATE))
+
+    def record_signal(signum: int, _frame: Any) -> None:
+        global _TERMINATION_LOGGED
+        name = signal.Signals(signum).name if signum in {item.value for item in signal.Signals} else str(signum)
+        _TERMINATION_LOGGED = True
+        log_event(log_path, "process_signal", signal=signum, signal_name=name, state=dict(_RUN_STATE))
+        raise SystemExit(128 + signum)
+
+    atexit.register(record_exit)
+    for signum in (signal.SIGINT, signal.SIGTERM, signal.SIGHUP):
+        try:
+            signal.signal(signum, record_signal)
+        except (OSError, RuntimeError, ValueError):
+            pass
 
 
 def read_official_questions(path: Path) -> list[dict[str, str]]:
@@ -57,13 +113,14 @@ def write_jsonl(path: Path, rows: list[dict[str, Any]]) -> None:
     with path.open("w", encoding="utf-8") as handle:
         for row in rows:
             handle.write(json.dumps(row, ensure_ascii=False, sort_keys=True) + "\n")
+        _flush_file(handle)
 
 
 def append_jsonl(path: Path, row: dict[str, Any]) -> None:
     path.parent.mkdir(parents=True, exist_ok=True)
     with path.open("a", encoding="utf-8") as handle:
         handle.write(json.dumps(row, ensure_ascii=False, sort_keys=True) + "\n")
-        handle.flush()
+        _flush_file(handle)
 
 
 def serialize_answer(public_answer: str) -> str | list[str]:
@@ -85,6 +142,7 @@ def main() -> int:
     parser.add_argument("--report-root", default=str(DEFAULT_KMD_REPORT_ROOT))
     parser.add_argument("--run-name", default=f"kmd_public_raw_folder_{time.strftime('%Y%m%d_%H%M%S')}")
     parser.add_argument("--limit", type=int, default=0, help="Optional smoke-test limit; 0 means all questions.")
+    parser.add_argument("--question-id", action="append", default=[], help="Run only the given HERB public question id; may be repeated.")
     parser.add_argument("--use-local-model", action="store_true", help="Enable KMD's optional localhost-only migrated DRT model-query planner.")
     parser.add_argument("--resume", action="store_true", help="Resume an interrupted run directory without deleting completed JSONL outputs.")
     args = parser.parse_args()
@@ -100,6 +158,11 @@ def main() -> int:
     checkpoint_path = run_dir / "kmd_public_answers.jsonl"
     sanitized_questions_path = run_dir / "questions_sanitized_for_kmd.jsonl"
 
+    configure_process_io()
+    register_process_diagnostics(log_path)
+    _RUN_STATE.update({"stage": "preflight", "run_dir": str(run_dir), "raw_folder": str(raw_folder)})
+    log_event(log_path, "process_start", argv=sys.argv, run_dir=str(run_dir), raw_folder=str(raw_folder))
+
     if not raw_folder.is_dir():
         raise FileNotFoundError(raw_folder)
     if not normalized_questions.exists():
@@ -111,6 +174,28 @@ def main() -> int:
     sys.path.insert(0, str(herb_root / "src"))
     if args.use_local_model:
         os.environ["KMD_USE_LOCAL_MODEL"] = "1"
+        os.environ.setdefault("KMD_LOCAL_MODEL_EXPECTED_ID", "Qwen2.5-14B-Instruct-Q4_K_M.gguf")
+        shared_cache_root = var_root / "kmd_model_caches"
+        os.environ.setdefault("KMD_SHARED_MODEL_CACHE_ROOT", str(shared_cache_root))
+        os.environ.setdefault("KMD_LOCAL_MODEL_CACHE_PROMPT", "1")
+        for cache_name, subdir in {
+            "KMD_FRAME_CACHE_DIR": "frame",
+            "KMD_CHUNK_FRAME_CACHE_DIR": "chunk_frame",
+            "KMD_CHUNK_DRS_CACHE_DIR": "chunk_drs",
+            "KMD_QUERY_PLAN_CACHE_DIR": "query_plan",
+            "KMD_QUERY_DRS_CACHE_DIR": "query_drs",
+            "KMD_QUERY_EVIDENCE_REPAIR_CACHE_DIR": "query_evidence_repair",
+            "KMD_QUERY_EVIDENCE_CACHE_DIR": "query_evidence",
+            "KMD_EVIDENCE_ANSWER_CACHE_DIR": "evidence_answer",
+            "KMD_VERIFIER_CACHE_DIR": "verifier",
+            "KMD_QUERY_VERIFIER_CACHE_DIR": "verifier",
+            "KMD_ANSWER_CANONICALIZATION_CACHE_DIR": "answer_canonicalization",
+            "KMD_QUERY_CANONICAL_CACHE_DIR": "answer_canonicalization",
+            "KMD_IDENTITY_CACHE_DIR": "identity",
+            "KMD_IDENTITY_CANONICAL_CACHE_DIR": "identity",
+            "KMD_SOURCE_RESOLUTION_CACHE_DIR": "source_resolution",
+        }.items():
+            os.environ.setdefault(cache_name, str(shared_cache_root / subdir))
 
     import knowmoredirt as kmd  # noqa: WPS433 - operational benchmark adapter
     from knowmoredirt import public as kmd_public  # noqa: WPS433
@@ -125,6 +210,9 @@ def main() -> int:
                 output_path.unlink()
 
     all_questions = read_official_questions(normalized_questions)
+    selected_ids = {str(value) for value in args.question_id or []}
+    if selected_ids:
+        all_questions = [row for row in all_questions if str(row.get("question_id") or "") in selected_ids]
     questions = all_questions[: args.limit] if args.limit else all_questions
     write_jsonl(sanitized_questions_path, questions)
     completed_ids: set[str] = set()
@@ -140,6 +228,7 @@ def main() -> int:
                     completed_ids.add(question_id)
                     if checkpoint.get("answered"):
                         answered_count += 1
+    _RUN_STATE.update({"stage": "run_start", "total_questions": len(questions)})
     log_event(
         log_path,
         "resume_start" if args.resume else "run_start",
@@ -161,8 +250,9 @@ def main() -> int:
 
     def heartbeat() -> None:
         while not init_done.wait(30):
-            log_event(log_path, "initialize_progress", elapsed_seconds=round(time.time() - init_started, 3))
+            log_event(log_path, "initialize_progress", elapsed_seconds=round(time.time() - init_started, 3), state=dict(_RUN_STATE))
 
+    _RUN_STATE.update({"stage": "initialize", "initialized": False})
     log_event(log_path, "initialize_start")
     heartbeat_thread = threading.Thread(target=heartbeat, daemon=True)
     heartbeat_thread.start()
@@ -171,6 +261,7 @@ def main() -> int:
     finally:
         init_done.set()
     init_elapsed = round(time.time() - init_started, 3)
+    _RUN_STATE.update({"stage": "questions", "initialized": True})
     log_event(log_path, "initialize_done", elapsed_seconds=init_elapsed)
 
     prediction_rows: list[dict[str, Any]] = []
@@ -184,7 +275,8 @@ def main() -> int:
         if question_id in completed_ids:
             continue
         question_started = time.time()
-        log_event(log_path, "question_start", index=index, total=total, question_id=question_id)
+        _RUN_STATE.update({"stage": "question", "question_index": index, "question_total": total, "question_id": question_id})
+        log_event(log_path, "question_start", index=index, total=total, question_id=question_id, percent=round((index / total) * 100, 3) if total else 100.0)
         public_answer = kmd.question(question_text)
         internal_answer = getattr(getattr(kmd_public, "_ENGINE", None), "last_answer", None)
         model_trace = getattr(getattr(kmd_public, "_ENGINE", None), "model_query_trace", None)
@@ -287,6 +379,7 @@ def main() -> int:
                 if question_id:
                     seen_after.add(question_id)
         completed_after = len(seen_after)
+    _RUN_STATE.update({"stage": "scoring", "completed_questions": completed_after, "question_total": len(all_questions)})
     log_event(log_path, "query_done", completed=completed_after, answered_count=answered_count, elapsed_seconds=query_elapsed)
 
     if len(questions) != len(all_questions) or completed_after != len(all_questions):
@@ -376,7 +469,9 @@ def main() -> int:
         ),
         encoding="utf-8",
     )
-    print(json.dumps({"report_json": str(report_json), "report_md": str(report_md), "run_dir": str(run_dir), "scores": scores}, indent=2))
+    log_event(log_path, "report_written", report_json=str(report_json), report_md=str(report_md), status=report["status"])
+    _RUN_STATE.update({"stage": "complete", "status": report["status"]})
+    print(json.dumps({"report_json": str(report_json), "report_md": str(report_md), "run_dir": str(run_dir), "scores": scores}, indent=2), flush=True)
     return 0 if not scores.get("runtime_failure") else 1
 
 

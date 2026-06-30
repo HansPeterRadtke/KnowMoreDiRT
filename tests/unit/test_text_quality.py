@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 from knowmoredirt.ingest import _skip_model_semantics_for_quality
+from knowmoredirt import bounded_dspg
 from knowmoredirt.text import is_low_semantic_noise, text_quality_metrics
 
 
@@ -51,3 +52,44 @@ def test_word_salad_without_structured_identifier_still_skips_model_semantics() 
 
     assert metrics["semantic_quality"] == "word_salad"
     assert _skip_model_semantics_for_quality(metrics, text) is True
+
+def test_bounded_source_low_priority_reuses_identical_text_quality(monkeypatch):
+    calls = {"n": 0}
+    original = bounded_dspg.text_quality_metrics
+
+    def wrapped(text: str):
+        calls["n"] += 1
+        return original(text)
+
+    bounded_dspg._SOURCE_LOW_PRIORITY_CACHE.clear()
+    monkeypatch.setattr(bounded_dspg, "text_quality_metrics", wrapped)
+    text = "Name: Alice. Status: approved."
+
+    first = bounded_dspg._source_is_low_priority("a.json", text)
+    second = bounded_dspg._source_is_low_priority("a.json", text)
+
+    assert first == second
+    assert calls["n"] == 1
+    cache_key = next(iter(bounded_dspg._SOURCE_LOW_PRIORITY_CACHE))
+    assert isinstance(cache_key, tuple)
+    assert isinstance(cache_key[2], str)
+    assert len(cache_key[2]) == 64
+
+def test_bounded_contains_any_for_records_reuses_material_match_cache(monkeypatch) -> None:
+    records: dict[str, object] = {}
+    material = "ActionGenie database management logging system"
+    calls = {"n": 0}
+    original = bounded_dspg._contains_any
+
+    def wrapped(value: str, terms: list[str]) -> bool:
+        calls["n"] += 1
+        return original(value, terms)
+
+    monkeypatch.setattr(bounded_dspg, "_contains_any", wrapped)
+
+    assert bounded_dspg._contains_any_for_records(records, material, ["ActionGenie"]) is True
+    assert bounded_dspg._contains_any_for_records(records, material, ["ActionGenie"]) is True
+    assert calls["n"] == 1
+    cache_key = next(iter(records["_material_match_cache"]))
+    assert isinstance(cache_key[1], str)
+    assert len(cache_key[1]) == 64

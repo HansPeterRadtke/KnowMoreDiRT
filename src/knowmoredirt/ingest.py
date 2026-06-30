@@ -60,19 +60,42 @@ def _identifier_bearing_discourse_span(text: str, quality: dict[str, object]) ->
     return 5 <= token_count <= 40 and char_count <= 600 and symbol_ratio <= 0.18
 
 
-def _skip_model_semantics_for_quality(quality: dict[str, object], text: str = "") -> bool:
+def _looks_like_large_structured_record(text: str) -> bool:
+    if _env_true("KMD_MODEL_DRS_FOR_LARGE_STRUCTURED_RECORDS"):
+        return False
+    value = str(text or "").strip()
+    if len(value) < int(os.environ.get("KMD_STRUCTURED_RECORD_MODEL_SKIP_MIN_CHARS", "8000")):
+        return False
+    lines = value.count("\n") + 1
+    if lines < 40:
+        return False
+    starts_structured = value.startswith(("{", "["))
+    quote_colon_pairs = len(re.findall(r'"[^"\n]{1,80}"\s*:', value))
+    delimiter_lines = sum(1 for line in value.splitlines()[:300] if line.count(":") >= 1 or "\t" in line or "|" in line)
+    return starts_structured and quote_colon_pairs >= 20 and delimiter_lines >= 20
+
+
+def _model_semantic_skip_reason(quality: dict[str, object], text: str = "") -> str:
+    if _looks_like_large_structured_record(text):
+        return "skipped_structured_record"
     if (
         str(quality.get("semantic_quality") or "") == "word_salad"
         and not bool(quality.get("low_semantic_noise"))
         and _identifier_bearing_discourse_span(text, quality)
     ):
-        return False
-    return bool(quality.get("low_semantic_noise")) or str(quality.get("semantic_quality") or "") in {
+        return ""
+    if bool(quality.get("low_semantic_noise")) or str(quality.get("semantic_quality") or "") in {
         "base64_or_hex_blob",
         "multilingual_word_salad",
         "plausible_babble",
         "word_salad",
-    }
+    }:
+        return "skipped_noise"
+    return ""
+
+
+def _skip_model_semantics_for_quality(quality: dict[str, object], text: str = "") -> bool:
+    return bool(_model_semantic_skip_reason(quality, text))
 
 
 def _attempt_materialized(row: Any | None) -> bool:
@@ -80,7 +103,7 @@ def _attempt_materialized(row: Any | None) -> bool:
         return False
     try:
         metadata = json.loads(str(row["metadata_json"] or "{}"))
-    except (KeyError, TypeError, json.JSONDecodeError):
+    except (IndexError, KeyError, TypeError, json.JSONDecodeError):
         return True
     inserted = metadata.get("materialized", {}).get("inserted", {}) if isinstance(metadata, dict) else {}
     if isinstance(inserted, dict) and "drs_conditions" in inserted:
@@ -92,17 +115,36 @@ def _attempt_materialized(row: Any | None) -> bool:
 
 
 def _attempt_was_nonrequest_failure(row: Any | None) -> bool:
-    return (
-        row is not None
-        and not bool(row["accepted"])
-        and not bool(row["materialized"])
-        and str(row["reason"] or "") != "request_failed"
-    )
+    if row is None:
+        return False
+    reason = str(row["reason"] or "")
+    if reason in {"", "request_failed"} or bool(row["materialized"]):
+        return False
+    if bool(row["accepted"]):
+        try:
+            metadata = json.loads(str(row["metadata_json"] or "{}"))
+        except (IndexError, KeyError, TypeError, json.JSONDecodeError):
+            metadata = {}
+        materialized = metadata.get("materialized", {}) if isinstance(metadata, dict) else {}
+        inserted = materialized.get("inserted", {}) if isinstance(materialized, dict) else {}
+        if (
+            reason == "materialized"
+            or bool(materialized.get("accepted"))
+            or (isinstance(inserted, dict) and any(int(value or 0) > 0 for value in inserted.values()))
+        ):
+            return False
+    return True
 
 
 def _raise_model_request_failed(result: dict[str, Any], operation: str) -> None:
     if str(result.get("reason") or "") != "request_failed":
         return
+    _log_progress(
+        "kmd-ingest model_request_failed_cached_for_retry "
+        f"operation={operation} "
+        f"error={str(result.get('error') or 'request_failed')[:300]}"
+    )
+    return
     cache_context = result.get("cache_context") if isinstance(result.get("cache_context"), dict) else {}
     try:
         cache_context_text = json.dumps(cache_context, sort_keys=True, default=str)[:4000]
@@ -310,8 +352,9 @@ def _grounded_model_frames(
     if semantic_client is None:
         return [], {"source": "disabled"}
     quality = text_quality_metrics(sentence.text)
-    if _skip_model_semantics_for_quality(quality, sentence.text):
-        return [], {"source": "skipped_noise"}
+    skip_reason = _model_semantic_skip_reason(quality, sentence.text)
+    if skip_reason:
+        return [], {"source": skip_reason, "reason": skip_reason}
     cache_context = chunk_frame_cache_context(semantic_client, rel_path=sentence.rel_path, chunk_text=sentence.text)
     cached = semantic_cache.get(sentence.text, context=cache_context) if semantic_cache else None
     if cached is not None:
@@ -508,14 +551,15 @@ def _ingest_model_drs_for_sentence(
     structural_speaker_evidence: str = "",
 ) -> int:
     semantic_index += 1
-    if _skip_model_semantics_for_quality(text_quality_metrics(sentence.text), sentence.text):
+    skip_reason = _model_semantic_skip_reason(text_quality_metrics(sentence.text), sentence.text)
+    if skip_reason:
         _log_progress(
             "kmd-ingest drs_done "
             f"chunk={semantic_index}/{semantic_total} "
             f"source={sentence.rel_path}:{sentence.order} "
             "accepted=False "
             "materialized=False "
-            "reason=skipped_noise "
+            f"reason={skip_reason} "
             "model_elapsed=0.0 "
             f"elapsed={time.monotonic() - ingest_started:.1f}s"
         )
@@ -659,7 +703,7 @@ def _ingest_model_drs_for_sentence(
             span_id,
             "chunk_drs",
             "local_model_drs",
-            actual_drs_cache_key,
+            drs_cache_key,
             int(bool(drs_result.get("accepted"))),
             int(bool(materialized.get("accepted"))),
             str(drs_result.get("reason") or materialized.get("reason") or ""),
@@ -668,7 +712,9 @@ def _ingest_model_drs_for_sentence(
             float(drs_result.get("elapsed") or 0.0),
             json.dumps(
                 {
-                    "cache_context": actual_drs_cache_context,
+                    "cache_context": drs_cache_context,
+                    "actual_cache_context": actual_drs_cache_context,
+                    "actual_cache_key": actual_drs_cache_key,
                     "context_budget": drs_result.get("context_budget"),
                     "materialized": materialized,
                     "replaced_prior_rows": replaced,
@@ -1178,7 +1224,7 @@ def ingest_folder(
             frame_cache_key = stable_id("frame_attempt_context", json.dumps(frame_cache_context, sort_keys=True, default=str))
             previous_attempt = store.execute(
                 """
-                SELECT accepted, materialized, reason
+                SELECT accepted, materialized, reason, metadata_json
                 FROM model_attempts
                 WHERE run_id=? AND source_span_id=? AND task=? AND source=? AND cache_key=?
                 LIMIT 1

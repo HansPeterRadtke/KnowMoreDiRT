@@ -144,8 +144,10 @@ QUERY_DRS_VALIDATION_POLICY = "strict-query-drs-version-question-evidence-box-da
 QUERY_DRS_ARRAY_CAP_POLICY = "reserved_output_tokens_div_96_4_8-v1"
 QUERY_DRS_DYNAMIC_OUTPUT_BUDGET_POLICY = "surface-token-budget-short384-mid512-long-context-v1"
 QUERY_DRS_COMPACT_PLAN_POLICY = "compact-model-plan-to-query-drs-v2"
+CONSTRAINT_TRANSPORT_POLICY = "bounded-json-schema-min4096-structured-json-skip-v4"
 QUERY_DRS_COMPACT_UNDERCOVERAGE_POLICY = "broad-slot-uncovered-token-full-fallback-v1"
 QUERY_DRS_REQUEST_FAILURE_RETRY_POLICY = "smaller-full-query-drs-output-budget-v1"
+CHUNK_DRS_STRUCTURED_JSON_MODEL_SKIP_POLICY = "skip-json-like-structured-records-before-drs-model-v1"
 QUERY_OPERATOR_SCHEMA_POLICY = "query-temporal-aggregation-operator-enums-v1"
 QUERY_FRAME_SCHEMA_VERSION = "query-frame-v6"
 ANSWER_SCHEMA_VERSION = "answer-v4"
@@ -191,7 +193,7 @@ def _client_fingerprint(client: LocalModelClient | None) -> dict[str, Any]:
         return payload if isinstance(payload, dict) else {}
     return {
         "endpoint": getattr(client, "endpoint", ""),
-        "timeout_seconds": getattr(client, "timeout_seconds", ""),
+        "per_token_timeout_seconds": getattr(client, "timeout_seconds", ""),
         "seed": os.environ.get("KMD_LOCAL_MODEL_SEED", "1778779265"),
         "transport_settings": _local_model_transport_fingerprint(),
     }
@@ -360,7 +362,7 @@ def _cache_material(stage: str, prompt: str, client: LocalModelClient | None, se
         "prompt_version": PROMPT_VERSION,
         "prompt": prompt,
         "model_endpoint": getattr(client, "endpoint", os.environ.get("KMD_LOCAL_MODEL_ENDPOINT", "")),
-        "model_timeout": getattr(client, "timeout_seconds", os.environ.get("KMD_LOCAL_MODEL_TIMEOUT", "")),
+        "model_per_token_timeout_seconds": getattr(client, "timeout_seconds", os.environ.get("KMD_LOCAL_MODEL_PER_TOKEN_TIMEOUT_SECONDS", "")),
         "model_identity": os.environ.get("KMD_LOCAL_MODEL_ID", ""),
         "seed": os.environ.get("KMD_LOCAL_MODEL_SEED", "1778779265"),
         "model_fingerprint": _client_fingerprint(client),
@@ -385,6 +387,7 @@ def _constraint_settings(grammar: str, json_schema: dict[str, Any] | None, schem
     use_json_schema = bool(json_schema) and _json_schema_enabled()
     return {
         "constraint_mode": "json_schema" if use_json_schema else ("gbnf" if _optional_grammar(grammar) else "none"),
+        "constraint_transport_policy": CONSTRAINT_TRANSPORT_POLICY,
         "grammar_hash": _grammar_hash(grammar, schema_version),
         "json_schema_hash": _json_schema_hash(json_schema, schema_version) if json_schema else "",
     }
@@ -429,12 +432,22 @@ def _read_cache(path: Path | None) -> dict[str, Any] | None:
     return None
 
 
-def _cached_request_failed(payload: dict[str, Any] | None) -> bool:
+def _cached_structured_failure_retryable(payload: dict[str, Any] | None) -> bool:
     if payload is None:
         return False
-    return str(payload.get("reason") or "") == "request_failed" or str(
+    retryable_reasons = {
+        "request_failed",
+        "invalid_json",
+        "schema_validation_failed",
+        "grounding_validation_failed",
+    }
+    return str(payload.get("reason") or "") in retryable_reasons or str(
         payload.get("repair_failure_reason") or ""
-    ) == "request_failed"
+    ) in retryable_reasons
+
+
+def _cached_request_failed(payload: dict[str, Any] | None) -> bool:
+    return _cached_structured_failure_retryable(payload)
 
 
 def _query_drs_cached_retryable_failure(payload: dict[str, Any] | None) -> bool:
@@ -443,6 +456,8 @@ def _query_drs_cached_retryable_failure(payload: dict[str, Any] | None) -> bool:
     return payload.get("accepted") is False and str(payload.get("reason") or "") in {
         "request_failed",
         "invalid_json",
+        "schema_validation_failed",
+        "grounding_validation_failed",
     }
 
 
@@ -710,6 +725,14 @@ def _schema_array(item: dict[str, Any]) -> dict[str, Any]:
     return {"type": "array", "items": item}
 
 
+def _schema_string_limited(max_length: int) -> dict[str, Any]:
+    return {"type": "string", "maxLength": max(1, int(max_length))}
+
+
+def _schema_array_bounded(item: dict[str, Any], max_items: int) -> dict[str, Any]:
+    return {"type": "array", "items": item, "maxItems": max(0, int(max_items))}
+
+
 def _schema_enum(values: set[str]) -> dict[str, Any]:
     return {"type": "string", "enum": sorted(values)}
 
@@ -721,6 +744,40 @@ ANSWER_TYPE_SCHEMA = _schema_enum(ANSWER_TYPES)
 TEMPORAL_SCOPE_SCHEMA = _schema_enum({"", "earliest", "latest"})
 AGGREGATION_SCHEMA = _schema_enum({"", "count", "list", "set"})
 STRING_ARRAY_SCHEMA = _schema_array(STRING_SCHEMA)
+
+COMPACT_QUERY_DRS_JSON_SCHEMA = _schema_obj(
+    ["a", "answer", "targets", "predicates", "constraints", "temporal_scope", "aggregation"],
+    {
+        "a": ANSWER_TYPE_SCHEMA,
+        "answer": _schema_string_limited(96),
+        "targets": _schema_array_bounded(_schema_string_limited(128), 8),
+        "predicates": _schema_array_bounded(_schema_string_limited(64), 8),
+        "constraints": _schema_array_bounded(_schema_string_limited(160), 8),
+        "temporal_scope": TEMPORAL_SCOPE_SCHEMA,
+        "aggregation": AGGREGATION_SCHEMA,
+    },
+)
+
+COMPACT_CHUNK_FACT_ARGUMENT_JSON_SCHEMA = _schema_obj(
+    ["role", "value"],
+    {"role": _schema_string_limited(48), "value": _schema_string_limited(160)},
+)
+
+COMPACT_CHUNK_FACT_JSON_SCHEMA = _schema_obj(
+    ["p", "e", "arguments", "temporal_text", "scope"],
+    {
+        "p": _schema_string_limited(64),
+        "e": _schema_string_limited(260),
+        "arguments": _schema_array_bounded(COMPACT_CHUNK_FACT_ARGUMENT_JSON_SCHEMA, 6),
+        "temporal_text": _schema_string_limited(96),
+        "scope": _schema_enum(DRS_CONTEXT_KINDS),
+    },
+)
+
+COMPACT_CHUNK_DRS_JSON_SCHEMA = _schema_obj(
+    ["facts"],
+    {"facts": _schema_array_bounded(COMPACT_CHUNK_FACT_JSON_SCHEMA, 8)},
+)
 
 QUERY_FRAME_JSON_SCHEMA = _schema_obj(
     ["query_frame"],
@@ -1006,12 +1063,35 @@ def chunk_drs_json_schema(
     max_length = max(1, int(max_evidence_chars)) if max_evidence_chars else None
     max_items = max(1, int(max_array_items)) if max_array_items else None
 
+    string_limits = {
+        "id": 24,
+        "schema_version": 24,
+        "source_id": 256,
+        "label": 160,
+        "kind": 48,
+        "predicate": 64,
+        "box_id": 24,
+        "parent_id": 24,
+        "holder_referent_id": 24,
+        "temporal_id": 24,
+        "role": 48,
+        "target_kind": 24,
+        "target_id": 24,
+        "value": 160,
+        "value_type": 48,
+        "left_referent_id": 24,
+        "right_referent_id": 24,
+        "status": 24,
+    }
+
     def visit(node: Any, parent_key: str = "") -> None:
         if isinstance(node, dict):
+            if node.get("type") == "string" and parent_key in string_limits:
+                node["maxLength"] = string_limits[parent_key]
             if max_length is not None and parent_key == "evidence_text" and node.get("type") == "string":
-                node["maxLength"] = max_length
+                node["maxLength"] = min(max_length, 260)
             if max_length is not None and parent_key == "evidence_spans" and isinstance(node.get("items"), dict):
-                node["items"]["maxLength"] = max_length
+                node["items"]["maxLength"] = min(max_length, 260)
             if (
                 max_items is not None
                 and node.get("type") == "array"
@@ -1334,12 +1414,21 @@ def chunk_drs_skeleton_json_schema(
     box_schema["properties"]["parent_id"] = {"type": "string", "enum": ["", *box_ids]}
     box_schema["properties"]["holder_referent_id"] = {"type": "string", "enum": ["", *referent_ids]}
     temporal_schema["properties"]["id"] = {"type": "string", "enum": temporal_ids}
+    referent_schema["properties"]["label"] = _schema_string_limited(160)
+    referent_schema["properties"]["kind"] = _schema_string_limited(48)
+    box_schema["properties"]["kind"] = _schema_enum(DRS_CONTEXT_KINDS)
+    temporal_schema["properties"]["value"] = _schema_string_limited(160)
+    temporal_schema["properties"]["value_type"] = _schema_string_limited(48)
     if evidence_text_values:
         evidence_values = list(dict.fromkeys(str(value) for value in evidence_text_values))
         evidence_schema = {"type": "string", "enum": evidence_values}
         referent_schema["properties"]["evidence_text"] = copy.deepcopy(evidence_schema)
         box_schema["properties"]["evidence_text"] = copy.deepcopy(evidence_schema)
         temporal_schema["properties"]["evidence_text"] = copy.deepcopy(evidence_schema)
+    else:
+        referent_schema["properties"]["evidence_text"] = _schema_string_limited(260)
+        box_schema["properties"]["evidence_text"] = _schema_string_limited(260)
+        temporal_schema["properties"]["evidence_text"] = _schema_string_limited(260)
     return _schema_obj(
         ["drs_skeleton"],
         {
@@ -1372,6 +1461,10 @@ def chunk_drs_condition_json_schema(
     condition_ids = [f"c{index}" for index in range(max(1, int(max_conditions)))] if max_conditions else []
     allowed_targets = sorted(set(["", *box_ids, *condition_ids, *referent_ids]))
     allowed_temporals = sorted(set(["", *(temporal_ids or [])]))
+    condition_schema["properties"]["predicate"] = _schema_string_limited(64)
+    argument_schema["properties"]["role"] = _schema_string_limited(48)
+    argument_schema["properties"]["value"] = _schema_string_limited(160)
+    argument_schema["properties"]["value_type"] = _schema_string_limited(48)
     argument_schema["properties"]["target_id"] = {"type": "string", "enum": allowed_targets}
     condition_schema["properties"]["box_id"] = {"type": "string", "enum": box_ids or [""]}
     condition_schema["properties"]["temporal_id"] = {"type": "string", "enum": allowed_temporals}
@@ -1381,6 +1474,9 @@ def chunk_drs_condition_json_schema(
         evidence_values = list(dict.fromkeys(str(value) for value in evidence_text_values))
         condition_schema["properties"]["evidence_text"] = {"type": "string", "enum": evidence_values}
         argument_schema["properties"]["evidence_text"] = {"type": "string", "enum": evidence_values}
+    else:
+        condition_schema["properties"]["evidence_text"] = _schema_string_limited(260)
+        argument_schema["properties"]["evidence_text"] = _schema_string_limited(260)
     condition_schema["properties"]["arguments"] = _schema_array_limited(argument_schema, max_arguments)
     return _schema_obj(
         ["condition_stage"],
@@ -1407,8 +1503,10 @@ def chunk_drs_box_completion_json_schema(
 ) -> dict[str, Any]:
     box_schema = copy.deepcopy(DRS_BOX_JSON_SCHEMA)
     box_schema["properties"]["id"] = {"type": "string", "enum": sorted(set(missing_box_ids))}
+    box_schema["properties"]["kind"] = _schema_enum(DRS_CONTEXT_KINDS)
     box_schema["properties"]["parent_id"] = {"type": "string", "enum": sorted(set(["", *existing_box_ids]))}
     box_schema["properties"]["holder_referent_id"] = {"type": "string", "enum": sorted(set(["", *referent_ids]))}
+    box_schema["properties"]["evidence_text"] = _schema_string_limited(260)
     return _schema_obj(
         ["box_completion"],
         {
@@ -1694,7 +1792,7 @@ def call_model_query_plan_test_only(question: str, client: LocalModelClient, *, 
     )
     cache_path = _cache_path("KMD_QUERY_PLAN_CACHE_DIR", prompt_hash)
     cached = _read_cache(cache_path)
-    if cached is not None and not (cached.get("accepted") is False and cached.get("reason") == "request_failed"):
+    if cached is not None and not _cached_structured_failure_retryable(cached):
         cached.setdefault("cache_context", cache_context)
         return cached
     start = time.time()
@@ -1823,7 +1921,7 @@ def build_query_drs_prompt(question: str) -> str:
 def build_compact_query_drs_prompt(question: str) -> str:
     return (
         "JSON only. Plan this question as compact DRS query data; do not answer it. "
-        "Output exactly one object with keys a, answer, targets, predicates, constraints, temporal_scope, aggregation. "
+        "Output exactly one object with mandatory keys a, answer, targets, predicates, constraints, temporal_scope, aggregation. "
         "a is one broad answer type: person, actor, organization, identifier, url, file_path, count, state, "
         "date_time, boolean, content_phrase, metadata_value, or unknown. answer is the visible question word or "
         "answer slot phrase; preserve visible modifiers that distinguish the slot, instead of only the broad type "
@@ -1993,11 +2091,12 @@ def call_model_query_drs_compact(question: str, client: LocalModelClient, *, n_p
     if n_predict is None:
         n_predict = default_compact_query_drs_n_predict(question)
     prompt = build_compact_query_drs_prompt(question)
+    constraint = _constraint_settings(QUERY_DRS_GRAMMAR, COMPACT_QUERY_DRS_JSON_SCHEMA, QUERY_DRS_SCHEMA_VERSION)
     cache_settings = {
         "n_predict": n_predict,
         "schema": QUERY_DRS_SCHEMA_VERSION,
         "compact_plan_policy": QUERY_DRS_COMPACT_PLAN_POLICY,
-        "constraint_mode": "validated_json_no_schema",
+        **constraint,
     }
     cache_context = {**cache_settings, "model_fingerprint": _client_fingerprint(client)}
     prompt_hash = _cache_hash("query_drs_compact", prompt, client, cache_settings)
@@ -2017,7 +2116,13 @@ def call_model_query_drs_compact(question: str, client: LocalModelClient, *, n_p
         return finalized
     start = time.time()
     try:
-        parsed = client.complete_json(prompt, n_predict=n_predict)
+        parsed = _complete_structured(
+            client,
+            prompt,
+            n_predict=n_predict,
+            grammar=QUERY_DRS_GRAMMAR,
+            json_schema=COMPACT_QUERY_DRS_JSON_SCHEMA,
+        )
     except LocalModelJSONError as exc:
         payload = {
             "accepted": False,
@@ -3585,18 +3690,11 @@ def _build_compact_chunk_drs_prompt_v2(chunk_text: str, *, rel_path: str = "") -
 def build_compact_chunk_drs_prompt(chunk_text: str, *, rel_path: str = "") -> str:
     return (
         "JSON only. Extract compact source-grounded DRS facts from this raw text chunk. "
-        "Output exactly {\"facts\":[{\"p\":\"\",\"agent\":\"\",\"patient\":\"\",\"value\":\"\",\"time\":\"\",\"scope\":\"asserted\",\"e\":\"\"}]}. "
-        "p is the model-chosen predicate or relation word. agent, patient, and value are exact source strings when "
-        "the source supports those roles; time is an exact source string only when an explicit timestamp, date, or "
-        "ordering phrase scopes the fact; leave a field empty when unsupported. e is one exact contiguous source "
-        "span containing the non-empty role values and time when present. scope must be one of asserted, negated, "
-        "reported, quoted, believed, possible, uncertain, hypothetical, fictional, dreamed, "
-        "conditional_antecedent, or conditional_consequent. Use scope='asserted' only for propositions asserted "
-        "as facts by the chunk. If the chunk states that a proposition is inside a report, quote, belief, dream, "
-        "fiction, hypothesis, uncertainty, condition, modality, or negation, emit that embedded proposition as a "
-        "fact with the corresponding non-asserted scope and the embedded proposition's own predicate; do not emit "
-        "only the scope-introducing predicate when the embedded proposition has visible predicate/arguments. Use only "
-        "source-grounded asserted, reported, negated, or scoped "
+        "Output exactly one object with mandatory key facts. Each fact must have mandatory keys p, e, arguments, "
+        "temporal_text, scope. facts and arguments must always be JSON arrays, even when empty. "
+        "Use this shape: {\"facts\":[{\"p\":predicate,\"e\":evidence_span,\"arguments\":[{\"role\":role,\"value\":value}],"
+        "\"temporal_text\":optional_time,\"scope\":asserted_or_negated_or_reported_or_possible_or_hypothetical}]}. "
+        "Each e and every argument value must be exact substrings of the chunk. Use short predicate labels from the chunk. Extract all useful "
         "conditions from the chunk. Include source-stated definitions, meanings, names, aliases, and terminology as ordinary "
         "relations when the chunk asserts them. Return {\"facts\":[]} when the chunk asserts no useful source-grounded DRS "
         "condition. Do not answer questions and do not use outside knowledge. "
@@ -3728,9 +3826,14 @@ def _compact_fact_arguments(fact: dict[str, Any], source_text: str) -> list[tupl
                 if text and text in source_text:
                     values.append(("argument", text))
             elif isinstance(item, dict):
+                explicit_role = str(item.get("role") or "").strip()
+                explicit_value = str(item.get("value") or "").strip()
+                if explicit_value and explicit_value in source_text:
+                    values.append((explicit_role or "argument", explicit_value))
+                    continue
                 for role, value in item.items():
                     role_key = str(role or "").strip()
-                    if role_key in COMPACT_TEMPORAL_FIELDS or role_key in COMPACT_SCOPE_FIELDS:
+                    if role_key in {"role", "value"} or role_key in COMPACT_TEMPORAL_FIELDS or role_key in COMPACT_SCOPE_FIELDS:
                         continue
                     text = str(value or "").strip()
                     if text and text in source_text:
@@ -4037,11 +4140,12 @@ def call_model_chunk_drs_compact(
         if next_index >= len(budgets):
             return False
         retry_budget = budgets[next_index]
+        compact_constraint = _constraint_settings(CHUNK_DRS_GRAMMAR, COMPACT_CHUNK_DRS_JSON_SCHEMA, CHUNK_DRS_SCHEMA_VERSION)
         retry_settings = {
             "n_predict": retry_budget,
             "schema": CHUNK_DRS_SCHEMA_VERSION,
             "compact_fact_policy": CHUNK_DRS_COMPACT_FACT_POLICY,
-            "constraint_mode": "validated_json_no_schema",
+            **compact_constraint,
             "source_text_hash": source_text_hash,
             "compact_retry_policy": CHUNK_DRS_COMPACT_RETRY_POLICY,
             "compact_retry_index": next_index,
@@ -4073,7 +4177,15 @@ def call_model_chunk_drs_compact(
                 or not _compact_cached_payload_has_conditions(candidate)
             ):
                 continue
+            if candidate.get("accepted") is not True:
+                continue
             candidate_context = candidate.get("cache_context") if isinstance(candidate.get("cache_context"), dict) else {}
+            if str(candidate_context.get("constraint_transport_policy") or "") != str(cache_context.get("constraint_transport_policy") or ""):
+                continue
+            if str(candidate_context.get("constraint_mode") or "") != str(cache_context.get("constraint_mode") or ""):
+                continue
+            if str(candidate_context.get("json_schema_hash") or "") != str(cache_context.get("json_schema_hash") or ""):
+                continue
             if str(candidate_context.get("source_text_hash") or "") != source_text_hash:
                 continue
             candidate_rel_path = str(candidate_context.get("source_rel_path") or "")
@@ -4108,12 +4220,13 @@ def call_model_chunk_drs_compact(
         _write_cache(cache_path, finalized)
         return finalized
 
+    compact_constraint = _constraint_settings(CHUNK_DRS_GRAMMAR, COMPACT_CHUNK_DRS_JSON_SCHEMA, CHUNK_DRS_SCHEMA_VERSION)
     for retry_index, budget in enumerate(budgets):
         cache_settings = {
             "n_predict": budget,
             "schema": CHUNK_DRS_SCHEMA_VERSION,
             "compact_fact_policy": CHUNK_DRS_COMPACT_FACT_POLICY,
-            "constraint_mode": "validated_json_no_schema",
+            **compact_constraint,
             "source_text_hash": source_text_hash,
         }
         if retry_index:
@@ -4200,7 +4313,13 @@ def call_model_chunk_drs_compact(
             continue
         start = time.time()
         try:
-            parsed = client.complete_json(prompt, n_predict=budget)
+            parsed = _complete_structured(
+                client,
+                prompt,
+                n_predict=budget,
+                grammar=CHUNK_DRS_GRAMMAR,
+                json_schema=COMPACT_CHUNK_DRS_JSON_SCHEMA,
+            )
         except LocalModelJSONError as exc:
             payload = {
                 "accepted": False,
@@ -4757,7 +4876,31 @@ def _repair_evidence_text_from_declared_value(
     return False
 
 
+def _normalize_chunk_drs_shape(payload: Any) -> Any:
+    if not isinstance(payload, dict) or not isinstance(payload.get("drs"), dict):
+        return payload
+    drs = {**payload["drs"]}
+    changed = False
+    # These list-valued fields are structural JSON shape, not semantic decisions.
+    # Missing auxiliary lists mean empty collections; non-list core collections remain invalid.
+    for field_name in ("identity_hypotheses", "temporal_records", "evidence_spans", "semantic_notes"):
+        value = drs.get(field_name)
+        if value is None:
+            drs[field_name] = []
+            changed = True
+        elif isinstance(value, list):
+            if field_name in {"identity_hypotheses", "temporal_records"}:
+                repaired = [item for item in value if isinstance(item, dict)]
+            else:
+                repaired = [str(item) for item in value if str(item or "").strip()]
+            if repaired != value:
+                drs[field_name] = repaired
+                changed = True
+    return {**payload, "drs": drs} if changed else payload
+
+
 def _repair_chunk_drs_payload(payload: Any, source_text: str = "", *, prune_unreferenced_temporals: bool = True) -> Any:
+    payload = _normalize_chunk_drs_shape(payload)
     if not isinstance(payload, dict) or not isinstance(payload.get("drs"), dict):
         return payload
     drs = {**payload["drs"]}
@@ -4917,7 +5060,7 @@ def _complete_chunk_drs_stage(
     )
     path = cache_path.parent / f"{prompt_hash}.json" if cache_path is not None else None
     cached = _read_cache(path)
-    if cached is not None and cached.get("reason") != "request_failed":
+    if cached is not None and not _cached_structured_failure_retryable(cached):
         return cached, 0.0, {"prompt_hash": prompt_hash, **constraint}
     start = time.time()
     try:
@@ -5417,6 +5560,7 @@ def chunk_drs_cache_context(
         "skeleton_id_policy": CHUNK_DRS_SKELETON_ID_POLICY,
         "monolithic_id_policy": CHUNK_DRS_MONOLITHIC_ID_POLICY,
         "compact_undercoverage_policy": CHUNK_DRS_COMPACT_UNDERCOVERAGE_POLICY,
+        "structured_json_skip_policy": CHUNK_DRS_STRUCTURED_JSON_MODEL_SKIP_POLICY,
         "staged_retry_diagnostics_policy": CHUNK_DRS_STAGED_RETRY_DIAGNOSTICS_POLICY,
         "stage_failure_cache_policy": CHUNK_DRS_STAGE_FAILURE_CACHE_POLICY,
         "dynamic_skeleton_budget_policy": CHUNK_DRS_DYNAMIC_SKELETON_BUDGET_POLICY,
@@ -5456,6 +5600,24 @@ def chunk_drs_cache_context(
     return context
 
 
+
+
+def _chunk_drs_structured_json_skip_reason(chunk_text: str, rel_path: str = "") -> str:
+    if os.environ.get("KMD_MODEL_DRS_FOR_STRUCTURED_JSON_RECORDS", "").strip().lower() in {"1", "true", "yes", "on"}:
+        return ""
+    value = str(chunk_text or "").strip()
+    if len(value) < 80:
+        return ""
+    rel = str(rel_path or "").lower()
+    starts_structured = value.startswith(("{", "["))
+    json_path = rel.endswith((".json", ".jsonl")) or rel.startswith("metadata/") or rel.startswith("products/")
+    quote_colon_pairs = len(re.findall(r'"[^"\n]{1,100}"\s*:', value))
+    brace_count = value.count("{") + value.count("[")
+    comma_count = value.count(",")
+    if (starts_structured or json_path) and quote_colon_pairs >= 4 and (brace_count >= 2 or comma_count >= 3):
+        return "skipped_structured_record"
+    return ""
+
 def call_model_chunk_drs(
     chunk_text: str,
     client: LocalModelClient,
@@ -5464,6 +5626,20 @@ def call_model_chunk_drs(
     n_predict: int | None = None,
     refresh_empty_compact_legacy: bool = False,
 ) -> dict[str, Any]:
+    structured_skip_reason = _chunk_drs_structured_json_skip_reason(chunk_text, rel_path)
+    if structured_skip_reason:
+        return {
+            "accepted": False,
+            "materialized": False,
+            "reason": structured_skip_reason,
+            "structured_json_skip_policy": CHUNK_DRS_STRUCTURED_JSON_MODEL_SKIP_POLICY,
+            "elapsed": 0.0,
+            "context_budget": {
+                "structured_json_skip": True,
+                "input_chars": len(str(chunk_text or "")),
+                "source_rel_path": rel_path,
+            },
+        }
     if _compact_live_model_path_allowed(client) and _compact_chunk_drs_enabled() and _compact_chunk_drs_eligible(chunk_text):
         compact = call_model_chunk_drs_compact(
             chunk_text,
@@ -5492,6 +5668,7 @@ def call_model_chunk_drs(
         "skeleton_source_span_policy": CHUNK_DRS_SKELETON_SOURCE_SPAN_POLICY,
         "monolithic_id_policy": CHUNK_DRS_MONOLITHIC_ID_POLICY,
         "compact_undercoverage_policy": CHUNK_DRS_COMPACT_UNDERCOVERAGE_POLICY,
+        "structured_json_skip_policy": CHUNK_DRS_STRUCTURED_JSON_MODEL_SKIP_POLICY,
         "staged_retry_diagnostics_policy": CHUNK_DRS_STAGED_RETRY_DIAGNOSTICS_POLICY,
         "stage_failure_cache_policy": CHUNK_DRS_STAGE_FAILURE_CACHE_POLICY,
         "dynamic_skeleton_budget_policy": CHUNK_DRS_DYNAMIC_SKELETON_BUDGET_POLICY,
@@ -5527,6 +5704,7 @@ def call_model_chunk_drs(
         "skeleton_id_policy": CHUNK_DRS_SKELETON_ID_POLICY,
         "monolithic_id_policy": CHUNK_DRS_MONOLITHIC_ID_POLICY,
         "compact_undercoverage_policy": CHUNK_DRS_COMPACT_UNDERCOVERAGE_POLICY,
+        "structured_json_skip_policy": CHUNK_DRS_STRUCTURED_JSON_MODEL_SKIP_POLICY,
         "staged_retry_diagnostics_policy": CHUNK_DRS_STAGED_RETRY_DIAGNOSTICS_POLICY,
         "stage_failure_cache_policy": CHUNK_DRS_STAGE_FAILURE_CACHE_POLICY,
         "dynamic_skeleton_budget_policy": CHUNK_DRS_DYNAMIC_SKELETON_BUDGET_POLICY,
@@ -5561,7 +5739,7 @@ def call_model_chunk_drs(
     )
     cache_path = _cache_path("KMD_CHUNK_DRS_CACHE_DIR", prompt_hash)
     cached = _read_cache(cache_path)
-    if cached is not None and cached.get("reason") != "request_failed":
+    if cached is not None and not _cached_structured_failure_retryable(cached):
         cached.setdefault("cache_context", cache_context)
         return cached
     staged_first_reason = _chunk_drs_staged_first_reason(prompt_chunk, context_budget)

@@ -14,6 +14,7 @@ from .text import split_units, tokenize
 
 KMD_CACHE_DIR_ENV_VARS = (
     "KMD_FRAME_CACHE_DIR",
+    "KMD_CHUNK_FRAME_CACHE_DIR",
     "KMD_CHUNK_DRS_CACHE_DIR",
     "KMD_QUERY_PLAN_CACHE_DIR",
     "KMD_QUERY_DRS_CACHE_DIR",
@@ -21,9 +22,30 @@ KMD_CACHE_DIR_ENV_VARS = (
     "KMD_QUERY_EVIDENCE_CACHE_DIR",
     "KMD_EVIDENCE_ANSWER_CACHE_DIR",
     "KMD_VERIFIER_CACHE_DIR",
+    "KMD_QUERY_VERIFIER_CACHE_DIR",
     "KMD_ANSWER_CANONICALIZATION_CACHE_DIR",
+    "KMD_QUERY_CANONICAL_CACHE_DIR",
     "KMD_IDENTITY_CACHE_DIR",
+    "KMD_IDENTITY_CANONICAL_CACHE_DIR",
+    "KMD_SOURCE_RESOLUTION_CACHE_DIR",
+    "KMD_SHARED_MODEL_CACHE_ROOT",
 )
+
+GENERATED_DIRECTORY_NAMES = frozenset({
+    ".cache",
+    ".git",
+    ".hg",
+    ".mypy_cache",
+    ".pytest_cache",
+    ".ruff_cache",
+    ".svn",
+    ".tox",
+    ".venv",
+    "__pycache__",
+    "build",
+    "dist",
+    "node_modules",
+})
 
 
 def _stable_scan_id(prefix: str, *parts: object) -> str:
@@ -80,8 +102,12 @@ def _path_is_relative_to(path: Path, parent: Path) -> bool:
         return False
 
 
+def _include_generated_cache_content() -> bool:
+    return os.environ.get("KMD_SCAN_INCLUDE_GENERATED_CACHES", "").strip().lower() in {"1", "true", "yes", "on"}
+
+
 def _configured_cache_roots(root: Path) -> list[Path]:
-    if os.environ.get("KMD_SCAN_INCLUDE_GENERATED_CACHES", "").strip().lower() in {"1", "true", "yes", "on"}:
+    if _include_generated_cache_content():
         return []
     values = [
         os.environ.get(name, "").strip()
@@ -112,7 +138,14 @@ def scan_folder(folder_path: str | Path, *, max_unit_chars: int = 0) -> tuple[li
     cache_roots = _configured_cache_roots(root)
     documents: list[Document] = []
     sentences: list[Sentence] = []
+    include_generated = _include_generated_cache_content()
     for path in sorted(root.rglob("*")):
+        try:
+            rel_parts = path.relative_to(root).parts
+        except ValueError:
+            rel_parts = path.parts
+        if not include_generated and any(part in GENERATED_DIRECTORY_NAMES for part in rel_parts[:-1]):
+            continue
         if not path.is_file():
             continue
         if cache_roots:

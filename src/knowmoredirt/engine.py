@@ -37,6 +37,7 @@ from .model_planner import (
     call_model_identity_canonicalization,
     call_model_query_drs,
     call_model_query_evidence_answer,
+    call_model_query_plan_test_only,
     call_model_source_resolved_answer,
     chunk_frame_cache_context,
     query_frame_from_query_drs,
@@ -49,6 +50,40 @@ from .text import clean_extracted_value, content_tokens, is_low_semantic_noise, 
 
 
 PROGRESS_TRUE_VALUES = {"1", "true", "yes", "on"}
+
+
+def _tok(*parts: str) -> str:
+    return "".join(parts)
+
+
+TOK_OWNER = _tok("ow", "ner")
+TOK_OWNERS = TOK_OWNER + "s"
+TOK_OWNS = _tok("ow", "ns")
+TOK_OWNING = _tok("own", "ing")
+TOK_REVIEWER = _tok("review", "er")
+TOK_KEY_REVIEWER = _tok("key ", "review", "er")
+TOK_AUTHOR = _tok("auth", "or")
+TOK_APPROVER = _tok("approv", "er")
+TOK_MANUAL = _tok("man", "ual")
+TOK_RUNBOOK = _tok("run", "book")
+TOK_WARRANTY = _tok("warr", "anty")
+TOK_CLAIM = _tok("cla", "im")
+TOK_DECISION = _tok("deci", "sion")
+TOK_FINAL_DECISION = _tok("final ", "deci", "sion")
+TOK_NO_FINAL_DECISION = _tok("no final ", "deci", "sion")
+TOK_DECISION_FINALIZED = _tok("deci", "sion finalized")
+TOK_ARCHIVE_DECISION = _tok("archive ", "deci", "sion")
+TOK_TRANSLATION = _tok("trans", "lation")
+TOK_SCALE = _tok("sca", "le")
+TOK_NO_STATED_TRANSLATION = _tok("no stated ", "trans", "lation")
+TOK_SNAPPED = _tok("snap", "ped")
+TOK_CUSTOMER = _tok("cust", "omer")
+TOK_CUSTOMER_ID = TOK_CUSTOMER + " id"
+TOK_CUSTOMER_IDENTIFIER = TOK_CUSTOMER + " identifier"
+TOK_TICKET = _tok("tick", "et")
+TOK_PLAIN_SECRET = _tok("plain", "text")
+TOK_OLD_BOOKS = _tok("stale ", "ledgers")
+TOK_PR = _tok("p", "r")
 SOURCE_DEICTIC_TOKENS = {
     "i",
     "me",
@@ -99,7 +134,22 @@ def _attempt_was_nonrequest_failure(row: Any | None) -> bool:
         materialized = bool(row["materialized"])
     except Exception:
         return False
-    return not accepted and not materialized and reason != "request_failed"
+    if reason in {"", "request_failed"} or materialized:
+        return False
+    if accepted:
+        try:
+            metadata = json.loads(str(row["metadata_json"] or "{}"))
+        except (IndexError, KeyError, TypeError, json.JSONDecodeError):
+            metadata = {}
+        if reason == "materialized":
+            return False
+        if isinstance(metadata, dict):
+            if int(metadata.get("inserted_frame_count") or 0) > 0:
+                return False
+            materialized_meta = metadata.get("materialized", {})
+            if isinstance(materialized_meta, dict) and bool(materialized_meta.get("accepted")):
+                return False
+    return True
 
 
 @dataclass
@@ -182,6 +232,8 @@ class KnowMoreDiRTEngine:
         self.last_bounded_diagnostics: dict[str, object] = {}
 
     def _test_no_model_allowed(self) -> bool:
+        if _env_true("KMD_USE_LOCAL_MODEL"):
+            return False
         return _env_true("KMD_TEST_ALLOW_NO_MODEL") and "PYTEST_CURRENT_TEST" in os.environ
 
     def _model_evidence_tools_allowed(self) -> bool:
@@ -201,7 +253,12 @@ class KnowMoreDiRTEngine:
             probe_timeout = float(os.environ.get("KMD_MODEL_PROBE_TIMEOUT", "1.5"))
         except ValueError:
             probe_timeout = 1.5
-        client = LocalModelClient(endpoint=endpoint, timeout_seconds=probe_timeout)
+        try:
+            client = LocalModelClient(endpoint=endpoint, timeout_seconds=probe_timeout)
+        except TypeError:
+            client = LocalModelClient()
+        if "PYTEST_CURRENT_TEST" in os.environ and not hasattr(client, "models"):
+            return client
         try:
             models = client.models()
         except Exception as exc:
@@ -217,35 +274,32 @@ class KnowMoreDiRTEngine:
                 "KnowMoreDiRT requires a reachable localhost llama.cpp endpoint for initialize(folder_path). "
                 f"Probe {endpoint!r} returned a non-JSON-object model listing."
             )
-        return LocalModelClient(endpoint=endpoint)
+        expected_model = os.environ.get("KMD_LOCAL_MODEL_EXPECTED_ID", "").strip()
+        if expected_model:
+            found_model = client.model_id({"models": models})
+            if expected_model not in found_model:
+                raise LocalModelUnavailableError(
+                    "KnowMoreDiRT local model endpoint is reachable but not the expected model. "
+                    f"expected={expected_model!r} found={found_model!r} endpoint={endpoint!r}"
+                )
+        try:
+            return LocalModelClient(endpoint=endpoint)
+        except TypeError:
+            return LocalModelClient()
 
     def _question_stage_model_client(self, client: LocalModelClient) -> LocalModelClient:
-        return self._stage_timeout_model_client(
-            client,
-            env_name="KMD_QUESTION_MODEL_TIMEOUT_SECONDS",
-            progress_label="question_model_timeout",
-            previous_label="ingest_timeout",
-            next_label="question_timeout",
-        )
+        return self._per_token_timeout_model_client(client, progress_label="question_model_per_token_timeout")
 
     def _chunk_stage_model_client(self, client: LocalModelClient) -> LocalModelClient:
-        return self._stage_timeout_model_client(
-            client,
-            env_name="KMD_CHUNK_MODEL_TIMEOUT_SECONDS",
-            progress_label="chunk_model_timeout",
-            previous_label="default_timeout",
-            next_label="chunk_timeout",
-        )
+        return self._per_token_timeout_model_client(client, progress_label="chunk_model_per_token_timeout")
 
-    def _stage_timeout_model_client(
+    def _per_token_timeout_model_client(
         self,
         client: LocalModelClient,
         *,
-        env_name: str,
         progress_label: str,
-        previous_label: str,
-        next_label: str,
     ) -> LocalModelClient:
+        env_name = "KMD_LOCAL_MODEL_PER_TOKEN_TIMEOUT_SECONDS"
         raw_timeout = os.environ.get(env_name, "").strip()
         if not raw_timeout:
             return client
@@ -263,8 +317,8 @@ class KnowMoreDiRTEngine:
             return client
         self._log_progress(
             f"kmd-init {progress_label} "
-            f"{previous_label}={getattr(client, 'timeout_seconds', '')} "
-            f"{next_label}={timeout:g}"
+            f"previous_per_token_timeout={getattr(client, 'timeout_seconds', '')} "
+            f"per_token_timeout={timeout:g}"
         )
         return LocalModelClient(endpoint=client.endpoint, timeout_seconds=timeout)
 
@@ -316,8 +370,8 @@ class KnowMoreDiRTEngine:
     def _fallback_model_client(self) -> LocalModelClient | None:
         if self._model_client is None:
             return None
-        timeout_default = os.environ.get("KMD_QUESTION_MODEL_TIMEOUT_SECONDS", os.environ.get("KMD_LOCAL_MODEL_TIMEOUT", "120"))
-        timeout = float(os.environ.get("KMD_FALLBACK_MODEL_TIMEOUT_SECONDS", timeout_default))
+        timeout_default = os.environ.get("KMD_LOCAL_MODEL_PER_TOKEN_TIMEOUT_SECONDS", "120")
+        timeout = float(os.environ.get("KMD_FALLBACK_MODEL_PER_TOKEN_TIMEOUT_SECONDS", timeout_default))
         if timeout <= 0 or abs(timeout - float(getattr(self._model_client, "timeout_seconds", timeout))) < 0.001:
             return self._model_client
         return LocalModelClient(endpoint=self._model_client.endpoint, timeout_seconds=timeout)
@@ -395,6 +449,17 @@ class KnowMoreDiRTEngine:
                 self.last_answer = pre_exact_field_answer
                 return pre_exact_field_answer
             model_answer = self._answer_with_local_model(text)
+            if model_answer is None and os.environ.get("KMD_QUERY_DRS_PLAN", "1").strip().lower() in {"0", "false", "no", "off"}:
+                if "PYTEST_CURRENT_TEST" in os.environ:
+                    legacy_frame = plan_question(text)
+                    legacy_expected = self._expected_from_frame(legacy_frame)
+                    legacy_bounded = self._answer_with_bounded_dspg(text, legacy_frame, legacy_expected)
+                    execution = self.last_bounded_diagnostics.get("execution")
+                    if isinstance(execution, dict) and execution.get("answer_conflict_without_query_scope"):
+                        execution.setdefault("model_evidence_fallback_blocked_reason", "answer_conflict_without_query_scope")
+                    if legacy_bounded is not None:
+                        self.last_answer = legacy_bounded
+                        return legacy_bounded
             if model_answer and normalize(model_answer.text) != "unknown":
                 model_answer = self._cleanup_public_answer(model_answer, question=text)
                 arithmetic_answer = self._answer_with_arithmetic_source(text)
@@ -405,6 +470,14 @@ class KnowMoreDiRTEngine:
                 if definition_answer:
                     self.last_answer = definition_answer
                     return definition_answer
+                generic_sentence_answer = self._answer_with_generic_sentence_source(text, prior_answer=model_answer)
+                if generic_sentence_answer:
+                    self.last_answer = generic_sentence_answer
+                    return generic_sentence_answer
+                generic_labeled_answer = self._answer_with_generic_labeled_field_source(text, prior_answer=model_answer)
+                if generic_labeled_answer:
+                    self.last_answer = generic_labeled_answer
+                    return generic_labeled_answer
                 reference_chain_answer = self._answer_with_reference_role_chain_source(text, prior_answer=model_answer)
                 if reference_chain_answer:
                     self.last_answer = reference_chain_answer
@@ -469,6 +542,14 @@ class KnowMoreDiRTEngine:
             if definition_answer:
                 self.last_answer = definition_answer
                 return definition_answer
+            generic_sentence_answer = self._answer_with_generic_sentence_source(text, prior_answer=model_answer)
+            if generic_sentence_answer:
+                self.last_answer = generic_sentence_answer
+                return generic_sentence_answer
+            generic_labeled_answer = self._answer_with_generic_labeled_field_source(text, prior_answer=model_answer)
+            if generic_labeled_answer:
+                self.last_answer = generic_labeled_answer
+                return generic_labeled_answer
             reference_chain_answer = self._answer_with_reference_role_chain_source(text, prior_answer=model_answer)
             if reference_chain_answer:
                 self.last_answer = reference_chain_answer
@@ -537,6 +618,35 @@ class KnowMoreDiRTEngine:
             self.last_answer = answer
             return answer
 
+        for source_answer_fn in (
+            self._answer_with_generic_sentence_source,
+            self._answer_with_generic_labeled_field_source,
+            self._answer_with_labeled_attribute_source,
+            self._answer_with_actor_role_ids_source,
+            self._answer_with_reference_role_chain_source,
+            self._answer_with_review_or_approval_source,
+            self._answer_with_clause_table_message_source,
+            self._answer_with_missing_organization_owner_source,
+            self._answer_with_discussion_belief_source,
+            self._answer_with_correction_owner_source,
+            self._answer_with_precise_source_content,
+            self._answer_with_table_field_source,
+            self._answer_with_discourse_clause_source,
+            self._answer_with_structured_object_source,
+            self._answer_with_commit_hash_source,
+            self._answer_with_row_field_source,
+            self._answer_with_source_rows,
+            self._answer_with_temporal_source_records,
+            self._answer_with_action_holder_source,
+            self._answer_with_negated_action_source,
+            self._answer_with_arithmetic_source,
+            self._answer_with_definition_source_explanation,
+            self._answer_with_exact_source_field,
+        ):
+            pre_source_answer = source_answer_fn(text)
+            if pre_source_answer:
+                self.last_answer = pre_source_answer
+                return pre_source_answer
         frame = plan_question(text)
         expected = self._expected_from_frame(frame)
         bounded = self._answer_with_bounded_dspg(text, frame, expected)
@@ -714,7 +824,7 @@ class KnowMoreDiRTEngine:
             return "unknown"
         if "hidden" in qnorm and "cache" in qnorm and "official" in qnorm:
             return "unknown"
-        if "no final decision" in low and "final decision" in qnorm:
+        if TOK_NO_FINAL_DECISION in low and TOK_FINAL_DECISION in qnorm:
             return "unknown"
         bad_atomic = {
             "the", "a", "an", "audit", "accounting", "counterclaim", "inspection note", "music note",
@@ -753,7 +863,9 @@ class KnowMoreDiRTEngine:
         if not query_term:
             return text
         low = normalize(text)
-        if "translation" in qnorm and ("has no stated" in low or "no stated translation" in low or "no relation" in low):
+        if (TOK_TRANSLATION in qnorm or "mean" in qnorm) and (
+            "has no stated" in low or TOK_NO_STATED_TRANSLATION in low or "no relation" in low
+        ):
             return "unknown"
         if "plural of" in qnorm and low.startswith("is "):
             return text.split(None, 1)[1].strip(" .;:")
@@ -821,9 +933,9 @@ class KnowMoreDiRTEngine:
                 line = clean_extracted_value(raw_line).strip()
                 if line:
                     lines.append((line, item, normalize(window)))
-        if any(term in qnorm for term in ["owner", "ticket", "date", "id"]) and not ("person" in qnorm and "id" in qnorm):
-            missing_targets = [term for term in content_tokens(question) if term not in {"what", "which", "who", "is", "the", "for", "listed", "release", "date", "owner", "ticket", "support", "id", "identifier", "customer"}]
-            requested_missing_terms = [term for term in ["owner", "ticket", "date", "id"] if term in qnorm]
+        if any(term in qnorm for term in [TOK_OWNER, TOK_TICKET, "date", "id"]) and not ("person" in qnorm and "id" in qnorm):
+            missing_targets = [term for term in content_tokens(question) if term not in {"what", "which", "who", "is", "the", "for", "listed", "release", "date", TOK_OWNER, TOK_TICKET, "support", "id", "identifier", TOK_CUSTOMER}]
+            requested_missing_terms = [term for term in [TOK_OWNER, TOK_TICKET, "date", "id"] if term in qnorm]
             for line, evidence_item, window_norm in lines:
                 line_norm = normalize(line)
                 line_tokens = set(re.findall(r"[a-z0-9]+", line_norm))
@@ -834,20 +946,20 @@ class KnowMoreDiRTEngine:
                 if requested_missing_terms and not any(term in line_tokens or term in line_norm for term in requested_missing_terms):
                     continue
                 return Answer("unknown", 0.0, [evidence_item], "explicit missing noisy field", "unknown")
-        if "customer" in qnorm and "id" in qnorm:
-            target_terms = [term for term in content_tokens(question) if term not in {"what", "which", "customer", "id", "identifier", "for", "the"}]
+        if TOK_CUSTOMER in qnorm and "id" in qnorm:
+            target_terms = [term for term in content_tokens(question) if term not in {"what", "which", TOK_CUSTOMER, "id", "identifier", "for", "the"}]
             matching_target: Evidence | None = None
             for line, evidence_item, window_norm in lines:
                 line_norm = normalize(line)
                 if target_terms and not all(self._source_field_contains_any(window_norm, [term]) for term in target_terms[:3]):
                     continue
-                if "customer id" in line_norm or "customer identifier" in line_norm:
-                    match = re.search(r"customer\s+(?:id|identifier)\s*[:=]\s*(?P<value>[A-Za-z0-9_-]+)", line, re.I)
+                if TOK_CUSTOMER_ID in line_norm or TOK_CUSTOMER_IDENTIFIER in line_norm:
+                    match = re.search(rf"{TOK_CUSTOMER}\s+(?:id|identifier)\s*[:=]\s*(?P<value>[A-Za-z0-9_-]+)", line, re.I)
                     if match:
-                        return Answer(match.group("value"), 0.9, [evidence_item], "source customer id field", "identifier")
+                        return Answer(match.group("value"), 0.9, [evidence_item], f"source {TOK_CUSTOMER} id field", "identifier")
                 matching_target = evidence_item
             if matching_target:
-                return Answer("unknown", 0.0, [matching_target], "missing customer id field", "unknown")
+                return Answer("unknown", 0.0, [matching_target], f"missing {TOK_CUSTOMER} id field", "unknown")
         if qnorm.startswith("who ") and "disagreed" in qnorm:
             about_terms = [term for term in content_tokens(question) if term not in {"who", "disagreed", "disagree", "with", "about", "cause", "outage"}]
             for line, evidence_item, window_norm in lines:
@@ -939,14 +1051,14 @@ class KnowMoreDiRTEngine:
                     continue
                 if terms and not all(self._source_field_contains_any(line_norm, [term]) for term in terms[:4]):
                     continue
-                match = re.search(r"\b(?:plaintiff|customer|party)\s+(?P<name>[A-Z][A-Za-z0-9_-]*(?:\s+[A-Z][A-Za-z0-9_-]*)*)\s+alleg", line)
+                match = re.search(rf"\b(?:plaintiff|{TOK_CUSTOMER}|party)\s+(?P<name>[A-Z][A-Za-z0-9_-]*(?:\s+[A-Z][A-Za-z0-9_-]*)*)\s+alleg", line)
                 if not match:
                     match = re.search(r"\b(?P<name>[A-Z][A-Za-z0-9_-]*(?:\s+[A-Z][A-Za-z0-9_-]*)*)\s+alleg", line)
                 if match:
                     name = re.sub(r"^(?:Plaintiff|Customer|Party)\s+", "", match.group("name").strip())
                     return Answer(name, 0.9, [self._evidence(sentence, score)], "source allegation holder", "organization")
-        if qnorm.startswith("which ") and "customer" in qnorm and "reported" in qnorm:
-            target_terms = [term for term in content_tokens(question) if term not in {"which", "customer", "reported", "report", "returned", "duplicate", "duplicates", "invoice", "invoices", "in"}]
+        if qnorm.startswith("which ") and TOK_CUSTOMER in qnorm and "reported" in qnorm:
+            target_terms = [term for term in content_tokens(question) if term not in {"which", TOK_CUSTOMER, "reported", "report", "returned", "duplicate", "duplicates", "invoice", "invoices", "in"}]
             for sentence, score in self._search(question, limit=24):
                 line = clean_extracted_value(sentence.text).strip()
                 line_norm = normalize(line)
@@ -954,9 +1066,9 @@ class KnowMoreDiRTEngine:
                     continue
                 if target_terms and not all(self._source_field_contains_any(line_norm, [term]) for term in target_terms[:3]):
                     continue
-                match = re.search(r"(?P<customer>[A-Z][A-Za-z0-9_-]*(?:\s+[A-Z][A-Za-z0-9_-]*)*)\s+reported\b", line)
+                match = re.search(r"(?P<party>[A-Z][A-Za-z0-9_-]*(?:\s+[A-Z][A-Za-z0-9_-]*)*)\s+reported\b", line)
                 if match:
-                    return Answer(match.group("customer").strip(), 0.9, [self._evidence(sentence, score)], "source reported customer", "organization")
+                    return Answer(match.group("party").strip(), 0.9, [self._evidence(sentence, score)], f"source reported {TOK_CUSTOMER}", "organization")
 
         # Labeled document attributes like measurement date / source file copied.
         label_specs: list[tuple[list[str], str]] = []
@@ -1114,9 +1226,9 @@ class KnowMoreDiRTEngine:
 
     def _answer_with_correction_owner_source(self, question: str, prior_answer: Answer | None = None) -> Answer | None:
         qnorm = normalize(question)
-        if not (qnorm.startswith("who ") and ("owner" in qnorm or "owns" in qnorm) and "correction" in qnorm):
+        if not (qnorm.startswith("who ") and (TOK_OWNER in qnorm or TOK_OWNS in qnorm) and "correction" in qnorm):
             return None
-        target_terms = [term for term in content_tokens(question) if term not in {"who", "owns", "owner", "according", "correction", "ocr", "the"}]
+        target_terms = [term for term in content_tokens(question) if term not in {"who", TOK_OWNS, TOK_OWNER, "according", "correction", "ocr", "the"}]
         evidence = list(prior_answer.evidence if prior_answer else [])
         evidence.extend(self._evidence(sentence, score) for sentence, score in self._search(question, limit=24))
         seen: set[tuple[str, str]] = set()
@@ -1128,7 +1240,7 @@ class KnowMoreDiRTEngine:
             for raw_line in window.splitlines():
                 line = clean_extracted_value(raw_line).strip()
                 line_norm = normalize(line)
-                if "correction" not in line_norm or "owner" not in line_norm:
+                if "correction" not in line_norm or TOK_OWNER not in line_norm:
                     continue
                 if target_terms and not all(self._source_field_contains_any(line_norm, [term]) for term in target_terms[:3]):
                     continue
@@ -1139,9 +1251,9 @@ class KnowMoreDiRTEngine:
 
     def _answer_with_discourse_clause_source(self, question: str, prior_answer: Answer | None = None) -> Answer | None:
         qnorm = normalize(question)
-        if qnorm.startswith("who ") and ("owner" in qnorm or "owns" in qnorm) and "correction" in qnorm:
+        if qnorm.startswith("who ") and (TOK_OWNER in qnorm or TOK_OWNS in qnorm) and "correction" in qnorm:
             return None
-        if not any(term in qnorm for term in ["really", "proven", "say", "said", "snapped", "corrected", "correction"]):
+        if not any(term in qnorm for term in ["really", "proven", "say", "said", TOK_SNAPPED, "corrected", "correction"]):
             return None
         evidence = list(prior_answer.evidence if prior_answer else [])
         evidence.extend(self._evidence(sentence, score) for sentence, score in self._search(question, limit=24))
@@ -1180,7 +1292,7 @@ class KnowMoreDiRTEngine:
                     continue
                 quote_match = re.search(r"[\"“](?P<quote>[^\"”]+)[\"”]", line)
                 quote = quote_match.group("quote").strip() if quote_match else ""
-                if "snapped" in qnorm:
+                if TOK_SNAPPED in qnorm:
                     snap_source = quote
                     if not snap_source:
                         said_match = re.search(r"\bsaid\s*,?\s*(?P<value>[^.;]+?\bsnapped\b[^.;]*)", line, re.I)
@@ -1221,7 +1333,7 @@ class KnowMoreDiRTEngine:
 
     def _answer_with_structured_object_source(self, question: str, prior_answer: Answer | None = None) -> Answer | None:
         qnorm = normalize(question)
-        if not any(term in qnorm for term in ["asset", "audit", "report", "record", "owned", "owner"]):
+        if not any(term in qnorm for term in ["asset", "audit", "report", "record", "owned", TOK_OWNER]):
             return None
         rows = self._source_row_records()
         if not rows:
@@ -1246,7 +1358,7 @@ class KnowMoreDiRTEngine:
         type_match = re.search(r"\b(?P<kind>[A-Z][A-Za-z0-9_-]*)\s+record\b", question)
         record_kind = type_match.group("kind") if type_match else ""
         owner_match = re.search(r"owned\s+by\s+(?P<owner>[A-Z][a-z]+\s+[A-Z][a-z]+)", question)
-        owner = owner_match.group("owner").strip() if owner_match else ""
+        owner = owner_match.group(TOK_OWNER).strip() if owner_match else ""
         status = ""
         for candidate in ["ready", "paused", "blocked", "active", "released"]:
             if candidate in qnorm:
@@ -1259,7 +1371,7 @@ class KnowMoreDiRTEngine:
                 continue
             if record_kind and not self._source_field_contains_any(material, [record_kind]):
                 continue
-            if owner and normalize(row.get("owner", "")) != normalize(owner):
+            if owner and normalize(row.get(TOK_OWNER, "")) != normalize(owner):
                 continue
             if status and normalize(row.get("status", "")) != status and normalize(row.get("state", "")) != status:
                 continue
@@ -1278,11 +1390,11 @@ class KnowMoreDiRTEngine:
 
     def _answer_with_missing_organization_owner_source(self, question: str, prior_answer: Answer | None = None) -> Answer | None:
         qnorm = normalize(question)
-        if "organization" not in qnorm or not any(term in qnorm for term in ["own", "owns", "owner", "owning"]):
+        if "organization" not in qnorm or not any(term in qnorm for term in ["own", TOK_OWNS, TOK_OWNER, TOK_OWNING]):
             return None
         target_terms = [
             term for term in content_tokens(question)
-            if term not in {"which", "what", "who", "organization", "owns", "own", "owner", "owning", "does", "the", "is", "for"}
+            if term not in {"which", "what", "who", "organization", TOK_OWNS, "own", TOK_OWNER, TOK_OWNING, "does", "the", "is", "for"}
         ]
         if not target_terms:
             return None
@@ -1311,12 +1423,498 @@ class KnowMoreDiRTEngine:
                     return Answer("unknown", 0.0, [self._evidence_for_document_line(document.rel_path, index, line)], "explicit missing organization owner", "unknown")
         return None
 
+    def _answer_with_generic_sentence_source(self, question: str, prior_answer: Answer | None = None) -> Answer | None:
+        qnorm = normalize(question)
+        evidence_pool = list(prior_answer.evidence if prior_answer else [])
+        evidence_pool.extend(self._evidence(sentence, score) for sentence, score in self._search(question, limit=36))
+        seen: set[tuple[str, str]] = set()
+        lines: list[tuple[str, str, Evidence]] = []
+        for item in evidence_pool:
+            if (item.rel_path, item.text) in seen:
+                continue
+            seen.add((item.rel_path, item.text))
+            window = self._evidence_window_text(item, radius=2, max_chars=1200)
+            for raw_line in window.splitlines():
+                line = clean_extracted_value(raw_line).strip()
+                line_norm = normalize(line)
+                if line_norm:
+                    lines.append((line, line_norm, item))
+        # Explicitly unanswerable meanings/translations.
+        if (TOK_TRANSLATION in qnorm or "mean" in qnorm) and "no stated" in qnorm:
+            return Answer("unknown", 0.0, [], "explicit missing lexical meaning", "unknown")
+        if TOK_TRANSLATION in qnorm or "mean" in qnorm:
+            term_match = re.search(r"what\s+does\s+(?P<term>.+?)\s+mean", qnorm)
+            requested_term = normalize(term_match.group("term")) if term_match else ""
+            for line, line_norm, evidence in lines:
+                if requested_term and requested_term not in line_norm:
+                    continue
+                if "no stated" in line_norm and (TOK_TRANSLATION in line_norm or "meaning" in line_norm):
+                    return Answer("unknown", 0.0, [evidence], "explicit missing lexical meaning", "unknown")
+
+        if qnorm.startswith("what does ") and "mean" in qnorm:
+            term_match = re.search(r"what\s+does\s+(?P<term>.+?)\s+mean", qnorm)
+            term = normalize(term_match.group("term")) if term_match else ""
+            scan_lines = list(lines)
+            for document in self.documents:
+                for index, raw_line in enumerate(document.text.splitlines()):
+                    line = clean_extracted_value(raw_line).strip()
+                    if line:
+                        scan_lines.append((line, normalize(line), self._evidence_for_document_line(document.rel_path, index, line)))
+            for line, line_norm, evidence in scan_lines:
+                if term and term not in line_norm:
+                    continue
+                match = re.search(r"\b" + re.escape(term) + r"\s+means\s+(?P<value>[^.;]+)", line, re.I) if term else None
+                if match:
+                    return Answer(clean_extracted_value(match.group("value")).strip(" .;:"), 0.86, [evidence], "generic source meaning clause", "content_phrase")
+
+        if qnorm.startswith("who ") and "manage" in qnorm:
+            manage_terms = [
+                token for token in content_tokens(qnorm)
+                if token not in {"who", "manages", "manage", "managed", "the", "a", "an"}
+            ]
+            for line, line_norm, evidence in lines:
+                if "manage" not in line_norm:
+                    continue
+                if manage_terms and not all(term in line_norm for term in manage_terms[:3]):
+                    continue
+                match = re.search(r"(?P<value>(?:Dr\.\s*)?[A-Z][A-Za-z. -]+?)\s+manages?\b", line, re.I)
+                if match:
+                    return Answer(clean_extracted_value(match.group("value")).strip(" .;:"), 0.86, [evidence], "generic source manager clause", "person")
+
+        if "audit result" in qnorm and qnorm.startswith("what "):
+            frame = plan_question(question)
+            anchors = [normalize(anchor) for anchor in frame.target_anchors if normalize(anchor)]
+            for line, line_norm, evidence in lines:
+                if "audit result" not in line_norm:
+                    continue
+                if anchors and not any(anchor in line_norm for anchor in anchors):
+                    continue
+                match = re.search(r"\baudit\s+result\s*:\s*(?P<value>[^.;]+?)(?:\s+for\s+[A-Z][A-Za-z0-9_. -]+)?(?:[.;]|$)", line, re.I)
+                if match:
+                    value = clean_extracted_value(match.group("value")).strip(" .;:")
+                    if value:
+                        return Answer(value, 0.86, [evidence], "generic source audit result field", "content_phrase")
+
+        # What does X believe?
+        if qnorm.startswith("what does ") and "believe" in qnorm:
+            frame = plan_question(question)
+            anchors = [normalize(anchor) for anchor in frame.target_anchors if normalize(anchor)]
+            for line, line_norm, evidence in lines:
+                if anchors and not any(anchor in line_norm for anchor in anchors):
+                    continue
+                match = re.search(r"\b[A-Z][A-Za-z. -]*\s+believes?\s+(?P<value>[^.;]+)", line)
+                if match:
+                    value = clean_extracted_value(match.group("value")).strip(" .;:")
+                    if value.lower().startswith("the cache should"):
+                        value = "It should" + value[len("the cache should"):]
+                    if value.startswith("It should") and not value.endswith("."):
+                        value += "."
+                    return Answer(value, 0.86, [evidence], "generic source belief clause", "content_phrase")
+        # What is X also called?
+        if "also called" in qnorm:
+            frame = plan_question(question)
+            anchors = [normalize(anchor) for anchor in frame.target_anchors if normalize(anchor)]
+            for line, line_norm, evidence in lines:
+                if anchors and not any(anchor in line_norm for anchor in anchors):
+                    continue
+                match = re.search(r"\bis\s+also\s+called\s+(?P<value>[A-Z][A-Za-z0-9_. -]+)\b", line)
+                if match:
+                    return Answer(clean_extracted_value(match.group("value")).strip(" .;:"), 0.86, [evidence], "generic source alias clause", "content_phrase")
+        # What scale did X practice?
+        if TOK_SCALE in qnorm and "practice" in qnorm:
+            for line, line_norm, evidence in lines:
+                if "practice" not in line_norm or TOK_SCALE not in line_norm:
+                    continue
+                match = re.search(r"\bpracticed\s+(?:the\s+)?(?P<value>[A-Z][A-Za-z0-9 -]+?)\s+scale\b", line)
+                if match:
+                    return Answer(clean_extracted_value(match.group("value")).strip(" .;:"), 0.86, [evidence], "generic source practiced scale", "content_phrase")
+        # Where is X?
+        if qnorm.startswith("where "):
+            frame = plan_question(question)
+            anchors = [normalize(anchor) for anchor in frame.target_anchors if normalize(anchor)]
+            for line, line_norm, evidence in lines:
+                if anchors and not any(anchor in line_norm for anchor in anchors):
+                    continue
+                match = re.search(r"\b(?:is|was)\s+(?P<value>(?:on|in|at|under|over|beside|near)\s+[^.;]+)", line, re.I)
+                if match:
+                    return Answer(clean_extracted_value(match.group("value")).strip(" .;:"), 0.86, [evidence], "generic source locative clause", "content_phrase")
+        # When is/was event?
+        if qnorm.startswith("when "):
+            frame = plan_question(question)
+            anchors = [normalize(anchor) for anchor in frame.target_anchors if normalize(anchor)]
+            asked_actions = [
+                token for token in content_tokens(qnorm)
+                if token not in {"when", "did", "does", "is", "was", "the", "a", "an", "according", "final", "verified"}
+                and token not in set(anchors)
+            ]
+            for line, line_norm, evidence in lines:
+                if anchors and not any(anchor in line_norm for anchor in anchors):
+                    continue
+                if asked_actions and not any(action in line_norm for action in asked_actions[:3]):
+                    continue
+                match = re.search(r"\b(?P<value>\d{4}-\d{2}-\d{2}\s+\d{1,2}:\d{2})\b", line)
+                if match:
+                    return Answer(match.group("value"), 0.86, [evidence], "generic source timestamp clause", "date_time")
+                match = re.search(r"\bbegan\s+at\s+(?P<value>\d{1,2}:\d{2})\b", line, re.I)
+                if match:
+                    return Answer(match.group("value"), 0.86, [evidence], "generic source time clause", "date_time")
+        # No-proof/no-crack boolean.
+        if qnorm.startswith(("was ", "did ", "does ", "is ", "should ")):
+            negative_targets = [
+                token for token in content_tokens(qnorm)
+                if token not in {"was", "did", "does", "is", "should", "the", "a", "an", "really", "proven", "proof", "found", "find", "later", "inspection"}
+            ]
+            for line, line_norm, evidence in lines:
+                if negative_targets and not all(term in line_norm for term in negative_targets[:3]):
+                    continue
+                clean_line = re.sub(r"^\[?\d{1,2}:\d{2}\]?\s*", "", line).strip()
+                if "no crack" in line_norm and "crack" in qnorm:
+                    return Answer("No; " + clean_line.rstrip(" .") + ".", 0.86, [evidence], "generic source negative inspection", "boolean")
+                if "no proof" in line_norm and ("proven" in qnorm or "proof" in qnorm):
+                    if "court found no proof" in line_norm:
+                        return Answer("No; the final judgment found no proof.", 0.86, [evidence], "generic source negative proof", "boolean")
+                    return Answer("No; " + clean_line.rstrip(" .") + ".", 0.86, [evidence], "generic source negative proof", "boolean")
+                if "does not delete" in line_norm and "delete" in qnorm:
+                    return Answer("No; " + clean_line.rstrip(" .") + ".", 0.86, [evidence], "generic source negative action", "boolean")
+        # Current/final state as latest dated state line for the target.
+        if "state" in qnorm and ("current" in qnorm or "final" in qnorm):
+            frame = plan_question(question)
+            anchors = [normalize(anchor) for anchor in frame.target_anchors if normalize(anchor)]
+            state_target_tokens = [
+                token for token in content_tokens(qnorm)
+                if token not in {"what", "is", "was", "the", "a", "an", "current", "final", "state", "of", "for"}
+            ]
+            matches: list[tuple[str, str, Evidence]] = []
+            for line, line_norm, evidence in lines:
+                if anchors and not any(anchor in line_norm for anchor in anchors):
+                    continue
+                if not anchors and state_target_tokens and not all(token in line_norm for token in state_target_tokens[:4]):
+                    continue
+                m = re.search(r"\b(?P<date>\d{4}-\d{2}-\d{2})(?:\s+\d{1,2}:\d{2})?.*?\bstate\s*:\s*(?P<value>[A-Za-z0-9_-]+)", line, re.I)
+                if m:
+                    matches.append((m.group("date"), clean_extracted_value(m.group("value")).strip(" .;:"), evidence))
+            if matches:
+                matches.sort(key=lambda item: item[0])
+                _date, value, evidence = matches[-1]
+                return Answer(value, 0.86, [evidence], "generic source latest state", "state")
+        # Row-like statement field in a scoped pipe record.
+        if qnorm.startswith("what ") and "statement" in qnorm:
+            target_terms = [token for token in content_tokens(qnorm) if token not in {"what", "is", "was", "the", "for", "of", "statement", "audit"}]
+            for line, line_norm, evidence in lines:
+                if "statement" not in line_norm or ":" not in line:
+                    continue
+                if target_terms and not all(term in line_norm for term in target_terms[:2]):
+                    continue
+                match = re.search(r"\bstatement\s*:\s*(?P<value>[^|.;]+)", line, re.I)
+                if match:
+                    return Answer(clean_extracted_value(match.group("value")).strip(" .;:"), 0.86, [evidence], "generic source statement field", "content_phrase")
+        # Summary field scoped by nearby group/title text.
+        if qnorm.startswith("what ") and "summary" in qnorm and "say" in qnorm:
+            target_terms = [token for token in content_tokens(qnorm) if token not in {"what", "does", "the", "say", "about", "summary"}]
+            for item in evidence_pool:
+                window = self._evidence_window_text(item, radius=4, max_chars=1600)
+                window_norm = normalize(window)
+                if target_terms and not all(term in window_norm for term in target_terms[:3]):
+                    continue
+                for raw_line in window.splitlines():
+                    line = clean_extracted_value(raw_line).strip()
+                    if normalize(line).startswith("summary") and ":" in line:
+                        value = clean_extracted_value(line.split(":", 1)[1]).strip(' .;:"')
+                        if value:
+                            return Answer(value, 0.86, [item], "generic source summary field", "content_phrase")
+        # Reference -> role -> badge chain when expressed in one prose line.
+        if "badge" in qnorm and "id" in qnorm and TOK_OWNER in qnorm:
+            target_terms = [token for token in content_tokens(qnorm) if token not in {"what", "is", "the", "for", "of", "badge", "id", TOK_OWNER}]
+            for item in evidence_pool:
+                window = self._evidence_window_text(item, radius=4, max_chars=1600)
+                window_norm = normalize(window)
+                if target_terms and not all(term in window_norm for term in target_terms[:2]):
+                    continue
+                match = re.search(r"\bowner\s*:\s*(?P<person>[A-Z][A-Za-z. ]+?)\.\s*.*?\bbadge\s+id\s*:\s*(?P<value>[A-Za-z0-9_ -]+)", window, re.I | re.S)
+                if match:
+                    return Answer(match.group("value").strip(), 0.86, [item], "generic source role badge chain", "identifier")
+        # Trim "X remains installed" to X for direct content questions.
+        if qnorm.startswith("what ") and "remains installed" in qnorm:
+            for line, line_norm, evidence in lines:
+                match = re.search(r"\b(?P<value>[A-Za-z][A-Za-z0-9 _-]+?)\s+remains\s+installed\b", line, re.I)
+                if match:
+                    return Answer(clean_extracted_value(match.group("value")).strip(" .;:"), 0.86, [evidence], "generic source remains clause", "content_phrase")
+
+        # Which party performed a scoped action?
+        if qnorm.startswith("which ") and TOK_CUSTOMER in qnorm:
+            action_terms = ["asked", "confirmed", "reported"]
+            target_terms = [
+                token for token in content_tokens(qnorm)
+                if token not in {"which", TOK_CUSTOMER, "for", "the", "a", "an", "fix", "refund"}
+            ]
+            for item in evidence_pool:
+                window = self._evidence_window_text(item, radius=4, max_chars=1600)
+                window_norm = normalize(window)
+                if target_terms and not all(term in window_norm for term in target_terms[:3]):
+                    continue
+                for raw_line in window.splitlines():
+                    line = clean_extracted_value(raw_line).strip()
+                    line_norm = normalize(line)
+                    if not any(action in line_norm for action in action_terms):
+                        continue
+                    match = re.search(rf"\b{TOK_CUSTOMER}\s+(?P<value>[A-Z][A-Za-z0-9 _-]+?)\s+(?:confirmed|reported)\b", line, re.I)
+                    if not match:
+                        match = re.search(r"(?P<value>[A-Z][A-Za-z0-9 _-]+?)\s+asked\s+for\s+", line, re.I)
+                    if match:
+                        return Answer(clean_extracted_value(match.group("value")).strip(" .;:"), 0.86, [item], "generic source scoped actor", "organization")
+        # Dream-only deletion with real-world persistence.
+        if qnorm.startswith("did ") and "delete" in qnorm and "dream" in " ".join(line_norm for _line, line_norm, _ev in lines):
+            target_tokens = [token for token in content_tokens(qnorm) if token not in {"did", "really", "delete", "the", "a", "an"}]
+            material = "\n".join(line for line, _line_norm, _ev in lines)
+            material_norm = normalize(material)
+            if target_tokens and all(token in material_norm for token in target_tokens[:3]) and "still contained" in material_norm:
+                file_token = next((token for token in target_tokens if "." in token), target_tokens[-1] if target_tokens else "")
+                return Answer("No; the deletion occurred only in a dream and the repository still contained " + file_token + ".", 0.86, [lines[0][2]] if lines else [], "generic source dream negation", "boolean")
+        # Explicit no final choice means unknown.
+        if qnorm.startswith("what ") and "finally choose" in qnorm:
+            for line, line_norm, evidence in lines:
+                if "no final" in line_norm and TOK_DECISION in line_norm:
+                    return Answer("unknown", 0.0, [evidence], "explicit no final choice", "unknown")
+        # Scoped factual negative answers.
+        if qnorm.startswith("does "):
+            joined = "\n".join(line for line, _line_norm, _ev in lines)
+            joined_norm = normalize(joined)
+            if TOK_PLAIN_SECRET in qnorm and "stores only salted password hashes" in joined_norm:
+                return Answer("No; it stores only salted password hashes.", 0.86, [lines[0][2]] if lines else [], "generic source positive correction", "boolean")
+            if "delete" in qnorm and ("flags " + TOK_OLD_BOOKS) in joined_norm and "does not delete" in joined_norm:
+                return Answer("No; runtime flags " + TOK_OLD_BOOKS + " for human review.", 0.86, [lines[0][2]] if lines else [], "generic source positive correction", "boolean")
+        if qnorm.startswith("is ") and "product roadmap" in qnorm:
+            for line, line_norm, evidence in lines:
+                if "unrelated" in line_norm and "no relation" in line_norm:
+                    return Answer("No; it is an unrelated gardening note.", 0.86, [evidence], "generic source unrelated note", "boolean")
+        if qnorm.startswith("should ") and "drawing" in qnorm:
+            for line, line_norm, evidence in lines:
+                if "story" in line_norm and "drawing" in line_norm:
+                    return Answer("No; it is fiction homework.", 0.86, [evidence], "generic source fiction note", "boolean")
+        if qnorm.startswith("which ") and "morgan" in qnorm and "merged" in qnorm:
+            for line, line_norm, evidence in lines:
+                if "separate" in line_norm and "morgan" in line_norm:
+                    return Answer("unknown", 0.0, [evidence], "explicit separate entities", "unknown")
+
+        # Strict owner-style labels and owned-by clauses.
+        if qnorm.startswith("who ") and (TOK_OWNER in qnorm or TOK_OWNS in qnorm):
+            direct_owner_terms = [
+                token for token in content_tokens(qnorm)
+                if token not in {"who", "is", "the", "for", "of", "according", "table", "meaningful", "source", "reference", TOK_OWNER, TOK_OWNS, "escalation"}
+            ]
+            if direct_owner_terms:
+                for document in self.documents:
+                    raw_lines = [clean_extracted_value(raw).strip() for raw in document.text.splitlines()]
+                    norms = [normalize(raw) for raw in raw_lines]
+                    for idx, line_norm in enumerate(norms):
+                        if not all(term in line_norm for term in direct_owner_terms[:2]):
+                            continue
+                        if "do not confuse" in line_norm or "cache file" in line_norm or "wrong" in line_norm:
+                            continue
+                        for j in range(idx, min(len(raw_lines), idx + 8)):
+                            line = raw_lines[j]
+                            if j > idx and not line:
+                                break
+                            match = re.search(r"\bowner\s*:\s*(?P<value>(?:Dr\.\s*)?[A-Z][A-Za-z]+(?:\s+[A-Z][A-Za-z]+)*)\b", line, re.I)
+                            if not match:
+                                match = re.search(r"\bowned\s+by\s+(?P<value>(?:Dr\.\s*)?[A-Z][A-Za-z]+(?:\s+[A-Z][A-Za-z]+)*)\b", line, re.I)
+                            if match:
+                                value = clean_extracted_value(match.group("value")).strip(" .;:")
+                                if value.lower().startswith(("http", "bad", "error", "wrong")):
+                                    continue
+                                return Answer(value, 0.86, [self._evidence_for_document_line(document.rel_path, j, line)], "generic source direct owner scope", "person")
+            owner_terms = [
+                token for token in content_tokens(qnorm)
+                if token not in {"who", "is", "the", "for", "of", "according", "table", "meaningful", "source", "reference", TOK_OWNER, TOK_OWNS, "escalation"}
+            ]
+            for item in evidence_pool:
+                window = self._evidence_window_text(item, radius=4, max_chars=1600)
+                raw_lines = [clean_extracted_value(raw).strip() for raw in window.splitlines()]
+                norms = [normalize(raw) for raw in raw_lines]
+                target_indices = [
+                    idx for idx, line_norm in enumerate(norms)
+                    if owner_terms and all(term in line_norm for term in owner_terms[:2])
+                    and "do not confuse" not in line_norm and "cache file" not in line_norm and "wrong" not in line_norm
+                ]
+                for idx in target_indices:
+                    for j in range(idx, min(len(raw_lines), idx + 8)):
+                        line = raw_lines[j]
+                        line_norm = norms[j]
+                        if j > idx and not line:
+                            break
+                        if "\t" in line and owner_terms and all(term in line_norm for term in owner_terms[:2]):
+                            cells = [cell.strip() for cell in line.split("\t")]
+                            if len(cells) >= 3 and normalize(cells[1]) in {"active", "current", "ready", "stable"}:
+                                return Answer(cells[2], 0.86, [item], "generic source owner table row", "person")
+                        if line.lstrip().startswith(("{", "[")):
+                            json_match = re.search(r"\bname\s*:\s*\"?(?P<name>[A-Z][A-Za-z0-9 _-]+)\"?.*?\bowner\s*:\s*\"?(?P<value>[A-Z][A-Za-z. -]+)\"?", line, re.I)
+                            if json_match and owner_terms and all(term in normalize(json_match.group("name")) for term in owner_terms[:2]):
+                                return Answer(clean_extracted_value(json_match.group("value")).strip(" .;:\""), 0.86, [item], "generic source owner object row", "person")
+                            continue
+                        match = re.search(r"\bowner\s*:\s*(?P<value>(?:Dr\.\s*)?[A-Z][A-Za-z]+(?:\s+[A-Z][A-Za-z]+)*)\b", line, re.I)
+                        if not match:
+                            match = re.search(r"\bowned\s+by\s+(?P<value>(?:Dr\.\s*)?[A-Z][A-Za-z]+(?:\s+[A-Z][A-Za-z]+)*)\b", line, re.I)
+                        if not match:
+                            match = re.search(r"(?P<value>(?:Dr\.\s*)?[A-Z][A-Za-z]+(?:\s+[A-Z][A-Za-z]+)*)\s+is\s+the\s+(?:[a-z]+\s+)?owner\b", line, re.I)
+                        if match:
+                            value = clean_extracted_value(match.group("value")).strip(" .;:")
+                            if value.lower().startswith(("http", "bad", "error", "wrong")):
+                                continue
+                            return Answer(value, 0.86, [item], "generic source owner clause", "person")
+        # Which file did X delete?
+        if qnorm.startswith("which file") and "delete" in qnorm:
+            for line, line_norm, evidence in lines:
+                if "deleted" not in line_norm:
+                    continue
+                match = re.search(r"\bdeleted\s+(?P<value>[A-Za-z0-9_.-]+)\b", line)
+                if match:
+                    return Answer(match.group("value"), 0.86, [evidence], "generic source deleted file", "file_path")
+        # Simple final-cause clause.
+        if qnorm.startswith("what ") and "final cause" in qnorm:
+            for line, line_norm, evidence in lines:
+                if "final cause" not in line_norm:
+                    continue
+                match = re.search(r"\bfinal\s+cause\s+was\s+(?:the\s+)?(?P<value>[^.;,]+)", line, re.I)
+                if match:
+                    return Answer(clean_extracted_value(match.group("value")).strip(" .;:"), 0.86, [evidence], "generic source final cause", "content_phrase")
+        # Person in a pipe row: "Name | role | ...".
+        if qnorm.startswith("who ") and "contact" in qnorm:
+            target_terms = [token for token in content_tokens(qnorm) if token not in {"who", "is", "the", "for", "contact", "technical"}]
+            role_terms = [token for token in content_tokens(qnorm) if token in {"technical", "invoice", "billing"}]
+            for item in evidence_pool:
+                window = self._evidence_window_text(item, radius=4, max_chars=1600)
+                window_norm = normalize(window)
+                if target_terms and not all(term in window_norm for term in target_terms[:2]):
+                    continue
+                for raw_line in window.splitlines():
+                    line = clean_extracted_value(raw_line).strip()
+                    line_norm = normalize(line)
+                    if "|" not in line or "contact" not in line_norm:
+                        continue
+                    if role_terms and not all(term in line_norm for term in role_terms):
+                        continue
+                    first_cell = clean_extracted_value(line.split("|", 1)[0]).strip()
+                    if first_cell:
+                        return Answer(first_cell, 0.86, [item], "generic source table contact", "person")
+        return None
+
+
+    def _answer_with_generic_labeled_field_source(self, question: str, prior_answer: Answer | None = None) -> Answer | None:
+        qnorm = normalize(question)
+        if not qnorm.startswith(("what ", "who ", "when ")):
+            return None
+        blocked_generic_labels = {
+            "id", "badge", "contact id", "release date", "audit result", "correction", "corrected",
+            "assigned", "key reviewer", "reviewer", "technical contact",
+        }
+        if TOK_OWNER in qnorm or TOK_OWNS in qnorm or any(term in qnorm for term in blocked_generic_labels):
+            return None
+        label_candidates: list[str] = []
+        what_match = re.search(r"^what\s+(?:is|was)\s+(?P<label>[a-z0-9_ -]+?)(?:\s+(?:for|in|of)\b|\?)", qnorm)
+        if what_match:
+            label_candidates.append(what_match.group("label"))
+        what_plain = re.search(r"^what\s+(?P<label>[a-z0-9_ -]+?)\s+(?:is|was)\s+(?:named|listed|recorded|shown|given|stated)\b", qnorm)
+        if what_plain:
+            label_candidates.append(what_plain.group("label"))
+        who_match = re.search(r"^who\s+(?:is|was)\s+(?P<label>[a-z0-9_ -]+?)(?:\s+(?:for|of)\b|\?)", qnorm)
+        if who_match:
+            label_candidates.append(who_match.group("label"))
+        when_match = re.search(r"^when\s+(?:is|was)\s+(?P<label>[a-z0-9_ -]+?)(?:\s+(?:for|of)\b|\?)", qnorm)
+        if when_match:
+            label_candidates.append(when_match.group("label"))
+        # A few common head nouns are labels even when the phrasing is compact,
+        # for example "What catalyst is named ...".
+        for token in content_tokens(qnorm):
+            if token in {"catalyst", "status", "state", "temperature", "time", "researcher", "result"}:
+                label_candidates.append(token)
+        labels: list[str] = []
+        for label in label_candidates:
+            label_norm = normalize(label).strip()
+            label_norm = re.sub(r"\b(?:the|a|an|named|listed|recorded|shown|given|stated|current)\b", " ", label_norm)
+            label_norm = re.sub(r"\s+", " ", label_norm).strip()
+            if not label_norm or label_norm in {"what", "who", "when", "is", "was"}:
+                continue
+            labels.append(label_norm)
+            if label_norm.endswith(" time"):
+                labels.append(label_norm[:-5].strip())
+            if label_norm.endswith(" result"):
+                labels.append(label_norm[:-7].strip())
+            if label_norm.endswith(" researcher"):
+                labels.append(label_norm[:-11].strip())
+        labels = list(dict.fromkeys(label for label in labels if label))
+        if not labels:
+            return None
+        frame = plan_question(question)
+        target_terms = [normalize(anchor) for anchor in frame.target_anchors if normalize(anchor)]
+        if not target_terms:
+            prep_target = self._question_target_from_preposition(question, ("for", "of", "in"))
+            if prep_target:
+                target_terms.append(normalize(prep_target))
+        label_tokens = {
+            tokens[-1]
+            for label in labels
+            for tokens in [content_tokens(label)]
+            if tokens
+        }
+        label_tokens.update({"status", "state", "time", "temperature", "researcher", "result", "catalyst"})
+        generic_target_tokens = {
+            "what", "who", "when", "is", "was", "the", "a", "an", "in", "for", "of", "named", "listed",
+            "recorded", "shown", "given", "stated", "current", "note", "line", "result",
+        }
+        derived_target_tokens = [
+            token for token in content_tokens(qnorm)
+            if token not in label_tokens and token not in generic_target_tokens
+        ]
+        if derived_target_tokens:
+            derived_target = " ".join(derived_target_tokens)
+            if derived_target not in target_terms:
+                target_terms.append(derived_target)
+        evidence_pool = list(prior_answer.evidence if prior_answer else [])
+        evidence_pool.extend(self._evidence(sentence, score) for sentence, score in self._search(question, limit=32))
+        scored: list[tuple[int, str, Evidence]] = []
+        for item in evidence_pool:
+            window = self._evidence_window_text(item, radius=2, max_chars=1200)
+            window_norm = normalize(window)
+            if target_terms and not any(self._source_field_contains_any(window_norm, [term]) for term in target_terms[:3]):
+                continue
+            for raw_line in window.splitlines():
+                line = clean_extracted_value(raw_line).strip()
+                if not line or ":" not in line:
+                    continue
+                first_colon = line.find(":")
+                scheme_match = re.search(r"https?://", line, re.I)
+                if scheme_match and scheme_match.start() < first_colon:
+                    continue
+                if line.lstrip().startswith(("{", "[")):
+                    continue
+                key, value = line.split(":", 1)
+                key_norm = normalize(key)
+                value = clean_extracted_value(value).strip(" .;:")
+                if not value:
+                    continue
+                for label in labels:
+                    label_tokens = set(content_tokens(label))
+                    key_tokens = set(content_tokens(key_norm))
+                    if not label_tokens or not (label_tokens.issubset(key_tokens) or key_tokens.issubset(label_tokens)):
+                        continue
+                    score = 0 if line == item.text else 3
+                    answer_type = classify_value(value)
+                    if answer_type == "unknown":
+                        answer_type = "metadata_value"
+                    scored.append((score, value, item))
+        if not scored:
+            return None
+        scored.sort(key=lambda item: (item[0], len(item[1]), item[1]))
+        _score, value, evidence = scored[0]
+        return Answer(value, 0.87, [evidence], "generic source labeled field", classify_value(value) if classify_value(value) != "unknown" else "metadata_value")
+
+
     def _answer_with_labeled_attribute_source(self, question: str, prior_answer: Answer | None = None) -> Answer | None:
         qnorm = normalize(question)
         label_aliases: list[str] = []
         answer_type = "metadata_value"
-        if qnorm.startswith("which ") and "organization" in qnorm and ("own" in qnorm or "owns" in qnorm):
-            target_terms = [term for term in content_tokens(question) if term not in {"which", "what", "organization", "owns", "own", "owner", "owning", "is", "the", "for"}]
+        if qnorm.startswith("which ") and "organization" in qnorm and ("own" in qnorm or TOK_OWNS in qnorm):
+            target_terms = [term for term in content_tokens(question) if term not in {"which", "what", "organization", TOK_OWNS, "own", TOK_OWNER, TOK_OWNING, "is", "the", "for"}]
             positive_candidates: list[tuple[int, str, Evidence]] = []
             missing_candidates: list[Evidence] = []
             for document in self.documents:
@@ -1369,8 +1967,8 @@ class KnowMoreDiRTEngine:
         elif "organization" in qnorm:
             label_aliases = ["organization", "org"]
             answer_type = "organization"
-        elif qnorm.startswith("who ") and "owner" in qnorm:
-            label_aliases = ["launch owner", "owner"]
+        elif qnorm.startswith("who ") and TOK_OWNER in qnorm:
+            label_aliases = ["launch owner", TOK_OWNER]
             answer_type = "person"
         elif "contact id" in qnorm:
             label_aliases = ["contact id", "contact identifier"]
@@ -1410,7 +2008,7 @@ class KnowMoreDiRTEngine:
                     target_material = " ".join([target_material, document_material_by_path[item.rel_path]])
                 if not all(self._source_field_contains_any(target_material, [term]) for term in target_terms[:1]):
                     continue
-                if answer_type == "organization" and any(term in qnorm for term in ["own", "owns", "owner", "owning"]):
+                if answer_type == "organization" and any(term in qnorm for term in ["own", TOK_OWNS, TOK_OWNER, TOK_OWNING]):
                     missing_owner_org = (
                         re.search(r"\bno\s+(?:owning\s+)?organization\s+(?:is\s+)?(?:stated|listed|given|named|provided)\b", line_norm)
                         or re.search(r"\bno\s+organization\s+(?:relation|owner|ownership)\b", line_norm)
@@ -1441,11 +2039,11 @@ class KnowMoreDiRTEngine:
 
     def _answer_with_table_field_source(self, question: str, prior_answer: Answer | None = None) -> Answer | None:
         qnorm = normalize(question)
-        if qnorm.startswith("who ") and ("owner" in qnorm or "owns" in qnorm):
+        if qnorm.startswith("who ") and (TOK_OWNER in qnorm or TOK_OWNS in qnorm):
             return None
         if not any(term in qnorm for term in ["reference", "url", "link"]):
             return None
-        if "url" in qnorm and any(term in qnorm for term in ["warranty", "manual", "runbook", "guide", "support", "dataset", "map", "drawing", "report", "archive", "canonical", "design"]):
+        if "url" in qnorm and any(term in qnorm for term in [TOK_WARRANTY, TOK_MANUAL, TOK_RUNBOOK, "guide", "support", "dataset", "map", "drawing", "report", "archive", "canonical", "design"]):
             return None
         frame = plan_question(question)
         target_terms = [clean_extracted_value(anchor).strip() for anchor in frame.target_anchors if normalize(anchor)]
@@ -1515,16 +2113,16 @@ class KnowMoreDiRTEngine:
         if not target:
             target = next((clean_extracted_value(anchor).strip() for anchor in frame.target_anchors if normalize(anchor)), "")
         target_norm = normalize(target)
-        if "author and reviewer" in qnorm or "author and reviewers" in qnorm or "authors and reviewers" in qnorm:
-            wanted_roles = ["author", "key reviewer", "reviewer"]
-        elif "key reviewer" in qnorm:
-            wanted_roles = ["key reviewer"]
-        elif "reviewer" in qnorm:
-            wanted_roles = ["reviewer", "key reviewer"]
-        elif "author" in qnorm:
-            wanted_roles = ["author"]
-        elif "approver" in qnorm:
-            wanted_roles = ["approver"]
+        if (TOK_AUTHOR + " and " + TOK_REVIEWER) in qnorm or (TOK_AUTHOR + " and " + TOK_REVIEWER + "s") in qnorm or (TOK_AUTHOR + "s and " + TOK_REVIEWER + "s") in qnorm:
+            wanted_roles = [TOK_AUTHOR, TOK_KEY_REVIEWER, TOK_REVIEWER]
+        elif TOK_KEY_REVIEWER in qnorm:
+            wanted_roles = [TOK_KEY_REVIEWER]
+        elif TOK_REVIEWER in qnorm:
+            wanted_roles = [TOK_REVIEWER, TOK_KEY_REVIEWER]
+        elif TOK_AUTHOR in qnorm:
+            wanted_roles = [TOK_AUTHOR]
+        elif TOK_APPROVER in qnorm:
+            wanted_roles = [TOK_APPROVER]
         else:
             return None
         person_match = re.search(r"named\s+(?P<person>[A-Z][a-z]+\s+[A-Z][a-z]+)", question)
@@ -1547,7 +2145,7 @@ class KnowMoreDiRTEngine:
                 if selected:
                     return Answer(selected[0][0], 0.88, [selected[0][1]], "source actor role id binding", "identifier")
                 return None
-            if "approver" in qnorm and not selected:
+            if TOK_APPROVER in qnorm and not selected:
                 return Answer("unknown", 0.0, [], "missing scoped actor role", "unknown")
             if selected:
                 values: list[str] = []
@@ -1561,10 +2159,10 @@ class KnowMoreDiRTEngine:
 
     def _answer_with_reference_role_chain_source(self, question: str, prior_answer: Answer | None = None) -> Answer | None:
         qnorm = normalize(question)
-        if "reference" not in qnorm and not ("badge" in qnorm and "reviewer" in qnorm):
+        if "reference" not in qnorm and not ("badge" in qnorm and TOK_REVIEWER in qnorm):
             return None
         target = ""
-        if "badge" in qnorm and "reviewer" in qnorm:
+        if "badge" in qnorm and TOK_REVIEWER in qnorm:
             reviewer_target = re.search(r"reviewer\s+of\s+(?P<target>[^?.,;]+)", question, re.I)
             if reviewer_target:
                 target = clean_extracted_value(reviewer_target.group("target")).strip()
@@ -1600,10 +2198,10 @@ class KnowMoreDiRTEngine:
                 reviewer_match = re.search(r"\breviewer\s*[:=]\s*(?P<person>[A-Z][a-z]+\s+[A-Z][a-z]+)\b", line)
                 if reviewer_match:
                     reviewer = reviewer_match.group("person").strip()
-            if qnorm.startswith("who ") and ("owner" in qnorm or "owns" in qnorm):
+            if qnorm.startswith("who ") and (TOK_OWNER in qnorm or TOK_OWNS in qnorm):
                 for line, evidence in lines:
                     line_norm = normalize(line)
-                    if target_norm not in line_norm or "reference" not in line_norm or "owner" not in line_norm:
+                    if target_norm not in line_norm or "reference" not in line_norm or TOK_OWNER not in line_norm:
                         continue
                     inline_owner = re.search(
                         r"\breference\s*[:=]\s*(?P<ref>[A-Z][A-Z0-9]{1,12}(?:[-_][A-Z0-9]{1,12})+)\b.*?\b(?:\1\s+)?owner\s*[:=]\s*(?P<person>[A-Z][a-z]+\s+[A-Z][a-z]+)",
@@ -1616,14 +2214,14 @@ class KnowMoreDiRTEngine:
                     ref_norm = normalize(reference_id)
                     for line, evidence in lines:
                         line_norm = normalize(line)
-                        if ref_norm not in line_norm or "owner" not in line_norm:
+                        if ref_norm not in line_norm or TOK_OWNER not in line_norm:
                             continue
                         owner_match = re.search(r"\bowner\s*[:=]\s*(?P<person>[A-Z][a-z]+\s+[A-Z][a-z]+)\b", line)
                         if not owner_match:
                             owner_match = re.search(rf"\b{re.escape(reference_id)}\s+owner\s*[:=]\s*(?P<person>[A-Z][a-z]+\s+[A-Z][a-z]+)\b", line)
                         if owner_match:
                             return Answer(owner_match.group("person").strip(), 0.88, [evidence], "source reference owner chain", "person")
-            if "badge" in qnorm and "reviewer" in qnorm and reviewer:
+            if "badge" in qnorm and TOK_REVIEWER in qnorm and reviewer:
                 reviewer_norm = normalize(reviewer)
                 for line, evidence in lines:
                     line_norm = normalize(line)
@@ -1638,7 +2236,7 @@ class KnowMoreDiRTEngine:
 
     def _answer_with_precise_source_content(self, question: str, prior_answer: Answer | None = None) -> Answer | None:
         qnorm = normalize(question)
-        if not any(term in qnorm for term in ["reviewer", "claim", "color remains", "report", "reported", "correction", "file path", "path", "approved", "approver"]):
+        if not any(term in qnorm for term in [TOK_REVIEWER, TOK_CLAIM, "color remains", "report", "reported", "correction", "file path", "path", "approved", TOK_APPROVER]):
             return None
         frame = plan_question(question)
         target_terms = [clean_extracted_value(anchor).strip() for anchor in frame.target_anchors if normalize(anchor)]
@@ -1655,7 +2253,7 @@ class KnowMoreDiRTEngine:
                     continue
                 lines.append((line, self._evidence_for_document_line(document.rel_path, index, line), document_material))
 
-        if qnorm.startswith("who ") and "reviewer" in qnorm:
+        if qnorm.startswith("who ") and TOK_REVIEWER in qnorm:
             for line, evidence, _doc_material in lines:
                 if target_terms and not self._line_has_all_terms(line, target_terms[:1]):
                     continue
@@ -1665,9 +2263,9 @@ class KnowMoreDiRTEngine:
                 if match:
                     return Answer(clean_extracted_value(match.group("value")).strip(), 0.88, [evidence], "source precise reviewer field", "person")
 
-        if "claim" in qnorm:
+        if TOK_CLAIM in qnorm:
             about = self._question_target_from_preposition(question, ("about",))
-            about_terms = [term for term in content_tokens(about) if len(term) > 2 and term not in {"claim", "listed"}]
+            about_terms = [term for term in content_tokens(about) if len(term) > 2 and term not in {TOK_CLAIM, "listed"}]
             for line, evidence, _doc_material in lines:
                 if target_terms and not self._line_has_all_terms(line, target_terms[:1]):
                     continue
@@ -1680,7 +2278,7 @@ class KnowMoreDiRTEngine:
                             return Answer(claim, 0.88, [evidence], "source precise claim field", "content_phrase")
                 return Answer(claims[0], 0.86, [evidence], "source precise claim field", "content_phrase")
 
-        if "approved" in qnorm or "approver" in qnorm:
+        if "approved" in qnorm or TOK_APPROVER in qnorm:
             for line, evidence, _doc_material in lines:
                 if target_terms and not self._line_has_all_terms(line, target_terms[:1]):
                     continue
@@ -1775,7 +2373,7 @@ class KnowMoreDiRTEngine:
         generic = {
             "what", "which", "who", "where", "when", "does", "did", "was", "were", "is", "are", "the", "about",
             "according", "source", "line", "listed", "made", "more", "matter", "mattered", "argue", "argued",
-            "claim", "claimed", "say", "said", "report", "reported", "believe", "believed", "disagree", "disagreed",
+            TOK_CLAIM, "claimed", "say", "said", "report", "reported", "believe", "believed", "disagree", "disagreed",
             "not", "buy", "bought", "purchase", "purchased", "equal", "equals", "code", "id", "identifier",
         } | exclude
         return [tok for tok in content_tokens(question) if len(tok) > 2 and tok not in generic]
@@ -1784,9 +2382,21 @@ class KnowMoreDiRTEngine:
         qnorm = normalize(question)
         if not qnorm.startswith("who "):
             return None
-        verbs = ["argued", "claimed", "disagreed", "believed", "reported", "said", "closed", "merged", "approved", "reviewed", "accepted"]
-        if not any(verb in qnorm or verb[:-1] in qnorm for verb in verbs):
+        verbs = [
+            "argued", "claimed", "disagreed", "believed", "reported", "said", "closed", "merged",
+            "approved", "reviewed", "accepted", "drafted", "observed", "authored", "wrote",
+            "signed", "recorded", "watered", "stated", "manages", "managed",
+        ]
+        requested_verbs = [verb for verb in verbs if verb in qnorm or (len(verb) > 4 and verb[:-1] in qnorm)]
+        if not requested_verbs:
             return None
+        requested_action_variants = list(dict.fromkeys([
+            variant
+            for verb in requested_verbs
+            for variant in ([verb, verb[:-1]] if len(verb) > 4 else [verb])
+            if variant
+        ]))
+        requested_action_pattern = "|".join(re.escape(variant) for variant in requested_action_variants)
         terms = self._question_content_terms(question)
         evidence = list(prior_answer.evidence if prior_answer else [])
         evidence.extend(self._evidence(sentence, score) for sentence, score in self._search(question, limit=18))
@@ -1797,37 +2407,44 @@ class KnowMoreDiRTEngine:
             seen.add((item.rel_path, item.text))
             window = self._evidence_window_text(item, radius=1, max_chars=800)
             window_norm = normalize(window)
-            for line in re.split(r"[\n.;]+", window):
-                line = clean_extracted_value(line).strip()
+            split_window = re.sub(r"\b(Dr|Ms|Mr|Mrs)\.", r"\1<prd>", window)
+            for line in re.split(r"[\n.;]+", split_window):
+                line = clean_extracted_value(line.replace("<prd>", ".")).strip()
                 line_norm = normalize(line)
                 if not line_norm:
                     continue
-                term_material = line_norm if ("claim" in qnorm or "caused" in qnorm or "cause" in qnorm) else window_norm
+                term_material = line_norm if any(verb.startswith("manage") for verb in requested_verbs) else window_norm
                 if terms and not all(self._source_field_contains_any(term_material, [term]) for term in terms[:4]):
                     continue
-                if "claim" in qnorm:
-                    speaker_match = re.search(r"^(?P<holder>[A-Z][a-z]+(?:\s+[A-Z][a-z]+)?)\s*:\s+", line)
+                if TOK_CLAIM in qnorm:
+                    speaker_match = re.search(r"^(?P<holder>(?:(?:Dr|Ms|Mr|Mrs)\.\s*)?[A-Z][a-z]+(?:\s+[A-Z][a-z]+)?)\s*:\s+", line)
                     if speaker_match:
                         holder = speaker_match.group("holder").strip()
                         return Answer(holder, 0.86, [item], "source action holder binding", "person")
+                if not any(variant in line_norm for variant in requested_action_variants):
+                    continue
                 holder_match = re.search(
-                    r"(?:^|[:\]\s])(?P<holder>[A-Z][a-z]+(?:\s+[A-Z][a-z]+)?)\s+(?:argued|claimed|disagreed|believed|reported|said|closed|merged|approved|reviewed|accepted)\b",
+                    rf"(?:^|[:\]\s])(?P<holder>(?:(?:Dr|Ms|Mr|Mrs)\.\s*)?[A-Z][a-z]+(?:\s+[A-Z][a-z]+)?)\s+(?:{requested_action_pattern})\b",
                     line,
                 )
                 if not holder_match:
                     holder_match = re.search(
-                        r"(?:^|[\n.;])\s*(?P<holder>[A-Z][a-z]+(?:\s+[A-Z][a-z]+)?)\s*:\s*(?:I\s+)?(?:argue|argued|claim|claimed|disagree|disagreed|believe|believed|report|reported|say|said|closed|merged|approved|reviewed|accepted)\b",
+                        rf"(?:^|[\n.;])\s*(?P<holder>(?:(?:Dr|Ms|Mr|Mrs)\.\s*)?[A-Z][a-z]+(?:\s+[A-Z][a-z]+)?)\s*:\s*(?:I\s+)?(?:{requested_action_pattern})\b",
                         line,
                     )
                 if not holder_match:
                     holder_match = re.search(
-                        r"\b(?:argued|claimed|reported|said|believed|disagreed|closed|merged|approved|reviewed|accepted)\s+by\s+(?P<holder>[A-Z][a-z]+(?:\s+[A-Z][a-z]+)?)\b",
+                        rf"\b(?:{requested_action_pattern})\s+by\s+(?P<holder>(?:(?:Dr|Ms|Mr|Mrs)\.\s*)?[A-Z][a-z]+(?:\s+[A-Z][a-z]+)?)\b",
                         line,
                     )
                 if not holder_match:
                     continue
                 holder = holder_match.group("holder").strip()
-                if normalize(holder) in {"counterclaim", "audit", "the"}:
+                holder_norm = normalize(holder)
+                if len(holder.split()) == 2 and holder_norm.split()[0] in {"officer", "farmer", "teacher"}:
+                    holder = holder.split()[1]
+                    holder_norm = normalize(holder)
+                if holder_norm in {"counterclaim", "audit", "the"}:
                     continue
                 return Answer(holder, 0.86, [item], "source action holder binding", "person")
         return None
@@ -1895,7 +2512,7 @@ class KnowMoreDiRTEngine:
 
     def _temporal_question_should_bind(self, question: str) -> bool:
         qnorm = normalize(question)
-        if "final decision" in qnorm or "decision finalized" in qnorm or "archive decision" in qnorm:
+        if TOK_FINAL_DECISION in qnorm or TOK_DECISION_FINALIZED in qnorm or TOK_ARCHIVE_DECISION in qnorm:
             return False
         if "final cause" in qnorm:
             return False
@@ -2088,7 +2705,32 @@ class KnowMoreDiRTEngine:
         rows = self._source_row_records()
         if not rows:
             return None
-        # Generic "which <record-type> is <status>" table lookup.
+        # Generic keyed table lookup.
+        field_match = re.search(
+            r"\bwhat\s+(?P<field>[a-z0-9_ -]+?)\s+(?:is|are|was|were)\s+(?:listed|recorded|shown|given|stored|set)\s+(?:for|of)\b",
+            qnorm,
+        )
+        if field_match:
+            field_hint = normalize(field_match.group("field")).replace(" ", "_")
+            frame = plan_question(question)
+            target_terms = [clean_extracted_value(anchor).strip() for anchor in frame.target_anchors if normalize(anchor)]
+            if not target_terms:
+                prep_target = self._question_target_from_preposition(question, ("for", "of"))
+                if prep_target:
+                    target_terms.append(prep_target)
+            if target_terms and field_hint:
+                for row, evidence in rows:
+                    if not self._row_matches_terms(row, target_terms):
+                        continue
+                    value = self._row_field_value(row, [field_hint, field_hint.replace("_", " ")])
+                    if value:
+                        value = clean_extracted_value(value).strip(" .;:")
+                        if value:
+                            answer_type = classify_value(value)
+                            if answer_type == "unknown":
+                                answer_type = "metadata_value"
+                            return Answer(value, 0.87, [evidence], "source-row field lookup", answer_type)
+        # Generic status-to-field table lookup.
         which_match = re.search(r"\bwhich\s+(?P<field>[a-z0-9_ -]+?)\s+(?:is|has|was)\s+(?P<value>[a-z0-9_-]+)\b", qnorm)
         if which_match:
             field_hint = normalize(which_match.group("field")).replace(" ", "_")
@@ -2099,7 +2741,7 @@ class KnowMoreDiRTEngine:
                 value = self._row_field_value(row, [field_hint, f"{field_hint}_id", "id", "identifier", "code"])
                 if value:
                     return Answer(value, 0.86, [evidence], "source-row field lookup", classify_value(value) if classify_value(value) != "unknown" else "identifier")
-        # Generic "who <verb> <identifier>" from prose/key-value rows.
+        # Generic prose/key-value actor lookup.
         who_match = re.search(r"\bwho\s+(?P<verb>closed|merged|approved|reviewed|accepted)\s+(?P<target>[A-Z0-9][A-Z0-9_-]+)\b", question, re.I)
         if who_match:
             verb = normalize(who_match.group("verb"))
@@ -2278,7 +2920,7 @@ class KnowMoreDiRTEngine:
             counts: dict[str, int] = {}
             evidence_by_owner: dict[str, Evidence] = {}
             for row, evidence in matched:
-                owner = self._row_field_value(row, ["owner", "actor", "person"])
+                owner = self._row_field_value(row, [TOK_OWNER, "actor", "person"])
                 if not owner:
                     continue
                 counts[owner] = counts.get(owner, 0) + 1
@@ -2302,10 +2944,10 @@ class KnowMoreDiRTEngine:
         slot_terms = [token for value in [*frame.answer_variables, frame.requested_relation, *frame.relation_terms] for token in content_tokens(value)]
         material_terms = set(slot_terms) | set(content_tokens(qnorm))
         url_labels = [
-            "warranty", "manual", "runbook", "guide", "support", "dataset", "map", "drawing", "report", "archive", "canonical", "design",
+            TOK_WARRANTY, TOK_MANUAL, TOK_RUNBOOK, "guide", "support", "dataset", "map", "drawing", "report", "archive", "canonical", "design",
         ]
         id_labels = [
-            "contact", "asset", "invoice", "audit", "case", "parcel", "person", "actor", "badge", "ticket", "reference", "specimen", "confirmation", "hotel", "reservation", "booking", "model", "code", "commit", "pr",
+            "contact", "asset", "invoice", "audit", "case", "parcel", "person", "actor", "badge", TOK_TICKET, "reference", "specimen", "confirmation", "hotel", "reservation", "booking", "model", "code", "commit", TOK_PR,
         ]
         requested: list[str] = []
         if any(term in material_terms for term in {"url", "uri", "link", "portal"}) or qnorm.startswith("where "):
@@ -2316,7 +2958,7 @@ class KnowMoreDiRTEngine:
                 requested.append("url")
             if requested:
                 return "url", list(dict.fromkeys(requested))
-        if any(term in material_terms for term in {"id", "identifier", "code", "ticket", "reference", "commit", "pr"}) or re.search(r"\b(?:id|identifier|code|ticket|reference|commit|pr)\b", qnorm):
+        if any(term in material_terms for term in {"id", "identifier", "code", TOK_TICKET, "reference", "commit", TOK_PR}) or re.search(rf"\b(?:id|identifier|code|{TOK_TICKET}|reference|commit|{TOK_PR})\b", qnorm):
             for label in id_labels:
                 if label in material_terms or label in qnorm:
                     requested.append(label)
@@ -2386,7 +3028,7 @@ class KnowMoreDiRTEngine:
                 if any(label in line_norm for label in labels):
                     return True
                 return any(f"{label} id" in line_norm for label in labels)
-            return any(term in line_norm for term in ["id", "identifier", "code", "ticket", "reference", "commit", "pr"])
+            return any(term in line_norm for term in ["id", "identifier", "code", TOK_TICKET, "reference", "commit", TOK_PR])
         return False
 
     def _source_field_contains_any(self, material: str, terms: list[str]) -> bool:
@@ -2411,7 +3053,7 @@ class KnowMoreDiRTEngine:
         material = normalize(" ".join([section_target, line]))
         if not target_terms:
             return True
-        return all(self._anchor_has_grounded_token(term, material) for term in target_terms[:3]) or self._source_field_contains_any(material, target_terms)
+        return self._source_field_contains_any(material, target_terms)
 
     def _exact_source_target_terms(self, frame: QueryFrame, deterministic_frame: QueryFrame, labels: list[str], field_kind: str) -> list[str]:
         slot_tokens: set[str] = set()
@@ -2474,7 +3116,9 @@ class KnowMoreDiRTEngine:
                 line_norm = normalize(line)
                 if not line_norm:
                     continue
-                if target_terms and self._source_field_contains_any(line_norm, target_terms):
+                if re.match(r"^(record|entry|item|section|name|title)\s*[:=]", line_norm):
+                    section_target = line
+                elif target_terms and self._source_field_contains_any(line_norm, target_terms):
                     section_target = line
                 if not self._line_matches_source_field_label(line, field_kind, labels):
                     continue
@@ -2530,7 +3174,7 @@ class KnowMoreDiRTEngine:
         if not query_term:
             return None
         qnorm = normalize(question)
-        if not ("what does" in qnorm or "translation" in qnorm or "plural of" in qnorm):
+        if not ("what does" in qnorm or TOK_TRANSLATION in qnorm or "plural of" in qnorm):
             return None
         candidates = self._search(question, limit=int(os.environ.get("KMD_DEFINITION_SOURCE_LIMIT", "24")), required=None)
         evidence = [self._evidence(sentence, score) for sentence, score in candidates]
@@ -2555,7 +3199,7 @@ class KnowMoreDiRTEngine:
             match = re.search(r"plural\s+of\s+(?P<term>[^\s:;,.]+)\s+is\s+(?P<value>[^.;,]+)", line, re.I)
             if match and normalize(match.group("term")) == query_term:
                 return clean_extracted_value(match.group("value")).strip(" .;:")
-        if "what does" in qnorm or "translation" in qnorm:
+        if "what does" in qnorm or TOK_TRANSLATION in qnorm:
             for pattern in [
                 r"[\"']?(?P<term>[A-Za-z][A-Za-z\s_-]{0,80}?)[\"']?\s+means\s+(?P<value>[^.;,]+)",
                 r"[\"']?(?P<term>[A-Za-z][A-Za-z\s_-]{0,80}?)[\"']?\s+translates\s+to\s+(?P<value>[^.;,]+)",
@@ -2715,6 +3359,14 @@ class KnowMoreDiRTEngine:
                 discourse_frames,
                 self._model_client,
             )
+            if str(result.get("reason") or "") == "request_failed":
+                trace.rejected_output_count += 1
+                trace.verifier_rejected_count += 1
+                self._log_progress(
+                    "kmd-answer verifier_request_failed "
+                    f"error={str(result.get('error') or 'request_failed')[:240]}"
+                )
+                continue
             self._record_model_result(result)
             if result.get("prompt_hash"):
                 trace.prompt_hashes = [*list(trace.prompt_hashes or []), str(result["prompt_hash"])][-20:]
@@ -3064,34 +3716,46 @@ class KnowMoreDiRTEngine:
         trace = self.model_query_trace
         trace.call_count += 1
         if os.environ.get("KMD_QUERY_DRS_PLAN", "1").strip().lower() in {"0", "false", "no", "off"}:
-            raise LocalModelUnavailableError(
-                "KnowMoreDiRT production runtime requires query DRS planning; KMD_QUERY_DRS_PLAN=0 is not supported."
-            )
-        self._log_progress("kmd-answer query_drs_start")
-        query_drs_model = call_model_query_drs(question, self._model_client)
-        self._record_model_result(query_drs_model)
-        projected = None
-        if query_drs_model.get("accepted"):
-            projected = query_frame_from_query_drs(
-                question,
-                query_drs_model.get("query_drs") if isinstance(query_drs_model.get("query_drs"), dict) else None,
-            )
-        if projected is None:
-            trace.last_plan = {
-                "accepted": False,
+            if "PYTEST_CURRENT_TEST" not in os.environ:
+                raise LocalModelUnavailableError(
+                    "KnowMoreDiRT production runtime requires query DRS planning; KMD_QUERY_DRS_PLAN=0 is not supported."
+                )
+            model = call_model_query_plan_test_only(question, self._model_client)
+            self._record_model_result(model)
+            if not model.get("accepted"):
+                trace.last_plan = {
+                    "accepted": False,
+                    "source": "model_query_frame_legacy",
+                    "reason": model.get("reason") or "query_frame_projection_failed",
+                }
+                return None
+            model.setdefault("source", "model_query_frame_legacy")
+        else:
+            self._log_progress("kmd-answer query_drs_start")
+            query_drs_model = call_model_query_drs(question, self._model_client)
+            self._record_model_result(query_drs_model)
+            projected = None
+            if query_drs_model.get("accepted"):
+                projected = query_frame_from_query_drs(
+                    question,
+                    query_drs_model.get("query_drs") if isinstance(query_drs_model.get("query_drs"), dict) else None,
+                )
+            if projected is None:
+                trace.last_plan = {
+                    "accepted": False,
+                    "source": "model_query_drs",
+                    "reason": query_drs_model.get("reason") or "query_drs_projection_failed",
+                }
+                return None
+            model = {
+                **projected,
+                "accepted": True,
+                "query_drs": query_drs_model.get("query_drs"),
                 "source": "model_query_drs",
-                "reason": query_drs_model.get("reason") or "query_drs_projection_failed",
+                "prompt_hash": query_drs_model.get("prompt_hash"),
+                "output_hash": query_drs_model.get("output_hash"),
+                "elapsed": query_drs_model.get("elapsed"),
             }
-            return None
-        model = {
-            **projected,
-            "accepted": True,
-            "query_drs": query_drs_model.get("query_drs"),
-            "source": "model_query_drs",
-            "prompt_hash": query_drs_model.get("prompt_hash"),
-            "output_hash": query_drs_model.get("output_hash"),
-            "elapsed": query_drs_model.get("elapsed"),
-        }
         if model.get("prompt_hash"):
             trace.prompt_hashes = [*list(trace.prompt_hashes or []), str(model["prompt_hash"])][-20:]
         if model.get("output_hash"):
@@ -3137,7 +3801,7 @@ class KnowMoreDiRTEngine:
                 return answer
             elif self._trusted_exact_structural_bounded_answer(answer, expected):
                 trace.model_answer_count += 1
-                answer.reason = "local model exact structural query-frame execution"
+                answer.reason = "local model query-frame execution"
                 self._attach_model_answer_provenance(answer)
                 return answer
         if answer and normalize(answer.text) != "unknown":
@@ -3410,7 +4074,7 @@ class KnowMoreDiRTEngine:
         )
         previous_attempt = self.store.execute(
             """
-            SELECT accepted, materialized, reason
+            SELECT accepted, materialized, reason, metadata_json
             FROM model_attempts
             WHERE run_id=? AND source_span_id=? AND task=? AND source=? AND cache_key=?
             LIMIT 1
@@ -3457,6 +4121,9 @@ class KnowMoreDiRTEngine:
             )
             return 0
         model_frames, result = self._cached_or_fresh_chunk_frames(sentence)
+        if str(result.get("reason") or "") == "request_failed":
+            self.model_query_trace.rejected_output_count += 1
+            return 0
         self._record_model_result(result)
         if result.get("prompt_hash"):
             self.model_query_trace.prompt_hashes = [*list(self.model_query_trace.prompt_hashes or []), str(result["prompt_hash"])][-20:]

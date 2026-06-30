@@ -1465,7 +1465,7 @@ def test_chunk_drs_failed_staged_fallback_keeps_stage_diagnostics(monkeypatch, t
     assert result["staged_fallback"]["constraint_mode"] in {"json_schema", "gbnf", "none"}
 
 
-def test_chunk_drs_staged_invalid_json_failure_is_cached(monkeypatch, tmp_path) -> None:
+def test_chunk_drs_staged_invalid_json_failure_is_retryable(monkeypatch, tmp_path) -> None:
     class FailedSkeletonModel:
         def __init__(self) -> None:
             self.calls = 0
@@ -1518,8 +1518,8 @@ def test_chunk_drs_staged_invalid_json_failure_is_cached(monkeypatch, tmp_path) 
     assert first["reason"] == "invalid_json"
     assert second["accepted"] is False
     assert second["reason"] == "invalid_json"
-    assert second["fresh_or_cached"] == "cache"
-    assert model.calls == 1
+    assert second["fresh_or_cached"] == "fresh"
+    assert model.calls == 2
 
 
 def test_chunk_drs_staged_fallback_preserves_temporal_records(monkeypatch, tmp_path) -> None:

@@ -68,6 +68,24 @@ def _local_endpoint_required(endpoint: str) -> None:
         raise ValueError("KMD local model endpoint must be localhost-only")
 
 
+
+def _default_per_token_timeout_seconds() -> float:
+    raw = os.environ.get("KMD_LOCAL_MODEL_PER_TOKEN_TIMEOUT_SECONDS", "180").strip()
+    try:
+        value = float(raw)
+    except ValueError:
+        value = 180.0
+    return value if value > 0 else 180.0
+
+
+def _default_min_constrained_json_tokens() -> int:
+    raw = os.environ.get("KMD_LOCAL_MODEL_MIN_CONSTRAINED_JSON_TOKENS", "4096").strip()
+    try:
+        value = int(raw)
+    except ValueError:
+        value = 4096
+    return value if value > 0 else 4096
+
 def _env_float(name: str, default: float) -> float:
     try:
         return float(os.environ.get(name, str(default)))
@@ -229,7 +247,8 @@ class LocalModelUnavailableError(RuntimeError):
 @dataclass
 class LocalModelClient:
     endpoint: str = os.environ.get("KMD_LOCAL_MODEL_ENDPOINT", "http://127.0.0.1:14829/v1")
-    timeout_seconds: float = float(os.environ.get("KMD_LOCAL_MODEL_TIMEOUT", "180"))
+    # Socket/read timeout between streamed token chunks. Not a whole-answer wall timeout.
+    timeout_seconds: float = field(default_factory=_default_per_token_timeout_seconds)
     _metadata: dict[str, Any] | None = field(default=None, init=False, repr=False)
 
     def models(self) -> dict:
@@ -354,16 +373,16 @@ class LocalModelClient:
             "api": os.environ.get("KMD_LOCAL_MODEL_API", "chat").strip().lower() or "chat",
             "cache_prompt": os.environ.get("KMD_LOCAL_MODEL_CACHE_PROMPT", "1").strip().lower()
             not in {"0", "false", "no", "off"},
+            "min_constrained_json_tokens": _default_min_constrained_json_tokens(),
         }
 
     def cache_fingerprint(self) -> dict[str, Any]:
         metadata = self.server_metadata()
         return {
-            "endpoint": self.endpoint,
+            "fingerprint_schema": "local-model-stable-v2",
             "model_id": self.model_id(metadata),
             "context_size": self.context_size(metadata),
             "context_source": self.context_source(metadata),
-            "timeout_seconds": self.timeout_seconds,
             "request_settings": self.request_settings(),
             "transport_settings": self.transport_settings(),
         }
@@ -384,22 +403,26 @@ class LocalModelClient:
             endpoint = _completion_endpoint(self.endpoint)
         _local_endpoint_required(endpoint)
         settings = self.request_settings()
-        # Local model calls must stream.  The timeout below is therefore the
-        # socket/read timeout between streamed chunks, not a whole-answer wall
-        # timeout.
+        # Local model calls must stream. The timeout below is only the socket/read
+        # timeout while waiting for the next streamed token chunk. There is no
+        # whole-answer, whole-question, or whole-chunk wall timeout here.
         use_cache_prompt = os.environ.get("KMD_LOCAL_MODEL_CACHE_PROMPT", "1").strip().lower() not in {
             "0",
             "false",
             "no",
             "off",
         }
+        requested_n_predict = int(n_predict)
+        effective_n_predict = requested_n_predict
+        if json_schema or grammar:
+            effective_n_predict = max(effective_n_predict, _default_min_constrained_json_tokens())
         if endpoint.endswith("/chat/completions"):
             body = {
                 "messages": [
                     {"role": "system", "content": "Return one valid JSON object or array and no prose."},
                     {"role": "user", "content": prompt},
                 ],
-                "max_tokens": int(n_predict),
+                "max_tokens": effective_n_predict,
                 "temperature": settings["temperature"],
                 "top_p": settings["top_p"],
                 "seed": settings["seed"],
@@ -409,7 +432,7 @@ class LocalModelClient:
         else:
             body = {
                 "prompt": prompt,
-                "n_predict": int(n_predict),
+                "n_predict": effective_n_predict,
                 "temperature": settings["temperature"],
                 "top_p": settings["top_p"],
                 "top_k": settings["top_k"],
@@ -419,10 +442,24 @@ class LocalModelClient:
                 "stream": True,
                 "cache_prompt": bool(use_cache_prompt),
             }
-        if grammar:
-            body["grammar"] = grammar
+        constraint_settings: dict[str, Any] = {"mode": "none"}
         if json_schema:
-            body["json_schema"] = json_schema
+            if endpoint.endswith("/chat/completions"):
+                body["response_format"] = {
+                    "type": "json_schema",
+                    "json_schema": {
+                        "name": "kmd_response",
+                        "strict": True,
+                        "schema": json_schema,
+                    },
+                }
+                constraint_settings = {"mode": "chat_response_format_json_schema"}
+            else:
+                body["json_schema"] = json_schema
+                constraint_settings = {"mode": "completion_json_schema"}
+        elif grammar:
+            body["grammar"] = grammar
+            constraint_settings = {"mode": "grammar"}
         started = time.time()
         request = urllib.request.Request(
             endpoint,
@@ -469,10 +506,20 @@ class LocalModelClient:
         parsed["_model_elapsed_seconds"] = round(time.time() - started, 3)
         parsed["_model_endpoint"] = endpoint
         parsed["_model_stream"] = True
+        parsed["_model_per_token_timeout_seconds"] = self.timeout_seconds
         parsed["_model_stream_closed_after_json"] = stream_closed_after_json
         parsed["_model_context_size"] = self.context_size()
         parsed["_model_id"] = self.model_id()
-        parsed["_model_request_settings"] = {**settings, "n_predict": int(n_predict)}
+        parsed["_model_request_settings"] = {
+            **settings,
+            "n_predict": requested_n_predict,
+            "effective_n_predict": effective_n_predict,
+        }
+        parsed["_model_constraint_settings"] = {
+            **constraint_settings,
+            "requested_n_predict": requested_n_predict,
+            "effective_n_predict": effective_n_predict,
+        }
         parsed["_model_transport_settings"] = {
             **self.transport_settings(),
             "cache_prompt": bool(use_cache_prompt),

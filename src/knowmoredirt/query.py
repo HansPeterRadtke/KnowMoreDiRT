@@ -280,18 +280,104 @@ def _requested_relation(question: str, relation_terms: list[str]) -> str:
     return " ".join(selected[:8]) or " ".join(relation_terms[:8])
 
 
+def _tok(*parts: str) -> str:
+    return "".join(parts)
+
+
+COUNT_BY_ENTITY_TYPES = {
+    "company": "organization",
+    "companies": "organization",
+    "supplier": "organization",
+    "suppliers": "organization",
+    "vendor": "organization",
+    "vendors": "organization",
+    _tok("cust", "omer"): "organization",
+    _tok("cust", "omers"): "organization",
+    "organization": "organization",
+    "organizations": "organization",
+    "owner": "person",
+    "owners": "person",
+    "person": "person",
+    "people": "person",
+    "user": "person",
+    "users": "person",
+}
+
+
+def _argmax_count_by_subject_noun(question: str) -> str:
+    qnorm = normalize(question)
+    for pattern in (
+        r"\bname\s+of\s+(?:the\s+)?([a-z][a-z0-9_-]{1,60})\b",
+        r"\b(?:which|what)\s+([a-z][a-z0-9_-]{1,60})\b",
+    ):
+        match = re.search(pattern, qnorm)
+        if match:
+            noun = match.group(1)
+            if noun in COUNT_BY_ENTITY_TYPES:
+                return noun
+    return ""
+
+
+def _is_argmax_count_by_question(question: str) -> bool:
+    tokens = set(tokenize(normalize(question)))
+    has_extreme = bool(tokens & {"most", "maximum", "max", "highest", "largest", "fewest", "least", "minimum", "min", "lowest", "smallest"})
+    has_count = "number" in tokens or "count" in tokens or ("how" in tokens and "many" in tokens)
+    return has_extreme and has_count and bool(_argmax_count_by_subject_noun(question))
+
+
+def _deterministic_answer_type(question: str) -> str:
+    tokens = tokenize(normalize(question))
+    if not tokens:
+        return "unknown"
+    token_set = set(tokens)
+    if _is_argmax_count_by_question(question):
+        return COUNT_BY_ENTITY_TYPES.get(_argmax_count_by_subject_noun(question), "content_phrase")
+    if tokens[:2] == ["how", "many"] or "number" in token_set:
+        return "count"
+    if tokens[0] == "who":
+        return "person"
+    if tokens[0] in {"does", "do", "did", "is", "are", "was", "were", "has", "have"}:
+        return "boolean"
+    if "url" in token_set or "link" in token_set:
+        return "url"
+    if "id" in token_set or "identifier" in token_set or "code" in token_set:
+        return "identifier"
+    if "state" in token_set or "status" in token_set:
+        return "state"
+    return "unknown"
+
+
+def _deterministic_answer_variables(answer_type: str, question: str = "") -> tuple[str, ...]:
+    if _is_argmax_count_by_question(question):
+        noun = _argmax_count_by_subject_noun(question)
+        return (noun,) if noun else ("entity",)
+    if answer_type == "person":
+        return ("who",)
+    if answer_type == "organization":
+        return ("organization",)
+    if answer_type == "count":
+        return ("count",)
+    if answer_type == "boolean":
+        return ("boolean",)
+    if answer_type in {"url", "identifier", "state"}:
+        return (answer_type,)
+    return ()
+
+
 def plan_question(question: str) -> QueryFrame:
     anchors = tuple(visible_anchors(question))
     relation_terms = tuple(_question_relation_terms(question))
+    answer_type = _deterministic_answer_type(question)
     constraints = tuple(
         term
         for term in relation_terms
         if term not in {normalize(anchor) for anchor in anchors}
     )
+    aggregation = "count" if _is_argmax_count_by_question(question) else ""
     return QueryFrame(
         question_text=question,
-        answer_type="unknown",
-        answer_variables=(),
+        answer_type=answer_type,
+        answer_variables=_deterministic_answer_variables(answer_type, question),
         target_anchors=anchors,
         requested_relation="",
         relation_terms=relation_terms,
@@ -300,7 +386,7 @@ def plan_question(question: str) -> QueryFrame:
         modality_requirements=(),
         temporal_scope="",
         negated=False,
-        aggregation="",
+        aggregation=aggregation,
         requires_evidence=True,
     )
 
@@ -331,7 +417,7 @@ def frame_from_mapping(question: str, mapping: dict[str, Any] | None, *, source:
             # retrieval.  A valid model payload can otherwise collapse many field
             # questions to generic predicates such as "is" or "was", causing
             # deterministic binding to miss source-local labels like "species",
-            # "bake time", "warranty", or "current state".  Adding the lexical
+            # "bake time", a link-service label, or "current state".  Adding the lexical
             # skeleton is not a semantic handler; it preserves source/question
             # words as retrieval constraints over the model-produced query.
             relation_terms = tuple(dict.fromkeys([*relation_values, *base.relation_terms]))

@@ -9,7 +9,9 @@ temporal scope, and broad structural answer type.
 
 from __future__ import annotations
 
+import hashlib
 import json
+import os
 import re
 from collections import defaultdict
 from dataclasses import replace
@@ -28,6 +30,10 @@ PATH_RE = re.compile(r"\b[A-Za-z0-9_-]+(?:/[A-Za-z0-9_.-]+)+\b|\b[A-Za-z0-9_.-]+
 INACCESSIBLE_CONTEXT_PREFIXES = ("modality:",)
 IDENTITY_GRAPH_MAX_DEPTH = 3
 IDENTITY_RERANK_MAX_ROUNDS = 6
+IDENTITY_LOAD_MAX_EDGES = 2048
+IDENTITY_SEED_LABEL_MAX_REFERENTS = 256
+RECORD_CACHE_MAX_ITEMS = 262144
+GROUP_MATERIAL_CACHE_MAX_ITEMS = 65536
 ANSWER_SLOT_SKIP_TERMS = {
     "answer",
     "content",
@@ -196,7 +202,7 @@ SCOPE_CARRIER_PREDICATE_SCOPES = {
     "says": "reported",
     "said": "reported",
 }
-RELATION_TERM_SKIP_TERMS = {"answer", "argument", "what", "which", "who", "why"}
+RELATION_TERM_SKIP_TERMS = {"answer", "argument", "mean", "meaning", "means", "what", "which", "who", "why"}
 
 
 @lru_cache(maxsize=8192)
@@ -303,6 +309,7 @@ def _target_terms(frame: QueryFrame, question: str) -> list[str]:
     answer_tokens = _normalized_token_set(answer_material)
     scope_terms = _discourse_scope_query_terms(frame, question)
     relation_material = normalize(" ".join([frame.requested_relation, *frame.relation_terms, *frame.constraints]))
+    constraint_material = normalize(" ".join(frame.constraints))
     for anchor in frame.target_anchors:
         norm = normalize(anchor)
         if not norm:
@@ -323,12 +330,17 @@ def _target_terms(frame: QueryFrame, question: str) -> list[str]:
             # and answer="greenhouse pump state".
             if not (remainder & field_words):
                 continue
-        if anchor_tokens and len(anchor_tokens) == 1 and _has_term(relation_material, norm) and not anchor_visible:
+        if (
+            anchor_tokens
+            and len(anchor_tokens) == 1
+            and _has_term(relation_material, norm)
+            and (not anchor_visible or _has_term(constraint_material, norm))
+        ):
             # Model query DRS can put a requested relation/slot such as
             # "feedback" into target_anchors.  That is not an entity target and
             # should stay available through relation terms instead.
             continue
-        if frame.aggregation == "count" and anchor_tokens and not anchor_visible:
+        if frame.aggregation == "count" and anchor_tokens:
             relation_group_tokens: set[str] = set()
             for group in _relation_term_groups_for_frame(frame, target_terms=[]):
                 for term in group:
@@ -551,6 +563,23 @@ def _count_answer_unit_tokens(frame: QueryFrame) -> set[str]:
     return set(expand_terms(unit_tokens))
 
 
+def _stable_text_fingerprint(value: str) -> tuple[int, str]:
+    text = str(value or "")
+    return (len(text), hashlib.sha256(text.encode("utf-8", errors="replace")).hexdigest())
+
+
+def _bounded_cache_set(cache: dict[Any, Any], key: Any, value: Any, *, max_items: int = RECORD_CACHE_MAX_ITEMS) -> None:
+    if len(cache) >= max_items:
+        cache.clear()
+    cache[key] = value
+
+
+def _material_match_cache(records: dict[str, Any] | None) -> dict[tuple[int, str, tuple[str, ...]], bool] | None:
+    if records is None:
+        return None
+    return records.setdefault("_material_match_cache", {})
+
+
 def _has_term(material: str, term: str) -> bool:
     if not term:
         return False
@@ -568,6 +597,21 @@ def _has_term(material: str, term: str) -> bool:
 
 def _contains_any(material: str, terms: list[str]) -> bool:
     return any(_has_term(material, term) for term in terms)
+
+
+def _contains_any_for_records(records: dict[str, Any], material: str, terms: list[str]) -> bool:
+    normalized_terms = tuple(term for term in terms if term)
+    if not material or not normalized_terms:
+        return False
+    cache = _material_match_cache(records)
+    material_len, material_digest = _stable_text_fingerprint(material)
+    key = (material_len, material_digest, normalized_terms)
+    if cache is not None and key in cache:
+        return cache[key]
+    result = _contains_any(material, list(normalized_terms))
+    if cache is not None:
+        _bounded_cache_set(cache, key, result)
+    return result
 
 
 def _morphology_keys(token: str) -> set[str]:
@@ -590,7 +634,11 @@ def _document_material(document: Document, sentences: list[Sentence]) -> str:
     return normalize(" ".join(pieces))
 
 
-def _source_is_low_priority(rel_path: str, text: str) -> bool:
+_SOURCE_LOW_PRIORITY_CACHE_MAX = 65536
+_SOURCE_LOW_PRIORITY_CACHE: dict[tuple[str, int, str], bool] = {}
+
+
+def _source_low_priority_from_text(text: str) -> bool:
     quality = text_quality_metrics(text)
     quality_label = str(quality.get("semantic_quality") or "")
     token_count = int(quality.get("token_count") or 0)
@@ -601,6 +649,18 @@ def _source_is_low_priority(rel_path: str, text: str) -> bool:
         token_count >= 20
         and quality_label in {"ocr_corruption", "multilingual_word_salad", "word_salad", "plausible_babble"}
     )
+
+
+def _source_is_low_priority(rel_path: str, text: str) -> bool:
+    value = str(text or "")
+    value_len, value_digest = _stable_text_fingerprint(value)
+    key = (str(rel_path or ""), value_len, value_digest)
+    cached = _SOURCE_LOW_PRIORITY_CACHE.get(key)
+    if cached is not None:
+        return cached
+    result = _source_low_priority_from_text(value)
+    _bounded_cache_set(_SOURCE_LOW_PRIORITY_CACHE, key, result, max_items=_SOURCE_LOW_PRIORITY_CACHE_MAX)
+    return result
 
 
 def _rank_scope(
@@ -718,6 +778,22 @@ def _current_chunk_ids_for_documents(
     return list(dict.fromkeys(chunk_ids))
 
 
+def _bounded_identity_chunk_ids(
+    documents: list[Document],
+    sentences_by_document: dict[str, dict[int, Sentence]],
+    document_ids: list[str],
+    selected_chunk_ids: list[str],
+) -> list[str]:
+    selected = list(dict.fromkeys(selected_chunk_ids))
+    try:
+        max_chunks = int(os.environ.get("KMD_BOUNDED_IDENTITY_CHUNK_MAX", "512"))
+    except ValueError:
+        max_chunks = 512
+    cap = max(1, max_chunks)
+    document_chunks = _current_chunk_ids_for_documents(documents, sentences_by_document, document_ids)
+    return list(dict.fromkeys([*selected, *document_chunks]))[:cap]
+
+
 def _fetch_by_ids(connection: Any, table: str, key: str, ids: list[str]) -> list[dict[str, Any]]:
     if not ids:
         return []
@@ -748,29 +824,208 @@ def _merge_rows_by_id(rows: list[dict[str, Any]], extra_rows: list[dict[str, Any
     return list(merged.values())
 
 
+def _source_span_chunk_ids(connection: Any, span_ids: list[str]) -> dict[str, str]:
+    if not span_ids:
+        return {}
+    chunk_ids_by_span: dict[str, str] = {}
+    for group in _batched_values(span_ids):
+        placeholders = ",".join("?" for _ in group)
+        for row in connection.execute(
+            f"""
+            SELECT span_id, chunk_id
+            FROM source_spans
+            WHERE span_id IN ({placeholders})
+            """,
+            tuple(group),
+        ):
+            chunk_ids_by_span[str(row["span_id"])] = str(row["chunk_id"] or "")
+    return chunk_ids_by_span
+
+
+def _expand_seed_referents_by_label(connection: Any, run_id: str, seed_ids: list[str]) -> list[str]:
+    if not seed_ids:
+        return []
+    label_norms: list[str] = []
+    for group in _batched_values(seed_ids):
+        placeholders = ",".join("?" for _ in group)
+        for row in connection.execute(
+            f"""
+            SELECT canonical_label_norm
+            FROM referents
+            WHERE run_id=? AND referent_id IN ({placeholders})
+            """,
+            (run_id, *group),
+        ):
+            label_norm = normalize(str(row["canonical_label_norm"] or ""))
+            if not label_norm:
+                continue
+            label_tokens = content_tokens(label_norm)
+            if len(label_tokens) >= 2 or "-" in label_norm or "_" in label_norm or "/" in label_norm:
+                label_norms.append(label_norm)
+    expanded = list(dict.fromkeys(seed_ids))
+    for group in _batched_values(label_norms):
+        if len(expanded) >= IDENTITY_SEED_LABEL_MAX_REFERENTS:
+            break
+        placeholders = ",".join("?" for _ in group)
+        for row in connection.execute(
+            f"""
+            SELECT referent_id
+            FROM referents
+            WHERE run_id=? AND canonical_label_norm IN ({placeholders})
+            """,
+            (run_id, *group),
+        ):
+            referent_id = str(row["referent_id"] or "")
+            if referent_id and referent_id not in expanded:
+                expanded.append(referent_id)
+                if len(expanded) >= IDENTITY_SEED_LABEL_MAX_REFERENTS:
+                    break
+    return expanded
+
+
+def _selected_span_seed_referent_ids(
+    connection: Any,
+    run_id: str,
+    span_ids: list[str],
+    seed_mention_referents: list[dict[str, Any]],
+) -> list[str]:
+    seed_ids: list[str] = [
+        str(row.get("referent_id") or "")
+        for row in seed_mention_referents
+        if str(row.get("referent_id") or "")
+    ]
+    if not span_ids:
+        return list(dict.fromkeys(seed_ids))
+    condition_ids: list[str] = []
+    frame_ids: list[str] = []
+    for group in _batched_values(span_ids):
+        placeholders = ",".join("?" for _ in group)
+        seed_ids.extend(
+            str(row["referent_id"])
+            for row in connection.execute(
+                f"""
+                SELECT referent_id
+                FROM drs_referents
+                WHERE run_id=? AND source_span_id IN ({placeholders})
+                  AND referent_id IS NOT NULL
+                """,
+                (run_id, *group),
+            )
+            if str(row["referent_id"] or "")
+        )
+        condition_ids.extend(
+            str(row["drs_condition_id"])
+            for row in connection.execute(
+                f"""
+                SELECT drs_condition_id
+                FROM drs_conditions
+                WHERE run_id=? AND source_span_id IN ({placeholders})
+                """,
+                (run_id, *group),
+            )
+            if str(row["drs_condition_id"] or "")
+        )
+        frame_ids.extend(
+            str(row["frame_id"])
+            for row in connection.execute(
+                f"""
+                SELECT frame_id
+                FROM frames
+                WHERE run_id=? AND span_id IN ({placeholders})
+                """,
+                (run_id, *group),
+            )
+            if str(row["frame_id"] or "")
+        )
+        seed_ids.extend(
+            str(row["referent_id"])
+            for row in connection.execute(
+                f"""
+                SELECT referent_id
+                FROM temporal_edges
+                WHERE run_id=? AND source_span_id IN ({placeholders})
+                  AND referent_id IS NOT NULL
+                """,
+                (run_id, *group),
+            )
+            if str(row["referent_id"] or "")
+        )
+    for group in _batched_values(condition_ids):
+        placeholders = ",".join("?" for _ in group)
+        seed_ids.extend(
+            str(row["referent_id"])
+            for row in connection.execute(
+                f"""
+                SELECT referent_id
+                FROM drs_condition_arguments
+                WHERE run_id=? AND drs_condition_id IN ({placeholders})
+                  AND referent_id IS NOT NULL
+                """,
+                (run_id, *group),
+            )
+            if str(row["referent_id"] or "")
+        )
+    for group in _batched_values(frame_ids):
+        placeholders = ",".join("?" for _ in group)
+        seed_ids.extend(
+            str(row["referent_id"])
+            for row in connection.execute(
+                f"""
+                SELECT referent_id
+                FROM frame_arguments
+                WHERE frame_id IN ({placeholders})
+                  AND referent_id IS NOT NULL
+                """,
+                tuple(group),
+            )
+            if str(row["referent_id"] or "")
+        )
+    return _expand_seed_referents_by_label(
+        connection,
+        run_id,
+        list(dict.fromkeys(seed_id for seed_id in seed_ids if seed_id)),
+    )
+
+
 def _fetch_identity_hypotheses(
     connection: Any,
     run_id: str,
     span_ids: list[str],
     document_ids: list[str],
+    seed_referent_ids: list[str] | None = None,
     current_document_chunk_ids: list[str] | None = None,
 ) -> list[dict[str, Any]]:
+    try:
+        max_edges = max(1, int(os.environ.get("KMD_BOUNDED_IDENTITY_EDGE_MAX", str(IDENTITY_LOAD_MAX_EDGES))))
+    except ValueError:
+        max_edges = IDENTITY_LOAD_MAX_EDGES
     rows_by_id: dict[str, dict[str, Any]] = {}
+    traversal_seed_ids = set(seed_referent_ids or [])
+    current_chunk_id_set = set(current_document_chunk_ids) if current_document_chunk_ids is not None else None
+    current_span_chunk_ids: dict[str, str] = {}
+
+    def source_chunk_is_current(row: dict[str, Any]) -> bool:
+        if current_chunk_id_set is None:
+            return True
+        source_span_id = str(row.get("source_span_id") or "")
+        if not source_span_id:
+            return True
+        if source_span_id not in current_span_chunk_ids:
+            current_span_chunk_ids.update(_source_span_chunk_ids(connection, [source_span_id]))
+        return current_span_chunk_ids.get(source_span_id) in current_chunk_id_set
 
     def add_rows(sql: str, params: tuple[Any, ...]) -> None:
         for row in connection.execute(sql, params):
             payload = dict(row)
+            if not source_chunk_is_current(payload):
+                continue
             key = str(payload.get("hypothesis_id") or json.dumps(payload, sort_keys=True, default=str))
+            if key in rows_by_id:
+                continue
+            if len(rows_by_id) >= max_edges:
+                return
             rows_by_id.setdefault(key, payload)
 
-    add_rows(
-        """
-        SELECT DISTINCT ih.*
-        FROM identity_hypotheses ih
-        WHERE ih.run_id=? AND ih.source_span_id IS NULL
-        """,
-        (run_id,),
-    )
     for group in _batched_values(span_ids):
         placeholders = ",".join("?" for _ in group)
         add_rows(
@@ -781,7 +1036,7 @@ def _fetch_identity_hypotheses(
             """,
             (run_id, *group),
         )
-    if current_document_chunk_ids is not None:
+    if current_document_chunk_ids is not None and not span_ids and not traversal_seed_ids:
         for group in _batched_values(current_document_chunk_ids):
             placeholders = ",".join("?" for _ in group)
             add_rows(
@@ -793,18 +1048,45 @@ def _fetch_identity_hypotheses(
                 """,
                 (run_id, *group),
             )
-    else:
-        for group in _batched_values(document_ids):
-            placeholders = ",".join("?" for _ in group)
-            add_rows(
-                f"""
-                SELECT DISTINCT ih.*
-                FROM identity_hypotheses ih
-                JOIN source_spans s ON s.span_id=ih.source_span_id
-                WHERE ih.run_id=? AND s.document_id IN ({placeholders})
-                """,
-                (run_id, *group),
-            )
+
+    frontier = set(ref_id for ref_id in traversal_seed_ids if ref_id)
+    visited = set(frontier)
+    for _depth in range(IDENTITY_GRAPH_MAX_DEPTH):
+        if not frontier or len(rows_by_id) >= max_edges:
+            break
+        next_frontier: set[str] = set()
+        for side in ("left_referent_id", "right_referent_id"):
+            other_side = "right_referent_id" if side == "left_referent_id" else "left_referent_id"
+            for group in _batched_values(list(frontier)):
+                if len(rows_by_id) >= max_edges:
+                    break
+                placeholders = ",".join("?" for _ in group)
+                rows = connection.execute(
+                    f"""
+                    SELECT DISTINCT ih.*
+                    FROM identity_hypotheses ih
+                    WHERE ih.run_id=? AND ih.{side} IN ({placeholders})
+                    """,
+                    (run_id, *group),
+                ).fetchall()
+                for row in rows:
+                    payload = dict(row)
+                    if not source_chunk_is_current(payload):
+                        continue
+                    key = str(payload.get("hypothesis_id") or json.dumps(payload, sort_keys=True, default=str))
+                    if key not in rows_by_id:
+                        if len(rows_by_id) >= max_edges:
+                            break
+                        rows_by_id[key] = payload
+                    if not identity_relation_allows_expansion(str(payload.get("relation") or "")):
+                        continue
+                    other_ref = str(payload.get(other_side) or "")
+                    if other_ref and other_ref not in visited:
+                        next_frontier.add(other_ref)
+        if not next_frontier:
+            break
+        visited.update(next_frontier)
+        frontier = next_frontier
     return list(rows_by_id.values())
 
 
@@ -854,11 +1136,25 @@ def _load_records(
     chunk_ids = [chunk["chunk_id"] for chunk in chunks]
     spans = _fetch_by_ids(connection, "source_spans", "chunk_id", chunk_ids)
     span_ids = [span["span_id"] for span in spans]
+    seed_mentions = _fetch_by_ids(connection, "mentions", "span_id", span_ids)
+    seed_mention_referents = _fetch_by_ids(
+        connection,
+        "mention_referents",
+        "mention_id",
+        [mention["mention_id"] for mention in seed_mentions],
+    )
+    seed_referent_ids = _selected_span_seed_referent_ids(
+        connection,
+        run_id,
+        span_ids,
+        seed_mention_referents,
+    )
     identity_hypotheses = _fetch_identity_hypotheses(
         connection,
         run_id,
         span_ids,
         document_ids,
+        seed_referent_ids,
         current_document_chunk_ids,
     )
     identity_span_ids = list(
@@ -881,6 +1177,13 @@ def _load_records(
             chunks = _merge_rows_by_id(chunks, _fetch_by_ids(connection, "chunks", "chunk_id", extra_chunk_ids), "chunk_id")
         chunk_ids = [chunk["chunk_id"] for chunk in chunks]
         span_ids = [span["span_id"] for span in spans]
+    mentions = _fetch_by_ids(connection, "mentions", "span_id", span_ids)
+    mention_referents = _fetch_by_ids(
+        connection,
+        "mention_referents",
+        "mention_id",
+        [mention["mention_id"] for mention in mentions],
+    )
     drs_identity_hypotheses = _fetch_by_ids(
         connection,
         "drs_identity_hypotheses",
@@ -911,6 +1214,16 @@ def _load_records(
         dict.fromkeys(
             [
                 *material_referent_ids,
+                *[
+                    str(row.get("referent_id") or "")
+                    for row in mention_referents
+                    if str(row.get("referent_id") or "")
+                ],
+                *[
+                    str(row.get("referent_id") or "")
+                    for row in arguments
+                    if str(row.get("referent_id") or "")
+                ],
                 *[
                     str(row.get("referent_id") or "")
                     for row in temporal
@@ -944,10 +1257,12 @@ def _load_records(
         doc = docs_by_document_id.get(str(chunk.get("document_id")), {})
         rel_path = str(doc.get("rel_path") or "")
         document_context_norm_by_rel_path[rel_path] += " " + normalize(str(chunk.get("text") or ""))
-    return {
+    records = {
         "documents": documents,
         "chunks": chunks,
         "source_spans": spans,
+        "mentions": mentions,
+        "mention_referents": mention_referents,
         "frames": frames,
         "frame_arguments": arguments,
         "drs_conditions": drs_conditions,
@@ -965,6 +1280,8 @@ def _load_records(
             "documents": len(documents),
             "chunks": len(chunks),
             "source_spans": len(spans),
+            "mentions": len(mentions),
+            "mention_referents": len(mention_referents),
             "frames": len(frames),
             "frame_arguments": len(arguments),
             "drs_conditions": len(drs_conditions),
@@ -979,6 +1296,83 @@ def _load_records(
             "context_carriers": len(context_carriers),
         },
     }
+    _finalize_records(records)
+    return records
+
+
+def _index_rows_by_value(rows: list[dict[str, Any]], key: str) -> dict[str, list[dict[str, Any]]]:
+    grouped: dict[str, list[dict[str, Any]]] = defaultdict(list)
+    for row in rows:
+        grouped[str(row.get(key) or "")].append(row)
+    return grouped
+
+
+def _relation_row_key(row: dict[str, Any]) -> str:
+    return str(row.get("relation_id") or id(row))
+
+
+def _build_record_groups(records: dict[str, Any]) -> dict[str, list[dict[str, Any]]]:
+    groups: dict[str, list[dict[str, Any]]] = defaultdict(list)
+    spans_by_id = _spans_by_id(records)
+    for row in records.get("relations", []):
+        metadata = _relation_metadata(row)
+        group = str(metadata.get("record_group") or "")
+        if not group:
+            continue
+        if group.startswith("section_group_"):
+            span = spans_by_id.get(str(row.get("source_span_id") or ""), {})
+            source_scope = str(metadata.get("document_id") or span.get("document_id") or "")
+        else:
+            source_scope = str(metadata.get("sentence_group") or row.get("source_span_id") or "")
+        groups["|".join([source_scope, group]) if source_scope else group].append(row)
+    return groups
+
+
+def _finalize_records(records: dict[str, Any]) -> None:
+    if records.get("_finalized_record_views"):
+        return
+    indexes = records.setdefault("_indexes", {})
+    indexes["documents_by_id"] = {
+        str(row.get("document_id") or ""): row
+        for row in records.get("documents", [])
+    }
+    indexes["documents_by_rel_path"] = {
+        str(row.get("rel_path") or ""): row
+        for row in records.get("documents", [])
+    }
+    indexes["chunks_by_id"] = {
+        str(row.get("chunk_id") or ""): row
+        for row in records.get("chunks", [])
+    }
+    indexes["spans_by_id"] = {
+        str(row.get("span_id") or ""): row
+        for row in records.get("source_spans", [])
+    }
+    indexes["spans_by_doc"] = _index_rows_by_value(records.get("source_spans", []), "document_id")
+    indexes["spans_by_chunk"] = _index_rows_by_value(records.get("source_spans", []), "chunk_id")
+    indexes["mentions_by_span"] = _index_rows_by_value(records.get("mentions", []), "span_id")
+    indexes["mention_referents_by_mention"] = _index_rows_by_value(
+        records.get("mention_referents", []),
+        "mention_id",
+    )
+    indexes["relations_by_type"] = _index_rows_by_value(records.get("relations", []), "relation_type")
+    indexes["relations_by_span"] = _index_rows_by_value(records.get("relations", []), "source_span_id")
+    indexes["frames_by_span"] = _index_rows_by_value(records.get("frames", []), "span_id")
+    indexes["args_by_frame"] = _index_rows_by_value(records.get("frame_arguments", []), "frame_id")
+    indexes["temporal_by_span"] = _index_rows_by_value(records.get("temporal_edges", []), "source_span_id")
+    indexes["metadata_by_doc"] = _index_rows_by_value(records.get("metadata_records", []), "document_id")
+    identity_edges_by_ref: dict[str, list[dict[str, Any]]] = defaultdict(list)
+    for row in records.get("identity_hypotheses", []):
+        for ref_key in ("left_referent_id", "right_referent_id"):
+            ref_id = str(row.get(ref_key) or "")
+            if ref_id:
+                identity_edges_by_ref[ref_id].append(row)
+    indexes["identity_edges_by_ref"] = identity_edges_by_ref
+    records["_record_groups_cache"] = _build_record_groups(records)
+    records.setdefault("_relation_local_material_cache", {})
+    records.setdefault("_group_material_cache", {})
+    records.setdefault("_material_match_cache", {})
+    records["_finalized_record_views"] = True
 
 
 def _indexed_rows(records: dict[str, Any], cache_key: str, table_key: str, id_key: str) -> dict[str, dict[str, Any]]:
@@ -1010,6 +1404,54 @@ def _spans_by_id(records: dict[str, Any]) -> dict[str, dict[str, Any]]:
     return _indexed_rows(records, "spans_by_id", "source_spans", "span_id")
 
 
+def _spans_by_doc(records: dict[str, Any]) -> dict[str, list[dict[str, Any]]]:
+    indexes = records.setdefault("_indexes", {})
+    if "spans_by_doc" not in indexes:
+        indexes["spans_by_doc"] = _index_rows_by_value(records.get("source_spans", []), "document_id")
+    return indexes["spans_by_doc"]
+
+
+def _relations_by_type(records: dict[str, Any]) -> dict[str, list[dict[str, Any]]]:
+    indexes = records.setdefault("_indexes", {})
+    if "relations_by_type" not in indexes:
+        indexes["relations_by_type"] = _index_rows_by_value(records.get("relations", []), "relation_type")
+    return indexes["relations_by_type"]
+
+
+def _relations_by_span(records: dict[str, Any]) -> dict[str, list[dict[str, Any]]]:
+    indexes = records.setdefault("_indexes", {})
+    if "relations_by_span" not in indexes:
+        indexes["relations_by_span"] = _index_rows_by_value(records.get("relations", []), "source_span_id")
+    return indexes["relations_by_span"]
+
+
+def _frames_by_span(records: dict[str, Any]) -> dict[str, list[dict[str, Any]]]:
+    indexes = records.setdefault("_indexes", {})
+    if "frames_by_span" not in indexes:
+        indexes["frames_by_span"] = _index_rows_by_value(records.get("frames", []), "span_id")
+    return indexes["frames_by_span"]
+
+
+def _args_by_frame(records: dict[str, Any]) -> dict[str, list[dict[str, Any]]]:
+    indexes = records.setdefault("_indexes", {})
+    if "args_by_frame" not in indexes:
+        indexes["args_by_frame"] = _index_rows_by_value(records.get("frame_arguments", []), "frame_id")
+    return indexes["args_by_frame"]
+
+
+def _identity_edges_by_ref(records: dict[str, Any]) -> dict[str, list[dict[str, Any]]]:
+    indexes = records.setdefault("_indexes", {})
+    if "identity_edges_by_ref" not in indexes:
+        grouped: dict[str, list[dict[str, Any]]] = defaultdict(list)
+        for row in records.get("identity_hypotheses", []):
+            for key in ("left_referent_id", "right_referent_id"):
+                ref_id = str(row.get(key) or "")
+                if ref_id:
+                    grouped[ref_id].append(row)
+        indexes["identity_edges_by_ref"] = grouped
+    return indexes["identity_edges_by_ref"]
+
+
 def _contexts_by_id(records: dict[str, Any]) -> dict[str, dict[str, Any]]:
     return _indexed_rows(records, "contexts_by_id", "contexts", "context_id")
 
@@ -1030,6 +1472,11 @@ def _context_chain(context_id: str, records: dict[str, Any]) -> list[dict[str, A
 
 
 def _context_chain_material(context_id: str, records: dict[str, Any]) -> str:
+    cache = records.setdefault("_context_chain_material_cache", {})
+    key = str(context_id or "")
+    cached = cache.get(key)
+    if cached is not None:
+        return cached
     fields: list[str] = []
     for context in _context_chain(context_id, records):
         fields.extend(
@@ -1039,7 +1486,9 @@ def _context_chain_material(context_id: str, records: dict[str, Any]) -> str:
                 str(context.get("evidence_surface") or ""),
             ]
         )
-    return normalize(" ".join(fields))
+    material = normalize(" ".join(fields))
+    cache[key] = material
+    return material
 
 
 def _context_requirements(frame: QueryFrame) -> list[str]:
@@ -1047,7 +1496,8 @@ def _context_requirements(frame: QueryFrame) -> list[str]:
     return list(dict.fromkeys(normalize(value) for value in values if normalize(value)))
 
 
-def _terms_match_material(terms: list[str], material: str, *, use_morphology: bool = True) -> bool:
+@lru_cache(maxsize=131072)
+def _terms_match_material_cached(terms: tuple[str, ...], material: str, use_morphology: bool) -> bool:
     if not terms or not material:
         return False
     material_tokens = set(content_tokens(material))
@@ -1069,6 +1519,10 @@ def _terms_match_material(terms: list[str], material: str, *, use_morphology: bo
         ):
             return True
     return False
+
+
+def _terms_match_material(terms: list[str], material: str, *, use_morphology: bool = True) -> bool:
+    return _terms_match_material_cached(tuple(terms), str(material or ""), bool(use_morphology))
 
 
 def _context_satisfies_terms(context_id: str, records: dict[str, Any], terms: list[str], *, require_all: bool) -> bool:
@@ -1131,20 +1585,27 @@ def _identity_labels_for_referent(
         return []
     visited = {referent_id}
     frontier = {referent_id}
+    edges_by_ref = _identity_edges_by_ref(records)
     for _depth in range(IDENTITY_GRAPH_MAX_DEPTH):
         next_frontier: set[str] = set()
-        for hypothesis in records.get("identity_hypotheses", []):
-            if not identity_relation_allows_expansion(str(hypothesis.get("relation") or "")):
-                continue
-            context_id = str(hypothesis.get("context_id") or "")
-            if not _identity_context_accessible(context_id, records, frame):
-                continue
-            left = str(hypothesis.get("left_referent_id") or "")
-            right = str(hypothesis.get("right_referent_id") or "")
-            if left in frontier and right and right not in visited:
-                next_frontier.add(right)
-            if right in frontier and left and left not in visited:
-                next_frontier.add(left)
+        seen_hypotheses: set[str] = set()
+        for current_ref in frontier:
+            for hypothesis in edges_by_ref.get(current_ref, []):
+                hypothesis_id = str(hypothesis.get("hypothesis_id") or id(hypothesis))
+                if hypothesis_id in seen_hypotheses:
+                    continue
+                seen_hypotheses.add(hypothesis_id)
+                if not identity_relation_allows_expansion(str(hypothesis.get("relation") or "")):
+                    continue
+                context_id = str(hypothesis.get("context_id") or "")
+                if not _identity_context_accessible(context_id, records, frame):
+                    continue
+                left = str(hypothesis.get("left_referent_id") or "")
+                right = str(hypothesis.get("right_referent_id") or "")
+                if left in frontier and right and right not in visited:
+                    next_frontier.add(right)
+                if right in frontier and left and left not in visited:
+                    next_frontier.add(left)
         if not next_frontier:
             break
         visited.update(next_frontier)
@@ -1196,12 +1657,7 @@ def _identity_expansion(
             for term, term_tokens in zip(seed_terms, seed_token_sets)
         ):
             seed_ids.add(referent_id)
-    edge_referent_ids = {
-        str(hypothesis.get(key) or "")
-        for hypothesis in records.get("identity_hypotheses", [])
-        for key in ("left_referent_id", "right_referent_id")
-        if str(hypothesis.get(key) or "")
-    }
+    edge_referent_ids = set(_identity_edges_by_ref(records))
     single_token_terms = [
         term
         for term in normalized_terms
@@ -1233,28 +1689,35 @@ def _identity_expansion(
     seen_edges: set[str] = set()
     frontier = set(seed_ids)
     visited = set(seed_ids)
+    edges_by_ref = _identity_edges_by_ref(records)
     for _depth in range(IDENTITY_GRAPH_MAX_DEPTH):
         next_frontier: set[str] = set()
-        for hypothesis in records.get("identity_hypotheses", []):
-            if not identity_relation_allows_expansion(str(hypothesis.get("relation") or "")):
-                continue
-            context_id = str(hypothesis.get("context_id") or "")
-            if not _identity_context_accessible(context_id, records, frame):
-                continue
-            left = str(hypothesis.get("left_referent_id") or "")
-            right = str(hypothesis.get("right_referent_id") or "")
-            if left in frontier and right and right not in visited:
-                next_frontier.add(right)
-                edge_id = str(hypothesis.get("hypothesis_id") or f"{left}->{right}")
-                if edge_id not in seen_edges:
-                    seen_edges.add(edge_id)
-                    expansion_evidence.append(_identity_hypothesis_evidence(hypothesis, records))
-            if right in frontier and left and left not in visited:
-                next_frontier.add(left)
-                edge_id = str(hypothesis.get("hypothesis_id") or f"{right}->{left}")
-                if edge_id not in seen_edges:
-                    seen_edges.add(edge_id)
-                    expansion_evidence.append(_identity_hypothesis_evidence(hypothesis, records))
+        seen_hypotheses: set[str] = set()
+        for current_ref in frontier:
+            for hypothesis in edges_by_ref.get(current_ref, []):
+                hypothesis_id = str(hypothesis.get("hypothesis_id") or id(hypothesis))
+                if hypothesis_id in seen_hypotheses:
+                    continue
+                seen_hypotheses.add(hypothesis_id)
+                if not identity_relation_allows_expansion(str(hypothesis.get("relation") or "")):
+                    continue
+                context_id = str(hypothesis.get("context_id") or "")
+                if not _identity_context_accessible(context_id, records, frame):
+                    continue
+                left = str(hypothesis.get("left_referent_id") or "")
+                right = str(hypothesis.get("right_referent_id") or "")
+                if left in frontier and right and right not in visited:
+                    next_frontier.add(right)
+                    edge_id = str(hypothesis.get("hypothesis_id") or f"{left}->{right}")
+                    if edge_id not in seen_edges:
+                        seen_edges.add(edge_id)
+                        expansion_evidence.append(_identity_hypothesis_evidence(hypothesis, records))
+                if right in frontier and left and left not in visited:
+                    next_frontier.add(left)
+                    edge_id = str(hypothesis.get("hypothesis_id") or f"{right}->{left}")
+                    if edge_id not in seen_edges:
+                        seen_edges.add(edge_id)
+                        expansion_evidence.append(_identity_hypothesis_evidence(hypothesis, records))
         if not next_frontier:
             break
         visited.update(next_frontier)
@@ -1750,11 +2213,28 @@ def _metadata_evidence(record: dict[str, Any], records: dict[str, Any]) -> Evide
     )
 
 
+def _context_accessible_cache_key(context_id: str, frame: QueryFrame) -> tuple[str, tuple[str, ...], str, str, bool]:
+    return (
+        str(context_id or ""),
+        tuple(_context_requirements(frame)),
+        normalize(frame.requested_relation),
+        str(frame.answer_type or ""),
+        bool(frame.negated),
+    )
+
+
 def _context_accessible(context_id: str, records: dict[str, Any], frame: QueryFrame) -> bool:
+    cache = records.setdefault("_context_accessible_cache", {})
+    cache_key = _context_accessible_cache_key(context_id, frame)
+    cached = cache.get(cache_key)
+    if cached is not None:
+        return cached
     chain = _context_chain(context_id, records)
     if not chain:
+        cache[cache_key] = True
         return True
     if not _context_satisfies_requirements(context_id, records, frame):
+        cache[cache_key] = False
         return False
     requirements = _context_requirements(frame)
     relation_requests_context = _context_requested_by_relation(context_id, records, frame)
@@ -1767,6 +2247,7 @@ def _context_accessible(context_id: str, records: dict[str, Any], frame: QueryFr
                 " ".join([kind, str(context.get("holder_surface") or "")])
             )
             if not _terms_match_material(requirements, context_surface):
+                cache[cache_key] = False
                 return False
         if kind.startswith(INACCESSIBLE_CONTEXT_PREFIXES):
             context_surface = normalize(
@@ -1776,6 +2257,7 @@ def _context_accessible(context_id: str, records: dict[str, Any], frame: QueryFr
                 relation_requests_context or _terms_match_material(requirements, context_surface)
             ):
                 continue
+            cache[cache_key] = False
             return False
         if kind.startswith("drs:") and kind != "drs:asserted":
             context_surface = normalize(
@@ -1785,12 +2267,21 @@ def _context_accessible(context_id: str, records: dict[str, Any], frame: QueryFr
                 continue
             if kind == "drs:negated" and (frame.answer_type == "boolean" or frame.negated):
                 continue
+            cache[cache_key] = False
             return False
+    cache[cache_key] = True
     return True
 
 
 def _relation_scope_accessible(row: dict[str, Any], records: dict[str, Any], frame: QueryFrame) -> bool:
     context_id = str(row.get("context_id") or "")
+    row_key = str(row.get("relation_id") or "")
+    cache = records.setdefault("_relation_scope_accessible_cache", {})
+    cache_key = (row_key, context_id, _context_accessible_cache_key(context_id, frame))
+    if row_key:
+        cached = cache.get(cache_key)
+        if cached is not None:
+            return cached
     requirements = _context_requirements(frame)
     relation_type = str(row.get("relation_type") or "")
     declared_scope = normalize(str(row.get("subject") or "")) if relation_type == "drs_condition" else ""
@@ -1805,8 +2296,12 @@ def _relation_scope_accessible(row: dict[str, Any], records: dict[str, Any], fra
     )
     if declared_scope and declared_scope != "asserted":
         if not (requirements and all(_terms_match_material([requirement], scope_material) for requirement in requirements)):
+            if row_key:
+                cache[cache_key] = False
             return False
     if _context_accessible(context_id, records, frame):
+        if row_key:
+            cache[cache_key] = True
         return True
     if requirements and relation_type == "drs_condition" and declared_scope in {"", "asserted"}:
         chain_kinds = {
@@ -1823,26 +2318,50 @@ def _relation_scope_accessible(row: dict[str, Any], records: dict[str, Any], fra
                     ]
                 )
             )
-            if frame.requested_relation and _terms_match_material([frame.requested_relation], relation_material):
+            if (
+                frame.requested_relation
+                and _terms_match_material([frame.requested_relation], relation_material)
+                and (
+                    frame.answer_type in {"content_phrase", "unknown"}
+                    or all(_terms_match_material([requirement], relation_material) for requirement in requirements)
+                )
+            ):
+                if row_key:
+                    cache[cache_key] = True
                 return True
     if not requirements:
+        if row_key:
+            cache[cache_key] = False
         return False
     chain = _context_chain(context_id, records)
     for context in chain:
         kind = normalize(str(context.get("kind") or "asserted"))
         if kind.startswith(INACCESSIBLE_CONTEXT_PREFIXES) or kind.startswith("polarity:"):
+            if row_key:
+                cache[cache_key] = False
             return False
         if kind.startswith("drs:") and kind != "drs:asserted":
+            if row_key:
+                cache[cache_key] = False
             return False
-    return all(_terms_match_material([requirement], scope_material) for requirement in requirements)
+    result = all(_terms_match_material([requirement], scope_material) for requirement in requirements)
+    if row_key:
+        cache[cache_key] = result
+    return result
 
 
 def _relation_metadata(row: dict[str, Any]) -> dict[str, Any]:
+    cached = row.get("_relation_metadata_cache")
+    if isinstance(cached, dict):
+        return cached
     try:
         value = json.loads(str(row.get("metadata_json") or "{}"))
     except json.JSONDecodeError:
-        return {}
-    return value if isinstance(value, dict) else {}
+        value = {}
+    if not isinstance(value, dict):
+        value = {}
+    row["_relation_metadata_cache"] = value
+    return value
 
 
 
@@ -1900,6 +2419,14 @@ def _relation_local_material(
     include_context: bool = False,
     records: dict[str, Any] | None = None,
 ) -> str:
+    if records is not None:
+        cache = records.setdefault("_relation_local_material_cache", {})
+        evidence_key = evidence.span_id if include_evidence and evidence is not None else ""
+        context_key = str(row.get("context_id") or "") if include_context else ""
+        cache_key = (_relation_row_key(row), bool(include_evidence), bool(include_context), evidence_key, context_key)
+        cached = cache.get(cache_key)
+        if cached is not None:
+            return cached
     metadata = _relation_metadata(row)
     fields = [
         row.get("relation_type"),
@@ -1921,7 +2448,10 @@ def _relation_local_material(
         fields.append(evidence.text)
     if include_context and records is not None:
         fields.append(_context_chain_material(str(row.get("context_id") or ""), records))
-    return normalize(" ".join(str(item or "") for item in fields))
+    material = normalize(" ".join(str(item or "") for item in fields))
+    if records is not None:
+        _bounded_cache_set(cache, cache_key, material)
+    return material
 
 
 def _relation_selector_material(
@@ -1966,6 +2496,9 @@ RELATION_BINDING_GENERIC_TERMS = {
     "do",
     "does",
     "is",
+    "mean",
+    "meaning",
+    "means",
     "are",
     "was",
     "were",
@@ -2183,6 +2716,14 @@ def _drs_argument_matches_expected_type(arg: dict[str, Any], expected: ExpectedA
     if expected_type in {"person", "actor", "organization"}:
         return any(_has_term(material, term) for term in ["person", "actor", "agent", "speaker", "holder", "source"])
     return False
+
+
+def _frame_argument_matches_expected_type(arg: dict[str, Any], expected: ExpectedAnswer) -> bool:
+    expected_type = normalize(expected.answer_type)
+    if expected_type != "state":
+        return False
+    material = normalize(" ".join([str(arg.get("role") or ""), str(arg.get("value_type") or "")]))
+    return _has_term(material, "state") or _has_term(material, "status") or _has_term(material, "condition")
 
 
 def _drs_argument_is_answer_value_carrier(arg: dict[str, Any], expected: ExpectedAnswer) -> bool:
@@ -2482,9 +3023,10 @@ def _drs_condition_has_target_argument(
 ) -> bool:
     if not target_terms or str(row.get("relation_type") or "") != "drs_condition":
         return True
-    context_material = _context_chain_material(str(row.get("context_id") or ""), records)
-    if context_material and _contains_any(context_material, target_terms):
-        return True
+    for context in _context_chain(str(row.get("context_id") or ""), records):
+        holder_material = normalize(str(context.get("holder_surface") or ""))
+        if holder_material and _contains_any(holder_material, target_terms):
+            return True
     conditions = _drs_conditions_for_relation(row, records)
     if not conditions:
         return True
@@ -2814,6 +3356,8 @@ def _value_contains_target(value: str, target_terms: list[str]) -> bool:
 def _rejects_bound_target_value(expected: ExpectedAnswer, value: str, target_terms: list[str]) -> bool:
     if expected.answer_type == "boolean":
         return False
+    if expected.answer_type in {"url", "file_path"}:
+        return False
     if expected.answer_type in {"content_phrase", "metadata_value", "unknown"}:
         return False
     return _value_contains_target(value, target_terms)
@@ -2924,7 +3468,9 @@ def _answer_values_from_relation(
             allow_row_value_fallback = True
             if expected.answer_type == "content_phrase" and records is not None:
                 args_by_condition = _drs_arguments_by_condition_id(records)
-                allow_row_value_fallback = not any(
+                context_material = _context_chain_material(str(row.get("context_id") or ""), records)
+                context_matches_target = bool(target_terms and _contains_any(context_material, target_terms))
+                allow_row_value_fallback = context_matches_target or not any(
                     _drs_condition_has_unmatched_content_holder(
                         args_by_condition.get(str(condition.get("drs_condition_id") or ""), []),
                         records,
@@ -3063,6 +3609,14 @@ def _answer_values_from_frame(
             # itself satisfies those slot words, keep the condition arguments
             # and let target/relation filtering below remove non-answer args.
             candidate_args = args
+    elif expected.answer_type == "state":
+        state_args = [arg for arg in args if _frame_argument_matches_expected_type(arg, expected)]
+        if state_args:
+            candidate_args = state_args
+        elif str(frame_row.get("source") or "") == "local_model":
+            candidate_args = []
+        else:
+            return []
     values: list[str] = []
     for arg in candidate_args:
         surface = _locative_answer_value(frame_row, str(arg.get("surface") or ""), relation_terms)
@@ -3148,13 +3702,9 @@ def _split_match_score(full_material: str, local_material: str, target_terms: li
 
 def _bind_frame_conditions(records: dict[str, Any], frame: QueryFrame, expected: ExpectedAnswer, target_terms: list[str], relation_terms: list[str]) -> list[tuple[float, str, Evidence, str]]:
     answer_slot_terms = _answer_slot_terms(frame, target_terms)
-    args_by_frame: dict[str, list[dict[str, Any]]] = defaultdict(list)
-    for arg in records.get("frame_arguments", []):
-        args_by_frame[str(arg.get("frame_id"))].append(arg)
+    args_by_frame = _args_by_frame(records)
     drs_relations_by_frame_key: dict[tuple[str, str, str], list[dict[str, Any]]] = defaultdict(list)
-    for relation in records.get("relations", []):
-        if str(relation.get("relation_type") or "") != "drs_condition":
-            continue
+    for relation in _relations_by_type(records).get("drs_condition", []):
         key = (
             str(relation.get("source_span_id") or ""),
             normalize(str(relation.get("predicate") or "")),
@@ -3162,9 +3712,7 @@ def _bind_frame_conditions(records: dict[str, Any], frame: QueryFrame, expected:
         )
         drs_relations_by_frame_key[key].append(relation)
     frame_types_by_span_predicate: dict[tuple[str, str], list[str]] = defaultdict(list)
-    for relation in records.get("relations", []):
-        if str(relation.get("relation_type") or "") != "semantic_frame":
-            continue
+    for relation in _relations_by_type(records).get("semantic_frame", []):
         key = (str(relation.get("source_span_id") or ""), normalize(str(relation.get("predicate") or "")))
         frame_type = str(relation.get("subject") or "")
         if frame_type:
@@ -3604,6 +4152,20 @@ def _document_scoped_drs_condition_candidates(
             continue
         if not _relation_scope_accessible(row, records, frame):
             continue
+        if target_terms and expected.answer_type == "state":
+            explicit_args: list[dict[str, Any]] = []
+            args_by_condition = _drs_arguments_by_condition_id(records)
+            for condition in _drs_conditions_for_relation(row, records):
+                explicit_args.extend(
+                    arg
+                    for arg in args_by_condition.get(str(condition.get("drs_condition_id") or ""), [])
+                    if str(arg.get("referent_id") or "") or normalize(str(arg.get("target_kind") or "")) == "referent"
+                )
+            if explicit_args and not any(
+                _argument_values_match_target(_drs_argument_surface_values(arg, records, frame), target_terms)
+                for arg in explicit_args
+            ):
+                continue
         span_id = str(row.get("source_span_id") or "")
         document_id = str(spans.get(span_id, {}).get("document_id") or "")
         if document_id not in target_document_ids:
@@ -3682,8 +4244,6 @@ def _document_scoped_relation_value_candidates(
         if _source_is_low_priority(evidence.rel_path, evidence.text) and not _structured_source_row(row):
             continue
         local_material = _relation_selector_material(row, evidence, include_evidence=True)
-        if not _target_anchor_groups_covered(local_material, frame, target_terms):
-            continue
         if require_relation_predicate and relation_only_terms and not _contains_any(local_material, relation_only_terms):
             continue
         row_material = _relation_selector_material(row, evidence, include_evidence=False)
@@ -3704,6 +4264,8 @@ def _document_scoped_relation_value_candidates(
                 answer_slot_terms,
                 target_terms,
             )
+        if not _target_anchor_groups_covered(local_material, frame, target_terms) and not row_selector_matches:
+            continue
         if not row_selector_matches:
             continue
         for value in _answer_values_from_relation(row, evidence, expected, target_terms, relation_terms, answer_slot_terms):
@@ -3946,17 +4508,11 @@ def _structural_chain_candidates(
 
 
 def _record_groups(records: dict[str, Any]) -> dict[str, list[dict[str, Any]]]:
-    groups: dict[str, list[dict[str, Any]]] = defaultdict(list)
-    for row in records.get("relations", []):
-        metadata = _relation_metadata(row)
-        group = str(metadata.get("record_group") or "")
-        if not group:
-            continue
-        if group.startswith("section_group_"):
-            source_scope = str(row.get("document_id") or metadata.get("document_id") or "")
-        else:
-            source_scope = str(metadata.get("sentence_group") or row.get("source_span_id") or "")
-        groups["|".join([source_scope, group]) if source_scope else group].append(row)
+    cached = records.get("_record_groups_cache")
+    if isinstance(cached, dict):
+        return cached
+    groups = _build_record_groups(records)
+    records["_record_groups_cache"] = groups
     return groups
 
 
@@ -3967,6 +4523,12 @@ def _group_material(
     include_document_context: bool = False,
     include_source_evidence: bool = True,
 ) -> str:
+    cache = records.setdefault("_group_material_cache", {})
+    row_keys = tuple(_relation_row_key(row) for row in rows)
+    cache_key = (row_keys, bool(include_document_context), bool(include_source_evidence))
+    cached = cache.get(cache_key)
+    if cached is not None:
+        return cached
     parts: list[str] = []
     context_rel_paths: set[str] = set()
     for row in rows:
@@ -3980,7 +4542,9 @@ def _group_material(
         if include_document_context and evidence.rel_path not in context_rel_paths:
             context_rel_paths.add(evidence.rel_path)
             parts.append((records.get("document_context_norm_by_rel_path") or {}).get(evidence.rel_path, ""))
-    return normalize(" ".join(parts))
+    material = normalize(" ".join(parts))
+    _bounded_cache_set(cache, cache_key, material, max_items=GROUP_MATERIAL_CACHE_MAX_ITEMS)
+    return material
 
 
 def _bind_record_groups(
@@ -4280,6 +4844,267 @@ def _count_matching_record_groups(
     for group_id, evidence in matched:
         unique.setdefault(group_id, evidence)
     return len(unique), list(unique.values())[:4]
+
+
+COUNT_EXTREME_SKIP_TERMS = {
+    *COUNT_AGGREGATION_SKIP_TERMS,
+    "a",
+    "an",
+    "by",
+    "fewest",
+    "find",
+    "for",
+    "had",
+    "has",
+    "have",
+    "highest",
+    "in",
+    "largest",
+    "least",
+    "lowest",
+    "max",
+    "maximum",
+    "min",
+    "minimum",
+    "most",
+    "name",
+    "names",
+    "of",
+    "smallest",
+    "that",
+    "the",
+    "with",
+}
+
+
+def _count_extreme_mode(frame: QueryFrame, question: str) -> str:
+    material = normalize(
+        " ".join(
+            [
+                question,
+                frame.requested_relation,
+                *frame.answer_variables,
+                *frame.relation_terms,
+                *frame.constraints,
+            ]
+        )
+    )
+    if re.search(r"\b(?:fewest|least|minimum|min|lowest|smallest)\b", material):
+        return "min"
+    if re.search(r"\b(?:most|maximum|max|highest|largest)\b", material):
+        return "max"
+    return ""
+
+
+def _frame_with_aggregation_fallback(frame: QueryFrame, question: str) -> QueryFrame:
+    if frame.aggregation:
+        return frame
+    material = normalize(
+        " ".join(
+            [
+                question,
+                frame.requested_relation,
+                *frame.answer_variables,
+                *frame.relation_terms,
+                *frame.constraints,
+            ]
+        )
+    )
+    if _count_extreme_mode(frame, question) or re.search(r"\bhow\s+many\b", material):
+        return replace(frame, aggregation="count")
+    return frame
+
+
+def _count_by_slot_labels(frame: QueryFrame, question: str, target_terms: list[str]) -> list[str]:
+    labels: list[str] = []
+
+    def add(value: str) -> None:
+        norm = normalize(value)
+        if not norm or norm in COUNT_EXTREME_SKIP_TERMS:
+            return
+        if _term_covered_by_target_tokens(norm, target_terms):
+            return
+        if norm not in labels:
+            labels.append(norm)
+
+    for term in _answer_slot_terms(frame, target_terms):
+        add(term)
+        for token in content_tokens(term):
+            add(token)
+    qnorm = normalize(question)
+    for pattern in (
+        r"\bname\s+of\s+(?:the\s+)?([a-z][a-z0-9_-]{1,60})\b",
+        r"\b(?:which|what)\s+([a-z][a-z0-9_-]{1,60})\b",
+    ):
+        for match in re.finditer(pattern, qnorm):
+            add(match.group(1))
+    for variable in frame.answer_variables:
+        tokens = [token for token in content_tokens(variable) if token not in COUNT_EXTREME_SKIP_TERMS]
+        if len(tokens) > 1:
+            add(" ".join(tokens))
+        for token in tokens:
+            add(token)
+    if not labels and frame.answer_type in {"person", "actor", "organization"}:
+        add(frame.answer_type)
+    return labels
+
+
+def _count_by_filter_groups(
+    frame: QueryFrame,
+    relation_terms: list[str],
+    target_terms: list[str],
+    slot_labels: list[str],
+) -> list[list[str]]:
+    slot_tokens = {token for label in slot_labels for token in content_tokens(label)}
+    target_tokens = _target_token_variants(target_terms)
+    groups: list[list[str]] = []
+    seen: set[tuple[str, ...]] = set()
+    raw_terms = [*relation_terms, *frame.constraints, frame.requested_relation]
+    for term in raw_terms:
+        for token in content_tokens(term):
+            if token in COUNT_EXTREME_SKIP_TERMS or token in slot_tokens or token in target_tokens:
+                continue
+            variants = [variant for variant in expand_terms([token]) if variant and variant not in COUNT_EXTREME_SKIP_TERMS]
+            if not variants:
+                continue
+            key = tuple(sorted(variants))
+            if key in seen:
+                continue
+            seen.add(key)
+            groups.append(list(dict.fromkeys(variants)))
+    return groups
+
+
+def _row_label_matches_slot(row: dict[str, Any], slot_labels: list[str], target_terms: list[str]) -> bool:
+    if not slot_labels:
+        return False
+    label_material = _row_slot_label_material(row)
+    if not label_material:
+        return False
+    for label in slot_labels:
+        if _answer_slot_label_matches(label_material, [label], target_terms):
+            return True
+        label_tokens = [token for token in content_tokens(label) if token not in COUNT_EXTREME_SKIP_TERMS]
+        if label_tokens and all(_terms_match_material([token], label_material) for token in label_tokens):
+            return True
+    return False
+
+
+def _count_by_group_value(
+    rows: list[dict[str, Any]],
+    expected: ExpectedAnswer,
+    slot_labels: list[str],
+    target_terms: list[str],
+) -> str:
+    for row in rows:
+        if not _row_label_matches_slot(row, slot_labels, target_terms):
+            continue
+        raw_value = str(row.get("value") or row.get("object") or "")
+        values = _compatible_values(expected, [raw_value]) or [clean_extracted_value(raw_value)]
+        for value in values:
+            canonical = canonicalize_answer(expected, value) or clean_extracted_value(value)
+            if canonical and not _value_is_target(canonical, target_terms):
+                return canonical
+    subjects = list(
+        dict.fromkeys(
+            clean_extracted_value(str(row.get("subject") or ""))
+            for row in rows
+            if clean_extracted_value(str(row.get("subject") or ""))
+        )
+    )
+    if len(subjects) == 1:
+        canonical = canonicalize_answer(expected, subjects[0]) or clean_extracted_value(subjects[0])
+        if canonical and not _value_is_target(canonical, target_terms):
+            return canonical
+    return ""
+
+
+def _extreme_count_by_record_groups(
+    records: dict[str, Any],
+    frame: QueryFrame,
+    expected: ExpectedAnswer,
+    target_terms: list[str],
+    relation_terms: list[str],
+) -> Answer | None:
+    mode = _count_extreme_mode(frame, frame.question_text)
+    if mode not in {"max", "min"}:
+        return None
+    slot_labels = _count_by_slot_labels(frame, frame.question_text, target_terms)
+    if not slot_labels:
+        return None
+    required_groups = _count_by_filter_groups(frame, relation_terms, target_terms, slot_labels)
+    if not required_groups and not target_terms:
+        return None
+    target_row_local_rel_paths, relation_group_row_local_rel_paths = _row_local_count_match_rel_paths(
+        records,
+        target_terms,
+        required_groups,
+    )
+    counts: dict[str, int] = defaultdict(int)
+    evidence_by_value: dict[str, list[Evidence]] = defaultdict(list)
+    seen_units: set[str] = set()
+    for group_id, rows in _record_groups(records).items():
+        accessible_rows = [
+            row for row in rows if _context_accessible(str(row.get("context_id") or ""), records, frame)
+        ]
+        if not accessible_rows:
+            continue
+        if not any(_rows_are_countable_structured_units([row]) for row in accessible_rows):
+            continue
+        evidence = _evidence_for_span(str(accessible_rows[0].get("source_span_id") or ""), records)
+        local_material = _group_material(accessible_rows, records, include_source_evidence=False)
+        scoped_material = local_material
+        if target_terms and not _contains_any_for_records(records, local_material, target_terms):
+            if evidence.rel_path in target_row_local_rel_paths:
+                continue
+            scoped_material = _group_material(
+                accessible_rows,
+                records,
+                include_document_context=True,
+                include_source_evidence=False,
+            )
+            if not _contains_any_for_records(records, scoped_material, target_terms):
+                continue
+        group_failed = False
+        for index, required_group in enumerate(required_groups):
+            if _material_matches_term_group(local_material, required_group):
+                continue
+            if evidence.rel_path in relation_group_row_local_rel_paths.get(index, set()):
+                group_failed = True
+                break
+            if scoped_material == local_material:
+                scoped_material = _group_material(
+                    accessible_rows,
+                    records,
+                    include_document_context=True,
+                    include_source_evidence=False,
+                )
+            if not _material_matches_term_group(scoped_material, required_group):
+                group_failed = True
+                break
+        if group_failed:
+            continue
+        value = _count_by_group_value(accessible_rows, expected, slot_labels, target_terms)
+        if not value:
+            continue
+        unit_key = str(group_id or "|".join(_relation_row_key(row) for row in accessible_rows))
+        if unit_key in seen_units:
+            continue
+        seen_units.add(unit_key)
+        counts[value] += 1
+        if len(evidence_by_value[value]) < 4:
+            evidence_by_value[value].append(evidence)
+    if not counts:
+        return None
+    ordered = sorted(counts.items(), key=lambda item: ((-item[1], item[0]) if mode == "max" else (item[1], item[0])))
+    if len(ordered) > 1 and ordered[0][1] == ordered[1][1]:
+        return None
+    value, count = ordered[0]
+    reason = f"record-group arg{mode} count aggregation DRS binding"
+    answer_type = expected.answer_type if expected.answer_type != "unknown" else "content_phrase"
+    evidence = evidence_by_value.get(value, [])[:4]
+    confidence = 0.88 if count > 1 else 0.82
+    return Answer(value, confidence, evidence, reason, answer_type)
 
 
 def _bind_metadata(records: dict[str, Any], question: str, expected: ExpectedAnswer, target_terms: list[str], relation_terms: list[str]) -> list[tuple[float, str, Evidence, str]]:
@@ -5040,9 +5865,10 @@ def _has_unscoped_temporal_ambiguity(
 
 
 def _frame_arguments_by_condition_key(records: dict[str, Any]) -> dict[tuple[str, str, str], list[dict[str, Any]]]:
-    args_by_frame: dict[str, list[dict[str, Any]]] = defaultdict(list)
-    for arg in records.get("frame_arguments", []):
-        args_by_frame[str(arg.get("frame_id") or "")].append(arg)
+    cached = records.get("_frame_arguments_by_condition_key")
+    if isinstance(cached, dict):
+        return cached
+    args_by_frame = _args_by_frame(records)
     values: dict[tuple[str, str, str], list[dict[str, Any]]] = defaultdict(list)
     for frame_row in records.get("frames", []):
         key = (
@@ -5051,6 +5877,7 @@ def _frame_arguments_by_condition_key(records: dict[str, Any]) -> dict[tuple[str
             str(frame_row.get("context_id") or ""),
         )
         values[key].extend(args_by_frame.get(str(frame_row.get("frame_id") or ""), []))
+    records["_frame_arguments_by_condition_key"] = values
     return values
 
 
@@ -5344,15 +6171,13 @@ def _direct_label_slot_candidates(
         return []
     slot_material = normalize(" ".join(answer_slot_terms))
     candidates: list[tuple[float, str, Evidence, str]] = []
-    for row in records.get("relations", []):
-        if str(row.get("relation_type") or "") != "label_value":
-            continue
+    for row in _relations_by_type(records).get("label_value", []):
         if not _relation_scope_accessible(row, records, frame):
             continue
         evidence = _evidence_for_span(str(row.get("source_span_id") or ""), records)
         if target_terms:
             material = _relation_local_material(row, evidence, include_evidence=True, include_context=True, records=records)
-            if not _contains_any(material, target_terms):
+            if not _contains_any_for_records(records, material, target_terms):
                 continue
         metadata = _relation_metadata(row)
         label_material = normalize(" ".join([str(row.get("subject") or ""), str(metadata.get("section_anchor") or "")]))
@@ -5399,9 +6224,7 @@ def _relation_label_value_candidates(
     strong_signal = list(dict.fromkeys([term for term in strong_signal if term and term not in generic]))
     if not relation_signal:
         return candidates
-    for row in records.get("relations", []):
-        if str(row.get("relation_type") or "") != "label_value":
-            continue
+    for row in _relations_by_type(records).get("label_value", []):
         if not _relation_scope_accessible(row, records, frame):
             continue
         evidence = _evidence_for_span(str(row.get("source_span_id") or ""), records)
@@ -5450,7 +6273,7 @@ def execute_bounded_query(
     doc_limit: int = 40,
     chunk_limit: int = 160,
 ) -> tuple[Answer | None, dict[str, Any]]:
-    frame = _frame(plan, question)
+    frame = _frame_with_aggregation_fallback(_frame(plan, question), question)
     expected = _expected_from_frame(frame)
     target_terms = _target_terms(frame, question)
     relation_terms = _relation_terms(frame, question)
@@ -5458,7 +6281,7 @@ def execute_bounded_query(
     if answer_slot_terms:
         relation_terms = list(dict.fromkeys([*relation_terms, *answer_slot_terms]))
     selected_docs, selected_chunks, ranking = _rank_scope(documents, sentences_by_document, question, frame, doc_limit, chunk_limit)
-    current_document_chunk_ids = _current_chunk_ids_for_documents(documents, sentences_by_document, selected_docs)
+    current_document_chunk_ids = _bounded_identity_chunk_ids(documents, sentences_by_document, selected_docs, selected_chunks)
     records = _load_records(
         store,
         run_id,
@@ -5518,7 +6341,7 @@ def execute_bounded_query(
             break
         selected_docs = next_docs
         selected_chunks = next_chunks
-        current_document_chunk_ids = _current_chunk_ids_for_documents(documents, sentences_by_document, selected_docs)
+        current_document_chunk_ids = _bounded_identity_chunk_ids(documents, sentences_by_document, selected_docs, selected_chunks)
         records = _load_records(
             store,
             run_id,
@@ -5552,6 +6375,13 @@ def execute_bounded_query(
     if arithmetic_answer is not None:
         _attach_answer_provenance(diagnostics, records, arithmetic_answer)
         return arithmetic_answer, diagnostics
+
+    extreme_count_answer = _extreme_count_by_record_groups(records, frame, expected, target_terms, relation_terms)
+    if extreme_count_answer is not None:
+        extreme_count_answer = _with_supporting_evidence(extreme_count_answer, identity_expansion_evidence)
+        _attach_answer_provenance(diagnostics, records, extreme_count_answer)
+        diagnostics["execution"]["aggregation_fallback"] = _count_extreme_mode(frame, frame.question_text)
+        return extreme_count_answer, diagnostics
 
     candidates: list[tuple[float, str, Evidence, str]] = []
     candidates.extend(_direct_label_slot_candidates(records, frame, expected, relation_terms, target_terms))

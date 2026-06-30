@@ -37,9 +37,7 @@ CACHE_ENV_VARS = (
 )
 MODEL_ENV_KEYS = (
     "KMD_LOCAL_MODEL_ENDPOINT",
-    "KMD_LOCAL_MODEL_TIMEOUT",
-    "KMD_CHUNK_MODEL_TIMEOUT_SECONDS",
-    "KMD_QUESTION_MODEL_TIMEOUT_SECONDS",
+    "KMD_LOCAL_MODEL_PER_TOKEN_TIMEOUT_SECONDS",
     "KMD_LOCAL_MODEL_API",
     "KMD_LOCAL_MODEL_CACHE_PROMPT",
     "KMD_LOCAL_MODEL_JSON_SCHEMA",
@@ -142,9 +140,8 @@ def _git_revision() -> dict[str, str]:
 
 def _configure_environment(output_root: Path) -> None:
     os.environ.setdefault("KMD_LOCAL_MODEL_ENDPOINT", "http://127.0.0.1:14829/v1")
-    os.environ.setdefault("KMD_LOCAL_MODEL_TIMEOUT", "240")
-    os.environ.setdefault("KMD_CHUNK_MODEL_TIMEOUT_SECONDS", "420")
-    os.environ.setdefault("KMD_QUESTION_MODEL_TIMEOUT_SECONDS", "420")
+    os.environ.setdefault("KMD_LOCAL_MODEL_EXPECTED_ID", "Qwen2.5-14B-Instruct-Q4_K_M.gguf")
+    os.environ.setdefault("KMD_LOCAL_MODEL_PER_TOKEN_TIMEOUT_SECONDS", "420")
     os.environ.setdefault("KMD_LOCAL_MODEL_API", "chat")
     os.environ.setdefault("KMD_LOCAL_MODEL_CACHE_PROMPT", "1")
     os.environ.setdefault("KMD_LOCAL_MODEL_JSON_SCHEMA", "1")
@@ -160,13 +157,14 @@ def _configure_environment(output_root: Path) -> None:
     os.environ.setdefault("KMD_TEST_ALLOW_NO_MODEL", "0")
     os.environ.setdefault("KMD_PROGRESS", "1")
     os.environ.setdefault("KMD_EVAL_PROGRESS", "1")
+    shared_cache_root = Path(os.environ.get("KMD_SHARED_MODEL_CACHE_ROOT", str(output_root.parent / ".kmd_model_cache_shared")))
     for name in CACHE_ENV_VARS:
         cache_name = name.lower()
         if cache_name.startswith("kmd_"):
             cache_name = cache_name[4:]
         if cache_name.endswith("_dir"):
             cache_name = cache_name[:-4]
-        os.environ.setdefault(name, str(output_root / "caches" / cache_name))
+        os.environ.setdefault(name, str(shared_cache_root / cache_name))
     for name in CACHE_ENV_VARS:
         Path(os.environ[name]).mkdir(parents=True, exist_ok=True)
 
@@ -311,9 +309,16 @@ def run_benchmark(args: argparse.Namespace) -> dict[str, Any]:
         "cache_stats_before": _cache_stats(),
         "suites": {},
     }
-    (output_root / "run_metadata.json").write_text(
+    run_metadata_path = output_root / "run_metadata.json"
+    run_metadata_path.write_text(
         json.dumps(run_metadata, indent=2, sort_keys=True, default=_json_default) + "\n",
         encoding="utf-8",
+    )
+    print(
+        "kmd-model-benchmark run_start "
+        f"output_root={output_root} results={results_path} summary={summary_path} "
+        f"metadata={run_metadata_path} endpoint={endpoint}",
+        flush=True,
     )
 
     completed_records: list[dict[str, Any]] = []
@@ -367,6 +372,12 @@ def run_benchmark(args: argparse.Namespace) -> dict[str, Any]:
                 continue
             question_text = str(item.get("question") or "")
             expected = str(item.get("answer") or "")
+            print(
+                f"kmd-model-benchmark answer_start {suite_name} "
+                f"{index}/{len(questions)} id={question_id} "
+                f"category={str(item.get('category') or '')!r} question={question_text!r}",
+                flush=True,
+            )
             answer_started = time.time()
             predicted = kmd_question(question_text)
             elapsed = round(time.time() - answer_started, 3)
@@ -425,6 +436,11 @@ def run_benchmark(args: argparse.Namespace) -> dict[str, Any]:
         summary_path.write_text(
             json.dumps(summary, indent=2, sort_keys=True, default=_json_default) + "\n",
             encoding="utf-8",
+        )
+        print(
+            f"kmd-model-benchmark summary_written {suite_name} "
+            f"summary={summary_path} results={results_path}",
+            flush=True,
         )
         print(
             f"kmd-model-benchmark suite_done {suite_name} "

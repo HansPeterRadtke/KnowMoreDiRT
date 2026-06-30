@@ -24,6 +24,9 @@ from knowmoredirt.bounded_dspg import (
     _choose_answer,
     _choose_list_answer,
     _relation_terms,
+    _record_groups,
+    _relations_by_type,
+    _group_material,
     _terms_match_material,
     _target_terms,
     _locative_answer_value,
@@ -62,6 +65,23 @@ def test_ingest_builds_normalized_dspg_tables() -> None:
     assert "temporal_edges" in counts
     assert counts["relations"] > 20
     assert counts["metadata_records"] >= counts["documents"]
+
+
+def test_store_schema_has_bounded_loading_indexes() -> None:
+    store = DSPGStore()
+
+    def index_names(table: str) -> set[str]:
+        return {str(row["name"]) for row in store.execute(f"PRAGMA index_list({table})").fetchall()}
+
+    assert {
+        "idx_source_spans_chunk",
+        "idx_source_spans_document",
+    }.issubset(index_names("source_spans"))
+    assert "idx_frames_span" in index_names("frames")
+    assert "idx_frame_args_frame" in index_names("frame_arguments")
+    assert "idx_relations_span" in index_names("relations")
+    assert "idx_temporal_span" in index_names("temporal_edges")
+    assert "idx_metadata_records_doc" in index_names("metadata_records")
 
 
 def test_ingest_keeps_lower_underscore_table_headers_as_labels(tmp_path: Path) -> None:
@@ -8222,6 +8242,110 @@ def test_identity_hypothesis_loading_batches_current_chunk_scope(tmp_path: Path)
     assert {row["source_span_id"] for row in rows} == {current_span_id}
 
 
+def test_bounded_record_load_walks_identity_graph_without_document_wide_edges(tmp_path: Path) -> None:
+    store = DSPGStore()
+    run_id = store.start_run(tmp_path)
+    document_id = stable_id("doc", run_id, "identity-large.txt")
+    store.execute(
+        """
+        INSERT INTO documents(
+          document_id, run_id, path, rel_path, content_hash, size_bytes, mtime, ctime, char_count, metadata_json
+        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+        """,
+        (document_id, run_id, str(tmp_path / "identity-large.txt"), "identity-large.txt", "hash", 0, 0.0, 0.0, 0, "{}"),
+    )
+    selected_chunk_id = stable_id("chunk", "bounded-identity", 0)
+    selected_span_id = stable_id("span", "bounded-identity", 0)
+    anchor_ref = store.upsert_referent(run_id, "North Marker", "artifact")
+    bridge_ref = store.upsert_referent(run_id, "NM-1", "identifier")
+    chunk_ids = [selected_chunk_id]
+    span_ids = [selected_span_id]
+    for index in range(80):
+        chunk_id = stable_id("chunk", "bounded-identity", index)
+        span_id = stable_id("span", "bounded-identity", index)
+        chunk_ids.append(chunk_id)
+        span_ids.append(span_id)
+        store.execute(
+            "INSERT OR IGNORE INTO chunks(chunk_id, document_id, chunk_order, char_start, char_end, text, token_estimate) VALUES (?, ?, ?, ?, ?, ?, ?)",
+            (chunk_id, document_id, index, index * 10, index * 10 + 8, f"chunk {index}", 2),
+        )
+        store.execute(
+            "INSERT OR IGNORE INTO source_spans(span_id, document_id, chunk_id, char_start, char_end, surface, surface_norm, span_kind) VALUES (?, ?, ?, ?, ?, ?, ?, ?)",
+            (span_id, document_id, chunk_id, index * 10, index * 10 + 8, f"chunk {index}", f"chunk {index}", "sentence"),
+        )
+    mention_id = stable_id("men", run_id, selected_span_id, "North Marker")
+    store.execute(
+        "INSERT INTO mentions(mention_id, run_id, span_id, surface, surface_norm, mention_kind, entity_type, confidence, source) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)",
+        (mention_id, run_id, selected_span_id, "North Marker", "north marker", "artifact", "artifact", 1.0, "test"),
+    )
+    store.execute(
+        "INSERT INTO mention_referents(mention_id, referent_id, link_status, confidence) VALUES (?, ?, ?, ?)",
+        (mention_id, anchor_ref, "candidate", 1.0),
+    )
+    bridge_span_id = stable_id("span", "bounded-identity", 10)
+    store.execute(
+        """
+        INSERT INTO identity_hypotheses(
+          hypothesis_id, run_id, source_span_id, context_id, drs_box_id, box_external_id,
+          left_referent_id, right_referent_id, relation, evidence, confidence, source
+        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+        """,
+        (
+            stable_id("idh", "reachable"),
+            run_id,
+            bridge_span_id,
+            None,
+            None,
+            None,
+            anchor_ref,
+            bridge_ref,
+            "same_referent",
+            "NM-1 is North Marker",
+            0.9,
+            "test",
+        ),
+    )
+    unrelated_span_ids: set[str] = set()
+    for index in range(11, 80):
+        left = store.upsert_referent(run_id, f"Left {index}", "artifact")
+        right = store.upsert_referent(run_id, f"Right {index}", "identifier")
+        span_id = stable_id("span", "bounded-identity", index)
+        unrelated_span_ids.add(span_id)
+        store.execute(
+            """
+            INSERT INTO identity_hypotheses(
+              hypothesis_id, run_id, source_span_id, context_id, drs_box_id, box_external_id,
+              left_referent_id, right_referent_id, relation, evidence, confidence, source
+            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+            """,
+            (
+                stable_id("idh", "unrelated", index),
+                run_id,
+                span_id,
+                None,
+                None,
+                None,
+                left,
+                right,
+                "same_referent",
+                f"unrelated {index}",
+                0.9,
+                "test",
+            ),
+        )
+    store.commit()
+
+    records = _load_records(store, run_id, [document_id], [selected_chunk_id])
+
+    loaded_identity_spans = {str(row["source_span_id"]) for row in records["identity_hypotheses"]}
+    assert loaded_identity_spans == {bridge_span_id}
+    assert not loaded_identity_spans.intersection(unrelated_span_ids)
+    assert {str(row["chunk_id"]) for row in records["chunks"]} == {
+        selected_chunk_id,
+        stable_id("chunk", "bounded-identity", 10),
+    }
+
+
 def test_incremental_drs_ingest_skips_previous_failed_attempts(tmp_path: Path, monkeypatch) -> None:
     cache_dir = tmp_path.parent / f"{tmp_path.name}-failed-attempt-drs-cache"
     monkeypatch.setenv("KMD_CHUNK_DRS_CACHE_DIR", str(cache_dir))
@@ -10551,6 +10675,54 @@ def test_count_aggregation_ignores_query_unit_terms_for_record_groups(tmp_path: 
     assert "no_answer_reason" not in diagnostics["execution"]
 
 
+def test_loaded_records_build_cached_group_and_type_indexes(tmp_path: Path) -> None:
+    (tmp_path / "rows.tsv").write_text(
+        "\n".join(
+            [
+                "unit\tstate\tcode",
+                "North Unit\topen\tNU-1",
+                "South Unit\tclosed\tSU-1",
+            ]
+        ),
+        encoding="utf-8",
+    )
+    store, run_id, documents, sentences = ingest_folder(tmp_path)
+    sentences_by_document: dict[str, dict[int, object]] = {}
+    for sentence in sentences:
+        sentences_by_document.setdefault(sentence.rel_path, {})[sentence.order] = sentence
+    frame = QueryFrame(
+        question_text="How many rows have state open?",
+        answer_type="count",
+        answer_variables=("rows",),
+        target_anchors=(),
+        requested_relation="state",
+        relation_terms=("state", "open"),
+        constraints=(),
+        aggregation="count",
+    )
+    selected_docs, selected_chunks, _ranking = _rank_scope(
+        documents,
+        sentences_by_document,  # type: ignore[arg-type]
+        frame.question_text,
+        frame,
+        40,
+        160,
+    )
+
+    records = _load_records(store, run_id, selected_docs, selected_chunks)
+    groups_first = _record_groups(records)
+    groups_second = _record_groups(records)
+    first_group_rows = next(iter(groups_first.values()))
+    material_first = _group_material(first_group_rows, records, include_source_evidence=False)
+    material_second = _group_material(first_group_rows, records, include_source_evidence=False)
+
+    assert groups_first is groups_second
+    assert _relations_by_type(records).get("table_cell")
+    assert records.get("_record_groups_cache") is groups_first
+    assert records.get("_group_material_cache")
+    assert material_first == material_second
+
+
 def test_record_value_dedupe_preserves_repeated_values_in_distinct_object_groups() -> None:
     relations = extract_relations(
         '[{ item: "Shared Widget", reviewer: "Ada Vale" }, '
@@ -11147,6 +11319,51 @@ def test_count_aggregation_matches_field_value_tokens_not_whole_verb_phrase(tmp_
 
     assert answer is not None
     assert answer.text == "3"
+
+
+def test_argmax_count_by_record_groups_works_without_model_aggregation(tmp_path: Path) -> None:
+    (tmp_path / "ledger.tsv").write_text(
+        "\n".join(
+            [
+                "product\tsupplier\tkind\tstate\tref",
+                "AtlasApp\tNorth Forge\tdefect\tunresolved\tAA-1",
+                "AtlasApp\tNorth Forge\tdefect\tunresolved\tAA-2",
+                "AtlasApp\tWest Yard\tdefect\tunresolved\tAA-3",
+                "AtlasApp\tWest Yard\ttask\tunresolved\tAA-4",
+                "AtlasApp\tSouth Yard\tdefect\tresolved\tAA-5",
+                "OtherApp\tWest Yard\tdefect\tunresolved\tOA-1",
+            ]
+        ),
+        encoding="utf-8",
+    )
+    store, run_id, documents, sentences = ingest_folder(tmp_path)
+    sentences_by_document: dict[str, dict[int, object]] = {}
+    for sentence in sentences:
+        sentences_by_document.setdefault(sentence.rel_path, {})[sentence.order] = sentence
+    frame = QueryFrame(
+        question_text="Find the name of supplier that has the maximum number of unresolved defects in AtlasApp?",
+        answer_type="organization",
+        answer_variables=("name of supplier",),
+        target_anchors=("AtlasApp",),
+        requested_relation="maximum number",
+        relation_terms=("maximum", "number", "unresolved", "defects", "supplier"),
+        constraints=("unresolved", "defects", "AtlasApp"),
+        aggregation="",
+    )
+
+    answer, diagnostics = execute_bounded_query(
+        store,
+        run_id,
+        documents,
+        sentences_by_document,  # type: ignore[arg-type]
+        frame.question_text,
+        frame,
+    )
+
+    assert answer is not None
+    assert answer.text == "North Forge"
+    assert answer.reason == "record-group argmax count aggregation DRS binding"
+    assert diagnostics["execution"]["aggregation_fallback"] == "max"
 
 
 def test_unscoped_table_lookup_prefers_current_structured_row(tmp_path: Path) -> None:
