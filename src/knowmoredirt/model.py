@@ -79,7 +79,7 @@ def _default_per_token_timeout_seconds() -> float:
 
 
 def _default_min_constrained_json_tokens() -> int:
-    raw = os.environ.get("KMD_LOCAL_MODEL_MIN_CONSTRAINED_JSON_TOKENS", "4096").strip()
+    raw = os.environ.get("KMD_LOCAL_MODEL_MIN_CONSTRAINED_JSON_TOKENS", "16384").strip()
     try:
         value = int(raw)
     except ValueError:

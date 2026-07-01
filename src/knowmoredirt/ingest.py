@@ -120,12 +120,15 @@ def _attempt_was_nonrequest_failure(row: Any | None) -> bool:
 
 
 def _raise_model_request_failed(result: dict[str, Any], operation: str) -> None:
-    if str(result.get("reason") or "") != "request_failed":
+    reason = str(result.get("reason") or "")
+    fatal_reasons = {"request_failed", "invalid_json", "schema_validation_failed", "grounding_validation_failed"}
+    if reason not in fatal_reasons:
         return
     _log_progress(
-        "kmd-ingest model_request_failed "
+        "kmd-ingest model_structured_failure "
         f"operation={operation} "
-        f"error={str(result.get('error') or 'request_failed')[:300]}"
+        f"reason={reason} "
+        f"error={str(result.get('error') or reason)[:300]}"
     )
     cache_context = result.get("cache_context") if isinstance(result.get("cache_context"), dict) else {}
     try:
@@ -133,8 +136,8 @@ def _raise_model_request_failed(result: dict[str, Any], operation: str) -> None:
     except Exception:
         cache_context_text = str(cache_context)[:4000]
     raise LocalModelUnavailableError(
-        "KnowMoreDiRT requires reachable llama.cpp during initialize(folder_path). "
-        f"Local model request failed during {operation}: {result.get('error') or 'request_failed'}. "
+        "KnowMoreDiRT requires successful native structured local-model output during initialize(folder_path). "
+        f"Local model structured output failed during {operation}: reason={reason}; error={result.get('error') or reason}. "
         f"cache_context={cache_context_text}",
         cache_context=cache_context,
     )

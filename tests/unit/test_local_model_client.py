@@ -212,6 +212,20 @@ def test_answer_verification_invalid_json_is_not_request_failure(monkeypatch) ->
     assert model.calls == 1
 
 
+def test_ingest_model_structured_failures_abort_initialize_boundary() -> None:
+    from knowmoredirt.ingest import _raise_model_request_failed
+
+    for reason in ["request_failed", "invalid_json", "schema_validation_failed", "grounding_validation_failed"]:
+        with pytest.raises(LocalModelUnavailableError, match=reason):
+            _raise_model_request_failed({"reason": reason, "error": reason, "cache_context": {"source_rel_path": "x"}}, "chunk DRS ingest")
+
+
+def test_ingest_model_materialized_result_does_not_abort_initialize_boundary() -> None:
+    from knowmoredirt.ingest import _raise_model_request_failed
+
+    _raise_model_request_failed({"accepted": True, "reason": "compact_drs"}, "chunk DRS ingest")
+
+
 class FakeHTTPResponse:
     def __init__(self, payload: Any | None = None, lines: list[bytes] | None = None) -> None:
         self.payload = payload
@@ -284,14 +298,14 @@ def test_local_model_client_discovers_runtime_metadata(monkeypatch) -> None:
     transport = fingerprint["transport_settings"]
     assert transport["api"] == "chat"
     assert transport["cache_prompt"] is True
-    assert transport["min_constrained_json_tokens"] == 4096
+    assert transport["min_constrained_json_tokens"] == 16384
     assert transport["constraint_mode"] == "auto"
     assert transport["native_constraints"] is True
     assert transport["reasoning_control_token_model"] is False
     chunk_transport = chunk_drs_cache_context(client)["model_fingerprint"]["transport_settings"]
     assert chunk_transport["api"] == "chat"
     assert chunk_transport["cache_prompt"] is True
-    assert chunk_transport["min_constrained_json_tokens"] == 4096
+    assert chunk_transport["min_constrained_json_tokens"] == 16384
     assert chunk_transport["constraint_mode"] == "auto"
     assert chunk_transport["native_constraints"] is True
 
@@ -502,12 +516,12 @@ def test_local_model_client_uses_completion_stream_and_json_schema(monkeypatch) 
     assert parsed["_model_endpoint"] == "http://127.0.0.1:14829/completion"
     assert parsed["_model_stream_closed_after_json"] is True
     assert requests[0]["body"]["stream"] is True
-    assert requests[0]["body"]["n_predict"] == 4096
+    assert requests[0]["body"]["n_predict"] == 16384
     assert requests[0]["body"]["json_schema"]["type"] == "object"
     assert "grammar" not in requests[0]["body"]
     assert parsed["_model_constraint_settings"]["mode"] == "completion_json_schema"
     assert parsed["_model_constraint_settings"]["requested_n_predict"] == 64
-    assert parsed["_model_constraint_settings"]["effective_n_predict"] == 4096
+    assert parsed["_model_constraint_settings"]["effective_n_predict"] == 16384
 
 
 
@@ -537,12 +551,12 @@ def test_local_model_client_chat_json_schema_uses_response_format(monkeypatch) -
     assert parsed["ok"] is True
     body = requests[0]["body"]
     assert "json_schema" not in body
-    assert body["max_tokens"] == 4096
+    assert body["max_tokens"] == 16384
     assert body["response_format"]["type"] == "json_schema"
     assert body["response_format"]["json_schema"]["schema"]["properties"]["ok"]["type"] == "boolean"
     assert parsed["_model_constraint_settings"]["mode"] == "chat_response_format_json_schema"
     assert parsed["_model_constraint_settings"]["requested_n_predict"] == 64
-    assert parsed["_model_constraint_settings"]["effective_n_predict"] == 4096
+    assert parsed["_model_constraint_settings"]["effective_n_predict"] == 16384
 
 
 def test_local_model_client_stream_uses_per_token_read_timeout_only(monkeypatch) -> None:
