@@ -420,7 +420,7 @@ class LocalModelClient:
         if constrained_mode not in {"auto", "native", "prompt"}:
             constrained_mode = "auto"
         reasoning_control_model = _model_id_looks_like_reasoning_control_token_model(model_id)
-        native_constraints = constrained_mode == "native" or (constrained_mode == "auto" and not reasoning_control_model)
+        native_constraints = constrained_mode != "prompt"
         return {
             "api": os.environ.get("KMD_LOCAL_MODEL_API", "chat").strip().lower() or "chat",
             "cache_prompt": os.environ.get("KMD_LOCAL_MODEL_CACHE_PROMPT", "1").strip().lower()

@@ -123,11 +123,10 @@ def _raise_model_request_failed(result: dict[str, Any], operation: str) -> None:
     if str(result.get("reason") or "") != "request_failed":
         return
     _log_progress(
-        "kmd-ingest model_request_failed_cached_for_retry "
+        "kmd-ingest model_request_failed "
         f"operation={operation} "
         f"error={str(result.get('error') or 'request_failed')[:300]}"
     )
-    return
     cache_context = result.get("cache_context") if isinstance(result.get("cache_context"), dict) else {}
     try:
         cache_context_text = json.dumps(cache_context, sort_keys=True, default=str)[:4000]

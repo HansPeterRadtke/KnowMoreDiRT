@@ -296,6 +296,50 @@ def test_local_model_client_discovers_runtime_metadata(monkeypatch) -> None:
     assert chunk_transport["native_constraints"] is True
 
 
+def test_local_model_auto_constraints_stay_native_for_reasoning_control_models(monkeypatch) -> None:
+    def fake_urlopen(request, timeout: float = 0) -> FakeHTTPResponse:
+        url = str(getattr(request, "full_url", request))
+        if url.endswith("/v1/models"):
+            return FakeHTTPResponse({"data": [{"id": "/models/gpt-oss-120b.gguf", "meta": {"n_ctx_train": 131072}}]})
+        if url.endswith("/slots"):
+            return FakeHTTPResponse([{"n_ctx": 131072, "params": {}}])
+        if url.endswith("/props"):
+            return FakeHTTPResponse({"model_alias": "gpt-oss-120b.gguf", "default_generation_settings": {}})
+        raise AssertionError(f"unexpected URL {url}")
+
+    monkeypatch.setattr("urllib.request.urlopen", fake_urlopen)
+    monkeypatch.delenv("KMD_LOCAL_MODEL_CONSTRAINT_MODE", raising=False)
+
+    client = LocalModelClient(endpoint="http://127.0.0.1:14829/v1", timeout_seconds=30)
+    transport = client.transport_settings()
+
+    assert transport["constraint_mode"] == "auto"
+    assert transport["reasoning_control_token_model"] is True
+    assert transport["native_constraints"] is True
+
+
+def test_local_model_prompt_constraint_mode_disables_native_constraints_for_debug(monkeypatch) -> None:
+    def fake_urlopen(request, timeout: float = 0) -> FakeHTTPResponse:
+        url = str(getattr(request, "full_url", request))
+        if url.endswith("/v1/models"):
+            return FakeHTTPResponse({"data": [{"id": "/models/gpt-oss-120b.gguf", "meta": {"n_ctx_train": 131072}}]})
+        if url.endswith("/slots"):
+            return FakeHTTPResponse([{"n_ctx": 131072, "params": {}}])
+        if url.endswith("/props"):
+            return FakeHTTPResponse({"model_alias": "gpt-oss-120b.gguf", "default_generation_settings": {}})
+        raise AssertionError(f"unexpected URL {url}")
+
+    monkeypatch.setattr("urllib.request.urlopen", fake_urlopen)
+    monkeypatch.setenv("KMD_LOCAL_MODEL_CONSTRAINT_MODE", "prompt")
+
+    client = LocalModelClient(endpoint="http://127.0.0.1:14829/v1", timeout_seconds=30)
+    transport = client.transport_settings()
+
+    assert transport["constraint_mode"] == "prompt"
+    assert transport["reasoning_control_token_model"] is True
+    assert transport["native_constraints"] is False
+
+
 def test_engine_required_probe_uses_client_endpoint_normalization(monkeypatch) -> None:
     calls: list[str] = []
 
