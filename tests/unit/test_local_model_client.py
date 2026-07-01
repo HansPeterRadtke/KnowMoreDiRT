@@ -318,7 +318,7 @@ def test_local_model_auto_constraints_stay_native_for_reasoning_control_models(m
     assert transport["native_constraints"] is True
 
 
-def test_local_model_prompt_constraint_mode_disables_native_constraints_for_debug(monkeypatch) -> None:
+def test_local_model_prompt_constraint_mode_is_diagnostic_only_without_override(monkeypatch) -> None:
     def fake_urlopen(request, timeout: float = 0) -> FakeHTTPResponse:
         url = str(getattr(request, "full_url", request))
         if url.endswith("/v1/models"):
@@ -338,6 +338,59 @@ def test_local_model_prompt_constraint_mode_disables_native_constraints_for_debu
     assert transport["constraint_mode"] == "prompt"
     assert transport["reasoning_control_token_model"] is True
     assert transport["native_constraints"] is False
+    with pytest.raises(LocalModelUnavailableError):
+        client.complete_json(
+            "Return JSON.",
+            json_schema={
+                "type": "object",
+                "additionalProperties": False,
+                "required": ["answer"],
+                "properties": {"answer": {"type": "string"}},
+            },
+        )
+
+
+def test_local_model_prompt_constraint_mode_requires_explicit_soft_json_override(monkeypatch) -> None:
+    calls: list[str] = []
+
+    def fake_urlopen(request, timeout: float = 0) -> FakeHTTPResponse:
+        url = str(getattr(request, "full_url", request))
+        calls.append(url)
+        if url.endswith("/v1/models"):
+            return FakeHTTPResponse({"data": [{"id": "/models/gpt-oss-120b.gguf", "meta": {"n_ctx_train": 131072}}]})
+        if url.endswith("/slots"):
+            return FakeHTTPResponse([{"n_ctx": 131072, "params": {}}])
+        if url.endswith("/props"):
+            return FakeHTTPResponse({"model_alias": "gpt-oss-120b.gguf", "default_generation_settings": {}})
+        if url.endswith("/v1/chat/completions"):
+            payload = json.loads(getattr(request, "data", b"{}").decode("utf-8"))
+            assert "response_format" not in payload
+            return FakeHTTPResponse(
+                lines=[
+                    b'data: {"choices":[{"delta":{"content":"{\\"answer\\":\\"ok\\"}"}}]}',
+                    b"data: [DONE]",
+                ]
+            )
+        raise AssertionError(f"unexpected URL {url}")
+
+    monkeypatch.setattr("urllib.request.urlopen", fake_urlopen)
+    monkeypatch.setenv("KMD_LOCAL_MODEL_CONSTRAINT_MODE", "prompt")
+    monkeypatch.setenv("KMD_LOCAL_MODEL_ALLOW_PROMPT_CONSTRAINTS", "1")
+
+    client = LocalModelClient(endpoint="http://127.0.0.1:14829/v1", timeout_seconds=30)
+    result = client.complete_json(
+        "Return JSON.",
+        json_schema={
+            "type": "object",
+            "additionalProperties": False,
+            "required": ["answer"],
+            "properties": {"answer": {"type": "string"}},
+        },
+    )
+
+    assert result["answer"] == "ok"
+    assert result["_model_constraint_settings"]["mode"] == "prompt_json_schema"
+    assert result["_model_constraint_settings"]["native_constraints_applied"] is False
 
 
 def test_engine_required_probe_uses_client_endpoint_normalization(monkeypatch) -> None:

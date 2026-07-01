@@ -460,6 +460,19 @@ class LocalModelClient:
         settings = self.request_settings()
         transport = self.transport_settings()
         native_constraints = bool(transport.get("native_constraints"))
+        allow_prompt_constraints = os.environ.get("KMD_LOCAL_MODEL_ALLOW_PROMPT_CONSTRAINTS", "0").strip().lower() in {
+            "1",
+            "true",
+            "yes",
+            "on",
+        }
+        if (json_schema or grammar) and not native_constraints and not allow_prompt_constraints:
+            raise LocalModelUnavailableError(
+                "Structured local model calls require native constrained decoding. "
+                "KMD_LOCAL_MODEL_CONSTRAINT_MODE=prompt is diagnostic-only; set "
+                "KMD_LOCAL_MODEL_ALLOW_PROMPT_CONSTRAINTS=1 only for an explicit soft-JSON measurement run.",
+                cache_context={"transport_settings": transport, "structured_call": True},
+            )
         effective_prompt = _json_only_user_prompt(prompt, json_schema)
         send_thinking_controls = os.environ.get("KMD_LOCAL_MODEL_SEND_THINKING_CONTROLS", "0").strip().lower() in {
             "1",
