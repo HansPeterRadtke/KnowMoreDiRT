@@ -73,6 +73,10 @@ SUITES = {
         "corpus": REPO_ROOT / "tests" / "fixtures" / "messy_raw_corpus",
         "qa": REPO_ROOT / "tests" / "fixtures" / "messy_raw_corpus_qa.json",
     },
+    "structured_record_json": {
+        "corpus": REPO_ROOT / "tests" / "fixtures" / "structured_record_json",
+        "qa": REPO_ROOT / "tests" / "fixtures" / "structured_record_json_qa.json",
+    },
 }
 
 

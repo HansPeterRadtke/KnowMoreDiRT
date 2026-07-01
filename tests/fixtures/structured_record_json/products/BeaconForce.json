@@ -1,0 +1,2959 @@
+{
+  "product": "BeaconForce",
+  "release_state": {
+    "blocking_pr": "PR-2814",
+    "gate": "HOLD",
+    "owner": "Omar Vale"
+  },
+  "source_shape": "HERB-like nested product JSON with Slack messages, GitHub PR references, customer ids, and long documentation URLs",
+  "team": [
+    "eid_aa10ff01",
+    "eid_bb20ff02",
+    "eid_cc30ff03",
+    "eid_dd40ff04",
+    "eid_ee50ff05"
+  ],
+  "threads": [
+    {
+      "Channel": {
+        "channelID": "ch-beacon-a1f93c",
+        "name": "planning-beaconforce"
+      },
+      "Message": {
+        "User": {
+          "text": "Mara Chen owns the retry scheduler for BeaconForce. The tracking PR is https://github.com/salesforce/BeaconForce/pull/2780 and the customer impact record is CUST-4920.",
+          "timestamp": "2026-08-10T09:14:00",
+          "userId": "eid_cc30ff03",
+          "utterranceID": "20260810-0-a4f91"
+        }
+      },
+      "Reactions": [],
+      "ThreadReplies": [],
+      "id": "20260810-0-a4f91"
+    },
+    {
+      "Channel": {
+        "channelID": "ch-beacon-b7c22a",
+        "name": "develop-beaconforce"
+      },
+      "Message": {
+        "User": {
+          "text": "Ilya Stone opened the OAuth callback repair PR at https://github.com/salesforce/BeaconForce/pull/2814. Omar Vale should review it before merge.",
+          "timestamp": "2026-08-11T13:22:00",
+          "userId": "eid_dd40ff04",
+          "utterranceID": "20260811-3-b77c2"
+        }
+      },
+      "Reactions": [],
+      "ThreadReplies": [],
+      "id": "20260811-3-b77c2"
+    },
+    {
+      "Channel": {
+        "channelID": "ch-beacon-c3361d",
+        "name": "customer-beaconforce"
+      },
+      "Message": {
+        "User": {
+          "text": "Blue Ridge Analytics is blocked by the telemetry export delay. Use evidence URL https://www.forbes.com/sites/forbestechcouncil/2026/08/10/how-ai-is-revolutionizing-collaboration-tools/ only as an external background link, not as the owner.",
+          "timestamp": "2026-08-12T16:05:00",
+          "userId": "eid_ee50ff05",
+          "utterranceID": "20260812-8-e3910"
+        }
+      },
+      "Reactions": [],
+      "ThreadReplies": [],
+      "id": "20260812-8-e3910"
+    },
+    {
+      "Channel": {
+        "channelID": "ch-beacon-d44aa1",
+        "name": "release-beaconforce"
+      },
+      "Message": {
+        "User": {
+          "text": "Omar Vale said do not merge PR-2814 until the callback replay test passes. Final release gate state is HOLD.",
+          "timestamp": "2026-08-13T18:40:00",
+          "userId": "eid_bb20ff02",
+          "utterranceID": "20260813-9-cc8a0"
+        }
+      },
+      "Reactions": [],
+      "ThreadReplies": [],
+      "id": "20260813-9-cc8a0"
+    },
+    {
+      "Channel": {
+        "channelID": "ch-beacon-0001",
+        "name": "develop-beaconforce"
+      },
+      "Message": {
+        "User": {
+          "text": "Omar Vale posted BeaconForce status item 1. The related pull request is https://github.com/salesforce/BeaconForce/pull/3001 and the long design note is https://docs.beaconforce.example/internal/platform/retry-scheduler/2026/08/01/how-the-retry-scheduler-handles-callback-replay-and-customer-impact/. The referenced customer token is CUST-4920. This sentence is ordinary project evidence, not random bytes.",
+          "timestamp": "2026-08-02T01:07:00",
+          "userId": "eid_bb20ff02",
+          "utterranceID": "20260801-1-bf0001"
+        }
+      },
+      "Reactions": [],
+      "ThreadReplies": [],
+      "id": "20260801-1-bf0001"
+    },
+    {
+      "Channel": {
+        "channelID": "ch-beacon-0002",
+        "name": "bug-beaconforce"
+      },
+      "Message": {
+        "User": {
+          "text": "Nina Park posted BeaconForce status item 2. The related pull request is https://github.com/salesforce/BeaconForce/pull/3002 and the long design note is https://docs.beaconforce.example/internal/platform/retry-scheduler/2026/08/02/how-the-retry-scheduler-handles-callback-replay-and-customer-impact/. The referenced customer token is CUST-5009. This sentence is ordinary project evidence, not random bytes.",
+          "timestamp": "2026-08-03T02:14:00",
+          "userId": "eid_cc30ff03",
+          "utterranceID": "20260802-2-bf0002"
+        }
+      },
+      "Reactions": [],
+      "ThreadReplies": [],
+      "id": "20260802-2-bf0002"
+    },
+    {
+      "Channel": {
+        "channelID": "ch-beacon-0003",
+        "name": "customer-beaconforce"
+      },
+      "Message": {
+        "User": {
+          "text": "Ilya Stone posted BeaconForce status item 3. The related pull request is https://github.com/salesforce/BeaconForce/pull/3003 and the long design note is https://docs.beaconforce.example/internal/platform/retry-scheduler/2026/08/03/how-the-retry-scheduler-handles-callback-replay-and-customer-impact/. The referenced customer token is CUST-4801. This sentence is ordinary project evidence, not random bytes.",
+          "timestamp": "2026-08-04T03:21:00",
+          "userId": "eid_dd40ff04",
+          "utterranceID": "20260803-3-bf0003"
+        }
+      },
+      "Reactions": [],
+      "ThreadReplies": [],
+      "id": "20260803-3-bf0003"
+    },
+    {
+      "Channel": {
+        "channelID": "ch-beacon-0004",
+        "name": "planning-beaconforce"
+      },
+      "Message": {
+        "User": {
+          "text": "Rhea Holt posted BeaconForce status item 4. The related pull request is https://github.com/salesforce/BeaconForce/pull/3004 and the long design note is https://docs.beaconforce.example/internal/platform/retry-scheduler/2026/08/04/how-the-retry-scheduler-handles-callback-replay-and-customer-impact/. The referenced customer token is CUST-4920. This sentence is ordinary project evidence, not random bytes.",
+          "timestamp": "2026-08-05T04:28:00",
+          "userId": "eid_ee50ff05",
+          "utterranceID": "20260804-4-bf0004"
+        }
+      },
+      "Reactions": [],
+      "ThreadReplies": [],
+      "id": "20260804-4-bf0004"
+    },
+    {
+      "Channel": {
+        "channelID": "ch-beacon-0005",
+        "name": "develop-beaconforce"
+      },
+      "Message": {
+        "User": {
+          "text": "Mara Chen posted BeaconForce status item 5. The related pull request is https://github.com/salesforce/BeaconForce/pull/3005 and the long design note is https://docs.beaconforce.example/internal/platform/retry-scheduler/2026/08/05/how-the-retry-scheduler-handles-callback-replay-and-customer-impact/. The referenced customer token is CUST-5009. This sentence is ordinary project evidence, not random bytes.",
+          "timestamp": "2026-08-06T05:35:00",
+          "userId": "eid_aa10ff01",
+          "utterranceID": "20260805-5-bf0005"
+        }
+      },
+      "Reactions": [],
+      "ThreadReplies": [],
+      "id": "20260805-5-bf0005"
+    },
+    {
+      "Channel": {
+        "channelID": "ch-beacon-0006",
+        "name": "bug-beaconforce"
+      },
+      "Message": {
+        "User": {
+          "text": "Omar Vale posted BeaconForce status item 6. The related pull request is https://github.com/salesforce/BeaconForce/pull/3006 and the long design note is https://docs.beaconforce.example/internal/platform/retry-scheduler/2026/08/06/how-the-retry-scheduler-handles-callback-replay-and-customer-impact/. The referenced customer token is CUST-4801. This sentence is ordinary project evidence, not random bytes.",
+          "timestamp": "2026-08-07T06:42:00",
+          "userId": "eid_bb20ff02",
+          "utterranceID": "20260806-6-bf0006"
+        }
+      },
+      "Reactions": [],
+      "ThreadReplies": [],
+      "id": "20260806-6-bf0006"
+    },
+    {
+      "Channel": {
+        "channelID": "ch-beacon-0007",
+        "name": "customer-beaconforce"
+      },
+      "Message": {
+        "User": {
+          "text": "Nina Park posted BeaconForce status item 7. The related pull request is https://github.com/salesforce/BeaconForce/pull/3007 and the long design note is https://docs.beaconforce.example/internal/platform/retry-scheduler/2026/08/07/how-the-retry-scheduler-handles-callback-replay-and-customer-impact/. The referenced customer token is CUST-4920. This sentence is ordinary project evidence, not random bytes.",
+          "timestamp": "2026-08-08T07:49:00",
+          "userId": "eid_cc30ff03",
+          "utterranceID": "20260807-7-bf0007"
+        }
+      },
+      "Reactions": [],
+      "ThreadReplies": [],
+      "id": "20260807-7-bf0007"
+    },
+    {
+      "Channel": {
+        "channelID": "ch-beacon-0008",
+        "name": "planning-beaconforce"
+      },
+      "Message": {
+        "User": {
+          "text": "Ilya Stone posted BeaconForce status item 8. The related pull request is https://github.com/salesforce/BeaconForce/pull/3008 and the long design note is https://docs.beaconforce.example/internal/platform/retry-scheduler/2026/08/08/how-the-retry-scheduler-handles-callback-replay-and-customer-impact/. The referenced customer token is CUST-5009. This sentence is ordinary project evidence, not random bytes.",
+          "timestamp": "2026-08-09T08:56:00",
+          "userId": "eid_dd40ff04",
+          "utterranceID": "20260808-8-bf0008"
+        }
+      },
+      "Reactions": [],
+      "ThreadReplies": [],
+      "id": "20260808-8-bf0008"
+    },
+    {
+      "Channel": {
+        "channelID": "ch-beacon-0009",
+        "name": "develop-beaconforce"
+      },
+      "Message": {
+        "User": {
+          "text": "Rhea Holt posted BeaconForce status item 9. The related pull request is https://github.com/salesforce/BeaconForce/pull/3009 and the long design note is https://docs.beaconforce.example/internal/platform/retry-scheduler/2026/08/09/how-the-retry-scheduler-handles-callback-replay-and-customer-impact/. The referenced customer token is CUST-4801. This sentence is ordinary project evidence, not random bytes.",
+          "timestamp": "2026-08-10T09:03:00",
+          "userId": "eid_ee50ff05",
+          "utterranceID": "20260809-9-bf0009"
+        }
+      },
+      "Reactions": [],
+      "ThreadReplies": [],
+      "id": "20260809-9-bf0009"
+    },
+    {
+      "Channel": {
+        "channelID": "ch-beacon-000a",
+        "name": "bug-beaconforce"
+      },
+      "Message": {
+        "User": {
+          "text": "Mara Chen posted BeaconForce status item 10. The related pull request is https://github.com/salesforce/BeaconForce/pull/3010 and the long design note is https://docs.beaconforce.example/internal/platform/retry-scheduler/2026/08/10/how-the-retry-scheduler-handles-callback-replay-and-customer-impact/. The referenced customer token is CUST-4920. This sentence is ordinary project evidence, not random bytes.",
+          "timestamp": "2026-08-11T10:10:00",
+          "userId": "eid_aa10ff01",
+          "utterranceID": "20260810-10-bf000a"
+        }
+      },
+      "Reactions": [],
+      "ThreadReplies": [],
+      "id": "20260810-10-bf000a"
+    },
+    {
+      "Channel": {
+        "channelID": "ch-beacon-000b",
+        "name": "customer-beaconforce"
+      },
+      "Message": {
+        "User": {
+          "text": "Omar Vale posted BeaconForce status item 11. The related pull request is https://github.com/salesforce/BeaconForce/pull/3011 and the long design note is https://docs.beaconforce.example/internal/platform/retry-scheduler/2026/08/11/how-the-retry-scheduler-handles-callback-replay-and-customer-impact/. The referenced customer token is CUST-5009. This sentence is ordinary project evidence, not random bytes.",
+          "timestamp": "2026-08-12T11:17:00",
+          "userId": "eid_bb20ff02",
+          "utterranceID": "20260811-11-bf000b"
+        }
+      },
+      "Reactions": [],
+      "ThreadReplies": [],
+      "id": "20260811-11-bf000b"
+    },
+    {
+      "Channel": {
+        "channelID": "ch-beacon-000c",
+        "name": "planning-beaconforce"
+      },
+      "Message": {
+        "User": {
+          "text": "Nina Park posted BeaconForce status item 12. The related pull request is https://github.com/salesforce/BeaconForce/pull/3012 and the long design note is https://docs.beaconforce.example/internal/platform/retry-scheduler/2026/08/12/how-the-retry-scheduler-handles-callback-replay-and-customer-impact/. The referenced customer token is CUST-4801. This sentence is ordinary project evidence, not random bytes.",
+          "timestamp": "2026-08-13T12:24:00",
+          "userId": "eid_cc30ff03",
+          "utterranceID": "20260812-12-bf000c"
+        }
+      },
+      "Reactions": [],
+      "ThreadReplies": [],
+      "id": "20260812-12-bf000c"
+    },
+    {
+      "Channel": {
+        "channelID": "ch-beacon-000d",
+        "name": "develop-beaconforce"
+      },
+      "Message": {
+        "User": {
+          "text": "Ilya Stone posted BeaconForce status item 13. The related pull request is https://github.com/salesforce/BeaconForce/pull/3013 and the long design note is https://docs.beaconforce.example/internal/platform/retry-scheduler/2026/08/13/how-the-retry-scheduler-handles-callback-replay-and-customer-impact/. The referenced customer token is CUST-4920. This sentence is ordinary project evidence, not random bytes.",
+          "timestamp": "2026-08-14T13:31:00",
+          "userId": "eid_dd40ff04",
+          "utterranceID": "20260813-13-bf000d"
+        }
+      },
+      "Reactions": [],
+      "ThreadReplies": [],
+      "id": "20260813-13-bf000d"
+    },
+    {
+      "Channel": {
+        "channelID": "ch-beacon-000e",
+        "name": "bug-beaconforce"
+      },
+      "Message": {
+        "User": {
+          "text": "Rhea Holt posted BeaconForce status item 14. The related pull request is https://github.com/salesforce/BeaconForce/pull/3014 and the long design note is https://docs.beaconforce.example/internal/platform/retry-scheduler/2026/08/14/how-the-retry-scheduler-handles-callback-replay-and-customer-impact/. The referenced customer token is CUST-5009. This sentence is ordinary project evidence, not random bytes.",
+          "timestamp": "2026-08-15T14:38:00",
+          "userId": "eid_ee50ff05",
+          "utterranceID": "20260814-14-bf000e"
+        }
+      },
+      "Reactions": [],
+      "ThreadReplies": [],
+      "id": "20260814-14-bf000e"
+    },
+    {
+      "Channel": {
+        "channelID": "ch-beacon-000f",
+        "name": "customer-beaconforce"
+      },
+      "Message": {
+        "User": {
+          "text": "Mara Chen posted BeaconForce status item 15. The related pull request is https://github.com/salesforce/BeaconForce/pull/3015 and the long design note is https://docs.beaconforce.example/internal/platform/retry-scheduler/2026/08/15/how-the-retry-scheduler-handles-callback-replay-and-customer-impact/. The referenced customer token is CUST-4801. This sentence is ordinary project evidence, not random bytes.",
+          "timestamp": "2026-08-16T15:45:00",
+          "userId": "eid_aa10ff01",
+          "utterranceID": "20260815-15-bf000f"
+        }
+      },
+      "Reactions": [],
+      "ThreadReplies": [],
+      "id": "20260815-15-bf000f"
+    },
+    {
+      "Channel": {
+        "channelID": "ch-beacon-0010",
+        "name": "planning-beaconforce"
+      },
+      "Message": {
+        "User": {
+          "text": "Omar Vale posted BeaconForce status item 16. The related pull request is https://github.com/salesforce/BeaconForce/pull/3016 and the long design note is https://docs.beaconforce.example/internal/platform/retry-scheduler/2026/08/16/how-the-retry-scheduler-handles-callback-replay-and-customer-impact/. The referenced customer token is CUST-4920. This sentence is ordinary project evidence, not random bytes.",
+          "timestamp": "2026-08-17T16:52:00",
+          "userId": "eid_bb20ff02",
+          "utterranceID": "20260816-16-bf0010"
+        }
+      },
+      "Reactions": [],
+      "ThreadReplies": [],
+      "id": "20260816-16-bf0010"
+    },
+    {
+      "Channel": {
+        "channelID": "ch-beacon-0011",
+        "name": "develop-beaconforce"
+      },
+      "Message": {
+        "User": {
+          "text": "Nina Park posted BeaconForce status item 17. The related pull request is https://github.com/salesforce/BeaconForce/pull/3017 and the long design note is https://docs.beaconforce.example/internal/platform/retry-scheduler/2026/08/17/how-the-retry-scheduler-handles-callback-replay-and-customer-impact/. The referenced customer token is CUST-5009. This sentence is ordinary project evidence, not random bytes.",
+          "timestamp": "2026-08-18T17:59:00",
+          "userId": "eid_cc30ff03",
+          "utterranceID": "20260817-17-bf0011"
+        }
+      },
+      "Reactions": [],
+      "ThreadReplies": [],
+      "id": "20260817-17-bf0011"
+    },
+    {
+      "Channel": {
+        "channelID": "ch-beacon-0012",
+        "name": "bug-beaconforce"
+      },
+      "Message": {
+        "User": {
+          "text": "Ilya Stone posted BeaconForce status item 18. The related pull request is https://github.com/salesforce/BeaconForce/pull/3018 and the long design note is https://docs.beaconforce.example/internal/platform/retry-scheduler/2026/08/18/how-the-retry-scheduler-handles-callback-replay-and-customer-impact/. The referenced customer token is CUST-4801. This sentence is ordinary project evidence, not random bytes.",
+          "timestamp": "2026-08-19T18:06:00",
+          "userId": "eid_dd40ff04",
+          "utterranceID": "20260818-18-bf0012"
+        }
+      },
+      "Reactions": [],
+      "ThreadReplies": [],
+      "id": "20260818-18-bf0012"
+    },
+    {
+      "Channel": {
+        "channelID": "ch-beacon-0013",
+        "name": "customer-beaconforce"
+      },
+      "Message": {
+        "User": {
+          "text": "Rhea Holt posted BeaconForce status item 19. The related pull request is https://github.com/salesforce/BeaconForce/pull/3019 and the long design note is https://docs.beaconforce.example/internal/platform/retry-scheduler/2026/08/19/how-the-retry-scheduler-handles-callback-replay-and-customer-impact/. The referenced customer token is CUST-4920. This sentence is ordinary project evidence, not random bytes.",
+          "timestamp": "2026-08-20T19:13:00",
+          "userId": "eid_ee50ff05",
+          "utterranceID": "20260819-19-bf0013"
+        }
+      },
+      "Reactions": [],
+      "ThreadReplies": [],
+      "id": "20260819-19-bf0013"
+    },
+    {
+      "Channel": {
+        "channelID": "ch-beacon-0014",
+        "name": "planning-beaconforce"
+      },
+      "Message": {
+        "User": {
+          "text": "Mara Chen posted BeaconForce status item 20. The related pull request is https://github.com/salesforce/BeaconForce/pull/3020 and the long design note is https://docs.beaconforce.example/internal/platform/retry-scheduler/2026/08/20/how-the-retry-scheduler-handles-callback-replay-and-customer-impact/. The referenced customer token is CUST-5009. This sentence is ordinary project evidence, not random bytes.",
+          "timestamp": "2026-08-21T20:20:00",
+          "userId": "eid_aa10ff01",
+          "utterranceID": "20260820-20-bf0014"
+        }
+      },
+      "Reactions": [],
+      "ThreadReplies": [],
+      "id": "20260820-20-bf0014"
+    },
+    {
+      "Channel": {
+        "channelID": "ch-beacon-0015",
+        "name": "develop-beaconforce"
+      },
+      "Message": {
+        "User": {
+          "text": "Omar Vale posted BeaconForce status item 21. The related pull request is https://github.com/salesforce/BeaconForce/pull/3021 and the long design note is https://docs.beaconforce.example/internal/platform/retry-scheduler/2026/08/21/how-the-retry-scheduler-handles-callback-replay-and-customer-impact/. The referenced customer token is CUST-4801. This sentence is ordinary project evidence, not random bytes.",
+          "timestamp": "2026-08-22T21:27:00",
+          "userId": "eid_bb20ff02",
+          "utterranceID": "20260821-21-bf0015"
+        }
+      },
+      "Reactions": [],
+      "ThreadReplies": [],
+      "id": "20260821-21-bf0015"
+    },
+    {
+      "Channel": {
+        "channelID": "ch-beacon-0016",
+        "name": "bug-beaconforce"
+      },
+      "Message": {
+        "User": {
+          "text": "Nina Park posted BeaconForce status item 22. The related pull request is https://github.com/salesforce/BeaconForce/pull/3022 and the long design note is https://docs.beaconforce.example/internal/platform/retry-scheduler/2026/08/22/how-the-retry-scheduler-handles-callback-replay-and-customer-impact/. The referenced customer token is CUST-4920. This sentence is ordinary project evidence, not random bytes.",
+          "timestamp": "2026-08-23T22:34:00",
+          "userId": "eid_cc30ff03",
+          "utterranceID": "20260822-22-bf0016"
+        }
+      },
+      "Reactions": [],
+      "ThreadReplies": [],
+      "id": "20260822-22-bf0016"
+    },
+    {
+      "Channel": {
+        "channelID": "ch-beacon-0017",
+        "name": "customer-beaconforce"
+      },
+      "Message": {
+        "User": {
+          "text": "Ilya Stone posted BeaconForce status item 23. The related pull request is https://github.com/salesforce/BeaconForce/pull/3023 and the long design note is https://docs.beaconforce.example/internal/platform/retry-scheduler/2026/08/23/how-the-retry-scheduler-handles-callback-replay-and-customer-impact/. The referenced customer token is CUST-5009. This sentence is ordinary project evidence, not random bytes.",
+          "timestamp": "2026-08-24T00:41:00",
+          "userId": "eid_dd40ff04",
+          "utterranceID": "20260823-23-bf0017"
+        }
+      },
+      "Reactions": [],
+      "ThreadReplies": [],
+      "id": "20260823-23-bf0017"
+    },
+    {
+      "Channel": {
+        "channelID": "ch-beacon-0018",
+        "name": "planning-beaconforce"
+      },
+      "Message": {
+        "User": {
+          "text": "Rhea Holt posted BeaconForce status item 24. The related pull request is https://github.com/salesforce/BeaconForce/pull/3024 and the long design note is https://docs.beaconforce.example/internal/platform/retry-scheduler/2026/08/24/how-the-retry-scheduler-handles-callback-replay-and-customer-impact/. The referenced customer token is CUST-4801. This sentence is ordinary project evidence, not random bytes.",
+          "timestamp": "2026-08-25T01:48:00",
+          "userId": "eid_ee50ff05",
+          "utterranceID": "20260824-24-bf0018"
+        }
+      },
+      "Reactions": [],
+      "ThreadReplies": [],
+      "id": "20260824-24-bf0018"
+    },
+    {
+      "Channel": {
+        "channelID": "ch-beacon-0019",
+        "name": "develop-beaconforce"
+      },
+      "Message": {
+        "User": {
+          "text": "Mara Chen posted BeaconForce status item 25. The related pull request is https://github.com/salesforce/BeaconForce/pull/3025 and the long design note is https://docs.beaconforce.example/internal/platform/retry-scheduler/2026/08/25/how-the-retry-scheduler-handles-callback-replay-and-customer-impact/. The referenced customer token is CUST-4920. This sentence is ordinary project evidence, not random bytes.",
+          "timestamp": "2026-08-01T02:55:00",
+          "userId": "eid_aa10ff01",
+          "utterranceID": "20260825-25-bf0019"
+        }
+      },
+      "Reactions": [],
+      "ThreadReplies": [],
+      "id": "20260825-25-bf0019"
+    },
+    {
+      "Channel": {
+        "channelID": "ch-beacon-001a",
+        "name": "bug-beaconforce"
+      },
+      "Message": {
+        "User": {
+          "text": "Omar Vale posted BeaconForce status item 26. The related pull request is https://github.com/salesforce/BeaconForce/pull/3026 and the long design note is https://docs.beaconforce.example/internal/platform/retry-scheduler/2026/08/26/how-the-retry-scheduler-handles-callback-replay-and-customer-impact/. The referenced customer token is CUST-5009. This sentence is ordinary project evidence, not random bytes.",
+          "timestamp": "2026-08-02T03:02:00",
+          "userId": "eid_bb20ff02",
+          "utterranceID": "20260826-26-bf001a"
+        }
+      },
+      "Reactions": [],
+      "ThreadReplies": [],
+      "id": "20260826-26-bf001a"
+    },
+    {
+      "Channel": {
+        "channelID": "ch-beacon-001b",
+        "name": "customer-beaconforce"
+      },
+      "Message": {
+        "User": {
+          "text": "Nina Park posted BeaconForce status item 27. The related pull request is https://github.com/salesforce/BeaconForce/pull/3027 and the long design note is https://docs.beaconforce.example/internal/platform/retry-scheduler/2026/08/27/how-the-retry-scheduler-handles-callback-replay-and-customer-impact/. The referenced customer token is CUST-4801. This sentence is ordinary project evidence, not random bytes.",
+          "timestamp": "2026-08-03T04:09:00",
+          "userId": "eid_cc30ff03",
+          "utterranceID": "20260827-27-bf001b"
+        }
+      },
+      "Reactions": [],
+      "ThreadReplies": [],
+      "id": "20260827-27-bf001b"
+    },
+    {
+      "Channel": {
+        "channelID": "ch-beacon-001c",
+        "name": "planning-beaconforce"
+      },
+      "Message": {
+        "User": {
+          "text": "Ilya Stone posted BeaconForce status item 28. The related pull request is https://github.com/salesforce/BeaconForce/pull/3028 and the long design note is https://docs.beaconforce.example/internal/platform/retry-scheduler/2026/08/28/how-the-retry-scheduler-handles-callback-replay-and-customer-impact/. The referenced customer token is CUST-4920. This sentence is ordinary project evidence, not random bytes.",
+          "timestamp": "2026-08-04T05:16:00",
+          "userId": "eid_dd40ff04",
+          "utterranceID": "20260828-28-bf001c"
+        }
+      },
+      "Reactions": [],
+      "ThreadReplies": [],
+      "id": "20260828-28-bf001c"
+    },
+    {
+      "Channel": {
+        "channelID": "ch-beacon-001d",
+        "name": "develop-beaconforce"
+      },
+      "Message": {
+        "User": {
+          "text": "Rhea Holt posted BeaconForce status item 29. The related pull request is https://github.com/salesforce/BeaconForce/pull/3029 and the long design note is https://docs.beaconforce.example/internal/platform/retry-scheduler/2026/08/29/how-the-retry-scheduler-handles-callback-replay-and-customer-impact/. The referenced customer token is CUST-5009. This sentence is ordinary project evidence, not random bytes.",
+          "timestamp": "2026-08-05T06:23:00",
+          "userId": "eid_ee50ff05",
+          "utterranceID": "20260829-29-bf001d"
+        }
+      },
+      "Reactions": [],
+      "ThreadReplies": [],
+      "id": "20260829-29-bf001d"
+    },
+    {
+      "Channel": {
+        "channelID": "ch-beacon-001e",
+        "name": "bug-beaconforce"
+      },
+      "Message": {
+        "User": {
+          "text": "Mara Chen posted BeaconForce status item 30. The related pull request is https://github.com/salesforce/BeaconForce/pull/3030 and the long design note is https://docs.beaconforce.example/internal/platform/retry-scheduler/2026/08/30/how-the-retry-scheduler-handles-callback-replay-and-customer-impact/. The referenced customer token is CUST-4801. This sentence is ordinary project evidence, not random bytes.",
+          "timestamp": "2026-08-06T07:30:00",
+          "userId": "eid_aa10ff01",
+          "utterranceID": "20260800-30-bf001e"
+        }
+      },
+      "Reactions": [],
+      "ThreadReplies": [],
+      "id": "20260800-30-bf001e"
+    },
+    {
+      "Channel": {
+        "channelID": "ch-beacon-001f",
+        "name": "customer-beaconforce"
+      },
+      "Message": {
+        "User": {
+          "text": "Omar Vale posted BeaconForce status item 31. The related pull request is https://github.com/salesforce/BeaconForce/pull/3031 and the long design note is https://docs.beaconforce.example/internal/platform/retry-scheduler/2026/08/31/how-the-retry-scheduler-handles-callback-replay-and-customer-impact/. The referenced customer token is CUST-4920. This sentence is ordinary project evidence, not random bytes.",
+          "timestamp": "2026-08-07T08:37:00",
+          "userId": "eid_bb20ff02",
+          "utterranceID": "20260801-31-bf001f"
+        }
+      },
+      "Reactions": [],
+      "ThreadReplies": [],
+      "id": "20260801-31-bf001f"
+    },
+    {
+      "Channel": {
+        "channelID": "ch-beacon-0020",
+        "name": "planning-beaconforce"
+      },
+      "Message": {
+        "User": {
+          "text": "Nina Park posted BeaconForce status item 32. The related pull request is https://github.com/salesforce/BeaconForce/pull/3032 and the long design note is https://docs.beaconforce.example/internal/platform/retry-scheduler/2026/08/32/how-the-retry-scheduler-handles-callback-replay-and-customer-impact/. The referenced customer token is CUST-5009. This sentence is ordinary project evidence, not random bytes.",
+          "timestamp": "2026-08-08T09:44:00",
+          "userId": "eid_cc30ff03",
+          "utterranceID": "20260802-32-bf0020"
+        }
+      },
+      "Reactions": [],
+      "ThreadReplies": [],
+      "id": "20260802-32-bf0020"
+    },
+    {
+      "Channel": {
+        "channelID": "ch-beacon-0021",
+        "name": "develop-beaconforce"
+      },
+      "Message": {
+        "User": {
+          "text": "Ilya Stone posted BeaconForce status item 33. The related pull request is https://github.com/salesforce/BeaconForce/pull/3033 and the long design note is https://docs.beaconforce.example/internal/platform/retry-scheduler/2026/08/33/how-the-retry-scheduler-handles-callback-replay-and-customer-impact/. The referenced customer token is CUST-4801. This sentence is ordinary project evidence, not random bytes.",
+          "timestamp": "2026-08-09T10:51:00",
+          "userId": "eid_dd40ff04",
+          "utterranceID": "20260803-33-bf0021"
+        }
+      },
+      "Reactions": [],
+      "ThreadReplies": [],
+      "id": "20260803-33-bf0021"
+    },
+    {
+      "Channel": {
+        "channelID": "ch-beacon-0022",
+        "name": "bug-beaconforce"
+      },
+      "Message": {
+        "User": {
+          "text": "Rhea Holt posted BeaconForce status item 34. The related pull request is https://github.com/salesforce/BeaconForce/pull/3034 and the long design note is https://docs.beaconforce.example/internal/platform/retry-scheduler/2026/08/34/how-the-retry-scheduler-handles-callback-replay-and-customer-impact/. The referenced customer token is CUST-4920. This sentence is ordinary project evidence, not random bytes.",
+          "timestamp": "2026-08-10T11:58:00",
+          "userId": "eid_ee50ff05",
+          "utterranceID": "20260804-34-bf0022"
+        }
+      },
+      "Reactions": [],
+      "ThreadReplies": [],
+      "id": "20260804-34-bf0022"
+    },
+    {
+      "Channel": {
+        "channelID": "ch-beacon-0023",
+        "name": "customer-beaconforce"
+      },
+      "Message": {
+        "User": {
+          "text": "Mara Chen posted BeaconForce status item 35. The related pull request is https://github.com/salesforce/BeaconForce/pull/3035 and the long design note is https://docs.beaconforce.example/internal/platform/retry-scheduler/2026/08/35/how-the-retry-scheduler-handles-callback-replay-and-customer-impact/. The referenced customer token is CUST-5009. This sentence is ordinary project evidence, not random bytes.",
+          "timestamp": "2026-08-11T12:05:00",
+          "userId": "eid_aa10ff01",
+          "utterranceID": "20260805-35-bf0023"
+        }
+      },
+      "Reactions": [],
+      "ThreadReplies": [],
+      "id": "20260805-35-bf0023"
+    },
+    {
+      "Channel": {
+        "channelID": "ch-beacon-0024",
+        "name": "planning-beaconforce"
+      },
+      "Message": {
+        "User": {
+          "text": "Omar Vale posted BeaconForce status item 36. The related pull request is https://github.com/salesforce/BeaconForce/pull/3036 and the long design note is https://docs.beaconforce.example/internal/platform/retry-scheduler/2026/08/36/how-the-retry-scheduler-handles-callback-replay-and-customer-impact/. The referenced customer token is CUST-4801. This sentence is ordinary project evidence, not random bytes.",
+          "timestamp": "2026-08-12T13:12:00",
+          "userId": "eid_bb20ff02",
+          "utterranceID": "20260806-36-bf0024"
+        }
+      },
+      "Reactions": [],
+      "ThreadReplies": [],
+      "id": "20260806-36-bf0024"
+    },
+    {
+      "Channel": {
+        "channelID": "ch-beacon-0025",
+        "name": "develop-beaconforce"
+      },
+      "Message": {
+        "User": {
+          "text": "Nina Park posted BeaconForce status item 37. The related pull request is https://github.com/salesforce/BeaconForce/pull/3037 and the long design note is https://docs.beaconforce.example/internal/platform/retry-scheduler/2026/08/37/how-the-retry-scheduler-handles-callback-replay-and-customer-impact/. The referenced customer token is CUST-4920. This sentence is ordinary project evidence, not random bytes.",
+          "timestamp": "2026-08-13T14:19:00",
+          "userId": "eid_cc30ff03",
+          "utterranceID": "20260807-37-bf0025"
+        }
+      },
+      "Reactions": [],
+      "ThreadReplies": [],
+      "id": "20260807-37-bf0025"
+    },
+    {
+      "Channel": {
+        "channelID": "ch-beacon-0026",
+        "name": "bug-beaconforce"
+      },
+      "Message": {
+        "User": {
+          "text": "Ilya Stone posted BeaconForce status item 38. The related pull request is https://github.com/salesforce/BeaconForce/pull/3038 and the long design note is https://docs.beaconforce.example/internal/platform/retry-scheduler/2026/08/38/how-the-retry-scheduler-handles-callback-replay-and-customer-impact/. The referenced customer token is CUST-5009. This sentence is ordinary project evidence, not random bytes.",
+          "timestamp": "2026-08-14T15:26:00",
+          "userId": "eid_dd40ff04",
+          "utterranceID": "20260808-38-bf0026"
+        }
+      },
+      "Reactions": [],
+      "ThreadReplies": [],
+      "id": "20260808-38-bf0026"
+    },
+    {
+      "Channel": {
+        "channelID": "ch-beacon-0027",
+        "name": "customer-beaconforce"
+      },
+      "Message": {
+        "User": {
+          "text": "Rhea Holt posted BeaconForce status item 39. The related pull request is https://github.com/salesforce/BeaconForce/pull/3039 and the long design note is https://docs.beaconforce.example/internal/platform/retry-scheduler/2026/08/39/how-the-retry-scheduler-handles-callback-replay-and-customer-impact/. The referenced customer token is CUST-4801. This sentence is ordinary project evidence, not random bytes.",
+          "timestamp": "2026-08-15T16:33:00",
+          "userId": "eid_ee50ff05",
+          "utterranceID": "20260809-39-bf0027"
+        }
+      },
+      "Reactions": [],
+      "ThreadReplies": [],
+      "id": "20260809-39-bf0027"
+    },
+    {
+      "Channel": {
+        "channelID": "ch-beacon-0028",
+        "name": "planning-beaconforce"
+      },
+      "Message": {
+        "User": {
+          "text": "Mara Chen posted BeaconForce status item 40. The related pull request is https://github.com/salesforce/BeaconForce/pull/3040 and the long design note is https://docs.beaconforce.example/internal/platform/retry-scheduler/2026/08/40/how-the-retry-scheduler-handles-callback-replay-and-customer-impact/. The referenced customer token is CUST-4920. This sentence is ordinary project evidence, not random bytes.",
+          "timestamp": "2026-08-16T17:40:00",
+          "userId": "eid_aa10ff01",
+          "utterranceID": "20260810-40-bf0028"
+        }
+      },
+      "Reactions": [],
+      "ThreadReplies": [],
+      "id": "20260810-40-bf0028"
+    },
+    {
+      "Channel": {
+        "channelID": "ch-beacon-0029",
+        "name": "develop-beaconforce"
+      },
+      "Message": {
+        "User": {
+          "text": "Omar Vale posted BeaconForce status item 41. The related pull request is https://github.com/salesforce/BeaconForce/pull/3041 and the long design note is https://docs.beaconforce.example/internal/platform/retry-scheduler/2026/08/41/how-the-retry-scheduler-handles-callback-replay-and-customer-impact/. The referenced customer token is CUST-5009. This sentence is ordinary project evidence, not random bytes.",
+          "timestamp": "2026-08-17T18:47:00",
+          "userId": "eid_bb20ff02",
+          "utterranceID": "20260811-41-bf0029"
+        }
+      },
+      "Reactions": [],
+      "ThreadReplies": [],
+      "id": "20260811-41-bf0029"
+    },
+    {
+      "Channel": {
+        "channelID": "ch-beacon-002a",
+        "name": "bug-beaconforce"
+      },
+      "Message": {
+        "User": {
+          "text": "Nina Park posted BeaconForce status item 42. The related pull request is https://github.com/salesforce/BeaconForce/pull/3042 and the long design note is https://docs.beaconforce.example/internal/platform/retry-scheduler/2026/08/42/how-the-retry-scheduler-handles-callback-replay-and-customer-impact/. The referenced customer token is CUST-4801. This sentence is ordinary project evidence, not random bytes.",
+          "timestamp": "2026-08-18T19:54:00",
+          "userId": "eid_cc30ff03",
+          "utterranceID": "20260812-42-bf002a"
+        }
+      },
+      "Reactions": [],
+      "ThreadReplies": [],
+      "id": "20260812-42-bf002a"
+    },
+    {
+      "Channel": {
+        "channelID": "ch-beacon-002b",
+        "name": "customer-beaconforce"
+      },
+      "Message": {
+        "User": {
+          "text": "Ilya Stone posted BeaconForce status item 43. The related pull request is https://github.com/salesforce/BeaconForce/pull/3043 and the long design note is https://docs.beaconforce.example/internal/platform/retry-scheduler/2026/08/43/how-the-retry-scheduler-handles-callback-replay-and-customer-impact/. The referenced customer token is CUST-4920. This sentence is ordinary project evidence, not random bytes.",
+          "timestamp": "2026-08-19T20:01:00",
+          "userId": "eid_dd40ff04",
+          "utterranceID": "20260813-43-bf002b"
+        }
+      },
+      "Reactions": [],
+      "ThreadReplies": [],
+      "id": "20260813-43-bf002b"
+    },
+    {
+      "Channel": {
+        "channelID": "ch-beacon-002c",
+        "name": "planning-beaconforce"
+      },
+      "Message": {
+        "User": {
+          "text": "Rhea Holt posted BeaconForce status item 44. The related pull request is https://github.com/salesforce/BeaconForce/pull/3044 and the long design note is https://docs.beaconforce.example/internal/platform/retry-scheduler/2026/08/44/how-the-retry-scheduler-handles-callback-replay-and-customer-impact/. The referenced customer token is CUST-5009. This sentence is ordinary project evidence, not random bytes.",
+          "timestamp": "2026-08-20T21:08:00",
+          "userId": "eid_ee50ff05",
+          "utterranceID": "20260814-44-bf002c"
+        }
+      },
+      "Reactions": [],
+      "ThreadReplies": [],
+      "id": "20260814-44-bf002c"
+    },
+    {
+      "Channel": {
+        "channelID": "ch-beacon-002d",
+        "name": "develop-beaconforce"
+      },
+      "Message": {
+        "User": {
+          "text": "Mara Chen posted BeaconForce status item 45. The related pull request is https://github.com/salesforce/BeaconForce/pull/3045 and the long design note is https://docs.beaconforce.example/internal/platform/retry-scheduler/2026/08/45/how-the-retry-scheduler-handles-callback-replay-and-customer-impact/. The referenced customer token is CUST-4801. This sentence is ordinary project evidence, not random bytes.",
+          "timestamp": "2026-08-21T22:15:00",
+          "userId": "eid_aa10ff01",
+          "utterranceID": "20260815-45-bf002d"
+        }
+      },
+      "Reactions": [],
+      "ThreadReplies": [],
+      "id": "20260815-45-bf002d"
+    },
+    {
+      "Channel": {
+        "channelID": "ch-beacon-002e",
+        "name": "bug-beaconforce"
+      },
+      "Message": {
+        "User": {
+          "text": "Omar Vale posted BeaconForce status item 46. The related pull request is https://github.com/salesforce/BeaconForce/pull/3046 and the long design note is https://docs.beaconforce.example/internal/platform/retry-scheduler/2026/08/46/how-the-retry-scheduler-handles-callback-replay-and-customer-impact/. The referenced customer token is CUST-4920. This sentence is ordinary project evidence, not random bytes.",
+          "timestamp": "2026-08-22T00:22:00",
+          "userId": "eid_bb20ff02",
+          "utterranceID": "20260816-46-bf002e"
+        }
+      },
+      "Reactions": [],
+      "ThreadReplies": [],
+      "id": "20260816-46-bf002e"
+    },
+    {
+      "Channel": {
+        "channelID": "ch-beacon-002f",
+        "name": "customer-beaconforce"
+      },
+      "Message": {
+        "User": {
+          "text": "Nina Park posted BeaconForce status item 47. The related pull request is https://github.com/salesforce/BeaconForce/pull/3047 and the long design note is https://docs.beaconforce.example/internal/platform/retry-scheduler/2026/08/47/how-the-retry-scheduler-handles-callback-replay-and-customer-impact/. The referenced customer token is CUST-5009. This sentence is ordinary project evidence, not random bytes.",
+          "timestamp": "2026-08-23T01:29:00",
+          "userId": "eid_cc30ff03",
+          "utterranceID": "20260817-47-bf002f"
+        }
+      },
+      "Reactions": [],
+      "ThreadReplies": [],
+      "id": "20260817-47-bf002f"
+    },
+    {
+      "Channel": {
+        "channelID": "ch-beacon-0030",
+        "name": "planning-beaconforce"
+      },
+      "Message": {
+        "User": {
+          "text": "Ilya Stone posted BeaconForce status item 48. The related pull request is https://github.com/salesforce/BeaconForce/pull/3048 and the long design note is https://docs.beaconforce.example/internal/platform/retry-scheduler/2026/08/48/how-the-retry-scheduler-handles-callback-replay-and-customer-impact/. The referenced customer token is CUST-4801. This sentence is ordinary project evidence, not random bytes.",
+          "timestamp": "2026-08-24T02:36:00",
+          "userId": "eid_dd40ff04",
+          "utterranceID": "20260818-48-bf0030"
+        }
+      },
+      "Reactions": [],
+      "ThreadReplies": [],
+      "id": "20260818-48-bf0030"
+    },
+    {
+      "Channel": {
+        "channelID": "ch-beacon-0031",
+        "name": "develop-beaconforce"
+      },
+      "Message": {
+        "User": {
+          "text": "Rhea Holt posted BeaconForce status item 49. The related pull request is https://github.com/salesforce/BeaconForce/pull/3049 and the long design note is https://docs.beaconforce.example/internal/platform/retry-scheduler/2026/08/49/how-the-retry-scheduler-handles-callback-replay-and-customer-impact/. The referenced customer token is CUST-4920. This sentence is ordinary project evidence, not random bytes.",
+          "timestamp": "2026-08-25T03:43:00",
+          "userId": "eid_ee50ff05",
+          "utterranceID": "20260819-49-bf0031"
+        }
+      },
+      "Reactions": [],
+      "ThreadReplies": [],
+      "id": "20260819-49-bf0031"
+    },
+    {
+      "Channel": {
+        "channelID": "ch-beacon-0032",
+        "name": "bug-beaconforce"
+      },
+      "Message": {
+        "User": {
+          "text": "Mara Chen posted BeaconForce status item 50. The related pull request is https://github.com/salesforce/BeaconForce/pull/3050 and the long design note is https://docs.beaconforce.example/internal/platform/retry-scheduler/2026/08/50/how-the-retry-scheduler-handles-callback-replay-and-customer-impact/. The referenced customer token is CUST-5009. This sentence is ordinary project evidence, not random bytes.",
+          "timestamp": "2026-08-01T04:50:00",
+          "userId": "eid_aa10ff01",
+          "utterranceID": "20260820-50-bf0032"
+        }
+      },
+      "Reactions": [],
+      "ThreadReplies": [],
+      "id": "20260820-50-bf0032"
+    },
+    {
+      "Channel": {
+        "channelID": "ch-beacon-0033",
+        "name": "customer-beaconforce"
+      },
+      "Message": {
+        "User": {
+          "text": "Omar Vale posted BeaconForce status item 51. The related pull request is https://github.com/salesforce/BeaconForce/pull/3051 and the long design note is https://docs.beaconforce.example/internal/platform/retry-scheduler/2026/08/51/how-the-retry-scheduler-handles-callback-replay-and-customer-impact/. The referenced customer token is CUST-4801. This sentence is ordinary project evidence, not random bytes.",
+          "timestamp": "2026-08-02T05:57:00",
+          "userId": "eid_bb20ff02",
+          "utterranceID": "20260821-51-bf0033"
+        }
+      },
+      "Reactions": [],
+      "ThreadReplies": [],
+      "id": "20260821-51-bf0033"
+    },
+    {
+      "Channel": {
+        "channelID": "ch-beacon-0034",
+        "name": "planning-beaconforce"
+      },
+      "Message": {
+        "User": {
+          "text": "Nina Park posted BeaconForce status item 52. The related pull request is https://github.com/salesforce/BeaconForce/pull/3052 and the long design note is https://docs.beaconforce.example/internal/platform/retry-scheduler/2026/08/52/how-the-retry-scheduler-handles-callback-replay-and-customer-impact/. The referenced customer token is CUST-4920. This sentence is ordinary project evidence, not random bytes.",
+          "timestamp": "2026-08-03T06:04:00",
+          "userId": "eid_cc30ff03",
+          "utterranceID": "20260822-52-bf0034"
+        }
+      },
+      "Reactions": [],
+      "ThreadReplies": [],
+      "id": "20260822-52-bf0034"
+    },
+    {
+      "Channel": {
+        "channelID": "ch-beacon-0035",
+        "name": "develop-beaconforce"
+      },
+      "Message": {
+        "User": {
+          "text": "Ilya Stone posted BeaconForce status item 53. The related pull request is https://github.com/salesforce/BeaconForce/pull/3053 and the long design note is https://docs.beaconforce.example/internal/platform/retry-scheduler/2026/08/53/how-the-retry-scheduler-handles-callback-replay-and-customer-impact/. The referenced customer token is CUST-5009. This sentence is ordinary project evidence, not random bytes.",
+          "timestamp": "2026-08-04T07:11:00",
+          "userId": "eid_dd40ff04",
+          "utterranceID": "20260823-53-bf0035"
+        }
+      },
+      "Reactions": [],
+      "ThreadReplies": [],
+      "id": "20260823-53-bf0035"
+    },
+    {
+      "Channel": {
+        "channelID": "ch-beacon-0036",
+        "name": "bug-beaconforce"
+      },
+      "Message": {
+        "User": {
+          "text": "Rhea Holt posted BeaconForce status item 54. The related pull request is https://github.com/salesforce/BeaconForce/pull/3054 and the long design note is https://docs.beaconforce.example/internal/platform/retry-scheduler/2026/08/54/how-the-retry-scheduler-handles-callback-replay-and-customer-impact/. The referenced customer token is CUST-4801. This sentence is ordinary project evidence, not random bytes.",
+          "timestamp": "2026-08-05T08:18:00",
+          "userId": "eid_ee50ff05",
+          "utterranceID": "20260824-54-bf0036"
+        }
+      },
+      "Reactions": [],
+      "ThreadReplies": [],
+      "id": "20260824-54-bf0036"
+    },
+    {
+      "Channel": {
+        "channelID": "ch-beacon-0037",
+        "name": "customer-beaconforce"
+      },
+      "Message": {
+        "User": {
+          "text": "Mara Chen posted BeaconForce status item 55. The related pull request is https://github.com/salesforce/BeaconForce/pull/3055 and the long design note is https://docs.beaconforce.example/internal/platform/retry-scheduler/2026/08/55/how-the-retry-scheduler-handles-callback-replay-and-customer-impact/. The referenced customer token is CUST-4920. This sentence is ordinary project evidence, not random bytes.",
+          "timestamp": "2026-08-06T09:25:00",
+          "userId": "eid_aa10ff01",
+          "utterranceID": "20260825-55-bf0037"
+        }
+      },
+      "Reactions": [],
+      "ThreadReplies": [],
+      "id": "20260825-55-bf0037"
+    },
+    {
+      "Channel": {
+        "channelID": "ch-beacon-0038",
+        "name": "planning-beaconforce"
+      },
+      "Message": {
+        "User": {
+          "text": "Omar Vale posted BeaconForce status item 56. The related pull request is https://github.com/salesforce/BeaconForce/pull/3056 and the long design note is https://docs.beaconforce.example/internal/platform/retry-scheduler/2026/08/56/how-the-retry-scheduler-handles-callback-replay-and-customer-impact/. The referenced customer token is CUST-5009. This sentence is ordinary project evidence, not random bytes.",
+          "timestamp": "2026-08-07T10:32:00",
+          "userId": "eid_bb20ff02",
+          "utterranceID": "20260826-56-bf0038"
+        }
+      },
+      "Reactions": [],
+      "ThreadReplies": [],
+      "id": "20260826-56-bf0038"
+    },
+    {
+      "Channel": {
+        "channelID": "ch-beacon-0039",
+        "name": "develop-beaconforce"
+      },
+      "Message": {
+        "User": {
+          "text": "Nina Park posted BeaconForce status item 57. The related pull request is https://github.com/salesforce/BeaconForce/pull/3057 and the long design note is https://docs.beaconforce.example/internal/platform/retry-scheduler/2026/08/57/how-the-retry-scheduler-handles-callback-replay-and-customer-impact/. The referenced customer token is CUST-4801. This sentence is ordinary project evidence, not random bytes.",
+          "timestamp": "2026-08-08T11:39:00",
+          "userId": "eid_cc30ff03",
+          "utterranceID": "20260827-57-bf0039"
+        }
+      },
+      "Reactions": [],
+      "ThreadReplies": [],
+      "id": "20260827-57-bf0039"
+    },
+    {
+      "Channel": {
+        "channelID": "ch-beacon-003a",
+        "name": "bug-beaconforce"
+      },
+      "Message": {
+        "User": {
+          "text": "Ilya Stone posted BeaconForce status item 58. The related pull request is https://github.com/salesforce/BeaconForce/pull/3058 and the long design note is https://docs.beaconforce.example/internal/platform/retry-scheduler/2026/08/58/how-the-retry-scheduler-handles-callback-replay-and-customer-impact/. The referenced customer token is CUST-4920. This sentence is ordinary project evidence, not random bytes.",
+          "timestamp": "2026-08-09T12:46:00",
+          "userId": "eid_dd40ff04",
+          "utterranceID": "20260828-58-bf003a"
+        }
+      },
+      "Reactions": [],
+      "ThreadReplies": [],
+      "id": "20260828-58-bf003a"
+    },
+    {
+      "Channel": {
+        "channelID": "ch-beacon-003b",
+        "name": "customer-beaconforce"
+      },
+      "Message": {
+        "User": {
+          "text": "Rhea Holt posted BeaconForce status item 59. The related pull request is https://github.com/salesforce/BeaconForce/pull/3059 and the long design note is https://docs.beaconforce.example/internal/platform/retry-scheduler/2026/08/59/how-the-retry-scheduler-handles-callback-replay-and-customer-impact/. The referenced customer token is CUST-5009. This sentence is ordinary project evidence, not random bytes.",
+          "timestamp": "2026-08-10T13:53:00",
+          "userId": "eid_ee50ff05",
+          "utterranceID": "20260829-59-bf003b"
+        }
+      },
+      "Reactions": [],
+      "ThreadReplies": [],
+      "id": "20260829-59-bf003b"
+    },
+    {
+      "Channel": {
+        "channelID": "ch-beacon-003c",
+        "name": "planning-beaconforce"
+      },
+      "Message": {
+        "User": {
+          "text": "Mara Chen posted BeaconForce status item 60. The related pull request is https://github.com/salesforce/BeaconForce/pull/3060 and the long design note is https://docs.beaconforce.example/internal/platform/retry-scheduler/2026/08/60/how-the-retry-scheduler-handles-callback-replay-and-customer-impact/. The referenced customer token is CUST-4801. This sentence is ordinary project evidence, not random bytes.",
+          "timestamp": "2026-08-11T14:00:00",
+          "userId": "eid_aa10ff01",
+          "utterranceID": "20260800-60-bf003c"
+        }
+      },
+      "Reactions": [],
+      "ThreadReplies": [],
+      "id": "20260800-60-bf003c"
+    },
+    {
+      "Channel": {
+        "channelID": "ch-beacon-003d",
+        "name": "develop-beaconforce"
+      },
+      "Message": {
+        "User": {
+          "text": "Omar Vale posted BeaconForce status item 61. The related pull request is https://github.com/salesforce/BeaconForce/pull/3061 and the long design note is https://docs.beaconforce.example/internal/platform/retry-scheduler/2026/08/61/how-the-retry-scheduler-handles-callback-replay-and-customer-impact/. The referenced customer token is CUST-4920. This sentence is ordinary project evidence, not random bytes.",
+          "timestamp": "2026-08-12T15:07:00",
+          "userId": "eid_bb20ff02",
+          "utterranceID": "20260801-61-bf003d"
+        }
+      },
+      "Reactions": [],
+      "ThreadReplies": [],
+      "id": "20260801-61-bf003d"
+    },
+    {
+      "Channel": {
+        "channelID": "ch-beacon-003e",
+        "name": "bug-beaconforce"
+      },
+      "Message": {
+        "User": {
+          "text": "Nina Park posted BeaconForce status item 62. The related pull request is https://github.com/salesforce/BeaconForce/pull/3062 and the long design note is https://docs.beaconforce.example/internal/platform/retry-scheduler/2026/08/62/how-the-retry-scheduler-handles-callback-replay-and-customer-impact/. The referenced customer token is CUST-5009. This sentence is ordinary project evidence, not random bytes.",
+          "timestamp": "2026-08-13T16:14:00",
+          "userId": "eid_cc30ff03",
+          "utterranceID": "20260802-62-bf003e"
+        }
+      },
+      "Reactions": [],
+      "ThreadReplies": [],
+      "id": "20260802-62-bf003e"
+    },
+    {
+      "Channel": {
+        "channelID": "ch-beacon-003f",
+        "name": "customer-beaconforce"
+      },
+      "Message": {
+        "User": {
+          "text": "Ilya Stone posted BeaconForce status item 63. The related pull request is https://github.com/salesforce/BeaconForce/pull/3063 and the long design note is https://docs.beaconforce.example/internal/platform/retry-scheduler/2026/08/63/how-the-retry-scheduler-handles-callback-replay-and-customer-impact/. The referenced customer token is CUST-4801. This sentence is ordinary project evidence, not random bytes.",
+          "timestamp": "2026-08-14T17:21:00",
+          "userId": "eid_dd40ff04",
+          "utterranceID": "20260803-63-bf003f"
+        }
+      },
+      "Reactions": [],
+      "ThreadReplies": [],
+      "id": "20260803-63-bf003f"
+    },
+    {
+      "Channel": {
+        "channelID": "ch-beacon-0040",
+        "name": "planning-beaconforce"
+      },
+      "Message": {
+        "User": {
+          "text": "Rhea Holt posted BeaconForce status item 64. The related pull request is https://github.com/salesforce/BeaconForce/pull/3064 and the long design note is https://docs.beaconforce.example/internal/platform/retry-scheduler/2026/08/64/how-the-retry-scheduler-handles-callback-replay-and-customer-impact/. The referenced customer token is CUST-4920. This sentence is ordinary project evidence, not random bytes.",
+          "timestamp": "2026-08-15T18:28:00",
+          "userId": "eid_ee50ff05",
+          "utterranceID": "20260804-64-bf0040"
+        }
+      },
+      "Reactions": [],
+      "ThreadReplies": [],
+      "id": "20260804-64-bf0040"
+    },
+    {
+      "Channel": {
+        "channelID": "ch-beacon-0041",
+        "name": "develop-beaconforce"
+      },
+      "Message": {
+        "User": {
+          "text": "Mara Chen posted BeaconForce status item 65. The related pull request is https://github.com/salesforce/BeaconForce/pull/3065 and the long design note is https://docs.beaconforce.example/internal/platform/retry-scheduler/2026/08/65/how-the-retry-scheduler-handles-callback-replay-and-customer-impact/. The referenced customer token is CUST-5009. This sentence is ordinary project evidence, not random bytes.",
+          "timestamp": "2026-08-16T19:35:00",
+          "userId": "eid_aa10ff01",
+          "utterranceID": "20260805-65-bf0041"
+        }
+      },
+      "Reactions": [],
+      "ThreadReplies": [],
+      "id": "20260805-65-bf0041"
+    },
+    {
+      "Channel": {
+        "channelID": "ch-beacon-0042",
+        "name": "bug-beaconforce"
+      },
+      "Message": {
+        "User": {
+          "text": "Omar Vale posted BeaconForce status item 66. The related pull request is https://github.com/salesforce/BeaconForce/pull/3066 and the long design note is https://docs.beaconforce.example/internal/platform/retry-scheduler/2026/08/66/how-the-retry-scheduler-handles-callback-replay-and-customer-impact/. The referenced customer token is CUST-4801. This sentence is ordinary project evidence, not random bytes.",
+          "timestamp": "2026-08-17T20:42:00",
+          "userId": "eid_bb20ff02",
+          "utterranceID": "20260806-66-bf0042"
+        }
+      },
+      "Reactions": [],
+      "ThreadReplies": [],
+      "id": "20260806-66-bf0042"
+    },
+    {
+      "Channel": {
+        "channelID": "ch-beacon-0043",
+        "name": "customer-beaconforce"
+      },
+      "Message": {
+        "User": {
+          "text": "Nina Park posted BeaconForce status item 67. The related pull request is https://github.com/salesforce/BeaconForce/pull/3067 and the long design note is https://docs.beaconforce.example/internal/platform/retry-scheduler/2026/08/67/how-the-retry-scheduler-handles-callback-replay-and-customer-impact/. The referenced customer token is CUST-4920. This sentence is ordinary project evidence, not random bytes.",
+          "timestamp": "2026-08-18T21:49:00",
+          "userId": "eid_cc30ff03",
+          "utterranceID": "20260807-67-bf0043"
+        }
+      },
+      "Reactions": [],
+      "ThreadReplies": [],
+      "id": "20260807-67-bf0043"
+    },
+    {
+      "Channel": {
+        "channelID": "ch-beacon-0044",
+        "name": "planning-beaconforce"
+      },
+      "Message": {
+        "User": {
+          "text": "Ilya Stone posted BeaconForce status item 68. The related pull request is https://github.com/salesforce/BeaconForce/pull/3068 and the long design note is https://docs.beaconforce.example/internal/platform/retry-scheduler/2026/08/68/how-the-retry-scheduler-handles-callback-replay-and-customer-impact/. The referenced customer token is CUST-5009. This sentence is ordinary project evidence, not random bytes.",
+          "timestamp": "2026-08-19T22:56:00",
+          "userId": "eid_dd40ff04",
+          "utterranceID": "20260808-68-bf0044"
+        }
+      },
+      "Reactions": [],
+      "ThreadReplies": [],
+      "id": "20260808-68-bf0044"
+    },
+    {
+      "Channel": {
+        "channelID": "ch-beacon-0045",
+        "name": "develop-beaconforce"
+      },
+      "Message": {
+        "User": {
+          "text": "Rhea Holt posted BeaconForce status item 69. The related pull request is https://github.com/salesforce/BeaconForce/pull/3069 and the long design note is https://docs.beaconforce.example/internal/platform/retry-scheduler/2026/08/69/how-the-retry-scheduler-handles-callback-replay-and-customer-impact/. The referenced customer token is CUST-4801. This sentence is ordinary project evidence, not random bytes.",
+          "timestamp": "2026-08-20T00:03:00",
+          "userId": "eid_ee50ff05",
+          "utterranceID": "20260809-69-bf0045"
+        }
+      },
+      "Reactions": [],
+      "ThreadReplies": [],
+      "id": "20260809-69-bf0045"
+    },
+    {
+      "Channel": {
+        "channelID": "ch-beacon-0046",
+        "name": "bug-beaconforce"
+      },
+      "Message": {
+        "User": {
+          "text": "Mara Chen posted BeaconForce status item 70. The related pull request is https://github.com/salesforce/BeaconForce/pull/3070 and the long design note is https://docs.beaconforce.example/internal/platform/retry-scheduler/2026/08/70/how-the-retry-scheduler-handles-callback-replay-and-customer-impact/. The referenced customer token is CUST-4920. This sentence is ordinary project evidence, not random bytes.",
+          "timestamp": "2026-08-21T01:10:00",
+          "userId": "eid_aa10ff01",
+          "utterranceID": "20260810-70-bf0046"
+        }
+      },
+      "Reactions": [],
+      "ThreadReplies": [],
+      "id": "20260810-70-bf0046"
+    },
+    {
+      "Channel": {
+        "channelID": "ch-beacon-0047",
+        "name": "customer-beaconforce"
+      },
+      "Message": {
+        "User": {
+          "text": "Omar Vale posted BeaconForce status item 71. The related pull request is https://github.com/salesforce/BeaconForce/pull/3071 and the long design note is https://docs.beaconforce.example/internal/platform/retry-scheduler/2026/08/71/how-the-retry-scheduler-handles-callback-replay-and-customer-impact/. The referenced customer token is CUST-5009. This sentence is ordinary project evidence, not random bytes.",
+          "timestamp": "2026-08-22T02:17:00",
+          "userId": "eid_bb20ff02",
+          "utterranceID": "20260811-71-bf0047"
+        }
+      },
+      "Reactions": [],
+      "ThreadReplies": [],
+      "id": "20260811-71-bf0047"
+    },
+    {
+      "Channel": {
+        "channelID": "ch-beacon-0048",
+        "name": "planning-beaconforce"
+      },
+      "Message": {
+        "User": {
+          "text": "Nina Park posted BeaconForce status item 72. The related pull request is https://github.com/salesforce/BeaconForce/pull/3072 and the long design note is https://docs.beaconforce.example/internal/platform/retry-scheduler/2026/08/72/how-the-retry-scheduler-handles-callback-replay-and-customer-impact/. The referenced customer token is CUST-4801. This sentence is ordinary project evidence, not random bytes.",
+          "timestamp": "2026-08-23T03:24:00",
+          "userId": "eid_cc30ff03",
+          "utterranceID": "20260812-72-bf0048"
+        }
+      },
+      "Reactions": [],
+      "ThreadReplies": [],
+      "id": "20260812-72-bf0048"
+    },
+    {
+      "Channel": {
+        "channelID": "ch-beacon-0049",
+        "name": "develop-beaconforce"
+      },
+      "Message": {
+        "User": {
+          "text": "Ilya Stone posted BeaconForce status item 73. The related pull request is https://github.com/salesforce/BeaconForce/pull/3073 and the long design note is https://docs.beaconforce.example/internal/platform/retry-scheduler/2026/08/73/how-the-retry-scheduler-handles-callback-replay-and-customer-impact/. The referenced customer token is CUST-4920. This sentence is ordinary project evidence, not random bytes.",
+          "timestamp": "2026-08-24T04:31:00",
+          "userId": "eid_dd40ff04",
+          "utterranceID": "20260813-73-bf0049"
+        }
+      },
+      "Reactions": [],
+      "ThreadReplies": [],
+      "id": "20260813-73-bf0049"
+    },
+    {
+      "Channel": {
+        "channelID": "ch-beacon-004a",
+        "name": "bug-beaconforce"
+      },
+      "Message": {
+        "User": {
+          "text": "Rhea Holt posted BeaconForce status item 74. The related pull request is https://github.com/salesforce/BeaconForce/pull/3074 and the long design note is https://docs.beaconforce.example/internal/platform/retry-scheduler/2026/08/74/how-the-retry-scheduler-handles-callback-replay-and-customer-impact/. The referenced customer token is CUST-5009. This sentence is ordinary project evidence, not random bytes.",
+          "timestamp": "2026-08-25T05:38:00",
+          "userId": "eid_ee50ff05",
+          "utterranceID": "20260814-74-bf004a"
+        }
+      },
+      "Reactions": [],
+      "ThreadReplies": [],
+      "id": "20260814-74-bf004a"
+    },
+    {
+      "Channel": {
+        "channelID": "ch-beacon-004b",
+        "name": "customer-beaconforce"
+      },
+      "Message": {
+        "User": {
+          "text": "Mara Chen posted BeaconForce status item 75. The related pull request is https://github.com/salesforce/BeaconForce/pull/3075 and the long design note is https://docs.beaconforce.example/internal/platform/retry-scheduler/2026/08/75/how-the-retry-scheduler-handles-callback-replay-and-customer-impact/. The referenced customer token is CUST-4801. This sentence is ordinary project evidence, not random bytes.",
+          "timestamp": "2026-08-01T06:45:00",
+          "userId": "eid_aa10ff01",
+          "utterranceID": "20260815-75-bf004b"
+        }
+      },
+      "Reactions": [],
+      "ThreadReplies": [],
+      "id": "20260815-75-bf004b"
+    },
+    {
+      "Channel": {
+        "channelID": "ch-beacon-004c",
+        "name": "planning-beaconforce"
+      },
+      "Message": {
+        "User": {
+          "text": "Omar Vale posted BeaconForce status item 76. The related pull request is https://github.com/salesforce/BeaconForce/pull/3076 and the long design note is https://docs.beaconforce.example/internal/platform/retry-scheduler/2026/08/76/how-the-retry-scheduler-handles-callback-replay-and-customer-impact/. The referenced customer token is CUST-4920. This sentence is ordinary project evidence, not random bytes.",
+          "timestamp": "2026-08-02T07:52:00",
+          "userId": "eid_bb20ff02",
+          "utterranceID": "20260816-76-bf004c"
+        }
+      },
+      "Reactions": [],
+      "ThreadReplies": [],
+      "id": "20260816-76-bf004c"
+    },
+    {
+      "Channel": {
+        "channelID": "ch-beacon-004d",
+        "name": "develop-beaconforce"
+      },
+      "Message": {
+        "User": {
+          "text": "Nina Park posted BeaconForce status item 77. The related pull request is https://github.com/salesforce/BeaconForce/pull/3077 and the long design note is https://docs.beaconforce.example/internal/platform/retry-scheduler/2026/08/77/how-the-retry-scheduler-handles-callback-replay-and-customer-impact/. The referenced customer token is CUST-5009. This sentence is ordinary project evidence, not random bytes.",
+          "timestamp": "2026-08-03T08:59:00",
+          "userId": "eid_cc30ff03",
+          "utterranceID": "20260817-77-bf004d"
+        }
+      },
+      "Reactions": [],
+      "ThreadReplies": [],
+      "id": "20260817-77-bf004d"
+    },
+    {
+      "Channel": {
+        "channelID": "ch-beacon-004e",
+        "name": "bug-beaconforce"
+      },
+      "Message": {
+        "User": {
+          "text": "Ilya Stone posted BeaconForce status item 78. The related pull request is https://github.com/salesforce/BeaconForce/pull/3078 and the long design note is https://docs.beaconforce.example/internal/platform/retry-scheduler/2026/08/78/how-the-retry-scheduler-handles-callback-replay-and-customer-impact/. The referenced customer token is CUST-4801. This sentence is ordinary project evidence, not random bytes.",
+          "timestamp": "2026-08-04T09:06:00",
+          "userId": "eid_dd40ff04",
+          "utterranceID": "20260818-78-bf004e"
+        }
+      },
+      "Reactions": [],
+      "ThreadReplies": [],
+      "id": "20260818-78-bf004e"
+    },
+    {
+      "Channel": {
+        "channelID": "ch-beacon-004f",
+        "name": "customer-beaconforce"
+      },
+      "Message": {
+        "User": {
+          "text": "Rhea Holt posted BeaconForce status item 79. The related pull request is https://github.com/salesforce/BeaconForce/pull/3079 and the long design note is https://docs.beaconforce.example/internal/platform/retry-scheduler/2026/08/79/how-the-retry-scheduler-handles-callback-replay-and-customer-impact/. The referenced customer token is CUST-4920. This sentence is ordinary project evidence, not random bytes.",
+          "timestamp": "2026-08-05T10:13:00",
+          "userId": "eid_ee50ff05",
+          "utterranceID": "20260819-79-bf004f"
+        }
+      },
+      "Reactions": [],
+      "ThreadReplies": [],
+      "id": "20260819-79-bf004f"
+    },
+    {
+      "Channel": {
+        "channelID": "ch-beacon-0050",
+        "name": "planning-beaconforce"
+      },
+      "Message": {
+        "User": {
+          "text": "Mara Chen posted BeaconForce status item 80. The related pull request is https://github.com/salesforce/BeaconForce/pull/3080 and the long design note is https://docs.beaconforce.example/internal/platform/retry-scheduler/2026/08/80/how-the-retry-scheduler-handles-callback-replay-and-customer-impact/. The referenced customer token is CUST-5009. This sentence is ordinary project evidence, not random bytes.",
+          "timestamp": "2026-08-06T11:20:00",
+          "userId": "eid_aa10ff01",
+          "utterranceID": "20260820-80-bf0050"
+        }
+      },
+      "Reactions": [],
+      "ThreadReplies": [],
+      "id": "20260820-80-bf0050"
+    },
+    {
+      "Channel": {
+        "channelID": "ch-beacon-0051",
+        "name": "develop-beaconforce"
+      },
+      "Message": {
+        "User": {
+          "text": "Omar Vale posted BeaconForce status item 81. The related pull request is https://github.com/salesforce/BeaconForce/pull/3081 and the long design note is https://docs.beaconforce.example/internal/platform/retry-scheduler/2026/08/81/how-the-retry-scheduler-handles-callback-replay-and-customer-impact/. The referenced customer token is CUST-4801. This sentence is ordinary project evidence, not random bytes.",
+          "timestamp": "2026-08-07T12:27:00",
+          "userId": "eid_bb20ff02",
+          "utterranceID": "20260821-81-bf0051"
+        }
+      },
+      "Reactions": [],
+      "ThreadReplies": [],
+      "id": "20260821-81-bf0051"
+    },
+    {
+      "Channel": {
+        "channelID": "ch-beacon-0052",
+        "name": "bug-beaconforce"
+      },
+      "Message": {
+        "User": {
+          "text": "Nina Park posted BeaconForce status item 82. The related pull request is https://github.com/salesforce/BeaconForce/pull/3082 and the long design note is https://docs.beaconforce.example/internal/platform/retry-scheduler/2026/08/82/how-the-retry-scheduler-handles-callback-replay-and-customer-impact/. The referenced customer token is CUST-4920. This sentence is ordinary project evidence, not random bytes.",
+          "timestamp": "2026-08-08T13:34:00",
+          "userId": "eid_cc30ff03",
+          "utterranceID": "20260822-82-bf0052"
+        }
+      },
+      "Reactions": [],
+      "ThreadReplies": [],
+      "id": "20260822-82-bf0052"
+    },
+    {
+      "Channel": {
+        "channelID": "ch-beacon-0053",
+        "name": "customer-beaconforce"
+      },
+      "Message": {
+        "User": {
+          "text": "Ilya Stone posted BeaconForce status item 83. The related pull request is https://github.com/salesforce/BeaconForce/pull/3083 and the long design note is https://docs.beaconforce.example/internal/platform/retry-scheduler/2026/08/83/how-the-retry-scheduler-handles-callback-replay-and-customer-impact/. The referenced customer token is CUST-5009. This sentence is ordinary project evidence, not random bytes.",
+          "timestamp": "2026-08-09T14:41:00",
+          "userId": "eid_dd40ff04",
+          "utterranceID": "20260823-83-bf0053"
+        }
+      },
+      "Reactions": [],
+      "ThreadReplies": [],
+      "id": "20260823-83-bf0053"
+    },
+    {
+      "Channel": {
+        "channelID": "ch-beacon-0054",
+        "name": "planning-beaconforce"
+      },
+      "Message": {
+        "User": {
+          "text": "Rhea Holt posted BeaconForce status item 84. The related pull request is https://github.com/salesforce/BeaconForce/pull/3084 and the long design note is https://docs.beaconforce.example/internal/platform/retry-scheduler/2026/08/84/how-the-retry-scheduler-handles-callback-replay-and-customer-impact/. The referenced customer token is CUST-4801. This sentence is ordinary project evidence, not random bytes.",
+          "timestamp": "2026-08-10T15:48:00",
+          "userId": "eid_ee50ff05",
+          "utterranceID": "20260824-84-bf0054"
+        }
+      },
+      "Reactions": [],
+      "ThreadReplies": [],
+      "id": "20260824-84-bf0054"
+    },
+    {
+      "Channel": {
+        "channelID": "ch-beacon-0055",
+        "name": "develop-beaconforce"
+      },
+      "Message": {
+        "User": {
+          "text": "Mara Chen posted BeaconForce status item 85. The related pull request is https://github.com/salesforce/BeaconForce/pull/3085 and the long design note is https://docs.beaconforce.example/internal/platform/retry-scheduler/2026/08/85/how-the-retry-scheduler-handles-callback-replay-and-customer-impact/. The referenced customer token is CUST-4920. This sentence is ordinary project evidence, not random bytes.",
+          "timestamp": "2026-08-11T16:55:00",
+          "userId": "eid_aa10ff01",
+          "utterranceID": "20260825-85-bf0055"
+        }
+      },
+      "Reactions": [],
+      "ThreadReplies": [],
+      "id": "20260825-85-bf0055"
+    },
+    {
+      "Channel": {
+        "channelID": "ch-beacon-0056",
+        "name": "bug-beaconforce"
+      },
+      "Message": {
+        "User": {
+          "text": "Omar Vale posted BeaconForce status item 86. The related pull request is https://github.com/salesforce/BeaconForce/pull/3086 and the long design note is https://docs.beaconforce.example/internal/platform/retry-scheduler/2026/08/86/how-the-retry-scheduler-handles-callback-replay-and-customer-impact/. The referenced customer token is CUST-5009. This sentence is ordinary project evidence, not random bytes.",
+          "timestamp": "2026-08-12T17:02:00",
+          "userId": "eid_bb20ff02",
+          "utterranceID": "20260826-86-bf0056"
+        }
+      },
+      "Reactions": [],
+      "ThreadReplies": [],
+      "id": "20260826-86-bf0056"
+    },
+    {
+      "Channel": {
+        "channelID": "ch-beacon-0057",
+        "name": "customer-beaconforce"
+      },
+      "Message": {
+        "User": {
+          "text": "Nina Park posted BeaconForce status item 87. The related pull request is https://github.com/salesforce/BeaconForce/pull/3087 and the long design note is https://docs.beaconforce.example/internal/platform/retry-scheduler/2026/08/87/how-the-retry-scheduler-handles-callback-replay-and-customer-impact/. The referenced customer token is CUST-4801. This sentence is ordinary project evidence, not random bytes.",
+          "timestamp": "2026-08-13T18:09:00",
+          "userId": "eid_cc30ff03",
+          "utterranceID": "20260827-87-bf0057"
+        }
+      },
+      "Reactions": [],
+      "ThreadReplies": [],
+      "id": "20260827-87-bf0057"
+    },
+    {
+      "Channel": {
+        "channelID": "ch-beacon-0058",
+        "name": "planning-beaconforce"
+      },
+      "Message": {
+        "User": {
+          "text": "Ilya Stone posted BeaconForce status item 88. The related pull request is https://github.com/salesforce/BeaconForce/pull/3088 and the long design note is https://docs.beaconforce.example/internal/platform/retry-scheduler/2026/08/88/how-the-retry-scheduler-handles-callback-replay-and-customer-impact/. The referenced customer token is CUST-4920. This sentence is ordinary project evidence, not random bytes.",
+          "timestamp": "2026-08-14T19:16:00",
+          "userId": "eid_dd40ff04",
+          "utterranceID": "20260828-88-bf0058"
+        }
+      },
+      "Reactions": [],
+      "ThreadReplies": [],
+      "id": "20260828-88-bf0058"
+    },
+    {
+      "Channel": {
+        "channelID": "ch-beacon-0059",
+        "name": "develop-beaconforce"
+      },
+      "Message": {
+        "User": {
+          "text": "Rhea Holt posted BeaconForce status item 89. The related pull request is https://github.com/salesforce/BeaconForce/pull/3089 and the long design note is https://docs.beaconforce.example/internal/platform/retry-scheduler/2026/08/89/how-the-retry-scheduler-handles-callback-replay-and-customer-impact/. The referenced customer token is CUST-5009. This sentence is ordinary project evidence, not random bytes.",
+          "timestamp": "2026-08-15T20:23:00",
+          "userId": "eid_ee50ff05",
+          "utterranceID": "20260829-89-bf0059"
+        }
+      },
+      "Reactions": [],
+      "ThreadReplies": [],
+      "id": "20260829-89-bf0059"
+    },
+    {
+      "Channel": {
+        "channelID": "ch-beacon-005a",
+        "name": "bug-beaconforce"
+      },
+      "Message": {
+        "User": {
+          "text": "Mara Chen posted BeaconForce status item 90. The related pull request is https://github.com/salesforce/BeaconForce/pull/3090 and the long design note is https://docs.beaconforce.example/internal/platform/retry-scheduler/2026/08/90/how-the-retry-scheduler-handles-callback-replay-and-customer-impact/. The referenced customer token is CUST-4801. This sentence is ordinary project evidence, not random bytes.",
+          "timestamp": "2026-08-16T21:30:00",
+          "userId": "eid_aa10ff01",
+          "utterranceID": "20260800-90-bf005a"
+        }
+      },
+      "Reactions": [],
+      "ThreadReplies": [],
+      "id": "20260800-90-bf005a"
+    },
+    {
+      "Channel": {
+        "channelID": "ch-beacon-005b",
+        "name": "customer-beaconforce"
+      },
+      "Message": {
+        "User": {
+          "text": "Omar Vale posted BeaconForce status item 91. The related pull request is https://github.com/salesforce/BeaconForce/pull/3091 and the long design note is https://docs.beaconforce.example/internal/platform/retry-scheduler/2026/08/91/how-the-retry-scheduler-handles-callback-replay-and-customer-impact/. The referenced customer token is CUST-4920. This sentence is ordinary project evidence, not random bytes.",
+          "timestamp": "2026-08-17T22:37:00",
+          "userId": "eid_bb20ff02",
+          "utterranceID": "20260801-91-bf005b"
+        }
+      },
+      "Reactions": [],
+      "ThreadReplies": [],
+      "id": "20260801-91-bf005b"
+    },
+    {
+      "Channel": {
+        "channelID": "ch-beacon-005c",
+        "name": "planning-beaconforce"
+      },
+      "Message": {
+        "User": {
+          "text": "Nina Park posted BeaconForce status item 92. The related pull request is https://github.com/salesforce/BeaconForce/pull/3092 and the long design note is https://docs.beaconforce.example/internal/platform/retry-scheduler/2026/08/92/how-the-retry-scheduler-handles-callback-replay-and-customer-impact/. The referenced customer token is CUST-5009. This sentence is ordinary project evidence, not random bytes.",
+          "timestamp": "2026-08-18T00:44:00",
+          "userId": "eid_cc30ff03",
+          "utterranceID": "20260802-92-bf005c"
+        }
+      },
+      "Reactions": [],
+      "ThreadReplies": [],
+      "id": "20260802-92-bf005c"
+    },
+    {
+      "Channel": {
+        "channelID": "ch-beacon-005d",
+        "name": "develop-beaconforce"
+      },
+      "Message": {
+        "User": {
+          "text": "Ilya Stone posted BeaconForce status item 93. The related pull request is https://github.com/salesforce/BeaconForce/pull/3093 and the long design note is https://docs.beaconforce.example/internal/platform/retry-scheduler/2026/08/93/how-the-retry-scheduler-handles-callback-replay-and-customer-impact/. The referenced customer token is CUST-4801. This sentence is ordinary project evidence, not random bytes.",
+          "timestamp": "2026-08-19T01:51:00",
+          "userId": "eid_dd40ff04",
+          "utterranceID": "20260803-93-bf005d"
+        }
+      },
+      "Reactions": [],
+      "ThreadReplies": [],
+      "id": "20260803-93-bf005d"
+    },
+    {
+      "Channel": {
+        "channelID": "ch-beacon-005e",
+        "name": "bug-beaconforce"
+      },
+      "Message": {
+        "User": {
+          "text": "Rhea Holt posted BeaconForce status item 94. The related pull request is https://github.com/salesforce/BeaconForce/pull/3094 and the long design note is https://docs.beaconforce.example/internal/platform/retry-scheduler/2026/08/94/how-the-retry-scheduler-handles-callback-replay-and-customer-impact/. The referenced customer token is CUST-4920. This sentence is ordinary project evidence, not random bytes.",
+          "timestamp": "2026-08-20T02:58:00",
+          "userId": "eid_ee50ff05",
+          "utterranceID": "20260804-94-bf005e"
+        }
+      },
+      "Reactions": [],
+      "ThreadReplies": [],
+      "id": "20260804-94-bf005e"
+    },
+    {
+      "Channel": {
+        "channelID": "ch-beacon-005f",
+        "name": "customer-beaconforce"
+      },
+      "Message": {
+        "User": {
+          "text": "Mara Chen posted BeaconForce status item 95. The related pull request is https://github.com/salesforce/BeaconForce/pull/3095 and the long design note is https://docs.beaconforce.example/internal/platform/retry-scheduler/2026/08/95/how-the-retry-scheduler-handles-callback-replay-and-customer-impact/. The referenced customer token is CUST-5009. This sentence is ordinary project evidence, not random bytes.",
+          "timestamp": "2026-08-21T03:05:00",
+          "userId": "eid_aa10ff01",
+          "utterranceID": "20260805-95-bf005f"
+        }
+      },
+      "Reactions": [],
+      "ThreadReplies": [],
+      "id": "20260805-95-bf005f"
+    },
+    {
+      "Channel": {
+        "channelID": "ch-beacon-0060",
+        "name": "planning-beaconforce"
+      },
+      "Message": {
+        "User": {
+          "text": "Omar Vale posted BeaconForce status item 96. The related pull request is https://github.com/salesforce/BeaconForce/pull/3096 and the long design note is https://docs.beaconforce.example/internal/platform/retry-scheduler/2026/08/96/how-the-retry-scheduler-handles-callback-replay-and-customer-impact/. The referenced customer token is CUST-4801. This sentence is ordinary project evidence, not random bytes.",
+          "timestamp": "2026-08-22T04:12:00",
+          "userId": "eid_bb20ff02",
+          "utterranceID": "20260806-96-bf0060"
+        }
+      },
+      "Reactions": [],
+      "ThreadReplies": [],
+      "id": "20260806-96-bf0060"
+    },
+    {
+      "Channel": {
+        "channelID": "ch-beacon-0061",
+        "name": "develop-beaconforce"
+      },
+      "Message": {
+        "User": {
+          "text": "Nina Park posted BeaconForce status item 97. The related pull request is https://github.com/salesforce/BeaconForce/pull/3097 and the long design note is https://docs.beaconforce.example/internal/platform/retry-scheduler/2026/08/97/how-the-retry-scheduler-handles-callback-replay-and-customer-impact/. The referenced customer token is CUST-4920. This sentence is ordinary project evidence, not random bytes.",
+          "timestamp": "2026-08-23T05:19:00",
+          "userId": "eid_cc30ff03",
+          "utterranceID": "20260807-97-bf0061"
+        }
+      },
+      "Reactions": [],
+      "ThreadReplies": [],
+      "id": "20260807-97-bf0061"
+    },
+    {
+      "Channel": {
+        "channelID": "ch-beacon-0062",
+        "name": "bug-beaconforce"
+      },
+      "Message": {
+        "User": {
+          "text": "Ilya Stone posted BeaconForce status item 98. The related pull request is https://github.com/salesforce/BeaconForce/pull/3098 and the long design note is https://docs.beaconforce.example/internal/platform/retry-scheduler/2026/08/98/how-the-retry-scheduler-handles-callback-replay-and-customer-impact/. The referenced customer token is CUST-5009. This sentence is ordinary project evidence, not random bytes.",
+          "timestamp": "2026-08-24T06:26:00",
+          "userId": "eid_dd40ff04",
+          "utterranceID": "20260808-98-bf0062"
+        }
+      },
+      "Reactions": [],
+      "ThreadReplies": [],
+      "id": "20260808-98-bf0062"
+    },
+    {
+      "Channel": {
+        "channelID": "ch-beacon-0063",
+        "name": "customer-beaconforce"
+      },
+      "Message": {
+        "User": {
+          "text": "Rhea Holt posted BeaconForce status item 99. The related pull request is https://github.com/salesforce/BeaconForce/pull/3099 and the long design note is https://docs.beaconforce.example/internal/platform/retry-scheduler/2026/08/99/how-the-retry-scheduler-handles-callback-replay-and-customer-impact/. The referenced customer token is CUST-4801. This sentence is ordinary project evidence, not random bytes.",
+          "timestamp": "2026-08-25T07:33:00",
+          "userId": "eid_ee50ff05",
+          "utterranceID": "20260809-99-bf0063"
+        }
+      },
+      "Reactions": [],
+      "ThreadReplies": [],
+      "id": "20260809-99-bf0063"
+    },
+    {
+      "Channel": {
+        "channelID": "ch-beacon-0064",
+        "name": "planning-beaconforce"
+      },
+      "Message": {
+        "User": {
+          "text": "Mara Chen posted BeaconForce status item 100. The related pull request is https://github.com/salesforce/BeaconForce/pull/3100 and the long design note is https://docs.beaconforce.example/internal/platform/retry-scheduler/2026/08/100/how-the-retry-scheduler-handles-callback-replay-and-customer-impact/. The referenced customer token is CUST-4920. This sentence is ordinary project evidence, not random bytes.",
+          "timestamp": "2026-08-01T08:40:00",
+          "userId": "eid_aa10ff01",
+          "utterranceID": "20260810-100-bf0064"
+        }
+      },
+      "Reactions": [],
+      "ThreadReplies": [],
+      "id": "20260810-100-bf0064"
+    },
+    {
+      "Channel": {
+        "channelID": "ch-beacon-0065",
+        "name": "develop-beaconforce"
+      },
+      "Message": {
+        "User": {
+          "text": "Omar Vale posted BeaconForce status item 101. The related pull request is https://github.com/salesforce/BeaconForce/pull/3101 and the long design note is https://docs.beaconforce.example/internal/platform/retry-scheduler/2026/08/101/how-the-retry-scheduler-handles-callback-replay-and-customer-impact/. The referenced customer token is CUST-5009. This sentence is ordinary project evidence, not random bytes.",
+          "timestamp": "2026-08-02T09:47:00",
+          "userId": "eid_bb20ff02",
+          "utterranceID": "20260811-101-bf0065"
+        }
+      },
+      "Reactions": [],
+      "ThreadReplies": [],
+      "id": "20260811-101-bf0065"
+    },
+    {
+      "Channel": {
+        "channelID": "ch-beacon-0066",
+        "name": "bug-beaconforce"
+      },
+      "Message": {
+        "User": {
+          "text": "Nina Park posted BeaconForce status item 102. The related pull request is https://github.com/salesforce/BeaconForce/pull/3102 and the long design note is https://docs.beaconforce.example/internal/platform/retry-scheduler/2026/08/102/how-the-retry-scheduler-handles-callback-replay-and-customer-impact/. The referenced customer token is CUST-4801. This sentence is ordinary project evidence, not random bytes.",
+          "timestamp": "2026-08-03T10:54:00",
+          "userId": "eid_cc30ff03",
+          "utterranceID": "20260812-102-bf0066"
+        }
+      },
+      "Reactions": [],
+      "ThreadReplies": [],
+      "id": "20260812-102-bf0066"
+    },
+    {
+      "Channel": {
+        "channelID": "ch-beacon-0067",
+        "name": "customer-beaconforce"
+      },
+      "Message": {
+        "User": {
+          "text": "Ilya Stone posted BeaconForce status item 103. The related pull request is https://github.com/salesforce/BeaconForce/pull/3103 and the long design note is https://docs.beaconforce.example/internal/platform/retry-scheduler/2026/08/103/how-the-retry-scheduler-handles-callback-replay-and-customer-impact/. The referenced customer token is CUST-4920. This sentence is ordinary project evidence, not random bytes.",
+          "timestamp": "2026-08-04T11:01:00",
+          "userId": "eid_dd40ff04",
+          "utterranceID": "20260813-103-bf0067"
+        }
+      },
+      "Reactions": [],
+      "ThreadReplies": [],
+      "id": "20260813-103-bf0067"
+    },
+    {
+      "Channel": {
+        "channelID": "ch-beacon-0068",
+        "name": "planning-beaconforce"
+      },
+      "Message": {
+        "User": {
+          "text": "Rhea Holt posted BeaconForce status item 104. The related pull request is https://github.com/salesforce/BeaconForce/pull/3104 and the long design note is https://docs.beaconforce.example/internal/platform/retry-scheduler/2026/08/104/how-the-retry-scheduler-handles-callback-replay-and-customer-impact/. The referenced customer token is CUST-5009. This sentence is ordinary project evidence, not random bytes.",
+          "timestamp": "2026-08-05T12:08:00",
+          "userId": "eid_ee50ff05",
+          "utterranceID": "20260814-104-bf0068"
+        }
+      },
+      "Reactions": [],
+      "ThreadReplies": [],
+      "id": "20260814-104-bf0068"
+    },
+    {
+      "Channel": {
+        "channelID": "ch-beacon-0069",
+        "name": "develop-beaconforce"
+      },
+      "Message": {
+        "User": {
+          "text": "Mara Chen posted BeaconForce status item 105. The related pull request is https://github.com/salesforce/BeaconForce/pull/3105 and the long design note is https://docs.beaconforce.example/internal/platform/retry-scheduler/2026/08/105/how-the-retry-scheduler-handles-callback-replay-and-customer-impact/. The referenced customer token is CUST-4801. This sentence is ordinary project evidence, not random bytes.",
+          "timestamp": "2026-08-06T13:15:00",
+          "userId": "eid_aa10ff01",
+          "utterranceID": "20260815-105-bf0069"
+        }
+      },
+      "Reactions": [],
+      "ThreadReplies": [],
+      "id": "20260815-105-bf0069"
+    },
+    {
+      "Channel": {
+        "channelID": "ch-beacon-006a",
+        "name": "bug-beaconforce"
+      },
+      "Message": {
+        "User": {
+          "text": "Omar Vale posted BeaconForce status item 106. The related pull request is https://github.com/salesforce/BeaconForce/pull/3106 and the long design note is https://docs.beaconforce.example/internal/platform/retry-scheduler/2026/08/106/how-the-retry-scheduler-handles-callback-replay-and-customer-impact/. The referenced customer token is CUST-4920. This sentence is ordinary project evidence, not random bytes.",
+          "timestamp": "2026-08-07T14:22:00",
+          "userId": "eid_bb20ff02",
+          "utterranceID": "20260816-106-bf006a"
+        }
+      },
+      "Reactions": [],
+      "ThreadReplies": [],
+      "id": "20260816-106-bf006a"
+    },
+    {
+      "Channel": {
+        "channelID": "ch-beacon-006b",
+        "name": "customer-beaconforce"
+      },
+      "Message": {
+        "User": {
+          "text": "Nina Park posted BeaconForce status item 107. The related pull request is https://github.com/salesforce/BeaconForce/pull/3107 and the long design note is https://docs.beaconforce.example/internal/platform/retry-scheduler/2026/08/107/how-the-retry-scheduler-handles-callback-replay-and-customer-impact/. The referenced customer token is CUST-5009. This sentence is ordinary project evidence, not random bytes.",
+          "timestamp": "2026-08-08T15:29:00",
+          "userId": "eid_cc30ff03",
+          "utterranceID": "20260817-107-bf006b"
+        }
+      },
+      "Reactions": [],
+      "ThreadReplies": [],
+      "id": "20260817-107-bf006b"
+    },
+    {
+      "Channel": {
+        "channelID": "ch-beacon-006c",
+        "name": "planning-beaconforce"
+      },
+      "Message": {
+        "User": {
+          "text": "Ilya Stone posted BeaconForce status item 108. The related pull request is https://github.com/salesforce/BeaconForce/pull/3108 and the long design note is https://docs.beaconforce.example/internal/platform/retry-scheduler/2026/08/108/how-the-retry-scheduler-handles-callback-replay-and-customer-impact/. The referenced customer token is CUST-4801. This sentence is ordinary project evidence, not random bytes.",
+          "timestamp": "2026-08-09T16:36:00",
+          "userId": "eid_dd40ff04",
+          "utterranceID": "20260818-108-bf006c"
+        }
+      },
+      "Reactions": [],
+      "ThreadReplies": [],
+      "id": "20260818-108-bf006c"
+    },
+    {
+      "Channel": {
+        "channelID": "ch-beacon-006d",
+        "name": "develop-beaconforce"
+      },
+      "Message": {
+        "User": {
+          "text": "Rhea Holt posted BeaconForce status item 109. The related pull request is https://github.com/salesforce/BeaconForce/pull/3109 and the long design note is https://docs.beaconforce.example/internal/platform/retry-scheduler/2026/08/109/how-the-retry-scheduler-handles-callback-replay-and-customer-impact/. The referenced customer token is CUST-4920. This sentence is ordinary project evidence, not random bytes.",
+          "timestamp": "2026-08-10T17:43:00",
+          "userId": "eid_ee50ff05",
+          "utterranceID": "20260819-109-bf006d"
+        }
+      },
+      "Reactions": [],
+      "ThreadReplies": [],
+      "id": "20260819-109-bf006d"
+    },
+    {
+      "Channel": {
+        "channelID": "ch-beacon-006e",
+        "name": "bug-beaconforce"
+      },
+      "Message": {
+        "User": {
+          "text": "Mara Chen posted BeaconForce status item 110. The related pull request is https://github.com/salesforce/BeaconForce/pull/3110 and the long design note is https://docs.beaconforce.example/internal/platform/retry-scheduler/2026/08/110/how-the-retry-scheduler-handles-callback-replay-and-customer-impact/. The referenced customer token is CUST-5009. This sentence is ordinary project evidence, not random bytes.",
+          "timestamp": "2026-08-11T18:50:00",
+          "userId": "eid_aa10ff01",
+          "utterranceID": "20260820-110-bf006e"
+        }
+      },
+      "Reactions": [],
+      "ThreadReplies": [],
+      "id": "20260820-110-bf006e"
+    },
+    {
+      "Channel": {
+        "channelID": "ch-beacon-006f",
+        "name": "customer-beaconforce"
+      },
+      "Message": {
+        "User": {
+          "text": "Omar Vale posted BeaconForce status item 111. The related pull request is https://github.com/salesforce/BeaconForce/pull/3111 and the long design note is https://docs.beaconforce.example/internal/platform/retry-scheduler/2026/08/111/how-the-retry-scheduler-handles-callback-replay-and-customer-impact/. The referenced customer token is CUST-4801. This sentence is ordinary project evidence, not random bytes.",
+          "timestamp": "2026-08-12T19:57:00",
+          "userId": "eid_bb20ff02",
+          "utterranceID": "20260821-111-bf006f"
+        }
+      },
+      "Reactions": [],
+      "ThreadReplies": [],
+      "id": "20260821-111-bf006f"
+    },
+    {
+      "Channel": {
+        "channelID": "ch-beacon-0070",
+        "name": "planning-beaconforce"
+      },
+      "Message": {
+        "User": {
+          "text": "Nina Park posted BeaconForce status item 112. The related pull request is https://github.com/salesforce/BeaconForce/pull/3112 and the long design note is https://docs.beaconforce.example/internal/platform/retry-scheduler/2026/08/112/how-the-retry-scheduler-handles-callback-replay-and-customer-impact/. The referenced customer token is CUST-4920. This sentence is ordinary project evidence, not random bytes.",
+          "timestamp": "2026-08-13T20:04:00",
+          "userId": "eid_cc30ff03",
+          "utterranceID": "20260822-112-bf0070"
+        }
+      },
+      "Reactions": [],
+      "ThreadReplies": [],
+      "id": "20260822-112-bf0070"
+    },
+    {
+      "Channel": {
+        "channelID": "ch-beacon-0071",
+        "name": "develop-beaconforce"
+      },
+      "Message": {
+        "User": {
+          "text": "Ilya Stone posted BeaconForce status item 113. The related pull request is https://github.com/salesforce/BeaconForce/pull/3113 and the long design note is https://docs.beaconforce.example/internal/platform/retry-scheduler/2026/08/113/how-the-retry-scheduler-handles-callback-replay-and-customer-impact/. The referenced customer token is CUST-5009. This sentence is ordinary project evidence, not random bytes.",
+          "timestamp": "2026-08-14T21:11:00",
+          "userId": "eid_dd40ff04",
+          "utterranceID": "20260823-113-bf0071"
+        }
+      },
+      "Reactions": [],
+      "ThreadReplies": [],
+      "id": "20260823-113-bf0071"
+    },
+    {
+      "Channel": {
+        "channelID": "ch-beacon-0072",
+        "name": "bug-beaconforce"
+      },
+      "Message": {
+        "User": {
+          "text": "Rhea Holt posted BeaconForce status item 114. The related pull request is https://github.com/salesforce/BeaconForce/pull/3114 and the long design note is https://docs.beaconforce.example/internal/platform/retry-scheduler/2026/08/114/how-the-retry-scheduler-handles-callback-replay-and-customer-impact/. The referenced customer token is CUST-4801. This sentence is ordinary project evidence, not random bytes.",
+          "timestamp": "2026-08-15T22:18:00",
+          "userId": "eid_ee50ff05",
+          "utterranceID": "20260824-114-bf0072"
+        }
+      },
+      "Reactions": [],
+      "ThreadReplies": [],
+      "id": "20260824-114-bf0072"
+    },
+    {
+      "Channel": {
+        "channelID": "ch-beacon-0073",
+        "name": "customer-beaconforce"
+      },
+      "Message": {
+        "User": {
+          "text": "Mara Chen posted BeaconForce status item 115. The related pull request is https://github.com/salesforce/BeaconForce/pull/3115 and the long design note is https://docs.beaconforce.example/internal/platform/retry-scheduler/2026/08/115/how-the-retry-scheduler-handles-callback-replay-and-customer-impact/. The referenced customer token is CUST-4920. This sentence is ordinary project evidence, not random bytes.",
+          "timestamp": "2026-08-16T00:25:00",
+          "userId": "eid_aa10ff01",
+          "utterranceID": "20260825-115-bf0073"
+        }
+      },
+      "Reactions": [],
+      "ThreadReplies": [],
+      "id": "20260825-115-bf0073"
+    },
+    {
+      "Channel": {
+        "channelID": "ch-beacon-0074",
+        "name": "planning-beaconforce"
+      },
+      "Message": {
+        "User": {
+          "text": "Omar Vale posted BeaconForce status item 116. The related pull request is https://github.com/salesforce/BeaconForce/pull/3116 and the long design note is https://docs.beaconforce.example/internal/platform/retry-scheduler/2026/08/116/how-the-retry-scheduler-handles-callback-replay-and-customer-impact/. The referenced customer token is CUST-5009. This sentence is ordinary project evidence, not random bytes.",
+          "timestamp": "2026-08-17T01:32:00",
+          "userId": "eid_bb20ff02",
+          "utterranceID": "20260826-116-bf0074"
+        }
+      },
+      "Reactions": [],
+      "ThreadReplies": [],
+      "id": "20260826-116-bf0074"
+    },
+    {
+      "Channel": {
+        "channelID": "ch-beacon-0075",
+        "name": "develop-beaconforce"
+      },
+      "Message": {
+        "User": {
+          "text": "Nina Park posted BeaconForce status item 117. The related pull request is https://github.com/salesforce/BeaconForce/pull/3117 and the long design note is https://docs.beaconforce.example/internal/platform/retry-scheduler/2026/08/117/how-the-retry-scheduler-handles-callback-replay-and-customer-impact/. The referenced customer token is CUST-4801. This sentence is ordinary project evidence, not random bytes.",
+          "timestamp": "2026-08-18T02:39:00",
+          "userId": "eid_cc30ff03",
+          "utterranceID": "20260827-117-bf0075"
+        }
+      },
+      "Reactions": [],
+      "ThreadReplies": [],
+      "id": "20260827-117-bf0075"
+    },
+    {
+      "Channel": {
+        "channelID": "ch-beacon-0076",
+        "name": "bug-beaconforce"
+      },
+      "Message": {
+        "User": {
+          "text": "Ilya Stone posted BeaconForce status item 118. The related pull request is https://github.com/salesforce/BeaconForce/pull/3118 and the long design note is https://docs.beaconforce.example/internal/platform/retry-scheduler/2026/08/118/how-the-retry-scheduler-handles-callback-replay-and-customer-impact/. The referenced customer token is CUST-4920. This sentence is ordinary project evidence, not random bytes.",
+          "timestamp": "2026-08-19T03:46:00",
+          "userId": "eid_dd40ff04",
+          "utterranceID": "20260828-118-bf0076"
+        }
+      },
+      "Reactions": [],
+      "ThreadReplies": [],
+      "id": "20260828-118-bf0076"
+    },
+    {
+      "Channel": {
+        "channelID": "ch-beacon-0077",
+        "name": "customer-beaconforce"
+      },
+      "Message": {
+        "User": {
+          "text": "Rhea Holt posted BeaconForce status item 119. The related pull request is https://github.com/salesforce/BeaconForce/pull/3119 and the long design note is https://docs.beaconforce.example/internal/platform/retry-scheduler/2026/08/119/how-the-retry-scheduler-handles-callback-replay-and-customer-impact/. The referenced customer token is CUST-5009. This sentence is ordinary project evidence, not random bytes.",
+          "timestamp": "2026-08-20T04:53:00",
+          "userId": "eid_ee50ff05",
+          "utterranceID": "20260829-119-bf0077"
+        }
+      },
+      "Reactions": [],
+      "ThreadReplies": [],
+      "id": "20260829-119-bf0077"
+    },
+    {
+      "Channel": {
+        "channelID": "ch-beacon-0078",
+        "name": "planning-beaconforce"
+      },
+      "Message": {
+        "User": {
+          "text": "Mara Chen posted BeaconForce status item 120. The related pull request is https://github.com/salesforce/BeaconForce/pull/3120 and the long design note is https://docs.beaconforce.example/internal/platform/retry-scheduler/2026/08/120/how-the-retry-scheduler-handles-callback-replay-and-customer-impact/. The referenced customer token is CUST-4801. This sentence is ordinary project evidence, not random bytes.",
+          "timestamp": "2026-08-21T05:00:00",
+          "userId": "eid_aa10ff01",
+          "utterranceID": "20260800-120-bf0078"
+        }
+      },
+      "Reactions": [],
+      "ThreadReplies": [],
+      "id": "20260800-120-bf0078"
+    },
+    {
+      "Channel": {
+        "channelID": "ch-beacon-0079",
+        "name": "develop-beaconforce"
+      },
+      "Message": {
+        "User": {
+          "text": "Omar Vale posted BeaconForce status item 121. The related pull request is https://github.com/salesforce/BeaconForce/pull/3121 and the long design note is https://docs.beaconforce.example/internal/platform/retry-scheduler/2026/08/121/how-the-retry-scheduler-handles-callback-replay-and-customer-impact/. The referenced customer token is CUST-4920. This sentence is ordinary project evidence, not random bytes.",
+          "timestamp": "2026-08-22T06:07:00",
+          "userId": "eid_bb20ff02",
+          "utterranceID": "20260801-121-bf0079"
+        }
+      },
+      "Reactions": [],
+      "ThreadReplies": [],
+      "id": "20260801-121-bf0079"
+    },
+    {
+      "Channel": {
+        "channelID": "ch-beacon-007a",
+        "name": "bug-beaconforce"
+      },
+      "Message": {
+        "User": {
+          "text": "Nina Park posted BeaconForce status item 122. The related pull request is https://github.com/salesforce/BeaconForce/pull/3122 and the long design note is https://docs.beaconforce.example/internal/platform/retry-scheduler/2026/08/122/how-the-retry-scheduler-handles-callback-replay-and-customer-impact/. The referenced customer token is CUST-5009. This sentence is ordinary project evidence, not random bytes.",
+          "timestamp": "2026-08-23T07:14:00",
+          "userId": "eid_cc30ff03",
+          "utterranceID": "20260802-122-bf007a"
+        }
+      },
+      "Reactions": [],
+      "ThreadReplies": [],
+      "id": "20260802-122-bf007a"
+    },
+    {
+      "Channel": {
+        "channelID": "ch-beacon-007b",
+        "name": "customer-beaconforce"
+      },
+      "Message": {
+        "User": {
+          "text": "Ilya Stone posted BeaconForce status item 123. The related pull request is https://github.com/salesforce/BeaconForce/pull/3123 and the long design note is https://docs.beaconforce.example/internal/platform/retry-scheduler/2026/08/123/how-the-retry-scheduler-handles-callback-replay-and-customer-impact/. The referenced customer token is CUST-4801. This sentence is ordinary project evidence, not random bytes.",
+          "timestamp": "2026-08-24T08:21:00",
+          "userId": "eid_dd40ff04",
+          "utterranceID": "20260803-123-bf007b"
+        }
+      },
+      "Reactions": [],
+      "ThreadReplies": [],
+      "id": "20260803-123-bf007b"
+    },
+    {
+      "Channel": {
+        "channelID": "ch-beacon-007c",
+        "name": "planning-beaconforce"
+      },
+      "Message": {
+        "User": {
+          "text": "Rhea Holt posted BeaconForce status item 124. The related pull request is https://github.com/salesforce/BeaconForce/pull/3124 and the long design note is https://docs.beaconforce.example/internal/platform/retry-scheduler/2026/08/124/how-the-retry-scheduler-handles-callback-replay-and-customer-impact/. The referenced customer token is CUST-4920. This sentence is ordinary project evidence, not random bytes.",
+          "timestamp": "2026-08-25T09:28:00",
+          "userId": "eid_ee50ff05",
+          "utterranceID": "20260804-124-bf007c"
+        }
+      },
+      "Reactions": [],
+      "ThreadReplies": [],
+      "id": "20260804-124-bf007c"
+    },
+    {
+      "Channel": {
+        "channelID": "ch-beacon-007d",
+        "name": "develop-beaconforce"
+      },
+      "Message": {
+        "User": {
+          "text": "Mara Chen posted BeaconForce status item 125. The related pull request is https://github.com/salesforce/BeaconForce/pull/3125 and the long design note is https://docs.beaconforce.example/internal/platform/retry-scheduler/2026/08/125/how-the-retry-scheduler-handles-callback-replay-and-customer-impact/. The referenced customer token is CUST-5009. This sentence is ordinary project evidence, not random bytes.",
+          "timestamp": "2026-08-01T10:35:00",
+          "userId": "eid_aa10ff01",
+          "utterranceID": "20260805-125-bf007d"
+        }
+      },
+      "Reactions": [],
+      "ThreadReplies": [],
+      "id": "20260805-125-bf007d"
+    },
+    {
+      "Channel": {
+        "channelID": "ch-beacon-007e",
+        "name": "bug-beaconforce"
+      },
+      "Message": {
+        "User": {
+          "text": "Omar Vale posted BeaconForce status item 126. The related pull request is https://github.com/salesforce/BeaconForce/pull/3126 and the long design note is https://docs.beaconforce.example/internal/platform/retry-scheduler/2026/08/126/how-the-retry-scheduler-handles-callback-replay-and-customer-impact/. The referenced customer token is CUST-4801. This sentence is ordinary project evidence, not random bytes.",
+          "timestamp": "2026-08-02T11:42:00",
+          "userId": "eid_bb20ff02",
+          "utterranceID": "20260806-126-bf007e"
+        }
+      },
+      "Reactions": [],
+      "ThreadReplies": [],
+      "id": "20260806-126-bf007e"
+    },
+    {
+      "Channel": {
+        "channelID": "ch-beacon-007f",
+        "name": "customer-beaconforce"
+      },
+      "Message": {
+        "User": {
+          "text": "Nina Park posted BeaconForce status item 127. The related pull request is https://github.com/salesforce/BeaconForce/pull/3127 and the long design note is https://docs.beaconforce.example/internal/platform/retry-scheduler/2026/08/127/how-the-retry-scheduler-handles-callback-replay-and-customer-impact/. The referenced customer token is CUST-4920. This sentence is ordinary project evidence, not random bytes.",
+          "timestamp": "2026-08-03T12:49:00",
+          "userId": "eid_cc30ff03",
+          "utterranceID": "20260807-127-bf007f"
+        }
+      },
+      "Reactions": [],
+      "ThreadReplies": [],
+      "id": "20260807-127-bf007f"
+    },
+    {
+      "Channel": {
+        "channelID": "ch-beacon-0080",
+        "name": "planning-beaconforce"
+      },
+      "Message": {
+        "User": {
+          "text": "Ilya Stone posted BeaconForce status item 128. The related pull request is https://github.com/salesforce/BeaconForce/pull/3128 and the long design note is https://docs.beaconforce.example/internal/platform/retry-scheduler/2026/08/128/how-the-retry-scheduler-handles-callback-replay-and-customer-impact/. The referenced customer token is CUST-5009. This sentence is ordinary project evidence, not random bytes.",
+          "timestamp": "2026-08-04T13:56:00",
+          "userId": "eid_dd40ff04",
+          "utterranceID": "20260808-128-bf0080"
+        }
+      },
+      "Reactions": [],
+      "ThreadReplies": [],
+      "id": "20260808-128-bf0080"
+    },
+    {
+      "Channel": {
+        "channelID": "ch-beacon-0081",
+        "name": "develop-beaconforce"
+      },
+      "Message": {
+        "User": {
+          "text": "Rhea Holt posted BeaconForce status item 129. The related pull request is https://github.com/salesforce/BeaconForce/pull/3129 and the long design note is https://docs.beaconforce.example/internal/platform/retry-scheduler/2026/08/129/how-the-retry-scheduler-handles-callback-replay-and-customer-impact/. The referenced customer token is CUST-4801. This sentence is ordinary project evidence, not random bytes.",
+          "timestamp": "2026-08-05T14:03:00",
+          "userId": "eid_ee50ff05",
+          "utterranceID": "20260809-129-bf0081"
+        }
+      },
+      "Reactions": [],
+      "ThreadReplies": [],
+      "id": "20260809-129-bf0081"
+    },
+    {
+      "Channel": {
+        "channelID": "ch-beacon-0082",
+        "name": "bug-beaconforce"
+      },
+      "Message": {
+        "User": {
+          "text": "Mara Chen posted BeaconForce status item 130. The related pull request is https://github.com/salesforce/BeaconForce/pull/3130 and the long design note is https://docs.beaconforce.example/internal/platform/retry-scheduler/2026/08/130/how-the-retry-scheduler-handles-callback-replay-and-customer-impact/. The referenced customer token is CUST-4920. This sentence is ordinary project evidence, not random bytes.",
+          "timestamp": "2026-08-06T15:10:00",
+          "userId": "eid_aa10ff01",
+          "utterranceID": "20260810-130-bf0082"
+        }
+      },
+      "Reactions": [],
+      "ThreadReplies": [],
+      "id": "20260810-130-bf0082"
+    },
+    {
+      "Channel": {
+        "channelID": "ch-beacon-0083",
+        "name": "customer-beaconforce"
+      },
+      "Message": {
+        "User": {
+          "text": "Omar Vale posted BeaconForce status item 131. The related pull request is https://github.com/salesforce/BeaconForce/pull/3131 and the long design note is https://docs.beaconforce.example/internal/platform/retry-scheduler/2026/08/131/how-the-retry-scheduler-handles-callback-replay-and-customer-impact/. The referenced customer token is CUST-5009. This sentence is ordinary project evidence, not random bytes.",
+          "timestamp": "2026-08-07T16:17:00",
+          "userId": "eid_bb20ff02",
+          "utterranceID": "20260811-131-bf0083"
+        }
+      },
+      "Reactions": [],
+      "ThreadReplies": [],
+      "id": "20260811-131-bf0083"
+    },
+    {
+      "Channel": {
+        "channelID": "ch-beacon-0084",
+        "name": "planning-beaconforce"
+      },
+      "Message": {
+        "User": {
+          "text": "Nina Park posted BeaconForce status item 132. The related pull request is https://github.com/salesforce/BeaconForce/pull/3132 and the long design note is https://docs.beaconforce.example/internal/platform/retry-scheduler/2026/08/132/how-the-retry-scheduler-handles-callback-replay-and-customer-impact/. The referenced customer token is CUST-4801. This sentence is ordinary project evidence, not random bytes.",
+          "timestamp": "2026-08-08T17:24:00",
+          "userId": "eid_cc30ff03",
+          "utterranceID": "20260812-132-bf0084"
+        }
+      },
+      "Reactions": [],
+      "ThreadReplies": [],
+      "id": "20260812-132-bf0084"
+    },
+    {
+      "Channel": {
+        "channelID": "ch-beacon-0085",
+        "name": "develop-beaconforce"
+      },
+      "Message": {
+        "User": {
+          "text": "Ilya Stone posted BeaconForce status item 133. The related pull request is https://github.com/salesforce/BeaconForce/pull/3133 and the long design note is https://docs.beaconforce.example/internal/platform/retry-scheduler/2026/08/133/how-the-retry-scheduler-handles-callback-replay-and-customer-impact/. The referenced customer token is CUST-4920. This sentence is ordinary project evidence, not random bytes.",
+          "timestamp": "2026-08-09T18:31:00",
+          "userId": "eid_dd40ff04",
+          "utterranceID": "20260813-133-bf0085"
+        }
+      },
+      "Reactions": [],
+      "ThreadReplies": [],
+      "id": "20260813-133-bf0085"
+    },
+    {
+      "Channel": {
+        "channelID": "ch-beacon-0086",
+        "name": "bug-beaconforce"
+      },
+      "Message": {
+        "User": {
+          "text": "Rhea Holt posted BeaconForce status item 134. The related pull request is https://github.com/salesforce/BeaconForce/pull/3134 and the long design note is https://docs.beaconforce.example/internal/platform/retry-scheduler/2026/08/134/how-the-retry-scheduler-handles-callback-replay-and-customer-impact/. The referenced customer token is CUST-5009. This sentence is ordinary project evidence, not random bytes.",
+          "timestamp": "2026-08-10T19:38:00",
+          "userId": "eid_ee50ff05",
+          "utterranceID": "20260814-134-bf0086"
+        }
+      },
+      "Reactions": [],
+      "ThreadReplies": [],
+      "id": "20260814-134-bf0086"
+    },
+    {
+      "Channel": {
+        "channelID": "ch-beacon-0087",
+        "name": "customer-beaconforce"
+      },
+      "Message": {
+        "User": {
+          "text": "Mara Chen posted BeaconForce status item 135. The related pull request is https://github.com/salesforce/BeaconForce/pull/3135 and the long design note is https://docs.beaconforce.example/internal/platform/retry-scheduler/2026/08/135/how-the-retry-scheduler-handles-callback-replay-and-customer-impact/. The referenced customer token is CUST-4801. This sentence is ordinary project evidence, not random bytes.",
+          "timestamp": "2026-08-11T20:45:00",
+          "userId": "eid_aa10ff01",
+          "utterranceID": "20260815-135-bf0087"
+        }
+      },
+      "Reactions": [],
+      "ThreadReplies": [],
+      "id": "20260815-135-bf0087"
+    },
+    {
+      "Channel": {
+        "channelID": "ch-beacon-0088",
+        "name": "planning-beaconforce"
+      },
+      "Message": {
+        "User": {
+          "text": "Omar Vale posted BeaconForce status item 136. The related pull request is https://github.com/salesforce/BeaconForce/pull/3136 and the long design note is https://docs.beaconforce.example/internal/platform/retry-scheduler/2026/08/136/how-the-retry-scheduler-handles-callback-replay-and-customer-impact/. The referenced customer token is CUST-4920. This sentence is ordinary project evidence, not random bytes.",
+          "timestamp": "2026-08-12T21:52:00",
+          "userId": "eid_bb20ff02",
+          "utterranceID": "20260816-136-bf0088"
+        }
+      },
+      "Reactions": [],
+      "ThreadReplies": [],
+      "id": "20260816-136-bf0088"
+    },
+    {
+      "Channel": {
+        "channelID": "ch-beacon-0089",
+        "name": "develop-beaconforce"
+      },
+      "Message": {
+        "User": {
+          "text": "Nina Park posted BeaconForce status item 137. The related pull request is https://github.com/salesforce/BeaconForce/pull/3137 and the long design note is https://docs.beaconforce.example/internal/platform/retry-scheduler/2026/08/137/how-the-retry-scheduler-handles-callback-replay-and-customer-impact/. The referenced customer token is CUST-5009. This sentence is ordinary project evidence, not random bytes.",
+          "timestamp": "2026-08-13T22:59:00",
+          "userId": "eid_cc30ff03",
+          "utterranceID": "20260817-137-bf0089"
+        }
+      },
+      "Reactions": [],
+      "ThreadReplies": [],
+      "id": "20260817-137-bf0089"
+    },
+    {
+      "Channel": {
+        "channelID": "ch-beacon-008a",
+        "name": "bug-beaconforce"
+      },
+      "Message": {
+        "User": {
+          "text": "Ilya Stone posted BeaconForce status item 138. The related pull request is https://github.com/salesforce/BeaconForce/pull/3138 and the long design note is https://docs.beaconforce.example/internal/platform/retry-scheduler/2026/08/138/how-the-retry-scheduler-handles-callback-replay-and-customer-impact/. The referenced customer token is CUST-4801. This sentence is ordinary project evidence, not random bytes.",
+          "timestamp": "2026-08-14T00:06:00",
+          "userId": "eid_dd40ff04",
+          "utterranceID": "20260818-138-bf008a"
+        }
+      },
+      "Reactions": [],
+      "ThreadReplies": [],
+      "id": "20260818-138-bf008a"
+    },
+    {
+      "Channel": {
+        "channelID": "ch-beacon-008b",
+        "name": "customer-beaconforce"
+      },
+      "Message": {
+        "User": {
+          "text": "Rhea Holt posted BeaconForce status item 139. The related pull request is https://github.com/salesforce/BeaconForce/pull/3139 and the long design note is https://docs.beaconforce.example/internal/platform/retry-scheduler/2026/08/139/how-the-retry-scheduler-handles-callback-replay-and-customer-impact/. The referenced customer token is CUST-4920. This sentence is ordinary project evidence, not random bytes.",
+          "timestamp": "2026-08-15T01:13:00",
+          "userId": "eid_ee50ff05",
+          "utterranceID": "20260819-139-bf008b"
+        }
+      },
+      "Reactions": [],
+      "ThreadReplies": [],
+      "id": "20260819-139-bf008b"
+    },
+    {
+      "Channel": {
+        "channelID": "ch-beacon-008c",
+        "name": "planning-beaconforce"
+      },
+      "Message": {
+        "User": {
+          "text": "Mara Chen posted BeaconForce status item 140. The related pull request is https://github.com/salesforce/BeaconForce/pull/3140 and the long design note is https://docs.beaconforce.example/internal/platform/retry-scheduler/2026/08/140/how-the-retry-scheduler-handles-callback-replay-and-customer-impact/. The referenced customer token is CUST-5009. This sentence is ordinary project evidence, not random bytes.",
+          "timestamp": "2026-08-16T02:20:00",
+          "userId": "eid_aa10ff01",
+          "utterranceID": "20260820-140-bf008c"
+        }
+      },
+      "Reactions": [],
+      "ThreadReplies": [],
+      "id": "20260820-140-bf008c"
+    },
+    {
+      "Channel": {
+        "channelID": "ch-beacon-008d",
+        "name": "develop-beaconforce"
+      },
+      "Message": {
+        "User": {
+          "text": "Omar Vale posted BeaconForce status item 141. The related pull request is https://github.com/salesforce/BeaconForce/pull/3141 and the long design note is https://docs.beaconforce.example/internal/platform/retry-scheduler/2026/08/141/how-the-retry-scheduler-handles-callback-replay-and-customer-impact/. The referenced customer token is CUST-4801. This sentence is ordinary project evidence, not random bytes.",
+          "timestamp": "2026-08-17T03:27:00",
+          "userId": "eid_bb20ff02",
+          "utterranceID": "20260821-141-bf008d"
+        }
+      },
+      "Reactions": [],
+      "ThreadReplies": [],
+      "id": "20260821-141-bf008d"
+    },
+    {
+      "Channel": {
+        "channelID": "ch-beacon-008e",
+        "name": "bug-beaconforce"
+      },
+      "Message": {
+        "User": {
+          "text": "Nina Park posted BeaconForce status item 142. The related pull request is https://github.com/salesforce/BeaconForce/pull/3142 and the long design note is https://docs.beaconforce.example/internal/platform/retry-scheduler/2026/08/142/how-the-retry-scheduler-handles-callback-replay-and-customer-impact/. The referenced customer token is CUST-4920. This sentence is ordinary project evidence, not random bytes.",
+          "timestamp": "2026-08-18T04:34:00",
+          "userId": "eid_cc30ff03",
+          "utterranceID": "20260822-142-bf008e"
+        }
+      },
+      "Reactions": [],
+      "ThreadReplies": [],
+      "id": "20260822-142-bf008e"
+    },
+    {
+      "Channel": {
+        "channelID": "ch-beacon-008f",
+        "name": "customer-beaconforce"
+      },
+      "Message": {
+        "User": {
+          "text": "Ilya Stone posted BeaconForce status item 143. The related pull request is https://github.com/salesforce/BeaconForce/pull/3143 and the long design note is https://docs.beaconforce.example/internal/platform/retry-scheduler/2026/08/143/how-the-retry-scheduler-handles-callback-replay-and-customer-impact/. The referenced customer token is CUST-5009. This sentence is ordinary project evidence, not random bytes.",
+          "timestamp": "2026-08-19T05:41:00",
+          "userId": "eid_dd40ff04",
+          "utterranceID": "20260823-143-bf008f"
+        }
+      },
+      "Reactions": [],
+      "ThreadReplies": [],
+      "id": "20260823-143-bf008f"
+    },
+    {
+      "Channel": {
+        "channelID": "ch-beacon-0090",
+        "name": "planning-beaconforce"
+      },
+      "Message": {
+        "User": {
+          "text": "Rhea Holt posted BeaconForce status item 144. The related pull request is https://github.com/salesforce/BeaconForce/pull/3144 and the long design note is https://docs.beaconforce.example/internal/platform/retry-scheduler/2026/08/144/how-the-retry-scheduler-handles-callback-replay-and-customer-impact/. The referenced customer token is CUST-4801. This sentence is ordinary project evidence, not random bytes.",
+          "timestamp": "2026-08-20T06:48:00",
+          "userId": "eid_ee50ff05",
+          "utterranceID": "20260824-144-bf0090"
+        }
+      },
+      "Reactions": [],
+      "ThreadReplies": [],
+      "id": "20260824-144-bf0090"
+    },
+    {
+      "Channel": {
+        "channelID": "ch-beacon-0091",
+        "name": "develop-beaconforce"
+      },
+      "Message": {
+        "User": {
+          "text": "Mara Chen posted BeaconForce status item 145. The related pull request is https://github.com/salesforce/BeaconForce/pull/3145 and the long design note is https://docs.beaconforce.example/internal/platform/retry-scheduler/2026/08/145/how-the-retry-scheduler-handles-callback-replay-and-customer-impact/. The referenced customer token is CUST-4920. This sentence is ordinary project evidence, not random bytes.",
+          "timestamp": "2026-08-21T07:55:00",
+          "userId": "eid_aa10ff01",
+          "utterranceID": "20260825-145-bf0091"
+        }
+      },
+      "Reactions": [],
+      "ThreadReplies": [],
+      "id": "20260825-145-bf0091"
+    },
+    {
+      "Channel": {
+        "channelID": "ch-beacon-0092",
+        "name": "bug-beaconforce"
+      },
+      "Message": {
+        "User": {
+          "text": "Omar Vale posted BeaconForce status item 146. The related pull request is https://github.com/salesforce/BeaconForce/pull/3146 and the long design note is https://docs.beaconforce.example/internal/platform/retry-scheduler/2026/08/146/how-the-retry-scheduler-handles-callback-replay-and-customer-impact/. The referenced customer token is CUST-5009. This sentence is ordinary project evidence, not random bytes.",
+          "timestamp": "2026-08-22T08:02:00",
+          "userId": "eid_bb20ff02",
+          "utterranceID": "20260826-146-bf0092"
+        }
+      },
+      "Reactions": [],
+      "ThreadReplies": [],
+      "id": "20260826-146-bf0092"
+    },
+    {
+      "Channel": {
+        "channelID": "ch-beacon-0093",
+        "name": "customer-beaconforce"
+      },
+      "Message": {
+        "User": {
+          "text": "Nina Park posted BeaconForce status item 147. The related pull request is https://github.com/salesforce/BeaconForce/pull/3147 and the long design note is https://docs.beaconforce.example/internal/platform/retry-scheduler/2026/08/147/how-the-retry-scheduler-handles-callback-replay-and-customer-impact/. The referenced customer token is CUST-4801. This sentence is ordinary project evidence, not random bytes.",
+          "timestamp": "2026-08-23T09:09:00",
+          "userId": "eid_cc30ff03",
+          "utterranceID": "20260827-147-bf0093"
+        }
+      },
+      "Reactions": [],
+      "ThreadReplies": [],
+      "id": "20260827-147-bf0093"
+    },
+    {
+      "Channel": {
+        "channelID": "ch-beacon-0094",
+        "name": "planning-beaconforce"
+      },
+      "Message": {
+        "User": {
+          "text": "Ilya Stone posted BeaconForce status item 148. The related pull request is https://github.com/salesforce/BeaconForce/pull/3148 and the long design note is https://docs.beaconforce.example/internal/platform/retry-scheduler/2026/08/148/how-the-retry-scheduler-handles-callback-replay-and-customer-impact/. The referenced customer token is CUST-4920. This sentence is ordinary project evidence, not random bytes.",
+          "timestamp": "2026-08-24T10:16:00",
+          "userId": "eid_dd40ff04",
+          "utterranceID": "20260828-148-bf0094"
+        }
+      },
+      "Reactions": [],
+      "ThreadReplies": [],
+      "id": "20260828-148-bf0094"
+    },
+    {
+      "Channel": {
+        "channelID": "ch-beacon-0095",
+        "name": "develop-beaconforce"
+      },
+      "Message": {
+        "User": {
+          "text": "Rhea Holt posted BeaconForce status item 149. The related pull request is https://github.com/salesforce/BeaconForce/pull/3149 and the long design note is https://docs.beaconforce.example/internal/platform/retry-scheduler/2026/08/149/how-the-retry-scheduler-handles-callback-replay-and-customer-impact/. The referenced customer token is CUST-5009. This sentence is ordinary project evidence, not random bytes.",
+          "timestamp": "2026-08-25T11:23:00",
+          "userId": "eid_ee50ff05",
+          "utterranceID": "20260829-149-bf0095"
+        }
+      },
+      "Reactions": [],
+      "ThreadReplies": [],
+      "id": "20260829-149-bf0095"
+    },
+    {
+      "Channel": {
+        "channelID": "ch-beacon-0096",
+        "name": "bug-beaconforce"
+      },
+      "Message": {
+        "User": {
+          "text": "Mara Chen posted BeaconForce status item 150. The related pull request is https://github.com/salesforce/BeaconForce/pull/3150 and the long design note is https://docs.beaconforce.example/internal/platform/retry-scheduler/2026/08/150/how-the-retry-scheduler-handles-callback-replay-and-customer-impact/. The referenced customer token is CUST-4801. This sentence is ordinary project evidence, not random bytes.",
+          "timestamp": "2026-08-01T12:30:00",
+          "userId": "eid_aa10ff01",
+          "utterranceID": "20260800-150-bf0096"
+        }
+      },
+      "Reactions": [],
+      "ThreadReplies": [],
+      "id": "20260800-150-bf0096"
+    },
+    {
+      "Channel": {
+        "channelID": "ch-beacon-0097",
+        "name": "customer-beaconforce"
+      },
+      "Message": {
+        "User": {
+          "text": "Omar Vale posted BeaconForce status item 151. The related pull request is https://github.com/salesforce/BeaconForce/pull/3151 and the long design note is https://docs.beaconforce.example/internal/platform/retry-scheduler/2026/08/151/how-the-retry-scheduler-handles-callback-replay-and-customer-impact/. The referenced customer token is CUST-4920. This sentence is ordinary project evidence, not random bytes.",
+          "timestamp": "2026-08-02T13:37:00",
+          "userId": "eid_bb20ff02",
+          "utterranceID": "20260801-151-bf0097"
+        }
+      },
+      "Reactions": [],
+      "ThreadReplies": [],
+      "id": "20260801-151-bf0097"
+    },
+    {
+      "Channel": {
+        "channelID": "ch-beacon-0098",
+        "name": "planning-beaconforce"
+      },
+      "Message": {
+        "User": {
+          "text": "Nina Park posted BeaconForce status item 152. The related pull request is https://github.com/salesforce/BeaconForce/pull/3152 and the long design note is https://docs.beaconforce.example/internal/platform/retry-scheduler/2026/08/152/how-the-retry-scheduler-handles-callback-replay-and-customer-impact/. The referenced customer token is CUST-5009. This sentence is ordinary project evidence, not random bytes.",
+          "timestamp": "2026-08-03T14:44:00",
+          "userId": "eid_cc30ff03",
+          "utterranceID": "20260802-152-bf0098"
+        }
+      },
+      "Reactions": [],
+      "ThreadReplies": [],
+      "id": "20260802-152-bf0098"
+    },
+    {
+      "Channel": {
+        "channelID": "ch-beacon-0099",
+        "name": "develop-beaconforce"
+      },
+      "Message": {
+        "User": {
+          "text": "Ilya Stone posted BeaconForce status item 153. The related pull request is https://github.com/salesforce/BeaconForce/pull/3153 and the long design note is https://docs.beaconforce.example/internal/platform/retry-scheduler/2026/08/153/how-the-retry-scheduler-handles-callback-replay-and-customer-impact/. The referenced customer token is CUST-4801. This sentence is ordinary project evidence, not random bytes.",
+          "timestamp": "2026-08-04T15:51:00",
+          "userId": "eid_dd40ff04",
+          "utterranceID": "20260803-153-bf0099"
+        }
+      },
+      "Reactions": [],
+      "ThreadReplies": [],
+      "id": "20260803-153-bf0099"
+    },
+    {
+      "Channel": {
+        "channelID": "ch-beacon-009a",
+        "name": "bug-beaconforce"
+      },
+      "Message": {
+        "User": {
+          "text": "Rhea Holt posted BeaconForce status item 154. The related pull request is https://github.com/salesforce/BeaconForce/pull/3154 and the long design note is https://docs.beaconforce.example/internal/platform/retry-scheduler/2026/08/154/how-the-retry-scheduler-handles-callback-replay-and-customer-impact/. The referenced customer token is CUST-4920. This sentence is ordinary project evidence, not random bytes.",
+          "timestamp": "2026-08-05T16:58:00",
+          "userId": "eid_ee50ff05",
+          "utterranceID": "20260804-154-bf009a"
+        }
+      },
+      "Reactions": [],
+      "ThreadReplies": [],
+      "id": "20260804-154-bf009a"
+    },
+    {
+      "Channel": {
+        "channelID": "ch-beacon-009b",
+        "name": "customer-beaconforce"
+      },
+      "Message": {
+        "User": {
+          "text": "Mara Chen posted BeaconForce status item 155. The related pull request is https://github.com/salesforce/BeaconForce/pull/3155 and the long design note is https://docs.beaconforce.example/internal/platform/retry-scheduler/2026/08/155/how-the-retry-scheduler-handles-callback-replay-and-customer-impact/. The referenced customer token is CUST-5009. This sentence is ordinary project evidence, not random bytes.",
+          "timestamp": "2026-08-06T17:05:00",
+          "userId": "eid_aa10ff01",
+          "utterranceID": "20260805-155-bf009b"
+        }
+      },
+      "Reactions": [],
+      "ThreadReplies": [],
+      "id": "20260805-155-bf009b"
+    },
+    {
+      "Channel": {
+        "channelID": "ch-beacon-009c",
+        "name": "planning-beaconforce"
+      },
+      "Message": {
+        "User": {
+          "text": "Omar Vale posted BeaconForce status item 156. The related pull request is https://github.com/salesforce/BeaconForce/pull/3156 and the long design note is https://docs.beaconforce.example/internal/platform/retry-scheduler/2026/08/156/how-the-retry-scheduler-handles-callback-replay-and-customer-impact/. The referenced customer token is CUST-4801. This sentence is ordinary project evidence, not random bytes.",
+          "timestamp": "2026-08-07T18:12:00",
+          "userId": "eid_bb20ff02",
+          "utterranceID": "20260806-156-bf009c"
+        }
+      },
+      "Reactions": [],
+      "ThreadReplies": [],
+      "id": "20260806-156-bf009c"
+    },
+    {
+      "Channel": {
+        "channelID": "ch-beacon-009d",
+        "name": "develop-beaconforce"
+      },
+      "Message": {
+        "User": {
+          "text": "Nina Park posted BeaconForce status item 157. The related pull request is https://github.com/salesforce/BeaconForce/pull/3157 and the long design note is https://docs.beaconforce.example/internal/platform/retry-scheduler/2026/08/157/how-the-retry-scheduler-handles-callback-replay-and-customer-impact/. The referenced customer token is CUST-4920. This sentence is ordinary project evidence, not random bytes.",
+          "timestamp": "2026-08-08T19:19:00",
+          "userId": "eid_cc30ff03",
+          "utterranceID": "20260807-157-bf009d"
+        }
+      },
+      "Reactions": [],
+      "ThreadReplies": [],
+      "id": "20260807-157-bf009d"
+    },
+    {
+      "Channel": {
+        "channelID": "ch-beacon-009e",
+        "name": "bug-beaconforce"
+      },
+      "Message": {
+        "User": {
+          "text": "Ilya Stone posted BeaconForce status item 158. The related pull request is https://github.com/salesforce/BeaconForce/pull/3158 and the long design note is https://docs.beaconforce.example/internal/platform/retry-scheduler/2026/08/158/how-the-retry-scheduler-handles-callback-replay-and-customer-impact/. The referenced customer token is CUST-5009. This sentence is ordinary project evidence, not random bytes.",
+          "timestamp": "2026-08-09T20:26:00",
+          "userId": "eid_dd40ff04",
+          "utterranceID": "20260808-158-bf009e"
+        }
+      },
+      "Reactions": [],
+      "ThreadReplies": [],
+      "id": "20260808-158-bf009e"
+    },
+    {
+      "Channel": {
+        "channelID": "ch-beacon-009f",
+        "name": "customer-beaconforce"
+      },
+      "Message": {
+        "User": {
+          "text": "Rhea Holt posted BeaconForce status item 159. The related pull request is https://github.com/salesforce/BeaconForce/pull/3159 and the long design note is https://docs.beaconforce.example/internal/platform/retry-scheduler/2026/08/159/how-the-retry-scheduler-handles-callback-replay-and-customer-impact/. The referenced customer token is CUST-4801. This sentence is ordinary project evidence, not random bytes.",
+          "timestamp": "2026-08-10T21:33:00",
+          "userId": "eid_ee50ff05",
+          "utterranceID": "20260809-159-bf009f"
+        }
+      },
+      "Reactions": [],
+      "ThreadReplies": [],
+      "id": "20260809-159-bf009f"
+    },
+    {
+      "Channel": {
+        "channelID": "ch-beacon-00a0",
+        "name": "planning-beaconforce"
+      },
+      "Message": {
+        "User": {
+          "text": "Mara Chen posted BeaconForce status item 160. The related pull request is https://github.com/salesforce/BeaconForce/pull/3160 and the long design note is https://docs.beaconforce.example/internal/platform/retry-scheduler/2026/08/160/how-the-retry-scheduler-handles-callback-replay-and-customer-impact/. The referenced customer token is CUST-4920. This sentence is ordinary project evidence, not random bytes.",
+          "timestamp": "2026-08-11T22:40:00",
+          "userId": "eid_aa10ff01",
+          "utterranceID": "20260810-160-bf00a0"
+        }
+      },
+      "Reactions": [],
+      "ThreadReplies": [],
+      "id": "20260810-160-bf00a0"
+    },
+    {
+      "Channel": {
+        "channelID": "ch-beacon-00a1",
+        "name": "develop-beaconforce"
+      },
+      "Message": {
+        "User": {
+          "text": "Omar Vale posted BeaconForce status item 161. The related pull request is https://github.com/salesforce/BeaconForce/pull/3161 and the long design note is https://docs.beaconforce.example/internal/platform/retry-scheduler/2026/08/161/how-the-retry-scheduler-handles-callback-replay-and-customer-impact/. The referenced customer token is CUST-5009. This sentence is ordinary project evidence, not random bytes.",
+          "timestamp": "2026-08-12T00:47:00",
+          "userId": "eid_bb20ff02",
+          "utterranceID": "20260811-161-bf00a1"
+        }
+      },
+      "Reactions": [],
+      "ThreadReplies": [],
+      "id": "20260811-161-bf00a1"
+    },
+    {
+      "Channel": {
+        "channelID": "ch-beacon-00a2",
+        "name": "bug-beaconforce"
+      },
+      "Message": {
+        "User": {
+          "text": "Nina Park posted BeaconForce status item 162. The related pull request is https://github.com/salesforce/BeaconForce/pull/3162 and the long design note is https://docs.beaconforce.example/internal/platform/retry-scheduler/2026/08/162/how-the-retry-scheduler-handles-callback-replay-and-customer-impact/. The referenced customer token is CUST-4801. This sentence is ordinary project evidence, not random bytes.",
+          "timestamp": "2026-08-13T01:54:00",
+          "userId": "eid_cc30ff03",
+          "utterranceID": "20260812-162-bf00a2"
+        }
+      },
+      "Reactions": [],
+      "ThreadReplies": [],
+      "id": "20260812-162-bf00a2"
+    },
+    {
+      "Channel": {
+        "channelID": "ch-beacon-00a3",
+        "name": "customer-beaconforce"
+      },
+      "Message": {
+        "User": {
+          "text": "Ilya Stone posted BeaconForce status item 163. The related pull request is https://github.com/salesforce/BeaconForce/pull/3163 and the long design note is https://docs.beaconforce.example/internal/platform/retry-scheduler/2026/08/163/how-the-retry-scheduler-handles-callback-replay-and-customer-impact/. The referenced customer token is CUST-4920. This sentence is ordinary project evidence, not random bytes.",
+          "timestamp": "2026-08-14T02:01:00",
+          "userId": "eid_dd40ff04",
+          "utterranceID": "20260813-163-bf00a3"
+        }
+      },
+      "Reactions": [],
+      "ThreadReplies": [],
+      "id": "20260813-163-bf00a3"
+    },
+    {
+      "Channel": {
+        "channelID": "ch-beacon-00a4",
+        "name": "planning-beaconforce"
+      },
+      "Message": {
+        "User": {
+          "text": "Rhea Holt posted BeaconForce status item 164. The related pull request is https://github.com/salesforce/BeaconForce/pull/3164 and the long design note is https://docs.beaconforce.example/internal/platform/retry-scheduler/2026/08/164/how-the-retry-scheduler-handles-callback-replay-and-customer-impact/. The referenced customer token is CUST-5009. This sentence is ordinary project evidence, not random bytes.",
+          "timestamp": "2026-08-15T03:08:00",
+          "userId": "eid_ee50ff05",
+          "utterranceID": "20260814-164-bf00a4"
+        }
+      },
+      "Reactions": [],
+      "ThreadReplies": [],
+      "id": "20260814-164-bf00a4"
+    },
+    {
+      "Channel": {
+        "channelID": "ch-beacon-00a5",
+        "name": "develop-beaconforce"
+      },
+      "Message": {
+        "User": {
+          "text": "Mara Chen posted BeaconForce status item 165. The related pull request is https://github.com/salesforce/BeaconForce/pull/3165 and the long design note is https://docs.beaconforce.example/internal/platform/retry-scheduler/2026/08/165/how-the-retry-scheduler-handles-callback-replay-and-customer-impact/. The referenced customer token is CUST-4801. This sentence is ordinary project evidence, not random bytes.",
+          "timestamp": "2026-08-16T04:15:00",
+          "userId": "eid_aa10ff01",
+          "utterranceID": "20260815-165-bf00a5"
+        }
+      },
+      "Reactions": [],
+      "ThreadReplies": [],
+      "id": "20260815-165-bf00a5"
+    },
+    {
+      "Channel": {
+        "channelID": "ch-beacon-00a6",
+        "name": "bug-beaconforce"
+      },
+      "Message": {
+        "User": {
+          "text": "Omar Vale posted BeaconForce status item 166. The related pull request is https://github.com/salesforce/BeaconForce/pull/3166 and the long design note is https://docs.beaconforce.example/internal/platform/retry-scheduler/2026/08/166/how-the-retry-scheduler-handles-callback-replay-and-customer-impact/. The referenced customer token is CUST-4920. This sentence is ordinary project evidence, not random bytes.",
+          "timestamp": "2026-08-17T05:22:00",
+          "userId": "eid_bb20ff02",
+          "utterranceID": "20260816-166-bf00a6"
+        }
+      },
+      "Reactions": [],
+      "ThreadReplies": [],
+      "id": "20260816-166-bf00a6"
+    },
+    {
+      "Channel": {
+        "channelID": "ch-beacon-00a7",
+        "name": "customer-beaconforce"
+      },
+      "Message": {
+        "User": {
+          "text": "Nina Park posted BeaconForce status item 167. The related pull request is https://github.com/salesforce/BeaconForce/pull/3167 and the long design note is https://docs.beaconforce.example/internal/platform/retry-scheduler/2026/08/167/how-the-retry-scheduler-handles-callback-replay-and-customer-impact/. The referenced customer token is CUST-5009. This sentence is ordinary project evidence, not random bytes.",
+          "timestamp": "2026-08-18T06:29:00",
+          "userId": "eid_cc30ff03",
+          "utterranceID": "20260817-167-bf00a7"
+        }
+      },
+      "Reactions": [],
+      "ThreadReplies": [],
+      "id": "20260817-167-bf00a7"
+    },
+    {
+      "Channel": {
+        "channelID": "ch-beacon-00a8",
+        "name": "planning-beaconforce"
+      },
+      "Message": {
+        "User": {
+          "text": "Ilya Stone posted BeaconForce status item 168. The related pull request is https://github.com/salesforce/BeaconForce/pull/3168 and the long design note is https://docs.beaconforce.example/internal/platform/retry-scheduler/2026/08/168/how-the-retry-scheduler-handles-callback-replay-and-customer-impact/. The referenced customer token is CUST-4801. This sentence is ordinary project evidence, not random bytes.",
+          "timestamp": "2026-08-19T07:36:00",
+          "userId": "eid_dd40ff04",
+          "utterranceID": "20260818-168-bf00a8"
+        }
+      },
+      "Reactions": [],
+      "ThreadReplies": [],
+      "id": "20260818-168-bf00a8"
+    },
+    {
+      "Channel": {
+        "channelID": "ch-beacon-00a9",
+        "name": "develop-beaconforce"
+      },
+      "Message": {
+        "User": {
+          "text": "Rhea Holt posted BeaconForce status item 169. The related pull request is https://github.com/salesforce/BeaconForce/pull/3169 and the long design note is https://docs.beaconforce.example/internal/platform/retry-scheduler/2026/08/169/how-the-retry-scheduler-handles-callback-replay-and-customer-impact/. The referenced customer token is CUST-4920. This sentence is ordinary project evidence, not random bytes.",
+          "timestamp": "2026-08-20T08:43:00",
+          "userId": "eid_ee50ff05",
+          "utterranceID": "20260819-169-bf00a9"
+        }
+      },
+      "Reactions": [],
+      "ThreadReplies": [],
+      "id": "20260819-169-bf00a9"
+    }
+  ]
+}

@@ -172,11 +172,21 @@ def text_quality_metrics(text: str) -> dict[str, float | int | bool]:
     tokens = tokenize(value)
     unique_tokens = set(tokens)
     long_tokens = [token for token in tokens if len(token) >= 24]
-    machine_blob_tokens = [
-        token
-        for token in tokens
-        if re.fullmatch(r"(?:[0-9a-fA-F]{16,}|[A-Za-z0-9+/]{32,}=*)", token)
-    ]
+    machine_blob_tokens = []
+    machine_blob_chars = 0
+    for token in tokens:
+        token_value = token.strip()
+        hex_blob = bool(re.fullmatch(r"[0-9a-fA-F]{24,}", token_value))
+        base64_blob = bool(
+            len(token_value) >= 32
+            and len(token_value) % 4 == 0
+            and re.fullmatch(r"[A-Za-z0-9+/]+={0,2}", token_value)
+            and not re.fullmatch(r"[A-Za-z]+", token_value)
+            and not re.fullmatch(r"[0-9]+", token_value)
+        )
+        if hex_blob or base64_blob:
+            machine_blob_tokens.append(token_value)
+            machine_blob_chars += len(token_value)
     non_ascii = sum(1 for char in value if ord(char) > 127)
     ocrish_tokens = [token for token in tokens if any(char.isdigit() for char in token) and any(char.isalpha() for char in token)]
     printable_ratio = printable / length
@@ -186,11 +196,12 @@ def text_quality_metrics(text: str) -> dict[str, float | int | bool]:
     unique_token_ratio = (len(unique_tokens) / token_count) if token_count else 0.0
     long_token_ratio = (len(long_tokens) / token_count) if token_count else 0.0
     machine_blob_token_ratio = (len(machine_blob_tokens) / token_count) if token_count else 0.0
+    machine_blob_char_ratio = (machine_blob_chars / max(1, alnum)) if alnum else 0.0
     non_ascii_ratio = non_ascii / length
     ocrish_ratio = (len(ocrish_tokens) / token_count) if token_count else 0.0
     machine_blob_text = bool(
-        re.search(r"\b(?:[0-9a-fA-F]{24,}|[A-Za-z0-9+/]{32,}=*)\b", value)
-        or (length > 80 and machine_blob_token_ratio >= 0.50)
+        (length > 80 and machine_blob_token_ratio >= 0.50)
+        or (length > 80 and machine_blob_char_ratio >= 0.50 and len(machine_blob_tokens) >= 1)
         or (length > 80 and token_count <= 6 and long_token_ratio >= 0.20 and ocrish_ratio >= 0.50)
     )
     if symbol_ratio > 0.35 or printable_ratio < 0.75:
@@ -223,6 +234,7 @@ def text_quality_metrics(text: str) -> dict[str, float | int | bool]:
         "unique_token_ratio": round(unique_token_ratio, 4),
         "long_token_ratio": round(long_token_ratio, 4),
         "machine_blob_token_ratio": round(machine_blob_token_ratio, 4),
+        "machine_blob_char_ratio": round(machine_blob_char_ratio, 4),
         "non_ascii_ratio": round(non_ascii_ratio, 4),
         "ocrish_ratio": round(ocrish_ratio, 4),
         "low_semantic_noise": bool(low_semantic_noise),

@@ -22,11 +22,38 @@ def test_text_quality_labels_machine_token_blobs() -> None:
     )
     metrics = text_quality_metrics(blob)
 
-    assert metrics["machine_blob_token_ratio"] >= 0.5
+    assert metrics["machine_blob_char_ratio"] >= 0.5
     assert metrics["low_semantic_noise"] is False
     assert metrics["semantic_quality"] == "base64_or_hex_blob"
     assert not is_low_semantic_noise(blob)
 
+
+
+
+def test_text_quality_does_not_treat_long_urls_as_chunk_blobs() -> None:
+    text = " ".join(
+        f"Record {index}: Mara owns retry item {index}. See "
+        f"https://docs.example.com/internal/platform/retry-scheduler/2026/08/{index:02d}/"
+        f"how-the-retry-scheduler-handles-callback-replay-and-customer-impact/ "
+        f"and https://github.com/example/project/pull/{2780 + index}."
+        for index in range(40)
+    )
+
+    metrics = text_quality_metrics(text)
+
+    assert metrics["low_semantic_noise"] is False
+    assert metrics["semantic_quality"] != "base64_or_hex_blob"
+    assert not is_low_semantic_noise(text)
+
+
+def test_text_quality_still_labels_dominant_machine_blobs() -> None:
+    text = " ".join(["deadbeef" * 8 for _ in range(12)])
+
+    metrics = text_quality_metrics(text)
+
+    assert metrics["machine_blob_token_ratio"] >= 0.5
+    assert metrics["machine_blob_char_ratio"] >= 0.5
+    assert metrics["semantic_quality"] == "base64_or_hex_blob"
 
 def test_text_quality_keeps_plain_discourse_as_semantic_text() -> None:
     text = "Mira wrote a garden note. The greenhouse fern state is healthy."

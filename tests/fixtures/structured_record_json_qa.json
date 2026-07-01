@@ -1,0 +1,64 @@
+{
+  "description": "Internal KMD benchmark slice for HERB-like structured evidence: nested JSON records, Slack-style messages, PR URLs, customer ids, and JSON-ish logs.",
+  "name": "structured_record_json",
+  "questions": [
+    {
+      "answer": "Mara Chen",
+      "category": "structured_json_product",
+      "evidence": [
+        "products/BeaconForce.json",
+        "logs/beaconforce_events.jsonish"
+      ],
+      "id": "srj001",
+      "question": "Who owns the retry scheduler for BeaconForce?"
+    },
+    {
+      "answer": "https://github.com/salesforce/BeaconForce/pull/2780",
+      "category": "structured_json_pr_url",
+      "evidence": [
+        "products/BeaconForce.json",
+        "logs/beaconforce_events.jsonish"
+      ],
+      "id": "srj002",
+      "question": "What is the tracking PR URL for the BeaconForce retry scheduler?"
+    },
+    {
+      "answer": "Blue Ridge Analytics",
+      "category": "structured_json_customer",
+      "evidence": [
+        "products/BeaconForce.json",
+        "logs/beaconforce_events.jsonish",
+        "metadata/team_directory.json"
+      ],
+      "id": "srj003",
+      "question": "Which customer is blocked by the telemetry export delay?"
+    },
+    {
+      "answer": "Omar Vale",
+      "category": "structured_json_reviewer",
+      "evidence": [
+        "products/BeaconForce.json",
+        "logs/beaconforce_events.jsonish"
+      ],
+      "id": "srj004",
+      "question": "Who should review the OAuth callback repair PR before merge?"
+    },
+    {
+      "answer": "HOLD",
+      "category": "structured_json_release_state",
+      "evidence": [
+        "products/BeaconForce.json",
+        "logs/beaconforce_events.jsonish"
+      ],
+      "id": "srj005",
+      "question": "What is the final release gate state for PR-2814?"
+    },
+    {
+      "answer": "unknown",
+      "category": "structured_json_unanswerable",
+      "evidence": [],
+      "id": "srj006",
+      "question": "Who approved the billing export redesign for BeaconForce?"
+    }
+  ]
+}

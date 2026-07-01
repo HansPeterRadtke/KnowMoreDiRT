@@ -1,0 +1,48 @@
+{
+  "customers": {
+    "CUST-4801": {
+      "name": "Northstar Labs",
+      "tier": "enterprise"
+    },
+    "CUST-4920": {
+      "name": "Blue Ridge Analytics",
+      "tier": "strategic"
+    },
+    "CUST-5009": {
+      "name": "Pine Harbor Health",
+      "tier": "regulated"
+    }
+  },
+  "employees": {
+    "eid_aa10ff01": {
+      "location": "Remote",
+      "name": "Mara Chen",
+      "role": "Engineering Lead",
+      "team": "BeaconForce"
+    },
+    "eid_bb20ff02": {
+      "location": "London",
+      "name": "Omar Vale",
+      "role": "QA Specialist",
+      "team": "BeaconForce"
+    },
+    "eid_cc30ff03": {
+      "location": "San Francisco",
+      "name": "Nina Park",
+      "role": "Product Manager",
+      "team": "BeaconForce"
+    },
+    "eid_dd40ff04": {
+      "location": "New York",
+      "name": "Ilya Stone",
+      "role": "Software Engineer",
+      "team": "BeaconForce"
+    },
+    "eid_ee50ff05": {
+      "location": "Sydney",
+      "name": "Rhea Holt",
+      "role": "Customer Success",
+      "team": "BeaconForce"
+    }
+  }
+}
