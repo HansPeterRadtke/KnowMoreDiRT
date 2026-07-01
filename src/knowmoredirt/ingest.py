@@ -515,9 +515,9 @@ def _scan_unit_max_chars(semantic_client: Any | None) -> int:
             context_size = 0
         if context_size > 0:
             try:
-                context_cap = max(1024, int(os.environ.get("KMD_SCAN_UNIT_CONTEXT_MAX_CHARS", "16000")))
+                context_cap = max(1024, int(os.environ.get("KMD_SCAN_UNIT_CONTEXT_MAX_CHARS", "6000")))
             except ValueError:
-                context_cap = 16000
+                context_cap = 6000
             return max(1024, min(context_size * 2, context_cap))
     return int(os.environ.get("KMD_SCAN_UNIT_FALLBACK_MAX_CHARS", "4000"))
 

@@ -212,6 +212,31 @@ def test_answer_verification_invalid_json_is_not_request_failure(monkeypatch) ->
     assert model.calls == 1
 
 
+def test_drs_ingest_scan_unit_default_does_not_scale_to_full_large_context(monkeypatch) -> None:
+    from knowmoredirt.ingest import _scan_unit_max_chars
+
+    class LargeContextModel:
+        def context_size(self) -> int:
+            return 131072
+
+    monkeypatch.delenv("KMD_SCAN_UNIT_MAX_CHARS", raising=False)
+    monkeypatch.delenv("KMD_SCAN_UNIT_CONTEXT_MAX_CHARS", raising=False)
+
+    assert _scan_unit_max_chars(LargeContextModel()) == 6000
+
+
+def test_drs_ingest_scan_unit_context_cap_is_still_configurable(monkeypatch) -> None:
+    from knowmoredirt.ingest import _scan_unit_max_chars
+
+    class LargeContextModel:
+        def context_size(self) -> int:
+            return 131072
+
+    monkeypatch.setenv("KMD_SCAN_UNIT_CONTEXT_MAX_CHARS", "8000")
+
+    assert _scan_unit_max_chars(LargeContextModel()) == 8000
+
+
 def test_ingest_model_structured_failures_abort_initialize_boundary() -> None:
     from knowmoredirt.ingest import _raise_model_request_failed
 
