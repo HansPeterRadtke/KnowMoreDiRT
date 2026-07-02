@@ -245,6 +245,27 @@ def test_ingest_model_structured_failures_abort_initialize_boundary() -> None:
             _raise_model_request_failed({"reason": reason, "error": reason, "cache_context": {"source_rel_path": "x"}}, "chunk DRS ingest")
 
 
+def test_ingest_model_materialization_failure_aborts_initialize_boundary() -> None:
+    from knowmoredirt.ingest import _raise_model_materialization_failed
+
+    with pytest.raises(LocalModelUnavailableError, match="duplicate_or_missing_condition_id"):
+        _raise_model_materialization_failed(
+            {"accepted": True, "reason": "staged_fallback", "cache_context": {"source_rel_path": "x"}},
+            {"accepted": False, "reason": "schema_validation_failed", "errors": ["duplicate_or_missing_condition_id"]},
+            "chunk DRS ingest",
+        )
+
+
+def test_ingest_model_materialization_success_does_not_abort_initialize_boundary() -> None:
+    from knowmoredirt.ingest import _raise_model_materialization_failed
+
+    _raise_model_materialization_failed(
+        {"accepted": True, "reason": "staged_fallback"},
+        {"accepted": True, "reason": "materialized", "inserted": {"drs_conditions": 1}},
+        "chunk DRS ingest",
+    )
+
+
 def test_ingest_model_materialized_result_does_not_abort_initialize_boundary() -> None:
     from knowmoredirt.ingest import _raise_model_request_failed
 
@@ -2772,6 +2793,81 @@ def test_compact_chunk_drs_uses_json_schema_and_explicit_arguments(monkeypatch, 
     assert result["cache_context"]["constraint_mode"] == "json_schema"
     assert result["drs"]["conditions"][0]["predicate"] == "means"
     assert result["drs"]["conditions"][0]["arguments"][0]["role"] == "term"
+
+
+def test_chunk_drs_validation_rejects_duplicate_referent_ids() -> None:
+    payload = {
+        "drs": {
+            "schema_version": "chunk-drs-v2",
+            "source_id": "notes.txt",
+            "referents": [
+                {"id": "r0", "label": "Aero Gate", "kind": "entity", "evidence_text": "Aero Gate"},
+                {"id": "r0", "label": "ready", "kind": "state", "evidence_text": "ready"},
+            ],
+            "boxes": [{"id": "b0", "kind": "asserted", "parent_id": "", "holder_referent_id": "", "evidence_text": ""}],
+            "conditions": [
+                {
+                    "id": "c0",
+                    "predicate": "state",
+                    "box_id": "b0",
+                    "polarity": "positive",
+                    "modality": "asserted",
+                    "temporal_id": "",
+                    "arguments": [],
+                    "evidence_text": "ready",
+                }
+            ],
+            "identity_hypotheses": [],
+            "temporal_records": [],
+            "evidence_spans": [],
+        }
+    }
+
+    validation = model_planner._validate_chunk_drs_payload(payload, "Aero Gate is ready.")
+
+    assert validation["schema_valid"] is False
+    assert "duplicate_or_missing_referent_id" in validation["errors"]
+
+
+def test_chunk_drs_validation_rejects_duplicate_condition_ids() -> None:
+    payload = {
+        "drs": {
+            "schema_version": "chunk-drs-v2",
+            "source_id": "notes.txt",
+            "referents": [{"id": "r0", "label": "Aero Gate", "kind": "entity", "evidence_text": "Aero Gate"}],
+            "boxes": [{"id": "b0", "kind": "asserted", "parent_id": "", "holder_referent_id": "", "evidence_text": ""}],
+            "conditions": [
+                {
+                    "id": "c0",
+                    "predicate": "state",
+                    "box_id": "b0",
+                    "polarity": "positive",
+                    "modality": "asserted",
+                    "temporal_id": "",
+                    "arguments": [],
+                    "evidence_text": "ready",
+                },
+                {
+                    "id": "c0",
+                    "predicate": "status",
+                    "box_id": "b0",
+                    "polarity": "positive",
+                    "modality": "asserted",
+                    "temporal_id": "",
+                    "arguments": [],
+                    "evidence_text": "ready",
+                },
+            ],
+            "identity_hypotheses": [],
+            "temporal_records": [],
+            "evidence_spans": [],
+        }
+    }
+
+    validation = model_planner._validate_chunk_drs_payload(payload, "Aero Gate is ready.")
+
+    assert validation["schema_valid"] is False
+    assert "duplicate_or_missing_condition_id" in validation["errors"]
 
 
 def test_repair_chunk_drs_adds_only_safe_empty_auxiliary_lists() -> None:

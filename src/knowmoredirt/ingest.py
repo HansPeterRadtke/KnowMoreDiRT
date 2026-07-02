@@ -143,6 +143,37 @@ def _raise_model_request_failed(result: dict[str, Any], operation: str) -> None:
     )
 
 
+def _raise_model_materialization_failed(
+    drs_result: dict[str, Any],
+    materialized: dict[str, Any],
+    operation: str,
+) -> None:
+    if not bool(drs_result.get("accepted")) or bool(materialized.get("accepted")):
+        return
+    reason = str(materialized.get("reason") or drs_result.get("reason") or "materialization_failed")
+    errors = materialized.get("errors") if isinstance(materialized.get("errors"), list) else []
+    grounding_failures = materialized.get("grounding_failures") if isinstance(materialized.get("grounding_failures"), list) else []
+    _log_progress(
+        "kmd-ingest model_materialization_failed "
+        f"operation={operation} "
+        f"reason={reason} "
+        f"errors={str(errors[:5])[:300]} "
+        f"grounding_failures={str(grounding_failures[:5])[:300]}"
+    )
+    cache_context = drs_result.get("cache_context") if isinstance(drs_result.get("cache_context"), dict) else {}
+    try:
+        cache_context_text = json.dumps(cache_context, sort_keys=True, default=str)[:4000]
+    except Exception:
+        cache_context_text = str(cache_context)[:4000]
+    raise LocalModelUnavailableError(
+        "KnowMoreDiRT requires model DRS output to materialize during initialize(folder_path). "
+        f"Local model DRS materialization failed during {operation}: reason={reason}; "
+        f"errors={errors[:20]}; grounding_failures={grounding_failures[:20]}. "
+        f"cache_context={cache_context_text}",
+        cache_context=cache_context,
+    )
+
+
 def _timestamp_value(value: float) -> str:
     try:
         return time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime(float(value)))
@@ -648,6 +679,7 @@ def _ingest_model_drs_for_sentence(
             {"drs": drs_result["drs"]},
             source="local_model_drs",
         )
+        _raise_model_materialization_failed(drs_result, materialized, "chunk DRS ingest")
         if materialized.get("accepted"):
             linked_speakers = _link_labeled_turn_speaker_referents(store, run_id, span_id, sentence)
             linked_structural_speakers = _link_first_person_referents_to_speaker_surface(

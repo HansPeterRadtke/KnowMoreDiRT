@@ -4754,10 +4754,22 @@ def _validate_chunk_drs_payload(payload: Any, source_text: str) -> dict[str, Any
         errors.append("not_list:evidence_spans")
         evidence_spans = []
 
-    referent_ids = {str(item.get("id") or "") for item in referents if str(item.get("id") or "")}
-    box_ids = {str(item.get("id") or "") for item in boxes if str(item.get("id") or "")}
-    condition_ids = {str(item.get("id") or "") for item in conditions if str(item.get("id") or "")}
-    temporal_ids = {str(item.get("id") or "") for item in temporals if str(item.get("id") or "")}
+    referent_id_values = [str(item.get("id") or "") for item in referents]
+    box_id_values = [str(item.get("id") or "") for item in boxes]
+    condition_id_values = [str(item.get("id") or "") for item in conditions]
+    temporal_id_values = [str(item.get("id") or "") for item in temporals]
+    referent_ids = {value for value in referent_id_values if value}
+    box_ids = {value for value in box_id_values if value}
+    condition_ids = {value for value in condition_id_values if value}
+    temporal_ids = {value for value in temporal_id_values if value}
+    if len(referent_ids) != len([value for value in referent_id_values if value]):
+        errors.append("duplicate_or_missing_referent_id")
+    if len(box_ids) != len([value for value in box_id_values if value]):
+        errors.append("duplicate_or_missing_box_id")
+    if len(condition_ids) != len([value for value in condition_id_values if value]):
+        errors.append("duplicate_or_missing_condition_id")
+    if len(temporal_ids) != len([value for value in temporal_id_values if value]):
+        errors.append("duplicate_or_missing_temporal_id")
 
     def check_span(value: Any, label: str) -> None:
         span = str(value or "").strip()
