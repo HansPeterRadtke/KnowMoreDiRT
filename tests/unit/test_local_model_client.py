@@ -16,6 +16,8 @@ from knowmoredirt.model import (
 from knowmoredirt.models import Answer, Evidence
 from knowmoredirt import model_planner
 from knowmoredirt.model_planner import (
+    _validate_chunk_drs_payload,
+    _repair_chunk_drs_payload,
     CHUNK_FRAME_CONTEXT_BUDGET_POLICY,
     CHUNK_DRS_IDENTITY_PROVENANCE_POLICY,
     CHUNK_DRS_TEMPORAL_PROVENANCE_POLICY,
@@ -368,6 +370,95 @@ def test_local_model_drs_ingest_does_not_materialize_deterministic_semantics(mon
     assert store.execute("SELECT COUNT(*) FROM frames WHERE source='deterministic_relation'").fetchone()[0] == 0
     assert store.execute("SELECT COUNT(*) FROM relations WHERE relation_type IN ('label_value', 'record_value', 'table_cell', 'temporal')").fetchone()[0] == 0
     assert store.execute("SELECT COUNT(*) FROM drs_conditions WHERE source='local_model_drs'").fetchone()[0] >= 1
+
+
+def test_chunk_drs_repair_renames_unreferenced_duplicate_box_ids() -> None:
+    payload = {
+        "drs": {
+            "schema_version": "chunk-drs-v2",
+            "source_id": "note.txt",
+            "referents": [
+                {"id": "r0", "label": "Aero Gate", "kind": "entity", "evidence_text": "Aero Gate"}
+            ],
+            "boxes": [
+                {"id": "b0", "kind": "asserted", "parent_id": "", "holder_referent_id": "", "evidence_text": ""},
+                {"id": "b1", "kind": "asserted", "parent_id": "b0", "holder_referent_id": "r0", "evidence_text": ""},
+                {"id": "b1", "kind": "asserted", "parent_id": "b0", "holder_referent_id": "r0", "evidence_text": ""},
+            ],
+            "conditions": [
+                {
+                    "id": "c0",
+                    "predicate": "ready",
+                    "box_id": "b0",
+                    "polarity": "positive",
+                    "modality": "asserted",
+                    "temporal_id": "",
+                    "arguments": [
+                        {
+                            "role": "theme",
+                            "target_kind": "referent",
+                            "target_id": "r0",
+                            "value": "Aero Gate",
+                            "value_type": "entity",
+                            "evidence_text": "Aero Gate",
+                        }
+                    ],
+                    "evidence_text": "Aero Gate is ready.",
+                }
+            ],
+            "identity_hypotheses": [],
+            "temporal_records": [],
+        }
+    }
+    repaired = _repair_chunk_drs_payload(payload, "Aero Gate is ready.")
+    boxes = repaired["drs"]["boxes"]
+
+    assert [box["id"] for box in boxes] == ["b0", "b1", "b1_dup1"]
+    assert _validate_chunk_drs_payload(repaired, "Aero Gate is ready.")["schema_valid"] is True
+
+
+def test_chunk_drs_repair_keeps_referenced_duplicate_box_ids_invalid() -> None:
+    payload = {
+        "drs": {
+            "schema_version": "chunk-drs-v2",
+            "source_id": "note.txt",
+            "referents": [
+                {"id": "r0", "label": "Aero Gate", "kind": "entity", "evidence_text": "Aero Gate"}
+            ],
+            "boxes": [
+                {"id": "b0", "kind": "asserted", "parent_id": "", "holder_referent_id": "", "evidence_text": ""},
+                {"id": "b1", "kind": "asserted", "parent_id": "b0", "holder_referent_id": "r0", "evidence_text": ""},
+                {"id": "b1", "kind": "asserted", "parent_id": "b0", "holder_referent_id": "r0", "evidence_text": ""},
+            ],
+            "conditions": [
+                {
+                    "id": "c0",
+                    "predicate": "ready",
+                    "box_id": "b1",
+                    "polarity": "positive",
+                    "modality": "asserted",
+                    "temporal_id": "",
+                    "arguments": [
+                        {
+                            "role": "theme",
+                            "target_kind": "referent",
+                            "target_id": "r0",
+                            "value": "Aero Gate",
+                            "value_type": "entity",
+                            "evidence_text": "Aero Gate",
+                        }
+                    ],
+                    "evidence_text": "Aero Gate is ready.",
+                }
+            ],
+            "identity_hypotheses": [],
+            "temporal_records": [],
+        }
+    }
+    repaired = _repair_chunk_drs_payload(payload, "Aero Gate is ready.")
+
+    assert [box["id"] for box in repaired["drs"]["boxes"]] == ["b0", "b1", "b1"]
+    assert "duplicate_or_missing_box_id" in _validate_chunk_drs_payload(repaired, "Aero Gate is ready.")["errors"]
 
 
 def test_chunk_drs_repair_clears_ungrounded_optional_box_evidence() -> None:

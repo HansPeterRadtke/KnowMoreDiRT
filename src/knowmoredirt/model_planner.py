@@ -4935,6 +4935,60 @@ def _repair_chunk_drs_payload(payload: Any, source_text: str = "", *, prune_unre
     referent_ids = {str(item.get("id") or "") for item in repaired_referents}
     referents_by_id = {str(item.get("id") or ""): item for item in repaired_referents if str(item.get("id") or "")}
     box_ids = {str(item.get("id") or "") for item in repaired_boxes if str(item.get("id") or "")}
+    duplicate_box_repaired = False
+    box_id_values = [str(item.get("id") or "").strip() for item in repaired_boxes]
+    duplicate_box_ids = {value for value in box_id_values if value and box_id_values.count(value) > 1}
+    if duplicate_box_ids:
+        referenced_box_ids = {
+            str(condition.get("box_id") or "").strip()
+            for condition in repaired_conditions
+            if str(condition.get("box_id") or "").strip()
+        }
+        referenced_box_ids.update(
+            str(box.get("parent_id") or "").strip()
+            for box in repaired_boxes
+            if str(box.get("parent_id") or "").strip()
+        )
+        for condition in repaired_conditions:
+            arguments = condition.get("arguments")
+            if not isinstance(arguments, list):
+                continue
+            for argument in arguments:
+                if not isinstance(argument, dict):
+                    continue
+                if str(argument.get("target_kind") or "").strip() == "box":
+                    target_id = str(argument.get("target_id") or "").strip()
+                    if target_id:
+                        referenced_box_ids.add(target_id)
+        identities = drs.get("identity_hypotheses")
+        if isinstance(identities, list):
+            for identity in identities:
+                if not isinstance(identity, dict):
+                    continue
+                box_id = str(identity.get("box_id") or "").strip()
+                if box_id:
+                    referenced_box_ids.add(box_id)
+        unsafe_duplicate_ids = duplicate_box_ids & referenced_box_ids
+        if not unsafe_duplicate_ids:
+            used_box_ids = {value for value in box_id_values if value}
+            seen_box_ids: dict[str, int] = {}
+            for item in repaired_boxes:
+                box_id = str(item.get("id") or "").strip()
+                if not box_id:
+                    continue
+                occurrence = seen_box_ids.get(box_id, 0)
+                seen_box_ids[box_id] = occurrence + 1
+                if occurrence == 0:
+                    continue
+                suffix = occurrence
+                new_box_id = f"{box_id}_dup{suffix}"
+                while new_box_id in used_box_ids:
+                    suffix += 1
+                    new_box_id = f"{box_id}_dup{suffix}"
+                item["id"] = new_box_id
+                used_box_ids.add(new_box_id)
+                duplicate_box_repaired = True
+            box_ids = used_box_ids
     namespace_repaired = False
     grounding_repaired = False
     if source_text:
@@ -5039,6 +5093,7 @@ def _repair_chunk_drs_payload(payload: Any, source_text: str = "", *, prune_unre
         and len(repaired_conditions) == len(conditions)
         and not temporal_repaired
         and repaired_identities is identities
+        and not duplicate_box_repaired
         and not namespace_repaired
         and not grounding_repaired
     ):
