@@ -237,6 +237,139 @@ def test_drs_ingest_scan_unit_context_cap_is_still_configurable(monkeypatch) -> 
     assert _scan_unit_max_chars(LargeContextModel()) == 8000
 
 
+def test_local_model_drs_ingest_sends_noise_like_chunks_to_model_by_default(monkeypatch, tmp_path) -> None:
+    from knowmoredirt import ingest as ingest_module
+
+    class FakeClient:
+        def context_size(self) -> int:
+            return 4096
+
+        def cache_fingerprint(self) -> dict[str, object]:
+            return {"model_id": "fake-local-model", "context_size": 4096}
+
+    text = "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
+    (tmp_path / "noise.txt").write_text(text, encoding="utf-8")
+    calls: list[str] = []
+
+    def fake_chunk_drs(chunk_text, client, **kwargs):
+        calls.append(chunk_text)
+        evidence = chunk_text[:16]
+        return {
+            "accepted": True,
+            "reason": "compact_drs",
+            "elapsed": 0.0,
+            "cache_context": {},
+            "drs": {
+                "schema_version": "chunk-drs-v2",
+                "source_id": "noise.txt",
+                "referents": [{"id": "r0", "label": evidence, "kind": "unknown", "evidence_text": evidence}],
+                "boxes": [{"id": "b0", "kind": "asserted", "parent_id": "", "holder_referent_id": "", "evidence_text": ""}],
+                "conditions": [
+                    {
+                        "id": "c0",
+                        "predicate": "contains",
+                        "box_id": "b0",
+                        "polarity": "positive",
+                        "modality": "asserted",
+                        "temporal_id": "",
+                        "arguments": [
+                            {
+                                "role": "text",
+                                "target_kind": "referent",
+                                "target_id": "r0",
+                                "value": evidence,
+                                "value_type": "unknown",
+                                "evidence_text": evidence,
+                            }
+                        ],
+                        "evidence_text": evidence,
+                    }
+                ],
+                "identity_hypotheses": [],
+                "temporal_records": [],
+                "evidence_spans": [],
+            },
+        }
+
+    monkeypatch.delenv("KMD_ALLOW_PREMODEL_SEMANTIC_SKIP", raising=False)
+    monkeypatch.setattr(ingest_module, "call_model_chunk_drs", fake_chunk_drs)
+
+    store, _run_id, _docs, _sentences = ingest_module.ingest_folder(
+        tmp_path,
+        semantic_client=FakeClient(),
+        use_drs_semantics=True,
+    )
+
+    assert calls
+    assert store.execute("SELECT COUNT(*) FROM model_attempts WHERE task='chunk_drs'").fetchone()[0] >= 1
+
+
+def test_local_model_drs_ingest_does_not_materialize_deterministic_semantics(monkeypatch, tmp_path) -> None:
+    from knowmoredirt import ingest as ingest_module
+
+    class FakeClient:
+        def context_size(self) -> int:
+            return 4096
+
+        def cache_fingerprint(self) -> dict[str, object]:
+            return {"model_id": "fake-local-model", "context_size": 4096}
+
+    (tmp_path / "record.txt").write_text("Alice: owner\nBob: reviewer", encoding="utf-8")
+
+    def fake_chunk_drs(chunk_text, client, **kwargs):
+        evidence = "Alice" if "Alice" in chunk_text else chunk_text[:5]
+        return {
+            "accepted": True,
+            "reason": "compact_drs",
+            "elapsed": 0.0,
+            "cache_context": {},
+            "drs": {
+                "schema_version": "chunk-drs-v2",
+                "source_id": "record.txt",
+                "referents": [{"id": "r0", "label": evidence, "kind": "person", "evidence_text": evidence}],
+                "boxes": [{"id": "b0", "kind": "asserted", "parent_id": "", "holder_referent_id": "", "evidence_text": ""}],
+                "conditions": [
+                    {
+                        "id": "c0",
+                        "predicate": "mentions",
+                        "box_id": "b0",
+                        "polarity": "positive",
+                        "modality": "asserted",
+                        "temporal_id": "",
+                        "arguments": [
+                            {
+                                "role": "person",
+                                "target_kind": "referent",
+                                "target_id": "r0",
+                                "value": evidence,
+                                "value_type": "person",
+                                "evidence_text": evidence,
+                            }
+                        ],
+                        "evidence_text": evidence,
+                    }
+                ],
+                "identity_hypotheses": [],
+                "temporal_records": [],
+                "evidence_spans": [],
+            },
+        }
+
+    monkeypatch.delenv("KMD_ALLOW_DETERMINISTIC_SEMANTICS_WITH_LOCAL_MODEL", raising=False)
+    monkeypatch.setattr(ingest_module, "call_model_chunk_drs", fake_chunk_drs)
+
+    store, _run_id, _docs, _sentences = ingest_module.ingest_folder(
+        tmp_path,
+        semantic_client=FakeClient(),
+        use_drs_semantics=True,
+    )
+
+    assert store.execute("SELECT COUNT(*) FROM mentions WHERE source='deterministic'").fetchone()[0] == 0
+    assert store.execute("SELECT COUNT(*) FROM frames WHERE source='deterministic_relation'").fetchone()[0] == 0
+    assert store.execute("SELECT COUNT(*) FROM relations WHERE relation_type IN ('label_value', 'record_value', 'table_cell', 'temporal')").fetchone()[0] == 0
+    assert store.execute("SELECT COUNT(*) FROM drs_conditions WHERE source='local_model_drs'").fetchone()[0] >= 1
+
+
 def test_chunk_drs_repair_clears_ungrounded_optional_box_evidence() -> None:
     payload = {
         "drs": {

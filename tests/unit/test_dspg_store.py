@@ -7108,6 +7108,7 @@ def test_ingest_can_materialize_schema_constrained_model_drs(tmp_path: Path, mon
 
 
 def test_drs_ingest_skips_low_semantic_noise_chunks(tmp_path: Path, monkeypatch) -> None:
+    monkeypatch.setenv("KMD_ALLOW_PREMODEL_SEMANTIC_SKIP", "1")
     noise = "\\x00\\x01@@@###%%%^^^^~~~~" + ("A7f!?" * 80)
     (tmp_path / "noise.blob").write_text(noise, encoding="utf-8")
     (tmp_path / "note.txt").write_text("Aero Gate is ready.\n", encoding="utf-8")

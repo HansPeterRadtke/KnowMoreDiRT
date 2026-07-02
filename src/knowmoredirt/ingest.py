@@ -567,7 +567,11 @@ def _ingest_model_drs_for_sentence(
     structural_speaker_evidence: str = "",
 ) -> int:
     semantic_index += 1
-    skip_reason = _model_semantic_skip_reason(text_quality_metrics(sentence.text), sentence.text)
+    skip_reason = (
+        _model_semantic_skip_reason(text_quality_metrics(sentence.text), sentence.text)
+        if _env_true("KMD_ALLOW_PREMODEL_SEMANTIC_SKIP")
+        else ""
+    )
     if skip_reason:
         _log_progress(
             "kmd-ingest drs_done "
@@ -909,6 +913,12 @@ def ingest_folder(
     )
     semantic_total = len(sentences) * semantic_passes
     semantic_index = 0
+    model_owned_semantics = (
+        semantic_client is not None
+        and bool(use_semantic_frames or use_drs_semantics)
+        and not _env_true("KMD_ALLOW_DETERMINISTIC_SEMANTICS_WITH_LOCAL_MODEL")
+    )
+    deterministic_semantics_enabled = not model_owned_semantics
 
     for sentence in sentences:
         token_estimate = max(1, len(tokenize(sentence.text)))
@@ -922,7 +932,7 @@ def ingest_folder(
             "INSERT OR IGNORE INTO source_spans(span_id, document_id, chunk_id, char_start, char_end, surface, surface_norm, span_kind) VALUES (?, ?, ?, ?, ?, ?, ?, ?)",
             (span_id, sentence.document_id, chunk_id, sentence.char_start, sentence.char_end, sentence.text, normalize(sentence.text), "sentence"),
         )
-        context_kind = context_kind_for_sentence(sentence.text)
+        context_kind = "asserted" if model_owned_semantics else context_kind_for_sentence(sentence.text)
         context_id = context_by_kind.get(context_kind)
         if context_id is None:
             context_id = stable_id("ctx", run_id, context_kind)
@@ -969,45 +979,46 @@ def ingest_folder(
                 ),
             )
 
-        try:
-            max_mentions_per_chunk = max(0, int(os.environ.get("KMD_MENTIONS_MAX_PER_CHUNK", "128")))
-        except ValueError:
-            max_mentions_per_chunk = 128
-        mention_candidates = collect_mentions(sentence)
-        if max_mentions_per_chunk and len(mention_candidates) > max_mentions_per_chunk:
-            mention_candidates = mention_candidates[:max_mentions_per_chunk]
         mentions_for_sentence: list[tuple[str, str, str]] = []
-        for surface, entity_type, start, end in mention_candidates:
-            mention_span_id = stable_id("span", sentence.sentence_id, surface, start)
-            store.execute(
-                "INSERT OR IGNORE INTO source_spans(span_id, document_id, chunk_id, char_start, char_end, surface, surface_norm, span_kind) VALUES (?, ?, ?, ?, ?, ?, ?, ?)",
-                (mention_span_id, sentence.document_id, chunk_id, start, end, surface, normalize(surface), "mention"),
-            )
-            mention_id = stable_id("men", run_id, mention_span_id, surface)
-            store.execute(
-                "INSERT OR IGNORE INTO mentions(mention_id, run_id, span_id, surface, surface_norm, mention_kind, entity_type, confidence, source) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)",
-                (mention_id, run_id, mention_span_id, surface, normalize(surface), entity_type, entity_type, 1.0, "deterministic"),
-            )
-            referent_key = (normalize(surface), entity_type)
-            referent_id = referent_cache.get(referent_key)
-            if referent_id is None:
-                referent_id = store.upsert_referent(run_id, surface, entity_type)
-                referent_cache[referent_key] = referent_id
-            store.execute(
-                "INSERT OR IGNORE INTO mention_referents(mention_id, referent_id, link_status, confidence) VALUES (?, ?, ?, ?)",
-                (mention_id, referent_id, "candidate", 1.0),
-            )
-            mentions_for_sentence.append((surface, mention_id, referent_id))
+        if deterministic_semantics_enabled:
+            try:
+                max_mentions_per_chunk = max(0, int(os.environ.get("KMD_MENTIONS_MAX_PER_CHUNK", "128")))
+            except ValueError:
+                max_mentions_per_chunk = 128
+            mention_candidates = collect_mentions(sentence)
+            if max_mentions_per_chunk and len(mention_candidates) > max_mentions_per_chunk:
+                mention_candidates = mention_candidates[:max_mentions_per_chunk]
+            for surface, entity_type, start, end in mention_candidates:
+                mention_span_id = stable_id("span", sentence.sentence_id, surface, start)
+                store.execute(
+                    "INSERT OR IGNORE INTO source_spans(span_id, document_id, chunk_id, char_start, char_end, surface, surface_norm, span_kind) VALUES (?, ?, ?, ?, ?, ?, ?, ?)",
+                    (mention_span_id, sentence.document_id, chunk_id, start, end, surface, normalize(surface), "mention"),
+                )
+                mention_id = stable_id("men", run_id, mention_span_id, surface)
+                store.execute(
+                    "INSERT OR IGNORE INTO mentions(mention_id, run_id, span_id, surface, surface_norm, mention_kind, entity_type, confidence, source) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)",
+                    (mention_id, run_id, mention_span_id, surface, normalize(surface), entity_type, entity_type, 1.0, "deterministic"),
+                )
+                referent_key = (normalize(surface), entity_type)
+                referent_id = referent_cache.get(referent_key)
+                if referent_id is None:
+                    referent_id = store.upsert_referent(run_id, surface, entity_type)
+                    referent_cache[referent_key] = referent_id
+                store.execute(
+                    "INSERT OR IGNORE INTO mention_referents(mention_id, referent_id, link_status, confidence) VALUES (?, ?, ?, ?)",
+                    (mention_id, referent_id, "candidate", 1.0),
+                )
+                mentions_for_sentence.append((surface, mention_id, referent_id))
 
-        is_structural_heading = _is_structural_heading(sentence.text)
+        is_structural_heading = _is_structural_heading(sentence.text) if deterministic_semantics_enabled else False
         pending_label_heading = ""
         if is_structural_heading:
             section_anchor = clean_extracted_value(sentence.text)
             section_anchor_by_document[sentence.document_id] = section_anchor
             section_group_by_document[sentence.document_id] = stable_id("section_group", sentence.document_id, section_anchor)
 
-        deterministic_relations = extract_relations(sentence.text)
-        cells = _table_cells(sentence.text)
+        deterministic_relations = extract_relations(sentence.text) if deterministic_semantics_enabled else []
+        cells = _table_cells(sentence.text) if deterministic_semantics_enabled else []
         if cells:
             current_header = table_headers_by_document.get(sentence.document_id)
             if current_header and len(cells) == len(current_header) and cells != current_header:
