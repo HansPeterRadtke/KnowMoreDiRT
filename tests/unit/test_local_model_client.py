@@ -237,6 +237,89 @@ def test_drs_ingest_scan_unit_context_cap_is_still_configurable(monkeypatch) -> 
     assert _scan_unit_max_chars(LargeContextModel()) == 8000
 
 
+def test_chunk_drs_repair_clears_ungrounded_optional_box_evidence() -> None:
+    payload = {
+        "drs": {
+            "schema_version": "chunk-drs-v2",
+            "source_id": "metadata/team.json",
+            "referents": [
+                {"id": "r0", "label": "Emma Miller", "kind": "person", "evidence_text": '"name": "Emma Miller"'},
+            ],
+            "boxes": [
+                {
+                    "id": "b0",
+                    "kind": "asserted",
+                    "parent_id": "",
+                    "holder_referent_id": "",
+                    "evidence_text": "Employee data",
+                }
+            ],
+            "conditions": [
+                {
+                    "id": "c0",
+                    "predicate": "employee_record",
+                    "box_id": "b0",
+                    "polarity": "positive",
+                    "modality": "asserted",
+                    "temporal_id": "",
+                    "arguments": [
+                        {
+                            "role": "employee",
+                            "target_kind": "referent",
+                            "target_id": "r0",
+                            "value": "Emma Miller",
+                            "value_type": "person",
+                            "evidence_text": '"name": "Emma Miller"',
+                        }
+                    ],
+                    "evidence_text": '"name": "Emma Miller"',
+                }
+            ],
+            "identity_hypotheses": [],
+            "temporal_records": [],
+            "evidence_spans": [],
+        }
+    }
+    source_text = '{"name": "Emma Miller", "role": "Software Engineer"}'
+
+    repaired = model_planner._repair_chunk_drs_payload(payload, source_text)
+    validation = model_planner._validate_chunk_drs_payload(repaired, source_text)
+
+    assert repaired["drs"]["boxes"][0]["evidence_text"] == ""
+    assert validation["schema_valid"] is True
+
+
+def test_query_drs_projection_does_not_inherit_deterministic_question_plan_defaults() -> None:
+    from knowmoredirt.model_planner import query_frame_from_query_drs
+
+    frame = query_frame_from_query_drs(
+        "Which owner closed ticket BUG-123 yesterday?",
+        {
+            "schema_version": "query-drs-v2",
+            "answer_type": "unknown",
+            "answer_variables": [],
+            "target_referents": [],
+            "box_requirements": [],
+            "requested_conditions": [],
+            "constraints": [],
+            "temporal_records": [],
+            "temporal_scope": "",
+            "aggregation": "",
+            "requires_evidence": True,
+        },
+    )
+
+    assert frame is not None
+    assert frame["target_anchors"] == ()
+    assert frame["answer_variables"] == ()
+    assert frame["relation_terms"] == ()
+    assert frame["constraints"] == ()
+    assert frame["requested_relation"] == ""
+    assert frame["temporal_scope"] == ""
+    assert frame["answer_type"] == "unknown"
+    assert frame["source"] == "model_query_drs"
+
+
 def test_engine_model_mode_answer_calls_local_model_before_deterministic_source_handlers() -> None:
     from knowmoredirt.engine import KnowMoreDiRTEngine
     from knowmoredirt.models import Answer

@@ -4942,6 +4942,10 @@ def _repair_chunk_drs_payload(payload: Any, source_text: str = "", *, prune_unre
             grounding_repaired |= _repair_evidence_text_from_declared_value(item, source_text, ("label",))
         for item in repaired_boxes:
             grounding_repaired |= _repair_evidence_text_from_declared_value(item, source_text, ())
+            box_evidence = str(item.get("evidence_text") or "").strip()
+            if box_evidence and box_evidence not in source_text:
+                item["evidence_text"] = ""
+                grounding_repaired = True
         for item in repaired_conditions:
             grounding_repaired |= _repair_evidence_text_from_declared_value(item, source_text, ())
         temporals = drs.get("temporal_records")

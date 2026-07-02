@@ -394,7 +394,19 @@ def plan_question(question: str) -> QueryFrame:
 def frame_from_mapping(question: str, mapping: dict[str, Any] | None, *, source: str = "model") -> QueryFrame:
     """Normalize a model/dict frame into the internal dataclass."""
 
-    base = plan_question(question)
+    if source == "model_query_drs":
+        base = QueryFrame(
+            question_text=question,
+            answer_type="unknown",
+            answer_variables=(),
+            target_anchors=(),
+            requested_relation="",
+            relation_terms=(),
+            constraints=(),
+            source=source,
+        )
+    else:
+        base = plan_question(question)
     if not mapping:
         return base
     raw = mapping.get("query_frame") if "query_frame" in mapping and isinstance(mapping.get("query_frame"), dict) else mapping
