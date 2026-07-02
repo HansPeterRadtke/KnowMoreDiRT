@@ -237,6 +237,90 @@ def test_drs_ingest_scan_unit_context_cap_is_still_configurable(monkeypatch) -> 
     assert _scan_unit_max_chars(LargeContextModel()) == 8000
 
 
+def test_engine_model_mode_answer_calls_local_model_before_deterministic_source_handlers() -> None:
+    from knowmoredirt.engine import KnowMoreDiRTEngine
+    from knowmoredirt.models import Answer
+
+    engine = KnowMoreDiRTEngine.__new__(KnowMoreDiRTEngine)
+    engine._use_local_model = True
+    engine.last_answer = None
+    calls: list[str] = []
+
+    def model_answer(question: str) -> Answer:
+        calls.append("model")
+        return Answer("model-owned answer")
+
+    engine._answer_with_local_model = model_answer
+    engine._cleanup_public_answer = lambda answer, question=None: answer
+
+    deterministic_handlers = [
+        "_answer_with_labeled_attribute_source",
+        "_answer_with_actor_role_ids_source",
+        "_answer_with_reference_role_chain_source",
+        "_answer_with_review_or_approval_source",
+        "_answer_with_clause_table_message_source",
+        "_answer_with_missing_organization_owner_source",
+        "_answer_with_discussion_belief_source",
+        "_answer_with_correction_owner_source",
+        "_answer_with_precise_source_content",
+        "_answer_with_table_field_source",
+        "_answer_with_discourse_clause_source",
+        "_answer_with_structured_object_source",
+        "_answer_with_commit_hash_source",
+        "_answer_with_exact_source_field",
+        "_answer_with_arithmetic_source",
+        "_answer_with_definition_source_explanation",
+        "_answer_with_generic_sentence_source",
+        "_answer_with_generic_labeled_field_source",
+        "_answer_with_action_holder_source",
+        "_answer_with_negated_action_source",
+        "_answer_with_temporal_source_records",
+        "_answer_with_source_rows",
+        "_answer_with_row_field_source",
+        "_answer_with_boolean_source_explanation",
+        "_answer_with_bounded_dspg",
+    ]
+
+    def forbidden(*args, **kwargs):
+        raise AssertionError("deterministic source-answer handler ran before model-owned answer returned")
+
+    for name in deterministic_handlers:
+        setattr(engine, name, forbidden)
+
+    result = engine.answer("Which owner is listed for the artifact?")
+
+    assert result.text == "model-owned answer"
+    assert calls == ["model"]
+
+
+def test_engine_model_mode_unknown_does_not_fall_back_to_deterministic_source_handlers() -> None:
+    from knowmoredirt.engine import KnowMoreDiRTEngine
+    from knowmoredirt.models import Answer
+
+    engine = KnowMoreDiRTEngine.__new__(KnowMoreDiRTEngine)
+    engine._use_local_model = True
+    engine.last_answer = None
+    engine._answer_with_local_model = lambda question: Answer("unknown", reason="model decided unknown")
+    engine._cleanup_public_answer = lambda answer, question=None: answer
+
+    def forbidden(*args, **kwargs):
+        raise AssertionError("deterministic source-answer fallback ran after model-owned unknown")
+
+    for name in [
+        "_answer_with_generic_sentence_source",
+        "_answer_with_labeled_attribute_source",
+        "_answer_with_table_field_source",
+        "_answer_with_source_rows",
+        "_answer_with_bounded_dspg",
+    ]:
+        setattr(engine, name, forbidden)
+
+    result = engine.answer("Who owns the artifact?")
+
+    assert result.text == "unknown"
+    assert result.reason == "model decided unknown"
+
+
 def test_ingest_model_structured_failures_abort_initialize_boundary() -> None:
     from knowmoredirt.ingest import _raise_model_request_failed
 
