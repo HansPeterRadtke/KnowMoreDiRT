@@ -4934,6 +4934,57 @@ def _repair_chunk_drs_payload(payload: Any, source_text: str = "", *, prune_unre
     repaired_conditions = [item for item in conditions if isinstance(item, dict)]
     referent_ids = {str(item.get("id") or "") for item in repaired_referents}
     referents_by_id = {str(item.get("id") or ""): item for item in repaired_referents if str(item.get("id") or "")}
+    duplicate_referent_repaired = False
+    referent_id_values = [str(item.get("id") or "").strip() for item in repaired_referents]
+    duplicate_referent_ids = {value for value in referent_id_values if value and referent_id_values.count(value) > 1}
+    if duplicate_referent_ids:
+        referenced_referent_ids = {
+            str(box.get("holder_referent_id") or "").strip()
+            for box in repaired_boxes
+            if str(box.get("holder_referent_id") or "").strip()
+        }
+        for condition in repaired_conditions:
+            arguments = condition.get("arguments")
+            if not isinstance(arguments, list):
+                continue
+            for argument in arguments:
+                if not isinstance(argument, dict):
+                    continue
+                if str(argument.get("target_kind") or "").strip() == "referent":
+                    target_id = str(argument.get("target_id") or "").strip()
+                    if target_id:
+                        referenced_referent_ids.add(target_id)
+        identities = drs.get("identity_hypotheses")
+        if isinstance(identities, list):
+            for identity in identities:
+                if not isinstance(identity, dict):
+                    continue
+                for key in ("left_referent_id", "right_referent_id"):
+                    referent_id = str(identity.get(key) or "").strip()
+                    if referent_id:
+                        referenced_referent_ids.add(referent_id)
+        unsafe_duplicate_referents = duplicate_referent_ids & referenced_referent_ids
+        if not unsafe_duplicate_referents:
+            used_referent_ids = {value for value in referent_id_values if value}
+            seen_referent_ids: dict[str, int] = {}
+            for item in repaired_referents:
+                referent_id = str(item.get("id") or "").strip()
+                if not referent_id:
+                    continue
+                occurrence = seen_referent_ids.get(referent_id, 0)
+                seen_referent_ids[referent_id] = occurrence + 1
+                if occurrence == 0:
+                    continue
+                suffix = occurrence
+                new_referent_id = f"{referent_id}_dup{suffix}"
+                while new_referent_id in used_referent_ids:
+                    suffix += 1
+                    new_referent_id = f"{referent_id}_dup{suffix}"
+                item["id"] = new_referent_id
+                used_referent_ids.add(new_referent_id)
+                duplicate_referent_repaired = True
+            referent_ids = used_referent_ids
+            referents_by_id = {str(item.get("id") or ""): item for item in repaired_referents if str(item.get("id") or "")}
     box_ids = {str(item.get("id") or "") for item in repaired_boxes if str(item.get("id") or "")}
     duplicate_box_repaired = False
     box_id_values = [str(item.get("id") or "").strip() for item in repaired_boxes]
@@ -5024,12 +5075,27 @@ def _repair_chunk_drs_payload(payload: Any, source_text: str = "", *, prune_unre
         if len(repaired_temporals) != len(temporal_records):
             drs["temporal_records"] = repaired_temporals
             temporal_repaired = True
+    self_argument_repaired = False
     for condition in repaired_conditions:
         if not isinstance(condition.get("arguments"), list):
             continue
+        condition_box_id = str(condition.get("box_id") or "").strip()
+        original_arguments = [argument for argument in condition["arguments"] if isinstance(argument, dict)]
+
+        def is_self_box_argument(argument: dict[str, Any]) -> bool:
+            return (
+                str(argument.get("target_kind") or "").strip() == "box"
+                and str(argument.get("target_id") or "").strip()
+                and str(argument.get("target_id") or "").strip() == condition_box_id
+            )
+
+        non_self_arguments = [argument for argument in original_arguments if not is_self_box_argument(argument)]
+        if non_self_arguments and len(non_self_arguments) != len(original_arguments):
+            condition["arguments"] = non_self_arguments
+            self_argument_repaired = True
+        else:
+            condition["arguments"] = original_arguments
         for argument in condition["arguments"]:
-            if not isinstance(argument, dict):
-                continue
             if source_text:
                 grounding_repaired |= _repair_evidence_text_from_declared_value(argument, source_text, ("value",))
             target_id = str(argument.get("target_id") or "").strip()
@@ -5093,7 +5159,9 @@ def _repair_chunk_drs_payload(payload: Any, source_text: str = "", *, prune_unre
         and len(repaired_conditions) == len(conditions)
         and not temporal_repaired
         and repaired_identities is identities
+        and not duplicate_referent_repaired
         and not duplicate_box_repaired
+        and not self_argument_repaired
         and not namespace_repaired
         and not grounding_repaired
     ):
