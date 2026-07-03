@@ -198,6 +198,130 @@ def test_chunk_drs_staged_fallback_constrains_condition_targets(monkeypatch, tmp
     assert model.condition_schema is not None
 
 
+def test_chunk_drs_staged_validation_retry_corrects_model_owned_topology(monkeypatch, tmp_path) -> None:
+    class ValidationRetryModel:
+        def __init__(self) -> None:
+            self.skeleton_calls = 0
+            self.condition_calls = 0
+            self.retry_prompt = ""
+
+        def context_size(self) -> int:
+            return 8192
+
+        def cache_fingerprint(self) -> dict[str, Any]:
+            return {"model_id": "fake-validation-retry-drs", "context_size": 8192}
+
+        def complete_json(
+            self,
+            prompt: str,
+            *,
+            n_predict: int = 128,
+            grammar: str | None = None,
+            json_schema: dict[str, Any] | None = None,
+        ) -> dict[str, object]:
+            if "Stage 1 of source-grounded DRS extraction" in prompt:
+                self.skeleton_calls += 1
+                if "Validation retry" in prompt:
+                    self.retry_prompt = prompt
+                return {
+                    "drs_skeleton": {
+                        "schema_version": "chunk-drs-v2",
+                        "source_id": "note.txt",
+                        "referents": [
+                            {"id": "r0", "label": "Aero Gate", "kind": "entity", "evidence_text": "Aero Gate"}
+                        ],
+                        "boxes": [
+                            {"id": "b0", "kind": "asserted", "parent_id": "", "holder_referent_id": "", "evidence_text": ""}
+                        ],
+                        "temporal_records": [],
+                    },
+                    "_model_raw": "{}",
+                    "_model_elapsed_seconds": 0.01,
+                }
+            if "Stage 2 of source-grounded DRS extraction" in prompt:
+                self.condition_calls += 1
+                if "Validation retry" not in prompt:
+                    return {
+                        "condition_stage": {
+                            "schema_version": "chunk-drs-v2",
+                            "source_id": "note.txt",
+                            "conditions": [
+                                {
+                                    "id": "c0",
+                                    "predicate": "ready",
+                                    "box_id": "b0",
+                                    "polarity": "positive",
+                                    "modality": "asserted",
+                                    "temporal_id": "",
+                                    "arguments": [
+                                        {
+                                            "role": "scope",
+                                            "target_kind": "box",
+                                            "target_id": "b0",
+                                            "value": "",
+                                            "value_type": "box",
+                                            "evidence_text": "",
+                                        }
+                                    ],
+                                    "evidence_text": "Aero Gate is ready.",
+                                }
+                            ],
+                        },
+                        "_model_raw": "{}",
+                        "_model_elapsed_seconds": 0.01,
+                    }
+                return {
+                    "condition_stage": {
+                        "schema_version": "chunk-drs-v2",
+                        "source_id": "note.txt",
+                        "conditions": [
+                            {
+                                "id": "c0",
+                                "predicate": "ready",
+                                "box_id": "b0",
+                                "polarity": "positive",
+                                "modality": "asserted",
+                                "temporal_id": "",
+                                "arguments": [
+                                    {
+                                        "role": "theme",
+                                        "target_kind": "referent",
+                                        "target_id": "r0",
+                                        "value": "Aero Gate",
+                                        "value_type": "entity",
+                                        "evidence_text": "Aero Gate",
+                                    }
+                                ],
+                                "evidence_text": "Aero Gate is ready.",
+                            }
+                        ],
+                    },
+                    "_model_raw": "{}",
+                    "_model_elapsed_seconds": 0.01,
+                }
+            raise AssertionError(prompt[:200])
+
+    monkeypatch.setenv("KMD_CHUNK_DRS_CACHE_DIR", str(tmp_path / "drs-cache"))
+    model = ValidationRetryModel()
+
+    result = _call_model_chunk_drs_staged(
+        "Aero Gate is ready.",
+        model,  # type: ignore[arg-type]
+        rel_path="note.txt",
+        n_predict=384,
+        context_budget={"max_evidence_chars": 256, "max_array_items": 8},
+        cache_path=None,
+    )
+
+    assert result["accepted"] is True
+    assert result["fallback_from_reason"] == "schema_validation_failed"
+    assert result["validation_retry"]["accepted"] is True
+    assert "self_argument_box" in model.retry_prompt
+    assert model.skeleton_calls == 2
+    assert model.condition_calls == 2
+    assert result["drs"]["conditions"][0]["arguments"][0]["target_kind"] == "referent"
+
+
 def test_chunk_drs_missing_box_completion_after_staged_failure(monkeypatch, tmp_path) -> None:
     class MissingBoxCompletionModel:
         def __init__(self) -> None:

@@ -4534,6 +4534,50 @@ def build_chunk_drs_prompt(chunk_text: str, *, rel_path: str = "", context_budge
     )
 
 
+def _chunk_drs_validation_feedback_text(context_budget: dict[str, Any] | None) -> str:
+    feedback = (context_budget or {}).get("validation_feedback")
+    if not isinstance(feedback, dict) or not feedback:
+        return ""
+    return (
+        "Validation retry: the previous model-produced DRS failed KMD post-validation. "
+        "Produce a fresh corrected model-owned DRS structure, not a patch, and preserve only source-grounded "
+        "semantics that the chunk supports. Do not repair by renaming ids in a way that changes referents or "
+        "box scope. Satisfy every listed validator error using proper DRT structure. Diagnostics: "
+        + json.dumps(feedback, ensure_ascii=False)
+        + " "
+    )
+
+
+def _chunk_drs_validation_feedback_payload(validation: dict[str, Any], *, stage: str) -> dict[str, Any]:
+    errors = [str(error) for error in validation.get("errors") or []][:50]
+    grounding_failures = [str(error) for error in validation.get("grounding_failures") or []][:50]
+    corrections: list[str] = []
+    for error in errors:
+        if error == "duplicate_or_missing_referent_id":
+            corrections.append("Every discourse referent must have one unique id r0, r1, ...; do not reuse a referent id for two discourse referents.")
+        elif error == "duplicate_or_missing_box_id":
+            corrections.append("Every DRS box must have one unique id b0, b1, ...; do not reuse a box id for two scoped contexts.")
+        elif error == "duplicate_or_missing_condition_id":
+            corrections.append("Every condition must have one unique id c0, c1, ...; do not reuse a condition id.")
+        elif error == "missing_box" or error == "missing_root_box":
+            corrections.append("Declare exactly one root asserted box b0 with parent_id ''.")
+        elif error.startswith("self_argument_box:"):
+            corrections.append("A condition must not use target_kind=box with target_id equal to its own box_id; use a distinct subordinate content box, a declared condition target, or a literal argument.")
+        elif error.startswith("missing_argument_box:"):
+            corrections.append("If an argument targets a DRS box, that box id must be declared in the boxes array with grounded evidence and proper parent scope.")
+        elif error.startswith("missing_argument_referent:"):
+            corrections.append("If an argument targets a discourse referent, that referent id must be declared in the referents array with grounded evidence.")
+        elif error.startswith("literal_argument_has_target_id:"):
+            corrections.append("Literal and unknown arguments must use target_id ''.")
+    return {
+        "stage": stage,
+        "errors": errors,
+        "grounding_failures": grounding_failures,
+        "required_corrections": list(dict.fromkeys(corrections))[:20],
+        "validation_retry_policy": "model-corrects-drs-topology-no-deterministic-id-rewrite-v1",
+    }
+
+
 def build_chunk_drs_skeleton_prompt(chunk_text: str, *, rel_path: str = "", context_budget: dict[str, Any] | None = None) -> str:
     source_span_candidates = (context_budget or {}).get("source_span_candidates")
     span_candidate_text = (
@@ -4541,8 +4585,10 @@ def build_chunk_drs_skeleton_prompt(chunk_text: str, *, rel_path: str = "", cont
         if isinstance(source_span_candidates, list) and source_span_candidates
         else ""
     )
+    validation_feedback_text = _chunk_drs_validation_feedback_text(context_budget)
     return (
-        "JSON only. Stage 1 of source-grounded DRS extraction. Extract only declared discourse referents "
+        validation_feedback_text
+        + "JSON only. Stage 1 of source-grounded DRS extraction. Extract only declared discourse referents "
         "DRS boxes, and explicit temporal records from the chunk. Do not emit conditions, identity hypotheses, answers, "
         "outside knowledge, or handler names. Declare exactly one root asserted box with id b0 and parent_id ''; "
         "that root is only the containing discourse, not permission to flatten embedded scoped propositions into "
@@ -4593,8 +4639,10 @@ def build_chunk_drs_condition_prompt(
         if isinstance(source_span_candidates, list) and source_span_candidates
         else ""
     )
+    validation_feedback_text = _chunk_drs_validation_feedback_text(context_budget)
     return (
-        "JSON only. Stage 2 of source-grounded DRS extraction. Emit conditions using only the declared "
+        validation_feedback_text
+        + "JSON only. Stage 2 of source-grounded DRS extraction. Emit conditions using only the declared "
         "referent, box, and temporal ids. Do not invent ids; target_id is schema-constrained to declared ids or ''. "
         "Use stable condition ids c0, c1, c2, ... in order. "
         "If an argument is a literal phrase rather than a declared id, set target_id to '' and put the exact "
@@ -4934,112 +4982,7 @@ def _repair_chunk_drs_payload(payload: Any, source_text: str = "", *, prune_unre
     repaired_conditions = [item for item in conditions if isinstance(item, dict)]
     referent_ids = {str(item.get("id") or "") for item in repaired_referents}
     referents_by_id = {str(item.get("id") or ""): item for item in repaired_referents if str(item.get("id") or "")}
-    duplicate_referent_repaired = False
-    referent_id_values = [str(item.get("id") or "").strip() for item in repaired_referents]
-    duplicate_referent_ids = {value for value in referent_id_values if value and referent_id_values.count(value) > 1}
-    if duplicate_referent_ids:
-        referenced_referent_ids = {
-            str(box.get("holder_referent_id") or "").strip()
-            for box in repaired_boxes
-            if str(box.get("holder_referent_id") or "").strip()
-        }
-        for condition in repaired_conditions:
-            arguments = condition.get("arguments")
-            if not isinstance(arguments, list):
-                continue
-            for argument in arguments:
-                if not isinstance(argument, dict):
-                    continue
-                if str(argument.get("target_kind") or "").strip() == "referent":
-                    target_id = str(argument.get("target_id") or "").strip()
-                    if target_id:
-                        referenced_referent_ids.add(target_id)
-        identities = drs.get("identity_hypotheses")
-        if isinstance(identities, list):
-            for identity in identities:
-                if not isinstance(identity, dict):
-                    continue
-                for key in ("left_referent_id", "right_referent_id"):
-                    referent_id = str(identity.get(key) or "").strip()
-                    if referent_id:
-                        referenced_referent_ids.add(referent_id)
-        unsafe_duplicate_referents = duplicate_referent_ids & referenced_referent_ids
-        if not unsafe_duplicate_referents:
-            used_referent_ids = {value for value in referent_id_values if value}
-            seen_referent_ids: dict[str, int] = {}
-            for item in repaired_referents:
-                referent_id = str(item.get("id") or "").strip()
-                if not referent_id:
-                    continue
-                occurrence = seen_referent_ids.get(referent_id, 0)
-                seen_referent_ids[referent_id] = occurrence + 1
-                if occurrence == 0:
-                    continue
-                suffix = occurrence
-                new_referent_id = f"{referent_id}_dup{suffix}"
-                while new_referent_id in used_referent_ids:
-                    suffix += 1
-                    new_referent_id = f"{referent_id}_dup{suffix}"
-                item["id"] = new_referent_id
-                used_referent_ids.add(new_referent_id)
-                duplicate_referent_repaired = True
-            referent_ids = used_referent_ids
-            referents_by_id = {str(item.get("id") or ""): item for item in repaired_referents if str(item.get("id") or "")}
     box_ids = {str(item.get("id") or "") for item in repaired_boxes if str(item.get("id") or "")}
-    duplicate_box_repaired = False
-    box_id_values = [str(item.get("id") or "").strip() for item in repaired_boxes]
-    duplicate_box_ids = {value for value in box_id_values if value and box_id_values.count(value) > 1}
-    if duplicate_box_ids:
-        referenced_box_ids = {
-            str(condition.get("box_id") or "").strip()
-            for condition in repaired_conditions
-            if str(condition.get("box_id") or "").strip()
-        }
-        referenced_box_ids.update(
-            str(box.get("parent_id") or "").strip()
-            for box in repaired_boxes
-            if str(box.get("parent_id") or "").strip()
-        )
-        for condition in repaired_conditions:
-            arguments = condition.get("arguments")
-            if not isinstance(arguments, list):
-                continue
-            for argument in arguments:
-                if not isinstance(argument, dict):
-                    continue
-                if str(argument.get("target_kind") or "").strip() == "box":
-                    target_id = str(argument.get("target_id") or "").strip()
-                    if target_id:
-                        referenced_box_ids.add(target_id)
-        identities = drs.get("identity_hypotheses")
-        if isinstance(identities, list):
-            for identity in identities:
-                if not isinstance(identity, dict):
-                    continue
-                box_id = str(identity.get("box_id") or "").strip()
-                if box_id:
-                    referenced_box_ids.add(box_id)
-        unsafe_duplicate_ids = duplicate_box_ids & referenced_box_ids
-        if not unsafe_duplicate_ids:
-            used_box_ids = {value for value in box_id_values if value}
-            seen_box_ids: dict[str, int] = {}
-            for item in repaired_boxes:
-                box_id = str(item.get("id") or "").strip()
-                if not box_id:
-                    continue
-                occurrence = seen_box_ids.get(box_id, 0)
-                seen_box_ids[box_id] = occurrence + 1
-                if occurrence == 0:
-                    continue
-                suffix = occurrence
-                new_box_id = f"{box_id}_dup{suffix}"
-                while new_box_id in used_box_ids:
-                    suffix += 1
-                    new_box_id = f"{box_id}_dup{suffix}"
-                item["id"] = new_box_id
-                used_box_ids.add(new_box_id)
-                duplicate_box_repaired = True
-            box_ids = used_box_ids
     namespace_repaired = False
     grounding_repaired = False
     if source_text:
@@ -5075,27 +5018,12 @@ def _repair_chunk_drs_payload(payload: Any, source_text: str = "", *, prune_unre
         if len(repaired_temporals) != len(temporal_records):
             drs["temporal_records"] = repaired_temporals
             temporal_repaired = True
-    self_argument_repaired = False
     for condition in repaired_conditions:
         if not isinstance(condition.get("arguments"), list):
             continue
-        condition_box_id = str(condition.get("box_id") or "").strip()
-        original_arguments = [argument for argument in condition["arguments"] if isinstance(argument, dict)]
-
-        def is_self_box_argument(argument: dict[str, Any]) -> bool:
-            return (
-                str(argument.get("target_kind") or "").strip() == "box"
-                and str(argument.get("target_id") or "").strip()
-                and str(argument.get("target_id") or "").strip() == condition_box_id
-            )
-
-        non_self_arguments = [argument for argument in original_arguments if not is_self_box_argument(argument)]
-        if non_self_arguments and len(non_self_arguments) != len(original_arguments):
-            condition["arguments"] = non_self_arguments
-            self_argument_repaired = True
-        else:
-            condition["arguments"] = original_arguments
         for argument in condition["arguments"]:
+            if not isinstance(argument, dict):
+                continue
             if source_text:
                 grounding_repaired |= _repair_evidence_text_from_declared_value(argument, source_text, ("value",))
             target_id = str(argument.get("target_id") or "").strip()
@@ -5159,9 +5087,6 @@ def _repair_chunk_drs_payload(payload: Any, source_text: str = "", *, prune_unre
         and len(repaired_conditions) == len(conditions)
         and not temporal_repaired
         and repaired_identities is identities
-        and not duplicate_referent_repaired
-        and not duplicate_box_repaired
-        and not self_argument_repaired
         and not namespace_repaired
         and not grounding_repaired
     ):
@@ -5401,7 +5326,14 @@ def _call_model_chunk_drs_staged(
     n_predict: int,
     context_budget: dict[str, Any],
     cache_path: Path | None,
+    validation_feedback: dict[str, Any] | None = None,
 ) -> dict[str, Any]:
+    if validation_feedback is not None:
+        context_budget = {
+            **context_budget,
+            "validation_feedback": validation_feedback,
+            "validation_retry_policy": "model-corrects-drs-topology-no-deterministic-id-rewrite-v1",
+        }
     condition_n_predict = default_staged_chunk_drs_condition_n_predict(
         n_predict,
         prompt_chunk,
@@ -5616,7 +5548,42 @@ def _call_model_chunk_drs_staged(
                 "box_completion": box_completion.get("box_completion"),
             }
         reason = "grounding_validation_failed" if validation.get("grounding_failure_count") else "schema_validation_failed"
-        return {
+        validation_retry_summary: dict[str, Any] | None = None
+        if validation_feedback is None and reason == "schema_validation_failed":
+            retry_feedback = _chunk_drs_validation_feedback_payload(validation, stage="staged_merge")
+            retry = _call_model_chunk_drs_staged(
+                prompt_chunk,
+                client,
+                rel_path=rel_path,
+                n_predict=n_predict,
+                context_budget=context_budget,
+                cache_path=cache_path,
+                validation_feedback=retry_feedback,
+            )
+            validation_retry_summary = _staged_fallback_failure_summary(retry)
+            validation_retry_summary["feedback"] = retry_feedback
+            if retry.get("accepted"):
+                raw = json.dumps(
+                    {
+                        "initial_skeleton": skeleton.get("_model_raw") if isinstance(skeleton, dict) else "",
+                        "initial_conditions": condition_stage.get("_model_raw") if isinstance(condition_stage, dict) else "",
+                        "validation_retry": retry.get("raw_text") or "",
+                    },
+                    sort_keys=True,
+                )
+                return {
+                    **retry,
+                    "raw_text": raw,
+                    "elapsed": elapsed + float(retry.get("elapsed") or 0.0),
+                    "fallback_from_reason": reason,
+                    "validation_retry": {
+                        "accepted": True,
+                        "feedback": retry_feedback,
+                        "prompt_hash": retry.get("prompt_hash"),
+                    },
+                    "output_hash": hashlib.sha256(raw.encode()).hexdigest(),
+                }
+        payload = {
             "accepted": False,
             "reason": reason,
             "stage": "merged",
@@ -5629,6 +5596,9 @@ def _call_model_chunk_drs_staged(
             "elapsed": elapsed,
             **condition_constraint,
         }
+        if validation_retry_summary is not None:
+            payload["validation_retry"] = validation_retry_summary
+        return payload
     raw = json.dumps(
         {
             "skeleton": skeleton.get("_model_raw") if isinstance(skeleton, dict) else "",
