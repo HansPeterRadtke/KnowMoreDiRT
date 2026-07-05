@@ -8,11 +8,13 @@ the engine. The public API remains ``initialize`` and ``question``.
 from __future__ import annotations
 
 import hashlib
+import math
 import json
 import os
 import time
 import urllib.error
 import urllib.request
+from collections import deque
 from dataclasses import dataclass, field
 from typing import Any
 
@@ -99,6 +101,131 @@ def _env_int(name: str, default: int) -> int:
         return int(os.environ.get(name, str(default)))
     except ValueError:
         return default
+
+
+def _env_true(name: str, default: str = "0") -> bool:
+    return os.environ.get(name, default).strip().lower() in {"1", "true", "yes", "on"}
+
+
+_MODEL_THROUGHPUT_OBSERVATIONS: deque[dict[str, float]] = deque(maxlen=128)
+
+
+def _metric_int(obj: Any, keys: set[str]) -> int:
+    if isinstance(obj, dict):
+        for key, value in obj.items():
+            if str(key) in keys:
+                value_int = _first_int(value)
+                if value_int:
+                    return value_int
+            nested = _metric_int(value, keys)
+            if nested:
+                return nested
+    elif isinstance(obj, list):
+        for item in obj:
+            nested = _metric_int(item, keys)
+            if nested:
+                return nested
+    return 0
+
+
+def _metric_float(obj: Any, keys: set[str]) -> float:
+    if isinstance(obj, dict):
+        for key, value in obj.items():
+            if str(key) in keys:
+                try:
+                    number = float(value)
+                except (TypeError, ValueError):
+                    number = 0.0
+                if number > 0.0:
+                    return number
+            nested = _metric_float(value, keys)
+            if nested > 0.0:
+                return nested
+    elif isinstance(obj, list):
+        for item in obj:
+            nested = _metric_float(item, keys)
+            if nested > 0.0:
+                return nested
+    return 0.0
+
+
+def _estimated_output_tokens(text: str) -> int:
+    if not text:
+        return 0
+    chars_per_token = _env_float("KMD_MODEL_THROUGHPUT_CHARS_PER_TOKEN", 3.0)
+    if chars_per_token <= 0:
+        chars_per_token = 3.0
+    return max(1, int(math.ceil(len(text) / chars_per_token)))
+
+
+def _model_throughput_observation(response_obj: dict[str, Any], raw: str, elapsed_seconds: float) -> dict[str, Any]:
+    completion_tokens = _metric_int(
+        response_obj,
+        {"tokens_predicted", "completion_tokens", "predicted_n", "eval_count", "n_decoded", "n_predict"},
+    )
+    token_source = "server"
+    if not completion_tokens:
+        completion_tokens = _estimated_output_tokens(raw)
+        token_source = "estimated_from_output_chars" if completion_tokens else "unavailable"
+    prompt_tokens = _metric_int(response_obj, {"tokens_evaluated", "prompt_tokens", "prompt_n", "prompt_eval_count"})
+    server_tps = _metric_float(
+        response_obj,
+        {"predicted_per_second", "eval_per_second", "tokens_per_second", "tok_per_second", "tps"},
+    )
+    completion_tps = server_tps if server_tps > 0.0 else (completion_tokens / elapsed_seconds if completion_tokens and elapsed_seconds > 0.0 else 0.0)
+    observation = {
+        "elapsed_seconds": round(elapsed_seconds, 3),
+        "completion_tokens": int(completion_tokens),
+        "prompt_tokens": int(prompt_tokens),
+        "completion_tokens_per_second": round(completion_tps, 3),
+        "token_source": token_source,
+        "server_reported_tokens_per_second": round(server_tps, 3) if server_tps > 0.0 else 0.0,
+    }
+    window = max(1, _env_int("KMD_MODEL_THROUGHPUT_WINDOW", 20))
+    if completion_tps > 0.0 and completion_tokens > 0:
+        _MODEL_THROUGHPUT_OBSERVATIONS.append({
+            "completion_tokens": float(completion_tokens),
+            "prompt_tokens": float(prompt_tokens),
+            "elapsed_seconds": float(elapsed_seconds),
+            "completion_tokens_per_second": float(completion_tps),
+        })
+    observed = list(_MODEL_THROUGHPUT_OBSERVATIONS)[-window:]
+    if observed:
+        total_tokens = sum(item["completion_tokens"] for item in observed)
+        total_elapsed = sum(item["elapsed_seconds"] for item in observed)
+        avg_tps = total_tokens / total_elapsed if total_elapsed > 0.0 else 0.0
+        observation["rolling_window"] = len(observed)
+        observation["rolling_completion_tokens"] = int(total_tokens)
+        observation["rolling_elapsed_seconds"] = round(total_elapsed, 3)
+        observation["rolling_completion_tokens_per_second"] = round(avg_tps, 3)
+    return observation
+
+
+def _log_model_throughput(observation: dict[str, Any], *, endpoint: str, context_size: int, effective_n_predict: int) -> None:
+    if not observation.get("completion_tokens"):
+        return
+    default_enabled = "1" if _env_true("KMD_PROGRESS") or _env_true("KMD_EVAL_PROGRESS") else "0"
+    if not _env_true("KMD_MODEL_THROUGHPUT_LOG", default_enabled):
+        return
+    every = max(1, _env_int("KMD_MODEL_THROUGHPUT_LOG_EVERY", 1))
+    window = int(observation.get("rolling_window") or 0)
+    if window and window % every:
+        return
+    print(
+        "kmd-model throughput "
+        f"tokens={observation.get('completion_tokens')} "
+        f"tps={float(observation.get('completion_tokens_per_second') or 0.0):.2f} "
+        f"avg_window={observation.get('rolling_window', 0)} "
+        f"avg_tps={float(observation.get('rolling_completion_tokens_per_second') or 0.0):.2f} "
+        f"avg_tokens={observation.get('rolling_completion_tokens', 0)} "
+        f"elapsed={float(observation.get('elapsed_seconds') or 0.0):.2f}s "
+        f"prompt_tokens={observation.get('prompt_tokens', 0)} "
+        f"token_source={observation.get('token_source')} "
+        f"ctx={context_size} "
+        f"n_predict={effective_n_predict} "
+        f"endpoint={endpoint}",
+        flush=True,
+    )
 
 
 def _first_int(*values: Any) -> int:
@@ -655,14 +782,18 @@ class LocalModelClient:
             parsed = {"items": parsed}
         if not isinstance(parsed, dict):
             raise ValueError("local model did not return a JSON object or array")
+        elapsed_seconds = round(time.time() - started, 3)
+        context_size = self.context_size()
+        throughput = _model_throughput_observation(response_obj, raw, elapsed_seconds)
         parsed["_model_raw"] = raw
-        parsed["_model_elapsed_seconds"] = round(time.time() - started, 3)
+        parsed["_model_elapsed_seconds"] = elapsed_seconds
         parsed["_model_endpoint"] = endpoint
         parsed["_model_stream"] = True
         parsed["_model_per_token_timeout_seconds"] = self.timeout_seconds
         parsed["_model_stream_closed_after_json"] = stream_closed_after_json
-        parsed["_model_context_size"] = self.context_size()
+        parsed["_model_context_size"] = context_size
         parsed["_model_id"] = self.model_id()
+        parsed["_model_throughput"] = throughput
         parsed["_model_request_settings"] = {
             **settings,
             "n_predict": requested_n_predict,
@@ -682,4 +813,5 @@ class LocalModelClient:
             "thinking_controls_sent": send_thinking_controls,
         }
         parsed["_model_input_audit"] = model_input_audit
+        _log_model_throughput(throughput, endpoint=endpoint, context_size=context_size, effective_n_predict=effective_n_predict)
         return parsed

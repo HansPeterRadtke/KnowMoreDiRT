@@ -888,6 +888,49 @@ def test_local_model_complete_json_returns_exact_request_audit(monkeypatch) -> N
     assert audit["request_settings"]["effective_n_predict"] == 32
 
 
+
+def test_local_model_complete_json_records_throughput(monkeypatch) -> None:
+    def fake_urlopen(request, timeout: float = 0) -> FakeHTTPResponse:
+        url = str(getattr(request, "full_url", request))
+        if url.endswith("/v1/models"):
+            return FakeHTTPResponse({"data": [{"id": "test-model", "meta": {"n_ctx": 4096}}]})
+        if url.endswith("/slots"):
+            return FakeHTTPResponse([{"n_ctx": 4096}])
+        if url.endswith("/props"):
+            return FakeHTTPResponse({"default_generation_settings": {"n_ctx": 4096}})
+        if url.endswith("/v1/chat/completions"):
+            return FakeHTTPResponse(
+                lines=[
+                    (
+                        "data: "
+                        + json.dumps(
+                            {
+                                "choices": [{"delta": {"content": '{"ok":true}'}}],
+                                "usage": {"prompt_tokens": 12, "completion_tokens": 4},
+                                "timings": {"predicted_per_second": 42.5},
+                            }
+                        )
+                        + "\n\n"
+                    ).encode()
+                ]
+            )
+        raise AssertionError(f"unexpected URL {url}")
+
+    monkeypatch.setattr("urllib.request.urlopen", fake_urlopen)
+    monkeypatch.setenv("KMD_LOCAL_MODEL_API", "chat")
+    monkeypatch.setenv("KMD_LOCAL_MODEL_CONSTRAINT_MODE", "native")
+    monkeypatch.delenv("KMD_MODEL_THROUGHPUT_LOG", raising=False)
+    client = LocalModelClient(endpoint="http://127.0.0.1:14829/v1", timeout_seconds=30)
+
+    parsed = client.complete_json("return ok", n_predict=64, json_schema={"type": "object", "properties": {"ok": {"type": "boolean"}}})
+
+    throughput = parsed["_model_throughput"]
+    assert throughput["completion_tokens"] == 4
+    assert throughput["prompt_tokens"] == 12
+    assert throughput["completion_tokens_per_second"] == 42.5
+    assert throughput["rolling_window"] >= 1
+    assert parsed["_model_context_size"] == 4096
+
 def test_write_cache_preserves_output_and_embeds_model_input_audit(tmp_path) -> None:
     request_body_json = '{"prompt":"Return JSON.","n_predict":8}'
     payload = {

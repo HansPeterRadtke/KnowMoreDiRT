@@ -5789,8 +5789,8 @@ def chunk_drs_cache_context(
     context = {
         "prompt_version": PROMPT_VERSION,
         "schema_version": CHUNK_DRS_SCHEMA_VERSION,
-        "evidence_cap_policy": "min_chunk_or_reserved_output_quarter_96_256",
-        "array_cap_policy": "reserved_output_tokens_div_96_4_10",
+        "evidence_cap_policy": "min_chunk_or_reserved_output_ratio",
+        "array_cap_policy": "reserved_output_tokens_ratio",
         "staged_fallback": _staged_chunk_drs_enabled(),
         "staged_fallback_policy": CHUNK_DRS_STAGED_FALLBACK_POLICY,
         "grounding_repair_policy": CHUNK_DRS_GROUNDING_REPAIR_POLICY,
