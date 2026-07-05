@@ -474,9 +474,59 @@ def _write_cache(path: Path | None, payload: dict[str, Any]) -> None:
         return
     try:
         path.parent.mkdir(parents=True, exist_ok=True)
+        payload = _with_model_input_audits(payload, payload)
         path.write_text(json.dumps(payload, sort_keys=True) + "\n", encoding="utf-8")
     except Exception:
         pass
+
+
+def _model_input_audit_from(value: Any) -> dict[str, Any] | None:
+    if isinstance(value, dict):
+        audit = value.get("_model_input_audit") or value.get("model_input_audit")
+        if isinstance(audit, dict):
+            return copy.deepcopy(audit)
+    audit = getattr(value, "model_input_audit", None)
+    if isinstance(audit, dict):
+        return copy.deepcopy(audit)
+    return None
+
+
+def _model_input_audits_from(*values: Any) -> list[dict[str, Any]]:
+    audits: list[dict[str, Any]] = []
+    seen: set[str] = set()
+    for value in values:
+        if value is None:
+            continue
+        if isinstance(value, dict):
+            nested = value.get("model_input_audits")
+            if isinstance(nested, list):
+                for item in nested:
+                    if isinstance(item, dict):
+                        marker = str(item.get("request_body_sha256") or json.dumps(item, sort_keys=True, default=str))
+                        if marker not in seen:
+                            audits.append(copy.deepcopy(item))
+                            seen.add(marker)
+            audit = _model_input_audit_from(value)
+        else:
+            audit = _model_input_audit_from(value)
+        if isinstance(audit, dict):
+            marker = str(audit.get("request_body_sha256") or json.dumps(audit, sort_keys=True, default=str))
+            if marker not in seen:
+                audits.append(audit)
+                seen.add(marker)
+    return audits
+
+
+def _with_model_input_audits(payload: dict[str, Any], *sources: Any) -> dict[str, Any]:
+    audits = _model_input_audits_from(*sources)
+    if not audits:
+        return payload
+    enriched = {**payload}
+    enriched["model_input_audit_count"] = len(audits)
+    enriched["model_input_audits"] = audits
+    if len(audits) == 1:
+        enriched["model_input_audit"] = audits[0]
+    return enriched
 
 
 def _is_string_list(value: Any) -> bool:
@@ -1827,7 +1877,7 @@ def call_model_query_plan_test_only(question: str, client: LocalModelClient, *, 
             "cache_context": cache_context,
             "elapsed": round(time.time() - start, 3),
         }
-        return payload
+        return _with_model_input_audits(payload, exc)
     raw = str(parsed.get("_model_raw") or "") if isinstance(parsed, dict) else ""
     frame_payload = parsed.get("query_frame") if isinstance(parsed, dict) else None
     if frame_payload is None and isinstance(parsed, dict) and any(key in parsed for key in ["target_anchors", "requested_relation", "answer_type"]):
@@ -1847,6 +1897,7 @@ def call_model_query_plan_test_only(question: str, client: LocalModelClient, *, 
             "cache_context": cache_context,
             "elapsed": round(time.time() - start, 3),
         }
+        payload = _with_model_input_audits(payload, locals().get("parsed"), locals().get("exc"), locals().get("repaired"), locals().get("fallback"), locals().get("box_completion"))
         _write_cache(cache_path, payload)
         return payload
     frame_payload = _repair_query_frame_payload(frame_payload, question)
@@ -1865,6 +1916,7 @@ def call_model_query_plan_test_only(question: str, client: LocalModelClient, *, 
             "cache_context": cache_context,
             "elapsed": round(time.time() - start, 3),
         }
+        payload = _with_model_input_audits(payload, locals().get("parsed"), locals().get("exc"), locals().get("repaired"), locals().get("fallback"), locals().get("box_completion"))
         _write_cache(cache_path, payload)
         return payload
     frame = frame_from_mapping(question, frame_payload, source="model").as_dict()
@@ -1881,6 +1933,7 @@ def call_model_query_plan_test_only(question: str, client: LocalModelClient, *, 
         "output_hash": hashlib.sha256(raw.encode()).hexdigest(),
         "fresh_or_cached": "fresh",
     }
+    payload = _with_model_input_audits(payload, parsed)
     _write_cache(cache_path, payload)
     return payload
 
@@ -2120,6 +2173,7 @@ def call_model_query_drs_compact(question: str, client: LocalModelClient, *, n_p
                 finalized["query_drs"] = repaired["query_drs"]
                 finalized["validation"] = validation
                 if cache_path is not None and finalized != cached:
+                    finalized = _with_model_input_audits(finalized, locals().get("parsed"), locals().get("cached"), locals().get("source_payload"), locals().get("payload"))
                     _write_cache(cache_path, finalized)
         return finalized
     start = time.time()
@@ -2143,6 +2197,7 @@ def call_model_query_drs_compact(question: str, client: LocalModelClient, *, n_p
             "cache_context": cache_context,
             "elapsed": round(time.time() - start, 3),
         }
+        payload = _with_model_input_audits(payload, exc)
         _write_cache(cache_path, payload)
         return payload
     except Exception as exc:
@@ -2170,6 +2225,7 @@ def call_model_query_drs_compact(question: str, client: LocalModelClient, *, n_p
             "elapsed": parsed.get("_model_elapsed_seconds", round(time.time() - start, 3)),
             "validation": validation,
         }
+        payload = _with_model_input_audits(payload, locals().get("parsed"), locals().get("exc"), locals().get("repaired"), locals().get("fallback"), locals().get("box_completion"))
         _write_cache(cache_path, payload)
         return payload
     payload = {
@@ -2185,6 +2241,7 @@ def call_model_query_drs_compact(question: str, client: LocalModelClient, *, n_p
         "fresh_or_cached": "fresh",
         "compact": True,
     }
+    payload = _with_model_input_audits(payload, locals().get("parsed"), locals().get("exc"), locals().get("repaired"), locals().get("fallback"), locals().get("box_completion"))
     _write_cache(cache_path, payload)
     return payload
 
@@ -2684,6 +2741,7 @@ def _call_model_query_drs_full_once(
             payload["request_failure_retry_policy"] = QUERY_DRS_REQUEST_FAILURE_RETRY_POLICY
             payload["request_failure_retry_index"] = retry_index
             payload["request_failure_retry_after"] = retry_after or {}
+        payload = _with_model_input_audits(payload, locals().get("parsed"), locals().get("exc"), locals().get("repaired"), locals().get("fallback"), locals().get("box_completion"))
         _write_cache(cache_path, payload)
         return payload
     except Exception as exc:
@@ -2729,6 +2787,7 @@ def _call_model_query_drs_full_once(
             payload["request_failure_retry_policy"] = QUERY_DRS_REQUEST_FAILURE_RETRY_POLICY
             payload["request_failure_retry_index"] = retry_index
             payload["request_failure_retry_after"] = retry_after or {}
+        payload = _with_model_input_audits(payload, locals().get("parsed"), locals().get("exc"), locals().get("repaired"), locals().get("fallback"), locals().get("box_completion"))
         _write_cache(cache_path, payload)
         return payload
     payload = {
@@ -2752,6 +2811,7 @@ def _call_model_query_drs_full_once(
         payload["request_failure_retry_policy"] = QUERY_DRS_REQUEST_FAILURE_RETRY_POLICY
         payload["request_failure_retry_index"] = retry_index
         payload["request_failure_retry_after"] = retry_after or {}
+    payload = _with_model_input_audits(payload, locals().get("parsed"), locals().get("exc"), locals().get("repaired"), locals().get("fallback"), locals().get("box_completion"))
     _write_cache(cache_path, payload)
     return payload
 
@@ -3016,6 +3076,7 @@ def call_model_evidence_answer(
             "cache_context": cache_context,
             "elapsed": round(time.time() - start, 3),
         }
+        payload = _with_model_input_audits(payload, locals().get("parsed"), locals().get("exc"), locals().get("repaired"), locals().get("fallback"), locals().get("box_completion"))
         _write_cache(cache_path, payload)
         return payload
     answer = _repair_answer_payload(answer, expected_answer_type)
@@ -3030,6 +3091,7 @@ def call_model_evidence_answer(
             "cache_context": cache_context,
             "elapsed": round(time.time() - start, 3),
         }
+        payload = _with_model_input_audits(payload, locals().get("parsed"), locals().get("exc"), locals().get("repaired"), locals().get("fallback"), locals().get("box_completion"))
         _write_cache(cache_path, payload)
         return payload
     payload = {
@@ -3046,6 +3108,7 @@ def call_model_evidence_answer(
         "output_hash": hashlib.sha256(raw.encode()).hexdigest(),
         "fresh_or_cached": "fresh",
     }
+    payload = _with_model_input_audits(payload, locals().get("parsed"), locals().get("exc"), locals().get("repaired"), locals().get("fallback"), locals().get("box_completion"))
     _write_cache(cache_path, payload)
     return payload
 
@@ -3242,7 +3305,7 @@ def _call_model_query_evidence_answer_repair(
             "cache_context": cache_context,
             "elapsed": round(time.time() - start, 3),
         }
-        return payload
+        return _with_model_input_audits(payload, exc)
     raw = str(parsed.get("_model_raw") or "") if isinstance(parsed, dict) else ""
     result = parsed.get("result") if isinstance(parsed, dict) else None
     if result is None and isinstance(parsed, dict) and "answer" in parsed:
@@ -3257,6 +3320,7 @@ def _call_model_query_evidence_answer_repair(
             "cache_context": cache_context,
             "elapsed": round(time.time() - start, 3),
         }
+        payload = _with_model_input_audits(payload, locals().get("parsed"), locals().get("exc"), locals().get("repaired"), locals().get("fallback"), locals().get("box_completion"))
         _write_cache(cache_path, payload)
         return payload
     payload = _query_evidence_payload_from_result(
@@ -3270,6 +3334,7 @@ def _call_model_query_evidence_answer_repair(
         fresh_or_cached="fresh_repair",
         cache_context=cache_context,
     )
+    payload = _with_model_input_audits(payload, locals().get("parsed"), locals().get("exc"), locals().get("repaired"), locals().get("fallback"), locals().get("box_completion"))
     _write_cache(cache_path, payload)
     return payload
 
@@ -3340,6 +3405,7 @@ def call_model_query_evidence_answer(
         )
         if repaired.get("accepted"):
             payload = {**repaired, "repair_of_prompt_hash": prompt_hash}
+            payload = _with_model_input_audits(payload, locals().get("parsed"), locals().get("exc"), locals().get("repaired"), locals().get("fallback"), locals().get("box_completion"))
             _write_cache(cache_path, payload)
             return payload
         payload = {
@@ -3355,6 +3421,7 @@ def call_model_query_evidence_answer(
             "repair_cache_context": repaired.get("cache_context"),
         }
         if repaired.get("reason") != "request_failed":
+            payload = _with_model_input_audits(payload, locals().get("parsed"), locals().get("exc"), locals().get("repaired"), locals().get("fallback"), locals().get("box_completion"))
             _write_cache(cache_path, payload)
         return payload
     missing_required = not {"query_frame", "sufficient_evidence", "answer_type", "answer", "evidence_span", "reason"}.issubset(result)
@@ -3381,6 +3448,7 @@ def call_model_query_evidence_answer(
         )
         if repaired.get("accepted"):
             payload = {**repaired, "repair_of_prompt_hash": prompt_hash}
+    payload = _with_model_input_audits(payload, locals().get("parsed"), locals().get("exc"), locals().get("repaired"), locals().get("fallback"), locals().get("box_completion"))
     _write_cache(cache_path, payload)
     return payload
 
@@ -4124,6 +4192,7 @@ def _finalize_compact_cached_payload(
             "from_prompt_hash": migrated_from_prompt_hash,
         }
     if cache_path is not None and finalized != payload:
+        finalized = _with_model_input_audits(finalized, locals().get("parsed"), locals().get("cached"), locals().get("source_payload"), locals().get("payload"))
         _write_cache(cache_path, finalized)
     return finalized
 
@@ -4225,6 +4294,7 @@ def call_model_chunk_drs_compact(
             "from_prompt_hash": str(source_payload.get("prompt_hash") or source_path.stem),
             "source_text_hash": source_text_hash,
         }
+        finalized = _with_model_input_audits(finalized, locals().get("parsed"), locals().get("cached"), locals().get("source_payload"), locals().get("payload"))
         _write_cache(cache_path, finalized)
         return finalized
 
@@ -4343,6 +4413,7 @@ def call_model_chunk_drs_compact(
             if retry_index:
                 payload["compact_retry_policy"] = CHUNK_DRS_COMPACT_RETRY_POLICY
                 payload["compact_retry_index"] = retry_index
+            payload = _with_model_input_audits(payload, exc)
             _write_cache(cache_path, payload)
             failures.append(
                 {
@@ -4368,6 +4439,7 @@ def call_model_chunk_drs_compact(
             if retry_index:
                 payload["compact_retry_policy"] = CHUNK_DRS_COMPACT_RETRY_POLICY
                 payload["compact_retry_index"] = retry_index
+            payload = _with_model_input_audits(payload, exc)
             failures.append(
                 {
                     "n_predict": budget,
@@ -4397,6 +4469,7 @@ def call_model_chunk_drs_compact(
             if retry_index:
                 payload["compact_retry_policy"] = CHUNK_DRS_COMPACT_RETRY_POLICY
                 payload["compact_retry_index"] = retry_index
+            payload = _with_model_input_audits(payload, parsed)
             _write_cache(cache_path, payload)
             failures.append(
                 {
@@ -4434,6 +4507,7 @@ def call_model_chunk_drs_compact(
         if retry_index:
             payload["compact_retry_policy"] = CHUNK_DRS_COMPACT_RETRY_POLICY
             payload["compact_retry_index"] = retry_index
+        payload = _with_model_input_audits(payload, parsed)
         _write_cache(cache_path, payload)
         if refresh_empty_legacy and not _compact_cached_payload_has_conditions(payload):
             failures.append(
@@ -5155,6 +5229,7 @@ def _complete_chunk_drs_stage(
             "prompt_hash": prompt_hash,
             **constraint,
         }
+        payload = _with_model_input_audits(payload, exc)
         _write_cache(path, payload)
         return (
             payload,
@@ -5162,8 +5237,12 @@ def _complete_chunk_drs_stage(
             {"prompt_hash": prompt_hash, **constraint},
         )
     except Exception as exc:
-        return (
+        payload = _with_model_input_audits(
             {"accepted": False, "reason": "request_failed", "error": str(exc), "raw_text": ""},
+            exc,
+        )
+        return (
+            payload,
             round(time.time() - start, 3),
             {"prompt_hash": prompt_hash, **constraint},
         )
@@ -5238,33 +5317,39 @@ def _call_model_chunk_drs_box_completion(
     )
     completion_payload = completion.get("box_completion") if isinstance(completion, dict) else None
     if not isinstance(completion_payload, dict):
-        return {
-            "accepted": False,
-            "reason": str(completion.get("reason") or "schema_validation_failed")
-            if isinstance(completion, dict)
-            else "schema_validation_failed",
-            "stage": "box_completion",
-            "raw_text": str(completion.get("raw_text") or completion.get("_model_raw") or "")
-            if isinstance(completion, dict)
-            else "",
-            "elapsed": elapsed,
-            "box_completion_n_predict": box_n_predict,
-            **constraint,
-        }
+        return _with_model_input_audits(
+            {
+                "accepted": False,
+                "reason": str(completion.get("reason") or "schema_validation_failed")
+                if isinstance(completion, dict)
+                else "schema_validation_failed",
+                "stage": "box_completion",
+                "raw_text": str(completion.get("raw_text") or completion.get("_model_raw") or "")
+                if isinstance(completion, dict)
+                else "",
+                "elapsed": elapsed,
+                "box_completion_n_predict": box_n_predict,
+                **constraint,
+            },
+            completion,
+        )
     new_boxes = completion_payload.get("boxes")
     new_boxes = [item for item in new_boxes if isinstance(item, dict)] if isinstance(new_boxes, list) else []
     allowed_missing = set(missing_box_ids)
     new_boxes = [item for item in new_boxes if str(item.get("id") or "") in allowed_missing]
     if not new_boxes:
-        return {
-            "accepted": False,
-            "reason": "empty_box_completion",
-            "stage": "box_completion",
-            "raw_text": str(completion.get("_model_raw") or "") if isinstance(completion, dict) else "",
-            "elapsed": elapsed,
-            "box_completion_n_predict": box_n_predict,
-            **constraint,
-        }
+        return _with_model_input_audits(
+            {
+                "accepted": False,
+                "reason": "empty_box_completion",
+                "stage": "box_completion",
+                "raw_text": str(completion.get("_model_raw") or "") if isinstance(completion, dict) else "",
+                "elapsed": elapsed,
+                "box_completion_n_predict": box_n_predict,
+                **constraint,
+            },
+            completion,
+        )
     merged = {
         **payload,
         "drs": {
@@ -5276,16 +5361,19 @@ def _call_model_chunk_drs_box_completion(
     merged_validation = _validate_chunk_drs_payload(merged, prompt_chunk)
     if not merged_validation.get("schema_valid"):
         reason = "grounding_validation_failed" if merged_validation.get("grounding_failure_count") else "schema_validation_failed"
-        return {
-            "accepted": False,
-            "reason": reason,
-            "stage": "box_completion",
-            "raw_text": str(completion.get("_model_raw") or "") if isinstance(completion, dict) else "",
-            "elapsed": elapsed,
-            "validation": merged_validation,
-            "box_completion_n_predict": box_n_predict,
-            **constraint,
-        }
+        return _with_model_input_audits(
+            {
+                "accepted": False,
+                "reason": reason,
+                "stage": "box_completion",
+                "raw_text": str(completion.get("_model_raw") or "") if isinstance(completion, dict) else "",
+                "elapsed": elapsed,
+                "validation": merged_validation,
+                "box_completion_n_predict": box_n_predict,
+                **constraint,
+            },
+            completion,
+        )
     raw = json.dumps(
         {
             "candidate": json.dumps(drs, sort_keys=True),
@@ -5293,29 +5381,33 @@ def _call_model_chunk_drs_box_completion(
         },
         sort_keys=True,
     )
-    return {
-        "accepted": True,
-        "reason": "box_completion_repair",
-        "drs": merged["drs"],
-        "raw_text": raw,
-        "elapsed": elapsed,
-        "prompt_hash": constraint.get("prompt_hash"),
-        "constraint_mode": constraint.get("constraint_mode"),
-        "validation": merged_validation,
-        "context_budget": {
-            **context_budget,
-            "box_completion_policy": CHUNK_DRS_BOX_COMPLETION_POLICY,
-            "box_completion_n_predict": box_n_predict,
-        },
-        "output_hash": hashlib.sha256(raw.encode()).hexdigest(),
-        "fresh_or_cached": "fresh",
-        "box_completion": {
+    return _with_model_input_audits(
+        {
             "accepted": True,
-            "missing_box_ids": missing_box_ids,
-            "added_box_count": len(new_boxes),
+            "reason": "box_completion_repair",
+            "drs": merged["drs"],
+            "raw_text": raw,
+            "elapsed": elapsed,
             "prompt_hash": constraint.get("prompt_hash"),
+            "constraint_mode": constraint.get("constraint_mode"),
+            "validation": merged_validation,
+            "context_budget": {
+                **context_budget,
+                "box_completion_policy": CHUNK_DRS_BOX_COMPLETION_POLICY,
+                "box_completion_n_predict": box_n_predict,
+            },
+            "output_hash": hashlib.sha256(raw.encode()).hexdigest(),
+            "fresh_or_cached": "fresh",
+            "box_completion": {
+                "accepted": True,
+                "missing_box_ids": missing_box_ids,
+                "added_box_count": len(new_boxes),
+                "prompt_hash": constraint.get("prompt_hash"),
+            },
         },
-    }
+        payload,
+        completion,
+    )
 
 
 def _call_model_chunk_drs_staged(
@@ -5371,17 +5463,26 @@ def _call_model_chunk_drs_staged(
     )
     skeleton_payload = skeleton.get("drs_skeleton") if isinstance(skeleton, dict) else None
     if not isinstance(skeleton_payload, dict):
-        return {
-            "accepted": False,
-            "reason": str(skeleton.get("reason") or "schema_validation_failed") if isinstance(skeleton, dict) else "schema_validation_failed",
-            "stage": "skeleton",
-            "error": str(skeleton.get("error") or "") if isinstance(skeleton, dict) else "",
-            "raw_snippet": str(skeleton.get("raw_snippet") or "") if isinstance(skeleton, dict) else "",
-            "raw_text": str(skeleton.get("raw_text") or skeleton.get("_model_raw") or "") if isinstance(skeleton, dict) else "",
-            "elapsed": skeleton_elapsed,
-            "fresh_or_cached": str(skeleton.get("fresh_or_cached") or "fresh") if isinstance(skeleton, dict) else "fresh",
-            **skeleton_constraint,
-        }
+        return _with_model_input_audits(
+            {
+                "accepted": False,
+                "reason": str(skeleton.get("reason") or "schema_validation_failed")
+                if isinstance(skeleton, dict)
+                else "schema_validation_failed",
+                "stage": "skeleton",
+                "error": str(skeleton.get("error") or "") if isinstance(skeleton, dict) else "",
+                "raw_snippet": str(skeleton.get("raw_snippet") or "") if isinstance(skeleton, dict) else "",
+                "raw_text": str(skeleton.get("raw_text") or skeleton.get("_model_raw") or "")
+                if isinstance(skeleton, dict)
+                else "",
+                "elapsed": skeleton_elapsed,
+                "fresh_or_cached": str(skeleton.get("fresh_or_cached") or "fresh")
+                if isinstance(skeleton, dict)
+                else "fresh",
+                **skeleton_constraint,
+            },
+            skeleton,
+        )
     referents = skeleton_payload.get("referents")
     boxes = skeleton_payload.get("boxes")
     temporals = skeleton_payload.get("temporal_records")
@@ -5412,14 +5513,17 @@ def _call_model_chunk_drs_staged(
         + _drs_exact_span_failures(temporals, prompt_chunk, "temporal")
     )
     if skeleton_span_failures:
-        return {
-            "accepted": False,
-            "reason": "grounding_validation_failed",
-            "stage": "skeleton",
-            "grounding_failures": skeleton_span_failures[:50],
-            "elapsed": skeleton_elapsed,
-            **skeleton_constraint,
-        }
+        return _with_model_input_audits(
+            {
+                "accepted": False,
+                "reason": "grounding_validation_failed",
+                "stage": "skeleton",
+                "grounding_failures": skeleton_span_failures[:50],
+                "elapsed": skeleton_elapsed,
+                **skeleton_constraint,
+            },
+            skeleton,
+        )
     box_ids = [str(item.get("id") or "") for item in boxes if str(item.get("id") or "")]
     referent_ids = [str(item.get("id") or "") for item in referents if str(item.get("id") or "")]
     temporal_ids = [str(item.get("id") or "") for item in temporals if str(item.get("id") or "")]
@@ -5456,19 +5560,27 @@ def _call_model_chunk_drs_staged(
     )
     condition_payload = condition_stage.get("condition_stage") if isinstance(condition_stage, dict) else None
     if not isinstance(condition_payload, dict):
-        return {
-            "accepted": False,
-            "reason": str(condition_stage.get("reason") or "schema_validation_failed") if isinstance(condition_stage, dict) else "schema_validation_failed",
-            "stage": "conditions",
-            "error": str(condition_stage.get("error") or "") if isinstance(condition_stage, dict) else "",
-            "raw_snippet": str(condition_stage.get("raw_snippet") or "") if isinstance(condition_stage, dict) else "",
-            "raw_text": str(condition_stage.get("raw_text") or condition_stage.get("_model_raw") or "") if isinstance(condition_stage, dict) else "",
-            "elapsed": skeleton_elapsed + condition_elapsed,
-            "fresh_or_cached": str(condition_stage.get("fresh_or_cached") or "fresh")
-            if isinstance(condition_stage, dict)
-            else "fresh",
-            **condition_constraint,
-        }
+        return _with_model_input_audits(
+            {
+                "accepted": False,
+                "reason": str(condition_stage.get("reason") or "schema_validation_failed")
+                if isinstance(condition_stage, dict)
+                else "schema_validation_failed",
+                "stage": "conditions",
+                "error": str(condition_stage.get("error") or "") if isinstance(condition_stage, dict) else "",
+                "raw_snippet": str(condition_stage.get("raw_snippet") or "") if isinstance(condition_stage, dict) else "",
+                "raw_text": str(condition_stage.get("raw_text") or condition_stage.get("_model_raw") or "")
+                if isinstance(condition_stage, dict)
+                else "",
+                "elapsed": skeleton_elapsed + condition_elapsed,
+                "fresh_or_cached": str(condition_stage.get("fresh_or_cached") or "fresh")
+                if isinstance(condition_stage, dict)
+                else "fresh",
+                **condition_constraint,
+            },
+            skeleton,
+            condition_stage,
+        )
     conditions = condition_payload.get("conditions")
     conditions = [item for item in conditions if isinstance(item, dict)] if isinstance(conditions, list) else []
     merged = {
@@ -5515,38 +5627,43 @@ def _call_model_chunk_drs_staged(
                     sort_keys=True,
                 ).encode()
             ).hexdigest()
-            return {
-                "accepted": True,
-                "reason": "staged_fallback",
-                "drs": box_completion["drs"],
-                "raw_text": raw,
-                "elapsed": elapsed + float(box_completion.get("elapsed") or 0.0),
-                "prompt_hash": staged_prompt_hash,
-                "constraint_mode": condition_constraint.get("constraint_mode"),
-                "validation": box_completion.get("validation"),
-                "context_budget": {
-                    **context_budget,
-                    "staged_fallback_policy": CHUNK_DRS_STAGED_FALLBACK_POLICY,
-                    "grounding_repair_policy": CHUNK_DRS_GROUNDING_REPAIR_POLICY,
-                    "identity_provenance_policy": CHUNK_DRS_IDENTITY_PROVENANCE_POLICY,
-                    "temporal_provenance_policy": CHUNK_DRS_TEMPORAL_PROVENANCE_POLICY,
-                    "sparse_retry_policy": CHUNK_DRS_SPARSE_RETRY_POLICY,
-                    "structure_validation_policy": CHUNK_DRS_STRUCTURE_VALIDATION_POLICY,
-                    "box_completion_policy": CHUNK_DRS_BOX_COMPLETION_POLICY,
-                    "source_span_policy": CHUNK_DRS_SOURCE_SPAN_POLICY,
-                    "skeleton_source_span_policy": CHUNK_DRS_SKELETON_SOURCE_SPAN_POLICY,
-                    "skeleton_id_policy": CHUNK_DRS_SKELETON_ID_POLICY,
-                    "dynamic_skeleton_budget_policy": CHUNK_DRS_DYNAMIC_SKELETON_BUDGET_POLICY,
-                    "dynamic_condition_budget_policy": CHUNK_DRS_DYNAMIC_CONDITION_BUDGET_POLICY,
-                    "staged_skeleton_n_predict": skeleton_n_predict,
-                    "staged_condition_n_predict": condition_n_predict,
-                    "box_completion_n_predict": box_completion["context_budget"]["box_completion_n_predict"],
+            return _with_model_input_audits(
+                {
+                    "accepted": True,
+                    "reason": "staged_fallback",
+                    "drs": box_completion["drs"],
+                    "raw_text": raw,
+                    "elapsed": elapsed + float(box_completion.get("elapsed") or 0.0),
+                    "prompt_hash": staged_prompt_hash,
+                    "constraint_mode": condition_constraint.get("constraint_mode"),
+                    "validation": box_completion.get("validation"),
+                    "context_budget": {
+                        **context_budget,
+                        "staged_fallback_policy": CHUNK_DRS_STAGED_FALLBACK_POLICY,
+                        "grounding_repair_policy": CHUNK_DRS_GROUNDING_REPAIR_POLICY,
+                        "identity_provenance_policy": CHUNK_DRS_IDENTITY_PROVENANCE_POLICY,
+                        "temporal_provenance_policy": CHUNK_DRS_TEMPORAL_PROVENANCE_POLICY,
+                        "sparse_retry_policy": CHUNK_DRS_SPARSE_RETRY_POLICY,
+                        "structure_validation_policy": CHUNK_DRS_STRUCTURE_VALIDATION_POLICY,
+                        "box_completion_policy": CHUNK_DRS_BOX_COMPLETION_POLICY,
+                        "source_span_policy": CHUNK_DRS_SOURCE_SPAN_POLICY,
+                        "skeleton_source_span_policy": CHUNK_DRS_SKELETON_SOURCE_SPAN_POLICY,
+                        "skeleton_id_policy": CHUNK_DRS_SKELETON_ID_POLICY,
+                        "dynamic_skeleton_budget_policy": CHUNK_DRS_DYNAMIC_SKELETON_BUDGET_POLICY,
+                        "dynamic_condition_budget_policy": CHUNK_DRS_DYNAMIC_CONDITION_BUDGET_POLICY,
+                        "staged_skeleton_n_predict": skeleton_n_predict,
+                        "staged_condition_n_predict": condition_n_predict,
+                        "box_completion_n_predict": box_completion["context_budget"]["box_completion_n_predict"],
+                    },
+                    "output_hash": hashlib.sha256(raw.encode()).hexdigest(),
+                    "fresh_or_cached": "fresh",
+                    "staged": True,
+                    "box_completion": box_completion.get("box_completion"),
                 },
-                "output_hash": hashlib.sha256(raw.encode()).hexdigest(),
-                "fresh_or_cached": "fresh",
-                "staged": True,
-                "box_completion": box_completion.get("box_completion"),
-            }
+                skeleton,
+                condition_stage,
+                box_completion,
+            )
         reason = "grounding_validation_failed" if validation.get("grounding_failure_count") else "schema_validation_failed"
         validation_retry_summary: dict[str, Any] | None = None
         if validation_feedback is None and reason == "schema_validation_failed":
@@ -5571,18 +5688,23 @@ def _call_model_chunk_drs_staged(
                     },
                     sort_keys=True,
                 )
-                return {
-                    **retry,
-                    "raw_text": raw,
-                    "elapsed": elapsed + float(retry.get("elapsed") or 0.0),
-                    "fallback_from_reason": reason,
-                    "validation_retry": {
-                        "accepted": True,
-                        "feedback": retry_feedback,
-                        "prompt_hash": retry.get("prompt_hash"),
+                return _with_model_input_audits(
+                    {
+                        **retry,
+                        "raw_text": raw,
+                        "elapsed": elapsed + float(retry.get("elapsed") or 0.0),
+                        "fallback_from_reason": reason,
+                        "validation_retry": {
+                            "accepted": True,
+                            "feedback": retry_feedback,
+                            "prompt_hash": retry.get("prompt_hash"),
+                        },
+                        "output_hash": hashlib.sha256(raw.encode()).hexdigest(),
                     },
-                    "output_hash": hashlib.sha256(raw.encode()).hexdigest(),
-                }
+                    skeleton,
+                    condition_stage,
+                    retry,
+                )
         payload = {
             "accepted": False,
             "reason": reason,
@@ -5598,7 +5720,7 @@ def _call_model_chunk_drs_staged(
         }
         if validation_retry_summary is not None:
             payload["validation_retry"] = validation_retry_summary
-        return payload
+        return _with_model_input_audits(payload, skeleton, condition_stage, box_completion)
     raw = json.dumps(
         {
             "skeleton": skeleton.get("_model_raw") if isinstance(skeleton, dict) else "",
@@ -5615,37 +5737,41 @@ def _call_model_chunk_drs_staged(
             sort_keys=True,
         ).encode()
     ).hexdigest()
-    return {
-        "accepted": True,
-        "reason": "staged_fallback",
-        "drs": merged["drs"],
-        "raw_text": raw,
-        "elapsed": elapsed,
-        "prompt_hash": staged_prompt_hash,
-        "constraint_mode": condition_constraint.get("constraint_mode"),
-        "validation": validation,
-        "context_budget": {
-            **context_budget,
-            "staged_fallback_policy": CHUNK_DRS_STAGED_FALLBACK_POLICY,
-            "grounding_repair_policy": CHUNK_DRS_GROUNDING_REPAIR_POLICY,
-            "identity_provenance_policy": CHUNK_DRS_IDENTITY_PROVENANCE_POLICY,
-            "temporal_provenance_policy": CHUNK_DRS_TEMPORAL_PROVENANCE_POLICY,
-            "sparse_retry_policy": CHUNK_DRS_SPARSE_RETRY_POLICY,
-            "structure_validation_policy": CHUNK_DRS_STRUCTURE_VALIDATION_POLICY,
-            "box_completion_policy": CHUNK_DRS_BOX_COMPLETION_POLICY,
-            "source_span_policy": CHUNK_DRS_SOURCE_SPAN_POLICY,
-            "skeleton_source_span_policy": CHUNK_DRS_SKELETON_SOURCE_SPAN_POLICY,
-            "skeleton_id_policy": CHUNK_DRS_SKELETON_ID_POLICY,
-            "dynamic_skeleton_budget_policy": CHUNK_DRS_DYNAMIC_SKELETON_BUDGET_POLICY,
-            "dynamic_condition_budget_policy": CHUNK_DRS_DYNAMIC_CONDITION_BUDGET_POLICY,
-            "staged_skeleton_n_predict": skeleton_n_predict,
-            "staged_condition_n_predict": condition_n_predict,
-            "box_completion_n_predict": default_chunk_drs_box_completion_n_predict(n_predict),
+    return _with_model_input_audits(
+        {
+            "accepted": True,
+            "reason": "staged_fallback",
+            "drs": merged["drs"],
+            "raw_text": raw,
+            "elapsed": elapsed,
+            "prompt_hash": staged_prompt_hash,
+            "constraint_mode": condition_constraint.get("constraint_mode"),
+            "validation": validation,
+            "context_budget": {
+                **context_budget,
+                "staged_fallback_policy": CHUNK_DRS_STAGED_FALLBACK_POLICY,
+                "grounding_repair_policy": CHUNK_DRS_GROUNDING_REPAIR_POLICY,
+                "identity_provenance_policy": CHUNK_DRS_IDENTITY_PROVENANCE_POLICY,
+                "temporal_provenance_policy": CHUNK_DRS_TEMPORAL_PROVENANCE_POLICY,
+                "sparse_retry_policy": CHUNK_DRS_SPARSE_RETRY_POLICY,
+                "structure_validation_policy": CHUNK_DRS_STRUCTURE_VALIDATION_POLICY,
+                "box_completion_policy": CHUNK_DRS_BOX_COMPLETION_POLICY,
+                "source_span_policy": CHUNK_DRS_SOURCE_SPAN_POLICY,
+                "skeleton_source_span_policy": CHUNK_DRS_SKELETON_SOURCE_SPAN_POLICY,
+                "skeleton_id_policy": CHUNK_DRS_SKELETON_ID_POLICY,
+                "dynamic_skeleton_budget_policy": CHUNK_DRS_DYNAMIC_SKELETON_BUDGET_POLICY,
+                "dynamic_condition_budget_policy": CHUNK_DRS_DYNAMIC_CONDITION_BUDGET_POLICY,
+                "staged_skeleton_n_predict": skeleton_n_predict,
+                "staged_condition_n_predict": condition_n_predict,
+                "box_completion_n_predict": default_chunk_drs_box_completion_n_predict(n_predict),
+            },
+            "output_hash": hashlib.sha256(raw.encode()).hexdigest(),
+            "fresh_or_cached": "fresh",
+            "staged": True,
         },
-        "output_hash": hashlib.sha256(raw.encode()).hexdigest(),
-        "fresh_or_cached": "fresh",
-        "staged": True,
-    }
+        skeleton,
+        condition_stage,
+    )
 
 
 def chunk_drs_cache_context(
@@ -5848,6 +5974,7 @@ def call_model_chunk_drs(
                 "staged_first": True,
             }
             payload.setdefault("cache_context", cache_context)
+            payload = _with_model_input_audits(payload, locals().get("parsed"), locals().get("exc"), locals().get("repaired"), locals().get("fallback"), locals().get("box_completion"))
             _write_cache(cache_path, payload)
             return payload
         staged_first_summary = _staged_fallback_failure_summary(fallback)
@@ -5886,11 +6013,13 @@ def call_model_chunk_drs(
             if fallback.get("accepted"):
                 payload = {**fallback, "fallback_from_reason": "invalid_json", "monolithic_prompt_hash": prompt_hash}
                 payload.setdefault("cache_context", cache_context)
+                payload = _with_model_input_audits(payload, locals().get("parsed"), locals().get("exc"), locals().get("repaired"), locals().get("fallback"), locals().get("box_completion"))
                 _write_cache(cache_path, payload)
                 return payload
             payload["staged_fallback"] = _staged_fallback_failure_summary(fallback)
         if staged_first_summary:
             payload["staged_first"] = staged_first_summary
+        payload = _with_model_input_audits(payload, exc)
         _write_cache(cache_path, payload)
         return payload
     except Exception as exc:
@@ -5907,7 +6036,7 @@ def call_model_chunk_drs(
             "context_budget": context_budget,
             "cache_context": cache_context,
         }
-        return payload
+        return _with_model_input_audits(payload, exc)
     raw = str(parsed.get("_model_raw") or "") if isinstance(parsed, dict) else ""
     parsed = _repair_chunk_drs_payload(parsed, prompt_chunk)
     validation = _validate_chunk_drs_payload(parsed, prompt_chunk)
@@ -5939,6 +6068,7 @@ def call_model_chunk_drs(
             if fallback.get("accepted"):
                 payload = {**fallback, "fallback_from_reason": reason, "monolithic_prompt_hash": prompt_hash}
                 payload.setdefault("cache_context", cache_context)
+                payload = _with_model_input_audits(payload, locals().get("parsed"), locals().get("exc"), locals().get("repaired"), locals().get("fallback"), locals().get("box_completion"))
                 _write_cache(cache_path, payload)
                 return payload
             payload["staged_fallback"] = _staged_fallback_failure_summary(fallback)
@@ -5960,6 +6090,7 @@ def call_model_chunk_drs(
                 "monolithic_prompt_hash": prompt_hash,
             }
             payload.setdefault("cache_context", cache_context)
+            payload = _with_model_input_audits(payload, locals().get("parsed"), locals().get("exc"), locals().get("repaired"), locals().get("fallback"), locals().get("box_completion"))
             _write_cache(cache_path, payload)
             return payload
         payload["box_completion"] = {
@@ -5969,6 +6100,7 @@ def call_model_chunk_drs(
         }
         if staged_first_summary:
             payload["staged_first"] = staged_first_summary
+        payload = _with_model_input_audits(payload, parsed, box_completion)
         _write_cache(cache_path, payload)
         return payload
     if validation.get("grounding_failure_count"):
@@ -5983,6 +6115,7 @@ def call_model_chunk_drs(
             "context_budget": context_budget,
             "cache_context": cache_context,
         }
+        payload = _with_model_input_audits(payload, parsed)
         _write_cache(cache_path, payload)
         return payload
     staged_retry_reason = _chunk_drs_staged_retry_reason(validation, prompt_chunk, context_budget)
@@ -6002,6 +6135,7 @@ def call_model_chunk_drs(
         ):
             payload = {**fallback, "fallback_from_reason": staged_retry_reason, "monolithic_prompt_hash": prompt_hash}
             payload.setdefault("cache_context", cache_context)
+            payload = _with_model_input_audits(payload, locals().get("parsed"), locals().get("exc"), locals().get("repaired"), locals().get("fallback"), locals().get("box_completion"))
             _write_cache(cache_path, payload)
             return payload
         staged_retry_summary = _staged_fallback_failure_summary(fallback)
@@ -6030,6 +6164,7 @@ def call_model_chunk_drs(
         payload["staged_retry"] = staged_retry_summary
     if staged_first_summary:
         payload["staged_first"] = staged_first_summary
+    payload = _with_model_input_audits(payload, parsed)
     _write_cache(cache_path, payload)
     return payload
 
@@ -6164,6 +6299,7 @@ def call_model_answer_verification(
         "output_hash": hashlib.sha256(raw.encode()).hexdigest(),
         "fresh_or_cached": "fresh",
     }
+    payload = _with_model_input_audits(payload, locals().get("parsed"), locals().get("exc"), locals().get("repaired"), locals().get("fallback"), locals().get("box_completion"))
     _write_cache(cache_path, payload)
     return payload
 
@@ -6340,6 +6476,7 @@ def call_model_answer_canonicalization(
         "output_hash": hashlib.sha256(raw.encode()).hexdigest(),
         "fresh_or_cached": "fresh",
     }
+    payload = _with_model_input_audits(payload, locals().get("parsed"), locals().get("exc"), locals().get("repaired"), locals().get("fallback"), locals().get("box_completion"))
     _write_cache(cache_path, payload)
     return payload
 
@@ -6523,6 +6660,7 @@ def call_model_source_resolved_answer(
         "output_hash": hashlib.sha256(raw.encode()).hexdigest(),
         "fresh_or_cached": "fresh",
     }
+    payload = _with_model_input_audits(payload, locals().get("parsed"), locals().get("exc"), locals().get("repaired"), locals().get("fallback"), locals().get("box_completion"))
     _write_cache(cache_path, payload)
     return payload
 
@@ -6697,5 +6835,6 @@ def call_model_identity_canonicalization(
         "output_hash": hashlib.sha256(raw.encode()).hexdigest(),
         "fresh_or_cached": "fresh",
     }
+    payload = _with_model_input_audits(payload, locals().get("parsed"), locals().get("exc"), locals().get("repaired"), locals().get("fallback"), locals().get("box_completion"))
     _write_cache(cache_path, payload)
     return payload

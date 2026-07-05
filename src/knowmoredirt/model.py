@@ -7,6 +7,7 @@ the engine. The public API remains ``initialize`` and ``question``.
 
 from __future__ import annotations
 
+import hashlib
 import json
 import os
 import time
@@ -276,10 +277,18 @@ def _append_missing_json_closers(snippet: str) -> str | None:
 class LocalModelJSONError(ValueError):
     """Raised when the local model response cannot be parsed as JSON."""
 
-    def __init__(self, message: str, *, raw_text: str, snippet: str) -> None:
+    def __init__(
+        self,
+        message: str,
+        *,
+        raw_text: str,
+        snippet: str,
+        model_input_audit: dict[str, Any] | None = None,
+    ) -> None:
         super().__init__(message)
         self.raw_text = raw_text
         self.snippet = snippet
+        self.model_input_audit = model_input_audit or {}
 
 
 class LocalModelUnavailableError(RuntimeError):
@@ -550,46 +559,98 @@ class LocalModelClient:
         if send_thinking_controls:
             body["reasoning_format"] = "hidden"
             body["enable_thinking"] = False
-        started = time.time()
+        request_body_json = json.dumps(body)
+        model_input_audit: dict[str, Any] = {
+            "audit_schema": "kmd-model-input-v1",
+            "endpoint": endpoint,
+            "api": "chat" if endpoint.endswith("/chat/completions") else "completion",
+            "request_body_json": request_body_json,
+            "request_body_sha256": hashlib.sha256(request_body_json.encode("utf-8")).hexdigest(),
+            "prompt": prompt,
+            "prompt_sha256": hashlib.sha256(prompt.encode("utf-8", errors="replace")).hexdigest(),
+            "effective_prompt": effective_prompt,
+            "effective_prompt_sha256": hashlib.sha256(
+                effective_prompt.encode("utf-8", errors="replace")
+            ).hexdigest(),
+            "request_settings": {
+                **settings,
+                "n_predict": requested_n_predict,
+                "effective_n_predict": effective_n_predict,
+            },
+            "transport_settings": {
+                **transport,
+                "cache_prompt": bool(use_cache_prompt),
+                "thinking_controls_sent": send_thinking_controls,
+            },
+            "constraint_settings": {
+                **constraint_settings,
+                "requested_n_predict": requested_n_predict,
+                "effective_n_predict": effective_n_predict,
+                "native_constraints_applied": native_constraints,
+                "schema_prompt_hint": bool(json_schema and not native_constraints),
+                "grammar_prompt_only": bool(grammar and not native_constraints),
+            },
+        }
         request = urllib.request.Request(
             endpoint,
-            data=json.dumps(body).encode("utf-8"),
+            data=request_body_json.encode("utf-8"),
             headers={"Content-Type": "application/json"},
             method="POST",
         )
         raw = ""
         response_obj: dict[str, Any] = {}
         stream_closed_after_json = False
-        with urllib.request.urlopen(request, timeout=self.timeout_seconds) as response:
-            for raw_line in response:
-                line = raw_line.decode("utf-8", errors="replace").strip()
-                if not line:
-                    continue
-                if line.startswith("data:"):
-                    line = line[5:].strip()
-                if line == "[DONE]":
-                    break
-                try:
-                    event = json.loads(line)
-                except json.JSONDecodeError:
-                    continue
-                if isinstance(event, dict):
-                    response_obj = event
-                    raw += _event_content(event) or ""
-                    if not raw and not native_constraints:
-                        _event_reasoning_content(event)
-                    if _extract_balanced_json(raw):
-                        stream_closed_after_json = True
+        started = time.time()
+        try:
+            with urllib.request.urlopen(request, timeout=self.timeout_seconds) as response:
+                for raw_line in response:
+                    line = raw_line.decode("utf-8", errors="replace").strip()
+                    if not line:
+                        continue
+                    if line.startswith("data:"):
+                        line = line[5:].strip()
+                    if line == "[DONE]":
                         break
+                    try:
+                        event = json.loads(line)
+                    except json.JSONDecodeError:
+                        continue
+                    if isinstance(event, dict):
+                        response_obj = event
+                        raw += _event_content(event) or ""
+                        if not raw and not native_constraints:
+                            _event_reasoning_content(event)
+                        if _extract_balanced_json(raw):
+                            stream_closed_after_json = True
+                            break
+        except Exception as exc:
+            try:
+                setattr(exc, "model_input_audit", model_input_audit)
+            except Exception:
+                pass
+            raise
         snippet = _extract_balanced_json(raw) or raw
         try:
             parsed = json.loads(snippet)
         except json.JSONDecodeError as exc:
             repaired_snippet = _append_missing_json_closers(snippet)
             if repaired_snippet is None:
-                raise LocalModelJSONError(str(exc), raw_text=raw, snippet=snippet) from exc
+                raise LocalModelJSONError(
+                    str(exc),
+                    raw_text=raw,
+                    snippet=snippet,
+                    model_input_audit=model_input_audit,
+                ) from exc
             snippet = repaired_snippet
-            parsed = json.loads(snippet)
+            try:
+                parsed = json.loads(snippet)
+            except json.JSONDecodeError as repair_exc:
+                raise LocalModelJSONError(
+                    str(repair_exc),
+                    raw_text=raw,
+                    snippet=snippet,
+                    model_input_audit=model_input_audit,
+                ) from repair_exc
         if isinstance(parsed, list):
             parsed = {"items": parsed}
         if not isinstance(parsed, dict):
@@ -620,4 +681,5 @@ class LocalModelClient:
             "cache_prompt": bool(use_cache_prompt),
             "thinking_controls_sent": send_thinking_controls,
         }
+        parsed["_model_input_audit"] = model_input_audit
         return parsed

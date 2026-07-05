@@ -825,6 +825,86 @@ def test_local_model_prompt_constraint_mode_requires_explicit_soft_json_override
     assert result["_model_constraint_settings"]["native_constraints_applied"] is False
 
 
+
+
+def test_local_model_complete_json_returns_exact_request_audit(monkeypatch) -> None:
+    captured: dict[str, str] = {}
+
+    def fake_urlopen(request, timeout: float = 0) -> FakeHTTPResponse:
+        url = str(getattr(request, "full_url", request))
+        if url.endswith("/v1/models"):
+            return FakeHTTPResponse({"data": [{"id": "test-model", "meta": {"n_ctx_train": 4096}}]})
+        if url.endswith("/slots"):
+            return FakeHTTPResponse([{"n_ctx": 4096, "params": {}}])
+        if url.endswith("/props"):
+            return FakeHTTPResponse({"model_alias": "test-model", "default_generation_settings": {}})
+        if url.endswith("/v1/chat/completions"):
+            captured["request_body_json"] = getattr(request, "data", b"{}").decode("utf-8")
+            return FakeHTTPResponse(
+                lines=[
+                    ("data: " + json.dumps({"choices": [{"delta": {"content": '{"ok":true}'}}]})).encode("utf-8"),
+                    b"data: [DONE]",
+                ]
+            )
+        raise AssertionError(f"unexpected URL {url}")
+
+    monkeypatch.setattr("urllib.request.urlopen", fake_urlopen)
+    monkeypatch.setenv("KMD_LOCAL_MODEL_API", "chat")
+    monkeypatch.setenv("KMD_LOCAL_MODEL_CONSTRAINT_MODE", "native")
+    monkeypatch.setenv("KMD_LOCAL_MODEL_MIN_CONSTRAINED_JSON_TOKENS", "32")
+
+    client = LocalModelClient(endpoint="http://127.0.0.1:14829/v1", timeout_seconds=30)
+    result = client.complete_json(
+        "Return JSON.",
+        n_predict=16,
+        json_schema={
+            "type": "object",
+            "additionalProperties": False,
+            "required": ["ok"],
+            "properties": {"ok": {"type": "boolean"}},
+        },
+    )
+
+    audit = result["_model_input_audit"]
+    assert result["ok"] is True
+    assert audit["prompt"] == "Return JSON."
+    assert audit["request_body_json"] == captured["request_body_json"]
+    assert audit["request_body_sha256"] == hashlib.sha256(captured["request_body_json"].encode()).hexdigest()
+    request_body = json.loads(audit["request_body_json"])
+    assert request_body["messages"][-1]["content"] == audit["effective_prompt"]
+    assert request_body["response_format"]["json_schema"]["schema"]["required"] == ["ok"]
+    assert audit["request_settings"]["n_predict"] == 16
+    assert audit["request_settings"]["effective_n_predict"] == 32
+
+
+def test_write_cache_preserves_output_and_embeds_model_input_audit(tmp_path) -> None:
+    request_body_json = '{"prompt":"Return JSON.","n_predict":8}'
+    payload = {
+        "accepted": True,
+        "reason": "unit_test",
+        "raw_text": '{"ok":true}',
+        "_model_input_audit": {
+            "audit_schema": "kmd-model-input-v1",
+            "request_body_json": request_body_json,
+            "request_body_sha256": hashlib.sha256(request_body_json.encode()).hexdigest(),
+            "prompt": "Return JSON.",
+        },
+    }
+    path = tmp_path / "cache" / "abc.json"
+
+    model_planner._write_cache(path, payload)
+    stored = json.loads(path.read_text(encoding="utf-8"))
+    loaded = model_planner._read_cache(path)
+
+    assert stored["raw_text"] == payload["raw_text"]
+    assert stored["model_input_audit_count"] == 1
+    assert stored["model_input_audit"]["request_body_json"] == request_body_json
+    assert stored["model_input_audits"][0]["request_body_sha256"] == payload["_model_input_audit"]["request_body_sha256"]
+    assert loaded is not None
+    assert loaded["raw_text"] == payload["raw_text"]
+    assert loaded["model_input_audit"]["prompt"] == "Return JSON."
+
+
 def test_engine_required_probe_uses_client_endpoint_normalization(monkeypatch) -> None:
     calls: list[str] = []
 
@@ -2964,6 +3044,63 @@ def test_compact_chunk_drs_retries_empty_current_cache(monkeypatch, tmp_path) ->
 
 
 
+
+
+
+
+def test_compact_chunk_drs_cache_file_ties_output_to_model_input_audit(monkeypatch, tmp_path) -> None:
+    class AuditedCompactModel:
+        timeout_seconds = 30
+
+        def context_size(self) -> int:
+            return 4096
+
+        def cache_fingerprint(self) -> dict[str, Any]:
+            return {"model_id": "fake-audited-compact", "context_size": 4096}
+
+        def complete_json(self, prompt: str, *, n_predict: int = 128, grammar=None, json_schema=None):
+            request_body_json = json.dumps({"prompt": prompt, "n_predict": n_predict, "seed": 7})
+            return {
+                "facts": [
+                    {
+                        "p": "means",
+                        "e": "Glossary: luro means silver path.",
+                        "arguments": [
+                            {"role": "term", "value": "luro"},
+                            {"role": "meaning", "value": "silver path"},
+                        ],
+                        "temporal_text": "",
+                        "scope": "asserted",
+                    }
+                ],
+                "_model_raw": '{"facts":[]}',
+                "_model_elapsed_seconds": 0.01,
+                "_model_input_audit": {
+                    "audit_schema": "kmd-model-input-v1",
+                    "request_body_json": request_body_json,
+                    "request_body_sha256": hashlib.sha256(request_body_json.encode()).hexdigest(),
+                    "prompt": prompt,
+                    "effective_prompt": prompt,
+                    "request_settings": {"n_predict": n_predict, "seed": 7},
+                },
+            }
+
+    monkeypatch.setenv("KMD_CHUNK_DRS_CACHE_DIR", str(tmp_path / "chunk-drs-cache"))
+    result = call_model_chunk_drs_compact(
+        "Glossary: luro means silver path.",
+        AuditedCompactModel(),  # type: ignore[arg-type]
+        rel_path="notes/terms.txt",
+        n_predict=72,
+    )
+    cache_files = list((tmp_path / "chunk-drs-cache").glob("*.json"))
+    assert result["accepted"] is True
+    assert len(cache_files) == 1
+    stored = json.loads(cache_files[0].read_text(encoding="utf-8"))
+    assert stored["raw_text"] == '{"facts":[]}'
+    assert stored["model_input_audit_count"] == 1
+    assert stored["model_input_audit"]["request_body_json"]
+    assert stored["model_input_audits"][0]["request_body_sha256"] == stored["model_input_audit"]["request_body_sha256"]
+    assert "Glossary: luro means silver path." in stored["model_input_audit"]["request_body_json"]
 
 
 def test_structured_cache_failures_are_retryable_for_all_json_calls() -> None:
