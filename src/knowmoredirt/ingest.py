@@ -9,6 +9,7 @@ import time
 from pathlib import Path
 from typing import Any
 
+from .context_budget import context_relative_budget
 from .drs import DiscourseArgument, DiscourseCondition, frame_from_model_dict
 from .extractors import capitalized_phrases, identifiers, urls
 from .model import LocalModelUnavailableError
@@ -545,12 +546,15 @@ def _scan_unit_max_chars(semantic_client: Any | None) -> int:
         except Exception:
             context_size = 0
         if context_size > 0:
-            try:
-                context_cap = max(1024, int(os.environ.get("KMD_SCAN_UNIT_CONTEXT_MAX_CHARS", "6000")))
-            except ValueError:
-                context_cap = 6000
-            return max(1024, min(context_size * 2, context_cap))
-    return int(os.environ.get("KMD_SCAN_UNIT_FALLBACK_MAX_CHARS", "4000"))
+            budget = context_relative_budget(
+                context_size,
+                output_ratio_names=("KMD_SCAN_UNIT_OUTPUT_RATIO", "KMD_CHUNK_DRS_OUTPUT_RATIO"),
+                safety_ratio_names=("KMD_SCAN_UNIT_SAFETY_RATIO",),
+                overhead_ratio_names=("KMD_SCAN_UNIT_OVERHEAD_RATIO",),
+                chars_per_token_names=("KMD_SCAN_UNIT_CHARS_PER_TOKEN",),
+            )
+            return budget.safe_input_chars
+    return 0
 
 
 def _ingest_model_drs_for_sentence(

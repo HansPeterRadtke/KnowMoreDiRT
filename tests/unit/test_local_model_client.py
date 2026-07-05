@@ -214,7 +214,7 @@ def test_answer_verification_invalid_json_is_not_request_failure(monkeypatch) ->
     assert model.calls == 1
 
 
-def test_drs_ingest_scan_unit_default_does_not_scale_to_full_large_context(monkeypatch) -> None:
+def test_drs_ingest_scan_unit_default_scales_to_large_model_context(monkeypatch) -> None:
     from knowmoredirt.ingest import _scan_unit_max_chars
 
     class LargeContextModel:
@@ -222,21 +222,32 @@ def test_drs_ingest_scan_unit_default_does_not_scale_to_full_large_context(monke
             return 131072
 
     monkeypatch.delenv("KMD_SCAN_UNIT_MAX_CHARS", raising=False)
-    monkeypatch.delenv("KMD_SCAN_UNIT_CONTEXT_MAX_CHARS", raising=False)
+    monkeypatch.delenv("KMD_SCAN_UNIT_OUTPUT_RATIO", raising=False)
+    monkeypatch.delenv("KMD_CONTEXT_OUTPUT_RATIO", raising=False)
+    monkeypatch.delenv("KMD_SCAN_UNIT_SAFETY_RATIO", raising=False)
+    monkeypatch.delenv("KMD_CONTEXT_SAFETY_RATIO", raising=False)
+    monkeypatch.delenv("KMD_SCAN_UNIT_OVERHEAD_RATIO", raising=False)
+    monkeypatch.delenv("KMD_CONTEXT_OVERHEAD_RATIO", raising=False)
+    monkeypatch.delenv("KMD_SCAN_UNIT_CHARS_PER_TOKEN", raising=False)
+    monkeypatch.delenv("KMD_CONTEXT_CHARS_PER_TOKEN", raising=False)
 
-    assert _scan_unit_max_chars(LargeContextModel()) == 6000
+    assert _scan_unit_max_chars(LargeContextModel()) == 263454
 
 
-def test_drs_ingest_scan_unit_context_cap_is_still_configurable(monkeypatch) -> None:
+def test_drs_ingest_scan_unit_budget_ratios_are_configurable(monkeypatch) -> None:
     from knowmoredirt.ingest import _scan_unit_max_chars
 
-    class LargeContextModel:
+    class ContextModel:
         def context_size(self) -> int:
-            return 131072
+            return 1000
 
-    monkeypatch.setenv("KMD_SCAN_UNIT_CONTEXT_MAX_CHARS", "8000")
+    monkeypatch.delenv("KMD_SCAN_UNIT_MAX_CHARS", raising=False)
+    monkeypatch.setenv("KMD_SCAN_UNIT_OUTPUT_RATIO", "0.50")
+    monkeypatch.setenv("KMD_SCAN_UNIT_SAFETY_RATIO", "0")
+    monkeypatch.setenv("KMD_SCAN_UNIT_OVERHEAD_RATIO", "0")
+    monkeypatch.setenv("KMD_SCAN_UNIT_CHARS_PER_TOKEN", "2")
 
-    assert _scan_unit_max_chars(LargeContextModel()) == 8000
+    assert _scan_unit_max_chars(ContextModel()) == 1000
 
 
 def test_local_model_drs_ingest_sends_noise_like_chunks_to_model_by_default(monkeypatch, tmp_path) -> None:

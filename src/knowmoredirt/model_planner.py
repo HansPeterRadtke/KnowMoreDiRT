@@ -18,6 +18,7 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import Any
 
+from .context_budget import context_ratio, context_relative_budget
 from .drs_validation import box_parent_cycle_errors, box_root_errors, condition_argument_cycle_errors
 from .model import LocalModelClient, LocalModelJSONError
 from .extractors import identifiers, urls
@@ -225,6 +226,7 @@ def default_chunk_frame_n_predict(client: LocalModelClient | None = None) -> int
 
 
 def default_chunk_drs_n_predict(client: LocalModelClient | None = None, chunk_text: str = "") -> int:
+    del chunk_text
     configured = os.environ.get("KMD_CHUNK_DRS_N_PREDICT")
     if configured:
         try:
@@ -232,21 +234,18 @@ def default_chunk_drs_n_predict(client: LocalModelClient | None = None, chunk_te
         except ValueError:
             pass
     context_size = _client_context_size(client)
-    base = 384
     if context_size > 0:
-        base = max(384, min(1536, context_size // 24))
-    source_text = str(chunk_text or "")
-    if not source_text or context_size < 8192:
-        return base
-    source_tokens = _estimate_tokens(source_text)
-    field_like_count = _chunk_drs_structural_condition_floor(source_text)
-    if field_like_count > 8 or source_tokens > 192:
-        if source_tokens > 512 and field_like_count <= 8:
-            return base
-        return min(max(base, 1024), 1024)
-    if source_tokens <= 32 and field_like_count == 0:
-        return min(max(base, 544), 544)
-    return min(max(base, 768), 768)
+        return context_relative_budget(
+            context_size,
+            output_ratio_names=("KMD_CHUNK_DRS_OUTPUT_RATIO",),
+        ).output_tokens
+    fallback = os.environ.get("KMD_CHUNK_DRS_FALLBACK_N_PREDICT", "").strip()
+    if fallback:
+        try:
+            return max(1, int(fallback))
+        except ValueError:
+            pass
+    return 384
 
 
 def default_query_drs_n_predict(client: LocalModelClient | None = None, question: str = "") -> int:
@@ -1228,7 +1227,8 @@ def chunk_drs_evidence_max_chars(chunk_text: str, n_predict: int | None = None) 
             pass
     if not n_predict:
         return len(chunk_text)
-    budgeted = max(96, min(256, int(n_predict) // 4))
+    evidence_ratio = context_ratio(("KMD_CHUNK_DRS_EVIDENCE_OUTPUT_RATIO",), 0.25)
+    budgeted = max(1, int(round(int(n_predict) * evidence_ratio)))
     return max(1, min(len(chunk_text), budgeted))
 
 
@@ -1241,7 +1241,8 @@ def chunk_drs_array_max_items(n_predict: int | None = None) -> int | None:
             pass
     if not n_predict:
         return None
-    return max(4, min(10, int(n_predict) // 96))
+    item_ratio = context_ratio(("KMD_CHUNK_DRS_ARRAY_ITEM_OUTPUT_RATIO",), 1.0 / 96.0)
+    return max(1, int(round(int(n_predict) * item_ratio)))
 
 
 def _staged_chunk_drs_enabled() -> bool:

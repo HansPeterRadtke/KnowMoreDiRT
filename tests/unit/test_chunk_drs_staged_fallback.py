@@ -1313,7 +1313,7 @@ def test_chunk_drs_field_like_records_use_staged_extraction_first(monkeypatch, t
     assert result["fallback_from_reason"] == "field_like_source_spans"
     assert result["staged_first"] is True
     assert result["validation"]["condition_count"] == 2
-    assert result["context_budget"]["reserved_output_tokens"] == 768
+    assert result["context_budget"]["reserved_output_tokens"] == 8192
     assert result["context_budget"]["staged_first_policy"] == CHUNK_DRS_STAGED_FIRST_POLICY
     assert result["context_budget"]["dynamic_condition_budget_policy"] == CHUNK_DRS_DYNAMIC_CONDITION_BUDGET_POLICY
     assert result["context_budget"]["staged_condition_n_predict"] == 528
@@ -1389,12 +1389,12 @@ def test_chunk_drs_dynamic_output_budget_for_short_chunks(monkeypatch) -> None:
 
     monkeypatch.delenv("KMD_CHUNK_DRS_N_PREDICT", raising=False)
 
-    assert default_chunk_drs_n_predict(model) == 1365  # type: ignore[arg-type]
-    assert default_chunk_drs_n_predict(model, tiny_prose) == 544  # type: ignore[arg-type]
-    assert default_chunk_drs_n_predict(model, compact_record) == 768  # type: ignore[arg-type]
-    assert default_chunk_drs_n_predict(model, field_dense) == 1024  # type: ignore[arg-type]
-    assert default_chunk_drs_n_predict(model, medium_text) == 1024  # type: ignore[arg-type]
-    assert default_chunk_drs_n_predict(model, long_text) == 1365  # type: ignore[arg-type]
+    assert default_chunk_drs_n_predict(model) == 8192  # type: ignore[arg-type]
+    assert default_chunk_drs_n_predict(model, tiny_prose) == 8192  # type: ignore[arg-type]
+    assert default_chunk_drs_n_predict(model, compact_record) == 8192  # type: ignore[arg-type]
+    assert default_chunk_drs_n_predict(model, field_dense) == 8192  # type: ignore[arg-type]
+    assert default_chunk_drs_n_predict(model, medium_text) == 8192  # type: ignore[arg-type]
+    assert default_chunk_drs_n_predict(model, long_text) == 8192  # type: ignore[arg-type]
 
     monkeypatch.setenv("KMD_CHUNK_DRS_N_PREDICT", "544")
     assert default_chunk_drs_n_predict(model, compact_record) == 544  # type: ignore[arg-type]
