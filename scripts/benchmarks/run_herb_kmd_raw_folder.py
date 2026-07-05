@@ -175,7 +175,8 @@ def main() -> int:
     if args.use_local_model:
         os.environ["KMD_USE_LOCAL_MODEL"] = "1"
         os.environ.setdefault("KMD_LOCAL_MODEL_EXPECTED_ID", "Qwen2.5-14B-Instruct-Q4_K_M.gguf")
-        shared_cache_root = var_root / "kmd_model_caches"
+        configured_shared_cache_root = os.environ.get("KMD_SHARED_MODEL_CACHE_ROOT", "").strip()
+        shared_cache_root = Path(configured_shared_cache_root) if configured_shared_cache_root else var_root / "kmd_model_caches"
         os.environ.setdefault("KMD_SHARED_MODEL_CACHE_ROOT", str(shared_cache_root))
         os.environ.setdefault("KMD_LOCAL_MODEL_CACHE_PROMPT", "1")
         for cache_name, subdir in {
