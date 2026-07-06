@@ -126,7 +126,7 @@ CHUNK_DRS_STRUCTURE_VALIDATION_POLICY = "single-root-acyclic-box-parent-conditio
 CHUNK_DRS_BOX_COMPLETION_POLICY = "model-complete-missing-box-declarations-v1"
 CHUNK_DRS_SOURCE_SPAN_POLICY = "chunk-drs-delimiter-source-span-enum-v2"
 CHUNK_DRS_SKELETON_SOURCE_SPAN_POLICY = "stage1-source-span-evidence-enum-v1"
-CHUNK_DRS_SKELETON_ID_POLICY = "stage1-stable-id-enums-v1"
+CHUNK_DRS_SKELETON_ID_POLICY = "stage1-stable-id-enums-no-holder-v2"
 CHUNK_DRS_MONOLITHIC_ID_POLICY = "monolithic-stable-id-enums-v1"
 CHUNK_DRS_COMPACT_UNDERCOVERAGE_POLICY = "retry-delimiter-rich-low-condition-density-v1"
 CHUNK_DRS_STAGED_RETRY_DIAGNOSTICS_POLICY = "record-non-improving-staged-retry-v1"
@@ -1481,7 +1481,11 @@ def chunk_drs_skeleton_json_schema(
     referent_schema["properties"]["id"] = {"type": "string", "enum": referent_ids}
     box_schema["properties"]["id"] = {"type": "string", "enum": box_ids}
     box_schema["properties"]["parent_id"] = {"type": "string", "enum": ["", *box_ids]}
-    box_schema["properties"]["holder_referent_id"] = {"type": "string", "enum": ["", *referent_ids]}
+    # Stage 1 declares referents and boxes in one model object; JSON schema cannot condition holder ids on
+    # the referents actually emitted in that same object. Keep stage-1 holder links empty so the model cannot
+    # emit an unbound holder id such as b0 -> r0 without declaring r0. Holder/source semantics remain model-owned
+    # through grounded referents and conditions rather than deterministic post-hoc id repair.
+    box_schema["properties"]["holder_referent_id"] = {"type": "string", "enum": [""]}
     temporal_schema["properties"]["id"] = {"type": "string", "enum": temporal_ids}
     referent_schema["properties"]["label"] = _schema_string_limited(160)
     referent_schema["properties"]["kind"] = _schema_string_limited(48)
@@ -4675,11 +4679,11 @@ def build_chunk_drs_skeleton_prompt(chunk_text: str, *, rel_path: str = "", cont
         validation_feedback_text
         + "JSON only. Stage 1 of source-grounded DRS extraction. Extract only declared discourse referents "
         "DRS boxes, and explicit temporal records from the chunk. Do not emit conditions, identity hypotheses, answers, "
-        "outside knowledge, or handler names. Declare exactly one root asserted box with id b0 and parent_id ''; "
+        "outside knowledge, or handler names. Declare exactly one root asserted box with id b0, parent_id '', and holder_referent_id ''; "
         "that root is only the containing discourse, not permission to flatten embedded scoped propositions into "
         "asserted fact. Use "
         "stable referent ids r0, r1, ...; box ids b0, b1, ...; and temporal ids t0, t1, ... in order. "
-        "IDs are single-use: never emit two referents with the same id, two boxes with the same id, or two temporal records with the same id. If uncertain, emit fewer declared items rather than repeating an id. Use "
+        "IDs are single-use: never emit two referents with the same id, two boxes with the same id, or two temporal records with the same id. In stage 1 every box holder_referent_id must be ''. If uncertain, emit fewer declared items rather than repeating an id. Use "
         "subordinate boxes only for scoped DRS contexts such as reports, quotes, beliefs, negation, conditionals, "
         "uncertainty, dreams, fiction, and modality; subordinate boxes must be distinct from the containing box "
         "and parent links must be acyclic. Conditions for embedded propositions inside those contexts must use "

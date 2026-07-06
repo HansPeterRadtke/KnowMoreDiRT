@@ -25,7 +25,7 @@ from .relations import ExtractedRelation, extract_relations, transcript_turn_par
 from .scanner import scan_folder
 from .semantic_cache import SemanticFrameCache
 from .store import DSPGStore, stable_id
-from .text import clean_extracted_value, normalize, text_quality_metrics, tokenize
+from .text import clean_extracted_value, normalize, split_units, text_quality_metrics, tokenize
 
 
 TABLE_SPLIT_RE = re.compile(r"\s*(?:\||\t)\s*")
@@ -580,6 +580,146 @@ def _scan_unit_max_chars(semantic_client: Any | None) -> int:
     return 0
 
 
+
+
+def _drs_adaptive_split_caps() -> list[int]:
+    configured = os.environ.get("KMD_DRS_ADAPTIVE_SPLIT_UNIT_CAPS", "32,8,1").strip()
+    caps: list[int] = []
+    for item in configured.split(","):
+        try:
+            value = int(item.strip())
+        except ValueError:
+            continue
+        if value > 0:
+            caps.append(value)
+    return caps or [32, 8, 1]
+
+
+def _drs_adaptive_split_enabled() -> bool:
+    return os.environ.get("KMD_DRS_ADAPTIVE_SPLIT", "1").strip().lower() not in {"0", "false", "no", "off"}
+
+
+def _drs_adaptive_retryable_failure(result: dict[str, Any]) -> bool:
+    return str(result.get("reason") or "") in {"invalid_json", "schema_validation_failed", "grounding_validation_failed"}
+
+
+def _drs_adaptive_split_sentences(sentence: Sentence, *, depth: int) -> list[Sentence]:
+    if not _drs_adaptive_split_enabled():
+        return []
+    caps = _drs_adaptive_split_caps()
+    if depth >= len(caps):
+        return []
+    cap = max(1, caps[depth])
+    units = split_units(sentence.text)
+    if len(units) <= 1:
+        return []
+    groups: list[list[tuple[int, int, str]]] = []
+    current: list[tuple[int, int, str]] = []
+    for unit in units:
+        if current and len(current) >= cap:
+            groups.append(current)
+            current = []
+        current.append(unit)
+    if current:
+        groups.append(current)
+    sub_sentences: list[Sentence] = []
+    for index, group in enumerate(groups):
+        rel_start = group[0][0]
+        rel_end = group[-1][1]
+        segment = sentence.text[rel_start:rel_end]
+        stripped = segment.strip()
+        if not stripped:
+            continue
+        leading = len(segment) - len(segment.lstrip())
+        trailing = len(segment.rstrip())
+        abs_start = sentence.char_start + rel_start + leading
+        abs_end = sentence.char_start + rel_start + trailing
+        if abs_start >= abs_end:
+            continue
+        sub_sentences.append(
+            Sentence(
+                sentence_id=stable_id("adaptive_sentence", sentence.sentence_id, depth, index, abs_start, abs_end),
+                document_id=sentence.document_id,
+                rel_path=sentence.rel_path,
+                text=stripped,
+                order=sentence.order * 100000 + (depth + 1) * 1000 + index,
+                char_start=abs_start,
+                char_end=abs_end,
+            )
+        )
+    if len(sub_sentences) <= 1 and (not sub_sentences or sub_sentences[0].text == sentence.text):
+        return []
+    return sub_sentences
+
+
+def _register_adaptive_drs_subspan(store: DSPGStore, sentence: Sentence) -> str:
+    token_estimate = max(1, len(tokenize(sentence.text)))
+    chunk_id = stable_id("chunk", sentence.sentence_id)
+    store.execute(
+        "INSERT OR IGNORE INTO chunks(chunk_id, document_id, chunk_order, char_start, char_end, text, token_estimate) VALUES (?, ?, ?, ?, ?, ?, ?)",
+        (chunk_id, sentence.document_id, sentence.order, sentence.char_start, sentence.char_end, sentence.text, token_estimate),
+    )
+    span_id = stable_id("span", sentence.sentence_id, "adaptive_drs_sentence")
+    store.execute(
+        "INSERT OR IGNORE INTO source_spans(span_id, document_id, chunk_id, char_start, char_end, surface, surface_norm, span_kind) VALUES (?, ?, ?, ?, ?, ?, ?, ?)",
+        (
+            span_id,
+            sentence.document_id,
+            chunk_id,
+            sentence.char_start,
+            sentence.char_end,
+            sentence.text,
+            normalize(sentence.text),
+            "adaptive_drs_sentence",
+        ),
+    )
+    return span_id
+
+
+def _ingest_adaptive_drs_split(
+    store: DSPGStore,
+    run_id: str,
+    sentence: Sentence,
+    semantic_client: Any,
+    semantic_index: int,
+    semantic_total: int,
+    ingest_started: float,
+    *,
+    failure_result: dict[str, Any],
+    adaptive_depth: int,
+    refresh_empty_compact_legacy: bool,
+    structural_speaker_surface: str,
+    structural_speaker_evidence: str,
+) -> int | None:
+    sub_sentences = _drs_adaptive_split_sentences(sentence, depth=adaptive_depth)
+    if not sub_sentences:
+        return None
+    _log_progress(
+        "kmd-ingest drs_adaptive_split "
+        f"source={sentence.rel_path}:{sentence.order} "
+        f"reason={str(failure_result.get('reason') or '')} "
+        f"depth={adaptive_depth} "
+        f"subchunks={len(sub_sentences)} "
+        f"elapsed={time.monotonic() - ingest_started:.1f}s"
+    )
+    for sub_sentence in sub_sentences:
+        sub_span_id = _register_adaptive_drs_subspan(store, sub_sentence)
+        semantic_index = _ingest_model_drs_for_sentence(
+            store,
+            run_id,
+            sub_sentence,
+            sub_span_id,
+            semantic_client,
+            semantic_index,
+            semantic_total,
+            ingest_started,
+            refresh_empty_compact_legacy=refresh_empty_compact_legacy,
+            structural_speaker_surface=structural_speaker_surface,
+            structural_speaker_evidence=structural_speaker_evidence,
+            adaptive_depth=adaptive_depth + 1,
+        )
+    return semantic_index
+
 def _ingest_model_drs_for_sentence(
     store: DSPGStore,
     run_id: str,
@@ -592,6 +732,7 @@ def _ingest_model_drs_for_sentence(
     refresh_empty_compact_legacy: bool = False,
     structural_speaker_surface: str = "",
     structural_speaker_evidence: str = "",
+    adaptive_depth: int = 0,
 ) -> int:
     semantic_index += 1
     skip_reason = (
@@ -693,6 +834,33 @@ def _ingest_model_drs_for_sentence(
         n_predict=drs_n_predict,
         refresh_empty_compact_legacy=refresh_empty_compact_legacy,
     )
+    if _drs_adaptive_retryable_failure(drs_result):
+        adaptive_index = _ingest_adaptive_drs_split(
+            store,
+            run_id,
+            sentence,
+            semantic_client,
+            semantic_index,
+            semantic_total,
+            ingest_started,
+            failure_result=drs_result,
+            adaptive_depth=adaptive_depth,
+            refresh_empty_compact_legacy=refresh_empty_compact_legacy,
+            structural_speaker_surface=structural_speaker_surface,
+            structural_speaker_evidence=structural_speaker_evidence,
+        )
+        if adaptive_index is not None:
+            _log_progress(
+                "kmd-ingest drs_done "
+                f"chunk={semantic_index}/{semantic_total} "
+                f"source={sentence.rel_path}:{sentence.order} "
+                "accepted=False "
+                "materialized=True "
+                f"reason=adaptive_split:{str(drs_result.get('reason') or '')} "
+                f"model_elapsed={float(drs_result.get('elapsed') or 0.0):.1f}s "
+                f"elapsed={time.monotonic() - ingest_started:.1f}s"
+            )
+            return adaptive_index
     _raise_model_request_failed(drs_result, "chunk DRS ingest")
     actual_drs_cache_context = (
         drs_result.get("cache_context") if isinstance(drs_result.get("cache_context"), dict) else drs_cache_context
