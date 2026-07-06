@@ -130,7 +130,7 @@ CHUNK_DRS_SKELETON_ID_POLICY = "stage1-stable-id-enums-v1"
 CHUNK_DRS_MONOLITHIC_ID_POLICY = "monolithic-stable-id-enums-v1"
 CHUNK_DRS_COMPACT_UNDERCOVERAGE_POLICY = "retry-delimiter-rich-low-condition-density-v1"
 CHUNK_DRS_STAGED_RETRY_DIAGNOSTICS_POLICY = "record-non-improving-staged-retry-v1"
-CHUNK_DRS_STAGE_FAILURE_CACHE_POLICY = "cache-invalid-json-stage-failures-v1"
+CHUNK_DRS_STAGE_FAILURE_CACHE_POLICY = "cache-invalid-json-stage-failures-v2"
 CHUNK_DRS_DYNAMIC_SKELETON_BUDGET_POLICY = "nested-field-like-source-spans-allow-768-v2"
 CHUNK_DRS_DYNAMIC_OUTPUT_BUDGET_POLICY = "source-aware-tiny-prose-544-short-768-1024-v2"
 CHUNK_DRS_DYNAMIC_CONDITION_BUDGET_POLICY = "compact-nontemporal-condition-stage-floor-528-v2"
@@ -139,7 +139,7 @@ CHUNK_DRS_COMPACT_FACT_POLICY_LEGACY = "compact-model-facts-to-root-drs-v1"
 CHUNK_DRS_COMPACT_FACT_POLICY_PREVIOUS = "compact-model-facts-to-root-drs-v2"
 CHUNK_DRS_COMPACT_FACT_POLICY = "compact-model-facts-with-embedded-scope-predicate-v5"
 CHUNK_DRS_COMPACT_TEMPORAL_SOURCE_POLICY = "compact-source-span-explicit-timestamp-v1"
-CHUNK_DRS_COMPACT_RETRY_POLICY = "retry-compact-invalid-json-larger-budget-v1"
+CHUNK_DRS_COMPACT_RETRY_POLICY = "retry-compact-invalid-json-larger-budget-v2"
 QUERY_DRS_SCHEMA_VERSION = "query-drs-v3"
 QUERY_DRS_VALIDATION_POLICY = "strict-query-drs-version-question-evidence-box-dag-repair-operators-v10"
 QUERY_DRS_ARRAY_CAP_POLICY = "reserved_output_tokens_div_96_4_8-v1"
@@ -298,10 +298,10 @@ def default_compact_chunk_drs_n_predict(chunk_text: str = "") -> int:
             pass
     token_count = len(content_tokens(chunk_text))
     if token_count <= 20:
-        return 72
+        return 384
     if token_count <= 60:
-        return 112
-    return 160
+        return 768
+    return 1024
 
 
 ANSWER_TYPE_ALIASES = {
@@ -4168,7 +4168,7 @@ def _compact_chunk_drs_retry_budgets(n_predict: int) -> list[int]:
             if value > 0 and value != n_predict and value not in budgets:
                 budgets.append(value)
         return budgets
-    budgets = [max(160, n_predict * 2), 256]
+    budgets = [max(768, n_predict * 2), max(1536, n_predict * 4)]
     return [value for value in dict.fromkeys(budgets) if value > n_predict]
 
 
@@ -4639,7 +4639,7 @@ def _chunk_drs_validation_feedback_payload(validation: dict[str, Any], *, stage:
     corrections: list[str] = []
     for error in errors:
         if error == "duplicate_or_missing_referent_id":
-            corrections.append("Every discourse referent must have one unique id r0, r1, ...; do not reuse a referent id for two discourse referents.")
+            corrections.append("Every discourse referent must have one unique id r0, r1, ...; do not reuse a referent id for two discourse referents, and if a referent cannot be uniquely declared, omit it rather than duplicating an id.")
         elif error == "duplicate_or_missing_box_id":
             corrections.append("Every DRS box must have one unique id b0, b1, ...; do not reuse a box id for two scoped contexts.")
         elif error == "duplicate_or_missing_condition_id":
@@ -4678,7 +4678,8 @@ def build_chunk_drs_skeleton_prompt(chunk_text: str, *, rel_path: str = "", cont
         "outside knowledge, or handler names. Declare exactly one root asserted box with id b0 and parent_id ''; "
         "that root is only the containing discourse, not permission to flatten embedded scoped propositions into "
         "asserted fact. Use "
-        "stable referent ids r0, r1, ...; box ids b0, b1, ...; and temporal ids t0, t1, ... in order. Use "
+        "stable referent ids r0, r1, ...; box ids b0, b1, ...; and temporal ids t0, t1, ... in order. "
+        "IDs are single-use: never emit two referents with the same id, two boxes with the same id, or two temporal records with the same id. If uncertain, emit fewer declared items rather than repeating an id. Use "
         "subordinate boxes only for scoped DRS contexts such as reports, quotes, beliefs, negation, conditionals, "
         "uncertainty, dreams, fiction, and modality; subordinate boxes must be distinct from the containing box "
         "and parent links must be acyclic. Conditions for embedded propositions inside those contexts must use "
@@ -4729,7 +4730,7 @@ def build_chunk_drs_condition_prompt(
         validation_feedback_text
         + "JSON only. Stage 2 of source-grounded DRS extraction. Emit conditions using only the declared "
         "referent, box, and temporal ids. Do not invent ids; target_id is schema-constrained to declared ids or ''. "
-        "Use stable condition ids c0, c1, c2, ... in order. "
+        "Use stable condition ids c0, c1, c2, ... in order. IDs are single-use: never emit two conditions with the same id, and use only declared referent, box, and temporal ids from the stage input. "
         "If an argument is a literal phrase rather than a declared id, set target_id to '' and put the exact "
         "phrase in value and/or evidence_text. Do not emit identity hypotheses or temporal records in this stage. "
         "When a declared temporal record scopes a condition, set that condition's temporal_id to the declared "
