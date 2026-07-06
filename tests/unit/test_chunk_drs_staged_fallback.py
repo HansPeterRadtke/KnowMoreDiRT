@@ -1390,9 +1390,9 @@ def test_chunk_drs_dynamic_output_budget_for_short_chunks(monkeypatch) -> None:
     monkeypatch.delenv("KMD_CHUNK_DRS_N_PREDICT", raising=False)
 
     assert default_chunk_drs_n_predict(model) == 8192  # type: ignore[arg-type]
-    assert default_chunk_drs_n_predict(model, tiny_prose) == 8192  # type: ignore[arg-type]
-    assert default_chunk_drs_n_predict(model, compact_record) == 8192  # type: ignore[arg-type]
-    assert default_chunk_drs_n_predict(model, field_dense) == 8192  # type: ignore[arg-type]
+    assert default_chunk_drs_n_predict(model, tiny_prose) == 1152  # type: ignore[arg-type]
+    assert default_chunk_drs_n_predict(model, compact_record) == 896  # type: ignore[arg-type]
+    assert default_chunk_drs_n_predict(model, field_dense) == 2688  # type: ignore[arg-type]
     assert default_chunk_drs_n_predict(model, medium_text) == 8192  # type: ignore[arg-type]
     assert default_chunk_drs_n_predict(model, long_text) == 8192  # type: ignore[arg-type]
 
