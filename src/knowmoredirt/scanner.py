@@ -142,23 +142,30 @@ def _pack_split_units(
     units: list[tuple[int, int, str]],
     *,
     max_pack_chars: int = 0,
+    max_pack_units: int = 0,
 ) -> list[tuple[int, int, str]]:
-    if max_pack_chars <= 0 or len(units) <= 1:
+    if (max_pack_chars <= 0 and max_pack_units <= 0) or len(units) <= 1:
         return units
     packed: list[tuple[int, int, str]] = []
     pack_start: int | None = None
     pack_end: int | None = None
+    pack_count = 0
     for start, end, _unit in units:
         if pack_start is None or pack_end is None:
             pack_start, pack_end = start, end
+            pack_count = 1
             continue
-        if end - pack_start <= max_pack_chars:
+        would_fit_chars = max_pack_chars <= 0 or end - pack_start <= max_pack_chars
+        would_fit_units = max_pack_units <= 0 or pack_count < max_pack_units
+        if would_fit_chars and would_fit_units:
             pack_end = end
+            pack_count += 1
             continue
         out_start, out_end, value = _strip_original_span(text, pack_start, pack_end)
         if value:
             packed.append((out_start, out_end, value))
         pack_start, pack_end = start, end
+        pack_count = 1
     if pack_start is not None and pack_end is not None:
         out_start, out_end, value = _strip_original_span(text, pack_start, pack_end)
         if value:
@@ -171,6 +178,7 @@ def scan_folder(
     *,
     max_unit_chars: int = 0,
     pack_unit_chars: int = 0,
+    pack_unit_count: int = 0,
 ) -> tuple[list[Document], list[Sentence]]:
     root = Path(folder_path)
     if not root.exists():
@@ -245,7 +253,12 @@ def scan_folder(
         )
         documents.append(document)
         raw_units = split_units(text, max_unit_chars=max_unit_chars)
-        packed_units = _pack_split_units(text, raw_units, max_pack_chars=pack_unit_chars)
+        packed_units = _pack_split_units(
+            text,
+            raw_units,
+            max_pack_chars=pack_unit_chars,
+            max_pack_units=pack_unit_count,
+        )
         for order, (start, end, unit) in enumerate(packed_units):
             unit_hash = hashlib.sha256(unit.encode("utf-8", errors="replace")).hexdigest()
             sentences.append(

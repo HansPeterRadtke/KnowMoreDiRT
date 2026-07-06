@@ -243,9 +243,9 @@ def default_chunk_drs_n_predict(client: LocalModelClient | None = None, chunk_te
             return context_budget.output_tokens
         source_tokens = max(1, _estimate_tokens(source_text))
         floor_ratio = context_ratio(("KMD_CHUNK_DRS_OUTPUT_FLOOR_RATIO",), 1.0 / 512.0)
-        source_ratio = float(os.environ.get("KMD_CHUNK_DRS_OUTPUT_SOURCE_TOKEN_RATIO", "64"))
+        source_ratio = float(os.environ.get("KMD_CHUNK_DRS_OUTPUT_SOURCE_TOKEN_RATIO", "8"))
         if source_ratio <= 0.0:
-            source_ratio = 64.0
+            source_ratio = 8.0
         source_scaled = int(round(source_tokens * source_ratio))
         floor_tokens = int(round(context_size * floor_ratio))
         return max(1, min(context_budget.output_tokens, max(floor_tokens, source_scaled)))

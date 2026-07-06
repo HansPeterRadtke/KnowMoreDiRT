@@ -86,3 +86,12 @@ def test_scanner_pack_respects_pack_limit(tmp_path: Path) -> None:
     assert len(packed) == 2
     assert packed[0].text == "Alpha state red.\nBeta owner Iris."
     assert packed[1].text == "Gamma deadline Friday."
+
+
+def test_scanner_pack_respects_unit_count_limit(tmp_path: Path) -> None:
+    text = "One.\nTwo.\nThree.\nFour.\nFive."
+    (tmp_path / "notes.txt").write_text(text, encoding="utf-8")
+
+    _, packed = scan_folder(tmp_path, pack_unit_chars=1000, pack_unit_count=2)
+
+    assert [item.text for item in packed] == ["One.\nTwo.", "Three.\nFour.", "Five."]

@@ -533,6 +533,16 @@ def _structural_speaker_surface_from_relations(relations: list[ExtractedRelation
     return ""
 
 
+def _scan_pack_unit_count() -> int:
+    configured = os.environ.get("KMD_SCAN_PACK_MAX_UNITS", "").strip()
+    if configured:
+        try:
+            return max(0, int(configured))
+        except ValueError:
+            pass
+    return 8
+
+
 def _scan_pack_unit_chars(semantic_client: Any | None) -> int:
     enabled = os.environ.get("KMD_SCAN_PACK_UNITS", "1").strip().lower() not in {"0", "false", "no", "off"}
     if not enabled:
@@ -797,6 +807,7 @@ def ingest_folder(
         folder_path,
         max_unit_chars=scan_unit_chars,
         pack_unit_chars=scan_pack_chars,
+        pack_unit_count=_scan_pack_unit_count() if scan_pack_chars else 0,
     )
     run_id = "" if created_store else store.latest_run_id(folder_path)
     if run_id:
