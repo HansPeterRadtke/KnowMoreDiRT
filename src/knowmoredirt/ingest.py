@@ -533,6 +533,19 @@ def _structural_speaker_surface_from_relations(relations: list[ExtractedRelation
     return ""
 
 
+def _scan_pack_unit_chars(semantic_client: Any | None) -> int:
+    enabled = os.environ.get("KMD_SCAN_PACK_UNITS", "1").strip().lower() not in {"0", "false", "no", "off"}
+    if not enabled:
+        return 0
+    configured = os.environ.get("KMD_SCAN_PACK_MAX_CHARS", "").strip()
+    if configured:
+        try:
+            return max(0, int(configured))
+        except ValueError:
+            pass
+    return _scan_unit_max_chars(semantic_client)
+
+
 def _scan_unit_max_chars(semantic_client: Any | None) -> int:
     configured = os.environ.get("KMD_SCAN_UNIT_MAX_CHARS", "").strip()
     if configured:
@@ -774,7 +787,17 @@ def ingest_folder(
     created_store = store is None
     store = store or DSPGStore(create_indexes=False)
     ingest_started = time.monotonic()
-    documents, sentences = scan_folder(folder_path, max_unit_chars=_scan_unit_max_chars(semantic_client))
+    scan_unit_chars = _scan_unit_max_chars(semantic_client)
+    scan_pack_chars = (
+        _scan_pack_unit_chars(semantic_client)
+        if semantic_client is not None and bool(use_semantic_frames or use_drs_semantics)
+        else 0
+    )
+    documents, sentences = scan_folder(
+        folder_path,
+        max_unit_chars=scan_unit_chars,
+        pack_unit_chars=scan_pack_chars,
+    )
     run_id = "" if created_store else store.latest_run_id(folder_path)
     if run_id:
         store.execute("UPDATE extraction_runs SET status=? WHERE run_id=?", ("running", run_id))

@@ -61,3 +61,28 @@ def test_scanner_skips_configured_kmd_cache_inside_source_root(tmp_path: Path, m
     assert "cache/user-note.txt" in rel_paths
     assert ".kmd-generated-cache/cached.json" not in rel_paths
     assert all("Alpha state red" not in sentence.text for sentence in sentences)
+
+
+def test_scanner_packs_sentence_units_when_configured(tmp_path: Path) -> None:
+    text = "Alpha state red.\nBeta owner Iris.\nGamma deadline Friday."
+    (tmp_path / "notes.txt").write_text(text, encoding="utf-8")
+
+    _, unpacked = scan_folder(tmp_path)
+    _, packed = scan_folder(tmp_path, pack_unit_chars=1000)
+
+    assert len(unpacked) == 3
+    assert len(packed) == 1
+    assert packed[0].text == text
+    assert packed[0].char_start == 0
+    assert packed[0].char_end == len(text)
+
+
+def test_scanner_pack_respects_pack_limit(tmp_path: Path) -> None:
+    text = "Alpha state red.\nBeta owner Iris.\nGamma deadline Friday."
+    (tmp_path / "notes.txt").write_text(text, encoding="utf-8")
+
+    _, packed = scan_folder(tmp_path, pack_unit_chars=34)
+
+    assert len(packed) == 2
+    assert packed[0].text == "Alpha state red.\nBeta owner Iris."
+    assert packed[1].text == "Gamma deadline Friday."
