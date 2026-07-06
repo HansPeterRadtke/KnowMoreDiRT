@@ -862,7 +862,7 @@ def test_local_model_complete_json_returns_exact_request_audit(monkeypatch) -> N
     monkeypatch.setattr("urllib.request.urlopen", fake_urlopen)
     monkeypatch.setenv("KMD_LOCAL_MODEL_API", "chat")
     monkeypatch.setenv("KMD_LOCAL_MODEL_CONSTRAINT_MODE", "native")
-    monkeypatch.setenv("KMD_LOCAL_MODEL_MIN_CONSTRAINED_JSON_TOKENS", "32")
+    monkeypatch.setenv("KMD_LOCAL_MODEL_MIN_CONSTRAINED_JSON_TOKENS", "1")
 
     client = LocalModelClient(endpoint="http://127.0.0.1:14829/v1", timeout_seconds=30)
     result = client.complete_json(
@@ -885,7 +885,7 @@ def test_local_model_complete_json_returns_exact_request_audit(monkeypatch) -> N
     assert request_body["messages"][-1]["content"] == audit["effective_prompt"]
     assert request_body["response_format"]["json_schema"]["schema"]["required"] == ["ok"]
     assert audit["request_settings"]["n_predict"] == 16
-    assert audit["request_settings"]["effective_n_predict"] == 32
+    assert audit["request_settings"]["effective_n_predict"] == 16
 
 
 
