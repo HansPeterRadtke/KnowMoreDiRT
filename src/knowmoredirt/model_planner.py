@@ -131,7 +131,7 @@ CHUNK_DRS_MONOLITHIC_ID_POLICY = "monolithic-stable-id-enums-v1"
 CHUNK_DRS_COMPACT_UNDERCOVERAGE_POLICY = "retry-delimiter-rich-low-condition-density-v1"
 CHUNK_DRS_STAGED_RETRY_DIAGNOSTICS_POLICY = "record-non-improving-staged-retry-v1"
 CHUNK_DRS_STAGE_FAILURE_CACHE_POLICY = "cache-invalid-json-stage-failures-v2"
-CHUNK_DRS_DYNAMIC_SKELETON_BUDGET_POLICY = "nested-field-like-source-spans-allow-768-v2"
+CHUNK_DRS_DYNAMIC_SKELETON_BUDGET_POLICY = "large-source-root-box-floor-2048-v3"
 CHUNK_DRS_DYNAMIC_OUTPUT_BUDGET_POLICY = "source-aware-tiny-prose-544-short-768-1024-v2"
 CHUNK_DRS_DYNAMIC_CONDITION_BUDGET_POLICY = "compact-nontemporal-condition-stage-floor-528-v2"
 CHUNK_DRS_STAGED_FIRST_POLICY = "field-like-source-spans-before-monolithic-v1"
@@ -1185,6 +1185,7 @@ def chunk_drs_json_schema(
     drs_properties = drs_schema.get("properties")
     if not isinstance(drs_properties, dict):
         return schema
+    drs_properties["boxes"]["minItems"] = 1
     if source_id is not None:
         drs_properties["source_id"] = _schema_enum({source_id})
     if constrain_stable_ids:
@@ -1418,13 +1419,18 @@ def default_staged_chunk_drs_skeleton_n_predict(
             return max(1, int(configured))
         except ValueError:
             pass
-    base = max(192, min(int(n_predict), 384))
+    estimated_source_tokens = _estimate_tokens(source_text) if source_text else 0
+    base = max(384, min(int(n_predict), 768))
+    if estimated_source_tokens >= 8192:
+        base = max(base, min(int(n_predict), 2048))
+    if estimated_source_tokens >= 32768:
+        base = max(base, min(int(n_predict), 4096))
     if (
         source_text
         and _chunk_drs_structural_condition_floor(source_text, max_evidence_chars) >= 4
         and any(delimiter in source_text for delimiter in "{}[]")
     ):
-        return max(base, 768)
+        return max(base, min(int(n_predict), 2048))
     return base
 
 
@@ -1511,7 +1517,7 @@ def chunk_drs_skeleton_json_schema(
                     "schema_version": _schema_enum({CHUNK_DRS_SCHEMA_VERSION}),
                     "source_id": _schema_enum({source_id}),
                     "referents": _schema_array_limited(referent_schema, max_array_items),
-                    "boxes": _schema_array_limited(box_schema, max_array_items),
+                    "boxes": {**_schema_array_limited(box_schema, max_array_items), "minItems": 1},
                     "temporal_records": _schema_array_limited(temporal_schema, max_array_items),
                 },
             )
