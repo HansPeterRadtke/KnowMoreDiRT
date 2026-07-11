@@ -237,7 +237,7 @@ class KnowMoreDiRTEngine:
         return _env_true("KMD_TEST_ALLOW_NO_MODEL") and "PYTEST_CURRENT_TEST" in os.environ
 
     def _model_evidence_tools_allowed(self) -> bool:
-        value = os.environ.get("KMD_MODEL_EVIDENCE_TOOLS", "0").strip().lower()
+        value = os.environ.get("KMD_MODEL_EVIDENCE_TOOLS", "1").strip().lower()
         if value in {"0", "false", "no", "off"}:
             return False
         return True
@@ -382,6 +382,14 @@ class KnowMoreDiRTEngine:
     def dspg_integrity(self) -> str:
         return self.store.integrity_check()
 
+    def _complete_answer(self, answer: Answer | None) -> bool:
+        if answer is None:
+            return False
+        text = str(answer.text or "").strip()
+        if not text:
+            return False
+        return normalize(text) != "unknown"
+
     def answer(self, question: str) -> Answer:
         text = str(question or "").strip()
         if not text:
@@ -389,13 +397,13 @@ class KnowMoreDiRTEngine:
 
         if self._use_local_model:
             model_answer = self._answer_with_local_model(text)
-            if model_answer is None:
-                answer = self._unknown_answer("local model DRT path found no complete grounded answer")
-                self.last_answer = answer
-                return answer
-            model_answer = self._cleanup_public_answer(model_answer, question=text)
-            self.last_answer = model_answer
-            return model_answer
+            if self._complete_answer(model_answer):
+                model_answer = self._cleanup_public_answer(model_answer, question=text)
+                self.last_answer = model_answer
+                return model_answer
+            answer = self._unknown_answer("local model DRT path found no complete grounded answer")
+            self.last_answer = answer
+            return answer
 
         for source_answer_fn in (
             self._answer_with_generic_sentence_source,
@@ -1857,6 +1865,23 @@ class KnowMoreDiRTEngine:
             re.I,
         )
         dossier_pattern = re.compile(r"\b(?:dossier|record|note)\s*:\s*(?P<target>[^.;]+)", re.I)
+
+        def add_row(document: Document, role: str, actor_id: str, target: str, text: str, score: float = 0.9) -> None:
+            actor_id = str(actor_id or "").strip()
+            target = clean_extracted_value(str(target or "")).strip()
+            text = clean_extracted_value(str(text or "")).strip()
+            if not actor_id or not target or not text:
+                return
+            row = {
+                "role": normalize(role),
+                "person": actor_id,
+                "actor_id": actor_id,
+                "target": target,
+                "_text": text,
+                "_source": document.rel_path,
+            }
+            docs.setdefault(document.rel_path, []).append((row, Evidence(document.rel_path, text, score, source_kind="metadata_record")))
+
         for document in self.documents:
             current_target = ""
             for index, raw_line in enumerate(document.text.splitlines()):
@@ -1882,38 +1907,79 @@ class KnowMoreDiRTEngine:
 
     def _answer_with_actor_role_ids_source(self, question: str, prior_answer: Answer | None = None) -> Answer | None:
         qnorm = normalize(question)
-        if "actor" not in qnorm or "id" not in qnorm:
+        role_requested = any(
+            token in qnorm
+            for token in [
+                TOK_AUTHOR,
+                TOK_REVIEWER,
+                TOK_KEY_REVIEWER,
+                TOK_APPROVER,
+                TOK_OWNER,
+                TOK_OWNERS,
+                "employee id",
+                "employee ids",
+                "user id",
+                "user ids",
+            ]
+        )
+        id_requested = "id" in qnorm or "identifier" in qnorm
+        if not role_requested or not id_requested:
             return None
         frame = plan_question(question)
         target = ""
-        target_match = re.search(r"(?:of|for)\s+(?P<target>[A-Z][A-Za-z0-9_-]*(?:\s+[A-Z][A-Za-z0-9_-]*)+)(?:\?|$)", question)
-        if target_match:
-            target = clean_extracted_value(target_match.group("target")).strip()
+        scope = ""
+        role_target_match = re.search(
+            r"(?:authors?|reviewers?|key\s+reviewers?|approvers?|owners?)(?:\s+and\s+(?:authors?|key\s+reviewers?|reviewers?|approvers?|owners?))*\s+of\s+(?:the\s+)?(?P<target>[^?]+?)(?:\s+for\s+(?:the\s+)?(?P<scope>[^?]+?))?\s*\?*$",
+            question,
+            re.I,
+        )
+        if role_target_match:
+            target = clean_extracted_value(role_target_match.group("target") or "").strip()
+            scope = clean_extracted_value(role_target_match.group("scope") or "").strip()
         if not target:
-            target = next((clean_extracted_value(anchor).strip() for anchor in frame.target_anchors if normalize(anchor)), "")
+            target = self._question_target_from_preposition(question, ("of",))
+        anchors = [clean_extracted_value(anchor).strip() for anchor in frame.target_anchors if normalize(anchor)]
+        if not target:
+            documentish = [
+                anchor
+                for anchor in anchors
+                if any(token in normalize(anchor) for token in ["document", "report", "requirements", "vision", "research", "spec"])
+            ]
+            target = next(iter(documentish or anchors), "")
+        if not scope:
+            target_norm_for_scope = normalize(target)
+            scope = next((anchor for anchor in anchors if normalize(anchor) != target_norm_for_scope), "")
         target_norm = normalize(target)
-        if (TOK_AUTHOR + " and " + TOK_REVIEWER) in qnorm or (TOK_AUTHOR + " and " + TOK_REVIEWER + "s") in qnorm or (TOK_AUTHOR + "s and " + TOK_REVIEWER + "s") in qnorm:
-            wanted_roles = [TOK_AUTHOR, TOK_KEY_REVIEWER, TOK_REVIEWER]
-        elif TOK_KEY_REVIEWER in qnorm:
-            wanted_roles = [TOK_KEY_REVIEWER]
+        scope_norm = normalize(scope)
+        wanted_roles: list[str] = []
+        if TOK_AUTHOR in qnorm:
+            wanted_roles.append(TOK_AUTHOR)
+        if TOK_KEY_REVIEWER in qnorm:
+            wanted_roles.append(TOK_KEY_REVIEWER)
+        if TOK_REVIEWER in qnorm and TOK_KEY_REVIEWER not in qnorm:
+            wanted_roles.extend([TOK_REVIEWER, TOK_KEY_REVIEWER])
         elif TOK_REVIEWER in qnorm:
-            wanted_roles = [TOK_REVIEWER, TOK_KEY_REVIEWER]
-        elif TOK_AUTHOR in qnorm:
-            wanted_roles = [TOK_AUTHOR]
-        elif TOK_APPROVER in qnorm:
-            wanted_roles = [TOK_APPROVER]
-        else:
+            wanted_roles.append(TOK_REVIEWER)
+        if TOK_APPROVER in qnorm:
+            wanted_roles.append(TOK_APPROVER)
+        if TOK_OWNER in qnorm or TOK_OWNERS in qnorm:
+            wanted_roles.append(TOK_OWNER)
+        wanted_roles = list(dict.fromkeys(wanted_roles))
+        if not wanted_roles:
             return None
         person_match = re.search(r"named\s+(?P<person>[A-Z][a-z]+\s+[A-Z][a-z]+)", question)
         named_person = normalize(person_match.group("person")) if person_match else ""
-        for _rel_path, rows in self._actor_role_rows_by_document().items():
-            doc_material = normalize(" ".join([row.get("target", "") + " " + row.get("_text", "") for row, _ev in rows]))
-            if target_norm and not self._source_field_contains_any(doc_material, [target_norm]):
+        for rel_path, rows in self._actor_role_rows_by_document().items():
+            doc_material = normalize(" ".join([rel_path, *[row.get("target", "") + " " + row.get("_text", "") for row, _ev in rows]]))
+            if scope_norm and not self._anchor_has_grounded_token(scope_norm, doc_material):
+                continue
+            if target_norm and not self._anchor_has_grounded_token(target_norm, doc_material):
                 continue
             selected: list[tuple[str, Evidence]] = []
             for role in wanted_roles:
                 for row, evidence in rows:
-                    if target_norm and row.get("target") and not self._source_field_contains_any(row.get("target", ""), [target_norm]):
+                    row_target = normalize(row.get("target", ""))
+                    if target_norm and row_target and not self._anchor_has_grounded_token(target_norm, row_target):
                         continue
                     if row.get("role") != role:
                         continue
@@ -3333,20 +3399,120 @@ class KnowMoreDiRTEngine:
         ]
         return "\n".join(parts)[:max_chars]
 
+    def _source_text_contains_benchmark_answer_metadata(self, text: str) -> bool:
+        low = normalize(text)
+        return any(
+            marker in low
+            for marker in [
+                "ground truth",
+                "ground_truth",
+                "answerable questions",
+                "answerable_questions",
+                "unanswerable questions",
+                "unanswerable_questions",
+                "gold answer",
+                "gold_answers",
+            ]
+        )
+
+    def _focused_evidence_windows(
+        self,
+        question: str,
+        frame: QueryFrame,
+        *,
+        limit: int = 8,
+        window_chars: int = 1800,
+    ) -> list[Evidence]:
+        """Lexically focus large raw sources without deciding the answer value."""
+        stop_tokens = {
+            "what", "which", "who", "when", "where", "find", "added", "add", "adds", "new",
+            "feature", "features", "related", "relate", "with", "about", "have", "been", "are",
+            "the", "and", "for", "from", "that", "this", "does", "did", "product", "document",
+            "report", "file", "answer", "argument", "theme",
+        }
+        question_tokens = [token for token in content_tokens(question) if len(token) > 2 and token not in stop_tokens]
+        relation_tokens = [token for value in [frame.requested_relation, *frame.relation_terms, *frame.constraints] for token in content_tokens(value) if len(token) > 2 and token not in stop_tokens]
+        anchor_tokens = [token for anchor in self._frame_scope_anchors(frame) for token in content_tokens(anchor) if len(token) > 2]
+        query_tokens = list(dict.fromkeys([*anchor_tokens, *question_tokens, *relation_tokens]))
+        if not query_tokens:
+            return []
+        windows: list[tuple[float, str, int, int, str]] = []
+        half = max(300, window_chars // 2)
+        for document in self.documents:
+            rel_norm = normalize(document.rel_path)
+            doc_norm = normalize(document.text)
+            material_norm = normalize(" ".join([rel_norm, doc_norm[:120000]]))
+            anchors = [normalize(anchor) for anchor in self._frame_scope_anchors(frame) if normalize(anchor)]
+            if anchors and not all(self._anchor_has_grounded_token(anchor, material_norm) for anchor in anchors):
+                continue
+            lowered = document.text.lower()
+            positions: list[int] = []
+            for token in query_tokens:
+                search_token = token.lower()
+                start = 0
+                for _ in range(16):
+                    pos = lowered.find(search_token, start)
+                    if pos < 0:
+                        break
+                    positions.append(pos)
+                    start = pos + max(1, len(search_token))
+            if not positions:
+                continue
+            for pos in sorted(set(positions)):
+                start = max(0, pos - half)
+                end = min(len(document.text), pos + half)
+                window = document.text[start:end]
+                if self._source_text_contains_benchmark_answer_metadata(window):
+                    continue
+                window_norm = normalize(" ".join([document.rel_path, window]))
+                token_hits = sum(1 for token in query_tokens if token in window_norm)
+                anchor_hits = sum(1 for token in anchor_tokens if token in window_norm or any(variant in window_norm for variant in term_variants(token)))
+                if token_hits < 2 and not anchor_hits:
+                    continue
+                score = float(token_hits * 2 + anchor_hits * 6)
+                windows.append((score, document.rel_path, start, end, window))
+        windows.sort(key=lambda item: (-item[0], item[1], item[2]))
+        selected: list[Evidence] = []
+        seen: set[tuple[str, int, int]] = set()
+        for score, rel_path, start, end, window in windows:
+            key = (rel_path, start // 500, end // 500)
+            if key in seen:
+                continue
+            seen.add(key)
+            selected.append(
+                Evidence(
+                    rel_path=rel_path,
+                    text=window,
+                    score=score,
+                    char_start=start,
+                    char_end=end,
+                    source_kind="focused_window",
+                )
+            )
+            if len(selected) >= limit:
+                break
+        return selected
+
     def _evidence_payload(self, evidence: list[Evidence], *, limit: int = 8) -> list[dict[str, str]]:
-        return [
-            {
-                "source": item.rel_path,
-                "text": self._evidence_window_text(item),
-                "span_id": item.span_id,
-                "chunk_order": "" if item.chunk_order is None else str(item.chunk_order),
-                "char_start": "" if item.char_start is None else str(item.char_start),
-                "char_end": "" if item.char_end is None else str(item.char_end),
-                "source_kind": item.source_kind,
-            }
-            for item in evidence[:limit]
-            if item.rel_path and item.text
-        ]
+        payload: list[dict[str, str]] = []
+        for item in evidence[:limit]:
+            if not item.rel_path or not item.text:
+                continue
+            text = self._evidence_window_text(item)
+            if self._source_text_contains_benchmark_answer_metadata(text):
+                continue
+            payload.append(
+                {
+                    "source": item.rel_path,
+                    "text": text,
+                    "span_id": item.span_id,
+                    "chunk_order": "" if item.chunk_order is None else str(item.chunk_order),
+                    "char_start": "" if item.char_start is None else str(item.char_start),
+                    "char_end": "" if item.char_end is None else str(item.char_end),
+                    "source_kind": item.source_kind,
+                }
+            )
+        return payload
 
     def _document_provenance_summary(self, document: Document | None) -> dict[str, object]:
         if document is None:
@@ -3445,13 +3611,18 @@ class KnowMoreDiRTEngine:
     def _matching_evidence(self, evidence: list[Evidence], evidence_span: str, proposed: str) -> list[Evidence]:
         matches: list[Evidence] = []
         proposed_clean = str(proposed or "").strip().strip(" .;:,")
+        proposed_parts = [part.strip().strip(" .;:,") for part in answer_parts(proposed) if part.strip()]
+        span_parts = [part.strip() for part in str(evidence_span or "").splitlines() if part.strip()]
         for item in evidence:
             window = self._evidence_window_text(item)
-            if evidence_span in window and (
+            span_match = evidence_span in window or any(part in window for part in span_parts)
+            answer_match = (
                 proposed in window
                 or (proposed_clean and proposed_clean in window)
+                or any(part and part in window for part in proposed_parts)
                 or self._is_boolean_text(proposed)
-            ):
+            )
+            if span_match and answer_match:
                 matches.append(item)
         if matches:
             return matches
@@ -3489,6 +3660,104 @@ class KnowMoreDiRTEngine:
                 matches.append(matched)
         return matches
 
+    def _model_planned_answer_tools(
+        self,
+        frame: QueryFrame,
+        expected: ExpectedAnswer,
+    ) -> list[tuple[str, Any]]:
+        answer_type = expected.answer_type
+        aggregation = normalize(frame.aggregation)
+        relation_material = normalize(
+            " ".join(
+                [
+                    frame.requested_relation,
+                    *frame.relation_terms,
+                    *frame.constraints,
+                    *frame.answer_variables,
+                    *frame.scope_requirements,
+                ]
+            )
+        )
+        tools: list[tuple[str, Any]] = []
+
+        def add(name: str, fn: Any) -> None:
+            if name not in {existing for existing, _fn in tools}:
+                tools.append((name, fn))
+
+        if answer_type == "count" or aggregation == "count":
+            add("count_records", self._answer_with_arithmetic_source)
+            add("count_source_rows", self._answer_with_source_rows)
+        if answer_type in {"identifier", "person", "actor", "organization", "unknown"}:
+            add("extract_actor_role_ids", self._answer_with_actor_role_ids_source)
+            add("extract_reference_role_chain", self._answer_with_reference_role_chain_source)
+            add("extract_review_or_approval", self._answer_with_review_or_approval_source)
+            add("extract_labeled_attribute", self._answer_with_labeled_attribute_source)
+            add("extract_row_field", self._answer_with_row_field_source)
+            add("extract_source_rows", self._answer_with_source_rows)
+            add("extract_exact_source_field", self._answer_with_exact_source_field)
+            add("extract_table_field", self._answer_with_table_field_source)
+            add("extract_structured_object", self._answer_with_structured_object_source)
+        if answer_type in {"url", "file_path", "date_time", "state", "metadata_value", "content_phrase", "unknown"}:
+            add("extract_discussion_belief", self._answer_with_discussion_belief_source)
+            add("extract_discourse_clause", self._answer_with_discourse_clause_source)
+            add("extract_generic_sentence", self._answer_with_generic_sentence_source)
+            add("extract_generic_labeled_field", self._answer_with_generic_labeled_field_source)
+            add("extract_precise_source_content", self._answer_with_precise_source_content)
+            add("extract_table_field", self._answer_with_table_field_source)
+            add("extract_structured_object", self._answer_with_structured_object_source)
+            add("extract_row_field", self._answer_with_row_field_source)
+            add("extract_source_rows", self._answer_with_source_rows)
+            add("extract_exact_source_field", self._answer_with_exact_source_field)
+        if "review" in relation_material or "approv" in relation_material:
+            add("extract_review_or_approval", self._answer_with_review_or_approval_source)
+        if "author" in relation_material or "owner" in relation_material or "actor" in relation_material:
+            add("extract_actor_role_ids", self._answer_with_actor_role_ids_source)
+            add("extract_reference_role_chain", self._answer_with_reference_role_chain_source)
+        if "believe" in relation_material or "belief" in relation_material:
+            add("extract_discussion_belief", self._answer_with_discussion_belief_source)
+            add("extract_discourse_clause", self._answer_with_discourse_clause_source)
+            add("extract_generic_sentence", self._answer_with_generic_sentence_source)
+        if "feature" in relation_material or "content" in relation_material or "summary" in relation_material:
+            add("extract_precise_source_content", self._answer_with_precise_source_content)
+            add("extract_generic_sentence", self._answer_with_generic_sentence_source)
+        if "not" in relation_material or "missing" in relation_material or "delayed" in relation_material:
+            add("extract_negated_action", self._answer_with_negated_action_source)
+        add("extract_definition", self._answer_with_definition_source_explanation)
+        add("extract_boolean_source", self._answer_with_boolean_source_explanation)
+        return tools
+
+    def _run_model_planned_answer_tools(
+        self,
+        question: str,
+        frame: QueryFrame,
+        expected: ExpectedAnswer,
+        prior_answer: Answer | None = None,
+    ) -> Answer | None:
+        for tool_name, tool_fn in self._model_planned_answer_tools(frame, expected):
+            try:
+                if tool_fn in {self._answer_with_arithmetic_source, self._answer_with_definition_source_explanation}:
+                    answer = tool_fn(question)
+                else:
+                    answer = tool_fn(question, prior_answer=prior_answer)
+            except TypeError:
+                answer = tool_fn(question)
+            if not self._complete_answer(answer):
+                self._log_progress(f"kmd-answer tool_call name={tool_name} accepted=False")
+                continue
+            if not self._answer_has_source_grounding(answer):
+                self._log_progress(f"kmd-answer tool_call name={tool_name} accepted=False reason=ungrounded")
+                continue
+            if not self._bounded_evidence_covers_targets(frame, answer.evidence):
+                self._log_progress(f"kmd-answer tool_call name={tool_name} accepted=False reason=target_scope_miss")
+                continue
+            if expected.answer_type != "unknown" and not canonicalize_answer(expected, answer.text):
+                self._log_progress(f"kmd-answer tool_call name={tool_name} accepted=False reason=answer_type_mismatch")
+                continue
+            self._attach_model_answer_provenance(answer)
+            self._log_progress(f"kmd-answer tool_call name={tool_name} accepted=True")
+            return answer
+        return None
+
     def _answer_with_local_model(self, question: str) -> Answer | None:
         if self._model_client is None:
             return None
@@ -3524,6 +3793,11 @@ class KnowMoreDiRTEngine:
                     "accepted": False,
                     "source": "model_query_drs",
                     "reason": query_drs_model.get("reason") or "query_drs_projection_failed",
+                    "prompt_hash": query_drs_model.get("prompt_hash"),
+                    "output_hash": query_drs_model.get("output_hash"),
+                    "query_drs_retry_attempts": query_drs_model.get("query_drs_retry_attempts"),
+                    "compact_fallback_attempt": query_drs_model.get("compact_fallback_attempt"),
+                    "validation": query_drs_model.get("validation") if isinstance(query_drs_model.get("validation"), dict) else {},
                 }
                 return None
             model = {
@@ -3546,8 +3820,18 @@ class KnowMoreDiRTEngine:
         planned_frame = frame_from_mapping(question, plan)
         expected = self._expected_from_frame(planned_frame)
         self._materialize_question_semantics(question, planned_frame)
+        tool_answer = self._run_model_planned_answer_tools(question, planned_frame, expected)
+        if self._complete_answer(tool_answer):
+            trace.model_answer_count += 1
+            return tool_answer
         self._log_progress("kmd-answer bounded_query_start")
         answer = self._answer_with_bounded_dspg(question, planned_frame, expected)
+        if self._complete_answer(answer) and not self._bounded_evidence_covers_targets(planned_frame, answer.evidence):
+            diagnostics = self.last_bounded_diagnostics if isinstance(self.last_bounded_diagnostics, dict) else {}
+            execution = diagnostics.setdefault("execution", {}) if isinstance(diagnostics, dict) else {}
+            if isinstance(execution, dict):
+                execution["target_scope_rejected"] = True
+            answer = None
         if answer and normalize(answer.text) != "unknown":
             if answer.reason == "bounded DSPG deterministic arithmetic execution":
                 trace.model_answer_count += 1
@@ -3588,9 +3872,16 @@ class KnowMoreDiRTEngine:
                 trace.model_answer_count += 1
                 answer.reason = "local model query-frame execution"
                 return answer
+        tool_answer = self._run_model_planned_answer_tools(question, planned_frame, expected, prior_answer=answer)
+        if self._complete_answer(tool_answer):
+            trace.model_answer_count += 1
+            return tool_answer
         if not self._bounded_conflict_blocks_model_evidence_fallback():
             evidence_answer = self._answer_with_model_query_evidence(question, expected)
-            if evidence_answer and normalize(evidence_answer.text) != "unknown":
+            if self._complete_answer(evidence_answer):
+                if not self._bounded_evidence_covers_targets(planned_frame, evidence_answer.evidence):
+                    trace.evidence_rejected_count += 1
+                    return None
                 return evidence_answer
         return None
 
@@ -4156,17 +4447,26 @@ class KnowMoreDiRTEngine:
             return None
         if self._model_client is None:
             return None
+        frame_data = self.model_query_trace.last_plan if isinstance(self.model_query_trace.last_plan, dict) else None
+        evidence_frame = frame_from_mapping(question, frame_data) if frame_data else plan_question(question)
+        focused = self._focused_evidence_windows(
+            question,
+            evidence_frame,
+            limit=int(os.environ.get("KMD_FOCUSED_EVIDENCE_LIMIT", "8")),
+            window_chars=int(os.environ.get("KMD_FOCUSED_EVIDENCE_WINDOW_CHARS", "1800")),
+        )
         candidates = self._search(
             question,
             limit=int(os.environ.get("KMD_EVIDENCE_SEARCH_LIMIT", "18")),
             required=None,
         )
-        if not candidates:
+        evidence = list(focused)
+        for sentence, score in candidates[: int(os.environ.get("KMD_EVIDENCE_PAYLOAD_LIMIT", "10"))]:
+            item = self._evidence(sentence, score)
+            if not any(existing.rel_path == item.rel_path and existing.text == item.text for existing in evidence):
+                evidence.append(item)
+        if not evidence:
             return None
-        evidence = [
-            self._evidence(sentence, score)
-            for sentence, score in candidates[: int(os.environ.get("KMD_EVIDENCE_PAYLOAD_LIMIT", "10"))]
-        ]
         payload = self._evidence_payload(evidence, limit=len(evidence))
         if not payload:
             return None
@@ -4345,27 +4645,62 @@ class KnowMoreDiRTEngine:
         span_norm = normalize(evidence_span)
         return all(self._anchor_has_grounded_token(anchor, span_norm) for anchor in anchors)
 
+    def _frame_scope_anchors(self, frame: QueryFrame) -> list[str]:
+        answer_slots = {normalize(value) for value in frame.answer_variables if normalize(value)}
+        answer_role_tokens = {
+            "actor", "actors", "architect", "architects", "author", "authors", "reviewer", "reviewers",
+            "approver", "approvers", "owner", "owners", "employee", "employees", "id", "ids", "identifier",
+            "identifiers", "person", "people", "user", "users", "customer", "customers", "manager", "managers",
+            "technical", "sales", "support", "team", "teams", "lead", "leads", "stakeholder", "stakeholders",
+        }
+        anchors: list[str] = []
+        for anchor in frame.target_anchors:
+            norm = normalize(anchor)
+            if not norm or norm in answer_slots:
+                continue
+            tokens = [token for token in content_tokens(anchor) if len(token) > 2]
+            if tokens and all(token in answer_role_tokens for token in tokens):
+                continue
+            anchors.append(anchor)
+        return list(dict.fromkeys(anchors))
+
     def _bounded_evidence_covers_targets(self, frame: QueryFrame, evidence: list[Evidence]) -> bool:
-        anchors = [normalize(anchor) for anchor in frame.target_anchors if normalize(anchor)]
+        anchors = [normalize(anchor) for anchor in self._frame_scope_anchors(frame) if normalize(anchor)]
         if not anchors:
             return True
-        material = normalize("\n".join(self._evidence_window_text(item) for item in evidence[:6]))
+        material = normalize(
+            "\n".join(
+                " ".join([item.rel_path or "", item.text or "", self._evidence_window_text(item)])
+                for item in evidence[:6]
+            )
+        )
         return all(self._anchor_has_grounded_token(anchor, material) for anchor in anchors)
 
     def _anchor_has_grounded_token(self, anchor: str, material_norm: str) -> bool:
-        tokens = [token for token in content_tokens(anchor) if len(token) > 2]
+        anchor_norm = normalize(anchor)
+        tokens = {token for token in content_tokens(anchor_norm) if len(token) > 2}
+        tokens.update(token for token in re.findall(r"[a-z0-9]+", anchor_norm) if len(token) > 2)
         if not tokens:
-            return normalize(anchor) in material_norm
+            return anchor_norm in material_norm
+        generic_tokens = {
+            "product", "document", "report", "file", "spec", "specification", "specifications",
+            "requirements", "requirement", "vision", "market", "research", "technical",
+            "release", "previous", "current", "new", "feature", "features", "issue", "issues",
+        }
+        required_tokens = [token for token in tokens if token not in generic_tokens] or sorted(tokens)
         material_tokens = set(content_tokens(material_norm))
+        material_tokens.update(re.findall(r"[a-z0-9]+", material_norm))
         expanded_material = set(material_tokens)
         for token in material_tokens:
             expanded_material.update(term_variants(token))
-        for token in tokens:
+            expanded_material.update(part for part in re.split(r"[^a-z0-9]+", token) if len(part) > 2)
+        for token in required_tokens:
             if token in expanded_material:
-                return True
+                continue
             if any(variant in expanded_material for variant in term_variants(token)):
-                return True
-        return False
+                continue
+            return False
+        return True
 
     def _answer_with_bounded_dspg(self, question: str, frame: QueryFrame, expected: ExpectedAnswer) -> Answer | None:
         bounded_answer, diagnostics = execute_bounded_query(

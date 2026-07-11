@@ -141,13 +141,13 @@ CHUNK_DRS_COMPACT_FACT_POLICY = "compact-model-facts-with-embedded-scope-predica
 CHUNK_DRS_COMPACT_TEMPORAL_SOURCE_POLICY = "compact-source-span-explicit-timestamp-v1"
 CHUNK_DRS_COMPACT_RETRY_POLICY = "retry-compact-invalid-json-larger-budget-v2"
 QUERY_DRS_SCHEMA_VERSION = "query-drs-v3"
-QUERY_DRS_VALIDATION_POLICY = "strict-query-drs-version-question-evidence-box-dag-repair-operators-v10"
+QUERY_DRS_VALIDATION_POLICY = "strict-query-drs-version-question-evidence-box-dag-repair-operators-semantic-coverage-repair-v13"
 QUERY_DRS_ARRAY_CAP_POLICY = "reserved_output_tokens_div_96_4_8-v1"
-QUERY_DRS_DYNAMIC_OUTPUT_BUDGET_POLICY = "surface-token-budget-short384-mid512-long-context-v1"
-QUERY_DRS_COMPACT_PLAN_POLICY = "compact-model-plan-to-query-drs-v2"
+QUERY_DRS_DYNAMIC_OUTPUT_BUDGET_POLICY = "surface-token-budget-compound1024-large2048-v2"
+QUERY_DRS_COMPACT_PLAN_POLICY = "compact-model-plan-to-query-drs-cache-revalidate-v3"
 CONSTRAINT_TRANSPORT_POLICY = "bounded-json-schema-min4096-structured-record-route-v1"
 QUERY_DRS_COMPACT_UNDERCOVERAGE_POLICY = "broad-slot-uncovered-token-full-fallback-v1"
-QUERY_DRS_REQUEST_FAILURE_RETRY_POLICY = "smaller-full-query-drs-output-budget-v1"
+QUERY_DRS_REQUEST_FAILURE_RETRY_POLICY = "retry-query-drs-grow-output-budget-v2"
 CHUNK_DRS_STRUCTURED_RECORD_ROUTE_POLICY = "structured-records-use-deterministic-extraction-no-drs-skip-v1"
 QUERY_OPERATOR_SCHEMA_POLICY = "query-temporal-aggregation-operator-enums-v1"
 QUERY_FRAME_SCHEMA_VERSION = "query-frame-v6"
@@ -267,14 +267,18 @@ def default_query_drs_n_predict(client: LocalModelClient | None = None, question
             pass
     context_size = _client_context_size(client)
     if context_size <= 0:
-        return 256
-    context_budget = max(256, min(768, context_size // 48))
+        return 1024
+    context_budget = max(1024, min(2048, context_size // 32))
     token_count = len(content_tokens(question))
     anchor_count = len(visible_anchors(question))
+    q_norm = normalize(question)
+    compound_role = any(token in q_norm for token in [" and ", " or ", "review", "author", "approv", "owner"])
+    if compound_role or anchor_count >= 3:
+        return min(context_budget, 1536)
     if question and token_count <= 14 and anchor_count <= 3:
-        return min(context_budget, 384)
+        return min(context_budget, 768)
     if question and token_count <= 32 and anchor_count <= 6:
-        return min(context_budget, 512)
+        return min(context_budget, 1024)
     return context_budget
 
 
@@ -467,7 +471,7 @@ def _cached_evidence_answer_retryable(payload: dict[str, Any] | None) -> bool:
     ) == "request_failed"
 
 
-def _query_drs_cached_retryable_failure(payload: dict[str, Any] | None) -> bool:
+def _query_drs_retryable_failure(payload: dict[str, Any] | None) -> bool:
     if payload is None:
         return False
     return payload.get("accepted") is False and str(payload.get("reason") or "") in {
@@ -476,6 +480,10 @@ def _query_drs_cached_retryable_failure(payload: dict[str, Any] | None) -> bool:
         "schema_validation_failed",
         "grounding_validation_failed",
     }
+
+
+def _query_drs_cached_retryable_failure(payload: dict[str, Any] | None) -> bool:
+    return _query_drs_retryable_failure(payload)
 
 
 def _write_cache(path: Path | None, payload: dict[str, Any]) -> None:
@@ -1973,7 +1981,13 @@ def build_query_drs_prompt(question: str) -> str:
         "JSON only. Convert the question into a generic DRT query DRS; do not answer it. "
         "Every semantic decision about answer variables, target referents, requested conditions, constraints, "
         "scope, modality, temporal scope, polarity, and aggregation must be represented in the query_drs JSON. "
-        "Use only text visible in the question and no outside knowledge. Use subordinate box_requirements for "
+        "Use only text visible in the question and no outside knowledge. Every visible named or scoped entity, "
+        "project, product, artifact, document title, person, organization, identifier, URL, or source phrase that is "
+        "not itself the answer slot must appear in target_referents; do not keep only one anchor when the question "
+        "contains both an artifact/title and a product/project/entity scope. For compound requests joined by and/or, "
+        "create separate requested_conditions for every requested role or relation; do not collapse authors and "
+        "reviewers, owners and approvers, creators and editors, or similar coordinated roles into only the first "
+        "relation. Use subordinate box_requirements for "
         "questions about reported, believed, negated, conditional, uncertain, hypothetical, fictional, or quoted "
         "content. If a requested condition is in the main asserted query scope and no explicit box_requirement is "
         "needed, set its box_id to the empty string; do not invent a box id without declaring that box. "
@@ -2010,7 +2024,10 @@ def build_compact_query_drs_prompt(question: str) -> str:
         "word, when a narrower phrase appears. targets are non-answer noun phrases the answer is about, excluding verbs. predicates "
         "are verbs or relation words requested by the question. constraints are other visible qualifiers. "
         "temporal_scope is '', 'latest', or 'earliest'. aggregation is '', 'count', 'list', or 'set'. "
-        "Use only words visible in the question and no outside knowledge. "
+        "Use only words visible in the question and no outside knowledge. Preserve every visible non-answer target "
+        "anchor, including product/project/entity scope and artifact/document titles. Split compound role requests "
+        "joined by and/or into separate predicates; do not drop reviewers, approvers, owners, authors, creators, or "
+        "other coordinated requested roles. "
         + json.dumps({"question": question}, ensure_ascii=False)
     )
 
@@ -2178,6 +2195,7 @@ def call_model_query_drs_compact(question: str, client: LocalModelClient, *, n_p
         "n_predict": n_predict,
         "schema": QUERY_DRS_SCHEMA_VERSION,
         "compact_plan_policy": QUERY_DRS_COMPACT_PLAN_POLICY,
+        "validation_policy": QUERY_DRS_VALIDATION_POLICY,
         **constraint,
     }
     cache_context = {**cache_settings, "model_fingerprint": _client_fingerprint(client)}
@@ -2193,10 +2211,16 @@ def call_model_query_drs_compact(question: str, client: LocalModelClient, *, n_p
             if validation.get("schema_valid"):
                 finalized["query_drs"] = repaired["query_drs"]
                 finalized["validation"] = validation
+                finalized["fresh_or_cached"] = "cache"
                 if cache_path is not None and finalized != cached:
                     finalized = _with_model_input_audits(finalized, locals().get("parsed"), locals().get("cached"), locals().get("source_payload"), locals().get("payload"))
                     _write_cache(cache_path, finalized)
-        return finalized
+                return finalized
+            # Do not trust stale accepted query plans after validator/prompt changes.
+            # Treat them as cache misses and force a fresh model call under the current contract.
+        elif not finalized.get("accepted"):
+            finalized["fresh_or_cached"] = "cache"
+            return finalized
     start = time.time()
     try:
         parsed = _complete_structured(
@@ -2423,6 +2447,180 @@ def _repair_query_drs_payload(payload: Any, question: str) -> Any:
         for item in query_drs.get("requested_conditions", [])
         if isinstance(item, dict) and str(item.get("id") or "").strip()
     }
+    # Repair model-produced query DRS objects that are structurally close but dropped validator-required
+    # visible scope anchors or coordinated requested roles. This is a schema/grounding repair: the added
+    # surfaces are copied verbatim from the question and are then revalidated below.
+    generic_anchor_tokens_for_repair = {
+        "product", "document", "report", "file", "spec", "specification", "specifications",
+        "requirements", "requirement", "vision", "market", "research", "technical",
+        "release", "previous", "current", "new", "feature", "features", "issue", "issues",
+    }
+    answer_role_tokens_for_repair = {
+        "actor", "actors", "architect", "architects", "author", "authors", "reviewer", "reviewers",
+        "approver", "approvers", "owner", "owners", "employee", "employees", "id", "ids", "identifier",
+        "identifiers", "person", "people", "user", "users", "customer", "customers", "manager", "managers",
+        "technical", "sales", "support", "team", "teams", "lead", "leads", "stakeholder", "stakeholders",
+    }
+    answer_material = normalize(
+        " ".join(
+            str(value or "")
+            for item in query_drs.get("answer_variables", [])
+            if isinstance(item, dict)
+            for value in [item.get("label"), item.get("evidence_text")]
+        )
+    )
+    target_items = query_drs.get("target_referents")
+    if not isinstance(target_items, list):
+        query_drs["target_referents"] = []
+        target_items = query_drs["target_referents"]
+        repaired = True
+    existing_target_material = normalize(
+        " ".join(
+            str(value or "")
+            for item in target_items
+            if isinstance(item, dict)
+            for value in [item.get("label"), item.get("evidence_text")]
+        )
+    )
+    existing_target_tokens = set(content_tokens(existing_target_material))
+    expanded_existing_target_tokens = set(existing_target_tokens)
+    for token in existing_target_tokens:
+        expanded_existing_target_tokens.update(term_variants(token))
+    next_target_index = 0
+    for item in target_items:
+        if isinstance(item, dict):
+            target_id = str(item.get("id") or "")
+            match = re.search(r"(\d+)$", target_id)
+            if match:
+                next_target_index = max(next_target_index, int(match.group(1)) + 1)
+    for anchor in visible_anchors(question):
+        anchor_norm = normalize(anchor)
+        if not anchor_norm or anchor_norm in answer_material:
+            continue
+        anchor_tokens = [token for token in content_tokens(anchor) if len(token) > 2]
+        if anchor_tokens and all(token in answer_role_tokens_for_repair for token in anchor_tokens):
+            continue
+        required_anchor_tokens = [token for token in anchor_tokens if token not in generic_anchor_tokens_for_repair] or anchor_tokens
+        if not required_anchor_tokens:
+            continue
+        missing_anchor_tokens = [
+            token for token in required_anchor_tokens
+            if token not in expanded_existing_target_tokens and not any(variant in expanded_existing_target_tokens for variant in term_variants(token))
+        ]
+        if not missing_anchor_tokens:
+            continue
+        target_id = f"tr{next_target_index}"
+        next_target_index += 1
+        target_items.append({"id": target_id, "label": anchor, "kind": "unknown", "evidence_text": anchor})
+        for token in content_tokens(anchor):
+            expanded_existing_target_tokens.add(token)
+            expanded_existing_target_tokens.update(term_variants(token))
+        repaired = True
+    # Refresh ids after target repair.
+    target_ids = {
+        str(item.get("id") or "")
+        for item in query_drs.get("target_referents", [])
+        if isinstance(item, dict) and str(item.get("id") or "")
+    }
+    answer_variable_ids = {
+        str(item.get("id") or "").strip()
+        for item in query_drs.get("answer_variables", [])
+        if isinstance(item, dict) and str(item.get("id") or "").strip()
+    }
+    conditions = query_drs.get("requested_conditions")
+    if not isinstance(conditions, list):
+        query_drs["requested_conditions"] = []
+        conditions = query_drs["requested_conditions"]
+        repaired = True
+    only_answer_id = next(iter(answer_variable_ids)) if len(answer_variable_ids) == 1 else ""
+    if only_answer_id:
+        for condition in conditions:
+            if not isinstance(condition, dict):
+                continue
+            arguments = condition.get("arguments")
+            if not isinstance(arguments, list):
+                continue
+            for argument in arguments:
+                if not isinstance(argument, dict):
+                    continue
+                if str(argument.get("target_kind") or "") == "answer_variable" and str(argument.get("target_id") or "") not in answer_variable_ids:
+                    argument["target_id"] = only_answer_id
+                    repaired = True
+    relation_material = normalize(
+        " ".join(
+            [
+                *[str(condition.get("predicate") or "") for condition in conditions if isinstance(condition, dict)],
+                *[str(value or "") for value in query_drs.get("constraints") or []],
+            ]
+        )
+    )
+    relation_groups_for_repair = [
+        ("author", {"author", "authors", "authored"}, "authors"),
+        ("reviewer", {"review", "reviewer", "reviewers", "reviewed", "reviews"}, "key reviewers" if "key reviewers" in normalize(question) else "reviewers"),
+        ("approver", {"approve", "approver", "approvers", "approved", "approval"}, "approvers"),
+        ("owner", {"owner", "owners", "own", "owns", "owned"}, "owners"),
+    ]
+    question_tokens_for_repair = set(content_tokens(question))
+    next_condition_index = 0
+    for condition in conditions:
+        if isinstance(condition, dict):
+            condition_id = str(condition.get("id") or "")
+            match = re.search(r"(\d+)$", condition_id)
+            if match:
+                next_condition_index = max(next_condition_index, int(match.group(1)) + 1)
+    target_argument_items = [
+        item for item in query_drs.get("target_referents", [])
+        if isinstance(item, dict) and str(item.get("id") or "").strip()
+    ]
+    for relation_label, variants, evidence_surface in relation_groups_for_repair:
+        if not question_tokens_for_repair.intersection(variants):
+            continue
+        if any(variant in relation_material for variant in variants):
+            continue
+        condition_id = f"rc{next_condition_index}"
+        next_condition_index += 1
+        evidence = grounded_question_surface(evidence_surface) or grounded_question_surface(relation_label) or question
+        arguments = []
+        if only_answer_id:
+            arguments.append(
+                {
+                    "role": "answer",
+                    "target_kind": "answer_variable",
+                    "target_id": only_answer_id,
+                    "value": "",
+                    "value_type": str(query_drs.get("answer_type") or "unknown"),
+                    "evidence_text": str(
+                        (query_drs.get("answer_variables") or [{}])[0].get("evidence_text")
+                        if isinstance((query_drs.get("answer_variables") or [{}])[0], dict)
+                        else ""
+                    ) or evidence,
+                }
+            )
+        for target in target_argument_items:
+            arguments.append(
+                {
+                    "role": "argument",
+                    "target_kind": "referent",
+                    "target_id": str(target.get("id") or ""),
+                    "value": "",
+                    "value_type": str(target.get("kind") or "unknown"),
+                    "evidence_text": str(target.get("evidence_text") or target.get("label") or ""),
+                }
+            )
+        conditions.append(
+            {
+                "id": condition_id,
+                "predicate": relation_label,
+                "box_id": "",
+                "polarity": "positive",
+                "modality": "asserted",
+                "temporal_id": "",
+                "arguments": arguments,
+                "evidence_text": evidence,
+            }
+        )
+        relation_material = normalize(f"{relation_material} {relation_label} {evidence}")
+        repaired = True
     conditions = query_drs.get("requested_conditions")
     if isinstance(conditions, list):
         for condition in conditions:
@@ -2593,6 +2791,53 @@ def _validate_query_drs_payload(payload: Any, question: str) -> dict[str, Any]:
     temporals = optional_collection("temporal_records")
     boxes = collection("box_requirements")
     conditions = collection("requested_conditions")
+    generic_anchor_tokens = {
+        "product", "document", "report", "file", "spec", "specification", "specifications",
+        "requirements", "requirement", "vision", "market", "research", "technical",
+        "release", "previous", "current", "new", "feature", "features", "issue", "issues",
+    }
+    target_material = normalize(
+        " ".join(
+            str(value or "")
+            for item in targets
+            for value in [item.get("label"), item.get("evidence_text")]
+        )
+    )
+    target_material_tokens = set(content_tokens(target_material))
+    expanded_target_tokens = set(target_material_tokens)
+    for token in target_material_tokens:
+        expanded_target_tokens.update(term_variants(token))
+    for anchor in visible_anchors(question):
+        anchor_tokens = [token for token in content_tokens(anchor) if len(token) > 2]
+        required_anchor_tokens = [token for token in anchor_tokens if token not in generic_anchor_tokens] or anchor_tokens
+        if not required_anchor_tokens:
+            continue
+        missing_anchor_tokens = [
+            token for token in required_anchor_tokens
+            if token not in expanded_target_tokens and not any(variant in expanded_target_tokens for variant in term_variants(token))
+        ]
+        if missing_anchor_tokens:
+            errors.append(f"dropped_visible_anchor:{anchor}")
+    relation_material_parts: list[str] = []
+    for condition in conditions:
+        relation_material_parts.append(str(condition.get("predicate") or ""))
+        for argument in condition.get("arguments") or []:
+            if isinstance(argument, dict):
+                relation_material_parts.append(str(argument.get("role") or ""))
+                relation_material_parts.append(str(argument.get("value") or ""))
+    for value in query_drs.get("constraints") or []:
+        relation_material_parts.append(str(value or ""))
+    relation_tokens = set(content_tokens(" ".join(relation_material_parts)))
+    question_tokens = set(content_tokens(question))
+    required_relation_groups = {
+        "reviewer": {"review", "reviewer", "reviewers", "reviewed", "reviews"},
+        "approver": {"approve", "approver", "approvers", "approved", "approval"},
+        "owner": {"owner", "owners", "own", "owns", "owned"},
+        "author": {"author", "authors", "authored"},
+    }
+    for label, variants in required_relation_groups.items():
+        if question_tokens.intersection(variants) and not relation_tokens.intersection(variants):
+            errors.append(f"dropped_requested_relation:{label}")
     target_ids = {str(item.get("id") or "") for item in targets if str(item.get("id") or "")}
     temporal_ids = {str(item.get("id") or "") for item in temporals if str(item.get("id") or "")}
     box_ids = {str(item.get("id") or "") for item in boxes if str(item.get("id") or "")}
@@ -2686,9 +2931,13 @@ def _query_drs_retry_budgets(n_predict: int) -> list[int]:
             if value > 0 and value != n_predict and value not in budgets:
                 budgets.append(value)
         return budgets
-    if n_predict > 256:
-        return [256]
-    return []
+    candidates = [n_predict * 2, 2048, 3072]
+    budgets: list[int] = []
+    for value in candidates:
+        value = max(256, min(4096, int(value)))
+        if value != n_predict and value not in budgets:
+            budgets.append(value)
+    return budgets
 
 
 def _call_model_query_drs_full_once(
@@ -2700,6 +2949,30 @@ def _call_model_query_drs_full_once(
     retry_after: dict[str, Any] | None = None,
 ) -> dict[str, Any]:
     prompt = build_query_drs_prompt(question)
+    if retry_after:
+        retry_feedback = {
+            "previous_rejection": {
+                "reason": retry_after.get("reason"),
+                "error": retry_after.get("error"),
+                "validation_errors": (retry_after.get("validation") or {}).get("errors")
+                if isinstance(retry_after.get("validation"), dict)
+                else [],
+                "grounding_failures": (retry_after.get("validation") or {}).get("grounding_failures")
+                if isinstance(retry_after.get("validation"), dict)
+                else [],
+            },
+            "retry_instruction": (
+                "Return a fresh complete query_drs that fixes every validation error. Preserve every visible non-answer "
+                "target anchor from the question, including product/project/entity scope and document/artifact title. "
+                "Represent every requested role/relation from the question, including coordinated roles such as authors "
+                "and reviewers, as requested_conditions. Do not answer the question."
+            ),
+        }
+        prompt = prompt + "\nRetry feedback for the previous rejected query_drs attempt:\n" + json.dumps(
+            retry_feedback,
+            ensure_ascii=False,
+            sort_keys=True,
+        )
     max_array_items = query_drs_array_max_items(n_predict)
     json_schema = query_drs_json_schema(question, max_array_items=max_array_items)
     constraint = _constraint_settings(QUERY_DRS_GRAMMAR, json_schema, QUERY_DRS_SCHEMA_VERSION)
@@ -2730,8 +3003,23 @@ def _call_model_query_drs_full_once(
     cache_path = _cache_path("KMD_QUERY_DRS_CACHE_DIR", prompt_hash)
     cached = _read_cache(cache_path)
     if cached is not None and not _query_drs_cached_retryable_failure(cached):
-        cached.setdefault("cache_context", cache_context)
-        return cached
+        finalized = {**cached}
+        finalized.setdefault("cache_context", cache_context)
+        if finalized.get("accepted") and isinstance(finalized.get("query_drs"), dict):
+            repaired = _repair_query_drs_payload({"query_drs": finalized["query_drs"]}, question)
+            validation = _validate_query_drs_payload(repaired, question)
+            if validation.get("schema_valid"):
+                finalized["query_drs"] = repaired["query_drs"]
+                finalized["validation"] = validation
+                finalized["fresh_or_cached"] = "cache"
+                if cache_path is not None and finalized != cached:
+                    finalized = _with_model_input_audits(finalized, locals().get("parsed"), locals().get("cached"), locals().get("source_payload"), locals().get("payload"))
+                    _write_cache(cache_path, finalized)
+                return finalized
+            # Accepted cache entries that fail the current validator are stale and must be recomputed.
+        elif not finalized.get("accepted"):
+            finalized["fresh_or_cached"] = "cache"
+            return finalized
     start = time.time()
     try:
         parsed = _complete_structured(
@@ -2838,41 +3126,59 @@ def _call_model_query_drs_full_once(
 
 
 def call_model_query_drs(question: str, client: LocalModelClient, *, n_predict: int | None = None) -> dict[str, Any]:
+    compact_attempt: dict[str, Any] | None = None
     if (
         _compact_live_model_path_allowed(client)
         and os.environ.get("KMD_QUERY_DRS_COMPACT_FIRST", "1").strip().lower() not in {"0", "false", "no", "off"}
     ):
-        compact = call_model_query_drs_compact(question, client)
-        if compact.get("accepted"):
-            if _compact_query_drs_answer_slot_undercovered(question, compact):
-                fallback_n_predict = default_query_drs_n_predict(client, question) if n_predict is None else n_predict
-                full = _call_model_query_drs_full_once(question, client, n_predict=fallback_n_predict)
-                fallback_attempt = {
-                    "policy": QUERY_DRS_COMPACT_UNDERCOVERAGE_POLICY,
-                    "compact_prompt_hash": compact.get("prompt_hash"),
-                    "full_prompt_hash": full.get("prompt_hash"),
-                    "full_reason": full.get("reason"),
-                    "full_accepted": bool(full.get("accepted")),
-                }
-                if full.get("accepted"):
-                    full["compact_fallback_attempt"] = fallback_attempt
-                    return full
-                compact["compact_fallback_attempt"] = fallback_attempt
-            return compact
+        compact_attempt = call_model_query_drs_compact(question, client)
+        if compact_attempt.get("accepted") and os.environ.get("KMD_QUERY_DRS_FORCE_FULL", "0").strip().lower() in {"0", "false", "no", "off"}:
+            compact_attempt = {**compact_attempt}
+            if _compact_query_drs_answer_slot_undercovered(question, compact_attempt):
+                compact_attempt["compact_undercoverage_accepted"] = True
+                compact_attempt["compact_undercoverage_policy"] = QUERY_DRS_COMPACT_UNDERCOVERAGE_POLICY
+            return compact_attempt
+        if compact_attempt.get("accepted") and not _compact_query_drs_answer_slot_undercovered(question, compact_attempt):
+            return compact_attempt
+
     if n_predict is None:
         n_predict = default_query_drs_n_predict(client, question)
     result = _call_model_query_drs_full_once(question, client, n_predict=n_predict)
-    if result.get("reason") != "request_failed":
-        return result
-    retry_attempts: list[dict[str, Any]] = [
+    retry_attempts: list[dict[str, Any]] = []
+    if compact_attempt is not None:
+        retry_attempts.append(
+            {
+                "stage": "compact",
+                "n_predict": compact_attempt.get("cache_context", {}).get("n_predict"),
+                "reason": compact_attempt.get("reason"),
+                "error": compact_attempt.get("error"),
+                "elapsed": compact_attempt.get("elapsed"),
+                "prompt_hash": compact_attempt.get("prompt_hash"),
+                "accepted": bool(compact_attempt.get("accepted")),
+            }
+        )
+    retry_attempts.append(
         {
+            "stage": "full",
             "n_predict": n_predict,
             "reason": result.get("reason"),
             "error": result.get("error"),
             "elapsed": result.get("elapsed"),
             "prompt_hash": result.get("prompt_hash"),
+            "accepted": bool(result.get("accepted")),
         }
-    ]
+    )
+    if not _query_drs_retryable_failure(result):
+        if compact_attempt is not None and compact_attempt.get("accepted"):
+            result["compact_fallback_attempt"] = {
+                "policy": QUERY_DRS_COMPACT_UNDERCOVERAGE_POLICY,
+                "compact_prompt_hash": compact_attempt.get("prompt_hash"),
+                "full_prompt_hash": result.get("prompt_hash"),
+                "full_reason": result.get("reason"),
+                "full_accepted": bool(result.get("accepted")),
+            }
+        result["query_drs_retry_attempts"] = retry_attempts
+        return result
     last = result
     for retry_index, retry_budget in enumerate(_query_drs_retry_budgets(n_predict), start=1):
         retry_after = {
@@ -2880,6 +3186,7 @@ def call_model_query_drs(question: str, client: LocalModelClient, *, n_predict: 
             "reason": last.get("reason"),
             "error": last.get("error"),
             "prompt_hash": last.get("prompt_hash"),
+            "validation": last.get("validation") if isinstance(last.get("validation"), dict) else {},
         }
         last = _call_model_query_drs_full_once(
             question,
@@ -2890,16 +3197,30 @@ def call_model_query_drs(question: str, client: LocalModelClient, *, n_predict: 
         )
         retry_attempts.append(
             {
+                "stage": "full_retry",
                 "n_predict": retry_budget,
                 "reason": last.get("reason"),
                 "error": last.get("error"),
                 "elapsed": last.get("elapsed"),
                 "prompt_hash": last.get("prompt_hash"),
+                "accepted": bool(last.get("accepted")),
             }
         )
-        if last.get("reason") != "request_failed":
+        if not _query_drs_retryable_failure(last):
             last["query_drs_retry_attempts"] = retry_attempts
             return last
+    if compact_attempt is not None and compact_attempt.get("accepted"):
+        compact_attempt = {**compact_attempt}
+        compact_attempt["compact_fallback_attempt"] = {
+            "policy": QUERY_DRS_COMPACT_UNDERCOVERAGE_POLICY,
+            "reason": "full_query_drs_failed_after_retries",
+            "compact_prompt_hash": compact_attempt.get("prompt_hash"),
+            "full_prompt_hash": last.get("prompt_hash"),
+            "full_reason": last.get("reason"),
+            "full_accepted": bool(last.get("accepted")),
+        }
+        compact_attempt["query_drs_retry_attempts"] = retry_attempts
+        return compact_attempt
     last["query_drs_retry_attempts"] = retry_attempts
     return last
 
@@ -2916,6 +3237,7 @@ def query_frame_from_query_drs(question: str, query_drs: dict[str, Any] | None) 
     answer_variables_raw = query_drs.get("answer_variables")
     answer_variables: list[str] = []
     answer_variable_labels_by_id: dict[str, str] = {}
+    answer_variable_types: list[str] = []
     if isinstance(answer_variables_raw, list):
         for item in answer_variables_raw:
             if isinstance(item, dict):
@@ -2925,6 +3247,9 @@ def query_frame_from_query_drs(question: str, query_drs: dict[str, Any] | None) 
                     answer_variables.append(label)
                 if variable_id and label:
                     answer_variable_labels_by_id[variable_id] = label
+                variable_answer_type = str(item.get("answer_type") or "").strip()
+                if variable_answer_type:
+                    answer_variable_types.append(variable_answer_type)
             elif str(item or "").strip():
                 answer_variables.append(str(item).strip())
     target_anchors = [
@@ -2982,6 +3307,11 @@ def query_frame_from_query_drs(question: str, query_drs: dict[str, Any] | None) 
     temporal_scope = query_drs.get("temporal_scope") if isinstance(query_drs.get("temporal_scope"), str) else ""
     if not temporal_scope and temporal_terms:
         temporal_scope = " ".join(dict.fromkeys(temporal_terms))
+    answer_type = query_drs.get("answer_type") if isinstance(query_drs.get("answer_type"), str) else "unknown"
+    if answer_type == "unknown":
+        typed_variables = [value for value in answer_variable_types if value and value != "unknown"]
+        if typed_variables:
+            answer_type = typed_variables[0]
     frame = frame_from_mapping(
         question,
         {
@@ -2992,7 +3322,7 @@ def query_frame_from_query_drs(question: str, query_drs: dict[str, Any] | None) 
             "constraints": query_drs.get("constraints") if isinstance(query_drs.get("constraints"), list) else [],
             "scope_requirements": list(dict.fromkeys(scope_terms)),
             "modality_requirements": list(dict.fromkeys(modality_terms)),
-            "answer_type": query_drs.get("answer_type") if isinstance(query_drs.get("answer_type"), str) else "unknown",
+            "answer_type": answer_type,
             "temporal_scope": temporal_scope,
             "aggregation": query_drs.get("aggregation") if isinstance(query_drs.get("aggregation"), str) else "",
             "requires_evidence": bool(query_drs.get("requires_evidence", True)),

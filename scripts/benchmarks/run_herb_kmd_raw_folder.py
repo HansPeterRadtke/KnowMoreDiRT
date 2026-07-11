@@ -174,7 +174,6 @@ def main() -> int:
     sys.path.insert(0, str(herb_root / "src"))
     if args.use_local_model:
         os.environ["KMD_USE_LOCAL_MODEL"] = "1"
-        os.environ.setdefault("KMD_LOCAL_MODEL_EXPECTED_ID", "Qwen2.5-14B-Instruct-Q4_K_M.gguf")
         configured_shared_cache_root = os.environ.get("KMD_SHARED_MODEL_CACHE_ROOT", "").strip()
         shared_cache_root = Path(configured_shared_cache_root) if configured_shared_cache_root else var_root / "kmd_model_caches"
         os.environ.setdefault("KMD_SHARED_MODEL_CACHE_ROOT", str(shared_cache_root))
@@ -277,7 +276,15 @@ def main() -> int:
             continue
         question_started = time.time()
         _RUN_STATE.update({"stage": "question", "question_index": index, "question_total": total, "question_id": question_id})
-        log_event(log_path, "question_start", index=index, total=total, question_id=question_id, percent=round((index / total) * 100, 3) if total else 100.0)
+        log_event(
+            log_path,
+            "question_start",
+            index=index,
+            total=total,
+            question_id=question_id,
+            question=question_text,
+            percent=round((index / total) * 100, 3) if total else 100.0,
+        )
         public_answer = kmd.question(question_text)
         internal_answer = getattr(getattr(kmd_public, "_ENGINE", None), "last_answer", None)
         model_trace = getattr(getattr(kmd_public, "_ENGINE", None), "model_query_trace", None)

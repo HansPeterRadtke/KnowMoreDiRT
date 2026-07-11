@@ -678,6 +678,7 @@ def _rank_scope(
     relation_doc_scores: list[tuple[float, str, str]] = []
     document_material_by_id: dict[str, str] = {}
     document_low_priority_by_id: dict[str, bool] = {}
+    target_scope_rejected_documents = 0
     for document in documents:
         sentences = list(sentences_by_document.get(document.rel_path, {}).values())
         material = _document_material(document, sentences)
@@ -692,6 +693,11 @@ def _rank_scope(
         )
         if document_low_priority_by_id[document.document_id]:
             score *= 0.2
+        if target_terms and not _target_anchor_groups_covered(material, frame, target_terms):
+            target_scope_rejected_documents += 1
+            if relation_hits and score and not target_hits:
+                relation_doc_scores.append((score, document.document_id, document.rel_path))
+            continue
         if target_terms and not target_hits:
             if relation_hits and score:
                 relation_doc_scores.append((score, document.document_id, document.rel_path))
@@ -702,7 +708,11 @@ def _rank_scope(
     relation_doc_scores.sort(key=lambda item: (-item[0], item[2]))
     selected_docs = [doc_id for _score, doc_id, _rel_path in doc_scores[:doc_limit]]
     relation_only_selected = 0
-    if relation_doc_scores and len(selected_docs) < doc_limit:
+    allow_relation_only_target_fallback = os.environ.get(
+        "KMD_BOUNDED_RELATION_ONLY_TARGET_FALLBACK",
+        "0",
+    ).strip().lower() in {"1", "true", "yes", "on"}
+    if relation_doc_scores and len(selected_docs) < doc_limit and (not target_terms or allow_relation_only_target_fallback):
         relation_budget = doc_limit - len(selected_docs)
         selected_doc_set = set(selected_docs)
         for _score, doc_id, _rel_path in relation_doc_scores:
@@ -753,6 +763,7 @@ def _rank_scope(
     return selected_docs, selected_chunks, {
         "candidate_document_rows": len(doc_scores),
         "selected_document_count": len(selected_docs),
+        "target_scope_rejected_document_rows": target_scope_rejected_documents,
         "relation_only_candidate_document_rows": len(relation_doc_scores),
         "relation_only_selected_document_count": relation_only_selected,
         "candidate_chunk_rows": len(chunk_scores),
