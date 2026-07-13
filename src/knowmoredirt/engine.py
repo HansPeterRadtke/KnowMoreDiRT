@@ -98,6 +98,29 @@ class KnowMoreDiRTEngine:
         self.last_answer = answer
         return answer
 
+    @staticmethod
+    def _text_answer_denotes_absent_requested_decision(
+        contract: dict[str, Any],
+        text: str,
+    ) -> bool:
+        slot_tokens = set(
+            re.findall(
+                r"[a-z0-9]+",
+                str(contract.get("answer_slot", "")).lower().replace("_", " "),
+            )
+        )
+        if not slot_tokens.intersection({"decision", "choice", "determination", "resolution"}):
+            return False
+        normalized = re.sub(r"\s+", " ", str(text).strip().lower())
+        return bool(
+            re.search(
+                r"\b(?:no|without)\s+(?:final\s+)?(?:decision|choice|determination|resolution)\b"
+                r"|\b(?:decision|choice|determination|resolution)\s+(?:was\s+)?not\s+(?:made|reached|recorded)\b"
+                r"|\b(?:undecided|decision pending|pending decision)\b",
+                normalized,
+            )
+        )
+
     @classmethod
     def _canonicalize_final_answer(
         cls,
@@ -113,6 +136,16 @@ class KnowMoreDiRTEngine:
             or ";" in text
         ):
             return answer
+        if cls._text_answer_denotes_absent_requested_decision(contract, text):
+            return Answer(
+                "unknown",
+                evidence=answer.evidence,
+                diagnostics={
+                    **answer.diagnostics,
+                    "absence_canonicalized": True,
+                    "reason": "requested decision value does not exist",
+                },
+            )
         canonical = cls._canonicalize_extracted_value(contract, text)
         if canonical == text or not canonical:
             return answer

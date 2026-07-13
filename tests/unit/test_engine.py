@@ -3155,3 +3155,22 @@ def test_final_answer_boundary_applies_conservative_surface_canonicalization():
     assert KnowMoreDiRTEngine._canonicalize_final_answer(
         {"answer_shape": "text", "answer_slot": "statement"}, correction
     ) is correction
+
+
+def test_final_decision_absence_canonicalizes_to_unknown():
+    from knowmoredirt.models import Answer
+    contract = {
+        "answer_shape": "text",
+        "answer_slot": "final_decision",
+    }
+    result = KnowMoreDiRTEngine._canonicalize_final_answer(
+        contract,
+        Answer("No final decision was made."),
+    )
+    assert result.text == "unknown"
+    assert result.diagnostics["absence_canonicalized"] is True
+    companion = KnowMoreDiRTEngine._canonicalize_final_answer(
+        {"answer_shape": "text", "answer_slot": "confirmed_plan"},
+        Answer("no reroute decision was made"),
+    )
+    assert companion.text == "no reroute decision was made"
