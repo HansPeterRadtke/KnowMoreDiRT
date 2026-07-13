@@ -3174,3 +3174,28 @@ def test_final_decision_absence_canonicalizes_to_unknown():
         Answer("no reroute decision was made"),
     )
     assert companion.text == "no reroute decision was made"
+
+
+def test_spatial_location_value_binds_to_target_sentence():
+    contract = {
+        "semantic_kind": "entity_attribute",
+        "answer_slot": "location",
+        "target_phrases": ["brass lamp"],
+        "relation_phrases": ["is"],
+    }
+    assert KnowMoreDiRTEngine._value_has_explicit_entity_relation(
+        contract,
+        "on the red desk",
+        [{"excerpt": "The brass lamp is on the red desk.", "data": {}}],
+    )
+    assert not KnowMoreDiRTEngine._value_has_explicit_entity_relation(
+        contract,
+        "under the round table",
+        [{
+            "excerpt": (
+                "The brass lamp is on the red desk. "
+                "The blue rug is under the round table."
+            ),
+            "data": {},
+        }],
+    )

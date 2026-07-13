@@ -3386,6 +3386,11 @@ class KnowMoreDiRTEngine:
         locator_value = bool(
             re.match(r"^(?:https?://|file://|/|[a-z]:\\)", normalized_value)
         )
+        spatial_slot = bool(
+            slot_tokens.intersection(
+                {"location", "place", "position", "where", "room", "shelf"}
+            )
+        )
         target_tokens = cls._contract_target_tokens(contract)
         slot_label_tokens = [
             token
@@ -3437,6 +3442,32 @@ class KnowMoreDiRTEngine:
                 required_target_overlap = max(1, min(2, len(target_tokens)))
                 if len(window_tokens.intersection(target_tokens)) >= required_target_overlap:
                     return True
+            if spatial_slot and normalized_value in text:
+                required_target_overlap = max(1, min(2, len(target_tokens)))
+                for sentence in [
+                    item.strip()
+                    for item in re.split(r"(?<=[.!?])\s+|\n+", text)
+                    if item.strip()
+                ]:
+                    if normalized_value not in sentence:
+                        continue
+                    if len(cls._content_tokens(sentence).intersection(target_tokens)) < required_target_overlap:
+                        continue
+                    spatial_binding = bool(
+                        re.search(
+                            r"\b(?:is|are|was|were|sits?|stands?|lies?|located|kept|stored|placed)\b"
+                            r".{0,80}\b(?:on|in|at|under|over|above|below|behind|beside|near|inside|outside|left|right|between|within)\b",
+                            sentence,
+                            flags=re.IGNORECASE,
+                        )
+                        or re.match(
+                            r"^(?:on|in|at|under|over|above|below|behind|beside|near|inside|outside|left|right|between|within)\b",
+                            normalized_value,
+                            flags=re.IGNORECASE,
+                        )
+                    )
+                    if spatial_binding:
+                        return True
             start = 0
             while True:
                 index = text.find(normalized_value, start)
