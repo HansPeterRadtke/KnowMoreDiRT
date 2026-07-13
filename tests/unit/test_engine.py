@@ -3061,3 +3061,38 @@ def test_numeric_entity_attribute_skips_surface_relation_validation():
         contract["semantic_kind"] == "entity_attribute"
         and contract["answer_shape"] != "number"
     )
+
+
+def test_presentation_verbs_do_not_override_labeled_field_relation():
+    contract = {
+        "semantic_kind": "entity_attribute",
+        "answer_slot": "catalyst",
+        "relation_phrases": ["named in"],
+        "constraint_phrases": [],
+    }
+    assert KnowMoreDiRTEngine._entity_relation_stems(contract) == {"catalyst"}
+    assert KnowMoreDiRTEngine._value_has_explicit_entity_relation(
+        contract,
+        "copper sulfate",
+        [{"excerpt": "Catalyst: copper sulfate.", "data": {}}],
+    )
+
+
+def test_answer_slot_label_explicitly_binds_entity_attribute():
+    contract = {
+        "semantic_kind": "entity_attribute",
+        "answer_slot": "catalyst",
+        "target_phrases": ["catalyst"],
+        "relation_phrases": ["named in"],
+        "constraint_phrases": [],
+    }
+    assert KnowMoreDiRTEngine._value_has_explicit_entity_relation(
+        contract,
+        "copper sulfate",
+        [{"excerpt": "Chemistry lab note.\nCatalyst: copper sulfate.", "data": {}}],
+    )
+    assert not KnowMoreDiRTEngine._value_has_explicit_entity_relation(
+        contract,
+        "Theo Marin",
+        [{"excerpt": "Chemistry lab note.\nCatalyst: copper sulfate.\nPartner: Theo Marin.", "data": {}}],
+    )

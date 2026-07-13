@@ -3243,6 +3243,8 @@ class KnowMoreDiRTEngine:
             "or", "is", "are", "was", "were", "be", "been", "being",
             "did", "does", "do", "has", "have", "had", "should", "would",
             "could", "can", "may", "might", "must",
+            "named", "mentioned", "listed", "shown", "stated", "provided",
+            "recorded", "described", "identified",
         }
         relation_tokens: set[str] = set()
         for phrase in phrases:
@@ -3303,6 +3305,19 @@ class KnowMoreDiRTEngine:
             re.match(r"^(?:https?://|file://|/|[a-z]:\\)", normalized_value)
         )
         target_tokens = cls._contract_target_tokens(contract)
+        slot_label_tokens = [
+            token
+            for token in re.findall(
+                r"[a-z0-9]+",
+                str(contract.get("answer_slot", "")).lower().replace("_", " "),
+            )
+            if token not in {"value", "answer", "content", "text"}
+        ]
+        slot_label_pattern = (
+            r"[ _-]+".join(re.escape(token) for token in slot_label_tokens)
+            if slot_label_tokens
+            else ""
+        )
         for view in evidence_views:
             text = (
                 str(view.get("excerpt", ""))
@@ -3311,6 +3326,28 @@ class KnowMoreDiRTEngine:
                 + "\n"
                 + json.dumps(view.get("data", {}), ensure_ascii=False, default=str)
             ).lower()
+            if slot_label_pattern:
+                labeled_values = [
+                    (
+                        re.sub(r"\s+", " ", match.group("label").strip().lower()),
+                        re.sub(r"\s+", " ", match.group("value").strip().lower()),
+                    )
+                    for match in re.finditer(
+                        r"(?im)^(?P<label>[a-z][a-z0-9 _./-]{0,79})\s*[:=]\s*(?P<value>[^\n]+)$",
+                        text,
+                    )
+                ]
+                matching_slot_values = [
+                    field_value
+                    for label, field_value in labeled_values
+                    if re.fullmatch(slot_label_pattern, label, flags=re.IGNORECASE)
+                ]
+                if matching_slot_values:
+                    return any(
+                        normalized_value == re.sub(r"[.;:]+$", "", field_value).strip()
+                        or normalized_value in field_value
+                        for field_value in matching_slot_values
+                    )
             if locator_slot and locator_value and normalized_value in text:
                 value_index = text.find(normalized_value)
                 locator_window = text[max(0, value_index - 220) : value_index + len(normalized_value) + 120]
