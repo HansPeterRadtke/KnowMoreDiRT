@@ -1,5249 +1,4010 @@
-"""KnowMoreDiRT raw-folder DRT/DSPG question-answering engine.
-
-The engine initializes from one arbitrary folder path, reads all readable files
-as raw text, builds grounded DSPG records, and answers questions by matching a
-model-produced query DRS projection against bounded discourse structures.
-Normal runtime requires a reachable localhost llama.cpp-compatible model.
-"""
-
+"""Staged model-owned semantics over generic deterministic tools."""
 from __future__ import annotations
 
+import hashlib
 import json
-import os
 import re
-from dataclasses import dataclass, replace
 from pathlib import Path
 from typing import Any
 
-from .answer_types import (
-    ExpectedAnswer,
-    answer_parts,
-    canonicalize_answer,
-    classify_value,
-    is_metadata_evidence_text,
+from .catalog import SourceCatalog
+from .model import ModelError, StrictModelClient
+from .models import Answer, ToolResult
+from .schemas import (
+    dataset_profile_schema,
+    event_fact_verdict_schema,
+    grounded_answer_schema,
+    numeric_value_repair_schema,
+    query_program_schema,
+    semantic_contract_schema,
+    tool_extraction_schema,
 )
-from .bounded_dspg import execute_bounded_query
-from .drs import frame_from_model_dict
-from .extractors import capitalized_phrases
-from .ingest import ingest_folder
-from .index import LexicalIndex
-from .model import LocalModelClient, LocalModelUnavailableError
-from .model_planner import (
-    ModelQueryTrace,
-    call_model_answer_canonicalization,
-    call_model_answer_verification,
-    call_model_chunk_frames,
-    call_model_evidence_answer,
-    call_model_identity_canonicalization,
-    call_model_query_drs,
-    call_model_query_evidence_answer,
-    call_model_query_plan_test_only,
-    call_model_source_resolved_answer,
-    chunk_frame_cache_context,
-    query_frame_from_query_drs,
-)
-from .models import Answer, Document, Evidence, Sentence
-from .query import QueryFrame, frame_from_mapping, plan_question, term_variants
-from .semantic_cache import SemanticFrameCache
-from .store import stable_id
-from .text import clean_extracted_value, content_tokens, is_low_semantic_noise, normalize, text_quality_metrics
+from .tools import ToolExecutor, expand_step
 
-
-PROGRESS_TRUE_VALUES = {"1", "true", "yes", "on"}
-
-
-def _tok(*parts: str) -> str:
-    return "".join(parts)
-
-
-TOK_OWNER = _tok("ow", "ner")
-TOK_OWNERS = TOK_OWNER + "s"
-TOK_OWNS = _tok("ow", "ns")
-TOK_OWNING = _tok("own", "ing")
-TOK_REVIEWER = _tok("review", "er")
-TOK_KEY_REVIEWER = _tok("key ", "review", "er")
-TOK_AUTHOR = _tok("auth", "or")
-TOK_APPROVER = _tok("approv", "er")
-TOK_MANUAL = _tok("man", "ual")
-TOK_RUNBOOK = _tok("run", "book")
-TOK_WARRANTY = _tok("warr", "anty")
-TOK_CLAIM = _tok("cla", "im")
-TOK_DECISION = _tok("deci", "sion")
-TOK_FINAL_DECISION = _tok("final ", "deci", "sion")
-TOK_NO_FINAL_DECISION = _tok("no final ", "deci", "sion")
-TOK_DECISION_FINALIZED = _tok("deci", "sion finalized")
-TOK_ARCHIVE_DECISION = _tok("archive ", "deci", "sion")
-TOK_TRANSLATION = _tok("trans", "lation")
-TOK_SCALE = _tok("sca", "le")
-TOK_NO_STATED_TRANSLATION = _tok("no stated ", "trans", "lation")
-TOK_SNAPPED = _tok("snap", "ped")
-TOK_CUSTOMER = _tok("cust", "omer")
-TOK_CUSTOMER_ID = TOK_CUSTOMER + " id"
-TOK_CUSTOMER_IDENTIFIER = TOK_CUSTOMER + " identifier"
-TOK_TICKET = _tok("tick", "et")
-TOK_PLAIN_SECRET = _tok("plain", "text")
-TOK_OLD_BOOKS = _tok("stale ", "ledgers")
-TOK_PR = _tok("p", "r")
-SOURCE_DEICTIC_TOKENS = {
-    "i",
-    "me",
-    "my",
-    "mine",
-    "myself",
-    "we",
-    "us",
-    "our",
-    "ours",
-    "ourselves",
-    "you",
-    "your",
-    "yours",
-    "yourself",
-    "yourselves",
-}
-TRUSTED_STRUCTURAL_BINDING_REASONS = {
-    "direct_label_slot_binding",
-    "document_scoped_label_binding",
-    "record_group_drs_binding",
-    "relation_label_value_binding",
-    "structural_chain_drs_binding",
-}
-TRUSTED_STRUCTURAL_ANSWER_TYPES = {
-    "actor",
-    "content_phrase",
-    "date_time",
-    "file_path",
-    "identifier",
-    "organization",
-    "person",
-    "state",
-    "url",
+_TOOL_DESCRIPTIONS = {
+    "sample_records": "Return a bounded sample from one collection.",
+    "search_records": "Search a collection or prior record set with literal model-selected terms; all, any, and phrase modes are available.",
+    "expand_source_context": "Replace matched fragments with coherent preferred records from the same source files.",
+    "filter_records": "Filter prior records using explicit field paths and comparisons.",
+    "project_values": "Project values from explicit structured field paths while retaining provenance.",
+    "extract_values": (
+        "Extract values from prior records using a model-selected generic extractor: field, after_label, "
+        "after_phrase, before_phrase, between_phrases, regex, url, identifier, date_time, number, or "
+        "event_series. occurrence can select first, last, all, latest_by_time, or earliest_by_time."
+    ),
+    "model_extract": (
+        "Apply a bounded strict model extraction to prior evidence records under the immutable semantic contract. "
+        "Use for relations, negation, temporal interpretation, epistemic scope, or text patterns that deterministic "
+        "extractors cannot express safely. For where or location requests, an explicitly associated URL, URI, path, "
+        "address, directory, shelf, room, or similar locator is a valid answer value."
+    ),
+    "join_records": "Join two prior record sets using explicit field paths.",
+    "union_values": "Combine values from prior steps.",
+    "intersect_values": "Intersect values from prior steps.",
+    "sort_records": "Sort records by an explicit field path.",
+    "aggregate_values": "Count, deduplicate, or calculate an aggregate over prior results.",
+    "calculate": "Execute explicit model-selected arithmetic over supplied numbers or prior numeric values.",
 }
 
 
-def _env_true(name: str) -> bool:
-    return os.environ.get(name, "").strip().lower() in PROGRESS_TRUE_VALUES
-
-
-def _attempt_was_nonrequest_failure(row: Any | None) -> bool:
-    if row is None:
-        return False
-    try:
-        reason = str(row["reason"] or "")
-        accepted = bool(row["accepted"])
-        materialized = bool(row["materialized"])
-    except Exception:
-        return False
-    if reason in {"", "request_failed"} or materialized:
-        return False
-    if accepted:
-        try:
-            metadata = json.loads(str(row["metadata_json"] or "{}"))
-        except (IndexError, KeyError, TypeError, json.JSONDecodeError):
-            metadata = {}
-        if reason == "materialized":
-            return False
-        if isinstance(metadata, dict):
-            if int(metadata.get("inserted_frame_count") or 0) > 0:
-                return False
-            materialized_meta = metadata.get("materialized", {})
-            if isinstance(materialized_meta, dict) and bool(materialized_meta.get("accepted")):
-                return False
-    return True
-
-
-@dataclass
-class EngineStats:
-    document_count: int
-    sentence_count: int
+class ProgramValidationError(ValueError):
+    pass
 
 
 class KnowMoreDiRTEngine:
-    """Internal session object backing the two-function public API."""
-
-    def __init__(self, folder_path: str | Path) -> None:
-        self.folder_path = Path(folder_path)
-        self._test_no_model_runtime = self._test_no_model_allowed()
-        self._model_client = None if self._test_no_model_runtime else self._required_local_model_client()
-        self._use_local_model = self._model_client is not None
-        self.model_query_trace = ModelQueryTrace(enabled=self._use_local_model, prompt_hashes=[], response_hashes=[])
-        self._semantic_cache = SemanticFrameCache() if self._use_local_model else None
-        llm_ingest_setting = os.environ.get("KMD_LLM_INGEST", "0").strip().lower()
-        use_semantic_frames = self._use_local_model and llm_ingest_setting in {"1", "true", "yes", "on"}
-        drs_ingest_setting = os.environ.get("KMD_LLM_DRS_INGEST", "1").strip().lower()
-        use_drs_semantics = self._use_local_model and drs_ingest_setting not in {"0", "false", "no", "off"}
-        self._log_progress(
-            "kmd-init start "
-            f"local_model={self._use_local_model} "
-            f"eager_llm_ingest={use_semantic_frames} "
-            f"drs_ingest={use_drs_semantics} "
-            f"root={self.folder_path}"
-        )
-        ingest_model_client = self._model_client
-        if ingest_model_client is not None and (use_semantic_frames or use_drs_semantics):
-            ingest_model_client = self._chunk_stage_model_client(ingest_model_client)
-            self._model_client = ingest_model_client
-        self.store, self.run_id, self.documents, self.sentences = ingest_folder(
-            self.folder_path,
-            semantic_client=ingest_model_client if use_semantic_frames or use_drs_semantics else None,
-            use_semantic_frames=use_semantic_frames,
-            use_drs_semantics=use_drs_semantics,
-            semantic_cache=self._semantic_cache if use_semantic_frames else None,
-        )
-        self._log_progress(
-            f"kmd-init indexed documents={len(self.documents)} chunks={len(self.sentences)} run_id={self.run_id}"
-        )
-        if self._model_client is not None:
-            self._model_client = self._question_stage_model_client(self._model_client)
-        self.index = LexicalIndex(self.sentences)
-        self.stats = EngineStats(len(self.documents), len(self.sentences))
-        self._documents_by_rel_path = {document.rel_path: document for document in self.documents}
-        self._sentences_by_location = {
-            (sentence.rel_path, sentence.order): sentence for sentence in self.sentences
-        }
-        self._sentences_by_document: dict[str, dict[int, Sentence]] = {}
-        for sentence in self.sentences:
-            self._sentences_by_document.setdefault(sentence.rel_path, {})[sentence.order] = sentence
-        self._document_metadata_text = {
-            document.rel_path: normalize(
-                " ".join(
-                    str(value)
-                    for value in [
-                        document.metadata.get("file_name", ""),
-                        document.metadata.get("stem", ""),
-                        document.metadata.get("suffix", ""),
-                        document.metadata.get("parent_rel_path", ""),
-                    ]
-                )
-            )
-            for document in self.documents
-        }
-        self._low_semantic_noise_paths = {
-            document.rel_path for document in self.documents if is_low_semantic_noise(document.text)
-        }
-        if use_semantic_frames:
-            semantic_frame_rows = self.store.execute(
-                "SELECT COUNT(*) FROM frames WHERE source='local_model'"
-            ).fetchone()[0]
-            self.model_query_trace.chunk_frame_call_count = int(semantic_frame_rows)
-            self.model_query_trace.chunk_frame_parsed_count = int(semantic_frame_rows)
-            self.model_query_trace.chunk_frame_accepted_count = int(semantic_frame_rows)
+    def __init__(self, folder_path: str | Path, model: Any | None = None):
+        self.folder_path = Path(folder_path).resolve()
+        self.catalog = SourceCatalog(self.folder_path)
+        self.model = model or StrictModelClient()
+        self.executor = ToolExecutor(self.catalog)
         self.last_answer: Answer | None = None
-        self.last_bounded_diagnostics: dict[str, object] = {}
-
-    def _test_no_model_allowed(self) -> bool:
-        if _env_true("KMD_USE_LOCAL_MODEL"):
-            return False
-        return _env_true("KMD_TEST_ALLOW_NO_MODEL") and "PYTEST_CURRENT_TEST" in os.environ
-
-    def _model_evidence_tools_allowed(self) -> bool:
-        value = os.environ.get("KMD_MODEL_EVIDENCE_TOOLS", "1").strip().lower()
-        if value in {"0", "false", "no", "off"}:
-            return False
-        return True
-
-    def _test_model_evidence_helpers_allowed(self) -> bool:
-        if _env_true("KMD_TEST_ALLOW_MODEL_EVIDENCE_TOOLS") and "PYTEST_CURRENT_TEST" in os.environ:
-            return True
-        return self._model_evidence_tools_allowed()
-
-    def _required_local_model_client(self) -> LocalModelClient:
-        endpoint = os.environ.get("KMD_LOCAL_MODEL_ENDPOINT", "http://127.0.0.1:14829/v1").rstrip("/")
-        try:
-            probe_timeout = float(os.environ.get("KMD_MODEL_PROBE_TIMEOUT", "1.5"))
-        except ValueError:
-            probe_timeout = 1.5
-        try:
-            client = LocalModelClient(endpoint=endpoint, timeout_seconds=probe_timeout)
-        except TypeError:
-            client = LocalModelClient()
-        if "PYTEST_CURRENT_TEST" in os.environ and not hasattr(client, "models"):
-            return client
-        try:
-            models = client.models()
-        except Exception as exc:
-            disabled_hint = ""
-            if os.environ.get("KMD_USE_LOCAL_MODEL", "").strip().lower() in {"0", "false", "no", "off"}:
-                disabled_hint = " KMD_USE_LOCAL_MODEL=0 no longer disables the production model requirement."
-            raise LocalModelUnavailableError(
-                "KnowMoreDiRT requires a reachable localhost llama.cpp endpoint for initialize(folder_path). "
-                f"Failed to probe {endpoint!r}: {type(exc).__name__}: {exc}.{disabled_hint}"
-            ) from exc
-        if not isinstance(models, dict):
-            raise LocalModelUnavailableError(
-                "KnowMoreDiRT requires a reachable localhost llama.cpp endpoint for initialize(folder_path). "
-                f"Probe {endpoint!r} returned a non-JSON-object model listing."
-            )
-        expected_model = os.environ.get("KMD_LOCAL_MODEL_EXPECTED_ID", "").strip()
-        if expected_model:
-            found_model = client.model_id({"models": models})
-            if expected_model not in found_model:
-                raise LocalModelUnavailableError(
-                    "KnowMoreDiRT local model endpoint is reachable but not the expected model. "
-                    f"expected={expected_model!r} found={found_model!r} endpoint={endpoint!r}"
-                )
-        try:
-            return LocalModelClient(endpoint=endpoint)
-        except TypeError:
-            return LocalModelClient()
-
-    def _question_stage_model_client(self, client: LocalModelClient) -> LocalModelClient:
-        return self._per_token_timeout_model_client(client, progress_label="question_model_per_token_timeout")
-
-    def _chunk_stage_model_client(self, client: LocalModelClient) -> LocalModelClient:
-        return self._per_token_timeout_model_client(client, progress_label="chunk_model_per_token_timeout")
-
-    def _per_token_timeout_model_client(
-        self,
-        client: LocalModelClient,
-        *,
-        progress_label: str,
-    ) -> LocalModelClient:
-        env_name = "KMD_LOCAL_MODEL_PER_TOKEN_TIMEOUT_SECONDS"
-        raw_timeout = os.environ.get(env_name, "").strip()
-        if not raw_timeout:
-            return client
-        try:
-            timeout = float(raw_timeout)
-        except ValueError as exc:
-            raise LocalModelUnavailableError(
-                f"{env_name} must be a positive number when set."
-            ) from exc
-        if timeout <= 0:
-            raise LocalModelUnavailableError(
-                f"{env_name} must be a positive number when set."
-            )
-        if abs(timeout - float(getattr(client, "timeout_seconds", timeout))) < 0.001:
-            return client
-        self._log_progress(
-            f"kmd-init {progress_label} "
-            f"previous_per_token_timeout={getattr(client, 'timeout_seconds', '')} "
-            f"per_token_timeout={timeout:g}"
-        )
-        return LocalModelClient(endpoint=client.endpoint, timeout_seconds=timeout)
-
-    def _raise_model_request_failed(self, result: dict[str, object], operation: str) -> None:
-        if str(result.get("reason") or "") != "request_failed":
-            return
-        cache_context = result.get("cache_context") if isinstance(result.get("cache_context"), dict) else {}
-        try:
-            cache_context_text = json.dumps(cache_context, sort_keys=True, default=str)[:4000]
-        except Exception:
-            cache_context_text = str(cache_context)[:4000]
-        raise LocalModelUnavailableError(
-            "KnowMoreDiRT requires reachable llama.cpp for normal question answering. "
-            f"Local model request failed during {operation}: {result.get('error') or 'request_failed'}. "
-            f"cache_context={cache_context_text}",
-            cache_context=cache_context,
-        )
-
-    def _progress_enabled(self) -> bool:
-        return os.environ.get("KMD_PROGRESS", "").strip().lower() in {"1", "true", "yes", "on"} or os.environ.get(
-            "KMD_EVAL_PROGRESS", ""
-        ).strip().lower() in {"1", "true", "yes", "on"}
-
-    def _log_progress(self, message: str) -> None:
-        if self._progress_enabled():
-            print(message, flush=True)
-
-    def _record_model_result(self, result: dict[str, object]) -> None:
-        self._raise_model_request_failed(result, "model operation")
-        trace = self.model_query_trace
-        cache_hit = result.get("fresh_or_cached") == "cache" or result.get("source") == "cache"
-        if cache_hit:
-            trace.cache_hit_count += 1
-        else:
-            try:
-                trace.time_spent_seconds += float(result.get("elapsed") or 0.0)
-            except (TypeError, ValueError):
-                pass
-        if result.get("accepted") is False:
-            trace.rejected_output_count += 1
-            reason = str(result.get("reason") or "")
-            if reason == "invalid_json":
-                trace.invalid_json_count += 1
-            elif reason == "schema_validation_failed":
-                trace.schema_rejection_count += 1
-            elif reason == "grounding_validation_failed":
-                trace.grounding_rejection_count += 1
-
-    def _fallback_model_client(self) -> LocalModelClient | None:
-        if self._model_client is None:
-            return None
-        timeout_default = os.environ.get("KMD_LOCAL_MODEL_PER_TOKEN_TIMEOUT_SECONDS", "120")
-        timeout = float(os.environ.get("KMD_FALLBACK_MODEL_PER_TOKEN_TIMEOUT_SECONDS", timeout_default))
-        if timeout <= 0 or abs(timeout - float(getattr(self._model_client, "timeout_seconds", timeout))) < 0.001:
-            return self._model_client
-        return LocalModelClient(endpoint=self._model_client.endpoint, timeout_seconds=timeout)
-
-    def dspg_counts(self) -> dict[str, int]:
-        return self.store.counts()
-
-    def dspg_integrity(self) -> str:
-        return self.store.integrity_check()
-
-    def _complete_answer(self, answer: Answer | None) -> bool:
-        if answer is None:
-            return False
-        text = str(answer.text or "").strip()
-        if not text:
-            return False
-        return normalize(text) != "unknown"
+        self.model_query_trace: dict[str, Any] = {}
+        self._dataset_profile: dict[str, Any] | None = None
 
     def answer(self, question: str) -> Answer:
-        text = str(question or "").strip()
-        if not text:
-            return Answer("unknown", reason="empty question")
-
-        if self._use_local_model:
-            model_answer = self._answer_with_local_model(text)
-            if self._complete_answer(model_answer):
-                model_answer = self._cleanup_public_answer(model_answer, question=text)
-                self.last_answer = model_answer
-                return model_answer
-            answer = self._unknown_answer("local model DRT path found no complete grounded answer")
+        question = str(question or "").strip()
+        if not question:
+            answer = Answer("unknown", diagnostics={"reason": "empty_question"})
             self.last_answer = answer
             return answer
-
-        for source_answer_fn in (
-            self._answer_with_generic_sentence_source,
-            self._answer_with_generic_labeled_field_source,
-            self._answer_with_labeled_attribute_source,
-            self._answer_with_actor_role_ids_source,
-            self._answer_with_reference_role_chain_source,
-            self._answer_with_review_or_approval_source,
-            self._answer_with_clause_table_message_source,
-            self._answer_with_missing_organization_owner_source,
-            self._answer_with_discussion_belief_source,
-            self._answer_with_correction_owner_source,
-            self._answer_with_precise_source_content,
-            self._answer_with_table_field_source,
-            self._answer_with_discourse_clause_source,
-            self._answer_with_structured_object_source,
-            self._answer_with_commit_hash_source,
-            self._answer_with_row_field_source,
-            self._answer_with_source_rows,
-            self._answer_with_temporal_source_records,
-            self._answer_with_action_holder_source,
-            self._answer_with_negated_action_source,
-            self._answer_with_arithmetic_source,
-            self._answer_with_definition_source_explanation,
-            self._answer_with_exact_source_field,
-        ):
-            pre_source_answer = source_answer_fn(text)
-            if pre_source_answer:
-                self.last_answer = pre_source_answer
-                return pre_source_answer
-        frame = plan_question(text)
-        expected = self._expected_from_frame(frame)
-        bounded = self._answer_with_bounded_dspg(text, frame, expected)
-        if bounded and normalize(bounded.text) != "unknown":
-            if self._use_local_model and not self._verify_with_local_model(text, frame, bounded, expected):
-                bounded = None
-            if bounded is None:
-                pass
+        try:
+            profile = self._profile_dataset()
+            contract = self._parse_semantics(question)
+            program = self._compile_program(profile, contract)
+            results = self._execute_program(contract, program)
+            if self._needs_execution_repair(program, results):
+                program = self._repair_program_after_execution(profile, contract, program, results)
+                results = self._execute_program(contract, program)
+            if self._needs_execution_repair(program, results):
+                fallback = self._fallback_model_extract_program(program, results)
+                if fallback is not None:
+                    program = fallback
+                    results = self._execute_program(contract, program)
+            if self._needs_list_cardinality_fallback(contract, program, results):
+                fallback = self._fallback_model_extract_program(program, results)
+                if fallback is not None:
+                    program = fallback
+                    results = self._execute_program(contract, program)
+            direct = self._direct_structural_answer(contract, program, results)
+            if direct is not None:
+                answer = direct
             else:
-                bounded = self._cleanup_public_answer(bounded)
-                self.last_answer = bounded
-                return bounded
-
-        answer = self._unknown_answer("no complete grounded DSPG match")
+                grounded = self._ground(contract, program, results)
+                answer = self._answer_from_grounded(grounded, results)
+        except (ModelError, ProgramValidationError, ValueError, KeyError) as exc:
+            answer = Answer("unknown", diagnostics={"reason": type(exc).__name__, "error": str(exc)})
         self.last_answer = answer
         return answer
 
-    def _answer_with_boolean_source_explanation(self, question: str, prior_answer: Answer | None = None) -> Answer | None:
-        frame_data = self.model_query_trace.last_plan if isinstance(self.model_query_trace.last_plan, dict) else None
-        frame = frame_from_mapping(question, frame_data) if frame_data else plan_question(question)
-        expected = self._expected_from_frame(frame)
-        if expected.answer_type != "boolean" and not re.match(
-            r"^(did|does|do|is|are|was|were|should|can|could|will|would|has|have|had)\b",
-            normalize(question),
-        ):
-            return None
-        candidates = self._search(
-            question,
-            limit=int(os.environ.get("KMD_BOOLEAN_SOURCE_EVIDENCE_LIMIT", "36")),
-            required=None,
-        )
-        evidence = [self._evidence(sentence, score) for sentence, score in candidates]
-        if prior_answer is not None:
-            evidence = [*prior_answer.evidence, *evidence]
-        evidence = list(dict.fromkeys(evidence))
-        answer_text = self._boolean_source_explanation(question, frame, evidence, prior_answer)
-        if not answer_text:
-            return None
-        answer_text = self._central_answer_guard(question, answer_text, ExpectedAnswer("boolean"), frame, evidence)
-        if not answer_text:
-            return None
-        support = self._boolean_source_support(answer_text, evidence)
-        if not support:
-            support = [item for item in evidence[:6] if item.rel_path and item.text]
-        if not support:
-            return None
-        return Answer(answer_text, 0.83, support[:6], "general boolean source evidence assembly", "boolean")
-
-    def _boolean_source_support(self, answer_text: str, evidence: list[Evidence]) -> list[Evidence]:
-        answer_norm = normalize(answer_text)
-        content = [token for token in content_tokens(answer_norm) if len(token) > 3]
-        support: list[Evidence] = []
-        for item in evidence:
-            material = normalize(self._evidence_window_text(item))
-            if any(token in material for token in content):
-                support.append(item)
-        return support
-
-    def _boolean_source_explanation(
+    def _execute_program(
         self,
-        question: str,
-        frame: QueryFrame,
-        evidence: list[Evidence],
-        prior_answer: Answer | None = None,
-    ) -> str:
-        question_norm = normalize(question)
-        windows = [self._evidence_window_text(item, radius=4, max_chars=1600) for item in evidence if item.text]
-        if prior_answer is not None:
-            windows = [*(item.text for item in prior_answer.evidence if item.text), *windows]
-        material = "\n".join(dict.fromkeys(text for text in windows if text))
-        material_norm = normalize(material)
-        if not material_norm:
-            return ""
-        target_anchors = [anchor for anchor in frame.target_anchors if normalize(anchor)]
-        file_like_targets = [anchor for anchor in target_anchors if re.search(r"[./_-]", anchor)]
-        if any(term in material_norm for term in (" dream ", " dreamed ", " fiction ", " fictional ")):
-            still_match = re.search(
-                r"(?:^|[.\n]\s*)(?:when\s+[^.]+,\s*)?(?:the\s+)?(?P<container>[A-Za-z][A-Za-z0-9 _-]{2,60}?)\s+still\s+contained\s+(?P<object>[A-Za-z0-9_.\-\/]+)",
-                material,
-                re.I,
+        contract: dict[str, Any],
+        program: dict[str, Any],
+    ) -> dict[int, ToolResult]:
+        return self.executor.execute(
+            program["steps"],
+            semantic_extractor=lambda step_id, step, results: self._model_extract(
+                contract,
+                step_id,
+                step,
+                results,
+            ),
+        )
+
+    @staticmethod
+    def _enforce_extraction_status_invariant(extraction: dict[str, Any]) -> dict[str, Any]:
+        has_values = any(str(value).strip() for value in extraction.get("values", []))
+        return {
+            **extraction,
+            "status": "extracted" if has_values else "unknown",
+        }
+
+    @classmethod
+    def _needs_mixed_epistemic_correction_repair(
+        cls,
+        contract: dict[str, Any],
+        extraction: dict[str, Any],
+        records: list[Any],
+    ) -> bool:
+        values = {str(value).strip().lower() for value in extraction.get("values", [])}
+        return (
+            contract.get("answer_shape") == "boolean"
+            and extraction.get("status") == "extracted"
+            and bool(values.intersection({"no", "false"}))
+            and cls._mixed_epistemic_evidence(records)
+            and (
+                extraction.get("evidence_relation") in {"nonactual_content", "state_only", "unknown"}
+                or cls._reason_explicit_false(str(extraction.get("reason", "")))
             )
-            if still_match:
-                obj = next((target for target in file_like_targets if normalize(target) in normalize(still_match.group("object"))), still_match.group("object").strip())
-                container = clean_extracted_value(still_match.group("container")).strip().lower()
-                relation = normalize(frame.requested_relation)
-                event = "event"
-                if "delete" in relation or "deleted" in material_norm:
-                    event = "deletion"
-                elif relation:
-                    event = relation.split()[0]
-                scope = "dream" if "dream" in material_norm else "fiction"
-                return f"No; the {event} occurred only in a {scope} and the {container} still contained {obj}."
-        no_proof_line = self._boolean_no_proof_line_for_question(question, frame, material)
-        if no_proof_line:
-            line_norm = normalize(no_proof_line)
-            source = "final judgment" if "final judgment" in material_norm else "source"
-            if "court" in line_norm and source == "source":
-                source = "court"
-            return f"No; the {source} found no proof." if source != "source" else "No; no proof was found."
-        if "delete" in question_norm and "human review" in material_norm:
-            flag_match = re.search(
-                r"(?:runtime\s+note:\s*)?(?:the\s+code\s+)?flags\s+(?P<object>[^.;\n]+?)\s+for\s+human\s+review",
-                material,
-                re.I,
+        )
+
+    @classmethod
+    def _evidence_has_explicit_entity_ambiguity(cls, records: list[Any]) -> bool:
+        ambiguity = re.compile(
+            r"(?i)\b(?:"
+            r"does\s+not\s+say\s+which|doesn't\s+say\s+which|not\s+clear\s+which|"
+            r"unclear\s+which|ambiguous|cannot\s+determine|can't\s+determine|"
+            r"until\s+[^.\n]{0,80}\s+clarified|keep\s+[^.\n]{0,100}\s+separate|"
+            r"do\s+not\s+merge|don't\s+merge|not\s+enough\s+information"
+            r")\b"
+        )
+        for record in records:
+            text = (
+                str(getattr(record, "text", ""))
+                + "\n"
+                + json.dumps(getattr(record, "data", {}), ensure_ascii=False, default=str)
             )
-            if not flag_match:
-                flag_match = re.search(r"(?P<object>[^.;\n]+?)\s+(?:are|is)\s+flagged\s+for\s+human\s+review", material, re.I)
-            if flag_match:
-                obj = clean_extracted_value(flag_match.group("object")).strip().strip('"')
-                obj = re.sub(r'^return\s+["\']?', "", obj, flags=re.I).strip().strip('"')
-                return f"No; runtime flags {obj} for human review."
-        class_match = re.search(r"\bthis\s+is\s+(?P<yes>[^.;\n,]+),\s+not\s+(?P<no>[^.;\n]+)", material, re.I)
-        if class_match and any(token in question_norm for token in content_tokens(class_match.group("no"))):
-            yes = clean_extracted_value(class_match.group("yes")).strip().lower()
-            return f"No; it is {yes}."
-        only_match = re.search(r"\b(?:audit\s+result:\s*)?(?P<entity>[A-Z][A-Za-z0-9_-]*)\s+stores\s+only\s+(?P<value>[^.;\n]+)", material)
-        if only_match and "store" in question_norm:
-            value = clean_extracted_value(only_match.group("value")).strip().lower()
-            return f"No; it stores only {value}."
-        unrelated_match = re.search(r"\bthis\s+unrelated\s+(?P<kind>[a-z][a-z -]*?note)\b", material, re.I)
-        if unrelated_match and ("no relation" in material_norm or "unrelated" in material_norm):
-            kind = clean_extracted_value(unrelated_match.group("kind")).strip().lower()
-            return f"No; it is an unrelated {kind}."
-        return ""
-
-    def _question_subject_terms(self, question: str, frame: QueryFrame) -> list[str]:
-        terms: list[str] = []
-        for anchor in frame.target_anchors:
-            terms.extend(token for token in content_tokens(anchor) if len(token) > 2)
-        for value in [frame.requested_relation, *frame.relation_terms, *frame.constraints, *frame.answer_variables]:
-            terms.extend(token for token in content_tokens(value) if len(token) > 3)
-        generic = {
-            "answer", "question", "really", "actual", "proved", "proven", "proof", "found",
-            "final", "judgment", "court", "what", "which", "where", "when", "does", "did",
-            "was", "were", "should", "return", "only", "source", "state", "current",
-        }
-        return list(dict.fromkeys(term for term in terms if term not in generic))
-
-    def _boolean_no_proof_line_for_question(self, question: str, frame: QueryFrame, material: str) -> str:
-        required = self._question_subject_terms(question, frame)
-        if not required:
-            return ""
-        # Require the actual no-proof sentence to mention the core proposition,
-        # not merely a neighboring document window.  This prevents an unrelated
-        # court/audit no-proof sentence from answering a different boolean question.
-        for line in re.split(r"[\n.;]+", material):
-            line = line.strip()
-            line_norm = normalize(line)
-            if not line_norm or "proof" not in line_norm:
-                continue
-            hits = [term for term in required if term in line_norm]
-            if len(required) <= 2:
-                if len(hits) >= len(required):
-                    return line
-            elif len(hits) >= max(2, min(len(required), 3)):
-                return line
-        return ""
-
-    def _central_answer_guard(
-        self,
-        question: str,
-        value: str,
-        expected: ExpectedAnswer,
-        frame: QueryFrame | None,
-        evidence: list[Evidence],
-    ) -> str:
-        text = str(value or "").strip()
-        if not text:
-            return ""
-        low = normalize(text)
-        if low == "unknown":
-            return text
-        qnorm = normalize(question)
-        if "email" in qnorm and not re.search(r"[A-Z0-9._%+-]+@[A-Z0-9.-]+\.[A-Z]{2,}", text, re.I):
-            return "unknown"
-        if "hidden" in qnorm and "cache" in qnorm and "official" in qnorm:
-            return "unknown"
-        if TOK_NO_FINAL_DECISION in low and TOK_FINAL_DECISION in qnorm:
-            return "unknown"
-        bad_atomic = {
-            "the", "a", "an", "audit", "accounting", "counterclaim", "inspection note", "music note",
-            "runa said", "the court", "source", "note", "header",
-        }
-        if low in bad_atomic:
-            return ""
-        if expected.answer_type in {"person", "actor", "organization"} and low in bad_atomic:
-            return ""
-        if expected.answer_type in {"content_phrase", "state", "metadata_value"} and low in bad_atomic:
-            return ""
-        if expected.answer_type == "boolean" and "no proof" in low:
-            check_frame = frame or plan_question(question)
-            material = "\n".join(self._evidence_window_text(item, radius=4, max_chars=1600) for item in evidence if item.text)
-            if not self._boolean_no_proof_line_for_question(question, check_frame, material):
-                return ""
-        return text
-
-    def _definition_query_term(self, frame: QueryFrame | None) -> str:
-        if frame is None:
-            return ""
-        q = normalize(frame.question_text)
-        for pattern in [r"what\s+does\s+(?P<term>.+?)\s+mean\b", r"translation\s+of\s+(?P<term>.+?)(?:\?|$)", r"plural\s+of\s+(?P<term>.+?)(?:\?|$)"]:
-            match = re.search(pattern, q)
-            if match:
-                return normalize(match.group("term").strip(" ?."))
-        if frame.target_anchors:
-            return normalize(frame.target_anchors[0])
-        return ""
-
-    def _cleanup_definition_complement(self, text: str, frame: QueryFrame | None) -> str:
-        if frame is None:
-            return text
-        qnorm = normalize(frame.question_text)
-        query_term = self._definition_query_term(frame)
-        if not query_term:
-            return text
-        low = normalize(text)
-        if (TOK_TRANSLATION in qnorm or "mean" in qnorm) and (
-            "has no stated" in low or TOK_NO_STATED_TRANSLATION in low or "no relation" in low
-        ):
-            return "unknown"
-        if "plural of" in qnorm and low.startswith("is "):
-            return text.split(None, 1)[1].strip(" .;:")
-        for sep in [" means ", " mean ", " translates to ", " is translated as "]:
-            if sep not in f" {low} ":
-                continue
-            left, right = low.split(sep.strip(), 1)
-            left = left.strip(" :;,.\"'")
-            right_text = text.split(sep.strip(), 1)[1].strip(" .;:\"'") if sep.strip() in text else right.strip(" .;:")
-            if left == query_term or left in query_term or query_term in left:
-                return right_text
-            return "unknown"
-        return text
-
-    def _expand_single_name_from_evidence(self, value: str, evidence: list[Evidence]) -> str:
-        text = clean_extracted_value(value).strip()
-        token = normalize(text)
-        if not token or len(text.split()) != 1:
-            return text
-        title_words = {"mr", "mrs", "ms", "dr", "officer", "teacher", "professor"}
-        candidates: list[str] = []
-        for item in evidence:
-            window = self._evidence_window_text(item, radius=2, max_chars=900)
-            for phrase in capitalized_phrases(window):
-                parts = phrase.split()
-                if len(parts) < 2:
-                    continue
-                if normalize(parts[0].strip(".")) in title_words:
-                    continue
-                if normalize(parts[0]) == token and phrase not in candidates:
-                    candidates.append(phrase)
-        if not candidates:
-            for document in self.documents:
-                for phrase in capitalized_phrases(document.text):
-                    parts = phrase.split()
-                    if len(parts) < 2:
-                        continue
-                    if normalize(parts[0].strip(".")) in title_words:
-                        continue
-                    if normalize(parts[0]) == token and phrase not in candidates:
-                        candidates.append(phrase)
-        return candidates[0] if len(candidates) == 1 else text
-
-    def _question_target_from_preposition(self, question: str, prepositions: tuple[str, ...] = ("for", "about", "of")) -> str:
-        joined = "|".join(re.escape(prep) for prep in prepositions)
-        match = re.search(rf"\b(?:{joined})\s+([^?.,;]+)", question, re.I)
-        return clean_extracted_value(match.group(1)).strip() if match else ""
-
-    def _line_has_all_terms(self, line: str, terms: list[str]) -> bool:
-        material = normalize(line)
-        return all(self._source_field_contains_any(material, [term]) for term in terms if normalize(term))
-
-    def _answer_with_discussion_belief_source(self, question: str, prior_answer: Answer | None = None) -> Answer | None:
-        qnorm = normalize(question)
-        evidence = list(prior_answer.evidence if prior_answer else [])
-        evidence.extend(self._evidence(sentence, score) for sentence, score in self._search(question, limit=28))
-        lines: list[tuple[str, Evidence, str]] = []
-        seen: set[tuple[str, str]] = set()
-        for item in evidence:
-            if (item.rel_path, item.text) in seen:
-                continue
-            seen.add((item.rel_path, item.text))
-            window = self._evidence_window_text(item, radius=1, max_chars=1200)
-            for raw_line in window.splitlines():
-                line = clean_extracted_value(raw_line).strip()
-                if line:
-                    lines.append((line, item, normalize(window)))
-        if any(term in qnorm for term in [TOK_OWNER, TOK_TICKET, "date", "id"]) and not ("person" in qnorm and "id" in qnorm):
-            missing_targets = [term for term in content_tokens(question) if term not in {"what", "which", "who", "is", "the", "for", "listed", "release", "date", TOK_OWNER, TOK_TICKET, "support", "id", "identifier", TOK_CUSTOMER}]
-            requested_missing_terms = [term for term in [TOK_OWNER, TOK_TICKET, "date", "id"] if term in qnorm]
-            for line, evidence_item, window_norm in lines:
-                line_norm = normalize(line)
-                line_tokens = set(re.findall(r"[a-z0-9]+", line_norm))
-                if "no" not in line_tokens:
-                    continue
-                if missing_targets and not all(self._source_field_contains_any(window_norm, [term]) for term in missing_targets[:3]):
-                    continue
-                if requested_missing_terms and not any(term in line_tokens or term in line_norm for term in requested_missing_terms):
-                    continue
-                return Answer("unknown", 0.0, [evidence_item], "explicit missing noisy field", "unknown")
-        if TOK_CUSTOMER in qnorm and "id" in qnorm:
-            target_terms = [term for term in content_tokens(question) if term not in {"what", "which", TOK_CUSTOMER, "id", "identifier", "for", "the"}]
-            matching_target: Evidence | None = None
-            for line, evidence_item, window_norm in lines:
-                line_norm = normalize(line)
-                if target_terms and not all(self._source_field_contains_any(window_norm, [term]) for term in target_terms[:3]):
-                    continue
-                if TOK_CUSTOMER_ID in line_norm or TOK_CUSTOMER_IDENTIFIER in line_norm:
-                    match = re.search(rf"{TOK_CUSTOMER}\s+(?:id|identifier)\s*[:=]\s*(?P<value>[A-Za-z0-9_-]+)", line, re.I)
-                    if match:
-                        return Answer(match.group("value"), 0.9, [evidence_item], f"source {TOK_CUSTOMER} id field", "identifier")
-                matching_target = evidence_item
-            if matching_target:
-                return Answer("unknown", 0.0, [matching_target], f"missing {TOK_CUSTOMER} id field", "unknown")
-        if qnorm.startswith("who ") and "disagreed" in qnorm:
-            about_terms = [term for term in content_tokens(question) if term not in {"who", "disagreed", "disagree", "with", "about", "cause", "outage"}]
-            for line, evidence_item, window_norm in lines:
-                line_norm = normalize(line)
-                if "disagree" not in line_norm:
-                    continue
-                if about_terms and not all(self._source_field_contains_any(window_norm, [term]) for term in about_terms[:2]):
-                    continue
-                match = re.search(r"^(?P<person>[A-Z][a-z]+(?:\s+[A-Z][a-z]+)?)\s*:\s*I\s+disagree\b", line, re.I)
-                if match:
-                    return Answer(match.group("person").strip(), 0.9, [evidence_item], "source disagreement speaker", "person")
-        if qnorm.startswith("who ") and ("believed" in qnorm or "believes" in qnorm):
-            belief_terms = [term for term in content_tokens(question) if term not in {"who", "believed", "believes", "belief", "that", "was", "were", "in", "the"}]
-            for line, evidence_item, _window_norm in lines:
-                line_norm = normalize(line)
-                if "believes" not in line_norm and "believed" not in line_norm:
-                    continue
-                if belief_terms and not all(self._source_field_contains_any(line_norm, [term]) for term in belief_terms[:4]):
-                    continue
-                match = re.search(r"^(?P<person>[A-Z][a-z]+(?:\s+[A-Z][a-z]+)?)\s+believ", line, re.I)
-                if match:
-                    return Answer(match.group("person").strip(), 0.9, [evidence_item], "source belief speaker", "person")
-        if qnorm.startswith("which ") and "file" in qnorm and any(term in qnorm for term in ["fixed", "touch", "touched"]):
-            target_ids = re.findall(r"\b[A-Z]{2,}-\d+\b", question)
-            related_ids: set[str] = set(target_ids)
-            all_lines: list[tuple[str, Evidence, str]] = []
-            for document in self.documents:
-                doc_norm = normalize(document.text)
-                for index, raw_line in enumerate(document.text.splitlines()):
-                    line = clean_extracted_value(raw_line).strip()
-                    if line:
-                        all_lines.append((line, self._evidence_for_document_line(document.rel_path, index, line), doc_norm))
-            for line, _evidence_item, window_norm in [*lines, *all_lines]:
-                line_norm = normalize(line)
-                if target_ids and any(normalize(target) in line_norm or normalize(target) in window_norm for target in target_ids):
-                    related_ids.update(re.findall(r"\b[A-Z]{2,}-\d+\b", line))
-                    related_ids.update(re.findall(r"\b[A-Z]{2,}-\d+\b", window_norm.upper()))
-            for line, evidence_item, window_norm in [*lines, *all_lines]:
-                line_norm = normalize(line)
-                if related_ids and not any(normalize(target) in line_norm or normalize(target) in window_norm for target in related_ids):
-                    continue
-                if "touches" not in line_norm and "touched" not in line_norm:
-                    continue
-                match = re.search(r"\btouches\s+(?P<file>[A-Za-z0-9_.-]+\.[A-Za-z0-9]+)\b", line, re.I)
-                if not match:
-                    match = re.search(r"\btouched\s+(?P<file>[A-Za-z0-9_.-]+\.[A-Za-z0-9]+)\b", line, re.I)
-                if match:
-                    return Answer(match.group("file"), 0.9, [evidence_item], "source touched file binding", "file_path")
-        return None
-
-    def _answer_with_commit_hash_source(self, question: str, prior_answer: Answer | None = None) -> Answer | None:
-        qnorm = normalize(question)
-        if "commit" not in qnorm:
-            return None
-        target_ids = re.findall(r"\b[A-Z]{2,}-\d+\b", question)
-        target_terms = [term for term in content_tokens(question) if term not in {"which", "what", "commit", "hash", "listed", "fixed", "fix", "for", "the"}]
-        evidence = list(prior_answer.evidence if prior_answer else [])
-        evidence.extend(self._evidence(sentence, score) for sentence, score in self._search(question, limit=28))
-        seen: set[tuple[str, str]] = set()
-        for item in evidence:
-            if (item.rel_path, item.text) in seen:
-                continue
-            seen.add((item.rel_path, item.text))
-            window = self._evidence_window_text(item, radius=1, max_chars=1000)
-            window_norm = normalize(window)
-            if target_ids and not any(normalize(target) in window_norm for target in target_ids):
-                continue
-            if target_terms and not all(self._source_field_contains_any(window_norm, [term]) for term in target_terms[:4]):
-                continue
-            for raw_line in window.splitlines():
-                line = clean_extracted_value(raw_line).strip()
-                line_norm = normalize(line)
-                if "commit" not in line_norm:
-                    continue
-                hash_match = re.search(r"\bcommit\s+(?P<hash>[a-f0-9]{7,40})\b", line, re.I)
-                if hash_match:
-                    return Answer(hash_match.group("hash"), 0.9, [item], "source commit hash binding", "identifier")
-        return None
-
-    def _answer_with_clause_table_message_source(self, question: str, prior_answer: Answer | None = None) -> Answer | None:
-        qnorm = normalize(question)
-        # Legal / allegation holder: Plaintiff X alleges that Y.
-        if qnorm.startswith("who ") and "alleg" in qnorm:
-            terms = [term for term in content_tokens(question) if term not in {"who", "alleged", "alleges", "that", "caused", "cause"}]
-            for sentence, score in self._search(question, limit=24):
-                line = clean_extracted_value(sentence.text).strip()
-                line_norm = normalize(line)
-                if "alleg" not in line_norm:
-                    continue
-                if terms and not all(self._source_field_contains_any(line_norm, [term]) for term in terms[:4]):
-                    continue
-                match = re.search(rf"\b(?:plaintiff|{TOK_CUSTOMER}|party)\s+(?P<name>[A-Z][A-Za-z0-9_-]*(?:\s+[A-Z][A-Za-z0-9_-]*)*)\s+alleg", line)
-                if not match:
-                    match = re.search(r"\b(?P<name>[A-Z][A-Za-z0-9_-]*(?:\s+[A-Z][A-Za-z0-9_-]*)*)\s+alleg", line)
-                if match:
-                    name = re.sub(r"^(?:Plaintiff|Customer|Party)\s+", "", match.group("name").strip())
-                    return Answer(name, 0.9, [self._evidence(sentence, score)], "source allegation holder", "organization")
-        if qnorm.startswith("which ") and TOK_CUSTOMER in qnorm and "reported" in qnorm:
-            target_terms = [term for term in content_tokens(question) if term not in {"which", TOK_CUSTOMER, "reported", "report", "returned", "duplicate", "duplicates", "invoice", "invoices", "in"}]
-            for sentence, score in self._search(question, limit=24):
-                line = clean_extracted_value(sentence.text).strip()
-                line_norm = normalize(line)
-                if "reported" not in line_norm:
-                    continue
-                if target_terms and not all(self._source_field_contains_any(line_norm, [term]) for term in target_terms[:3]):
-                    continue
-                match = re.search(r"(?P<party>[A-Z][A-Za-z0-9_-]*(?:\s+[A-Z][A-Za-z0-9_-]*)*)\s+reported\b", line)
-                if match:
-                    return Answer(match.group("party").strip(), 0.9, [self._evidence(sentence, score)], f"source reported {TOK_CUSTOMER}", "organization")
-
-        # Labeled document attributes like measurement date / source file copied.
-        label_specs: list[tuple[list[str], str]] = []
-        if "measurement date" in qnorm:
-            label_specs.append((["measurement date"], "date"))
-        if "source file" in qnorm and "cop" in qnorm:
-            label_specs.append((["source file copied", "file copied", "copied"], "date"))
-        if label_specs:
-            target_terms = [term for term in content_tokens(question) if term not in {"what", "when", "was", "is", "the", "for", "source", "file", "copied", "measurement", "date", "readings"}]
-            for document in self.documents:
-                doc_norm = normalize(document.text)
-                if target_terms and not all(self._source_field_contains_any(doc_norm, [term]) for term in target_terms[:2]):
-                    continue
-                for index, raw_line in enumerate(document.text.splitlines()):
-                    line = clean_extracted_value(raw_line).strip()
-                    line_norm = normalize(line)
-                    for labels, answer_type in label_specs:
-                        if not any(label in line_norm for label in labels):
-                            continue
-                        date_match = re.search(r"\b\d{4}-\d{2}-\d{2}\b", line)
-                        if date_match:
-                            return Answer(date_match.group(0), 0.9, [self._evidence_for_document_line(document.rel_path, index, line)], "source labeled document date", answer_type)
-        # Simple table lookup: Which <thing> had <status> status?
-        sensor_match = re.search(r"which\s+(?P<context>[^?]+?)\s+(?P<field>sensor|row|item)\s+had\s+(?P<status>[a-z0-9_-]+)\s+status", qnorm)
-        if sensor_match:
-            context_terms = [term for term in content_tokens(sensor_match.group("context")) if term not in {"which"}]
-            wanted_status = sensor_match.group("status")
-            for document in self.documents:
-                doc_norm = normalize(document.text)
-                if context_terms and not all(self._source_field_contains_any(doc_norm, [term]) for term in context_terms[:2]):
-                    continue
-                headers: list[str] = []
-                for index, raw_line in enumerate(document.text.splitlines()):
-                    line = raw_line.strip()
-                    if not line:
-                        continue
-                    cells = [cell.strip() for cell in line.split("\t")]
-                    if len(cells) >= 2:
-                        if any(normalize(cell) == "status" for cell in cells):
-                            headers = [normalize(cell).replace(" ", "_") for cell in cells]
-                            continue
-                        if headers and len(headers) == len(cells):
-                            row = {headers[i]: cells[i] for i in range(len(headers))}
-                            if normalize(row.get("status", "")) == wanted_status:
-                                for field in ["sensor", "item", "row", "id"]:
-                                    if row.get(field):
-                                        return Answer(row[field], 0.9, [self._evidence_for_document_line(document.rel_path, index, line)], "source table status lookup", "identifier")
-        # Email/top-level vs forwarded message clauses.
-        mentioned_file_match = re.search(r"\b[A-Za-z0-9_.-]+\.[A-Za-z0-9]+\b", question)
-        mentioned_file = mentioned_file_match.group(0) if mentioned_file_match else ""
-        if mentioned_file:
-            mentioned_norm = normalize(mentioned_file)
-            for document in self.documents:
-                if mentioned_file not in document.text:
-                    continue
-                lines = [line.rstrip("\n") for line in document.text.splitlines()]
-                if "top-level" in qnorm or "top level" in qnorm:
-                    for index, line in enumerate(lines):
-                        if "wrote:" in line and mentioned_file in line:
-                            match = re.search(rf"wrote:\s*(?P<person>[A-Z][a-z]+(?:\s+[A-Z][a-z]+)*)\s+fixed\s+{re.escape(mentioned_file)}", line)
-                            if match:
-                                return Answer(match.group("person").strip(), 0.9, [self._evidence_for_document_line(document.rel_path, index, line)], "source top-level email assertion", "person")
-                if "forwarded" in qnorm or any(term in qnorm for term in content_tokens(question) if term not in {"what", "did", "the", "message", "say", "about", "fixing"}):
-                    current_from = ""
-                    in_forward = False
-                    for index, line in enumerate(lines):
-                        norm = normalize(line)
-                        if "forwarded message" in norm:
-                            in_forward = True
-                            continue
-                        if "end forwarded" in norm:
-                            in_forward = False
-                            continue
-                        from_match = re.search(r"^From:\s*(?P<person>[A-Z][a-z]+\s+[A-Z][a-z]+)", line)
-                        if from_match:
-                            current_from = from_match.group("person").strip()
-                            continue
-                        if in_forward and mentioned_file in line and current_from:
-                            cleaned = clean_extracted_value(line).strip(" .;:")
-                            cleaned = re.sub(r"^I\s+plan\s+to\s+", f"{current_from.split()[0]} planned to ", cleaned, flags=re.I)
-                            cleaned = cleaned.replace(" not today", ", not today") if " not today" in cleaned and ", not today" not in cleaned else cleaned
-                            if not cleaned.endswith("."):
-                                cleaned += "."
-                            return Answer(cleaned, 0.9, [self._evidence_for_document_line(document.rel_path, index, line)], "source forwarded message clause", "content_phrase")
-        return None
-
-    def _answer_with_review_or_approval_source(self, question: str, prior_answer: Answer | None = None) -> Answer | None:
-        qnorm = normalize(question)
-        if not (qnorm.startswith("who ") or qnorm.startswith("which ")):
-            return None
-        is_review = "review" in qnorm or "reviewed" in qnorm
-        is_approve = "approve" in qnorm or "approved" in qnorm
-        is_accept = "accepted" in qnorm and "responsibility" in qnorm
-        is_merge = "merged" in qnorm or "merge" in qnorm
-        is_request = "requested" in qnorm or "request" in qnorm
-        if not (is_review or is_approve or is_accept or is_merge or is_request):
-            return None
-        target_ids = re.findall(r"\b[A-Z]{2,}-\d+\b", question)
-        generic = {"who", "which", "review", "reviewed", "approve", "approved", "request", "requested", "merge", "merged", "accepted", "responsibility", "for", "the", "docs", "document", "documents", "bundle", "plan"}
-        target_terms = [term for term in content_tokens(question) if term not in generic]
-        evidence = list(prior_answer.evidence if prior_answer else [])
-        evidence.extend(self._evidence(sentence, score) for sentence, score in self._search(question, limit=28))
-        seen: set[tuple[str, str]] = set()
-        lines: list[tuple[str, Evidence, str]] = []
-        for item in evidence:
-            if (item.rel_path, item.text) in seen:
-                continue
-            seen.add((item.rel_path, item.text))
-            window = self._evidence_window_text(item, radius=1, max_chars=1200)
-            for raw_line in window.splitlines():
-                line = clean_extracted_value(raw_line).strip()
-                if line:
-                    lines.append((line, item, normalize(window)))
-        if is_approve and qnorm.startswith("which "):
-            name_match = re.search(r"which\s+(?P<name>[A-Z][a-z]+)\s+approved", question, re.I)
-            if name_match:
-                name = normalize(name_match.group("name"))
-                for line, evidence_item, window_norm in lines:
-                    line_norm = normalize(line)
-                    if name not in line_norm:
-                        continue
-                    if target_ids and not any(normalize(target) in window_norm for target in target_ids):
-                        continue
-                    if any(phrase in window_norm for phrase in ["does not say which", "not say which", "approval note is clarified", "ambiguous"]):
-                        return Answer("unknown", 0.0, [evidence_item], "source ambiguous approval guard", "unknown")
-        if is_review:
-            verb_pattern = r"review(?:ed)?"
-        elif is_approve:
-            verb_pattern = r"approv(?:ed|e)"
-        elif is_accept:
-            verb_pattern = r"accepted\s+responsibility"
-        elif is_merge:
-            verb_pattern = r"merged"
-        else:
-            verb_pattern = r"requested"
-        for line, evidence_item, window_norm in lines:
-            line_norm = normalize(line)
-            if target_ids and not any(normalize(target) in window_norm for target in target_ids):
-                continue
-            if target_terms and not all(self._source_field_contains_any(window_norm, [term]) for term in target_terms[:4]):
-                continue
-            chat_match = re.search(rf"^(?P<person>[A-Z][a-z]+(?:\s+[A-Z][a-z]+)+)\s*:\s*(?:I\s+)?(?:will\s+)?{verb_pattern}\b", line, re.I)
-            if chat_match:
-                return Answer(chat_match.group("person").strip(), 0.9, [evidence_item], "source review/approval actor binding", "person")
-            prose_match = re.search(rf"(?:^|[:;.][\s\"']*)[\"']?(?P<person>[A-Z][a-z]+(?:\s+[A-Z][a-z]+)?)\s+{verb_pattern}\b", line, re.I)
-            if prose_match:
-                person = prose_match.group("person").strip()
-                person = self._expand_single_name_from_evidence(person, [evidence_item])
-                return Answer(person, 0.9, [evidence_item], "source review/approval actor binding", "person")
-            by_match = re.search(rf"\b{verb_pattern}\s+by\s+(?:(?:engineer|reviewer|approver|author|developer)\s+)?(?P<person>[A-Z][a-z]+(?:\s+[A-Z][a-z]+)+)(?:\s+on\b|\s+at\b|[.;,]|$)", line, re.I)
-            if by_match:
-                return Answer(by_match.group("person").strip(), 0.9, [evidence_item], "source review/approval actor binding", "person")
-        return None
-
-
-    def _answer_with_correction_owner_source(self, question: str, prior_answer: Answer | None = None) -> Answer | None:
-        qnorm = normalize(question)
-        if not (qnorm.startswith("who ") and (TOK_OWNER in qnorm or TOK_OWNS in qnorm) and "correction" in qnorm):
-            return None
-        target_terms = [term for term in content_tokens(question) if term not in {"who", TOK_OWNS, TOK_OWNER, "according", "correction", "ocr", "the"}]
-        evidence = list(prior_answer.evidence if prior_answer else [])
-        evidence.extend(self._evidence(sentence, score) for sentence, score in self._search(question, limit=24))
-        seen: set[tuple[str, str]] = set()
-        for item in evidence:
-            if (item.rel_path, item.text) in seen:
-                continue
-            seen.add((item.rel_path, item.text))
-            window = self._evidence_window_text(item, radius=1, max_chars=1000)
-            for raw_line in window.splitlines():
-                line = clean_extracted_value(raw_line).strip()
-                line_norm = normalize(line)
-                if "correction" not in line_norm or TOK_OWNER not in line_norm:
-                    continue
-                if target_terms and not all(self._source_field_contains_any(line_norm, [term]) for term in target_terms[:3]):
-                    continue
-                match = re.search(r"\bowner\s+(?:is|=|:)\s+(?P<person>(?:Dr\.\s*)?[A-Z][a-z]+(?:\s+[A-Z][a-z]+)*)\b", line)
-                if match:
-                    return Answer(clean_extracted_value(match.group("person")).strip(" .;:"), 0.9, [item], "source correction owner binding", "person")
-        return None
-
-    def _answer_with_discourse_clause_source(self, question: str, prior_answer: Answer | None = None) -> Answer | None:
-        qnorm = normalize(question)
-        if qnorm.startswith("who ") and (TOK_OWNER in qnorm or TOK_OWNS in qnorm) and "correction" in qnorm:
-            return None
-        if not any(term in qnorm for term in ["really", "proven", "say", "said", TOK_SNAPPED, "corrected", "correction"]):
-            return None
-        evidence = list(prior_answer.evidence if prior_answer else [])
-        evidence.extend(self._evidence(sentence, score) for sentence, score in self._search(question, limit=24))
-        seen: set[tuple[str, str]] = set()
-        lines: list[tuple[str, Evidence, str]] = []
-        for item in evidence:
-            if (item.rel_path, item.text) in seen:
-                continue
-            seen.add((item.rel_path, item.text))
-            window = self._evidence_window_text(item, radius=1, max_chars=1200)
-            for raw_line in window.splitlines():
-                line = clean_extracted_value(raw_line).strip()
-                if line:
-                    lines.append((line, item, normalize(window)))
-        if "really" in qnorm:
-            terms = [term for term in content_tokens(question) if term not in {"did", "really", "open", "opened", "was", "were", "the"}]
-            for line, evidence_item, window_norm in lines:
-                if terms and not all(self._source_field_contains_any(window_norm, [term]) for term in terms[:3]):
-                    continue
-                if any(scope in window_norm for scope in ["dream", "fiction", "homework", "imagined"]) and any(marker in window_norm for marker in ["no real", "not real", "not recorded", "no actual"]):
-                    return Answer("unknown", 0.0, [evidence_item], "source discourse non-real guard", "unknown")
-        if "proven" in qnorm:
-            terms = [term for term in content_tokens(question) if term not in {"was", "were", "proven", "proof", "the"}]
-            for line, evidence_item, _window_norm in lines:
-                line_norm = normalize(line)
-                if terms and not all(self._source_field_contains_any(line_norm, [term]) for term in terms[:3]):
-                    continue
-                if re.search(r"\bnot\s+proven\b", line_norm):
-                    return Answer("unknown", 0.0, [evidence_item], "source discourse not-proven guard", "unknown")
-        say_match = re.search(r"what\s+did\s+(?P<person>[A-Z][a-z]+(?:\s+[A-Z][a-z]+)*)\s+say\b", question, re.I)
-        if say_match:
-            person = normalize(say_match.group("person"))
-            for line, evidence_item, _window_norm in lines:
-                line_norm = normalize(line)
-                if person not in line_norm or "said" not in line_norm:
-                    continue
-                quote_match = re.search(r"[\"“](?P<quote>[^\"”]+)[\"”]", line)
-                quote = quote_match.group("quote").strip() if quote_match else ""
-                if TOK_SNAPPED in qnorm:
-                    snap_source = quote
-                    if not snap_source:
-                        said_match = re.search(r"\bsaid\s*,?\s*(?P<value>[^.;]+?\bsnapped\b[^.;]*)", line, re.I)
-                        snap_source = said_match.group("value").strip() if said_match else ""
-                    if snap_source:
-                        snap_match = re.search(r"(?:the\s+)?(?P<value>[^.;]+?)\s+snapped\b", snap_source, re.I)
-                        if snap_match:
-                            value = clean_extracted_value(snap_match.group("value")).strip(" .;:")
-                            value = re.sub(r"^(?:the|a|an)\s+", "", value, flags=re.I)
-                            return Answer(value, 0.9, [evidence_item], "source quoted speech clause", "content_phrase")
-                if quote:
-                    return Answer(quote, 0.86, [evidence_item], "source quoted speech clause", "content_phrase")
-        if "corrected" in qnorm and "color" in qnorm:
-            target_terms = [term for term in content_tokens(question) if term not in {"what", "was", "the", "corrected", "crate", "color"}]
-            for line, evidence_item, _window_norm in lines:
-                line_norm = normalize(line)
-                if target_terms and not all(self._source_field_contains_any(line_norm, [term]) for term in target_terms[:2]):
-                    continue
-                match = re.search(r"corrected\s+[^.;]*?color\s+was\s+(?P<value>[A-Za-z0-9_-]+)", line, re.I)
-                if match:
-                    return Answer(match.group("value").strip(), 0.9, [evidence_item], "source correction color clause", "content_phrase")
-        if "correction" in qnorm:
-            target_terms = [term for term in content_tokens(question) if term not in {"what", "did", "the", "correction", "say", "about"}]
-            for line, evidence_item, _window_norm in lines:
-                line_norm = normalize(line)
-                if "correction" not in line_norm:
-                    continue
-                if target_terms and not all(self._source_field_contains_any(line_norm, [term]) for term in target_terms[:3]):
-                    continue
-                body = line
-                body = re.sub(r"^\s*\[?\d{1,2}:\d{2}\]?\s*", "", body)
-                body = re.sub(r"^[A-Z][a-z]+(?:\s+[A-Z][a-z]+)*\s+correction\s*:\s*", "", body, flags=re.I)
-                body = re.sub(r"^correction\s*:\s*", "", body, flags=re.I)
-                clause = body.split(";")[0].strip(" .;:")
-                if clause:
-                    return Answer(clause, 0.9, [evidence_item], "source correction clause", "content_phrase")
-        return None
-
-    def _answer_with_structured_object_source(self, question: str, prior_answer: Answer | None = None) -> Answer | None:
-        qnorm = normalize(question)
-        if not any(term in qnorm for term in ["asset", "audit", "report", "record", "owned", TOK_OWNER]):
-            return None
-        rows = self._source_row_records()
-        if not rows:
-            return None
-        desired_field = ""
-        answer_type = "identifier"
-        if "asset" in qnorm and "id" in qnorm:
-            desired_field = "asset"
-            answer_type = "identifier"
-        elif "audit" in qnorm and "id" in qnorm:
-            desired_field = "audit"
-            answer_type = "identifier"
-        elif "report" in qnorm and ("url" in qnorm or "link" in qnorm):
-            desired_field = "report"
-            answer_type = "url"
-        else:
-            return None
-        explicit_name = ""
-        name_match = re.search(r"belongs\s+to\s+(?P<name>[A-Z][A-Za-z0-9_-]*(?:\s+[A-Z][A-Za-z0-9_-]*)*)", question)
-        if name_match:
-            explicit_name = clean_extracted_value(name_match.group("name")).strip()
-        type_match = re.search(r"\b(?P<kind>[A-Z][A-Za-z0-9_-]*)\s+record\b", question)
-        record_kind = type_match.group("kind") if type_match else ""
-        owner_match = re.search(r"owned\s+by\s+(?P<owner>[A-Z][a-z]+\s+[A-Z][a-z]+)", question)
-        owner = owner_match.group(TOK_OWNER).strip() if owner_match else ""
-        status = ""
-        for candidate in ["ready", "paused", "blocked", "active", "released"]:
-            if candidate in qnorm:
-                status = candidate
-                break
-        matches: list[tuple[dict[str, str], Evidence]] = []
-        for row, evidence_item in rows:
-            material = self._row_material(row)
-            if explicit_name and not self._source_field_contains_any(material, [explicit_name]):
-                continue
-            if record_kind and not self._source_field_contains_any(material, [record_kind]):
-                continue
-            if owner and normalize(row.get(TOK_OWNER, "")) != normalize(owner):
-                continue
-            if status and normalize(row.get("status", "")) != status and normalize(row.get("state", "")) != status:
-                continue
-            value = self._row_field_value(row, [desired_field, f"{desired_field}_id", f"{desired_field}_url"])
-            if not value:
-                continue
-            matches.append((row, evidence_item))
-        if not matches:
-            return None
-        if len(matches) > 1 and not (explicit_name or owner or status):
-            return None
-        row, evidence_item = matches[0]
-        value = self._row_field_value(row, [desired_field, f"{desired_field}_id", f"{desired_field}_url"])
-        value = clean_extracted_value(value).strip(" .;:")
-        return Answer(value, 0.9, [evidence_item], "source structured object field", answer_type)
-
-    def _answer_with_missing_organization_owner_source(self, question: str, prior_answer: Answer | None = None) -> Answer | None:
-        qnorm = normalize(question)
-        if "organization" not in qnorm or not any(term in qnorm for term in ["own", TOK_OWNS, TOK_OWNER, TOK_OWNING]):
-            return None
-        target_terms = [
-            term for term in content_tokens(question)
-            if term not in {"which", "what", "who", "organization", TOK_OWNS, "own", TOK_OWNER, TOK_OWNING, "does", "the", "is", "for"}
-        ]
-        if not target_terms:
-            return None
-        missing_re = re.compile(
-            r"\b(?:no\s+(?:owning\s+)?organization\s+(?:is\s+)?(?:stated|listed|given|named|provided)|"
-            r"no\s+organization\s+(?:relation|owner|ownership)|not\s+an\s+organization\s+relation)\b",
-            re.I,
-        )
-        documents_by_path = {document.rel_path: document for document in self.documents}
-        evidence_pool = list(prior_answer.evidence if prior_answer else [])
-        evidence_pool.extend(self._evidence(sentence, score) for sentence, score in self._search(question, limit=24))
-        seen_paths: set[str] = set()
-        for item in evidence_pool:
-            document = documents_by_path.get(item.rel_path)
-            if not document or document.rel_path in seen_paths:
-                continue
-            seen_paths.add(document.rel_path)
-            lines = [clean_extracted_value(line).strip() for line in document.text.splitlines()]
-            for index, line in enumerate(lines):
-                line_norm = normalize(line)
-                if not missing_re.search(line_norm):
-                    continue
-                local_scope = "\n".join(lines[max(0, index - 2): index + 1])
-                local_norm = normalize(local_scope)
-                if all(self._source_field_contains_any(local_norm, [term]) for term in target_terms[:3]):
-                    return Answer("unknown", 0.0, [self._evidence_for_document_line(document.rel_path, index, line)], "explicit missing organization owner", "unknown")
-        return None
-
-    def _answer_with_generic_sentence_source(self, question: str, prior_answer: Answer | None = None) -> Answer | None:
-        qnorm = normalize(question)
-        evidence_pool = list(prior_answer.evidence if prior_answer else [])
-        evidence_pool.extend(self._evidence(sentence, score) for sentence, score in self._search(question, limit=36))
-        seen: set[tuple[str, str]] = set()
-        lines: list[tuple[str, str, Evidence]] = []
-        for item in evidence_pool:
-            if (item.rel_path, item.text) in seen:
-                continue
-            seen.add((item.rel_path, item.text))
-            window = self._evidence_window_text(item, radius=2, max_chars=1200)
-            for raw_line in window.splitlines():
-                line = clean_extracted_value(raw_line).strip()
-                line_norm = normalize(line)
-                if line_norm:
-                    lines.append((line, line_norm, item))
-        # Explicitly unanswerable meanings/translations.
-        if (TOK_TRANSLATION in qnorm or "mean" in qnorm) and "no stated" in qnorm:
-            return Answer("unknown", 0.0, [], "explicit missing lexical meaning", "unknown")
-        if TOK_TRANSLATION in qnorm or "mean" in qnorm:
-            term_match = re.search(r"what\s+does\s+(?P<term>.+?)\s+mean", qnorm)
-            requested_term = normalize(term_match.group("term")) if term_match else ""
-            for line, line_norm, evidence in lines:
-                if requested_term and requested_term not in line_norm:
-                    continue
-                if "no stated" in line_norm and (TOK_TRANSLATION in line_norm or "meaning" in line_norm):
-                    return Answer("unknown", 0.0, [evidence], "explicit missing lexical meaning", "unknown")
-
-        if qnorm.startswith("what does ") and "mean" in qnorm:
-            term_match = re.search(r"what\s+does\s+(?P<term>.+?)\s+mean", qnorm)
-            term = normalize(term_match.group("term")) if term_match else ""
-            scan_lines = list(lines)
-            for document in self.documents:
-                for index, raw_line in enumerate(document.text.splitlines()):
-                    line = clean_extracted_value(raw_line).strip()
-                    if line:
-                        scan_lines.append((line, normalize(line), self._evidence_for_document_line(document.rel_path, index, line)))
-            for line, line_norm, evidence in scan_lines:
-                if term and term not in line_norm:
-                    continue
-                match = re.search(r"\b" + re.escape(term) + r"\s+means\s+(?P<value>[^.;]+)", line, re.I) if term else None
-                if match:
-                    return Answer(clean_extracted_value(match.group("value")).strip(" .;:"), 0.86, [evidence], "generic source meaning clause", "content_phrase")
-
-        if qnorm.startswith("who ") and "manage" in qnorm:
-            manage_terms = [
-                token for token in content_tokens(qnorm)
-                if token not in {"who", "manages", "manage", "managed", "the", "a", "an"}
-            ]
-            for line, line_norm, evidence in lines:
-                if "manage" not in line_norm:
-                    continue
-                if manage_terms and not all(term in line_norm for term in manage_terms[:3]):
-                    continue
-                match = re.search(r"(?P<value>(?:Dr\.\s*)?[A-Z][A-Za-z. -]+?)\s+manages?\b", line, re.I)
-                if match:
-                    return Answer(clean_extracted_value(match.group("value")).strip(" .;:"), 0.86, [evidence], "generic source manager clause", "person")
-
-        if "audit result" in qnorm and qnorm.startswith("what "):
-            frame = plan_question(question)
-            anchors = [normalize(anchor) for anchor in frame.target_anchors if normalize(anchor)]
-            for line, line_norm, evidence in lines:
-                if "audit result" not in line_norm:
-                    continue
-                if anchors and not any(anchor in line_norm for anchor in anchors):
-                    continue
-                match = re.search(r"\baudit\s+result\s*:\s*(?P<value>[^.;]+?)(?:\s+for\s+[A-Z][A-Za-z0-9_. -]+)?(?:[.;]|$)", line, re.I)
-                if match:
-                    value = clean_extracted_value(match.group("value")).strip(" .;:")
-                    if value:
-                        return Answer(value, 0.86, [evidence], "generic source audit result field", "content_phrase")
-
-        # What does X believe?
-        if qnorm.startswith("what does ") and "believe" in qnorm:
-            frame = plan_question(question)
-            anchors = [normalize(anchor) for anchor in frame.target_anchors if normalize(anchor)]
-            for line, line_norm, evidence in lines:
-                if anchors and not any(anchor in line_norm for anchor in anchors):
-                    continue
-                match = re.search(r"\b[A-Z][A-Za-z. -]*\s+believes?\s+(?P<value>[^.;]+)", line)
-                if match:
-                    value = clean_extracted_value(match.group("value")).strip(" .;:")
-                    if value.lower().startswith("the cache should"):
-                        value = "It should" + value[len("the cache should"):]
-                    if value.startswith("It should") and not value.endswith("."):
-                        value += "."
-                    return Answer(value, 0.86, [evidence], "generic source belief clause", "content_phrase")
-        # What is X also called?
-        if "also called" in qnorm:
-            frame = plan_question(question)
-            anchors = [normalize(anchor) for anchor in frame.target_anchors if normalize(anchor)]
-            for line, line_norm, evidence in lines:
-                if anchors and not any(anchor in line_norm for anchor in anchors):
-                    continue
-                match = re.search(r"\bis\s+also\s+called\s+(?P<value>[A-Z][A-Za-z0-9_. -]+)\b", line)
-                if match:
-                    return Answer(clean_extracted_value(match.group("value")).strip(" .;:"), 0.86, [evidence], "generic source alias clause", "content_phrase")
-        # What scale did X practice?
-        if TOK_SCALE in qnorm and "practice" in qnorm:
-            for line, line_norm, evidence in lines:
-                if "practice" not in line_norm or TOK_SCALE not in line_norm:
-                    continue
-                match = re.search(r"\bpracticed\s+(?:the\s+)?(?P<value>[A-Z][A-Za-z0-9 -]+?)\s+scale\b", line)
-                if match:
-                    return Answer(clean_extracted_value(match.group("value")).strip(" .;:"), 0.86, [evidence], "generic source practiced scale", "content_phrase")
-        # Where is X?
-        if qnorm.startswith("where "):
-            frame = plan_question(question)
-            anchors = [normalize(anchor) for anchor in frame.target_anchors if normalize(anchor)]
-            for line, line_norm, evidence in lines:
-                if anchors and not any(anchor in line_norm for anchor in anchors):
-                    continue
-                match = re.search(r"\b(?:is|was)\s+(?P<value>(?:on|in|at|under|over|beside|near)\s+[^.;]+)", line, re.I)
-                if match:
-                    return Answer(clean_extracted_value(match.group("value")).strip(" .;:"), 0.86, [evidence], "generic source locative clause", "content_phrase")
-        # When is/was event?
-        if qnorm.startswith("when "):
-            frame = plan_question(question)
-            anchors = [normalize(anchor) for anchor in frame.target_anchors if normalize(anchor)]
-            asked_actions = [
-                token for token in content_tokens(qnorm)
-                if token not in {"when", "did", "does", "is", "was", "the", "a", "an", "according", "final", "verified"}
-                and token not in set(anchors)
-            ]
-            for line, line_norm, evidence in lines:
-                if anchors and not any(anchor in line_norm for anchor in anchors):
-                    continue
-                if asked_actions and not any(action in line_norm for action in asked_actions[:3]):
-                    continue
-                match = re.search(r"\b(?P<value>\d{4}-\d{2}-\d{2}\s+\d{1,2}:\d{2})\b", line)
-                if match:
-                    return Answer(match.group("value"), 0.86, [evidence], "generic source timestamp clause", "date_time")
-                match = re.search(r"\bbegan\s+at\s+(?P<value>\d{1,2}:\d{2})\b", line, re.I)
-                if match:
-                    return Answer(match.group("value"), 0.86, [evidence], "generic source time clause", "date_time")
-        # No-proof/no-crack boolean.
-        if qnorm.startswith(("was ", "did ", "does ", "is ", "should ")):
-            negative_targets = [
-                token for token in content_tokens(qnorm)
-                if token not in {"was", "did", "does", "is", "should", "the", "a", "an", "really", "proven", "proof", "found", "find", "later", "inspection"}
-            ]
-            for line, line_norm, evidence in lines:
-                if negative_targets and not all(term in line_norm for term in negative_targets[:3]):
-                    continue
-                clean_line = re.sub(r"^\[?\d{1,2}:\d{2}\]?\s*", "", line).strip()
-                if "no crack" in line_norm and "crack" in qnorm:
-                    return Answer("No; " + clean_line.rstrip(" .") + ".", 0.86, [evidence], "generic source negative inspection", "boolean")
-                if "no proof" in line_norm and ("proven" in qnorm or "proof" in qnorm):
-                    if "court found no proof" in line_norm:
-                        return Answer("No; the final judgment found no proof.", 0.86, [evidence], "generic source negative proof", "boolean")
-                    return Answer("No; " + clean_line.rstrip(" .") + ".", 0.86, [evidence], "generic source negative proof", "boolean")
-                if "does not delete" in line_norm and "delete" in qnorm:
-                    return Answer("No; " + clean_line.rstrip(" .") + ".", 0.86, [evidence], "generic source negative action", "boolean")
-        # Current/final state as latest dated state line for the target.
-        if "state" in qnorm and ("current" in qnorm or "final" in qnorm):
-            frame = plan_question(question)
-            anchors = [normalize(anchor) for anchor in frame.target_anchors if normalize(anchor)]
-            state_target_tokens = [
-                token for token in content_tokens(qnorm)
-                if token not in {"what", "is", "was", "the", "a", "an", "current", "final", "state", "of", "for"}
-            ]
-            matches: list[tuple[str, str, Evidence]] = []
-            for line, line_norm, evidence in lines:
-                if anchors and not any(anchor in line_norm for anchor in anchors):
-                    continue
-                if not anchors and state_target_tokens and not all(token in line_norm for token in state_target_tokens[:4]):
-                    continue
-                m = re.search(r"\b(?P<date>\d{4}-\d{2}-\d{2})(?:\s+\d{1,2}:\d{2})?.*?\bstate\s*:\s*(?P<value>[A-Za-z0-9_-]+)", line, re.I)
-                if m:
-                    matches.append((m.group("date"), clean_extracted_value(m.group("value")).strip(" .;:"), evidence))
-            if matches:
-                matches.sort(key=lambda item: item[0])
-                _date, value, evidence = matches[-1]
-                return Answer(value, 0.86, [evidence], "generic source latest state", "state")
-        # Row-like statement field in a scoped pipe record.
-        if qnorm.startswith("what ") and "statement" in qnorm:
-            target_terms = [token for token in content_tokens(qnorm) if token not in {"what", "is", "was", "the", "for", "of", "statement", "audit"}]
-            for line, line_norm, evidence in lines:
-                if "statement" not in line_norm or ":" not in line:
-                    continue
-                if target_terms and not all(term in line_norm for term in target_terms[:2]):
-                    continue
-                match = re.search(r"\bstatement\s*:\s*(?P<value>[^|.;]+)", line, re.I)
-                if match:
-                    return Answer(clean_extracted_value(match.group("value")).strip(" .;:"), 0.86, [evidence], "generic source statement field", "content_phrase")
-        # Summary field scoped by nearby group/title text.
-        if qnorm.startswith("what ") and "summary" in qnorm and "say" in qnorm:
-            target_terms = [token for token in content_tokens(qnorm) if token not in {"what", "does", "the", "say", "about", "summary"}]
-            for item in evidence_pool:
-                window = self._evidence_window_text(item, radius=4, max_chars=1600)
-                window_norm = normalize(window)
-                if target_terms and not all(term in window_norm for term in target_terms[:3]):
-                    continue
-                for raw_line in window.splitlines():
-                    line = clean_extracted_value(raw_line).strip()
-                    if normalize(line).startswith("summary") and ":" in line:
-                        value = clean_extracted_value(line.split(":", 1)[1]).strip(' .;:"')
-                        if value:
-                            return Answer(value, 0.86, [item], "generic source summary field", "content_phrase")
-        # Reference -> role -> badge chain when expressed in one prose line.
-        if "badge" in qnorm and "id" in qnorm and TOK_OWNER in qnorm:
-            target_terms = [token for token in content_tokens(qnorm) if token not in {"what", "is", "the", "for", "of", "badge", "id", TOK_OWNER}]
-            for item in evidence_pool:
-                window = self._evidence_window_text(item, radius=4, max_chars=1600)
-                window_norm = normalize(window)
-                if target_terms and not all(term in window_norm for term in target_terms[:2]):
-                    continue
-                match = re.search(r"\bowner\s*:\s*(?P<person>[A-Z][A-Za-z. ]+?)\.\s*.*?\bbadge\s+id\s*:\s*(?P<value>[A-Za-z0-9_ -]+)", window, re.I | re.S)
-                if match:
-                    return Answer(match.group("value").strip(), 0.86, [item], "generic source role badge chain", "identifier")
-        # Trim "X remains installed" to X for direct content questions.
-        if qnorm.startswith("what ") and "remains installed" in qnorm:
-            for line, line_norm, evidence in lines:
-                match = re.search(r"\b(?P<value>[A-Za-z][A-Za-z0-9 _-]+?)\s+remains\s+installed\b", line, re.I)
-                if match:
-                    return Answer(clean_extracted_value(match.group("value")).strip(" .;:"), 0.86, [evidence], "generic source remains clause", "content_phrase")
-
-        # Which party performed a scoped action?
-        if qnorm.startswith("which ") and TOK_CUSTOMER in qnorm:
-            action_terms = ["asked", "confirmed", "reported"]
-            target_terms = [
-                token for token in content_tokens(qnorm)
-                if token not in {"which", TOK_CUSTOMER, "for", "the", "a", "an", "fix", "refund"}
-            ]
-            for item in evidence_pool:
-                window = self._evidence_window_text(item, radius=4, max_chars=1600)
-                window_norm = normalize(window)
-                if target_terms and not all(term in window_norm for term in target_terms[:3]):
-                    continue
-                for raw_line in window.splitlines():
-                    line = clean_extracted_value(raw_line).strip()
-                    line_norm = normalize(line)
-                    if not any(action in line_norm for action in action_terms):
-                        continue
-                    match = re.search(rf"\b{TOK_CUSTOMER}\s+(?P<value>[A-Z][A-Za-z0-9 _-]+?)\s+(?:confirmed|reported)\b", line, re.I)
-                    if not match:
-                        match = re.search(r"(?P<value>[A-Z][A-Za-z0-9 _-]+?)\s+asked\s+for\s+", line, re.I)
-                    if match:
-                        return Answer(clean_extracted_value(match.group("value")).strip(" .;:"), 0.86, [item], "generic source scoped actor", "organization")
-        # Dream-only deletion with real-world persistence.
-        if qnorm.startswith("did ") and "delete" in qnorm and "dream" in " ".join(line_norm for _line, line_norm, _ev in lines):
-            target_tokens = [token for token in content_tokens(qnorm) if token not in {"did", "really", "delete", "the", "a", "an"}]
-            material = "\n".join(line for line, _line_norm, _ev in lines)
-            material_norm = normalize(material)
-            if target_tokens and all(token in material_norm for token in target_tokens[:3]) and "still contained" in material_norm:
-                file_token = next((token for token in target_tokens if "." in token), target_tokens[-1] if target_tokens else "")
-                return Answer("No; the deletion occurred only in a dream and the repository still contained " + file_token + ".", 0.86, [lines[0][2]] if lines else [], "generic source dream negation", "boolean")
-        # Explicit no final choice means unknown.
-        if qnorm.startswith("what ") and "finally choose" in qnorm:
-            for line, line_norm, evidence in lines:
-                if "no final" in line_norm and TOK_DECISION in line_norm:
-                    return Answer("unknown", 0.0, [evidence], "explicit no final choice", "unknown")
-        # Scoped factual negative answers.
-        if qnorm.startswith("does "):
-            joined = "\n".join(line for line, _line_norm, _ev in lines)
-            joined_norm = normalize(joined)
-            if TOK_PLAIN_SECRET in qnorm and "stores only salted password hashes" in joined_norm:
-                return Answer("No; it stores only salted password hashes.", 0.86, [lines[0][2]] if lines else [], "generic source positive correction", "boolean")
-            if "delete" in qnorm and ("flags " + TOK_OLD_BOOKS) in joined_norm and "does not delete" in joined_norm:
-                return Answer("No; runtime flags " + TOK_OLD_BOOKS + " for human review.", 0.86, [lines[0][2]] if lines else [], "generic source positive correction", "boolean")
-        if qnorm.startswith("is ") and "product roadmap" in qnorm:
-            for line, line_norm, evidence in lines:
-                if "unrelated" in line_norm and "no relation" in line_norm:
-                    return Answer("No; it is an unrelated gardening note.", 0.86, [evidence], "generic source unrelated note", "boolean")
-        if qnorm.startswith("should ") and "drawing" in qnorm:
-            for line, line_norm, evidence in lines:
-                if "story" in line_norm and "drawing" in line_norm:
-                    return Answer("No; it is fiction homework.", 0.86, [evidence], "generic source fiction note", "boolean")
-        if qnorm.startswith("which ") and "morgan" in qnorm and "merged" in qnorm:
-            for line, line_norm, evidence in lines:
-                if "separate" in line_norm and "morgan" in line_norm:
-                    return Answer("unknown", 0.0, [evidence], "explicit separate entities", "unknown")
-
-        # Strict owner-style labels and owned-by clauses.
-        if qnorm.startswith("who ") and (TOK_OWNER in qnorm or TOK_OWNS in qnorm):
-            direct_owner_terms = [
-                token for token in content_tokens(qnorm)
-                if token not in {"who", "is", "the", "for", "of", "according", "table", "meaningful", "source", "reference", TOK_OWNER, TOK_OWNS, "escalation"}
-            ]
-            if direct_owner_terms:
-                for document in self.documents:
-                    raw_lines = [clean_extracted_value(raw).strip() for raw in document.text.splitlines()]
-                    norms = [normalize(raw) for raw in raw_lines]
-                    for idx, line_norm in enumerate(norms):
-                        if not all(term in line_norm for term in direct_owner_terms[:2]):
-                            continue
-                        if "do not confuse" in line_norm or "cache file" in line_norm or "wrong" in line_norm:
-                            continue
-                        for j in range(idx, min(len(raw_lines), idx + 8)):
-                            line = raw_lines[j]
-                            if j > idx and not line:
-                                break
-                            match = re.search(r"\bowner\s*:\s*(?P<value>(?:Dr\.\s*)?[A-Z][A-Za-z]+(?:\s+[A-Z][A-Za-z]+)*)\b", line, re.I)
-                            if not match:
-                                match = re.search(r"\bowned\s+by\s+(?P<value>(?:Dr\.\s*)?[A-Z][A-Za-z]+(?:\s+[A-Z][A-Za-z]+)*)\b", line, re.I)
-                            if match:
-                                value = clean_extracted_value(match.group("value")).strip(" .;:")
-                                if value.lower().startswith(("http", "bad", "error", "wrong")):
-                                    continue
-                                return Answer(value, 0.86, [self._evidence_for_document_line(document.rel_path, j, line)], "generic source direct owner scope", "person")
-            owner_terms = [
-                token for token in content_tokens(qnorm)
-                if token not in {"who", "is", "the", "for", "of", "according", "table", "meaningful", "source", "reference", TOK_OWNER, TOK_OWNS, "escalation"}
-            ]
-            for item in evidence_pool:
-                window = self._evidence_window_text(item, radius=4, max_chars=1600)
-                raw_lines = [clean_extracted_value(raw).strip() for raw in window.splitlines()]
-                norms = [normalize(raw) for raw in raw_lines]
-                target_indices = [
-                    idx for idx, line_norm in enumerate(norms)
-                    if owner_terms and all(term in line_norm for term in owner_terms[:2])
-                    and "do not confuse" not in line_norm and "cache file" not in line_norm and "wrong" not in line_norm
-                ]
-                for idx in target_indices:
-                    for j in range(idx, min(len(raw_lines), idx + 8)):
-                        line = raw_lines[j]
-                        line_norm = norms[j]
-                        if j > idx and not line:
-                            break
-                        if "\t" in line and owner_terms and all(term in line_norm for term in owner_terms[:2]):
-                            cells = [cell.strip() for cell in line.split("\t")]
-                            if len(cells) >= 3 and normalize(cells[1]) in {"active", "current", "ready", "stable"}:
-                                return Answer(cells[2], 0.86, [item], "generic source owner table row", "person")
-                        if line.lstrip().startswith(("{", "[")):
-                            json_match = re.search(r"\bname\s*:\s*\"?(?P<name>[A-Z][A-Za-z0-9 _-]+)\"?.*?\bowner\s*:\s*\"?(?P<value>[A-Z][A-Za-z. -]+)\"?", line, re.I)
-                            if json_match and owner_terms and all(term in normalize(json_match.group("name")) for term in owner_terms[:2]):
-                                return Answer(clean_extracted_value(json_match.group("value")).strip(" .;:\""), 0.86, [item], "generic source owner object row", "person")
-                            continue
-                        match = re.search(r"\bowner\s*:\s*(?P<value>(?:Dr\.\s*)?[A-Z][A-Za-z]+(?:\s+[A-Z][A-Za-z]+)*)\b", line, re.I)
-                        if not match:
-                            match = re.search(r"\bowned\s+by\s+(?P<value>(?:Dr\.\s*)?[A-Z][A-Za-z]+(?:\s+[A-Z][A-Za-z]+)*)\b", line, re.I)
-                        if not match:
-                            match = re.search(r"(?P<value>(?:Dr\.\s*)?[A-Z][A-Za-z]+(?:\s+[A-Z][A-Za-z]+)*)\s+is\s+the\s+(?:[a-z]+\s+)?owner\b", line, re.I)
-                        if match:
-                            value = clean_extracted_value(match.group("value")).strip(" .;:")
-                            if value.lower().startswith(("http", "bad", "error", "wrong")):
-                                continue
-                            return Answer(value, 0.86, [item], "generic source owner clause", "person")
-        # Which file did X delete?
-        if qnorm.startswith("which file") and "delete" in qnorm:
-            for line, line_norm, evidence in lines:
-                if "deleted" not in line_norm:
-                    continue
-                match = re.search(r"\bdeleted\s+(?P<value>[A-Za-z0-9_.-]+)\b", line)
-                if match:
-                    return Answer(match.group("value"), 0.86, [evidence], "generic source deleted file", "file_path")
-        # Simple final-cause clause.
-        if qnorm.startswith("what ") and "final cause" in qnorm:
-            for line, line_norm, evidence in lines:
-                if "final cause" not in line_norm:
-                    continue
-                match = re.search(r"\bfinal\s+cause\s+was\s+(?:the\s+)?(?P<value>[^.;,]+)", line, re.I)
-                if match:
-                    return Answer(clean_extracted_value(match.group("value")).strip(" .;:"), 0.86, [evidence], "generic source final cause", "content_phrase")
-        # Person in a pipe row: "Name | role | ...".
-        if qnorm.startswith("who ") and "contact" in qnorm:
-            target_terms = [token for token in content_tokens(qnorm) if token not in {"who", "is", "the", "for", "contact", "technical"}]
-            role_terms = [token for token in content_tokens(qnorm) if token in {"technical", "invoice", "billing"}]
-            for item in evidence_pool:
-                window = self._evidence_window_text(item, radius=4, max_chars=1600)
-                window_norm = normalize(window)
-                if target_terms and not all(term in window_norm for term in target_terms[:2]):
-                    continue
-                for raw_line in window.splitlines():
-                    line = clean_extracted_value(raw_line).strip()
-                    line_norm = normalize(line)
-                    if "|" not in line or "contact" not in line_norm:
-                        continue
-                    if role_terms and not all(term in line_norm for term in role_terms):
-                        continue
-                    first_cell = clean_extracted_value(line.split("|", 1)[0]).strip()
-                    if first_cell:
-                        return Answer(first_cell, 0.86, [item], "generic source table contact", "person")
-        return None
-
-
-    def _answer_with_generic_labeled_field_source(self, question: str, prior_answer: Answer | None = None) -> Answer | None:
-        qnorm = normalize(question)
-        if not qnorm.startswith(("what ", "who ", "when ")):
-            return None
-        blocked_generic_labels = {
-            "id", "badge", "contact id", "release date", "audit result", "correction", "corrected",
-            "assigned", "key reviewer", "reviewer", "technical contact",
-        }
-        if TOK_OWNER in qnorm or TOK_OWNS in qnorm or any(term in qnorm for term in blocked_generic_labels):
-            return None
-        label_candidates: list[str] = []
-        what_match = re.search(r"^what\s+(?:is|was)\s+(?P<label>[a-z0-9_ -]+?)(?:\s+(?:for|in|of)\b|\?)", qnorm)
-        if what_match:
-            label_candidates.append(what_match.group("label"))
-        what_plain = re.search(r"^what\s+(?P<label>[a-z0-9_ -]+?)\s+(?:is|was)\s+(?:named|listed|recorded|shown|given|stated)\b", qnorm)
-        if what_plain:
-            label_candidates.append(what_plain.group("label"))
-        who_match = re.search(r"^who\s+(?:is|was)\s+(?P<label>[a-z0-9_ -]+?)(?:\s+(?:for|of)\b|\?)", qnorm)
-        if who_match:
-            label_candidates.append(who_match.group("label"))
-        when_match = re.search(r"^when\s+(?:is|was)\s+(?P<label>[a-z0-9_ -]+?)(?:\s+(?:for|of)\b|\?)", qnorm)
-        if when_match:
-            label_candidates.append(when_match.group("label"))
-        # A few common head nouns are labels even when the phrasing is compact,
-        # for example "What catalyst is named ...".
-        for token in content_tokens(qnorm):
-            if token in {"catalyst", "status", "state", "temperature", "time", "researcher", "result"}:
-                label_candidates.append(token)
-        labels: list[str] = []
-        for label in label_candidates:
-            label_norm = normalize(label).strip()
-            label_norm = re.sub(r"\b(?:the|a|an|named|listed|recorded|shown|given|stated|current)\b", " ", label_norm)
-            label_norm = re.sub(r"\s+", " ", label_norm).strip()
-            if not label_norm or label_norm in {"what", "who", "when", "is", "was"}:
-                continue
-            labels.append(label_norm)
-            if label_norm.endswith(" time"):
-                labels.append(label_norm[:-5].strip())
-            if label_norm.endswith(" result"):
-                labels.append(label_norm[:-7].strip())
-            if label_norm.endswith(" researcher"):
-                labels.append(label_norm[:-11].strip())
-        labels = list(dict.fromkeys(label for label in labels if label))
-        if not labels:
-            return None
-        frame = plan_question(question)
-        target_terms = [normalize(anchor) for anchor in frame.target_anchors if normalize(anchor)]
-        if not target_terms:
-            prep_target = self._question_target_from_preposition(question, ("for", "of", "in"))
-            if prep_target:
-                target_terms.append(normalize(prep_target))
-        label_tokens = {
-            tokens[-1]
-            for label in labels
-            for tokens in [content_tokens(label)]
-            if tokens
-        }
-        label_tokens.update({"status", "state", "time", "temperature", "researcher", "result", "catalyst"})
-        generic_target_tokens = {
-            "what", "who", "when", "is", "was", "the", "a", "an", "in", "for", "of", "named", "listed",
-            "recorded", "shown", "given", "stated", "current", "note", "line", "result",
-        }
-        derived_target_tokens = [
-            token for token in content_tokens(qnorm)
-            if token not in label_tokens and token not in generic_target_tokens
-        ]
-        if derived_target_tokens:
-            derived_target = " ".join(derived_target_tokens)
-            if derived_target not in target_terms:
-                target_terms.append(derived_target)
-        evidence_pool = list(prior_answer.evidence if prior_answer else [])
-        evidence_pool.extend(self._evidence(sentence, score) for sentence, score in self._search(question, limit=32))
-        scored: list[tuple[int, str, Evidence]] = []
-        for item in evidence_pool:
-            window = self._evidence_window_text(item, radius=2, max_chars=1200)
-            window_norm = normalize(window)
-            if target_terms and not any(self._source_field_contains_any(window_norm, [term]) for term in target_terms[:3]):
-                continue
-            for raw_line in window.splitlines():
-                line = clean_extracted_value(raw_line).strip()
-                if not line or ":" not in line:
-                    continue
-                first_colon = line.find(":")
-                scheme_match = re.search(r"https?://", line, re.I)
-                if scheme_match and scheme_match.start() < first_colon:
-                    continue
-                if line.lstrip().startswith(("{", "[")):
-                    continue
-                key, value = line.split(":", 1)
-                key_norm = normalize(key)
-                value = clean_extracted_value(value).strip(" .;:")
-                if not value:
-                    continue
-                for label in labels:
-                    label_tokens = set(content_tokens(label))
-                    key_tokens = set(content_tokens(key_norm))
-                    if not label_tokens or not (label_tokens.issubset(key_tokens) or key_tokens.issubset(label_tokens)):
-                        continue
-                    score = 0 if line == item.text else 3
-                    answer_type = classify_value(value)
-                    if answer_type == "unknown":
-                        answer_type = "metadata_value"
-                    scored.append((score, value, item))
-        if not scored:
-            return None
-        scored.sort(key=lambda item: (item[0], len(item[1]), item[1]))
-        _score, value, evidence = scored[0]
-        return Answer(value, 0.87, [evidence], "generic source labeled field", classify_value(value) if classify_value(value) != "unknown" else "metadata_value")
-
-
-    def _answer_with_labeled_attribute_source(self, question: str, prior_answer: Answer | None = None) -> Answer | None:
-        qnorm = normalize(question)
-        label_aliases: list[str] = []
-        answer_type = "metadata_value"
-        if qnorm.startswith("which ") and "organization" in qnorm and ("own" in qnorm or TOK_OWNS in qnorm):
-            target_terms = [term for term in content_tokens(question) if term not in {"which", "what", "organization", TOK_OWNS, "own", TOK_OWNER, TOK_OWNING, "is", "the", "for"}]
-            positive_candidates: list[tuple[int, str, Evidence]] = []
-            missing_candidates: list[Evidence] = []
-            for document in self.documents:
-                current_section: list[tuple[int, str]] = []
-                sections: list[list[tuple[int, str]]] = []
-                for index, raw_line in enumerate(document.text.splitlines()):
-                    line = clean_extracted_value(raw_line).strip()
-                    if not line:
-                        continue
-                    if re.search(r"^(?:Entity|Record)\s*:", line, re.I) and current_section:
-                        sections.append(current_section)
-                        current_section = []
-                    current_section.append((index, line))
-                if current_section:
-                    sections.append(current_section)
-                for section in sections:
-                    section_text = "\n".join(line for _index, line in section)
-                    section_norm = normalize(section_text)
-                    if target_terms and not all(self._source_field_contains_any(section_norm, [term]) for term in target_terms[:3]):
-                        continue
-                    for index, line in section:
-                        line_norm = normalize(line)
-                        if "owning organization" not in line_norm and "organization" not in line_norm:
-                            continue
-                        evidence = self._evidence_for_document_line(document.rel_path, index, line)
-                        if "no" in set(re.findall(r"[a-z0-9]+", line_norm)) and ("owning organization" in line_norm or "organization relation" in line_norm or "organization is stated" in line_norm):
-                            if not self._source_field_low_priority(evidence, line) or "cache" in qnorm:
-                                missing_candidates.append(evidence)
-                            continue
-                        match = re.search(r"\b(?:owning\s+)?organization\s*[:=]\s*(?P<value>[^.;|]+)", line, re.I)
-                        if not match:
-                            match = re.search(r"\b(?:owning\s+)?organization\s+(?:is|was)\s+(?P<value>[^.;|]+)", line, re.I)
-                        if match:
-                            value = clean_extracted_value(match.group("value")).strip(" .;:")
-                            if value:
-                                score = 100 if self._source_field_low_priority(evidence, line) and "cache" not in qnorm else 0
-                                positive_candidates.append((score, value, evidence))
-            if positive_candidates:
-                positive_candidates.sort(key=lambda item: (item[0], len(item[1]), item[1]))
-                _score, value, evidence = positive_candidates[0]
-                return Answer(value, 0.9, [evidence], "source labeled attribute binding", "organization")
-            if missing_candidates:
-                return Answer("unknown", 0.0, [missing_candidates[0]], "explicit missing organization relation", "unknown")
-        if "contact person" in qnorm or (qnorm.startswith("who ") and "contact" in qnorm):
-            label_aliases = ["contact person", "contact"]
-            answer_type = "person"
-        elif "person" in qnorm and "id" in qnorm:
-            label_aliases = ["person id", "person identifier"]
-            answer_type = "identifier"
-        elif "organization" in qnorm:
-            label_aliases = ["organization", "org"]
-            answer_type = "organization"
-        elif qnorm.startswith("who ") and TOK_OWNER in qnorm:
-            label_aliases = ["launch owner", TOK_OWNER]
-            answer_type = "person"
-        elif "contact id" in qnorm:
-            label_aliases = ["contact id", "contact identifier"]
-            answer_type = "identifier"
-        elif "support url" in qnorm or "support link" in qnorm:
-            label_aliases = ["support url", "support link"]
-            answer_type = "url"
-        else:
-            return None
-        frame = plan_question(question)
-        target_terms = [clean_extracted_value(anchor).strip() for anchor in frame.target_anchors if normalize(anchor)]
-        if not target_terms:
-            prep_target = self._question_target_from_preposition(question, ("for", "of"))
-            if prep_target:
-                target_terms.append(prep_target)
-        if not target_terms:
-            return None
-        evidence_pool = list(prior_answer.evidence if prior_answer else [])
-        evidence_pool.extend(self._evidence(sentence, score) for sentence, score in self._search(question, limit=24))
-        document_material_by_path = {document.rel_path: normalize(document.text) for document in self.documents}
-        seen: set[tuple[str, str]] = set()
-        for item in evidence_pool:
-            if (item.rel_path, item.text) in seen:
-                continue
-            seen.add((item.rel_path, item.text))
-            window = self._evidence_window_text(item, radius=1, max_chars=1000)
-            for raw_line in window.splitlines():
-                line = clean_extracted_value(raw_line).strip()
-                line_norm = normalize(line)
-                if not line_norm:
-                    continue
-                if self._source_field_low_priority(item, line) and "cache" not in qnorm:
-                    continue
-                window_norm = normalize(window)
-                target_material = window_norm
-                if answer_type == "identifier" and "person" in qnorm and item.rel_path in document_material_by_path:
-                    target_material = " ".join([target_material, document_material_by_path[item.rel_path]])
-                if not all(self._source_field_contains_any(target_material, [term]) for term in target_terms[:1]):
-                    continue
-                if answer_type == "organization" and any(term in qnorm for term in ["own", TOK_OWNS, TOK_OWNER, TOK_OWNING]):
-                    missing_owner_org = (
-                        re.search(r"\bno\s+(?:owning\s+)?organization\s+(?:is\s+)?(?:stated|listed|given|named|provided)\b", line_norm)
-                        or re.search(r"\bno\s+organization\s+(?:relation|owner|ownership)\b", line_norm)
-                        or re.search(r"\bnot\s+an\s+organization\s+relation\b", line_norm)
-                    )
-                    if missing_owner_org:
-                        continue
-                for label in label_aliases:
-                    label_pattern = re.escape(label).replace("\\ ", r"\s+")
-                    if answer_type == "url":
-                        match = re.search(rf"\b{label_pattern}\s*[:=]\s*(?P<value>https?://[^\s.;]+(?:\.[^\s.;]+)*(?:/[^\s.;]+)?)", line, re.I)
-                    else:
-                        match = re.search(rf"\b{label_pattern}\s*[:=]\s*(?P<value>[^.;|]+)", line, re.I)
-                        if not match:
-                            match = re.search(rf"[\"']{label_pattern}[\"']\s*:\s*[\"'](?P<value>[^\"']+)[\"']", line, re.I)
-                        if not match:
-                            match = re.search(rf"\b{label_pattern}\s+(?:is|was)\s+(?P<value>[^.;|]+)", line, re.I)
-                    if not match:
-                        continue
-                    value = clean_extracted_value(match.group("value")).strip(" .;:")
-                    value = value.strip('"\'')
-                    if not value:
-                        continue
-                    if answer_type == "url" and not value.startswith("http"):
-                        continue
-                    return Answer(value, 0.89, [item], "source labeled attribute binding", answer_type)
-        return None
-
-    def _answer_with_table_field_source(self, question: str, prior_answer: Answer | None = None) -> Answer | None:
-        qnorm = normalize(question)
-        if qnorm.startswith("who ") and (TOK_OWNER in qnorm or TOK_OWNS in qnorm):
-            return None
-        if not any(term in qnorm for term in ["reference", "url", "link"]):
-            return None
-        if "url" in qnorm and any(term in qnorm for term in [TOK_WARRANTY, TOK_MANUAL, TOK_RUNBOOK, "guide", "support", "dataset", "map", "drawing", "report", "archive", "canonical", "design"]):
-            return None
-        frame = plan_question(question)
-        target_terms = [clean_extracted_value(anchor).strip() for anchor in frame.target_anchors if normalize(anchor)]
-        if not target_terms:
-            prep_target = self._question_target_from_preposition(question, ("for", "of"))
-            if prep_target:
-                target_terms.append(prep_target)
-        if not target_terms:
-            return None
-        rows = self._source_row_records()
-        for row, evidence in rows:
-            if not self._row_matches_terms(row, target_terms):
-                continue
-            if self._source_field_low_priority(evidence, row.get("_text", "")) and "cache" not in qnorm:
-                continue
-            if "reference" in qnorm:
-                value = self._row_field_value(row, ["reference", "ref", "reference_id", "id"])
-                if value:
-                    value = clean_extracted_value(value).strip(" .;:")
-                    return Answer(value, 0.88, [evidence], "source table reference field", "identifier")
-            if "url" in qnorm or "link" in qnorm:
-                value = self._row_field_value(row, ["url", "link", "uri"])
-                if value:
-                    value = clean_extracted_value(value).strip(" .;:")
-                    return Answer(value, 0.88, [evidence], "source table url field", "url")
-        return None
-
-    def _actor_role_rows_by_document(self) -> dict[str, list[tuple[dict[str, str], Evidence]]]:
-        docs: dict[str, list[tuple[dict[str, str], Evidence]]] = {}
-        role_pattern = re.compile(
-            r"^(?P<role>author|key reviewer|reviewer|approver)\s*:\s*(?P<person>[A-Z][a-z]+\s+[A-Z][a-z]+)\s*\|\s*actor\s+id\s*:\s*(?P<actor>ACT-[A-Z0-9]+)\b",
-            re.I,
-        )
-        dossier_pattern = re.compile(r"\b(?:dossier|record|note)\s*:\s*(?P<target>[^.;]+)", re.I)
-
-        def add_row(document: Document, role: str, actor_id: str, target: str, text: str, score: float = 0.9) -> None:
-            actor_id = str(actor_id or "").strip()
-            target = clean_extracted_value(str(target or "")).strip()
-            text = clean_extracted_value(str(text or "")).strip()
-            if not actor_id or not target or not text:
-                return
-            row = {
-                "role": normalize(role),
-                "person": actor_id,
-                "actor_id": actor_id,
-                "target": target,
-                "_text": text,
-                "_source": document.rel_path,
-            }
-            docs.setdefault(document.rel_path, []).append((row, Evidence(document.rel_path, text, score, source_kind="metadata_record")))
-
-        for document in self.documents:
-            current_target = ""
-            for index, raw_line in enumerate(document.text.splitlines()):
-                line = clean_extracted_value(raw_line).strip()
-                if not line:
-                    continue
-                dossier = dossier_pattern.search(line)
-                if dossier:
-                    current_target = clean_extracted_value(dossier.group("target")).strip()
-                match = role_pattern.search(line)
-                if not match:
-                    continue
-                row = {
-                    "role": normalize(match.group("role")),
-                    "person": match.group("person").strip(),
-                    "actor_id": match.group("actor").strip(),
-                    "target": current_target,
-                    "_text": line,
-                    "_source": document.rel_path,
-                }
-                docs.setdefault(document.rel_path, []).append((row, self._evidence_for_document_line(document.rel_path, index, line)))
-        return docs
-
-    def _answer_with_actor_role_ids_source(self, question: str, prior_answer: Answer | None = None) -> Answer | None:
-        qnorm = normalize(question)
-        role_requested = any(
-            token in qnorm
-            for token in [
-                TOK_AUTHOR,
-                TOK_REVIEWER,
-                TOK_KEY_REVIEWER,
-                TOK_APPROVER,
-                TOK_OWNER,
-                TOK_OWNERS,
-                "employee id",
-                "employee ids",
-                "user id",
-                "user ids",
-            ]
-        )
-        id_requested = "id" in qnorm or "identifier" in qnorm
-        if not role_requested or not id_requested:
-            return None
-        frame = plan_question(question)
-        target = ""
-        scope = ""
-        role_target_match = re.search(
-            r"(?:authors?|reviewers?|key\s+reviewers?|approvers?|owners?)(?:\s+and\s+(?:authors?|key\s+reviewers?|reviewers?|approvers?|owners?))*\s+of\s+(?:the\s+)?(?P<target>[^?]+?)(?:\s+for\s+(?:the\s+)?(?P<scope>[^?]+?))?\s*\?*$",
-            question,
-            re.I,
-        )
-        if role_target_match:
-            target = clean_extracted_value(role_target_match.group("target") or "").strip()
-            scope = clean_extracted_value(role_target_match.group("scope") or "").strip()
-        if not target:
-            target = self._question_target_from_preposition(question, ("of",))
-        anchors = [clean_extracted_value(anchor).strip() for anchor in frame.target_anchors if normalize(anchor)]
-        if not target:
-            documentish = [
-                anchor
-                for anchor in anchors
-                if any(token in normalize(anchor) for token in ["document", "report", "requirements", "vision", "research", "spec"])
-            ]
-            target = next(iter(documentish or anchors), "")
-        if not scope:
-            target_norm_for_scope = normalize(target)
-            scope = next((anchor for anchor in anchors if normalize(anchor) != target_norm_for_scope), "")
-        target_norm = normalize(target)
-        scope_norm = normalize(scope)
-        wanted_roles: list[str] = []
-        if TOK_AUTHOR in qnorm:
-            wanted_roles.append(TOK_AUTHOR)
-        if TOK_KEY_REVIEWER in qnorm:
-            wanted_roles.append(TOK_KEY_REVIEWER)
-        if TOK_REVIEWER in qnorm and TOK_KEY_REVIEWER not in qnorm:
-            wanted_roles.extend([TOK_REVIEWER, TOK_KEY_REVIEWER])
-        elif TOK_REVIEWER in qnorm:
-            wanted_roles.append(TOK_REVIEWER)
-        if TOK_APPROVER in qnorm:
-            wanted_roles.append(TOK_APPROVER)
-        if TOK_OWNER in qnorm or TOK_OWNERS in qnorm:
-            wanted_roles.append(TOK_OWNER)
-        wanted_roles = list(dict.fromkeys(wanted_roles))
-        if not wanted_roles:
-            return None
-        person_match = re.search(r"named\s+(?P<person>[A-Z][a-z]+\s+[A-Z][a-z]+)", question)
-        named_person = normalize(person_match.group("person")) if person_match else ""
-        for rel_path, rows in self._actor_role_rows_by_document().items():
-            doc_material = normalize(" ".join([rel_path, *[row.get("target", "") + " " + row.get("_text", "") for row, _ev in rows]]))
-            if scope_norm and not self._anchor_has_grounded_token(scope_norm, doc_material):
-                continue
-            if target_norm and not self._anchor_has_grounded_token(target_norm, doc_material):
-                continue
-            selected: list[tuple[str, Evidence]] = []
-            for role in wanted_roles:
-                for row, evidence in rows:
-                    row_target = normalize(row.get("target", ""))
-                    if target_norm and row_target and not self._anchor_has_grounded_token(target_norm, row_target):
-                        continue
-                    if row.get("role") != role:
-                        continue
-                    if named_person and normalize(row.get("person", "")) != named_person:
-                        continue
-                    selected.append((row["actor_id"], evidence))
-            if named_person:
-                if selected:
-                    return Answer(selected[0][0], 0.88, [selected[0][1]], "source actor role id binding", "identifier")
-                return None
-            if TOK_APPROVER in qnorm and not selected:
-                return Answer("unknown", 0.0, [], "missing scoped actor role", "unknown")
-            if selected:
-                values: list[str] = []
-                evidences: list[Evidence] = []
-                for value, evidence in selected:
-                    if value not in values:
-                        values.append(value)
-                        evidences.append(evidence)
-                return Answer("; ".join(values), 0.88, evidences, "source actor role id binding", "identifier")
-        return None
-
-    def _answer_with_reference_role_chain_source(self, question: str, prior_answer: Answer | None = None) -> Answer | None:
-        qnorm = normalize(question)
-        if "reference" not in qnorm and not ("badge" in qnorm and TOK_REVIEWER in qnorm):
-            return None
-        target = ""
-        if "badge" in qnorm and TOK_REVIEWER in qnorm:
-            reviewer_target = re.search(r"reviewer\s+of\s+(?P<target>[^?.,;]+)", question, re.I)
-            if reviewer_target:
-                target = clean_extracted_value(reviewer_target.group("target")).strip()
-        if not target:
-            target = self._question_target_from_preposition(question, ("for", "of"))
-        if not target:
-            frame = plan_question(question)
-            target = next((clean_extracted_value(anchor).strip() for anchor in frame.target_anchors if normalize(anchor)), "")
-        if not target:
-            return None
-        target_norm = normalize(target)
-        lines_by_doc: dict[str, list[tuple[str, Evidence]]] = {}
-        for document in self.documents:
-            for index, raw_line in enumerate(document.text.splitlines()):
-                line = clean_extracted_value(raw_line).strip()
-                if line:
-                    lines_by_doc.setdefault(document.rel_path, []).append((line, self._evidence_for_document_line(document.rel_path, index, line)))
-        for _rel_path, lines in lines_by_doc.items():
-            doc_text = normalize(" ".join(line for line, _evidence in lines))
-            if not self._source_field_contains_any(doc_text, [target_norm]):
-                continue
-            reference_id = ""
-            reviewer = ""
-            for line, _evidence in lines:
-                line_norm = normalize(line)
-                if not self._source_field_contains_any(line_norm, [target_norm]):
-                    continue
-                ref_match = re.search(r"\breference\s*[:=]\s*(?P<ref>[A-Z][A-Z0-9]{1,12}(?:[-_][A-Z0-9]{1,12})+)\b", line, re.I)
-                if not ref_match:
-                    ref_match = re.search(r"\breference\s+for\s+[^:.;]+?\s+(?:is|=)\s+(?P<ref>[A-Z][A-Z0-9]{1,12}(?:[-_][A-Z0-9]{1,12})+)\b", line, re.I)
-                if ref_match:
-                    reference_id = ref_match.group("ref").strip()
-                reviewer_match = re.search(r"\breviewer\s*[:=]\s*(?P<person>[A-Z][a-z]+\s+[A-Z][a-z]+)\b", line)
-                if reviewer_match:
-                    reviewer = reviewer_match.group("person").strip()
-            if qnorm.startswith("who ") and (TOK_OWNER in qnorm or TOK_OWNS in qnorm):
-                for line, evidence in lines:
-                    line_norm = normalize(line)
-                    if target_norm not in line_norm or "reference" not in line_norm or TOK_OWNER not in line_norm:
-                        continue
-                    inline_owner = re.search(
-                        r"\breference\s*[:=]\s*(?P<ref>[A-Z][A-Z0-9]{1,12}(?:[-_][A-Z0-9]{1,12})+)\b.*?\b(?:\1\s+)?owner\s*[:=]\s*(?P<person>[A-Z][a-z]+\s+[A-Z][a-z]+)",
-                        line,
-                        re.I,
-                    )
-                    if inline_owner:
-                        return Answer(inline_owner.group("person").strip(), 0.88, [evidence], "source reference owner chain", "person")
-                if reference_id:
-                    ref_norm = normalize(reference_id)
-                    for line, evidence in lines:
-                        line_norm = normalize(line)
-                        if ref_norm not in line_norm or TOK_OWNER not in line_norm:
-                            continue
-                        owner_match = re.search(r"\bowner\s*[:=]\s*(?P<person>[A-Z][a-z]+\s+[A-Z][a-z]+)\b", line)
-                        if not owner_match:
-                            owner_match = re.search(rf"\b{re.escape(reference_id)}\s+owner\s*[:=]\s*(?P<person>[A-Z][a-z]+\s+[A-Z][a-z]+)\b", line)
-                        if owner_match:
-                            return Answer(owner_match.group("person").strip(), 0.88, [evidence], "source reference owner chain", "person")
-            if "badge" in qnorm and TOK_REVIEWER in qnorm and reviewer:
-                reviewer_norm = normalize(reviewer)
-                for line, evidence in lines:
-                    line_norm = normalize(line)
-                    if reviewer_norm not in line_norm or "badge" not in line_norm:
-                        continue
-                    badge_match = re.search(r"\bbadge\s+id\s*[:=]\s*(?P<value>[A-Za-z0-9_-]+)\b", line, re.I)
-                    if not badge_match:
-                        badge_match = re.search(rf"\b{re.escape(reviewer)}\s+badge\s+id\s*[:=]\s*(?P<value>[A-Za-z0-9_-]+)\b", line, re.I)
-                    if badge_match:
-                        return Answer(badge_match.group("value").strip(), 0.88, [evidence], "source reviewer badge chain", "identifier")
-        return None
-
-    def _answer_with_precise_source_content(self, question: str, prior_answer: Answer | None = None) -> Answer | None:
-        qnorm = normalize(question)
-        if not any(term in qnorm for term in [TOK_REVIEWER, TOK_CLAIM, "color remains", "report", "reported", "correction", "file path", "path", "approved", TOK_APPROVER]):
-            return None
-        frame = plan_question(question)
-        target_terms = [clean_extracted_value(anchor).strip() for anchor in frame.target_anchors if normalize(anchor)]
-        target_from_prep = self._question_target_from_preposition(question)
-        if target_from_prep:
-            target_terms.append(target_from_prep)
-        target_terms = list(dict.fromkeys(term for term in target_terms if normalize(term)))
-        lines: list[tuple[str, Evidence, str]] = []
-        for document in self.documents:
-            document_material = normalize(document.text)
-            for index, raw_line in enumerate(document.text.splitlines()):
-                line = clean_extracted_value(raw_line).strip()
-                if not line:
-                    continue
-                lines.append((line, self._evidence_for_document_line(document.rel_path, index, line), document_material))
-
-        if qnorm.startswith("who ") and TOK_REVIEWER in qnorm:
-            for line, evidence, _doc_material in lines:
-                if target_terms and not self._line_has_all_terms(line, target_terms[:1]):
-                    continue
-                match = re.search(r'["\']?reviewer["\']?\s*[:=]\s*["\'](?P<value>[^"\']+)', line, re.I)
-                if not match:
-                    match = re.search(r'\breviewer\s*[:=]\s*(?P<value>[A-Z][a-z]+\s+[A-Z][a-z]+)', line, re.I)
-                if match:
-                    return Answer(clean_extracted_value(match.group("value")).strip(), 0.88, [evidence], "source precise reviewer field", "person")
-
-        if TOK_CLAIM in qnorm:
-            about = self._question_target_from_preposition(question, ("about",))
-            about_terms = [term for term in content_tokens(about) if len(term) > 2 and term not in {TOK_CLAIM, "listed"}]
-            for line, evidence, _doc_material in lines:
-                if target_terms and not self._line_has_all_terms(line, target_terms[:1]):
-                    continue
-                claims = [clean_extracted_value(m).strip() for m in re.findall(r'["\']?claim["\']?\s*[:=]\s*["\']([^"\']+)', line, re.I)]
-                if not claims:
-                    continue
-                if about_terms:
-                    for claim in claims:
-                        if all(term in normalize(claim) for term in about_terms):
-                            return Answer(claim, 0.88, [evidence], "source precise claim field", "content_phrase")
-                return Answer(claims[0], 0.86, [evidence], "source precise claim field", "content_phrase")
-
-        if "approved" in qnorm or TOK_APPROVER in qnorm:
-            for line, evidence, _doc_material in lines:
-                if target_terms and not self._line_has_all_terms(line, target_terms[:1]):
-                    continue
-                match = re.search(r'(?P<person>[A-Z][a-z]+\s+[A-Z][a-z]+)\s+approved\b', line)
-                if not match:
-                    match = re.search(r'\bapproved\s+by\s+(?P<person>[A-Z][a-z]+\s+[A-Z][a-z]+)\b', line)
-                if not match:
-                    match = re.search(r'\bapprover\s*[:=]\s*["\']?(?P<person>[A-Z][a-z]+\s+[A-Z][a-z]+)["\']?\b', line)
-                if match:
-                    return Answer(match.group("person").strip(), 0.86, [evidence], "source precise approver field", "person")
-            if qnorm.startswith("who ") and target_terms:
-                return Answer("unknown", 0.0, [], "missing scoped approver field", "unknown")
-
-        if "color remains" in qnorm or ("color" in qnorm and "remains" in qnorm):
-            for line, evidence, _doc_material in lines:
-                if target_terms and not self._line_has_all_terms(line, target_terms[-1:]):
-                    continue
-                match = re.search(r'\bcolor\s+remains\s+(?P<value>[A-Za-z0-9_-]+)\b', line, re.I)
-                if match:
-                    return Answer(match.group("value").strip(), 0.88, [evidence], "source precise color field", "content_phrase")
-
-        report_match = re.search(r"did\s+(?P<person>[A-Z][a-z]+(?:\s+[A-Z][a-z]+)+)\s+report\s+about\s+(?P<target>[^?]+)", question, re.I)
-        if report_match:
-            person = normalize(report_match.group("person"))
-            target = normalize(report_match.group("target"))
-            for line, evidence, _doc_material in lines:
-                line_norm = normalize(line)
-                if person not in line_norm or target not in line_norm or "reported" not in line_norm:
-                    continue
-                match = re.search(r"reported\s+that\s+(?P<value>[^.;]+)", line, re.I)
-                if match:
-                    return Answer(clean_extracted_value(match.group("value")).strip(), 0.88, [evidence], "source precise report clause", "content_phrase")
-
-
-        if "correction" in qnorm:
-            target = self._question_target_from_preposition(question, ("about",))
-            for line, evidence, _doc_material in lines:
-                line_norm = normalize(line)
-                if "correction" not in line_norm:
-                    continue
-                if target and normalize(target) not in line_norm:
-                    continue
-                match = re.search(r"\bcorrection\s*:\s*(?P<value>[^.;]+)", line, re.I)
-                if match:
-                    return Answer(clean_extracted_value(match.group("value")).strip(), 0.88, [evidence], "source precise correction clause", "content_phrase")
-
-        if "file path" in qnorm or ("path" in qnorm and "what" in qnorm):
-            path_re = re.compile(r"\b(?!https?://)(?:[A-Za-z0-9_-]+/)+[A-Za-z0-9_.-]+\b")
-            for line, evidence, doc_material in lines:
-                if target_terms and not all(self._source_field_contains_any(doc_material, [term]) for term in target_terms[:1]):
-                    continue
-                if "path" not in normalize(line) and "file" not in normalize(line):
-                    continue
-                match = path_re.search(line)
-                if match:
-                    return Answer(match.group(0).strip(), 0.88, [evidence], "source precise file path field", "file_path")
-        return None
-
-    def _answer_with_arithmetic_source(self, question: str) -> Answer | None:
-        qnorm = normalize(question)
-        op_words = {"plus": "+", "minus": "-", "times": "*", "multiplied by": "*", "divided by": "/"}
-        if not any(op in qnorm for op in op_words):
-            return None
-        match = re.search(r"\b(?P<a>\d+)\s+(?P<op>plus|minus|times|multiplied by|divided by)\s+(?P<b>\d+)\b", qnorm)
-        if not match:
-            return None
-        a = int(match.group("a")); b = int(match.group("b")); op = match.group("op")
-        if op == "plus":
-            value = a + b
-        elif op == "minus":
-            value = a - b
-        elif op in {"times", "multiplied by"}:
-            value = a * b
-        elif op == "divided by" and b:
-            if a % b:
-                return None
-            value = a // b
-        else:
-            return None
-        evidence_items: list[Evidence] = []
-        for sentence, score in self._search(question, limit=12):
-            material = normalize(sentence.text)
-            if str(a) in material and str(b) in material and (op in material or op.replace(" ", " ") in material):
-                evidence_items.append(self._evidence(sentence, score))
-                break
-        if not evidence_items:
-            return None
-        return Answer(str(value), 0.9, evidence_items, "source arithmetic binding", "count")
-
-    def _question_content_terms(self, question: str, exclude: set[str] | None = None) -> list[str]:
-        exclude = exclude or set()
-        generic = {
-            "what", "which", "who", "where", "when", "does", "did", "was", "were", "is", "are", "the", "about",
-            "according", "source", "line", "listed", "made", "more", "matter", "mattered", "argue", "argued",
-            TOK_CLAIM, "claimed", "say", "said", "report", "reported", "believe", "believed", "disagree", "disagreed",
-            "not", "buy", "bought", "purchase", "purchased", "equal", "equals", "code", "id", "identifier",
-        } | exclude
-        return [tok for tok in content_tokens(question) if len(tok) > 2 and tok not in generic]
-
-    def _answer_with_action_holder_source(self, question: str, prior_answer: Answer | None = None) -> Answer | None:
-        qnorm = normalize(question)
-        if not qnorm.startswith("who "):
-            return None
-        verbs = [
-            "argued", "claimed", "disagreed", "believed", "reported", "said", "closed", "merged",
-            "approved", "reviewed", "accepted", "drafted", "observed", "authored", "wrote",
-            "signed", "recorded", "watered", "stated", "manages", "managed",
-        ]
-        requested_verbs = [verb for verb in verbs if verb in qnorm or (len(verb) > 4 and verb[:-1] in qnorm)]
-        if not requested_verbs:
-            return None
-        requested_action_variants = list(dict.fromkeys([
-            variant
-            for verb in requested_verbs
-            for variant in ([verb, verb[:-1]] if len(verb) > 4 else [verb])
-            if variant
-        ]))
-        requested_action_pattern = "|".join(re.escape(variant) for variant in requested_action_variants)
-        terms = self._question_content_terms(question)
-        evidence = list(prior_answer.evidence if prior_answer else [])
-        evidence.extend(self._evidence(sentence, score) for sentence, score in self._search(question, limit=18))
-        seen: set[tuple[str, str]] = set()
-        for item in evidence:
-            if (item.rel_path, item.text) in seen:
-                continue
-            seen.add((item.rel_path, item.text))
-            window = self._evidence_window_text(item, radius=1, max_chars=800)
-            window_norm = normalize(window)
-            split_window = re.sub(r"\b(Dr|Ms|Mr|Mrs)\.", r"\1<prd>", window)
-            for line in re.split(r"[\n.;]+", split_window):
-                line = clean_extracted_value(line.replace("<prd>", ".")).strip()
-                line_norm = normalize(line)
-                if not line_norm:
-                    continue
-                term_material = line_norm if any(verb.startswith("manage") for verb in requested_verbs) else window_norm
-                if terms and not all(self._source_field_contains_any(term_material, [term]) for term in terms[:4]):
-                    continue
-                if TOK_CLAIM in qnorm:
-                    speaker_match = re.search(r"^(?P<holder>(?:(?:Dr|Ms|Mr|Mrs)\.\s*)?[A-Z][a-z]+(?:\s+[A-Z][a-z]+)?)\s*:\s+", line)
-                    if speaker_match:
-                        holder = speaker_match.group("holder").strip()
-                        return Answer(holder, 0.86, [item], "source action holder binding", "person")
-                if not any(variant in line_norm for variant in requested_action_variants):
-                    continue
-                holder_match = re.search(
-                    rf"(?:^|[:\]\s])(?P<holder>(?:(?:Dr|Ms|Mr|Mrs)\.\s*)?[A-Z][a-z]+(?:\s+[A-Z][a-z]+)?)\s+(?:{requested_action_pattern})\b",
-                    line,
-                )
-                if not holder_match:
-                    holder_match = re.search(
-                        rf"(?:^|[\n.;])\s*(?P<holder>(?:(?:Dr|Ms|Mr|Mrs)\.\s*)?[A-Z][a-z]+(?:\s+[A-Z][a-z]+)?)\s*:\s*(?:I\s+)?(?:{requested_action_pattern})\b",
-                        line,
-                    )
-                if not holder_match:
-                    holder_match = re.search(
-                        rf"\b(?:{requested_action_pattern})\s+by\s+(?P<holder>(?:(?:Dr|Ms|Mr|Mrs)\.\s*)?[A-Z][a-z]+(?:\s+[A-Z][a-z]+)?)\b",
-                        line,
-                    )
-                if not holder_match:
-                    continue
-                holder = holder_match.group("holder").strip()
-                holder_norm = normalize(holder)
-                if len(holder.split()) == 2 and holder_norm.split()[0] in {"officer", "farmer", "teacher"}:
-                    holder = holder.split()[1]
-                    holder_norm = normalize(holder)
-                if holder_norm in {"counterclaim", "audit", "the"}:
-                    continue
-                return Answer(holder, 0.86, [item], "source action holder binding", "person")
-        return None
-
-
-    def _answer_with_negated_action_source(self, question: str, prior_answer: Answer | None = None) -> Answer | None:
-        qnorm = normalize(question)
-        if "not" not in qnorm or not any(term in qnorm for term in ["buy", "bought", "purchase", "purchased"]):
-            return None
-        frame = plan_question(question)
-        target_terms = [normalize(anchor) for anchor in frame.target_anchors if normalize(anchor)]
-        for match in re.finditer(r"did\s+([A-Z][a-z]+(?:\s+[A-Z][a-z]+)?)\s+not", question):
-            target_terms.append(normalize(match.group(1)))
-        target_terms = list(dict.fromkeys(target_terms))
-        evidence = list(prior_answer.evidence if prior_answer else [])
-        evidence.extend(self._evidence(sentence, score) for sentence, score in self._search(question, limit=18))
-        seen: set[tuple[str, str]] = set()
-        for item in evidence:
-            if (item.rel_path, item.text) in seen:
-                continue
-            seen.add((item.rel_path, item.text))
-            window = self._evidence_window_text(item, radius=1, max_chars=800)
-            for line in re.split(r"[\n.;]+", window):
-                line = clean_extracted_value(line).strip()
-                line_norm = normalize(line)
-                if not line_norm or "not" not in line_norm:
-                    continue
-                if target_terms and not self._source_field_contains_any(line_norm, target_terms):
-                    continue
-                value = ""
-                for pattern in [r"\bbut\s+not\s+(?P<value>[^.;,]+)", r"\bnot\s+(?:buy|bought|purchase|purchased)\s+(?P<value>[^.;,]+)"]:
-                    found = re.search(pattern, line, re.I)
-                    if found:
-                        value = clean_extracted_value(found.group("value")).strip(" .;:")
-                        break
-                if not value:
-                    continue
-                value = re.sub(r"^(?:the|a|an)\s+", "", value, flags=re.I).strip()
-                if value:
-                    return Answer(value, 0.86, [item], "source negated action binding", "content_phrase")
-        return None
-
-    def _temporal_target_terms(self, question: str, frame: QueryFrame) -> list[str]:
-        generic = {
-            "current", "final", "latest", "state", "status", "when", "recorded", "record", "assigned",
-            "assignment", "time", "date", "failure", "source", "file", "copied", "reopen", "reopened",
-        }
-        values: list[str] = []
-        for anchor in frame.target_anchors:
-            clean = clean_extracted_value(anchor).strip()
-            norm = normalize(clean)
-            if norm and norm not in generic:
-                values.append(clean)
-        # Add explicit state subjects, including lowercase scientific/object labels.
-        for match in re.finditer(r"(?:current|final|latest)?\s*state\s+of\s+(?P<target>[^?.,;]+)", question, re.I):
-            phrase = clean_extracted_value(match.group("target")).strip()
-            if normalize(phrase) not in generic:
-                values.append(phrase)
-        # Add visible title-like spans after prepositions, while skipping generic role words.
-        for match in re.finditer(r"(?:of|for|to|did)\s+([A-Z][A-Za-z0-9_-]*(?:\s+[A-Z][A-Za-z0-9_-]*)*)", question):
-            phrase = match.group(1).strip()
-            if normalize(phrase) not in generic:
-                values.append(phrase)
-        return list(dict.fromkeys(value for value in values if normalize(value)))
-
-    def _temporal_question_should_bind(self, question: str) -> bool:
-        qnorm = normalize(question)
-        if TOK_FINAL_DECISION in qnorm or TOK_DECISION_FINALIZED in qnorm or TOK_ARCHIVE_DECISION in qnorm:
-            return False
-        if "final cause" in qnorm:
-            return False
-        if "assigned" in qnorm or "currently assigned" in qnorm:
-            return True
-        if "reopen" in qnorm or "reopened" in qnorm:
-            return True
-        if "recorded" in qnorm or "record " in f" {qnorm} ":
-            return True
-        if "state" in qnorm and any(term in qnorm for term in ["current", "currently", "latest", "final"]):
-            return True
+            if ambiguity.search(text):
+                return True
         return False
 
-    def _parse_temporal_key_value_line(self, line: str) -> dict[str, str]:
-        row: dict[str, str] = {}
-        parts = [part.strip() for part in line.split("|")]
-        for part in parts:
-            if ":" not in part:
-                continue
-            key, value = part.split(":", 1)
-            key_norm = normalize(key).replace(" ", "_")
-            value = value.strip().strip('"')
-            if not key_norm or not value:
-                continue
-            if key_norm in {"record", "item", "name", "target", "subject"}:
-                row["target"] = value
-            elif key_norm in {"state", "status"}:
-                row["state"] = value
-            elif key_norm in {"current_state", "current_status"}:
-                row["state"] = value
-                row["state_label"] = "current"
-            elif key_norm in {"final_state", "final_status"}:
-                row["state"] = value
-                row["state_label"] = "final"
-            elif key_norm in {"timestamp", "time", "datetime", "date_time"}:
-                row["timestamp"] = value
-        return row
-
-    def _temporal_line_records(self) -> list[tuple[dict[str, str], Evidence]]:
-        records: list[tuple[dict[str, str], Evidence]] = []
-        dt_pattern = r"(?P<date>\d{4}-\d{2}-\d{2})(?:\s+(?P<time>\d{2}:\d{2}))?"
-        for document in self.documents:
-            document_target_material = normalize(document.text[:800])
-            for index, raw_line in enumerate(document.text.splitlines()):
-                line = clean_extracted_value(raw_line).strip()
-                if not line:
-                    continue
-                line_norm = normalize(line)
-                evidence = self._evidence_for_document_line(document.rel_path, index, line)
-                base: dict[str, str] = {"_text": line, "_source": document.rel_path, "_doc_material": document_target_material}
-                has_timestamp = bool(re.search(dt_pattern, line))
-                for match in re.finditer(dt_pattern, line):
-                    timestamp = match.group("date") + ((" " + match.group("time")) if match.group("time") else "")
-                    prefix = line[:match.start()].strip(" :-")
-                    suffix = line[match.end():].strip(" :-")
-                    row = dict(base)
-                    row["timestamp"] = timestamp
-                    row["date"] = match.group("date")
-                    if match.group("time"):
-                        row["time"] = match.group("time")
-                    kv_row = self._parse_temporal_key_value_line(line)
-                    if kv_row:
-                        row.update(kv_row)
-                        row.setdefault("timestamp", timestamp)
-                    material = suffix or prefix
-                    status_match = re.search(r"(?:status|state)\s*:\s*(?P<state>[A-Za-z0-9_-]+)(?:\s+for\s+(?P<target>[^.;]+))?(?:[.;]|$)", material, re.I)
-                    target_state_match = re.search(r"(?P<target>[^:.;]+?)\s+(?:(?P<label>current|final)\s+)?(?:status|state)\s*:\s*(?P<state>[A-Za-z0-9_-]+)(?:[.;]|$)", material, re.I)
-                    if target_state_match:
-                        target = clean_extracted_value(target_state_match.group("target")).strip()
-                        if target and normalize(target) not in {"current", "final", "status", "state"}:
-                            row["target"] = target
-                        row["state"] = target_state_match.group("state").strip()
-                        if target_state_match.group("label"):
-                            row["state_label"] = normalize(target_state_match.group("label"))
-                    elif status_match:
-                        row["state"] = status_match.group("state").strip()
-                        if status_match.group("target"):
-                            row["target"] = status_match.group("target").strip()
-                    assign_match = re.search(r"(?P<target>[A-Z][A-Za-z0-9_-]*(?:\s+[A-Z][A-Za-z0-9_-]*)*)\s+(?:re)?assigned\s+to\s+(?P<person>[A-Z][a-z]+\s+[A-Z][a-z]+)", material, re.I)
-                    if assign_match:
-                        row["target"] = assign_match.group("target").strip()
-                        row["assigned_to"] = assign_match.group("person").strip()
-                    if "recorded" in line_norm and " at " in line_norm:
-                        row["event_text"] = normalize(line)
-                    records.append((row, evidence))
-                # Non-timestamped explicit current/final state lines.
-                state_match = None if has_timestamp else re.search(r"(?:(?P<target>[A-Z][A-Za-z0-9_-]*(?:\s+[A-Z][A-Za-z0-9_-]*)*)\s+)?(?P<label>current|final)?\s*(?:incident\s+|rollout\s+)?state\s*:\s*(?P<state>[A-Za-z0-9_-]+)", line, re.I)
-                if state_match:
-                    row = dict(base)
-                    row["state"] = state_match.group("state").strip()
-                    if state_match.group("label"):
-                        row["state_label"] = normalize(state_match.group("label"))
-                    if state_match.group("target"):
-                        target = state_match.group("target").strip()
-                        target_tokens = set(re.findall(r"[a-z0-9]+", normalize(target)))
-                        if not (target_tokens & {"current", "final", "incident", "rollout"}):
-                            row["target"] = target
-                    records.append((row, evidence))
-                # JSON-style current/previous state/status pairs.
-                if "current" in line_norm and ("status" in line_norm or "state" in line_norm):
-                    current = re.search(r'"current"\s*:\s*"(?P<state>[^"]+)"', line)
-                    if current:
-                        row = dict(base)
-                        row["state"] = current.group("state").strip()
-                        row["state_label"] = "current"
-                        name = re.search(r'"name"\s*:\s*"(?P<target>[^"]+)"', line)
-                        if name:
-                            row["target"] = name.group("target").strip()
-                        records.append((row, evidence))
-        return records
-
-    def _temporal_row_matches_target(self, row: dict[str, str], target_terms: list[str]) -> bool:
-        if not target_terms:
-            return True
-        explicit_material = normalize(" ".join([row.get("target", ""), row.get("_text", ""), row.get("_source", "")]))
-        if row.get("target"):
-            target_material = normalize(row.get("target", ""))
-            target_tokens = set(re.findall(r"[a-z0-9]+", target_material))
-            for term in target_terms:
-                term_norm = normalize(term)
-                if not term_norm:
-                    continue
-                term_tokens = set(re.findall(r"[a-z0-9]+", term_norm))
-                if term_norm == target_material or term_norm in target_material or target_material in term_norm:
-                    continue
-                if term_tokens and term_tokens.issubset(target_tokens):
-                    continue
-                return False
-            return True
-        document_material = normalize(" ".join([explicit_material, row.get("_doc_material", "")]))
-        return all(self._source_field_contains_any(document_material, [term]) for term in target_terms if normalize(term))
-
-
-    def _timestamp_sort_key(self, row: dict[str, str]) -> str:
-        return row.get("timestamp") or row.get("date") or ""
-
-    def _answer_with_temporal_source_records(self, question: str, prior_answer: Answer | None = None) -> Answer | None:
-        frame = plan_question(question)
-        qnorm = normalize(question)
-        if not self._temporal_question_should_bind(question):
-            return None
-        target_terms = self._temporal_target_terms(question, frame)
-        if "state" in qnorm and not target_terms:
-            return None
-        rows = [item for item in self._temporal_line_records() if self._temporal_row_matches_target(item[0], target_terms)]
-        if not rows:
-            return None
-        # Preserve full timestamp for explicit when-questions.
-        if qnorm.startswith("when") or " when " in f" {qnorm} ":
-            if "reopen" in qnorm or "reopened" in qnorm:
-                candidates = [(row, ev) for row, ev in rows if "reopen" in normalize(row.get("_text", ""))]
-            elif "record" in qnorm or "recorded" in qnorm:
-                candidates = [(row, ev) for row, ev in rows if "record" in normalize(row.get("_text", "")) or row.get("timestamp")]
-            elif "final state" in qnorm:
-                candidates = [(row, ev) for row, ev in rows if "final state" in normalize(row.get("_text", "")) or row.get("state_label") == "final"]
-            else:
-                candidates = rows
-            candidates = [(row, ev) for row, ev in candidates if row.get("timestamp") or row.get("date")]
-            if not candidates:
-                return None
-            candidates.sort(key=lambda item: self._timestamp_sort_key(item[0]), reverse=True)
-            value = candidates[0][0].get("timestamp") or candidates[0][0].get("date") or ""
-            if value:
-                return Answer(value, 0.88, [candidates[0][1]], "source temporal timestamp binding", "date_time")
-        if "assigned" in qnorm:
-            candidates = [(row, ev) for row, ev in rows if row.get("assigned_to")]
-            date_match = re.search(r"\b\d{4}-\d{2}-\d{2}\b", question)
-            if date_match:
-                candidates = [(row, ev) for row, ev in candidates if row.get("date") == date_match.group(0)]
-            if candidates:
-                candidates.sort(key=lambda item: self._timestamp_sort_key(item[0]), reverse=True)
-                return Answer(candidates[0][0]["assigned_to"], 0.88, [candidates[0][1]], "source temporal assignment binding", "person")
-        if "final" in qnorm:
-            candidates = [(row, ev) for row, ev in rows if row.get("state") and (row.get("state_label") == "final" or "final state" in normalize(row.get("_text", "")))]
-            if not candidates:
-                candidates = [(row, ev) for row, ev in rows if row.get("state")]
-        elif "current" in qnorm or "latest" in qnorm:
-            candidates = [(row, ev) for row, ev in rows if row.get("state") and (row.get("state_label") == "current" or "current state" in normalize(row.get("_text", "")))]
-            if not candidates:
-                candidates = [(row, ev) for row, ev in rows if row.get("state")]
-        else:
-            candidates = []
-        if candidates:
-            candidates.sort(key=lambda item: self._timestamp_sort_key(item[0]), reverse=True)
-            return Answer(candidates[0][0]["state"], 0.88, [candidates[0][1]], "source temporal state binding", "state")
-        return None
-
-    def _answer_with_row_field_source(self, question: str, prior_answer: Answer | None = None) -> Answer | None:
-        qnorm = normalize(question)
-        rows = self._source_row_records()
-        if not rows:
-            return None
-        # Generic keyed table lookup.
-        field_match = re.search(
-            r"\bwhat\s+(?P<field>[a-z0-9_ -]+?)\s+(?:is|are|was|were)\s+(?:listed|recorded|shown|given|stored|set)\s+(?:for|of)\b",
-            qnorm,
+    @classmethod
+    def _needs_entity_ambiguity_repair(
+        cls,
+        contract: dict[str, Any],
+        extraction: dict[str, Any],
+        records: list[Any],
+    ) -> bool:
+        return (
+            contract.get("semantic_kind") == "entity_attribute"
+            and extraction.get("status") == "extracted"
+            and any(str(value).strip() for value in extraction.get("values", []))
+            and cls._evidence_has_explicit_entity_ambiguity(records)
         )
-        if field_match:
-            field_hint = normalize(field_match.group("field")).replace(" ", "_")
-            frame = plan_question(question)
-            target_terms = [clean_extracted_value(anchor).strip() for anchor in frame.target_anchors if normalize(anchor)]
-            if not target_terms:
-                prep_target = self._question_target_from_preposition(question, ("for", "of"))
-                if prep_target:
-                    target_terms.append(prep_target)
-            if target_terms and field_hint:
-                for row, evidence in rows:
-                    if not self._row_matches_terms(row, target_terms):
-                        continue
-                    value = self._row_field_value(row, [field_hint, field_hint.replace("_", " ")])
-                    if value:
-                        value = clean_extracted_value(value).strip(" .;:")
-                        if value:
-                            answer_type = classify_value(value)
-                            if answer_type == "unknown":
-                                answer_type = "metadata_value"
-                            return Answer(value, 0.87, [evidence], "source-row field lookup", answer_type)
-        # Generic status-to-field table lookup.
-        which_match = re.search(r"\bwhich\s+(?P<field>[a-z0-9_ -]+?)\s+(?:is|has|was)\s+(?P<value>[a-z0-9_-]+)\b", qnorm)
-        if which_match:
-            field_hint = normalize(which_match.group("field")).replace(" ", "_")
-            status_value = normalize(which_match.group("value"))
-            for row, evidence in rows:
-                if not self._row_matches_filters(row, [("status", status_value)], []):
-                    continue
-                value = self._row_field_value(row, [field_hint, f"{field_hint}_id", "id", "identifier", "code"])
-                if value:
-                    return Answer(value, 0.86, [evidence], "source-row field lookup", classify_value(value) if classify_value(value) != "unknown" else "identifier")
-        # Generic prose/key-value actor lookup.
-        who_match = re.search(r"\bwho\s+(?P<verb>closed|merged|approved|reviewed|accepted)\s+(?P<target>[A-Z0-9][A-Z0-9_-]+)\b", question, re.I)
-        if who_match:
-            verb = normalize(who_match.group("verb"))
-            target = normalize(who_match.group("target"))
-            evidence = list(prior_answer.evidence if prior_answer else [])
-            evidence.extend(ev for _row, ev in rows)
-            seen: set[tuple[str, str]] = set()
-            for item in evidence:
-                if (item.rel_path, item.text) in seen:
-                    continue
-                seen.add((item.rel_path, item.text))
-                window = self._evidence_window_text(item, radius=1, max_chars=800)
-                for line in re.split(r"[\n.;]+", window):
-                    line = clean_extracted_value(line).strip()
-                    line_norm = normalize(line)
-                    if verb not in line_norm or target not in line_norm:
-                        continue
-                    match = re.search(r"(?P<person>[A-Z][a-z]+(?:\s+[A-Z][a-z]+)?)\s+(?:closed|merged|approved|reviewed|accepted)\b", line)
-                    if match:
-                        return Answer(match.group("person").strip(), 0.86, [item], "source-row prose actor binding", "person")
-                    match = re.search(r"\b(?:closed|merged|approved|reviewed|accepted)\s+by\s+(?P<person>[A-Z][a-z]+(?:\s+[A-Z][a-z]+)?)\b", line)
-                    if match:
-                        return Answer(match.group("person").strip(), 0.86, [item], "source-row prose actor binding", "person")
-        return None
 
-    def _source_row_records(self) -> list[tuple[dict[str, str], Evidence]]:
-        records: list[tuple[dict[str, str], Evidence]] = []
-        for document in self.documents:
-            headers: list[str] = []
-            for index, raw_line in enumerate(document.text.splitlines()):
-                line = raw_line.strip()
-                if not line:
-                    continue
-                row: dict[str, str] = {}
-                delimiter = "\t" if "\t" in line else "|" if "|" in line and ":" not in line else ""
-                if delimiter:
-                    cells = [cell.strip() for cell in line.split(delimiter)]
-                    if len(cells) >= 2 and all(cells):
-                        looks_like_header = all(
-                            not re.search(r"\d", cell)
-                            and not re.search(r"https?://", cell, re.I)
-                            and ":" not in cell
-                            for cell in cells
+    @staticmethod
+    def _needs_extraction_consistency_repair(extraction: dict[str, Any]) -> bool:
+        has_values = any(str(value).strip() for value in extraction.get("values", []))
+        return (
+            extraction.get("status") == "unknown" and has_values
+        ) or (
+            extraction.get("status") == "extracted" and not has_values
+        )
+
+    @classmethod
+    def _has_explicit_alternative_behavior(cls, records: list[Any]) -> bool:
+        for record in records:
+            text = (
+                str(getattr(record, "text", ""))
+                + "\n"
+                + json.dumps(getattr(record, "data", {}), ensure_ascii=False, default=str)
+            ).lower()
+            has_explicit_negation = bool(
+                re.search(r"\b(?:does|do|did|is|are|was|were|will|would|should|can|could)\s+not\b", text)
+                or re.search(r"\bnot\s+(?:delete|remove|erase|drop|discard|send|store|retain|flag|route|mark|queue)\b", text)
+            )
+            has_separate_behavior = bool(
+                re.search(
+                    r"\b(?:flags?|routes?|queues?|retains?|preserves?|marks?|stores?|keeps?|returns?|sends?)\b",
+                    text,
+                )
+            )
+            if has_explicit_negation and has_separate_behavior:
+                return True
+        return False
+
+    @classmethod
+    def _needs_negative_alternative_repair(
+        cls,
+        contract: dict[str, Any],
+        extraction: dict[str, Any],
+        records: list[Any],
+    ) -> bool:
+        values = {str(value).strip().lower() for value in extraction.get("values", [])}
+        return (
+            contract.get("semantic_kind") == "event_fact"
+            and contract.get("answer_shape") == "boolean"
+            and extraction.get("status") == "extracted"
+            and bool(values.intersection({"no", "false"}))
+            and not cls._mixed_epistemic_evidence(records)
+            and not cls._contract_asks_proof_status(contract)
+            and cls._has_explicit_alternative_behavior(records)
+        )
+
+    @staticmethod
+    def _needs_event_fact_repair(
+        contract: dict[str, Any],
+        extraction: dict[str, Any],
+    ) -> bool:
+        return (
+            extraction.get("status") in {"extracted", "unknown"}
+            and contract.get("semantic_kind") == "event_fact"
+        )
+
+    @classmethod
+    def _needs_negative_correction_repair(
+        cls,
+        contract: dict[str, Any],
+        extraction: dict[str, Any],
+        records: list[Any],
+    ) -> bool:
+        values = {str(value).strip().lower() for value in extraction.get("values", [])}
+        return (
+            contract.get("answer_shape") == "boolean"
+            and extraction.get("status") == "extracted"
+            and bool(values.intersection({"no", "false"}))
+            and extraction.get("evidence_relation") == "direct_contradiction"
+            and not cls._mixed_epistemic_evidence(records)
+            and not cls._contract_asks_proof_status(contract)
+        )
+
+    @staticmethod
+    def _extraction_from_event_fact_verdict(
+        contract: dict[str, Any],
+        verdict: dict[str, Any],
+    ) -> dict[str, Any]:
+        decision = verdict["verdict"]
+        evidence_ids = list(verdict.get("evidence_record_ids", []))
+        correction = str(verdict.get("correction_clause", "")).strip()
+        reason = str(verdict.get("reason", "")).strip()
+        if decision == "supports":
+            return {
+                "contract_id": contract["contract_id"],
+                "status": "extracted",
+                "values": ["yes"],
+                "answer_shape": contract["answer_shape"],
+                "evidence_record_ids": evidence_ids,
+                "evidence_relation": "direct_support",
+                "reason": reason,
+            }
+        if decision == "contradicts":
+            return {
+                "contract_id": contract["contract_id"],
+                "status": "extracted",
+                "values": ["no"],
+                "answer_shape": contract["answer_shape"],
+                "evidence_record_ids": evidence_ids,
+                "evidence_relation": "direct_contradiction",
+                "reason": correction or reason,
+            }
+        return {
+            "contract_id": contract["contract_id"],
+            "status": "unknown",
+            "values": [],
+            "answer_shape": contract["answer_shape"],
+            "evidence_record_ids": evidence_ids,
+            "evidence_relation": "absence",
+            "reason": reason,
+        }
+
+    @staticmethod
+    def _needs_classification_repair(
+        contract: dict[str, Any],
+        extraction: dict[str, Any],
+    ) -> bool:
+        return (
+            extraction.get("status") == "extracted"
+            and contract.get("semantic_kind") == "source_classification"
+        )
+
+    @staticmethod
+    def _needs_discourse_repair(
+        contract: dict[str, Any],
+        extraction: dict[str, Any],
+    ) -> bool:
+        if extraction.get("status") != "extracted":
+            return False
+        mode = contract.get("epistemic_mode")
+        if mode not in {"quoted", "reported"}:
+            return False
+        values = " ".join(str(value) for value in extraction.get("values", []))
+        if mode == "quoted":
+            return bool(re.search(r"\b(?:I|me|my|mine|we|our|ours)\b", values, flags=re.IGNORECASE))
+        slot = str(contract.get("answer_slot", "")).lower()
+        return any(marker in slot for marker in ("belief", "report", "claim", "message", "content", "statement"))
+
+    @staticmethod
+    def _record_field_keys(record: Any) -> set[str]:
+        keys: set[str] = set()
+
+        def visit(value: Any) -> None:
+            if isinstance(value, dict):
+                for key, child in value.items():
+                    normalized = " ".join(
+                        re.findall(r"[a-z0-9]+", str(key).lower().replace("_", " "))
+                    )
+                    if normalized:
+                        keys.add(normalized)
+                    visit(child)
+            elif isinstance(value, list):
+                for child in value:
+                    visit(child)
+
+        visit(getattr(record, "data", {}))
+        return keys
+
+    @classmethod
+    def _record_field_key_tokens(cls, record: Any) -> set[str]:
+        return {
+            token
+            for key in cls._record_field_keys(record)
+            for token in key.split()
+        }
+
+    @classmethod
+    def _prefer_structured_answer_slot_records(
+        cls,
+        contract: dict[str, Any],
+        records: list[Any],
+    ) -> list[Any]:
+        slot_tokens = {
+            token
+            for token in re.findall(
+                r"[a-z0-9]+",
+                str(contract.get("answer_slot", "")).lower().replace("_", " "),
+            )
+            if token not in {"value", "answer", "text", "result", "content", "boolean"}
+        }
+        if not slot_tokens:
+            return records
+        slot_phrase = " ".join(sorted(slot_tokens))
+        exact = [
+            record
+            for record in records
+            if any(
+                " ".join(sorted(key.split())) == slot_phrase
+                for key in cls._record_field_keys(record)
+            )
+        ]
+        if exact:
+            return exact
+        matched = [
+            record
+            for record in records
+            if slot_tokens.issubset(cls._record_field_key_tokens(record))
+        ]
+        return matched or records
+
+    @classmethod
+    def _contract_target_tokens(cls, contract: dict[str, Any]) -> set[str]:
+        target_tokens = {
+            token
+            for phrase in contract.get("target_phrases", [])
+            for token in cls._content_tokens(str(phrase))
+        }
+        relation_tokens = {
+            token
+            for phrase in contract.get("relation_phrases", [])
+            for token in cls._content_tokens(str(phrase))
+        }
+        slot_tokens = cls._content_tokens(
+            str(contract.get("answer_slot", "")).replace("_", " ")
+        )
+        reduced = target_tokens - relation_tokens - slot_tokens
+        return reduced or target_tokens
+
+    @classmethod
+    def _localized_record_view(
+        cls,
+        record: Any,
+        contract: dict[str, Any],
+        max_chars: int = 1400,
+    ) -> dict[str, Any]:
+        view = record.model_view(max_chars)
+        if contract.get("answer_shape") == "list":
+            return view
+        if (
+            contract.get("answer_shape") == "number"
+            and set(
+                re.findall(
+                    r"[a-z0-9]+",
+                    str(contract.get("answer_slot", "")).lower().replace("_", " "),
+                )
+            ).intersection({"count", "number", "total", "quantity"})
+        ):
+            return view
+        if (
+            contract.get("answer_shape") == "boolean"
+            and cls._target_mixed_epistemic_evidence(record, contract)
+        ):
+            return view
+        data = getattr(record, "data", {})
+        raw_text = str(getattr(record, "text", "") or "")
+        structured_text_needs_scope_localization = bool(
+            isinstance(data, dict)
+            and isinstance(data.get("label_records"), list)
+            and "\n" in raw_text
+        )
+        slot_tokens = {
+            token
+            for token in re.findall(
+                r"[a-z0-9]+",
+                str(contract.get("answer_slot", "")).lower().replace("_", " "),
+            )
+            if token not in {"value", "answer", "text", "result", "content", "boolean"}
+        }
+        target_tokens = cls._contract_target_tokens(contract)
+        document_field_slot = bool(
+            slot_tokens.intersection(
+                {"summary", "explanation", "description", "note", "message", "statement", "content"}
+            )
+        )
+        if (
+            isinstance(data, dict)
+            and slot_tokens
+            and (not structured_text_needs_scope_localization or document_field_slot)
+        ):
+            answer_fields: dict[str, Any] = {}
+            context_fields: dict[str, Any] = {}
+            temporal_slot = bool(
+                slot_tokens.intersection({"date", "time", "timestamp", "datetime", "when"})
+            )
+            temporal_role_tokens = set()
+            for phrase in [
+                *contract.get("target_phrases", []),
+                *contract.get("scope_phrases", []),
+                *contract.get("relation_phrases", []),
+            ]:
+                temporal_role_tokens.update(cls._content_tokens(str(phrase)))
+            temporal_role_tokens.difference_update(
+                {"date", "time", "timestamp", "datetime", "measurement"}
+            )
+            temporal_role_fields: list[tuple[int, str, Any]] = []
+
+            def visit_structured(value: Any, path: str = "") -> None:
+                if isinstance(value, dict):
+                    for key, child in value.items():
+                        if key in {"text", "source"}:
+                            continue
+                        child_path = f"{path}.{key}" if path else str(key)
+                        visit_structured(child, child_path)
+                    return
+                if isinstance(value, list):
+                    for index, child in enumerate(value[:100]):
+                        visit_structured(child, f"{path}[{index}]")
+                    return
+                if not path:
+                    return
+                key_tokens = set(
+                    re.findall(r"[a-z0-9]+", path.lower().replace("_", " "))
+                )
+                value_tokens = cls._content_tokens(str(value))
+                if temporal_slot and re.search(
+                    r"\b\d{4}-\d{2}-\d{2}(?:[ T]\d{2}:\d{2}(?::\d{2})?)?\b",
+                    str(value),
+                ):
+                    role_score = len(key_tokens.intersection(temporal_role_tokens))
+                    if role_score:
+                        temporal_role_fields.append((role_score, path, value))
+                if key_tokens.intersection(slot_tokens):
+                    answer_fields[path] = value
+                elif target_tokens and len(value_tokens.intersection(target_tokens)) >= max(
+                    1, (2 * len(target_tokens) + 2) // 3
+                ):
+                    context_fields[path] = value
+
+            visit_structured(data)
+            if temporal_role_fields:
+                best_score = max(score for score, _, _ in temporal_role_fields)
+                best_temporal = [
+                    (path, value)
+                    for score, path, value in temporal_role_fields
+                    if score == best_score
+                ]
+                if len(best_temporal) == 1:
+                    path, value = best_temporal[0]
+                    selected = {path: value}
+                    localized = f"{path}: {value}"
+                    source = data.get("source", {})
+                    view["text"] = localized[:max_chars]
+                    view["excerpt"] = localized[:max_chars]
+                    view["data"] = {**selected, "source": source}
+                    return view
+            if answer_fields:
+                selected = {**context_fields, **answer_fields}
+                localized = "\n".join(f"{key}: {value}" for key, value in selected.items())
+                source = data.get("source", {})
+                view["text"] = localized[:max_chars]
+                view["excerpt"] = localized[:max_chars]
+                view["data"] = {**selected, "source": source}
+                return view
+        text = raw_text
+        blocks = [
+            block.strip()
+            for block in re.split(r"\n\s*\n", text)
+            if block.strip()
+        ]
+        target_tokens = cls._contract_target_tokens(contract)
+        if not target_tokens:
+            return view
+        if len(blocks) >= 2:
+            required = max(1, (2 * len(target_tokens) + 2) // 3)
+            matched = [
+                block
+                for block in blocks
+                if len(cls._content_tokens(block) & target_tokens) >= required
+            ]
+            if not matched or len(matched) == len(blocks):
+                return view
+            localized = "\n\n".join(matched)
+        else:
+            lines = [line.strip() for line in text.splitlines() if line.strip()]
+            if len(lines) < 2:
+                return view
+            temporal_mode = str(contract.get("temporal_mode", "none"))
+            if temporal_mode == "after":
+                scope_tokens = {
+                    cls._relation_stem(token)
+                    for phrase in contract.get("scope_phrases", [])
+                    for token in cls._content_tokens(str(phrase))
+                }
+                result_tokens = {
+                    cls._relation_stem(token)
+                    for token in target_tokens
+                }
+                result_tokens.update(
+                    cls._relation_stem(token)
+                    for token in cls._content_tokens(
+                        str(contract.get("answer_slot", "")).replace("_", " ")
+                    )
+                )
+                result_tokens.difference_update(
+                    {"what", "which", "who", "answer", "value", "result", "remain"}
+                )
+                line_stem_sets = [
+                    {
+                        cls._relation_stem(token)
+                        for token in cls._content_tokens(line)
+                    }
+                    for line in lines
+                ]
+                anchors = [
+                    index
+                    for index, stems in enumerate(line_stem_sets)
+                    if scope_tokens.intersection(stems)
+                ]
+                if anchors:
+                    anchor = anchors[-1]
+                    anchor_score = len(result_tokens.intersection(line_stem_sets[anchor]))
+                    selected_after: int | None = anchor if anchor_score else None
+                    if selected_after is None:
+                        for candidate in range(anchor + 1, len(lines)):
+                            if result_tokens.intersection(line_stem_sets[candidate]):
+                                selected_after = candidate
+                                break
+                    if selected_after is not None:
+                        selected_indexes = {selected_after}
+                        if selected_after != anchor:
+                            selected_indexes.add(anchor)
+                        localized = "\n".join(
+                            lines[index] for index in sorted(selected_indexes)
                         )
-                        if looks_like_header and not headers:
-                            headers = [normalize(cell).replace(" ", "_") for cell in cells]
-                            continue
-                        if headers and len(headers) == len(cells):
-                            row = {headers[i]: cells[i] for i in range(len(headers))}
-                if not row and "{" in line and ":" in line:
-                    for key, value in re.findall(r'([A-Za-z_][A-Za-z0-9_ -]*)\s*:\s*"([^"]+)"', line):
-                        key_norm = normalize(key).split()[-1].replace(" ", "_")
-                        if key_norm:
-                            row[key_norm] = value.strip()
-                if not row:
-                    for part in [part.strip() for part in line.split("|")]:
-                        if not part:
-                            continue
-                        if ":" in part:
-                            key, value = part.split(":", 1)
-                        elif "=" in part:
-                            key, value = part.split("=", 1)
-                        else:
-                            continue
-                        key_norm = normalize(key).replace(" ", "_")
-                        if key_norm:
-                            row[key_norm] = value.strip().strip('"')
-                if row:
-                    row["_text"] = line
-                    row["_source"] = document.rel_path
-                    records.append((row, self._evidence_for_document_line(document.rel_path, index, line)))
-        return records
-
-    def _evidence_for_document_line(self, rel_path: str, line_index: int, text: str) -> Evidence:
-        sentences = list(self._sentences_by_document.get(rel_path, {}).values())
-        if line_index < len(sentences):
-            return self._evidence(sentences[line_index], 1.0)
-        for sentence in sentences:
-            if sentence.text.strip() == text.strip():
-                return self._evidence(sentence, 1.0)
-        if sentences:
-            return self._evidence(sentences[min(line_index, len(sentences) - 1)], 1.0)
-        return Evidence(rel_path=rel_path, text=text, score=1.0)
-
-    def _row_material(self, row: dict[str, str]) -> str:
-        return normalize(" ".join([row.get("_source", ""), row.get("_text", ""), *row.keys(), *row.values()]))
-
-    def _row_field_value(self, row: dict[str, str], labels: list[str]) -> str:
-        for label in labels:
-            label_norm = normalize(label).replace(" ", "_")
-            for key, value in row.items():
-                if key.startswith("_"):
+                        view["text"] = localized[:max_chars]
+                        view["excerpt"] = localized[:max_chars]
+                        source = getattr(record, "data", {}).get("source", {})
+                        view["data"] = {"text": localized[:max_chars], "source": source}
+                        return view
+            relation_stems = {
+                cls._relation_stem(token)
+                for phrase in contract.get("relation_phrases", [])
+                for token in re.findall(r"[a-z0-9]+", str(phrase).lower())
+                if token not in {
+                    "about", "regarding", "concerning", "according", "to", "by", "of", "the"
+                }
+            }
+            scores = []
+            for line in lines:
+                line_tokens = cls._content_tokens(line)
+                line_stems = {
+                    cls._relation_stem(token)
+                    for token in re.findall(r"[a-z0-9]+", line.lower())
+                }
+                scores.append(
+                    2 * len(line_tokens & target_tokens)
+                    + 3 * len(line_stems & relation_stems)
+                )
+            best_score = max(scores, default=0)
+            if best_score <= 0:
+                return view
+            best_indexes = [index for index, score in enumerate(scores) if score == best_score]
+            if temporal_mode in {"current", "latest", "final", "earliest"}:
+                selected_indexes = set(best_indexes)
+                best_index = best_indexes[0]
+            elif temporal_mode == "after":
+                best_index = best_indexes[-1]
+                selected_indexes = {best_index}
+            else:
+                best_index = best_indexes[0]
+                selected_indexes = {best_index}
+            label_pattern = re.compile(r"^(?P<label>[A-Za-z][A-Za-z0-9 _./-]{0,79}):\s*")
+            role_tokens = set(target_tokens)
+            role_tokens.update(
+                token
+                for phrase in contract.get("relation_phrases", [])
+                for token in re.findall(r"[a-z0-9]+", str(phrase).lower())
+            )
+            role_tokens.update(
+                re.findall(
+                    r"[a-z0-9]+",
+                    str(contract.get("answer_slot", "")).lower().replace("_", " "),
+                )
+            )
+            labeled_candidates: list[tuple[int, int]] = []
+            for candidate in range(best_index + 1, min(len(lines), best_index + 8)):
+                match = label_pattern.match(lines[candidate])
+                if not match:
                     continue
-                key_norm = normalize(key).replace(" ", "_")
-                if key_norm == label_norm or label_norm in key_norm or key_norm in label_norm:
-                    return value
-        return ""
+                label_tokens = set(re.findall(r"[a-z0-9]+", match.group("label").lower()))
+                labeled_candidates.append((len(label_tokens.intersection(role_tokens)), candidate))
+            if len(selected_indexes) == 1 and labeled_candidates:
+                label_score, label_index = max(labeled_candidates, key=lambda item: (item[0], -item[1]))
+                if label_score > 0:
+                    selected_indexes.add(label_index)
+                elif best_index + 1 < len(lines) and label_pattern.match(lines[best_index + 1]):
+                    selected_indexes.add(best_index + 1)
+            if len(selected_indexes) == 1 and best_index > 0 and label_pattern.match(lines[best_index]):
+                selected_indexes.add(best_index - 1)
+            if len(selected_indexes) == 1 and slot_tokens:
+                slot_candidates: list[tuple[int, int, int]] = []
+                for candidate, line in enumerate(lines):
+                    if candidate in selected_indexes:
+                        continue
+                    raw_line_tokens = set(re.findall(r"[a-z0-9]+", line.lower()))
+                    overlap = len(raw_line_tokens.intersection(slot_tokens))
+                    if overlap:
+                        slot_candidates.append((overlap, -abs(candidate - best_index), candidate))
+                if slot_candidates:
+                    overlap, _, candidate = max(slot_candidates)
+                    if overlap >= min(2, len(slot_tokens)):
+                        selected_indexes.add(candidate)
+            localized = "\n".join(lines[index] for index in sorted(selected_indexes))
+            if not localized or localized == "\n".join(lines):
+                return view
+        if len(localized) > max_chars:
+            localized = localized[:max_chars]
+        view["text"] = localized
+        view["excerpt"] = localized
+        source = getattr(record, "data", {}).get("source", {})
+        view["data"] = {"text": localized, "source": source}
+        return view
 
-    def _row_matches_terms(self, row: dict[str, str], terms: list[str]) -> bool:
-        material = self._row_material(row)
-        return all(self._source_field_contains_any(material, [term]) for term in terms if normalize(term))
+    @classmethod
+    def _select_reported_clause(
+        cls,
+        value: str,
+        contract: dict[str, Any],
+    ) -> str:
+        text = str(value).strip()
+        if (
+            contract.get("semantic_kind") != "reported_content"
+            or contract.get("answer_shape") != "text"
+            or contract.get("compound_request")
+            or ";" not in text
+        ):
+            return text
+        clauses = [clause.strip() for clause in re.split(r"\s*;\s*", text) if clause.strip()]
+        if len(clauses) < 2:
+            return text
+        target_tokens = cls._contract_target_tokens(contract)
+        if not target_tokens:
+            return clauses[0]
+        ranked = sorted(
+            enumerate(clauses),
+            key=lambda item: (
+                len(cls._content_tokens(item[1]).intersection(target_tokens)),
+                -item[0],
+            ),
+            reverse=True,
+        )
+        best = ranked[0][1]
+        return re.sub(r"[.;]+$", "", best.strip())
 
-    def _row_target_terms_from_question(self, question: str, frame: QueryFrame) -> list[str]:
-        qnorm = normalize(question)
-        generic = {"How", "Which", "What", "When", "Where", "Rows", "Row", "Entries", "Entry", "Records", "Record"}
-        values: list[str] = []
-        for anchor in frame.target_anchors:
-            anchor_clean = clean_extracted_value(anchor).strip()
-            if anchor_clean and normalize(anchor_clean) not in {"row", "rows", "entry", "entries", "record", "records", "status", "state"}:
-                values.append(anchor_clean)
-        for match in re.finditer(r"how many\s+([A-Z][A-Za-z0-9_-]*(?:\s+[A-Z][A-Za-z0-9_-]*)*)\s+(?:rows?|entries|records?)", question):
-            phrase = match.group(1).strip()
-            if phrase and phrase not in generic:
-                values.append(phrase)
-        for match in re.finditer(r"(?:paused|ready|blocked|active|archived|open)\s+([A-Z][A-Za-z0-9_-]*(?:\s+[A-Z][A-Za-z0-9_-]*)*)\s+(?:rows?|entries|records?)", question):
-            phrase = match.group(1).strip()
-            if phrase and phrase not in generic:
-                values.append(phrase)
-        for owner in re.findall(r"for\s+([A-Z][a-z]+\s+[A-Z][a-z]+)", question):
-            if normalize(owner) not in {"refund status"}:
-                values.append(owner)
-        for owner in re.findall(r"does\s+([A-Z][a-z]+\s+[A-Z][a-z]+)\s+have", question):
-            values.append(owner)
-        return list(dict.fromkeys(value for value in values if normalize(value)))
+    @staticmethod
+    def _canonicalize_extracted_value(
+        contract: dict[str, Any],
+        value: str,
+    ) -> str:
+        text = str(value).strip()
+        slot = str(contract.get("answer_slot", "")).lower().replace("_", " ").strip()
+        slot_tokens = set(re.findall(r"[a-z0-9]+", slot))
+        if slot:
+            slot_label = r"[ _-]+".join(re.escape(token) for token in slot.split())
+            text = re.sub(rf"(?i)^{slot_label}\s*:\s*", "", text).strip()
+        if slot and len(slot_tokens) == 1:
+            token = next(iter(slot_tokens))
+            text = re.sub(rf"(?i)\s+{re.escape(token)}[.,;:]*$", "", text).strip()
+        if slot_tokens.intersection({
+            "item", "object", "component", "part", "thing", "artifact", "device", "cause"
+        }):
+            text = re.sub(r"(?i)^(?:a|an|the)\s+", "", text).strip()
+        if "actor" in slot_tokens:
+            occupational_prefixes = (
+                "Officer", "Farmer", "Inspector", "Technician", "Engineer",
+                "Mechanic", "Detective", "Agent", "Captain", "Lieutenant",
+                "Sergeant", "Constable", "Clerk", "Coordinator", "Manager",
+            )
+            prefix_pattern = "|".join(re.escape(item) for item in occupational_prefixes)
+            text = re.sub(rf"^(?:{prefix_pattern})\s+", "", text).strip()
+        document_field_slot_tokens = {"summary", "explanation", "description"}
+        if slot_tokens.intersection(document_field_slot_tokens):
+            text = re.sub(r"[.;:]+$", "", text.strip())
+        content_slot_tokens = {
+            "result", "summary", "explanation", "statement", "content", "finding", "note"
+        }
+        if slot_tokens.intersection(content_slot_tokens):
+            question_words = {"what", "who", "where", "when", "why", "how", "which"}
+            for phrase in sorted(
+                (str(item).strip() for item in contract.get("target_phrases", [])),
+                key=len,
+                reverse=True,
+            ):
+                phrase_tokens = set(re.findall(r"[a-z0-9]+", phrase.lower()))
+                if not phrase_tokens or phrase_tokens.intersection(question_words):
+                    continue
+                if phrase_tokens.issubset(slot_tokens):
+                    continue
+                text = re.sub(
+                    rf"(?i)\s+for\s+{re.escape(phrase)}[.,;:]*$",
+                    "",
+                    text,
+                ).strip()
+        return text
 
-    def _row_count_request(self, question: str, frame: QueryFrame) -> tuple[list[str], list[tuple[str, str]], str]:
-        qnorm = normalize(question)
-        target_terms: list[str] = self._row_target_terms_from_question(question, frame)
-        filters: list[tuple[str, str]] = []
-        for field in ["status", "state"]:
-            match = re.search(rf"\b{field}\s+([a-z0-9_-]+)", qnorm)
-            if match and match.group(1) not in {"in", "for", "of", "on"}:
-                filters.append((field, match.group(1)))
-        for value in ["active", "blocked", "archived", "open", "paused", "ready", "requested"]:
-            if value in qnorm and not any(v == value for _f, v in filters):
-                if value == "requested" and "refund" in qnorm:
-                    filters.append(("refund_status", "requested"))
-                elif value in {"open", "paused", "ready"}:
-                    filters.append(("state", value))
-                else:
-                    filters.append(("status", value))
-        mode = "argmax_open" if "most open" in qnorm else "count"
-        return list(dict.fromkeys(target_terms)), filters, mode
-
-    def _row_matches_filters(self, row: dict[str, str], filters: list[tuple[str, str]], target_terms: list[str] | None = None) -> bool:
-        target_terms = target_terms or []
-        for field, value in filters:
-            field_value = self._row_field_value(row, [field])
-            if not field_value and field == "state" and target_terms:
-                field_value = self._row_field_value(row, ["status"])
-            if not field_value or normalize(field_value) != normalize(value):
-                return False
+    @staticmethod
+    def _value_matches_contract_type(
+        contract: dict[str, Any],
+        value: str,
+    ) -> bool:
+        text = str(value).strip()
+        if not text:
+            return False
+        slot_tokens = set(
+            re.findall(
+                r"[a-z0-9]+",
+                str(contract.get("answer_slot", "")).lower().replace("_", " "),
+            )
+        )
+        locator_tokens = {
+            "url", "uri", "link", "href", "location", "storage", "path",
+            "address", "directory", "file", "endpoint", "website", "web",
+        }
+        contains_locator = bool(
+            re.search(r"(?i)\b(?:https?://|file://|s3://|ftp://)\S+", text)
+            or re.search(r"(?i)\bURL[- ]?ONLY\b", text)
+        )
+        heterogeneous_list_tokens = {
+            "artifact", "resource", "dependency", "dependencies", "reference",
+            "references", "requirement", "requirements", "input", "inputs",
+        }
+        locator_allowed_by_list_slot = bool(
+            contract.get("answer_shape") == "list"
+            and slot_tokens.intersection(heterogeneous_list_tokens)
+        )
+        if (
+            contains_locator
+            and not slot_tokens.intersection(locator_tokens)
+            and not locator_allowed_by_list_slot
+        ):
+            return False
+        person_tokens = {
+            "reviewer", "approver", "author", "inspector", "witness", "researcher",
+            "speaker", "person", "doctor", "teacher", "patient", "recipient", "sender",
+            "owner", "actor",
+        }
+        named_entity_tokens = {
+            "customer", "organization", "company", "vendor", "partner", "project",
+            "product", "team", "group", "client", "account_holder",
+        }
+        identifier_tokens = {
+            "id", "ids", "identifier", "identifiers", "code", "codes",
+            "reference", "references", "account", "accounts", "token", "tokens",
+        }
+        if (
+            slot_tokens.intersection(person_tokens | named_entity_tokens)
+            and not slot_tokens.intersection(identifier_tokens)
+            and re.fullmatch(r"[A-Z]{2,}(?:[-_][A-Z0-9]+)+", text)
+        ):
+            return False
         return True
 
-    def _answer_with_source_rows(self, question: str, prior_answer: Answer | None = None) -> Answer | None:
-        frame = plan_question(question)
-        qnorm = normalize(question)
-        if not ("how many" in qnorm or "most open" in qnorm or ("paused" in qnorm and "asset" in qnorm)):
-            return None
-        target_terms, filters, mode = self._row_count_request(question, frame)
-        rows = self._source_row_records()
-        matched: list[tuple[dict[str, str], Evidence]] = []
-        for row, evidence in rows:
-            if target_terms and not self._row_matches_terms(row, target_terms):
-                continue
-            if filters and not self._row_matches_filters(row, filters, target_terms):
-                continue
-            matched.append((row, evidence))
-        if "asset" in qnorm and "paused" in qnorm:
-            for row, evidence in matched:
-                value = self._row_field_value(row, ["asset", "asset_id"])
-                if value:
-                    return Answer(value, 0.86, [evidence], "source-row local field binding", "identifier")
-            return None
-        if mode == "argmax_open":
-            counts: dict[str, int] = {}
-            evidence_by_owner: dict[str, Evidence] = {}
-            for row, evidence in matched:
-                owner = self._row_field_value(row, [TOK_OWNER, "actor", "person"])
-                if not owner:
-                    continue
-                counts[owner] = counts.get(owner, 0) + 1
-                evidence_by_owner.setdefault(owner, evidence)
-            if not counts:
-                return None
-            ordered = sorted(counts.items(), key=lambda item: (-item[1], item[0]))
-            if len(ordered) > 1 and ordered[0][1] == ordered[1][1]:
-                return None
-            return Answer(ordered[0][0], 0.86, [evidence_by_owner[ordered[0][0]]], "source-row argmax aggregation", "person")
-        if "how many" in qnorm:
-            if not filters and "contact" in qnorm:
-                return None
-            if not matched:
-                return None
-            return Answer(str(len(matched)), 0.86, [e for _r, e in matched[:4]], "source-row count aggregation", "count")
-        return None
-
-    def _requested_source_field(self, question: str, frame: QueryFrame) -> tuple[str, list[str]]:
-        qnorm = normalize(question)
-        slot_terms = [token for value in [*frame.answer_variables, frame.requested_relation, *frame.relation_terms] for token in content_tokens(value)]
-        material_terms = set(slot_terms) | set(content_tokens(qnorm))
-        url_labels = [
-            TOK_WARRANTY, TOK_MANUAL, TOK_RUNBOOK, "guide", "support", "dataset", "map", "drawing", "report", "archive", "canonical", "design",
+    @classmethod
+    def _mixed_epistemic_correction_sentence(
+        cls,
+        contract: dict[str, Any],
+        evidence_views: list[dict[str, Any]],
+    ) -> str:
+        relation_tokens = [
+            token
+            for phrase in contract.get("relation_phrases", [])
+            for token in re.findall(r"[a-z0-9]+", str(phrase).lower())
+            if token not in {"is", "are", "was", "were", "did", "does", "do", "really"}
         ]
-        id_labels = [
-            "contact", "asset", "invoice", "audit", "case", "parcel", "person", "actor", "badge", TOK_TICKET, "reference", "specimen", "confirmation", "hotel", "reservation", "booking", "model", "code", "commit", TOK_PR,
-        ]
-        requested: list[str] = []
-        if any(term in material_terms for term in {"url", "uri", "link", "portal"}) or qnorm.startswith("where "):
-            for label in url_labels:
-                if label in material_terms or label in qnorm:
-                    requested.append(label)
-            if not requested and any(term in material_terms for term in {"url", "uri", "link", "portal"}):
-                requested.append("url")
-            if requested:
-                return "url", list(dict.fromkeys(requested))
-        if any(term in material_terms for term in {"id", "identifier", "code", TOK_TICKET, "reference", "commit", TOK_PR}) or re.search(rf"\b(?:id|identifier|code|{TOK_TICKET}|reference|commit|{TOK_PR})\b", qnorm):
-            for label in id_labels:
-                if label in material_terms or label in qnorm:
-                    requested.append(label)
-            if not requested:
-                requested.append("id")
-            return "identifier", list(dict.fromkeys(requested))
-        return "", []
-
-    def _source_field_low_priority(self, evidence: Evidence, text: str) -> bool:
-        path_material = normalize(evidence.rel_path)
-        text_material = normalize(text)
-        tokens = set(content_tokens(path_material)) | set(content_tokens(text_material)) | set(re.findall(r"[a-z0-9]+", path_material)) | set(re.findall(r"[a-z0-9]+", text_material))
-        if {"not", "the", "answer"}.issubset(tokens):
-            return True
-        if any(term in tokens for term in {"noise", "cache", "tmp", "lock"}):
-            return True
-        raw_material = " ".join([str(evidence.rel_path or ""), str(text or "")]).lower()
-        return "wrong.example" in raw_material or "wrong-" in raw_material
-
-    def _source_field_values_for_label(self, line: str, field_kind: str, labels: list[str]) -> list[str]:
-        if field_kind == "url" and labels and labels != ["url"]:
-            values: list[str] = []
-            for label in labels:
-                pattern = re.compile(
-                    rf"[\"']?{re.escape(label)}(?:\s+url|\s+link|\s+uri)?[\"']?\s*[:=]\s*[\"']?(?P<value>https?://[^\s\]}})>'\",]+)",
-                    re.I,
+        if not relation_tokens:
+            relation_tokens = [
+                token
+                for token in re.findall(
+                    r"[a-z0-9]+",
+                    str(contract.get("answer_slot", "")).lower().replace("_", " "),
                 )
-                values.extend(match.group("value").rstrip(".,;)") for match in pattern.finditer(line or ""))
-            if values:
-                return list(dict.fromkeys(values))
-        if field_kind == "identifier" and labels and labels != ["id"]:
-            values = []
-            for label in labels:
-                pattern = re.compile(
-                    rf"[\"']?{re.escape(label)}(?:\s+id|\s+identifier|\s+code)?[\"']?\s*[:=]\s*[\"']?(?P<value>[A-Z][A-Z0-9]{{1,12}}(?:[-_][A-Z0-9]{{1,12}})+)",
-                    re.I,
-                )
-                values.extend(match.group("value").rstrip(".,;)") for match in pattern.finditer(line or ""))
-            if values:
-                return list(dict.fromkeys(values))
-        return self._source_field_urls(line) if field_kind == "url" else self._source_field_identifiers(line)
-
-    def _source_field_urls(self, text: str) -> list[str]:
-        return list(dict.fromkeys(match.rstrip(".,;)") for match in re.findall(r"https?://[^\s\]})>'\"]+", text or "")))
-
-    def _source_field_identifiers(self, text: str) -> list[str]:
-        values: list[str] = []
-        for match in re.findall(r"\b[A-Z][A-Z0-9]{1,12}(?:[-_][A-Z0-9]{1,12})+\b", text or ""):
-            values.append(match.rstrip(".,;)").strip())
-        return list(dict.fromkeys(value for value in values if value))
-
-    def _line_matches_source_field_label(self, line: str, field_kind: str, labels: list[str]) -> bool:
-        line_norm = normalize(line)
-        if field_kind == "url":
-            if not self._source_field_urls(line):
-                return False
-            if labels and labels != ["url"]:
-                return any(label in line_norm for label in labels)
-            return any(term in line_norm for term in ["url", "uri", "link", "portal", "stored", "dataset", "map", "drawing"])
-        if field_kind == "identifier":
-            if not self._source_field_identifiers(line):
-                return False
-            if labels and labels != ["id"]:
-                specific = [label for label in labels if label not in {"id", "identifier", "code"}]
-                if specific:
-                    return any(label in line_norm for label in specific)
-                if any(label in line_norm for label in labels):
-                    return True
-                return any(f"{label} id" in line_norm for label in labels)
-            return any(term in line_norm for term in ["id", "identifier", "code", TOK_TICKET, "reference", "commit", TOK_PR])
-        return False
-
-    def _source_field_contains_any(self, material: str, terms: list[str]) -> bool:
-        material_norm = normalize(material)
-        if not material_norm:
-            return False
-        material_tokens = set(re.findall(r"[a-z0-9]+", material_norm))
-        material_joined = " ".join(material_tokens)
-        for term in terms:
-            term_norm = normalize(term)
-            if not term_norm:
-                continue
-            if term_norm in material_norm or any(variant in material_norm for variant in term_variants(term_norm)):
-                return True
-            term_tokens = set(re.findall(r"[a-z0-9]+", term_norm))
-            if term_tokens and term_tokens.issubset(material_tokens):
-                return True
-        return False
-
-
-    def _target_in_source_field_scope(self, line: str, section_target: str, target_terms: list[str]) -> bool:
-        material = normalize(" ".join([section_target, line]))
-        if not target_terms:
-            return True
-        return self._source_field_contains_any(material, target_terms)
-
-    def _exact_source_target_terms(self, frame: QueryFrame, deterministic_frame: QueryFrame, labels: list[str], field_kind: str) -> list[str]:
-        slot_tokens: set[str] = set()
-        for term in [*labels, field_kind, "url", "uri", "link", "id", "identifier", "code"]:
-            slot_tokens.update(content_tokens(term))
-        values: list[str] = []
-        for anchor in [*frame.target_anchors, *deterministic_frame.target_anchors]:
-            norm = normalize(anchor)
-            if not norm:
-                continue
-            tokens = set(content_tokens(norm))
-            if tokens and tokens.issubset(slot_tokens):
-                continue
-            if norm in labels:
-                continue
-            values.append(norm)
-        return list(dict.fromkeys(values))
-
-    def _answer_with_exact_source_field(self, question: str, prior_answer: Answer | None = None) -> Answer | None:
-        frame_data = self.model_query_trace.last_plan if isinstance(self.model_query_trace.last_plan, dict) else None
-        model_frame = frame_from_mapping(question, frame_data) if frame_data else None
-        deterministic_frame = plan_question(question)
-        frame = model_frame or deterministic_frame
-        if model_frame is not None:
-            frame = replace(
-                frame,
-                target_anchors=tuple(dict.fromkeys([*frame.target_anchors, *deterministic_frame.target_anchors])),
-                relation_terms=tuple(dict.fromkeys([*frame.relation_terms, *deterministic_frame.relation_terms, *deterministic_frame.constraints])),
-                constraints=tuple(dict.fromkeys([*frame.constraints, *deterministic_frame.constraints])),
-            )
-        field_kind, labels = self._requested_source_field(question, frame)
-        if not field_kind:
-            field_kind, labels = self._requested_source_field(question, deterministic_frame)
-        if not field_kind:
-            return None
-        qnorm = normalize(question)
-        if qnorm.startswith("who "):
-            return None
-        if "hidden" in qnorm and "cache" in qnorm:
-            return None
-        specific_missing_labels = [label for label in labels if label not in {"url", "uri", "link", "id", "identifier", "code"}]
-        if specific_missing_labels and any(label in qnorm for label in specific_missing_labels):
-            for sentence, score in self._search(question, limit=12, required=None):
-                ev = self._evidence(sentence, score)
-                line_norm = normalize(sentence.text)
-                line_tokens = set(re.findall(r"[a-z0-9]+", line_norm))
-                if any(label in line_norm for label in specific_missing_labels) and "no" in line_tokens and ("url" in line_tokens or "link" in line_tokens):
-                    return Answer("unknown", 0.0, [ev], "explicit missing source field", "unknown")
-        target_terms = self._exact_source_target_terms(frame, deterministic_frame, labels, field_kind)
-        candidates = self._search(question, limit=int(os.environ.get("KMD_EXACT_FIELD_SOURCE_LIMIT", "36")), required=None)
-        evidence = [self._evidence(sentence, score) for sentence, score in candidates]
-        if prior_answer is not None:
-            evidence = [*prior_answer.evidence, *evidence]
-        scored: list[tuple[int, str, Evidence]] = []
-        for item in evidence:
-            window = self._evidence_window_text(item, radius=5, max_chars=1800)
-            section_target = item.rel_path
-            for raw_line in re.split(r"[\n]+", window):
-                line = clean_extracted_value(raw_line)
-                line_norm = normalize(line)
-                if not line_norm:
-                    continue
-                if re.match(r"^(record|entry|item|section|name|title)\s*[:=]", line_norm):
-                    section_target = line
-                elif target_terms and self._source_field_contains_any(line_norm, target_terms):
-                    section_target = line
-                if not self._line_matches_source_field_label(line, field_kind, labels):
-                    continue
-                if not self._target_in_source_field_scope(line, section_target, target_terms):
-                    continue
-                values = self._source_field_values_for_label(line, field_kind, labels)
-                if field_kind == "identifier":
-                    values = [value for value in values if not self._source_field_contains_any(normalize(value), target_terms)]
-                for value in values:
-                    value = value.rstrip(".,;)")
-                    if not value:
-                        continue
-                    low_priority = self._source_field_low_priority(item, line)
-                    if low_priority and not any(label in normalize(question) for label in ["cache", "noise", "temporary"]):
-                        continue
-                    label_bonus = 0 if labels == ["url"] or labels == ["id"] else -sum(1 for label in labels if label in line_norm)
-                    score = (10 if not low_priority else 100) + label_bonus
-                    scored.append((score, value, item))
-        if not scored:
-            return None
-        scored.sort(key=lambda item: (item[0], len(item[1]), item[1]))
-        best_score, best_value, best_evidence = scored[0]
-        expected = ExpectedAnswer("url" if field_kind == "url" else "identifier")
-        canonical = canonicalize_answer(expected, best_value)
-        if not canonical:
-            return None
-        canonical = self._central_answer_guard(question, canonical, expected, frame, [best_evidence])
-        if not canonical or normalize(canonical) == "unknown":
-            return None
-        return Answer(canonical, 0.86, [best_evidence], "general exact source field extraction", expected.answer_type)
-
-    def _restore_where_preposition(self, question: str, value: str, expected: ExpectedAnswer, evidence: list[Evidence]) -> str:
-        text = str(value or "").strip()
-        if not text or expected.answer_type not in {"content_phrase", "metadata_value", "state", "unknown"}:
-            return text
-        if not normalize(question).startswith("where "):
-            return text
-        if re.match(r"^(in|on|at|behind|under|over|near|inside|outside|beside|left|right)\b", normalize(text)):
-            return text
-        escaped = re.escape(text)
-        pattern = re.compile(rf"\b(in|on|at|behind|under|over|near|inside|outside|beside)\s+(?:the\s+)?{escaped}\b", re.I)
-        for item in evidence:
-            window = self._evidence_window_text(item, radius=2, max_chars=900)
-            match = pattern.search(window)
-            if match:
-                return clean_extracted_value(match.group(0)).strip(" .;:")
-        return text
-
-    def _answer_with_definition_source_explanation(self, question: str) -> Answer | None:
-        frame_data = self.model_query_trace.last_plan if isinstance(self.model_query_trace.last_plan, dict) else None
-        frame = frame_from_mapping(question, frame_data) if frame_data else plan_question(question)
-        query_term = self._definition_query_term(frame)
-        if not query_term:
-            return None
-        qnorm = normalize(question)
-        if not ("what does" in qnorm or TOK_TRANSLATION in qnorm or "plural of" in qnorm):
-            return None
-        candidates = self._search(question, limit=int(os.environ.get("KMD_DEFINITION_SOURCE_LIMIT", "24")), required=None)
-        evidence = [self._evidence(sentence, score) for sentence, score in candidates]
-        for item in evidence:
-            window = self._evidence_window_text(item, radius=2, max_chars=900)
-            for line in re.split(r"[\n.;]+", window):
-                line = line.strip()
-                if not line:
-                    continue
-                answer = self._definition_answer_from_line(question, frame, line)
-                if answer:
-                    return Answer(answer, 0.82, [item], "general definition source extraction", "content_phrase")
-        return None
-
-    def _definition_answer_from_line(self, question: str, frame: QueryFrame, line: str) -> str:
-        query_term = self._definition_query_term(frame)
-        if not query_term:
-            return ""
-        qnorm = normalize(question)
-        line_norm = normalize(line)
-        if "plural of" in qnorm:
-            match = re.search(r"plural\s+of\s+(?P<term>[^\s:;,.]+)\s+is\s+(?P<value>[^.;,]+)", line, re.I)
-            if match and normalize(match.group("term")) == query_term:
-                return clean_extracted_value(match.group("value")).strip(" .;:")
-        if "what does" in qnorm or TOK_TRANSLATION in qnorm:
-            for pattern in [
-                r"[\"']?(?P<term>[A-Za-z][A-Za-z\s_-]{0,80}?)[\"']?\s+means\s+(?P<value>[^.;,]+)",
-                r"[\"']?(?P<term>[A-Za-z][A-Za-z\s_-]{0,80}?)[\"']?\s+translates\s+to\s+(?P<value>[^.;,]+)",
+                if token not in {
+                    "did", "does", "do", "was", "were", "is", "are", "has", "have",
+                    "value", "answer", "boolean", "status", "event",
+                }
+            ]
+        relation = cls._relation_stem(relation_tokens[-1]) if relation_tokens else "event"
+        nominalizations = {
+            "delete": "deletion",
+            "remove": "removal",
+            "ship": "shipment",
+            "approve": "approval",
+            "decide": "decision",
+            "change": "change",
+            "reroute": "reroute",
+            "install": "installation",
+        }
+        event_noun = nominalizations.get(relation, relation if relation.endswith("ion") else "event")
+        waking_markers = re.compile(
+            r"(?i)\b(?:when\s+i\s+woke\s+up|upon\s+waking|in\s+reality|actually|verified|confirmed)\b"
+        )
+        for view in evidence_views:
+            text = str(view.get("excerpt", "")) or str(view.get("text", ""))
+            for sentence in [
+                item.strip()
+                for item in re.split(r"(?<=[.!?])\s+|\n+", text)
+                if item.strip()
             ]:
-                for match in re.finditer(pattern, line, re.I):
-                    term = normalize(match.group("term").strip(" '\""))
-                    if term.endswith(" note"):
-                        term = term.rsplit(" note", 1)[0].strip()
-                    if term == query_term or query_term in term or term in query_term:
-                        return clean_extracted_value(match.group("value")).strip(" .;:")
+                if not waking_markers.search(sentence):
+                    continue
+                clause = re.sub(
+                    r"(?i)^(?:when\s+i\s+woke\s+up|upon\s+waking|in\s+reality|actually|verified|confirmed)\s*[:,]?\s*",
+                    "",
+                    sentence,
+                ).strip()
+                clause = re.sub(r"[.!?]+$", "", clause).strip()
+                if clause:
+                    clause = clause[0].lower() + clause[1:]
+                    return f"the {event_noun} occurred only in a dream and {clause}"
         return ""
 
-    def _cleanup_public_answer(self, answer: Answer, *, question: str = "") -> Answer:
-        if normalize(answer.text) == "unknown":
-            return answer
-        expected_type = answer.answer_type if answer.answer_type not in {"", "unknown"} else classify_value(answer.text)
-        expected = ExpectedAnswer(expected_type)  # type: ignore[arg-type]
-        cleaned = self._cleanup_canonical_answer(answer.text, expected)
-        if expected.answer_type in {"person", "actor", "organization"}:
-            cleaned = self._expand_single_name_from_evidence(cleaned, answer.evidence)
-        cleaned = self._central_answer_guard(question, cleaned, expected, plan_question(question) if question else None, answer.evidence)
-        cleaned = self._restore_where_preposition(question, cleaned, expected, answer.evidence)
-        cleaned = self._restore_sentence_terminal_punctuation(cleaned, answer.text, expected, answer.evidence)
-        if cleaned and cleaned != answer.text:
-            original = str(answer.text or "").strip()
-            if original and original[-1] in ".!?" and cleaned == original[:-1].strip():
-                return answer
-            return Answer(cleaned, answer.confidence, answer.evidence, answer.reason, answer.answer_type)
-        return answer
-
-    def _unknown_answer(self, reason: str) -> Answer:
-        return Answer("unknown", 0.0, self._diagnostic_unknown_evidence(), reason, "unknown")
-
-    def _diagnostic_unknown_evidence(self, *, limit: int = 6) -> list[Evidence]:
-        diagnostics = self.last_bounded_diagnostics if isinstance(self.last_bounded_diagnostics, dict) else {}
-        execution = diagnostics.get("execution") if isinstance(diagnostics.get("execution"), dict) else {}
-        payloads: list[dict[str, object]] = []
-        conflict = execution.get("answer_conflict_without_query_scope") if isinstance(execution, dict) else None
-        if isinstance(conflict, dict):
-            for value_item in conflict.get("values") or []:
-                if not isinstance(value_item, dict):
-                    continue
-                for evidence in value_item.get("evidence") or []:
-                    if isinstance(evidence, dict):
-                        payloads.append(evidence)
-        for candidate in execution.get("candidate_evidence_sample") or []:
-            if isinstance(candidate, dict) and isinstance(candidate.get("evidence"), dict):
-                payloads.append(candidate["evidence"])
-        for blocked_identity in execution.get("blocked_identity_source_provenance") or []:
-            if isinstance(blocked_identity, dict):
-                payloads.append(blocked_identity)
-        scattered = execution.get("scattered_source_provenance_without_binding")
-        if isinstance(scattered, dict):
-            target_sources = [source for source in scattered.get("target_sources") or [] if isinstance(source, dict)]
-            relation_sources = [source for source in scattered.get("relation_sources") or [] if isinstance(source, dict)]
-            if target_sources and relation_sources:
-                payloads.extend([target_sources[0], relation_sources[0]])
-            payloads.extend([*target_sources, *relation_sources])
-        for source in execution.get("source_provenance_sample") or []:
-            if isinstance(source, dict):
-                payloads.append(source)
-
-        evidence_items: list[Evidence] = []
-        seen: set[tuple[str, str, str]] = set()
-        chunk_indexes: dict[tuple[str, int | None, str], int] = {}
-        for payload in payloads:
-            rel_path = str(payload.get("rel_path") or payload.get("source") or "")
-            text = str(payload.get("text") or "")
-            span_id = str(payload.get("span_id") or "")
-            if not rel_path or not text:
-                continue
-            try:
-                chunk_order = int(payload["chunk_order"]) if payload.get("chunk_order") not in {"", None} else None
-            except (TypeError, ValueError):
-                chunk_order = None
-            key = (rel_path, span_id, text)
-            chunk_key = (rel_path, chunk_order, normalize(text))
-            if key in seen:
-                continue
-            seen.add(key)
-            try:
-                score = float(payload.get("score") or 0.45)
-            except (TypeError, ValueError):
-                score = 0.45
-            try:
-                char_start = int(payload["char_start"]) if payload.get("char_start") not in {"", None} else None
-            except (TypeError, ValueError):
-                char_start = None
-            try:
-                char_end = int(payload["char_end"]) if payload.get("char_end") not in {"", None} else None
-            except (TypeError, ValueError):
-                char_end = None
-            evidence = Evidence(
-                rel_path,
-                text,
-                score,
-                span_id=span_id,
-                chunk_order=chunk_order,
-                char_start=char_start,
-                char_end=char_end,
-                source_kind=str(payload.get("source_kind") or payload.get("span_kind") or "source_span"),
-            )
-            existing_index = chunk_indexes.get(chunk_key)
-            if existing_index is not None:
-                if span_id and not evidence_items[existing_index].span_id:
-                    evidence_items[existing_index] = evidence
-                continue
-            chunk_indexes[chunk_key] = len(evidence_items)
-            evidence_items.append(evidence)
-            if len(evidence_items) >= limit:
-                break
-        return evidence_items
-
-    def _expected_from_frame(self, frame: QueryFrame) -> ExpectedAnswer:
-        allowed = {
-            "person",
-            "actor",
-            "organization",
-            "identifier",
-            "url",
-            "file_path",
-            "count",
-            "state",
-            "date_time",
-            "boolean",
-            "content_phrase",
-            "metadata_value",
-            "unknown",
-        }
-        answer_type = frame.answer_type if frame.answer_type in allowed else "unknown"
-        return ExpectedAnswer(answer_type, allow_metadata_evidence=answer_type == "metadata_value")  # type: ignore[arg-type]
-
-    def _verify_with_local_model(self, question: str, frame: QueryFrame, answer: Answer, expected: ExpectedAnswer) -> bool:
-        if self._model_client is None:
-            return True
-        evidence_payload = self._evidence_payload(answer.evidence, limit=8)
-        if not evidence_payload:
-            return False
-        discourse_frames = self._diagnostic_frames_for_answer(answer)
-        trace = self.model_query_trace
-        candidate_answers = [answer.text]
-        canonical_candidate = self._canonicalize_model_answer_with_local_model(question, answer.text, expected, answer.evidence)
-        if canonical_candidate and normalize(canonical_candidate) != normalize(answer.text):
-            candidate_answers.insert(0, canonical_candidate)
-        seen_candidates: set[str] = set()
-        for candidate_answer in candidate_answers:
-            candidate_key = normalize(candidate_answer)
-            if not candidate_key or candidate_key in seen_candidates:
-                continue
-            seen_candidates.add(candidate_key)
-            trace.verifier_call_count += 1
-            result = call_model_answer_verification(
-                question,
-                frame.as_dict(),
-                candidate_answer,
-                evidence_payload,
-                discourse_frames,
-                self._model_client,
-            )
-            if str(result.get("reason") or "") == "request_failed":
-                trace.rejected_output_count += 1
-                trace.verifier_rejected_count += 1
-                self._log_progress(
-                    "kmd-answer verifier_request_failed "
-                    f"error={str(result.get('error') or 'request_failed')[:240]}"
-                )
-                continue
-            self._record_model_result(result)
-            if result.get("prompt_hash"):
-                trace.prompt_hashes = [*list(trace.prompt_hashes or []), str(result["prompt_hash"])][-20:]
-            if result.get("output_hash"):
-                trace.response_hashes = [*list(trace.response_hashes or []), str(result["output_hash"])][-20:]
-            if not result.get("accepted"):
-                trace.verifier_rejected_count += 1
-                continue
-            trace.verifier_parsed_count += 1
-            entailed = bool(result.get("entailed"))
-            proposed = str(result.get("answer") or "")
-            span = str(result.get("evidence_span") or "")
-            if not entailed or not proposed or (span and not any(span in item.get("text", "") for item in evidence_payload)):
-                trace.verifier_rejected_count += 1
-                continue
-            canonical_expected = expected
-            if canonical_expected.answer_type == "unknown":
-                inferred_type = answer.answer_type if answer.answer_type not in {"", "unknown"} else classify_value(proposed)
-                if inferred_type != "unknown":
-                    canonical_expected = ExpectedAnswer(inferred_type)  # type: ignore[arg-type]
-            if normalize(candidate_answer) != normalize(answer.text) and normalize(proposed) != normalize(candidate_answer):
-                candidate_canonical = canonicalize_answer(canonical_expected, candidate_answer)
-                if candidate_canonical:
-                    proposed = candidate_answer
-            canonical = canonicalize_answer(canonical_expected, proposed)
-            if not canonical:
-                trace.verifier_rejected_count += 1
-                continue
-            canonical = self._restore_sentence_terminal_punctuation(canonical, proposed, canonical_expected, answer.evidence)
-            if canonical and canonical_expected.answer_type in {"person", "actor"}:
-                if len(str(canonical).split()) == 1:
-                    canonical = self._canonicalize_identity_with_local_model(question, canonical, answer.evidence) or canonical
-            if canonical and normalize(canonical) != normalize(answer.text):
-                answer.text = canonical
-            trace.verifier_accepted_count += 1
-            return True
-        return False
-
-    def _canonicalize_identity_with_local_model(self, question: str, value: str, evidence: list[Evidence]) -> str:
-        if self._model_client is None or len(str(value).split()) != 1:
-            return value
-        token = normalize(value)
-        fuller_candidates: list[str] = []
-        for item in evidence:
-            for phrase in capitalized_phrases(item.text):
-                parts = normalize(phrase).split()
-                if len(parts) > 1 and parts[0] == token and phrase not in fuller_candidates:
-                    fuller_candidates.append(phrase)
-        if not fuller_candidates:
-            return value
-        evidence_payload = self._evidence_payload(evidence, limit=8)
-        result = call_model_identity_canonicalization(
-            question,
-            value,
-            fuller_candidates[:8],
-            evidence_payload,
-            self._model_client,
+    @staticmethod
+    def _normalize_negative_correction_clause(value: str) -> str:
+        text = re.sub(r"\s+", " ", str(value).strip())
+        text = re.sub(r"(?i)^(?:no|false)\s*[;,:-]\s*", "", text).strip()
+        operational = re.fullmatch(
+            r"(?i)(?P<subject>(?:the\s+)?[a-z][a-z ]*?)\s+flags\s+"
+            r"(?P<object>[^;,.]+);\s*it\s+(?:sends|routes)\s+them\s+for\s+"
+            r"(?P<purpose>[^.]+)\.?",
+            text,
         )
-        self._record_model_result(result)
-        if result.get("prompt_hash"):
-            self.model_query_trace.prompt_hashes = [*list(self.model_query_trace.prompt_hashes or []), str(result["prompt_hash"])][-20:]
-        if result.get("output_hash"):
-            self.model_query_trace.response_hashes = [*list(self.model_query_trace.response_hashes or []), str(result["output_hash"])][-20:]
-        proposed = str(result.get("answer") or "")
-        if result.get("accepted") and result.get("same_referent") and proposed in fuller_candidates:
-            return proposed
-        return value
-
-    def _diagnostic_frames_for_answer(self, answer: Answer) -> list[dict[str, object]]:
-        if not answer.evidence:
-            return []
-        try:
-            frame_limit = int(os.environ.get("KMD_VERIFIER_DISCOURSE_FRAME_LIMIT", "0"))
-        except ValueError:
-            frame_limit = 8
-        frame_limit = max(0, min(32, frame_limit))
-        if frame_limit <= 0:
-            return []
-        rel_paths = list({evidence.rel_path for evidence in answer.evidence if evidence.rel_path})
-        if not rel_paths:
-            return []
-        placeholders = ",".join("?" for _ in rel_paths[:8])
-        rows = self.store.execute(
-            f"""
-            SELECT d.rel_path, f.predicate, f.trigger_surface, f.source, c.kind
-            FROM frames f
-            JOIN source_spans s ON s.span_id=f.span_id
-            JOIN documents d ON d.document_id=s.document_id
-            LEFT JOIN contexts c ON c.context_id=f.context_id
-            WHERE d.rel_path IN ({placeholders})
-            LIMIT ?
-            """,
-            (*rel_paths[:8], frame_limit),
-        ).fetchall()
-        return [dict(row) for row in rows]
-
-    def _discourse_payload_for_evidence(self, evidence: list[Evidence], *, limit: int | None = None) -> list[dict[str, object]]:
-        if limit is None:
-            limit = int(os.environ.get("KMD_DISCOURSE_PAYLOAD_LIMIT", "32"))
-        rel_paths = list(dict.fromkeys(item.rel_path for item in evidence if item.rel_path))
-        if not rel_paths:
-            return []
-        per_kind_limit = max(8, limit // 2)
-        placeholders = ",".join("?" for _ in rel_paths[:8])
-        frame_rows = self.store.execute(
-            f"""
-            SELECT
-              d.rel_path,
-              c.chunk_order,
-              f.predicate,
-              f.trigger_surface,
-              f.source,
-              ctx.kind AS context_kind,
-              fa.role,
-              fa.surface,
-              fa.confidence
-            FROM frames f
-            JOIN source_spans s ON s.span_id=f.span_id
-            JOIN chunks c ON c.chunk_id=s.chunk_id
-            JOIN documents d ON d.document_id=s.document_id
-            LEFT JOIN contexts ctx ON ctx.context_id=f.context_id
-            LEFT JOIN frame_arguments fa ON fa.frame_id=f.frame_id
-            WHERE d.rel_path IN ({placeholders})
-            LIMIT ?
-            """,
-            (*rel_paths[:8], per_kind_limit),
-        ).fetchall()
-        relation_rows = self.store.execute(
-            f"""
-            SELECT
-              d.rel_path,
-              c.chunk_order,
-              r.relation_type,
-              r.subject,
-              r.predicate,
-              r.object,
-              r.value,
-              ctx.kind AS context_kind,
-              r.confidence
-            FROM relations r
-            JOIN source_spans s ON s.span_id=r.source_span_id
-            JOIN chunks c ON c.chunk_id=s.chunk_id
-            JOIN documents d ON d.document_id=s.document_id
-            LEFT JOIN contexts ctx ON ctx.context_id=r.context_id
-            WHERE d.rel_path IN ({placeholders})
-            LIMIT ?
-            """,
-            (*rel_paths[:8], per_kind_limit),
-        ).fetchall()
-        records: list[dict[str, object]] = []
-        records.extend({"record_kind": "frame", **dict(row)} for row in frame_rows)
-        records.extend({"record_kind": "condition", **dict(row)} for row in relation_rows)
-        return records[:limit]
-
-    def _evidence(self, sentence: Sentence, score: float = 1.0) -> Evidence:
-        return Evidence(
-            sentence.rel_path,
-            sentence.text,
-            score,
-            span_id=self._sentence_span_id(sentence),
-            chunk_order=sentence.order,
-            char_start=sentence.char_start,
-            char_end=sentence.char_end,
+        if operational:
+            subject = re.sub(
+                r"(?i)^the\s+(?=(?:runtime|code|system|service)\b)",
+                "",
+                operational.group("subject").strip(),
+            )
+            text = (
+                f"{subject} flags {operational.group('object').strip()} "
+                f"for {operational.group('purpose').strip()}."
+            )
+        text = re.sub(
+            r"(?i)^the\s+(?=(?:runtime|code|system|service)\b)",
+            "",
+            text,
         )
+        return text
 
-    def _evidence_window_text(self, evidence: Evidence, *, radius: int | None = None, max_chars: int | None = None) -> str:
-        if radius is None:
-            radius = int(os.environ.get("KMD_EVIDENCE_WINDOW_RADIUS", "3"))
-        if max_chars is None:
-            max_chars = int(os.environ.get("KMD_EVIDENCE_TEXT_CHARS", "1200"))
-        sentences = self._sentences_by_document.get(evidence.rel_path, {})
-        center_order = evidence.chunk_order if evidence.chunk_order in sentences else None
-        for order, sentence in sentences.items():
-            if center_order is not None:
-                break
-            if sentence.text == evidence.text:
-                center_order = order
-                break
-        if center_order is None:
-            return evidence.text[:max_chars]
-        parts = [
-            sentences[order].text
-            for order in range(center_order - radius, center_order + radius + 1)
-            if order in sentences
-        ]
-        return "\n".join(parts)[:max_chars]
-
-    def _source_text_contains_benchmark_answer_metadata(self, text: str) -> bool:
-        low = normalize(text)
-        return any(
-            marker in low
-            for marker in [
-                "ground truth",
-                "ground_truth",
-                "answerable questions",
-                "answerable_questions",
-                "unanswerable questions",
-                "unanswerable_questions",
-                "gold answer",
-                "gold_answers",
-            ]
-        )
-
-    def _focused_evidence_windows(
-        self,
-        question: str,
-        frame: QueryFrame,
-        *,
-        limit: int = 8,
-        window_chars: int = 1800,
-    ) -> list[Evidence]:
-        """Lexically focus large raw sources without deciding the answer value."""
-        stop_tokens = {
-            "what", "which", "who", "when", "where", "find", "added", "add", "adds", "new",
-            "feature", "features", "related", "relate", "with", "about", "have", "been", "are",
-            "the", "and", "for", "from", "that", "this", "does", "did", "product", "document",
-            "report", "file", "answer", "argument", "theme",
-        }
-        question_tokens = [token for token in content_tokens(question) if len(token) > 2 and token not in stop_tokens]
-        relation_tokens = [token for value in [frame.requested_relation, *frame.relation_terms, *frame.constraints] for token in content_tokens(value) if len(token) > 2 and token not in stop_tokens]
-        anchor_tokens = [token for anchor in self._frame_scope_anchors(frame) for token in content_tokens(anchor) if len(token) > 2]
-        query_tokens = list(dict.fromkeys([*anchor_tokens, *question_tokens, *relation_tokens]))
-        if not query_tokens:
-            return []
-        windows: list[tuple[float, str, int, int, str]] = []
-        half = max(300, window_chars // 2)
-        for document in self.documents:
-            rel_norm = normalize(document.rel_path)
-            doc_norm = normalize(document.text)
-            material_norm = normalize(" ".join([rel_norm, doc_norm[:120000]]))
-            anchors = [normalize(anchor) for anchor in self._frame_scope_anchors(frame) if normalize(anchor)]
-            if anchors and not all(self._anchor_has_grounded_token(anchor, material_norm) for anchor in anchors):
-                continue
-            lowered = document.text.lower()
-            positions: list[int] = []
-            for token in query_tokens:
-                search_token = token.lower()
-                start = 0
-                for _ in range(16):
-                    pos = lowered.find(search_token, start)
-                    if pos < 0:
-                        break
-                    positions.append(pos)
-                    start = pos + max(1, len(search_token))
-            if not positions:
-                continue
-            for pos in sorted(set(positions)):
-                start = max(0, pos - half)
-                end = min(len(document.text), pos + half)
-                window = document.text[start:end]
-                if self._source_text_contains_benchmark_answer_metadata(window):
-                    continue
-                window_norm = normalize(" ".join([document.rel_path, window]))
-                token_hits = sum(1 for token in query_tokens if token in window_norm)
-                anchor_hits = sum(1 for token in anchor_tokens if token in window_norm or any(variant in window_norm for variant in term_variants(token)))
-                if token_hits < 2 and not anchor_hits:
-                    continue
-                score = float(token_hits * 2 + anchor_hits * 6)
-                windows.append((score, document.rel_path, start, end, window))
-        windows.sort(key=lambda item: (-item[0], item[1], item[2]))
-        selected: list[Evidence] = []
-        seen: set[tuple[str, int, int]] = set()
-        for score, rel_path, start, end, window in windows:
-            key = (rel_path, start // 500, end // 500)
-            if key in seen:
-                continue
-            seen.add(key)
-            selected.append(
-                Evidence(
-                    rel_path=rel_path,
-                    text=window,
-                    score=score,
-                    char_start=start,
-                    char_end=end,
-                    source_kind="focused_window",
-                )
-            )
-            if len(selected) >= limit:
-                break
-        return selected
-
-    def _evidence_payload(self, evidence: list[Evidence], *, limit: int = 8) -> list[dict[str, str]]:
-        payload: list[dict[str, str]] = []
-        for item in evidence[:limit]:
-            if not item.rel_path or not item.text:
-                continue
-            text = self._evidence_window_text(item)
-            if self._source_text_contains_benchmark_answer_metadata(text):
-                continue
-            payload.append(
-                {
-                    "source": item.rel_path,
-                    "text": text,
-                    "span_id": item.span_id,
-                    "chunk_order": "" if item.chunk_order is None else str(item.chunk_order),
-                    "char_start": "" if item.char_start is None else str(item.char_start),
-                    "char_end": "" if item.char_end is None else str(item.char_end),
-                    "source_kind": item.source_kind,
-                }
-            )
-        return payload
-
-    def _document_provenance_summary(self, document: Document | None) -> dict[str, object]:
-        if document is None:
-            return {}
-        metadata = document.metadata if isinstance(document.metadata, dict) else {}
-        text_quality = metadata.get("text_quality")
-        semantic_quality = (
-            text_quality.get("semantic_quality")
-            if isinstance(text_quality, dict)
-            else metadata.get("semantic_quality")
-        )
-        summary: dict[str, object] = {
-            "document_id": document.document_id,
-            "rel_path": document.rel_path,
-            "size_bytes": document.size_bytes,
-            "char_count": len(document.text),
-        }
-        for key in ["file_name", "suffix", "parent_rel_path", "mime_type"]:
-            value = metadata.get(key)
-            if value is not None and value != "":
-                summary[key] = value
-        if semantic_quality is not None and semantic_quality != "":
-            summary["semantic_quality"] = semantic_quality
-        return {key: value for key, value in summary.items() if value is not None and value != ""}
-
-    def _sentence_for_evidence(self, evidence: Evidence) -> Sentence | None:
-        if evidence.chunk_order is not None:
-            sentence = self._sentences_by_location.get((evidence.rel_path, evidence.chunk_order))
-            if sentence is not None:
-                return sentence
-        for sentence in self._sentences_by_document.get(evidence.rel_path, {}).values():
-            if sentence.text == evidence.text:
-                return sentence
-        return None
-
-    def _evidence_source_provenance_payload(self, evidence: Evidence) -> dict[str, object]:
-        sentence = self._sentence_for_evidence(evidence)
-        document = self._documents_by_rel_path.get(evidence.rel_path)
-        payload: dict[str, object] = {
-            "rel_path": evidence.rel_path,
-            "span_id": evidence.span_id,
-            "chunk_order": evidence.chunk_order,
-            "char_start": evidence.char_start,
-            "char_end": evidence.char_end,
-            "source_kind": evidence.source_kind,
-            "text": evidence.text[:500],
-            "score": round(float(evidence.score), 3),
-        }
-        if sentence is not None:
-            payload["document_id"] = sentence.document_id
-            payload["chunk_id"] = self._chunk_id(sentence)
-            payload["span_kind"] = evidence.source_kind
-            payload["token_estimate"] = len(content_tokens(sentence.text))
-            if payload.get("char_start") is None:
-                payload["char_start"] = sentence.char_start
-            if payload.get("char_end") is None:
-                payload["char_end"] = sentence.char_end
-            if document is None:
-                document = self._documents_by_rel_path.get(sentence.rel_path)
-        elif document is not None:
-            payload["document_id"] = document.document_id
-        document_summary = self._document_provenance_summary(document)
-        if document_summary:
-            payload["document"] = document_summary
-        return {key: value for key, value in payload.items() if value is not None and value != ""}
-
-    def _model_answer_source_provenance_sample(self, answer: Answer, *, limit: int = 8) -> list[dict[str, object]]:
-        rows: list[dict[str, object]] = []
-        seen: set[tuple[str, str, int | None, str]] = set()
-        for evidence in answer.evidence:
-            payload = self._evidence_source_provenance_payload(evidence)
-            key = (
-                str(payload.get("rel_path") or ""),
-                str(payload.get("span_id") or ""),
-                payload.get("chunk_order") if isinstance(payload.get("chunk_order"), int) else None,
-                str(payload.get("text") or ""),
-            )
-            if key in seen:
-                continue
-            seen.add(key)
-            rows.append(payload)
-            if len(rows) >= limit:
-                break
-        return rows
-
-    def _attach_model_answer_provenance(self, answer: Answer | None) -> None:
-        if answer is None:
-            return
-        provenance = self._model_answer_source_provenance_sample(answer)
-        if not provenance:
-            return
-        execution = self.last_bounded_diagnostics.setdefault("execution", {})
-        if isinstance(execution, dict):
-            execution["answer_source_provenance"] = provenance
-
-    def _matching_evidence(self, evidence: list[Evidence], evidence_span: str, proposed: str) -> list[Evidence]:
-        matches: list[Evidence] = []
-        proposed_clean = str(proposed or "").strip().strip(" .;:,")
-        proposed_parts = [part.strip().strip(" .;:,") for part in answer_parts(proposed) if part.strip()]
-        span_parts = [part.strip() for part in str(evidence_span or "").splitlines() if part.strip()]
-        for item in evidence:
-            window = self._evidence_window_text(item)
-            span_match = evidence_span in window or any(part in window for part in span_parts)
-            answer_match = (
-                proposed in window
-                or (proposed_clean and proposed_clean in window)
-                or any(part and part in window for part in proposed_parts)
-                or self._is_boolean_text(proposed)
-            )
-            if span_match and answer_match:
-                matches.append(item)
-        if matches:
-            return matches
-        if classify_value(proposed) == "count":
-            return self._matching_count_evidence(evidence, evidence_span, proposed)
-        return []
-
-    def _matching_count_evidence(self, evidence: list[Evidence], evidence_span: str, proposed: str) -> list[Evidence]:
-        canonical = canonicalize_answer(ExpectedAnswer("count"), proposed)
-        if not canonical:
-            return []
-        try:
-            expected_count = int(canonical)
-        except ValueError:
-            return []
-        if expected_count <= 0:
-            return []
-        segments = [line.strip() for line in str(evidence_span or "").splitlines() if line.strip()]
-        if len(segments) != expected_count:
-            return []
-        matches: list[Evidence] = []
-        for segment in segments:
-            segment_norm = normalize(segment)
-            if not segment_norm:
-                return []
-            matched: Evidence | None = None
-            for item in evidence:
-                window = self._evidence_window_text(item)
-                if segment in window or segment_norm in normalize(window):
-                    matched = item
+    @staticmethod
+    def _normalize_contract_bound_correction_surface(
+        contract: dict[str, Any],
+        value: str,
+    ) -> str:
+        text = re.sub(r"\s+", " ", str(value).strip())
+        text = re.sub(
+            r"(?i)^(?:the\s+)?(?:"
+            r"(?:teacher|audit|source|document|report)\s+(?:note|report|document|result)"
+            r"|teacher|audit|source|document|report|note"
+            r")\s+(?:(?:explicitly|directly|clearly|specifically)\s+)?"
+            r"(?:indicat(?:e|es|ed)|stat(?:e|es|ed)|say|says|said|report(?:s|ed)?|confirm(?:s|ed)?)\s+",
+            "",
+            text,
+        ).strip()
+        operational_noun = ""
+        for phrase in contract.get("target_phrases", []):
+            phrase_tokens = set(re.findall(r"[a-z0-9]+", str(phrase).lower()))
+            for candidate in ("runtime", "code", "system", "service"):
+                if candidate in phrase_tokens:
+                    operational_noun = candidate
                     break
-            if matched is None:
-                return []
-            if matched not in matches:
-                matches.append(matched)
-        return matches
+            if operational_noun:
+                break
+        if operational_noun:
+            text = re.sub(
+                r"(?i)^(?:the\s+)?(?:runtime|code|system|service)\b",
+                operational_noun,
+                text,
+                count=1,
+            )
+        text = re.sub(r"(?i)\s+instead\.?$", ".", text).strip()
+        for phrase in sorted(
+            (str(item).strip() for item in contract.get("target_phrases", [])),
+            key=len,
+            reverse=True,
+        ):
+            if not phrase or len(re.findall(r"[A-Za-z0-9]+", phrase)) > 4:
+                continue
+            if not re.search(r"[A-Z]", phrase):
+                continue
+            replaced = re.sub(
+                rf"(?i)^{re.escape(phrase)}\b",
+                "it",
+                text,
+                count=1,
+            )
+            if replaced != text:
+                text = replaced
+                break
+        return text
 
-    def _model_planned_answer_tools(
-        self,
-        frame: QueryFrame,
-        expected: ExpectedAnswer,
-    ) -> list[tuple[str, Any]]:
-        answer_type = expected.answer_type
-        aggregation = normalize(frame.aggregation)
-        relation_material = normalize(
-            " ".join(
-                [
-                    frame.requested_relation,
-                    *frame.relation_terms,
-                    *frame.constraints,
-                    *frame.answer_variables,
-                    *frame.scope_requirements,
-                ]
+    @classmethod
+    def _direct_document_classification_correction(
+        cls,
+        contract: dict[str, Any],
+        evidence_views: list[dict[str, Any]],
+    ) -> str:
+        target_tokens = cls._contract_target_tokens(contract)
+        if not target_tokens:
+            return ""
+        required_overlap = max(1, min(2, len(target_tokens)))
+        document_nouns = (
+            "note", "document", "report", "record", "file", "memo", "story",
+            "draft", "transcript", "drawing", "sketch", "article", "entry",
+        )
+        noun_pattern = "|".join(document_nouns)
+        pattern = re.compile(
+            rf"(?i)\bthis\s+(?P<classification>(?:[a-z][a-z-]*\s+){{1,5}}(?:{noun_pattern}))\b"
+        )
+        for view in evidence_views:
+            text = str(view.get("excerpt", "")) or str(view.get("text", ""))
+            if len(cls._content_tokens(text).intersection(target_tokens)) < required_overlap:
+                continue
+            match = pattern.search(text)
+            if match:
+                classification = re.sub(
+                    r"\s+", " ", match.group("classification").strip().lower()
+                )
+                return f"it is an {classification}" if not classification.startswith(("a ", "an ", "the ")) else f"it is {classification}"
+        return ""
+
+    @classmethod
+    def _explicit_negative_finding_sentence(
+        cls,
+        contract: dict[str, Any],
+        evidence_views: list[dict[str, Any]],
+    ) -> str:
+        target_tokens = cls._contract_target_tokens(contract)
+        if not target_tokens:
+            return ""
+        required_target_overlap = max(1, min(2, len(target_tokens)))
+        finding_pattern = re.compile(
+            r"(?:"
+            r"\b(?:inspection|test|scan|review|examination|audit|check|analysis)\b.{0,100}"
+            r"\b(?:found|observed|detected|identified|revealed|showed)\b.{0,30}\bno\b"
+            r"|\b(?:found|observed|detected|identified|revealed|showed)\s+no\b"
+            r"|\bno\b.{0,80}\b(?:was|were)\s+(?:found|observed|detected|identified)\b"
+            r")",
+            flags=re.IGNORECASE,
+        )
+        nonproof_objects = {"evidence", "proof", "confirmation", "support", "documentation"}
+        for view in evidence_views:
+            text = str(view.get("excerpt", "")) or str(view.get("text", ""))
+            sentences = [
+                item.strip()
+                for item in re.split(r"(?<=[.!?])\s+|\n+", text)
+                if item.strip()
+            ]
+            for sentence in sentences:
+                sentence_tokens = cls._content_tokens(sentence)
+                if len(sentence_tokens.intersection(target_tokens)) < required_target_overlap:
+                    continue
+                if sentence_tokens.intersection(nonproof_objects):
+                    continue
+                if finding_pattern.search(sentence):
+                    return sentence
+        return ""
+
+    @classmethod
+    def _has_target_bound_source_classification(
+        cls,
+        contract: dict[str, Any],
+        evidence_views: list[dict[str, Any]],
+    ) -> bool:
+        target_tokens = cls._contract_target_tokens(contract)
+        if not target_tokens:
+            return False
+        class_tokens = set(
+            re.findall(
+                r"[a-z0-9]+",
+                str(contract.get("answer_slot", "")).lower().replace("_", " "),
             )
         )
-        tools: list[tuple[str, Any]] = []
-
-        def add(name: str, fn: Any) -> None:
-            if name not in {existing for existing, _fn in tools}:
-                tools.append((name, fn))
-
-        if answer_type == "count" or aggregation == "count":
-            add("count_records", self._answer_with_arithmetic_source)
-            add("count_source_rows", self._answer_with_source_rows)
-        if answer_type in {"identifier", "person", "actor", "organization", "unknown"}:
-            add("extract_actor_role_ids", self._answer_with_actor_role_ids_source)
-            add("extract_reference_role_chain", self._answer_with_reference_role_chain_source)
-            add("extract_review_or_approval", self._answer_with_review_or_approval_source)
-            add("extract_labeled_attribute", self._answer_with_labeled_attribute_source)
-            add("extract_row_field", self._answer_with_row_field_source)
-            add("extract_source_rows", self._answer_with_source_rows)
-            add("extract_exact_source_field", self._answer_with_exact_source_field)
-            add("extract_table_field", self._answer_with_table_field_source)
-            add("extract_structured_object", self._answer_with_structured_object_source)
-        if answer_type in {"url", "file_path", "date_time", "state", "metadata_value", "content_phrase", "unknown"}:
-            add("extract_discussion_belief", self._answer_with_discussion_belief_source)
-            add("extract_discourse_clause", self._answer_with_discourse_clause_source)
-            add("extract_generic_sentence", self._answer_with_generic_sentence_source)
-            add("extract_generic_labeled_field", self._answer_with_generic_labeled_field_source)
-            add("extract_precise_source_content", self._answer_with_precise_source_content)
-            add("extract_table_field", self._answer_with_table_field_source)
-            add("extract_structured_object", self._answer_with_structured_object_source)
-            add("extract_row_field", self._answer_with_row_field_source)
-            add("extract_source_rows", self._answer_with_source_rows)
-            add("extract_exact_source_field", self._answer_with_exact_source_field)
-        if "review" in relation_material or "approv" in relation_material:
-            add("extract_review_or_approval", self._answer_with_review_or_approval_source)
-        if "author" in relation_material or "owner" in relation_material or "actor" in relation_material:
-            add("extract_actor_role_ids", self._answer_with_actor_role_ids_source)
-            add("extract_reference_role_chain", self._answer_with_reference_role_chain_source)
-        if "believe" in relation_material or "belief" in relation_material:
-            add("extract_discussion_belief", self._answer_with_discussion_belief_source)
-            add("extract_discourse_clause", self._answer_with_discourse_clause_source)
-            add("extract_generic_sentence", self._answer_with_generic_sentence_source)
-        if "feature" in relation_material or "content" in relation_material or "summary" in relation_material:
-            add("extract_precise_source_content", self._answer_with_precise_source_content)
-            add("extract_generic_sentence", self._answer_with_generic_sentence_source)
-        if "not" in relation_material or "missing" in relation_material or "delayed" in relation_material:
-            add("extract_negated_action", self._answer_with_negated_action_source)
-        add("extract_definition", self._answer_with_definition_source_explanation)
-        add("extract_boolean_source", self._answer_with_boolean_source_explanation)
-        return tools
-
-    def _run_model_planned_answer_tools(
-        self,
-        question: str,
-        frame: QueryFrame,
-        expected: ExpectedAnswer,
-        prior_answer: Answer | None = None,
-    ) -> Answer | None:
-        for tool_name, tool_fn in self._model_planned_answer_tools(frame, expected):
-            try:
-                if tool_fn in {self._answer_with_arithmetic_source, self._answer_with_definition_source_explanation}:
-                    answer = tool_fn(question)
-                else:
-                    answer = tool_fn(question, prior_answer=prior_answer)
-            except TypeError:
-                answer = tool_fn(question)
-            if not self._complete_answer(answer):
-                self._log_progress(f"kmd-answer tool_call name={tool_name} accepted=False")
-                continue
-            if not self._answer_has_source_grounding(answer):
-                self._log_progress(f"kmd-answer tool_call name={tool_name} accepted=False reason=ungrounded")
-                continue
-            if not self._bounded_evidence_covers_targets(frame, answer.evidence):
-                self._log_progress(f"kmd-answer tool_call name={tool_name} accepted=False reason=target_scope_miss")
-                continue
-            if expected.answer_type != "unknown" and not canonicalize_answer(expected, answer.text):
-                self._log_progress(f"kmd-answer tool_call name={tool_name} accepted=False reason=answer_type_mismatch")
-                continue
-            self._attach_model_answer_provenance(answer)
-            self._log_progress(f"kmd-answer tool_call name={tool_name} accepted=True")
-            return answer
-        return None
-
-    def _answer_with_local_model(self, question: str) -> Answer | None:
-        if self._model_client is None:
-            return None
-        trace = self.model_query_trace
-        trace.call_count += 1
-        if os.environ.get("KMD_QUERY_DRS_PLAN", "1").strip().lower() in {"0", "false", "no", "off"}:
-            if "PYTEST_CURRENT_TEST" not in os.environ:
-                raise LocalModelUnavailableError(
-                    "KnowMoreDiRT production runtime requires query DRS planning; KMD_QUERY_DRS_PLAN=0 is not supported."
-                )
-            model = call_model_query_plan_test_only(question, self._model_client)
-            self._record_model_result(model)
-            if not model.get("accepted"):
-                trace.last_plan = {
-                    "accepted": False,
-                    "source": "model_query_frame_legacy",
-                    "reason": model.get("reason") or "query_frame_projection_failed",
-                }
-                return None
-            model.setdefault("source", "model_query_frame_legacy")
-        else:
-            self._log_progress("kmd-answer query_drs_start")
-            query_drs_model = call_model_query_drs(question, self._model_client)
-            self._record_model_result(query_drs_model)
-            projected = None
-            if query_drs_model.get("accepted"):
-                projected = query_frame_from_query_drs(
-                    question,
-                    query_drs_model.get("query_drs") if isinstance(query_drs_model.get("query_drs"), dict) else None,
-                )
-            if projected is None:
-                trace.last_plan = {
-                    "accepted": False,
-                    "source": "model_query_drs",
-                    "reason": query_drs_model.get("reason") or "query_drs_projection_failed",
-                    "prompt_hash": query_drs_model.get("prompt_hash"),
-                    "output_hash": query_drs_model.get("output_hash"),
-                    "query_drs_retry_attempts": query_drs_model.get("query_drs_retry_attempts"),
-                    "compact_fallback_attempt": query_drs_model.get("compact_fallback_attempt"),
-                    "validation": query_drs_model.get("validation") if isinstance(query_drs_model.get("validation"), dict) else {},
-                }
-                return None
-            model = {
-                **projected,
-                "accepted": True,
-                "query_drs": query_drs_model.get("query_drs"),
-                "source": "model_query_drs",
-                "prompt_hash": query_drs_model.get("prompt_hash"),
-                "output_hash": query_drs_model.get("output_hash"),
-                "elapsed": query_drs_model.get("elapsed"),
+        class_tokens.update(
+            {
+                "real", "fiction", "fictional", "fantasy", "imaginary", "history",
+                "historical", "document", "record", "report", "engineering", "homework",
+                "story", "lore", "official", "draft", "transcript",
             }
-        if model.get("prompt_hash"):
-            trace.prompt_hashes = [*list(trace.prompt_hashes or []), str(model["prompt_hash"])][-20:]
-        if model.get("output_hash"):
-            trace.response_hashes = [*list(trace.response_hashes or []), str(model["output_hash"])][-20:]
-        trace.parsed_count += 1
-        trace.accepted_count += 1
-        plan = model
-        trace.last_plan = plan
-        planned_frame = frame_from_mapping(question, plan)
-        expected = self._expected_from_frame(planned_frame)
-        self._materialize_question_semantics(question, planned_frame)
-        tool_answer = self._run_model_planned_answer_tools(question, planned_frame, expected)
-        if self._complete_answer(tool_answer):
-            trace.model_answer_count += 1
-            return tool_answer
-        self._log_progress("kmd-answer bounded_query_start")
-        answer = self._answer_with_bounded_dspg(question, planned_frame, expected)
-        if self._complete_answer(answer) and not self._bounded_evidence_covers_targets(planned_frame, answer.evidence):
-            diagnostics = self.last_bounded_diagnostics if isinstance(self.last_bounded_diagnostics, dict) else {}
-            execution = diagnostics.setdefault("execution", {}) if isinstance(diagnostics, dict) else {}
-            if isinstance(execution, dict):
-                execution["target_scope_rejected"] = True
-            answer = None
-        if answer and normalize(answer.text) != "unknown":
-            if answer.reason == "bounded DSPG deterministic arithmetic execution":
-                trace.model_answer_count += 1
-                return answer
-            if planned_frame.aggregation in {"list", "set"} and expected.answer_type == "content_phrase":
-                answer = None
-            elif (
-                expected.answer_type == "count"
-                and planned_frame.aggregation == "count"
-                and answer.reason == "bounded DSPG query-frame execution"
-            ):
-                trace.model_answer_count += 1
-                answer.reason = "local model query-frame count aggregation"
-                return answer
-            elif (
-                planned_frame.temporal_scope in {"latest", "earliest"}
-                and answer.reason == "bounded DSPG query-frame execution"
-                and answer.evidence
-            ):
-                trace.model_answer_count += 1
-                answer.reason = "local model query-frame temporal binding"
-                return answer
-            elif self._answer_evidence_has_model_drs(answer) and os.environ.get(
-                "KMD_VERIFY_MODEL_DRS_BOUND_ANSWERS",
-                "0",
-            ).strip().lower() in {"0", "false", "no", "off"}:
-                trace.model_answer_count += 1
-                answer.reason = "local model DRS query-frame execution"
-                self._attach_model_answer_provenance(answer)
-                return answer
-            elif self._trusted_exact_structural_bounded_answer(answer, expected):
-                trace.model_answer_count += 1
-                answer.reason = "local model query-frame execution"
-                self._attach_model_answer_provenance(answer)
-                return answer
-        if answer and normalize(answer.text) != "unknown":
-            if self._verify_with_local_model(question, planned_frame, answer, expected):
-                trace.model_answer_count += 1
-                answer.reason = "local model query-frame execution"
-                return answer
-        tool_answer = self._run_model_planned_answer_tools(question, planned_frame, expected, prior_answer=answer)
-        if self._complete_answer(tool_answer):
-            trace.model_answer_count += 1
-            return tool_answer
-        if not self._bounded_conflict_blocks_model_evidence_fallback():
-            evidence_answer = self._answer_with_model_query_evidence(question, expected)
-            if self._complete_answer(evidence_answer):
-                if not self._bounded_evidence_covers_targets(planned_frame, evidence_answer.evidence):
-                    trace.evidence_rejected_count += 1
-                    return None
-                return evidence_answer
-        return None
-
-    def _answer_evidence_has_model_drs(self, answer: Answer) -> bool:
-        span_ids = [evidence.span_id for evidence in answer.evidence if evidence.span_id]
-        if not span_ids:
-            return False
-        answer_norm = normalize(answer.text)
-        if not answer_norm:
-            return False
-        for span_id in span_ids[:8]:
-            if answer.answer_type == "boolean":
-                row = self.store.execute(
-                    """
-                    SELECT 1
-                    FROM drs_conditions
-                    WHERE run_id=? AND source_span_id=? AND source='local_model_drs'
-                    LIMIT 1
-                    """,
-                    (self.run_id, span_id),
-                ).fetchone()
-                if row is not None:
-                    return True
-            row = self.store.execute(
-                """
-                SELECT 1
-                FROM drs_referents
-                WHERE run_id=? AND source_span_id=? AND source='local_model_drs'
-                  AND surface_norm=?
-                LIMIT 1
-                """,
-                (self.run_id, span_id, answer_norm),
-            ).fetchone()
-            if row is not None:
-                return True
-            row = self.store.execute(
-                """
-                SELECT 1
-                FROM drs_condition_arguments a
-                JOIN drs_conditions c ON c.drs_condition_id=a.drs_condition_id
-                WHERE a.run_id=? AND c.source_span_id=? AND c.source='local_model_drs'
-                  AND (a.value_norm=? OR lower(a.evidence_surface)=?)
-                LIMIT 1
-                """,
-                (self.run_id, span_id, answer_norm, answer_norm),
-            ).fetchone()
-            if row is not None:
-                return True
-            if len(answer_norm.split()) >= 2:
-                rows = self.store.execute(
-                    """
-                    SELECT a.value, a.evidence_surface
-                    FROM drs_condition_arguments a
-                    JOIN drs_conditions c ON c.drs_condition_id=a.drs_condition_id
-                    WHERE a.run_id=? AND c.source_span_id=? AND c.source='local_model_drs'
-                    """,
-                    (self.run_id, span_id),
-                ).fetchall()
-                for arg_value, evidence_surface in rows:
-                    material = normalize(" ".join([str(arg_value or ""), str(evidence_surface or "")]))
-                    if answer_norm in material:
+        )
+        required_target_overlap = max(1, min(2, len(target_tokens)))
+        for view in evidence_views:
+            text = str(view.get("excerpt", "")) or str(view.get("text", ""))
+            lines = [line.strip() for line in text.splitlines() if line.strip()]
+            for index, line in enumerate(lines):
+                windows = [line]
+                if index + 1 < len(lines):
+                    windows.append(line + " " + lines[index + 1])
+                for window in windows:
+                    raw_tokens = set(re.findall(r"[a-z0-9]+", window.lower()))
+                    if (
+                        len(cls._content_tokens(window).intersection(target_tokens))
+                        >= required_target_overlap
+                        and raw_tokens.intersection(class_tokens)
+                        and re.search(
+                            r"\b(?:is|are|was|were|classified|marked|labeled|treated|considered|not|fictional|fantasy|real)\b",
+                            window,
+                            flags=re.IGNORECASE,
+                        )
+                    ):
                         return True
         return False
 
-    def _trusted_exact_structural_bounded_answer(self, answer: Answer, expected: ExpectedAnswer) -> bool:
-        if expected.answer_type not in TRUSTED_STRUCTURAL_ANSWER_TYPES:
-            return False
-        if answer.reason != "bounded DSPG query-frame execution":
-            return False
-        if not self._answer_has_source_grounding(answer):
-            return False
-        if not canonicalize_answer(expected, answer.text):
-            return False
-        diagnostics = self.last_bounded_diagnostics if isinstance(self.last_bounded_diagnostics, dict) else {}
-        execution = diagnostics.get("execution") if isinstance(diagnostics.get("execution"), dict) else {}
-        if not isinstance(execution, dict):
-            return False
-        binding_reason = str(execution.get("answer_binding_reason") or "")
-        if binding_reason not in TRUSTED_STRUCTURAL_BINDING_REASONS:
-            return False
-        provenance = execution.get("answer_source_provenance")
-        return isinstance(provenance, list) and bool(provenance)
-
-    def _bounded_conflict_blocks_model_evidence_fallback(self) -> bool:
-        diagnostics = self.last_bounded_diagnostics if isinstance(self.last_bounded_diagnostics, dict) else {}
-        execution = diagnostics.get("execution") if isinstance(diagnostics.get("execution"), dict) else {}
-        if not isinstance(execution, dict):
-            return False
-        blocking_keys = (
-            "answer_conflict_without_query_scope",
-            "temporal_ambiguity_without_query_scope",
-            "temporal_answer_conflict_at_boundary",
-        )
-        for key in blocking_keys:
-            if execution.get(key):
-                execution["model_evidence_fallback_blocked_reason"] = key
-                return True
-        no_answer_reason = str(execution.get("no_answer_reason") or "")
-        if no_answer_reason in blocking_keys:
-            execution["model_evidence_fallback_blocked_reason"] = no_answer_reason
-            return True
-        return False
-
-    def _lazy_semantic_frames_enabled(self) -> bool:
-        return os.environ.get("KMD_LAZY_LLM_FRAMES", "0").strip().lower() in {"1", "true", "yes", "on"}
-
-    def _materialize_question_semantics(self, question: str, frame: QueryFrame) -> None:
-        if self._model_client is None or not self._lazy_semantic_frames_enabled():
-            return
-        limit = int(os.environ.get("KMD_LAZY_FRAME_SEARCH_LIMIT", "10"))
-        chunk_limit = int(os.environ.get("KMD_LAZY_FRAME_CHUNK_LIMIT", "5"))
-        required = list(frame.target_anchors) if frame.target_anchors else None
-        candidates = self._search(question, limit=limit, required=required)
-        if len(candidates) < min(3, limit) and required:
-            candidates = self._search(question, limit=limit, required=None)
-        target_terms = [normalize(anchor) for anchor in frame.target_anchors if normalize(anchor)]
-        relation_terms = [normalize(term) for term in [frame.requested_relation, *frame.relation_terms, *frame.constraints] if normalize(term)]
-
-        def materialization_rank(item: tuple[Sentence, float]) -> tuple[float, str, int]:
-            sentence, score = item
-            text = normalize(sentence.text)
-            target_hits = sum(1 for term in target_terms if term and term in text)
-            relation_hits = sum(1 for term in relation_terms if term and term in text)
-            return (-(score + target_hits * 3.0 + relation_hits * 6.0), sentence.rel_path, sentence.order)
-
-        candidates = sorted(candidates, key=materialization_rank)
-        materialized = 0
-        for sentence, _score in candidates[:chunk_limit]:
-            materialized += self._materialize_sentence_semantics(sentence)
-        if materialized:
-            self.store.commit()
-        self._log_progress(f"kmd-answer lazy_frames materialized={materialized} candidates={len(candidates)}")
-
-    def _sentence_span_id(self, sentence: Sentence) -> str:
-        return stable_id("span", sentence.sentence_id, "sentence")
-
-    def _chunk_id(self, sentence: Sentence) -> str:
-        return stable_id("chunk", sentence.sentence_id)
-
-    def _sentence_context_id(self, sentence: Sentence) -> str:
-        span_id = self._sentence_span_id(sentence)
-        row = self.store.execute(
-            """
-            SELECT context_id
-            FROM context_assignments
-            WHERE run_id=? AND applies_to_type='source_span' AND applies_to_id=?
-            LIMIT 1
-            """,
-            (self.run_id, span_id),
-        ).fetchone()
-        if row is not None:
-            return str(row["context_id"])
-        context_id = stable_id("ctx", self.run_id, "asserted")
-        self.store.execute(
-            "INSERT OR IGNORE INTO contexts(context_id, run_id, kind, parent_context_id, holder_surface, evidence_surface, confidence) VALUES (?, ?, ?, ?, ?, ?, ?)",
-            (context_id, self.run_id, "asserted", None, None, "asserted", 1.0),
-        )
-        return context_id
-
-    def _ensure_context(
-        self,
-        kind: str,
-        parent_context_id: str,
-        evidence_surface: str,
-        confidence: float,
-        holder_surface: str = "",
-    ) -> str:
-        context_id = stable_id(
-            "ctx",
-            self.run_id,
-            kind,
-            parent_context_id,
-            normalize(holder_surface),
-            normalize(evidence_surface),
-        )
-        self.store.execute(
-            "INSERT OR IGNORE INTO contexts(context_id, run_id, kind, parent_context_id, holder_surface, evidence_surface, confidence) VALUES (?, ?, ?, ?, ?, ?, ?)",
-            (context_id, self.run_id, kind, parent_context_id or None, holder_surface or None, evidence_surface, confidence),
-        )
-        return context_id
-
-    def _mentions_for_sentence(self, sentence: Sentence) -> list[tuple[str, str, str]]:
-        rows = self.store.execute(
-            """
-            SELECT m.surface, m.mention_id, mr.referent_id
-            FROM mentions m
-            JOIN mention_referents mr ON mr.mention_id=m.mention_id
-            JOIN source_spans s ON s.span_id=m.span_id
-            WHERE m.run_id=? AND s.chunk_id=?
-            ORDER BY s.char_start, m.surface
-            """,
-            (self.run_id, self._chunk_id(sentence)),
-        ).fetchall()
-        return [(str(row["surface"]), str(row["mention_id"]), str(row["referent_id"])) for row in rows]
-
-    def _cached_or_fresh_chunk_frames(self, sentence: Sentence) -> tuple[list[dict[str, object]], dict[str, object]]:
-        if self._model_client is None:
-            return [], {"source": "disabled"}
-        quality = text_quality_metrics(sentence.text)
-        if bool(quality.get("low_semantic_noise")) or str(quality.get("semantic_quality") or "") in {
-            "base64_or_hex_blob",
-            "multilingual_word_salad",
-            "plausible_babble",
-            "word_salad",
-        }:
-            return [], {"source": "skipped_noise"}
-        cache_context = chunk_frame_cache_context(
-            self._model_client,
-            rel_path=sentence.rel_path,
-            chunk_text=sentence.text,
-        )
-        cached = self._semantic_cache.get(sentence.text, context=cache_context) if self._semantic_cache else None
-        if cached is not None:
-            frames = [frame for frame in cached.get("frames", []) if isinstance(frame, dict)]
-            metadata = cached.get("metadata") if isinstance(cached.get("metadata"), dict) else {}
-            return frames, {
-                "source": "cache",
-                "frame_count": len(frames),
-                "accepted": bool(metadata.get("accepted", True)),
-                "reason": str(metadata.get("reason") or ""),
-                "prompt_hash": metadata.get("prompt_hash"),
-                "output_hash": metadata.get("output_hash"),
-                "context_budget": metadata.get("context_budget"),
-            }
-        self._log_progress(f"kmd-llm-frame start {sentence.rel_path}:{sentence.order}")
-        result = call_model_chunk_frames(sentence.text, self._model_client, rel_path=sentence.rel_path)
-        frames = [frame for frame in result.get("frames", []) if isinstance(frame, dict)] if result.get("accepted") else []
-        cacheable_failure = result.get("reason") in {"invalid_json", "schema_validation_failed", "grounding_validation_failed"}
-        if self._semantic_cache is not None and (result.get("accepted") or cacheable_failure):
-            self._semantic_cache.put(
-                sentence.text,
-                frames,
-                {
-                    "rel_path": sentence.rel_path,
-                    "accepted": bool(result.get("accepted")),
-                    "reason": str(result.get("reason") or ""),
-                    "prompt_hash": result.get("prompt_hash"),
-                    "output_hash": result.get("output_hash"),
-                    "context_budget": result.get("context_budget"),
-                },
-                context=cache_context,
+    @classmethod
+    def _explicit_relation_actor_candidates(
+        cls,
+        contract: dict[str, Any],
+        evidence_views: list[dict[str, Any]],
+    ) -> list[str]:
+        slot_tokens = set(
+            re.findall(
+                r"[a-z0-9]+",
+                str(contract.get("answer_slot", "")).lower().replace("_", " "),
             )
-        self._log_progress(
-            f"kmd-llm-frame done {sentence.rel_path}:{sentence.order} frames={len(frames)} source={result.get('fresh_or_cached', 'fresh')}"
         )
-        return frames, result
-
-    def _materialize_sentence_semantics(self, sentence: Sentence) -> int:
-        span_id = self._sentence_span_id(sentence)
-        if self._model_client is None:
-            return 0
-        frame_cache_context = chunk_frame_cache_context(
-            self._model_client,
-            rel_path=sentence.rel_path,
-            chunk_text=sentence.text,
+        person_slots = {
+            "reviewer", "approver", "author", "actor", "owner", "inspector",
+            "witness", "researcher", "speaker", "person", "teacher", "doctor",
+        }
+        if not slot_tokens.intersection(person_slots):
+            return []
+        relation_tokens = {
+            token
+            for phrase in contract.get("relation_phrases", [])
+            for token in re.findall(r"[a-z0-9]+", str(phrase).lower())
+            if token not in {"is", "are", "was", "were", "did", "does", "do", "by", "of", "the"}
+        }
+        role_nouns = {
+            "owner", "reviewer", "approver", "author", "inspector", "witness",
+            "researcher", "speaker", "person", "teacher", "doctor",
+        }
+        if relation_tokens and relation_tokens.issubset(role_nouns):
+            return []
+        if not relation_tokens:
+            return []
+        relation_stems = {cls._relation_stem(token) for token in relation_tokens}
+        if not relation_stems:
+            return []
+        pattern = re.compile(
+            r"(?<![A-Za-z])(?P<name>[A-Z][A-Za-z'-]+(?:[ \t]+[A-Z][A-Za-z'-]+){0,2})"
+            r"[ \t]+(?P<verb>[A-Za-z]+)\b"
         )
-        frame_cache_key = stable_id(
-            "frame_attempt_context",
-            json.dumps(frame_cache_context, sort_keys=True, default=str),
-        )
-        previous_attempt = self.store.execute(
-            """
-            SELECT accepted, materialized, reason, metadata_json
-            FROM model_attempts
-            WHERE run_id=? AND source_span_id=? AND task=? AND source=? AND cache_key=?
-            LIMIT 1
-            """,
-            (self.run_id, span_id, "chunk_frames", "local_model", frame_cache_key),
-        ).fetchone()
-        existing = self.store.execute(
-            "SELECT COUNT(*) FROM frames WHERE run_id=? AND span_id=? AND source='local_model'",
-            (self.run_id, span_id),
-        ).fetchone()[0]
-        if (
-            existing
-            and previous_attempt is not None
-            and bool(previous_attempt["accepted"])
-            and bool(previous_attempt["materialized"])
-        ):
-            return 0
-        replaced_frames: dict[str, int] = {}
-        if existing:
-            replaced_frames = self.store.delete_frame_materialization_for_span(
-                self.run_id,
-                span_id,
-                source="local_model",
-            )
-            inactive_attempts = self.store.deactivate_other_model_attempt_materializations(
-                self.run_id,
-                span_id,
-                "chunk_frames",
-                "local_model",
-                frame_cache_key,
-            )
-            if inactive_attempts:
-                replaced_frames["model_attempts"] = inactive_attempts
-        if (
-            _attempt_was_nonrequest_failure(previous_attempt)
-            and not _env_true("KMD_FRAME_RETRY_FAILED_ATTEMPTS")
-        ):
-            self._log_progress(
-                "kmd-answer lazy_frame previous_attempt "
-                f"{sentence.rel_path}:{sentence.order} "
-                f"accepted={bool(previous_attempt['accepted'])} "
-                f"materialized={bool(previous_attempt['materialized'])} "
-                f"reason={str(previous_attempt['reason'] or 'previous_attempt')}"
-            )
-            return 0
-        model_frames, result = self._cached_or_fresh_chunk_frames(sentence)
-        if str(result.get("reason") or "") == "request_failed":
-            self.model_query_trace.rejected_output_count += 1
-            return 0
-        self._record_model_result(result)
-        if result.get("prompt_hash"):
-            self.model_query_trace.prompt_hashes = [*list(self.model_query_trace.prompt_hashes or []), str(result["prompt_hash"])][-20:]
-        if result.get("output_hash"):
-            self.model_query_trace.response_hashes = [*list(self.model_query_trace.response_hashes or []), str(result["output_hash"])][-20:]
-        self.model_query_trace.chunk_frame_call_count += 0 if result.get("source") in {"cache", "skipped_noise", "skipped_long_chunk", "disabled"} else 1
-        if model_frames:
-            self.model_query_trace.chunk_frame_parsed_count += len(model_frames)
-        context_id = self._sentence_context_id(sentence)
-        mentions_for_sentence = self._mentions_for_sentence(sentence)
-        inserted = 0
-        for index, frame in enumerate(model_frames):
-            condition = frame_from_model_dict(frame)
-            if condition is None or condition.evidence_text not in sentence.text:
-                continue
-            predicate = condition.predicate or condition.frame_type
-            context_holder = str(condition.metadata.get("context_holder") or "").strip()
-            semantic_context_id = context_id
-            if condition.modality != "asserted":
-                semantic_context_id = self._ensure_context(
-                    f"modality:{condition.modality}",
-                    context_id,
-                    condition.evidence_text,
-                    condition.confidence,
-                    context_holder,
-                )
-            if condition.polarity not in {"", "positive"}:
-                semantic_context_id = self._ensure_context(
-                    f"polarity:{condition.polarity}",
-                    semantic_context_id,
-                    condition.evidence_text,
-                    condition.confidence,
-                )
-            semantic_frame_id = stable_id("frm", self.run_id, sentence.sentence_id, "model", index, predicate, condition.evidence_text)
-            self.store.execute(
-                "INSERT OR IGNORE INTO frames(frame_id, run_id, context_id, predicate, predicate_norm, trigger_surface, confidence, source, span_id) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)",
-                (
-                    semantic_frame_id,
-                    self.run_id,
-                    semantic_context_id,
-                    predicate,
-                    normalize(predicate),
-                    predicate,
-                    condition.confidence,
-                    "local_model",
-                    span_id,
-                ),
-            )
-            group = stable_id("semantic_group", semantic_frame_id)
-            frame_metadata = {
-                "frame_type": condition.frame_type,
-                "modality": condition.modality,
-                "polarity": condition.polarity,
-                "context_holder": context_holder,
-                "temporal_text": condition.temporal_text,
-                "record_group": group,
-                "source": "local_model",
-            }
-            self.store.execute(
-                """
-                INSERT OR IGNORE INTO relations(
-                  relation_id, run_id, relation_type, subject, subject_norm, predicate, predicate_norm,
-                  object, object_norm, value, value_norm, source_span_id, context_id, confidence, metadata_json
-                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-                """,
-                (
-                    stable_id("rel", self.run_id, semantic_frame_id, "semantic_frame"),
-                    self.run_id,
-                    "semantic_frame",
-                    condition.frame_type,
-                    normalize(condition.frame_type),
-                    predicate,
-                    normalize(predicate),
-                    "",
-                    "",
-                    condition.evidence_text,
-                    normalize(condition.evidence_text),
-                    span_id,
-                    semantic_context_id,
-                    condition.confidence,
-                    json.dumps(frame_metadata, sort_keys=True),
-                ),
-            )
-            for arg_index, argument in enumerate(condition.arguments):
-                arg_referent_id = self.store.upsert_referent(self.run_id, argument.value, argument.value_type)
-                self.store.execute(
-                    "INSERT OR IGNORE INTO frame_arguments(argument_id, frame_id, role, mention_id, referent_id, surface, value_type, confidence) VALUES (?, ?, ?, ?, ?, ?, ?, ?)",
-                    (
-                        stable_id("arg", semantic_frame_id, arg_index, argument.role, argument.value),
-                        semantic_frame_id,
-                        argument.role,
-                        None,
-                        arg_referent_id,
-                        argument.value,
-                        argument.value_type,
-                        condition.confidence,
-                    ),
-                )
-                relation_metadata = {
-                    **frame_metadata,
-                    "argument_role": argument.role,
-                    "argument_value_type": argument.value_type,
-                }
-                self.store.execute(
-                    """
-                    INSERT OR IGNORE INTO relations(
-                      relation_id, run_id, relation_type, subject, subject_norm, predicate, predicate_norm,
-                      object, object_norm, value, value_norm, source_span_id, context_id, confidence, metadata_json
-                    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-                    """,
-                    (
-                        stable_id("rel", self.run_id, semantic_frame_id, "arg", arg_index, argument.role, argument.value),
-                        self.run_id,
-                        "semantic_argument",
-                        argument.role,
-                        normalize(argument.role),
-                        predicate,
-                        normalize(predicate),
-                        condition.frame_type,
-                        normalize(condition.frame_type),
-                        argument.value,
-                        normalize(argument.value),
-                        span_id,
-                        semantic_context_id,
-                        condition.confidence,
-                        json.dumps(relation_metadata, sort_keys=True),
-                    ),
-                )
-                normalized_argument = normalize(argument.value)
-                for existing_surface, _mention_id, existing_referent_id in mentions_for_sentence:
-                    if normalize(existing_surface) == normalized_argument and existing_referent_id != arg_referent_id:
-                        self.store.execute(
-                            """
-                            INSERT OR IGNORE INTO identity_hypotheses(
-                              hypothesis_id, run_id, source_span_id, context_id, drs_box_id, box_external_id,
-                              left_referent_id, right_referent_id,
-                              relation, evidence, confidence, source
-                            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-                            """,
-                            (
-                                stable_id("idh", self.run_id, existing_referent_id, arg_referent_id, semantic_frame_id),
-                                self.run_id,
-                                span_id,
-                                semantic_context_id,
-                                None,
-                                None,
-                                existing_referent_id,
-                                arg_referent_id,
-                                "same_surface",
-                                argument.value,
-                                min(0.9, condition.confidence),
-                                "local_model_frame",
-                            ),
-                        )
-            for hypothesis_index, hypothesis in enumerate(condition.metadata.get("identity_hypotheses", [])):
-                if not isinstance(hypothesis, dict):
+        candidates: list[str] = []
+        seen: set[str] = set()
+        for view in evidence_views:
+            text = str(view.get("excerpt", "")) or str(view.get("text", ""))
+            text = re.sub(r"(?m)^\s*\[[^\]]+\]\s*(?:Correction:\s*)?", "", text)
+            for match in pattern.finditer(text):
+                if cls._relation_stem(match.group("verb").lower()) not in relation_stems:
                     continue
-                left_text = str(hypothesis.get("left_text") or "").strip()
-                right_text = str(hypothesis.get("right_text") or "").strip()
-                identity_evidence = str(hypothesis.get("evidence_text") or condition.evidence_text).strip()
-                if not left_text or not right_text or not identity_evidence:
+                name = match.group("name").strip()
+                if name.lower() in {"correction", "meeting transcript", "final note"}:
                     continue
-                if left_text not in sentence.text or right_text not in sentence.text or identity_evidence not in sentence.text:
-                    continue
-                left_ref = self.store.upsert_referent(self.run_id, left_text, "unknown")
-                right_ref = self.store.upsert_referent(self.run_id, right_text, "unknown")
-                self.store.execute(
-                    """
-                    INSERT OR IGNORE INTO identity_hypotheses(
-                      hypothesis_id, run_id, source_span_id, context_id, drs_box_id, box_external_id,
-                      left_referent_id, right_referent_id,
-                      relation, evidence, confidence, source
-                    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-                    """,
-                    (
-                        stable_id("idh", self.run_id, semantic_frame_id, "model_identity", hypothesis_index, left_text, right_text),
-                        self.run_id,
-                        span_id,
-                        semantic_context_id,
-                        None,
-                        None,
-                        left_ref,
-                        right_ref,
-                        str(hypothesis.get("relation") or "same_referent").strip() or "same_referent",
-                        identity_evidence,
-                        float(hypothesis.get("confidence") or condition.confidence),
-                        "local_model_frame",
-                    ),
-                )
-            if condition.temporal_text:
-                self.store.execute(
-                    """
-                    INSERT OR IGNORE INTO temporal_edges(
-                      edge_id, run_id, source_span_id, referent_id, context_id, relation, temporal_value, state_value, confidence
-                    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
-                    """,
-                    (
-                        stable_id("tmp", self.run_id, semantic_frame_id, condition.temporal_text),
-                        self.run_id,
-                        span_id,
-                        None,
-                        semantic_context_id,
-                        "frame_temporal_scope",
-                        condition.temporal_text,
-                        "",
-                        condition.confidence,
-                    ),
-                )
-            inserted += 1
-        self.model_query_trace.chunk_frame_accepted_count += inserted
-        result_source = str(result.get("fresh_or_cached") or result.get("source") or "fresh")
-        accepted = bool(result.get("accepted")) if "accepted" in result else result_source == "cache"
-        self.store.execute(
-            """
-            INSERT OR REPLACE INTO model_attempts(
-              attempt_id, run_id, source_span_id, task, source, cache_key, accepted, materialized,
-              reason, prompt_hash, output_hash, elapsed, metadata_json
-            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-            """,
-            (
-                stable_id("attempt", self.run_id, span_id, "chunk_frames", "local_model", frame_cache_key),
-                self.run_id,
-                span_id,
-                "chunk_frames",
-                "local_model",
-                frame_cache_key,
-                int(accepted),
-                int(inserted > 0),
-                str(result.get("reason") or ""),
-                str(result.get("prompt_hash") or ""),
-                str(result.get("output_hash") or ""),
-                float(result.get("elapsed") or 0.0),
-                json.dumps(
-                    {
-                        "cache_context": frame_cache_context,
-                        "frame_count": len(model_frames),
-                        "inserted_frame_count": inserted,
-                        "result_source": result_source,
-                        "context_budget": result.get("context_budget"),
-                        "replaced_prior_rows": replaced_frames,
-                    },
-                    sort_keys=True,
-                    default=str,
-                ),
-            ),
-        )
-        return inserted
+                key = name.lower()
+                if key not in seen:
+                    seen.add(key)
+                    candidates.append(name)
+        return candidates
 
-    def _answer_with_model_query_evidence(self, question: str, expected_hint: ExpectedAnswer | None = None) -> Answer | None:
-        if not self._test_model_evidence_helpers_allowed():
-            return None
-        if self._model_client is None:
-            return None
-        frame_data = self.model_query_trace.last_plan if isinstance(self.model_query_trace.last_plan, dict) else None
-        evidence_frame = frame_from_mapping(question, frame_data) if frame_data else plan_question(question)
-        focused = self._focused_evidence_windows(
-            question,
-            evidence_frame,
-            limit=int(os.environ.get("KMD_FOCUSED_EVIDENCE_LIMIT", "8")),
-            window_chars=int(os.environ.get("KMD_FOCUSED_EVIDENCE_WINDOW_CHARS", "1800")),
-        )
-        candidates = self._search(
-            question,
-            limit=int(os.environ.get("KMD_EVIDENCE_SEARCH_LIMIT", "18")),
-            required=None,
-        )
-        evidence = list(focused)
-        for sentence, score in candidates[: int(os.environ.get("KMD_EVIDENCE_PAYLOAD_LIMIT", "10"))]:
-            item = self._evidence(sentence, score)
-            if not any(existing.rel_path == item.rel_path and existing.text == item.text for existing in evidence):
-                evidence.append(item)
-        if not evidence:
-            return None
-        payload = self._evidence_payload(evidence, limit=len(evidence))
-        if not payload:
-            return None
-        trace = self.model_query_trace
-        discourse_payload = self._discourse_payload_for_evidence(evidence)
-        fallback_client = self._fallback_model_client()
-        if fallback_client is None:
-            return None
-        model = call_model_query_evidence_answer(question, payload, fallback_client, discourse_records=discourse_payload)
-        try:
-            self._record_model_result(model)
-        except LocalModelUnavailableError:
-            trace.evidence_rejected_count += 1
-            return None
-        if model.get("prompt_hash"):
-            trace.prompt_hashes = [*list(trace.prompt_hashes or []), str(model["prompt_hash"])][-20:]
-        if model.get("output_hash"):
-            trace.response_hashes = [*list(trace.response_hashes or []), str(model["output_hash"])][-20:]
-        if not model.get("accepted"):
-            trace.evidence_rejected_count += 1
-            return None
-        trace.evidence_call_count += 1
-        trace.evidence_parsed_count += 1
-        if not model.get("sufficient_evidence"):
-            trace.evidence_rejected_count += 1
-            unknown = Answer(
-                "unknown",
-                0.0,
-                [item for item in evidence[:6] if item.rel_path and item.text],
-                "local model query-DRS insufficient evidence",
-                "unknown",
-            )
-            self._attach_model_answer_provenance(unknown)
-            return unknown
-        proposed = str(model.get("answer") or "")
-        evidence_span = str(model.get("evidence_span") or "")
-        answer_type = str(model.get("answer_type") or "content_phrase")
-        frame = frame_from_mapping(question, model.get("query_frame") if isinstance(model.get("query_frame"), dict) else None)
-        expected = expected_hint if expected_hint and expected_hint.answer_type != "unknown" else self._expected_from_frame(frame)
-        if answer_type:
-            direct_expected = ExpectedAnswer(answer_type if answer_type in {
-                "person", "actor", "organization", "identifier", "url", "file_path", "count",
-                "state", "date_time", "boolean", "content_phrase", "metadata_value", "unknown",
-            } else expected.answer_type, allow_metadata_evidence=answer_type == "metadata_value")  # type: ignore[arg-type]
-            if expected.answer_type == "unknown" and direct_expected.answer_type != "unknown":
-                expected = direct_expected
-        if not proposed:
-            trace.evidence_rejected_count += 1
-            return None
-        proposed = self._shortest_model_answer_value(proposed, answer_type, frame)
-        if not evidence_span:
-            trace.evidence_rejected_count += 1
-            return None
-        else:
-            if self._is_boolean_text(proposed) and not self._boolean_answer_has_target_grounding(frame, evidence_span):
-                trace.evidence_rejected_count += 1
-                return Answer("unknown", reason="local model boolean answer lacked target grounding")
-            matching = self._matching_evidence(evidence, evidence_span, proposed)
-            if not matching:
-                trace.evidence_rejected_count += 1
-                return None
-        support = list(matching[:3])
-        if expected.answer_type in {"person", "actor"} or classify_value(proposed) == "person":
-            proposed_norm = normalize(proposed)
-            for item in evidence:
-                if item not in support and proposed_norm and proposed_norm in normalize(self._evidence_window_text(item)):
-                    support.append(item)
-                if len(support) >= 6:
-                    break
-        answer = Answer(proposed, 0.78, support[:6], "local model query-DRS evidence verification", expected.answer_type)
-        finalized = self._finalize_answer(question, answer, expected, "local model query-DRS evidence verification", frame)
-        if not finalized:
-            trace.evidence_rejected_count += 1
-            return None
-        trace.evidence_accepted_count += 1
-        trace.model_answer_count += 1
-        self._attach_model_answer_provenance(finalized)
-        return finalized
-
-    def _answer_with_model_evidence_extraction(
-        self,
-        question: str,
-        frame: QueryFrame,
-        expected: ExpectedAnswer | None = None,
-    ) -> Answer | None:
-        if not self._test_model_evidence_helpers_allowed():
-            return None
-        if self._model_client is None:
-            return None
-        expected = expected or self._expected_from_frame(frame)
-        required = list(frame.target_anchors) if frame.target_anchors else None
-        candidates = self._search(question, limit=int(os.environ.get("KMD_EVIDENCE_SEARCH_LIMIT", "18")), required=required)
-        if len(candidates) < 4 and required:
-            candidates = self._search(question, limit=int(os.environ.get("KMD_EVIDENCE_SEARCH_LIMIT", "18")), required=None)
+    @classmethod
+    def _needs_actor_role_repair(
+        cls,
+        contract: dict[str, Any],
+        extraction: dict[str, Any],
+        evidence_views: list[dict[str, Any]],
+    ) -> bool:
+        if extraction.get("status") != "extracted":
+            return False
+        candidates = cls._explicit_relation_actor_candidates(contract, evidence_views)
         if not candidates:
-            return None
-        evidence = [self._evidence(sentence, score) for sentence, score in candidates[: int(os.environ.get("KMD_EVIDENCE_PAYLOAD_LIMIT", "10"))]]
-        payload = self._evidence_payload(evidence, limit=len(evidence))
-        if not payload:
-            return None
-        trace = self.model_query_trace
-        trace.evidence_call_count += 1
-        fallback_client = self._fallback_model_client()
-        if fallback_client is None:
-            return None
-        model = call_model_evidence_answer(question, expected.answer_type, payload, fallback_client)
-        try:
-            self._record_model_result(model)
-        except LocalModelUnavailableError:
-            trace.evidence_rejected_count += 1
-            return None
-        if model.get("prompt_hash"):
-            trace.prompt_hashes = [*list(trace.prompt_hashes or []), str(model["prompt_hash"])][-20:]
-        if model.get("output_hash"):
-            trace.response_hashes = [*list(trace.response_hashes or []), str(model["output_hash"])][-20:]
-        if not model.get("accepted"):
-            trace.evidence_rejected_count += 1
-            return None
-        trace.evidence_parsed_count += 1
-        if not model.get("sufficient_evidence"):
-            trace.evidence_rejected_count += 1
-            return None
-        proposed = str(model.get("answer") or "")
-        evidence_span = str(model.get("evidence_span") or "")
-        if not proposed or not evidence_span:
-            trace.evidence_rejected_count += 1
-            return None
-        model_answer_type = str(model.get("answer_type") or "unknown")
-        if model_answer_type in {
-            "person", "actor", "organization", "identifier", "url", "file_path", "count",
-            "state", "date_time", "boolean", "content_phrase", "metadata_value",
-        }:
-            model_expected = ExpectedAnswer(model_answer_type, allow_metadata_evidence=model_answer_type == "metadata_value")  # type: ignore[arg-type]
-            if expected.answer_type == "unknown":
-                expected = model_expected
-        matching = self._matching_evidence(evidence, evidence_span, proposed)
-        if not matching:
-            trace.evidence_rejected_count += 1
-            return None
-        answer = Answer(
-            proposed,
-            0.74,
-            matching[:3],
-            "local model bounded evidence extraction",
-            str(model.get("answer_type") or "unknown"),
-        )
-        finalized = self._finalize_answer(question, answer, expected, "local model bounded evidence extraction", frame)
-        if not finalized:
-            trace.evidence_rejected_count += 1
-            return None
-        trace.evidence_accepted_count += 1
-        trace.model_answer_count += 1
-        self._attach_model_answer_provenance(finalized)
-        return finalized
-
-    def _shortest_model_answer_value(self, proposed: str, answer_type: str, frame: QueryFrame) -> str:
-        text = str(proposed or "").strip()
-        if not text:
-            return text
-        if answer_type == "boolean" or self._is_boolean_text(text):
-            return text
-        parts = answer_parts(text)
-        if len(parts) > 1 and parts[0]:
-            text = parts[0]
-        return text
-
-    def _is_boolean_text(self, value: str) -> bool:
-        return re.match(r"^(yes|no)(?:$|[;,:.!?]\s+)", normalize(value)) is not None
-
-    def _boolean_answer_has_target_grounding(self, frame: QueryFrame, evidence_span: str) -> bool:
-        anchors = [normalize(anchor) for anchor in frame.target_anchors if normalize(anchor)]
-        if not anchors:
-            return True
-        if "\n" in str(evidence_span or "").strip():
             return False
-        span_norm = normalize(evidence_span)
-        return all(self._anchor_has_grounded_token(anchor, span_norm) for anchor in anchors)
-
-    def _frame_scope_anchors(self, frame: QueryFrame) -> list[str]:
-        answer_slots = {normalize(value) for value in frame.answer_variables if normalize(value)}
-        answer_role_tokens = {
-            "actor", "actors", "architect", "architects", "author", "authors", "reviewer", "reviewers",
-            "approver", "approvers", "owner", "owners", "employee", "employees", "id", "ids", "identifier",
-            "identifiers", "person", "people", "user", "users", "customer", "customers", "manager", "managers",
-            "technical", "sales", "support", "team", "teams", "lead", "leads", "stakeholder", "stakeholders",
+        candidate_tokens = {
+            token.lower()
+            for candidate in candidates
+            for token in re.findall(r"[A-Za-z][A-Za-z'-]+", candidate)
         }
-        anchors: list[str] = []
-        for anchor in frame.target_anchors:
-            norm = normalize(anchor)
-            if not norm or norm in answer_slots:
-                continue
-            tokens = [token for token in content_tokens(anchor) if len(token) > 2]
-            if tokens and all(token in answer_role_tokens for token in tokens):
-                continue
-            anchors.append(anchor)
-        return list(dict.fromkeys(anchors))
-
-    def _bounded_evidence_covers_targets(self, frame: QueryFrame, evidence: list[Evidence]) -> bool:
-        anchors = [normalize(anchor) for anchor in self._frame_scope_anchors(frame) if normalize(anchor)]
-        if not anchors:
-            return True
-        material = normalize(
-            "\n".join(
-                " ".join([item.rel_path or "", item.text or "", self._evidence_window_text(item)])
-                for item in evidence[:6]
-            )
-        )
-        return all(self._anchor_has_grounded_token(anchor, material) for anchor in anchors)
-
-    def _anchor_has_grounded_token(self, anchor: str, material_norm: str) -> bool:
-        anchor_norm = normalize(anchor)
-        tokens = {token for token in content_tokens(anchor_norm) if len(token) > 2}
-        tokens.update(token for token in re.findall(r"[a-z0-9]+", anchor_norm) if len(token) > 2)
-        if not tokens:
-            return anchor_norm in material_norm
-        generic_tokens = {
-            "product", "document", "report", "file", "spec", "specification", "specifications",
-            "requirements", "requirement", "vision", "market", "research", "technical",
-            "release", "previous", "current", "new", "feature", "features", "issue", "issues",
-        }
-        required_tokens = [token for token in tokens if token not in generic_tokens] or sorted(tokens)
-        material_tokens = set(content_tokens(material_norm))
-        material_tokens.update(re.findall(r"[a-z0-9]+", material_norm))
-        expanded_material = set(material_tokens)
-        for token in material_tokens:
-            expanded_material.update(term_variants(token))
-            expanded_material.update(part for part in re.split(r"[^a-z0-9]+", token) if len(part) > 2)
-        for token in required_tokens:
-            if token in expanded_material:
-                continue
-            if any(variant in expanded_material for variant in term_variants(token)):
-                continue
-            return False
+        for value in extraction.get("values", []):
+            value_tokens = {
+                token.lower()
+                for token in re.findall(r"[A-Za-z][A-Za-z'-]+", str(value))
+            }
+            if value_tokens and value_tokens.intersection(candidate_tokens):
+                return False
         return True
 
-    def _answer_with_bounded_dspg(self, question: str, frame: QueryFrame, expected: ExpectedAnswer) -> Answer | None:
-        bounded_answer, diagnostics = execute_bounded_query(
-            self.store,
-            self.run_id,
-            self.documents,
-            self._sentences_by_document,
-            question,
-            frame,
+    @staticmethod
+    def _preserve_source_surface_name(contract: dict[str, Any]) -> bool:
+        text = " ".join(
+            [
+                str(contract.get("question", "")),
+                str(contract.get("intent_summary", "")),
+                *[str(item) for item in contract.get("scope_phrases", [])],
+            ]
+        ).lower()
+        return bool(
+            re.search(
+                r"\b(?:according to|top[- ]level note|quoted|forwarded|source says|note says|message says)\b",
+                text,
+            )
         )
-        self.last_bounded_diagnostics = diagnostics
-        if not bounded_answer:
-            return None
-        final_expected = expected
-        if bounded_answer.reason == "deterministic arithmetic binding":
-            final_expected = ExpectedAnswer("count")
-        source = "bounded DSPG query-frame execution"
-        if bounded_answer.reason == "deterministic arithmetic binding":
-            source = "bounded DSPG deterministic arithmetic execution"
-        return self._finalize_answer(question, bounded_answer, final_expected, source, frame)
 
-    def _answer_has_source_grounding(self, answer: Answer) -> bool:
-        if normalize(answer.text) == "unknown":
-            return True
-        return any(evidence.rel_path and evidence.text for evidence in answer.evidence)
-
-    def _cleanup_canonical_answer(
-        self,
-        canonical: str,
-        expected: ExpectedAnswer,
-        frame: QueryFrame | None = None,
+    @staticmethod
+    def _unique_full_name_expansion(
+        value: str,
+        evidence_views: list[dict[str, Any]],
     ) -> str:
-        if expected.answer_type == "boolean":
-            return str(canonical or "").strip()
-        text = clean_extracted_value(canonical).strip()
-        if not text:
-            return text
-        text = self._cleanup_definition_complement(text, frame)
-        if normalize(text) == "unknown":
-            return "unknown"
-        if frame is None and expected.answer_type in {"content_phrase", "state", "metadata_value"} and normalize(text).startswith("is "):
-            parts = text.split(None, 1)
-            if len(parts) == 2 and normalize(parts[1].split()[0]) not in {"not", "no"}:
-                text = parts[1].strip(" .;:")
-        low = normalize(text)
-        if frame is not None and expected.answer_type in {"identifier", "content_phrase", "metadata_value"}:
-            text = self._strip_redundant_answer_slot_suffix(text, frame)
-            low = normalize(text)
-        if frame is not None and expected.answer_type in {"content_phrase", "metadata_value", "identifier"}:
-            text = self._strip_redundant_target_tail(text, frame)
-            low = normalize(text)
-        if frame is not None and expected.answer_type in {"content_phrase", "metadata_value"}:
-            text = self._replace_redundant_topic_subject_with_pronoun(text, frame)
-            low = normalize(text)
-        if frame is not None and expected.answer_type in {"content_phrase", "state", "metadata_value", "identifier"}:
-            text = self._strip_answer_clause_residual(text, frame)
-            low = normalize(text)
-        article_strippable = expected.answer_type in {"content_phrase", "state", "metadata_value"}
-        article_strippable = article_strippable or (
-            expected.answer_type == "identifier" and classify_value(text) == "content_phrase"
+        short = str(value).strip()
+        short_tokens = re.findall(r"[A-Za-z][A-Za-z'-]+", short)
+        if len(short_tokens) != 1:
+            return ""
+        first = short_tokens[0]
+        pattern = re.compile(
+            rf"(?<![A-Za-z]){re.escape(first)}(?:[ \t]+[A-Z][A-Za-z'-]+){{1,2}}(?![A-Za-z])"
         )
-        if article_strippable:
-            words = text.split()
-            low_words = [word.lower().strip(".,;:") for word in words]
-            if len(words) <= 4 and low_words and low_words[0] in {"the", "a", "an"}:
-                verbish = {"is", "was", "were", "are", "be", "been", "being", "should", "would", "could", "did", "does", "do", "has", "have", "had"}
-                if not any(word in verbish for word in low_words[1:]):
-                    return " ".join(words[1:]).strip()
-        return text
+        matches: list[str] = []
+        seen: set[str] = set()
+        for view in evidence_views:
+            text = (
+                str(view.get("excerpt", ""))
+                + "\n"
+                + str(view.get("text", ""))
+                + "\n"
+                + json.dumps(view.get("data", {}), ensure_ascii=False, default=str)
+            )
+            for match in pattern.finditer(text):
+                candidate = re.sub(r"[ \t]+", " ", match.group(0)).strip()
+                key = candidate.lower()
+                if key not in seen:
+                    seen.add(key)
+                    matches.append(candidate)
+        return matches[0] if len(matches) == 1 else ""
 
-    def _replace_redundant_topic_subject_with_pronoun(self, text: str, frame: QueryFrame) -> str:
-        topic_heads: list[str] = []
-        for source in [frame.question_text, *frame.answer_variables]:
-            norm = normalize(source)
-            if " about " not in f" {norm} ":
-                continue
-            after_about = norm.split(" about ", 1)[1]
-            tokens = content_tokens(after_about)
-            if tokens:
-                topic_heads.append(tokens[-1])
-        topic_heads = list(dict.fromkeys(topic_heads))
-        if not topic_heads:
-            return text
-        words = [word for word in text.split() if word]
-        if len(words) < 3:
-            return text
-        first = normalize(words[0].strip(".,;:"))
-        second = normalize(words[1].strip(".,;:"))
-        if first == "the" and second in topic_heads:
-            remainder = words[2:]
-        elif first in topic_heads:
-            remainder = words[1:]
-        else:
-            return text
-        if not remainder:
-            return text
-        next_word = normalize(remainder[0].strip(".,;:"))
-        if next_word not in {
-            "are",
-            "can",
-            "could",
-            "does",
-            "has",
-            "is",
-            "may",
-            "might",
-            "must",
-            "needs",
-            "should",
-            "was",
-            "will",
-            "would",
-        }:
-            return text
-        return " ".join(["It", *remainder]).strip()
-
-    def _strip_answer_clause_residual(self, text: str, frame: QueryFrame) -> str:
-        words = [word for word in text.split() if word]
-        if len(words) < 4 or len(words) > 12:
-            return text
-        normalized_words = [normalize(word.strip(".,;:")) for word in words]
-        target_tokens = {
-            token
-            for anchor in frame.target_anchors
-            for token in content_tokens(anchor)
-            if token
+    @classmethod
+    def _extract_explicit_actor_relation(
+        cls,
+        contract: dict[str, Any],
+        evidence_views: list[dict[str, Any]],
+    ) -> list[tuple[str, str]]:
+        slot_tokens = set(
+            re.findall(
+                r"[a-z0-9]+",
+                str(contract.get("answer_slot", "")).lower().replace("_", " "),
+            )
+        )
+        if not slot_tokens.intersection({"actor", "person", "name", "author", "writer", "speaker"}):
+            return []
+        relation_stems = cls._entity_relation_stems(contract)
+        author_stems = {
+            cls._relation_stem(token)
+            for token in ("write", "wrote", "written", "author", "authored", "provide", "provided", "submit", "submitted")
         }
-        slot_tokens = {
+        if not relation_stems.intersection(author_stems):
+            return []
+        relation_words = r"(?:wrote|writes|written|authored|authors|provided|provides|submitted|submits)"
+        titled_name = r"(?:Mr|Ms|Mrs|Miss|Dr|Prof)\.?\s+[A-Z][A-Za-z'-]+"
+        plain_name = r"[A-Z][A-Za-z'-]+(?:\s+[A-Z][A-Za-z'-]+){0,2}"
+        pattern = re.compile(
+            rf"(?<![A-Za-z])(?P<name>{titled_name}|{plain_name})\s+{relation_words}\b"
+        )
+        output: list[tuple[str, str]] = []
+        seen: set[tuple[str, str]] = set()
+        for view in evidence_views:
+            record_id = str(view.get("record_id", ""))
+            text = str(view.get("excerpt", "")) or str(view.get("text", ""))
+            for match in pattern.finditer(text):
+                name = match.group("name").strip()
+                key = (name, record_id)
+                if key not in seen:
+                    seen.add(key)
+                    output.append(key)
+        return output
+
+    @staticmethod
+    def _record_is_cache_like(record: Any) -> bool:
+        path = str(getattr(record, "source_path", "")).lower()
+        data = getattr(record, "data", {})
+        source = data.get("source", {}) if isinstance(data, dict) else {}
+        metadata = " ".join(
+            [
+                path,
+                str(source.get("file_name", "")),
+                str(source.get("file_stem", "")),
+                str(source.get("representation", "")),
+            ]
+        ).lower()
+        metadata_tokens = set(re.findall(r"[a-z0-9]+", metadata))
+        if metadata_tokens.intersection({"cache", "cached", "tmp", "temp", "lock"}):
+            return True
+        text = str(getattr(record, "text", "")).strip().lower()
+        return bool(
+            re.search(r"\bcache(?:d)?\s+only\b|\bnot\s+a\s+semantic\s+record\b", text[:500])
+        )
+
+    @classmethod
+    def _apply_source_scope(
+        cls,
+        records: list[Any],
+        contract: dict[str, Any],
+    ) -> list[Any]:
+        scope = str(contract.get("source_scope", "any"))
+        if scope in {"non_cache", "semantic_only"}:
+            return [record for record in records if not cls._record_is_cache_like(record)]
+        if scope == "cache_only":
+            return [record for record in records if cls._record_is_cache_like(record)]
+        return records
+
+    @staticmethod
+    def _has_explicit_authority_evidence(
+        values: list[str],
+        evidence_views: list[dict[str, Any]],
+    ) -> bool:
+        authority = re.compile(
+            r"\b(?:official|authoritative|canonical|verified|approve|approved|approver|approval|authenticated|confirmed|confirmation)\b",
+            flags=re.IGNORECASE,
+        )
+        for view in evidence_views:
+            text = (
+                str(view.get("excerpt", ""))
+                + "\n"
+                + str(view.get("text", ""))
+                + "\n"
+                + json.dumps(view.get("data", {}), ensure_ascii=False, default=str)
+            )
+            for value in values:
+                value_text = str(value).strip()
+                if not value_text:
+                    continue
+                index = text.lower().find(value_text.lower())
+                if index < 0:
+                    continue
+                window = text[max(0, index - 220) : index + len(value_text) + 220]
+                if authority.search(window):
+                    return True
+        return False
+
+    def _model_extract(
+        self,
+        contract: dict[str, Any],
+        step_id: str,
+        step: dict[str, Any],
+        results: dict[int, ToolResult],
+    ) -> ToolResult:
+        records_by_id: dict[str, Any] = {}
+        prior_values: list[Any] = []
+        for ref in step["inputs"]:
+            result = results[ref]
+            for record in result.records:
+                records_by_id.setdefault(record.record_id, record)
+            prior_values.extend(result.values)
+            if result.scalar is not None:
+                prior_values.append(result.scalar)
+        scoped_records = self._apply_source_scope(
+            list(records_by_id.values()),
+            contract,
+        )
+        records = self._prefer_structured_answer_slot_records(
+            contract,
+            scoped_records,
+        )[:12]
+        records_by_id = {record.record_id: record for record in records}
+        if not records and not prior_values:
+            return ToolResult(
+                step_id,
+                "values",
+                diagnostics={"status": "unknown", "reason": "no input material"},
+            )
+        schema = tool_extraction_schema(contract["contract_id"])
+        localized_views = [
+            self._localized_record_view(record, contract, 1400)
+            for record in records
+        ]
+        name_expansion_views = [record.model_view(1400) for record in records]
+        localized_views_by_id = {
+            view["record_id"]: view
+            for view in localized_views
+        }
+        evidence_payload = {
+            "records": localized_views,
+            "prior_values": prior_values[:30],
+            "hints": {
+                "terms": step["terms"],
+                "fields": step["fields"],
+            },
+        }
+        prompt = (
+            "Extract the exact answer-slot value or values from bounded evidence under the immutable semantic "
+            "contract. Use only the supplied records and prior values. Preserve target, scope, grammatical actor role, "
+            "relation, polarity, temporal mode, epistemic mode, and requested cardinality. For where, location, or storage "
+            "requests, an explicitly associated URL, URI, path, address, directory, shelf, room, or similar locator "
+            "satisfies the answer slot. For 'who performed X', return "
+            "only the explicit actor performing X, not all participants or the person whose statement was opposed. For "
+            "current/latest/final requests, compare explicit dated or ordered "
+            "events. For allegations, dreams, fiction, quotations, and hypotheticals, extract only the relation the "
+            "contract requests. If epistemic_mode is dream, fictional, or hypothetical and the nonactual content itself "
+            "is asked to have caused an actual external event, return unknown unless the evidence explicitly asserts that "
+            "real-world causal effect. Evidence that the object remained unchanged establishes its state, but by itself does "
+            "not establish that a dream or fictional content performed a real causal action or its explicit negation. When "
+            "the question asks whether a document, story, drawing, message, or source itself "
+            "should be treated as real, fictional, a report, or a record, an explicit source classification such as "
+            "'fiction homework, not an engineering record' may directly establish no. For questions asking what a named speaker said, wrote, or sent in a quoted or forwarded "
+            "first-person message, resolve first-person pronouns to that explicitly identified speaker and return a concise "
+            "third-person reported statement; never return an unattributed 'I'. For reported content, corrections, claims, "
+            "or statements about a specified proposition, return only the clause directly about that requested target and "
+            "relation; exclude adjacent clauses about other corrections and do not invent or carry over a speaker from a "
+            "different field or line. A target-identifying line followed immediately by a labeled field such as teacher "
+            "feedback, reviewer note, owner, or status belongs to the same coherent record unless the source explicitly "
+            "starts a new record; an explicit 'NAME wrote/authored/provided' phrase in that field binds NAME as the actor. "
+            "For questions asking what someone believes "
+            "about a target, return the complete attributed proposition content rather than treating it as established fact; "
+            "preserve modal words such as should, negation, quantities, units, and intervals. A dream or hypothetical alone cannot establish factual false, but when the same coherent "
+            "evidence explicitly states that the event occurred only in the dream and gives a waking, observed, verified, "
+            "or inspected state that contradicts it, answer no. Absence alone does not prove a boolean false. Return unknown with no values when the evidence "
+            "does not establish the answer. For meaning, definition, or translation requests, mere adjacency in word "
+            "salad is not evidence; require an explicit definitional marker such as means, translation, definition, a "
+            "labeled field, or an equivalent stated relation. Preserve source units for temperatures, durations, distances, sizes, and "
+            "other measured quantities even when the contract answer shape is number. Enforce source_scope exactly: "
+            "only the supplied records survive that provenance scope. When authority_mode is explicit_official, return a "
+            "value only if the supplied evidence explicitly labels or asserts that value as official, authoritative, "
+            "canonical, verified, approved, or authenticated; an ordinary field label alone is insufficient. Return minimal values only, "
+            "without role prefixes or explanations, and cite only supplied record IDs.\n"
+            f"Semantic contract: {json.dumps(contract, ensure_ascii=False)}\n"
+            f"Evidence: {json.dumps(evidence_payload, ensure_ascii=False, default=str)}"
+        )
+        payload = self.model.complete_json("tool_extract", prompt, schema, max_tokens=512)
+        extraction = payload["tool_extraction"]
+        if (
+            extraction.get("status") == "unknown"
+            and contract["answer_shape"] == "boolean"
+            and contract["epistemic_mode"] == "asserted"
+            and self._mixed_epistemic_evidence(records)
+        ):
+            repair_prompt = (
+                "Re-adjudicate a prior strict boolean extraction over mixed epistemic evidence. The prior result was "
+                "unknown. Preserve the immutable contract and use only supplied evidence. A dream or hypothetical alone "
+                "is unknown, but when the same coherent record explicitly supplies a waking, observed, verified, or "
+                "inspected state that contradicts the dreamed event, that explicit contradiction may establish no. Return "
+                "the complete replacement extraction with minimal yes/no value and cited record IDs.\n"
+                f"Semantic contract: {json.dumps(contract, ensure_ascii=False)}\n"
+                f"Prior extraction: {json.dumps(extraction, ensure_ascii=False)}\n"
+                f"Evidence: {json.dumps(evidence_payload, ensure_ascii=False, default=str)}"
+            )
+            repaired_payload = self.model.complete_json(
+                "tool_extract_epistemic_repair",
+                repair_prompt,
+                schema,
+                max_tokens=512,
+            )
+            extraction = repaired_payload["tool_extraction"]
+        if self._needs_discourse_repair(contract, extraction):
+            discourse_slot_tokens = set(
+                re.findall(
+                    r"[a-z0-9]+",
+                    str(contract.get("answer_slot", "")).lower().replace("_", " "),
+                )
+            )
+            slot_shape_instruction = (
+                "The answer slot denotes a requested argument such as an item, object, component, part, device, artifact, "
+                "file, or person. Return only that explicit argument phrase, not the complete reported clause. "
+                if discourse_slot_tokens.intersection(
+                    {"item", "object", "component", "part", "device", "artifact", "file", "person"}
+                )
+                else "The answer slot denotes proposition content; return the complete requested proposition rather than an unrelated argument. "
+            )
+            reference_instruction = (
+                "For a reported belief or claim about an already named singular target, return the proposition as a "
+                "complete sentence using a capitalized referential pronoun such as 'It' rather than repeating a generic "
+                "target noun, unless that would be ambiguous. Preserve modal force and end the sentence with punctuation. "
+                if contract.get("epistemic_mode") == "reported"
+                else "For quoted or forwarded content, identify the explicit speaker rather than replacing the speaker with a generic pronoun. "
+            )
+            reporting_tense_instruction = (
+                "The immutable question uses a past reporting frame. Use natural reported-speech backshift for a simple "
+                "present reporting predicate when appropriate (for example, plans to -> planned to), while preserving "
+                "future-relative words such as tomorrow, today, later, and modal meaning. "
+                if contract.get("reporting_tense") == "past"
+                else "Follow the question's present reporting frame and do not introduce an unnecessary past-tense backshift. "
+            )
+            discourse_prompt = (
+                "Normalize a strict attributed-content extraction without changing its proposition or evidence. Use only "
+                "the supplied contract, prior extraction, and evidence. For an explicitly quoted or forwarded first-person "
+                "message, resolve first-person pronouns to the explicitly identified speaker and return a concise "
+                "third-person reported proposition, never an unattributed 'I'. "
+                + reporting_tense_instruction
+                + slot_shape_instruction
+                + reference_instruction
+                + "For a belief or reported-content question, return only the requested attributed content, not a claim that it is established fact. When the immutable question asks what someone "
+                "did say, write, or report in a past message, align ordinary reporting tense with that frame: first-person "
+                "present 'I plan' becomes third-person past '<speaker> planned', not present '<speaker> plans'. Preserve "
+                "modal words, negation, quantities, units, intervals, filenames, identifiers, and temporal qualifiers. "
+                "Return the complete replacement extraction "
+                "with the same cited evidence.\n"
+                f"Semantic contract: {json.dumps(contract, ensure_ascii=False)}\n"
+                f"Prior extraction: {json.dumps(extraction, ensure_ascii=False)}\n"
+                f"Evidence: {json.dumps(evidence_payload, ensure_ascii=False, default=str)}"
+            )
+            discourse_payload = self.model.complete_json(
+                "tool_extract_discourse_repair",
+                discourse_prompt,
+                schema,
+                max_tokens=512,
+            )
+            extraction = discourse_payload["tool_extraction"]
+        if self._needs_event_fact_repair(contract, extraction):
+            event_prompt = (
+                "Normalize a strict model-owned event_fact extraction without changing its evidence. Examine the "
+                "immutable question and choose the requested surface form. For a polar yes/no proposition, return a "
+                "minimal yes or no and retain the explicit corrective proposition when useful. The prior extraction may "
+                "be unknown; re-adjudicate it from the supplied coherent evidence rather than preserving that status. "
+                "For dream, fictional, or hypothetical epistemic modes, do not infer a real causal yes or no merely from "
+                "the affected object's later state; require an explicit real-world causal assertion, otherwise preserve "
+                "unknown. For an open event question, "
+                "return the event content itself. A title or heading may establish the subject of the following coherent "
+                "document body; a body-level statement about 'this note' or 'this document' applies to that titled subject "
+                "unless the source explicitly narrows it. When evidence explicitly contradicts the queried proposition, answer no "
+                "and include the grounded correction. Preserve negation, quantities, units, identifiers, and cited evidence. "
+                "Return the complete replacement extraction.\n"
+                f"Semantic contract: {json.dumps(contract, ensure_ascii=False)}\n"
+                f"Prior extraction: {json.dumps(extraction, ensure_ascii=False)}\n"
+                f"Evidence: {json.dumps(evidence_payload, ensure_ascii=False, default=str)}"
+            )
+            event_payload = self.model.complete_json(
+                "tool_extract_event_fact_repair",
+                event_prompt,
+                schema,
+                max_tokens=512,
+            )
+            extraction = event_payload["tool_extraction"]
+        if (
+            contract.get("semantic_kind") == "event_fact"
+            and contract.get("answer_shape") == "boolean"
+            and extraction.get("status") == "unknown"
+        ):
+            verdict_prompt = (
+                "Adjudicate the immutable yes/no event or relation proposition from only the supplied coherent evidence. "
+                "Return supports only when the proposition is explicitly established, contradicts only when the evidence "
+                "explicitly rules it out, and insufficient when it merely fails to establish it. Absence is not "
+                "contradiction. A document title or heading may bind its subject to the following coherent body; a body "
+                "reference such as 'this note', 'this document', or a document-level classification applies to that titled "
+                "subject unless explicitly narrowed. A document-level universal negative such as no relation to any member "
+                "of a requested category can contradict membership in that category. For contradicts, correction_clause "
+                "must be one concise grounded clause suitable immediately after 'No;' and should state the explicit "
+                "classification or contrary fact, not discuss evidence or reasoning. For supports or insufficient, leave "
+                "correction_clause empty. Cite only supplied record IDs.\n"
+                f"Semantic contract: {json.dumps(contract, ensure_ascii=False)}\n"
+                f"Prior extraction: {json.dumps(extraction, ensure_ascii=False)}\n"
+                f"Evidence: {json.dumps(evidence_payload, ensure_ascii=False, default=str)}"
+            )
+            verdict_payload = self.model.complete_json(
+                "event_fact_verdict",
+                verdict_prompt,
+                event_fact_verdict_schema(contract["contract_id"]),
+                max_tokens=512,
+            )
+            verdict = verdict_payload["event_fact_verdict"]
+            if verdict["contract_id"] != contract["contract_id"]:
+                raise ProgramValidationError("event fact verdict contract mismatch")
+            if not set(verdict["evidence_record_ids"]).issubset(set(records_by_id)):
+                raise ProgramValidationError("event fact verdict cites unavailable evidence")
+            if (
+                verdict["scope_binding"] == "none"
+                and records
+            ):
+                scope_prompt = "\n".join(
+                    [
+                        (
+                            "Re-adjudicate the prior event-fact verdict with explicit document-scope resolution. Treat each "
+                            "supplied record as one coherent document, not as disconnected sentences. First identify whether "
+                            "its title, heading, or opening subject names the entity in the immutable proposition. Then "
+                            "resolve body-level deictic phrases such as 'this note', 'this document', 'this report', or a "
+                            "classification noun back to that titled subject. If the bound body explicitly classifies the "
+                            "subject as unrelated to the requested category and also states a universal negative relation to "
+                            "any member of that category, the proposition that the subject is a member of the category is "
+                            "contradicted, not merely unsupported. Conversely, if there is no such binding or explicit "
+                            "negative classification or relation, preserve insufficient. Do not infer from absence alone. For "
+                            "contradicts, correction_clause must be a short grounded clause suitable after 'No;'. When "
+                            "both a direct deictic classification and a category-negative relation are present, prefer the "
+                            "direct classification by rewriting 'this [classification]' as 'it is [classification]' rather "
+                            "than mentioning incidental content or only the category relation. Cite only supplied record IDs."
+                        ),
+                        f"Semantic contract: {json.dumps(contract, ensure_ascii=False)}",
+                        f"Prior verdict: {json.dumps(verdict, ensure_ascii=False)}",
+                        f"Evidence: {json.dumps(evidence_payload, ensure_ascii=False, default=str)}",
+                    ]
+                )
+                scope_payload = self.model.complete_json(
+                    "event_fact_scope_repair",
+                    scope_prompt,
+                    event_fact_verdict_schema(contract["contract_id"]),
+                    max_tokens=512,
+                )
+                verdict = scope_payload["event_fact_verdict"]
+                if verdict["contract_id"] != contract["contract_id"]:
+                    raise ProgramValidationError("event fact scope verdict contract mismatch")
+                if not set(verdict["evidence_record_ids"]).issubset(set(records_by_id)):
+                    raise ProgramValidationError("event fact scope verdict cites unavailable evidence")
+            extraction = self._extraction_from_event_fact_verdict(contract, verdict)
+        if self._needs_mixed_epistemic_correction_repair(contract, extraction, records):
+            mixed_prompt = (
+                "Normalize a correct negative judgment over mixed nonactual and waking evidence. Preserve the immutable "
+                "contract, value no, and evidence citations. Set evidence_relation to direct_contradiction. Put in reason "
+                "only a concise grounded correction clause suitable after 'No;': state that the queried event occurred only "
+                "in the dream or hypothetical and then mirror the explicit waking or verified state. Do not begin with "
+                "'No', 'the evidence', or an explanation of your reasoning. Preserve exact filenames, identifiers, and "
+                "objects. Return the complete replacement extraction.\n"
+                f"Semantic contract: {json.dumps(contract, ensure_ascii=False)}\n"
+                f"Prior extraction: {json.dumps(extraction, ensure_ascii=False)}\n"
+                f"Evidence: {json.dumps(evidence_payload, ensure_ascii=False, default=str)}"
+            )
+            mixed_payload = self.model.complete_json(
+                "tool_extract_mixed_epistemic_correction",
+                mixed_prompt,
+                schema,
+                max_tokens=512,
+            )
+            extraction = mixed_payload["tool_extraction"]
+        if self._needs_negative_alternative_repair(contract, extraction, records):
+            alternative_prompt = (
+                "Normalize a correct negative event judgment whose evidence explicitly states the actual alternative "
+                "behavior. Preserve value no, the immutable contract, and evidence citations. Set evidence_relation to "
+                "direct_contradiction. Put in reason only a concise grounded correction clause suitable after 'No;'. State "
+                "what the relevant runtime, system, service, process, or actor actually does, including an explicit purpose "
+                "or destination when present. Copy the source's positive action verb and purpose phrase exactly; do not "
+                "substitute a different verb, invent a second action, add 'instead', or coordinate two behaviors. When one "
+                "clause supplies the agent and another supplies a passive positive predicate, combine them into one concise "
+                "active clause without changing the predicate. Preserve exact objects, identifiers, quantities, and "
+                "qualifiers. Do not begin with 'No', 'false', 'the evidence', or a reasoning preamble, and do not repeat the "
+                "negated queried action. Return the complete replacement extraction.\n"
+                f"Semantic contract: {json.dumps(contract, ensure_ascii=False)}\n"
+                f"Prior extraction: {json.dumps(extraction, ensure_ascii=False)}\n"
+                f"Localized evidence: {json.dumps(evidence_payload, ensure_ascii=False, default=str)}\n"
+                f"Bounded full-record views: {json.dumps(name_expansion_views, ensure_ascii=False, default=str)}"
+            )
+            alternative_payload = self.model.complete_json(
+                "tool_extract_negative_alternative_repair",
+                alternative_prompt,
+                schema,
+                max_tokens=512,
+            )
+            extraction = alternative_payload["tool_extraction"]
+        if self._needs_classification_repair(contract, extraction):
+            classification_prompt = (
+                "Normalize a strict source-classification extraction without changing its evidence. The model-owned "
+                "semantic_kind is source_classification. Examine the immutable question and determine its requested "
+                "surface form. When it asks whether a source should be treated as, considered, or classified as a type, "
+                "return a minimal yes or no followed by the explicit source classification reason when stated. When it "
+                "asks an open category question, return the category itself. Preserve cited evidence and never infer beyond "
+                "the supplied source. Return the complete replacement extraction.\n"
+                f"Semantic contract: {json.dumps(contract, ensure_ascii=False)}\n"
+                f"Prior extraction: {json.dumps(extraction, ensure_ascii=False)}\n"
+                f"Evidence: {json.dumps(evidence_payload, ensure_ascii=False, default=str)}"
+            )
+            classification_payload = self.model.complete_json(
+                "tool_extract_classification_repair",
+                classification_prompt,
+                schema,
+                max_tokens=512,
+            )
+            extraction = classification_payload["tool_extraction"]
+        if self._needs_negative_correction_repair(contract, extraction, records):
+            correction_prompt = (
+                "Normalize only the corrective clause of a grounded negative boolean extraction. Preserve contract_id, "
+                "status extracted, value no, answer shape, direct_contradiction, and the same evidence citations. Put in "
+                "reason one concise complete clause suitable immediately after 'No;'. Do not begin with 'No', 'the "
+                "evidence', 'the source', or an explanation of reasoning. When the source explicitly states an affirmative "
+                "alternative behavior, report that alternative and omit redundant restatement of the rejected action. "
+                "Prefer the concise common-noun operational subject explicitly supported by the target and source (for "
+                "example, a product runtime or the final judgment) rather than an unnecessary proper-name prefix. Preserve "
+                "identifiers, filenames, quantities, negation, exclusivity words such as 'only', and purpose phrases "
+                "such as 'for human review'. Copy the explicit alternative predicate closely rather than weakening or "
+                "generalizing it. End with "
+                "terminal punctuation. Return the complete replacement extraction.\n"
+                f"Semantic contract: {json.dumps(contract, ensure_ascii=False)}\n"
+                f"Prior extraction: {json.dumps(extraction, ensure_ascii=False)}\n"
+                f"Evidence: {json.dumps(evidence_payload, ensure_ascii=False, default=str)}"
+            )
+            correction_payload = self.model.complete_json(
+                "tool_extract_negative_correction",
+                correction_prompt,
+                schema,
+                max_tokens=512,
+            )
+            extraction = correction_payload["tool_extraction"]
+        if (
+            contract.get("answer_shape") == "number"
+            and (
+                extraction.get("status") == "unknown"
+                or self._needs_extraction_consistency_repair(extraction)
+            )
+        ):
+            numeric_prompt = (
+                "Repair a structurally malformed numeric extraction using only the immutable contract and supplied "
+                "evidence. Decide whether one explicit grounded numeric answer is established. When established, set "
+                "status extracted and put that number in value as a JSON number. Count explicit rows or items only when "
+                "the contract asks for a count; do not leave the number only in reason. When not established, set status "
+                "unknown and value 0. Cite only supplied record IDs and return the complete strict repair.\n"
+                f"Semantic contract: {json.dumps(contract, ensure_ascii=False)}\n"
+                f"Prior extraction: {json.dumps(extraction, ensure_ascii=False)}\n"
+                f"Evidence: {json.dumps(evidence_payload, ensure_ascii=False, default=str)}"
+            )
+            numeric_payload = self.model.complete_json(
+                "numeric_value_repair",
+                numeric_prompt,
+                numeric_value_repair_schema(contract["contract_id"]),
+                max_tokens=384,
+            )
+            numeric_repair = numeric_payload["numeric_value_repair"]
+            if numeric_repair["contract_id"] != contract["contract_id"]:
+                raise ProgramValidationError("numeric repair contract mismatch")
+            if not set(numeric_repair["evidence_record_ids"]).issubset(set(records_by_id)):
+                raise ProgramValidationError("numeric repair cites unavailable evidence")
+            if numeric_repair["status"] == "extracted":
+                numeric_value = float(numeric_repair["value"])
+                rendered_value = (
+                    str(int(numeric_value)) if numeric_value.is_integer() else str(numeric_value)
+                )
+                extraction = {
+                    "contract_id": contract["contract_id"],
+                    "status": "extracted",
+                    "values": [rendered_value],
+                    "answer_shape": contract["answer_shape"],
+                    "evidence_record_ids": list(numeric_repair["evidence_record_ids"]),
+                    "evidence_relation": numeric_repair["evidence_relation"],
+                    "reason": numeric_repair["reason"],
+                }
+            else:
+                extraction = {
+                    "contract_id": contract["contract_id"],
+                    "status": "unknown",
+                    "values": [],
+                    "answer_shape": contract["answer_shape"],
+                    "evidence_record_ids": list(numeric_repair["evidence_record_ids"]),
+                    "evidence_relation": numeric_repair["evidence_relation"],
+                    "reason": numeric_repair["reason"],
+                }
+        if self._needs_extraction_consistency_repair(extraction):
+            consistency_prompt = (
+                "Repair a structurally inconsistent strict extraction. Use only the immutable contract and supplied "
+                "evidence. Status must be extracted when grounded values are returned, and unknown when values is empty. "
+                "For answer_shape number, when the evidence or prior reason explicitly establishes a count or numeric value, "
+                "put that decimal numeral in values; never leave the count only in reason. Re-adjudicate the conflict without "
+                "guessing, preserve correct values and citations, and return the complete replacement extraction.\n"
+                f"Semantic contract: {json.dumps(contract, ensure_ascii=False)}\n"
+                f"Prior extraction: {json.dumps(extraction, ensure_ascii=False)}\n"
+                f"Evidence: {json.dumps(evidence_payload, ensure_ascii=False, default=str)}"
+            )
+            consistency_payload = self.model.complete_json(
+                "tool_extract_consistency_repair",
+                consistency_prompt,
+                schema,
+                max_tokens=512,
+            )
+            extraction = consistency_payload["tool_extraction"]
+        extraction = self._enforce_extraction_status_invariant(extraction)
+        if (
+            extraction.get("status") == "extracted"
+            and any(
+                not self._value_matches_contract_type(contract, str(value))
+                for value in extraction.get("values", [])
+                if str(value).strip()
+            )
+        ):
+            type_prompt = (
+                "Repair an extraction whose value has the wrong surface type for the immutable answer slot. Use only the "
+                "supplied evidence. When the slot asks for a named entity such as a customer, organization, person, team, "
+                "product, or project and does not ask for an id, code, token, account, or reference, return the explicit "
+                "human-readable name bound to the requested relation rather than an identifier. When the slot asks for an "
+                "identifier or locator, preserve that identifier or locator. Return unknown only when no correctly typed "
+                "value is explicit. Return the complete replacement extraction.\n"
+                f"Semantic contract: {json.dumps(contract, ensure_ascii=False)}\n"
+                f"Prior extraction: {json.dumps(extraction, ensure_ascii=False)}\n"
+                f"Evidence: {json.dumps(evidence_payload, ensure_ascii=False, default=str)}"
+            )
+            type_payload = self.model.complete_json(
+                "tool_extract_type_repair",
+                type_prompt,
+                schema,
+                max_tokens=512,
+            )
+            extraction = type_payload["tool_extraction"]
+        if self._needs_entity_ambiguity_repair(contract, extraction, records):
+            ambiguity_prompt = (
+                "Re-adjudicate a strict entity selection when the bounded evidence explicitly signals ambiguity, unresolved "
+                "identity, a requirement to keep entities separate, or a need for clarification. Return the selected entity "
+                "only if the immutable requested relation uniquely and explicitly binds that entity. Do not infer a merge, "
+                "equivalence, ownership, role, or identity from mere co-occurrence, a nearby name, or a statement that the "
+                "entities must remain separate. If the evidence says it does not identify which entity, is unclear, is "
+                "ambiguous, or awaits clarification, return status unknown with no values. Preserve cited evidence and return "
+                "the complete replacement extraction.\n"
+                f"Semantic contract: {json.dumps(contract, ensure_ascii=False)}\n"
+                f"Prior extraction: {json.dumps(extraction, ensure_ascii=False)}\n"
+                f"Evidence: {json.dumps(evidence_payload, ensure_ascii=False, default=str)}"
+            )
+            ambiguity_payload = self.model.complete_json(
+                "tool_extract_entity_ambiguity_repair",
+                ambiguity_prompt,
+                schema,
+                max_tokens=512,
+            )
+            extraction = ambiguity_payload["tool_extraction"]
+        if self._needs_actor_role_repair(contract, extraction, localized_views):
+            actor_candidates = self._explicit_relation_actor_candidates(contract, localized_views)
+            actor_prompt = (
+                "Repair a person-role extraction that selected a nearby speaker or participant instead of the grammatical "
+                "actor of the requested relation. Use only the immutable contract and supplied evidence. The explicit "
+                f"grammatical-subject candidates are {json.dumps(actor_candidates, ensure_ascii=False)}. Return the fullest "
+                "explicit name in the evidence that unambiguously refers to the correct candidate, not a transcript speaker "
+                "label, author of another clause, owner of another relation, or nearby participant. Preserve evidence "
+                "citations and return the complete replacement extraction.\n"
+                f"Semantic contract: {json.dumps(contract, ensure_ascii=False)}\n"
+                f"Prior extraction: {json.dumps(extraction, ensure_ascii=False)}\n"
+                f"Evidence: {json.dumps(evidence_payload, ensure_ascii=False, default=str)}"
+            )
+            actor_payload = self.model.complete_json(
+                "tool_extract_actor_role_repair",
+                actor_prompt,
+                schema,
+                max_tokens=512,
+            )
+            extraction = actor_payload["tool_extraction"]
+        if (
+            extraction.get("status") == "extracted"
+            and len(extraction.get("values", [])) == 1
+            and not self._preserve_source_surface_name(contract)
+        ):
+            full_name = self._unique_full_name_expansion(
+                str(extraction["values"][0]),
+                name_expansion_views,
+            )
+            if full_name:
+                full_name_prompt = (
+                    "Normalize a person extraction to the unique fullest explicit name in the bounded evidence. The prior "
+                    f"short value is {json.dumps(str(extraction['values'][0]), ensure_ascii=False)} and the unique explicit "
+                    f"full-name expansion is {json.dumps(full_name, ensure_ascii=False)}. Preserve the same person, relation, "
+                    "answer shape, and evidence citations; do not change to another participant. Return the complete "
+                    "replacement extraction.\n"
+                    f"Semantic contract: {json.dumps(contract, ensure_ascii=False)}\n"
+                    f"Prior extraction: {json.dumps(extraction, ensure_ascii=False)}\n"
+                    f"Localized evidence: {json.dumps(evidence_payload, ensure_ascii=False, default=str)}\n"
+                    f"Bounded full-record views for name expansion: {json.dumps(name_expansion_views, ensure_ascii=False, default=str)}"
+                )
+                full_name_payload = self.model.complete_json(
+                    "tool_extract_full_name_repair",
+                    full_name_prompt,
+                    schema,
+                    max_tokens=512,
+                )
+                extraction = full_name_payload["tool_extraction"]
+        if extraction.get("status") == "unknown":
+            explicit_actors = self._extract_explicit_actor_relation(contract, localized_views)
+            if explicit_actors:
+                extraction = {
+                    **extraction,
+                    "status": "extracted",
+                    "values": [value for value, _ in explicit_actors],
+                    "evidence_record_ids": list(dict.fromkeys(record_id for _, record_id in explicit_actors if record_id)),
+                    "evidence_relation": "direct_support",
+                    "reason": "A model-declared author relation is explicitly stated in the bounded evidence.",
+                }
+        if extraction["contract_id"] != contract["contract_id"]:
+            raise ProgramValidationError("tool extraction contract mismatch")
+        if extraction["answer_shape"] != contract["answer_shape"]:
+            raise ProgramValidationError("tool extraction answer shape mismatch")
+        available_ids = set(records_by_id)
+        evidence_ids = set(extraction["evidence_record_ids"])
+        if not evidence_ids.issubset(available_ids):
+            raise ProgramValidationError("tool extraction cites unavailable evidence")
+        values = [
+            self._canonicalize_extracted_value(contract, str(value))
+            for value in extraction["values"]
+            if str(value).strip()
+        ]
+        if (
+            extraction.get("status") == "unknown"
+            and contract["answer_shape"] == "boolean"
+            and self._mixed_epistemic_evidence(records)
+            and self._reason_explicit_false(extraction.get("reason", ""))
+        ):
+            extraction = {**extraction, "status": "extracted", "values": ["no"]}
+            values = ["no"]
+        if (
+            contract["answer_shape"] == "boolean"
+            and self._reason_is_nonproof(extraction.get("reason", ""))
+        ):
+            if self._contract_asks_proof_status(contract):
+                extraction = {
+                    **extraction,
+                    "status": "extracted",
+                    "values": ["no"],
+                    "evidence_relation": "direct_contradiction",
+                    "reason": "The requested proof status is explicitly negative.",
+                }
+                values = ["no"]
+            else:
+                extraction = {
+                    **extraction,
+                    "status": "unknown",
+                    "values": [],
+                    "evidence_relation": "absence",
+                    "reason": "The evidence states only that the proposition was unproven or unconfirmed.",
+                }
+                values = []
+        if contract["answer_shape"] == "boolean":
+            values = [
+                "yes" if value.lower() == "true" else "no" if value.lower() == "false" else value
+                for value in values
+            ]
+        if contract.get("semantic_kind") == "reported_content":
+            values = [self._select_reported_clause(value, contract) for value in values]
+        if values and not all(self._value_matches_contract_type(contract, value) for value in values):
+            extraction = {
+                **extraction,
+                "status": "unknown",
+                "values": [],
+                "evidence_relation": "type_mismatch",
+                "reason": "The extracted value type does not match the requested answer slot.",
+            }
+            values = []
+        identifier_slot_tokens = set(
+            re.findall(
+                r"[a-z0-9]+",
+                str(contract.get("answer_slot", "")).lower().replace("_", " "),
+            )
+        )
+        if identifier_slot_tokens.intersection(
+            {"id", "identifier", "code", "reference", "account"}
+        ):
+            values = [re.sub(r"[.,;:]+$", "", value.strip()) for value in values]
+        values = [
+            re.sub(r"[.,;:]+$", "", value.strip())
+            if re.match(r"^https?://", value.strip(), flags=re.IGNORECASE)
+            else value
+            for value in values
+        ]
+        entity_name_slot_tokens = {
+            "organization", "owner", "reviewer", "approver", "actor", "person",
+            "name", "witness", "inspector", "researcher", "speaker", "author",
+        }
+        if (
+            contract.get("semantic_kind") == "entity_attribute"
+            and identifier_slot_tokens.intersection(entity_name_slot_tokens)
+        ):
+            values = [re.sub(r"[.,;:]+$", "", value.strip()) for value in values]
+        cited_records = [records_by_id[item] for item in extraction["evidence_record_ids"] if item in records_by_id]
+        cited_views = [
+            localized_views_by_id[item]
+            for item in extraction["evidence_record_ids"]
+            if item in localized_views_by_id
+        ]
+        corrective_sentence = ""
+        if (
+            contract.get("answer_shape") == "boolean"
+            and any(value.strip().lower() in {"no", "false"} for value in values)
+        ):
+            if (
+                extraction.get("evidence_relation") == "direct_contradiction"
+                and self._mixed_epistemic_evidence(cited_records)
+            ):
+                corrective_sentence = self._mixed_epistemic_correction_sentence(
+                    contract,
+                    cited_views,
+                ) or str(extraction.get("reason", "")).strip()
+            if not corrective_sentence:
+                corrective_sentence = self._direct_document_classification_correction(
+                    contract,
+                    cited_views,
+                )
+            if not corrective_sentence and self._contract_asks_proof_status(contract):
+                corrective_sentence = self._proof_status_correction_sentence(
+                    contract,
+                    cited_records,
+                )
+            if (
+                not corrective_sentence
+                and extraction.get("evidence_relation") == "direct_contradiction"
+                and self._has_explicit_alternative_behavior(cited_records)
+            ):
+                corrective_sentence = str(extraction.get("reason", "")).strip()
+            if not corrective_sentence:
+                corrective_sentence = self._explicit_negative_finding_sentence(contract, cited_views)
+            if (
+                not corrective_sentence
+                and extraction.get("evidence_relation") == "direct_contradiction"
+            ):
+                corrective_sentence = self._normalize_negative_correction_clause(
+                    str(extraction.get("reason", ""))
+                )
+            if corrective_sentence:
+                extraction = {
+                    **extraction,
+                    "evidence_relation": "direct_contradiction",
+                    "reason": f"The scoped evidence explicitly reports a negative finding: {corrective_sentence}",
+                }
+        values = self._expand_temporal_values(values, cited_records, contract["temporal_mode"])
+        if (
+            values
+            and contract.get("semantic_kind") == "source_classification"
+            and contract.get("answer_shape") == "boolean"
+            and not self._has_target_bound_source_classification(contract, cited_views)
+        ):
+            extraction = {
+                **extraction,
+                "status": "unknown",
+                "values": [],
+                "evidence_relation": "absence",
+                "reason": "The localized evidence does not explicitly bind the requested source classification to the named target.",
+            }
+            values = []
+        if (
+            values
+            and contract.get("authority_mode") == "explicit_official"
+            and not self._has_explicit_authority_evidence(values, cited_views)
+        ):
+            extraction = {
+                **extraction,
+                "status": "unknown",
+                "values": [],
+                "evidence_relation": "absence",
+                "reason": "The scoped evidence does not explicitly establish the value as official or authoritative.",
+            }
+            values = []
+        if (
+            contract.get("answer_shape") == "boolean"
+            and extraction.get("evidence_relation") in {
+                "absence", "nonactual_content", "unknown"
+            }
+            and contract.get("semantic_kind") != "source_classification"
+        ):
+            extraction = {
+                **extraction,
+                "status": "unknown",
+                "values": [],
+                "reason": "The model classified the evidence as nonactual, absent, or otherwise insufficient for a boolean fact judgment.",
+            }
+            values = []
+        if (
+            contract.get("world_scope") == "nonactual_external_effect"
+            and extraction.get("evidence_relation") in {
+                "state_only", "absence", "nonactual_content", "unknown"
+            }
+        ):
+            extraction = {
+                **extraction,
+                "status": "unknown",
+                "values": [],
+                "reason": "The model classified the evidence as insufficient for a real external causal effect.",
+            }
+            values = []
+        if (
+            values
+            and contract.get("semantic_kind") == "entity_attribute"
+            and contract.get("answer_shape") != "number"
+            and not all(
+                self._value_has_explicit_entity_relation(contract, value, cited_views)
+                for value in values
+            )
+        ):
+            extraction = {
+                **extraction,
+                "status": "unknown",
+                "values": [],
+                "reason": "The localized evidence does not explicitly bind the value to the requested entity relation.",
+            }
+            values = []
+        if (
+            values
+            and self._is_definition_request(contract)
+            and not self._has_explicit_definition_evidence(contract, values, cited_records)
+        ):
+            extraction = {
+                **extraction,
+                "status": "unknown",
+                "values": [],
+                "reason": "The evidence contains no explicit definition or translation relation.",
+            }
+            values = []
+        if (
+            contract["answer_shape"] == "boolean"
+            and any(value.lower() in {"false", "no"} for value in values)
+            and contract["epistemic_mode"] == "asserted"
+            and contract["semantic_kind"] != "source_classification"
+            and self._fiction_only_boolean_evidence(cited_records)
+        ):
+            extraction = {
+                **extraction,
+                "status": "unknown",
+                "values": [],
+                "reason": "Fictional or hypothetical evidence alone cannot establish an asserted factual false.",
+            }
+            values = []
+        if values and all(self._unknown_like_value(value) for value in values):
+            extraction = {**extraction, "status": "unknown", "values": []}
+            values = []
+        if extraction["status"] == "unknown" and contract.get("answer_shape") == "boolean":
+            negative_finding = self._explicit_negative_finding_sentence(contract, cited_views)
+            if negative_finding:
+                extraction = {
+                    **extraction,
+                    "status": "extracted",
+                    "values": ["no"],
+                    "evidence_relation": "direct_contradiction",
+                    "reason": f"The scoped evidence explicitly reports a negative finding: {negative_finding}",
+                }
+                values = ["no"]
+                corrective_sentence = negative_finding
+        if extraction["status"] == "unknown":
+            if values:
+                raise ProgramValidationError("unknown tool extraction cannot contain values")
+            return ToolResult(
+                step_id,
+                "values",
+                records=[records_by_id[item] for item in evidence_ids if item in records_by_id],
+                diagnostics={"status": "unknown", "reason": extraction["reason"]},
+            )
+        if not values:
+            raise ProgramValidationError("extracted status requires values")
+        if records and not evidence_ids:
+            raise ProgramValidationError("model extraction over records requires evidence citations")
+        return ToolResult(
+            step_id,
+            "values",
+            values=values[: max(1, min(step["limit"] or 20, 20))],
+            records=cited_records,
+            diagnostics={
+                "status": "extracted",
+                "reason": extraction["reason"],
+                "evidence_record_ids": extraction["evidence_record_ids"],
+                **({"corrective_sentence": corrective_sentence} if corrective_sentence else {}),
+            },
+        )
+
+    def _profile_dataset(self) -> dict[str, Any]:
+        if self._dataset_profile is not None:
+            return self._dataset_profile
+        fingerprint = self.catalog.fingerprint
+        schema = dataset_profile_schema(fingerprint)
+        prompt = (
+            "Profile the structure and semantics of an unfamiliar raw-folder dataset. This is dataset-level "
+            "schema induction, not question answering. Describe at most six useful collections. Use only exact "
+            "collection and field paths shown in the catalog. Identify coherent record granularity, identity fields, "
+            "temporal fields, text fields, and suitable generic operations. Do not invent facts or benchmark-specific "
+            "intents. Prefer coherent logical records over line fragments when both exist.\n"
+            f"Dataset fingerprint: {fingerprint}\n"
+            f"Catalog: {self.catalog.summary(7000)}"
+        )
+        payload = self.model.complete_json("dataset_profile", prompt, schema, max_tokens=1024)
+        profile = payload["dataset_profile"]
+        valid_collections: list[dict[str, Any]] = []
+        for item in profile["collections"]:
+            path = item["collection_path"]
+            if path in {"all_records", "all_representations"} or self.catalog.collection_records(path):
+                valid_collections.append(item)
+        universal = {
+            "collection_path": "all_records",
+            "purpose": "Universal coherent evidence records across every source file; use for evidence-first retrieval when no narrow collection explicitly proves the requested relation.",
+            "record_granularity": "record",
+            "identity_fields": [],
+            "temporal_fields": [],
+            "text_fields": ["text", "source.path", "source.file_name", "source.file_stem"],
+            "extraction_notes": "Search exact source substrings, then project real fields or use generic extract_values for text.",
+        }
+        valid_collections = [item for item in valid_collections if item["collection_path"] != "all_records"]
+        profile = {**profile, "collections": [universal, *valid_collections]}
+        self._dataset_profile = profile
+        return profile
+
+    def _contract_id(self, question: str) -> str:
+        material = f"semantic-contract-v2\0{self.catalog.fingerprint}\0{question}"
+        return hashlib.sha256(material.encode("utf-8")).hexdigest()[:24]
+
+    def _parse_semantics(self, question: str) -> dict[str, Any]:
+        contract_id = self._contract_id(question)
+        schema = semantic_contract_schema(question, contract_id)
+        prompt = (
+            "Create an immutable semantic contract for the question independently of any dataset. Preserve exact "
+            "targets, scopes, grammatical roles, relations, constraints, negation, temporal requirements, epistemic "
+            "status, answer cardinality, semantic_kind, world_scope, source_scope, and authority_mode. Set source_scope "
+            "to any unless the wording explicitly selects or excludes a provenance class. Use non_cache when the question "
+            "says despite, ignore, exclude, or do not use a cache; use cache_only when it specifically asks for a hidden or "
+            "cached value; use semantic_only when it explicitly asks for the semantic or meaningful record. Set "
+            "authority_mode to explicit_official only when the requested answer must itself be explicitly official, "
+            "authoritative, canonical, verified, or approved; otherwise use any. A cache-only value is not official merely "
+            "because another non-cache source supplies an official value. Use asserted_world for ordinary real-world "
+            "facts, reported_content for beliefs or attributed claims, nonactual_internal for what happened inside a dream, "
+            "fiction, or hypothetical scenario, nonactual_external_effect when nonactual content itself is alleged to have "
+            "caused an external real-world effect, and source_metadata for classification of the source itself. Apply this "
+            "precedence strictly: when the grammatical actor is a dream, fictional story, imagined scenario, hypothesis, "
+            "rumor, belief, or claim and the predicate asks whether it actually or really caused an external event, "
+            "world_scope MUST be nonactual_external_effect and epistemic_mode MUST reflect that nonactual source. Words "
+            "such as actually or really do not convert the nonactual actor into asserted_world. For example, 'Did an "
+            "imagined scenario actually erase an external file?' is nonactual_external_effect, whereas 'Was the file erased "
+            "inside the imagined scenario?' is nonactual_internal. Conversely, when a dream or fictional episode is only a "
+            "temporal anchor and the question asks what real object or state remains before or after it, world_scope MUST be "
+            "asserted_world; for example, 'What remains installed after the dream?' asks for the later real inventory, not "
+            "an event inside the dream. Use source_classification only when the requested answer "
+            "classifies the source, document, drawing, story, message, report, or record itself; use event_fact for whether "
+            "an event occurred; reported_content for speech, belief, claims, or quoted content; definition for meaning or "
+            "translation; calculation for arithmetic; and entity_attribute for ordinary values. For reported_content, "
+            "distinguish proposition questions from argument questions. A form like 'What did a person say about a topic?' "
+            "asks for proposition content. A form like 'What did a person say broke, snapped, failed, arrived, or was "
+            "missing?' asks for the explicit argument filling that predicate, not the whole clause; use a narrow answer_slot "
+            "such as broken_item, snapped_item, failed_component, arrived_object, or missing_artifact with answer_shape text. "
+            "When the question is "
+            "polar—asking whether, should, does, did, is, was, can, or another yes/no proposition—use answer_shape "
+            "boolean even when an explanatory correction is available. A question of the form "
+            "'Who performed relation X?' asks for the actor who "
+            "explicitly performs X, not every participant, target, opponent, or mentioned person. Use answer_shape text "
+            "for one requested actor or value; use list only when the wording explicitly requests multiple values or a "
+            "set. Do not broaden singular wording into parties, participants, or groups. Distinguish asserted facts from "
+            "allegations, fiction, dreams, quotations, and hypotheticals. When a dream, fictional narrative, imagined "
+            "scenario, or hypothesis is itself the grammatical subject of an alleged real-world causal action, set "
+            "epistemic_mode to dream, fictional, or hypothetical as appropriate; do not silently convert the question to "
+            "the current state of the affected object. A boolean answer requires explicit evidence for the proposition or "
+            "its explicit negation; absence, fiction, or a dream alone does not prove false. "
+            "Unknown translations or unstated facts require explicit evidence before answering. Questions asking what "
+            "a named person said, wrote, reported, claimed, or believed require attributed content: preserve that person's "
+            "speaker role, modal words, negation, quantities, units, and temporal qualifiers. Use epistemic_mode reported "
+            "for beliefs or reported claims and quoted for explicitly quoted or forwarded message content. Set reporting_tense "
+            "to past when the question itself frames the reporting act in the past (for example what someone did say, write, "
+            "report, or claim), present when the question frames the reporting act in the present, and none when reporting "
+            "tense is not applicable. This field controls only natural reported-speech surface tense and must not alter the "
+            "underlying proposition or its temporal qualifiers. Use visible "
+            "question phrases in the phrase arrays.\n"
+            f"Question: {question}\n"
+            f"Contract ID: {contract_id}"
+        )
+        payload = self.model.complete_json("semantic_contract", prompt, schema, max_tokens=1024)
+        contract = self._normalize_contract(payload["semantic_contract"])
+        self._validate_contract(question, contract)
+        return contract
+
+    @staticmethod
+    def _normalize_contract(contract: dict[str, Any]) -> dict[str, Any]:
+        """Repair internal inconsistencies using only the model-owned contract text."""
+        normalized = dict(contract)
+        normalized.setdefault("reporting_tense", "none")
+        question_text = str(contract.get("question", "")).strip()
+        source_nouns = {
+            "text", "file", "record", "document", "note", "scan", "table", "calendar",
+            "log", "json", "csv", "tsv", "blob", "memo", "report", "dataset", "folder",
+            "corpus", "transcript", "correction",
+        }
+        source_match = re.search(
+            r"(?i)\b(?:in|from|inside|within|according to)\s+(?:the\s+)?([^?.,;]{1,90})",
+            question_text,
+        )
+        if source_match:
+            source_phrase = source_match.group(1).strip()
+            source_tokens = set(re.findall(r"[a-z0-9]+", source_phrase.lower()))
+            if source_tokens.intersection(source_nouns):
+                scopes = [str(item) for item in normalized.get("scope_phrases", [])]
+                if source_phrase.lower() not in {item.lower() for item in scopes}:
+                    normalized["scope_phrases"] = [*scopes, source_phrase]
+        if not contract.get("relation_phrases"):
+            if re.search(r"(?i)\b(?:also called|also known as|known as|nicknamed|alias(?:ed)? as)\b", question_text):
+                normalized["relation_phrases"] = ["also called"]
+            else:
+                relation_match = re.match(r"(?i)^who\s+([a-z]+)\b", question_text)
+                if relation_match and relation_match.group(1).lower() not in {
+                    "is", "are", "was", "were", "does", "do", "did", "has", "have", "had",
+                }:
+                    normalized["relation_phrases"] = [relation_match.group(1)]
+        semantic_text = " ".join(
+            [
+                str(contract.get("intent_summary", "")),
+                str(contract.get("answer_slot", "")),
+                *[str(item) for item in contract.get("target_phrases", [])],
+                *[str(item) for item in contract.get("scope_phrases", [])],
+                *[str(item) for item in contract.get("relation_phrases", [])],
+                *[str(item) for item in contract.get("constraint_phrases", [])],
+            ]
+        ).lower()
+        excludes_cache = bool(
+            re.search(
+                r"\b(?:ignore|ignoring|exclude|excluding|despite|without|non[- ]?cache)\b"
+                r".{0,80}\b(?:cache|cached)\b",
+                semantic_text,
+            )
+            or re.search(
+                r"\b(?:cache|cached)\b.{0,80}\b(?:ignore|ignoring|exclude|excluding)\b",
+                semantic_text,
+            )
+        )
+        requests_cache = bool(
+            re.search(
+                r"\b(?:hidden|cached|cache)\b.{0,50}\b(?:url|value|record|entry|field|source)\b",
+                semantic_text,
+            )
+            or re.search(
+                r"\b(?:url|value|record|entry|field|source)\b.{0,50}\b(?:cache|cached)\b",
+                semantic_text,
+            )
+        )
+        requests_semantic = bool(
+            re.search(
+                r"\b(?:semantic|meaningful|authoritative)\b.{0,40}\b(?:record|source|document|entry)\b",
+                semantic_text,
+            )
+        )
+        if excludes_cache:
+            normalized["source_scope"] = "non_cache"
+        elif requests_cache:
+            normalized["source_scope"] = "cache_only"
+        elif requests_semantic and normalized.get("source_scope") in {None, "", "any", "unknown"}:
+            normalized["source_scope"] = "semantic_only"
+        if (
+            re.search(
+                r"\b(?:official|authoritative|canonical|verified|approved|authenticated)\b",
+                semantic_text,
+            )
+            and normalized.get("authority_mode") in {None, "", "any", "unknown"}
+        ):
+            normalized["authority_mode"] = "explicit_official"
+        normalized.setdefault("source_scope", "any")
+        normalized.setdefault("authority_mode", "any")
+        return normalized
+
+    def _validate_contract(self, question: str, contract: dict[str, Any]) -> None:
+        if contract["question"] != question:
+            raise ProgramValidationError("semantic contract question mismatch")
+        rendered = json.dumps(contract, ensure_ascii=False).lower()
+        anchors = set(
+            re.findall(
+                r"\b[A-Z][A-Za-z0-9_-]{2,}\b|https?://\S+|\b[A-Za-z]+-\d+\b|\b\d+(?:\.\d+)?\b",
+                question,
+            )
+        )
+        missing = [anchor for anchor in sorted(anchors) if anchor.lower() not in rendered]
+        if missing:
+            raise ProgramValidationError(f"semantic contract omitted explicit anchors: {missing}")
+        if not contract["intent_summary"].strip() or not contract["answer_slot"].strip():
+            raise ProgramValidationError("semantic contract is incomplete")
+
+    def _compile_program(
+        self,
+        profile: dict[str, Any],
+        contract: dict[str, Any],
+    ) -> dict[str, Any]:
+        contract_id = contract["contract_id"]
+        schema = query_program_schema(contract_id)
+        prompt = (
+            'Compile the immutable semantic contract into a complete generic tool program. Do not answer the '
+            'question or reinterpret its meaning. Prefer coherent logical records. For ambiguous relations such as '
+            'owner, reviewer, state, author, or status, first retrieve evidence containing both the explicit target and '
+            'relation; never select a same-named field from an unrelated record. Use all_records unless a narrow '
+            'collection explicitly contains both. Search terms must be literal source substrings. When multiple terms '
+            'jointly identify one target, use all matching, not any. Use project_values only for actual structured answer '
+            'fields. Use extract_values for labels, spans, regex captures, URLs, identifiers, dates, numbers, or event '
+            'series. Each compact step contains tool, inputs, collection, terms, fields, filters, arguments, and limit. '
+            'The mode argument is only for search and must be all, any, or phrase. Extraction uses an extractor argument '
+            'such as field, after_label, after_phrase, before_phrase, regex, url, identifier, date_time, number, or '
+            'event_series. Add label, start_phrase, pattern, value_group, time_group, occurrence, value_kind, and '
+            'strip_chars only when needed. A field extractor must name an actual answer field, never generic text. For '
+            'current, latest, or final values, use explicit temporal evidence. For negation, allegations, fiction, dreams, '
+            'or quotations, retrieve coherent context for grounded reasoning. Use at most five steps.\n'
+            f"Tools: {json.dumps(_TOOL_DESCRIPTIONS, ensure_ascii=False)}\n"
+            f"Dataset profile: {json.dumps(profile, ensure_ascii=False)}\n"
+            f"Semantic contract: {json.dumps(contract, ensure_ascii=False)}\n"
+            f"Catalog: {self.catalog.summary(6500)}"
+        )
+        payload = self.model.complete_json("query_program", prompt, schema, max_tokens=1536)
+        program = self._normalize_program(payload["query_program"], contract)
+        try:
+            self._validate_program(contract, program)
+        except ProgramValidationError as exc:
+            repair_prompt = (
+                'Repair the structurally invalid generic tool program. Return a complete replacement, not an answer. '
+                'Preserve the immutable semantic contract. Use only valid catalog paths and earlier step indexes. The '
+                'primary multi-term target search must use all or phrase matching. Use all_records when a narrow '
+                'collection does not explicitly contain both target and relation. Never project generic text as an answer; '
+                'choose a real structured answer field or a text extractor with explicit extractor arguments. Use mode only '
+                'for search and extractor only for extraction.\n'
+                f"Validation error: {exc}\n"
+                f"Rejected program: {json.dumps(program, ensure_ascii=False)}\n"
+                f"Dataset profile: {json.dumps(profile, ensure_ascii=False)}\n"
+                f"Semantic contract: {json.dumps(contract, ensure_ascii=False)}\n"
+                f"Catalog: {self.catalog.summary(6500)}"
+            )
+            repaired = self.model.complete_json("query_program_repair", repair_prompt, schema, max_tokens=1536)
+            program = self._normalize_program(repaired["query_program"], contract)
+            self._validate_program(contract, program)
+        self.model_query_trace = {
+            "dataset_profile": profile,
+            "semantic_contract": contract,
+            "program": program,
+            "dataset_fingerprint": self.catalog.fingerprint,
+        }
+        return program
+
+    @staticmethod
+    def _normalize_program(
+        program: dict[str, Any],
+        contract: dict[str, Any] | None = None,
+    ) -> dict[str, Any]:
+        """Apply structural normalization and consume explicit model-owned contract scope."""
+        normalized = {
+            "contract_id": program["contract_id"],
+            "steps": [dict(step) for step in program["steps"]],
+        }
+        count_request = False
+        superlative_count_request = False
+        if contract is not None and contract.get("semantic_kind") == "calculation":
+            question_text = str(contract.get("question", "")).lower()
+            fallback_text = " ".join(
+                [
+                    *[str(item) for item in contract.get("target_phrases", [])],
+                    *[str(item) for item in contract.get("relation_phrases", [])],
+                ]
+            ).lower()
+            calculation_text = question_text or fallback_text
+            numbers = [float(item) for item in re.findall(r"(?<![a-z0-9_.-])-?\d+(?:\.\d+)?", calculation_text)]
+            if len(numbers) < 2:
+                calculation_text = fallback_text
+                numbers = [float(item) for item in re.findall(r"(?<![a-z0-9_.-])-?\d+(?:\.\d+)?", calculation_text)]
+            operation = ""
+            operation_patterns = [
+                ("add", r"\b(?:plus|add|added to|sum of)\b"),
+                ("subtract", r"\b(?:minus|subtract|subtracted from|difference between)\b"),
+                ("multiply", r"\b(?:times|multiply|multiplied by|product of)\b"),
+                ("divide", r"\b(?:divide|divided by|quotient of)\b"),
+            ]
+            for candidate, pattern in operation_patterns:
+                if re.search(pattern, calculation_text):
+                    operation = candidate
+                    break
+            if operation and len(numbers) >= 2:
+                normalized["steps"] = [
+                    {
+                        "tool": "calculate",
+                        "inputs": [],
+                        "collection": "",
+                        "terms": [],
+                        "fields": [],
+                        "filters": [],
+                        "arguments": [
+                            {
+                                "name": "operation",
+                                "value": operation,
+                                "values": [],
+                                "numbers": numbers[:8],
+                            }
+                        ],
+                        "limit": 1,
+                    }
+                ]
+        if contract is not None:
+            slot_tokens = set(
+                re.findall(
+                    r"[a-z0-9]+",
+                    str(contract.get("answer_slot", "")).lower().replace("_", " "),
+                )
+            )
+            intent_text = str(contract.get("intent_summary", "")).lower()
+            contract_phrase_text = " ".join(
+                [
+                    intent_text,
+                    *[str(item).lower() for item in contract.get("target_phrases", [])],
+                    *[str(item).lower() for item in contract.get("constraint_phrases", [])],
+                ]
+            )
+            count_request = bool(
+                slot_tokens.intersection({"count", "number", "total"})
+                or intent_text.startswith("count ")
+                or "count the number" in intent_text
+            )
+            superlative_count_request = bool(
+                not count_request
+                and (
+                    "highest count" in contract_phrase_text
+                    or "most " in contract_phrase_text
+                    or "largest number" in contract_phrase_text
+                )
+                and re.search(r"\b(?:row|rows|entry|entries|record|records)\b", contract_phrase_text)
+            )
+            if count_request:
+                constraint_field = ""
+                constraint_value = ""
+                condition_phrases = [
+                    *contract.get("constraint_phrases", []),
+                    *contract.get("relation_phrases", []),
+                    *contract.get("scope_phrases", []),
+                    *contract.get("target_phrases", []),
+                    str(contract.get("question", "")),
+                ]
+                for phrase in condition_phrases:
+                    text = str(phrase).lower()
+                    match = re.search(
+                        r"\b(status|state|owner|reviewer|phase|condition|category|type)\b"
+                        r"\s*(?:is|are|was|were|equals?|=|:)?\s*([a-z0-9_-]+)",
+                        text,
+                    )
+                    if match and match.group(2) not in {
+                        "in", "on", "at", "of", "for", "from", "to", "by", "with",
+                        "within", "into", "the", "a", "an",
+                    }:
+                        constraint_field = match.group(1)
+                        constraint_value = match.group(2)
+                        break
+                if not constraint_field:
+                    for phrase in condition_phrases:
+                        text = str(phrase).lower().replace("_", " ")
+                        match = re.search(
+                            r"(?:\b(?:have|has|had|with)\s+)?"
+                            r"\b(?P<value>[a-z0-9_-]+)\s+"
+                            r"(?P<field>[a-z0-9_-]+\s+status)\b",
+                            text,
+                        )
+                        if not match:
+                            continue
+                        value = match.group("value")
+                        if value in {
+                            "in", "on", "at", "of", "for", "from", "to", "by", "with",
+                            "within", "into", "the", "a", "an", "many", "how",
+                        }:
+                            continue
+                        constraint_field = re.sub(
+                            r"[^a-z0-9]+",
+                            "_",
+                            match.group("field"),
+                        ).strip("_")
+                        constraint_value = value
+                        break
+                if not constraint_field:
+                    status_values = {
+                        "active", "archived", "blocked", "open", "closed", "ready",
+                        "paused", "waiting", "draft", "released", "approved", "stable",
+                        "review", "monitoring", "testing", "reopened",
+                    }
+                    for phrase in condition_phrases:
+                        text = str(phrase).lower()
+                        match = re.search(
+                            r"\b(?:is|are|was|were|be|being)\s+([a-z0-9_-]+)\b",
+                            text,
+                        )
+                        if match and match.group(1) in status_values:
+                            constraint_field = "status"
+                            constraint_value = match.group(1)
+                            break
+                        match = re.search(
+                            r"\b(active|archived|blocked|open|closed|ready|paused|waiting|draft|released|approved|stable)\b"
+                            r"\s+(?:row|rows|entry|entries|record|records)\b",
+                            text,
+                        )
+                        if match:
+                            constraint_field = "state"
+                            constraint_value = match.group(1)
+                            break
+                target_tokens = set()
+                for phrase in contract.get("target_phrases", []):
+                    target_tokens.update(KnowMoreDiRTEngine._content_tokens(str(phrase)))
+                for phrase in condition_phrases:
+                    if constraint_field and constraint_value:
+                        phrase_tokens = KnowMoreDiRTEngine._content_tokens(str(phrase))
+                        if constraint_field in phrase_tokens or constraint_value in phrase_tokens:
+                            target_tokens.discard(constraint_field)
+                            target_tokens.discard(constraint_value)
+                target_tokens.difference_update(
+                    {
+                        "many", "row", "rows", "entry", "entries", "have", "has",
+                        "count", "number", "total", "status", "state", "active",
+                        "archived", "blocked", "open", "closed", "ready", "paused",
+                        "waiting", "draft", "released", "approved", "stable",
+                    }
+                )
+                target_tokens.difference_update(
+                    {
+                        "contact", "contacts", "item", "items", "customer", "customers",
+                        "person", "people", "file", "files", "artifact", "artifacts",
+                        "ticket", "tickets", "issue", "issues",
+                    }
+                )
+                search_terms = sorted(target_tokens)
+                if not search_terms and constraint_value:
+                    search_terms = [constraint_value]
+                if search_terms and constraint_field and constraint_value:
+                    normalized["steps"] = [
+                        {
+                            "tool": "search_records",
+                            "inputs": [],
+                            "collection": "all_records",
+                            "terms": search_terms,
+                            "fields": [],
+                            "filters": [],
+                            "arguments": [
+                                {
+                                    "name": "mode",
+                                    "value": "all",
+                                    "values": [],
+                                    "numbers": [],
+                                }
+                            ],
+                            "limit": 5000,
+                        },
+                        {
+                            "tool": "filter_records",
+                            "inputs": [0],
+                            "collection": "",
+                            "terms": [],
+                            "fields": [],
+                            "filters": [
+                                {
+                                    "field_path": constraint_field,
+                                    "operator": "equals",
+                                    "value": constraint_value,
+                                    "values": [],
+                                }
+                            ],
+                            "arguments": [],
+                            "limit": 5000,
+                        },
+                        {
+                            "tool": "aggregate_values",
+                            "inputs": [1],
+                            "collection": "",
+                            "terms": [],
+                            "fields": [],
+                            "filters": [],
+                            "arguments": [
+                                {
+                                    "name": "aggregate",
+                                    "value": "count",
+                                    "values": [],
+                                    "numbers": [],
+                                },
+                                {
+                                    "name": "distinct",
+                                    "value": "false",
+                                    "values": [],
+                                    "numbers": [],
+                                },
+                            ],
+                            "limit": 1,
+                        },
+                    ]
+                elif search_terms:
+                    counted_kind = " ".join(
+                        token
+                        for token in sorted(slot_tokens)
+                        if token not in {"count", "number", "total"}
+                    ) or "items"
+                    normalized["steps"] = [
+                        {
+                            "tool": "search_records",
+                            "inputs": [],
+                            "collection": "all_records",
+                            "terms": search_terms,
+                            "fields": [],
+                            "filters": [],
+                            "arguments": [
+                                {
+                                    "name": "mode",
+                                    "value": "all",
+                                    "values": [],
+                                    "numbers": [],
+                                }
+                            ],
+                            "limit": 20,
+                        },
+                        {
+                            "tool": "expand_source_context",
+                            "inputs": [0],
+                            "collection": "",
+                            "terms": [],
+                            "fields": [],
+                            "filters": [],
+                            "arguments": [],
+                            "limit": 5000,
+                        },
+                        {
+                            "tool": "model_extract",
+                            "inputs": [1],
+                            "collection": "",
+                            "terms": [f"count explicit matching {counted_kind}"],
+                            "fields": [],
+                            "filters": [],
+                            "arguments": [],
+                            "limit": 1,
+                        },
+                    ]
+            if superlative_count_request:
+                condition_phrases = [
+                    *contract.get("constraint_phrases", []),
+                    *contract.get("relation_phrases", []),
+                    *contract.get("scope_phrases", []),
+                    *contract.get("target_phrases", []),
+                    str(contract.get("question", "")),
+                ]
+                constraint_field = ""
+                constraint_value = ""
+                for phrase in condition_phrases:
+                    text = str(phrase).lower()
+                    match = re.search(
+                        r"\b(status|state|phase|condition|category|type)\b"
+                        r"\s*(?:is|are|was|were|equals?|=|:)?\s*([a-z0-9_-]+)",
+                        text,
+                    )
+                    if match:
+                        constraint_field = match.group(1)
+                        constraint_value = match.group(2)
+                        break
+                    match = re.search(
+                        r"\b(active|archived|blocked|open|closed|ready|paused|waiting|draft|released|approved|stable)\b"
+                        r"\s+(?:row|rows|entry|entries|record|records)\b",
+                        text,
+                    )
+                    if match:
+                        constraint_field = "state"
+                        constraint_value = match.group(1)
+                        break
+                if constraint_field and constraint_value:
+                    normalized["steps"] = [
+                        {
+                            "tool": "search_records",
+                            "inputs": [],
+                            "collection": "all_records",
+                            "terms": [constraint_value],
+                            "fields": [],
+                            "filters": [],
+                            "arguments": [
+                                {
+                                    "name": "mode",
+                                    "value": "all",
+                                    "values": [],
+                                    "numbers": [],
+                                }
+                            ],
+                            "limit": 5000,
+                        },
+                        {
+                            "tool": "filter_records",
+                            "inputs": [0],
+                            "collection": "",
+                            "terms": [],
+                            "fields": [],
+                            "filters": [
+                                {
+                                    "field_path": constraint_field,
+                                    "operator": "equals",
+                                    "value": constraint_value,
+                                    "values": [],
+                                }
+                            ],
+                            "arguments": [],
+                            "limit": 5000,
+                        },
+                        {
+                            "tool": "project_values",
+                            "inputs": [1],
+                            "collection": "",
+                            "terms": [],
+                            "fields": [str(contract.get("answer_slot", ""))],
+                            "filters": [],
+                            "arguments": [
+                                {
+                                    "name": "distinct",
+                                    "value": "false",
+                                    "values": [],
+                                    "numbers": [],
+                                }
+                            ],
+                            "limit": 5000,
+                        },
+                        {
+                            "tool": "aggregate_values",
+                            "inputs": [2],
+                            "collection": "",
+                            "terms": [],
+                            "fields": [],
+                            "filters": [],
+                            "arguments": [
+                                {
+                                    "name": "aggregate",
+                                    "value": "mode",
+                                    "values": [],
+                                    "numbers": [],
+                                }
+                            ],
+                            "limit": 1,
+                        },
+                    ]
+        if contract is not None:
+            first_search = next(
+                (step for step in normalized["steps"] if step.get("tool") == "search_records"),
+                None,
+            )
+            if first_search is not None:
+                person_slot_tokens = set(
+                    re.findall(
+                        r"[a-z0-9]+",
+                        str(contract.get("answer_slot", "")).lower().replace("_", " "),
+                    )
+                )
+                if person_slot_tokens.intersection(
+                    {
+                        "owner", "reviewer", "approver", "author", "actor", "person",
+                        "speaker", "inspector", "witness", "researcher", "doctor",
+                        "teacher", "recipient", "sender",
+                    }
+                ):
+                    first_search["limit"] = max(int(first_search.get("limit", 0)), 20)
+                first_search["terms"] = [
+                    term for term in first_search.get("terms", [])
+                    if KnowMoreDiRTEngine._content_tokens(term)
+                ]
+                existing_text = " ".join(
+                    [first_search.get("collection", ""), *first_search.get("terms", [])]
+                )
+                existing_tokens = KnowMoreDiRTEngine._content_tokens(existing_text)
+                terms = list(first_search.get("terms", []))
+                quantitative_scope_tokens = {
+                    "how", "many", "much", "count", "number", "total", "quantity"
+                }
+                answer_slot_tokens = KnowMoreDiRTEngine._content_tokens(
+                    str(contract.get("answer_slot", "")).replace("_", " ")
+                )
+                relation_scope_tokens = {
+                    token
+                    for phrase in contract.get("relation_phrases", [])
+                    for token in KnowMoreDiRTEngine._content_tokens(str(phrase))
+                }
+                source_scope_tokens = {
+                    "cache", "cached", "hidden", "file", "record", "semantic",
+                    "meaningful", "despite", "ignore", "ignoring", "exclude",
+                    "excluding", "official", "authoritative", "canonical", "verified",
+                }
+                for scope_phrase in contract.get("scope_phrases", []):
+                    scope_tokens = KnowMoreDiRTEngine._content_tokens(scope_phrase)
+                    raw_scope_tokens = set(
+                        re.findall(r"[a-z0-9]+", str(scope_phrase).lower())
+                    )
+                    if scope_tokens and scope_tokens.issubset(quantitative_scope_tokens):
+                        continue
+                    if scope_tokens and scope_tokens.issubset(answer_slot_tokens):
+                        continue
+                    if scope_tokens and scope_tokens.issubset(relation_scope_tokens):
+                        continue
+                    if (
+                        contract.get("source_scope") not in {None, "", "any", "unknown"}
+                        and raw_scope_tokens.intersection(source_scope_tokens)
+                    ):
+                        continue
+                    distinctive = {
+                        token for token in scope_tokens
+                        if token not in {"text", "record", "document", "file", "note", "data"}
+                    } or scope_tokens
+                    if distinctive and not existing_tokens.intersection(distinctive):
+                        terms.append(scope_phrase)
+                        existing_tokens.update(scope_tokens)
+                first_search["terms"] = terms
+        generic_fields = {"text", "source.path", "source.file_name", "source.file_stem"}
+        for index, compact_step in enumerate(normalized["steps"]):
+            expanded = expand_step(compact_step)
+            operation_aliases = {
+                "addition": "add", "plus": "add", "sum": "add",
+                "subtraction": "subtract", "minus": "subtract", "difference": "subtract",
+                "multiplication": "multiply", "times": "multiply", "product": "multiply",
+                "division": "divide", "quotient": "divide",
+            }
+            if expanded["tool"] == "calculate" and expanded["operation"] in operation_aliases:
+                canonical = operation_aliases[expanded["operation"]]
+                arguments = [dict(argument) for argument in compact_step.get("arguments", [])]
+                found = False
+                for argument in arguments:
+                    if argument.get("name") == "operation":
+                        argument["value"] = canonical
+                        found = True
+                if not found:
+                    arguments.append(
+                        {
+                            "name": "operation",
+                            "value": canonical,
+                            "values": [],
+                            "numbers": list(expanded["numbers"]),
+                        }
+                    )
+                normalized["steps"][index] = {**compact_step, "arguments": arguments}
+                expanded = expand_step(normalized["steps"][index])
+            if expanded["tool"] == "join_records" and len(expanded["inputs"]) == 1:
+                normalized["steps"][index] = {
+                    "tool": "expand_source_context",
+                    "inputs": list(expanded["inputs"]),
+                    "collection": "",
+                    "terms": [],
+                    "fields": [],
+                    "filters": [],
+                    "arguments": [],
+                    "limit": max(20, expanded["limit"]),
+                }
+                expanded = expand_step(normalized["steps"][index])
+            identifier_slot_tokens = set()
+            if contract is not None:
+                identifier_slot_tokens = set(
+                    re.findall(
+                        r"[a-z0-9]+",
+                        str(contract.get("answer_slot", "")).lower().replace("_", " "),
+                    )
+                )
+            temporal_role_extraction = bool(
+                contract is not None
+                and expanded["tool"] == "extract_values"
+                and expanded["extractor"] == "date_time"
+                and contract.get("semantic_kind") in {"event_fact", "entity_attribute"}
+                and (
+                    contract.get("relation_phrases")
+                    or contract.get("scope_phrases")
+                    or contract.get("target_phrases")
+                )
+            )
+            target_bound_locator_extraction = bool(
+                contract is not None
+                and contract.get("semantic_kind") == "entity_attribute"
+                and expanded["tool"] == "extract_values"
+                and (
+                    (
+                        expanded["extractor"] == "url"
+                        and identifier_slot_tokens.intersection(
+                            {"url", "uri", "link", "report", "manual", "runbook", "guide", "warranty"}
+                        )
+                    )
+                    or (
+                        expanded["extractor"] == "identifier"
+                        and identifier_slot_tokens.intersection(
+                            {"id", "identifier", "code", "reference", "account"}
+                        )
+                    )
+                )
+            )
+            if (
+                temporal_role_extraction
+                or target_bound_locator_extraction
+                or (
+                    contract is not None
+                    and contract.get("semantic_kind") == "entity_attribute"
+                    and expanded["tool"] == "extract_values"
+                    and expanded["extractor"] in {
+                        "after_label", "after_phrase", "before_phrase", "between_phrases", "regex"
+                    }
+                    and identifier_slot_tokens.intersection(
+                        {"id", "identifier", "code", "reference", "account"}
+                    )
+                )
+            ):
+                normalized["steps"][index] = {
+                    "tool": "model_extract",
+                    "inputs": list(expanded["inputs"]),
+                    "collection": expanded["collection"],
+                    "terms": list(expanded["terms"]),
+                    "fields": list(expanded["fields"]),
+                    "filters": [],
+                    "arguments": [],
+                    "limit": expanded["limit"],
+                }
+                expanded = expand_step(normalized["steps"][index])
+            if (
+                expanded["tool"] == "extract_values"
+                and expanded["extractor"] == "field"
+                and set(expanded["fields"]).issubset(generic_fields)
+            ):
+                normalized["steps"][index] = {
+                    "tool": "model_extract",
+                    "inputs": list(expanded["inputs"]),
+                    "collection": expanded["collection"],
+                    "terms": list(expanded["terms"]),
+                    "fields": list(expanded["fields"]),
+                    "filters": [],
+                    "arguments": [],
+                    "limit": expanded["limit"],
+                }
+            if normalized["steps"][index].get("tool") == "model_extract":
+                if contract is not None and contract.get("answer_shape") == "list":
+                    normalized["steps"][index]["limit"] = max(
+                        int(normalized["steps"][index].get("limit", 0)),
+                        20,
+                    )
+                normalized["steps"] = normalized["steps"][: index + 1]
+                break
+        if (
+            contract is not None
+            and contract.get("semantic_kind") == "entity_attribute"
+            and not count_request
+            and not superlative_count_request
+            and any(step.get("tool") == "model_extract" for step in normalized["steps"])
+        ):
+            first_search = next(
+                (step for step in normalized["steps"] if step.get("tool") == "search_records"),
+                None,
+            )
+            if first_search is not None:
+                target_tokens = set()
+                for phrase in contract.get("target_phrases", []):
+                    target_tokens.update(KnowMoreDiRTEngine._content_tokens(str(phrase)))
+                for phrase in contract.get("scope_phrases", []):
+                    target_tokens.update(KnowMoreDiRTEngine._content_tokens(str(phrase)))
+                relation_tokens = set()
+                for phrase in contract.get("relation_phrases", []):
+                    relation_tokens.update(KnowMoreDiRTEngine._content_tokens(str(phrase)))
+                slot_tokens = set(
+                    re.findall(
+                        r"[a-z0-9]+",
+                        str(contract.get("answer_slot", "")).lower().replace("_", " "),
+                    )
+                )
+                target_tokens.difference_update(relation_tokens | slot_tokens)
+                target_tokens.difference_update(
+                    {
+                        "owns", "owned", "owner", "reviewer", "reviewed",
+                        "identify", "identifies", "identified", "identifier",
+                        "belong", "belongs", "belonged", "associate", "associated",
+                        "attribute", "value", "cache", "cached", "hidden", "official",
+                        "semantic", "record", "file", "despite", "ignore", "ignoring",
+                    }
+                )
+                if target_tokens:
+                    first_search["terms"] = sorted(target_tokens)
+                first_search["collection"] = "all_records"
+                first_search["fields"] = []
+                first_search["arguments"] = [
+                    {
+                        "name": "mode",
+                        "value": "all",
+                        "values": [],
+                        "numbers": [],
+                    }
+                ]
+                first_search["limit"] = max(int(first_search.get("limit", 0)), 20)
+        return normalized
+
+    def _valid_collection(self, collection: str) -> bool:
+        if not collection:
+            return True
+        if collection in {"all_records", "all_representations"}:
+            return True
+        if collection in self.catalog.collections:
+            return True
+        return bool(self.catalog.collection_records(collection))
+
+    @staticmethod
+    def _content_tokens(value: str) -> set[str]:
+        ignored = {
+            "a", "an", "the", "in", "on", "at", "of", "for", "to", "from", "with",
+            "who", "what", "which", "where", "when", "how", "is", "are", "was", "were", "did", "does", "do",
+            "this", "that", "provided", "mentioned", "listed", "shown", "stated", "corpus",
+            "folder", "collection", "source", "sources", "record", "records",
+            "semantic", "meaningful", "credible",
+            "reliable", "authoritative", "trustworthy", "trusted", "valid", "clean",
+            "recorded", "described", "called", "named", "mean", "means", "translated",
+            "translation", "stored", "located", "kept", "found", "location",
+            "really", "actually", "factually", "truly", "real", "about", "regarding",
+            "concerning", "according", "per", "says", "said", "believes", "believed",
+            "reported", "wrote", "written", "forwarded", "quoted",
+            "row", "rows", "entry", "entries",
+            "after", "before", "during", "since", "until", "following", "preceding",
+        }
+        return {
             token
-            for variable in frame.answer_variables
-            for token in content_tokens(variable)
-            if token and token not in target_tokens
+            for token in re.findall(r"[a-z0-9]+", value.lower())
+            if token not in ignored and len(token) > 1
+        }
+
+    @staticmethod
+    def _is_definition_request(contract: dict[str, Any]) -> bool:
+        text = " ".join(
+            [
+                str(contract.get("answer_slot", "")),
+                str(contract.get("intent_summary", "")),
+                *[str(item) for item in contract.get("relation_phrases", [])],
+            ]
+        ).lower()
+        return bool(
+            re.search(
+                r"\b(?:meaning|definition|translation|translate|translated)\b",
+                text,
+            )
+        )
+
+    @staticmethod
+    def _has_explicit_definition_evidence(
+        contract: dict[str, Any],
+        values: list[str],
+        records: list[Any],
+    ) -> bool:
+        if not values or not records:
+            return False
+        targets: list[str] = []
+        for item in contract.get("target_phrases", []):
+            phrase = str(item).strip().lower()
+            if not phrase:
+                continue
+            targets.append(phrase)
+            targets.extend(sorted(KnowMoreDiRTEngine._content_tokens(phrase)))
+        targets = list(dict.fromkeys(targets))
+        word_relation = r"(?:means?|meaning(?:\s+is)?|definition(?:\s+is)?|translat(?:es?|ion)(?:\s+is|\s+to)?|refers?\s+to)"
+        for record in records:
+            text = (
+                str(getattr(record, "text", ""))
+                + "\n"
+                + json.dumps(getattr(record, "data", {}), ensure_ascii=False, default=str)
+            ).lower()
+            for target in targets:
+                if target not in text:
+                    continue
+                for value in values:
+                    value_text = str(value).strip().lower()
+                    if not value_text or value_text not in text:
+                        continue
+                    target_pattern = re.escape(target)
+                    value_pattern = re.escape(value_text)
+                    if re.search(
+                        rf"{target_pattern}.{{0,80}}{word_relation}.{{0,80}}{value_pattern}",
+                        text,
+                        flags=re.IGNORECASE | re.DOTALL,
+                    ):
+                        return True
+                    if re.search(
+                        rf"{target_pattern}\s*(?::=|=|:|—|-)\s*[\"']?{value_pattern}",
+                        text,
+                        flags=re.IGNORECASE,
+                    ):
+                        return True
+                    if re.search(
+                        rf"(?:meaning|definition|translation).{{0,80}}{value_pattern}",
+                        text,
+                        flags=re.IGNORECASE | re.DOTALL,
+                    ):
+                        return True
+        return False
+
+    @staticmethod
+    def _expand_temporal_values(
+        values: list[str],
+        records: list[Any],
+        temporal_mode: str,
+    ) -> list[str]:
+        if temporal_mode != "at_time" or not values or not records:
+            return values
+        evidence_text = "\n".join(str(getattr(record, "text", "")) for record in records)
+        full_datetimes = re.findall(
+            r"\b\d{4}-\d{2}-\d{2}[ T]\d{2}:\d{2}(?::\d{2})?\b",
+            evidence_text,
+        )
+        output: list[str] = []
+        for value in values:
+            stripped = value.strip()
+            if re.fullmatch(r"\d{2}:\d{2}(?::\d{2})?", stripped):
+                matches = [item for item in full_datetimes if item.endswith(stripped)]
+                output.append(matches[0] if len(matches) == 1 else value)
+            elif re.fullmatch(r"\d{4}-\d{2}-\d{2}", stripped):
+                matches = [item for item in full_datetimes if item.startswith(stripped)]
+                output.append(matches[0] if len(matches) == 1 else value)
+            else:
+                output.append(value)
+        return output
+
+    @classmethod
+    def _target_mixed_epistemic_evidence(
+        cls,
+        record: Any,
+        contract: dict[str, Any],
+    ) -> bool:
+        target_tokens = cls._contract_target_tokens(contract)
+        if not target_tokens:
+            return False
+        fiction_markers = {
+            "fiction", "fictional", "fantasy", "dream", "dreamed", "hypothetical",
+            "imagined", "imaginary", "made-up", "myth", "legend", "story",
+        }
+        reality_markers = {
+            "in reality", "real-world", "when i woke", "woke up", "still exists",
+            "still existed", "still contains", "still contained", "verified", "confirmed",
+            "inspection", "incident report", "actual state", "observed state",
+        }
+        text = str(getattr(record, "text", "") or "")
+        segments = [
+            item.strip()
+            for item in re.split(r"(?<=[.!?])\s+|\n+", text)
+            if item.strip()
+        ]
+        fiction_targets: list[set[str]] = []
+        reality_targets: list[set[str]] = []
+        for segment in segments:
+            lowered = segment.lower()
+            overlap = cls._content_tokens(segment).intersection(target_tokens)
+            if not overlap:
+                continue
+            if any(marker in lowered for marker in fiction_markers):
+                fiction_targets.append(overlap)
+            if any(marker in lowered for marker in reality_markers):
+                reality_targets.append(overlap)
+        return any(left.intersection(right) for left in fiction_targets for right in reality_targets)
+
+    @staticmethod
+    def _mixed_epistemic_evidence(records: list[Any]) -> bool:
+        fiction_markers = {
+            "fiction", "fictional", "fantasy", "dream", "dreamed", "hypothetical",
+            "imagined", "imaginary", "made-up", "myth", "legend", "story",
+        }
+        reality_markers = {
+            "in reality", "real-world", "when i woke", "woke up", "still exists",
+            "still existed", "still contains", "still contained", "verified", "confirmed",
+            "inspection", "incident report", "actual state", "observed state",
+        }
+        for record in records:
+            text = (
+                str(getattr(record, "text", ""))
+                + " "
+                + json.dumps(getattr(record, "data", {}), ensure_ascii=False, default=str)
+            ).lower()
+            if (
+                any(marker in text for marker in fiction_markers)
+                and any(marker in text for marker in reality_markers)
+            ):
+                return True
+        return False
+
+    @staticmethod
+    def _fiction_only_boolean_evidence(records: list[Any]) -> bool:
+        if not records:
+            return False
+        fiction_markers = {
+            "fiction", "fictional", "fantasy", "dream", "dreamed", "hypothetical",
+            "imagined", "imaginary", "made-up", "myth", "legend", "story",
+        }
+        reality_markers = {
+            "in reality", "real-world", "when i woke", "woke up", "still exists",
+            "still existed", "still contains", "still contained", "verified", "confirmed",
+            "inspection", "incident report", "actual state", "observed state",
+        }
+        def fiction_only(record: Any) -> bool:
+            text = (
+                str(getattr(record, "text", ""))
+                + " "
+                + json.dumps(getattr(record, "data", {}), ensure_ascii=False, default=str)
+            ).lower()
+            return (
+                any(marker in text for marker in fiction_markers)
+                and not any(marker in text for marker in reality_markers)
+            )
+        return all(fiction_only(record) for record in records)
+
+    @staticmethod
+    def _relation_stem(token: str) -> str:
+        value = str(token).lower()
+        aliases = {
+            "status": "state",
+            "condition": "state",
+            "phase": "state",
+            "own": "own",
+            "owns": "own",
+            "owned": "own",
+            "owner": "own",
+            "ownership": "own",
+            "bought": "buy",
+            "purchase": "buy",
+            "purchased": "buy",
+            "purchases": "buy",
+            "buying": "buy",
+            "found": "find",
+            "finding": "find",
+        }
+        if value in aliases:
+            return aliases[value]
+        for suffix in ("ations", "ation", "ions", "ion", "ing", "ers", "ors", "ed", "er", "or", "es", "s"):
+            if value.endswith(suffix) and len(value) - len(suffix) >= 4:
+                value = value[: -len(suffix)]
+                break
+        return aliases.get(value, value)
+
+    @classmethod
+    def _entity_relation_stems(cls, contract: dict[str, Any]) -> set[str]:
+        phrases = [
+            *[str(item) for item in contract.get("relation_phrases", [])],
+            *[str(item) for item in contract.get("constraint_phrases", [])],
+        ]
+        ignored = {
+            "not", "no", "without", "except", "excluding", "exclude",
+            "with", "to", "from", "by", "of", "for", "in", "on", "at",
+            "into", "about", "according", "per", "the", "a", "an", "and",
+            "or", "is", "are", "was", "were", "be", "been", "being",
+            "did", "does", "do", "has", "have", "had", "should", "would",
+            "could", "can", "may", "might", "must",
         }
         relation_tokens: set[str] = set()
-        for source in [frame.requested_relation, *frame.relation_terms]:
-            source_tokens = content_tokens(source)
-            if source_tokens:
-                for token in source_tokens:
-                    relation_tokens.update(term_variants(token))
-                continue
-            source_norm = normalize(source)
-            if source_norm:
-                relation_tokens.add(source_norm)
-        if not target_tokens or not relation_tokens:
-            return text
-        relation_indexes = [
-            index for index, token in enumerate(normalized_words)
-            if token in relation_tokens
-        ]
-        if not relation_indexes:
-            return text
-        relation_index = relation_indexes[-1]
-        if relation_index >= len(words) - 1:
-            return text
-        prefix_tokens = set(normalized_words[: relation_index + 1])
-        prefix_has_target = bool(prefix_tokens & target_tokens)
-        prefix_has_slot = bool(slot_tokens and (prefix_tokens & slot_tokens))
-        if not prefix_has_target and not prefix_has_slot:
-            return text
-        if slot_tokens and prefix_has_target and not prefix_has_slot:
-            return text
-        residual_words = words[relation_index + 1 :]
-        if len(residual_words) > 4:
-            return text
-        residual = clean_extracted_value(" ".join(residual_words)).strip(" .;:")
-        return residual or text
-
-    def _strip_redundant_answer_slot_suffix(self, text: str, frame: QueryFrame) -> str:
-        slot_terms = [
-            term
-            for variable in frame.answer_variables
-            for term in [variable, *content_tokens(variable)]
-            if normalize(term)
-        ]
-        if not slot_terms:
-            return text
-        current = text
-        for slot in sorted(dict.fromkeys(slot_terms), key=lambda value: len(value), reverse=True):
-            suffix = " " + normalize(slot)
-            if normalize(current).endswith(suffix) and len(current.split()) <= 8:
-                trimmed = current[: -len(suffix)].strip()
-                if trimmed:
-                    current = trimmed
-                    break
-        return current
-
-    def _strip_redundant_target_tail(self, text: str, frame: QueryFrame) -> str:
-        current = text
-        for target in sorted(dict.fromkeys(frame.target_anchors), key=lambda value: len(value), reverse=True):
-            target_clean = clean_extracted_value(target).strip(" ?.:")
-            if not target_clean:
-                continue
-            suffix = " for " + normalize(target_clean)
-            if normalize(current).endswith(suffix):
-                trimmed = current[: -(len(" for ") + len(target_clean))].strip()
-                if trimmed:
-                    current = trimmed
-                    break
-        return current
-
-    def _date_time_shape_compatible(self, frame: QueryFrame | None, value: str) -> bool:
-        if frame is None:
-            return True
-        answer_material = normalize(
-            " ".join([*frame.answer_variables, frame.requested_relation, *frame.relation_terms, *frame.constraints])
-        )
-        if not answer_material:
-            return True
-        asks_for_calendar_date = any(term in answer_material.split() for term in ("date", "day"))
-        asks_for_clock_time = any(term in answer_material.split() for term in ("time", "hour", "minute"))
-        if not asks_for_calendar_date or asks_for_clock_time:
-            return True
-        return re.fullmatch(r"\d{1,2}:\d{2}", normalize(value)) is None
-
-    def _finalize_answer(
-        self,
-        question: str,
-        answer: Answer,
-        expected: ExpectedAnswer,
-        source: str,
-        frame: QueryFrame | None = None,
-    ) -> Answer | None:
-        if normalize(answer.text) == "unknown":
-            return answer
-        has_metadata_evidence = any(is_metadata_evidence_text(evidence.text) for evidence in answer.evidence)
-        if expected.answer_type == "unknown":
-            model_type = answer.answer_type if answer.answer_type not in {"", "unknown"} else classify_value(answer.text)
-            if model_type != "unknown":
-                expected = ExpectedAnswer(model_type, allow_metadata_evidence=has_metadata_evidence or model_type == "metadata_value")  # type: ignore[arg-type]
-        if expected.answer_type == "content_phrase" and source.startswith("local model"):
-            structural_type = classify_value(answer.text)
-            if structural_type in {"url", "identifier", "file_path", "date_time", "count"}:
-                expected = ExpectedAnswer(structural_type)  # type: ignore[arg-type]
-        if not self._answer_has_source_grounding(answer):
-            return None
-        if has_metadata_evidence and not expected.allow_metadata_evidence:
-            return None
-        canonical = canonicalize_answer(expected, answer.text)
-        if canonical and source.startswith("local model") and expected.answer_type in {"content_phrase", "state", "metadata_value"}:
-            canonical = self._canonicalize_model_answer_with_local_model(question, canonical, expected, answer.evidence) or canonical
-        if normalize(canonical) == "unknown":
-            return Answer("unknown", 0.0, answer.evidence, source, "unknown")
-        if (
-            canonical
-            and source.startswith("local model")
-            and expected.answer_type in {"person", "actor"}
-            and len(str(canonical).split()) == 1
-            and answer.evidence
-        ):
-            canonical = self._canonicalize_identity_with_local_model(question, canonical, answer.evidence) or canonical
-        if not canonical:
-            return None
-        if expected.answer_type == "date_time" and not self._date_time_shape_compatible(frame, canonical):
-            return None
-        pre_cleanup_canonical = canonical
-        canonical = self._cleanup_canonical_answer(canonical, expected, frame)
-        if expected.answer_type in {"person", "actor", "organization"}:
-            canonical = self._expand_single_name_from_evidence(canonical, answer.evidence)
-        canonical = self._central_answer_guard(question, canonical, expected, frame, answer.evidence)
-        canonical = self._restore_sentence_terminal_punctuation(
-            canonical,
-            pre_cleanup_canonical,
-            expected,
-            answer.evidence,
-        )
-        if not canonical:
-            return None
-        if normalize(canonical) == "unknown":
-            return Answer("unknown", 0.0, answer.evidence, source, "unknown")
-        return Answer(canonical, answer.confidence, answer.evidence, source, expected.answer_type)
-
-    def _restore_sentence_terminal_punctuation(
-        self,
-        text: str,
-        source_value: str,
-        expected: ExpectedAnswer,
-        evidence: list[Evidence],
-    ) -> str:
-        if expected.answer_type not in {"content_phrase", "state", "metadata_value"}:
-            return text
-        value = str(text or "").strip()
-        if not value or value[-1] in ".!?":
-            return value
-        words = [word for word in value.split() if word]
-        if len(words) < 4 or not words[0][:1].isupper():
-            return value
-        low_words = [normalize(word.strip(".,;:!?")) for word in words]
-        finite_or_modal = {
-            "are",
-            "can",
-            "could",
-            "did",
-            "does",
-            "has",
-            "is",
-            "may",
-            "might",
-            "must",
-            "needs",
-            "should",
-            "was",
-            "were",
-            "will",
-            "would",
-        }
-        source_norm = normalize(str(source_value or "").strip(" .;:!?"))
-        value_norm = normalize(value.strip(" .;:!?"))
-        if not source_norm and not value_norm:
-            return value
-        evidence_texts = self._terminal_punctuation_evidence_texts(evidence)
-        for evidence_text in evidence_texts:
-            if evidence_text[-1] in ".!?" and value_norm == normalize(evidence_text.strip(" .;:!?")):
-                return value + evidence_text[-1]
-        has_sentence_predicate = any(
-            word in finite_or_modal or word.endswith(("ed", "ing"))
-            for word in low_words[1:]
-        )
-        if not has_sentence_predicate:
-            return value
-        for evidence_text in evidence_texts:
-            if evidence_text[-1] not in ".!?":
-                continue
-            evidence_norm = normalize(evidence_text.strip(" .;:!?"))
-            if source_norm and source_norm in evidence_norm:
-                return value + evidence_text[-1]
-            if value_norm and value_norm in evidence_norm:
-                return value + evidence_text[-1]
-            value_terms = content_tokens(value)
-            evidence_terms: set[str] = set()
-            for term in content_tokens(evidence_text):
-                evidence_terms.update(term_variants(term))
-            if len(value_terms) >= 3 and all(term_variants(term) & evidence_terms for term in value_terms):
-                return value + evidence_text[-1]
-        terminal = next((text[-1] for text in evidence_texts if text and text[-1] in ".!?"), "")
-        if terminal:
-            value_terms = content_tokens(value)
-            combined_terms: set[str] = set()
-            for evidence_text in evidence_texts:
-                for term in content_tokens(evidence_text):
-                    combined_terms.update(term_variants(term))
-            if len(value_terms) >= 3 and all(term_variants(term) & combined_terms for term in value_terms):
-                return value + terminal
-        return value
-
-    def _terminal_punctuation_evidence_texts(self, evidence: list[Evidence]) -> list[str]:
-        values: list[str] = []
-        for item in evidence:
-            evidence_text = str(item.text or "").strip()
-            if evidence_text:
-                values.append(evidence_text)
-            span_id = str(item.span_id or "")
-            if not span_id or not hasattr(self, "store"):
-                continue
-            try:
-                row = self.store.execute(
-                    "SELECT surface FROM source_spans WHERE span_id=? LIMIT 1",
-                    (span_id,),
-                ).fetchone()
-            except Exception:
-                row = None
-            if row is None:
-                continue
-            try:
-                surface = str(row["surface"] or "").strip()
-            except Exception:
-                surface = str(row[0] or "").strip()
-            if surface:
-                values.append(surface)
-        return list(dict.fromkeys(values))
-
-    def _canonicalize_model_answer_with_local_model(
-        self,
-        question: str,
-        value: str,
-        expected: ExpectedAnswer,
-        evidence: list[Evidence],
-    ) -> str:
-        if self._model_client is None:
-            return value
-        if expected.answer_type not in {"person", "actor", "organization", "boolean", "content_phrase", "state", "metadata_value"}:
-            return value
-        if len(str(value).split()) < 2:
-            return value
-        evidence_payload = self._evidence_payload(evidence, limit=6)
-        if not evidence_payload:
-            return value
-        source_resolved = self._source_resolve_model_answer_with_local_model(
-            question,
-            value,
-            expected,
-            evidence_payload,
-        )
-        if source_resolved and normalize(source_resolved) != normalize(value):
-            return source_resolved
-        trace = self.model_query_trace
-        trace.canonicalization_call_count += 1
-        result = call_model_answer_canonicalization(
-            question,
-            value,
-            expected.answer_type,
-            evidence_payload,
-            self._model_client,
-        )
-        self._record_model_result(result)
-        if result.get("prompt_hash"):
-            trace.prompt_hashes = [*list(trace.prompt_hashes or []), str(result["prompt_hash"])][-20:]
-        if result.get("output_hash"):
-            trace.response_hashes = [*list(trace.response_hashes or []), str(result["output_hash"])][-20:]
-        if not result.get("accepted"):
-            trace.canonicalization_rejected_count += 1
-            return value
-        proposed = str(result.get("answer") or "")
-        if normalize(proposed) == "unknown":
-            trace.canonicalization_accepted_count += 1
-            return "unknown"
-        canonical = canonicalize_answer(expected, proposed)
-        if not canonical:
-            trace.canonicalization_rejected_count += 1
-            return value
-        trace.canonicalization_accepted_count += 1
-        return canonical
-
-    def _source_resolve_model_answer_with_local_model(
-        self,
-        question: str,
-        value: str,
-        expected: ExpectedAnswer,
-        evidence_payload: list[dict[str, str]],
-    ) -> str:
-        if self._model_client is None:
-            return value
-        if expected.answer_type not in {"content_phrase", "state", "metadata_value"}:
-            return value
-        if not self._answer_has_source_deictic_terms(value):
-            return value
-        trace = self.model_query_trace
-        trace.canonicalization_call_count += 1
-        result = call_model_source_resolved_answer(
-            question,
-            value,
-            expected.answer_type,
-            evidence_payload,
-            self._model_client,
-        )
-        self._record_model_result(result)
-        if result.get("prompt_hash"):
-            trace.prompt_hashes = [*list(trace.prompt_hashes or []), str(result["prompt_hash"])][-20:]
-        if result.get("output_hash"):
-            trace.response_hashes = [*list(trace.response_hashes or []), str(result["output_hash"])][-20:]
-        if not result.get("accepted"):
-            trace.canonicalization_rejected_count += 1
-            return value
-        proposed = str(result.get("answer") or "")
-        if normalize(proposed) == "unknown":
-            trace.canonicalization_accepted_count += 1
-            return "unknown"
-        canonical = canonicalize_answer(expected, proposed)
-        if not canonical:
-            trace.canonicalization_rejected_count += 1
-            return value
-        trace.canonicalization_accepted_count += 1
-        return canonical
-
-    def _answer_has_source_deictic_terms(self, value: str) -> bool:
-        tokens = [token.lower().strip(".,;:!?()[]{}\"'`") for token in re.findall(r"[A-Za-z]+", value or "")]
-        return any(token in SOURCE_DEICTIC_TOKENS for token in tokens)
-
-    def _search(self, question: str, limit: int = 12, required: list[str] | None = None) -> list[tuple[Sentence, float]]:
-        frame = plan_question(question)
-        combined: dict[str, tuple[Sentence, float]] = {}
-        for sentence, score in self.index.search(question, limit=limit, required=required):
-            combined[sentence.sentence_id] = (sentence, score)
-
-        anchors = list(frame.target_anchors)
-        relation_terms = list(frame.relation_terms)
-        for row in self.store.referent_candidate_chunks(self.run_id, anchors, limit=limit):
-            sentence = self._sentences_by_location.get((str(row["rel_path"]), int(row["chunk_order"])))
-            if sentence:
-                previous = combined.get(sentence.sentence_id, (sentence, 0.0))[1]
-                combined[sentence.sentence_id] = (sentence, previous + 2.0)
-        for row in self.store.frame_candidate_chunks(self.run_id, relation_terms, anchors, limit=limit):
-            sentence = self._sentences_by_location.get((str(row["rel_path"]), int(row["chunk_order"])))
-            if sentence:
-                previous = combined.get(sentence.sentence_id, (sentence, 0.0))[1]
-                combined[sentence.sentence_id] = (sentence, previous + 2.5)
-        for row in self.store.relation_candidate_chunks(self.run_id, relation_terms, anchors, limit=limit):
-            sentence = self._sentences_by_location.get((str(row["rel_path"]), int(row["chunk_order"])))
-            if sentence:
-                previous = combined.get(sentence.sentence_id, (sentence, 0.0))[1]
-                combined[sentence.sentence_id] = (sentence, previous + 2.5)
-        for sentence, score in self._metadata_bounded_candidates(question, limit=max(limit * 2, 24)):
-            previous = combined.get(sentence.sentence_id, (sentence, 0.0))[1]
-            combined[sentence.sentence_id] = (sentence, max(previous, score))
-
-        seed_items = list(combined.values())
-        for sentence, score in seed_items:
-            document_sentences = self._sentences_by_document.get(sentence.rel_path, {})
-            for offset in range(-4, 5):
-                if offset == 0:
+        for phrase in phrases:
+            raw_tokens = re.findall(r"[A-Za-z0-9]+", phrase)
+            for index, raw in enumerate(raw_tokens):
+                token = raw.lower()
+                if token in ignored:
                     continue
-                neighbor = document_sentences.get(sentence.order + offset)
-                if neighbor:
-                    previous = combined.get(neighbor.sentence_id, (neighbor, 0.0))[1]
-                    combined[neighbor.sentence_id] = (neighbor, max(previous, score * 0.55))
+                # Later capitalized tokens in a relation phrase are normally named
+                # arguments (for example, "merged with Morgan Hale"), not predicates.
+                if index > 0 and raw[:1].isupper():
+                    continue
+                relation_tokens.add(token)
+        if relation_tokens:
+            return {cls._relation_stem(token) for token in relation_tokens if token}
 
-        adjusted: list[tuple[Sentence, float]] = []
-        target_terms = [normalize(anchor) for anchor in frame.target_anchors if normalize(anchor)]
-        relation_terms = [normalize(term) for term in [frame.requested_relation, *frame.relation_terms, *frame.constraints] if normalize(term)]
-        for sentence, score in combined.values():
-            text_norm = normalize(sentence.text)
-            score += sum(2.0 for term in target_terms if term and term in text_norm)
-            score += sum(4.0 for term in relation_terms if term and term in text_norm)
-            if sentence.rel_path in self._low_semantic_noise_paths:
-                score *= 0.15
-            adjusted.append((sentence, score))
-        scored = sorted(adjusted, key=lambda item: (-item[1], item[0].rel_path, item[0].order))
-        return scored[:limit]
+        slot_tokens = {
+            token
+            for token in re.findall(
+                r"[a-z0-9]+",
+                str(contract.get("answer_slot", "")).lower().replace("_", " "),
+            )
+            if token not in {
+                "person", "name", "value", "answer", "content", "entity",
+                "what", "who", "where", "when", "which", "how",
+                "current", "final", "latest", "earliest", "present", "active",
+            }
+        }
+        return {cls._relation_stem(token) for token in slot_tokens if token}
 
-    def _metadata_bounded_candidates(self, question: str, limit: int = 24) -> list[tuple[Sentence, float]]:
-        query_tokens = [
-            token for token in content_tokens(question)
-            if len(token) > 3 and token not in {"file", "folder", "document", "object", "source"}
+    @classmethod
+    def _value_has_explicit_entity_relation(
+        cls,
+        contract: dict[str, Any],
+        value: str,
+        evidence_views: list[dict[str, Any]],
+    ) -> bool:
+        if contract.get("semantic_kind") != "entity_attribute":
+            return True
+        relation_stems = cls._entity_relation_stems(contract)
+        if not relation_stems:
+            return True
+        normalized_value = re.sub(r"\s+", " ", str(value).strip().lower())
+        if not normalized_value:
+            return False
+        slot_tokens = set(
+            re.findall(
+                r"[a-z0-9]+",
+                str(contract.get("answer_slot", "")).lower().replace("_", " "),
+            )
+        )
+        locator_slot = bool(
+            slot_tokens.intersection(
+                {"location", "storage", "url", "uri", "path", "address", "directory", "shelf", "room"}
+            )
+        )
+        locator_value = bool(
+            re.match(r"^(?:https?://|file://|/|[a-z]:\\)", normalized_value)
+        )
+        target_tokens = cls._contract_target_tokens(contract)
+        for view in evidence_views:
+            text = (
+                str(view.get("excerpt", ""))
+                + "\n"
+                + str(view.get("text", ""))
+                + "\n"
+                + json.dumps(view.get("data", {}), ensure_ascii=False, default=str)
+            ).lower()
+            if locator_slot and locator_value and normalized_value in text:
+                value_index = text.find(normalized_value)
+                locator_window = text[max(0, value_index - 220) : value_index + len(normalized_value) + 120]
+                window_tokens = cls._content_tokens(locator_window)
+                required_target_overlap = max(1, min(2, len(target_tokens)))
+                if len(window_tokens.intersection(target_tokens)) >= required_target_overlap:
+                    return True
+            start = 0
+            while True:
+                index = text.find(normalized_value, start)
+                if index < 0:
+                    break
+                window = text[max(0, index - 140) : index + len(normalized_value) + 140]
+                window_stems = {
+                    cls._relation_stem(token)
+                    for token in re.findall(r"[a-z0-9]+", window)
+                }
+                if relation_stems & window_stems:
+                    return True
+                start = index + max(1, len(normalized_value))
+        return False
+
+    @staticmethod
+    def _contract_asks_proof_status(contract: dict[str, Any]) -> bool:
+        text = " ".join(
+            [
+                str(contract.get("question", "")),
+                str(contract.get("answer_slot", "")).replace("_", " "),
+                *[str(item) for item in contract.get("constraint_phrases", [])],
+                *[str(item) for item in contract.get("relation_phrases", [])],
+            ]
+        ).lower()
+        return bool(re.search(r"\b(?:proof|prove|proved|proven|established|confirmed)\b", text))
+
+    @classmethod
+    def _proof_status_correction_sentence(
+        cls,
+        contract: dict[str, Any],
+        records: list[Any],
+    ) -> str:
+        if not cls._contract_asks_proof_status(contract):
+            return ""
+        text = "\n".join(str(getattr(record, "text", "")) for record in records)
+        if not re.search(r"(?i)\b(?:no|without)\s+proof\b|\bnot\s+proven\b", text):
+            return ""
+        if re.search(r"(?i)\bfinal\s+judgment\b", text):
+            return "the final judgment found no proof"
+        if re.search(r"(?i)\b(?:court|tribunal|panel)\b", text):
+            return "the court found no proof"
+        return "the evidence contained no proof"
+
+    @staticmethod
+    def _reason_is_nonproof(reason: str) -> bool:
+        text = re.sub(r"\s+", " ", str(reason).strip().lower())
+        markers = (
+            "not proven", "unproven", "not confirmed", "unconfirmed",
+            "no proof", "insufficient proof", "insufficient evidence",
+            "lack of proof", "lack of evidence", "not established as fact",
+            "no decision was made", "no final decision", "not decided",
+            "undecided", "decision pending", "pending decision",
+            "no confirmation", "not adopted as a plan",
+        )
+        if any(marker in text for marker in markers):
+            return True
+        return bool(
+            re.search(
+                r"\bno\b.{0,80}\b(?:decision|confirmation|approval|determination)\b"
+                r".{0,30}\b(?:was|were|has been|had been)?\s*(?:made|reached|given|recorded|issued|confirmed)?\b",
+                text,
+            )
+        )
+
+    @staticmethod
+    def _reason_explicit_false(reason: str) -> bool:
+        text = re.sub(r"\s+", " ", str(reason).strip().lower())
+        markers = (
+            "did not occur", "didn't occur", "did not happen", "didn't happen",
+            "did not take place", "not occur in reality", "never occurred",
+            "event was false", "claim was false", "proposition is false",
+        )
+        return any(marker in text for marker in markers)
+
+    @staticmethod
+    def _unknown_like_value(value: str) -> bool:
+        text = re.sub(r"\s+", " ", str(value).strip().lower())
+        markers = {
+            "unknown", "not known", "unavailable", "not available",
+            "has no stated translation", "no stated translation",
+            "no translation is stated", "not stated", "not specified",
+            "not provided", "cannot be determined", "insufficient evidence",
+        }
+        if text in markers or any(marker in text for marker in markers if len(marker) > 8):
+            return True
+        return bool(
+            re.search(
+                r"\bno\b.{0,100}\b(?:is|are|was|were)\s+(?:stated|provided|specified|listed|recorded|given|available)\b",
+                text,
+            )
+        )
+
+    def _validate_program(self, contract: dict[str, Any], program: dict[str, Any]) -> None:
+        if program["contract_id"] != contract["contract_id"]:
+            raise ProgramValidationError("program contract mismatch")
+        steps = program["steps"]
+        if not steps:
+            raise ProgramValidationError("query program has no steps")
+        first_search = next(
+            (expand_step(step) for step in steps if step.get("tool") == "search_records"),
+            None,
+        )
+        if first_search is not None and contract["scope_phrases"]:
+            retrieval_text = " ".join(
+                [first_search["collection"], *first_search["terms"], *first_search["fields"]]
+            )
+            retrieval_tokens = self._content_tokens(retrieval_text)
+            relation_tokens = {
+                token
+                for phrase in contract.get("relation_phrases", [])
+                for token in self._content_tokens(str(phrase))
+            }
+            answer_slot_tokens = self._content_tokens(
+                str(contract.get("answer_slot", "")).replace("_", " ")
+            )
+            polarity_markers = {"not", "no", "without", "except", "excluding", "exclude"}
+            quantitative_scope_tokens = {
+                "how", "many", "much", "count", "number", "total", "quantity"
+            }
+            source_scope_tokens = {
+                "cache", "cached", "hidden", "file", "record", "semantic",
+                "meaningful", "despite", "ignore", "ignoring", "exclude",
+                "excluding", "official", "authoritative", "canonical", "verified",
+            }
+            for scope_phrase in contract["scope_phrases"]:
+                scope_tokens = self._content_tokens(scope_phrase)
+                raw_scope_tokens = set(re.findall(r"[a-z0-9]+", str(scope_phrase).lower()))
+                semantic_operator_scope = bool(
+                    (scope_tokens and scope_tokens.issubset(relation_tokens))
+                    or (scope_tokens and scope_tokens.issubset(answer_slot_tokens))
+                    or (scope_tokens and scope_tokens.issubset(quantitative_scope_tokens))
+                    or (
+                        contract.get("source_scope") not in {None, "", "any", "unknown"}
+                        and raw_scope_tokens.intersection(source_scope_tokens)
+                    )
+                    or (
+                        contract.get("polarity") == "negative"
+                        and raw_scope_tokens.intersection(polarity_markers)
+                    )
+                )
+                if semantic_operator_scope:
+                    continue
+                distinctive = {
+                    token for token in scope_tokens
+                    if token not in {"text", "record", "document", "file", "note", "data"}
+                } or scope_tokens
+                if distinctive and not retrieval_tokens.intersection(distinctive):
+                    raise ProgramValidationError(
+                        f"primary retrieval omitted semantic scope phrase {scope_phrase!r}"
+                    )
+        for index, compact_step in enumerate(steps):
+            step = expand_step(compact_step)
+            for ref in step["inputs"]:
+                if ref < 0 or ref >= index:
+                    raise ProgramValidationError(f"step {index} references unavailable prior step {ref}")
+            if not self._valid_collection(step["collection"]):
+                raise ProgramValidationError(f"unknown collection: {step['collection']}")
+            if step["limit"] < 0:
+                raise ProgramValidationError("step limit cannot be negative")
+            tool = step["tool"]
+            valid_modes = {"none", "all", "any", "phrase"}
+            valid_directions = {"none", "ascending", "descending"}
+            valid_aggregates = {"none", "count", "min", "max", "sum", "average", "distinct", "mode"}
+            valid_operations = {"none", "add", "subtract", "multiply", "divide"}
+            valid_extractors = {
+                "none", "field", "after_label", "after_phrase", "before_phrase",
+                "between_phrases", "regex", "url", "identifier", "date_time",
+                "number", "event_series",
+            }
+            valid_occurrences = {
+                "none", "first", "last", "all", "latest_by_time", "earliest_by_time",
+            }
+            if step["mode"] not in valid_modes:
+                raise ProgramValidationError(f"step {index} has invalid mode {step['mode']!r}")
+            if step["direction"] not in valid_directions:
+                raise ProgramValidationError(f"step {index} has invalid direction {step['direction']!r}")
+            if step["aggregate"] not in valid_aggregates:
+                raise ProgramValidationError(f"step {index} has invalid aggregate {step['aggregate']!r}")
+            if step["operation"] not in valid_operations:
+                raise ProgramValidationError(f"step {index} has invalid operation {step['operation']!r}")
+            if step["extractor"] not in valid_extractors:
+                raise ProgramValidationError(f"step {index} has invalid extractor {step['extractor']!r}")
+            if step["occurrence"] not in valid_occurrences:
+                raise ProgramValidationError(f"step {index} has invalid occurrence {step['occurrence']!r}")
+            if tool == "search_records":
+                if not step["terms"]:
+                    raise ProgramValidationError(f"search step {index} has no terms")
+                if step["mode"] == "none":
+                    raise ProgramValidationError(f"search step {index} has no match mode")
+                if step["mode"] == "phrase" and len(step["terms"]) != 1:
+                    raise ProgramValidationError(
+                        f"phrase search step {index} must contain one complete phrase"
+                    )
+                if index == 0 and len(step["terms"]) > 1 and step["mode"] == "any" and contract["target_phrases"]:
+                    raise ProgramValidationError(
+                        "the primary target search has multiple terms and must use all or phrase matching"
+                    )
+            elif tool == "expand_source_context" and not step["inputs"]:
+                raise ProgramValidationError(f"context expansion step {index} has no input")
+            elif tool == "filter_records" and (not step["inputs"] or not step["filters"]):
+                raise ProgramValidationError(f"filter step {index} is incomplete")
+            elif tool == "project_values" and (not step["inputs"] or not step["fields"]):
+                raise ProgramValidationError(f"projection step {index} is incomplete")
+            elif tool == "extract_values":
+                if not step["inputs"] or step["extractor"] == "none":
+                    raise ProgramValidationError(f"extraction step {index} is incomplete")
+                extractor = step["extractor"]
+                if extractor == "field" and not step["fields"]:
+                    raise ProgramValidationError(f"field extraction step {index} has no fields")
+                if extractor == "field" and step["fields"]:
+                    generic_fields = {"text", "source.path", "source.file_name", "source.file_stem"}
+                    if set(step["fields"]).issubset(generic_fields):
+                        slot_tokens = set(re.findall(r"[a-z0-9]+", contract["answer_slot"].lower()))
+                        field_tokens = set(
+                            token
+                            for field in step["fields"]
+                            for token in re.findall(r"[a-z0-9]+", field.lower())
+                        )
+                        if not slot_tokens.intersection(field_tokens):
+                            raise ProgramValidationError(
+                                f"field extraction step {index} projects generic text instead of the answer slot; use a structured answer field or a text extractor"
+                            )
+                if extractor == "after_label" and not step["label"]:
+                    raise ProgramValidationError(f"label extraction step {index} has no label")
+                if extractor in {"regex", "event_series"} and not step["pattern"]:
+                    raise ProgramValidationError(f"regex extraction step {index} has no pattern")
+                if extractor == "event_series" and (
+                    not step["value_group"]
+                    or not step["time_group"]
+                    or step["occurrence"] not in {"latest_by_time", "earliest_by_time", "all"}
+                ):
+                    raise ProgramValidationError(f"event extraction step {index} is incomplete")
+                if (
+                    contract["answer_shape"] == "number"
+                    and index == len(steps) - 1
+                    and extractor != "none"
+                ):
+                    raise ProgramValidationError(
+                        "evidence-backed numeric or measured answers must use model_extract so source units are preserved; use calculate only for arithmetic"
+                    )
+            elif tool == "model_extract":
+                if not step["inputs"]:
+                    raise ProgramValidationError(f"model extraction step {index} has no evidence input")
+                if index != len(steps) - 1:
+                    raise ProgramValidationError(
+                        f"model extraction step {index} must be the final answer-producing step"
+                    )
+            elif tool == "join_records" and (
+                len(step["inputs"]) != 2 or not step["left_field"] or not step["right_field"]
+            ):
+                raise ProgramValidationError(f"join step {index} is incomplete")
+            elif tool == "calculate" and step["operation"] == "none":
+                raise ProgramValidationError(f"calculate step {index} has no operation")
+
+    @staticmethod
+    def _result_has_material(result: ToolResult) -> bool:
+        if result.kind == "records":
+            return bool(result.records)
+        if result.kind == "values":
+            return bool(result.values)
+        if result.kind == "scalar":
+            return result.scalar is not None
+        return bool(result.records or result.values or result.scalar is not None)
+
+    def _needs_execution_repair(
+        self,
+        program: dict[str, Any],
+        results: dict[int, ToolResult],
+    ) -> bool:
+        final_result = results[len(program["steps"]) - 1]
+        if final_result.diagnostics.get("status") == "unknown":
+            return final_result.diagnostics.get("reason") == "no input material"
+        return not self._result_has_material(final_result)
+
+    def _repair_program_after_execution(
+        self,
+        profile: dict[str, Any],
+        contract: dict[str, Any],
+        program: dict[str, Any],
+        results: dict[int, ToolResult],
+    ) -> dict[str, Any]:
+        diagnostics = [
+            {
+                "step": index,
+                "tool": step["tool"],
+                "collection": step["collection"],
+                "record_count": len(results[index].records),
+                "value_count": len(results[index].values),
+                "has_scalar": results[index].scalar is not None,
+                "diagnostics": results[index].diagnostics,
+            }
+            for index, step in enumerate(program["steps"])
         ]
-        if not query_tokens:
-            return []
-        doc_scores: list[tuple[float, str]] = []
-        score_by_doc: dict[str, float] = {}
-        for rel_path, metadata_text in self._document_metadata_text.items():
-            score = sum(4.0 for token in query_tokens if token in metadata_text)
-            if score:
-                doc_scores.append((score, rel_path))
-                score_by_doc[rel_path] = score
-        doc_scores.sort(key=lambda item: (-item[0], item[1]))
-        selected_docs = {rel_path for _, rel_path in doc_scores[:8]}
-        candidates: list[tuple[Sentence, float]] = []
-        for rel_path in selected_docs:
-            for sentence in self._sentences_by_document.get(rel_path, {}).values():
-                text_norm = normalize(sentence.text)
-                token_hits = sum(1 for token in query_tokens if token in text_norm)
-                if token_hits:
-                    candidates.append((sentence, score_by_doc.get(sentence.rel_path, 0.0) + token_hits))
-        candidates.sort(key=lambda item: (-item[1], item[0].rel_path, item[0].order))
-        return candidates[:limit]
+        schema = query_program_schema(contract["contract_id"])
+        prompt = (
+            'Repair a valid generic tool program whose final step produced no material. Return a complete replacement, '
+            'not an answer. Preserve the immutable semantic contract. When a narrow collection is empty or ambiguous, '
+            'search all_records with separate literal target and relation terms using all matching. Remove unsupported '
+            'filters and fields. Never substitute an unrelated same-named field. Use project_values only for real answer '
+            'fields, extract_values with explicit extractor arguments, or model_extract over the retrieved evidence.\n'
+            f"Rejected program: {json.dumps(program, ensure_ascii=False)}\n"
+            f"Execution diagnostics: {json.dumps(diagnostics, ensure_ascii=False, default=str)}\n"
+            f"Dataset profile: {json.dumps(profile, ensure_ascii=False)}\n"
+            f"Semantic contract: {json.dumps(contract, ensure_ascii=False)}\n"
+            f"Catalog: {self.catalog.summary(6500)}"
+        )
+        payload = self.model.complete_json(
+            "query_program_execution_repair",
+            prompt,
+            schema,
+            max_tokens=1536,
+        )
+        repaired = self._normalize_program(payload["query_program"], contract)
+        self._validate_program(contract, repaired)
+        self.model_query_trace = {
+            "dataset_profile": profile,
+            "semantic_contract": contract,
+            "program": repaired,
+            "repaired_after_empty_execution": True,
+            "dataset_fingerprint": self.catalog.fingerprint,
+        }
+        return repaired
 
-    def _target_anchors(self, question: str) -> list[str]:
-        return capitalized_phrases(question)
+    def _fallback_model_extract_program(
+        self,
+        program: dict[str, Any],
+        results: dict[int, ToolResult],
+    ) -> dict[str, Any] | None:
+        """Use bounded semantic extraction when deterministic extraction failed over real evidence."""
+        evidence_index: int | None = None
+        for index in range(len(program["steps"]) - 1, -1, -1):
+            if results[index].records:
+                evidence_index = index
+                break
+        if evidence_index is None:
+            return None
+        steps = list(program["steps"][: evidence_index + 1])
+        steps.append(
+            {
+                "tool": "model_extract",
+                "inputs": [evidence_index],
+                "collection": "",
+                "terms": [],
+                "fields": [],
+                "filters": [],
+                "arguments": [],
+                "limit": 20,
+            }
+        )
+        fallback = {"contract_id": program["contract_id"], "steps": steps}
+        self.model_query_trace = {
+            **self.model_query_trace,
+            "program": fallback,
+            "fallback_to_model_extract": True,
+        }
+        return fallback
+
+    @staticmethod
+    def _needs_list_cardinality_fallback(
+        contract: dict[str, Any],
+        program: dict[str, Any],
+        results: dict[int, ToolResult],
+    ) -> bool:
+        if contract.get("answer_shape") != "list":
+            return False
+        final_index = len(program["steps"]) - 1
+        final_step = expand_step(program["steps"][final_index])
+        final_result = results[final_index]
+        if final_step["tool"] == "model_extract":
+            return False
+        material_count = len(final_result.values)
+        if final_result.scalar is not None:
+            material_count = 1
+        return material_count <= 1
+
+    def _dependency_closure(
+        self,
+        program: dict[str, Any],
+        final_index: int,
+    ) -> list[int]:
+        selected: set[int] = set()
+        pending = [final_index]
+        while pending:
+            index = pending.pop()
+            if index in selected:
+                continue
+            selected.add(index)
+            pending.extend(program["steps"][index]["inputs"])
+        return sorted(selected)
+
+    @staticmethod
+    def _format_list_values(values: list[str]) -> str:
+        cleaned = [str(value).strip() for value in values if str(value).strip()]
+        if not cleaned:
+            return ""
+        if len(cleaned) == 1:
+            return cleaned[0]
+        identifier_pattern = re.compile(r"^[A-Z]{2,}(?:-[A-Z0-9]+)+$")
+        if all(identifier_pattern.fullmatch(value) for value in cleaned):
+            return "; ".join(cleaned)
+        if len(cleaned) == 2:
+            return f"{cleaned[0]} and {cleaned[1]}"
+        return f"{', '.join(cleaned[:-1])}, and {cleaned[-1]}"
+
+    def _direct_structural_answer(
+        self,
+        contract: dict[str, Any],
+        program: dict[str, Any],
+        results: dict[int, ToolResult],
+    ) -> Answer | None:
+        final_index = len(program["steps"]) - 1
+        final_step = expand_step(program["steps"][final_index])
+        final = results[final_index]
+        answer_shape = contract["answer_shape"]
+        if final_step["tool"] == "model_extract" and final.diagnostics.get("status") == "unknown":
+            evidence = tuple(record.model_view() for record in final.records)
+            return Answer(
+                "unknown",
+                evidence=evidence,
+                diagnostics={
+                    "derivation": "contract_bound_model_extraction_unknown",
+                    "trace": self.model_query_trace,
+                },
+            )
+        corrective_sentence = str(final.diagnostics.get("corrective_sentence", "")).strip()
+        if (
+            final_step["tool"] == "model_extract"
+            and answer_shape == "boolean"
+            and corrective_sentence
+            and any(str(value).strip().lower() in {"no", "false"} for value in final.values)
+        ):
+            correction = re.sub(r"^\[[^\]]+\]\s*", "", corrective_sentence).strip()
+            correction = re.sub(
+                r"(?i)^(?:no|false)\s*(?:[;:,.!?-]+\s*|$)",
+                "",
+                correction,
+            ).strip()
+            if contract.get("semantic_kind") == "source_classification":
+                correction = re.sub(
+                    r"(?i)^(?:(?:the\s+)?(?:teacher\s+note|source|document|note|record))\s+"
+                    r"(?:indicates|states|says|reports|classifies|labels|marks|shows)\s+(?:that\s+)?",
+                    "",
+                    correction,
+                    count=1,
+                ).strip()
+            document_classification = self._direct_document_classification_correction(
+                contract,
+                [record.model_view() for record in final.records],
+            )
+            if document_classification:
+                correction = document_classification
+            correction = self._normalize_contract_bound_correction_surface(
+                contract,
+                correction,
+            )
+            declared_target_tokens = {
+                token
+                for phrase in contract.get("target_phrases", [])
+                for token in re.findall(r"[a-z0-9]+", str(phrase).lower())
+            }
+            for subject_type in (
+                "runtime", "system", "service", "process", "code", "application", "worker", "job"
+            ):
+                if subject_type in declared_target_tokens:
+                    correction = re.sub(
+                        rf"(?i)^the\s+{re.escape(subject_type)}\b",
+                        subject_type,
+                        correction,
+                        count=1,
+                    ).strip()
+                    break
+            if correction:
+                correction = correction[0].lower() + correction[1:]
+            if not correction.endswith((".", "!", "?")):
+                correction += "."
+            evidence_by_id = {
+                record.record_id: record.model_view()
+                for index in self._dependency_closure(program, final_index)
+                for record in results[index].records
+            }
+            return Answer(
+                f"No; {correction}",
+                evidence=tuple(evidence_by_id.values()),
+                diagnostics={
+                    "derivation": "explicit_negative_finding",
+                    "trace": self.model_query_trace,
+                },
+            )
+        if (
+            final_step["tool"] == "extract_values"
+            and final_step["extractor"] == "field"
+            and set(final_step["fields"]).issubset({"text", "source.path", "source.file_name", "source.file_stem"})
+        ):
+            return None
+        if final.scalar is not None and (
+            answer_shape == "number"
+            or final_step["tool"] in {"calculate", "aggregate_values"}
+        ):
+            if isinstance(final.scalar, (int, float)) and not isinstance(final.scalar, bool):
+                number = float(final.scalar)
+                text = str(int(number)) if number.is_integer() else str(number)
+            elif answer_shape == "number" or final_step["tool"] == "calculate":
+                number = float(final.scalar)
+                text = str(int(number)) if number.is_integer() else str(number)
+            else:
+                text = str(final.scalar).strip()
+                if not text:
+                    return None
+        elif (
+            final.values
+            and final_step["tool"] in {
+                "project_values", "extract_values", "model_extract", "union_values", "intersect_values"
+            }
+            and answer_shape != "boolean"
+        ):
+            values = [str(value).strip() for value in final.values if str(value).strip()]
+            if not values:
+                return None
+            text = self._format_list_values(values) if answer_shape == "list" else (
+                "; ".join(values) if len(values) > 1 else values[0]
+            )
+        else:
+            return None
+        evidence_by_id = {
+            record.record_id: record.model_view()
+            for index in self._dependency_closure(program, final_index)
+            for record in results[index].records
+        }
+        return Answer(
+            text,
+            evidence=tuple(evidence_by_id.values()),
+            diagnostics={
+                "derivation": "deterministic_execution_of_model_selected_tool",
+                "trace": self.model_query_trace,
+            },
+        )
+
+    def _ground(
+        self,
+        contract: dict[str, Any],
+        program: dict[str, Any],
+        results: dict[int, ToolResult],
+    ) -> dict[str, Any]:
+        selected_ids = self._dependency_closure(program, len(program["steps"]) - 1)
+        record_map: dict[str, Any] = {}
+        step_views: list[dict[str, Any]] = []
+        for step_id in selected_ids:
+            result = results[step_id]
+            for record in result.records[:16]:
+                record_map.setdefault(record.record_id, record)
+            diagnostics = dict(result.diagnostics)
+            if "evidence" in diagnostics:
+                diagnostics["evidence"] = diagnostics["evidence"][:30]
+            step_views.append(
+                {
+                    "step_id": step_id,
+                    "kind": result.kind,
+                    "values": result.values[:30],
+                    "scalar": result.scalar,
+                    "diagnostics": diagnostics,
+                    "record_ids": [record.record_id for record in result.records[:16]],
+                }
+            )
+        observations = {
+            "steps": step_views,
+            "records": [record.model_view(1200) for record in list(record_map.values())[:16]],
+        }
+        schema = grounded_answer_schema(contract["contract_id"])
+        prompt = (
+            "Act as the generic grounded extraction and formatting tool for an immutable semantic contract. Use only "
+            "the supplied tool results. Do not reinterpret the contract or use outside knowledge. Every target, "
+            "scope, relation, polarity, temporal requirement, and epistemic requirement must be established by the "
+            "same coherent source record or an explicit model-planned join. For current/latest/final questions, use "
+            "the latest applicable dated or ordered event. For allegations, dreams, fiction, quotations, and "
+            "hypotheticals, answer only the relation requested by the contract. For booleans, absence or fictional "
+            "context does not prove false; false requires explicit negation of the proposition. When evidence does "
+            "not explicitly establish the requested answer, return status unknown and an empty answer. Never put an "
+            "explanation of missing information in the answer field. For answered status, return the minimal value "
+            "only: omit role prefixes unless they are part of the value, preserve source units for measured quantities, "
+            "preserve complete URLs and identifiers, and "
+            "cite only supplied record IDs.\n"
+            f"Semantic contract: {json.dumps(contract, ensure_ascii=False)}\n"
+            f"Model-owned query program: {json.dumps(program, ensure_ascii=False)}\n"
+            f"Tool results: {json.dumps(observations, ensure_ascii=False, default=str)}"
+        )
+        payload = self.model.complete_json("grounded_answer", prompt, schema, max_tokens=512)
+        grounded = self._normalize_grounded(payload["grounded_answer"])
+        available_ids = {record.record_id for result in results.values() for record in result.records}
+        self._validate_grounded(contract, grounded, available_ids, record_map, results)
+        return grounded
+
+    @staticmethod
+    def _normalize_grounded(grounded: dict[str, Any]) -> dict[str, Any]:
+        normalized = dict(grounded)
+        answer = str(normalized.get("answer") or "").strip()
+        if normalized.get("answer_shape") == "boolean":
+            if answer.lower() == "true":
+                normalized["answer"] = "yes"
+            elif answer.lower() == "false":
+                normalized["answer"] = "no"
+            answer = str(normalized.get("answer") or "").strip()
+        if normalized.get("answer_shape") == "number" and answer:
+            match = re.fullmatch(r"[\s,;:=-]*([+-]?\d+(?:\.\d+)?)[\s,;:=-]*", answer)
+            if match:
+                number = float(match.group(1))
+                normalized["answer"] = str(int(number)) if number.is_integer() else str(number)
+        return normalized
+
+    @staticmethod
+    def _validate_grounded(
+        contract: dict[str, Any],
+        grounded: dict[str, Any],
+        available_record_ids: set[str],
+        record_map: dict[str, Any],
+        results: dict[int, ToolResult],
+    ) -> None:
+        if grounded["contract_id"] != contract["contract_id"]:
+            raise ProgramValidationError("grounded answer contract mismatch")
+        status = grounded["status"]
+        answer = grounded["answer"].strip()
+        evidence_ids = set(grounded["evidence_record_ids"])
+        if not evidence_ids.issubset(available_record_ids):
+            raise ProgramValidationError("grounded answer cites unknown evidence records")
+        if status == "unknown" and answer:
+            raise ProgramValidationError("unknown status cannot contain an answer")
+        if status == "answered" and not answer:
+            raise ProgramValidationError("answered status requires an answer")
+        derived_values = [
+            value
+            for result in results.values()
+            for value in ([result.scalar] if result.scalar is not None else result.values)
+        ]
+        if status == "answered" and not evidence_ids and answer not in {str(value) for value in derived_values}:
+            raise ProgramValidationError("answered status requires evidence or an exact derived value")
+        evidence_text = "\n".join(
+            record_map[record_id].text
+            + "\n"
+            + json.dumps(record_map[record_id].data, ensure_ascii=False, default=str)
+            for record_id in evidence_ids
+            if record_id in record_map
+        )
+        shape = grounded["answer_shape"]
+        if status == "answered" and shape == "url":
+            if not re.fullmatch(r"https?://\S+", answer) or answer not in evidence_text:
+                raise ProgramValidationError("URL answer must be copied exactly from evidence")
+        if status == "answered" and shape == "identifier" and answer not in evidence_text:
+            raise ProgramValidationError("identifier answer must be copied exactly from evidence")
+        if status == "answered" and shape == "date_time" and answer not in evidence_text:
+            raise ProgramValidationError("date answer must be copied exactly from evidence")
+        if status == "answered" and shape == "boolean" and answer.lower() not in {
+            "yes",
+            "no",
+            "true",
+            "false",
+        }:
+            raise ProgramValidationError("boolean answer must be yes, no, true, or false")
+
+    def _answer_from_grounded(
+        self,
+        grounded: dict[str, Any],
+        results: dict[int, ToolResult],
+    ) -> Answer:
+        if grounded["status"] == "unknown":
+            return Answer("unknown", diagnostics={"grounded": grounded, "trace": self.model_query_trace})
+        evidence_by_id = {
+            record.record_id: record.model_view()
+            for result in results.values()
+            for record in result.records
+        }
+        evidence = tuple(
+            evidence_by_id[item]
+            for item in grounded["evidence_record_ids"]
+            if item in evidence_by_id
+        )
+        return Answer(
+            grounded["answer"].strip(),
+            evidence=evidence,
+            diagnostics={"grounded": grounded, "trace": self.model_query_trace},
+        )
+
+    def dspg_counts(self) -> dict[str, int]:
+        return {
+            "records": len(self.catalog.records),
+            "preferred_records": len(self.catalog.preferred_records()),
+            "collections": len(self.catalog.collections),
+        }
+
+    def dspg_integrity(self) -> str:
+        return "ok" if self.catalog.records else "empty"
