@@ -446,3 +446,20 @@ def test_search_matches_find_to_found(tmp_path):
         )
     ])
     assert len(results[0].records) == 1
+
+
+def test_after_phrase_does_not_slice_inside_inflected_word(tmp_path):
+    (tmp_path / "music.txt").write_text(
+        "Music lesson: Arlo practiced the D minor scale."
+    )
+    result = ToolExecutor(SourceCatalog(tmp_path)).execute([
+        step("search_records", collection="all_records", terms=["Arlo", "scale"], mode="all"),
+        step(
+            "extract_values",
+            inputs=[0],
+            extractor="after_phrase",
+            start_phrase="Arlo practice",
+            limit=1,
+        ),
+    ])[1]
+    assert result.values == []

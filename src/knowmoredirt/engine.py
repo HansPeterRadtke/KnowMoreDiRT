@@ -93,8 +93,34 @@ class KnowMoreDiRTEngine:
                 answer = self._answer_from_grounded(grounded, results)
         except (ModelError, ProgramValidationError, ValueError, KeyError) as exc:
             answer = Answer("unknown", diagnostics={"reason": type(exc).__name__, "error": str(exc)})
+        if "contract" in locals():
+            answer = self._canonicalize_final_answer(contract, answer)
         self.last_answer = answer
         return answer
+
+    @classmethod
+    def _canonicalize_final_answer(
+        cls,
+        contract: dict[str, Any],
+        answer: Answer,
+    ) -> Answer:
+        text = str(answer.text).strip()
+        if (
+            not text
+            or text.lower() == "unknown"
+            or contract.get("answer_shape") != "text"
+            or text.lower().startswith(("yes;", "no;"))
+            or ";" in text
+        ):
+            return answer
+        canonical = cls._canonicalize_extracted_value(contract, text)
+        if canonical == text or not canonical:
+            return answer
+        return Answer(
+            canonical,
+            evidence=answer.evidence,
+            diagnostics={**answer.diagnostics, "surface_canonicalized": True},
+        )
 
     def _execute_program(
         self,
@@ -720,6 +746,13 @@ class KnowMoreDiRTEngine:
         if slot:
             slot_label = r"[ _-]+".join(re.escape(token) for token in slot.split())
             text = re.sub(rf"(?i)^{slot_label}\s*:\s*", "", text).strip()
+        if "scale" in slot_tokens:
+            scale_match = re.search(
+                r"(?i)\b([A-G](?:#|b)?\s+(?:major|minor|dorian|phrygian|lydian|mixolydian|aeolian|locrian|pentatonic|blues|chromatic))\s+scale\b",
+                text,
+            )
+            if scale_match:
+                text = scale_match.group(1)
         if slot and len(slot_tokens) == 1:
             token = next(iter(slot_tokens))
             text = re.sub(rf"(?i)\s+{re.escape(token)}[.,;:]*$", "", text).strip()
@@ -727,7 +760,23 @@ class KnowMoreDiRTEngine:
             "item", "object", "component", "part", "thing", "artifact", "device", "cause"
         }):
             text = re.sub(r"(?i)^(?:a|an|the)\s+", "", text).strip()
-        if "actor" in slot_tokens:
+        person_role_tokens = {
+            "actor", "recorder", "reviewer", "approver", "author", "owner",
+            "inspector", "witness", "researcher", "speaker", "teacher", "coach",
+            "sender", "recipient", "reporter", "editor", "maintainer", "operator",
+        }
+        question = str(contract.get("question", "")).strip().lower()
+        relation_tokens = {
+            token
+            for phrase in contract.get("relation_phrases", [])
+            for token in re.findall(r"[a-z0-9]+", str(phrase).lower())
+        }
+        who_action_contract = bool(
+            question.startswith("who ")
+            and relation_tokens.difference({"is", "are", "was", "were", "be"})
+            and not slot_tokens.intersection({"title", "rank", "role"})
+        )
+        if slot_tokens.intersection(person_role_tokens) or who_action_contract:
             occupational_prefixes = (
                 "Officer", "Farmer", "Inspector", "Technician", "Engineer",
                 "Mechanic", "Detective", "Agent", "Captain", "Lieutenant",

@@ -3096,3 +3096,62 @@ def test_answer_slot_label_explicitly_binds_entity_attribute():
         "Theo Marin",
         [{"excerpt": "Chemistry lab note.\nCatalyst: copper sulfate.\nPartner: Theo Marin.", "data": {}}],
     )
+
+
+def test_canonicalize_musical_scale_slot():
+    assert KnowMoreDiRTEngine._canonicalize_extracted_value(
+        {"answer_slot": "scale_practiced"},
+        "D minor scale",
+    ) == "D minor"
+    assert KnowMoreDiRTEngine._canonicalize_extracted_value(
+        {"answer_slot": "scale_practiced"},
+        "Arlo practiced the D minor scale.",
+    ) == "D minor"
+
+
+def test_canonicalize_person_role_slot_strips_occupational_prefix():
+    contract = {
+        "question": "Who recorded incident INC-882?",
+        "answer_slot": "recorder",
+        "relation_phrases": ["recorded"],
+    }
+    assert KnowMoreDiRTEngine._canonicalize_extracted_value(
+        contract, "Officer Talen"
+    ) == "Talen"
+    assert KnowMoreDiRTEngine._canonicalize_extracted_value(
+        {**contract, "answer_slot": "rank", "relation_phrases": ["is"]},
+        "Captain Vale",
+    ) == "Captain Vale"
+    assert KnowMoreDiRTEngine._canonicalize_extracted_value(
+        contract, "Dr. Pella"
+    ) == "Dr. Pella"
+
+
+def test_final_answer_boundary_applies_conservative_surface_canonicalization():
+    from knowmoredirt.models import Answer
+    answer = KnowMoreDiRTEngine._canonicalize_final_answer(
+        {
+            "question": "Who recorded incident INC-882?",
+            "answer_shape": "text",
+            "answer_slot": "recorder",
+            "relation_phrases": ["recorded"],
+        },
+        Answer("Officer Talen", evidence=({"record_id": "r"},), diagnostics={"x": 1}),
+    )
+    assert answer.text == "Talen"
+    assert answer.evidence == ({"record_id": "r"},)
+    assert answer.diagnostics["surface_canonicalized"] is True
+    scale = KnowMoreDiRTEngine._canonicalize_final_answer(
+        {
+            "question": "What scale did Arlo practice?",
+            "answer_shape": "text",
+            "answer_slot": "scale_practiced",
+            "relation_phrases": ["practiced"],
+        },
+        Answer("Arlo practiced the D minor scale."),
+    )
+    assert scale.text == "D minor"
+    correction = Answer("No; later inspection found no crack.")
+    assert KnowMoreDiRTEngine._canonicalize_final_answer(
+        {"answer_shape": "text", "answer_slot": "statement"}, correction
+    ) is correction

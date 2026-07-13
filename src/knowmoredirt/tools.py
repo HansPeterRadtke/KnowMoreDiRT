@@ -617,12 +617,12 @@ class ToolExecutor:
             elif extractor == "after_phrase":
                 phrase = re.escape(step["start_phrase"])
                 if phrase:
-                    pattern = rf"(?im){phrase}\s*[:=\-]?\s*([^\n|;,}}]+)"
+                    pattern = rf"(?im){phrase}(?![A-Za-z0-9_])\s*[:=\-]?\s*([^\n|;,}}]+)"
                     extracted = _regex_values(text, pattern, "1", "")
             elif extractor == "before_phrase":
                 phrase = re.escape(step["end_phrase"])
                 if phrase:
-                    pattern = rf"(?im)([^\n|;]+?)\s*{phrase}"
+                    pattern = rf"(?im)([^\n|;]+?)\s*{phrase}(?![A-Za-z0-9_])"
                     extracted = _regex_values(text, pattern, "1", "")
             elif extractor == "between_phrases":
                 start = re.escape(step["start_phrase"])
