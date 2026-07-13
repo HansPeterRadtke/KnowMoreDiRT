@@ -3199,3 +3199,12 @@ def test_spatial_location_value_binds_to_target_sentence():
             "data": {},
         }],
     )
+
+
+def test_no_assertion_token_cloud_is_insufficient_not_false():
+    assert KnowMoreDiRTEngine._reason_is_nonproof(
+        "The file contains 'no claim no action no assertion' in a random token cloud."
+    )
+    assert KnowMoreDiRTEngine._reason_is_nonproof(
+        "The source does not assert that the event occurred."
+    )

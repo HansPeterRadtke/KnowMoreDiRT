@@ -3522,6 +3522,8 @@ class KnowMoreDiRTEngine:
             "no decision was made", "no final decision", "not decided",
             "undecided", "decision pending", "pending decision",
             "no confirmation", "not adopted as a plan",
+            "no assertion", "does not assert", "doesn't assert",
+            "no claim", "does not claim", "doesn't claim", "no action",
         )
         if any(marker in text for marker in markers):
             return True
