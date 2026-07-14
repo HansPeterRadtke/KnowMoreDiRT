@@ -188,9 +188,11 @@ class KnowMoreDiRTEngine:
         values = {str(value).strip().lower() for value in extraction.get("values", [])}
         return (
             contract.get("answer_shape") == "boolean"
+            and contract.get("world_scope") != "nonactual_external_effect"
             and extraction.get("status") == "extracted"
             and bool(values.intersection({"no", "false"}))
-            and cls._mixed_epistemic_evidence(records)
+            and cls._target_mixed_epistemic_records(contract, records)
+            and not cls._reason_is_nonproof(str(extraction.get("reason", "")))
             and (
                 extraction.get("evidence_relation") in {"nonactual_content", "state_only", "unknown"}
                 or cls._reason_explicit_false(str(extraction.get("reason", "")))
@@ -275,7 +277,7 @@ class KnowMoreDiRTEngine:
             and contract.get("answer_shape") == "boolean"
             and extraction.get("status") == "extracted"
             and bool(values.intersection({"no", "false"}))
-            and not cls._mixed_epistemic_evidence(records)
+            and not cls._target_mixed_epistemic_records(contract, records)
             and not cls._contract_asks_proof_status(contract)
             and cls._has_explicit_alternative_behavior(records)
         )
@@ -303,7 +305,7 @@ class KnowMoreDiRTEngine:
             and extraction.get("status") == "extracted"
             and bool(values.intersection({"no", "false"}))
             and extraction.get("evidence_relation") == "direct_contradiction"
-            and not cls._mixed_epistemic_evidence(records)
+            and not cls._target_mixed_epistemic_records(contract, records)
             and not cls._contract_asks_proof_status(contract)
         )
 
@@ -768,6 +770,73 @@ class KnowMoreDiRTEngine:
         best = ranked[0][1]
         return re.sub(r"[.;]+$", "", best.strip())
 
+    @classmethod
+    def _unique_structured_slot_surface(
+        cls,
+        contract: dict[str, Any],
+        records: list[Any],
+    ) -> str:
+        slot_tokens = set(
+            re.findall(
+                r"[a-z0-9]+",
+                str(contract.get("answer_slot", "")).lower().replace("_", " "),
+            )
+        )
+        surface_slots = {
+            "claim", "summary", "note", "message", "description", "explanation",
+            "statement", "finding", "result",
+        }
+        if not slot_tokens.intersection(surface_slots):
+            return ""
+        target_phrases: list[set[str]] = []
+        for phrase in contract.get("target_phrases", []):
+            tokens = cls._content_tokens(str(phrase)) - slot_tokens
+            if tokens:
+                target_phrases.append(tokens)
+        candidates: dict[str, tuple[str, tuple[float, int]]] = {}
+
+        def visit(value: Any, path: tuple[str, ...] = ()) -> None:
+            if isinstance(value, dict):
+                for key, child in value.items():
+                    if key == "source":
+                        continue
+                    visit(child, (*path, str(key)))
+                return
+            if isinstance(value, list):
+                for child in value[:200]:
+                    visit(child, path)
+                return
+            if not path:
+                return
+            key_tokens = set(re.findall(r"[a-z0-9]+", path[-1].lower().replace("_", " ")))
+            if not key_tokens.intersection(slot_tokens):
+                return
+            text = str(value).strip()
+            if not text:
+                return
+            value_tokens = cls._content_tokens(text)
+            phrase_scores = [
+                len(value_tokens.intersection(tokens)) / len(tokens)
+                for tokens in target_phrases
+            ]
+            best_coverage = max(phrase_scores, default=0.0)
+            total_overlap = sum(len(value_tokens.intersection(tokens)) for tokens in target_phrases)
+            if target_phrases and best_coverage <= 0.0:
+                return
+            key = text.lower()
+            score = (best_coverage, total_overlap)
+            previous = candidates.get(key)
+            if previous is None or score > previous[1]:
+                candidates[key] = (text, score)
+
+        for record in records:
+            visit(getattr(record, "data", {}))
+        if not candidates:
+            return ""
+        best_score = max(score for _, score in candidates.values())
+        best = [text for text, score in candidates.values() if score == best_score]
+        return best[0] if len(best) == 1 else ""
+
     @staticmethod
     def _canonicalize_extracted_value(
         contract: dict[str, Any],
@@ -891,12 +960,24 @@ class KnowMoreDiRTEngine:
             "id", "ids", "identifier", "identifiers", "code", "codes",
             "reference", "references", "account", "accounts", "token", "tokens",
         }
+        identifier_slot = bool(slot_tokens.intersection(identifier_tokens))
         if (
             slot_tokens.intersection(person_tokens | named_entity_tokens)
-            and not slot_tokens.intersection(identifier_tokens)
+            and not identifier_slot
             and re.fullmatch(r"[A-Z]{2,}(?:[-_][A-Z0-9]+)+", text)
         ):
             return False
+        if identifier_slot and not slot_tokens.intersection(locator_tokens):
+            identifier_like = bool(
+                re.fullmatch(r"[A-Za-z0-9][A-Za-z0-9._:/-]*", text)
+                and (
+                    any(char.isdigit() for char in text)
+                    or bool(re.search(r"[-_:/]", text))
+                    or text.isupper()
+                )
+            )
+            if not identifier_like:
+                return False
         return True
 
     @classmethod
@@ -1165,6 +1246,12 @@ class KnowMoreDiRTEngine:
             "reviewer", "approver", "author", "actor", "owner", "inspector",
             "witness", "researcher", "speaker", "person", "teacher", "doctor",
         }
+        identifier_slots = {
+            "id", "ids", "identifier", "identifiers", "code", "codes",
+            "reference", "references", "account", "accounts", "token", "tokens",
+        }
+        if slot_tokens.intersection(identifier_slots):
+            return []
         if not slot_tokens.intersection(person_slots):
             return []
         relation_tokens = {
@@ -1474,8 +1561,10 @@ class KnowMoreDiRTEngine:
         if (
             extraction.get("status") == "unknown"
             and contract["answer_shape"] == "boolean"
+            and contract.get("world_scope") != "nonactual_external_effect"
             and contract["epistemic_mode"] == "asserted"
-            and self._mixed_epistemic_evidence(records)
+            and self._target_mixed_epistemic_records(contract, records)
+            and not self._reason_is_nonproof(extraction.get("reason", ""))
         ):
             repair_prompt = (
                 "Re-adjudicate a prior strict boolean extraction over mixed epistemic evidence. The prior result was "
@@ -1865,9 +1954,20 @@ class KnowMoreDiRTEngine:
                 max_tokens=512,
             )
             extraction = actor_payload["tool_extraction"]
+        slot_tokens_for_name_repair = set(
+            re.findall(
+                r"[a-z0-9]+",
+                str(contract.get("answer_slot", "")).lower().replace("_", " "),
+            )
+        )
+        identifier_slot_tokens = {
+            "id", "ids", "identifier", "identifiers", "code", "codes",
+            "reference", "references", "account", "accounts", "token", "tokens",
+        }
         if (
             extraction.get("status") == "extracted"
             and len(extraction.get("values", [])) == 1
+            and not slot_tokens_for_name_repair.intersection(identifier_slot_tokens)
             and not self._preserve_source_surface_name(contract)
         ):
             full_name = self._unique_full_name_expansion(
@@ -1920,7 +2020,9 @@ class KnowMoreDiRTEngine:
         if (
             extraction.get("status") == "unknown"
             and contract["answer_shape"] == "boolean"
-            and self._mixed_epistemic_evidence(records)
+            and contract.get("world_scope") != "nonactual_external_effect"
+            and self._target_mixed_epistemic_records(contract, records)
+            and not self._reason_is_nonproof(extraction.get("reason", ""))
             and self._reason_explicit_false(extraction.get("reason", ""))
         ):
             extraction = {**extraction, "status": "extracted", "values": ["no"]}
@@ -1929,13 +2031,14 @@ class KnowMoreDiRTEngine:
             contract["answer_shape"] == "boolean"
             and self._reason_is_nonproof(extraction.get("reason", ""))
         ):
-            if self._contract_asks_proof_status(contract):
+            proof_correction = self._proof_status_correction_sentence(contract, records)
+            if self._contract_asks_proof_status(contract) and proof_correction:
                 extraction = {
                     **extraction,
                     "status": "extracted",
                     "values": ["no"],
                     "evidence_relation": "direct_contradiction",
-                    "reason": "The requested proof status is explicitly negative.",
+                    "reason": proof_correction,
                 }
                 values = ["no"]
             else:
@@ -1989,6 +2092,14 @@ class KnowMoreDiRTEngine:
         ):
             values = [re.sub(r"[.,;:]+$", "", value.strip()) for value in values]
         cited_records = [records_by_id[item] for item in extraction["evidence_record_ids"] if item in records_by_id]
+        source_surface = self._unique_structured_slot_surface(contract, cited_records)
+        if source_surface and values:
+            values = [source_surface]
+            extraction = {
+                **extraction,
+                "values": [source_surface],
+                "reason": "A unique target-matching structured field preserves the exact source value.",
+            }
         cited_views = [
             localized_views_by_id[item]
             for item in extraction["evidence_record_ids"]
@@ -2001,7 +2112,8 @@ class KnowMoreDiRTEngine:
         ):
             if (
                 extraction.get("evidence_relation") == "direct_contradiction"
-                and self._mixed_epistemic_evidence(cited_records)
+                and contract.get("world_scope") != "nonactual_external_effect"
+                and self._target_mixed_epistemic_records(contract, cited_records)
             ):
                 corrective_sentence = self._mixed_epistemic_correction_sentence(
                     contract,
@@ -3213,8 +3325,9 @@ class KnowMoreDiRTEngine:
         }
         reality_markers = {
             "in reality", "real-world", "when i woke", "woke up", "still exists",
-            "still existed", "still contains", "still contained", "verified", "confirmed",
-            "inspection", "incident report", "actual state", "observed state",
+            "still existed", "still contains", "still contained", "still installed",
+            "remains installed", "remained installed", "real inventory", "verified",
+            "confirmed", "inspection", "incident report", "actual state", "observed state",
         }
         text = str(getattr(record, "text", "") or "")
         segments = [
@@ -3234,6 +3347,19 @@ class KnowMoreDiRTEngine:
             if any(marker in lowered for marker in reality_markers):
                 reality_targets.append(overlap)
         return any(left.intersection(right) for left in fiction_targets for right in reality_targets)
+
+    @classmethod
+    def _target_mixed_epistemic_records(
+        cls,
+        contract: dict[str, Any],
+        records: list[Any],
+    ) -> bool:
+        if not cls._contract_target_tokens(contract):
+            return cls._mixed_epistemic_evidence(records)
+        return any(
+            cls._target_mixed_epistemic_evidence(record, contract)
+            for record in records
+        )
 
     @staticmethod
     def _mixed_epistemic_evidence(records: list[Any]) -> bool:
@@ -3296,6 +3422,7 @@ class KnowMoreDiRTEngine:
             "owned": "own",
             "owner": "own",
             "ownership": "own",
+            "owning": "own",
             "bought": "buy",
             "purchase": "buy",
             "purchased": "buy",
@@ -3378,6 +3505,14 @@ class KnowMoreDiRTEngine:
                 str(contract.get("answer_slot", "")).lower().replace("_", " "),
             )
         )
+        identifier_slot = bool(
+            slot_tokens.intersection(
+                {
+                    "id", "ids", "identifier", "identifiers", "code", "codes",
+                    "reference", "references", "account", "accounts", "token", "tokens",
+                }
+            )
+        )
         locator_slot = bool(
             slot_tokens.intersection(
                 {"location", "storage", "url", "uri", "path", "address", "directory", "shelf", "room"}
@@ -3413,6 +3548,19 @@ class KnowMoreDiRTEngine:
                 + "\n"
                 + json.dumps(view.get("data", {}), ensure_ascii=False, default=str)
             ).lower()
+            if identifier_slot and slot_label_tokens and normalized_value in text:
+                requested_slot_tokens = set(slot_label_tokens)
+                required_target_overlap = max(1, min(3, len(target_tokens)))
+                for line in [item.strip() for item in text.splitlines() if item.strip()]:
+                    line_tokens = cls._content_tokens(line)
+                    if normalized_value not in line:
+                        continue
+                    if not requested_slot_tokens.issubset(
+                        set(re.findall(r"[a-z0-9]+", line.lower().replace("_", " ")))
+                    ):
+                        continue
+                    if len(line_tokens.intersection(target_tokens)) >= required_target_overlap:
+                        return True
             if slot_label_pattern:
                 labeled_values = [
                     (
@@ -3424,11 +3572,26 @@ class KnowMoreDiRTEngine:
                         text,
                     )
                 ]
-                matching_slot_values = [
-                    field_value
-                    for label, field_value in labeled_values
-                    if re.fullmatch(slot_label_pattern, label, flags=re.IGNORECASE)
-                ]
+                requested_label_stems = {
+                    cls._relation_stem(token)
+                    for token in slot_label_tokens
+                    if token not in {"value", "answer", "content", "text"}
+                }
+                matching_slot_values = []
+                for label, field_value in labeled_values:
+                    exact_label = bool(
+                        re.fullmatch(slot_label_pattern, label, flags=re.IGNORECASE)
+                    )
+                    label_stems = {
+                        cls._relation_stem(token)
+                        for token in re.findall(r"[a-z0-9]+", label.lower())
+                    }
+                    semantic_label = bool(
+                        requested_label_stems
+                        and requested_label_stems.issubset(label_stems)
+                    )
+                    if exact_label or semantic_label:
+                        matching_slot_values.append(field_value)
                 if matching_slot_values:
                     return any(
                         normalized_value == re.sub(r"[.;:]+$", "", field_value).strip()
@@ -3493,7 +3656,7 @@ class KnowMoreDiRTEngine:
                 *[str(item) for item in contract.get("relation_phrases", [])],
             ]
         ).lower()
-        return bool(re.search(r"\b(?:proof|prove|proved|proven|established|confirmed)\b", text))
+        return bool(re.search(r"\b(?:proof|prove|proved|proven|established)\b", text))
 
     @classmethod
     def _proof_status_correction_sentence(
@@ -3510,7 +3673,7 @@ class KnowMoreDiRTEngine:
             return "the final judgment found no proof"
         if re.search(r"(?i)\b(?:court|tribunal|panel)\b", text):
             return "the court found no proof"
-        return "the evidence contained no proof"
+        return ""
 
     @staticmethod
     def _reason_is_nonproof(reason: str) -> bool:

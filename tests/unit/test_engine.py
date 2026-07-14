@@ -3208,3 +3208,240 @@ def test_no_assertion_token_cloud_is_insufficient_not_false():
     assert KnowMoreDiRTEngine._reason_is_nonproof(
         "The source does not assert that the event occurred."
     )
+
+
+def test_contract_type_guard_rejects_names_for_identifier_slots():
+    contract = {"answer_slot": "actor_id"}
+    assert not KnowMoreDiRTEngine._value_matches_contract_type(contract, "Luma Drex")
+    assert KnowMoreDiRTEngine._value_matches_contract_type(contract, "ACT-901")
+    assert KnowMoreDiRTEngine._value_matches_contract_type(
+        {"answer_slot": "case_identifier"}, "CASE-771"
+    )
+    assert not KnowMoreDiRTEngine._value_matches_contract_type(
+        {"answer_slot": "case_identifier"}, "Silver Ridge Systems"
+    )
+
+
+def test_actor_role_repair_does_not_convert_identifier_answers_to_names():
+    contract = {
+        "answer_slot": "actor_id",
+        "relation_phrases": ["reviewed"],
+    }
+    views = [{"excerpt": "Naro Venn reviewed the brief | actor id: ACT-902"}]
+    assert KnowMoreDiRTEngine._explicit_relation_actor_candidates(contract, views) == []
+    assert not KnowMoreDiRTEngine._needs_actor_role_repair(
+        contract,
+        {"status": "extracted", "values": ["ACT-902"]},
+        views,
+    )
+
+
+def test_unique_structured_slot_surface_preserves_claim_text():
+    from knowmoredirt.models import SourceRecord
+    record = SourceRecord(
+        record_id="r", collection_path="items", source_path="x.json",
+        record_index=0,
+        data={"notes": [
+            {"claim": "mirror needs velvet pad"},
+            {"claim": "do not use blue solvent"},
+        ]},
+        text="",
+    )
+    assert KnowMoreDiRTEngine._unique_structured_slot_surface(
+        {
+            "answer_slot": "claim",
+            "target_phrases": ["Lark Mirror", "pad"],
+            "relation_phrases": [],
+        },
+        [record],
+    ) == "mirror needs velvet pad"
+
+
+def test_structured_slot_surface_prefers_complete_focus_phrase():
+    from knowmoredirt.models import SourceRecord
+    record = SourceRecord(
+        record_id="r", collection_path="items", source_path="x.json", record_index=0,
+        data={"name": "Lark Mirror", "notes": [
+            {"claim": "mirror needs velvet pad"},
+            {"claim": "do not use blue solvent"},
+        ]},
+        text="",
+    )
+    assert KnowMoreDiRTEngine._unique_structured_slot_surface(
+        {
+            "answer_slot": "claim",
+            "target_phrases": ["claim", "Lark Mirror", "solvent"],
+            "relation_phrases": [],
+        },
+        [record],
+    ) == "do not use blue solvent"
+
+
+def test_mixed_epistemic_repair_is_target_bound():
+    from knowmoredirt.models import SourceRecord
+    unrelated = SourceRecord(
+        record_id="r", collection_path="logical_documents", source_path="log.txt",
+        record_index=0, data={},
+        text=(
+            "Vira dreamed that the silver gate was deleted.\n"
+            "Real inventory: silver gate remains installed.\n"
+            "Kalo believes the lantern should be blue.\n"
+            "Inspection note: the lantern remains green; the belief is not confirmed as fact."
+        ),
+    )
+    belief_contract = {
+        "answer_shape": "boolean",
+        "answer_slot": "belief_confirmed",
+        "target_phrases": ["Kalo belief"],
+        "relation_phrases": ["is"],
+    }
+    assert not KnowMoreDiRTEngine._target_mixed_epistemic_records(
+        belief_contract, [unrelated]
+    )
+    assert not KnowMoreDiRTEngine._needs_mixed_epistemic_correction_repair(
+        belief_contract,
+        {
+            "status": "extracted", "values": ["no"],
+            "evidence_relation": "unknown", "reason": "The belief is not confirmed as fact.",
+        },
+        [unrelated],
+    )
+    dream_contract = {
+        "answer_shape": "boolean",
+        "answer_slot": "did_delete",
+        "target_phrases": ["silver gate", "delete"],
+        "relation_phrases": ["delete"],
+    }
+    assert KnowMoreDiRTEngine._target_mixed_epistemic_records(
+        dream_contract, [unrelated]
+    )
+
+
+def test_confirmed_is_not_proof_status_shortcut():
+    assert not KnowMoreDiRTEngine._contract_asks_proof_status({
+        "question": "Is the belief confirmed as fact?",
+        "answer_slot": "belief_confirmed",
+        "relation_phrases": ["is"],
+        "constraint_phrases": [],
+    })
+    assert KnowMoreDiRTEngine._contract_asks_proof_status({
+        "question": "Was the claim proven?",
+        "answer_slot": "claim_proven",
+        "relation_phrases": [],
+        "constraint_phrases": ["proven"],
+    })
+
+
+def test_nonactual_external_effect_is_not_repaired_to_false():
+    from knowmoredirt.models import SourceRecord
+    record = SourceRecord(
+        record_id="r", collection_path="logical_documents", source_path="dream.log",
+        record_index=0, data={},
+        text=(
+            "Vira dreamed that the silver gate was deleted.\n"
+            "Real inventory: silver gate remains installed."
+        ),
+    )
+    contract = {
+        "answer_shape": "boolean",
+        "world_scope": "nonactual_external_effect",
+        "answer_slot": "dream_deletion",
+        "target_phrases": ["dream", "delete", "silver gate"],
+        "relation_phrases": ["delete"],
+    }
+    assert KnowMoreDiRTEngine._target_mixed_epistemic_records(contract, [record])
+    assert not KnowMoreDiRTEngine._needs_mixed_epistemic_correction_repair(
+        contract,
+        {
+            "status": "extracted", "values": ["no"],
+            "evidence_relation": "nonactual_content",
+            "reason": "The event did not occur in reality.",
+        },
+        [record],
+    )
+
+
+def test_inline_role_identifier_binding_is_explicit_relation():
+    contract = {
+        "semantic_kind": "entity_attribute",
+        "answer_slot": "actor_id",
+        "target_phrases": ["actor id", "reviewer", "Zephyr Quill Brief", "Naro Venn"],
+        "relation_phrases": ["belongs to"],
+        "constraint_phrases": [],
+    }
+    views = [{
+        "excerpt": (
+            "Dossier: Zephyr Quill Brief.\n"
+            "Reviewer: Naro Venn | actor id: ACT-902"
+        ),
+        "data": {},
+    }]
+    assert KnowMoreDiRTEngine._value_has_explicit_entity_relation(
+        contract, "ACT-902", views
+    )
+    assert not KnowMoreDiRTEngine._value_has_explicit_entity_relation(
+        contract,
+        "ACT-901",
+        [{"excerpt": "Author: Luma Drex | actor id: ACT-901", "data": {}}],
+    )
+
+
+def test_semantic_label_stems_bind_owning_organization():
+    contract = {
+        "semantic_kind": "entity_attribute",
+        "answer_slot": "owner_organization",
+        "target_phrases": ["organization", "owns", "Harbor Test"],
+        "relation_phrases": ["owns"],
+        "constraint_phrases": [],
+    }
+    assert KnowMoreDiRTEngine._value_has_explicit_entity_relation(
+        contract,
+        "Juniper Example Trust",
+        [{
+            "excerpt": (
+                "Entity: Harbor Test.\n"
+                "Owning organization: Juniper Example Trust."
+            ),
+            "data": {},
+        }],
+    )
+    assert not KnowMoreDiRTEngine._value_has_explicit_entity_relation(
+        contract,
+        "Ria Example",
+        [{"excerpt": "Contact person: Ria Example.", "data": {}}],
+    )
+
+
+def test_nonadjudicative_not_proven_remains_unknown():
+    from knowmoredirt.models import SourceRecord
+    contract = {
+        "question": "Was the north hinge crack proven?",
+        "answer_slot": "crack_proven",
+        "relation_phrases": [],
+        "constraint_phrases": ["proven"],
+    }
+    note = SourceRecord(
+        record_id="r", collection_path="logical_documents", source_path="claims.txt",
+        record_index=0, data={},
+        text="Judgment note: the north hinge crack was not proven.",
+    )
+    assert KnowMoreDiRTEngine._contract_asks_proof_status(contract)
+    assert KnowMoreDiRTEngine._proof_status_correction_sentence(contract, [note]) == ""
+
+
+def test_explicit_final_judgment_supports_negative_proof_status():
+    from knowmoredirt.models import SourceRecord
+    contract = {
+        "question": "Was DriftLoom proven to cause ledger skew?",
+        "answer_slot": "was_proven",
+        "relation_phrases": [],
+        "constraint_phrases": ["proven"],
+    }
+    judgment = SourceRecord(
+        record_id="r", collection_path="logical_documents", source_path="judgment.final",
+        record_index=0, data={},
+        text="Final judgment summary. The court found no proof that DriftLoom caused ledger skew.",
+    )
+    assert KnowMoreDiRTEngine._proof_status_correction_sentence(
+        contract, [judgment]
+    ) == "the final judgment found no proof"
