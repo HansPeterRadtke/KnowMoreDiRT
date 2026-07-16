@@ -47,7 +47,7 @@ def dataset_profile_schema(fingerprint: str) -> dict[str, Any]:
         }
     )
     collections = _arr(collection)
-    collections["maxItems"] = 6
+    collections["maxItems"] = 8
     return _obj(
         {
             "dataset_profile": _obj(
@@ -204,7 +204,7 @@ def query_program_schema(contract_id: str) -> dict[str, Any]:
             "query_program": _obj(
                 {
                     "contract_id": {"type": "string", "enum": [contract_id]},
-                    "steps": _bounded_arr(step, 5),
+                    "steps": _bounded_arr(step, 8),
                 }
             )
         }
@@ -281,7 +281,22 @@ def event_fact_verdict_schema(contract_id: str) -> dict[str, Any]:
                         "type": "string",
                         "enum": ["direct", "title_to_body", "document_scope", "none"],
                     },
+                    "evidence_basis": {
+                        "type": "string",
+                        "enum": [
+                            "explicit_support",
+                            "explicit_denial",
+                            "authoritative_not_proven",
+                            "impossibility",
+                            "state_only",
+                            "absence_only",
+                            "nonactual_only",
+                            "mixed_or_other",
+                        ],
+                    },
                     "evidence_record_ids": _bounded_arr(STRING, 20),
+                    "authority_label": STRING,
+                    "decisive_predicate": STRING,
                     "correction_clause": STRING,
                     "reason": STRING,
                 }
@@ -304,13 +319,42 @@ def grounded_answer_schema(contract_id: str) -> dict[str, Any]:
                         "type": "string",
                         "enum": ["direct", "extraction", "arithmetic", "comparison", "summary", "unknown"],
                     },
-                    "confidence": NUMBER,
+                    "confidence": {"type": "number", "minimum": 0, "maximum": 1},
                     "reason": STRING,
                 }
             )
         }
     )
 
+
+
+def evidence_review_schema(contract_id: str) -> dict[str, Any]:
+    search = _obj(
+        {
+            "collection": STRING,
+            "terms": _bounded_arr(STRING, 8),
+            "mode": {"type": "string", "enum": ["all", "any", "phrase"]},
+            "fields": _bounded_arr(STRING, 8),
+            "limit": INTEGER,
+        }
+    )
+    return _obj(
+        {
+            "evidence_review": _obj(
+                {
+                    "contract_id": {"type": "string", "enum": [contract_id]},
+                    "status": {"type": "string", "enum": ["answered", "search", "unknown"]},
+                    "answer": STRING,
+                    "answer_items": _bounded_arr(STRING, 60),
+                    "answer_shape": ANSWER_SHAPE,
+                    "evidence_record_ids": _bounded_arr(STRING, 60),
+                    "searches": _bounded_arr(search, 4),
+                    "confidence": {"type": "number", "minimum": 0, "maximum": 1},
+                    "reason": STRING,
+                }
+            )
+        }
+    )
 
 def assert_portable_closed_schema(schema: dict[str, Any]) -> None:
     def visit(node: Any, path: str) -> None:

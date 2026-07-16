@@ -2,6 +2,7 @@ from knowmoredirt.schemas import (
     assert_portable_closed_schema,
     dataset_profile_schema,
     event_fact_verdict_schema,
+    evidence_review_schema,
     grounded_answer_schema,
     query_program_schema,
     semantic_contract_schema,
@@ -12,6 +13,7 @@ from knowmoredirt.schemas import (
 def test_all_semantic_schemas_are_portable_and_closed():
     assert_portable_closed_schema(dataset_profile_schema("fingerprint"))
     assert_portable_closed_schema(event_fact_verdict_schema("contract"))
+    assert_portable_closed_schema(evidence_review_schema("contract"))
     assert_portable_closed_schema(semantic_contract_schema("Who owns it?", "contract"))
     assert_portable_closed_schema(query_program_schema("contract"))
     assert_portable_closed_schema(tool_extraction_schema("contract"))

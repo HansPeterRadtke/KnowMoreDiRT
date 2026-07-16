@@ -60,20 +60,11 @@ def _normalize_search(value: Any) -> str:
 
 
 def _stem_token(token: str) -> str:
-    irregular = {
-        "found": "find", "bought": "buy", "wrote": "write", "written": "write",
-        "spoke": "speak", "spoken": "speak", "made": "make", "given": "give",
-        "prove": "proof", "proved": "proof", "proven": "proof", "proof": "proof",
-    }
-    if token in irregular:
-        return irregular[token]
-    for suffix in ("ations", "ation", "ions", "ion", "ing", "ers", "ors", "ed", "er", "or", "es", "s"):
-        if token.endswith(suffix) and len(token) - len(suffix) >= 4:
-            stem = token[: -len(suffix)]
-            if len(stem) >= 4 and stem[-1:] == stem[-2:-1]:
-                stem = stem[:-1]
-            return stem
-    return token
+    """Normalize repeated terminal characters without a vocabulary table."""
+    value = token.lower().strip()
+    while len(value) > 4 and len(value) >= 2 and value[-1] == value[-2]:
+        value = value[:-1]
+    return value
 
 
 def _one_edit_apart(left: str, right: str) -> bool:
@@ -98,26 +89,14 @@ def _one_edit_apart(left: str, right: str) -> bool:
 
 
 def _term_match_score(term: str, haystack: str) -> int:
-    """Return a generic lexical score using exact phrase or bounded token coverage."""
+    """Return a generic lexical score from exact phrases and token similarity."""
     if not term:
         return 0
     if term in haystack:
         return 20 + len(term.split())
-    ignored_tokens = {
-        "a", "an", "the", "about", "of", "for", "in", "on", "by", "to", "from",
-        "with", "at", "who", "what", "which", "is", "are", "was", "were", "did",
-        "does", "do", "current", "latest", "final", "earliest", "newest", "oldest",
-        "most", "recent", "now", "currently", "note", "document", "file", "text",
-        "record", "records", "data", "semantic", "really", "actually", "factually", "truly", "real",
-        "meaningful", "credible", "reliable", "authoritative", "trustworthy", "trusted",
-        "valid", "clean", "after", "before", "during", "since", "until",
-        "following", "preceding",
-        "regarding", "concerning", "according", "per", "says", "said", "believes",
-        "believed", "reported", "wrote", "written", "forwarded", "quoted",
-    }
-    query_tokens = [token for token in term.split() if token and token not in ignored_tokens]
+    query_tokens = [token for token in term.split() if token]
     if not query_tokens:
-        return 1
+        return 0
     haystack_tokens = set(haystack.split())
 
     def token_matches(query_token: str) -> bool:
@@ -126,12 +105,13 @@ def _term_match_score(term: str, haystack: str) -> int:
         query_stem = _stem_token(query_token)
         for candidate in haystack_tokens:
             candidate_stem = _stem_token(candidate)
-            if query_stem == candidate_stem and len(query_stem) >= 3:
+            if min(len(query_stem), len(candidate_stem)) >= 4 and (
+                query_stem.startswith(candidate_stem)
+                or candidate_stem.startswith(query_stem)
+            ):
                 return True
-            if min(len(query_stem), len(candidate_stem)) >= 5 and _one_edit_apart(query_stem, candidate_stem):
-                return True
-            if min(len(query_token), len(candidate)) >= 5 and (
-                query_token.startswith(candidate) or candidate.startswith(query_token)
+            if min(len(query_stem), len(candidate_stem)) >= 5 and _one_edit_apart(
+                query_stem, candidate_stem
             ):
                 return True
         return False
@@ -236,6 +216,7 @@ def expand_step(step: dict[str, Any]) -> dict[str, Any]:
         "strip_chars": step.get("strip_chars", ""),
         "distinct": bool(step.get("distinct", False)),
         "limit": int(step.get("limit", 20)),
+        "_contract_terms": list(step.get("_contract_terms", [])),
     }
     for argument in step.get("arguments", []):
         name = argument["name"]
@@ -275,7 +256,7 @@ def expand_step(step: dict[str, Any]) -> dict[str, Any]:
     elif expanded["extractor"] in {"extract_values", "model_extract"}:
         expanded["extractor"] = "none"
     if expanded["tool"] == "search_records" and expanded["mode"] == "none" and expanded["terms"]:
-        expanded["mode"] = "all"
+        expanded["mode"] = "all" if len(expanded["terms"]) == 1 else "any"
     if expanded["mode"] == "all_or_phrase":
         expanded["mode"] = "phrase" if len(expanded["terms"]) == 1 else "all"
     if expanded["direction"] == "desc":
@@ -354,25 +335,47 @@ class ToolExecutor:
             )
 
         if tool == "search_records":
-            records = self._input_records(step, results) if step["inputs"] else self.catalog.collection_records(step["collection"])
+            if step["inputs"]:
+                records = self._input_records(step, results)
+                collection_expanded = False
+            else:
+                preferred = self.catalog.collection_records(step["collection"])
+                if step["collection"] in {"", "all_records", "all_representations"}:
+                    records = preferred
+                    collection_expanded = False
+                else:
+                    records = []
+                    seen_record_ids: set[str] = set()
+                    for record in preferred + self.catalog.collection_records("all_records"):
+                        if record.record_id in seen_record_ids:
+                            continue
+                        seen_record_ids.add(record.record_id)
+                        records.append(record)
+                    collection_expanded = len(records) > len(preferred)
             terms = [_normalize_search(item) for item in step["terms"] if _normalize_search(item)]
-            selected_fields = [_normalize_search(item) for item in step["fields"] if _normalize_search(item)]
+            optional_terms = [
+                _normalize_search(item)
+                for item in step.get("_contract_terms", [])
+                if _normalize_search(item) and _normalize_search(item) not in terms
+            ]
+            selected_fields = [str(item).strip() for item in step["fields"] if str(item).strip()]
             phrase = terms[0] if step["mode"] == "phrase" and terms else ""
             scored: list[tuple[int, int, SourceRecord]] = []
             for record in records:
+                field_presence = sum(
+                    1 for field in selected_fields if values_at_path(record.data, field)
+                )
                 haystack = _normalize_search(record.search_text)
                 term_scores = [_term_match_score(term, haystack) for term in terms]
-                hits = [term for term, score in zip(terms, term_scores) if score > 0]
-                field_scores = [_term_match_score(field, haystack) for field in selected_fields]
-                field_hits = [field for field, score in zip(selected_fields, field_scores) if score > 0]
+                optional_scores = [
+                    _term_match_score(term, haystack) for term in optional_terms
+                ]
                 mode = step["mode"]
                 match = (
                     (mode == "phrase" and bool(phrase) and phrase in haystack)
                     or (mode == "all" and bool(terms) and all(score > 0 for score in term_scores))
                     or (mode == "any" and any(score > 0 for score in term_scores))
                 )
-                if selected_fields and not field_hits:
-                    match = False
                 if match and step["filters"]:
                     match = all(
                         _compare(
@@ -384,15 +387,57 @@ class ToolExecutor:
                         for item in step["filters"]
                     )
                 if match:
-                    score = sum(term_scores) + 10 * sum(field_scores) + (20 if phrase and phrase in haystack else 0)
+                    score = (
+                        sum(term_scores)
+                        + sum(optional_scores)
+                        + 5 * field_presence
+                        + (20 if phrase and phrase in haystack else 0)
+                    )
                     scored.append((score, len(haystack), record))
             scored.sort(key=lambda item: (-item[0], item[1], item[2].source_path, item[2].record_index))
+            fallback_global = False
+            if not scored and phrase:
+                fallback_step = dict(step)
+                fallback_step["mode"] = "all"
+                fallback_step["terms"] = [phrase]
+                return_result = self._execute_step(index, fallback_step, results)
+                return_result.diagnostics = {
+                    **return_result.diagnostics,
+                    "fallback_from_phrase": phrase,
+                }
+                return return_result
+            if not scored and selected_fields:
+                fallback_step = dict(step)
+                fallback_step["fields"] = []
+                return_result = self._execute_step(index, fallback_step, results)
+                return_result.diagnostics = {
+                    **return_result.diagnostics,
+                    "fallback_from_fields": selected_fields,
+                }
+                return return_result
+            if not scored and not step["inputs"] and step["collection"] not in {"", "all_records", "all_representations"}:
+                fallback_global = True
+                fallback_step = dict(step)
+                fallback_step["collection"] = "all_records"
+                return_result = self._execute_step(index, fallback_step, results)
+                return_result.diagnostics = {
+                    **return_result.diagnostics,
+                    "fallback_from_collection": step["collection"],
+                }
+                return return_result
             selected = [record for _, _, record in scored[: limit or 50]]
             return ToolResult(
                 step_id,
                 "records",
                 records=selected,
-                diagnostics={"matched": len(scored), "terms": terms, "fields": selected_fields},
+                diagnostics={
+                    "matched": len(scored),
+                    "terms": terms,
+                    "contract_terms": optional_terms,
+                    "fields": selected_fields,
+                    "global_fallback": fallback_global,
+                    "collection_expanded": collection_expanded,
+                },
             )
 
         if tool == "expand_source_context":
@@ -452,6 +497,16 @@ class ToolExecutor:
             )
 
         if tool == "extract_values":
+            if step["extractor"] == "none" and not step["fields"]:
+                records = self._input_records(step, results)
+                values = self._input_values(step, results)
+                return ToolResult(
+                    step_id,
+                    "values",
+                    records=records[: limit or len(records)],
+                    values=values[: limit or len(values)],
+                    diagnostics={"passthrough": True},
+                )
             return self._extract_values(step_id, step, results, limit)
 
         if tool == "join_records":
@@ -497,7 +552,13 @@ class ToolExecutor:
                 for group in groups[1:]:
                     common &= set(json.dumps(value, sort_keys=True, default=str) for value in group)
                 values = [json.loads(value) for value in sorted(common)]
-            return ToolResult(step_id, "values", values=values[: limit or len(values)])
+            provenance = self._input_records(step, results)
+            return ToolResult(
+                step_id,
+                "values",
+                values=values[: limit or len(values)],
+                records=provenance[: limit or len(provenance)],
+            )
 
         if tool == "sort_records":
             records = self._input_records(step, results)
@@ -515,12 +576,15 @@ class ToolExecutor:
             return ToolResult(step_id, "records", records=records[: limit or len(records)])
 
         if tool == "calculate":
+            # Explicit numbers are a complete operand list. Upstream values are
+            # the operand source only when the model did not supply numbers.
             numbers: list[float] = [float(value) for value in step["numbers"]]
-            for value in self._input_values(step, results):
-                try:
-                    numbers.append(float(value))
-                except (TypeError, ValueError):
-                    continue
+            if not numbers:
+                for value in self._input_values(step, results):
+                    try:
+                        numbers.append(float(value))
+                    except (TypeError, ValueError):
+                        continue
             operation = step["operation"]
             if operation == "add":
                 scalar: Any = sum(numbers)
@@ -540,7 +604,15 @@ class ToolExecutor:
                 scalar = None
             if isinstance(scalar, float) and scalar.is_integer():
                 scalar = int(scalar)
-            return ToolResult(step_id, "scalar", scalar=scalar, values=numbers)
+            provenance = self._input_records(step, results)
+            return ToolResult(
+                step_id,
+                "scalar",
+                scalar=scalar,
+                values=numbers,
+                records=provenance,
+                diagnostics={"operation": operation, "operands": numbers},
+            )
 
         if tool == "aggregate_values":
             values = self._input_values(step, results)
@@ -555,7 +627,13 @@ class ToolExecutor:
             if aggregation == "count":
                 scalar = len(_dedupe(values) if step["distinct"] else values)
             elif aggregation == "distinct":
-                return ToolResult(step_id, "values", values=_dedupe(values))
+                return ToolResult(
+                    step_id,
+                    "values",
+                    values=_dedupe(values),
+                    records=self._input_records(step, results),
+                    diagnostics={"aggregate": aggregation},
+                )
             elif aggregation == "mode":
                 counts: dict[str, int] = {}
                 originals: dict[str, Any] = {}
@@ -587,7 +665,14 @@ class ToolExecutor:
                     scalar = max(values) if values else None
                 else:
                     scalar = None
-            return ToolResult(step_id, "scalar", scalar=scalar, values=values[:50])
+            return ToolResult(
+                step_id,
+                "scalar",
+                scalar=scalar,
+                values=values[:50],
+                records=self._input_records(step, results),
+                diagnostics={"aggregate": aggregation, "input_count": len(values)},
+            )
 
         raise ValueError(f"unsupported tool: {tool}")
 
@@ -676,7 +761,9 @@ class ToolExecutor:
                 selected_candidates = candidates[-1:] if occurrence == "latest_by_time" else candidates[:1]
         elif occurrence == "last":
             selected_candidates = candidates[-1:]
-        elif occurrence == "all":
+        elif occurrence == "all" or (
+            occurrence == "none" and extractor == "date_time"
+        ):
             selected_candidates = candidates
         else:
             selected_candidates = candidates[:1]
@@ -695,12 +782,17 @@ class ToolExecutor:
         ]
         evidence_ids = {item["record_id"] for item in evidence}
         evidence_records = [record for record in records if record.record_id in evidence_ids]
+        preserved_records = evidence_records if values else records
         return ToolResult(
             step_id,
             "values",
             values=values[: limit or len(values)],
-            records=evidence_records,
-            diagnostics={"evidence": evidence[:200], "candidate_count": len(candidates)},
+            records=preserved_records[: limit or len(preserved_records)],
+            diagnostics={
+                "evidence": evidence[:200],
+                "candidate_count": len(candidates),
+                "preserved_input_records_on_miss": not bool(values),
+            },
         )
 
     @staticmethod

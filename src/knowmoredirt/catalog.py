@@ -143,9 +143,17 @@ class SourceCatalog:
             return rows if rows else None
 
     def _index_json(self, source: Path, value: Any) -> None:
-        self._walk_json(source, value, "$", set())
+        self._walk_json(source, value, "$", set(), index_object=True)
 
-    def _walk_json(self, source: Path, value: Any, path: str, seen: set[int]) -> None:
+    def _walk_json(
+        self,
+        source: Path,
+        value: Any,
+        path: str,
+        seen: set[int],
+        *,
+        index_object: bool,
+    ) -> None:
         if isinstance(value, (dict, list)):
             marker = id(value)
             if marker in seen:
@@ -165,7 +173,17 @@ class SourceCatalog:
                     preferred=True,
                     representation="json_item",
                 )
-                self._walk_json(source, item, f"{path}[]", seen)
+                if isinstance(item, dict):
+                    for key, child in item.items():
+                        if isinstance(child, list):
+                            child_path = f"{path}[].{key}"
+                            self._walk_json(
+                                source,
+                                child,
+                                child_path,
+                                seen,
+                                index_object=False,
+                            )
         elif isinstance(value, dict):
             local_data = {
                 key: child
@@ -173,7 +191,7 @@ class SourceCatalog:
                 if _primitive(child)
                 or (isinstance(child, list) and all(_primitive(item) for item in child))
             }
-            if local_data:
+            if index_object and local_data:
                 self._add(
                     f"{rel}::{path}{{}}",
                     source,
@@ -183,22 +201,40 @@ class SourceCatalog:
                     preferred=True,
                     representation="json_object",
                 )
-            if value and all(isinstance(item, dict) for item in value.values()):
+            map_of_objects = bool(value) and all(
+                isinstance(item, dict) for item in value.values()
+            )
+            if map_of_objects:
                 collection = f"{rel}::{path}{{}}"
                 for index, (key, item) in enumerate(value.items()):
                     self._add(
                         collection,
                         source,
-                        index + 1,
+                        index,
                         {"map_key": key, **item},
                         json.dumps(item, ensure_ascii=False, default=str),
                         preferred=True,
                         representation="json_map_item",
                     )
+                return
             for key, child in value.items():
                 child_path = f"{path}.{key}" if path != "$" else str(key)
-                if isinstance(child, (dict, list)):
-                    self._walk_json(source, child, child_path, seen)
+                if isinstance(child, list):
+                    self._walk_json(
+                        source,
+                        child,
+                        child_path,
+                        seen,
+                        index_object=False,
+                    )
+                elif isinstance(child, dict):
+                    self._walk_json(
+                        source,
+                        child,
+                        child_path,
+                        seen,
+                        index_object=True,
+                    )
 
     @staticmethod
     def _label_groups(lines: list[str]) -> list[dict[str, str]]:
@@ -465,6 +501,16 @@ class SourceCatalog:
         records = [self.records[record_id] for record_id in self._preferred_record_ids]
         return sorted(records, key=lambda item: (item.source_path, item.record_index, item.record_id))
 
+    def has_collection(self, collection_path: str) -> bool:
+        if collection_path in {"", "all_records", "all_representations"}:
+            return True
+        if collection_path in self.collections:
+            return True
+        return any(
+            record.source_path == collection_path
+            for record in self.preferred_records()
+        )
+
     def collection_records(self, collection_path: str) -> list[SourceRecord]:
         if collection_path in {"", "all_records"}:
             preferred = self.preferred_records()
@@ -473,46 +519,102 @@ class SourceCatalog:
             return list(self.records.values())
         if collection_path in self.collections:
             return list(self.collections[collection_path])
-        source_matches = [
+        return [
             record
             for record in self.preferred_records()
             if record.source_path == collection_path
         ]
-        return source_matches
 
     def records_for_sources(self, source_paths: set[str]) -> list[SourceRecord]:
-        return [record for record in self.preferred_records() if record.source_path in source_paths]
+        return [
+            record
+            for record in self.preferred_records()
+            if record.source_path in source_paths
+        ]
 
     def field_paths(self, collection_path: str) -> set[str]:
         fields: set[str] = set()
-        records = self.collection_records(collection_path)
-        for record in records[:1000]:
+        for record in self.collection_records(collection_path)[:1000]:
             fields.update(_flatten_types(record.data))
         return fields
 
-    def summary(self, max_chars: int = 9000) -> str:
-        preferred_ids = self._preferred_record_ids
+    @staticmethod
+    def _summary_tokens(value: str) -> set[str]:
+        return {
+            token
+            for token in re.findall(r"[a-z0-9]+", value.lower())
+            if len(token) >= 2
+        }
+
+    def _collection_descriptor(
+        self,
+        collection: str,
+        records: list[SourceRecord],
+        *,
+        include_sample: bool,
+    ) -> dict[str, Any]:
+        fields: dict[str, str] = {}
+        for record in records[:80]:
+            fields.update(_flatten_types(record.data))
+        return {
+            "collection_path": collection,
+            "record_count": len(records),
+            "preferred": any(
+                record.record_id in self._preferred_record_ids
+                for record in records
+            ),
+            "field_paths": fields,
+            "samples": [records[0].model_view(500)] if include_sample and records else [],
+        }
+
+    def summary(self, max_chars: int = 9000, *, query: str = "") -> str:
+        preferred = self.preferred_records()
         payload: list[dict[str, Any]] = [
             {
                 "collection_path": "all_records",
-                "record_count": len(self.preferred_records()),
+                "record_count": len(preferred),
                 "preferred": True,
                 "field_paths": {},
-                "samples": [record.model_view(350) for record in self.preferred_records()[:3]],
+                "samples": [
+                    preferred[index].model_view(500)
+                    for index in sorted({0, len(preferred) // 2, len(preferred) - 1})
+                    if preferred
+                ],
             }
         ]
-        for collection, records in sorted(self.collections.items()):
-            fields: dict[str, str] = {}
-            for record in records[:80]:
-                fields.update(_flatten_types(record.data))
+        query_tokens = self._summary_tokens(query)
+        ranked: list[tuple[int, int, str, list[SourceRecord]]] = []
+        for collection, records in self.collections.items():
+            fields = self.field_paths(collection)
+            sample = records[0].search_text[:1200] if records else ""
+            searchable = " ".join([collection, *sorted(fields), sample])
+            overlap = len(query_tokens.intersection(self._summary_tokens(searchable)))
+            ranked.append((overlap, len(records), collection, records))
+        ranked.sort(key=lambda item: (-item[0], -item[1], item[2]))
+
+        selected: list[tuple[str, list[SourceRecord]]] = []
+        seen_shapes: set[str] = set()
+        seen_roots: set[str] = set()
+        for overlap, _, collection, records in ranked:
+            source_root = collection.split("/", 1)[0]
+            shape = collection.split("::", 1)[-1]
+            shape = re.sub(r"[^.\[\]{}]+(?=\{\})", "*", shape)
+            query_priority = bool(query_tokens and overlap)
+            representative = shape not in seen_shapes or source_root not in seen_roots
+            if query_priority or representative or len(selected) < 12:
+                selected.append((collection, records))
+                seen_shapes.add(shape)
+                seen_roots.add(source_root)
+            if len(selected) >= 40:
+                break
+
+        for index, (collection, records) in enumerate(selected):
             payload.append(
-                {
-                    "collection_path": collection,
-                    "record_count": len(records),
-                    "preferred": any(record.record_id in preferred_ids for record in records),
-                    "field_paths": fields,
-                    "samples": [records[0].model_view(350)] if records else [],
-                }
+                self._collection_descriptor(
+                    collection,
+                    records,
+                    include_sample=index < 16,
+                )
             )
         rendered = json.dumps(payload, ensure_ascii=False, default=str)
         if len(rendered) <= max_chars:
@@ -522,13 +624,24 @@ class SourceCatalog:
         rendered = json.dumps(payload, ensure_ascii=False, default=str)
         if len(rendered) <= max_chars:
             return rendered
+        while len(payload) > 2:
+            payload.pop()
+            rendered = json.dumps(payload, ensure_ascii=False, default=str)
+            if len(rendered) <= max_chars:
+                return rendered
         compact = [
             {
                 "collection_path": item["collection_path"],
                 "record_count": item["record_count"],
                 "preferred": item["preferred"],
-                "field_paths": item["field_paths"],
+                "field_paths": {},
+                "samples": [],
             }
             for item in payload
         ]
-        return json.dumps(compact, ensure_ascii=False, default=str)[:max_chars]
+        while len(compact) > 1:
+            rendered = json.dumps(compact, ensure_ascii=False, default=str)
+            if len(rendered) <= max_chars:
+                return rendered
+            compact.pop()
+        return json.dumps(compact, ensure_ascii=False, default=str)

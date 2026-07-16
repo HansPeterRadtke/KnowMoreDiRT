@@ -14,11 +14,16 @@ from typing import Any, Iterable
 from knowmoredirt.engine import KnowMoreDiRTEngine
 
 QA_KEYS = {"answerable_questions", "unanswerable_questions"}
-ID_KEYS = {
-    "artifact_id", "artifactid", "source_id", "sourceid", "document_id",
-    "documentid", "message_id", "messageid", "transcript_id", "transcriptid",
-    "chat_id", "chatid", "pr_id", "prid", "id",
-}
+ID_KEY_PRIORITY = (
+    {"artifactid"},
+    {"sourceid"},
+    {"documentid"},
+    {"messageid"},
+    {"transcriptid"},
+    {"chatid"},
+    {"prid"},
+    {"id"},
+)
 
 
 def read_jsonl(path: Path) -> list[dict[str, Any]]:
@@ -79,18 +84,41 @@ def sanitize_herb_source(raw_root: Path, source_root: Path, *, rebuild: bool = F
     return counts
 
 
-def _walk_ids(value: Any, *, key: str = "") -> Iterable[str]:
-    normalized_key = key.lower().replace("-", "").replace("_", "").replace(" ", "")
-    if isinstance(value, dict):
-        for child_key, child in value.items():
-            yield from _walk_ids(child, key=str(child_key))
-    elif isinstance(value, list):
-        for child in value[:500]:
-            yield from _walk_ids(child, key=key)
-    elif normalized_key in ID_KEYS:
-        text = str(value).strip()
-        if text:
-            yield text
+def _normalized_key(value: str) -> str:
+    return value.lower().replace("-", "").replace("_", "").replace(" ", "")
+
+
+def _local_source_ids(value: Any, *, max_depth: int = 3) -> list[str]:
+    """Choose the most specific shallow identifier class for one evidence record."""
+    buckets: list[list[str]] = [[] for _ in ID_KEY_PRIORITY]
+
+    def visit(node: Any, depth: int) -> None:
+        if depth > max_depth or not isinstance(node, dict):
+            return
+        for key, child in node.items():
+            normalized = _normalized_key(str(key))
+            for index, key_group in enumerate(ID_KEY_PRIORITY):
+                if normalized not in key_group:
+                    continue
+                values = child if isinstance(child, list) else [child]
+                for item in values[:20]:
+                    if isinstance(item, (dict, list)):
+                        continue
+                    text = str(item).strip()
+                    if text and text not in buckets[index]:
+                        buckets[index].append(text)
+                break
+        for child in node.values():
+            if isinstance(child, dict):
+                visit(child, depth + 1)
+            # Do not descend through lists of child records: those IDs belong to
+            # records that were not themselves cited.
+
+    visit(value, 0)
+    for bucket in buckets:
+        if bucket:
+            return bucket[:4]
+    return []
 
 
 def evidence_outputs(answer: Any) -> tuple[list[str], list[str], list[dict[str, Any]]]:
@@ -102,10 +130,8 @@ def evidence_outputs(answer: Any) -> tuple[list[str], list[str], list[dict[str, 
     for rank, view in enumerate(answer.evidence, start=1):
         record_id = str(view.get("record_id", "")).strip()
         source_path = str(view.get("source_path", "")).strip()
-        local_source_ids: list[str] = []
-        for candidate in _walk_ids(view.get("data", {})):
-            if candidate not in local_source_ids:
-                local_source_ids.append(candidate)
+        local_source_ids = _local_source_ids(view.get("data", {}))
+        for candidate in local_source_ids:
             if candidate not in source_seen:
                 source_seen.add(candidate)
                 source_ids.append(candidate)
@@ -219,14 +245,20 @@ def main() -> int:
         answer = engine.answer(question_row["question"])
         source_ids, chunk_ids, chunks = evidence_outputs(answer)
         answerable = answer.text.strip().lower() != "unknown"
+        review = answer.diagnostics.get("review", {}) if isinstance(answer.diagnostics, dict) else {}
+        raw_confidence = review.get("confidence", 0.8 if answerable else 0.7)
+        try:
+            confidence = max(0.0, min(float(raw_confidence), 1.0))
+        except (TypeError, ValueError):
+            confidence = 0.8 if answerable else 0.7
         prediction = {
             "question_id": question_id,
             "answer": prediction_answer(answer.text, question_row["question_type"]),
             "answerable": answerable,
-            "confidence": 0.8 if answerable else 0.7,
+            "confidence": confidence,
             "supporting_source_ids": source_ids,
             "supporting_chunk_ids": chunk_ids,
-            "reasoning_summary": str(answer.diagnostics.get("derivation", "KnowMoreDiRT grounded execution")),
+            "reasoning_summary": str(review.get("reason", "KnowMoreDiRT grounded execution")),
         }
         retrieved_sources = {
             "question_id": question_id,

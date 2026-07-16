@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import argparse
+import fcntl
 import json
 import os
 import time
@@ -28,6 +29,27 @@ def score_answer(predicted: str, expected: str) -> tuple[bool, bool, float]:
     )
 
 
+def acquire_output_lock(output_root: Path):
+    """Hold an exclusive process lock for one benchmark output root."""
+    output_root.mkdir(parents=True, exist_ok=True)
+    lock_path = output_root / ".run.lock"
+    handle = lock_path.open("a+")
+    try:
+        fcntl.flock(handle.fileno(), fcntl.LOCK_EX | fcntl.LOCK_NB)
+    except BlockingIOError:
+        handle.seek(0)
+        owner = handle.read().strip() or "unknown"
+        handle.close()
+        raise SystemExit(
+            f"benchmark output root is already locked: {output_root} owner_pid={owner}"
+        )
+    handle.seek(0)
+    handle.truncate()
+    handle.write(str(os.getpid()))
+    handle.flush()
+    return handle
+
+
 def load_existing(path: Path) -> dict[tuple[str, str], dict]:
     output = {}
     if path.exists():
@@ -38,6 +60,20 @@ def load_existing(path: Path) -> dict[tuple[str, str], dict]:
     return output
 
 
+def write_results_atomic(path: Path, rows: list[dict]) -> None:
+    """Atomically checkpoint one row per suite/question key."""
+    unique: dict[tuple[str, str], dict] = {}
+    for row in rows:
+        unique[(row["suite"], row["id"])] = row
+    temp = path.with_suffix(path.suffix + ".tmp")
+    with temp.open("w", encoding="utf-8") as handle:
+        for row in unique.values():
+            handle.write(json.dumps(row, ensure_ascii=False) + "\n")
+        handle.flush()
+        os.fsync(handle.fileno())
+    temp.replace(path)
+
+
 def main() -> int:
     parser = argparse.ArgumentParser()
     parser.add_argument("--output-root", default="/data/var/knowmoredirt/internal_benchmark")
@@ -46,11 +82,13 @@ def main() -> int:
     parser.add_argument("--force", action="store_true")
     args = parser.parse_args()
     output_root = Path(args.output_root)
-    output_root.mkdir(parents=True, exist_ok=True)
+    output_lock = acquire_output_lock(output_root)
     results_path = output_root / "results.jsonl"
     if args.force and results_path.exists():
         results_path.unlink()
     existing = load_existing(results_path)
+    if results_path.exists():
+        write_results_atomic(results_path, list(existing.values()))
     selected = args.suite or list(SUITES)
     unknown = set(selected) - set(SUITES)
     if unknown:
@@ -87,11 +125,9 @@ def main() -> int:
                 "token_f1": round(answer_f1, 6),
                 "elapsed_seconds": round(time.time() - started, 3),
             }
-            with results_path.open("a") as handle:
-                handle.write(json.dumps(row, ensure_ascii=False) + "\n")
-                handle.flush()
-            records.append(row)
             existing[key] = row
+            records = list(existing.values())
+            write_results_atomic(results_path, records)
             print(f"answer {suite_name} {index}/{len(questions)} {item['id']} exact={row['exact_correct']} semantic={row['semantic_correct']} predicted={predicted!r}", flush=True)
     by_suite: dict[str, list[dict]] = defaultdict(list)
     for row in records:
@@ -127,6 +163,7 @@ def main() -> int:
     }
     (output_root / "summary.json").write_text(json.dumps(summary, indent=2) + "\n")
     print(json.dumps(summary, indent=2))
+    output_lock.close()
     return 0
 
 

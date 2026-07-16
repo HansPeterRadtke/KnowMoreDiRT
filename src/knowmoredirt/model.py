@@ -43,6 +43,10 @@ def _validate(value: Any, schema: dict[str, Any], path: str = "$") -> None:
     elif kind == "array":
         if not isinstance(value, list):
             raise ModelError(f"expected array at {path}")
+        if "minItems" in schema and len(value) < int(schema["minItems"]):
+            raise ModelError(f"array too short at {path}")
+        if "maxItems" in schema and len(value) > int(schema["maxItems"]):
+            raise ModelError(f"array too long at {path}")
         for index, child in enumerate(value):
             _validate(child, schema["items"], f"{path}[{index}]")
     elif kind == "string" and not isinstance(value, str):
@@ -53,6 +57,11 @@ def _validate(value: Any, schema: dict[str, Any], path: str = "$") -> None:
         raise ModelError(f"expected integer at {path}")
     elif kind == "number" and (not isinstance(value, (int, float)) or isinstance(value, bool)):
         raise ModelError(f"expected number at {path}")
+    if kind in {"integer", "number"} and isinstance(value, (int, float)) and not isinstance(value, bool):
+        if "minimum" in schema and value < schema["minimum"]:
+            raise ModelError(f"number below minimum at {path}")
+        if "maximum" in schema and value > schema["maximum"]:
+            raise ModelError(f"number above maximum at {path}")
 
 
 class StrictModelClient:
@@ -65,7 +74,7 @@ class StrictModelClient:
     def complete_json(self, stage: str, prompt: str, schema: dict[str, Any], max_tokens: int = 4096) -> dict[str, Any]:
         assert_portable_closed_schema(schema)
         material = json.dumps(
-            {"stage": stage, "prompt": prompt, "schema": schema, "endpoint": self.endpoint, "version": "strict-model-owned-v2", "max_tokens": max_tokens},
+            {"stage": stage, "prompt": prompt, "schema": schema, "endpoint": self.endpoint, "version": "strict-model-owned-v4", "max_tokens": max_tokens},
             sort_keys=True,
             ensure_ascii=False,
         )
@@ -75,7 +84,7 @@ class StrictModelClient:
             cached = json.loads(cache_path.read_text(encoding="utf-8"))
             _validate(cached, schema)
             return cached
-        body: dict[str, Any] = {
+        base_body: dict[str, Any] = {
             "messages": [
                 {
                     "role": "system",
@@ -83,31 +92,48 @@ class StrictModelClient:
                 },
                 {"role": "user", "content": prompt},
             ],
-            "max_tokens": max_tokens,
             "temperature": float(os.environ.get("KMD_LOCAL_MODEL_TEMPERATURE", "0")),
             "top_p": float(os.environ.get("KMD_LOCAL_MODEL_TOP_P", "1")),
             "seed": int(os.environ.get("KMD_LOCAL_MODEL_SEED", "1778779265")),
             "stream": False,
             "cache_prompt": True,
+            "reasoning_effort": os.environ.get("KMD_LOCAL_MODEL_REASONING_EFFORT", "low"),
             "response_format": {
                 "type": "json_schema",
                 "json_schema": {"name": f"kmd_{stage}", "strict": True, "schema": schema},
             },
         }
         if "openrouter.ai" in self.endpoint:
-            body["provider"] = {"require_parameters": True}
-        request = urllib.request.Request(
-            _chat_endpoint(self.endpoint),
-            data=json.dumps(body).encode("utf-8"),
-            headers={"Content-Type": "application/json"},
-            method="POST",
+            base_body["provider"] = {"require_parameters": True}
+        maximum_retry_tokens = max(
+            max_tokens,
+            int(os.environ.get("KMD_LOCAL_MODEL_RETRY_MAX_TOKENS", "4096")),
         )
+        token_budgets = [
+            max_tokens,
+            min(maximum_retry_tokens, max(max_tokens * 2, 2048)),
+            min(maximum_retry_tokens, max(max_tokens * 4, 4096)),
+        ]
+        token_budgets = list(dict.fromkeys(token_budgets))
         last_error: Exception | None = None
-        for attempt in range(2):
+        for attempt, token_budget in enumerate(token_budgets):
+            body = {**base_body, "max_tokens": token_budget}
+            request = urllib.request.Request(
+                _chat_endpoint(self.endpoint),
+                data=json.dumps(body).encode("utf-8"),
+                headers={"Content-Type": "application/json"},
+                method="POST",
+            )
             try:
                 with urllib.request.urlopen(request, timeout=self.timeout) as response:
                     payload = json.loads(response.read().decode("utf-8", errors="replace"))
-                content = payload["choices"][0]["message"]["content"]
+                choice = payload["choices"][0]
+                content = choice["message"]["content"]
+                if not str(content).strip():
+                    finish_reason = str(choice.get("finish_reason", "unknown"))
+                    raise ModelError(
+                        f"empty structured content with finish_reason={finish_reason} and max_tokens={token_budget}"
+                    )
                 parsed = json.loads(content)
                 _validate(parsed, schema)
                 temp = cache_path.with_suffix(".tmp")
@@ -116,6 +142,6 @@ class StrictModelClient:
                 return parsed
             except (OSError, urllib.error.URLError, KeyError, IndexError, json.JSONDecodeError, ModelError) as exc:
                 last_error = exc
-                if attempt == 0:
+                if attempt + 1 < len(token_budgets):
                     time.sleep(0.5)
         raise ModelError(f"strict model call failed during {stage}: {last_error}")

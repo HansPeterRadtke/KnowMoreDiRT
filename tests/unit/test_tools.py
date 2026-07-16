@@ -154,6 +154,18 @@ def test_extract_values_after_label_and_latest_event(tmp_path):
     assert results[2].values == ["clear"]
 
 
+def test_date_time_extractor_without_occurrence_preserves_all_candidates(tmp_path):
+    (tmp_path / "schedule.txt").write_text(
+        "2027-03-04 08:15 kiln check.\n2027-03-04 17:45 gallery opening.\n"
+    )
+    results = ToolExecutor(SourceCatalog(tmp_path)).execute([
+        step("search_records", collection="all_records", terms=["gallery opening"], mode="all"),
+        step("extract_values", inputs=[0], extractor="date_time"),
+    ])
+    assert results[1].values == ["2027-03-04 08:15", "2027-03-04 17:45"]
+    assert results[1].diagnostics["candidate_count"] == 2
+
+
 def test_search_combines_lexical_terms_and_structured_filters(tmp_path):
     (tmp_path / "events.log").write_text(
         "event=owner update | component=retry scheduler | state=current | owner=Mara\n"
@@ -229,7 +241,7 @@ def test_compact_step_normalizes_missing_search_mode_and_extractor_arguments():
             "values": [r"owner is (?P<value>[A-Za-z]+)"], "numbers": [],
         }], "limit": 10,
     })
-    assert search["mode"] == "all"
+    assert search["mode"] == "any"
     assert extraction["pattern"] == r"owner is (?P<value>[A-Za-z]+)"
     assert extraction["value_group"] == "value"
 
@@ -250,20 +262,6 @@ def test_search_uses_generic_token_coverage_for_nonverbatim_phrases(tmp_path):
     assert len(results[0].records) == 1
 
 
-def test_search_treats_temporal_operator_words_as_query_operators(tmp_path):
-    (tmp_path / "note.txt").write_text(
-        "2026-01-01 RampCart state: planned.\n2026-01-03 RampCart state: revised."
-    )
-    results = ToolExecutor(SourceCatalog(tmp_path)).execute([
-        step(
-            "search_records",
-            collection="all_records",
-            terms=["RampCart", "current state"],
-            mode="all",
-            limit=10,
-        )
-    ])
-    assert len(results[0].records) == 1
 
 
 def test_compact_regex_uses_numeric_capture_group_argument():
@@ -279,13 +277,30 @@ def test_compact_regex_uses_numeric_capture_group_argument():
     assert expanded["value_group"] == "1"
 
 
-def test_missing_mode_defaults_to_conjunctive_nonphrase_search():
+def test_missing_single_term_mode_defaults_to_token_coverage_search():
     expanded = expand_step({
         "tool": "search_records", "inputs": [], "collection": "all_records",
         "terms": ["disagreed about library hours"], "fields": [], "filters": [],
         "arguments": [], "limit": 10,
     })
     assert expanded["mode"] == "all"
+
+
+def test_phrase_search_falls_back_to_token_coverage_when_words_are_interleaved(tmp_path):
+    (tmp_path / "homework.txt").write_text(
+        "Math word problem: 7 apples plus 5 apples equals 12 apples."
+    )
+    results = ToolExecutor(SourceCatalog(tmp_path)).execute([
+        step(
+            "search_records",
+            collection="all_records",
+            terms=["7 plus 5"],
+            mode="phrase",
+            limit=10,
+        )
+    ])
+    assert len(results[0].records) == 1
+    assert results[0].diagnostics["fallback_from_phrase"] == "7 plus 5"
 
 
 def test_search_tolerates_stopwords_and_simple_morphology(tmp_path):
@@ -339,17 +354,6 @@ def test_after_phrase_stops_at_inline_object_delimiter_and_strips_quotes(tmp_pat
     assert results[1].values == ["Zia Fern"]
 
 
-def test_search_ignores_generic_artifact_words_in_scope_terms(tmp_path):
-    (tmp_path / "no_ext_homework").write_text(
-        "Math word problem: 7 apples plus 5 apples equals 12 apples."
-    )
-    results = ToolExecutor(SourceCatalog(tmp_path)).execute([
-        step(
-            "search_records", collection="all_records",
-            terms=["7 plus 5", "in the homework note"], mode="all", limit=10,
-        )
-    ])
-    assert len(results[0].records) == 1
 
 
 def test_model_extract_ignores_irrelevant_executor_arguments():
@@ -363,17 +367,6 @@ def test_model_extract_ignores_irrelevant_executor_arguments():
     assert expanded["extractor"] == "none"
 
 
-def test_search_matches_relation_verb_to_role_noun_by_generic_stem(tmp_path):
-    (tmp_path / "site_note").write_text(
-        "Drawing reference: shed roof\nInspector: Lale Kim\nCurrent state: repaired"
-    )
-    results = ToolExecutor(SourceCatalog(tmp_path)).execute([
-        step(
-            "search_records", collection="all_records",
-            terms=["shed roof note", "inspected"], mode="all", limit=10,
-        )
-    ])
-    assert len(results[0].records) == 1
 
 
 def test_search_tolerates_one_edit_irregular_tense(tmp_path):
@@ -389,30 +382,8 @@ def test_search_tolerates_one_edit_irregular_tense(tmp_path):
     assert len(results[0].records) == 1
 
 
-def test_search_ignores_epistemic_query_operators(tmp_path):
-    (tmp_path / "dreamfile").write_text(
-        "AtlasCrane deleted vault.key in a dream. When I woke up, the repository still contained vault.key."
-    )
-    results = ToolExecutor(SourceCatalog(tmp_path)).execute([
-        step(
-            "search_records", collection="all_records",
-            terms=["AtlasCrane", "delete vault.key", "really"], mode="all", limit=10,
-        )
-    ])
-    assert len(results[0].records) == 1
 
 
-def test_search_treats_regarding_as_relation_operator(tmp_path):
-    (tmp_path / "belief.txt").write_text(
-        "Discussion: VectorLamp cache policy. Tao believes the cache should expire every 8 minutes."
-    )
-    results = ToolExecutor(SourceCatalog(tmp_path)).execute([
-        step(
-            "search_records", collection="all_records",
-            terms=["Tao believes", "VectorLamp cache", "regarding"], mode="all", limit=10,
-        )
-    ])
-    assert len(results[0].records) == 1
 
 
 def test_search_stems_shipping_to_ship(tmp_path):
@@ -432,20 +403,6 @@ def test_search_stems_shipping_to_ship(tmp_path):
     assert len(results[0].records) == 1
 
 
-def test_search_matches_find_to_found(tmp_path):
-    (tmp_path / "inspection.txt").write_text(
-        "Later inspection found no crack in the blue pump."
-    )
-    results = ToolExecutor(SourceCatalog(tmp_path)).execute([
-        step(
-            "search_records",
-            collection="all_records",
-            terms=["blue pump", "later inspection", "find a crack"],
-            mode="all",
-            limit=10,
-        )
-    ])
-    assert len(results[0].records) == 1
 
 
 def test_after_phrase_does_not_slice_inside_inflected_word(tmp_path):
@@ -463,3 +420,198 @@ def test_after_phrase_does_not_slice_inside_inflected_word(tmp_path):
         ),
     ])[1]
     assert result.values == []
+
+def test_search_does_not_hide_unmatched_model_terms(tmp_path):
+    (tmp_path / "note.txt").write_text("Cedar owner is Mara.")
+    catalog = SourceCatalog(tmp_path)
+    executor = ToolExecutor(catalog)
+    results = executor.execute([
+        step(
+            "search_records",
+            collection="all_records",
+            terms=["Cedar", "term absent from source"],
+            mode="all",
+        )
+    ])
+    assert results[0].records == []
+
+
+def test_search_fields_are_ranking_hints_not_hard_filters(tmp_path):
+    (tmp_path / "preferred.json").write_text(
+        json.dumps({"text": "generic owl note", "Dataset URL": "https://example.test/generic"})
+    )
+    (tmp_path / "coherent.txt").write_text(
+        "Owl calls study. Dataset URL: https://example.test/owl"
+    )
+    results = ToolExecutor(SourceCatalog(tmp_path)).execute([
+        step(
+            "search_records",
+            collection="all_records",
+            terms=["owl calls study"],
+            mode="all",
+            fields=["Dataset URL"],
+            limit=10,
+        )
+    ])
+    assert results[0].records
+    assert results[0].records[0].source_path == "coherent.txt"
+
+
+def test_calculate_explicit_numbers_do_not_double_count_upstream_values(tmp_path):
+    (tmp_path / "note.txt").write_text("7 plus 5 equals 12")
+    results = ToolExecutor(SourceCatalog(tmp_path)).execute([
+        step("calculate", operation="add", numbers=[7, 5]),
+        step("calculate", inputs=[0], operation="add", numbers=[7, 5]),
+    ])
+    assert results[0].scalar == 12
+    assert results[1].scalar == 12
+
+
+def test_narrow_collection_search_miss_retries_all_records(tmp_path):
+    (tmp_path / "wrong.txt").write_text("Physics notes without arithmetic.")
+    (tmp_path / "right.txt").write_text("Homework note: 7 + 5 = 12.")
+    catalog = SourceCatalog(tmp_path)
+    results = ToolExecutor(catalog).execute([
+        step(
+            "search_records",
+            collection="wrong.txt::lines[]",
+            terms=["7+5"],
+            mode="any",
+            fields=["text"],
+            limit=10,
+        )
+    ])
+    assert [record.source_path for record in results[0].records] == ["right.txt"]
+    assert results[0].diagnostics["collection_expanded"] is True
+
+
+def test_derived_values_and_scalars_carry_upstream_record_provenance(tmp_path):
+    (tmp_path / "data.json").write_text(json.dumps({"rows": [{"value": 7}, {"value": 5}]}))
+    results = ToolExecutor(SourceCatalog(tmp_path)).execute([
+        step("project_values", collection="data.json::rows[]", fields=["value"]),
+        step("calculate", inputs=[0], operation="add"),
+        step("aggregate_values", inputs=[0], aggregate="count"),
+        step("union_values", inputs=[0]),
+    ])
+    assert results[1].scalar == 12
+    assert len(results[1].records) == 2
+    assert len(results[2].records) == 2
+    assert len(results[3].records) == 2
+
+
+def test_search_relaxes_nonmatching_field_hints_before_global_fallback(tmp_path):
+    (tmp_path / "note.txt").write_text("Aurora safety note author: Mira Sol.")
+    results = ToolExecutor(SourceCatalog(tmp_path)).execute([
+        step(
+            "search_records",
+            collection="logical_documents",
+            terms=["Aurora safety note"],
+            mode="any",
+            fields=["nonexistent.deep.path"],
+            limit=10,
+        )
+    ])
+    assert results[0].records
+    assert results[0].diagnostics["fields"] == ["nonexistent.deep.path"]
+
+
+def test_missing_mode_matches_noncontiguous_tokens_in_one_model_term(tmp_path):
+    (tmp_path / "note.txt").write_text(
+        "Project MarlinKind has artifacts. Reese requested the plan."
+    )
+    results = ToolExecutor(SourceCatalog(tmp_path)).execute([
+        step(
+            "search_records",
+            collection="all_records",
+            terms=["MarlinKind plan"],
+            mode="none",
+            limit=10,
+        )
+    ])
+    assert len(results[0].records) == 1
+
+
+def test_parameterless_extract_values_preserves_upstream_material(tmp_path):
+    (tmp_path / "note.txt").write_text("Cedar owner Mara")
+    results = ToolExecutor(SourceCatalog(tmp_path)).execute([
+        step("search_records", collection="all_records", terms=["Cedar"], mode="all"),
+        step("project_values", inputs=[0], fields=["text"]),
+        step("extract_values", inputs=[1], extractor="none", fields=[]),
+    ])
+    assert results[2].values == results[1].values
+    assert [record.record_id for record in results[2].records] == [
+        record.record_id for record in results[1].records
+    ]
+    assert results[2].diagnostics["passthrough"] is True
+
+
+def test_source_path_token_never_excludes_stronger_content_match(tmp_path):
+    (tmp_path / "essay-final.txt").write_text("Unrelated archival summary.")
+    (tmp_path / "homework.txt").write_text(
+        "Lina drafted the volcano homework essay for Meadow Class."
+    )
+    results = ToolExecutor(SourceCatalog(tmp_path)).execute([
+        step(
+            "search_records",
+            collection="logical_documents",
+            terms=["volcano homework essay", "Meadow Class"],
+            mode="any",
+            fields=["text"],
+            limit=10,
+        )
+    ])
+    assert results[0].records
+    assert results[0].records[0].source_path == "homework.txt"
+
+
+def test_root_search_expands_narrow_collection_and_ranks_global_match(tmp_path):
+    (tmp_path / "wrong.json").write_text(
+        json.dumps([{"Teacher feedback": "cite one map source"}])
+    )
+    (tmp_path / "right.txt").write_text(
+        "Lina drafted the volcano homework essay. Teacher feedback: Ms. Orin wrote the note."
+    )
+    catalog = SourceCatalog(tmp_path)
+    narrow = next(
+        name for name in catalog.collections
+        if name.startswith("wrong.json::") and name != "wrong.json::${}"
+    )
+    results = ToolExecutor(catalog).execute([
+        step(
+            "search_records",
+            collection=narrow,
+            terms=["Teacher feedback", "wrote feedback on the volcano homework essay"],
+            mode="any",
+            fields=["Teacher feedback"],
+            limit=10,
+        )
+    ])
+    assert results[0].records[0].source_path == "right.txt"
+    assert results[0].diagnostics["collection_expanded"] is True
+
+
+def test_deterministic_extraction_miss_preserves_records_for_semantic_fallback(tmp_path):
+    (tmp_path / "essay.txt").write_text(
+        "Ravi Nolen authored the river trade history essay."
+    )
+    results = ToolExecutor(SourceCatalog(tmp_path)).execute([
+        step(
+            "search_records",
+            collection="all_records",
+            terms=["river trade history essay"],
+            mode="all",
+            limit=10,
+        ),
+        step(
+            "extract_values",
+            inputs=[0],
+            extractor="after_phrase",
+            start_phrase="authored by",
+            limit=10,
+        ),
+    ])
+    assert results[1].values == []
+    assert [record.record_id for record in results[1].records] == [
+        record.record_id for record in results[0].records
+    ]
+    assert results[1].diagnostics["preserved_input_records_on_miss"] is True

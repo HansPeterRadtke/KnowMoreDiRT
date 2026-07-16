@@ -61,3 +61,24 @@ def test_select_questions_drops_ground_truth_metadata():
         "question_type": "person",
         "product_id": "p1",
     }]
+
+
+def test_evidence_output_ignores_ids_inside_uncited_child_record_lists():
+    class Answer:
+        evidence = ({
+            "record_id": "chunk-2",
+            "source_path": "products/Y.json",
+            "data": {
+                "id": "container-id",
+                "metadata": {"artifact_id": "artifact-primary"},
+                "messages": [
+                    {"message_id": "uncited-message-1"},
+                    {"message_id": "uncited-message-2"},
+                ],
+            },
+            "excerpt": "evidence",
+        },)
+
+    source_ids, _, chunks = runner.evidence_outputs(Answer())
+    assert source_ids == ["artifact-primary"]
+    assert chunks[0]["artifact_id"] == "artifact-primary"
