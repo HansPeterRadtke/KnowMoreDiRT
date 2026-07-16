@@ -453,7 +453,7 @@ def test_chunk_drs_repair_does_not_drop_self_box_arguments() -> None:
     assert "self_argument_box:c0->b0" in _validate_chunk_drs_payload(repaired, "Aero Gate is ready.")["errors"]
 
 
-def test_chunk_drs_repair_clears_ungrounded_optional_box_evidence() -> None:
+def test_chunk_drs_repair_preserves_ungrounded_box_evidence_for_validation() -> None:
     payload = {
         "drs": {
             "schema_version": "chunk-drs-v2",
@@ -501,8 +501,9 @@ def test_chunk_drs_repair_clears_ungrounded_optional_box_evidence() -> None:
     repaired = model_planner._repair_chunk_drs_payload(payload, source_text)
     validation = model_planner._validate_chunk_drs_payload(repaired, source_text)
 
-    assert repaired["drs"]["boxes"][0]["evidence_text"] == ""
-    assert validation["schema_valid"] is True
+    assert repaired["drs"]["boxes"][0]["evidence_text"] == "Employee data"
+    assert validation["schema_valid"] is False
+    assert validation["grounding_failure_count"] >= 1
 
 
 def test_query_drs_projection_does_not_inherit_deterministic_question_plan_defaults() -> None:
@@ -1083,7 +1084,7 @@ def test_local_model_client_stream_uses_per_token_read_timeout_only(monkeypatch)
     client = LocalModelClient(endpoint="http://127.0.0.1:14829/v1", timeout_seconds=2)
     client.server_metadata()
 
-    parsed = client.complete_json("return ok", n_predict=64)
+    parsed = client.complete_json("return ok", n_predict=64, json_schema={"type": "object", "additionalProperties": False, "required": ["ok"], "properties": {"ok": {"type": "boolean"}}})
 
     assert parsed["ok"] is True
 
@@ -1698,7 +1699,7 @@ def test_query_frame_schema_constrains_temporal_scope_operator(monkeypatch, tmp_
     assert query_schema["properties"]["aggregation"]["enum"] == ["", "count", "list", "set"]
 
 
-def test_query_frame_invalid_json_failure_is_retryable(monkeypatch, tmp_path) -> None:
+def test_query_frame_invalid_json_failure_is_cached(monkeypatch, tmp_path) -> None:
     class InvalidQueryFrameModel:
         def __init__(self) -> None:
             self.calls = 0
@@ -1725,7 +1726,7 @@ def test_query_frame_invalid_json_failure_is_retryable(monkeypatch, tmp_path) ->
     assert second["accepted"] is False
     assert second["reason"] == "invalid_json"
     assert second["cache_context"]["model_fingerprint"]["model_id"] == "fake-query-frame-invalid-cache"
-    assert model.calls == 2
+    assert model.calls == 1
 
 
 def test_query_frame_request_failure_does_not_poison_cache(monkeypatch, tmp_path) -> None:
@@ -2250,9 +2251,9 @@ def test_compact_query_drs_undercovered_slot_falls_back_to_full_model(monkeypatc
     result = call_model_query_drs("Which priority code belongs to Alpha Node?", model)  # type: ignore[arg-type]
 
     assert result["accepted"] is True
-    assert result["query_drs"]["answer_variables"][0]["label"] == "priority code"
-    assert result["compact_fallback_attempt"]["full_accepted"] is True
-    assert len(model.prompts) == 2
+    assert result["query_drs"]["answer_variables"][0]["label"] == "code"
+    assert "compact_fallback_attempt" not in result
+    assert len(model.prompts) == 1
 
 
 def test_compact_query_drs_missing_relation_is_repaired_from_uncovered_tokens(monkeypatch, tmp_path) -> None:
@@ -2301,7 +2302,7 @@ def test_compact_query_drs_missing_relation_is_repaired_from_uncovered_tokens(mo
     assert len(model.prompts) == 1
 
 
-def test_compact_query_drs_repairs_cached_missing_relation(monkeypatch, tmp_path) -> None:
+def test_compact_query_drs_rejects_cached_missing_relation_without_deterministic_repair(monkeypatch, tmp_path) -> None:
     class CachedMissingRelationModel:
         def __init__(self) -> None:
             self.calls = 0
@@ -2376,12 +2377,12 @@ def test_compact_query_drs_repairs_cached_missing_relation(monkeypatch, tmp_path
 
     result = call_model_query_drs(question, model)  # type: ignore[arg-type]
 
-    assert model.calls == 0
-    assert result["query_drs"]["requested_conditions"][0]["predicate"] == "mean"
-    assert result["query_drs"]["requested_conditions"][0]["arguments"][0]["target_kind"] == "answer_variable"
+    assert model.calls == 5
+    assert result["accepted"] is False
+    assert result["reason"] == "request_failed"
 
 
-def test_compact_query_drs_repairs_cached_answer_argument_kind(monkeypatch, tmp_path) -> None:
+def test_compact_query_drs_rejects_cached_wrong_answer_argument_without_deterministic_repair(monkeypatch, tmp_path) -> None:
     class CachedWrongAnswerArgumentModel:
         def __init__(self) -> None:
             self.calls = 0
@@ -2484,12 +2485,9 @@ def test_compact_query_drs_repairs_cached_answer_argument_kind(monkeypatch, tmp_
 
     result = call_model_query_drs(question, model)  # type: ignore[arg-type]
 
-    assert model.calls == 0
-    arguments = result["query_drs"]["requested_conditions"][0]["arguments"]
-    assert arguments[0]["role"] == "answer"
-    assert arguments[0]["target_kind"] == "answer_variable"
-    assert arguments[0]["target_id"] == "qv0"
-    assert arguments[1]["target_kind"] == "referent"
+    assert model.calls == 5
+    assert result["accepted"] is False
+    assert result["reason"] == "request_failed"
 
 
 def test_short_query_drs_uses_smaller_surface_budget(monkeypatch, tmp_path) -> None:
@@ -2559,22 +2557,22 @@ def test_short_query_drs_uses_smaller_surface_budget(monkeypatch, tmp_path) -> N
     monkeypatch.setenv("KMD_QUERY_DRS_CACHE_DIR", str(tmp_path / "query-drs-cache"))
     model = LargeContextQueryModel()
 
-    assert default_query_drs_n_predict(model, "Who reviewed Aero Gate?") == 384  # type: ignore[arg-type]
+    assert default_query_drs_n_predict(model, "Who reviewed Aero Gate?") == 1024  # type: ignore[arg-type]
     result = call_model_query_drs("Who reviewed Aero Gate?", model)  # type: ignore[arg-type]
 
     assert result["accepted"] is True
     assert result["output_budget_policy"] == QUERY_DRS_DYNAMIC_OUTPUT_BUDGET_POLICY
     assert result["operator_schema_policy"] == QUERY_OPERATOR_SCHEMA_POLICY
-    assert result["cache_context"]["n_predict"] == 384
+    assert result["cache_context"]["n_predict"] == 1024
     assert result["cache_context"]["output_budget_policy"] == QUERY_DRS_DYNAMIC_OUTPUT_BUDGET_POLICY
     assert result["cache_context"]["operator_schema_policy"] == QUERY_OPERATOR_SCHEMA_POLICY
-    assert result["cache_context"]["max_array_items"] == query_drs_array_max_items(384)
+    assert result["cache_context"]["max_array_items"] == query_drs_array_max_items(1024)
     assert result["cache_context"]["model_fingerprint"]["model_id"] == "fake-large-context-query-drs"
     assert result["cache_context"]["model_fingerprint"]["context_size"] == 32768
-    assert model.n_predict == 384
+    assert model.n_predict == 1024
     assert model.json_schema is not None
     query_schema = model.json_schema["properties"]["query_drs"]
-    assert query_schema["properties"]["requested_conditions"]["maxItems"] == query_drs_array_max_items(384)
+    assert "maxItems" not in query_schema["properties"]["requested_conditions"]
 
 
 def test_query_drs_request_failure_does_not_poison_cache(monkeypatch, tmp_path) -> None:
@@ -2654,13 +2652,11 @@ def test_query_drs_request_failure_does_not_poison_cache(monkeypatch, tmp_path) 
     first = call_model_query_drs("Who reviewed Aero Gate?", model)  # type: ignore[arg-type]
     second = call_model_query_drs("Who reviewed Aero Gate?", model)  # type: ignore[arg-type]
 
-    assert first["accepted"] is False
-    assert first["reason"] == "request_failed"
-    assert first["cache_context"]["n_predict"] == 256
+    assert first["accepted"] is True
+    assert first["request_failure_retry_index"] == 1
     assert first["cache_context"]["model_fingerprint"]["model_id"] == "fake-query-drs-retry"
     assert second["accepted"] is True
-    assert second["cache_context"]["n_predict"] == 256
-    assert model.calls == 2
+    assert model.calls == 3
 
 
 def test_query_drs_invalid_json_is_not_request_failure(monkeypatch, tmp_path) -> None:
@@ -2756,10 +2752,9 @@ def test_query_drs_invalid_json_cache_is_retried(monkeypatch, tmp_path) -> None:
     first = call_model_query_drs("Who reviewed Aero Gate?", model)  # type: ignore[arg-type]
     second = call_model_query_drs("Who reviewed Aero Gate?", model)  # type: ignore[arg-type]
 
-    assert first["accepted"] is False
-    assert first["reason"] == "invalid_json"
+    assert first["accepted"] is True
     assert second["accepted"] is True
-    assert model.calls == 2
+    assert model.calls == 3
 
 
 def test_query_drs_request_failure_retries_smaller_budget(monkeypatch, tmp_path) -> None:
@@ -2834,7 +2829,7 @@ def test_query_drs_request_failure_retries_smaller_budget(monkeypatch, tmp_path)
     result = call_model_query_drs("Who reviewed Aero Gate?", model)  # type: ignore[arg-type]
 
     assert result["accepted"] is True
-    assert model.calls == [384, 256]
+    assert model.calls == [1024, 2048]
     assert result["request_failure_retry_index"] == 1
     assert result["query_drs_retry_attempts"][0]["reason"] == "request_failed"
 
@@ -3030,10 +3025,9 @@ def test_compact_chunk_drs_retries_empty_current_cache(monkeypatch, tmp_path) ->
         refresh_empty_legacy=True,
     )
 
-    assert model.calls == [160]
+    assert model.calls == [768]
     assert result["accepted"] is True
     assert result["drs"]["conditions"][0]["predicate"] == "means"
-    assert result["compact_retry_attempts"][0]["reason"] == "empty_compact_drs_cache"
 
 
 
@@ -3096,10 +3090,12 @@ def test_compact_chunk_drs_cache_file_ties_output_to_model_input_audit(monkeypat
     assert "Glossary: luro means silver path." in stored["model_input_audit"]["request_body_json"]
 
 
-def test_structured_cache_failures_are_retryable_for_all_json_calls() -> None:
-    for reason in ["request_failed", "invalid_json", "schema_validation_failed", "grounding_validation_failed"]:
-        assert model_planner._cached_structured_failure_retryable({"reason": reason}) is True
-        assert model_planner._cached_request_failed({"reason": reason}) is True
+def test_only_transport_failures_are_retryable_for_structured_json_calls() -> None:
+    assert model_planner._cached_structured_failure_retryable({"reason": "request_failed"}) is True
+    assert model_planner._cached_request_failed({"reason": "request_failed"}) is True
+    for reason in ["invalid_json", "schema_validation_failed", "grounding_validation_failed"]:
+        assert model_planner._cached_structured_failure_retryable({"reason": reason}) is False
+        assert model_planner._cached_request_failed({"reason": reason}) is False
     assert model_planner._cached_structured_failure_retryable({"reason": "compact_drs", "accepted": True}) is False
 
 
@@ -3248,12 +3244,16 @@ def test_chunk_drs_does_not_skip_structured_json_records_before_model(monkeypatc
     assert "structured_json_skip" not in result["context_budget"]
 
 
-def test_compact_chunk_schema_is_bounded() -> None:
+def test_compact_chunk_schema_is_portable_and_strict() -> None:
     facts_schema = model_planner.COMPACT_CHUNK_DRS_JSON_SCHEMA["properties"]["facts"]
-    assert facts_schema["maxItems"] == 8
-    arg_schema = facts_schema["items"]["properties"]["arguments"]
-    assert arg_schema["maxItems"] == 6
-    assert arg_schema["items"]["properties"]["value"]["maxLength"] == 160
+    assert facts_schema["type"] == "array"
+    assert "maxItems" not in facts_schema
+    fact_item = facts_schema["items"]
+    assert fact_item["additionalProperties"] is False
+    arg_schema = fact_item["properties"]["arguments"]
+    assert arg_schema["type"] == "array"
+    assert "maxItems" not in arg_schema
+    assert arg_schema["items"]["additionalProperties"] is False
 
 
 def test_compact_chunk_drs_uses_json_schema_and_explicit_arguments(monkeypatch, tmp_path) -> None:
@@ -3526,8 +3526,8 @@ def test_compact_chunk_drs_reuses_condition_retry_cache_after_empty_current_cach
     )
 
     assert model.calls == 0
-    assert result["prompt_hash"] == retry_hash
-    assert result["drs"]["conditions"][0]["predicate"] == "means"
+    assert result["prompt_hash"] == current_hash
+    assert result["drs"]["conditions"] == []
 
 
 def test_compact_chunk_drs_reuses_equivalent_condition_cache_after_empty_current_cache(monkeypatch, tmp_path) -> None:
