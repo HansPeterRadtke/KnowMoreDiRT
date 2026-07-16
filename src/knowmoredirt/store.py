@@ -14,6 +14,7 @@ from pathlib import Path
 from typing import Any
 
 from .drs_validation import box_parent_cycle_errors, box_root_errors, condition_argument_cycle_errors
+from .storage import StoreConfig, open_sqlite
 from .text import normalize
 
 
@@ -48,15 +49,17 @@ def identity_relation_allows_expansion(relation: str) -> bool:
 class DSPGStore:
     """Small SQLite persistence layer for internal DSPG records."""
 
-    def __init__(self, path: str | Path = ":memory:", *, create_indexes: bool = True) -> None:
-        self.path = str(path)
-        self.connection = sqlite3.connect(self.path)
-        self.connection.row_factory = sqlite3.Row
-        self.connection.execute("PRAGMA synchronous=OFF")
-        self.connection.execute("PRAGMA temp_store=MEMORY")
-        if self.path == ":memory:":
-            self.connection.execute("PRAGMA journal_mode=MEMORY")
-        self.initialize_schema(create_indexes=create_indexes)
+    def __init__(
+        self,
+        path: str | Path = ":memory:",
+        *,
+        create_indexes: bool = True,
+        config: StoreConfig | None = None,
+    ) -> None:
+        self.config = config or StoreConfig.sqlite(path, create_indexes=create_indexes)
+        self.path = self.config.location
+        self.connection = open_sqlite(self.config)
+        self.initialize_schema(create_indexes=self.config.create_indexes)
 
     def initialize_schema(self, *, create_indexes: bool = True) -> None:
         statements = [
