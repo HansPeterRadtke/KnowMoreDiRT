@@ -838,7 +838,7 @@ def test_local_model_complete_json_records_throughput(monkeypatch) -> None:
     monkeypatch.delenv("KMD_MODEL_THROUGHPUT_LOG", raising=False)
     client = LocalModelClient(endpoint="http://127.0.0.1:14829/v1", timeout_seconds=30)
 
-    parsed = client.complete_json("return ok", n_predict=64, json_schema={"type": "object", "properties": {"ok": {"type": "boolean"}}})
+    parsed = client.complete_json("return ok", n_predict=64, json_schema={"type": "object", "additionalProperties": False, "required": ["ok"], "properties": {"ok": {"type": "boolean"}}})
 
     throughput = parsed["_model_throughput"]
     assert throughput["completion_tokens"] == 4
@@ -977,7 +977,7 @@ def test_local_model_client_uses_completion_stream_and_json_schema(monkeypatch) 
         "return ok",
         n_predict=64,
         grammar='root ::= "{" "\\"ok\\"" ":" "true" "}"',
-        json_schema={"type": "object", "properties": {"ok": {"type": "boolean"}}},
+        json_schema={"type": "object", "additionalProperties": False, "required": ["ok"], "properties": {"ok": {"type": "boolean"}}},
     )
 
     assert parsed["ok"] is True
@@ -1014,7 +1014,16 @@ def test_local_model_client_chat_json_schema_uses_response_format(monkeypatch) -
     monkeypatch.setenv("KMD_LOCAL_MODEL_API", "chat")
     client = LocalModelClient(endpoint="http://127.0.0.1:14829/v1", timeout_seconds=30)
 
-    parsed = client.complete_json("return ok", n_predict=64, json_schema={"type": "object", "properties": {"ok": {"type": "boolean"}}})
+    parsed = client.complete_json(
+        "return ok",
+        n_predict=64,
+        json_schema={
+            "type": "object",
+            "additionalProperties": False,
+            "required": ["ok"],
+            "properties": {"ok": {"type": "boolean"}},
+        },
+    )
 
     assert parsed["ok"] is True
     body = requests[0]["body"]
@@ -1025,6 +1034,23 @@ def test_local_model_client_chat_json_schema_uses_response_format(monkeypatch) -
     assert parsed["_model_constraint_settings"]["mode"] == "chat_response_format_json_schema"
     assert parsed["_model_constraint_settings"]["requested_n_predict"] == 64
     assert parsed["_model_constraint_settings"]["effective_n_predict"] == 16384
+
+
+def test_local_model_client_rejects_grammar_only_semantic_contract(monkeypatch) -> None:
+    monkeypatch.setenv("KMD_LOCAL_MODEL_API", "chat")
+    client = LocalModelClient(endpoint="http://127.0.0.1:14829/v1", timeout_seconds=30)
+    with pytest.raises(LocalModelUnavailableError, match="grammar-only"):
+        client.complete_json("return ok", grammar='root ::= "{}"')
+
+
+def test_local_model_client_rejects_nonportable_open_schema(monkeypatch) -> None:
+    monkeypatch.setenv("KMD_LOCAL_MODEL_API", "chat")
+    client = LocalModelClient(endpoint="http://127.0.0.1:14829/v1", timeout_seconds=30)
+    with pytest.raises(ValueError, match="additionalProperties=false"):
+        client.complete_json(
+            "return ok",
+            json_schema={"type": "object", "required": ["ok"], "properties": {"ok": {"type": "boolean"}}},
+        )
 
 
 def test_local_model_client_stream_uses_per_token_read_timeout_only(monkeypatch) -> None:
@@ -1449,7 +1475,8 @@ def test_source_resolved_answer_rewrites_deictic_reported_content(monkeypatch) -
         def complete_json(self, prompt: str, *, n_predict: int = 128, grammar=None, json_schema=None):
             assert "public reported answer" in prompt
             assert "past reporting auxiliaries" in prompt
-            assert json_schema is None
+            assert json_schema is not None
+            assert "source_resolved_answer" in json_schema["properties"]
             return {
                 "source_resolved_answer": {
                     "answer": "Taylor expected patch.py to land tomorrow.",
@@ -1462,7 +1489,6 @@ def test_source_resolved_answer_rewrites_deictic_reported_content(monkeypatch) -
 
     monkeypatch.setattr(model_planner, "_read_cache", lambda path: None)
     monkeypatch.setattr(model_planner, "_write_cache", lambda path, payload: None)
-    monkeypatch.setenv("KMD_LOCAL_MODEL_GRAMMAR", "1")
 
     result = call_model_source_resolved_answer(
         "What did the forwarded Taylor message say about patch.py?",
@@ -1475,7 +1501,7 @@ def test_source_resolved_answer_rewrites_deictic_reported_content(monkeypatch) -
     assert result["accepted"] is True
     assert result["answer"] == "Taylor expected patch.py to land tomorrow."
     assert result["cache_context"]["n_predict"] == 160
-    assert result["cache_context"]["constraint_mode"] == "gbnf"
+    assert result["cache_context"]["constraint_mode"] == "json_schema"
 
 
 def test_answer_canonicalization_invalid_json_is_not_request_failure(monkeypatch) -> None:
@@ -2125,11 +2151,8 @@ def test_query_drs_planner_uses_json_schema(monkeypatch, tmp_path) -> None:
     assert query_schema["properties"]["schema_version"]["enum"] == ["query-drs-v3"]
     assert query_schema["properties"]["temporal_scope"]["enum"] == ["", "earliest", "latest"]
     assert query_schema["properties"]["aggregation"]["enum"] == ["", "count", "list", "set"]
-    assert query_schema["properties"]["requested_conditions"]["maxItems"] == query_drs_array_max_items(256)
-    assert (
-        query_schema["properties"]["requested_conditions"]["items"]["properties"]["arguments"]["maxItems"]
-        == query_drs_array_max_items(256)
-    )
+    assert "maxItems" not in query_schema["properties"]["requested_conditions"]
+    assert "maxItems" not in query_schema["properties"]["requested_conditions"]["items"]["properties"]["arguments"]
     assert "generic DRT query DRS" in model.prompt
 
 

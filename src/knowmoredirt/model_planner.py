@@ -414,12 +414,30 @@ def _complete_structured(
     grammar: str,
     json_schema: dict[str, Any] | None,
 ) -> dict[str, Any]:
-    if json_schema and _json_schema_enabled():
-        try:
-            return client.complete_json(prompt, n_predict=n_predict, json_schema=json_schema)
-        except TypeError:
-            pass
-    return client.complete_json(prompt, n_predict=n_predict, grammar=_optional_grammar(grammar))
+    del grammar
+    if not json_schema or not _json_schema_enabled():
+        raise LocalModelUnavailableError(
+            "Every semantic model call requires portable strict JSON Schema constrained decoding."
+        )
+    portable_schema = copy.deepcopy(json_schema)
+    forbidden = {
+        "maxLength", "minLength", "maxItems", "minItems",
+        "maximum", "minimum", "exclusiveMaximum", "exclusiveMinimum",
+    }
+
+    def strip_nonportable(node: Any) -> None:
+        if isinstance(node, dict):
+            for key in list(node):
+                if key in forbidden:
+                    node.pop(key, None)
+            for value in node.values():
+                strip_nonportable(value)
+        elif isinstance(node, list):
+            for value in node:
+                strip_nonportable(value)
+
+    strip_nonportable(portable_schema)
+    return client.complete_json(prompt, n_predict=n_predict, json_schema=portable_schema)
 
 
 def _cache_path(env_var: str, prompt_hash: str) -> Path | None:
@@ -801,11 +819,13 @@ def _schema_array(item: dict[str, Any]) -> dict[str, Any]:
 
 
 def _schema_string_limited(max_length: int) -> dict[str, Any]:
-    return {"type": "string", "maxLength": max(1, int(max_length))}
+    del max_length
+    return {"type": "string"}
 
 
 def _schema_array_bounded(item: dict[str, Any], max_items: int) -> dict[str, Any]:
-    return {"type": "array", "items": item, "maxItems": max(0, int(max_items))}
+    del max_items
+    return {"type": "array", "items": item}
 
 
 def _schema_enum(values: set[str]) -> dict[str, Any]:
@@ -1474,10 +1494,8 @@ def default_chunk_drs_box_completion_n_predict(n_predict: int) -> int:
 
 
 def _schema_array_limited(item: dict[str, Any], max_items: int | None = None) -> dict[str, Any]:
-    schema = _schema_array(item)
-    if max_items:
-        schema["maxItems"] = max(1, int(max_items))
-    return schema
+    del max_items
+    return _schema_array(item)
 
 
 def chunk_drs_skeleton_json_schema(
@@ -6885,7 +6903,7 @@ def call_model_source_resolved_answer(
     if n_predict is None:
         n_predict = int(os.environ.get("KMD_SOURCE_RESOLUTION_N_PREDICT", "160"))
     prompt = build_source_resolved_answer_prompt(question, candidate_answer, answer_type, evidence_items)
-    constraint = _constraint_settings(SOURCE_RESOLVED_ANSWER_GRAMMAR, None, ANSWER_SCHEMA_VERSION)
+    constraint = _constraint_settings(SOURCE_RESOLVED_ANSWER_GRAMMAR, SOURCE_RESOLVED_ANSWER_JSON_SCHEMA, ANSWER_SCHEMA_VERSION)
     grammar_hash = str(constraint["grammar_hash"])
     cache_settings = {"n_predict": n_predict, "schema": ANSWER_SCHEMA_VERSION, **constraint}
     cache_context = {
@@ -6917,7 +6935,7 @@ def call_model_source_resolved_answer(
             prompt,
             n_predict=n_predict,
             grammar=SOURCE_RESOLVED_ANSWER_GRAMMAR,
-            json_schema=None,
+            json_schema=SOURCE_RESOLVED_ANSWER_JSON_SCHEMA,
         )
     except LocalModelJSONError as exc:
         return {

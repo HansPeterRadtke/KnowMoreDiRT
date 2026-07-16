@@ -82,12 +82,12 @@ def _default_per_token_timeout_seconds() -> float:
 
 
 def _default_min_constrained_json_tokens() -> int:
-    raw = os.environ.get("KMD_LOCAL_MODEL_MIN_CONSTRAINED_JSON_TOKENS", "1").strip()
+    raw = os.environ.get("KMD_LOCAL_MODEL_MIN_CONSTRAINED_JSON_TOKENS", "16384").strip()
     try:
         value = int(raw)
     except ValueError:
-        value = 1
-    return value if value > 0 else 1
+        value = 16384
+    return value if value > 0 else 16384
 
 def _env_float(name: str, default: float) -> float:
     try:
@@ -401,6 +401,55 @@ def _append_missing_json_closers(snippet: str) -> str | None:
     return candidate
 
 
+
+
+def validate_portable_json_schema(schema: dict[str, Any]) -> None:
+    """Validate the infra portable strict Structured Outputs subset."""
+
+    forbidden = {
+        "const", "maxLength", "minLength", "maxItems", "minItems",
+        "maximum", "minimum", "exclusiveMaximum", "exclusiveMinimum",
+        "patternProperties",
+    }
+
+    def visit(node: Any, path: str) -> None:
+        if not isinstance(node, dict):
+            raise ValueError(f"JSON schema node at {path} must be an object")
+        bad = forbidden.intersection(node)
+        if bad:
+            raise ValueError(f"nonportable JSON schema keywords at {path}: {sorted(bad)}")
+        if "const" in node:
+            raise ValueError(f"use string enum instead of const at {path}")
+        node_type = node.get("type")
+        if node_type == "object":
+            properties = node.get("properties")
+            required = node.get("required")
+            if not isinstance(properties, dict):
+                raise ValueError(f"object schema at {path} requires properties")
+            if node.get("additionalProperties") is not False:
+                raise ValueError(f"object schema at {path} requires additionalProperties=false")
+            if not isinstance(required, list) or set(required) != set(properties):
+                raise ValueError(f"object schema at {path} must require every property")
+            for key, child in properties.items():
+                visit(child, f"{path}.properties.{key}")
+        elif node_type == "array":
+            if "items" not in node:
+                raise ValueError(f"array schema at {path} requires items")
+            visit(node["items"], f"{path}.items")
+        elif "anyOf" in node:
+            variants = node.get("anyOf")
+            if not isinstance(variants, list) or not variants:
+                raise ValueError(f"anyOf at {path} must be a non-empty list")
+            for index, child in enumerate(variants):
+                visit(child, f"{path}.anyOf[{index}]")
+        elif node_type not in {"string", "number", "integer", "boolean", "null"}:
+            raise ValueError(f"unsupported portable JSON schema type at {path}: {node_type!r}")
+
+    if schema.get("type") != "object":
+        raise ValueError("portable constrained decoding requires an object root schema")
+    visit(schema, "root")
+
+
 class LocalModelJSONError(ValueError):
     """Raised when the local model response cannot be parsed as JSON."""
 
@@ -602,7 +651,18 @@ class LocalModelClient:
             "yes",
             "on",
         }
-        if (json_schema or grammar) and not native_constraints and not allow_prompt_constraints:
+        if grammar is not None and json_schema is None:
+            raise LocalModelUnavailableError(
+                "Semantic model calls must use strict JSON Schema constrained decoding; grammar-only contracts are forbidden.",
+                cache_context={"transport_settings": transport, "structured_call": True},
+            )
+        if json_schema is None:
+            raise LocalModelUnavailableError(
+                "Semantic model calls require a portable strict JSON Schema.",
+                cache_context={"transport_settings": transport, "structured_call": True},
+            )
+        validate_portable_json_schema(json_schema)
+        if not native_constraints and not allow_prompt_constraints:
             raise LocalModelUnavailableError(
                 "Structured local model calls require native constrained decoding. "
                 "KMD_LOCAL_MODEL_CONSTRAINT_MODE=prompt is diagnostic-only; set "
@@ -627,7 +687,7 @@ class LocalModelClient:
         }
         requested_n_predict = int(n_predict)
         effective_n_predict = requested_n_predict
-        if json_schema or grammar:
+        if json_schema:
             effective_n_predict = max(effective_n_predict, _default_min_constrained_json_tokens())
         if endpoint.endswith("/chat/completions"):
             body = {
@@ -676,13 +736,10 @@ class LocalModelClient:
             else:
                 body["json_schema"] = json_schema
                 constraint_settings = {"mode": "completion_json_schema"}
-        elif native_constraints and grammar:
-            body["grammar"] = grammar
-            constraint_settings = {"mode": "grammar"}
         elif json_schema:
             constraint_settings = {"mode": "prompt_json_schema"}
-        elif grammar:
-            constraint_settings = {"mode": "prompt_grammar"}
+        if "openrouter.ai" in endpoint:
+            body["provider"] = {"require_parameters": True}
         if send_thinking_controls:
             body["reasoning_format"] = "hidden"
             body["enable_thinking"] = False
