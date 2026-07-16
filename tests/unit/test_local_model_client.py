@@ -2256,7 +2256,7 @@ def test_compact_query_drs_undercovered_slot_falls_back_to_full_model(monkeypatc
     assert len(model.prompts) == 1
 
 
-def test_compact_query_drs_missing_relation_is_repaired_from_uncovered_tokens(monkeypatch, tmp_path) -> None:
+def test_compact_query_drs_missing_relation_is_rejected(monkeypatch, tmp_path) -> None:
     class MissingRelationCompactModel:
         def __init__(self) -> None:
             self.prompts: list[str] = []
@@ -2296,10 +2296,9 @@ def test_compact_query_drs_missing_relation_is_repaired_from_uncovered_tokens(mo
 
     result = call_model_query_drs("What does lumo mean?", model)  # type: ignore[arg-type]
 
-    assert result["accepted"] is True
-    assert result["query_drs"]["requested_conditions"][0]["predicate"] == "mean"
-    assert "compact_fallback_attempt" not in result
-    assert len(model.prompts) == 1
+    assert result["accepted"] is False
+    assert result["reason"] == "request_failed"
+    assert len(model.prompts) > 1
 
 
 def test_compact_query_drs_rejects_cached_missing_relation_without_deterministic_repair(monkeypatch, tmp_path) -> None:

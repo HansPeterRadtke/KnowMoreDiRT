@@ -2305,11 +2305,18 @@ def call_model_query_drs_compact(question: str, client: LocalModelClient, *, n_p
 
 
 def _repair_query_drs_payload(payload: Any, question: str) -> Any:
+    """Repair exact provenance surfaces only; never invent or alter query semantics."""
     if not isinstance(payload, dict) or not isinstance(payload.get("query_drs"), dict):
         return payload
     query_drs = {**payload["query_drs"]}
+    repaired = False
 
-    def grounded_question_surface(candidate: str) -> str:
+    declared_question = str(query_drs.get("question") or "")
+    if declared_question != question and declared_question.lower() == question.lower():
+        query_drs["question"] = question
+        repaired = True
+
+    def exact_question_surface(candidate: str) -> str:
         value = candidate.strip()
         if not value:
             return ""
@@ -2320,414 +2327,49 @@ def _repair_query_drs_payload(payload: Any, question: str) -> Any:
             return question[index : index + len(value)]
         return ""
 
-    def repair_item(item: dict[str, Any], fields: tuple[str, ...], *, use_full_question: bool = False) -> bool:
-        evidence_text = str(item.get("evidence_text") or "").strip()
-        if not evidence_text:
-            return False
-        grounded_evidence = grounded_question_surface(evidence_text)
-        if grounded_evidence:
-            if grounded_evidence != evidence_text:
-                item["evidence_text"] = grounded_evidence
-                return True
-            return False
-        for field in fields:
+    def repair_evidence(item: dict[str, Any], declared_fields: tuple[str, ...], *, full_question_allowed: bool) -> None:
+        nonlocal repaired
+        evidence = str(item.get("evidence_text") or "").strip()
+        if evidence:
+            exact = exact_question_surface(evidence)
+            if exact:
+                if exact != evidence:
+                    item["evidence_text"] = exact
+                    repaired = True
+                return
+        for field in declared_fields:
             candidate = str(item.get(field) or "").strip()
-            for variant in (candidate, candidate.replace("_", " "), candidate.replace("-", " ")):
-                grounded_variant = grounded_question_surface(variant)
-                if grounded_variant:
-                    item["evidence_text"] = grounded_variant
-                    return True
-        if use_full_question and question:
+            exact = exact_question_surface(candidate)
+            if exact:
+                item["evidence_text"] = exact
+                repaired = True
+                return
+        if full_question_allowed and question and not evidence:
             item["evidence_text"] = question
-            return True
-        return False
+            repaired = True
 
-    repaired = False
-    for key, fields, use_full_question in [
+    collections = (
         ("answer_variables", ("label",), False),
         ("target_referents", ("label",), False),
         ("temporal_records", ("value",), False),
         ("box_requirements", (), True),
         ("requested_conditions", (), True),
-    ]:
+    )
+    for key, fields, full_question_allowed in collections:
         items = query_drs.get(key)
-        if isinstance(items, list):
-            repaired_items = [item for item in items if isinstance(item, dict)]
-            for item in repaired_items:
-                repaired |= repair_item(item, fields, use_full_question=use_full_question)
-            if len(repaired_items) != len(items):
-                query_drs[key] = repaired_items
-                repaired = True
-    if not query_drs.get("requested_conditions"):
-        covered = set(QUERY_QUESTION_COVERAGE_SKIP_TERMS)
-        answer_items = [item for item in query_drs.get("answer_variables", []) if isinstance(item, dict)]
-        target_items = [item for item in query_drs.get("target_referents", []) if isinstance(item, dict)]
-        for item in [*answer_items, *target_items]:
-            covered.update(content_tokens(str(item.get("label") or "")))
-            covered.update(content_tokens(str(item.get("evidence_text") or "")))
-        for value in query_drs.get("constraints") or []:
-            covered.update(content_tokens(str(value or "")))
-        uncovered_predicate_tokens = [
-            token for token in content_tokens(question)
-            if token not in covered and token not in QUERY_SLOT_GENERIC_TERMS
-        ]
-        if uncovered_predicate_tokens:
-            answer_id = str(answer_items[0].get("id") or "qv0") if answer_items else "qv0"
-            answer_type = str(query_drs.get("answer_type") or "unknown")
-            arguments = [
-                {
-                    "role": "answer",
-                    "target_kind": "answer_variable",
-                    "target_id": answer_id,
-                    "value": "",
-                    "value_type": answer_type,
-                    "evidence_text": str(answer_items[0].get("evidence_text") or answer_items[0].get("label") or "")
-                    if answer_items
-                    else "",
-                }
-            ]
-            for referent in target_items:
-                arguments.append(
-                    {
-                        "role": "argument",
-                        "target_kind": "referent",
-                        "target_id": str(referent.get("id") or ""),
-                        "value": "",
-                        "value_type": str(referent.get("kind") or "unknown"),
-                        "evidence_text": str(referent.get("evidence_text") or referent.get("label") or ""),
-                    }
-                )
-            query_drs["requested_conditions"] = [
-                {
-                    "id": "qc0",
-                    "box_id": "",
-                    "predicate": " ".join(dict.fromkeys(uncovered_predicate_tokens)),
-                    "polarity": "positive",
-                    "modality": "asserted",
-                    "temporal_id": "",
-                    "evidence_text": question,
-                    "arguments": arguments,
-                }
-            ]
-            repaired = True
-    answer_variable_ids = {
-        str(item.get("id") or "").strip()
-        for item in query_drs.get("answer_variables", [])
-        if isinstance(item, dict) and str(item.get("id") or "").strip()
-    }
-    answer_variable_surfaces_by_id = {
-        str(item.get("id") or "").strip(): {
-            normalize(str(value or ""))
-            for value in [item.get("label"), item.get("evidence_text")]
-            if str(value or "").strip()
-        }
-        for item in query_drs.get("answer_variables", [])
-        if isinstance(item, dict) and str(item.get("id") or "").strip()
-    }
-    answer_variable_ids_by_surface: dict[str, set[str]] = {}
-    for variable_id, surfaces in answer_variable_surfaces_by_id.items():
-        for surface in surfaces:
-            if surface:
-                answer_variable_ids_by_surface.setdefault(surface, set()).add(variable_id)
-    target_ids = {
-        str(item.get("id") or "").strip()
-        for item in query_drs.get("target_referents", [])
-        if isinstance(item, dict) and str(item.get("id") or "").strip()
-    }
-    target_id_by_surface: dict[str, str] = {}
-    for item in query_drs.get("target_referents", []):
-        if not isinstance(item, dict):
+        if not isinstance(items, list):
             continue
-        target_id = str(item.get("id") or "").strip()
-        if not target_id:
-            continue
-        for value in [item.get("label"), item.get("evidence_text")]:
-            surface = normalize(str(value or ""))
-            if surface:
-                target_id_by_surface[surface] = target_id
-    temporal_ids = {
-        str(item.get("id") or "").strip()
-        for item in query_drs.get("temporal_records", [])
-        if isinstance(item, dict) and str(item.get("id") or "").strip()
-    }
-    box_ids = {
-        str(item.get("id") or "").strip()
-        for item in query_drs.get("box_requirements", [])
-        if isinstance(item, dict) and str(item.get("id") or "").strip()
-    }
-    condition_ids = {
-        str(item.get("id") or "").strip()
-        for item in query_drs.get("requested_conditions", [])
-        if isinstance(item, dict) and str(item.get("id") or "").strip()
-    }
-    # Repair model-produced query DRS objects that are structurally close but dropped validator-required
-    # visible scope anchors or coordinated requested roles. This is a schema/grounding repair: the added
-    # surfaces are copied verbatim from the question and are then revalidated below.
-    generic_anchor_tokens_for_repair = {
-        "product", "document", "report", "file", "spec", "specification", "specifications",
-        "requirements", "requirement", "vision", "market", "research", "technical",
-        "release", "previous", "current", "new", "feature", "features", "problem", "problems",
-    }
-    slot_descriptor_tokens_for_repair = {
-        "actor", "actors", "architect", "architects", "author", "authors", "reviewer", "reviewers",
-        "approver", "approvers", "owner", "owners", "member", "members", "id", "ids", "identifier",
-        "identifiers", "person", "people", "user", "users", "client", "clients", "manager", "managers",
-        "technical", "sales", "support", "team", "teams", "lead", "leads", "stakeholder", "stakeholders",
-    }
-    answer_material = normalize(
-        " ".join(
-            str(value or "")
-            for item in query_drs.get("answer_variables", [])
-            if isinstance(item, dict)
-            for value in [item.get("label"), item.get("evidence_text")]
-        )
-    )
-    target_items = query_drs.get("target_referents")
-    if not isinstance(target_items, list):
-        query_drs["target_referents"] = []
-        target_items = query_drs["target_referents"]
-        repaired = True
-    existing_target_material = normalize(
-        " ".join(
-            str(value or "")
-            for item in target_items
-            if isinstance(item, dict)
-            for value in [item.get("label"), item.get("evidence_text")]
-        )
-    )
-    existing_target_tokens = set(content_tokens(existing_target_material))
-    expanded_existing_target_tokens = set(existing_target_tokens)
-    for token in existing_target_tokens:
-        expanded_existing_target_tokens.update(term_variants(token))
-    next_target_index = 0
-    for item in target_items:
-        if isinstance(item, dict):
-            target_id = str(item.get("id") or "")
-            match = re.search(r"(\d+)$", target_id)
-            if match:
-                next_target_index = max(next_target_index, int(match.group(1)) + 1)
-    for anchor in visible_anchors(question):
-        anchor_norm = normalize(anchor)
-        if not anchor_norm or anchor_norm in answer_material:
-            continue
-        anchor_tokens = [token for token in content_tokens(anchor) if len(token) > 2]
-        if anchor_tokens and all(token in slot_descriptor_tokens_for_repair for token in anchor_tokens):
-            continue
-        required_anchor_tokens = [token for token in anchor_tokens if token not in generic_anchor_tokens_for_repair] or anchor_tokens
-        if not required_anchor_tokens:
-            continue
-        missing_anchor_tokens = [
-            token for token in required_anchor_tokens
-            if token not in expanded_existing_target_tokens and not any(variant in expanded_existing_target_tokens for variant in term_variants(token))
-        ]
-        if not missing_anchor_tokens:
-            continue
-        target_id = f"tr{next_target_index}"
-        next_target_index += 1
-        target_items.append({"id": target_id, "label": anchor, "kind": "unknown", "evidence_text": anchor})
-        for token in content_tokens(anchor):
-            expanded_existing_target_tokens.add(token)
-            expanded_existing_target_tokens.update(term_variants(token))
-        repaired = True
-    # Refresh ids after target repair.
-    target_ids = {
-        str(item.get("id") or "")
-        for item in query_drs.get("target_referents", [])
-        if isinstance(item, dict) and str(item.get("id") or "")
-    }
-    answer_variable_ids = {
-        str(item.get("id") or "").strip()
-        for item in query_drs.get("answer_variables", [])
-        if isinstance(item, dict) and str(item.get("id") or "").strip()
-    }
-    conditions = query_drs.get("requested_conditions")
-    if not isinstance(conditions, list):
-        query_drs["requested_conditions"] = []
-        conditions = query_drs["requested_conditions"]
-        repaired = True
-    only_answer_id = next(iter(answer_variable_ids)) if len(answer_variable_ids) == 1 else ""
-    if only_answer_id:
-        for condition in conditions:
-            if not isinstance(condition, dict):
+        for item in items:
+            if not isinstance(item, dict):
                 continue
-            arguments = condition.get("arguments")
+            repair_evidence(item, fields, full_question_allowed=full_question_allowed)
+            arguments = item.get("arguments")
             if not isinstance(arguments, list):
                 continue
             for argument in arguments:
-                if not isinstance(argument, dict):
-                    continue
-                if str(argument.get("target_kind") or "") == "answer_variable" and str(argument.get("target_id") or "") not in answer_variable_ids:
-                    argument["target_id"] = only_answer_id
-                    repaired = True
-    relation_material = normalize(
-        " ".join(
-            [
-                *[str(condition.get("predicate") or "") for condition in conditions if isinstance(condition, dict)],
-                *[str(value or "") for value in query_drs.get("constraints") or []],
-            ]
-        )
-    )
-    relation_groups_for_repair = [
-        ("author", {"author", "authors", "authored"}, "authors"),
-        ("reviewer", {"review", "reviewer", "reviewers", "reviewed", "reviews"}, "key reviewers" if "key reviewers" in normalize(question) else "reviewers"),
-        ("approver", {"approve", "approver", "approvers", "approved", "approval"}, "approvers"),
-        ("owner", {"owner", "owners", "own", "owns", "owned"}, "owners"),
-    ]
-    question_tokens_for_repair = set(content_tokens(question))
-    next_condition_index = 0
-    for condition in conditions:
-        if isinstance(condition, dict):
-            condition_id = str(condition.get("id") or "")
-            match = re.search(r"(\d+)$", condition_id)
-            if match:
-                next_condition_index = max(next_condition_index, int(match.group(1)) + 1)
-    target_argument_items = [
-        item for item in query_drs.get("target_referents", [])
-        if isinstance(item, dict) and str(item.get("id") or "").strip()
-    ]
-    for relation_label, variants, evidence_surface in relation_groups_for_repair:
-        if not question_tokens_for_repair.intersection(variants):
-            continue
-        if any(variant in relation_material for variant in variants):
-            continue
-        condition_id = f"rc{next_condition_index}"
-        next_condition_index += 1
-        evidence = grounded_question_surface(evidence_surface) or grounded_question_surface(relation_label) or question
-        arguments = []
-        if only_answer_id:
-            arguments.append(
-                {
-                    "role": "answer",
-                    "target_kind": "answer_variable",
-                    "target_id": only_answer_id,
-                    "value": "",
-                    "value_type": str(query_drs.get("answer_type") or "unknown"),
-                    "evidence_text": str(
-                        (query_drs.get("answer_variables") or [{}])[0].get("evidence_text")
-                        if isinstance((query_drs.get("answer_variables") or [{}])[0], dict)
-                        else ""
-                    ) or evidence,
-                }
-            )
-        for target in target_argument_items:
-            arguments.append(
-                {
-                    "role": "argument",
-                    "target_kind": "referent",
-                    "target_id": str(target.get("id") or ""),
-                    "value": "",
-                    "value_type": str(target.get("kind") or "unknown"),
-                    "evidence_text": str(target.get("evidence_text") or target.get("label") or ""),
-                }
-            )
-        conditions.append(
-            {
-                "id": condition_id,
-                "predicate": relation_label,
-                "box_id": "",
-                "polarity": "positive",
-                "modality": "asserted",
-                "temporal_id": "",
-                "arguments": arguments,
-                "evidence_text": evidence,
-            }
-        )
-        relation_material = normalize(f"{relation_material} {relation_label} {evidence}")
-        repaired = True
-    conditions = query_drs.get("requested_conditions")
-    if isinstance(conditions, list):
-        for condition in conditions:
-            if not isinstance(condition, dict):
-                continue
-            arguments = condition.get("arguments")
-            if not isinstance(arguments, list):
-                continue
-            repaired_arguments = [item for item in arguments if isinstance(item, dict)]
-            for argument in repaired_arguments:
-                repaired |= repair_item(argument, ("value", "role"), use_full_question=False)
-                target_kind = str(argument.get("target_kind") or "").strip()
-                target_id = str(argument.get("target_id") or "").strip()
-                role = normalize(str(argument.get("role") or ""))
-                argument_surfaces = {
-                    normalize(str(value or ""))
-                    for value in [argument.get("evidence_text"), argument.get("value")]
-                    if str(value or "").strip()
-                }
-                if role == "answer" and target_kind != "answer_variable":
-                    answer_surface_ids: set[str] = set()
-                    for surface in argument_surfaces:
-                        answer_surface_ids.update(answer_variable_ids_by_surface.get(surface, set()))
-                    if len(answer_surface_ids) == 1:
-                        argument["target_kind"] = "answer_variable"
-                        argument["target_id"] = next(iter(answer_surface_ids))
-                        argument["value"] = ""
-                        target_kind = "answer_variable"
-                        target_id = str(argument.get("target_id") or "").strip()
-                        repaired = True
-                declared_kind = ""
-                if target_id in answer_variable_ids:
-                    declared_kind = "answer_variable"
-                elif target_id in target_ids:
-                    declared_kind = "referent"
-                elif target_id in temporal_ids:
-                    declared_kind = "temporal"
-                elif target_id in box_ids:
-                    declared_kind = "box"
-                elif target_id in condition_ids:
-                    declared_kind = "condition"
-                if declared_kind and target_kind != declared_kind:
-                    argument["target_kind"] = declared_kind
-                    target_kind = declared_kind
-                    repaired = True
-                if target_kind == "answer_variable" and role != "answer":
-                    target_surface_ids = {
-                        target_id_by_surface[surface]
-                        for surface in argument_surfaces
-                        if surface in target_id_by_surface
-                    }
-                    if len(target_surface_ids) == 1:
-                        argument["target_kind"] = "referent"
-                        argument["target_id"] = next(iter(target_surface_ids))
-                        argument["value"] = ""
-                        target_kind = "referent"
-                        repaired = True
-                value = str(argument.get("value") or "").strip()
-                if target_kind not in {"literal", "unknown"} and value and value not in question:
-                    argument["value"] = ""
-                    repaired = True
-            deduped_arguments: list[dict[str, Any]] = []
-            seen_answer_argument_refs: set[tuple[str, str, str, str]] = set()
-            grounded_answer_ref_seen: set[str] = set()
-            for argument in repaired_arguments:
-                target_kind = str(argument.get("target_kind") or "").strip()
-                target_id = str(argument.get("target_id") or "").strip()
-                if target_kind == "answer_variable" and target_id:
-                    argument_surfaces = {
-                        normalize(str(value or ""))
-                        for value in [argument.get("evidence_text"), argument.get("value"), argument.get("role")]
-                        if str(value or "").strip()
-                    }
-                    answer_surfaces = answer_variable_surfaces_by_id.get(target_id, set())
-                    is_grounded_answer_ref = bool(answer_surfaces.intersection(argument_surfaces))
-                    if target_id in grounded_answer_ref_seen and not is_grounded_answer_ref:
-                        repaired = True
-                        continue
-                    signature = (
-                        target_id,
-                        str(argument.get("value") or "").strip(),
-                        str(argument.get("value_type") or "").strip(),
-                        str(argument.get("evidence_text") or "").strip(),
-                    )
-                    if signature in seen_answer_argument_refs:
-                        repaired = True
-                        continue
-                    seen_answer_argument_refs.add(signature)
-                    if is_grounded_answer_ref:
-                        grounded_answer_ref_seen.add(target_id)
-                deduped_arguments.append(argument)
-            if len(deduped_arguments) != len(arguments):
-                condition["arguments"] = deduped_arguments
-                repaired = True
+                if isinstance(argument, dict):
+                    repair_evidence(argument, ("value",), full_question_allowed=False)
+
     if not repaired:
         return payload
     return {**payload, "query_drs": query_drs}
@@ -2804,53 +2446,8 @@ def _validate_query_drs_payload(payload: Any, question: str) -> dict[str, Any]:
     temporals = optional_collection("temporal_records")
     boxes = collection("box_requirements")
     conditions = collection("requested_conditions")
-    generic_anchor_tokens = {
-        "product", "document", "report", "file", "spec", "specification", "specifications",
-        "requirements", "requirement", "vision", "market", "research", "technical",
-        "release", "previous", "current", "new", "feature", "features", "problem", "problems",
-    }
-    target_material = normalize(
-        " ".join(
-            str(value or "")
-            for item in targets
-            for value in [item.get("label"), item.get("evidence_text")]
-        )
-    )
-    target_material_tokens = set(content_tokens(target_material))
-    expanded_target_tokens = set(target_material_tokens)
-    for token in target_material_tokens:
-        expanded_target_tokens.update(term_variants(token))
-    for anchor in visible_anchors(question):
-        anchor_tokens = [token for token in content_tokens(anchor) if len(token) > 2]
-        required_anchor_tokens = [token for token in anchor_tokens if token not in generic_anchor_tokens] or anchor_tokens
-        if not required_anchor_tokens:
-            continue
-        missing_anchor_tokens = [
-            token for token in required_anchor_tokens
-            if token not in expanded_target_tokens and not any(variant in expanded_target_tokens for variant in term_variants(token))
-        ]
-        if missing_anchor_tokens:
-            errors.append(f"dropped_visible_anchor:{anchor}")
-    relation_material_parts: list[str] = []
-    for condition in conditions:
-        relation_material_parts.append(str(condition.get("predicate") or ""))
-        for argument in condition.get("arguments") or []:
-            if isinstance(argument, dict):
-                relation_material_parts.append(str(argument.get("role") or ""))
-                relation_material_parts.append(str(argument.get("value") or ""))
-    for value in query_drs.get("constraints") or []:
-        relation_material_parts.append(str(value or ""))
-    relation_tokens = set(content_tokens(" ".join(relation_material_parts)))
-    question_tokens = set(content_tokens(question))
-    required_relation_groups = {
-        "reviewer": {"review", "reviewer", "reviewers", "reviewed", "reviews"},
-        "approver": {"approve", "approver", "approvers", "approved", "approval"},
-        "owner": {"owner", "owners", "own", "owns", "owned"},
-        "author": {"author", "authors", "authored"},
-    }
-    for label, variants in required_relation_groups.items():
-        if question_tokens.intersection(variants) and not relation_tokens.intersection(variants):
-            errors.append(f"dropped_requested_relation:{label}")
+    if not conditions:
+        errors.append("missing_requested_conditions")
     target_ids = {str(item.get("id") or "") for item in targets if str(item.get("id") or "")}
     temporal_ids = {str(item.get("id") or "") for item in temporals if str(item.get("id") or "")}
     box_ids = {str(item.get("id") or "") for item in boxes if str(item.get("id") or "")}

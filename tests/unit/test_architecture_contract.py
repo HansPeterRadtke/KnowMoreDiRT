@@ -563,3 +563,49 @@ def test_model_evidence_path_requires_authoritative_model_query_plan() -> None:
 def test_dead_capitalization_identity_canonicalizer_is_absent() -> None:
     source = (REPO_ROOT / "src" / "knowmoredirt" / "engine.py").read_text(encoding="utf-8")
     assert "def _canonicalize_identity_with_local_model" not in source
+
+
+def test_query_drs_repair_is_provenance_only() -> None:
+    source = (REPO_ROOT / "src" / "knowmoredirt" / "model_planner.py").read_text(encoding="utf-8")
+    tree = ast.parse(source)
+    method = next(
+        node for node in tree.body
+        if isinstance(node, ast.FunctionDef) and node.name == "_repair_query_drs_payload"
+    )
+    text = ast.get_source_segment(source, method) or ""
+    forbidden = [
+        "visible_anchors(",
+        "uncovered_predicate_tokens",
+        "relation_groups_for_repair",
+        "slot_descriptor_tokens_for_repair",
+        "generic_anchor_tokens_for_repair",
+        'argument["target_kind"] =',
+        'argument["target_id"] =',
+        'query_drs["requested_conditions"] =',
+        'target_items.append(',
+        'conditions.append(',
+    ]
+    assert [marker for marker in forbidden if marker in text] == []
+    assert "Repair exact provenance surfaces only" in text
+
+
+def test_query_drs_validation_has_no_relation_specific_vocabulary() -> None:
+    source = (REPO_ROOT / "src" / "knowmoredirt" / "model_planner.py").read_text(encoding="utf-8")
+    tree = ast.parse(source)
+    method = next(
+        node for node in tree.body
+        if isinstance(node, ast.FunctionDef) and node.name == "_validate_query_drs_payload"
+    )
+    text = ast.get_source_segment(source, method) or ""
+    forbidden = [
+        "visible_anchors(",
+        "required_relation_groups",
+        "dropped_requested_relation",
+        "dropped_visible_anchor",
+        '"reviewer"',
+        '"approver"',
+        '"owner"',
+        '"author"',
+    ]
+    assert [marker for marker in forbidden if marker in text] == []
+    assert 'errors.append("missing_requested_conditions")' in text

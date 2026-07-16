@@ -189,7 +189,7 @@ def test_query_drs_temporal_namespace_reaches_query_frame(monkeypatch, tmp_path)
     assert "after the latest update" in frame["relation_terms"]
 
 
-def test_query_drs_repairs_condition_evidence_to_full_question(monkeypatch, tmp_path) -> None:
+def test_query_drs_rejects_ungrounded_condition_evidence(monkeypatch, tmp_path) -> None:
     class ConditionEvidenceRepairModel:
         def context_size(self) -> int:
             return 8192
@@ -252,13 +252,11 @@ def test_query_drs_repairs_condition_evidence_to_full_question(monkeypatch, tmp_
     monkeypatch.setenv("KMD_QUERY_DRS_CACHE_DIR", str(tmp_path / "query-drs-cache"))
     result = call_model_query_drs("Who reviewed Aero Gate?", ConditionEvidenceRepairModel())  # type: ignore[arg-type]
 
-    assert result["accepted"] is True
-    assert result["validation_policy"] == QUERY_DRS_VALIDATION_POLICY
-    assert result["validation"]["grounding_failure_count"] == 0
-    assert result["query_drs"]["requested_conditions"][0]["evidence_text"] == "Who reviewed Aero Gate?"
+    assert result["accepted"] is False
+    assert result["reason"] == "schema_validation_failed"
 
 
-def test_query_drs_repairs_answer_variable_label_variant(monkeypatch, tmp_path) -> None:
+def test_query_drs_rejects_ungrounded_answer_variable_evidence(monkeypatch, tmp_path) -> None:
     class AnswerVariableLabelRepairModel:
         def context_size(self) -> int:
             return 8192
@@ -329,21 +327,11 @@ def test_query_drs_repairs_answer_variable_label_variant(monkeypatch, tmp_path) 
         AnswerVariableLabelRepairModel(),  # type: ignore[arg-type]
     )
 
-    assert result["accepted"] is True
-    assert result["validation"]["grounding_failure_count"] == 0
-    assert result["query_drs"]["answer_variables"][0]["evidence_text"] == "report link"
-    assert result["query_drs"]["requested_conditions"][0]["arguments"][0]["evidence_text"] == "report link"
-    assert result["query_drs"]["requested_conditions"][0]["arguments"][0]["value"] == ""
-    assert result["query_drs"]["requested_conditions"][0]["arguments"][1]["value"] == ""
-    assert result["query_drs"]["requested_conditions"][0]["evidence_text"] == (
-        "What report link is listed for Orchid Gamma?"
-    )
-    frame = query_frame_from_query_drs("What report link is listed for Orchid Gamma?", result["query_drs"])
-    assert frame is not None
-    assert ">" not in frame["relation_terms"]
+    assert result["accepted"] is False
+    assert result["reason"] == "schema_validation_failed"
 
 
-def test_query_drs_repairs_answer_argument_surface_to_declared_referent(monkeypatch, tmp_path) -> None:
+def test_query_drs_preserves_model_declared_argument_namespace(monkeypatch, tmp_path) -> None:
     class TargetSurfaceAsAnswerVariableModel:
         def context_size(self) -> int:
             return 8192
@@ -424,10 +412,10 @@ def test_query_drs_repairs_answer_argument_surface_to_declared_referent(monkeypa
 
     assert result["accepted"] is True
     arguments = result["query_drs"]["requested_conditions"][0]["arguments"]
-    assert arguments[1]["target_kind"] == "referent"
-    assert arguments[1]["target_id"] == "tr0"
-    assert arguments[1]["value"] == ""
-    assert len(arguments) == 2
+    assert arguments[1]["target_kind"] == "answer_variable"
+    assert arguments[1]["target_id"] == "qv0"
+    assert arguments[1]["value"] == "Orchid Gamma"
+    assert len(arguments) == 3
     assert result["validation_policy"] == QUERY_DRS_VALIDATION_POLICY
 
 
@@ -504,7 +492,7 @@ def test_query_drs_keeps_ungrounded_temporal_rejection(monkeypatch, tmp_path) ->
     assert result["validation"]["grounding_failures"] == ["temporal:qt0:now"]
 
 
-def test_query_drs_repairs_argument_namespace_and_case(monkeypatch, tmp_path) -> None:
+def test_query_drs_rejects_wrong_argument_namespace(monkeypatch, tmp_path) -> None:
     class NamespaceCaseRepairModel:
         def context_size(self) -> int:
             return 8192
@@ -580,13 +568,11 @@ def test_query_drs_repairs_argument_namespace_and_case(monkeypatch, tmp_path) ->
     monkeypatch.setenv("KMD_QUERY_DRS_CACHE_DIR", str(tmp_path / "query-drs-cache"))
     result = call_model_query_drs("What does Kalo Reed believe?", NamespaceCaseRepairModel())  # type: ignore[arg-type]
 
-    assert result["accepted"] is True
-    assert result["validation"]["grounding_failure_count"] == 0
-    assert result["query_drs"]["requested_conditions"][0]["arguments"][0]["target_kind"] == "referent"
-    assert result["query_drs"]["requested_conditions"][0]["arguments"][1]["evidence_text"] == "What"
+    assert result["accepted"] is False
+    assert result["reason"] == "schema_validation_failed"
 
 
-def test_query_drs_prunes_duplicate_answer_variable_arguments(monkeypatch, tmp_path) -> None:
+def test_query_drs_preserves_model_declared_duplicate_answer_arguments(monkeypatch, tmp_path) -> None:
     class DuplicateAnswerArgumentModel:
         def context_size(self) -> int:
             return 8192
@@ -664,7 +650,7 @@ def test_query_drs_prunes_duplicate_answer_variable_arguments(monkeypatch, tmp_p
 
     assert result["accepted"] is True
     arguments = result["query_drs"]["requested_conditions"][0]["arguments"]
-    assert [argument["target_kind"] for argument in arguments] == ["answer_variable", "referent"]
+    assert [argument["target_kind"] for argument in arguments] == ["answer_variable", "answer_variable", "referent"]
     assert result["validation_policy"] == QUERY_DRS_VALIDATION_POLICY
 
 
