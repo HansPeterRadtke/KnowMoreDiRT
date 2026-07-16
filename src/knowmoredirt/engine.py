@@ -3806,44 +3806,10 @@ class KnowMoreDiRTEngine:
                 execution["target_scope_rejected"] = True
             answer = None
         if answer and normalize(answer.text) != "unknown":
-            if answer.reason == "bounded DSPG deterministic arithmetic execution":
-                trace.model_answer_count += 1
-                return answer
-            if planned_frame.aggregation in {"list", "set"} and expected.answer_type == "content_phrase":
-                answer = None
-            elif (
-                expected.answer_type == "count"
-                and planned_frame.aggregation == "count"
-                and answer.reason == "bounded DSPG query-frame execution"
-            ):
-                trace.model_answer_count += 1
-                answer.reason = "local model query-frame count aggregation"
-                return answer
-            elif (
-                planned_frame.temporal_scope in {"latest", "earliest"}
-                and answer.reason == "bounded DSPG query-frame execution"
-                and answer.evidence
-            ):
-                trace.model_answer_count += 1
-                answer.reason = "local model query-frame temporal binding"
-                return answer
-            elif self._answer_evidence_has_model_drs(answer) and os.environ.get(
-                "KMD_VERIFY_MODEL_DRS_BOUND_ANSWERS",
-                "0",
-            ).strip().lower() in {"0", "false", "no", "off"}:
-                trace.model_answer_count += 1
-                answer.reason = "local model DRS query-frame execution"
-                self._attach_model_answer_provenance(answer)
-                return answer
-            elif self._trusted_exact_structural_bounded_answer(answer, expected):
-                trace.model_answer_count += 1
-                answer.reason = "local model query-frame execution"
-                self._attach_model_answer_provenance(answer)
-                return answer
-        if answer and normalize(answer.text) != "unknown":
             if self._verify_with_local_model(question, planned_frame, answer, expected):
                 trace.model_answer_count += 1
-                answer.reason = "local model query-frame execution"
+                answer.reason = "model-verified DRT query execution"
+                self._attach_model_answer_provenance(answer)
                 return answer
         if not self._bounded_conflict_blocks_model_evidence_fallback():
             evidence_answer = self._answer_with_model_query_evidence(question, expected)

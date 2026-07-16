@@ -200,3 +200,26 @@ def test_production_model_path_does_not_call_deterministic_semantic_answer_tools
         and node.func.attr == "_run_model_planned_answer_tools"
     ]
     assert calls == []
+
+
+def test_production_model_path_has_no_unverified_bounded_answer_shortcuts() -> None:
+    source = (REPO_ROOT / "src" / "knowmoredirt" / "engine.py").read_text(encoding="utf-8")
+    tree = ast.parse(source)
+    engine_class = next(
+        node for node in tree.body
+        if isinstance(node, ast.ClassDef) and node.name == "KnowMoreDiRTEngine"
+    )
+    method = next(
+        node for node in engine_class.body
+        if isinstance(node, ast.FunctionDef) and node.name == "_answer_with_local_model"
+    )
+    text = ast.get_source_segment(source, method) or ""
+    forbidden = [
+        "bounded DSPG deterministic arithmetic execution",
+        "local model query-frame count aggregation",
+        "local model query-frame temporal binding",
+        "_trusted_exact_structural_bounded_answer",
+        "KMD_VERIFY_MODEL_DRS_BOUND_ANSWERS",
+    ]
+    assert [marker for marker in forbidden if marker in text] == []
+    assert "_verify_with_local_model" in text
