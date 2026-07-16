@@ -464,17 +464,12 @@ def _read_cache(path: Path | None) -> dict[str, Any] | None:
 
 
 def _cached_structured_failure_retryable(payload: dict[str, Any] | None) -> bool:
+    """Retry only transient transport failures under an unchanged contract."""
     if payload is None:
         return False
-    retryable_reasons = {
-        "request_failed",
-        "invalid_json",
-        "schema_validation_failed",
-        "grounding_validation_failed",
-    }
-    return str(payload.get("reason") or "") in retryable_reasons or str(
+    return str(payload.get("reason") or "") == "request_failed" or str(
         payload.get("repair_failure_reason") or ""
-    ) in retryable_reasons
+    ) == "request_failed"
 
 
 def _cached_request_failed(payload: dict[str, Any] | None) -> bool:
@@ -5438,10 +5433,6 @@ def _repair_chunk_drs_payload(payload: Any, source_text: str = "", *, prune_unre
             grounding_repaired |= _repair_evidence_text_from_declared_value(item, source_text, ("label",))
         for item in repaired_boxes:
             grounding_repaired |= _repair_evidence_text_from_declared_value(item, source_text, ())
-            box_evidence = str(item.get("evidence_text") or "").strip()
-            if box_evidence and box_evidence not in source_text:
-                item["evidence_text"] = ""
-                grounding_repaired = True
         for item in repaired_conditions:
             grounding_repaired |= _repair_evidence_text_from_declared_value(item, source_text, ())
         temporals = drs.get("temporal_records")

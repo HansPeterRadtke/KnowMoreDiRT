@@ -384,7 +384,6 @@ def _grounded_model_frames(
             "context_budget": metadata.get("context_budget"),
         }
     result = call_model_chunk_frames(sentence.text, semantic_client, rel_path=sentence.rel_path)
-    _raise_model_request_failed(result, "chunk frame ingest")
     frames = [frame for frame in result.get("frames", []) if isinstance(frame, dict)] if result.get("accepted") else []
     cacheable_failure = result.get("reason") in {"invalid_json", "schema_validation_failed", "grounding_validation_failed"}
     if semantic_cache is not None and (result.get("accepted") or cacheable_failure):
@@ -512,11 +511,33 @@ def _ingest_model_drs_for_sentence(
         """
         SELECT accepted, materialized, reason, metadata_json
         FROM model_attempts
-        WHERE run_id=? AND source_span_id=? AND task=? AND source=? AND cache_key=?
+        WHERE task=? AND source=? AND cache_key=?
+        ORDER BY rowid DESC
         LIMIT 1
         """,
-        (run_id, span_id, "chunk_drs", "local_model_drs", drs_cache_key),
+        ("chunk_drs", "local_model_drs", drs_cache_key),
     ).fetchone()
+    if previous_attempt is None:
+        stable_contract_fields = ("source_text_hash", "n_predict", "schema_version", "model_fingerprint")
+        candidate_attempts = store.execute(
+            """
+            SELECT accepted, materialized, reason, metadata_json
+            FROM model_attempts
+            WHERE task='chunk_drs' AND source='local_model_drs'
+            ORDER BY rowid DESC
+            """
+        ).fetchall()
+        for candidate_attempt in candidate_attempts:
+            try:
+                candidate_metadata = json.loads(str(candidate_attempt["metadata_json"] or "{}"))
+            except (TypeError, ValueError, json.JSONDecodeError):
+                continue
+            candidate_context = candidate_metadata.get("cache_context") if isinstance(candidate_metadata, dict) else None
+            if not isinstance(candidate_context, dict):
+                continue
+            if all(candidate_context.get(field) == drs_cache_context.get(field) for field in stable_contract_fields):
+                previous_attempt = candidate_attempt
+                break
     existing_drs = store.execute(
         """
         SELECT COUNT(*)
@@ -582,7 +603,6 @@ def _ingest_model_drs_for_sentence(
         n_predict=drs_n_predict,
         refresh_empty_compact_legacy=refresh_empty_compact_legacy,
     )
-    _raise_model_request_failed(drs_result, "chunk DRS ingest")
     actual_drs_cache_context = (
         drs_result.get("cache_context") if isinstance(drs_result.get("cache_context"), dict) else drs_cache_context
     )
