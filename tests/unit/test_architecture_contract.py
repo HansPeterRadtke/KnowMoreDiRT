@@ -347,3 +347,15 @@ def test_model_query_drs_answer_slot_binding_uses_model_roles() -> None:
     text = ast.get_source_segment(source, method) or ""
     assert 'frame.source == "model_query_drs" and frame.answer_roles' in text
     assert "expand_terms(frame.answer_roles)" in text
+
+
+def test_model_query_drs_does_not_use_hardcoded_current_state_preference() -> None:
+    source = (REPO_ROOT / "src" / "knowmoredirt" / "bounded_dspg.py").read_text(encoding="utf-8")
+    tree = ast.parse(source)
+    method = next(
+        node for node in tree.body
+        if isinstance(node, ast.FunctionDef) and node.name == "_apply_structured_current_state_preference"
+    )
+    text = ast.get_source_segment(source, method) or ""
+    assert 'if frame.source == "model_query_drs":' in text
+    assert "return candidates" in text

@@ -5561,6 +5561,8 @@ def _apply_structured_current_state_preference(
     records: dict[str, Any],
     frame: QueryFrame,
 ) -> list[tuple[float, str, Evidence, str]]:
+    if frame.source == "model_query_drs":
+        return candidates
     if not candidates or _frame_requests_explicit_structured_state(frame):
         return candidates
     ranks = [_structured_row_state_rank(value, evidence, records) for _score, value, evidence, _reason in candidates]
