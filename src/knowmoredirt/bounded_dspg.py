@@ -766,6 +766,9 @@ def _rank_scope(
         "target_scope_rejected_document_rows": target_scope_rejected_documents,
         "relation_only_candidate_document_rows": len(relation_doc_scores),
         "relation_only_selected_document_count": relation_only_selected,
+        "relation_only_provenance_document_ids": [
+            doc_id for _score, doc_id, _rel_path in relation_doc_scores[: min(8, max(1, doc_limit))]
+        ],
         "candidate_chunk_rows": len(chunk_scores),
         "selected_chunk_count": len(selected_chunks),
         "target_terms": target_terms[:32],
@@ -6364,6 +6367,27 @@ def execute_bounded_query(
             selected_chunks,
             current_document_chunk_ids=current_document_chunk_ids,
         )
+    provenance_records = records
+    relation_provenance_docs = [
+        str(value)
+        for value in ranking.get("relation_only_provenance_document_ids", [])
+        if str(value) and str(value) not in selected_docs
+    ]
+    if relation_provenance_docs:
+        relation_provenance_chunks = _current_chunk_ids_for_documents(
+            documents,
+            sentences_by_document,
+            relation_provenance_docs,
+        )
+        provenance_records = _load_records(
+            store,
+            run_id,
+            list(dict.fromkeys([*selected_docs, *relation_provenance_docs])),
+            list(dict.fromkeys([*selected_chunks, *relation_provenance_chunks])),
+            current_document_chunk_ids=list(
+                dict.fromkeys([*current_document_chunk_ids, *relation_provenance_chunks])
+            ),
+        )
     diagnostics = {"ranking": ranking, "execution": {"record_counts": records["record_counts"], "query_frame": frame.as_dict()}}
     if identity_expansion_provenance:
         diagnostics["execution"]["identity_expansion_evidence"] = identity_expansion_provenance
@@ -6377,7 +6401,7 @@ def execute_bounded_query(
             return answer, diagnostics
         _attach_no_answer_provenance(
             diagnostics,
-            records,
+            provenance_records,
             target_terms,
             boolean_relation_terms,
             boolean_candidates,
@@ -6419,7 +6443,7 @@ def execute_bounded_query(
             diagnostics["execution"]["temporal_answer_conflict_at_boundary"] = conflict
             _attach_no_answer_provenance(
                 diagnostics,
-                records,
+                provenance_records,
                 target_terms,
                 relation_terms,
                 temporal_candidates,
@@ -6431,7 +6455,7 @@ def execute_bounded_query(
         if answer is None:
             _attach_no_answer_provenance(
                 diagnostics,
-                records,
+                provenance_records,
                 target_terms,
                 relation_terms,
                 temporal_candidates,
@@ -6476,7 +6500,7 @@ def execute_bounded_query(
         diagnostics["execution"]["temporal_ambiguity_without_query_scope"] = True
         _attach_no_answer_provenance(
             diagnostics,
-            records,
+            provenance_records,
             target_terms,
             relation_terms,
             candidates,
@@ -6490,7 +6514,7 @@ def execute_bounded_query(
         if answer is None:
             _attach_no_answer_provenance(
                 diagnostics,
-                records,
+                provenance_records,
                 target_terms,
                 relation_terms,
                 candidates,
@@ -6506,7 +6530,7 @@ def execute_bounded_query(
             diagnostics["execution"]["answer_conflict_without_query_scope"] = conflict
             _attach_no_answer_provenance(
                 diagnostics,
-                records,
+                provenance_records,
                 target_terms,
                 relation_terms,
                 candidates,
@@ -6519,7 +6543,7 @@ def execute_bounded_query(
     if answer is None:
         _attach_no_answer_provenance(
             diagnostics,
-            records,
+            provenance_records,
             target_terms,
             relation_terms,
             candidates,
