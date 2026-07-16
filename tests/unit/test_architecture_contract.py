@@ -381,3 +381,15 @@ def test_model_query_drs_list_binding_preserves_all_formal_values_for_model_veri
     )
     text = ast.get_source_segment(source, method) or ""
     assert 'allow_named_entity_surface_filter=frame.source != "model_query_drs"' in text
+
+
+def test_model_query_drs_does_not_delete_formal_argument_values_by_surface_overlap() -> None:
+    source = (REPO_ROOT / "src" / "knowmoredirt" / "bounded_dspg.py").read_text(encoding="utf-8")
+    tree = ast.parse(source)
+    method = next(
+        node for node in tree.body
+        if isinstance(node, ast.FunctionDef) and node.name == "_prefer_drs_argument_values"
+    )
+    text = ast.get_source_segment(source, method) or ""
+    assert 'if frame.source == "model_query_drs":' in text
+    assert "return candidates" in text

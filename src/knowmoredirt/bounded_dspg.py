@@ -5597,9 +5597,12 @@ def _apply_answer_slot_evidence_preference(
 
 def _prefer_drs_argument_values(
     candidates: list[tuple[float, str, Evidence, str]],
+    frame: QueryFrame,
     expected: ExpectedAnswer,
     relation_terms: list[str],
 ) -> list[tuple[float, str, Evidence, str]]:
+    if frame.source == "model_query_drs":
+        return candidates
     if expected.answer_type not in {"content_phrase", "unknown", "metadata_value"}:
         return candidates
     if not relation_terms:
@@ -6545,7 +6548,7 @@ def execute_bounded_query(
     candidates.extend(_bind_contexts(records, frame, expected, target_terms, relation_terms))
     candidates = _apply_structured_current_state_preference(candidates, records, frame)
     candidates = _apply_answer_slot_evidence_preference(candidates, frame, target_terms)
-    candidates = _prefer_drs_argument_values(candidates, expected, relation_terms)
+    candidates = _prefer_drs_argument_values(candidates, frame, expected, relation_terms)
 
     if expected.answer_type == "count" and frame.aggregation == "count":
         group_count, group_evidence = _count_matching_record_groups(records, frame, target_terms, relation_terms)
