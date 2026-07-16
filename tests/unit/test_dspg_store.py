@@ -2925,6 +2925,7 @@ def test_labeled_turn_identity_resolves_first_person_drs_answer(tmp_path: Path, 
                             "kind": "entity",
                             "evidence_text": "WidgetFlux cold start",
                         },
+                        {"id": "r2", "label": "Nia", "kind": "person", "evidence_text": "Nia"},
                     ],
                     "boxes": [
                         {"id": "b0", "kind": "asserted", "parent_id": "", "holder_referent_id": "", "evidence_text": text}
@@ -2958,7 +2959,15 @@ def test_labeled_turn_identity_resolves_first_person_drs_answer(tmp_path: Path, 
                             "evidence_text": "I tested WidgetFlux cold start.",
                         }
                     ],
-                    "identity_hypotheses": [],
+                    "identity_hypotheses": [
+                        {
+                            "left_referent_id": "r2",
+                            "right_referent_id": "r0",
+                            "status": "accepted",
+                            "evidence_text": text,
+                            "confidence": 0.99,
+                        }
+                    ],
                     "temporal_records": [],
                 },
                 "_model_raw": "{}",
@@ -2996,10 +3005,14 @@ def test_labeled_turn_identity_resolves_first_person_drs_answer(tmp_path: Path, 
 
     assert answer is not None
     assert answer.text == "Nia"
-    identity_count = store.execute(
+    deterministic_identity_count = store.execute(
         "SELECT COUNT(*) FROM identity_hypotheses WHERE source='deterministic_speaker_turn'"
     ).fetchone()[0]
-    assert identity_count == 1
+    model_identity_count = store.execute(
+        "SELECT COUNT(*) FROM identity_hypotheses WHERE source='local_model_drs'"
+    ).fetchone()[0]
+    assert deterministic_identity_count == 0
+    assert model_identity_count == 1
 
 
 def test_structural_sender_identity_resolves_first_person_message_content(

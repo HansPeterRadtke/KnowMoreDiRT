@@ -289,3 +289,20 @@ def test_model_semantic_ingest_has_no_premodel_quality_skip() -> None:
         text = ast.get_source_segment(source, functions[name]) or ""
         assert "_model_semantic_skip_reason" not in text
         assert "KMD_ALLOW_PREMODEL_SEMANTIC_SKIP" not in text
+
+
+def test_model_query_drs_bounded_execution_does_not_reinterpret_raw_question_visibility() -> None:
+    source = (REPO_ROOT / "src" / "knowmoredirt" / "bounded_dspg.py").read_text(encoding="utf-8")
+    tree = ast.parse(source)
+    functions = {
+        node.name: node for node in tree.body
+        if isinstance(node, ast.FunctionDef)
+    }
+    target_text = ast.get_source_segment(source, functions["_target_terms"]) or ""
+    visible_text = ast.get_source_segment(source, functions["_visible_target_terms"]) or ""
+    scope_text = ast.get_source_segment(source, functions["_discourse_scope_query_terms"]) or ""
+    assert 'frame.source == "model_query_drs"' in target_text
+    assert 'frame.source == "model_query_drs"' in visible_text
+    assert 'frame.source == "model_query_drs"' in scope_text
+    assert 'question_material = ""' in target_text
+    assert 'semantic_question = "" if frame.source == "model_query_drs" else question' in scope_text

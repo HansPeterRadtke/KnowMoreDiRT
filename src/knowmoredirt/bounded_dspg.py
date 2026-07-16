@@ -261,10 +261,11 @@ def _query_terms(text: str) -> list[str]:
 
 def _discourse_scope_query_terms(frame: QueryFrame, question: str) -> set[str]:
     requested_tokens = set(content_tokens(frame.requested_relation))
+    semantic_question = "" if frame.source == "model_query_drs" else question
     material = normalize(
         " ".join(
             [
-                question,
+                semantic_question,
                 frame.temporal_scope,
                 *frame.answer_variables,
                 *frame.relation_terms,
@@ -303,8 +304,12 @@ def _discourse_scope_query_terms(frame: QueryFrame, question: str) -> set[str]:
 
 def _target_terms(frame: QueryFrame, question: str) -> list[str]:
     values: list[str] = []
-    visible = {normalize(anchor) for anchor in visible_anchors(question)}
-    question_material = normalize(question)
+    if frame.source == "model_query_drs":
+        visible = {normalize(anchor) for anchor in frame.target_anchors if normalize(anchor)}
+        question_material = ""
+    else:
+        visible = {normalize(anchor) for anchor in visible_anchors(question)}
+        question_material = normalize(question)
     answer_material = normalize(" ".join(frame.answer_variables))
     answer_tokens = _normalized_token_set(answer_material)
     scope_terms = _discourse_scope_query_terms(frame, question)
@@ -4316,7 +4321,11 @@ def _document_scoped_relation_value_candidates(
 
 
 def _visible_target_terms(frame: QueryFrame, question: str) -> list[str]:
-    visible = {normalize(anchor) for anchor in visible_anchors(question)}
+    visible = (
+        {normalize(anchor) for anchor in frame.target_anchors if normalize(anchor)}
+        if frame.source == "model_query_drs"
+        else {normalize(anchor) for anchor in visible_anchors(question)}
+    )
     values: list[str] = []
     for anchor in frame.target_anchors:
         norm = normalize(anchor)
