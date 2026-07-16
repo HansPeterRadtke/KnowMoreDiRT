@@ -1,70 +1,59 @@
-"""Small data contracts for the model-owned query system."""
+"""Internal data models for the KnowMoreDiRT raw-text engine."""
+
 from __future__ import annotations
 
 from dataclasses import dataclass, field
-from typing import Any
+from pathlib import Path
 
 
 @dataclass(frozen=True)
-class SourceRecord:
-    record_id: str
-    collection_path: str
-    source_path: str
-    record_index: int
-    data: dict[str, Any]
+class Document:
+    """A readable raw text file discovered under the initialized folder."""
+
+    document_id: str
+    path: Path
+    rel_path: str
     text: str
+    size_bytes: int
+    mtime: float
+    ctime: float
+    sha256: str
+    metadata: dict[str, object] = field(default_factory=dict)
 
-    @property
-    def search_text(self) -> str:
-        import json
 
-        return (self.text + "\n" + json.dumps(self.data, ensure_ascii=False, default=str)).lower()
+@dataclass(frozen=True)
+class Sentence:
+    """A source-grounded sentence or line-like text unit."""
 
-    def model_view(self, max_chars: int = 1800) -> dict[str, Any]:
-        import json
+    sentence_id: str
+    document_id: str
+    rel_path: str
+    text: str
+    order: int
+    char_start: int
+    char_end: int
 
-        rendered = json.dumps(self.data, ensure_ascii=False, default=str)
-        return {
-            "record_id": self.record_id,
-            "collection_path": self.collection_path,
-            "source_path": self.source_path,
-            "record_index": self.record_index,
-            "data": self.data if len(rendered) <= max_chars else {},
-            "excerpt": (self.text or rendered)[:max_chars],
-        }
+
+@dataclass(frozen=True)
+class Evidence:
+    """Source evidence used internally for scoring and diagnostics."""
+
+    rel_path: str
+    text: str
+    score: float = 0.0
+    span_id: str = ""
+    chunk_order: int | None = None
+    char_start: int | None = None
+    char_end: int | None = None
+    source_kind: str = "source_span"
 
 
 @dataclass
-class ToolResult:
-    step_id: str
-    kind: str
-    records: list[SourceRecord] = field(default_factory=list)
-    values: list[Any] = field(default_factory=list)
-    scalar: Any = None
-    diagnostics: dict[str, Any] = field(default_factory=dict)
-
-    def model_view(self, max_items: int = 30, max_chars: int = 32000) -> dict[str, Any]:
-        payload = {
-            "step_id": self.step_id,
-            "kind": self.kind,
-            "records": [item.model_view() for item in self.records[:max_items]],
-            "values": self.values[:max_items],
-            "scalar": self.scalar,
-            "diagnostics": self.diagnostics,
-        }
-        import json
-
-        rendered = json.dumps(payload, ensure_ascii=False, default=str)
-        if len(rendered) <= max_chars:
-            return payload
-        payload["records"] = [item.model_view(600) for item in self.records[:10]]
-        payload["values"] = self.values[:10]
-        payload["diagnostics"] = {**self.diagnostics, "truncated_for_model": True}
-        return payload
-
-
-@dataclass(frozen=True)
 class Answer:
+    """Internal answer candidate."""
+
     text: str
-    evidence: tuple[dict[str, Any], ...] = ()
-    diagnostics: dict[str, Any] = field(default_factory=dict)
+    confidence: float = 0.0
+    evidence: list[Evidence] = field(default_factory=list)
+    reason: str = ""
+    answer_type: str = "unknown"
