@@ -276,3 +276,16 @@ def test_model_owned_ingest_has_no_deterministic_speaker_coreference_injection()
         "_link_first_person_referents_to_speaker_surface",
     ]
     assert [marker for marker in forbidden if marker in source] == []
+
+
+def test_model_semantic_ingest_has_no_premodel_quality_skip() -> None:
+    source = (REPO_ROOT / "src" / "knowmoredirt" / "ingest.py").read_text(encoding="utf-8")
+    tree = ast.parse(source)
+    functions = {
+        node.name: node for node in tree.body
+        if isinstance(node, ast.FunctionDef)
+    }
+    for name in ("_grounded_model_frames", "_ingest_model_drs_for_sentence"):
+        text = ast.get_source_segment(source, functions[name]) or ""
+        assert "_model_semantic_skip_reason" not in text
+        assert "KMD_ALLOW_PREMODEL_SEMANTIC_SKIP" not in text

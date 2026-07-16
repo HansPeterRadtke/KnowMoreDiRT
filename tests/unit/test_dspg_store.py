@@ -7095,8 +7095,7 @@ def test_ingest_can_materialize_schema_constrained_model_drs(tmp_path: Path, mon
     assert store.counts()["drs_condition_arguments"] == 1
 
 
-def test_drs_ingest_skips_low_semantic_noise_chunks(tmp_path: Path, monkeypatch) -> None:
-    monkeypatch.setenv("KMD_ALLOW_PREMODEL_SEMANTIC_SKIP", "1")
+def test_drs_ingest_sends_symbol_heavy_chunks_to_model(tmp_path: Path, monkeypatch) -> None:
     noise = "\\x00\\x01@@@###%%%^^^^~~~~" + ("A7f!?" * 80)
     (tmp_path / "noise.blob").write_text(noise, encoding="utf-8")
     (tmp_path / "note.txt").write_text("Aero Gate is ready.\n", encoding="utf-8")
@@ -7113,13 +7112,17 @@ def test_drs_ingest_skips_low_semantic_noise_chunks(tmp_path: Path, monkeypatch)
 
         def complete_json(self, prompt: str, *, n_predict: int = 128, grammar=None, json_schema=None):
             self.calls.append(prompt)
-            assert "Aero Gate is ready" in prompt
+            is_note = "Aero Gate is ready" in prompt
+            source_id = "note.txt" if is_note else "noise.blob"
+            label = "Aero Gate" if is_note else "A7f"
+            evidence = "Aero Gate is ready." if is_note else "A7f!?"
+            predicate = "ready" if is_note else "symbol_sequence"
             return {
                 "drs": {
                     "schema_version": "chunk-drs-v2",
-                    "source_id": "note.txt",
+                    "source_id": source_id,
                     "referents": [
-                        {"id": "r0", "label": "Aero Gate", "kind": "entity", "evidence_text": "Aero Gate"},
+                        {"id": "r0", "label": label, "kind": "entity", "evidence_text": label},
                     ],
                     "boxes": [
                         {
@@ -7127,13 +7130,13 @@ def test_drs_ingest_skips_low_semantic_noise_chunks(tmp_path: Path, monkeypatch)
                             "kind": "asserted",
                             "parent_id": "",
                             "holder_referent_id": "",
-                            "evidence_text": "Aero Gate is ready.",
+                            "evidence_text": evidence,
                         },
                     ],
                     "conditions": [
                         {
                             "id": "c0",
-                            "predicate": "ready",
+                            "predicate": predicate,
                             "box_id": "b0",
                             "polarity": "positive",
                             "modality": "asserted",
@@ -7145,10 +7148,10 @@ def test_drs_ingest_skips_low_semantic_noise_chunks(tmp_path: Path, monkeypatch)
                                     "target_id": "r0",
                                     "value": "",
                                     "value_type": "entity",
-                                    "evidence_text": "Aero Gate",
+                                    "evidence_text": label,
                                 }
                             ],
-                            "evidence_text": "Aero Gate is ready.",
+                            "evidence_text": evidence,
                         }
                     ],
                     "identity_hypotheses": [],
@@ -7169,8 +7172,8 @@ def test_drs_ingest_skips_low_semantic_noise_chunks(tmp_path: Path, monkeypatch)
         use_drs_semantics=True,
     )
 
-    assert len(model.calls) == 1
-    assert store.counts()["drs_conditions"] == 1
+    assert len(model.calls) == 2
+    assert store.counts()["drs_conditions"] == 2
 
 
 def test_ingest_can_incrementally_merge_new_files_into_existing_store(tmp_path: Path) -> None:

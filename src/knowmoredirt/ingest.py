@@ -368,10 +368,6 @@ def _grounded_model_frames(
 ) -> tuple[list[dict[str, Any]], dict[str, Any]]:
     if semantic_client is None:
         return [], {"source": "disabled"}
-    quality = text_quality_metrics(sentence.text)
-    skip_reason = _model_semantic_skip_reason(quality, sentence.text)
-    if skip_reason:
-        return [], {"source": skip_reason, "reason": skip_reason}
     cache_context = chunk_frame_cache_context(semantic_client, rel_path=sentence.rel_path, chunk_text=sentence.text)
     cached = semantic_cache.get(sentence.text, context=cache_context) if semantic_cache else None
     if cached is not None:
@@ -504,23 +500,6 @@ def _ingest_model_drs_for_sentence(
     refresh_empty_compact_legacy: bool = False,
 ) -> int:
     semantic_index += 1
-    skip_reason = (
-        _model_semantic_skip_reason(text_quality_metrics(sentence.text), sentence.text)
-        if _env_true("KMD_ALLOW_PREMODEL_SEMANTIC_SKIP")
-        else ""
-    )
-    if skip_reason:
-        _log_progress(
-            "kmd-ingest drs_done "
-            f"chunk={semantic_index}/{semantic_total} "
-            f"source={sentence.rel_path}:{sentence.order} "
-            "accepted=False "
-            "materialized=False "
-            f"reason={skip_reason} "
-            "model_elapsed=0.0 "
-            f"elapsed={time.monotonic() - ingest_started:.1f}s"
-        )
-        return semantic_index
     drs_n_predict = default_chunk_drs_n_predict(semantic_client, sentence.text)
     drs_cache_context = chunk_drs_cache_context(
         semantic_client,
