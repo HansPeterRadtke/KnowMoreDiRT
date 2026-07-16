@@ -540,7 +540,7 @@ def _scan_pack_unit_count() -> int:
             return max(0, int(configured))
         except ValueError:
             pass
-    return 0
+    return 6
 
 
 def _scan_pack_unit_chars(semantic_client: Any | None) -> int:

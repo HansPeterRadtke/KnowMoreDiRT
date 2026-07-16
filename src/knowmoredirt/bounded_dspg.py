@@ -1026,7 +1026,21 @@ def _fetch_identity_hypotheses(
             return True
         if source_span_id not in current_span_chunk_ids:
             current_span_chunk_ids.update(_source_span_chunk_ids(connection, [source_span_id]))
-        return current_span_chunk_ids.get(source_span_id) in current_chunk_id_set
+        source_chunk_id = current_span_chunk_ids.get(source_span_id)
+        if source_chunk_id in current_chunk_id_set:
+            return True
+        span_row = connection.execute(
+            "SELECT span_kind FROM source_spans WHERE span_id=? LIMIT 1",
+            (source_span_id,),
+        ).fetchone()
+        span_kind = str(span_row["span_kind"] or "") if span_row is not None else ""
+        parent_prefix = "drs_evidence:"
+        if not span_kind.startswith(parent_prefix):
+            return False
+        parent_span_id = span_kind[len(parent_prefix):]
+        if parent_span_id not in current_span_chunk_ids:
+            current_span_chunk_ids.update(_source_span_chunk_ids(connection, [parent_span_id]))
+        return current_span_chunk_ids.get(parent_span_id) in current_chunk_id_set
 
     def add_rows(sql: str, params: tuple[Any, ...]) -> None:
         for row in connection.execute(sql, params):

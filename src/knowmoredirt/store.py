@@ -15,7 +15,7 @@ from typing import Any
 
 from .drs_validation import box_parent_cycle_errors, box_root_errors, condition_argument_cycle_errors
 from .storage import StoreConfig, open_sqlite
-from .text import normalize
+from .text import normalize, split_units
 
 
 DRS_CONTEXT_KINDS = {
@@ -584,6 +584,16 @@ class DSPGStore:
         def id_rows(sql: str, params: tuple[Any, ...]) -> list[str]:
             return [str(row[0]) for row in self.connection.execute(sql, params).fetchall() if str(row[0] or "")]
 
+        evidence_span_kind = f"drs_evidence:{source_span_id}"
+        evidence_span_ids = id_rows(
+            "SELECT span_id FROM source_spans WHERE span_kind=?",
+            (evidence_span_kind,),
+        )
+        evidence_chunk_ids = id_rows(
+            "SELECT DISTINCT chunk_id FROM source_spans WHERE span_kind=?",
+            (evidence_span_kind,),
+        )
+
         frame_ids = id_rows(
             """
             SELECT frame_id
@@ -693,6 +703,8 @@ class DSPGStore:
             "run_id=? AND source_span_id=? AND source=?",
             (run_id, source_span_id, source),
         )
+        delete_by_ids("identity_hypotheses", "source_span_id", evidence_span_ids)
+        delete_by_ids("drs_identity_hypotheses", "source_span_id", evidence_span_ids)
         delete_where(
             "drs_conditions",
             "run_id=? AND source_span_id=? AND source=?",
@@ -714,6 +726,8 @@ class DSPGStore:
             (run_id, source_span_id, source),
         )
         delete_by_ids("contexts", "context_id", context_ids)
+        delete_by_ids("source_spans", "span_id", evidence_span_ids)
+        delete_by_ids("chunks", "chunk_id", evidence_chunk_ids)
         delete_orphan_referents(referent_ids)
         self.connection.commit()
         return {table: count for table, count in deleted.items() if count}
@@ -1197,6 +1211,77 @@ class DSPGStore:
             except (TypeError, ValueError):
                 return default
 
+        parent_span = self.connection.execute(
+            """
+            SELECT ss.document_id, ss.chunk_id, ss.char_start, ss.char_end,
+                   c.chunk_order
+            FROM source_spans ss
+            JOIN chunks c ON c.chunk_id=ss.chunk_id
+            WHERE ss.span_id=?
+            LIMIT 1
+            """,
+            (source_span_id,),
+        ).fetchone()
+
+        def evidence_source_span(evidence: str) -> str:
+            """Create precise provenance inside a packed model-input chunk."""
+            value = str(evidence or "").strip()
+            if not value or value == source_text or parent_span is None:
+                return source_span_id
+            offset = source_text.find(value)
+            if offset < 0:
+                return source_span_id
+            unit_start, unit_end, unit_text = offset, offset + len(value), value
+            for candidate_start, candidate_end, candidate_text in split_units(source_text):
+                if candidate_start <= offset and offset + len(value) <= candidate_end:
+                    unit_start, unit_end, unit_text = candidate_start, candidate_end, candidate_text
+                    break
+            if unit_start == 0 and unit_end == len(source_text):
+                return source_span_id
+            absolute_start = int(parent_span["char_start"]) + unit_start
+            absolute_end = int(parent_span["char_start"]) + unit_end
+            child_chunk_id = stable_id(
+                "drs_evidence_chunk", source_span_id, absolute_start, absolute_end, unit_text
+            )
+            child_span_id = stable_id(
+                "drs_evidence_span", source_span_id, absolute_start, absolute_end, unit_text
+            )
+            self.connection.execute(
+                """
+                INSERT OR IGNORE INTO chunks(
+                  chunk_id, document_id, chunk_order, char_start, char_end, text, token_estimate
+                ) VALUES (?, ?, ?, ?, ?, ?, ?)
+                """,
+                (
+                    child_chunk_id,
+                    str(parent_span["document_id"]),
+                    int(parent_span["chunk_order"]),
+                    absolute_start,
+                    absolute_end,
+                    unit_text,
+                    max(1, len(unit_text.split())),
+                ),
+            )
+            self.connection.execute(
+                """
+                INSERT OR IGNORE INTO source_spans(
+                  span_id, document_id, chunk_id, char_start, char_end,
+                  surface, surface_norm, span_kind
+                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+                """,
+                (
+                    child_span_id,
+                    str(parent_span["document_id"]),
+                    child_chunk_id,
+                    absolute_start,
+                    absolute_end,
+                    unit_text,
+                    normalize(unit_text),
+                    f"drs_evidence:{source_span_id}",
+                ),
+            )
+            return child_span_id
+
         external_to_referent: dict[str, str] = {}
         external_to_drs_referent: dict[str, str] = {}
         external_to_referent_label: dict[str, str] = {}
@@ -1546,6 +1631,7 @@ class DSPGStore:
             right_ref = external_to_referent[right_external]
             relation = text_value(item, "status") or text_value(item, "relation") or "candidate"
             evidence = text_value(item, "evidence_text")
+            identity_source_span_id = evidence_source_span(evidence)
             conf = confidence(item.get("confidence"), 0.65)
             identity_box_external = text_value(item, "box_id")
             if not identity_box_external and evidence:
@@ -1564,7 +1650,7 @@ class DSPGStore:
                 identity_box_external = root_asserted_box_ids[0]
             identity_context_id = external_to_context.get(identity_box_external)
             identity_drs_box_id = external_to_box.get(identity_box_external)
-            drs_hypothesis_id = stable_id("drsidh", run_id, source_span_id, index, left_external, right_external, relation, evidence)
+            drs_hypothesis_id = stable_id("drsidh", run_id, identity_source_span_id, index, left_external, right_external, relation, evidence)
             can_materialize_identity = (
                 identity_context_id or left_ref == right_ref
             ) and identity_relation_allows_expansion(relation)
@@ -1585,7 +1671,7 @@ class DSPGStore:
                 (
                     drs_hypothesis_id,
                     run_id,
-                    source_span_id,
+                    identity_source_span_id,
                     identity_context_id,
                     identity_drs_box_id,
                     identity_box_external or None,
@@ -1609,9 +1695,9 @@ class DSPGStore:
                     ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
                     """,
                     (
-                        stable_id("idh", run_id, source_span_id, "drs", left_external, right_external, relation, evidence),
+                        stable_id("idh", run_id, identity_source_span_id, "drs", left_external, right_external, relation, evidence),
                         run_id,
-                        source_span_id,
+                        identity_source_span_id,
                         identity_context_id,
                         identity_drs_box_id,
                         identity_box_external or None,
