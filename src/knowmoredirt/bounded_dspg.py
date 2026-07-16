@@ -3768,7 +3768,7 @@ def _bind_frame_conditions(records: dict[str, Any], frame: QueryFrame, expected:
         elif not _context_accessible(str(row.get("context_id") or ""), records, frame):
             continue
         evidence = _evidence_for_span(str(row.get("span_id") or ""), records)
-        if _source_is_low_priority(evidence.rel_path, evidence.text) and not _structured_source_row(row):
+        if frame.source != "model_query_drs" and _source_is_low_priority(evidence.rel_path, evidence.text) and not _structured_source_row(row):
             continue
         arg_text = " ".join(str(arg.get("surface") or "") for arg in args_by_frame.get(str(row.get("frame_id")), []))
         frame_type_material = " ".join(
@@ -3819,7 +3819,7 @@ def _bind_relation_conditions(records: dict[str, Any], frame: QueryFrame, expect
         if not _relation_scope_accessible(row, records, frame):
             continue
         evidence = _evidence_for_span(str(row.get("source_span_id") or ""), records)
-        if _source_is_low_priority(evidence.rel_path, evidence.text) and not _structured_source_row(row):
+        if frame.source != "model_query_drs" and _source_is_low_priority(evidence.rel_path, evidence.text) and not _structured_source_row(row):
             continue
         row_material = _relation_local_material(row, evidence, include_evidence=False, include_context=True, records=records)
         if str(row.get("relation_type") or "") == "drs_condition":
@@ -3923,7 +3923,7 @@ def _bind_document_scoped_label_values(
             if len(target_rows) == 1 and row is target_rows[0]:
                 continue
             evidence = _evidence_for_span(str(row.get("source_span_id") or ""), records)
-            if _source_is_low_priority(evidence.rel_path, evidence.text) and not _structured_source_row(row):
+            if frame.source != "model_query_drs" and _source_is_low_priority(evidence.rel_path, evidence.text) and not _structured_source_row(row):
                 continue
             local_material = _relation_selector_material(row, evidence)
             relation_hit = _contains_any(local_material, relation_terms) or _contains_any(local_material, answer_slot_terms)
@@ -4206,7 +4206,7 @@ def _document_scoped_drs_condition_candidates(
         if document_id not in target_document_ids:
             continue
         evidence = _evidence_for_span(span_id, records)
-        if _source_is_low_priority(evidence.rel_path, evidence.text) and not _structured_source_row(row):
+        if frame.source != "model_query_drs" and _source_is_low_priority(evidence.rel_path, evidence.text) and not _structured_source_row(row):
             continue
         row_material = _relation_selector_material(row, evidence, include_evidence=False)
         row_selector_matches = _document_scoped_row_selector_matches(
@@ -4276,7 +4276,7 @@ def _document_scoped_relation_value_candidates(
         if str(spans.get(span_id, {}).get("document_id") or "") not in target_document_ids:
             continue
         evidence = _evidence_for_span(span_id, records)
-        if _source_is_low_priority(evidence.rel_path, evidence.text) and not _structured_source_row(row):
+        if frame.source != "model_query_drs" and _source_is_low_priority(evidence.rel_path, evidence.text) and not _structured_source_row(row):
             continue
         local_material = _relation_selector_material(row, evidence, include_evidence=True)
         if require_relation_predicate and relation_only_terms and not _contains_any(local_material, relation_only_terms):
@@ -4409,7 +4409,7 @@ def _structural_chain_rows(records: dict[str, Any], frame: QueryFrame) -> list[t
         if not subject or not value:
             continue
         evidence = _evidence_for_span(str(row.get("source_span_id") or ""), records)
-        if _source_is_low_priority(evidence.rel_path, evidence.text) and relation_type != "label_value" and not _structured_source_row(row):
+        if frame.source != "model_query_drs" and _source_is_low_priority(evidence.rel_path, evidence.text) and relation_type != "label_value" and not _structured_source_row(row):
             continue
         label_material = _structural_chain_label_material(row)
         local_material = _relation_local_material(row, evidence, include_evidence=False, include_context=True, records=records)
@@ -4621,7 +4621,7 @@ def _bind_record_groups(
             if not _context_accessible(str(row.get("context_id") or ""), records, frame):
                 continue
             evidence = _evidence_for_span(str(row.get("source_span_id") or ""), records)
-            if _source_is_low_priority(evidence.rel_path, evidence.text) and not _structured_source_row(row):
+            if frame.source != "model_query_drs" and _source_is_low_priority(evidence.rel_path, evidence.text) and not _structured_source_row(row):
                 continue
             local_material = _relation_selector_material(row, evidence)
             relation_hits = sum(1 for term in relation_terms if _has_term(local_material, term))
@@ -4850,7 +4850,7 @@ def _count_matching_record_groups(
             evidence = _evidence_for_span(span_id, records)
             if evidence.rel_path in countable_rel_paths and not span_is_structured:
                 continue
-            if _source_is_low_priority(evidence.rel_path, evidence.text) and not any(_structured_source_row(row) for row in span_rows):
+            if frame.source != "model_query_drs" and _source_is_low_priority(evidence.rel_path, evidence.text) and not any(_structured_source_row(row) for row in span_rows):
                 continue
             span_material = _group_material(span_rows, records, include_source_evidence=False)
             scoped_material = ""
@@ -5299,7 +5299,7 @@ def _temporal_relation_candidates(
         if not temporal_values:
             continue
         evidence = _evidence_for_span(span_id, records)
-        if _source_is_low_priority(evidence.rel_path, evidence.text):
+        if frame.source != "model_query_drs" and _source_is_low_priority(evidence.rel_path, evidence.text):
             continue
         material = _group_material(accessible_rows, records)
         if target_terms and not _contains_any(material, target_terms):
@@ -5343,7 +5343,7 @@ def _selected_temporal_span_ids(
         if not span_id:
             continue
         evidence = _evidence_for_span(span_id, records)
-        if _source_is_low_priority(evidence.rel_path, evidence.text):
+        if frame.source != "model_query_drs" and _source_is_low_priority(evidence.rel_path, evidence.text):
             continue
         if not _temporal_row_matches_constraints(row, evidence, temporal_constraints):
             continue

@@ -421,3 +421,29 @@ def test_model_query_drs_bounded_ranking_uses_only_model_semantic_terms() -> Non
     assert 'all_terms = [] if frame.source == "model_query_drs" else _query_terms(question)' in text
     assert 'frame.source != "model_query_drs" and document_low_priority_by_id' in text
     assert 'frame.source != "model_query_drs" and _source_is_low_priority' in text
+
+
+def test_model_query_drs_binders_do_not_reject_sources_by_text_shape() -> None:
+    source = (REPO_ROOT / "src" / "knowmoredirt" / "bounded_dspg.py").read_text(encoding="utf-8")
+    tree = ast.parse(source)
+    binder_names = {
+        "_bind_frame_conditions",
+        "_bind_relation_conditions",
+        "_bind_document_scoped_label_values",
+        "_document_scoped_drs_condition_candidates",
+        "_document_scoped_relation_value_candidates",
+        "_structural_chain_rows",
+        "_bind_record_groups",
+        "_count_matching_record_groups",
+        "_temporal_relation_candidates",
+        "_selected_temporal_span_ids",
+    }
+    functions = {
+        node.name: node for node in tree.body
+        if isinstance(node, ast.FunctionDef) and node.name in binder_names
+    }
+    assert set(functions) == binder_names
+    for name, method in functions.items():
+        text = ast.get_source_segment(source, method) or ""
+        if "_source_is_low_priority" in text:
+            assert 'frame.source != "model_query_drs"' in text, name
