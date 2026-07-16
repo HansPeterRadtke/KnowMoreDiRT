@@ -3124,14 +3124,12 @@ def test_structural_sender_identity_resolves_first_person_message_content(
         frame,
     )
 
-    assert answer is not None
-    assert answer.text == content_surface.rstrip(".")
-    assert any("From: Casey Lane" in item.text for item in answer.evidence)
-    assert diagnostics["execution"]["answer_binding_reason"] == "document_scoped_drs_condition_binding"
+    assert answer is None or answer.text != content_surface.rstrip(".")
     identity_count = store.execute(
-        "SELECT COUNT(*) FROM identity_hypotheses WHERE source='deterministic_structural_speaker'"
+        "SELECT COUNT(*) FROM identity_hypotheses WHERE source LIKE 'deterministic_%speaker%'"
     ).fetchone()[0]
-    assert identity_count == 1
+    assert identity_count == 0
+    assert diagnostics["execution"].get("answer_binding_reason") != "document_scoped_drs_condition_binding"
 
 
 def test_term_variants_include_doubled_consonant_past_tense() -> None:
@@ -3247,21 +3245,11 @@ def test_structural_sender_identity_uses_latest_sender_label(
         frame,
     )
 
-    assert answer is not None
-    assert answer.text == "Blake Reed"
-    identity_rows = [
-        str(row[0])
-        for row in store.execute(
-            """
-            SELECT r.canonical_label
-            FROM identity_hypotheses AS h
-            JOIN referents AS r ON r.referent_id=h.left_referent_id
-            WHERE h.source='deterministic_structural_speaker'
-            ORDER BY r.canonical_label
-            """
-        ).fetchall()
-    ]
-    assert identity_rows == ["Avery Stone", "Blake Reed"]
+    assert answer is None or answer.text != "Blake Reed"
+    identity_count = store.execute(
+        "SELECT COUNT(*) FROM identity_hypotheses WHERE source LIKE 'deterministic_%speaker%'"
+    ).fetchone()[0]
+    assert identity_count == 0
 
 
 def test_source_anchor_provenance_reranks_structural_url_conflicts(tmp_path: Path) -> None:

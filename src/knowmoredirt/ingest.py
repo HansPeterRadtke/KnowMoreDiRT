@@ -435,94 +435,6 @@ def _condition_from_deterministic_relation(relation: ExtractedRelation, evidence
     )
 
 
-def _link_first_person_referents_to_speaker_surface(
-    store: DSPGStore,
-    run_id: str,
-    source_span_id: str,
-    speaker_surface: str,
-    evidence_surface: str,
-    *,
-    source: str,
-    confidence: float,
-) -> int:
-    speaker = clean_extracted_value(speaker_surface)
-    if not speaker:
-        return 0
-    context_row = store.execute(
-        """
-        SELECT context_id
-        FROM context_assignments
-        WHERE run_id=? AND applies_to_type='source_span' AND applies_to_id=?
-        LIMIT 1
-        """,
-        (run_id, source_span_id),
-    ).fetchone()
-    context_id = str(context_row["context_id"] or "") if context_row is not None else ""
-    speaker_ref = store.upsert_referent(run_id, speaker, mention_entity_type(speaker))
-    rows = store.execute(
-        """
-        SELECT referent_id
-        FROM drs_referents
-        WHERE run_id=? AND source_span_id=?
-        """,
-        (run_id, source_span_id),
-    ).fetchall()
-    inserted = 0
-    for row in rows:
-        pronoun_ref = str(row["referent_id"] or "")
-        if not pronoun_ref or pronoun_ref == speaker_ref:
-            continue
-        surface_row = store.execute(
-            "SELECT canonical_label_norm FROM referents WHERE referent_id=?",
-            (pronoun_ref,),
-        ).fetchone()
-        surface_norm = str(surface_row["canonical_label_norm"] or "") if surface_row is not None else ""
-        if surface_norm not in FIRST_PERSON_REFERENCE_NORMS:
-            continue
-        store.execute(
-            """
-            INSERT OR IGNORE INTO identity_hypotheses(
-              hypothesis_id, run_id, source_span_id, context_id, drs_box_id, box_external_id,
-              left_referent_id, right_referent_id, relation, evidence, confidence, source
-            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-            """,
-            (
-                stable_id("idh", run_id, source_span_id, source, speaker_ref, pronoun_ref),
-                run_id,
-                source_span_id,
-                context_id,
-                None,
-                None,
-                speaker_ref,
-                pronoun_ref,
-                "coreference",
-                evidence_surface,
-                confidence,
-                source,
-            ),
-        )
-        inserted += 1
-    return inserted
-
-
-def _link_labeled_turn_speaker_referents(
-    store: DSPGStore,
-    run_id: str,
-    source_span_id: str,
-    sentence: Sentence,
-) -> int:
-    speaker, _utterance = transcript_turn_parts(sentence.text)
-    return _link_first_person_referents_to_speaker_surface(
-        store,
-        run_id,
-        source_span_id,
-        speaker,
-        sentence.text,
-        source="deterministic_speaker_turn",
-        confidence=0.9,
-    )
-
-
 def _structural_speaker_surface_from_relations(relations: list[ExtractedRelation]) -> str:
     for relation in relations:
         if relation.relation_type != "label_value" or not relation.value:
@@ -590,8 +502,6 @@ def _ingest_model_drs_for_sentence(
     semantic_total: int,
     ingest_started: float,
     refresh_empty_compact_legacy: bool = False,
-    structural_speaker_surface: str = "",
-    structural_speaker_evidence: str = "",
 ) -> int:
     semantic_index += 1
     skip_reason = (
@@ -711,33 +621,6 @@ def _ingest_model_drs_for_sentence(
             source="local_model_drs",
         )
         _raise_model_materialization_failed(drs_result, materialized, "chunk DRS ingest")
-        if materialized.get("accepted"):
-            linked_speakers = _link_labeled_turn_speaker_referents(store, run_id, span_id, sentence)
-            linked_structural_speakers = _link_first_person_referents_to_speaker_surface(
-                store,
-                run_id,
-                span_id,
-                structural_speaker_surface,
-                structural_speaker_evidence,
-                source="deterministic_structural_speaker",
-                confidence=0.84,
-            )
-            if linked_speakers:
-                materialized = {
-                    **materialized,
-                    "inserted": {
-                        **dict(materialized.get("inserted") or {}),
-                        "speaker_turn_identity_hypotheses": linked_speakers,
-                    },
-                }
-            if linked_structural_speakers:
-                materialized = {
-                    **materialized,
-                    "inserted": {
-                        **dict(materialized.get("inserted") or {}),
-                        "structural_speaker_identity_hypotheses": linked_structural_speakers,
-                    },
-                }
     store.execute(
         """
         INSERT OR REPLACE INTO model_attempts(
@@ -1328,9 +1211,7 @@ def ingest_folder(
                         semantic_total,
                         ingest_started,
                         refresh_empty_compact_legacy=refresh_empty_compact_legacy,
-                        structural_speaker_surface=active_structural_speaker[0],
-                        structural_speaker_evidence=f"{active_structural_speaker[1]}\n{sentence.text}".strip(),
-                    )
+                                            )
                 continue
             replaced_frames = {}
             if existing_frames:
@@ -1375,9 +1256,7 @@ def ingest_folder(
                         semantic_total,
                         ingest_started,
                         refresh_empty_compact_legacy=refresh_empty_compact_legacy,
-                        structural_speaker_surface=active_structural_speaker[0],
-                        structural_speaker_evidence=f"{active_structural_speaker[1]}\n{sentence.text}".strip(),
-                    )
+                                            )
                 continue
             _log_progress(
                 "kmd-ingest llm_start "
@@ -1671,9 +1550,7 @@ def ingest_folder(
                 semantic_total,
                 ingest_started,
                 refresh_empty_compact_legacy=refresh_empty_compact_legacy,
-                structural_speaker_surface=active_structural_speaker[0],
-                structural_speaker_evidence=f"{active_structural_speaker[1]}\n{sentence.text}".strip(),
-            )
+                            )
 
     metrics = {
         "documents": len(documents),

@@ -263,3 +263,16 @@ def test_production_search_uses_model_query_plan() -> None:
     assert "model_query_trace.last_plan" in text
     assert "elif self._test_no_model_runtime" in text
     assert "Production evidence retrieval requires" in text
+
+
+def test_model_owned_ingest_has_no_deterministic_speaker_coreference_injection() -> None:
+    source = (REPO_ROOT / "src" / "knowmoredirt" / "ingest.py").read_text(encoding="utf-8")
+    forbidden = [
+        "deterministic_speaker_turn",
+        "deterministic_structural_speaker",
+        "speaker_turn_identity_hypotheses",
+        "structural_speaker_identity_hypotheses",
+        "_link_labeled_turn_speaker_referents",
+        "_link_first_person_referents_to_speaker_surface",
+    ]
+    assert [marker for marker in forbidden if marker in source] == []
