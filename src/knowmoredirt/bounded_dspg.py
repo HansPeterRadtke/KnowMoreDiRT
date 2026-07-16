@@ -448,6 +448,8 @@ def _relation_terms(frame: QueryFrame, question: str) -> list[str]:
 
 
 def _answer_slot_terms(frame: QueryFrame, target_terms: list[str] | None = None) -> list[str]:
+    if frame.source == "model_query_drs" and frame.answer_roles:
+        return list(dict.fromkeys(term for term in expand_terms(frame.answer_roles) if term))
     terms: list[str] = []
     target_tokens = _target_token_variants(target_terms)
     requested_tokens = set(content_tokens(frame.requested_relation))

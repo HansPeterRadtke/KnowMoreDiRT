@@ -1199,3 +1199,43 @@ def test_chunk_drs_rejects_ungrounded_temporal_records(monkeypatch, tmp_path) ->
     assert result["validation"]["schema_valid"] is False
     assert result["validation"]["grounding_failure_count"] == 1
     assert result["validation"]["grounding_failures"] == ["temporal:t0:now"]
+
+
+def test_query_drs_preserves_model_answer_argument_roles() -> None:
+    from knowmoredirt.model_planner import query_frame_from_query_drs
+
+    frame = query_frame_from_query_drs(
+        "Who approved the plan?",
+        {
+            "answer_variables": [
+                {"id": "a0", "label": "who", "answer_type": "person", "evidence_text": "Who"}
+            ],
+            "target_referents": [
+                {"id": "r0", "label": "the plan", "kind": "entity", "evidence_text": "the plan"}
+            ],
+            "temporal_records": [],
+            "requested_conditions": [
+                {
+                    "id": "c0",
+                    "predicate": "approve",
+                    "box_id": "",
+                    "polarity": "positive",
+                    "modality": "asserted",
+                    "temporal_id": "",
+                    "arguments": [
+                        {"role": "agent", "target_kind": "answer_variable", "target_id": "a0", "value": "", "value_type": "person", "evidence_text": "Who"},
+                        {"role": "patient", "target_kind": "referent", "target_id": "r0", "value": "", "value_type": "entity", "evidence_text": "the plan"},
+                    ],
+                    "evidence_text": "Who approved the plan?",
+                }
+            ],
+            "constraints": [],
+            "box_requirements": [],
+            "temporal_scope": "",
+            "aggregation": "",
+            "answer_type": "person",
+            "requires_evidence": True,
+        },
+    )
+    assert frame is not None
+    assert frame["answer_roles"] == ["agent"]
