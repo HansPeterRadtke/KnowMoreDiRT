@@ -405,6 +405,11 @@ class KnowMoreDiRTEngine:
             self.last_answer = answer
             return answer
 
+        if not self._test_no_model_runtime:
+            raise LocalModelUnavailableError(
+                "Legacy deterministic semantic handlers are restricted to the explicit pytest-only no-model runtime."
+            )
+
         for source_answer_fn in (
             self._answer_with_generic_sentence_source,
             self._answer_with_generic_labeled_field_source,
@@ -3630,100 +3635,6 @@ class KnowMoreDiRTEngine:
                 matches.append(matched)
         return matches
 
-    def _model_planned_answer_tools(
-        self,
-        frame: QueryFrame,
-        expected: ExpectedAnswer,
-    ) -> list[tuple[str, Any]]:
-        answer_type = expected.answer_type
-        aggregation = normalize(frame.aggregation)
-        relation_material = normalize(
-            " ".join(
-                [
-                    frame.requested_relation,
-                    *frame.relation_terms,
-                    *frame.constraints,
-                    *frame.answer_variables,
-                    *frame.scope_requirements,
-                ]
-            )
-        )
-        tools: list[tuple[str, Any]] = []
-
-        def add(name: str, fn: Any) -> None:
-            if name not in {existing for existing, _fn in tools}:
-                tools.append((name, fn))
-
-        if answer_type == "count" or aggregation == "count":
-            add("count_records", self._answer_with_arithmetic_source)
-            add("count_source_rows", self._answer_with_source_rows)
-        if answer_type in {"identifier", "person", "actor", "organization", "unknown"}:
-            add("extract_actor_role_ids", self._answer_with_actor_role_ids_source)
-            add("extract_reference_role_chain", self._answer_with_reference_role_chain_source)
-            add("extract_review_or_approval", self._answer_with_review_or_approval_source)
-            add("extract_labeled_attribute", self._answer_with_labeled_attribute_source)
-            add("extract_row_field", self._answer_with_row_field_source)
-            add("extract_source_rows", self._answer_with_source_rows)
-            add("extract_exact_source_field", self._answer_with_exact_source_field)
-            add("extract_table_field", self._answer_with_table_field_source)
-            add("extract_structured_object", self._answer_with_structured_object_source)
-        if answer_type in {"url", "file_path", "date_time", "state", "metadata_value", "content_phrase", "unknown"}:
-            add("extract_discussion_belief", self._answer_with_discussion_belief_source)
-            add("extract_discourse_clause", self._answer_with_discourse_clause_source)
-            add("extract_generic_sentence", self._answer_with_generic_sentence_source)
-            add("extract_generic_labeled_field", self._answer_with_generic_labeled_field_source)
-            add("extract_precise_source_content", self._answer_with_precise_source_content)
-            add("extract_table_field", self._answer_with_table_field_source)
-            add("extract_structured_object", self._answer_with_structured_object_source)
-            add("extract_row_field", self._answer_with_row_field_source)
-            add("extract_source_rows", self._answer_with_source_rows)
-            add("extract_exact_source_field", self._answer_with_exact_source_field)
-        if "review" in relation_material or "approv" in relation_material:
-            add("extract_review_or_approval", self._answer_with_review_or_approval_source)
-        if "believe" in relation_material or "belief" in relation_material:
-            add("extract_discussion_belief", self._answer_with_discussion_belief_source)
-            add("extract_discourse_clause", self._answer_with_discourse_clause_source)
-            add("extract_generic_sentence", self._answer_with_generic_sentence_source)
-        if "feature" in relation_material or "content" in relation_material or "summary" in relation_material:
-            add("extract_precise_source_content", self._answer_with_precise_source_content)
-            add("extract_generic_sentence", self._answer_with_generic_sentence_source)
-        if "not" in relation_material or "missing" in relation_material or "delayed" in relation_material:
-            add("extract_negated_action", self._answer_with_negated_action_source)
-        add("extract_definition", self._answer_with_definition_source_explanation)
-        add("extract_boolean_source", self._answer_with_boolean_source_explanation)
-        return tools
-
-    def _run_model_planned_answer_tools(
-        self,
-        question: str,
-        frame: QueryFrame,
-        expected: ExpectedAnswer,
-        prior_answer: Answer | None = None,
-    ) -> Answer | None:
-        for tool_name, tool_fn in self._model_planned_answer_tools(frame, expected):
-            try:
-                if tool_fn in {self._answer_with_arithmetic_source, self._answer_with_definition_source_explanation}:
-                    answer = tool_fn(question)
-                else:
-                    answer = tool_fn(question, prior_answer=prior_answer)
-            except TypeError:
-                answer = tool_fn(question)
-            if not self._complete_answer(answer):
-                self._log_progress(f"kmd-answer tool_call name={tool_name} accepted=False")
-                continue
-            if not self._answer_has_source_grounding(answer):
-                self._log_progress(f"kmd-answer tool_call name={tool_name} accepted=False reason=ungrounded")
-                continue
-            if not self._bounded_evidence_covers_targets(frame, answer.evidence):
-                self._log_progress(f"kmd-answer tool_call name={tool_name} accepted=False reason=target_scope_miss")
-                continue
-            if expected.answer_type != "unknown" and not canonicalize_answer(expected, answer.text):
-                self._log_progress(f"kmd-answer tool_call name={tool_name} accepted=False reason=answer_type_mismatch")
-                continue
-            self._attach_model_answer_provenance(answer)
-            self._log_progress(f"kmd-answer tool_call name={tool_name} accepted=True")
-            return answer
-        return None
 
     def _answer_with_local_model(self, question: str) -> Answer | None:
         if self._model_client is None:

@@ -474,3 +474,70 @@ def test_model_query_drs_finalization_skips_deterministic_semantic_rewrites() ->
     text = ast.get_source_segment(source, method) or ""
     assert 'production_model_query = frame is not None and frame.source == "model_query_drs"' in text
     assert "if not production_model_query:" in text
+
+
+def test_production_engine_contains_no_model_guided_legacy_semantic_dispatch() -> None:
+    source = (REPO_ROOT / "src" / "knowmoredirt" / "engine.py").read_text(encoding="utf-8")
+    assert "def _model_planned_answer_tools" not in source
+    assert "def _run_model_planned_answer_tools" not in source
+
+
+def test_model_production_methods_do_not_reference_legacy_source_handlers() -> None:
+    source = (REPO_ROOT / "src" / "knowmoredirt" / "engine.py").read_text(encoding="utf-8")
+    tree = ast.parse(source)
+    engine_class = next(
+        node for node in tree.body
+        if isinstance(node, ast.ClassDef) and node.name == "KnowMoreDiRTEngine"
+    )
+    production_methods = {
+        "_answer_with_local_model",
+        "_answer_with_model_query_evidence",
+        "_answer_with_model_evidence_extraction",
+        "_answer_with_bounded_dspg",
+        "_verify_with_local_model",
+        "_canonicalize_model_answer_with_local_model",
+        "_source_resolve_model_answer_with_local_model",
+    }
+    methods = {
+        node.name: node for node in engine_class.body
+        if isinstance(node, ast.FunctionDef) and node.name in production_methods
+    }
+    assert set(methods) == production_methods
+    violations: list[str] = []
+    for method_name, method in methods.items():
+        for node in ast.walk(method):
+            if not isinstance(node, ast.Call) or not isinstance(node.func, ast.Attribute):
+                continue
+            name = node.func.attr
+            if name.startswith("_answer_with_") and name.endswith("_source"):
+                violations.append(f"{method_name}:{name}")
+    assert violations == []
+
+
+def test_public_answer_legacy_semantic_loop_is_pytest_only() -> None:
+    source = (REPO_ROOT / "src" / "knowmoredirt" / "engine.py").read_text(encoding="utf-8")
+    tree = ast.parse(source)
+    engine_class = next(
+        node for node in tree.body
+        if isinstance(node, ast.ClassDef) and node.name == "KnowMoreDiRTEngine"
+    )
+    method = next(
+        node for node in engine_class.body
+        if isinstance(node, ast.FunctionDef) and node.name == "answer"
+    )
+    text = ast.get_source_segment(source, method) or ""
+    guard = 'if not self._test_no_model_runtime:'
+    loop = 'for source_answer_fn in ('
+    assert guard in text
+    assert loop in text
+    assert text.index(guard) < text.index(loop)
+    assert "Legacy deterministic semantic handlers are restricted to the explicit pytest-only no-model runtime." in text
+
+
+def test_architecture_docs_describe_required_model_semantics() -> None:
+    architecture = (REPO_ROOT / "docs" / "architecture.md").read_text(encoding="utf-8")
+    audit = (REPO_ROOT / "docs" / "raw_folder_architecture_audit.md").read_text(encoding="utf-8")
+    assert "conservative deterministic answer extraction" not in architecture
+    assert "optional localhost-only query planning" not in audit
+    assert "disabled by default" not in audit
+    assert "Required local-model bounded reasoning" in audit

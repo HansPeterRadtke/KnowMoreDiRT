@@ -36,6 +36,6 @@
   "remaining_concerns": [
     "self-written fixtures still contain legacy project-style words as input data, not core vocabulary",
     "fixture accuracy regressed after removing procedural semantic handlers",
-    "generic graph traversal, aggregation, context propagation, and optional local-model verification need further work"
+    "generic graph traversal, aggregation, context propagation, and required local-model verification need further work"
   ]
 }

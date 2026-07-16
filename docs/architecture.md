@@ -82,7 +82,7 @@ The current query path combines:
 - local-model frame argument binding when semantic frames are present,
 - temporal state retrieval for state changes with dated evidence or model-declared temporal values,
 - text-quality downweighting so noise files do not dominate normal questions,
-- conservative deterministic answer extraction over bounded candidates,
+- deterministic execution of model-declared DRS bindings, structural validation, arithmetic, aggregation, and provenance only,
 - ranking by anchor match, requested-relation term match, relation completeness, context validity, temporal recency, and text-quality signals.
 
 Questions are parsed by the local model into query DRS objects and then projected into generic query frames containing target anchors, requested relation text, relation terms, constraints, answer type, temporal scope, negation, aggregation, and evidence requirements. Relation words from a source or question remain data inside the frame; they do not select content-specific code branches. Query DRS JSON schemas cap array sizes for answer variables, target referents, temporal records, requested conditions, box requirements, constraints, and condition arguments so constrained llama.cpp decoding cannot run on by repeating argument objects.

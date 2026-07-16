@@ -23,7 +23,7 @@ The old development system contained useful generic mechanisms mixed with datase
 - **Temporal reasoning**: store ordered state events and answer current/final-state questions by target-anchored latest evidence.
 - **Identifier resolution**: treat references, codes, URLs, paths, hashes, and prefixed IDs as generic identifiers.
 - **Query-frame execution**: answer questions by matching requested relation text, target anchors, answer type, constraints, temporal scope, and evidence requirements against grounded DSPG records.
-- **Local-model bounded reasoning**: optional localhost-only query planning can produce constrained generic plans, but execution remains source-grounded and independent of external evaluation harnesses.
+- **Required local-model bounded reasoning**: localhost-only constrained model calls produce chunk DRS, query DRS, and answer verification decisions; deterministic execution remains source-grounded and independent of external evaluation harnesses.
 
 ## Removed Or Refactored Concepts
 
@@ -39,7 +39,7 @@ The core package no longer contains dataset-shaped or old external-evaluation vo
 
 ## Generic Architecture Changes
 
-- The optional local planner now emits generic query frames rather than semantic intent enums.
+- The required local planner emits generic query DRS structures rather than semantic intent enums.
 - Core answer logic no longer uses old prepared-input, scorer, family, or external benchmark terms.
 - Identifier handling is expressed as generic reference/case/code lookup.
 - Answer cleanup now relies on broad answer-type compatibility and source grounding rather than enumerated role handlers.
@@ -53,4 +53,4 @@ Adapter scripts may remain outside `src/knowmoredirt` for operational evaluation
 
 - Some self-written fixtures still contain legacy software/project-management words as regression data. That is acceptable only as input text, not as core architecture vocabulary.
 - KMD’s deterministic answer layer is now relation-frame first, but accuracy regressed on self-written fixtures after removing procedural semantic handlers; future work should recover accuracy through generic extraction, traversal, aggregation, context propagation, and local-model verification.
-- Optional local-model planning is generic and disabled by default; it still needs broader non-fixture validation before being treated as a mature reasoning path.
+- Local-model planning is mandatory in production and generic; it still requires broad live-model validation before general robustness can be claimed.
