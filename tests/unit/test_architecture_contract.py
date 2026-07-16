@@ -223,3 +223,43 @@ def test_production_model_path_has_no_unverified_bounded_answer_shortcuts() -> N
     ]
     assert [marker for marker in forbidden if marker in text] == []
     assert "_verify_with_local_model" in text
+
+
+def test_production_cleanup_is_presentation_only() -> None:
+    source = (REPO_ROOT / "src" / "knowmoredirt" / "engine.py").read_text(encoding="utf-8")
+    tree = ast.parse(source)
+    engine_class = next(
+        node for node in tree.body
+        if isinstance(node, ast.ClassDef) and node.name == "KnowMoreDiRTEngine"
+    )
+    method = next(
+        node for node in engine_class.body
+        if isinstance(node, ast.FunctionDef) and node.name == "_cleanup_public_answer"
+    )
+    text = ast.get_source_segment(source, method) or ""
+    forbidden = [
+        "_cleanup_canonical_answer",
+        "_central_answer_guard",
+        "_restore_where_preposition",
+        "_expand_single_name_from_evidence",
+        "plan_question",
+        "classify_value",
+    ]
+    assert [marker for marker in forbidden if marker in text] == []
+
+
+def test_production_search_uses_model_query_plan() -> None:
+    source = (REPO_ROOT / "src" / "knowmoredirt" / "engine.py").read_text(encoding="utf-8")
+    tree = ast.parse(source)
+    engine_class = next(
+        node for node in tree.body
+        if isinstance(node, ast.ClassDef) and node.name == "KnowMoreDiRTEngine"
+    )
+    method = next(
+        node for node in engine_class.body
+        if isinstance(node, ast.FunctionDef) and node.name == "_search"
+    )
+    text = ast.get_source_segment(source, method) or ""
+    assert "model_query_trace.last_plan" in text
+    assert "elif self._test_no_model_runtime" in text
+    assert "Production evidence retrieval requires" in text

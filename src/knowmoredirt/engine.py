@@ -3058,22 +3058,12 @@ class KnowMoreDiRTEngine:
         return ""
 
     def _cleanup_public_answer(self, answer: Answer, *, question: str = "") -> Answer:
-        if normalize(answer.text) == "unknown":
+        """Apply presentation-only normalization after model semantic acceptance."""
+        del question
+        text = str(answer.text or "").strip()
+        if not text or text == answer.text:
             return answer
-        expected_type = answer.answer_type if answer.answer_type not in {"", "unknown"} else classify_value(answer.text)
-        expected = ExpectedAnswer(expected_type)  # type: ignore[arg-type]
-        cleaned = self._cleanup_canonical_answer(answer.text, expected)
-        if expected.answer_type in {"person", "actor", "organization"}:
-            cleaned = self._expand_single_name_from_evidence(cleaned, answer.evidence)
-        cleaned = self._central_answer_guard(question, cleaned, expected, plan_question(question) if question else None, answer.evidence)
-        cleaned = self._restore_where_preposition(question, cleaned, expected, answer.evidence)
-        cleaned = self._restore_sentence_terminal_punctuation(cleaned, answer.text, expected, answer.evidence)
-        if cleaned and cleaned != answer.text:
-            original = str(answer.text or "").strip()
-            if original and original[-1] in ".!?" and cleaned == original[:-1].strip():
-                return answer
-            return Answer(cleaned, answer.confidence, answer.evidence, answer.reason, answer.answer_type)
-        return answer
+        return Answer(text, answer.confidence, answer.evidence, answer.reason, answer.answer_type)
 
     def _unknown_answer(self, reason: str) -> Answer:
         return Answer("unknown", 0.0, self._diagnostic_unknown_evidence(), reason, "unknown")
@@ -5104,7 +5094,15 @@ class KnowMoreDiRTEngine:
         return any(token in SOURCE_DEICTIC_TOKENS for token in tokens)
 
     def _search(self, question: str, limit: int = 12, required: list[str] | None = None) -> list[tuple[Sentence, float]]:
-        frame = plan_question(question)
+        frame_data = self.model_query_trace.last_plan if isinstance(self.model_query_trace.last_plan, dict) else None
+        if frame_data is not None:
+            frame = frame_from_mapping(question, frame_data)
+        elif self._test_no_model_runtime:
+            frame = plan_question(question)
+        else:
+            raise LocalModelUnavailableError(
+                "Production evidence retrieval requires the authoritative model query DRS plan."
+            )
         combined: dict[str, tuple[Sentence, float]] = {}
         for sentence, score in self.index.search(question, limit=limit, required=required):
             combined[sentence.sentence_id] = (sentence, score)
