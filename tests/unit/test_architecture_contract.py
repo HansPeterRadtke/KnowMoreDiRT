@@ -306,3 +306,32 @@ def test_model_query_drs_bounded_execution_does_not_reinterpret_raw_question_vis
     assert 'frame.source == "model_query_drs"' in scope_text
     assert 'question_material = ""' in target_text
     assert 'semantic_question = "" if frame.source == "model_query_drs" else question' in scope_text
+
+
+def test_production_metadata_retrieval_uses_model_query_fields() -> None:
+    source = (REPO_ROOT / "src" / "knowmoredirt" / "engine.py").read_text(encoding="utf-8")
+    tree = ast.parse(source)
+    engine_class = next(
+        node for node in tree.body
+        if isinstance(node, ast.ClassDef) and node.name == "KnowMoreDiRTEngine"
+    )
+    method = next(
+        node for node in engine_class.body
+        if isinstance(node, ast.FunctionDef) and node.name == "_metadata_bounded_candidates"
+    )
+    text = ast.get_source_segment(source, method) or ""
+    assert "model_query_trace.last_plan" in text
+    assert 'source="model_query_drs"' in text
+    assert "elif self._test_no_model_runtime" in text
+
+
+def test_model_query_drs_metadata_binding_has_no_raw_question_fallback() -> None:
+    source = (REPO_ROOT / "src" / "knowmoredirt" / "bounded_dspg.py").read_text(encoding="utf-8")
+    tree = ast.parse(source)
+    method = next(
+        node for node in tree.body
+        if isinstance(node, ast.FunctionDef) and node.name == "_bind_metadata"
+    )
+    text = ast.get_source_segment(source, method) or ""
+    assert 'frame.source == "model_query_drs"' in text
+    assert 'fallback_terms = [] if frame.source == "model_query_drs" else _query_terms(question)' in text

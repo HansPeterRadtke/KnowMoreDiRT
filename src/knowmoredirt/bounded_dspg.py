@@ -5144,7 +5144,7 @@ def _extreme_count_by_record_groups(
     return Answer(value, confidence, evidence, reason, answer_type)
 
 
-def _bind_metadata(records: dict[str, Any], question: str, expected: ExpectedAnswer, target_terms: list[str], relation_terms: list[str]) -> list[tuple[float, str, Evidence, str]]:
+def _bind_metadata(records: dict[str, Any], question: str, frame: QueryFrame, expected: ExpectedAnswer, target_terms: list[str], relation_terms: list[str]) -> list[tuple[float, str, Evidence, str]]:
     if not expected.allow_metadata_evidence and expected.answer_type != "unknown":
         return []
     docs = _docs_by_id(records)
@@ -5155,7 +5155,8 @@ def _bind_metadata(records: dict[str, Any], question: str, expected: ExpectedAns
         if expected.answer_type == "unknown" and relation_terms and not _contains_any(key_material, relation_terms):
             continue
         material = normalize(" ".join([str(doc.get("rel_path") or ""), str(row.get("key") or ""), str(row.get("value") or "")]))
-        score = _match_score(material, target_terms, relation_terms or _query_terms(question))
+        fallback_terms = [] if frame.source == "model_query_drs" else _query_terms(question)
+        score = _match_score(material, target_terms, relation_terms or fallback_terms)
         if score <= 0:
             continue
         value = canonicalize_answer(expected, str(row.get("value") or ""))
@@ -6489,7 +6490,7 @@ def execute_bounded_query(
             _attach_answer_provenance(diagnostics, records, answer)
         return answer, diagnostics
     candidates.extend(temporal_candidates)
-    candidates.extend(_bind_metadata(records, question, expected, target_terms, relation_terms))
+    candidates.extend(_bind_metadata(records, question, frame, expected, target_terms, relation_terms))
     candidates.extend(_bind_contexts(records, frame, expected, target_terms, relation_terms))
     candidates = _apply_structured_current_state_preference(candidates, records, frame)
     candidates = _apply_answer_slot_evidence_preference(candidates, frame, target_terms)

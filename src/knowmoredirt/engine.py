@@ -5153,8 +5153,24 @@ class KnowMoreDiRTEngine:
         return scored[:limit]
 
     def _metadata_bounded_candidates(self, question: str, limit: int = 24) -> list[tuple[Sentence, float]]:
+        frame_data = self.model_query_trace.last_plan if isinstance(self.model_query_trace.last_plan, dict) else None
+        if frame_data is not None:
+            frame = frame_from_mapping(question, frame_data, source="model_query_drs")
+            semantic_material = " ".join(
+                [
+                    *frame.target_anchors,
+                    frame.requested_relation,
+                    *frame.relation_terms,
+                    *frame.constraints,
+                    *frame.answer_variables,
+                ]
+            )
+        elif self._test_no_model_runtime:
+            semantic_material = question
+        else:
+            return []
         query_tokens = [
-            token for token in content_tokens(question)
+            token for token in content_tokens(semantic_material)
             if len(token) > 3 and token not in {"file", "folder", "document", "object", "source"}
         ]
         if not query_tokens:
