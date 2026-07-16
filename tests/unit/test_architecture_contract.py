@@ -370,3 +370,14 @@ def test_model_query_drs_disables_identifier_typography_scoring() -> None:
     )
     text = ast.get_source_segment(source, method) or ""
     assert 'allow_identifier_shape_bonus=frame.source != "model_query_drs"' in text
+
+
+def test_model_query_drs_list_binding_preserves_all_formal_values_for_model_verification() -> None:
+    source = (REPO_ROOT / "src" / "knowmoredirt" / "bounded_dspg.py").read_text(encoding="utf-8")
+    tree = ast.parse(source)
+    method = next(
+        node for node in tree.body
+        if isinstance(node, ast.FunctionDef) and node.name == "execute_bounded_query"
+    )
+    text = ast.get_source_segment(source, method) or ""
+    assert 'allow_named_entity_surface_filter=frame.source != "model_query_drs"' in text

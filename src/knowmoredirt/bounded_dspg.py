@@ -5793,6 +5793,8 @@ def _choose_list_answer(
     candidates: list[tuple[float, str, Evidence, str]],
     expected: ExpectedAnswer,
     target_terms: list[str] | None = None,
+    *,
+    allow_named_entity_surface_filter: bool = True,
 ) -> Answer | None:
     values: list[str] = []
     evidence: list[Evidence] = []
@@ -5809,7 +5811,8 @@ def _choose_list_answer(
                 evidence.append(item_evidence)
     if not values:
         return None
-    values, evidence = _filter_named_entity_list_parts(expected, values, evidence)
+    if allow_named_entity_surface_filter:
+        values, evidence = _filter_named_entity_list_parts(expected, values, evidence)
     text = _source_ordered_list_phrase(values, evidence) or "; ".join(values)
     return Answer(text, 0.86, evidence[:6], "list aggregation DRS binding", expected.answer_type)
 
@@ -6582,7 +6585,15 @@ def execute_bounded_query(
         return None, diagnostics
 
     if frame.aggregation in {"list", "set"}:
-        answer = _with_supporting_evidence(_choose_list_answer(candidates, expected, target_terms), identity_expansion_evidence)
+        answer = _with_supporting_evidence(
+            _choose_list_answer(
+                candidates,
+                expected,
+                target_terms,
+                allow_named_entity_surface_filter=frame.source != "model_query_drs",
+            ),
+            identity_expansion_evidence,
+        )
         if answer is None:
             _attach_no_answer_provenance(
                 diagnostics,
