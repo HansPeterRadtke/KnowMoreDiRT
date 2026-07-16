@@ -609,3 +609,26 @@ def test_query_drs_validation_has_no_relation_specific_vocabulary() -> None:
     ]
     assert [marker for marker in forbidden if marker in text] == []
     assert 'errors.append("missing_requested_conditions")' in text
+
+
+def test_answer_payload_repair_does_not_infer_semantics() -> None:
+    source = (REPO_ROOT / "src" / "knowmoredirt" / "model_planner.py").read_text(encoding="utf-8")
+    tree = ast.parse(source)
+    functions = {
+        node.name: node for node in tree.body
+        if isinstance(node, ast.FunctionDef) and node.name in {"_repair_answer_payload", "_repair_evidence_span"}
+    }
+    assert set(functions) == {"_repair_answer_payload", "_repair_evidence_span"}
+    repair_text = ast.get_source_segment(source, functions["_repair_answer_payload"]) or ""
+    evidence_text = ast.get_source_segment(source, functions["_repair_evidence_span"]) or ""
+    forbidden = [
+        'repaired["sufficient_evidence"] =',
+        "_normalize_answer_type",
+        "scalar_answer",
+        "answer.lower()",
+        'repaired["answer"] = ""',
+        'repaired["evidence_span"] = ""',
+    ]
+    assert [marker for marker in forbidden if marker in repair_text] == []
+    assert "proposed in text" not in evidence_text
+    assert "grounding validation decides acceptance" in evidence_text

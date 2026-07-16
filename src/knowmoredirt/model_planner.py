@@ -696,49 +696,21 @@ def _valid_answer_payload(value: Any) -> bool:
 
 
 def _repair_answer_payload(value: Any, default_answer_type: str = "unknown") -> Any:
+    """Unwrap the declared answer object only; never infer answer semantics."""
+    del default_answer_type
     if not isinstance(value, dict):
         return value
-    repaired = dict(value)
-    nested_answer = repaired.get("answer")
-    if isinstance(nested_answer, dict):
-        if "sufficient_evidence" not in repaired and isinstance(nested_answer.get("sufficient_evidence"), bool):
-            repaired["sufficient_evidence"] = nested_answer.get("sufficient_evidence")
-        if "evidence_span" not in repaired and isinstance(nested_answer.get("evidence_span"), str):
-            repaired["evidence_span"] = nested_answer.get("evidence_span")
-        if "answer_type" not in repaired and isinstance(nested_answer.get("answer_type"), str):
-            repaired["answer_type"] = nested_answer.get("answer_type")
-        scalar_answer = ""
-        for key, item in nested_answer.items():
-            if key in {"sufficient_evidence", "evidence_span", "answer_type", "reason", "rationale"}:
-                continue
-            if isinstance(item, (str, int, float, bool)) and str(item).strip():
-                scalar_answer = str(item)
-                break
-        repaired["answer"] = scalar_answer
-    if "sufficient_evidence" not in repaired:
-        answer = str(repaired.get("answer") or "").strip()
-        repaired["sufficient_evidence"] = bool(answer and answer.lower() != "unknown")
-    repaired["answer_type"] = _normalize_answer_type(repaired.get("answer_type"), default_answer_type)
-    if "answer" not in repaired:
-        repaired["answer"] = ""
-    if "evidence_span" not in repaired:
-        repaired["evidence_span"] = ""
-    return repaired
+    nested = value.get("answer")
+    if isinstance(nested, dict):
+        return dict(nested)
+    return dict(value)
 
 
 def _repair_evidence_span(answer: dict[str, Any], evidence_items: list[dict[str, str]]) -> dict[str, Any]:
-    repaired = dict(answer)
-    span = str(repaired.get("evidence_span") or "")
-    if span and any(span in str(item.get("text") or "") for item in evidence_items):
-        return repaired
-    proposed = str(repaired.get("answer") or "")
-    if proposed and proposed.lower() != "unknown":
-        for item in evidence_items:
-            text = str(item.get("text") or "")
-            if proposed in text:
-                repaired["evidence_span"] = proposed
-                return repaired
-    return repaired
+    """Preserve model-declared evidence; grounding validation decides acceptance."""
+    del evidence_items
+    return dict(answer)
+
 
 EVIDENCE_EXTRACTION_GRAMMAR = r'''
 root ::= "{" ws "\"answer\"" ws ":" ws "{" ws "\"sufficient_evidence\"" ws ":" ws bool ws "," ws "\"answer_type\"" ws ":" ws answer_type ws "," ws "\"answer\"" ws ":" ws string ws "," ws "\"evidence_span\"" ws ":" ws string ws "}" ws "}"
@@ -3023,13 +2995,6 @@ def call_model_evidence_answer(
             "elapsed": round(time.time() - start, 3),
         }
     answer = parsed.get("answer") if isinstance(parsed, dict) else None
-    if isinstance(answer, str) and isinstance(parsed, dict):
-        answer = {
-            "sufficient_evidence": parsed.get("sufficient_evidence", True),
-            "answer_type": parsed.get("answer_type", expected_answer_type),
-            "answer": answer,
-            "evidence_span": parsed.get("evidence_span", ""),
-        }
     raw = str(parsed.get("_model_raw") or "") if isinstance(parsed, dict) else ""
     if not isinstance(answer, dict):
         payload = {
@@ -3169,8 +3134,6 @@ def _query_evidence_payload_from_result(
     frame_payload = _repair_query_frame_payload(frame_payload, question)
     answer_payload = _repair_answer_payload(result, "unknown")
     answer_payload = _repair_evidence_span(answer_payload, evidence_items)
-    if not _valid_query_frame_payload(frame_payload):
-        frame_payload = _repair_query_frame_payload({}, question)
     if not _valid_query_frame_payload(frame_payload) or not _valid_answer_payload(answer_payload):
         return {
             "accepted": False,
