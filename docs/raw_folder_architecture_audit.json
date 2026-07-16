@@ -1,0 +1,41 @@
+{
+  "public_api": ["initialize(folder_path)", "question(text) -> string"],
+  "core_query_architecture": "generic query frame over raw-folder DSPG records",
+  "generic_primitives_extracted": [
+    "bounded_retrieval",
+    "evidence_ranking",
+    "graph_traversal",
+    "relation_resolution",
+    "context_handling",
+    "temporal_reasoning",
+    "identifier_resolution",
+    "source_grounding",
+    "localhost_only_bounded_model_planning"
+  ],
+  "removed_or_refactored": [
+    "external-evaluation terminology from core modules",
+    "hidden-label and scoring terms from core modules",
+    "prepared-input and wrapper markers from core modules",
+    "old semantic intent enums",
+    "old answer role enums",
+    "procedural semantic answer handlers",
+    "query-planner prompts with relation-specific operation names"
+  ],
+  "query_frame_fields": [
+    "target_anchors",
+    "requested_relation",
+    "relation_terms",
+    "constraints",
+    "answer_type",
+    "temporal_scope",
+    "negated",
+    "aggregation",
+    "requires_evidence"
+  ],
+  "adapter_boundary": "External adapter scripts may exist outside src/knowmoredirt but may pass only folder path and question text into KMD.",
+  "remaining_concerns": [
+    "self-written fixtures still contain legacy project-style words as input data, not core vocabulary",
+    "fixture accuracy regressed after removing procedural semantic handlers",
+    "generic graph traversal, aggregation, context propagation, and optional local-model verification need further work"
+  ]
+}
