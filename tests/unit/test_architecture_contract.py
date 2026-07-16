@@ -345,8 +345,8 @@ def test_model_query_drs_answer_slot_binding_uses_model_roles() -> None:
         if isinstance(node, ast.FunctionDef) and node.name == "_answer_slot_terms"
     )
     text = ast.get_source_segment(source, method) or ""
-    assert 'frame.source == "model_query_drs" and frame.answer_roles' in text
-    assert "expand_terms(frame.answer_roles)" in text
+    assert 'frame.source == "model_query_drs" and frame.binding_roles' in text
+    assert "expand_terms(frame.binding_roles)" in text
 
 
 def test_model_query_drs_does_not_use_hardcoded_current_state_preference() -> None:
@@ -359,3 +359,14 @@ def test_model_query_drs_does_not_use_hardcoded_current_state_preference() -> No
     text = ast.get_source_segment(source, method) or ""
     assert 'if frame.source == "model_query_drs":' in text
     assert "return candidates" in text
+
+
+def test_model_query_drs_disables_identifier_typography_scoring() -> None:
+    source = (REPO_ROOT / "src" / "knowmoredirt" / "bounded_dspg.py").read_text(encoding="utf-8")
+    tree = ast.parse(source)
+    method = next(
+        node for node in tree.body
+        if isinstance(node, ast.FunctionDef) and node.name == "execute_bounded_query"
+    )
+    text = ast.get_source_segment(source, method) or ""
+    assert 'allow_identifier_shape_bonus=frame.source != "model_query_drs"' in text

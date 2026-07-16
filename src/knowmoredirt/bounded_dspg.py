@@ -448,8 +448,8 @@ def _relation_terms(frame: QueryFrame, question: str) -> list[str]:
 
 
 def _answer_slot_terms(frame: QueryFrame, target_terms: list[str] | None = None) -> list[str]:
-    if frame.source == "model_query_drs" and frame.answer_roles:
-        return list(dict.fromkeys(term for term in expand_terms(frame.answer_roles) if term))
+    if frame.source == "model_query_drs" and frame.binding_roles:
+        return list(dict.fromkeys(term for term in expand_terms(frame.binding_roles) if term))
     terms: list[str] = []
     target_tokens = _target_token_variants(target_terms)
     requested_tokens = set(content_tokens(frame.requested_relation))
@@ -5460,6 +5460,8 @@ def _choice_score(
     evidence: Evidence | None = None,
     target_terms: list[str] | None = None,
     value: str | None = None,
+    *,
+    allow_identifier_shape_bonus: bool = True,
 ) -> float:
     if reason == "direct_label_slot_binding":
         score += 45.0
@@ -5469,7 +5471,7 @@ def _choice_score(
         score += 3.0
     if reason == "relation_condition_binding" and expected.answer_type in {"content_phrase", "unknown"}:
         score += 7.0
-    if expected.answer_type == "identifier" and value:
+    if allow_identifier_shape_bonus and expected.answer_type == "identifier" and value:
         score += _identifier_value_shape_bonus(value)
     score += _source_anchor_match_bonus(evidence, target_terms)
     return score
@@ -5632,6 +5634,8 @@ def _choose_answer(
     candidates: list[tuple[float, str, Evidence, str]],
     expected: ExpectedAnswer,
     target_terms: list[str] | None = None,
+    *,
+    allow_identifier_shape_bonus: bool = True,
 ) -> Answer | None:
     scored: dict[str, dict[str, Any]] = {}
     for score, value, evidence, reason in candidates:
@@ -5643,7 +5647,15 @@ def _choose_answer(
             or _rejects_bound_target_value(expected, canonical, target_terms)
         ):
             continue
-        score = _choice_score(score, reason, expected, evidence, target_terms, canonical)
+        score = _choice_score(
+            score,
+            reason,
+            expected,
+            evidence,
+            target_terms,
+            canonical,
+            allow_identifier_shape_bonus=allow_identifier_shape_bonus,
+        )
         bucket = scored.setdefault(
             canonical,
             {"scores_by_evidence": {}, "evidence_by_key": {}, "reasons": []},
@@ -5680,6 +5692,8 @@ def _answer_conflict_diagnostics(
     expected: ExpectedAnswer,
     target_terms: list[str],
     records: dict[str, Any] | None = None,
+    *,
+    allow_identifier_shape_bonus: bool = True,
 ) -> dict[str, Any] | None:
     buckets: dict[str, dict[str, Any]] = {}
     for score, value, evidence, reason in candidates:
@@ -5696,7 +5710,15 @@ def _answer_conflict_diagnostics(
             {"score": 0.0, "scores_by_evidence": {}, "evidence": [], "evidence_by_key": {}, "reasons": set()},
         )
         evidence_key = _candidate_evidence_key(evidence)
-        choice_score = _choice_score(score, reason, expected, evidence, target_terms, canonical)
+        choice_score = _choice_score(
+            score,
+            reason,
+            expected,
+            evidence,
+            target_terms,
+            canonical,
+            allow_identifier_shape_bonus=allow_identifier_shape_bonus,
+        )
         previous_score = float(bucket["scores_by_evidence"].get(evidence_key, 0.0))
         if choice_score > previous_score:
             bucket["scores_by_evidence"][evidence_key] = choice_score
@@ -6423,7 +6445,15 @@ def execute_bounded_query(
     if expected.answer_type == "boolean":
         boolean_relation_terms = _relation_terms(frame, question)
         boolean_candidates = _boolean_condition_candidates(records, frame, target_terms, boolean_relation_terms)
-        answer = _with_supporting_evidence(_choose_answer(boolean_candidates, expected, target_terms), identity_expansion_evidence)
+        answer = _with_supporting_evidence(
+            _choose_answer(
+                boolean_candidates,
+                expected,
+                target_terms,
+                allow_identifier_shape_bonus=frame.source != "model_query_drs",
+            ),
+            identity_expansion_evidence,
+        )
         if answer is not None:
             _attach_answer_provenance(diagnostics, records, answer)
             return answer, diagnostics
@@ -6466,7 +6496,13 @@ def execute_bounded_query(
     temporal_candidates.extend(_temporal_frame_argument_candidates(records, frame, expected, target_terms, relation_terms))
     effective_temporal_scope = _effective_temporal_scope(frame)
     if temporal_candidates and effective_temporal_scope in {"latest", "earliest"}:
-        conflict = _answer_conflict_diagnostics(temporal_candidates, expected, target_terms, records)
+        conflict = _answer_conflict_diagnostics(
+            temporal_candidates,
+            expected,
+            target_terms,
+            records,
+            allow_identifier_shape_bonus=frame.source != "model_query_drs",
+        )
         if conflict:
             diagnostics["execution"]["temporal_answer_conflict_at_boundary"] = conflict
             _attach_no_answer_provenance(
@@ -6479,7 +6515,15 @@ def execute_bounded_query(
                 "temporal_answer_conflict_at_boundary",
             )
             return None, diagnostics
-        answer = _with_supporting_evidence(_choose_answer(temporal_candidates, expected, target_terms), identity_expansion_evidence)
+        answer = _with_supporting_evidence(
+            _choose_answer(
+                temporal_candidates,
+                expected,
+                target_terms,
+                allow_identifier_shape_bonus=frame.source != "model_query_drs",
+            ),
+            identity_expansion_evidence,
+        )
         if answer is None:
             _attach_no_answer_provenance(
                 diagnostics,
@@ -6553,7 +6597,13 @@ def execute_bounded_query(
             _attach_answer_provenance(diagnostics, records, answer)
         return answer, diagnostics
     if not frame.temporal_scope and expected.answer_type != "count":
-        conflict = _answer_conflict_diagnostics(candidates, expected, target_terms, records)
+        conflict = _answer_conflict_diagnostics(
+            candidates,
+            expected,
+            target_terms,
+            records,
+            allow_identifier_shape_bonus=frame.source != "model_query_drs",
+        )
         if conflict:
             diagnostics["execution"]["answer_conflict_without_query_scope"] = conflict
             _attach_no_answer_provenance(
@@ -6567,7 +6617,15 @@ def execute_bounded_query(
             )
             return None, diagnostics
 
-    answer = _with_supporting_evidence(_choose_answer(candidates, expected, target_terms), identity_expansion_evidence)
+    answer = _with_supporting_evidence(
+        _choose_answer(
+            candidates,
+            expected,
+            target_terms,
+            allow_identifier_shape_bonus=frame.source != "model_query_drs",
+        ),
+        identity_expansion_evidence,
+    )
     if answer is None:
         _attach_no_answer_provenance(
             diagnostics,

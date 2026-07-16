@@ -1238,4 +1238,4 @@ def test_query_drs_preserves_model_answer_argument_roles() -> None:
         },
     )
     assert frame is not None
-    assert frame["answer_roles"] == ["agent"]
+    assert frame["binding_roles"] == ("agent",)

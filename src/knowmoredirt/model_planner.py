@@ -3295,7 +3295,7 @@ def query_frame_from_query_drs(question: str, query_drs: dict[str, Any] | None) 
         if isinstance(item, dict) and str(item.get("predicate") or "").strip()
     ]
     argument_terms: list[str] = []
-    answer_roles: list[str] = []
+    binding_roles: list[str] = []
     modality_terms: list[str] = []
     for condition in requested_conditions:
         if not isinstance(condition, dict):
@@ -3313,7 +3313,7 @@ def query_frame_from_query_drs(question: str, query_drs: dict[str, Any] | None) 
             if target_kind == "answer_variable" and target_id in answer_variable_labels_by_id:
                 argument_terms.append(answer_variable_labels_by_id[target_id])
                 if role:
-                    answer_roles.append(role)
+                    binding_roles.append(role)
             if target_kind == "temporal" and target_id in temporal_values_by_id:
                 argument_terms.append(temporal_values_by_id[target_id])
             if value:
@@ -3341,7 +3341,7 @@ def query_frame_from_query_drs(question: str, query_drs: dict[str, Any] | None) 
             "requested_relation": " ".join(dict.fromkeys(predicates)),
             "relation_terms": list(dict.fromkeys([*predicates, *argument_terms, *temporal_terms])),
             "constraints": query_drs.get("constraints") if isinstance(query_drs.get("constraints"), list) else [],
-            "answer_roles": list(dict.fromkeys(answer_roles)),
+            "binding_roles": list(dict.fromkeys(binding_roles)),
             "scope_requirements": list(dict.fromkeys(scope_terms)),
             "modality_requirements": list(dict.fromkeys(modality_terms)),
             "answer_type": answer_type,

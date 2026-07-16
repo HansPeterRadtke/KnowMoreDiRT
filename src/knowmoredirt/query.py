@@ -125,7 +125,7 @@ class QueryFrame:
     requested_relation: str
     relation_terms: tuple[str, ...]
     constraints: tuple[str, ...]
-    answer_roles: tuple[str, ...] = ()
+    binding_roles: tuple[str, ...] = ()
     scope_requirements: tuple[str, ...] = ()
     modality_requirements: tuple[str, ...] = ()
     temporal_scope: str = ""
@@ -455,13 +455,13 @@ def frame_from_mapping(question: str, mapping: dict[str, Any] | None, *, source:
         answer_variables = tuple(str(value).strip() for value in answer_variables_raw if str(value).strip())
     else:
         answer_variables = base.answer_variables
-    answer_roles_raw = raw.get("answer_roles")
-    if isinstance(answer_roles_raw, str):
-        answer_roles = tuple(value.strip() for value in answer_roles_raw.split(";") if value.strip())
-    elif isinstance(answer_roles_raw, (list, tuple)):
-        answer_roles = tuple(str(value).strip() for value in answer_roles_raw if str(value).strip())
+    binding_roles_raw = raw.get("binding_roles")
+    if isinstance(binding_roles_raw, str):
+        binding_roles = tuple(value.strip() for value in binding_roles_raw.split(";") if value.strip())
+    elif isinstance(binding_roles_raw, (list, tuple)):
+        binding_roles = tuple(str(value).strip() for value in binding_roles_raw if str(value).strip())
     else:
-        answer_roles = base.answer_roles
+        binding_roles = base.binding_roles
     scope_requirements_raw = raw.get("scope_requirements")
     if isinstance(scope_requirements_raw, (list, tuple)):
         scope_requirements = tuple(str(value).strip() for value in scope_requirements_raw if str(value).strip())
@@ -498,7 +498,7 @@ def frame_from_mapping(question: str, mapping: dict[str, Any] | None, *, source:
         requested_relation=str(raw.get("requested_relation") or base.requested_relation),
         relation_terms=relation_terms if relation_terms_supplied else base.relation_terms,
         constraints=constraints if constraints_supplied else base.constraints,
-        answer_roles=answer_roles,
+        binding_roles=binding_roles,
         scope_requirements=scope_requirements,
         modality_requirements=modality_requirements,
         temporal_scope=normalize_temporal_scope(str(raw.get("temporal_scope") or base.temporal_scope)),
