@@ -447,3 +447,14 @@ def test_model_query_drs_binders_do_not_reject_sources_by_text_shape() -> None:
         text = ast.get_source_segment(source, method) or ""
         if "_source_is_low_priority" in text:
             assert 'frame.source != "model_query_drs"' in text, name
+
+
+def test_relation_only_target_fallback_is_legacy_only() -> None:
+    source = (REPO_ROOT / "src" / "knowmoredirt" / "bounded_dspg.py").read_text(encoding="utf-8")
+    tree = ast.parse(source)
+    method = next(
+        node for node in tree.body
+        if isinstance(node, ast.FunctionDef) and node.name == "_rank_scope"
+    )
+    text = ast.get_source_segment(source, method) or ""
+    assert 'legacy_relation_fallback = frame.source != "model_query_drs" and not selected_docs' in text

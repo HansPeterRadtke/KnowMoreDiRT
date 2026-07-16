@@ -719,7 +719,10 @@ def _rank_scope(
         "KMD_BOUNDED_RELATION_ONLY_TARGET_FALLBACK",
         "0",
     ).strip().lower() in {"1", "true", "yes", "on"}
-    if relation_doc_scores and len(selected_docs) < doc_limit and (not target_terms or allow_relation_only_target_fallback):
+    legacy_relation_fallback = frame.source != "model_query_drs" and not selected_docs
+    if relation_doc_scores and len(selected_docs) < doc_limit and (
+        not target_terms or allow_relation_only_target_fallback or legacy_relation_fallback
+    ):
         relation_budget = doc_limit - len(selected_docs)
         selected_doc_set = set(selected_docs)
         for _score, doc_id, _rel_path in relation_doc_scores:
