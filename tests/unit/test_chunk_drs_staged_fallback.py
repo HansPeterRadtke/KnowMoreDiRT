@@ -1201,7 +1201,7 @@ def test_chunk_drs_compact_undercoverage_records_non_improving_retry(monkeypatch
     assert result["context_budget"]["staged_retry_diagnostics_policy"] == CHUNK_DRS_STAGED_RETRY_DIAGNOSTICS_POLICY
 
 
-def test_chunk_drs_field_like_records_use_staged_extraction_first(monkeypatch, tmp_path) -> None:
+def test_chunk_drs_field_like_records_use_monolithic_constrained_extraction_first(monkeypatch, tmp_path) -> None:
     class StagedFirstModel:
         def __init__(self) -> None:
             self.monolithic_called = False
@@ -1222,7 +1222,50 @@ def test_chunk_drs_field_like_records_use_staged_extraction_first(monkeypatch, t
         ) -> dict[str, object]:
             if "one source-grounded DRS object" in prompt:
                 self.monolithic_called = True
-                raise AssertionError("field-like compact records should try staged extraction first")
+                return {
+                    "drs": {
+                        "schema_version": "chunk-drs-v2",
+                        "source_id": "records.txt",
+                        "referents": [
+                            {"id": "r0", "label": "Aster Ridge", "kind": "asset", "evidence_text": "Aster Ridge"}
+                        ],
+                        "boxes": [
+                            {
+                                "id": "b0",
+                                "kind": "asserted",
+                                "parent_id": "",
+                                "holder_referent_id": "",
+                                "evidence_text": "record: Aster Ridge | steward: Lina Sol | state: active | runbook: /ops/aster",
+                            }
+                        ],
+                        "conditions": [
+                            {
+                                "id": "c0",
+                                "predicate": "steward",
+                                "box_id": "b0",
+                                "polarity": "positive",
+                                "modality": "asserted",
+                                "temporal_id": "",
+                                "arguments": [{"role": "value", "target_kind": "literal", "target_id": "", "value": "Lina Sol", "value_type": "person", "evidence_text": "steward: Lina Sol"}],
+                                "evidence_text": "steward: Lina Sol",
+                            },
+                            {
+                                "id": "c1",
+                                "predicate": "state",
+                                "box_id": "b0",
+                                "polarity": "positive",
+                                "modality": "asserted",
+                                "temporal_id": "",
+                                "arguments": [{"role": "value", "target_kind": "literal", "target_id": "", "value": "active", "value_type": "state", "evidence_text": "state: active"}],
+                                "evidence_text": "state: active",
+                            },
+                        ],
+                        "identity_hypotheses": [],
+                        "temporal_records": [],
+                    },
+                    "_model_raw": "{}",
+                    "_model_elapsed_seconds": 0.01,
+                }
             if "Stage 1 of source-grounded DRS extraction" in prompt:
                 assert n_predict == 384
                 return {
@@ -1309,15 +1352,15 @@ def test_chunk_drs_field_like_records_use_staged_extraction_first(monkeypatch, t
     )
 
     assert result["accepted"] is True
-    assert result["reason"] == "staged_fallback"
-    assert result["fallback_from_reason"] == "field_like_source_spans"
-    assert result["staged_first"] is True
+    assert "reason" not in result
+    assert "fallback_from_reason" not in result
+    assert result["staged_first"]["staged_first"] is True
     assert result["validation"]["condition_count"] == 2
-    assert result["context_budget"]["reserved_output_tokens"] == 8192
+    assert result["context_budget"]["reserved_output_tokens"] == 1280
     assert result["context_budget"]["staged_first_policy"] == CHUNK_DRS_STAGED_FIRST_POLICY
     assert result["context_budget"]["dynamic_condition_budget_policy"] == CHUNK_DRS_DYNAMIC_CONDITION_BUDGET_POLICY
-    assert result["context_budget"]["staged_condition_n_predict"] == 528
-    assert model.monolithic_called is False
+    assert "staged_condition_n_predict" not in result["context_budget"]
+    assert model.monolithic_called is True
 
 
 def test_chunk_drs_source_span_candidates_skip_field_headers() -> None:
@@ -1346,7 +1389,7 @@ def test_chunk_drs_dynamic_skeleton_budget_for_field_rich_chunks(monkeypatch) ->
 
     assert default_staged_chunk_drs_skeleton_n_predict(384, plain_sentence, 96) == 384
     assert default_staged_chunk_drs_skeleton_n_predict(384, flat_field_rich, 96) == 384
-    assert default_staged_chunk_drs_skeleton_n_predict(384, field_rich, 96) == 768
+    assert default_staged_chunk_drs_skeleton_n_predict(384, field_rich, 96) == 384
 
     monkeypatch.setenv("KMD_CHUNK_DRS_STAGED_SKELETON_N_PREDICT", "512")
     assert default_staged_chunk_drs_skeleton_n_predict(384, field_rich, 96) == 512
@@ -1532,7 +1575,7 @@ def test_chunk_drs_skeleton_schema_uses_stable_id_namespaces() -> None:
     assert referent_item["properties"]["id"]["enum"] == ["r0", "r1", "r2", "r3"]
     assert box_item["properties"]["id"]["enum"] == ["b0", "b1", "b2", "b3"]
     assert box_item["properties"]["parent_id"]["enum"] == ["", "b0", "b1", "b2", "b3"]
-    assert box_item["properties"]["holder_referent_id"]["enum"] == ["", "r0", "r1", "r2", "r3"]
+    assert box_item["properties"]["holder_referent_id"]["enum"] == [""]
     assert temporal_item["properties"]["id"]["enum"] == ["t0", "t1", "t2", "t3"]
 
 
@@ -1589,7 +1632,7 @@ def test_chunk_drs_failed_staged_fallback_keeps_stage_diagnostics(monkeypatch, t
     assert result["staged_fallback"]["constraint_mode"] in {"json_schema", "gbnf", "none"}
 
 
-def test_chunk_drs_staged_invalid_json_failure_is_retryable(monkeypatch, tmp_path) -> None:
+def test_chunk_drs_staged_invalid_json_failure_is_cached(monkeypatch, tmp_path) -> None:
     class FailedSkeletonModel:
         def __init__(self) -> None:
             self.calls = 0
@@ -1642,8 +1685,8 @@ def test_chunk_drs_staged_invalid_json_failure_is_retryable(monkeypatch, tmp_pat
     assert first["reason"] == "invalid_json"
     assert second["accepted"] is False
     assert second["reason"] == "invalid_json"
-    assert second["fresh_or_cached"] == "fresh"
-    assert model.calls == 2
+    assert second["fresh_or_cached"] == "cache"
+    assert model.calls == 1
 
 
 def test_chunk_drs_staged_fallback_preserves_temporal_records(monkeypatch, tmp_path) -> None:
