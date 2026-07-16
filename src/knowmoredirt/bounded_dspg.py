@@ -6323,9 +6323,13 @@ def execute_bounded_query(
             break
         target_terms = list(dict.fromkeys([*target_terms, *binding_identity_terms]))
         ranking["identity_expanded_target_terms"] = identity_expanded_terms[:32]
+        # Identity-linked labels are alternatives for the same discourse
+        # referent, not additional conjunctive scope requirements.  Rank the
+        # next retrieval round by the newly reached labels, then merge those
+        # documents with the original query scope.
         expanded_frame = replace(
             frame,
-            target_anchors=tuple(dict.fromkeys([*frame.target_anchors, *target_terms])),
+            target_anchors=tuple(dict.fromkeys(binding_identity_terms)),
         )
         expanded_docs, expanded_chunks, expanded_ranking = _rank_scope(
             documents,
