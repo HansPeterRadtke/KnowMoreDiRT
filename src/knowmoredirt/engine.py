@@ -3245,35 +3245,6 @@ class KnowMoreDiRTEngine:
             return True
         return False
 
-    def _canonicalize_identity_with_local_model(self, question: str, value: str, evidence: list[Evidence]) -> str:
-        if self._model_client is None or len(str(value).split()) != 1:
-            return value
-        token = normalize(value)
-        fuller_candidates: list[str] = []
-        for item in evidence:
-            for phrase in capitalized_phrases(item.text):
-                parts = normalize(phrase).split()
-                if len(parts) > 1 and parts[0] == token and phrase not in fuller_candidates:
-                    fuller_candidates.append(phrase)
-        if not fuller_candidates:
-            return value
-        evidence_payload = self._evidence_payload(evidence, limit=8)
-        result = call_model_identity_canonicalization(
-            question,
-            value,
-            fuller_candidates[:8],
-            evidence_payload,
-            self._model_client,
-        )
-        self._record_model_result(result)
-        if result.get("prompt_hash"):
-            self.model_query_trace.prompt_hashes = [*list(self.model_query_trace.prompt_hashes or []), str(result["prompt_hash"])][-20:]
-        if result.get("output_hash"):
-            self.model_query_trace.response_hashes = [*list(self.model_query_trace.response_hashes or []), str(result["output_hash"])][-20:]
-        proposed = str(result.get("answer") or "")
-        if result.get("accepted") and result.get("same_referent") and proposed in fuller_candidates:
-            return proposed
-        return value
 
     def _diagnostic_frames_for_answer(self, answer: Answer) -> list[dict[str, object]]:
         if not answer.evidence:
@@ -4284,7 +4255,9 @@ class KnowMoreDiRTEngine:
         if self._model_client is None:
             return None
         frame_data = self.model_query_trace.last_plan if isinstance(self.model_query_trace.last_plan, dict) else None
-        evidence_frame = frame_from_mapping(question, frame_data) if frame_data else plan_question(question)
+        if frame_data is None:
+            return None
+        evidence_frame = frame_from_mapping(question, frame_data, source="model_query_drs")
         focused = self._focused_evidence_windows(
             question,
             evidence_frame,

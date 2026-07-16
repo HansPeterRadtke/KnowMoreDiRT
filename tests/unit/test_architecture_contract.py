@@ -541,3 +541,25 @@ def test_architecture_docs_describe_required_model_semantics() -> None:
     assert "optional localhost-only query planning" not in audit
     assert "disabled by default" not in audit
     assert "Required local-model bounded reasoning" in audit
+
+
+def test_model_evidence_path_requires_authoritative_model_query_plan() -> None:
+    source = (REPO_ROOT / "src" / "knowmoredirt" / "engine.py").read_text(encoding="utf-8")
+    tree = ast.parse(source)
+    engine_class = next(
+        node for node in tree.body
+        if isinstance(node, ast.ClassDef) and node.name == "KnowMoreDiRTEngine"
+    )
+    method = next(
+        node for node in engine_class.body
+        if isinstance(node, ast.FunctionDef) and node.name == "_answer_with_model_query_evidence"
+    )
+    text = ast.get_source_segment(source, method) or ""
+    assert "plan_question(" not in text
+    assert "if frame_data is None:" in text
+    assert 'source="model_query_drs"' in text
+
+
+def test_dead_capitalization_identity_canonicalizer_is_absent() -> None:
+    source = (REPO_ROOT / "src" / "knowmoredirt" / "engine.py").read_text(encoding="utf-8")
+    assert "def _canonicalize_identity_with_local_model" not in source
