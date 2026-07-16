@@ -408,3 +408,16 @@ def test_production_retrieval_does_not_downrank_text_by_deterministic_quality_cl
     )
     text = ast.get_source_segment(source, method) or ""
     assert "if self._test_no_model_runtime and sentence.rel_path in self._low_semantic_noise_paths" in text
+
+
+def test_model_query_drs_bounded_ranking_uses_only_model_semantic_terms() -> None:
+    source = (REPO_ROOT / "src" / "knowmoredirt" / "bounded_dspg.py").read_text(encoding="utf-8")
+    tree = ast.parse(source)
+    method = next(
+        node for node in tree.body
+        if isinstance(node, ast.FunctionDef) and node.name == "_rank_scope"
+    )
+    text = ast.get_source_segment(source, method) or ""
+    assert 'all_terms = [] if frame.source == "model_query_drs" else _query_terms(question)' in text
+    assert 'frame.source != "model_query_drs" and document_low_priority_by_id' in text
+    assert 'frame.source != "model_query_drs" and _source_is_low_priority' in text

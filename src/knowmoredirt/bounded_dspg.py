@@ -680,7 +680,7 @@ def _rank_scope(
 ) -> tuple[list[str], list[str], dict[str, Any]]:
     target_terms = _target_terms(frame, question)
     relation_terms = list(dict.fromkeys([*_relation_terms(frame, question), *_answer_slot_terms(frame, target_terms)]))
-    all_terms = _query_terms(question)
+    all_terms = [] if frame.source == "model_query_drs" else _query_terms(question)
     doc_scores: list[tuple[float, str, str]] = []
     relation_doc_scores: list[tuple[float, str, str]] = []
     document_material_by_id: dict[str, str] = {}
@@ -698,7 +698,7 @@ def _rank_scope(
             document.rel_path,
             " ".join(sentence.text for sentence in sentences),
         )
-        if document_low_priority_by_id[document.document_id]:
+        if frame.source != "model_query_drs" and document_low_priority_by_id[document.document_id]:
             score *= 0.2
         if target_terms and not _target_anchor_groups_covered(material, frame, target_terms):
             target_scope_rejected_documents += 1
@@ -744,7 +744,7 @@ def _rank_scope(
             score += sum(2 for term in all_terms if _has_term(material, term))
             if document_has_target and relation_terms and _contains_any(material, relation_terms):
                 score += 12
-            if _source_is_low_priority(sentence.rel_path, sentence.text):
+            if frame.source != "model_query_drs" and _source_is_low_priority(sentence.rel_path, sentence.text):
                 score *= 0.15
             if score:
                 chunk_scores.append((score, document.document_id, order, document.rel_path))
