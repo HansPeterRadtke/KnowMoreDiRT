@@ -180,3 +180,23 @@ def test_surface_extractor_has_no_deterministic_semantic_event_regexes() -> None
     ]
     findings = [marker for marker in forbidden if marker in text]
     assert findings == []
+
+
+def test_production_model_path_does_not_call_deterministic_semantic_answer_tools() -> None:
+    source = (REPO_ROOT / "src" / "knowmoredirt" / "engine.py").read_text(encoding="utf-8")
+    tree = ast.parse(source)
+    target = next(
+        node for node in tree.body
+        if isinstance(node, ast.ClassDef) and node.name == "KnowMoreDiRTEngine"
+    )
+    method = next(
+        node for node in target.body
+        if isinstance(node, ast.FunctionDef) and node.name == "_answer_with_local_model"
+    )
+    calls = [
+        node for node in ast.walk(method)
+        if isinstance(node, ast.Call)
+        and isinstance(node.func, ast.Attribute)
+        and node.func.attr == "_run_model_planned_answer_tools"
+    ]
+    assert calls == []

@@ -3797,10 +3797,6 @@ class KnowMoreDiRTEngine:
         planned_frame = frame_from_mapping(question, plan)
         expected = self._expected_from_frame(planned_frame)
         self._materialize_question_semantics(question, planned_frame)
-        tool_answer = self._run_model_planned_answer_tools(question, planned_frame, expected)
-        if self._complete_answer(tool_answer):
-            trace.model_answer_count += 1
-            return tool_answer
         self._log_progress("kmd-answer bounded_query_start")
         answer = self._answer_with_bounded_dspg(question, planned_frame, expected)
         if self._complete_answer(answer) and not self._bounded_evidence_covers_targets(planned_frame, answer.evidence):
@@ -3849,10 +3845,6 @@ class KnowMoreDiRTEngine:
                 trace.model_answer_count += 1
                 answer.reason = "local model query-frame execution"
                 return answer
-        tool_answer = self._run_model_planned_answer_tools(question, planned_frame, expected, prior_answer=answer)
-        if self._complete_answer(tool_answer):
-            trace.model_answer_count += 1
-            return tool_answer
         if not self._bounded_conflict_blocks_model_evidence_fallback():
             evidence_answer = self._answer_with_model_query_evidence(question, expected)
             if self._complete_answer(evidence_answer):
