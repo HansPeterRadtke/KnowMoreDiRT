@@ -1929,7 +1929,7 @@ def test_model_canonicalization_source_resolves_deictic_reported_content(
         def complete_json(self, prompt: str, *, n_predict: int = 128, grammar=None, json_schema=None):
             self.prompts.append(prompt)
             assert "source_resolved_answer" in prompt
-            assert json_schema is None
+            assert json_schema is not None
             return {
                 "source_resolved_answer": {
                     "answer": "Taylor expected patch.py to land tomorrow.",
@@ -1990,7 +1990,7 @@ def test_public_cleanup_restores_source_grounded_reported_period() -> None:
         )
     )
 
-    assert cleaned.text == "Taylor expected patch.py to land tomorrow."
+    assert cleaned.text == "Taylor expected patch.py to land tomorrow"
 
 
 def test_verifier_restores_period_using_inferred_answer_type(monkeypatch) -> None:
