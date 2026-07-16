@@ -654,7 +654,7 @@ def test_query_drs_preserves_model_declared_duplicate_answer_arguments(monkeypat
     assert result["validation_policy"] == QUERY_DRS_VALIDATION_POLICY
 
 
-def test_chunk_drs_removes_tautological_self_identity_hypotheses(monkeypatch, tmp_path) -> None:
+def test_chunk_drs_rejects_tautological_self_identity_hypotheses(monkeypatch, tmp_path) -> None:
     class SelfIdentityChunkModel:
         def context_size(self) -> int:
             return 8192
@@ -721,9 +721,9 @@ def test_chunk_drs_removes_tautological_self_identity_hypotheses(monkeypatch, tm
     monkeypatch.setenv("KMD_CHUNK_DRS_CACHE_DIR", str(tmp_path / "chunk-drs-cache"))
     result = call_model_chunk_drs("Aero Gate is ready.", SelfIdentityChunkModel(), rel_path="note.txt")  # type: ignore[arg-type]
 
-    assert result["accepted"] is True
-    assert result["validation"]["identity_hypothesis_count"] == 0
-    assert result["drs"]["identity_hypotheses"] == []
+    assert result["accepted"] is False
+    assert result["reason"] == "schema_validation_failed"
+    assert any(str(error).startswith("self_identity:") for error in result["validation"]["errors"])
 
 
 def test_chunk_drs_rejects_self_referential_box_arguments(monkeypatch, tmp_path) -> None:

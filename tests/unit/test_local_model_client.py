@@ -1928,7 +1928,7 @@ def test_chunk_drs_request_failure_keeps_context_budget_and_retries(monkeypatch,
     assert model.calls == 2
 
 
-def test_chunk_drs_filters_identity_without_bilateral_evidence(monkeypatch, tmp_path) -> None:
+def test_chunk_drs_rejects_identity_without_bilateral_evidence(monkeypatch, tmp_path) -> None:
     class IdentityModel:
         def context_size(self) -> int:
             return 8192
@@ -1987,23 +1987,16 @@ def test_chunk_drs_filters_identity_without_bilateral_evidence(monkeypatch, tmp_
         rel_path="note.txt",
     )
 
-    assert result["accepted"] is True
-    assert result["drs"]["identity_hypotheses"] == [
-        {
-            "left_referent_id": "r0",
-            "right_referent_id": "r1",
-            "status": "candidate",
-            "evidence_text": "Aero Gate alias AG-1",
-            "confidence": 0.7,
-        }
-    ]
+    assert result["accepted"] is False
+    assert result["reason"] == "schema_validation_failed"
+    assert any("identity_evidence_missing_side:right:r2" in str(error) for error in result["validation"]["errors"])
     assert (
         chunk_drs_cache_context(model, n_predict=384)["identity_provenance_policy"]
         == CHUNK_DRS_IDENTITY_PROVENANCE_POLICY
     )
 
 
-def test_chunk_drs_prunes_unreferenced_temporal_records(monkeypatch, tmp_path) -> None:
+def test_chunk_drs_preserves_unreferenced_model_temporal_records(monkeypatch, tmp_path) -> None:
     class TemporalModel:
         def context_size(self) -> int:
             return 8192
@@ -2066,7 +2059,8 @@ def test_chunk_drs_prunes_unreferenced_temporal_records(monkeypatch, tmp_path) -
 
     assert result["accepted"] is True
     assert result["drs"]["temporal_records"] == [
-        {"id": "t0", "value": "2026-01-03", "value_type": "date_time", "evidence_text": "2026-01-03"}
+        {"id": "t0", "value": "2026-01-03", "value_type": "date_time", "evidence_text": "2026-01-03"},
+        {"id": "t1", "value": "ready", "value_type": "state", "evidence_text": "ready"},
     ]
     assert (
         chunk_drs_cache_context(model, n_predict=384)["temporal_provenance_policy"]
@@ -3901,7 +3895,7 @@ def test_compact_chunk_drs_attaches_source_span_temporal_prefix(monkeypatch, tmp
     )
 
 
-def test_chunk_drs_planner_repairs_model_referent_argument_records(monkeypatch, tmp_path) -> None:
+def test_chunk_drs_planner_rejects_missing_model_referent_records(monkeypatch, tmp_path) -> None:
     class MissingReferentModel:
         def context_size(self) -> int:
             return 4096
@@ -3957,10 +3951,9 @@ def test_chunk_drs_planner_repairs_model_referent_argument_records(monkeypatch, 
     monkeypatch.setenv("KMD_CHUNK_DRS_CACHE_DIR", str(tmp_path / "missing-ref-cache"))
     result = call_model_chunk_drs("Aero Gate is ready.", MissingReferentModel(), rel_path="note.txt")  # type: ignore[arg-type]
 
-    assert result["accepted"] is True
-    assert result["validation"]["referent_count"] == 1
-    assert result["drs"]["referents"][0]["id"] == "r0"
-    assert result["drs"]["referents"][0]["label"] == "Aero Gate"
+    assert result["accepted"] is False
+    assert result["reason"] == "schema_validation_failed"
+    assert any(str(error).startswith("missing_argument_referent:") for error in result["validation"]["errors"])
 
 
 def test_query_drs_projects_to_query_frame_without_language_handlers() -> None:

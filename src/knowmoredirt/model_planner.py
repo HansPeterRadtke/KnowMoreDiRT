@@ -4791,7 +4791,13 @@ def _validate_chunk_drs_payload(payload: Any, source_text: str) -> dict[str, Any
         if not isinstance(value, list):
             errors.append(f"not_list:{name}")
             return []
-        return [item for item in value if isinstance(item, dict)]
+        items: list[dict[str, Any]] = []
+        for index, item in enumerate(value):
+            if not isinstance(item, dict):
+                errors.append(f"bad_collection_item:{name}:{index}")
+                continue
+            items.append(item)
+        return items
 
     referents = collection("referents")
     boxes = collection("boxes")
@@ -4810,6 +4816,11 @@ def _validate_chunk_drs_payload(payload: Any, source_text: str) -> dict[str, Any
     condition_id_values = [str(item.get("id") or "") for item in conditions]
     temporal_id_values = [str(item.get("id") or "") for item in temporals]
     referent_ids = {value for value in referent_id_values if value}
+    referents_by_id = {
+        str(item.get("id") or ""): item
+        for item in referents
+        if str(item.get("id") or "")
+    }
     box_ids = {value for value in box_id_values if value}
     condition_ids = {value for value in condition_id_values if value}
     temporal_ids = {value for value in temporal_id_values if value}
@@ -4903,6 +4914,20 @@ def _validate_chunk_drs_payload(payload: Any, source_text: str) -> dict[str, Any
             errors.append(f"missing_identity_left:{left_id}")
         if right_id not in referent_ids:
             errors.append(f"missing_identity_right:{right_id}")
+        if left_id and left_id == right_id:
+            errors.append(f"self_identity:{left_id}")
+        evidence_text = str(item.get("evidence_text") or "").strip()
+        for side, ref_id in (("left", left_id), ("right", right_id)):
+            referent = referents_by_id.get(ref_id)
+            if referent is None:
+                continue
+            surfaces = {
+                str(referent.get("label") or "").strip(),
+                str(referent.get("evidence_text") or "").strip(),
+            }
+            surfaces.discard("")
+            if not evidence_text or not any(surface in evidence_text for surface in surfaces):
+                errors.append(f"identity_evidence_missing_side:{side}:{ref_id}")
         box_id = str(item.get("box_id") or "")
         if box_id and box_id not in box_ids:
             errors.append(f"missing_identity_box:{left_id}:{right_id}->{box_id}")
@@ -4960,141 +4985,42 @@ def _normalize_chunk_drs_shape(payload: Any) -> Any:
             drs[field_name] = []
             changed = True
         elif isinstance(value, list):
-            if field_name in {"identity_hypotheses", "temporal_records"}:
-                repaired = [item for item in value if isinstance(item, dict)]
-            else:
-                repaired = [str(item) for item in value if str(item or "").strip()]
-            if repaired != value:
-                drs[field_name] = repaired
-                changed = True
+            continue
     return {**payload, "drs": drs} if changed else payload
 
 
 def _repair_chunk_drs_payload(payload: Any, source_text: str = "", *, prune_unreferenced_temporals: bool = True) -> Any:
+    """Repair exact provenance strings only; never alter model-declared DRS semantics."""
+    del prune_unreferenced_temporals
     payload = _normalize_chunk_drs_shape(payload)
     if not isinstance(payload, dict) or not isinstance(payload.get("drs"), dict):
         return payload
-    drs = {**payload["drs"]}
-    referents = drs.get("referents")
-    boxes = drs.get("boxes")
-    conditions = drs.get("conditions")
-    if not isinstance(referents, list) or not isinstance(boxes, list) or not isinstance(conditions, list):
-        return payload
-    repaired_referents = [item for item in referents if isinstance(item, dict)]
-    repaired_boxes = [item for item in boxes if isinstance(item, dict)]
-    repaired_conditions = [item for item in conditions if isinstance(item, dict)]
-    referent_ids = {str(item.get("id") or "") for item in repaired_referents}
-    referents_by_id = {str(item.get("id") or ""): item for item in repaired_referents if str(item.get("id") or "")}
-    box_ids = {str(item.get("id") or "") for item in repaired_boxes if str(item.get("id") or "")}
-    namespace_repaired = False
-    grounding_repaired = False
+    drs = copy.deepcopy(payload["drs"])
+    repaired = False
     if source_text:
-        for item in repaired_referents:
-            grounding_repaired |= _repair_evidence_text_from_declared_value(item, source_text, ("label",))
-        for item in repaired_boxes:
-            grounding_repaired |= _repair_evidence_text_from_declared_value(item, source_text, ())
-        for item in repaired_conditions:
-            grounding_repaired |= _repair_evidence_text_from_declared_value(item, source_text, ())
-        temporals = drs.get("temporal_records")
-        if isinstance(temporals, list):
-            for item in temporals:
-                if isinstance(item, dict):
-                    grounding_repaired |= _repair_evidence_text_from_declared_value(item, source_text, ("value",))
-    temporal_records = drs.get("temporal_records")
-    repaired_temporals = temporal_records
-    temporal_repaired = False
-    if prune_unreferenced_temporals and isinstance(temporal_records, list):
-        referenced_temporal_ids = {
-            str(condition.get("temporal_id") or "").strip()
-            for condition in repaired_conditions
-            if str(condition.get("temporal_id") or "").strip()
-        }
-        repaired_temporals = [
-            item
-            for item in temporal_records
-            if isinstance(item, dict) and str(item.get("id") or "").strip() in referenced_temporal_ids
-        ]
-        if len(repaired_temporals) != len(temporal_records):
-            drs["temporal_records"] = repaired_temporals
-            temporal_repaired = True
-    for condition in repaired_conditions:
-        if not isinstance(condition.get("arguments"), list):
-            continue
-        for argument in condition["arguments"]:
-            if not isinstance(argument, dict):
-                continue
-            if source_text:
-                grounding_repaired |= _repair_evidence_text_from_declared_value(argument, source_text, ("value",))
-            target_id = str(argument.get("target_id") or "").strip()
-            target_kind = str(argument.get("target_kind") or "").strip()
-            if target_id in box_ids and target_kind != "box":
-                argument["target_kind"] = "box"
-                namespace_repaired = True
-                continue
-            if target_id in referent_ids and target_kind != "referent":
-                argument["target_kind"] = "referent"
-                namespace_repaired = True
-                target_kind = "referent"
-            if target_kind in {"literal", "unknown"} and target_id:
-                argument["target_id"] = ""
-                namespace_repaired = True
-                target_id = ""
-            if str(argument.get("target_kind") or "") != "referent":
-                continue
-            value = str(argument.get("value") or "").strip()
-            evidence_text = str(argument.get("evidence_text") or "").strip()
-            if not target_id or target_id in referent_ids or not value:
-                continue
-            repaired_referents.append(
-                {
-                    "id": target_id,
-                    "label": value,
-                    "kind": str(argument.get("value_type") or "unknown") or "unknown",
-                    "evidence_text": evidence_text or value,
-                }
-            )
-            referent_ids.add(target_id)
-    identities = drs.get("identity_hypotheses")
-    repaired_identities = identities
-    if isinstance(identities, list):
-        repaired_identities = []
-        for item in identities:
+        for item in drs.get("referents", []):
+            if isinstance(item, dict):
+                repaired |= _repair_evidence_text_from_declared_value(item, source_text, ("label",))
+        for item in drs.get("boxes", []):
+            if isinstance(item, dict):
+                repaired |= _repair_evidence_text_from_declared_value(item, source_text, ())
+        for item in drs.get("conditions", []):
             if not isinstance(item, dict):
                 continue
-            left_id = str(item.get("left_referent_id") or "").strip()
-            right_id = str(item.get("right_referent_id") or "").strip()
-            if left_id and left_id == right_id:
-                continue
-            if source_text:
-                evidence_text = str(item.get("evidence_text") or "").strip()
-
-                def supported_by_evidence(ref_id: str) -> bool:
-                    referent = referents_by_id.get(ref_id)
-                    if not referent:
-                        return False
-                    surfaces = [str(referent.get("label") or "").strip(), str(referent.get("evidence_text") or "").strip()]
-                    return any(surface and surface in evidence_text for surface in surfaces)
-
-                if not evidence_text or not supported_by_evidence(left_id) or not supported_by_evidence(right_id):
-                    continue
-            repaired_identities.append(item)
-        if len(repaired_identities) != len(identities):
-            drs["identity_hypotheses"] = repaired_identities
-    if (
-        len(repaired_referents) == len(referents)
-        and len(repaired_boxes) == len(boxes)
-        and len(repaired_conditions) == len(conditions)
-        and not temporal_repaired
-        and repaired_identities is identities
-        and not namespace_repaired
-        and not grounding_repaired
-    ):
+            repaired |= _repair_evidence_text_from_declared_value(item, source_text, ())
+            arguments = item.get("arguments")
+            if isinstance(arguments, list):
+                for argument in arguments:
+                    if isinstance(argument, dict):
+                        repaired |= _repair_evidence_text_from_declared_value(argument, source_text, ("value",))
+        for item in drs.get("temporal_records", []):
+            if isinstance(item, dict):
+                repaired |= _repair_evidence_text_from_declared_value(item, source_text, ("value",))
+        for item in drs.get("identity_hypotheses", []):
+            if isinstance(item, dict):
+                repaired |= _repair_evidence_text_from_declared_value(item, source_text, ())
+    if not repaired:
         return payload
-    drs["referents"] = repaired_referents
-    drs["boxes"] = repaired_boxes
-    drs["conditions"] = repaired_conditions
-    if temporal_repaired:
-        drs["temporal_records"] = repaired_temporals
     return {**payload, "drs": drs}
 
 

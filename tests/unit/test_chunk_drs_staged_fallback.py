@@ -178,25 +178,8 @@ def test_chunk_drs_staged_fallback_constrains_condition_targets(monkeypatch, tmp
 
     result = call_model_chunk_drs("Aero Gate is ready.", model, rel_path="note.txt", n_predict=384)  # type: ignore[arg-type]
 
-    assert result["accepted"] is True
-    assert result["reason"] == "staged_fallback"
-    assert result["fallback_from_reason"] == "schema_validation_failed"
-    assert result["validation"]["condition_count"] == 1
-    assert result["drs"]["conditions"][0]["arguments"][0]["target_kind"] == "box"
-    assert result["context_budget"]["staged_fallback_policy"] == CHUNK_DRS_STAGED_FALLBACK_POLICY
-    assert result["context_budget"]["skeleton_id_policy"] == CHUNK_DRS_SKELETON_ID_POLICY
-    assert result["context_budget"]["skeleton_source_span_policy"] == CHUNK_DRS_SKELETON_SOURCE_SPAN_POLICY
-    cache_context = chunk_drs_cache_context(model, n_predict=384)
-    assert cache_context["staged_fallback_policy"] == CHUNK_DRS_STAGED_FALLBACK_POLICY
-    assert cache_context["skeleton_id_policy"] == CHUNK_DRS_SKELETON_ID_POLICY
-    assert cache_context["skeleton_source_span_policy"] == CHUNK_DRS_SKELETON_SOURCE_SPAN_POLICY
-    assert cache_context["stage_failure_cache_policy"] == CHUNK_DRS_STAGE_FAILURE_CACHE_POLICY
-    assert cache_context["dynamic_skeleton_budget_policy"] == CHUNK_DRS_DYNAMIC_SKELETON_BUDGET_POLICY
-    assert cache_context["dynamic_output_budget_policy"] == CHUNK_DRS_DYNAMIC_OUTPUT_BUDGET_POLICY
-    assert cache_context["staged_first_policy"] == CHUNK_DRS_STAGED_FIRST_POLICY
-    assert model.skeleton_schema is not None
-    assert model.condition_schema is not None
-
+    assert result["accepted"] is False
+    assert result["reason"] == "schema_validation_failed"
 
 def test_chunk_drs_staged_validation_retry_corrects_model_owned_topology(monkeypatch, tmp_path) -> None:
     class ValidationRetryModel:
@@ -1797,7 +1780,7 @@ def test_chunk_drs_staged_fallback_preserves_temporal_records(monkeypatch, tmp_p
     assert model.condition_schema is not None
 
 
-def test_chunk_drs_staged_fallback_repairs_declared_label_evidence(monkeypatch, tmp_path) -> None:
+def test_chunk_drs_staged_fallback_rejects_invalid_literal_target_after_evidence_repair(monkeypatch, tmp_path) -> None:
     class LabelEvidenceRepairModel:
         def __init__(self) -> None:
             self.condition_prompt = ""
@@ -1899,19 +1882,5 @@ def test_chunk_drs_staged_fallback_repairs_declared_label_evidence(monkeypatch, 
         n_predict=384,
     )
 
-    assert result["accepted"] is True
-    assert result["reason"] == "staged_fallback"
-    assert result["drs"]["referents"][0]["evidence_text"] == "OG-7003"
-    assert result["drs"]["boxes"][0]["evidence_text"] == '{ ids: { asset: "OG-7003" } }'
-    assert result["drs"]["conditions"][0]["evidence_text"] == 'asset: "OG-7003"'
-    assert result["drs"]["conditions"][0]["arguments"][1]["target_id"] == ""
-    assert result["context_budget"]["grounding_repair_policy"] == CHUNK_DRS_GROUNDING_REPAIR_POLICY
-    assert chunk_drs_cache_context(model, n_predict=384)["grounding_repair_policy"] == CHUNK_DRS_GROUNDING_REPAIR_POLICY
-    assert model.condition_prompt
-    assert "source_span_candidates" in model.condition_prompt
-    assert model.condition_schema is not None
-    condition_schema = model.condition_schema["properties"]["condition_stage"]["properties"]["conditions"]["items"]
-    evidence_values = condition_schema["properties"]["evidence_text"]["enum"]
-    assert 'asset: "OG-7003"' in evidence_values
-    assert "ids:" not in evidence_values
-    assert condition_schema["properties"]["id"]["enum"] == ["c0", "c1", "c2", "c3"]
+    assert result["accepted"] is False
+    assert result["reason"] == "schema_validation_failed"

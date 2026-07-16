@@ -632,3 +632,37 @@ def test_answer_payload_repair_does_not_infer_semantics() -> None:
     assert [marker for marker in forbidden if marker in repair_text] == []
     assert "proposed in text" not in evidence_text
     assert "grounding validation decides acceptance" in evidence_text
+
+
+def test_chunk_drs_repair_is_provenance_only() -> None:
+    source = (REPO_ROOT / "src" / "knowmoredirt" / "model_planner.py").read_text(encoding="utf-8")
+    tree = ast.parse(source)
+    method = next(
+        node for node in tree.body
+        if isinstance(node, ast.FunctionDef) and node.name == "_repair_chunk_drs_payload"
+    )
+    text = ast.get_source_segment(source, method) or ""
+    forbidden = [
+        'argument["target_kind"] =',
+        'argument["target_id"] =',
+        "repaired_referents.append(",
+        "referenced_temporal_ids",
+        "repaired_identities",
+        'drs["identity_hypotheses"] =',
+        'drs["temporal_records"] =',
+    ]
+    assert [marker for marker in forbidden if marker in text] == []
+    assert "never alter model-declared DRS semantics" in text
+
+
+def test_chunk_drs_validator_rejects_semantic_inconsistency_instead_of_repairing() -> None:
+    source = (REPO_ROOT / "src" / "knowmoredirt" / "model_planner.py").read_text(encoding="utf-8")
+    tree = ast.parse(source)
+    method = next(
+        node for node in tree.body
+        if isinstance(node, ast.FunctionDef) and node.name == "_validate_chunk_drs_payload"
+    )
+    text = ast.get_source_segment(source, method) or ""
+    assert "self_identity:" in text
+    assert "identity_evidence_missing_side:" in text
+    assert "bad_collection_item:" in text
