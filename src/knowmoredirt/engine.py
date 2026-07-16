@@ -4878,19 +4878,21 @@ class KnowMoreDiRTEngine:
             canonical = self._canonicalize_identity_with_local_model(question, canonical, answer.evidence) or canonical
         if not canonical:
             return None
-        if expected.answer_type == "date_time" and not self._date_time_shape_compatible(frame, canonical):
-            return None
-        pre_cleanup_canonical = canonical
-        canonical = self._cleanup_canonical_answer(canonical, expected, frame)
-        if expected.answer_type in {"person", "actor", "organization"}:
-            canonical = self._expand_single_name_from_evidence(canonical, answer.evidence)
-        canonical = self._central_answer_guard(question, canonical, expected, frame, answer.evidence)
-        canonical = self._restore_sentence_terminal_punctuation(
-            canonical,
-            pre_cleanup_canonical,
-            expected,
-            answer.evidence,
-        )
+        production_model_query = frame is not None and frame.source == "model_query_drs"
+        if not production_model_query:
+            if expected.answer_type == "date_time" and not self._date_time_shape_compatible(frame, canonical):
+                return None
+            pre_cleanup_canonical = canonical
+            canonical = self._cleanup_canonical_answer(canonical, expected, frame)
+            if expected.answer_type in {"person", "actor", "organization"}:
+                canonical = self._expand_single_name_from_evidence(canonical, answer.evidence)
+            canonical = self._central_answer_guard(question, canonical, expected, frame, answer.evidence)
+            canonical = self._restore_sentence_terminal_punctuation(
+                canonical,
+                pre_cleanup_canonical,
+                expected,
+                answer.evidence,
+            )
         if not canonical:
             return None
         if normalize(canonical) == "unknown":

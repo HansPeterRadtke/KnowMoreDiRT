@@ -458,3 +458,19 @@ def test_relation_only_target_fallback_is_legacy_only() -> None:
     )
     text = ast.get_source_segment(source, method) or ""
     assert 'legacy_relation_fallback = frame.source != "model_query_drs" and not selected_docs' in text
+
+
+def test_model_query_drs_finalization_skips_deterministic_semantic_rewrites() -> None:
+    source = (REPO_ROOT / "src" / "knowmoredirt" / "engine.py").read_text(encoding="utf-8")
+    tree = ast.parse(source)
+    engine_class = next(
+        node for node in tree.body
+        if isinstance(node, ast.ClassDef) and node.name == "KnowMoreDiRTEngine"
+    )
+    method = next(
+        node for node in engine_class.body
+        if isinstance(node, ast.FunctionDef) and node.name == "_finalize_answer"
+    )
+    text = ast.get_source_segment(source, method) or ""
+    assert 'production_model_query = frame is not None and frame.source == "model_query_drs"' in text
+    assert "if not production_model_query:" in text
