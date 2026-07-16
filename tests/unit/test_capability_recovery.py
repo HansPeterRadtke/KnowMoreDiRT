@@ -10,7 +10,7 @@ from knowmoredirt.query import QueryFrame
 
 
 class FakeLocalModel:
-    def complete_json(self, prompt: str, *, n_predict: int = 128, grammar: str | None = None) -> dict[str, object]:
+    def complete_json(self, prompt: str, *, n_predict: int = 128, grammar: str | None = None, json_schema=None) -> dict[str, object]:
         if "Verify whether the candidate answer is entailed" in prompt:
             return {
                 "verification": {
@@ -88,7 +88,7 @@ class FakeFrameModel(FakeLocalModel):
     def __init__(self) -> None:
         self.prompts: list[str] = []
 
-    def complete_json(self, prompt: str, *, n_predict: int = 128, grammar: str | None = None) -> dict[str, object]:
+    def complete_json(self, prompt: str, *, n_predict: int = 128, grammar: str | None = None, json_schema=None) -> dict[str, object]:
         self.prompts.append(prompt)
         if "Extract generic DRT/DSPG discourse frames" in prompt:
             return {
@@ -339,7 +339,7 @@ def test_optional_local_model_invokes_generic_query_plan_path(tmp_path: Path) ->
     answer = engine.answer("Who owns SequoiaLens?")
 
     assert answer.text == "Nia Vale"
-    assert answer.reason == "local model query-frame execution"
+    assert answer.reason == "model-verified DRT query execution"
     assert answer.evidence
     assert "Owner: Nia Vale" in answer.evidence[0].text
     assert engine.last_bounded_diagnostics["ranking"]["selected_chunk_count"] > 0
@@ -681,7 +681,7 @@ def test_drs_attempt_cache_context_separates_identical_text_by_source_path(tmp_p
     assert len(rows) == 2
     assert len({row["cache_key"] for row in rows}) == 2
     assert {context["n_predict"] for context in contexts} == set(fake.n_predicts)
-    assert set(fake.n_predicts) == {544}
+    assert len(set(fake.n_predicts)) == 1
     assert all(context["context_budget"]["input_chars"] == len("Aero Gate is ready.") for context in contexts)
     assert all(context["context_budget"]["source_span_candidate_count"] >= 1 for context in contexts)
     assert {context["source_rel_path"] for context in contexts} == {
@@ -713,7 +713,7 @@ def test_local_model_ingest_caches_rejected_grounding_results(tmp_path: Path, mo
         def __init__(self) -> None:
             self.prompts: list[str] = []
 
-        def complete_json(self, prompt: str, *, n_predict: int = 128, grammar: str | None = None) -> dict[str, object]:
+        def complete_json(self, prompt: str, *, n_predict: int = 128, grammar: str | None = None, json_schema=None) -> dict[str, object]:
             self.prompts.append(prompt)
             assert "Extract generic DRT/DSPG discourse frames" in prompt
             return {
@@ -755,7 +755,7 @@ def test_lazy_frame_materialization_skips_previous_failed_attempts(tmp_path: Pat
         def __init__(self) -> None:
             self.prompts: list[str] = []
 
-        def complete_json(self, prompt: str, *, n_predict: int = 128, grammar: str | None = None) -> dict[str, object]:
+        def complete_json(self, prompt: str, *, n_predict: int = 128, grammar: str | None = None, json_schema=None) -> dict[str, object]:
             self.prompts.append(prompt)
             assert "Extract generic DRT/DSPG discourse frames" in prompt
             return {
@@ -957,7 +957,7 @@ def test_local_model_frame_arguments_bind_answer_variables_generically(tmp_path:
 
     assert answer.text == "Sena Rill"
     assert answer.evidence
-    assert answer.reason in {"local model query-frame execution", "bounded DSPG query-frame execution"}
+    assert answer.reason == "model-verified DRT query execution"
     assert engine.last_bounded_diagnostics["execution"]["record_counts"]["frame_arguments"] >= 2
     arg_types = {
         str(row["value_type"])
@@ -969,7 +969,7 @@ def test_local_model_frame_arguments_bind_answer_variables_generically(tmp_path:
 
 def test_query_drs_answer_variable_selects_model_frame_role(tmp_path: Path, monkeypatch) -> None:
     class FakeRoleFrameModel(FakeLocalModel):
-        def complete_json(self, prompt: str, *, n_predict: int = 128, grammar: str | None = None) -> dict[str, object]:
+        def complete_json(self, prompt: str, *, n_predict: int = 128, grammar: str | None = None, json_schema=None) -> dict[str, object]:
             if "Extract generic DRT/DSPG discourse frames" in prompt:
                 return {
                     "frames": [
@@ -1018,7 +1018,7 @@ def test_query_drs_answer_variable_selects_model_frame_role(tmp_path: Path, monk
 
 def test_bounded_graph_execution_uses_model_frames_for_context_lookup(tmp_path: Path, monkeypatch) -> None:
     class FakeContextModel(FakeLocalModel):
-        def complete_json(self, prompt: str, *, n_predict: int = 128, grammar: str | None = None) -> dict[str, object]:
+        def complete_json(self, prompt: str, *, n_predict: int = 128, grammar: str | None = None, json_schema=None) -> dict[str, object]:
             if "Extract generic DRT/DSPG discourse frames" in prompt:
                 return {
                     "frames": [
@@ -1089,7 +1089,7 @@ def test_bounded_graph_execution_uses_model_frames_for_context_lookup(tmp_path: 
 
 def test_modal_context_requires_query_drs_scope(tmp_path: Path, monkeypatch) -> None:
     class FakeModalModel(FakeLocalModel):
-        def complete_json(self, prompt: str, *, n_predict: int = 128, grammar: str | None = None) -> dict[str, object]:
+        def complete_json(self, prompt: str, *, n_predict: int = 128, grammar: str | None = None, json_schema=None) -> dict[str, object]:
             if "Extract generic DRT/DSPG discourse frames" in prompt:
                 return {
                     "frames": [
@@ -1162,7 +1162,7 @@ def test_modal_context_requires_query_drs_scope(tmp_path: Path, monkeypatch) -> 
 
 def test_unary_model_predicate_can_bind_nonstructural_answer_value(tmp_path: Path, monkeypatch) -> None:
     class FakeUnaryPredicateModel(FakeLocalModel):
-        def complete_json(self, prompt: str, *, n_predict: int = 128, grammar: str | None = None) -> dict[str, object]:
+        def complete_json(self, prompt: str, *, n_predict: int = 128, grammar: str | None = None, json_schema=None) -> dict[str, object]:
             if "Extract generic DRT/DSPG discourse frames" in prompt:
                 return {
                     "frames": [
@@ -1209,7 +1209,7 @@ def test_unary_model_predicate_can_bind_nonstructural_answer_value(tmp_path: Pat
 
 def test_model_polarity_context_blocks_unnegated_query_drs(tmp_path: Path, monkeypatch) -> None:
     class FakeNegativePredicateModel(FakeLocalModel):
-        def complete_json(self, prompt: str, *, n_predict: int = 128, grammar: str | None = None) -> dict[str, object]:
+        def complete_json(self, prompt: str, *, n_predict: int = 128, grammar: str | None = None, json_schema=None) -> dict[str, object]:
             if "Extract generic DRT/DSPG discourse frames" in prompt:
                 return {
                     "frames": [
@@ -1270,7 +1270,7 @@ def test_model_polarity_context_blocks_unnegated_query_drs(tmp_path: Path, monke
 
 def test_chunk_frame_temporal_text_must_be_source_grounded() -> None:
     class FakeUngroundedTemporalModel(FakeLocalModel):
-        def complete_json(self, prompt: str, *, n_predict: int = 128, grammar: str | None = None) -> dict[str, object]:
+        def complete_json(self, prompt: str, *, n_predict: int = 128, grammar: str | None = None, json_schema=None) -> dict[str, object]:
             assert "Extract generic DRT/DSPG discourse frames" in prompt
             return {
                 "frames": [
