@@ -1916,8 +1916,8 @@ class KnowMoreDiRTEngine:
                 TOK_APPROVER,
                 TOK_OWNER,
                 TOK_OWNERS,
-                "employee id",
-                "employee ids",
+                "person id",
+                "person ids",
                 "user id",
                 "user ids",
             ]
@@ -3399,22 +3399,6 @@ class KnowMoreDiRTEngine:
         ]
         return "\n".join(parts)[:max_chars]
 
-    def _source_text_contains_benchmark_answer_metadata(self, text: str) -> bool:
-        low = normalize(text)
-        return any(
-            marker in low
-            for marker in [
-                "ground truth",
-                "ground_truth",
-                "answerable questions",
-                "answerable_questions",
-                "unanswerable questions",
-                "unanswerable_questions",
-                "gold answer",
-                "gold_answers",
-            ]
-        )
-
     def _focused_evidence_windows(
         self,
         question: str,
@@ -3462,8 +3446,6 @@ class KnowMoreDiRTEngine:
                 start = max(0, pos - half)
                 end = min(len(document.text), pos + half)
                 window = document.text[start:end]
-                if self._source_text_contains_benchmark_answer_metadata(window):
-                    continue
                 window_norm = normalize(" ".join([document.rel_path, window]))
                 token_hits = sum(1 for token in query_tokens if token in window_norm)
                 anchor_hits = sum(1 for token in anchor_tokens if token in window_norm or any(variant in window_norm for variant in term_variants(token)))
@@ -3499,8 +3481,6 @@ class KnowMoreDiRTEngine:
             if not item.rel_path or not item.text:
                 continue
             text = self._evidence_window_text(item)
-            if self._source_text_contains_benchmark_answer_metadata(text):
-                continue
             payload.append(
                 {
                     "source": item.rel_path,
@@ -3710,9 +3690,6 @@ class KnowMoreDiRTEngine:
             add("extract_exact_source_field", self._answer_with_exact_source_field)
         if "review" in relation_material or "approv" in relation_material:
             add("extract_review_or_approval", self._answer_with_review_or_approval_source)
-        if "author" in relation_material or "owner" in relation_material or "actor" in relation_material:
-            add("extract_actor_role_ids", self._answer_with_actor_role_ids_source)
-            add("extract_reference_role_chain", self._answer_with_reference_role_chain_source)
         if "believe" in relation_material or "belief" in relation_material:
             add("extract_discussion_belief", self._answer_with_discussion_belief_source)
             add("extract_discourse_clause", self._answer_with_discourse_clause_source)
@@ -4647,10 +4624,10 @@ class KnowMoreDiRTEngine:
 
     def _frame_scope_anchors(self, frame: QueryFrame) -> list[str]:
         answer_slots = {normalize(value) for value in frame.answer_variables if normalize(value)}
-        answer_role_tokens = {
+        slot_descriptor_tokens = {
             "actor", "actors", "architect", "architects", "author", "authors", "reviewer", "reviewers",
-            "approver", "approvers", "owner", "owners", "employee", "employees", "id", "ids", "identifier",
-            "identifiers", "person", "people", "user", "users", "customer", "customers", "manager", "managers",
+            "approver", "approvers", "owner", "owners", "member", "members", "id", "ids", "identifier",
+            "identifiers", "person", "people", "user", "users", "client", "clients", "manager", "managers",
             "technical", "sales", "support", "team", "teams", "lead", "leads", "stakeholder", "stakeholders",
         }
         anchors: list[str] = []
@@ -4659,7 +4636,7 @@ class KnowMoreDiRTEngine:
             if not norm or norm in answer_slots:
                 continue
             tokens = [token for token in content_tokens(anchor) if len(token) > 2]
-            if tokens and all(token in answer_role_tokens for token in tokens):
+            if tokens and all(token in slot_descriptor_tokens for token in tokens):
                 continue
             anchors.append(anchor)
         return list(dict.fromkeys(anchors))
@@ -4685,7 +4662,7 @@ class KnowMoreDiRTEngine:
         generic_tokens = {
             "product", "document", "report", "file", "spec", "specification", "specifications",
             "requirements", "requirement", "vision", "market", "research", "technical",
-            "release", "previous", "current", "new", "feature", "features", "issue", "issues",
+            "release", "previous", "current", "new", "feature", "features", "problem", "problems",
         }
         required_tokens = [token for token in tokens if token not in generic_tokens] or sorted(tokens)
         material_tokens = set(content_tokens(material_norm))

@@ -1982,9 +1982,9 @@ def build_query_drs_prompt(question: str) -> str:
         "Every semantic decision about answer variables, target referents, requested conditions, constraints, "
         "scope, modality, temporal scope, polarity, and aggregation must be represented in the query_drs JSON. "
         "Use only text visible in the question and no outside knowledge. Every visible named or scoped entity, "
-        "project, product, artifact, document title, person, organization, identifier, URL, or source phrase that is "
+        "project, product, work, document title, person, organization, identifier, URL, or source phrase that is "
         "not itself the answer slot must appear in target_referents; do not keep only one anchor when the question "
-        "contains both an artifact/title and a product/project/entity scope. For compound requests joined by and/or, "
+        "contains both an work/title and a product/project/entity scope. For compound requests joined by and/or, "
         "create separate requested_conditions for every requested role or relation; do not collapse authors and "
         "reviewers, owners and approvers, creators and editors, or similar coordinated roles into only the first "
         "relation. Use subordinate box_requirements for "
@@ -2025,7 +2025,7 @@ def build_compact_query_drs_prompt(question: str) -> str:
         "are verbs or relation words requested by the question. constraints are other visible qualifiers. "
         "temporal_scope is '', 'latest', or 'earliest'. aggregation is '', 'count', 'list', or 'set'. "
         "Use only words visible in the question and no outside knowledge. Preserve every visible non-answer target "
-        "anchor, including product/project/entity scope and artifact/document titles. Split compound role requests "
+        "anchor, including product/project/entity scope and work/document titles. Split compound role requests "
         "joined by and/or into separate predicates; do not drop reviewers, approvers, owners, authors, creators, or "
         "other coordinated requested roles. "
         + json.dumps({"question": question}, ensure_ascii=False)
@@ -2453,12 +2453,12 @@ def _repair_query_drs_payload(payload: Any, question: str) -> Any:
     generic_anchor_tokens_for_repair = {
         "product", "document", "report", "file", "spec", "specification", "specifications",
         "requirements", "requirement", "vision", "market", "research", "technical",
-        "release", "previous", "current", "new", "feature", "features", "issue", "issues",
+        "release", "previous", "current", "new", "feature", "features", "problem", "problems",
     }
-    answer_role_tokens_for_repair = {
+    slot_descriptor_tokens_for_repair = {
         "actor", "actors", "architect", "architects", "author", "authors", "reviewer", "reviewers",
-        "approver", "approvers", "owner", "owners", "employee", "employees", "id", "ids", "identifier",
-        "identifiers", "person", "people", "user", "users", "customer", "customers", "manager", "managers",
+        "approver", "approvers", "owner", "owners", "member", "members", "id", "ids", "identifier",
+        "identifiers", "person", "people", "user", "users", "client", "clients", "manager", "managers",
         "technical", "sales", "support", "team", "teams", "lead", "leads", "stakeholder", "stakeholders",
     }
     answer_material = normalize(
@@ -2498,7 +2498,7 @@ def _repair_query_drs_payload(payload: Any, question: str) -> Any:
         if not anchor_norm or anchor_norm in answer_material:
             continue
         anchor_tokens = [token for token in content_tokens(anchor) if len(token) > 2]
-        if anchor_tokens and all(token in answer_role_tokens_for_repair for token in anchor_tokens):
+        if anchor_tokens and all(token in slot_descriptor_tokens_for_repair for token in anchor_tokens):
             continue
         required_anchor_tokens = [token for token in anchor_tokens if token not in generic_anchor_tokens_for_repair] or anchor_tokens
         if not required_anchor_tokens:
@@ -2794,7 +2794,7 @@ def _validate_query_drs_payload(payload: Any, question: str) -> dict[str, Any]:
     generic_anchor_tokens = {
         "product", "document", "report", "file", "spec", "specification", "specifications",
         "requirements", "requirement", "vision", "market", "research", "technical",
-        "release", "previous", "current", "new", "feature", "features", "issue", "issues",
+        "release", "previous", "current", "new", "feature", "features", "problem", "problems",
     }
     target_material = normalize(
         " ".join(
@@ -2963,7 +2963,7 @@ def _call_model_query_drs_full_once(
             },
             "retry_instruction": (
                 "Return a fresh complete query_drs that fixes every validation error. Preserve every visible non-answer "
-                "target anchor from the question, including product/project/entity scope and document/artifact title. "
+                "target anchor from the question, including product/project/entity scope and document/work title. "
                 "Represent every requested role/relation from the question, including coordinated roles such as authors "
                 "and reviewers, as requested_conditions. Do not answer the question."
             ),
