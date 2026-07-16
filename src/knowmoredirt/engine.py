@@ -5146,7 +5146,7 @@ class KnowMoreDiRTEngine:
             text_norm = normalize(sentence.text)
             score += sum(2.0 for term in target_terms if term and term in text_norm)
             score += sum(4.0 for term in relation_terms if term and term in text_norm)
-            if sentence.rel_path in self._low_semantic_noise_paths:
+            if self._test_no_model_runtime and sentence.rel_path in self._low_semantic_noise_paths:
                 score *= 0.15
             adjusted.append((sentence, score))
         scored = sorted(adjusted, key=lambda item: (-item[1], item[0].rel_path, item[0].order))

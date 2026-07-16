@@ -393,3 +393,18 @@ def test_model_query_drs_does_not_delete_formal_argument_values_by_surface_overl
     text = ast.get_source_segment(source, method) or ""
     assert 'if frame.source == "model_query_drs":' in text
     assert "return candidates" in text
+
+
+def test_production_retrieval_does_not_downrank_text_by_deterministic_quality_class() -> None:
+    source = (REPO_ROOT / "src" / "knowmoredirt" / "engine.py").read_text(encoding="utf-8")
+    tree = ast.parse(source)
+    engine_class = next(
+        node for node in tree.body
+        if isinstance(node, ast.ClassDef) and node.name == "KnowMoreDiRTEngine"
+    )
+    method = next(
+        node for node in engine_class.body
+        if isinstance(node, ast.FunctionDef) and node.name == "_search"
+    )
+    text = ast.get_source_segment(source, method) or ""
+    assert "if self._test_no_model_runtime and sentence.rel_path in self._low_semantic_noise_paths" in text
