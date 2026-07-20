@@ -6,7 +6,7 @@ import knowmoredirt.engine as engine_module
 from knowmoredirt.answer_types import ExpectedAnswer, canonicalize_answer
 from knowmoredirt.engine import KnowMoreDiRTEngine
 from knowmoredirt.model_planner import call_model_evidence_answer
-from knowmoredirt.models import Answer
+from knowmoredirt.models import Answer, Evidence
 from knowmoredirt.query import QueryFrame
 
 
@@ -1401,3 +1401,30 @@ def test_missing_organization_relation_returns_unknown(tmp_path: Path, monkeypat
 
     assert engine._answer_with_labeled_attribute_source("Which organization owns Brass Wheel?").text == "unknown"
     assert engine._answer_with_labeled_attribute_source("Which organization owns Garnet Bridge?").text == "Morrow Slate Guild"
+
+
+def test_boolean_target_grounding_accepts_cross_sentence_bounded_evidence(tmp_path: Path) -> None:
+    engine = KnowMoreDiRTEngine(tmp_path)
+    frame = QueryFrame(
+        question_text="Was FlowQuill proven to have caused invoice drift?",
+        answer_type="boolean",
+        answer_variables=("causation_status",),
+        target_anchors=("FlowQuill", "invoice drift"),
+        requested_relation="caused",
+        relation_terms=("proven", "caused", "invoice drift"),
+        constraints=("proven fact",),
+        source="model_query_drs",
+    )
+    evidence = Evidence(
+        rel_path="records.txt",
+        text=(
+            "The support allegation says FlowQuill caused invoice drift. "
+            "The final incident report says the allegation was disproven."
+        ),
+    )
+
+    assert engine._boolean_answer_has_target_grounding(
+        frame,
+        "The final incident report says the allegation was disproven.",
+        [evidence],
+    )

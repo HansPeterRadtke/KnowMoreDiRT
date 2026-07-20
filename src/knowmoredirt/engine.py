@@ -4330,13 +4330,13 @@ class KnowMoreDiRTEngine:
             trace.evidence_rejected_count += 1
             return None
         else:
-            if self._is_boolean_text(proposed) and not self._boolean_answer_has_target_grounding(frame, evidence_span):
-                trace.evidence_rejected_count += 1
-                return Answer("unknown", reason="local model boolean answer lacked target grounding")
             matching = self._matching_evidence(evidence, evidence_span, proposed)
             if not matching:
                 trace.evidence_rejected_count += 1
                 return None
+            if self._is_boolean_text(proposed) and not self._boolean_answer_has_target_grounding(frame, evidence_span, matching):
+                trace.evidence_rejected_count += 1
+                return Answer("unknown", reason="local model boolean answer lacked target grounding")
         support = list(matching[:3])
         if expected.answer_type in {"person", "actor"} or classify_value(proposed) == "person":
             proposed_norm = normalize(proposed)
@@ -4445,14 +4445,20 @@ class KnowMoreDiRTEngine:
     def _is_boolean_text(self, value: str) -> bool:
         return re.match(r"^(yes|no)(?:$|[;,:.!?]\s+)", normalize(value)) is not None
 
-    def _boolean_answer_has_target_grounding(self, frame: QueryFrame, evidence_span: str) -> bool:
+    def _boolean_answer_has_target_grounding(
+        self,
+        frame: QueryFrame,
+        evidence_span: str,
+        matching_evidence: list[Evidence] | None = None,
+    ) -> bool:
         anchors = [normalize(anchor) for anchor in frame.target_anchors if normalize(anchor)]
         if not anchors:
             return True
-        if "\n" in str(evidence_span or "").strip():
-            return False
-        span_norm = normalize(evidence_span)
-        return all(self._anchor_has_grounded_token(anchor, span_norm) for anchor in anchors)
+        material = [str(evidence_span or "")]
+        for item in matching_evidence or []:
+            material.append(self._evidence_window_text(item))
+        material_norm = normalize("\n".join(material))
+        return all(self._anchor_has_grounded_token(anchor, material_norm) for anchor in anchors)
 
     def _frame_scope_anchors(self, frame: QueryFrame) -> list[str]:
         answer_slots = {normalize(value) for value in frame.answer_variables if normalize(value)}
