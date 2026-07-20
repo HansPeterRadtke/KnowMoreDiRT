@@ -5890,8 +5890,19 @@ def _has_unscoped_temporal_ambiguity(
         for _score, value, _evidence, reason in candidates
         if reason in {"temporal_binding", "temporal_relation_binding"} and normalize(value)
     }
-    if len(temporal_candidate_values) > 1:
+    non_temporal_candidate_values = {
+        canonicalize_answer(expected, value) if expected is not None else normalize(value)
+        for _score, value, _evidence, reason in candidates
+        if reason not in {"temporal_binding", "temporal_relation_binding"}
+    }
+    non_temporal_candidate_values.discard("")
+    if len(temporal_candidate_values) > 1 and len(non_temporal_candidate_values) != 1:
         return True
+
+    # Do not treat unrelated values projected from one dated evidence window as
+    # competing temporal states when every non-temporal binding converges on a
+    # single answer. Genuine time-indexed alternatives still have either no
+    # non-temporal binding or more than one distinct non-temporal value.
 
     # Do not let unrelated dated evidence block a clear structural answer.
     # The guard exists to avoid guessing between competing dated states, not to
@@ -5987,47 +5998,6 @@ def _boolean_context_negates_condition(context_id: str, records: dict[str, Any])
     return "drs:negated" in kinds or "polarity:negative" in kinds
 
 
-def _boolean_inaccessible_scope_can_answer_no(
-    row: dict[str, Any],
-    records: dict[str, Any],
-    frame: QueryFrame,
-) -> bool:
-    if frame.negated or _context_requirements(frame):
-        return False
-    context_id = str(row.get("context_id") or "")
-    if not context_id:
-        return False
-    kinds = _context_chain_kinds(context_id, records)
-    if not kinds:
-        return False
-    return any(kind.startswith(INACCESSIBLE_CONTEXT_PREFIXES) for kind in kinds) or any(
-        kind.startswith("drs:") and kind not in {"drs:asserted", "drs:negated"}
-        for kind in kinds
-    )
-
-
-def _boolean_scope_carrier_can_answer_no(
-    row: dict[str, Any],
-    frame: QueryFrame,
-    row_material: str,
-    predicate_terms: list[str],
-) -> bool:
-    if frame.negated or _context_requirements(frame):
-        return False
-    predicate = normalize(str(row.get("predicate") or ""))
-    if predicate not in SCOPE_CARRIER_PREDICATE_SCOPES:
-        return False
-    requested_material = normalize(" ".join([frame.requested_relation, *frame.relation_terms]))
-    if _terms_match_material([predicate], requested_material):
-        return False
-    content_terms = [
-        term
-        for term in predicate_terms
-        if term and term not in BOOLEAN_GENERIC_TERMS and term != predicate
-    ]
-    return bool(content_terms) and _boolean_terms_covered(row_material, content_terms, require_all=False)
-
-
 def _boolean_structural_terms(values: Iterable[str], target_terms: list[str]) -> list[str]:
     target = set(target_terms)
     terms: list[str] = []
@@ -6114,10 +6084,7 @@ def _boolean_condition_candidates(
         if str(row.get("relation_type") or "") != "drs_condition":
             continue
         accessible = _relation_scope_accessible(row, records, frame)
-        inaccessible_scope_no = False
         if not accessible:
-            inaccessible_scope_no = _boolean_inaccessible_scope_can_answer_no(row, records, frame)
-        if not accessible and not inaccessible_scope_no:
             continue
         evidence = _evidence_for_span(str(row.get("source_span_id") or ""), records)
         key = (
@@ -6135,20 +6102,18 @@ def _boolean_condition_candidates(
                 ]
             )
         )
-        scope_carrier_no = False
         evidence_material = normalize(" ".join([row_material, evidence.rel_path, evidence.text]))
         score = _split_match_score(evidence_material, row_material, target_terms, relation_terms)
         if score <= 0:
             continue
+        predicate = normalize(str(row.get("predicate") or ""))
+        if predicate in SCOPE_CARRIER_PREDICATE_SCOPES:
+            requested_material = normalize(" ".join([frame.requested_relation, *frame.relation_terms]))
+            if not _terms_match_material([predicate], requested_material):
+                continue
         condition_true = not _condition_row_is_negative(row, args)
         if _boolean_context_negates_condition(str(row.get("context_id") or ""), records):
             condition_true = not condition_true
-        if inaccessible_scope_no:
-            condition_true = False
-        elif accessible:
-            scope_carrier_no = _boolean_scope_carrier_can_answer_no(row, frame, row_material, predicate_terms)
-            if scope_carrier_no:
-                condition_true = False
         if frame.negated:
             condition_true = not condition_true
         predicate_supported = _boolean_terms_covered(row_material, predicate_terms, require_all=False)
@@ -6156,21 +6121,14 @@ def _boolean_condition_candidates(
         constraints_supported = _boolean_terms_covered(evidence_material, constraint_terms, require_all=True)
         if not target_supported:
             continue
-        if (condition_true or inaccessible_scope_no or scope_carrier_no) and (
-            not predicate_supported or not constraints_supported
-        ):
+        if condition_true and (not predicate_supported or not constraints_supported):
             continue
         prefix = "Yes" if condition_true else "No"
         evidence_text = clean_extracted_value(str(row.get("value") or "") or evidence.text).strip(" .;:")
         if not evidence_text:
             evidence_text = clean_extracted_value(evidence.text).strip(" .;:")
         answer = f"{prefix}; {evidence_text}." if evidence_text else prefix
-        if inaccessible_scope_no:
-            reason = "boolean_inaccessible_scope_binding"
-        elif scope_carrier_no:
-            reason = "boolean_scope_carrier_binding"
-        else:
-            reason = "boolean_drs_condition_binding"
+        reason = "boolean_drs_condition_binding"
         candidates.append((score * float(row.get("confidence") or 0.7), answer, evidence, reason))
     return _select_temporal_boundary_candidates(candidates, frame)
 

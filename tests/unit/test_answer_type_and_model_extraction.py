@@ -5,7 +5,7 @@ from pathlib import Path
 import knowmoredirt.engine as engine_module
 from knowmoredirt.answer_types import ExpectedAnswer, canonicalize_answer
 from knowmoredirt.engine import KnowMoreDiRTEngine
-from knowmoredirt.model_planner import call_model_evidence_answer
+from knowmoredirt.model_planner import ModelQueryTrace, call_model_evidence_answer
 from knowmoredirt.models import Answer, Evidence
 from knowmoredirt.query import QueryFrame
 
@@ -514,11 +514,12 @@ def test_query_drs_bounded_miss_uses_grounded_query_evidence_fallback(tmp_path: 
     engine = KnowMoreDiRTEngine(tmp_path)
     engine._use_local_model = True
     engine._model_client = object()  # type: ignore[assignment]
+    monkeypatch.setattr(engine, "_verify_with_local_model", lambda *_args, **_kwargs: True)
 
     answer = engine.answer("Is Cedar Ledger a migration plan target?")
 
     assert answer.text == "No; Cedar Ledger is unrelated to any migration plan."
-    assert answer.reason == "local model query-DRS evidence verification"
+    assert answer.reason == "model-verified query-DRS evidence answer"
     assert engine.model_query_trace.evidence_call_count == 1
 
 
@@ -1428,3 +1429,160 @@ def test_boolean_target_grounding_accepts_cross_sentence_bounded_evidence(tmp_pa
         "The final incident report says the allegation was disproven.",
         [evidence],
     )
+
+
+def test_model_evidence_answer_is_not_rejected_by_duplicate_question_anchor_gate(tmp_path: Path, monkeypatch) -> None:
+    (tmp_path / "homework.txt").write_text("Math word problem: 7 apples plus 5 apples equals 12 apples.\n", encoding="utf-8")
+    query_frame = {
+        "target_anchors": ["7", "5", "homework note"],
+        "answer_variables": ["result"],
+        "requested_relation": "plus equal",
+        "relation_terms": ["plus", "equal"],
+        "constraints": [],
+        "scope_requirements": [],
+        "modality_requirements": [],
+        "answer_type": "content_phrase",
+        "temporal_scope": "",
+        "negated": False,
+        "aggregation": "",
+        "requires_evidence": True,
+    }
+
+    def fake_query_drs(_question: str, _client: object) -> dict[str, object]:
+        return {
+            "accepted": True,
+            "query_drs": {
+                "schema_version": "query-drs-v3",
+                "question": "What does 7 plus 5 equal in the homework note?",
+                "answer_type": "content_phrase",
+                "answer_variables": [{"id": "qv0", "label": "result", "answer_type": "content_phrase", "evidence_text": "What"}],
+                "target_referents": [
+                    {"id": "qr0", "label": "7", "kind": "unknown", "evidence_text": "7"},
+                    {"id": "qr1", "label": "5", "kind": "unknown", "evidence_text": "5"},
+                    {"id": "qr2", "label": "homework note", "kind": "unknown", "evidence_text": "homework note"},
+                ],
+                "requested_conditions": [{
+                    "id": "qc0", "predicate": "plus equal", "box_id": "", "polarity": "positive", "modality": "asserted", "temporal_id": "",
+                    "evidence_text": "What does 7 plus 5 equal in the homework note?",
+                    "arguments": [
+                        {"role": "answer", "target_kind": "answer_variable", "target_id": "qv0", "value": "", "value_type": "content_phrase", "evidence_text": "What"},
+                        {"role": "argument", "target_kind": "referent", "target_id": "qr0", "value": "", "value_type": "unknown", "evidence_text": "7"},
+                        {"role": "argument", "target_kind": "referent", "target_id": "qr1", "value": "", "value_type": "unknown", "evidence_text": "5"},
+                        {"role": "argument", "target_kind": "referent", "target_id": "qr2", "value": "", "value_type": "unknown", "evidence_text": "homework note"},
+                    ],
+                }],
+                "constraints": [], "box_requirements": [], "temporal_records": [], "temporal_scope": "", "aggregation": "", "requires_evidence": True,
+            },
+        }
+
+    def fake_query_evidence(_question: str, _evidence: list[dict[str, object]], _client: object, *, discourse_records=None) -> dict[str, object]:
+        return {
+            "accepted": True, "query_frame": {**query_frame, "answer_type": "count"}, "sufficient_evidence": True,
+            "answer_type": "count", "answer": "12",
+            "evidence_span": "Math word problem: 7 apples plus 5 apples equals 12 apples.",
+            "reason": "grounded arithmetic result",
+        }
+
+    monkeypatch.setenv("KMD_MODEL_EVIDENCE_TOOLS", "1")
+    monkeypatch.setattr(engine_module, "call_model_query_drs", fake_query_drs)
+    monkeypatch.setattr(engine_module, "call_model_query_evidence_answer", fake_query_evidence)
+    engine = KnowMoreDiRTEngine(tmp_path)
+    engine._use_local_model = True
+    engine._model_client = object()  # type: ignore[assignment]
+
+    answer = engine.answer("What does 7 plus 5 equal in the homework note?")
+    assert answer.text == "12"
+
+
+def test_negative_boolean_verifier_rejects_different_scope_incompatibility(monkeypatch) -> None:
+    engine = object.__new__(KnowMoreDiRTEngine)
+    engine._model_client = object()
+    engine._sentences_by_document = {}
+    engine.model_query_trace = ModelQueryTrace(enabled=True, prompt_hashes=[], response_hashes=[])
+    frame = QueryFrame(
+        question_text="Did the silver train carry the kitchen table away?",
+        answer_type="boolean",
+        answer_variables=("whether carried away",),
+        target_anchors=("silver train", "kitchen table"),
+        requested_relation="carry away",
+        relation_terms=("carry", "away"),
+        constraints=(),
+        source="model_query_drs",
+    )
+    monkeypatch.setattr(engine, "_canonicalize_model_answer_with_local_model", lambda *_args, **_kwargs: None)
+    monkeypatch.setattr(
+        engine_module,
+        "call_model_answer_verification",
+        lambda *_args, **_kwargs: {
+            "accepted": True,
+            "entailed": True,
+            "answer": "no",
+            "evidence_span": "Morning fact: the kitchen table remained in the dining room.",
+            "proof_kind": "same_scope_incompatibility",
+            "accessibility": "asserted",
+            "temporal_alignment": "different_scope",
+            "explicit_negation": False,
+            "incompatible_condition_span": "Morning fact: the kitchen table remained in the dining room.",
+        },
+    )
+    answer = Answer(
+        "no",
+        0.9,
+        [Evidence("diary.dream", "Morning fact: the kitchen table remained in the dining room.")],
+        "model query evidence",
+        "boolean",
+    )
+    assert engine._verify_with_local_model(frame.question_text, frame, answer, ExpectedAnswer("boolean")) is False
+
+
+def test_negative_boolean_verifier_accepts_grounded_explicit_negation(monkeypatch) -> None:
+    engine = object.__new__(KnowMoreDiRTEngine)
+    engine._model_client = object()
+    engine._sentences_by_document = {}
+    engine.model_query_trace = ModelQueryTrace(enabled=True, prompt_hashes=[], response_hashes=[])
+    frame = QueryFrame(
+        question_text="Did the tank wall crack?",
+        answer_type="boolean",
+        answer_variables=("whether cracked",),
+        target_anchors=("tank wall",),
+        requested_relation="crack",
+        relation_terms=("crack",),
+        constraints=(),
+        source="model_query_drs",
+    )
+    monkeypatch.setattr(engine, "_canonicalize_model_answer_with_local_model", lambda *_args, **_kwargs: None)
+    monkeypatch.setattr(
+        engine_module,
+        "call_model_answer_verification",
+        lambda *_args, **_kwargs: {
+            "accepted": True,
+            "entailed": True,
+            "answer": "no",
+            "evidence_span": "Later inspection found no crack in the tank wall.",
+            "proof_kind": "explicit_negation",
+            "accessibility": "asserted",
+            "temporal_alignment": "unspecified",
+            "explicit_negation": True,
+            "incompatible_condition_span": "",
+        },
+    )
+    answer = Answer(
+        "no",
+        0.9,
+        [Evidence("inspection.txt", "Later inspection found no crack in the tank wall.")],
+        "model query evidence",
+        "boolean",
+    )
+    assert engine._verify_with_local_model(frame.question_text, frame, answer, ExpectedAnswer("boolean")) is True
+
+
+def test_negative_boolean_verifier_rejects_even_model_claimed_same_scope_incompatibility(monkeypatch) -> None:
+    engine = object.__new__(KnowMoreDiRTEngine)
+    engine._model_client = object()
+    engine._sentences_by_document = {}
+    engine.model_query_trace = ModelQueryTrace(enabled=True, prompt_hashes=[], response_hashes=[])
+    frame = QueryFrame(question_text="Did X happen?", answer_type="boolean", answer_variables=("whether",), target_anchors=("X",), requested_relation="happen", relation_terms=("happen",), constraints=(), source="model_query_drs")
+    monkeypatch.setattr(engine, "_canonicalize_model_answer_with_local_model", lambda *_args, **_kwargs: None)
+    monkeypatch.setattr(engine_module, "call_model_answer_verification", lambda *_args, **_kwargs: {"accepted": True, "entailed": True, "answer": "no", "evidence_span": "X remains present.", "proof_kind": "same_scope_incompatibility", "accessibility": "asserted", "temporal_alignment": "same_scope", "explicit_negation": False, "incompatible_condition_span": "X remains present."})
+    answer = Answer("no", 0.9, [Evidence("x.txt", "X remains present.")], "model", "boolean")
+    assert engine._verify_with_local_model(frame.question_text, frame, answer, ExpectedAnswer("boolean")) is False

@@ -90,4 +90,3 @@ def test_qa_evidence_points_only_to_raw_corpus_text() -> None:
             source_path = FIXTURE_ROOT / rel_path
             assert source_path.is_file(), f"missing evidence file {rel_path}"
             assert evidence["snippet"] in source_path.read_text(encoding="utf-8")
-

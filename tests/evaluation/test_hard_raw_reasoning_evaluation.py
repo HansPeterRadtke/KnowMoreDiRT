@@ -41,8 +41,16 @@ def test_hard_raw_reasoning_evaluation_reports_no_model_regression_floor() -> No
     assert result.total == 134
     # The pytest-only no-model path intentionally exercises deterministic infrastructure only.
     # Semantic role disambiguation belongs to the required model path, so do not hard-code the
-    # three remaining actor-role decisions into Python merely to make this fixture perfect.
-    assert result.correct == 131
+    # remaining actor-role and epistemic decisions into Python merely to make this fixture perfect.
+    assert result.correct == 130
     assert result.by_category["actor_identifier_role_chain"]["correct"] == 2
     assert result.by_category["actor_identifier_role_chain"]["total"] == 5
-    assert len([values for name, values in result.by_category.items() if name != "actor_identifier_role_chain" and values["correct"] == values["total"]]) == len(result.by_category) - 1
+    model_dependent_categories = {"actor_identifier_role_chain", "context_discourse"}
+    assert len(
+        [
+            values
+            for name, values in result.by_category.items()
+            if name not in model_dependent_categories and values["correct"] == values["total"]
+        ]
+    ) == len(result.by_category) - len(model_dependent_categories)
+    assert result.by_category["context_discourse"]["correct"] == result.by_category["context_discourse"]["total"] - 1

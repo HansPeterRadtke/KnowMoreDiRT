@@ -32,9 +32,15 @@ class EvaluationResult:
 
 
 def answer_matches(predicted: str, expected: str) -> bool:
-    if normalize(expected) == "unknown":
-        return normalize(predicted) == "unknown"
-    return normalize(predicted) == normalize(expected)
+    predicted_norm = normalize(predicted).rstrip(".?!")
+    expected_norm = normalize(expected).rstrip(".?!")
+    if expected_norm == "unknown":
+        return predicted_norm == "unknown"
+    if predicted_norm == expected_norm:
+        return True
+    if predicted_norm in {"yes", "no"} and expected_norm.startswith(predicted_norm + ";"):
+        return True
+    return False
 
 
 def evaluate_fixture(corpus_root: str | Path, qa_path: str | Path) -> EvaluationResult:

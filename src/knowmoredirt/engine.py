@@ -21,6 +21,7 @@ from .answer_types import (
     canonicalize_answer,
     classify_value,
     is_metadata_evidence_text,
+    is_value_compatible,
 )
 from .bounded_dspg import execute_bounded_query
 from .drs import frame_from_model_dict
@@ -3222,6 +3223,24 @@ class KnowMoreDiRTEngine:
             if not entailed or not proposed or (span and not any(span in item.get("text", "") for item in evidence_payload)):
                 trace.verifier_rejected_count += 1
                 continue
+            normalized_proposed = normalize(proposed).split(";", 1)[0].strip()
+            if answer.answer_type == "boolean" and normalized_proposed in {"no", "false"}:
+                proof_kind = str(result.get("proof_kind") or "unknown")
+                accessibility = str(result.get("accessibility") or "unknown")
+                temporal_alignment = str(result.get("temporal_alignment") or "unspecified")
+                explicit_negation = bool(result.get("explicit_negation"))
+                incompatible_span = str(result.get("incompatible_condition_span") or "")
+                incompatible_span_grounded = bool(incompatible_span) and any(
+                    incompatible_span in item.get("text", "") for item in evidence_payload
+                )
+                negative_proof_valid = (
+                    accessibility == "asserted"
+                    and proof_kind == "explicit_negation"
+                    and explicit_negation
+                )
+                if not negative_proof_valid:
+                    trace.verifier_rejected_count += 1
+                    continue
             canonical_expected = expected
             if canonical_expected.answer_type == "unknown":
                 inferred_type = answer.answer_type if answer.answer_type not in {"", "unknown"} else classify_value(proposed)
@@ -3683,10 +3702,22 @@ class KnowMoreDiRTEngine:
         if not self._bounded_conflict_blocks_model_evidence_fallback():
             evidence_answer = self._answer_with_model_query_evidence(question, expected)
             if self._complete_answer(evidence_answer):
-                if not self._bounded_evidence_covers_targets(planned_frame, evidence_answer.evidence):
-                    trace.evidence_rejected_count += 1
-                    return None
-                return evidence_answer
+                normalized_answer = normalize(evidence_answer.text).split(";", 1)[0].strip()
+                requires_negative_verification = (
+                    evidence_answer.answer_type == "boolean" and normalized_answer in {"no", "false"}
+                )
+                if not requires_negative_verification or self._verify_with_local_model(
+                    question,
+                    planned_frame,
+                    evidence_answer,
+                    expected,
+                ):
+                    trace.model_answer_count += 1
+                    if requires_negative_verification:
+                        evidence_answer.reason = "model-verified query-DRS evidence answer"
+                    self._attach_model_answer_provenance(evidence_answer)
+                    return evidence_answer
+                trace.evidence_rejected_count += 1
         return None
 
     def _answer_evidence_has_model_drs(self, answer: Answer) -> bool:
@@ -4317,7 +4348,7 @@ class KnowMoreDiRTEngine:
                 "person", "actor", "organization", "identifier", "url", "file_path", "count",
                 "state", "date_time", "boolean", "content_phrase", "metadata_value", "unknown",
             } else expected.answer_type, allow_metadata_evidence=answer_type == "metadata_value")  # type: ignore[arg-type]
-            if expected.answer_type == "unknown" and direct_expected.answer_type != "unknown":
+            if direct_expected.answer_type != "unknown" and is_value_compatible(direct_expected, proposed):
                 expected = direct_expected
         if not proposed:
             trace.evidence_rejected_count += 1

@@ -137,7 +137,7 @@ CHUNK_DRS_DYNAMIC_CONDITION_BUDGET_POLICY = "compact-nontemporal-condition-stage
 CHUNK_DRS_STAGED_FIRST_POLICY = "field-like-source-spans-before-monolithic-v1"
 CHUNK_DRS_COMPACT_FACT_POLICY_LEGACY = "compact-model-facts-to-root-drs-v1"
 CHUNK_DRS_COMPACT_FACT_POLICY_PREVIOUS = "compact-model-facts-to-root-drs-v2"
-CHUNK_DRS_COMPACT_FACT_POLICY = "compact-model-facts-with-embedded-scope-predicate-v5"
+CHUNK_DRS_COMPACT_FACT_POLICY = "compact-model-facts-with-embedded-scope-predicate-v6"
 CHUNK_DRS_COMPACT_TEMPORAL_SOURCE_POLICY = "compact-source-span-explicit-timestamp-v1"
 CHUNK_DRS_COMPACT_RETRY_POLICY = "retry-compact-invalid-json-larger-budget-v2"
 QUERY_DRS_SCHEMA_VERSION = "query-drs-v3"
@@ -152,6 +152,7 @@ CHUNK_DRS_STRUCTURED_RECORD_ROUTE_POLICY = "structured-records-use-deterministic
 QUERY_OPERATOR_SCHEMA_POLICY = "query-temporal-aggregation-operator-enums-v1"
 QUERY_FRAME_SCHEMA_VERSION = "query-frame-v6"
 ANSWER_SCHEMA_VERSION = "answer-v4"
+VERIFIER_SCHEMA_VERSION = "answer-verification-v2"
 
 QUERY_FRAME_GRAMMAR = r'''
 root ::= "{" ws "\"query_frame\"" ws ":" ws "{" ws "\"target_anchors\"" ws ":" ws string_array ws "," ws "\"answer_variables\"" ws ":" ws string_array ws "," ws "\"requested_relation\"" ws ":" ws string ws "," ws "\"relation_terms\"" ws ":" ws string_array ws "," ws "\"constraints\"" ws ":" ws string_array ws "," ws "\"scope_requirements\"" ws ":" ws string_array ws "," ws "\"modality_requirements\"" ws ":" ws string_array ws "," ws "\"answer_type\"" ws ":" ws answer_type ws "," ws "\"temporal_scope\"" ws ":" ws string ws "," ws "\"negated\"" ws ":" ws bool ws "," ws "\"aggregation\"" ws ":" ws string ws "," ws "\"requires_evidence\"" ws ":" ws bool ws "}" ws "}"
@@ -736,8 +737,11 @@ ws ::= [ \t\n\r]*
 '''
 
 ANSWER_VERIFICATION_GRAMMAR = r'''
-root ::= "{" ws "\"verification\"" ws ":" ws "{" ws "\"entailed\"" ws ":" ws bool ws "," ws "\"answer_type\"" ws ":" ws answer_type ws "," ws "\"answer\"" ws ":" ws string ws "," ws "\"evidence_span\"" ws ":" ws string ws "," ws "\"reason\"" ws ":" ws string ws "}" ws "}"
+root ::= "{" ws "\"verification\"" ws ":" ws "{" ws "\"entailed\"" ws ":" ws bool ws "," ws "\"answer_type\"" ws ":" ws answer_type ws "," ws "\"answer\"" ws ":" ws string ws "," ws "\"evidence_span\"" ws ":" ws string ws "," ws "\"proof_kind\"" ws ":" ws proof_kind ws "," ws "\"accessibility\"" ws ":" ws accessibility ws "," ws "\"temporal_alignment\"" ws ":" ws temporal_alignment ws "," ws "\"explicit_negation\"" ws ":" ws bool ws "," ws "\"incompatible_condition_span\"" ws ":" ws string ws "," ws "\"reason\"" ws ":" ws string ws "}" ws "}"
 answer_type ::= "\"person\"" | "\"actor\"" | "\"organization\"" | "\"identifier\"" | "\"url\"" | "\"file_path\"" | "\"count\"" | "\"state\"" | "\"date_time\"" | "\"boolean\"" | "\"content_phrase\"" | "\"metadata_value\"" | "\"unknown\""
+proof_kind ::= "\"direct_positive\"" | "\"explicit_negation\"" | "\"same_scope_incompatibility\"" | "\"identity_binding\"" | "\"aggregate\"" | "\"unknown\""
+accessibility ::= "\"asserted\"" | "\"subordinate\"" | "\"mixed\"" | "\"unknown\""
+temporal_alignment ::= "\"same_scope\"" | "\"different_scope\"" | "\"unspecified\""
 bool ::= "true" | "false"
 string ::= "\"" chars "\""
 chars ::= ([^"\\] | "\\" ["\\/bfnrt])*
@@ -1677,12 +1681,28 @@ VERIFICATION_JSON_SCHEMA = _schema_obj(
     ["verification"],
     {
         "verification": _schema_obj(
-            ["entailed", "answer_type", "answer", "evidence_span", "reason"],
+            [
+                "entailed",
+                "answer_type",
+                "answer",
+                "evidence_span",
+                "proof_kind",
+                "accessibility",
+                "temporal_alignment",
+                "explicit_negation",
+                "incompatible_condition_span",
+                "reason",
+            ],
             {
                 "entailed": BOOL_SCHEMA,
                 "answer_type": ANSWER_TYPE_SCHEMA,
                 "answer": STRING_SCHEMA,
                 "evidence_span": STRING_SCHEMA,
+                "proof_kind": _schema_enum({"direct_positive", "explicit_negation", "same_scope_incompatibility", "identity_binding", "aggregate", "unknown"}),
+                "accessibility": _schema_enum({"asserted", "subordinate", "mixed", "unknown"}),
+                "temporal_alignment": _schema_enum({"same_scope", "different_scope", "unspecified"}),
+                "explicit_negation": BOOL_SCHEMA,
+                "incompatible_condition_span": STRING_SCHEMA,
                 "reason": STRING_SCHEMA,
             },
         )
@@ -1828,8 +1848,14 @@ def build_query_plan_prompt(question: str) -> str:
         "All semantic decisions about requested relation, answer variables, answer type, scope, polarity, "
         "temporal constraints, modality, and aggregation belong in this JSON. The broad answer_type must be one "
         "of the schema values: person, actor, organization, identifier, url, file_path, count, state, date_time, "
-        "boolean, content_phrase, metadata_value, or unknown. Use unknown only when the query DRS leaves the "
-        "answer variable type underspecified. temporal_scope must be '', 'latest', or 'earliest'; put current, "
+        "boolean, content_phrase, metadata_value, or unknown. Choose answer_type by the form of the answer value, "
+        "not by surface words in the question: an HTTP or HTTPS location is url even when the question says where, "
+        "stored, runbook, manual, map, or location; file_path is only a filesystem-style path. Use list or set "
+        "aggregation only when the question explicitly requests multiple answers, not merely because a discourse "
+        "contains multiple participants. Use unknown only when the query DRS leaves the "
+        "answer variable type underspecified. For DRT accessibility, a proposition inside a dream, belief, "
+        "fiction, hypothesis, quotation, report, or other subordinate non-asserted box is not thereby accessible "
+        "as an asserted real-world fact. temporal_scope must be '', 'latest', or 'earliest'; put current, "
         "latest, final, first, earliest, or ordering requirements there as a normalized DRS operator rather "
         "than leaving them only in requested_relation. aggregation must be '', 'count', 'list', or 'set'. "
         "Put any quantity, list, temporal, modal, polarity, or qualifier "
@@ -1986,9 +2012,15 @@ def build_query_drs_prompt(question: str) -> str:
         "discourse referent or temporal value, and use temporal_id for the condition's temporal record when applicable. "
         "Requested condition arguments must use target_kind='answer_variable' and target_id equal to the declared qv "
         "id for the answer slot. Choose the "
-        "top-level answer_type from the schema values based on the answer variable requested by the question; use "
-        "unknown only when the query DRS leaves the answer variable type underspecified. "
-        "temporal_scope must be '', 'latest', or 'earliest'. aggregation must be '', 'count', 'list', or 'set'. "
+        "top-level answer_type from the schema values based on the answer variable requested by the question. "
+        "Choose it by the form of the answer value, not by surface wording: an HTTP or HTTPS location is url even "
+        "when the question says where, stored, runbook, manual, map, or location; file_path is only a filesystem-style "
+        "path; an arithmetic result is count. Use unknown only when the query DRS leaves the answer variable type "
+        "underspecified. A proposition inside a dreamed, believed, fictional, hypothetical, quoted, reported, "
+        "uncertain, or other subordinate non-asserted box is not accessible as an asserted real-world fact unless "
+        "an independent asserted condition supports it. temporal_scope must be '', 'latest', or 'earliest'. "
+        "aggregation must be '', 'count', 'list', or 'set', and list or set is permitted only when the question "
+        "explicitly requests multiple answers, not merely because the discourse contains multiple participants. "
         "Arguments use target_kind and target_id exactly as declared in the query DRS namespace. "
         "Return this shape with schema_version query-drs-v3: {\"query_drs\":{\"schema_version\":\"query-drs-v3\","
         "\"question\":\"\",\"answer_variables\":[{\"id\":\"qv0\",\"label\":\"\",\"answer_type\":\"unknown\","
@@ -2004,12 +2036,16 @@ def build_compact_query_drs_prompt(question: str) -> str:
         "JSON only. Plan this question as compact DRS query data; do not answer it. "
         "Output exactly one object with mandatory keys a, answer, targets, predicates, constraints, temporal_scope, aggregation. "
         "a is one broad answer type: person, actor, organization, identifier, url, file_path, count, state, "
-        "date_time, boolean, content_phrase, metadata_value, or unknown. answer is the visible question word or "
+        "date_time, boolean, content_phrase, metadata_value, or unknown. Choose it by answer-value form: HTTP or "
+        "HTTPS values are url even for where, stored, runbook, manual, map, or location questions; file_path is only "
+        "a filesystem-style path; arithmetic results are count. answer is the visible question word or "
         "answer slot phrase; preserve visible modifiers that distinguish the slot, instead of only the broad type "
         "word, when a narrower phrase appears. targets are non-answer noun phrases the answer is about, excluding verbs. predicates "
         "are verbs or relation words requested by the question. constraints are other visible qualifiers. "
-        "temporal_scope is '', 'latest', or 'earliest'. aggregation is '', 'count', 'list', or 'set'. "
-        "Use only words visible in the question and no outside knowledge. Preserve every visible non-answer target "
+        "temporal_scope is '', 'latest', or 'earliest'. aggregation is '', 'count', 'list', or 'set'; use list or "
+        "set only when the question explicitly requests multiple answers. Dreamed, believed, fictional, hypothetical, "
+        "quoted, reported, uncertain, and other subordinate content is not asserted real-world fact. Use only words "
+        "visible in the question and no outside knowledge. Preserve every visible non-answer target "
         "anchor, including product/project/entity scope and work/document titles. Split compound role requests "
         "joined by and/or into separate predicates; do not drop reviewers, approvers, owners, authors, creators, or "
         "other coordinated requested roles. "
@@ -3056,6 +3092,15 @@ def build_query_evidence_answer_prompt(
     }
     return (
         "JSON only. Perform a bounded DRT/DSPG question analysis and grounded entailment check. "
+        "Bind the answer only to the discourse referent that bears the requested predicate role; do not return "
+        "other mentioned participants. Respect DRT accessibility: dreamed, believed, fictional, hypothetical, "
+        "quoted, reported, uncertain, or negated content is not an asserted real-world fact unless an accessible "
+        "asserted condition independently confirms it. Apply open-world DRT entailment: lack of an asserted positive "
+        "fact does not entail its negation, and a different compatible asserted state does not entail that the queried "
+        "event never occurred. For a boolean query, answer no only when accessible asserted evidence explicitly "
+        "negates the queried condition or entails an incompatible condition in the same relevant temporal scope; "
+        "otherwise return unknown. For arithmetic explicitly stated in bounded evidence, "
+        "compute the requested result and ground the operands in the evidence. "
         "First convert the question into the required generic query_frame object. Then answer only if the provided "
         "DRS/DSPG discourse records and raw-text evidence entail a complete answer to that frame. Relation words "
         "are data from the question, discourse records, and evidence, not handler names. Reject values that do not "
@@ -3698,8 +3743,11 @@ def build_compact_chunk_drs_prompt(chunk_text: str, *, rel_path: str = "") -> st
         "temporal_text, scope. facts and arguments must always be JSON arrays, even when empty. "
         "Use this shape: {\"facts\":[{\"p\":predicate,\"e\":evidence_span,\"arguments\":[{\"role\":role,\"value\":value}],"
         "\"temporal_text\":optional_time,\"scope\":asserted_or_negated_or_reported_or_possible_or_hypothetical}]}. "
-        "Each e and every argument value must be exact substrings of the chunk. Use short predicate labels from the chunk. Extract all useful "
-        "conditions from the chunk. Include source-stated definitions, meanings, names, aliases, and terminology as ordinary "
+        "Each e and every argument value must be exact substrings of the chunk. Use short predicate labels from the chunk. "
+        "Preserve attribute-value structure: for a field such as 'X state: Y', emit predicate state, a subject argument X, "
+        "and a value argument Y; do not fold the attribute word into the subject and do not use Y as the predicate. "
+        "Apply the same rule to key-value, label-value, and colon-delimited records. Extract all useful conditions from the chunk. "
+        "Include source-stated definitions, meanings, names, aliases, and terminology as ordinary "
         "relations when the chunk asserts them. Return {\"facts\":[]} when the chunk asserts no useful source-grounded DRS "
         "condition. Do not answer questions and do not use outside knowledge. "
         + json.dumps({"source_id": rel_path, "chunk": chunk_text}, ensure_ascii=False)
@@ -6031,13 +6079,28 @@ def build_answer_verification_prompt(
         "JSON only. Verify whether the candidate answer is entailed by the bounded raw-text evidence and "
         "generic discourse frames. Reject candidates that do not satisfy the query frame's answer type, predicate, "
         "argument roles, referents, identity links, context accessibility, polarity, modality, temporal constraints, "
-        "and provenance. Treat answer_type as a broad schema compatibility label for the bound variable, not as a "
+        "and provenance. Apply open-world DRT entailment: lack of an asserted positive fact does not entail a negative "
+        "answer. For a boolean candidate 'no', require accessible asserted evidence that explicitly negates the queried "
+        "condition or entails an incompatible condition in the same relevant temporal scope; dreamed, believed, "
+        "fictional, hypothetical, quoted, reported, uncertain, and other subordinate content is not asserted fact. "
+        "Treat answer_type as a broad schema compatibility label for the bound variable, not as a "
         "word that must appear in the answer surface. "
         "For scoped DRS queries, the candidate may be the embedded proposition or scoped value rather than the "
         "scope holder/source; verify that binding against the evidence and discourse frames instead of requiring "
         "the candidate text itself to repeat the target anchor. "
         "Return exactly {\"verification\":{\"entailed\":false,\"answer_type\":\"unknown\",\"answer\":\"unknown\","
-        "\"evidence_span\":\"\",\"reason\":\"\"}} with the appropriate values. "
+        "\"evidence_span\":\"\",\"proof_kind\":\"unknown\",\"accessibility\":\"unknown\","
+        "\"temporal_alignment\":\"unspecified\",\"explicit_negation\":false,"
+        "\"incompatible_condition_span\":\"\",\"reason\":\"\"}} with the appropriate values. "
+        "For a negative boolean candidate, emit proof_kind=explicit_negation only when the evidence_span itself "
+        "directly asserts that the queried condition is false. Phrases such as not confirmed, no proof, no record, "
+        "not established, unknown, unverified, or absence of evidence are not explicit negations and must yield "
+        "entailed=false with proof_kind=unknown. Emit proof_kind=same_scope_incompatibility only when "
+        "incompatible_condition_span names an asserted condition that cannot coexist with the queried condition "
+        "during the same temporal interval, and set temporal_alignment=same_scope. Events before or after that "
+        "interval, later restoration, current location, or merely remaining somewhere do not prove that an earlier "
+        "event never occurred. Set accessibility=asserted only when every premise used for the proof is accessible "
+        "from the asserted DRT box. "
         "Return the grounded answer binding or aggregate entailed by the evidence, using an exact evidence_span "
         "copied from the provided evidence. If the candidate contains multiple values, verify every value against "
         "the same query frame and omit any unentailed value. If evidence is insufficient, return entailed=false "
@@ -6069,9 +6132,9 @@ def call_model_answer_verification(
     if n_predict is None:
         n_predict = int(os.environ.get("KMD_VERIFIER_N_PREDICT", "128"))
     prompt = build_answer_verification_prompt(question, query_frame, candidate_answer, evidence_items, discourse_frames)
-    constraint = _constraint_settings(ANSWER_VERIFICATION_GRAMMAR, VERIFICATION_JSON_SCHEMA, ANSWER_SCHEMA_VERSION)
+    constraint = _constraint_settings(ANSWER_VERIFICATION_GRAMMAR, VERIFICATION_JSON_SCHEMA, VERIFIER_SCHEMA_VERSION)
     grammar_hash = str(constraint["grammar_hash"])
-    cache_settings = {"n_predict": n_predict, "schema": ANSWER_SCHEMA_VERSION, **constraint}
+    cache_settings = {"n_predict": n_predict, "schema": VERIFIER_SCHEMA_VERSION, **constraint}
     cache_context = {
         **cache_settings,
         "model_fingerprint": _client_fingerprint(client),
@@ -6141,6 +6204,11 @@ def call_model_answer_verification(
         "answer_type": str(verification.get("answer_type") or "unknown"),
         "answer": str(verification.get("answer") or ""),
         "evidence_span": str(verification.get("evidence_span") or ""),
+        "proof_kind": str(verification.get("proof_kind") or "unknown"),
+        "accessibility": str(verification.get("accessibility") or "unknown"),
+        "temporal_alignment": str(verification.get("temporal_alignment") or "unspecified"),
+        "explicit_negation": bool(verification.get("explicit_negation")),
+        "incompatible_condition_span": str(verification.get("incompatible_condition_span") or ""),
         "reason": str(verification.get("reason") or ""),
         "raw_text": raw,
         "elapsed": parsed.get("_model_elapsed_seconds", round(time.time() - start, 3)),

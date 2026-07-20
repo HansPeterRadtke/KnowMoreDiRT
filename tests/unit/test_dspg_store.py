@@ -2665,7 +2665,7 @@ def test_boolean_query_allows_target_terms_in_explanatory_answer() -> None:
     assert answer.text == "Yes; Inspection found a fracture in Quartz Pump."
 
 
-def test_boolean_query_returns_no_for_unscoped_inaccessible_drs_condition(tmp_path: Path) -> None:
+def test_boolean_query_returns_unknown_for_unscoped_inaccessible_drs_condition(tmp_path: Path) -> None:
     source_surface = "Operator dreamed that Cobalt Hoist deleted latch.cfg."
     (tmp_path / "note.txt").write_text(source_surface + "\n", encoding="utf-8")
 
@@ -2696,9 +2696,8 @@ def test_boolean_query_returns_no_for_unscoped_inaccessible_drs_condition(tmp_pa
         frame,
     )
 
-    assert answer is not None
-    assert answer.text == "No; Operator dreamed that Cobalt Hoist deleted latch.cfg."
-    assert diagnostics["execution"]["answer_binding_reason"] == "boolean_inaccessible_scope_binding"
+    assert answer is None
+    assert diagnostics["execution"].get("answer_binding_reason") is None
 
 
 def test_boolean_query_can_request_inaccessible_drs_scope(tmp_path: Path) -> None:
@@ -2738,7 +2737,7 @@ def test_boolean_query_can_request_inaccessible_drs_scope(tmp_path: Path) -> Non
     assert diagnostics["execution"]["answer_binding_reason"] == "boolean_drs_condition_binding"
 
 
-def test_boolean_query_returns_no_for_model_scope_carrier_argument(tmp_path: Path) -> None:
+def test_boolean_query_returns_unknown_for_model_scope_carrier_argument(tmp_path: Path) -> None:
     source_surface = "Operator dreamed that Cobalt Hoist deleted latch.cfg."
     (tmp_path / "note.txt").write_text(source_surface + "\n", encoding="utf-8")
 
@@ -2771,9 +2770,8 @@ def test_boolean_query_returns_no_for_model_scope_carrier_argument(tmp_path: Pat
         frame,
     )
 
-    assert answer is not None
-    assert answer.text == "No; Operator dreamed that Cobalt Hoist deleted latch.cfg."
-    assert diagnostics["execution"]["answer_binding_reason"] == "boolean_scope_carrier_binding"
+    assert answer is None
+    assert diagnostics["execution"].get("answer_binding_reason") is None
 
 
 def test_compact_chunk_drs_materializes_model_scope_as_subordinate_box() -> None:
@@ -10615,6 +10613,57 @@ def test_count_aggregation_requires_each_query_drs_term_group(tmp_path: Path) ->
     assert answer is not None
     assert answer.text == "2"
     assert answer.reason == "bounded DSPG query-frame execution"
+
+
+def test_unrelated_date_in_same_source_window_does_not_block_single_state(tmp_path: Path) -> None:
+    (tmp_path / "farm.log").write_text(
+        "Gardening log.\nRow A beans sprouted on 2026-05-01.\nGreenhouse pump state: repaired.\n",
+        encoding="utf-8",
+    )
+    store, run_id, documents, sentences = ingest_folder(tmp_path)
+    text = (tmp_path / "farm.log").read_text(encoding="utf-8")
+    drs = {
+        "schema_version": "chunk-drs-v3",
+        "source_id": "farm.log",
+        "referents": [
+            {"id": "r0", "label": "Greenhouse pump", "kind": "artifact", "evidence_text": "Greenhouse pump"}
+        ],
+        "conditions": [
+            {
+                "id": "c0", "predicate": "state", "box_id": "b0", "polarity": "positive", "modality": "asserted",
+                "temporal_id": "", "evidence_text": "Greenhouse pump state: repaired.",
+                "arguments": [
+                    {"role": "subject", "target_kind": "referent", "target_id": "r0", "value": "", "value_type": "artifact", "evidence_text": "Greenhouse pump"},
+                    {"role": "state", "target_kind": "literal", "target_id": "", "value": "repaired", "value_type": "state", "evidence_text": "repaired"},
+                ],
+            }
+        ],
+        "boxes": [{"id": "b0", "kind": "asserted", "parent_id": "", "holder_referent_id": "", "evidence_text": text}],
+        "temporal_records": [], "identity_hypotheses": [],
+    }
+    span_row = store.execute("SELECT span_id FROM source_spans ORDER BY char_start LIMIT 1").fetchone()
+    assert span_row is not None
+    materialized = store.materialize_drs_payload(run_id, str(span_row["span_id"]), text, {"drs": drs})
+    assert materialized["accepted"] is True
+    frame = QueryFrame(
+        question_text="What is the greenhouse pump state?", answer_type="state", answer_variables=("state",),
+        target_anchors=("greenhouse pump",), requested_relation="state", relation_terms=("state",),
+        constraints=(), source="model_query_drs",
+    )
+    sentences_by_document: dict[str, dict[int, object]] = {}
+    for sentence in sentences:
+        sentences_by_document.setdefault(sentence.rel_path, {})[sentence.order] = sentence
+    answer, diagnostics = execute_bounded_query(
+        store,
+        run_id,
+        documents,
+        sentences_by_document,
+        frame.question_text,
+        frame,
+    )
+    assert answer is not None
+    assert answer.text == "repaired"
+    assert "temporal_ambiguity_without_query_scope" not in diagnostics["execution"]
 
 
 def test_count_aggregation_is_not_blocked_by_unscoped_temporal_candidates(tmp_path: Path) -> None:
