@@ -562,7 +562,7 @@ def test_model_evidence_path_requires_authoritative_model_query_plan() -> None:
 
 def test_dead_capitalization_identity_canonicalizer_is_absent() -> None:
     source = (REPO_ROOT / "src" / "knowmoredirt" / "engine.py").read_text(encoding="utf-8")
-    assert "def _canonicalize_identity_with_local_model" not in source
+    assert "_canonicalize_identity_with_local_model" not in source
 
 
 def test_query_drs_repair_is_provenance_only() -> None:

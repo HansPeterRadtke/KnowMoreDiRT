@@ -3236,9 +3236,6 @@ class KnowMoreDiRTEngine:
                 trace.verifier_rejected_count += 1
                 continue
             canonical = self._restore_sentence_terminal_punctuation(canonical, proposed, canonical_expected, answer.evidence)
-            if canonical and canonical_expected.answer_type in {"person", "actor"}:
-                if len(str(canonical).split()) == 1:
-                    canonical = self._canonicalize_identity_with_local_model(question, canonical, answer.evidence) or canonical
             if canonical and normalize(canonical) != normalize(answer.text):
                 answer.text = canonical
             trace.verifier_accepted_count += 1
@@ -4758,14 +4755,6 @@ class KnowMoreDiRTEngine:
             canonical = self._canonicalize_model_answer_with_local_model(question, canonical, expected, answer.evidence) or canonical
         if normalize(canonical) == "unknown":
             return Answer("unknown", 0.0, answer.evidence, source, "unknown")
-        if (
-            canonical
-            and source.startswith("local model")
-            and expected.answer_type in {"person", "actor"}
-            and len(str(canonical).split()) == 1
-            and answer.evidence
-        ):
-            canonical = self._canonicalize_identity_with_local_model(question, canonical, answer.evidence) or canonical
         if not canonical:
             return None
         production_model_query = frame is not None and frame.source == "model_query_drs"

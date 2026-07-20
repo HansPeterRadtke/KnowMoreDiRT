@@ -1804,6 +1804,37 @@ def test_finalize_preserves_grounded_clause_terminal_period_after_pronoun_cleanu
     assert finalized.text == "It should rotate every 7 minutes."
 
 
+def test_finalize_local_model_single_token_person_does_not_call_removed_identity_canonicalizer() -> None:
+    engine = object.__new__(KnowMoreDiRTEngine)
+    frame = QueryFrame(
+        question_text="Who drafted the essay?",
+        answer_type="person",
+        answer_variables=("author",),
+        target_anchors=("essay",),
+        requested_relation="drafted",
+        relation_terms=("drafted", "author"),
+        constraints=(),
+        source="model_query_drs",
+    )
+
+    finalized = engine._finalize_answer(
+        frame.question_text,
+        Answer(
+            "Maya",
+            0.9,
+            [Evidence("essay.txt", "Maya drafted the essay.")],
+            "local model query-DRS evidence verification",
+            "person",
+        ),
+        ExpectedAnswer("person"),
+        "local model query-DRS evidence verification",
+        frame,
+    )
+
+    assert finalized is not None
+    assert finalized.text == "Maya"
+
+
 def test_finalize_restores_terminal_period_from_source_span_surface() -> None:
     engine = object.__new__(KnowMoreDiRTEngine)
     engine.store = DSPGStore()
