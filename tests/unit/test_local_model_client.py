@@ -4037,3 +4037,35 @@ def test_verifier_request_failure_does_not_abort_model_answer(monkeypatch) -> No
 
     assert engine._verify_with_local_model("Is Aero Gate ready?", frame, answer, ExpectedAnswer("boolean")) is False
     assert engine.model_query_trace.verifier_rejected_count == 1
+
+
+def test_qwen35_chat_requests_disable_thinking_through_template_kwargs(monkeypatch) -> None:
+    requests: list[dict[str, object]] = []
+
+    def fake_urlopen(request, timeout: float = 0) -> FakeHTTPResponse:
+        url = str(getattr(request, "full_url", request))
+        if url.endswith("/v1/models"):
+            return FakeHTTPResponse({"data": [{"id": "/models/Qwen3.5-27B-Q8_0.gguf", "meta": {"n_ctx": 32768}}]})
+        if url.endswith("/slots"):
+            return FakeHTTPResponse([{"n_ctx": 32768, "params": {}}])
+        if url.endswith("/props"):
+            return FakeHTTPResponse({"model_alias": "Qwen3.5-27B-Q8_0.gguf", "default_generation_settings": {}})
+        if url.endswith("/v1/chat/completions"):
+            payload = json.loads(getattr(request, "data", b"{}").decode("utf-8"))
+            requests.append(payload)
+            return FakeHTTPResponse(lines=[b'data: {"choices":[{"delta":{"content":"{\\"ok\\":true}"}}]}', b"data: [DONE]"])
+        raise AssertionError(f"unexpected URL {url}")
+
+    monkeypatch.setattr("urllib.request.urlopen", fake_urlopen)
+    monkeypatch.delenv("KMD_LOCAL_MODEL_SEND_THINKING_CONTROLS", raising=False)
+    client = LocalModelClient(endpoint="http://127.0.0.1:14829/v1", timeout_seconds=30)
+    parsed = client.complete_json(
+        "return ok",
+        n_predict=64,
+        json_schema={"type": "object", "additionalProperties": False, "required": ["ok"], "properties": {"ok": {"type": "boolean"}}},
+    )
+    assert parsed["ok"] is True
+    assert requests[0]["enable_thinking"] is False
+    assert "reasoning_format" not in requests[0]
+    assert requests[0]["chat_template_kwargs"] == {"enable_thinking": False}
+    assert parsed["_model_transport_settings"]["thinking_controls_sent"] is True

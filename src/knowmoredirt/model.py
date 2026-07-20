@@ -305,7 +305,12 @@ def _event_reasoning_content(event: dict[str, Any]) -> str:
 def _model_id_looks_like_reasoning_control_token_model(model_id: str) -> bool:
     normalized = model_id.lower()
     compact = normalized.replace("-", "").replace("_", "")
-    return ("gpt" in compact and "oss" in compact) or "harmony" in compact
+    return (
+        ("gpt" in compact and "oss" in compact)
+        or "harmony" in compact
+        or "qwen35" in compact
+        or "qwen3.5" in normalized
+    )
 
 
 def _schema_hint(json_schema: dict[str, Any] | None) -> str:
@@ -670,12 +675,13 @@ class LocalModelClient:
                 cache_context={"transport_settings": transport, "structured_call": True},
             )
         effective_prompt = _json_only_user_prompt(prompt, json_schema)
-        send_thinking_controls = os.environ.get("KMD_LOCAL_MODEL_SEND_THINKING_CONTROLS", "0").strip().lower() in {
-            "1",
-            "true",
-            "yes",
-            "on",
-        }
+        thinking_control_env = os.environ.get("KMD_LOCAL_MODEL_SEND_THINKING_CONTROLS", "auto").strip().lower()
+        if thinking_control_env in {"0", "false", "no", "off"}:
+            send_thinking_controls = False
+        elif thinking_control_env in {"1", "true", "yes", "on"}:
+            send_thinking_controls = True
+        else:
+            send_thinking_controls = bool(transport.get("reasoning_control_token_model"))
         # Local model calls must stream. The timeout below is only the socket/read
         # timeout while waiting for the next streamed token chunk. There is no
         # whole-answer, whole-question, or whole-chunk wall timeout here.
@@ -741,8 +747,12 @@ class LocalModelClient:
         if "openrouter.ai" in endpoint:
             body["provider"] = {"require_parameters": True}
         if send_thinking_controls:
-            body["reasoning_format"] = "hidden"
             body["enable_thinking"] = False
+            qwen_thinking_model = "qwen3.5" in self.model_id().lower() or "qwen35" in self.model_id().lower().replace("-", "").replace("_", "")
+            if not qwen_thinking_model:
+                body["reasoning_format"] = "hidden"
+            if endpoint.endswith("/chat/completions"):
+                body["chat_template_kwargs"] = {"enable_thinking": False}
         request_body_json = json.dumps(body)
         model_input_audit: dict[str, Any] = {
             "audit_schema": "kmd-model-input-v1",
