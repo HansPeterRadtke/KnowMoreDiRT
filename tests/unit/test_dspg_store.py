@@ -7,6 +7,8 @@ from pathlib import Path
 
 from knowmoredirt.answer_types import ExpectedAnswer
 from knowmoredirt.bounded_dspg import (
+    _temporal_candidates,
+    _has_unscoped_temporal_ambiguity,
     _answer_conflict_diagnostics,
     _apply_answer_slot_evidence_preference,
     _context_accessible,
@@ -9652,6 +9654,36 @@ def test_document_local_identity_bridge_outside_chunk_budget_reaches_scattered_t
     assert reported_answer.evidence[0].rel_path == "reports/reported_late.log"
 
 
+def test_same_provenance_partial_and_full_timestamp_are_not_temporal_ambiguity() -> None:
+    evidence = Evidence(
+        "events.log",
+        "Officer Talen recorded the failure at 2026-04-10 07:15.",
+        span_id="span-one",
+        char_start=0,
+        char_end=62,
+    )
+    candidates = [
+        (8.0, "07:15", evidence, "temporal_binding"),
+        (8.0, "2026-04-10 07:15", evidence, "temporal_binding"),
+    ]
+    assert _has_unscoped_temporal_ambiguity(candidates, ExpectedAnswer("date_time")) is False
+
+
+def test_same_provenance_distinct_timestamps_remain_temporally_ambiguous() -> None:
+    evidence = Evidence(
+        "events.log",
+        "The state changed at 07:15 and again at 08:30.",
+        span_id="span-two",
+        char_start=0,
+        char_end=48,
+    )
+    candidates = [
+        (8.0, "07:15", evidence, "temporal_binding"),
+        (8.0, "08:30", evidence, "temporal_binding"),
+    ]
+    assert _has_unscoped_temporal_ambiguity(candidates, ExpectedAnswer("date_time")) is True
+
+
 def test_unscoped_model_temporal_values_return_unknown_even_with_same_source_span(
     tmp_path: Path,
     monkeypatch,
@@ -11892,3 +11924,17 @@ def test_temporal_frame_argument_binding_selects_latest_and_specific_timestamp(t
     assert dated_answer.text == "Ada Ray"
     assert dated_answer.reason == "temporal_frame_argument_binding"
     assert "answer_conflict_without_query_scope" not in dated_diagnostics["execution"]
+
+
+def test_temporal_candidates_match_structured_relation_not_other_label_in_same_window() -> None:
+    records = {
+        "temporal_edges": [
+            {"context_id": "", "source_span_id": "s0", "referent_id": "", "relation": "measurement date", "temporal_value": "1986-07-14", "state_value": ""},
+            {"context_id": "", "source_span_id": "s0", "referent_id": "", "relation": "source file copied", "temporal_value": "2010-05-20", "state_value": ""},
+        ],
+        "source_spans": [{"span_id": "s0", "rel_path": "measurements.tsv", "text": "measurement date: 1986-07-14\nsource file copied: 2010-05-20", "char_start": 0, "char_end": 64}],
+        "referents": [], "contexts": [],
+    }
+    frame = QueryFrame(question_text="What is the measurement date?", answer_type="date_time", answer_variables=("measurement date",), target_anchors=(), requested_relation="measurement date", relation_terms=("measurement date",), constraints=(), source="model_query_drs")
+    values = [value for _score, value, _evidence, _reason in _temporal_candidates(records, frame, ExpectedAnswer("date_time"), [], ["measurement date"])]
+    assert values == ["1986-07-14"]

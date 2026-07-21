@@ -5237,20 +5237,20 @@ def _temporal_candidates(records: dict[str, Any], frame: QueryFrame, expected: E
         if not _temporal_row_matches_constraints(row, evidence, temporal_constraints):
             continue
         referent = referents.get(str(row.get("referent_id") or ""), {})
-        material = normalize(
+        structured_material = normalize(
             " ".join(
                 [
                     str(referent.get("canonical_label") or referent.get("canonical_label_norm") or ""),
                     str(row.get("relation") or ""),
-                    str(row.get("temporal_value") or ""),
                     str(row.get("state_value") or ""),
-                    evidence.text,
                 ]
             )
         )
-        if target_terms and not _contains_any(material, target_terms):
+        target_material = normalize(f"{structured_material} {evidence.text}")
+        if target_terms and not _contains_any(target_material, target_terms):
             continue
-        if relation_terms and not _contains_any(material, relation_terms) and not temporal_constraints:
+        relation_material = structured_material or normalize(evidence.text)
+        if relation_terms and not _contains_any(relation_material, relation_terms) and not temporal_constraints:
             continue
         rows.append((str(row.get("temporal_value") or ""), row, evidence))
     rows.sort(key=lambda item: item[0], reverse=temporal_scope != "earliest")
@@ -5885,11 +5885,35 @@ def _has_unscoped_temporal_ambiguity(
     candidates: list[tuple[float, str, Evidence, str]],
     expected: ExpectedAnswer | None = None,
 ) -> bool:
-    temporal_candidate_values = {
-        normalize(value)
-        for _score, value, _evidence, reason in candidates
-        if reason in {"temporal_binding", "temporal_relation_binding"} and normalize(value)
-    }
+    temporal_values_by_provenance: dict[tuple[str, str, int, int], set[str]] = defaultdict(set)
+    for _score, value, evidence, reason in candidates:
+        if reason not in {"temporal_binding", "temporal_relation_binding"}:
+            continue
+        normalized_value = normalize(value)
+        if not normalized_value:
+            continue
+        provenance = (
+            evidence.rel_path,
+            evidence.span_id,
+            int(evidence.char_start or 0),
+            int(evidence.char_end or 0),
+        )
+        temporal_values_by_provenance[provenance].add(normalized_value)
+
+    temporal_candidate_values: set[str] = set()
+    for values in temporal_values_by_provenance.values():
+        ordered_values = sorted(values, key=lambda item: (-len(item), item))
+        representatives: list[str] = []
+        for value in ordered_values:
+            if any(
+                representative == value
+                or representative.endswith(f" {value}")
+                or value.endswith(f" {representative}")
+                for representative in representatives
+            ):
+                continue
+            representatives.append(value)
+        temporal_candidate_values.update(representatives)
     non_temporal_candidate_values = {
         canonicalize_answer(expected, value) if expected is not None else normalize(value)
         for _score, value, _evidence, reason in candidates

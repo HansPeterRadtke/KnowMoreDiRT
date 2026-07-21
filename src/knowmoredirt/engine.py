@@ -3229,15 +3229,62 @@ class KnowMoreDiRTEngine:
                 accessibility = str(result.get("accessibility") or "unknown")
                 temporal_alignment = str(result.get("temporal_alignment") or "unspecified")
                 explicit_negation = bool(result.get("explicit_negation"))
+                absence_of_record_only = bool(result.get("absence_of_record_only"))
                 incompatible_span = str(result.get("incompatible_condition_span") or "")
                 incompatible_span_grounded = bool(incompatible_span) and any(
                     incompatible_span in item.get("text", "") for item in evidence_payload
                 )
-                negative_proof_valid = (
-                    accessibility == "asserted"
-                    and proof_kind == "explicit_negation"
-                    and explicit_negation
+                negative_proof_valid = not absence_of_record_only and accessibility == "asserted" and (
+                    (proof_kind == "explicit_negation" and explicit_negation)
+                    or proof_kind == "explicit_exclusion"
                 )
+                if negative_proof_valid and proof_kind == "explicit_negation":
+                    audit_question = (
+                        "Proof audit: Is the cited evidence only an absence-of-record statement, such as no record, "
+                        "not recorded, no report, not documented, or missing evidence, rather than a direct assertion "
+                        "that the original event did not occur? Answer yes for absence-of-record only and no only for "
+                        f"a direct asserted negation. Original question: {question}"
+                    )
+                    audit_frame = {
+                        "answer_type": "boolean",
+                        "answer_variables": ["whether absence-of-record only"],
+                        "target_anchors": list(frame.target_anchors),
+                        "requested_relation": "absence-of-record proof classification",
+                        "relation_terms": ["absence of record", "direct negation"],
+                        "constraints": [],
+                        "scope_requirements": [],
+                        "modality_requirements": [],
+                        "temporal_scope": "",
+                        "negated": False,
+                        "aggregation": "",
+                        "requires_evidence": True,
+                    }
+                    trace.verifier_call_count += 1
+                    audit_result = call_model_answer_verification(
+                        audit_question,
+                        audit_frame,
+                        "yes",
+                        evidence_payload,
+                        discourse_frames,
+                        self._model_client,
+                    )
+                    self._record_model_result(audit_result)
+                    if audit_result.get("prompt_hash"):
+                        trace.prompt_hashes = [*list(trace.prompt_hashes or []), str(audit_result["prompt_hash"])][-20:]
+                    if audit_result.get("output_hash"):
+                        trace.response_hashes = [*list(trace.response_hashes or []), str(audit_result["output_hash"])][-20:]
+                    audit_span = str(audit_result.get("evidence_span") or "")
+                    audit_answer = normalize(str(audit_result.get("answer") or "")).split(";", 1)[0].strip()
+                    audit_direct_negation = (
+                        bool(audit_result.get("accepted"))
+                        and bool(audit_result.get("entailed"))
+                        and audit_answer in {"no", "false"}
+                        and (not audit_span or any(audit_span in item.get("text", "") for item in evidence_payload))
+                    )
+                    if audit_result.get("accepted"):
+                        trace.verifier_parsed_count += 1
+                    if not audit_direct_negation:
+                        negative_proof_valid = False
                 if not negative_proof_valid:
                     trace.verifier_rejected_count += 1
                     continue
@@ -4466,7 +4513,7 @@ class KnowMoreDiRTEngine:
         if answer_type == "boolean" or self._is_boolean_text(text):
             return text
         parts = answer_parts(text)
-        if len(parts) > 1 and parts[0]:
+        if frame.aggregation not in {"list", "set"} and len(parts) > 1 and parts[0]:
             text = parts[0]
         return text
 

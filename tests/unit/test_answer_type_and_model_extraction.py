@@ -1551,10 +1551,8 @@ def test_negative_boolean_verifier_accepts_grounded_explicit_negation(monkeypatc
         source="model_query_drs",
     )
     monkeypatch.setattr(engine, "_canonicalize_model_answer_with_local_model", lambda *_args, **_kwargs: None)
-    monkeypatch.setattr(
-        engine_module,
-        "call_model_answer_verification",
-        lambda *_args, **_kwargs: {
+    verification_results = iter([
+        {
             "accepted": True,
             "entailed": True,
             "answer": "no",
@@ -1563,9 +1561,23 @@ def test_negative_boolean_verifier_accepts_grounded_explicit_negation(monkeypatc
             "accessibility": "asserted",
             "temporal_alignment": "unspecified",
             "explicit_negation": True,
+            "absence_of_record_only": False,
             "incompatible_condition_span": "",
         },
-    )
+        {
+            "accepted": True,
+            "entailed": True,
+            "answer": "no",
+            "evidence_span": "Later inspection found no crack in the tank wall.",
+            "proof_kind": "explicit_negation",
+            "accessibility": "asserted",
+            "temporal_alignment": "unspecified",
+            "explicit_negation": True,
+            "absence_of_record_only": False,
+            "incompatible_condition_span": "",
+        },
+    ])
+    monkeypatch.setattr(engine_module, "call_model_answer_verification", lambda *_args, **_kwargs: next(verification_results))
     answer = Answer(
         "no",
         0.9,
@@ -1585,4 +1597,60 @@ def test_negative_boolean_verifier_rejects_even_model_claimed_same_scope_incompa
     monkeypatch.setattr(engine, "_canonicalize_model_answer_with_local_model", lambda *_args, **_kwargs: None)
     monkeypatch.setattr(engine_module, "call_model_answer_verification", lambda *_args, **_kwargs: {"accepted": True, "entailed": True, "answer": "no", "evidence_span": "X remains present.", "proof_kind": "same_scope_incompatibility", "accessibility": "asserted", "temporal_alignment": "same_scope", "explicit_negation": False, "incompatible_condition_span": "X remains present."})
     answer = Answer("no", 0.9, [Evidence("x.txt", "X remains present.")], "model", "boolean")
+    assert engine._verify_with_local_model(frame.question_text, frame, answer, ExpectedAnswer("boolean")) is False
+
+
+def test_shortest_model_answer_preserves_explicit_list_aggregation(tmp_path) -> None:
+    engine = KnowMoreDiRTEngine(tmp_path)
+    frame = QueryFrame(
+        question_text="Find actor IDs of the author and reviewers.",
+        answer_type="identifier",
+        answer_variables=("actor IDs",),
+        target_anchors=("Safety Note",),
+        requested_relation="author reviewers",
+        relation_terms=("author", "reviewers"),
+        constraints=(),
+        aggregation="list",
+        source="model_query_drs",
+    )
+    assert engine._shortest_model_answer_value("ACT-410; ACT-411; ACT-412", "identifier", frame) == "ACT-410; ACT-411; ACT-412"
+
+
+def test_negative_boolean_verifier_accepts_grounded_explicit_exclusion(monkeypatch) -> None:
+    engine = object.__new__(KnowMoreDiRTEngine)
+    engine._model_client = object()
+    engine._sentences_by_document = {}
+    engine.model_query_trace = ModelQueryTrace(enabled=True, prompt_hashes=[], response_hashes=[])
+    frame = QueryFrame(question_text="Does QuillCache store plaintext passwords?", answer_type="boolean", answer_variables=("whether",), target_anchors=("QuillCache",), requested_relation="stores plaintext passwords", relation_terms=("stores", "plaintext passwords"), constraints=(), source="model_query_drs")
+    monkeypatch.setattr(engine, "_canonicalize_model_answer_with_local_model", lambda *_args, **_kwargs: None)
+    monkeypatch.setattr(engine_module, "call_model_answer_verification", lambda *_args, **_kwargs: {"accepted": True, "entailed": True, "answer": "no", "evidence_span": "Audit result: QuillCache stores only salted password hashes.", "proof_kind": "explicit_exclusion", "accessibility": "asserted", "temporal_alignment": "unspecified", "explicit_negation": False, "incompatible_condition_span": ""})
+    answer = Answer("no", 0.9, [Evidence("audit.txt", "Audit result: QuillCache stores only salted password hashes.")], "model", "boolean")
+    assert engine._verify_with_local_model(frame.question_text, frame, answer, ExpectedAnswer("boolean")) is True
+
+
+def test_negative_boolean_verifier_rejects_absence_of_record_proof(monkeypatch) -> None:
+    engine = object.__new__(KnowMoreDiRTEngine)
+    engine._model_client = object()
+    engine._sentences_by_document = {}
+    engine.model_query_trace = ModelQueryTrace(enabled=True, prompt_hashes=[], response_hashes=[])
+    frame = QueryFrame(question_text="Did Pearl Engine really open the hidden gate?", answer_type="boolean", answer_variables=("whether",), target_anchors=("Pearl Engine", "hidden gate"), requested_relation="open", relation_terms=("open",), constraints=(), source="model_query_drs")
+    monkeypatch.setattr(engine, "_canonicalize_model_answer_with_local_model", lambda *_args, **_kwargs: None)
+    monkeypatch.setattr(engine_module, "call_model_answer_verification", lambda *_args, **_kwargs: {"accepted": True, "entailed": True, "answer": "no", "evidence_span": "Waking note: no real gate opening is recorded.", "proof_kind": "explicit_negation", "accessibility": "asserted", "temporal_alignment": "unspecified", "explicit_negation": True, "absence_of_record_only": True, "incompatible_condition_span": ""})
+    answer = Answer("no", 0.9, [Evidence("dream.txt", "Waking note: no real gate opening is recorded.")], "model", "boolean")
+    assert engine._verify_with_local_model(frame.question_text, frame, answer, ExpectedAnswer("boolean")) is False
+
+
+def test_negative_boolean_verifier_rejects_when_independent_audit_calls_it_absence_only(monkeypatch) -> None:
+    engine = object.__new__(KnowMoreDiRTEngine)
+    engine._model_client = object()
+    engine._sentences_by_document = {}
+    engine.model_query_trace = ModelQueryTrace(enabled=True, prompt_hashes=[], response_hashes=[])
+    frame = QueryFrame(question_text="Did Pearl Engine really open the hidden gate?", answer_type="boolean", answer_variables=("whether",), target_anchors=("Pearl Engine", "hidden gate"), requested_relation="open", relation_terms=("open",), constraints=(), source="model_query_drs")
+    monkeypatch.setattr(engine, "_canonicalize_model_answer_with_local_model", lambda *_args, **_kwargs: None)
+    results = iter([
+        {"accepted": True, "entailed": True, "answer": "no", "evidence_span": "Waking note: no real gate opening is recorded.", "proof_kind": "explicit_negation", "accessibility": "asserted", "temporal_alignment": "same_scope", "explicit_negation": True, "absence_of_record_only": False, "incompatible_condition_span": ""},
+        {"accepted": True, "entailed": True, "answer": "yes", "evidence_span": "Waking note: no real gate opening is recorded.", "proof_kind": "direct_positive", "accessibility": "asserted", "temporal_alignment": "unspecified", "explicit_negation": False, "absence_of_record_only": True, "incompatible_condition_span": ""},
+    ])
+    monkeypatch.setattr(engine_module, "call_model_answer_verification", lambda *_args, **_kwargs: next(results))
+    answer = Answer("no", 0.9, [Evidence("dream.txt", "Waking note: no real gate opening is recorded.")], "model", "boolean")
     assert engine._verify_with_local_model(frame.question_text, frame, answer, ExpectedAnswer("boolean")) is False

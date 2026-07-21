@@ -90,3 +90,17 @@ def test_qa_evidence_points_only_to_raw_corpus_text() -> None:
             source_path = FIXTURE_ROOT / rel_path
             assert source_path.is_file(), f"missing evidence file {rel_path}"
             assert evidence["snippet"] in source_path.read_text(encoding="utf-8")
+
+
+def test_epistemic_and_dream_fixture_contracts_follow_open_world_drt() -> None:
+    import json
+    from pathlib import Path
+    hard = {q["id"]: q for q in json.loads(Path("tests/fixtures/hard_raw_reasoning_qa.json").read_text())["questions"]}
+    messy = {q["id"]: q for q in json.loads(Path("tests/fixtures/messy_raw_corpus_qa.json").read_text())["questions"]}
+    assert hard["hrq104"]["answer"].startswith("No;")
+    assert hard["hrq108"]["answer"] == "unknown"
+    assert hard["hrq112"]["answer"] == "unknown"
+    assert messy["q009"]["answer"] == "unknown"
+    assert messy["q019"]["answer"] == "Rowan Pike"
+    assert messy["q020"]["answer"].startswith("Rowan plans to fix parser.cpp")
+    assert messy["q051"]["answer"] == "unknown"

@@ -152,7 +152,7 @@ CHUNK_DRS_STRUCTURED_RECORD_ROUTE_POLICY = "structured-records-use-deterministic
 QUERY_OPERATOR_SCHEMA_POLICY = "query-temporal-aggregation-operator-enums-v1"
 QUERY_FRAME_SCHEMA_VERSION = "query-frame-v6"
 ANSWER_SCHEMA_VERSION = "answer-v4"
-VERIFIER_SCHEMA_VERSION = "answer-verification-v2"
+VERIFIER_SCHEMA_VERSION = "answer-verification-v4"
 
 QUERY_FRAME_GRAMMAR = r'''
 root ::= "{" ws "\"query_frame\"" ws ":" ws "{" ws "\"target_anchors\"" ws ":" ws string_array ws "," ws "\"answer_variables\"" ws ":" ws string_array ws "," ws "\"requested_relation\"" ws ":" ws string ws "," ws "\"relation_terms\"" ws ":" ws string_array ws "," ws "\"constraints\"" ws ":" ws string_array ws "," ws "\"scope_requirements\"" ws ":" ws string_array ws "," ws "\"modality_requirements\"" ws ":" ws string_array ws "," ws "\"answer_type\"" ws ":" ws answer_type ws "," ws "\"temporal_scope\"" ws ":" ws string ws "," ws "\"negated\"" ws ":" ws bool ws "," ws "\"aggregation\"" ws ":" ws string ws "," ws "\"requires_evidence\"" ws ":" ws bool ws "}" ws "}"
@@ -737,9 +737,9 @@ ws ::= [ \t\n\r]*
 '''
 
 ANSWER_VERIFICATION_GRAMMAR = r'''
-root ::= "{" ws "\"verification\"" ws ":" ws "{" ws "\"entailed\"" ws ":" ws bool ws "," ws "\"answer_type\"" ws ":" ws answer_type ws "," ws "\"answer\"" ws ":" ws string ws "," ws "\"evidence_span\"" ws ":" ws string ws "," ws "\"proof_kind\"" ws ":" ws proof_kind ws "," ws "\"accessibility\"" ws ":" ws accessibility ws "," ws "\"temporal_alignment\"" ws ":" ws temporal_alignment ws "," ws "\"explicit_negation\"" ws ":" ws bool ws "," ws "\"incompatible_condition_span\"" ws ":" ws string ws "," ws "\"reason\"" ws ":" ws string ws "}" ws "}"
+root ::= "{" ws "\"verification\"" ws ":" ws "{" ws "\"entailed\"" ws ":" ws bool ws "," ws "\"answer_type\"" ws ":" ws answer_type ws "," ws "\"answer\"" ws ":" ws string ws "," ws "\"evidence_span\"" ws ":" ws string ws "," ws "\"proof_kind\"" ws ":" ws proof_kind ws "," ws "\"accessibility\"" ws ":" ws accessibility ws "," ws "\"temporal_alignment\"" ws ":" ws temporal_alignment ws "," ws "\"explicit_negation\"" ws ":" ws bool ws "," ws "\"absence_of_record_only\"" ws ":" ws bool ws "," ws "\"incompatible_condition_span\"" ws ":" ws string ws "," ws "\"reason\"" ws ":" ws string ws "}" ws "}"
 answer_type ::= "\"person\"" | "\"actor\"" | "\"organization\"" | "\"identifier\"" | "\"url\"" | "\"file_path\"" | "\"count\"" | "\"state\"" | "\"date_time\"" | "\"boolean\"" | "\"content_phrase\"" | "\"metadata_value\"" | "\"unknown\""
-proof_kind ::= "\"direct_positive\"" | "\"explicit_negation\"" | "\"same_scope_incompatibility\"" | "\"identity_binding\"" | "\"aggregate\"" | "\"unknown\""
+proof_kind ::= "\"direct_positive\"" | "\"explicit_negation\"" | "\"explicit_exclusion\"" | "\"same_scope_incompatibility\"" | "\"identity_binding\"" | "\"aggregate\"" | "\"unknown\""
 accessibility ::= "\"asserted\"" | "\"subordinate\"" | "\"mixed\"" | "\"unknown\""
 temporal_alignment ::= "\"same_scope\"" | "\"different_scope\"" | "\"unspecified\""
 bool ::= "true" | "false"
@@ -1690,6 +1690,7 @@ VERIFICATION_JSON_SCHEMA = _schema_obj(
                 "accessibility",
                 "temporal_alignment",
                 "explicit_negation",
+                "absence_of_record_only",
                 "incompatible_condition_span",
                 "reason",
             ],
@@ -1698,10 +1699,11 @@ VERIFICATION_JSON_SCHEMA = _schema_obj(
                 "answer_type": ANSWER_TYPE_SCHEMA,
                 "answer": STRING_SCHEMA,
                 "evidence_span": STRING_SCHEMA,
-                "proof_kind": _schema_enum({"direct_positive", "explicit_negation", "same_scope_incompatibility", "identity_binding", "aggregate", "unknown"}),
+                "proof_kind": _schema_enum({"direct_positive", "explicit_negation", "explicit_exclusion", "same_scope_incompatibility", "identity_binding", "aggregate", "unknown"}),
                 "accessibility": _schema_enum({"asserted", "subordinate", "mixed", "unknown"}),
                 "temporal_alignment": _schema_enum({"same_scope", "different_scope", "unspecified"}),
                 "explicit_negation": BOOL_SCHEMA,
+                "absence_of_record_only": BOOL_SCHEMA,
                 "incompatible_condition_span": STRING_SCHEMA,
                 "reason": STRING_SCHEMA,
             },
@@ -2020,7 +2022,14 @@ def build_query_drs_prompt(question: str) -> str:
         "uncertain, or other subordinate non-asserted box is not accessible as an asserted real-world fact unless "
         "an independent asserted condition supports it. temporal_scope must be '', 'latest', or 'earliest'. "
         "aggregation must be '', 'count', 'list', or 'set', and list or set is permitted only when the question "
-        "explicitly requests multiple answers, not merely because the discourse contains multiple participants. "
+        "explicitly requests multiple answers, not merely because the discourse contains multiple participants. Bind the "
+        "interrogative variable to the requested semantic role: who in a passive clause is the agent, who stated/reported "
+        "is the speaker, when is the event timestamp, and what in 'what remains installed' is the installed entity rather "
+        "than the state word. Do not create a target referent from a pronoun whose antecedent is the answer variable, as in "
+        "'Who stated she heard a bang?'; represent the pronoun as coreferential with the speaker answer variable instead of "
+        "searching the corpus for the word she. Preserve requested field labels such as warranty URL, measurement date, copied date, status, "
+        "or state as relation constraints. For questions naming several roles such as author and reviewers, use list "
+        "aggregation over all those roles. "
         "Arguments use target_kind and target_id exactly as declared in the query DRS namespace. "
         "Return this shape with schema_version query-drs-v3: {\"query_drs\":{\"schema_version\":\"query-drs-v3\","
         "\"question\":\"\",\"answer_variables\":[{\"id\":\"qv0\",\"label\":\"\",\"answer_type\":\"unknown\","
@@ -2043,7 +2052,11 @@ def build_compact_query_drs_prompt(question: str) -> str:
         "word, when a narrower phrase appears. targets are non-answer noun phrases the answer is about, excluding verbs. predicates "
         "are verbs or relation words requested by the question. constraints are other visible qualifiers. "
         "temporal_scope is '', 'latest', or 'earliest'. aggregation is '', 'count', 'list', or 'set'; use list or "
-        "set only when the question explicitly requests multiple answers. Dreamed, believed, fictional, hypothetical, "
+        "set only when the question explicitly requests multiple answers. Bind who in passive clauses to the agent, "
+        "who stated/reported to the speaker, when to the requested event timestamp, and what remains installed to the "
+        "installed entity. Do not put a pronoun such as she in targets when it is coreferential with the answer speaker. "
+        "Preserve narrow field labels such as warranty URL, measurement date, copied date, status, or "
+        "state as predicates or constraints. Dreamed, believed, fictional, hypothetical, "
         "quoted, reported, uncertain, and other subordinate content is not asserted real-world fact. Use only words "
         "visible in the question and no outside knowledge. Preserve every visible non-answer target "
         "anchor, including product/project/entity scope and work/document titles. Split compound role requests "
@@ -3094,8 +3107,11 @@ def build_query_evidence_answer_prompt(
         "JSON only. Perform a bounded DRT/DSPG question analysis and grounded entailment check. "
         "Bind the answer only to the discourse referent that bears the requested predicate role; do not return "
         "other mentioned participants. Respect DRT accessibility: dreamed, believed, fictional, hypothetical, "
-        "quoted, reported, uncertain, or negated content is not an asserted real-world fact unless an accessible "
-        "asserted condition independently confirms it. Apply open-world DRT entailment: lack of an asserted positive "
+        "quoted, reported, uncertain, or negated content is not automatically an asserted real-world fact. However, "
+        "reported or quoted content may directly answer attribution, speaker, document-content, and non-boolean role/value "
+        "binding questions when the query asks what the source states or does not explicitly require real-world actuality. "
+        "Only questions that explicitly test actuality, using cues such as really, actually, proven, confirmed, established, "
+        "or real-world fact, require an independently accessible asserted condition. Apply open-world DRT entailment: lack of an asserted positive "
         "fact does not entail its negation, and a different compatible asserted state does not entail that the queried "
         "event never occurred. For a boolean query, answer no only when accessible asserted evidence explicitly "
         "negates the queried condition or entails an incompatible condition in the same relevant temporal scope; "
@@ -3114,8 +3130,18 @@ def build_query_evidence_answer_prompt(
         "Return exactly one result object with a query_frame object and a scalar answer string; do not use "
         "generic_query_frame and do not nest the answer inside another object. "
         "Copy evidence_span as one exact supporting sentence or line, not a multi-line evidence window. "
-        "Return the grounded binding or aggregate requested by the query frame. For multiple bindings, return all "
-        "and only the grounded values that satisfy the same frame, separated with '; '. "
+        "Return the grounded binding or aggregate requested by the query frame. Resolve grammatical roles precisely: "
+        "in passive clauses bind the agent after by; in witness/report clauses bind the speaker or reporter when the "
+        "question asks who stated or reported; for 'what remains installed' bind the entity that remains installed, not "
+        "the predicate word installed; and for when/date questions bind the timestamp attached to the requested event "
+        "or labeled field, distinguishing measurement date, copy date, record time, and unrelated dates. For labeled "
+        "records and key-value lines, require the requested field label as well as the requested record identity. Prefer "
+        "a coherent authoritative record containing the entity and requested field over isolated cache, noise, transport, "
+        "archive, distractor, historical, previous-state, or changelog mentions. For table counts, count only rows in the "
+        "bounded table or record set identified by the question and matching the requested field/value; do not count prose "
+        "history, changelog events, previous states, or unrelated records. For list aggregation, return every distinct "
+        "grounded value across every requested role, including singular and plural roles such as author and reviewers. "
+        "For multiple bindings, return all and only the grounded values that satisfy the same frame, separated with '; '. "
         "If evidence is insufficient, return sufficient_evidence=false and answer='unknown'. Copy evidence_span "
         "exactly from one provided evidence item."
         + json.dumps(
@@ -3142,7 +3168,9 @@ def build_query_evidence_answer_repair_prompt(
         "do not fill missing truth conditions by formatting guesses. If the evidence does not entail the previous "
         "answer, or no exact supporting sentence/line can be copied as evidence_span, return sufficient_evidence=false "
         "and answer='unknown'. The repaired answer must preserve the query frame's referents, roles, type, scope, "
-        "polarity, modality, temporal constraints, identity constraints, and provenance. Return exactly "
+        "polarity, modality, temporal constraints, identity constraints, and provenance. For a count answer, return "
+        "evidence_span as exactly the counted matching source rows, one nonempty row per line, with no title, header, "
+        "introduction, explanation, or nonmatching row; the number of nonempty lines must equal answer. Return exactly "
         "{\"result\":{\"query_frame\":{\"target_anchors\":[],\"answer_variables\":[],"
         "\"requested_relation\":\"\",\"relation_terms\":[],\"constraints\":[],\"scope_requirements\":[],"
         "\"modality_requirements\":[],\"answer_type\":\"unknown\",\"temporal_scope\":\"\","
@@ -3191,16 +3219,42 @@ def _query_evidence_payload_from_result(
         }
     sufficient = bool(answer_payload.get("sufficient_evidence"))
     evidence_span = str(answer_payload.get("evidence_span") or "")
-    if sufficient and not _evidence_contains_span(evidence_span, evidence_items):
-        return {
-            "accepted": False,
-            "reason": "grounding_validation_failed",
-            "raw_text": raw,
-            "prompt_hash": prompt_hash,
-            "grammar_hash": grammar_hash,
-            "elapsed": elapsed,
-            "cache_context": cache_context or {},
-        }
+    answer_type = str(answer_payload.get("answer_type") or "")
+    if sufficient:
+        if answer_type == "count":
+            proof_lines = [line for line in evidence_span.splitlines() if line.strip()]
+            grounded = bool(proof_lines) and all(
+                any(line in str(item.get("text") or "") for item in evidence_items)
+                for line in proof_lines
+            )
+        else:
+            grounded = _evidence_contains_span(evidence_span, evidence_items)
+        if not grounded:
+            return {
+                "accepted": False,
+                "reason": "grounding_validation_failed",
+                "raw_text": raw,
+                "prompt_hash": prompt_hash,
+                "grammar_hash": grammar_hash,
+                "elapsed": elapsed,
+                "cache_context": cache_context or {},
+            }
+    if sufficient and answer_type == "count":
+        try:
+            expected_line_count = int(str(answer_payload.get("answer") or "").strip())
+        except ValueError:
+            expected_line_count = -1
+        proof_lines = [line for line in evidence_span.splitlines() if line.strip()]
+        if expected_line_count < 0 or len(proof_lines) != expected_line_count:
+            return {
+                "accepted": False,
+                "reason": "grounding_validation_failed",
+                "raw_text": raw,
+                "prompt_hash": prompt_hash,
+                "grammar_hash": grammar_hash,
+                "elapsed": elapsed,
+                "cache_context": cache_context or {},
+            }
     frame = frame_from_mapping(question, frame_payload, source="model").as_dict()
     payload = {
         "accepted": True,
@@ -6079,7 +6133,12 @@ def build_answer_verification_prompt(
         "JSON only. Verify whether the candidate answer is entailed by the bounded raw-text evidence and "
         "generic discourse frames. Reject candidates that do not satisfy the query frame's answer type, predicate, "
         "argument roles, referents, identity links, context accessibility, polarity, modality, temporal constraints, "
-        "and provenance. Apply open-world DRT entailment: lack of an asserted positive fact does not entail a negative "
+        "and provenance. Reported or quoted content can verify attribution, speaker, document-content, and non-boolean "
+        "role/value bindings when the question does not explicitly demand actuality; do not reject such an answer merely "
+        "because its source is a report. Questions using really, actually, proven, confirmed, established, or equivalent "
+        "actuality cues still require accessible asserted evidence. Reject a candidate whose own evidence explicitly labels "
+        "itself as cache only, noise, transport cache, distractor, archive-only, fake, stale, or not a semantic record when "
+        "the query asks for an authoritative field value; such evidence cannot verify the answer. Apply open-world DRT entailment: lack of an asserted positive fact does not entail a negative "
         "answer. For a boolean candidate 'no', require accessible asserted evidence that explicitly negates the queried "
         "condition or entails an incompatible condition in the same relevant temporal scope; dreamed, believed, "
         "fictional, hypothetical, quoted, reported, uncertain, and other subordinate content is not asserted fact. "
@@ -6091,11 +6150,16 @@ def build_answer_verification_prompt(
         "Return exactly {\"verification\":{\"entailed\":false,\"answer_type\":\"unknown\",\"answer\":\"unknown\","
         "\"evidence_span\":\"\",\"proof_kind\":\"unknown\",\"accessibility\":\"unknown\","
         "\"temporal_alignment\":\"unspecified\",\"explicit_negation\":false,"
-        "\"incompatible_condition_span\":\"\",\"reason\":\"\"}} with the appropriate values. "
+        "\"absence_of_record_only\":false,\"incompatible_condition_span\":\"\",\"reason\":\"\"}} with the appropriate values. "
         "For a negative boolean candidate, emit proof_kind=explicit_negation only when the evidence_span itself "
-        "directly asserts that the queried condition is false. Phrases such as not confirmed, no proof, no record, "
-        "not established, unknown, unverified, or absence of evidence are not explicit negations and must yield "
-        "entailed=false with proof_kind=unknown. Emit proof_kind=same_scope_incompatibility only when "
+        "directly asserts that the queried condition is false. Emit proof_kind=explicit_exclusion when accessible "
+        "authoritative evidence exhaustively restricts the relevant property to alternatives that exclude the queried "
+        "value, for example 'stores only salted hashes', or explicitly states that the target has no relation to the "
+        "queried category. Phrases such as not confirmed, no proof, no record, not established, unknown, unverified, "
+        "or mere absence of evidence are neither explicit negation nor explicit exclusion. Set absence_of_record_only=true "
+        "whenever the proof rests on no record, not recorded, no report, not documented, or missing evidence, and then set "
+        "entailed=false with proof_kind=unknown. Set absence_of_record_only=false only for a direct asserted negation or "
+        "authoritative exhaustive exclusion. Emit proof_kind=same_scope_incompatibility only when "
         "incompatible_condition_span names an asserted condition that cannot coexist with the queried condition "
         "during the same temporal interval, and set temporal_alignment=same_scope. Events before or after that "
         "interval, later restoration, current location, or merely remaining somewhere do not prove that an earlier "
@@ -6208,6 +6272,7 @@ def call_model_answer_verification(
         "accessibility": str(verification.get("accessibility") or "unknown"),
         "temporal_alignment": str(verification.get("temporal_alignment") or "unspecified"),
         "explicit_negation": bool(verification.get("explicit_negation")),
+        "absence_of_record_only": bool(verification.get("absence_of_record_only")),
         "incompatible_condition_span": str(verification.get("incompatible_condition_span") or ""),
         "reason": str(verification.get("reason") or ""),
         "raw_text": raw,

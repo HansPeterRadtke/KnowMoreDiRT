@@ -623,7 +623,7 @@
       "id": "hrq104",
       "category": "unanswerable_temporal_false_positive",
       "question": "Was the River Dial archive decision finalized?",
-      "answer": "unknown"
+      "answer": "No; no final decision was made."
     },
     {
       "id": "hrq105",
@@ -647,7 +647,8 @@
       "id": "hrq108",
       "category": "context_discourse",
       "question": "Was the north hinge crack proven?",
-      "answer": "unknown"
+      "answer": "unknown",
+      "evidence": []
     },
     {
       "id": "hrq109",
@@ -671,7 +672,8 @@
       "id": "hrq112",
       "category": "unanswerable_relation_false_positive",
       "question": "Was the river reroute confirmed as a plan?",
-      "answer": "unknown"
+      "answer": "unknown",
+      "evidence": []
     },
     {
       "id": "hrq113",

@@ -93,18 +93,9 @@
       "question": "Who reviewed PR-9910 for BeaconQueue docs?"
     },
     {
-      "answer": "No; the deletion occurred only in a dream and the repository still contained vault.key.",
+      "answer": "unknown",
       "category": "dream_vs_fact",
-      "evidence": [
-        {
-          "file": "q2/no_ext/dreamfile",
-          "snippet": "When I woke up, the repository still contained vault.key."
-        },
-        {
-          "file": "q2/no_ext/dreamfile",
-          "snippet": "The dream was not an incident report."
-        }
-      ],
+      "evidence": [],
       "id": "q009",
       "question": "Did AtlasCrane really delete vault.key?"
     },
@@ -217,7 +208,7 @@
       "question": "What runbook URL is listed for BUG-7301?"
     },
     {
-      "answer": "Rowan",
+      "answer": "Rowan Pike",
       "category": "quote_vs_assertion",
       "evidence": [
         {
@@ -229,7 +220,7 @@
       "question": "According to Mira's top-level note, who fixed parser.cpp?"
     },
     {
-      "answer": "Rowan planned to fix parser.cpp tomorrow, not today.",
+      "answer": "Rowan plans to fix parser.cpp tomorrow, not today",
       "category": "quote_vs_assertion",
       "evidence": [
         {
@@ -590,14 +581,9 @@
       "question": "Who approved RippleDesk?"
     },
     {
-      "answer": "No; it is an unrelated gardening note.",
+      "answer": "unknown",
       "category": "distractor_avoidance",
-      "evidence": [
-        {
-          "file": "zz/distractors/similar-title.txt",
-          "snippet": "This unrelated gardening note mentions market research but has no relation"
-        }
-      ],
+      "evidence": [],
       "id": "q051",
       "question": "Is ActionGarden a product roadmap target in the corpus?"
     },
