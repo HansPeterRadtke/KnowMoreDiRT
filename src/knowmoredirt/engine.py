@@ -397,6 +397,11 @@ class KnowMoreDiRTEngine:
             return Answer("unknown", reason="empty question")
 
         if self._use_local_model:
+            arithmetic_answer = self._answer_with_arithmetic_source(text)
+            if arithmetic_answer is not None:
+                arithmetic_answer = self._cleanup_public_answer(arithmetic_answer, question=text)
+                self.last_answer = arithmetic_answer
+                return arithmetic_answer
             model_answer = self._answer_with_local_model(text)
             if self._complete_answer(model_answer):
                 model_answer = self._cleanup_public_answer(model_answer, question=text)
@@ -2210,9 +2215,17 @@ class KnowMoreDiRTEngine:
         else:
             return None
         evidence_items: list[Evidence] = []
-        for sentence, score in self._search(question, limit=12):
+        # This lookup is deliberately independent of the model query planner.
+        # Arithmetic binding requires only source text containing both operands
+        # and the operation, so the lexical index is the authoritative bounded
+        # source lookup and remains available before any model plan exists.
+        candidates = self.index.search(question, limit=24)
+        if not candidates:
+            candidates = [(sentence, 0.0) for sentence in self.sentences]
+        for sentence, score in candidates:
             material = normalize(sentence.text)
-            if str(a) in material and str(b) in material and (op in material or op.replace(" ", " ") in material):
+            operation_present = op in material or (op == "multiplied by" and "times" in material)
+            if str(a) in material and str(b) in material and operation_present:
                 evidence_items.append(self._evidence(sentence, score))
                 break
         if not evidence_items:
@@ -3065,8 +3078,14 @@ class KnowMoreDiRTEngine:
 
     def _cleanup_public_answer(self, answer: Answer, *, question: str = "") -> Answer:
         """Apply presentation-only normalization after model semantic acceptance."""
-        del question
         text = str(answer.text or "").strip()
+        qnorm = normalize(question)
+        if answer.answer_type == "count" and any(
+            token in qnorm for token in (" plus ", " minus ", " times ", " multiplied by ", " divided by ")
+        ):
+            numeric = re.fullmatch(r"([+-]?\d+(?:\.\d+)?)\s+[A-Za-z][A-Za-z -]*", text)
+            if numeric:
+                text = numeric.group(1)
         if not text or text == answer.text:
             return answer
         return Answer(text, answer.confidence, answer.evidence, answer.reason, answer.answer_type)

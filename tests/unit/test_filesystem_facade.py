@@ -41,3 +41,8 @@ def test_question_filesystem_database_uses_isolated_assistant(monkeypatch, tmp_p
     assert result["result"]["answer"] == "What happened?"
     assert captured["max_evidence"] == 7
     assert captured["analysis_client"] is config.analysis
+
+
+def test_environment_endpoint_is_normalized_to_server_root(monkeypatch):
+    monkeypatch.setenv("KMD_LOCAL_MODEL_ENDPOINT", "http://127.0.0.1:14829/v1")
+    assert filesystem.FilesystemModelConfig.from_environment().analysis_url == "http://127.0.0.1:14829"

@@ -12,6 +12,7 @@ import argparse
 import hashlib
 import json
 import os
+import sqlite3
 import subprocess
 import time
 import urllib.error
@@ -145,7 +146,7 @@ def _git_revision() -> dict[str, str]:
 
 def _configure_environment(output_root: Path) -> None:
     os.environ.setdefault("KMD_LOCAL_MODEL_ENDPOINT", "http://127.0.0.1:14829/v1")
-    os.environ.setdefault("KMD_LOCAL_MODEL_EXPECTED_ID", "Qwen2.5-14B-Instruct-Q4_K_M.gguf")
+    os.environ.setdefault("KMD_LOCAL_MODEL_EXPECTED_ID", "Qwen3.5-27B-Q8_0.gguf")
     os.environ.setdefault("KMD_LOCAL_MODEL_PER_TOKEN_TIMEOUT_SECONDS", "420")
     os.environ.setdefault("KMD_LOCAL_MODEL_API", "chat")
     os.environ.setdefault("KMD_LOCAL_MODEL_CONSTRAINT_MODE", "native")
@@ -226,6 +227,41 @@ def _engine_trace() -> dict[str, Any]:
     except Exception as exc:
         return {"diagnostic_error": f"{type(exc).__name__}: {exc}"}
 
+
+
+def _filesystem_catalog_diagnostics(database: Path) -> dict[str, Any]:
+    if not database.exists():
+        return {"exists": False, "path": str(database)}
+    diagnostics: dict[str, Any] = {
+        "exists": True,
+        "path": str(database),
+        "bytes": database.stat().st_size,
+        "tables": {},
+    }
+    with sqlite3.connect(database) as connection:
+        table_names = [
+            str(row[0]) for row in connection.execute(
+                "SELECT name FROM sqlite_master WHERE type='table' ORDER BY name"
+            )
+        ]
+        for table in table_names:
+            safe = table.replace('"', '""')
+            try:
+                count = int(connection.execute(f'SELECT COUNT(*) FROM "{safe}"').fetchone()[0])
+            except sqlite3.Error:
+                continue
+            diagnostics["tables"][table] = count
+    return diagnostics
+
+
+def _write_failure_artifact(output_root: Path, record: dict[str, Any], diagnostics: dict[str, Any]) -> str:
+    root = output_root / "failures" / str(record.get("suite") or "unknown")
+    root.mkdir(parents=True, exist_ok=True)
+    path = root / f"{str(record.get('id') or 'unknown')}.json"
+    payload = dict(record)
+    payload["full_diagnostics"] = diagnostics
+    path.write_text(json.dumps(payload, indent=2, sort_keys=True, default=_json_default) + "\n", encoding="utf-8")
+    return str(path)
 
 def _score_records(records: list[dict[str, Any]]) -> dict[str, Any]:
     by_category: dict[str, list[bool]] = defaultdict(list)
@@ -330,7 +366,7 @@ def run_benchmark(args: argparse.Namespace) -> dict[str, Any]:
     completed_records: list[dict[str, Any]] = []
     for suite_name in selected:
         suite = SUITES[suite_name]
-        corpus = Path(suite["corpus"])
+        corpus = Path(args.corpus_override) if getattr(args, "corpus_override", None) else Path(suite["corpus"])
         qa_path = Path(suite["qa"])
         questions = _load_questions(qa_path)
         selected_question_ids = {str(value) for value in getattr(args, "question_id", []) or []}
@@ -351,12 +387,47 @@ def run_benchmark(args: argparse.Namespace) -> dict[str, Any]:
             item for item in questions if (suite_name, str(item.get("id") or "")) not in existing
         ]
         initialized = False
+        filesystem_init_seconds = 0.0
+        filesystem_init_result: dict[str, Any] = {}
+        filesystem_database = output_root / "filesystem_catalogs" / f"{suite_name}.sqlite3"
+        filesystem_diagnostics: dict[str, Any] = {}
         if missing_questions:
+            from knowmoredirt.filesystem import initialize_filesystem_database
+
+            filesystem_database.parent.mkdir(parents=True, exist_ok=True)
+            if filesystem_database.exists() and not args.force:
+                filesystem_init_result = {"reused_existing": True}
+                filesystem_init_seconds = 0.0
+            else:
+                fs_started = time.time()
+                filesystem_init_result = initialize_filesystem_database(
+                    corpus,
+                    filesystem_database,
+                    replace=filesystem_database.exists(),
+                    chunks_only=False,
+                    collection_id=f"internal-benchmark:{suite_name}",
+                    progress_every=25,
+                )
+                filesystem_init_seconds = round(time.time() - fs_started, 3)
+            filesystem_diagnostics = _filesystem_catalog_diagnostics(filesystem_database)
+            if not filesystem_diagnostics.get("exists") or not filesystem_diagnostics.get("tables"):
+                raise RuntimeError(f"filesystem catalog initialization failed for {suite_name}: {filesystem_diagnostics}")
+            print(
+                f"kmd-model-benchmark filesystem_initialized {suite_name} "
+                f"seconds={filesystem_init_seconds:.3f} database={filesystem_database} "
+                f"tables={filesystem_diagnostics.get('tables', {})}",
+                flush=True,
+            )
+
             init_started = time.time()
             kmd_initialize(corpus)
             initialized = True
             init_seconds = round(time.time() - init_started, 3)
             init_diagnostics = _engine_trace()
+            init_diagnostics["filesystem_database"] = str(filesystem_database)
+            init_diagnostics["filesystem_init_seconds"] = filesystem_init_seconds
+            init_diagnostics["filesystem_init_result"] = filesystem_init_result
+            init_diagnostics["filesystem_diagnostics"] = filesystem_diagnostics
             print(
                 f"kmd-model-benchmark suite_initialized {suite_name} "
                 f"seconds={init_seconds:.3f} pending_questions={len(missing_questions)}",
@@ -402,6 +473,8 @@ def run_benchmark(args: argparse.Namespace) -> dict[str, Any]:
                 "model_trace": diagnostics.get("trace", {}),
                 "dspg_counts": diagnostics.get("dspg_counts", {}),
             }
+            if not correct:
+                record["failure_artifact"] = _write_failure_artifact(output_root, record, diagnostics)
             _append_jsonl(results_path, record)
             existing[key] = record
             suite_records.append(record)
@@ -426,6 +499,9 @@ def run_benchmark(args: argparse.Namespace) -> dict[str, Any]:
                 "corpus_tree_hash": _tree_hash(corpus),
                 "wall_time_seconds": round(time.time() - suite_started, 3),
                 "initialize_seconds": init_seconds,
+                "filesystem_initialize_seconds": filesystem_init_seconds,
+                "filesystem_database": str(filesystem_database),
+                "filesystem_diagnostics": filesystem_diagnostics,
                 "initialized_this_run": initialized,
                 "initialize_diagnostics": init_diagnostics,
             }
@@ -477,6 +553,12 @@ def main() -> int:
         nargs="*",
         default=[],
         help="Optional question ids to run within the selected suite(s).",
+    )
+    parser.add_argument(
+        "--corpus-override",
+        type=Path,
+        default=None,
+        help="Optional corpus path override for targeted integration validation.",
     )
     args = parser.parse_args()
     summary = run_benchmark(args)

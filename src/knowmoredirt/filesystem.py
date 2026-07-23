@@ -29,8 +29,13 @@ class FilesystemModelConfig:
 
     @classmethod
     def from_environment(cls) -> "FilesystemModelConfig":
+        analysis_url = os.getenv("KMD_LOCAL_MODEL_ENDPOINT", cls.analysis_url).rstrip("/")
+        for suffix in ("/v1/chat/completions", "/chat/completions", "/v1"):
+            if analysis_url.endswith(suffix):
+                analysis_url = analysis_url[: -len(suffix)]
+                break
         return cls(
-            analysis_url=os.getenv("KMD_LOCAL_MODEL_ENDPOINT", cls.analysis_url).rstrip("/"),
+            analysis_url=analysis_url,
             analysis_model=os.getenv("KMD_LOCAL_MODEL_NAME", cls.analysis_model),
             embedding_url=os.getenv("KMD_EMBEDDING_ENDPOINT", cls.embedding_url).rstrip("/"),
             embedding_model=os.getenv("KMD_EMBEDDING_MODEL", cls.embedding_model),

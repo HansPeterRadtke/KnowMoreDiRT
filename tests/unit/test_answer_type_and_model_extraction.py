@@ -1654,3 +1654,17 @@ def test_negative_boolean_verifier_rejects_when_independent_audit_calls_it_absen
     monkeypatch.setattr(engine_module, "call_model_answer_verification", lambda *_args, **_kwargs: next(results))
     answer = Answer("no", 0.9, [Evidence("dream.txt", "Waking note: no real gate opening is recorded.")], "model", "boolean")
     assert engine._verify_with_local_model(frame.question_text, frame, answer, ExpectedAnswer("boolean")) is False
+
+
+def test_cleanup_arithmetic_count_removes_explanatory_unit(tmp_path):
+    engine = KnowMoreDiRTEngine.__new__(KnowMoreDiRTEngine)
+    answer = Answer("12 apples", 0.9, [], "model", "count")
+    cleaned = engine._cleanup_public_answer(answer, question="What does 7 plus 5 equal?")
+    assert cleaned.text == "12"
+
+
+def test_cleanup_non_arithmetic_count_keeps_unit_phrase(tmp_path):
+    engine = KnowMoreDiRTEngine.__new__(KnowMoreDiRTEngine)
+    answer = Answer("12 apples", 0.9, [], "model", "count")
+    cleaned = engine._cleanup_public_answer(answer, question="How many apples were stored?")
+    assert cleaned.text == "12 apples"
