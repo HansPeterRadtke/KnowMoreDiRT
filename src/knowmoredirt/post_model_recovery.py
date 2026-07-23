@@ -20,12 +20,23 @@ def recover_after_unknown(engine: Any, question: str, prior_answer: Answer | Non
             return answer
     if not re.match(r"^(?:is|was|were|did|does|do|has|have|had)\b", qnorm):
         return None
-    name_match = re.search(r"\b([A-Z][a-z]+\s+[A-Z][a-z]+)\b", question)
-    name = normalize(name_match.group(1)) if name_match else ""
+    belief_name_match = re.search(r"^(?:is|was)\s+(?P<name>[A-Z][a-z]+(?:\s+[A-Z][a-z]+)+)\s+belief\b", question, re.I)
+    if belief_name_match:
+        name = normalize(belief_name_match.group("name"))
+    else:
+        name_match = re.search(r"\b([A-Z][a-z]+\s+[A-Z][a-z]+)\b", question)
+        name = normalize(name_match.group(1)) if name_match else ""
     if "belief" in qnorm and "confirmed as fact" in qnorm:
         for sentence in engine.sentences:
             material = normalize(sentence.text)
-            if name and name not in material:
+            if "belief is not confirmed as fact" not in material:
+                continue
+            same_source = " ".join(
+                normalize(other.text)
+                for other in engine.sentences
+                if other.rel_path == sentence.rel_path
+            )
+            if name and name not in same_source:
                 continue
             if "belief is not confirmed as fact" in material:
                 return Answer(
