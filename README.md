@@ -17,7 +17,11 @@ The current model-backed benchmark result is `263/273`. This is the strongest cu
 
 The current production path is stable enough that new retrieval and identity ideas should be tested separately before integration. Isolated vector and identity-resolution experiments now exist in the filesystem devtest repository and under `tests/experiments/identity_resolution/` in this repository.
 
-The authoritative continuation plan is [`docs/current_work.md`](docs/current_work.md).
+The authoritative continuation plan is [`docs/current_work.md`](docs/current_work.md). The newly vendored fast semantic database is documented in [`docs/filesystem_database.md`](docs/filesystem_database.md).
+
+## Fast filesystem database
+
+The repository now includes the previously separate `file_system_catalog` implementation as an isolated subsystem. It can scan, embed, search, and answer grounded folder questions without waiting for DRT initialization. Use `knowmoredirt.filesystem.initialize_filesystem_database` and `knowmoredirt.filesystem.question_filesystem_database`, or the `kmd-filesystem` CLI. The original devtest repository remains available for independent experiments.
 
 ## What the system does today
 

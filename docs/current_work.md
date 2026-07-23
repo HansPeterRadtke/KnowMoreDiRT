@@ -194,6 +194,10 @@ False merges are more damaging than missed merges. Optimize committed merge prec
 
 Experiments stay isolated until their acceptance criteria are met. Preserve the current production benchmark and public API.
 
+## Integration checkpoint completed
+
+The filesystem semantic database has now been copied into this repository as the isolated `file_system_catalog` package. Its original devtest copy remains intact. KMD exposes a thin `knowmoredirt.filesystem` facade and standalone CLI entry points, so fast indexing, semantic retrieval, and grounded LLM question answering can run without DRT initialization. The copied regression suite is retained under `tests/filesystem_database/`. This checkpoint does not yet make the production DRT initializer depend on the database; that dependency will be introduced only after the real identity benchmark validates the retrieval interface.
+
 ## Immediate next task
 
 The next implementation task is to create the real labeled cross-chunk identity benchmark and a runner that uses the current filesystem retrieval interface. Start by harvesting identity-related failures and representative source passages from the existing KMD fixtures and model-backed benchmark outputs. Label each mention with its gold referent or ambiguity state. Reproduce the synthetic benchmark metrics on this real set. Only after those results are known should the production schema or initialization pipeline change.

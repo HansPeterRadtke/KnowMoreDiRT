@@ -9,7 +9,11 @@ description = "Test-first raw-folder foundation for KnowMoreDiRT."
 readme = "README.md"
 requires-python = ">=3.10"
 authors = [{ name = "KnowMoreDiRT contributors" }]
-dependencies = []
+dependencies = ["numpy>=1.24", "Pillow>=9.4", "PyYAML>=6.0", "pyarrow==25.0.0"]
+
+[project.scripts]
+kmd-filesystem = "file_system_catalog.folder_assistant_cli:main"
+kmd-filesystem-search = "file_system_catalog.content_search_cli:main"
 
 [project.optional-dependencies]
 test = ["pytest>=7"]
