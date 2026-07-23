@@ -397,11 +397,11 @@ class KnowMoreDiRTEngine:
             return Answer("unknown", reason="empty question")
 
         if self._use_local_model:
-            source_answer = self._answer_with_pre_model_source_binding(text)
-            if source_answer is not None:
-                source_answer = self._cleanup_public_answer(source_answer, question=text)
-                self.last_answer = source_answer
-                return source_answer
+            arithmetic_answer = self._answer_with_arithmetic_source(text)
+            if arithmetic_answer is not None:
+                arithmetic_answer = self._cleanup_public_answer(arithmetic_answer, question=text)
+                self.last_answer = arithmetic_answer
+                return arithmetic_answer
             model_answer = self._answer_with_local_model(text)
             if self._complete_answer(model_answer):
                 model_answer = self._cleanup_public_answer(model_answer, question=text)
@@ -2193,11 +2193,6 @@ class KnowMoreDiRTEngine:
                     return Answer(match.group(0).strip(), 0.88, [evidence], "source precise file path field", "file_path")
         return None
 
-    def _answer_with_pre_model_source_binding(self, question: str) -> Answer | None:
-        from .source_bindings import answer_pre_model_source
-
-        return answer_pre_model_source(self, question)
-
     def _answer_with_arithmetic_source(self, question: str) -> Answer | None:
         qnorm = normalize(question)
         op_words = {"plus": "+", "minus": "-", "times": "*", "multiplied by": "*", "divided by": "/"}
@@ -2862,7 +2857,7 @@ class KnowMoreDiRTEngine:
             values = []
             for label in labels:
                 pattern = re.compile(
-                    rf"[\"']?{re.escape(label)}(?:\s+id|\s+identifier|\s+code)?[\"']?\s*[:=]\s*[\"']?(?P<value>[A-Za-z][A-Za-z0-9]{{1,24}}(?:[-_][A-Za-z0-9]{{1,24}})+)",
+                    rf"[\"']?{re.escape(label)}(?:\s+id|\s+identifier|\s+code)?[\"']?\s*[:=]\s*[\"']?(?P<value>[A-Z][A-Z0-9]{{1,12}}(?:[-_][A-Z0-9]{{1,12}})+)",
                     re.I,
                 )
                 values.extend(match.group("value").rstrip(".,;)") for match in pattern.finditer(line or ""))
@@ -2888,8 +2883,7 @@ class KnowMoreDiRTEngine:
                 return any(label in line_norm for label in labels)
             return any(term in line_norm for term in ["url", "uri", "link", "portal", "stored", "dataset", "map", "drawing"])
         if field_kind == "identifier":
-            labeled_values = self._source_field_values_for_label(line, field_kind, labels)
-            if not labeled_values:
+            if not self._source_field_identifiers(line):
                 return False
             if labels and labels != ["id"]:
                 specific = [label for label in labels if label not in {"id", "identifier", "code"}]
@@ -2966,35 +2960,14 @@ class KnowMoreDiRTEngine:
             return None
         specific_missing_labels = [label for label in labels if label not in {"url", "uri", "link", "id", "identifier", "code"}]
         if specific_missing_labels and any(label in qnorm for label in specific_missing_labels):
-            missing_candidates = (
-                self.index.search(question, limit=12, required=None)
-                if self._use_local_model and not self.model_query_trace.last_plan
-                else self._search(question, limit=12, required=None)
-            )
-            for sentence, score in missing_candidates:
+            for sentence, score in self._search(question, limit=12, required=None):
                 ev = self._evidence(sentence, score)
                 line_norm = normalize(sentence.text)
-                explicit_missing = False
-                for label in specific_missing_labels:
-                    escaped = re.escape(label)
-                    if field_kind == "url":
-                        explicit_missing = explicit_missing or bool(re.search(
-                            rf"\b(?:(?:there\s+is|there\s+was)\s+)?no\s+{escaped}(?:\s+(?:url|uri|link|portal))?(?:\s+(?:is\s+)?(?:listed|provided|recorded|available|stated)|\s+for\b)",
-                            line_norm,
-                        ))
-                    elif field_kind == "identifier":
-                        explicit_missing = explicit_missing or bool(re.search(
-                            rf"\b(?:(?:there\s+is|there\s+was)\s+)?no\s+{escaped}\s+(?:id|identifier|code)(?:\s+(?:is\s+)?(?:listed|provided|recorded|available|stated)|\s+for\b)",
-                            line_norm,
-                        ))
-                if explicit_missing:
+                line_tokens = set(re.findall(r"[a-z0-9]+", line_norm))
+                if any(label in line_norm for label in specific_missing_labels) and "no" in line_tokens and ("url" in line_tokens or "link" in line_tokens):
                     return Answer("unknown", 0.0, [ev], "explicit missing source field", "unknown")
         target_terms = self._exact_source_target_terms(frame, deterministic_frame, labels, field_kind)
-        candidates = (
-            self.index.search(question, limit=int(os.environ.get("KMD_EXACT_FIELD_SOURCE_LIMIT", "36")), required=None)
-            if self._use_local_model and not self.model_query_trace.last_plan
-            else self._search(question, limit=int(os.environ.get("KMD_EXACT_FIELD_SOURCE_LIMIT", "36")), required=None)
-        )
+        candidates = self._search(question, limit=int(os.environ.get("KMD_EXACT_FIELD_SOURCE_LIMIT", "36")), required=None)
         evidence = [self._evidence(sentence, score) for sentence, score in candidates]
         if prior_answer is not None:
             evidence = [*prior_answer.evidence, *evidence]
