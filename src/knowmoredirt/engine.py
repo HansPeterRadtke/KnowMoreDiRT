@@ -404,9 +404,20 @@ class KnowMoreDiRTEngine:
                 return arithmetic_answer
             model_answer = self._answer_with_local_model(text)
             if self._complete_answer(model_answer):
+                frame_data = self.model_query_trace.last_plan if isinstance(self.model_query_trace.last_plan, dict) else None
+                frame = frame_from_mapping(text, frame_data) if frame_data else plan_question(text)
+                expected = self._expected_from_frame(frame)
+                restored = self._restore_where_preposition(text, model_answer.text, expected, model_answer.evidence)
+                if restored and restored != model_answer.text:
+                    model_answer = Answer(restored, model_answer.confidence, model_answer.evidence, model_answer.reason, model_answer.answer_type)
                 model_answer = self._cleanup_public_answer(model_answer, question=text)
                 self.last_answer = model_answer
                 return model_answer
+            recovery = self._answer_after_model_unknown(text, model_answer)
+            if self._complete_answer(recovery):
+                recovery = self._cleanup_public_answer(recovery, question=text)
+                self.last_answer = recovery
+                return recovery
             answer = self._unknown_answer("local model DRT path found no complete grounded answer")
             self.last_answer = answer
             return answer
@@ -461,6 +472,11 @@ class KnowMoreDiRTEngine:
         answer = self._unknown_answer("no complete grounded DSPG match")
         self.last_answer = answer
         return answer
+
+    def _answer_after_model_unknown(self, question: str, prior_answer: Answer | None = None) -> Answer | None:
+        from .post_model_recovery import recover_after_unknown
+
+        return recover_after_unknown(self, question, prior_answer)
 
     def _answer_with_boolean_source_explanation(self, question: str, prior_answer: Answer | None = None) -> Answer | None:
         frame_data = self.model_query_trace.last_plan if isinstance(self.model_query_trace.last_plan, dict) else None
