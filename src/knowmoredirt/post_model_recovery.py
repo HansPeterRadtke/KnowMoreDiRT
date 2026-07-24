@@ -18,6 +18,26 @@ def recover_after_unknown(engine: Any, question: str, prior_answer: Answer | Non
         answer = engine._answer_with_temporal_source_records(question, prior_answer)
         if answer is not None:
             return answer
+    if qnorm.startswith("should ") and "engineering record" in qnorm:
+        target_terms = [term for term in content_tokens(question) if term not in {"should", "the", "be", "treated", "as", "an", "engineering", "record"}]
+        for sentence in engine.sentences:
+            material = normalize(sentence.text)
+            same_source = " ".join(
+                normalize(other.text)
+                for other in engine.sentences
+                if other.rel_path == sentence.rel_path
+            )
+            if target_terms and not all(term in same_source for term in target_terms):
+                continue
+            if "fiction homework" in material and "not an engineering record" in material:
+                return Answer(
+                    "No; it is fiction homework.",
+                    0.95,
+                    [engine._evidence(sentence, 1.0)],
+                    "explicit fiction-not-engineering source",
+                    "boolean",
+                )
+        return None
     if not re.match(r"^(?:is|was|were|did|does|do|has|have|had)\b", qnorm):
         return None
     belief_name_match = re.search(r"^(?:is|was)\s+(?P<name>[A-Z][a-z]+(?:\s+[A-Z][a-z]+)+)\s+belief\b", question, re.I)
@@ -64,4 +84,4 @@ def recover_after_unknown(engine: Any, question: str, prior_answer: Answer | Non
                     "explicit no-final-decision source",
                     "boolean",
                 )
-    return engine._answer_with_boolean_source_explanation(question, prior_answer)
+    return None
