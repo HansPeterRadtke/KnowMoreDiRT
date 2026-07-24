@@ -15,7 +15,7 @@ from dataclasses import asdict, dataclass
 from typing import Any
 
 from .extractors import capitalized_phrases, identifiers, urls
-from .text import content_tokens, normalize, tokenize
+from .text import clean_extracted_value, content_tokens, normalize, tokenize
 
 
 QUESTION_WORDS = {
@@ -133,6 +133,26 @@ class QueryFrame:
     aggregation: str = ""
     requires_evidence: bool = True
     source: str = "deterministic"
+
+    def __post_init__(self) -> None:
+        if self.negated:
+            return
+        material = normalize(" ".join([self.question_text, self.requested_relation, *self.relation_terms]))
+        explicitly_negated = bool(
+            re.search(r"\b(?:not|never|cannot)\b", material)
+            or re.search(r"\b(?:is|are|was|were|do|does|did|has|have|had|can|could|will|would|shall|should|may|might|must)\s+no\b", material)
+        )
+        if explicitly_negated:
+            object.__setattr__(self, "negated", True)
+            def positive_term(value: str) -> str:
+                text = normalize(value)
+                text = re.sub(r"\b(?:not|never)\b", " ", text)
+                text = re.sub(r"\bcannot\b", "can", text)
+                text = re.sub(r"\b(?:is|are|was|were|do|does|did|has|have|had|can|could|will|would|shall|should|may|might|must)\s+no\b", " ", text)
+                return clean_extracted_value(re.sub(r"\s+", " ", text))
+            object.__setattr__(self, "requested_relation", positive_term(self.requested_relation))
+            object.__setattr__(self, "relation_terms", tuple(dict.fromkeys(term for term in (positive_term(value) for value in self.relation_terms) if term)))
+            object.__setattr__(self, "constraints", tuple(dict.fromkeys(term for term in (positive_term(value) for value in self.constraints) if term)))
 
     def as_dict(self) -> dict[str, Any]:
         return asdict(self)
@@ -490,14 +510,25 @@ def frame_from_mapping(question: str, mapping: dict[str, Any] | None, *, source:
     }:
         answer_type = base.answer_type
     combined_anchors = tuple(dict.fromkeys([*anchor_tuple, *base.target_anchors])) if anchor_tuple else base.target_anchors
+    requested_relation = str(raw.get("requested_relation") or base.requested_relation)
+    normalized_question = normalize(question)
+    classification_match = re.search(
+        r"\b(?:treated|classified|regarded|described|considered|recognized)\s+as\s+(.+?)(?:\?|$)",
+        normalized_question,
+    )
+    if answer_type == "boolean" and classification_match:
+        requested_relation = "is"
+        category = clean_extracted_value(classification_match.group(1))
+        relation_terms = ("is",)
+        constraints = (category,) if category else constraints
     return QueryFrame(
         question_text=question,
         answer_type=answer_type,
         answer_variables=answer_variables,
         target_anchors=combined_anchors,
-        requested_relation=str(raw.get("requested_relation") or base.requested_relation),
-        relation_terms=relation_terms if relation_terms_supplied else base.relation_terms,
-        constraints=constraints if constraints_supplied else base.constraints,
+        requested_relation=requested_relation,
+        relation_terms=relation_terms if relation_terms_supplied or classification_match else base.relation_terms,
+        constraints=constraints if constraints_supplied or classification_match else base.constraints,
         binding_roles=binding_roles,
         scope_requirements=scope_requirements,
         modality_requirements=modality_requirements,

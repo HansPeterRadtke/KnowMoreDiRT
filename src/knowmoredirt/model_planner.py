@@ -3498,7 +3498,9 @@ def build_chunk_frame_prompt(chunk_text: str, *, rel_path: str = "", context_bud
         "and values when those phrases appear in the chunk. Do not bury a bound value only inside predicate text "
         "when the same value appears as an exact argument phrase in the chunk. Include identity_hypotheses only when the chunk itself supports alias, "
         "coreference, pronoun, speaker, or same-referent links between distinct mentions; do not include self-links. Include modality, polarity, context_holder, "
-        "and temporal_text only when the chunk itself supports that DRT interpretation."
+        "and temporal_text only when the chunk itself supports that DRT interpretation. Encode negation structurally: "
+        "keep predicate text positive and set polarity to negative; never hide negation inside predicates such as is not, "
+        "did not, cannot, has no, or never."
         + json.dumps({"source": rel_path, "context_budget": context_budget or {}, "chunk": chunk_text}, ensure_ascii=False)
     )
 

@@ -6101,6 +6101,7 @@ def _boolean_condition_candidates(
     relation_terms: list[str],
 ) -> list[tuple[float, str, Evidence, str]]:
     args_by_key = _frame_arguments_by_condition_key(records)
+    drs_args_by_condition = _drs_arguments_by_condition_id(records)
     predicate_terms = _boolean_predicate_terms(frame, target_terms)
     constraint_terms = _boolean_constraint_terms(frame, target_terms)
     candidates: list[tuple[float, str, Evidence, str]] = []
@@ -6116,8 +6117,18 @@ def _boolean_condition_candidates(
             normalize(str(row.get("predicate") or "")),
             str(row.get("context_id") or ""),
         )
-        args = args_by_key.get(key, [])
-        arg_material = normalize(" ".join(str(arg.get("surface") or "") for arg in args))
+        exact_conditions = _drs_conditions_for_relation(row, records)
+        args = [
+            arg
+            for condition in exact_conditions
+            for arg in drs_args_by_condition.get(str(condition.get("drs_condition_id") or ""), [])
+        ] or args_by_key.get(key, [])
+        arg_material = normalize(
+            " ".join(
+                str(arg.get("evidence_surface") or arg.get("value") or arg.get("surface") or "")
+                for arg in args
+            )
+        )
         row_material = normalize(
             " ".join(
                 [
@@ -6143,12 +6154,58 @@ def _boolean_condition_candidates(
         predicate_supported = _boolean_terms_covered(row_material, predicate_terms, require_all=False)
         target_supported = _boolean_target_anchors_covered(evidence_material, frame, target_terms)
         constraints_supported = _boolean_terms_covered(evidence_material, constraint_terms, require_all=True)
-        if not target_supported:
-            continue
-        if condition_true and (not predicate_supported or not constraints_supported):
+        if not target_supported or not predicate_supported or not constraints_supported:
             continue
         prefix = "Yes" if condition_true else "No"
         evidence_text = clean_extracted_value(str(row.get("value") or "") or evidence.text).strip(" .;:")
+        if not condition_true and normalize(str(row.get("predicate") or "")) in {"is", "are", "was", "were"}:
+            subject_ids = {
+                str(arg.get("referent_id") or "")
+                for arg in args
+                if normalize(str(arg.get("role") or "")) in {"subject", "entity", "topic"}
+                and str(arg.get("referent_id") or "")
+            }
+            positive_values: list[str] = []
+            current_condition_ids = {
+                str(condition.get("drs_condition_id") or "")
+                for condition in exact_conditions
+                if str(condition.get("drs_condition_id") or "")
+            }
+            source_span_id = str(row.get("source_span_id") or "")
+            context_id = str(row.get("context_id") or "")
+            for sibling_condition in records.get("drs_conditions", []):
+                sibling_id = str(sibling_condition.get("drs_condition_id") or "")
+                if not sibling_id or sibling_id in current_condition_ids:
+                    continue
+                if str(sibling_condition.get("source_span_id") or "") != source_span_id:
+                    continue
+                if str(sibling_condition.get("context_id") or "") != context_id:
+                    continue
+                if normalize(str(sibling_condition.get("predicate") or "")) not in {"is", "are", "was", "were"}:
+                    continue
+                sibling_args = drs_args_by_condition.get(sibling_id, [])
+                sibling_subject_ids = {
+                    str(arg.get("referent_id") or "")
+                    for arg in sibling_args
+                    if normalize(str(arg.get("role") or "")) in {"subject", "entity", "topic"}
+                    and str(arg.get("referent_id") or "")
+                }
+                if subject_ids and sibling_subject_ids and not subject_ids.intersection(sibling_subject_ids):
+                    continue
+                sibling_polarity = normalize(str(sibling_condition.get("polarity") or "positive"))
+                if sibling_polarity == "negative":
+                    continue
+                for arg in sibling_args:
+                    if normalize(str(arg.get("role") or "")) in {"value", "object", "classification", "state"}:
+                        value = clean_extracted_value(
+                            str(arg.get("value") or "")
+                            or str(arg.get("evidence_surface") or "")
+                            or str(arg.get("surface") or "")
+                        )
+                        if value and normalize(value) not in {normalize(term) for term in constraint_terms}:
+                            positive_values.append(value)
+            if positive_values:
+                evidence_text = f"it is {positive_values[0]}"
         if not evidence_text:
             evidence_text = clean_extracted_value(evidence.text).strip(" .;:")
         answer = f"{prefix}; {evidence_text}." if evidence_text else prefix
@@ -6336,6 +6393,29 @@ def execute_bounded_query(
     if answer_slot_terms:
         relation_terms = list(dict.fromkeys([*relation_terms, *answer_slot_terms]))
     selected_docs, selected_chunks, ranking = _rank_scope(documents, sentences_by_document, question, frame, doc_limit, chunk_limit)
+    if not selected_docs and frame.target_anchors:
+        fallback_anchors = tuple(
+            dict.fromkeys(
+                token
+                for anchor in frame.target_anchors
+                for token in content_tokens(anchor)
+                if token and token not in BOOLEAN_GENERIC_TERMS
+            )
+        )
+        if fallback_anchors:
+            fallback_frame = replace(frame, target_anchors=fallback_anchors)
+            selected_docs, selected_chunks, fallback_ranking = _rank_scope(
+                documents,
+                sentences_by_document,
+                question,
+                fallback_frame,
+                doc_limit,
+                chunk_limit,
+            )
+            ranking["compound_anchor_fallback"] = list(fallback_anchors)
+            ranking["compound_anchor_fallback_selected_document_count"] = len(selected_docs)
+            ranking["compound_anchor_fallback_selected_chunk_count"] = len(selected_chunks)
+            ranking.update({f"compound_anchor_{key}": value for key, value in fallback_ranking.items()})
     current_document_chunk_ids = _bounded_identity_chunk_ids(documents, sentences_by_document, selected_docs, selected_chunks)
     records = _load_records(
         store,

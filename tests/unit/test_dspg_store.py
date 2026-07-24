@@ -2263,6 +2263,7 @@ def test_frame_argument_binding_uses_predicate_matched_full_question_slot(tmp_pa
     assert diagnostics["execution"]["answer_binding_reason"] in {
         "frame_argument_binding",
         "structural_chain_drs_binding",
+        "relation_condition_binding",
     }
 
 
@@ -11938,3 +11939,35 @@ def test_temporal_candidates_match_structured_relation_not_other_label_in_same_w
     frame = QueryFrame(question_text="What is the measurement date?", answer_type="date_time", answer_variables=("measurement date",), target_anchors=(), requested_relation="measurement date", relation_terms=("measurement date",), constraints=(), source="model_query_drs")
     values = [value for _score, value, _evidence, _reason in _temporal_candidates(records, frame, ExpectedAnswer("date_time"), [], ["measurement date"])]
     assert values == ["1986-07-14"]
+
+
+def test_materialize_normalizes_lexical_negation_to_polarity(tmp_path):
+    from knowmoredirt.store import DSPGStore
+    store = DSPGStore(tmp_path / "negation.sqlite3")
+    run_id = store.start_run(tmp_path)
+    document_id = "doc-neg"
+    span_id = "span-neg"
+    store.execute("INSERT INTO documents(document_id,run_id,path,rel_path,content_hash,size_bytes,mtime,ctime,char_count,metadata_json) VALUES(?,?,?,?,?,?,?,?,?,?)",(document_id,run_id,"x","x","h",1,0,0,1,"{}"))
+    store.execute("INSERT INTO chunks(chunk_id,document_id,chunk_order,char_start,char_end,text,token_estimate) VALUES(?,?,?,?,?,?,?)",("chunk-neg",document_id,0,0,1,"x",1))
+    store.execute("INSERT INTO source_spans(span_id,document_id,chunk_id,char_start,char_end,surface,surface_norm,span_kind) VALUES(?,?,?,?,?,?,?,?)",(span_id,document_id,"chunk-neg",0,1,"x","x","sentence"))
+    payload={"schema_version":"drs-v1","source_id":span_id,"drs":{"referents":[],"boxes":[{"id":"b0","kind":"asserted","parent_id":"","holder_referent_id":"","evidence_text":"X is not Y","confidence":1.0}],"conditions":[{"id":"c0","predicate":"is not","box_id":"b0","polarity":"positive","modality":"asserted","temporal_id":"","arguments":[],"evidence_text":"X is not Y","confidence":1.0},{"id":"c1","predicate":"has no relation to","box_id":"b0","polarity":"positive","modality":"asserted","temporal_id":"","arguments":[],"evidence_text":"X has no relation to Y","confidence":1.0}],"identity_hypotheses":[],"temporal_records":[]}}
+    result=store.materialize_drs_payload(run_id,span_id,"X is not Y. X has no relation to Y.",payload,source="test")
+    assert result["accepted"]
+    rows=store.execute("SELECT predicate,polarity FROM drs_conditions ORDER BY external_condition_id").fetchall()
+    assert [(row[0],row[1]) for row in rows]==[("is","negative"),("has relation to","negative")]
+
+
+def test_materialize_binds_demonstrative_to_recent_referent(tmp_path):
+    from knowmoredirt.store import DSPGStore
+    source = "A drawing showed a bridge. This was not an engineering record."
+    store = DSPGStore(tmp_path / "demonstrative.sqlite3")
+    run_id = store.start_run(tmp_path)
+    doc='doc-demo'; chunk='chunk-demo'; span='span-demo'
+    store.execute("INSERT INTO documents(document_id,run_id,path,rel_path,content_hash,size_bytes,mtime,ctime,char_count,metadata_json) VALUES(?,?,?,?,?,?,?,?,?,?)",(doc,run_id,'x','x','h',len(source),0,0,len(source),'{}'))
+    store.execute("INSERT INTO chunks(chunk_id,document_id,chunk_order,char_start,char_end,text,token_estimate) VALUES(?,?,?,?,?,?,?)",(chunk,doc,0,0,len(source),source,10))
+    store.execute("INSERT INTO source_spans(span_id,document_id,chunk_id,char_start,char_end,surface,surface_norm,span_kind) VALUES(?,?,?,?,?,?,?,?)",(span,doc,chunk,0,len(source),source,source.lower(),'sentence'))
+    payload={"drs":{"schema_version":"chunk-drs-v2","source_id":span,"evidence_spans":[source],"referents":[{"id":"r0","label":"a bridge","kind":"entity","box_id":"b0","evidence_text":"a bridge","confidence":1.0},{"id":"r1","label":"This","kind":"entity","box_id":"b0","evidence_text":"This","confidence":1.0}],"boxes":[{"id":"b0","kind":"asserted","parent_id":"","holder_referent_id":"","evidence_text":source,"confidence":1.0}],"conditions":[{"id":"c0","predicate":"was not","box_id":"b0","polarity":"positive","modality":"asserted","temporal_id":"","arguments":[{"role":"subject","target_kind":"referent","target_id":"r1","value":"","value_type":"entity","evidence_text":"This"},{"role":"value","target_kind":"literal","target_id":"","value":"an engineering record","value_type":"text","evidence_text":"an engineering record"}],"evidence_text":"This was not an engineering record","confidence":1.0}],"identity_hypotheses":[],"temporal_records":[]}}
+    result=store.materialize_drs_payload(run_id,span,source,payload,source='test')
+    assert result['accepted']
+    rows=store.execute("SELECT external_referent_id,referent_id FROM drs_referents ORDER BY rowid").fetchall()
+    assert rows[0][1] == rows[1][1]

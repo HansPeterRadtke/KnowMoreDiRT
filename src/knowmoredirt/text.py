@@ -244,3 +244,44 @@ def text_quality_metrics(text: str) -> dict[str, float | int | bool]:
 
 def is_low_semantic_noise(text: str) -> bool:
     return bool(text_quality_metrics(text)["low_semantic_noise"])
+
+
+def normalize_predicate_polarity(predicate: str, polarity: str = "positive") -> tuple[str, str]:
+    """Normalize lexical negation into DRS polarity without domain knowledge."""
+    raw = clean_extracted_value(predicate)
+    normalized_polarity = normalize(polarity) or "positive"
+    if not raw:
+        return raw, normalized_polarity
+    lowered = normalize(raw)
+    negative = normalized_polarity == "negative"
+
+    auxiliary_not = re.match(
+        r"^(is|are|was|were|be|been|being|has|have|had|can|could|will|would|shall|should|may|might|must)\s+not(?:\s+(.*))?$",
+        lowered,
+    )
+    do_not = re.match(r"^(do|does|did)\s+not\s+(.+)$", lowered)
+    cannot = re.match(r"^cannot(?:\s+(.+))?$", lowered)
+    starts_not = re.match(r"^not\s+(.+)$", lowered)
+
+    if auxiliary_not:
+        auxiliary, remainder = auxiliary_not.groups()
+        raw = auxiliary if not remainder else f"{auxiliary} {remainder}"
+        negative = True
+    elif do_not:
+        raw = do_not.group(2)
+        negative = True
+    elif cannot:
+        remainder = cannot.group(1) or ""
+        raw = "can" if not remainder else f"can {remainder}"
+        negative = True
+    elif starts_not:
+        raw = starts_not.group(1)
+        negative = True
+    elif re.search(r"\bno\b", lowered):
+        raw = re.sub(r"\bno\s+", "", lowered, count=1).strip()
+        negative = True
+    elif re.search(r"\bnever\b", lowered):
+        raw = re.sub(r"\bnever\s*", "", lowered, count=1).strip()
+        negative = True
+
+    return clean_extracted_value(raw), "negative" if negative else normalized_polarity

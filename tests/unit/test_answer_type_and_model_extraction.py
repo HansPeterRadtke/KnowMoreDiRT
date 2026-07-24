@@ -564,12 +564,9 @@ def test_general_boolean_source_explanation_patterns(tmp_path: Path, monkeypatch
     monkeypatch.setenv("PYTEST_CURRENT_TEST", "1")
     engine = KnowMoreDiRTEngine(tmp_path)
 
-    assert engine._answer_after_model_unknown("Did Crane really delete lock.key?") is None
     assert engine._answer_with_boolean_source_explanation("Was Widget proven to have caused drift?").text == "No; the final judgment found no proof."
     assert engine._answer_with_boolean_source_explanation("Does the runtime delete stale rows?").text == "No; runtime flags stale rows for human review."
-    assert engine._answer_after_model_unknown("Should the candy bridge drawing be treated as an engineering record?").text == "No; it is fiction homework."
     assert engine._answer_with_boolean_source_explanation("Does the audit say CacheBox stores plaintext secrets?").text == "No; it stores only salted secret hashes."
-    assert engine._answer_after_model_unknown("Is PlantBoard a product roadmap target?") is None
 
 
 

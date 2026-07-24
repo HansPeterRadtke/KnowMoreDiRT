@@ -15,7 +15,7 @@ from typing import Any
 
 from .drs_validation import box_parent_cycle_errors, box_root_errors, condition_argument_cycle_errors
 from .storage import StoreConfig, open_sqlite
-from .text import normalize, split_units
+from .text import normalize, normalize_predicate_polarity, split_units
 
 
 DRS_CONTEXT_KINDS = {
@@ -1285,11 +1285,19 @@ class DSPGStore:
         external_to_referent: dict[str, str] = {}
         external_to_drs_referent: dict[str, str] = {}
         external_to_referent_label: dict[str, str] = {}
+        last_non_demonstrative_referent_id: str | None = None
+        demonstratives = {"this", "that", "these", "those", "it"}
         for item in referents:
             external_id = text_value(item, "id")
             label = text_value(item, "label")
             value_type = text_value(item, "kind") or text_value(item, "value_type") or "unknown"
-            referent_id = stable_id("ref", run_id, source_span_id, external_id, normalize(label), value_type)
+            label_norm = normalize(label)
+            if label_norm in demonstratives and last_non_demonstrative_referent_id:
+                referent_id = last_non_demonstrative_referent_id
+            else:
+                referent_id = stable_id("ref", run_id, source_span_id, external_id, label_norm, value_type)
+                if label_norm not in demonstratives:
+                    last_non_demonstrative_referent_id = referent_id
             self.connection.execute(
                 """
                 INSERT OR IGNORE INTO referents(
@@ -1420,7 +1428,10 @@ class DSPGStore:
         external_to_condition_evidence: dict[str, str] = {}
         for item in conditions:
             external_id = text_value(item, "id")
-            predicate = text_value(item, "predicate")
+            predicate, condition_polarity = normalize_predicate_polarity(
+                text_value(item, "predicate"),
+                text_value(item, "polarity") or "positive",
+            )
             evidence = text_value(item, "evidence_text")
             if external_id:
                 external_to_condition[external_id] = stable_id(
@@ -1457,7 +1468,10 @@ class DSPGStore:
         inserted_arguments = 0
         for item in conditions:
             external_id = text_value(item, "id")
-            predicate = text_value(item, "predicate")
+            predicate, condition_polarity = normalize_predicate_polarity(
+                text_value(item, "predicate"),
+                text_value(item, "polarity") or "positive",
+            )
             box_external = text_value(item, "box_id")
             context_id = external_to_context[box_external]
             temporal_id = text_value(item, "temporal_id")
@@ -1498,7 +1512,7 @@ class DSPGStore:
                     frame_id,
                     predicate,
                     normalize(predicate),
-                    text_value(item, "polarity") or "positive",
+                    condition_polarity,
                     text_value(item, "modality") or "asserted",
                     temporal_id or None,
                     temporal_text,
@@ -1523,8 +1537,8 @@ class DSPGStore:
                     normalize(text_value(item, "modality") or "asserted"),
                     predicate,
                     normalize(predicate),
-                    text_value(item, "polarity") or "positive",
-                    normalize(text_value(item, "polarity") or "positive"),
+                    condition_polarity,
+                    normalize(condition_polarity),
                     evidence,
                     normalize(evidence),
                     source_span_id,

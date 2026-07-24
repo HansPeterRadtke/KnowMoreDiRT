@@ -413,11 +413,6 @@ class KnowMoreDiRTEngine:
                 model_answer = self._cleanup_public_answer(model_answer, question=text)
                 self.last_answer = model_answer
                 return model_answer
-            recovery = self._answer_after_model_unknown(text, model_answer)
-            if self._complete_answer(recovery):
-                recovery = self._cleanup_public_answer(recovery, question=text)
-                self.last_answer = recovery
-                return recovery
             answer = self._unknown_answer("local model DRT path found no complete grounded answer")
             self.last_answer = answer
             return answer
@@ -472,11 +467,6 @@ class KnowMoreDiRTEngine:
         answer = self._unknown_answer("no complete grounded DSPG match")
         self.last_answer = answer
         return answer
-
-    def _answer_after_model_unknown(self, question: str, prior_answer: Answer | None = None) -> Answer | None:
-        from .post_model_recovery import recover_after_unknown
-
-        return recover_after_unknown(self, question, prior_answer)
 
     def _answer_with_boolean_source_explanation(self, question: str, prior_answer: Answer | None = None) -> Answer | None:
         frame_data = self.model_query_trace.last_plan if isinstance(self.model_query_trace.last_plan, dict) else None
@@ -3776,9 +3766,14 @@ class KnowMoreDiRTEngine:
                 execution["target_scope_rejected"] = True
             answer = None
         if answer and normalize(answer.text) != "unknown":
-            if self._verify_with_local_model(question, planned_frame, answer, expected):
+            structurally_grounded = self._answer_evidence_has_model_drs(answer)
+            if structurally_grounded or self._verify_with_local_model(question, planned_frame, answer, expected):
                 trace.model_answer_count += 1
-                answer.reason = "model-verified DRT query execution"
+                answer.reason = (
+                    "structurally grounded DRT query execution"
+                    if structurally_grounded
+                    else "model-verified DRT query execution"
+                )
                 self._attach_model_answer_provenance(answer)
                 return answer
         if not self._bounded_conflict_blocks_model_evidence_fallback():
