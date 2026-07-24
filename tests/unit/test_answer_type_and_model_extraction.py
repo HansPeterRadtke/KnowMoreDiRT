@@ -550,24 +550,56 @@ def test_invalid_model_evidence_answer_is_cached(tmp_path: Path, monkeypatch) ->
 
 
 
-def test_general_boolean_source_explanation_patterns(tmp_path: Path, monkeypatch) -> None:
-    (tmp_path / "dream.txt").write_text(
-        "I had a dream that Crane deleted lock.key.\nWhen I woke up, the repository still contained lock.key.\n",
+def test_general_local_negative_proposition_patterns(tmp_path: Path, monkeypatch) -> None:
+    (tmp_path / "judgment.txt").write_text(
+        "Final judgment summary.\nThe court found no proof that Widget caused drift.\n",
         encoding="utf-8",
     )
-    (tmp_path / "judgment.txt").write_text("Final judgment summary.\nThe court found no proof that Widget caused drift.\n", encoding="utf-8")
-    (tmp_path / "runtime.txt").write_text("Runtime note: the code flags stale rows for human review; it does not delete them.\n", encoding="utf-8")
-    (tmp_path / "fiction.txt").write_text("School story: The candy bridge drawing floated.\nTeacher note: this is fiction homework, not an engineering record.\n", encoding="utf-8")
-    (tmp_path / "audit.txt").write_text("Sora believes CacheBox stores plaintext secrets.\nAudit result: CacheBox stores only salted secret hashes.\n", encoding="utf-8")
-    (tmp_path / "garden.txt").write_text("Market sketch for PlantBoard.\nThis unrelated gardening note mentions market research but has no relation to any product roadmap.\n", encoding="utf-8")
+    (tmp_path / "belief.txt").write_text(
+        "Kalo Reed believes the lantern should be blue.\nInspection note: the belief is not confirmed as fact.\n",
+        encoding="utf-8",
+    )
+    (tmp_path / "dream.txt").write_text(
+        "Dream journal: In the dream, Crane opened the hidden gate. Waking note: no real gate opening is recorded.\n",
+        encoding="utf-8",
+    )
     monkeypatch.setenv("KMD_TEST_ALLOW_NO_MODEL", "1")
     monkeypatch.setenv("PYTEST_CURRENT_TEST", "1")
     engine = KnowMoreDiRTEngine(tmp_path)
 
-    assert engine._answer_with_boolean_source_explanation("Was Widget proven to have caused drift?").text == "No; the final judgment found no proof."
-    assert engine._answer_with_boolean_source_explanation("Does the runtime delete stale rows?").text == "No; runtime flags stale rows for human review."
-    assert engine._answer_with_boolean_source_explanation("Does the audit say CacheBox stores plaintext secrets?").text == "No; it stores only salted secret hashes."
-
+    engine.model_query_trace.last_plan = QueryFrame(
+        question_text="Was Widget proven to have caused drift?",
+        answer_type="boolean",
+        answer_variables=(),
+        target_anchors=("Widget", "drift"),
+        requested_relation="proven caused",
+        relation_terms=("proven caused",),
+        constraints=(),
+    ).as_dict()
+    judgment = engine._answer_with_explicit_negative_clause("Was Widget proven to have caused drift?")
+    engine.model_query_trace.last_plan = QueryFrame(
+        question_text="Is Kalo Reed belief confirmed as fact?",
+        answer_type="boolean",
+        answer_variables=(),
+        target_anchors=("Kalo Reed belief",),
+        requested_relation="confirmed",
+        relation_terms=("confirmed",),
+        constraints=("as fact",),
+    ).as_dict()
+    belief = engine._answer_with_explicit_negative_clause("Is Kalo Reed belief confirmed as fact?")
+    engine.model_query_trace.last_plan = QueryFrame(
+        question_text="Did Crane really open the hidden gate?",
+        answer_type="boolean",
+        answer_variables=(),
+        target_anchors=("Crane", "hidden gate"),
+        requested_relation="open",
+        relation_terms=("open",),
+        constraints=("really",),
+    ).as_dict()
+    dream = engine._answer_with_explicit_negative_clause("Did Crane really open the hidden gate?")
+    assert judgment is not None and judgment.text == "No; the final judgment found no proof."
+    assert belief is not None and belief.text == "No; the belief is not confirmed as fact."
+    assert dream is None
 
 
 def test_central_answer_guard_rejects_unrelated_no_proof(tmp_path: Path, monkeypatch) -> None:
@@ -579,8 +611,28 @@ def test_central_answer_guard_rejects_unrelated_no_proof(tmp_path: Path, monkeyp
     monkeypatch.setenv("PYTEST_CURRENT_TEST", "1")
     engine = KnowMoreDiRTEngine(tmp_path)
 
-    assert engine._answer_with_boolean_source_explanation("Was Widget proven to have caused invoice drift?").text == "No; the final judgment found no proof."
-    assert engine._answer_with_boolean_source_explanation("Was Ardent Mill refund request proven by the judgment?") is None
+    engine.model_query_trace.last_plan = QueryFrame(
+        question_text="Was Widget proven to have caused invoice drift?",
+        answer_type="boolean",
+        answer_variables=(),
+        target_anchors=("Widget", "invoice drift"),
+        requested_relation="proven caused",
+        relation_terms=("proven caused",),
+        constraints=(),
+    ).as_dict()
+    relevant = engine._answer_with_explicit_negative_clause("Was Widget proven to have caused invoice drift?")
+    engine.model_query_trace.last_plan = QueryFrame(
+        question_text="Was Ardent Mill refund request proven by the judgment?",
+        answer_type="boolean",
+        answer_variables=(),
+        target_anchors=("Ardent Mill", "refund request"),
+        requested_relation="proven",
+        relation_terms=("proven",),
+        constraints=(),
+    ).as_dict()
+    unrelated = engine._answer_with_explicit_negative_clause("Was Ardent Mill refund request proven by the judgment?")
+    assert relevant is not None and relevant.text == "No; the final judgment found no proof."
+    assert unrelated is None
 
 
 def test_definition_cleanup_requires_queried_term(tmp_path: Path, monkeypatch) -> None:

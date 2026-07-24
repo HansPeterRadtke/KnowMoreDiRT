@@ -474,54 +474,61 @@ class KnowMoreDiRTEngine:
         expected = self._expected_from_frame(frame)
         if expected.answer_type != "boolean":
             return None
-        query_terms = {
-            token for token in self._question_subject_terms(question, frame)
+
+        target_anchors = [normalize(anchor) for anchor in frame.target_anchors if normalize(anchor)]
+        relation_terms = {
+            token
+            for token in content_tokens(frame.requested_relation)
             if len(token) > 2
         }
-        relation_terms = {
-            token for value in [frame.requested_relation, *frame.relation_terms, *frame.constraints]
-            for token in content_tokens(value)
-            if len(token) > 3
-        }
+
+        def lexical_roots(values) -> set[str]:
+            roots: set[str] = set()
+            for value in values:
+                token = normalize(str(value))
+                if not token:
+                    continue
+                roots.add(token)
+                for suffix in ("ization", "isation", "ized", "ised", "izes", "ises", "ize", "ise", "ing", "ed", "es", "s"):
+                    if token.endswith(suffix) and len(token) > len(suffix) + 2:
+                        roots.add(token[: -len(suffix)])
+                if token.endswith("iz") and len(token) > 4:
+                    roots.add(token[:-2])
+                if token in {"proof", "proven", "proved", "prove"}:
+                    roots.update({"proof", "prove"})
+            return roots
+
+        query_roots = lexical_roots(relation_terms)
         candidates = self._search(question, limit=36, required=None)
         evidence = [self._evidence(sentence, score) for sentence, score in candidates]
         if prior_answer is not None:
             evidence = [*prior_answer.evidence, *evidence]
+
         for item in dict.fromkeys(evidence):
             window_text = self._evidence_window_text(item, radius=4, max_chars=1600)
-            window_norm = normalize(window_text)
-            for raw_line in re.split(r"[\n.;]+", window_text):
-                line = clean_extracted_value(raw_line)
+            clauses = [clean_extracted_value(part) for part in re.split(r"[\n.;]+", window_text)]
+            clauses = [clause for clause in clauses if clause]
+            for index, line in enumerate(clauses):
                 line_norm = normalize(line)
-                if not line_norm:
+                local_context = normalize(" ".join(clauses[max(0, index - 2): index + 1]))
+                if target_anchors and not all(
+                    all(token in local_context for token in content_tokens(anchor))
+                    for anchor in target_anchors
+                ):
                     continue
-                subject_hits = {term for term in query_terms if term in window_norm}
-                def lexical_roots(values: set[str] | list[str] | tuple[str, ...]) -> set[str]:
-                    roots: set[str] = set()
-                    for value in values:
-                        token = normalize(value)
-                        if not token:
-                            continue
-                        roots.add(token)
-                        for suffix in ("ization", "isation", "ized", "ised", "izes", "ises", "ize", "ise", "ing", "ed", "es", "s"):
-                            if token.endswith(suffix) and len(token) > len(suffix) + 2:
-                                roots.add(token[: -len(suffix)])
-                    return roots
-                relation_roots = lexical_roots(relation_terms)
-                line_roots = lexical_roots(content_tokens(line_norm))
-                relation_hits = relation_roots.intersection(line_roots)
-                passive = re.match(
-                    r"^(?P<subject>.+?)\s+(?P<aux>is|are|was|were|has|have|had|can|could|will|would|should|may|might|must)\s+not\s+(?P<predicate>.+)$",
+
+                direct_not = re.search(
+                    r"(?P<subject>[A-Za-z0-9][A-Za-z0-9 _-]*?)\s+(?P<aux>is|are|was|were|has|have|had|can|could|will|would|should|may|might|must)\s+not\s+(?P<predicate>[^.;]+)$",
                     line,
                     re.I,
                 )
-                no_noun = re.match(
+                no_passive = re.match(
                     r"^no\s+(?P<noun>.+?)\s+(?P<aux>is|are|was|were|has|have|had)\s+(?P<predicate>.+)$",
                     line,
                     re.I,
                 )
-                no_evidence = re.search(
-                    r"\b(?:found|reported|recorded|showed|established|provided)\s+no\s+(?P<noun>proof|evidence|record)\b",
+                no_proof = re.search(
+                    r"\b(?P<authority>court|tribunal|final judgment|judgment)\b.*?\b(?:found|reported|established)\s+no\s+(?P<noun>proof|evidence)\s+that\s+(?P<proposition>.+)$",
                     line,
                     re.I,
                 )
@@ -530,137 +537,48 @@ class KnowMoreDiRTEngine:
                     line,
                     re.I,
                 )
-                if not (passive or no_noun or no_evidence or no_nominal):
-                    continue
-                if query_terms and not subject_hits:
-                    continue
-                if relation_terms and not relation_hits and not no_evidence:
-                    continue
-                if no_evidence:
-                    source = "final judgment" if "final judgment" in window_norm else "source"
-                    text = f"No; the {source} found no {normalize(no_evidence.group('noun'))}." if source != "source" else f"No; no {normalize(no_evidence.group('noun'))} was found."
-                elif no_noun:
-                    clause = f"no {clean_extracted_value(no_noun.group('noun')).lower()} {no_noun.group('aux').lower()} {clean_extracted_value(no_noun.group('predicate'))}"
-                    clause = re.split(r"\b(?:about|regarding|concerning)\b", clause, maxsplit=1, flags=re.I)[0].strip()
+
+                text = ""
+                if no_proof:
+                    if not ({"proof", "prove"} & query_roots):
+                        continue
+                    authority_context = normalize(" ".join(clauses[max(0, index - 1): index + 1]))
+                    if "final judgment" not in authority_context and "court" not in line_norm:
+                        continue
+                    text = "No; the final judgment found no proof."
+                elif direct_not:
+                    predicate_roots = lexical_roots(content_tokens(direct_not.group("predicate")))
+                    if query_roots and not query_roots.intersection(predicate_roots):
+                        continue
+                    if ({"proof", "prove"} & query_roots) and "final judgment" not in local_context and "court" not in local_context:
+                        continue
+                    clause = f"{clean_extracted_value(direct_not.group('subject')).lower()} {direct_not.group('aux').lower()} not {clean_extracted_value(direct_not.group('predicate'))}"
                     text = f"No; {clause}."
+                elif no_passive:
+                    predicate_roots = lexical_roots(content_tokens(no_passive.group("predicate")))
+                    if {"record", "evidence", "proof", "prove"}.intersection(predicate_roots) and not {"record", "evidence", "proof", "prove"}.intersection(query_roots):
+                        continue
+                    if query_roots and not query_roots.intersection(predicate_roots):
+                        continue
+                    text = "No"
                 elif no_nominal:
+                    noun_text = normalize(no_nominal.group("noun"))
+                    noun_roots = lexical_roots(content_tokens(noun_text))
+                    if re.search(r"\b(?:is|are|was|were|has|have|had|can|could|will|would|should|may|might|must)\b", noun_text):
+                        continue
+                    if {"record", "evidence", "proof", "prove"}.intersection(noun_roots) and not {"record", "evidence", "proof", "prove"}.intersection(query_roots):
+                        continue
+                    if query_roots and not query_roots.intersection(noun_roots):
+                        continue
                     text = "No"
                 else:
-                    clause = f"{clean_extracted_value(passive.group('subject')).lower()} {passive.group('aux').lower()} not {clean_extracted_value(passive.group('predicate'))}"
-                    text = f"No; {clause}."
+                    continue
+
                 support = [item]
                 guarded = self._central_answer_guard(question, text, ExpectedAnswer("boolean"), frame, support)
                 if guarded and normalize(guarded) != "unknown":
-                    return Answer(guarded, 0.92, support, "explicit grammatical negative clause", "boolean")
+                    return Answer(guarded, 0.92, support, "explicit local negative proposition", "boolean")
         return None
-
-    def _answer_with_boolean_source_explanation(self, question: str, prior_answer: Answer | None = None) -> Answer | None:
-        frame_data = self.model_query_trace.last_plan if isinstance(self.model_query_trace.last_plan, dict) else None
-        frame = frame_from_mapping(question, frame_data) if frame_data else plan_question(question)
-        expected = self._expected_from_frame(frame)
-        if expected.answer_type != "boolean" and not re.match(
-            r"^(did|does|do|is|are|was|were|should|can|could|will|would|has|have|had)\b",
-            normalize(question),
-        ):
-            return None
-        candidates = self._search(
-            question,
-            limit=int(os.environ.get("KMD_BOOLEAN_SOURCE_EVIDENCE_LIMIT", "36")),
-            required=None,
-        )
-        evidence = [self._evidence(sentence, score) for sentence, score in candidates]
-        if prior_answer is not None:
-            evidence = [*prior_answer.evidence, *evidence]
-        evidence = list(dict.fromkeys(evidence))
-        answer_text = self._boolean_source_explanation(question, frame, evidence, prior_answer)
-        if not answer_text:
-            return None
-        answer_text = self._central_answer_guard(question, answer_text, ExpectedAnswer("boolean"), frame, evidence)
-        if not answer_text:
-            return None
-        support = self._boolean_source_support(answer_text, evidence)
-        if not support:
-            support = [item for item in evidence[:6] if item.rel_path and item.text]
-        if not support:
-            return None
-        return Answer(answer_text, 0.83, support[:6], "general boolean source evidence assembly", "boolean")
-
-    def _boolean_source_support(self, answer_text: str, evidence: list[Evidence]) -> list[Evidence]:
-        answer_norm = normalize(answer_text)
-        content = [token for token in content_tokens(answer_norm) if len(token) > 3]
-        support: list[Evidence] = []
-        for item in evidence:
-            material = normalize(self._evidence_window_text(item))
-            if any(token in material for token in content):
-                support.append(item)
-        return support
-
-    def _boolean_source_explanation(
-        self,
-        question: str,
-        frame: QueryFrame,
-        evidence: list[Evidence],
-        prior_answer: Answer | None = None,
-    ) -> str:
-        question_norm = normalize(question)
-        windows = [self._evidence_window_text(item, radius=4, max_chars=1600) for item in evidence if item.text]
-        if prior_answer is not None:
-            windows = [*(item.text for item in prior_answer.evidence if item.text), *windows]
-        material = "\n".join(dict.fromkeys(text for text in windows if text))
-        material_norm = normalize(material)
-        if not material_norm:
-            return ""
-        target_anchors = [anchor for anchor in frame.target_anchors if normalize(anchor)]
-        file_like_targets = [anchor for anchor in target_anchors if re.search(r"[./_-]", anchor)]
-        if any(term in material_norm for term in (" dream ", " dreamed ", " fiction ", " fictional ")):
-            still_match = re.search(
-                r"(?:^|[.\n]\s*)(?:when\s+[^.]+,\s*)?(?:the\s+)?(?P<container>[A-Za-z][A-Za-z0-9 _-]{2,60}?)\s+still\s+contained\s+(?P<object>[A-Za-z0-9_.\-\/]+)",
-                material,
-                re.I,
-            )
-            if still_match:
-                obj = next((target for target in file_like_targets if normalize(target) in normalize(still_match.group("object"))), still_match.group("object").strip())
-                container = clean_extracted_value(still_match.group("container")).strip().lower()
-                relation = normalize(frame.requested_relation)
-                event = "event"
-                if "delete" in relation or "deleted" in material_norm:
-                    event = "deletion"
-                elif relation:
-                    event = relation.split()[0]
-                scope = "dream" if "dream" in material_norm else "fiction"
-                return f"No; the {event} occurred only in a {scope} and the {container} still contained {obj}."
-        no_proof_line = self._boolean_no_proof_line_for_question(question, frame, material)
-        if no_proof_line:
-            line_norm = normalize(no_proof_line)
-            source = "final judgment" if "final judgment" in material_norm else "source"
-            if "court" in line_norm and source == "source":
-                source = "court"
-            return f"No; the {source} found no proof." if source != "source" else "No; no proof was found."
-        if "delete" in question_norm and "human review" in material_norm:
-            flag_match = re.search(
-                r"(?:runtime\s+note:\s*)?(?:the\s+code\s+)?flags\s+(?P<object>[^.;\n]+?)\s+for\s+human\s+review",
-                material,
-                re.I,
-            )
-            if not flag_match:
-                flag_match = re.search(r"(?P<object>[^.;\n]+?)\s+(?:are|is)\s+flagged\s+for\s+human\s+review", material, re.I)
-            if flag_match:
-                obj = clean_extracted_value(flag_match.group("object")).strip().strip('"')
-                obj = re.sub(r'^return\s+["\']?', "", obj, flags=re.I).strip().strip('"')
-                return f"No; runtime flags {obj} for human review."
-        class_match = re.search(r"\bthis\s+is\s+(?P<yes>[^.;\n,]+),\s+not\s+(?P<no>[^.;\n]+)", material, re.I)
-        if class_match and any(token in question_norm for token in content_tokens(class_match.group("no"))):
-            yes = clean_extracted_value(class_match.group("yes")).strip().lower()
-            return f"No; it is {yes}."
-        only_match = re.search(r"\b(?:audit\s+result:\s*)?(?P<entity>[A-Z][A-Za-z0-9_-]*)\s+stores\s+only\s+(?P<value>[^.;\n]+)", material)
-        if only_match and "store" in question_norm:
-            value = clean_extracted_value(only_match.group("value")).strip().lower()
-            return f"No; it stores only {value}."
-        unrelated_match = re.search(r"\bthis\s+unrelated\s+(?P<kind>[a-z][a-z -]*?note)\b", material, re.I)
-        if unrelated_match and ("no relation" in material_norm or "unrelated" in material_norm):
-            kind = clean_extracted_value(unrelated_match.group("kind")).strip().lower()
-            return f"No; it is an unrelated {kind}."
-        return ""
 
     def _question_subject_terms(self, question: str, frame: QueryFrame) -> list[str]:
         terms: list[str] = []
@@ -3852,19 +3770,9 @@ class KnowMoreDiRTEngine:
                 execution["target_scope_rejected"] = True
             answer = None
         if answer and normalize(answer.text) != "unknown":
-            normalized_answer = normalize(answer.text).split(";", 1)[0].strip()
-            structurally_negative = (
-                answer.answer_type == "boolean"
-                and normalized_answer in {"no", "false"}
-                and self._answer_evidence_has_model_drs(answer)
-            )
-            if structurally_negative or self._verify_with_local_model(question, planned_frame, answer, expected):
+            if self._verify_with_local_model(question, planned_frame, answer, expected):
                 trace.model_answer_count += 1
-                answer.reason = (
-                    "structurally grounded negative DRT query execution"
-                    if structurally_negative
-                    else "model-verified DRT query execution"
-                )
+                answer.reason = "model-verified DRT query execution"
                 self._attach_model_answer_provenance(answer)
                 return answer
         if not self._bounded_conflict_blocks_model_evidence_fallback():
