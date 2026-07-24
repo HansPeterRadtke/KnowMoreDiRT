@@ -468,6 +468,92 @@ class KnowMoreDiRTEngine:
         self.last_answer = answer
         return answer
 
+    def _answer_with_explicit_negative_clause(self, question: str, prior_answer: Answer | None = None) -> Answer | None:
+        frame_data = self.model_query_trace.last_plan if isinstance(self.model_query_trace.last_plan, dict) else None
+        frame = frame_from_mapping(question, frame_data) if frame_data else plan_question(question)
+        expected = self._expected_from_frame(frame)
+        if expected.answer_type != "boolean":
+            return None
+        query_terms = {
+            token for token in self._question_subject_terms(question, frame)
+            if len(token) > 2
+        }
+        relation_terms = {
+            token for value in [frame.requested_relation, *frame.relation_terms, *frame.constraints]
+            for token in content_tokens(value)
+            if len(token) > 3
+        }
+        candidates = self._search(question, limit=36, required=None)
+        evidence = [self._evidence(sentence, score) for sentence, score in candidates]
+        if prior_answer is not None:
+            evidence = [*prior_answer.evidence, *evidence]
+        for item in dict.fromkeys(evidence):
+            window_text = self._evidence_window_text(item, radius=4, max_chars=1600)
+            window_norm = normalize(window_text)
+            for raw_line in re.split(r"[\n.;]+", window_text):
+                line = clean_extracted_value(raw_line)
+                line_norm = normalize(line)
+                if not line_norm:
+                    continue
+                subject_hits = {term for term in query_terms if term in window_norm}
+                def lexical_roots(values: set[str] | list[str] | tuple[str, ...]) -> set[str]:
+                    roots: set[str] = set()
+                    for value in values:
+                        token = normalize(value)
+                        if not token:
+                            continue
+                        roots.add(token)
+                        for suffix in ("ization", "isation", "ized", "ised", "izes", "ises", "ize", "ise", "ing", "ed", "es", "s"):
+                            if token.endswith(suffix) and len(token) > len(suffix) + 2:
+                                roots.add(token[: -len(suffix)])
+                    return roots
+                relation_roots = lexical_roots(relation_terms)
+                line_roots = lexical_roots(content_tokens(line_norm))
+                relation_hits = relation_roots.intersection(line_roots)
+                passive = re.match(
+                    r"^(?P<subject>.+?)\s+(?P<aux>is|are|was|were|has|have|had|can|could|will|would|should|may|might|must)\s+not\s+(?P<predicate>.+)$",
+                    line,
+                    re.I,
+                )
+                no_noun = re.match(
+                    r"^no\s+(?P<noun>.+?)\s+(?P<aux>is|are|was|were|has|have|had)\s+(?P<predicate>.+)$",
+                    line,
+                    re.I,
+                )
+                no_evidence = re.search(
+                    r"\b(?:found|reported|recorded|showed|established|provided)\s+no\s+(?P<noun>proof|evidence|record)\b",
+                    line,
+                    re.I,
+                )
+                no_nominal = re.search(
+                    r"(?:^|[,;:]\s*)no\s+(?P<noun>[A-Za-z0-9][A-Za-z0-9 _-]{1,100}?)(?:\s+(?:about|regarding|concerning|for)\s+(?P<object>[^.;,]+))?(?:$|[.;,])",
+                    line,
+                    re.I,
+                )
+                if not (passive or no_noun or no_evidence or no_nominal):
+                    continue
+                if query_terms and not subject_hits:
+                    continue
+                if relation_terms and not relation_hits and not no_evidence:
+                    continue
+                if no_evidence:
+                    source = "final judgment" if "final judgment" in window_norm else "source"
+                    text = f"No; the {source} found no {normalize(no_evidence.group('noun'))}." if source != "source" else f"No; no {normalize(no_evidence.group('noun'))} was found."
+                elif no_noun:
+                    clause = f"no {clean_extracted_value(no_noun.group('noun')).lower()} {no_noun.group('aux').lower()} {clean_extracted_value(no_noun.group('predicate'))}"
+                    clause = re.split(r"\b(?:about|regarding|concerning)\b", clause, maxsplit=1, flags=re.I)[0].strip()
+                    text = f"No; {clause}."
+                elif no_nominal:
+                    text = "No"
+                else:
+                    clause = f"{clean_extracted_value(passive.group('subject')).lower()} {passive.group('aux').lower()} not {clean_extracted_value(passive.group('predicate'))}"
+                    text = f"No; {clause}."
+                support = [item]
+                guarded = self._central_answer_guard(question, text, ExpectedAnswer("boolean"), frame, support)
+                if guarded and normalize(guarded) != "unknown":
+                    return Answer(guarded, 0.92, support, "explicit grammatical negative clause", "boolean")
+        return None
+
     def _answer_with_boolean_source_explanation(self, question: str, prior_answer: Answer | None = None) -> Answer | None:
         frame_data = self.model_query_trace.last_plan if isinstance(self.model_query_trace.last_plan, dict) else None
         frame = frame_from_mapping(question, frame_data) if frame_data else plan_question(question)
@@ -3766,12 +3852,17 @@ class KnowMoreDiRTEngine:
                 execution["target_scope_rejected"] = True
             answer = None
         if answer and normalize(answer.text) != "unknown":
-            structurally_grounded = self._answer_evidence_has_model_drs(answer)
-            if structurally_grounded or self._verify_with_local_model(question, planned_frame, answer, expected):
+            normalized_answer = normalize(answer.text).split(";", 1)[0].strip()
+            structurally_negative = (
+                answer.answer_type == "boolean"
+                and normalized_answer in {"no", "false"}
+                and self._answer_evidence_has_model_drs(answer)
+            )
+            if structurally_negative or self._verify_with_local_model(question, planned_frame, answer, expected):
                 trace.model_answer_count += 1
                 answer.reason = (
-                    "structurally grounded DRT query execution"
-                    if structurally_grounded
+                    "structurally grounded negative DRT query execution"
+                    if structurally_negative
                     else "model-verified DRT query execution"
                 )
                 self._attach_model_answer_provenance(answer)
@@ -3795,6 +3886,16 @@ class KnowMoreDiRTEngine:
                     self._attach_model_answer_provenance(evidence_answer)
                     return evidence_answer
                 trace.evidence_rejected_count += 1
+        for recovery_fn in (
+            self._answer_with_explicit_negative_clause,
+            self._answer_with_labeled_attribute_source,
+            self._answer_with_temporal_source_records,
+        ):
+            recovery = recovery_fn(question, answer)
+            if self._complete_answer(recovery):
+                recovery.reason = f"post-plan {recovery.reason}"
+                self._attach_model_answer_provenance(recovery)
+                return recovery
         return None
 
     def _answer_evidence_has_model_drs(self, answer: Answer) -> bool:

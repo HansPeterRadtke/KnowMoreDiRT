@@ -122,6 +122,14 @@ CHUNK_DRS_GROUNDING_REPAIR_POLICY = "model-label-value-escaped-evidence-span-v3"
 CHUNK_DRS_IDENTITY_PROVENANCE_POLICY = "identity-evidence-bilateral-surface-box-scope-v2"
 CHUNK_DRS_TEMPORAL_PROVENANCE_POLICY = "condition-stage-declared-temporal-records-v2"
 CHUNK_DRS_SPARSE_RETRY_POLICY = "retry-validated-sparse-drs-staged-v2"
+CHUNK_DRS_NEGATION_CONTRACT = (
+    "Preserve every explicit grammatical negation as DRS semantics. For each clause containing not, no, never, "
+    "cannot, without, or a negative contraction, emit at least one condition with polarity negative for the "
+    "proposition actually denied. Keep the predicate itself positive. Respect embedding and scope: lack of proof, "
+    "evidence, a record, a decision, or confirmation negates that evidential or decision proposition; it does not "
+    "automatically negate an embedded event merely mentioned inside it. Do not leave negation only in evidence text, "
+    "argument text, a context label, or a positive predicate. "
+)
 CHUNK_DRS_STRUCTURE_VALIDATION_POLICY = "single-root-acyclic-box-parent-condition-arguments-v4"
 CHUNK_DRS_BOX_COMPLETION_POLICY = "model-complete-missing-box-declarations-v1"
 CHUNK_DRS_SOURCE_SPAN_POLICY = "chunk-drs-delimiter-source-span-enum-v2"
@@ -3482,7 +3490,8 @@ def call_model_query_evidence_answer(
 
 def build_chunk_frame_prompt(chunk_text: str, *, rel_path: str = "", context_budget: dict[str, Any] | None = None) -> str:
     return (
-        "JSON only. Extract generic DRT/DSPG discourse frames and grounded DRT structures from this raw text chunk. "
+        CHUNK_DRS_NEGATION_CONTRACT
+        +         "JSON only. Extract generic DRT/DSPG discourse frames and grounded DRT structures from this raw text chunk. "
         "Use this exact shape: {\"frames\":[{\"frame_type\":\"relation\",\"predicate\":\"\","
         "\"arguments\":[{\"role\":\"argument\",\"text\":\"\",\"value_type\":\"unknown\"}],"
         "\"identity_hypotheses\":[{\"left_text\":\"\",\"right_text\":\"\",\"relation\":\"same_referent\","
@@ -3794,7 +3803,8 @@ def _build_compact_chunk_drs_prompt_v2(chunk_text: str, *, rel_path: str = "") -
 
 def build_compact_chunk_drs_prompt(chunk_text: str, *, rel_path: str = "") -> str:
     return (
-        "JSON only. Extract compact source-grounded DRS facts from this raw text chunk. "
+        CHUNK_DRS_NEGATION_CONTRACT
+        +         "JSON only. Extract compact source-grounded DRS facts from this raw text chunk. "
         "Output exactly one object with mandatory key facts. Each fact must have mandatory keys p, e, arguments, "
         "temporal_text, scope. facts and arguments must always be JSON arrays, even when empty. "
         "Use this shape: {\"facts\":[{\"p\":predicate,\"e\":evidence_span,\"arguments\":[{\"role\":role,\"value\":value}],"
@@ -4583,7 +4593,8 @@ def build_chunk_drs_prompt(chunk_text: str, *, rel_path: str = "", context_budge
         else ""
     )
     return (
-        "JSON only. Convert the raw text chunk into one source-grounded DRS object. "
+        CHUNK_DRS_NEGATION_CONTRACT
+        +         "JSON only. Convert the raw text chunk into one source-grounded DRS object. "
         "Every semantic decision must be represented as referents, boxes, conditions, temporal_records, "
         "and identity_hypotheses. Do not answer questions, use outside knowledge, infer hidden answers, "
         "or use handler names. Emit exactly one root asserted box with id b0 and parent_id ''; that root is only "
@@ -4693,7 +4704,8 @@ def build_chunk_drs_skeleton_prompt(chunk_text: str, *, rel_path: str = "", cont
     )
     validation_feedback_text = _chunk_drs_validation_feedback_text(context_budget)
     return (
-        validation_feedback_text
+        CHUNK_DRS_NEGATION_CONTRACT
+        +         validation_feedback_text
         + "JSON only. Stage 1 of source-grounded DRS extraction. Extract only declared discourse referents "
         "DRS boxes, and explicit temporal records from the chunk. Do not emit conditions, identity hypotheses, answers, "
         "outside knowledge, or handler names. Declare exactly one root asserted box with id b0, parent_id '', and holder_referent_id ''; "
@@ -4748,7 +4760,8 @@ def build_chunk_drs_condition_prompt(
     )
     validation_feedback_text = _chunk_drs_validation_feedback_text(context_budget)
     return (
-        validation_feedback_text
+        CHUNK_DRS_NEGATION_CONTRACT
+        +         validation_feedback_text
         + "JSON only. Stage 2 of source-grounded DRS extraction. Emit conditions using only the declared "
         "referent, box, and temporal ids. Do not invent ids; target_id is schema-constrained to declared ids or ''. "
         "Use stable condition ids c0, c1, c2, ... in order. IDs are single-use: never emit two conditions with the same id, and use only declared referent, box, and temporal ids from the stage input. "
@@ -4798,7 +4811,8 @@ def build_chunk_drs_box_completion_prompt(
     context_budget: dict[str, Any] | None = None,
 ) -> str:
     return (
-        "JSON only. Complete missing source-grounded DRS box declarations for an otherwise model-produced DRS. "
+        CHUNK_DRS_NEGATION_CONTRACT
+        +         "JSON only. Complete missing source-grounded DRS box declarations for an otherwise model-produced DRS. "
         "This is a structural DRT repair call, not question answering. Do not add referents, conditions, "
         "identity hypotheses, hidden answers, outside knowledge, or handler names. Emit only boxes for ids listed "
         "in missing_box_ids when the source supports that referenced DRS box; otherwise emit an empty boxes array. "
@@ -5011,6 +5025,20 @@ def _validate_chunk_drs_payload(payload: Any, source_text: str) -> dict[str, Any
                 errors.append(f"bad_argument_target_kind:{condition_id}:{target_kind}")
             check_span(arg.get("evidence_text"), f"argument:{condition_id}:{arg.get('role')}")
     errors.extend(condition_argument_cycle_errors(conditions))
+    negation_pattern = re.compile(
+        r"\b(?:not|never|cannot|without|no\s+[A-Za-z0-9])\b|\b[A-Za-z]+n['’]t\b",
+        re.I,
+    )
+    grounded_negated_conditions = [
+        item
+        for item in conditions
+        if negation_pattern.search(str(item.get("evidence_text") or ""))
+    ]
+    if grounded_negated_conditions and not any(
+        normalize(str(item.get("polarity") or "")) == "negative"
+        for item in grounded_negated_conditions
+    ):
+        errors.append("missing_negative_condition_for_grounded_negated_clause")
     for item in identities:
         left_id = str(item.get("left_referent_id") or "")
         right_id = str(item.get("right_referent_id") or "")
