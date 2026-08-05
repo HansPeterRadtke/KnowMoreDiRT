@@ -93,8 +93,6 @@ def _read_text_file_snapshot(
             return None
         with os.fdopen(descriptor, "rb", closefd=False) as handle:
             data = handle.read()
-        if b"\x00" in data:
-            return None
     except OSError:
         return None
     finally:

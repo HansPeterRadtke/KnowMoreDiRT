@@ -75,17 +75,6 @@ def test_scanner_uses_finite_default_unit_bound_without_dropping_text(tmp_path: 
     assert "".join(unit.text for unit in units) == text
 
 
-def test_scanner_skips_binary_files_with_nul_bytes(tmp_path: Path) -> None:
-    root = tmp_path / "root"
-    root.mkdir()
-    (root / "binary.bin").write_bytes(b"\x00\xff\x00\xfe")
-
-    documents, units = scan_folder(root)
-
-    assert documents == []
-    assert units == []
-
-
 def test_scanner_hashes_original_bytes_before_lossy_decode(tmp_path: Path) -> None:
     root = tmp_path / "root"
     root.mkdir()
