@@ -18,9 +18,13 @@ def initialize(folder_path: str | Path) -> None:
     with _ENGINE_LOCK:
         previous = _ENGINE
         replacement = KnowMoreDiRTEngine(folder_path)
+        try:
+            if previous is not None:
+                previous.close()
+        except BaseException:
+            replacement.close()
+            raise
         _ENGINE = replacement
-        if previous is not None:
-            previous.close()
 
 
 def question(text: str) -> str:

@@ -102,6 +102,25 @@ def test_failed_reinitialize_preserves_previous_engine(monkeypatch: pytest.Monke
     assert public.question("q") == "A:q"
 
 
+def test_close_failure_does_not_publish_replacement(monkeypatch: pytest.MonkeyPatch) -> None:
+    public.initialize("A")
+    first = _SerializedFakeEngine.instances[-1]
+
+    original_close = first.close
+
+    def failing_close() -> None:
+        raise RuntimeError("close failed")
+
+    monkeypatch.setattr(first, "close", failing_close)
+    with pytest.raises(RuntimeError, match="close failed"):
+        public.initialize("B")
+
+    replacement = _SerializedFakeEngine.instances[-1]
+    assert replacement.closed is True
+    assert public._ENGINE is first
+    monkeypatch.setattr(first, "close", original_close)
+
+
 def test_reset_closes_and_clears_engine() -> None:
     public.initialize("A")
     engine = _SerializedFakeEngine.instances[-1]

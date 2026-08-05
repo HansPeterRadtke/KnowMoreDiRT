@@ -73,3 +73,28 @@ def test_scanner_uses_finite_default_unit_bound_without_dropping_text(tmp_path: 
     assert len(units) == 3
     assert all(len(unit.text) <= 100 for unit in units)
     assert "".join(unit.text for unit in units) == text
+
+
+def test_scanner_skips_binary_files_with_nul_bytes(tmp_path: Path) -> None:
+    root = tmp_path / "root"
+    root.mkdir()
+    (root / "binary.bin").write_bytes(b"\x00\xff\x00\xfe")
+
+    documents, units = scan_folder(root)
+
+    assert documents == []
+    assert units == []
+
+
+def test_scanner_hashes_original_bytes_before_lossy_decode(tmp_path: Path) -> None:
+    root = tmp_path / "root"
+    root.mkdir()
+    path = root / "invalid-utf8.dat"
+    path.write_bytes(b"\xff")
+    first_documents, _ = scan_folder(root)
+    path.write_bytes(b"\xfe")
+    second_documents, _ = scan_folder(root)
+
+    assert first_documents[0].text == second_documents[0].text == "\ufffd"
+    assert first_documents[0].sha256 != second_documents[0].sha256
+    assert first_documents[0].document_id != second_documents[0].document_id

@@ -93,6 +93,8 @@ def _read_text_file_snapshot(
             return None
         with os.fdopen(descriptor, "rb", closefd=False) as handle:
             data = handle.read()
+        if b"\x00" in data:
+            return None
     except OSError:
         return None
     finally:
@@ -106,6 +108,7 @@ def _read_text_file_snapshot(
             "encoding": "utf-8",
             "decode_errors": False,
             "read_mode": "strict_text",
+            "source_sha256": hashlib.sha256(data).hexdigest(),
         }
     except UnicodeDecodeError:
         text = data.decode("utf-8", errors="replace")
@@ -113,6 +116,7 @@ def _read_text_file_snapshot(
             "encoding": "utf-8",
             "decode_errors": True,
             "read_mode": "replacement_text",
+            "source_sha256": hashlib.sha256(data).hexdigest(),
         }
     return text, metadata, stat_result
 
@@ -409,7 +413,7 @@ def scan_folder(
             continue
         text, read_metadata, stat = read_result
         rel_path = path.relative_to(root).as_posix()
-        content_hash = hashlib.sha256(text.encode("utf-8", errors="replace")).hexdigest()
+        content_hash = str(read_metadata["source_sha256"])
         document_id = _stable_scan_id("doc", rel_path, content_hash)
         suffixes = list(path.suffixes)
         metadata: dict[str, object] = {
