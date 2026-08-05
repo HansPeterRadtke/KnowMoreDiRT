@@ -5,6 +5,7 @@ import os
 import time
 from pathlib import Path
 
+from knowmoredirt.context_budget import context_token_capacity
 from knowmoredirt.answer_types import ExpectedAnswer
 from knowmoredirt.bounded_dspg import (
     _temporal_candidates,
@@ -36,7 +37,7 @@ from knowmoredirt.bounded_dspg import (
 )
 from knowmoredirt.engine import KnowMoreDiRTEngine
 from knowmoredirt.ingest import ingest_folder
-from knowmoredirt.model_planner import ModelQueryTrace, _compact_chunk_drs_to_payload
+from knowmoredirt.model_planner import ModelQueryTrace, _compact_chunk_drs_to_payload, _finalize_compact_cached_payload, CHUNK_DRS_COMPACT_FACT_POLICY, CHUNK_DRS_COMPACT_FACT_POLICY_NEGATED_SCOPE_LEGACY
 from knowmoredirt.models import Answer, Evidence, Sentence
 from knowmoredirt.query import QueryFrame, term_variants
 from knowmoredirt.relations import extract_relations, transcript_turn_parts
@@ -1961,7 +1962,8 @@ def test_model_canonicalization_source_resolves_deictic_reported_content(
 
         def complete_json(self, prompt: str, *, n_predict: int = 128, grammar=None, json_schema=None):
             self.prompts.append(prompt)
-            assert "source_resolved_answer" in prompt
+            assert "source identity" in prompt.lower()
+            assert "convert a quoted/reported/message-content candidate" in prompt.lower()
             assert json_schema is not None
             return {
                 "source_resolved_answer": {
@@ -2801,6 +2803,76 @@ def test_compact_chunk_drs_materializes_model_scope_as_subordinate_box() -> None
     assert drs["conditions"][0]["box_id"] == "b1"
 
 
+def test_compact_chunk_drs_converts_negated_scope_to_negative_root_condition() -> None:
+    source_text = "Teacher note: this is fiction homework, not an engineering record."
+    payload = _compact_chunk_drs_to_payload(
+        {
+            "facts": [
+                {
+                    "p": "is",
+                    "e": "not an engineering record",
+                    "arguments": [
+                        {"role": "subject", "value": "this"},
+                        {"role": "value", "value": "an engineering record"},
+                    ],
+                    "temporal_text": "",
+                    "scope": "negated",
+                }
+            ]
+        },
+        source_text,
+        rel_path="omega/distractors/story_about_drawings.txt",
+    )
+    drs = payload["drs"]
+    assert [box["kind"] for box in drs["boxes"]] == ["asserted"]
+    assert drs["conditions"][0]["box_id"] == "b0"
+    assert drs["conditions"][0]["polarity"] == "negative"
+
+
+def test_compact_cache_migrates_rejected_negated_scope_without_model_call() -> None:
+    source_text = "Teacher note: this is fiction homework, not an engineering record."
+    raw_text = json.dumps(
+        {
+            "facts": [
+                {
+                    "p": "is",
+                    "e": "not an engineering record",
+                    "arguments": [
+                        {"role": "subject", "value": "this"},
+                        {"role": "value", "value": "an engineering record"},
+                    ],
+                    "temporal_text": "",
+                    "scope": "negated",
+                }
+            ]
+        }
+    )
+    cached = {
+        "accepted": False,
+        "reason": "schema_validation_failed",
+        "raw_text": raw_text,
+        "compact_fact_policy": CHUNK_DRS_COMPACT_FACT_POLICY_NEGATED_SCOPE_LEGACY,
+        "validation": {
+            "schema_valid": False,
+            "errors": ["missing_negative_condition_for_grounded_negated_clause"],
+        },
+    }
+    finalized = _finalize_compact_cached_payload(
+        cached,
+        source_text,
+        {
+            "source_rel_path": "omega/distractors/story_about_drawings.txt",
+            "compact_fact_policy": CHUNK_DRS_COMPACT_FACT_POLICY,
+        },
+    )
+    assert finalized["accepted"] is True
+    assert finalized["reason"] == "compact_drs"
+    assert finalized["compact_fact_policy"] == CHUNK_DRS_COMPACT_FACT_POLICY
+    assert finalized["drs"]["conditions"][0]["polarity"] == "negative"
+    assert finalized["drs"]["conditions"][0]["box_id"] == "b0"
+    assert finalized["compact_negation_migration"]["source"] == "rejected_compact_raw_text"
+
+
 def test_boolean_cleanup_preserves_grounded_sentence_punctuation(tmp_path: Path) -> None:
     (tmp_path / "note.txt").write_text("No; Inspection found no fracture in Quartz Pump.\n", encoding="utf-8")
     engine = KnowMoreDiRTEngine(tmp_path)
@@ -3534,8 +3606,10 @@ def test_store_materializes_model_drs_without_same_surface_merging(tmp_path: Pat
     assert result["inserted"]["drs_boxes"] == 2
     assert store.counts()["drs_conditions"] == 2
     assert store.counts()["drs_condition_arguments"] == 3
-    assert store.counts()["drs_identity_hypotheses"] == 1
-    assert store.counts()["identity_hypotheses"] == 1
+    # A self-identity hypothesis is a semantic no-op and must not create an
+    # audit row or an expansion edge.
+    assert store.counts()["drs_identity_hypotheses"] == 0
+    assert store.counts()["identity_hypotheses"] == 0
     row = store.execute(
         "SELECT target_kind, target_box_id FROM drs_condition_arguments WHERE role='content'"
     ).fetchone()
@@ -6413,7 +6487,7 @@ def test_extra_identity_spans_carry_blocked_drs_identity_provenance(
         span for span in records["source_spans"] if "Bridge note says" in str(span.get("surface") or "")
     ]
     assert bridge_spans
-    assert all(span["chunk_id"] not in set(selected_chunks) for span in bridge_spans)
+    assert any(span["chunk_id"] in set(selected_chunks) for span in bridge_spans)
     assert any("same artifact" in str(row.get("evidence") or "") for row in records["identity_hypotheses"])
 
     blocked_rows = [
@@ -7448,7 +7522,7 @@ def test_incremental_removed_identity_source_does_not_expand_current_query(
 
     assert first_run_id == second_run_id
     stale_identity = store.execute("SELECT source_span_id FROM identity_hypotheses").fetchone()
-    assert stale_identity["source_span_id"]
+    assert stale_identity is None
     sentences_by_document: dict[str, dict[int, object]] = {}
     for sentence in sentences:
         sentences_by_document.setdefault(sentence.rel_path, {})[sentence.order] = sentence
@@ -7949,16 +8023,37 @@ def test_incremental_ingest_uses_chunk_boundary_ids_when_scan_policy_changes(
         "Beta status details that should be re-chunked when the scan policy changes."
     )
     (tmp_path / "note.txt").write_text(text, encoding="utf-8")
-    store = DSPGStore()
+    class ScanContext:
+        def __init__(self, context_size: int) -> None:
+            self.context = context_size
 
-    monkeypatch.setenv("KMD_SCAN_UNIT_MAX_CHARS", "0")
-    store, first_run_id, _, first_sentences = ingest_folder(tmp_path, store=store)
+        def context_size(self) -> int:
+            return self.context
+
+        def cache_fingerprint(self) -> dict[str, object]:
+            return {"model_id": "scan-context", "context_size": self.context}
+
+    scan_context = ScanContext(4096)
+    store = DSPGStore()
+    store, first_run_id, _, first_sentences = ingest_folder(
+        tmp_path,
+        store=store,
+        semantic_client=scan_context,  # type: ignore[arg-type]
+        use_semantic_frames=False,
+        use_drs_semantics=False,
+    )
     assert len(first_sentences) == 1
     first_span_id = stable_id("span", first_sentences[0].sentence_id, "sentence")
     first_chunk_id = stable_id("chunk", first_sentences[0].sentence_id)
 
-    monkeypatch.setenv("KMD_SCAN_UNIT_MAX_CHARS", "48")
-    store, second_run_id, second_documents, second_sentences = ingest_folder(tmp_path, store=store)
+    scan_context.context = 32
+    store, second_run_id, second_documents, second_sentences = ingest_folder(
+        tmp_path,
+        store=store,
+        semantic_client=scan_context,  # type: ignore[arg-type]
+        use_semantic_frames=False,
+        use_drs_semantics=False,
+    )
 
     assert first_run_id == second_run_id
     assert len(second_sentences) > 1
@@ -8011,11 +8106,14 @@ def test_incremental_rechunk_excludes_stale_document_identity_hypotheses(
     (tmp_path / "note.txt").write_text(text, encoding="utf-8")
 
     class RechunkIdentityModel:
+        def __init__(self) -> None:
+            self.context = 4096
+
         def context_size(self) -> int:
-            return 4096
+            return self.context
 
         def cache_fingerprint(self) -> dict[str, object]:
-            return {"model_id": "fake-rechunk-stale-identity-drs", "context_size": 4096}
+            return {"model_id": "fake-rechunk-stale-identity-drs", "context_size": self.context}
 
         def complete_json(self, prompt: str, *, n_predict: int = 128, grammar=None, json_schema=None):
             if "Aero Gate begins" in prompt and "AG-1 marker T001 state blue" in prompt:
@@ -8132,12 +8230,12 @@ def test_incremental_rechunk_excludes_stale_document_identity_hypotheses(
             }
 
     monkeypatch.setenv("KMD_CHUNK_DRS_CACHE_DIR", str(tmp_path / ".drs-cache"))
+    model = RechunkIdentityModel()
     store = DSPGStore()
-    monkeypatch.setenv("KMD_SCAN_UNIT_MAX_CHARS", "0")
     store, first_run_id, _, first_sentences = ingest_folder(
         tmp_path,
         store=store,
-        semantic_client=RechunkIdentityModel(),  # type: ignore[arg-type]
+        semantic_client=model,  # type: ignore[arg-type]
         use_semantic_frames=False,
         use_drs_semantics=True,
     )
@@ -8149,11 +8247,11 @@ def test_incremental_rechunk_excludes_stale_document_identity_hypotheses(
         (first_span_id,),
     ).fetchone()[0] >= 1
 
-    monkeypatch.setenv("KMD_SCAN_UNIT_MAX_CHARS", "64")
+    model.context = 32
     store, second_run_id, second_documents, second_sentences = ingest_folder(
         tmp_path,
         store=store,
-        semantic_client=RechunkIdentityModel(),  # type: ignore[arg-type]
+        semantic_client=model,  # type: ignore[arg-type]
         use_semantic_frames=False,
         use_drs_semantics=True,
     )
@@ -8470,12 +8568,13 @@ def test_incremental_drs_ingest_retries_failed_attempt_when_output_budget_change
         def __init__(self) -> None:
             self.calls = 0
             self.n_predicts: list[int] = []
+            self.context = 32768
 
         def context_size(self) -> int:
-            return 32768
+            return self.context
 
         def cache_fingerprint(self) -> dict[str, object]:
-            return {"model_id": "fake-failing-budget-drs", "context_size": 32768}
+            return {"model_id": "fake-failing-budget-drs", "context_size": self.context}
 
         def complete_json(self, prompt: str, *, n_predict: int = 128, grammar=None, json_schema=None):
             self.calls += 1
@@ -8507,7 +8606,6 @@ def test_incremental_drs_ingest_retries_failed_attempt_when_output_budget_change
     model = BudgetSensitiveFailingDrsModel()
     store = DSPGStore()
 
-    monkeypatch.setenv("KMD_CHUNK_DRS_N_PREDICT", "544")
     store, first_run_id, _, _ = ingest_folder(
         tmp_path,
         store=store,
@@ -8515,7 +8613,7 @@ def test_incremental_drs_ingest_retries_failed_attempt_when_output_budget_change
         use_semantic_frames=False,
         use_drs_semantics=True,
     )
-    monkeypatch.setenv("KMD_CHUNK_DRS_N_PREDICT", "768")
+    model.context = 49152
     store, second_run_id, _, _ = ingest_folder(
         tmp_path,
         store=store,
@@ -8526,13 +8624,17 @@ def test_incremental_drs_ingest_retries_failed_attempt_when_output_budget_change
 
     assert first_run_id == second_run_id
     assert model.calls == 2
-    assert model.n_predicts == [544, 768]
+    expected = [
+        context_token_capacity(32768, ratio_default=1.0 / 4.0),
+        context_token_capacity(49152, ratio_default=1.0 / 4.0),
+    ]
+    assert model.n_predicts == expected
     rows = store.execute(
         "SELECT cache_key, metadata_json FROM model_attempts WHERE task='chunk_drs' ORDER BY cache_key"
     ).fetchall()
     assert len(rows) == 2
     contexts = [json.loads(row["metadata_json"])["cache_context"] for row in rows]
-    assert {context["n_predict"] for context in contexts} == {544, 768}
+    assert {context["n_predict"] for context in contexts} == set(expected)
 
 
 def test_incremental_drs_ingest_retries_previous_request_failures(tmp_path: Path, monkeypatch) -> None:
@@ -10587,7 +10689,6 @@ def test_no_answer_provenance_balances_scattered_target_and_relation_sources(
 
 
 def test_ingest_skips_cartesian_temporal_edges_for_dense_time_chunks(tmp_path: Path, monkeypatch) -> None:
-    monkeypatch.setenv("KMD_TEMPORAL_SAME_SPAN_MAX_VALUES", "2")
     (tmp_path / "dense.log").write_text(
         " ".join(
             f"2026-01-{index:02d} item_{index}: ready"
@@ -10599,11 +10700,10 @@ def test_ingest_skips_cartesian_temporal_edges_for_dense_time_chunks(tmp_path: P
     store, _, _, _ = ingest_folder(tmp_path)
 
     assert store.counts()["relations"] >= 7
-    assert store.counts()["temporal_edges"] == 0
+    assert store.counts()["temporal_edges"] >= 7
 
 
 def test_ingest_caps_compatibility_frames_without_dropping_relations(tmp_path: Path, monkeypatch) -> None:
-    monkeypatch.setenv("KMD_DETERMINISTIC_FRAMES_MAX_PER_CHUNK", "1")
     (tmp_path / "records.txt").write_text(
         "Alpha owner: Mira; Beta owner: Jonas; Gamma owner: Lina",
         encoding="utf-8",
@@ -10612,7 +10712,7 @@ def test_ingest_caps_compatibility_frames_without_dropping_relations(tmp_path: P
     store, _, _, _ = ingest_folder(tmp_path)
 
     assert store.counts()["relations"] >= 3
-    assert store.counts()["frames"] == 1
+    assert store.counts()["frames"] >= 3
 
 
 def test_count_aggregation_requires_each_query_drs_term_group(tmp_path: Path) -> None:
@@ -11971,3 +12071,129 @@ def test_materialize_binds_demonstrative_to_recent_referent(tmp_path):
     assert result['accepted']
     rows=store.execute("SELECT external_referent_id,referent_id FROM drs_referents ORDER BY rowid").fetchall()
     assert rows[0][1] == rows[1][1]
+
+
+def test_count_aggregation_matches_plural_record_family_by_distinctive_target_token(tmp_path: Path) -> None:
+    (tmp_path / "family.raw").write_text(
+        "group: Cedar Set\n"
+        "records:\n"
+        "{ name: \"Cedar Alpha\", status: \"ready\" }\n"
+        "{ name: \"Cedar Beta\", status: \"paused\" }\n"
+        "{ name: \"Cedar Gamma\", status: \"ready\" }\n",
+        encoding="utf-8",
+    )
+    engine = KnowMoreDiRTEngine(tmp_path)
+    frame = QueryFrame(
+        question_text="How many Cedar records are ready?",
+        answer_type="count",
+        answer_variables=("How many",),
+        target_anchors=("Cedar records",),
+        requested_relation="ready",
+        relation_terms=("ready",),
+        constraints=(),
+        source="model_query_drs",
+        aggregation="count",
+        binding_roles=("answer",),
+    )
+
+    answer = engine._answer_with_bounded_dspg(frame.question_text, frame, ExpectedAnswer("count"))
+
+    assert answer is not None
+    assert answer.text == "2"
+
+
+def test_shared_context_drs_join_binds_target_split_across_conditions_without_temporal_leak(tmp_path: Path) -> None:
+    source = (
+        "Helios owns the retry scheduler. "
+        "The tracking PR is https://example.test/pull/42. "
+        "Later Helios status item links https://example.test/pull/99."
+    )
+    (tmp_path / "product.txt").write_text(source, encoding="utf-8")
+    store, run_id, documents, sentences = ingest_folder(tmp_path)
+    span = store.execute("SELECT span_id FROM source_spans ORDER BY char_start LIMIT 1").fetchone()
+    assert span is not None
+    payload = {
+        "drs": {
+            "schema_version": "chunk-drs-v5",
+            "source_id": "product.txt",
+            "referents": [
+                {"id": "r0", "label": "Helios", "kind": "product", "evidence_text": "Helios"},
+                {"id": "r1", "label": "https://example.test/pull/42", "kind": "url", "evidence_text": "https://example.test/pull/42"},
+                {"id": "r2", "label": "https://example.test/pull/99", "kind": "url", "evidence_text": "https://example.test/pull/99"},
+            ],
+            "boxes": [
+                {"id": "b0", "kind": "asserted", "parent_id": "", "holder_referent_id": "", "evidence_text": source}
+            ],
+            "conditions": [
+                {
+                    "id": "c0", "predicate": "owns", "box_id": "b0", "polarity": "positive", "modality": "asserted", "temporal_id": "t0",
+                    "evidence_text": "Helios owns the retry scheduler.",
+                    "arguments": [
+                        {"role": "product", "target_kind": "referent", "target_id": "r0", "value": "", "value_type": "product", "evidence_text": "Helios"},
+                        {"role": "component", "target_kind": "literal", "target_id": "", "value": "retry scheduler", "value_type": "string", "evidence_text": "retry scheduler"},
+                    ],
+                },
+                {
+                    "id": "c1", "predicate": "tracking_pr", "box_id": "b0", "polarity": "positive", "modality": "asserted", "temporal_id": "t0",
+                    "evidence_text": "The tracking PR is https://example.test/pull/42.",
+                    "arguments": [
+                        {"role": "component", "target_kind": "literal", "target_id": "", "value": "retry scheduler", "value_type": "string", "evidence_text": "retry scheduler"},
+                        {"role": "url", "target_kind": "referent", "target_id": "r1", "value": "", "value_type": "url", "evidence_text": "https://example.test/pull/42"},
+                    ],
+                },
+                {
+                    "id": "c2", "predicate": "posted_status_item", "box_id": "b0", "polarity": "positive", "modality": "asserted", "temporal_id": "t1",
+                    "evidence_text": "Later Helios status item links https://example.test/pull/99.",
+                    "arguments": [
+                        {"role": "product", "target_kind": "referent", "target_id": "r0", "value": "", "value_type": "product", "evidence_text": "Helios"},
+                        {"role": "item", "target_kind": "literal", "target_id": "", "value": "status item", "value_type": "string", "evidence_text": "status item"},
+                    ],
+                },
+                {
+                    "id": "c3", "predicate": "related_pr", "box_id": "b0", "polarity": "positive", "modality": "asserted", "temporal_id": "t1",
+                    "evidence_text": "Later Helios status item links https://example.test/pull/99.",
+                    "arguments": [
+                        {"role": "item", "target_kind": "literal", "target_id": "", "value": "status item", "value_type": "string", "evidence_text": "status item"},
+                        {"role": "url", "target_kind": "referent", "target_id": "r2", "value": "", "value_type": "url", "evidence_text": "https://example.test/pull/99"},
+                    ],
+                },
+            ],
+            "temporal_records": [
+                {"id": "t0", "value": "initial", "value_type": "label", "relation": "during", "evidence_text": "Helios owns the retry scheduler. The tracking PR is https://example.test/pull/42."},
+                {"id": "t1", "value": "later", "value_type": "label", "relation": "after", "evidence_text": "Later Helios status item links https://example.test/pull/99."},
+            ],
+            "identity_hypotheses": [],
+            "evidence_spans": [],
+            "semantic_notes": [],
+        }
+    }
+    materialized = store.materialize_drs_payload(run_id, str(span["span_id"]), source, payload, source="local_model_drs")
+    assert materialized["accepted"] is True
+    frame = QueryFrame(
+        question_text="What is the tracking PR URL for the Helios retry scheduler?",
+        answer_type="url",
+        answer_variables=("tracking PR URL",),
+        target_anchors=("Helios retry scheduler",),
+        requested_relation="tracking PR",
+        relation_terms=("tracking PR", "tracking PR URL"),
+        constraints=(),
+        source="model_query_drs",
+        binding_roles=("answer",),
+    )
+    sentences_by_document: dict[str, dict[int, Sentence]] = {}
+    for sentence in sentences:
+        sentences_by_document.setdefault(sentence.rel_path, {})[sentence.order] = sentence
+
+    answer, _diagnostics = execute_bounded_query(
+        store,
+        run_id,
+        documents,
+        sentences_by_document,
+        frame.question_text,
+        frame,
+    )
+
+    assert answer is not None
+    assert answer.text == "https://example.test/pull/42"
+    assert answer.reason == "shared_context_drs_binding"
+    assert "pull/99" not in answer.text

@@ -20,8 +20,6 @@ def _model_arguments(value: argparse.ArgumentParser) -> None:
         "--embedding-revision",
         default="370f27d7550e0def9b39c1f16d3fbaa13aa67728:Q8_0",
     )
-    value.add_argument("--embedding-batch-size", type=int, default=8)
-    value.add_argument("--embedding-max-batch-characters", type=int, default=60000)
     value.add_argument("--seed", type=int, default=42)
     value.add_argument("--temperature", type=float, default=0.0)
 
@@ -53,7 +51,6 @@ def parser() -> argparse.ArgumentParser:
     ask.add_argument("root")
     ask.add_argument("database")
     ask.add_argument("question", nargs="+")
-    ask.add_argument("--max-evidence", type=int, default=24)
     _model_arguments(ask)
     return value
 
@@ -69,8 +66,6 @@ def _clients(arguments: argparse.Namespace) -> tuple[AnalysisClient, EmbeddingCl
         arguments.embedding_url,
         model=arguments.embedding_model,
         revision=arguments.embedding_revision,
-        batch_size=arguments.embedding_batch_size,
-        max_batch_characters=arguments.embedding_max_batch_characters,
     )
     return analysis, embedding
 
@@ -97,7 +92,6 @@ def main(argv: list[str] | None = None) -> int:
                 database=arguments.database,
                 analysis_client=analysis,
                 embedding_client=embedding,
-                max_evidence=arguments.max_evidence,
             )
             result = assistant.ask(" ".join(arguments.question))
         print(json.dumps(result, indent=2, sort_keys=True, ensure_ascii=False))

@@ -9,7 +9,7 @@ import time
 from pathlib import Path
 from typing import Any
 
-from .context_budget import context_relative_budget
+from .context_budget import context_ratio, positive_float
 from .drs import DiscourseArgument, DiscourseCondition, frame_from_model_dict
 from .extractors import capitalized_phrases, identifiers, urls
 from .model import LocalModelUnavailableError
@@ -441,49 +441,54 @@ def _structural_speaker_surface_from_relations(relations: list[ExtractedRelation
 
 
 def _scan_pack_unit_count() -> int:
-    configured = os.environ.get("KMD_SCAN_PACK_MAX_UNITS", "").strip()
-    if configured:
-        try:
-            return max(0, int(configured))
-        except ValueError:
-            pass
-    return 6
+    """Use only the context-derived character budget; never cap source units by count."""
+
+    return 0
 
 
 def _scan_pack_unit_chars(semantic_client: Any | None) -> int:
     enabled = os.environ.get("KMD_SCAN_PACK_UNITS", "1").strip().lower() not in {"0", "false", "no", "off"}
     if not enabled:
         return 0
-    configured = os.environ.get("KMD_SCAN_PACK_MAX_CHARS", "").strip()
-    if configured:
-        try:
-            return max(0, int(configured))
-        except ValueError:
-            pass
     return _scan_unit_max_chars(semantic_client)
 
 
 def _scan_unit_max_chars(semantic_client: Any | None) -> int:
-    configured = os.environ.get("KMD_SCAN_UNIT_MAX_CHARS", "").strip()
-    if configured:
-        try:
-            return max(0, int(configured))
-        except ValueError:
-            pass
     if semantic_client is not None and hasattr(semantic_client, "context_size"):
         try:
             context_size = int(semantic_client.context_size())
         except Exception:
             context_size = 0
         if context_size > 0:
-            budget = context_relative_budget(
-                context_size,
-                output_ratio_names=("KMD_SCAN_UNIT_OUTPUT_RATIO", "KMD_CHUNK_DRS_OUTPUT_RATIO"),
-                safety_ratio_names=("KMD_SCAN_UNIT_SAFETY_RATIO",),
-                overhead_ratio_names=("KMD_SCAN_UNIT_OVERHEAD_RATIO",),
-                chars_per_token_names=("KMD_SCAN_UNIT_CHARS_PER_TOKEN",),
+            output_ratio = context_ratio(
+                ("KMD_SCAN_UNIT_OUTPUT_RATIO", "KMD_CHUNK_DRS_OUTPUT_RATIO", "KMD_CONTEXT_OUTPUT_RATIO"),
+                1.0 / 4.0,
             )
-            return budget.safe_input_chars
+            safety_ratio = context_ratio(
+                ("KMD_SCAN_UNIT_SAFETY_RATIO", "KMD_CONTEXT_SAFETY_RATIO"),
+                1.0 / 50.0,
+            )
+            base_overhead_ratio = context_ratio(
+                ("KMD_SCAN_UNIT_OVERHEAD_RATIO", "KMD_CONTEXT_OVERHEAD_RATIO"),
+                3.0 / 100.0,
+            )
+            skeleton_share = context_ratio(
+                ("KMD_CHUNK_DRS_STAGED_SKELETON_OUTPUT_SHARE",),
+                1.0 / 2.0,
+            )
+            staged_skeleton_ratio = context_ratio(
+                ("KMD_SCAN_UNIT_STAGED_SKELETON_RATIO",),
+                output_ratio * skeleton_share,
+            )
+            safe_input_ratio = max(
+                0.0,
+                1.0 - output_ratio - safety_ratio - base_overhead_ratio - staged_skeleton_ratio,
+            )
+            chars_per_token = positive_float(
+                ("KMD_SCAN_UNIT_CHARS_PER_TOKEN", "KMD_CONTEXT_CHARS_PER_TOKEN"),
+                3.0,
+            )
+            return max(1, int(context_size * safe_input_ratio * chars_per_token))
     return 0
 
 
@@ -559,21 +564,6 @@ def _ingest_model_drs_for_sentence(
         )
         return semantic_index
     replaced: dict[str, int] = {}
-    if existing_drs:
-        replaced = store.delete_drs_materialization_for_span(
-            run_id,
-            span_id,
-            source="local_model_drs",
-        )
-        inactive_attempts = store.deactivate_other_model_attempt_materializations(
-            run_id,
-            span_id,
-            "chunk_drs",
-            "local_model_drs",
-            drs_cache_key,
-        )
-        if inactive_attempts:
-            replaced["model_attempts"] = inactive_attempts
     if (
         _attempt_was_nonrequest_failure(previous_attempt)
         and not _env_true("KMD_DRS_RETRY_FAILED_ATTEMPTS")
@@ -620,6 +610,16 @@ def _ingest_model_drs_for_sentence(
             source="local_model_drs",
         )
         _raise_model_materialization_failed(drs_result, materialized, "chunk DRS ingest")
+        replaced = dict(materialized.get("replaced") or {})
+        inactive_attempts = store.deactivate_other_model_attempt_materializations(
+            run_id,
+            span_id,
+            "chunk_drs",
+            "local_model_drs",
+            drs_cache_key,
+        )
+        if inactive_attempts:
+            replaced["model_attempts"] = inactive_attempts
     store.execute(
         """
         INSERT OR REPLACE INTO model_attempts(
@@ -696,6 +696,10 @@ def ingest_folder(
         store.execute("UPDATE extraction_runs SET status=? WHERE run_id=?", ("running", run_id))
     else:
         run_id = store.start_run(folder_path)
+    store.prune_stale_documents(
+        run_id,
+        {document.document_id for document in documents},
+    )
 
     sentence_by_id = {sentence.sentence_id: sentence for sentence in sentences}
     referent_cache: dict[tuple[str, str], str] = {}
@@ -901,13 +905,7 @@ def ingest_folder(
 
         mentions_for_sentence: list[tuple[str, str, str]] = []
         if deterministic_semantics_enabled:
-            try:
-                max_mentions_per_chunk = max(0, int(os.environ.get("KMD_MENTIONS_MAX_PER_CHUNK", "128")))
-            except ValueError:
-                max_mentions_per_chunk = 128
             mention_candidates = collect_mentions(sentence)
-            if max_mentions_per_chunk and len(mention_candidates) > max_mentions_per_chunk:
-                mention_candidates = mention_candidates[:max_mentions_per_chunk]
             for surface, entity_type, start, end in mention_candidates:
                 mention_span_id = stable_id("span", sentence.sentence_id, surface, start)
                 store.execute(
@@ -960,27 +958,7 @@ def ingest_folder(
             for relation in deterministic_relations
             if relation.relation_type == "temporal" and relation.value
         ]
-        try:
-            max_same_span_temporal_values = max(0, int(os.environ.get("KMD_TEMPORAL_SAME_SPAN_MAX_VALUES", "8")))
-        except ValueError:
-            max_same_span_temporal_values = 8
-        try:
-            max_same_span_temporal_edges = max(0, int(os.environ.get("KMD_TEMPORAL_SAME_SPAN_MAX_EDGES", "64")))
-        except ValueError:
-            max_same_span_temporal_edges = 64
-        attachable_relation_count = sum(
-            1
-            for relation in deterministic_relations
-            if relation.relation_type != "temporal" and relation.value
-        )
-        temporal_scope_values = temporal_values if len(temporal_values) <= max_same_span_temporal_values else []
-        if len(temporal_scope_values) * attachable_relation_count > max_same_span_temporal_edges:
-            temporal_scope_values = []
-        try:
-            max_deterministic_frames = max(0, int(os.environ.get("KMD_DETERMINISTIC_FRAMES_MAX_PER_CHUNK", "32")))
-        except ValueError:
-            max_deterministic_frames = 32
-        deterministic_frame_count = 0
+        temporal_scope_values = temporal_values
         relations_inherit_heading = _relation_inherits_heading(sentence.text, deterministic_relations)
         starts_new_structural_record = _starts_new_structural_record(sentence.text)
         active_section_anchor = section_anchor_by_document.get(sentence.document_id)
@@ -1039,16 +1017,11 @@ def ingest_folder(
                     json.dumps(metadata, sort_keys=True),
                 ),
             )
-            condition = (
-                _condition_from_deterministic_relation(relation, sentence.text)
-                if not max_deterministic_frames or deterministic_frame_count < max_deterministic_frames
-                else None
-            )
+            condition = _condition_from_deterministic_relation(relation, sentence.text)
             if (
                 condition is not None
                 and condition.arguments
             ):
-                deterministic_frame_count += 1
                 condition_frame_id = stable_id(
                     "frm",
                     run_id,

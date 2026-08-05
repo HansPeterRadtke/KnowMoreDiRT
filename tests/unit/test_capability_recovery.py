@@ -10,6 +10,12 @@ from knowmoredirt.query import QueryFrame
 
 
 class FakeLocalModel:
+    def context_size(self) -> int:
+        return 4096
+
+    def cache_fingerprint(self) -> dict[str, object]:
+        return {"model_id": self.__class__.__name__, "context_size": self.context_size()}
+
     def complete_json(self, prompt: str, *, n_predict: int = 128, grammar: str | None = None, json_schema=None) -> dict[str, object]:
         if "Verify whether the candidate answer is entailed" in prompt:
             return {
@@ -683,7 +689,8 @@ def test_drs_attempt_cache_context_separates_identical_text_by_source_path(tmp_p
     assert {context["n_predict"] for context in contexts} == set(fake.n_predicts)
     assert len(set(fake.n_predicts)) == 1
     assert all(context["context_budget"]["input_chars"] == len("Aero Gate is ready.") for context in contexts)
-    assert all(context["context_budget"]["source_span_candidate_count"] >= 1 for context in contexts)
+    assert all("source_span_candidate_count" not in context["context_budget"] for context in contexts)
+    assert all(context["context_budget"]["source_span_policy"] == "exact-contiguous-source-span-record-consistent-v3" for context in contexts)
     assert {context["source_rel_path"] for context in contexts} == {
         "alpha/note.raw",
         "beta/note.raw",

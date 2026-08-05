@@ -3,8 +3,11 @@ from __future__ import annotations
 import json
 from typing import Any
 
+import knowmoredirt.model_planner as model_planner
+from knowmoredirt.context_budget import context_ratio, context_token_capacity
 from knowmoredirt.model import LocalModelJSONError
 from knowmoredirt.model_planner import (
+    chunk_drs_array_max_items,
     CHUNK_DRS_BOX_COMPLETION_POLICY,
     CHUNK_DRS_COMPACT_UNDERCOVERAGE_POLICY,
     CHUNK_DRS_DYNAMIC_SKELETON_BUDGET_POLICY,
@@ -21,6 +24,7 @@ from knowmoredirt.model_planner import (
     CHUNK_DRS_STAGED_FALLBACK_POLICY,
     CHUNK_DRS_STAGED_RETRY_DIAGNOSTICS_POLICY,
     _call_model_chunk_drs_staged,
+    _validate_chunk_drs_payload,
     call_model_chunk_drs,
     chunk_drs_cache_context,
     chunk_drs_skeleton_json_schema,
@@ -246,7 +250,7 @@ def test_chunk_drs_staged_validation_retry_corrects_model_owned_topology(monkeyp
                                             "evidence_text": "",
                                         }
                                     ],
-                                    "evidence_text": "Aero Gate is ready.",
+                                    "evidence_text": "Aero Gate was ready.",
                                 }
                             ],
                         },
@@ -297,9 +301,10 @@ def test_chunk_drs_staged_validation_retry_corrects_model_owned_topology(monkeyp
     )
 
     assert result["accepted"] is True
-    assert result["fallback_from_reason"] == "schema_validation_failed"
+    assert result["fallback_from_reason"] == "grounding_validation_failed"
     assert result["validation_retry"]["accepted"] is True
     assert "self_argument_box" in model.retry_prompt
+    assert "condition:c0" in model.retry_prompt
     assert model.skeleton_calls == 2
     assert model.condition_calls == 2
     assert result["drs"]["conditions"][0]["arguments"][0]["target_kind"] == "referent"
@@ -930,7 +935,7 @@ def test_chunk_drs_staged_fallback_runs_for_compact_record_undercoverage(monkeyp
             json_schema: dict[str, Any] | None = None,
         ) -> dict[str, object]:
             if "one source-grounded DRS object" in prompt:
-                assert "JSON schema constrains condition and argument evidence_text" in prompt
+                assert "Evidence must be copied as one exact contiguous source substring" in prompt
                 return {
                     "drs": {
                         "schema_version": "chunk-drs-v2",
@@ -998,7 +1003,10 @@ def test_chunk_drs_staged_fallback_runs_for_compact_record_undercoverage(monkeyp
                 }
             assert "Stage 2 of source-grounded DRS extraction" in prompt
             condition_schema = json_schema["properties"]["condition_stage"]["properties"]["conditions"]["items"]
-            assert "steward: Lina Sol" in condition_schema["properties"]["evidence_text"]["enum"]
+            evidence_schema = condition_schema["properties"]["evidence_text"]
+            assert evidence_schema["maxLength"] > 0
+            assert "x-kmd-string-profile" not in evidence_schema
+            assert "enum" not in evidence_schema
             return {
                 "condition_stage": {
                     "schema_version": "chunk-drs-v2",
@@ -1059,13 +1067,10 @@ def test_chunk_drs_staged_fallback_runs_for_compact_record_undercoverage(monkeyp
     )
 
     assert result["accepted"] is True
-    assert result["reason"] == "staged_fallback"
-    assert result["fallback_from_reason"] == "structural_undercoverage"
+    assert result["staged_first"] is True
     assert result["validation"]["condition_count"] == 2
     assert result["context_budget"]["compact_undercoverage_policy"] == CHUNK_DRS_COMPACT_UNDERCOVERAGE_POLICY
-    assert (
-        result["context_budget"]["staged_retry_diagnostics_policy"] == CHUNK_DRS_STAGED_RETRY_DIAGNOSTICS_POLICY
-    )
+    assert result["context_budget"]["staged_first_policy"] == CHUNK_DRS_STAGED_FIRST_POLICY
     cache_context = chunk_drs_cache_context(CompactUndercoverageModel(), n_predict=384)  # type: ignore[arg-type]
     assert cache_context["compact_undercoverage_policy"] == CHUNK_DRS_COMPACT_UNDERCOVERAGE_POLICY
     assert cache_context["staged_retry_diagnostics_policy"] == CHUNK_DRS_STAGED_RETRY_DIAGNOSTICS_POLICY
@@ -1177,11 +1182,9 @@ def test_chunk_drs_compact_undercoverage_records_non_improving_retry(monkeypatch
 
     assert result["accepted"] is True
     assert result["validation"]["condition_count"] == 1
-    assert result["staged_retry"]["accepted"] is True
-    assert result["staged_retry"]["fallback_from_reason"] == "structural_undercoverage"
-    assert result["staged_retry"]["monolithic_condition_count"] == 1
-    assert result["staged_retry"]["fallback_condition_count"] == 1
-    assert result["context_budget"]["staged_retry_diagnostics_policy"] == CHUNK_DRS_STAGED_RETRY_DIAGNOSTICS_POLICY
+    assert result["staged_first"] is True
+    assert result["fallback_from_reason"] == "field_like_source_spans"
+    assert result["context_budget"]["staged_first_policy"] == CHUNK_DRS_STAGED_FIRST_POLICY
 
 
 def test_chunk_drs_field_like_records_use_monolithic_constrained_extraction_first(monkeypatch, tmp_path) -> None:
@@ -1339,7 +1342,7 @@ def test_chunk_drs_field_like_records_use_monolithic_constrained_extraction_firs
     assert "fallback_from_reason" not in result
     assert result["staged_first"]["staged_first"] is True
     assert result["validation"]["condition_count"] == 2
-    assert result["context_budget"]["reserved_output_tokens"] == 1280
+    assert result["context_budget"]["reserved_output_tokens"] == default_chunk_drs_n_predict(model)
     assert result["context_budget"]["staged_first_policy"] == CHUNK_DRS_STAGED_FIRST_POLICY
     assert result["context_budget"]["dynamic_condition_budget_policy"] == CHUNK_DRS_DYNAMIC_CONDITION_BUDGET_POLICY
     assert "staged_condition_n_predict" not in result["context_budget"]
@@ -1370,12 +1373,10 @@ def test_chunk_drs_dynamic_skeleton_budget_for_field_rich_chunks(monkeypatch) ->
 
     monkeypatch.delenv("KMD_CHUNK_DRS_STAGED_SKELETON_N_PREDICT", raising=False)
 
-    assert default_staged_chunk_drs_skeleton_n_predict(384, plain_sentence, 96) == 384
-    assert default_staged_chunk_drs_skeleton_n_predict(384, flat_field_rich, 96) == 384
-    assert default_staged_chunk_drs_skeleton_n_predict(384, field_rich, 96) == 384
-
-    monkeypatch.setenv("KMD_CHUNK_DRS_STAGED_SKELETON_N_PREDICT", "512")
-    assert default_staged_chunk_drs_skeleton_n_predict(384, field_rich, 96) == 512
+    expected = int(384 * context_ratio(("KMD_CHUNK_DRS_STAGED_SKELETON_OUTPUT_SHARE",), 1.0 / 2.0))
+    assert default_staged_chunk_drs_skeleton_n_predict(384, plain_sentence, 96) == expected
+    assert default_staged_chunk_drs_skeleton_n_predict(384, flat_field_rich, 96) == expected
+    assert default_staged_chunk_drs_skeleton_n_predict(384, field_rich, 96) == expected
 
 
 def test_chunk_drs_dynamic_condition_budget_for_compact_chunks(monkeypatch) -> None:
@@ -1387,15 +1388,18 @@ def test_chunk_drs_dynamic_condition_budget_for_compact_chunks(monkeypatch) -> N
 
     monkeypatch.delenv("KMD_CHUNK_DRS_STAGED_CONDITION_N_PREDICT", raising=False)
 
-    assert default_staged_chunk_drs_condition_n_predict(384) == 768
-    assert default_staged_chunk_drs_condition_n_predict(768, compact_record, 130) == 528
-    assert default_staged_chunk_drs_condition_n_predict(384, compact_sentence, 96) == 528
-    assert default_staged_chunk_drs_condition_n_predict(384, temporal_record, 96) == 768
-    assert default_staged_chunk_drs_condition_n_predict(768, field_dense, 256) == 768
-    assert default_staged_chunk_drs_condition_n_predict(768, long_text, 256) == 768
+    def expected(value: int) -> int:
+        return int(value * context_ratio(("KMD_CHUNK_DRS_STAGED_CONDITION_OUTPUT_SHARE",), 1.0))
+
+    assert default_staged_chunk_drs_condition_n_predict(384) == expected(384)
+    assert default_staged_chunk_drs_condition_n_predict(768, compact_record, 130) == expected(768)
+    assert default_staged_chunk_drs_condition_n_predict(384, compact_sentence, 96) == expected(384)
+    assert default_staged_chunk_drs_condition_n_predict(384, temporal_record, 96) == expected(384)
+    assert default_staged_chunk_drs_condition_n_predict(768, field_dense, 256) == expected(768)
+    assert default_staged_chunk_drs_condition_n_predict(768, long_text, 256) == expected(768)
 
     monkeypatch.setenv("KMD_CHUNK_DRS_STAGED_CONDITION_N_PREDICT", "640")
-    assert default_staged_chunk_drs_condition_n_predict(768, compact_record, 130) == 640
+    assert default_staged_chunk_drs_condition_n_predict(768, compact_record, 130) == expected(768)
 
 
 def test_chunk_drs_dynamic_output_budget_for_short_chunks(monkeypatch) -> None:
@@ -1415,15 +1419,17 @@ def test_chunk_drs_dynamic_output_budget_for_short_chunks(monkeypatch) -> None:
 
     monkeypatch.delenv("KMD_CHUNK_DRS_N_PREDICT", raising=False)
 
-    assert default_chunk_drs_n_predict(model) == 8192  # type: ignore[arg-type]
-    assert default_chunk_drs_n_predict(model, tiny_prose) == 1152  # type: ignore[arg-type]
-    assert default_chunk_drs_n_predict(model, compact_record) == 896  # type: ignore[arg-type]
-    assert default_chunk_drs_n_predict(model, field_dense) == 2688  # type: ignore[arg-type]
-    assert default_chunk_drs_n_predict(model, medium_text) == 8192  # type: ignore[arg-type]
-    assert default_chunk_drs_n_predict(model, long_text) == 8192  # type: ignore[arg-type]
-
-    monkeypatch.setenv("KMD_CHUNK_DRS_N_PREDICT", "544")
-    assert default_chunk_drs_n_predict(model, compact_record) == 544  # type: ignore[arg-type]
+    expected = context_token_capacity(
+        model.context_size(),
+        ratio_names=("KMD_CHUNK_DRS_OUTPUT_RATIO",),
+        ratio_default=1.0 / 4.0,
+    )
+    assert default_chunk_drs_n_predict(model) == expected  # type: ignore[arg-type]
+    assert default_chunk_drs_n_predict(model, tiny_prose) == expected  # type: ignore[arg-type]
+    assert default_chunk_drs_n_predict(model, compact_record) == expected  # type: ignore[arg-type]
+    assert default_chunk_drs_n_predict(model, field_dense) == expected  # type: ignore[arg-type]
+    assert default_chunk_drs_n_predict(model, medium_text) == expected  # type: ignore[arg-type]
+    assert default_chunk_drs_n_predict(model, long_text) == expected  # type: ignore[arg-type]
 
 
 def test_chunk_drs_monolithic_schema_constrains_ids_and_condition_spans(monkeypatch, tmp_path) -> None:
@@ -1454,14 +1460,25 @@ def test_chunk_drs_monolithic_schema_constrains_ids_and_condition_spans(monkeypa
             referent_schema = drs_schema["properties"]["referents"]["items"]
             box_schema = drs_schema["properties"]["boxes"]["items"]
             temporal_schema = drs_schema["properties"]["temporal_records"]["items"]
+            max_items = chunk_drs_array_max_items(n_predict)
+            referent_ids = [f"r{index}" for index in range(max_items)]
+            box_ids = [f"b{index}" for index in range(max_items)]
+            condition_ids = [f"c{index}" for index in range(max_items)]
+            temporal_ids = [f"t{index}" for index in range(max_items)]
             assert drs_schema["properties"]["source_id"]["enum"] == ["records.txt"]
-            assert referent_schema["properties"]["id"]["enum"] == ["r0", "r1", "r2", "r3"]
-            assert box_schema["properties"]["id"]["enum"] == ["b0", "b1", "b2", "b3"]
-            assert condition_schema["properties"]["id"]["enum"] == ["c0", "c1", "c2", "c3"]
-            assert condition_schema["properties"]["box_id"]["enum"] == ["b0", "b1", "b2", "b3"]
-            assert temporal_schema["properties"]["id"]["enum"] == ["t0", "t1", "t2", "t3"]
-            assert "steward: Lina Sol" in condition_schema["properties"]["evidence_text"]["enum"]
-            assert "Lina Sol" in condition_schema["properties"]["evidence_text"]["enum"]
+            assert referent_schema["properties"]["id"]["enum"] == referent_ids
+            assert box_schema["properties"]["id"]["enum"] == box_ids
+            assert condition_schema["properties"]["id"]["enum"] == condition_ids
+            assert condition_schema["properties"]["box_id"]["enum"] == box_ids
+            assert temporal_schema["properties"]["id"]["enum"] == temporal_ids
+            condition_evidence_schema = condition_schema["properties"]["evidence_text"]
+            argument_evidence_schema = argument_schema["properties"]["evidence_text"]
+            assert condition_evidence_schema["maxLength"] > 0
+            assert argument_evidence_schema["maxLength"] > 0
+            assert "x-kmd-string-profile" not in condition_evidence_schema
+            assert "x-kmd-string-profile" not in argument_evidence_schema
+            assert "enum" not in condition_evidence_schema
+            assert "enum" not in argument_evidence_schema
             assert "r0" in argument_schema["properties"]["target_id"]["enum"]
             assert "b0" in argument_schema["properties"]["target_id"]["enum"]
             assert "c0" in argument_schema["properties"]["target_id"]["enum"]
@@ -1529,6 +1546,7 @@ def test_chunk_drs_monolithic_schema_constrains_ids_and_condition_spans(monkeypa
             }
 
     monkeypatch.delenv("KMD_LOCAL_MODEL_JSON_SCHEMA", raising=False)
+    monkeypatch.setenv("KMD_CHUNK_DRS_STAGED_FALLBACK", "0")
     monkeypatch.setenv("KMD_CHUNK_DRS_CACHE_DIR", str(tmp_path / "drs-cache"))
     model = MonolithicSchemaModel()
 
@@ -1542,10 +1560,11 @@ def test_chunk_drs_monolithic_schema_constrains_ids_and_condition_spans(monkeypa
     assert result["accepted"] is True
     assert result["context_budget"]["source_span_policy"] == CHUNK_DRS_SOURCE_SPAN_POLICY
     assert result["context_budget"]["monolithic_id_policy"] == CHUNK_DRS_MONOLITHIC_ID_POLICY
-    assert result["context_budget"]["source_span_candidate_count"] >= 6
+    assert "source_span_candidate_count" not in result["context_budget"]
     assert chunk_drs_cache_context(model, n_predict=384)["monolithic_id_policy"] == CHUNK_DRS_MONOLITHIC_ID_POLICY
     assert model.schema is not None
-    assert "JSON schema constrains condition and argument evidence_text" in model.prompt
+    assert "same source record" in model.prompt
+    assert "one exact contiguous source substring" in model.prompt
 
 
 def test_chunk_drs_skeleton_schema_uses_stable_id_namespaces() -> None:
@@ -1615,7 +1634,7 @@ def test_chunk_drs_failed_staged_fallback_keeps_stage_diagnostics(monkeypatch, t
     assert result["staged_fallback"]["constraint_mode"] in {"json_schema", "gbnf", "none"}
 
 
-def test_chunk_drs_staged_invalid_json_failure_is_cached(monkeypatch, tmp_path) -> None:
+def test_chunk_drs_staged_invalid_json_failure_is_retried(monkeypatch, tmp_path) -> None:
     class FailedSkeletonModel:
         def __init__(self) -> None:
             self.calls = 0
@@ -1668,8 +1687,8 @@ def test_chunk_drs_staged_invalid_json_failure_is_cached(monkeypatch, tmp_path) 
     assert first["reason"] == "invalid_json"
     assert second["accepted"] is False
     assert second["reason"] == "invalid_json"
-    assert second["fresh_or_cached"] == "cache"
-    assert model.calls == 1
+    assert second["fresh_or_cached"] == "fresh"
+    assert model.calls == 2
 
 
 def test_chunk_drs_staged_fallback_preserves_temporal_records(monkeypatch, tmp_path) -> None:
@@ -1884,3 +1903,410 @@ def test_chunk_drs_staged_fallback_rejects_invalid_literal_target_after_evidence
 
     assert result["accepted"] is False
     assert result["reason"] == "schema_validation_failed"
+
+
+
+def _empty_structured_drs(source_id: str, evidence_text: str) -> dict[str, object]:
+    return {
+        "drs": {
+            "schema_version": "chunk-drs-v2",
+            "source_id": source_id,
+            "referents": [],
+            "boxes": [
+                {
+                    "id": "b0",
+                    "kind": "asserted",
+                    "parent_id": "",
+                    "holder_referent_id": "",
+                    "evidence_text": evidence_text,
+                }
+            ],
+            "conditions": [],
+            "identity_hypotheses": [],
+            "temporal_records": [],
+        }
+    }
+
+
+def _ready_structured_drs(source_id: str) -> dict[str, object]:
+    return {
+        "drs": {
+            "schema_version": "chunk-drs-v2",
+            "source_id": source_id,
+            "referents": [
+                {"id": "r0", "label": "Aero Gate", "kind": "entity", "evidence_text": "Aero Gate"}
+            ],
+            "boxes": [
+                {
+                    "id": "b0",
+                    "kind": "asserted",
+                    "parent_id": "",
+                    "holder_referent_id": "r0",
+                    "evidence_text": "Aero Gate is ready.",
+                }
+            ],
+            "conditions": [
+                {
+                    "id": "c0",
+                    "predicate": "ready",
+                    "box_id": "b0",
+                    "polarity": "positive",
+                    "modality": "asserted",
+                    "temporal_id": "",
+                    "arguments": [
+                        {
+                            "role": "theme",
+                            "target_kind": "referent",
+                            "target_id": "r0",
+                            "value": "",
+                            "value_type": "entity",
+                            "evidence_text": "Aero Gate",
+                        }
+                    ],
+                    "evidence_text": "Aero Gate is ready.",
+                }
+            ],
+            "identity_hypotheses": [],
+            "temporal_records": [],
+        }
+    }
+
+
+def test_chunk_drs_rejects_empty_semantics_for_substantive_jsonl_record() -> None:
+    source = json.dumps(
+        {
+            "artifact_id": "doc-1",
+            "artifact_type": "document",
+            "raw_text": "Aero Gate is ready.",
+        },
+        sort_keys=True,
+    )
+
+    validation = _validate_chunk_drs_payload(_empty_structured_drs("records.jsonl", source), source)
+
+    assert validation["schema_valid"] is False
+    assert "empty_semantics_for_substantive_structured_source" in validation["errors"]
+    assert "missing_conditions_for_substantive_structured_source" in validation["errors"]
+
+
+def test_chunk_drs_rejects_referent_only_semantics_for_substantive_jsonl_record() -> None:
+    source = json.dumps(
+        {
+            "artifact_id": "doc-1",
+            "artifact_type": "document",
+            "raw_text": "Aero Gate is ready.",
+        },
+        sort_keys=True,
+    )
+    payload = _empty_structured_drs("records.jsonl", source)
+    payload["drs"]["referents"] = [
+        {
+            "id": "r0",
+            "label": "Aero Gate",
+            "kind": "entity",
+            "evidence_text": "Aero Gate",
+        }
+    ]
+    payload["drs"]["boxes"][0]["holder_referent_id"] = "r0"
+
+    validation = _validate_chunk_drs_payload(payload, source)
+
+    assert validation["schema_valid"] is False
+    assert "missing_conditions_for_substantive_structured_source" in validation["errors"]
+
+
+def test_chunk_drs_allows_empty_semantics_for_metadata_only_jsonl_record() -> None:
+    source = json.dumps(
+        {
+            "artifact_id": "metadata-1",
+            "artifact_type": "metadata",
+            "raw_text": "",
+        },
+        sort_keys=True,
+    )
+
+    validation = _validate_chunk_drs_payload(_empty_structured_drs("records.jsonl", source), source)
+
+    assert validation["schema_valid"] is True
+
+
+def test_chunk_drs_staged_path_rejects_repeated_empty_structured_semantics(monkeypatch, tmp_path) -> None:
+    source = json.dumps(
+        {
+            "artifact_id": "doc-1",
+            "artifact_type": "document",
+            "raw_text": "Aero Gate is ready.",
+        },
+        sort_keys=True,
+    )
+
+    class EmptyStructuredModel:
+        def __init__(self) -> None:
+            self.calls = 0
+
+        def context_size(self) -> int:
+            return 8192
+
+        def cache_fingerprint(self) -> dict[str, Any]:
+            return {"model_id": "fake-empty-structured-drs", "context_size": 8192}
+
+        def complete_json(
+            self,
+            prompt: str,
+            *,
+            n_predict: int = 128,
+            grammar: str | None = None,
+            json_schema: dict[str, Any] | None = None,
+        ) -> dict[str, object]:
+            self.calls += 1
+            if "Stage 1 of source-grounded DRS extraction" in prompt:
+                return {
+                    "drs_skeleton": _empty_structured_drs("records.jsonl", source)["drs"],
+                    "_model_raw": "{}",
+                    "_model_elapsed_seconds": 0.01,
+                }
+            assert "Stage 2 of source-grounded DRS extraction" in prompt
+            return {
+                "condition_stage": {
+                    "schema_version": "chunk-drs-v2",
+                    "source_id": "records.jsonl",
+                    "conditions": [],
+                },
+                "_model_raw": "{}",
+                "_model_elapsed_seconds": 0.01,
+            }
+
+    monkeypatch.setenv("KMD_CHUNK_DRS_CACHE_DIR", str(tmp_path / "drs-cache"))
+    model = EmptyStructuredModel()
+
+    result = _call_model_chunk_drs_staged(
+        source,
+        model,  # type: ignore[arg-type]
+        rel_path="records.jsonl",
+        n_predict=384,
+        context_budget={"max_evidence_chars": len(source), "max_array_items": 16},
+        cache_path=tmp_path / "drs-cache" / "main.json",
+    )
+
+    assert result["accepted"] is False
+    assert result["reason"] == "schema_validation_failed"
+    assert "empty_semantics_for_substantive_structured_source" in result["validation"]["errors"]
+    assert model.calls == 4
+
+
+def test_chunk_drs_revalidates_and_replaces_stale_empty_structured_cache(monkeypatch, tmp_path) -> None:
+    source = json.dumps(
+        {
+            "artifact_id": "doc-1",
+            "artifact_type": "document",
+            "raw_text": "Aero Gate is ready.",
+        },
+        sort_keys=True,
+    )
+
+    class ReadyStructuredModel:
+        def __init__(self) -> None:
+            self.calls = 0
+
+        def context_size(self) -> int:
+            return 8192
+
+        def cache_fingerprint(self) -> dict[str, Any]:
+            return {"model_id": "fake-ready-structured-drs", "context_size": 8192}
+
+        def complete_json(
+            self,
+            prompt: str,
+            *,
+            n_predict: int = 128,
+            grammar: str | None = None,
+            json_schema: dict[str, Any] | None = None,
+        ) -> dict[str, object]:
+            self.calls += 1
+            return {
+                **_ready_structured_drs("records.jsonl"),
+                "_model_raw": "{}",
+                "_model_elapsed_seconds": 0.01,
+            }
+
+    cache_dir = tmp_path / "drs-cache"
+    monkeypatch.setenv("KMD_CHUNK_DRS_CACHE_DIR", str(cache_dir))
+    monkeypatch.setenv("KMD_CHUNK_DRS_STAGED_FALLBACK", "0")
+    monkeypatch.setenv("KMD_CHUNK_DRS_COMPACT_FIRST", "0")
+    model = ReadyStructuredModel()
+
+    first = call_model_chunk_drs(source, model, rel_path="records.jsonl", n_predict=384)  # type: ignore[arg-type]
+    assert first["accepted"] is True
+    assert model.calls == 1
+    cache_files = list(cache_dir.glob("*.json"))
+    assert len(cache_files) == 1
+    stale = json.loads(cache_files[0].read_text(encoding="utf-8"))
+    stale.update(_empty_structured_drs("records.jsonl", source))
+    stale["accepted"] = True
+    stale["reason"] = "staged_fallback"
+    cache_files[0].write_text(json.dumps(stale), encoding="utf-8")
+
+    second = call_model_chunk_drs(source, model, rel_path="records.jsonl", n_predict=384)  # type: ignore[arg-type]
+
+    assert second["accepted"] is True
+    assert second["validation"]["condition_count"] == 1
+    assert model.calls == 2
+
+
+def test_chunk_drs_stage_retries_output_limit_with_larger_budget(monkeypatch, tmp_path) -> None:
+    calls: list[int] = []
+
+    class RetryModel:
+        def context_size(self) -> int:
+            return 65536
+
+        def cache_fingerprint(self) -> dict[str, Any]:
+            return {"model_id": "retry-model", "context_size": 65536}
+
+        def complete_json(
+            self,
+            prompt: str,
+            *,
+            n_predict: int = 128,
+            grammar: str | None = None,
+            json_schema: dict[str, Any] | None = None,
+        ) -> dict[str, object]:
+            calls.append(n_predict)
+            if len(calls) == 1:
+                raise LocalModelJSONError(
+                    "length stop",
+                    raw_text='{"drs_skeleton": {',
+                    snippet='{"drs_skeleton": {',
+                    reason="output_limit_exhausted",
+                    response_metadata={
+                        "finish_reason": "length",
+                        "requested_output_tokens": n_predict,
+                        "completion_tokens": n_predict,
+                    },
+                )
+            return {
+                "drs_skeleton": {
+                    "schema_version": model_planner.CHUNK_DRS_SCHEMA_VERSION,
+                    "source_id": "records.jsonl",
+                    "referents": [],
+                    "boxes": [
+                        {
+                            "id": "b0",
+                            "kind": "asserted",
+                            "parent_id": "",
+                            "holder_referent_id": "",
+                            "evidence_text": "",
+                        }
+                    ],
+                    "identity_hypotheses": [],
+                    "temporal_records": [],
+                },
+                "_model_raw": "{}",
+                "_model_elapsed_seconds": 0.01,
+                "_model_response_metadata": {"finish_reason": "stop"},
+            }
+
+    schema = chunk_drs_skeleton_json_schema("records.jsonl", 4, [""])
+    result, elapsed, _constraint = model_planner._complete_chunk_drs_stage(
+        RetryModel(),  # type: ignore[arg-type]
+        tmp_path / "main.json",
+        "prompt",
+        schema,
+        stage="chunk_drs_skeleton",
+        n_predict=4096,
+    )
+
+    assert calls == [4096, 8192]
+    assert "drs_skeleton" in result
+    assert result["_model_output_retry"]["effective_n_predict"] == 8192
+    assert [item["reason"] for item in result["_model_output_retry"]["attempts"]] == [
+        "output_limit_exhausted",
+        "completed",
+    ]
+    assert elapsed > 0
+
+
+def test_chunk_drs_stage_resumes_cached_output_limit_at_larger_budget(monkeypatch, tmp_path) -> None:
+    calls: list[int] = []
+
+    class RetryModel:
+        def context_size(self) -> int:
+            return 65536
+
+        def cache_fingerprint(self) -> dict[str, Any]:
+            return {"model_id": "retry-model", "context_size": 65536}
+
+        def complete_json(
+            self,
+            prompt: str,
+            *,
+            n_predict: int = 128,
+            grammar: str | None = None,
+            json_schema: dict[str, Any] | None = None,
+        ) -> dict[str, object]:
+            calls.append(n_predict)
+            return {
+                "drs_skeleton": {
+                    "schema_version": model_planner.CHUNK_DRS_SCHEMA_VERSION,
+                    "source_id": "records.jsonl",
+                    "referents": [],
+                    "boxes": [
+                        {
+                            "id": "b0",
+                            "kind": "asserted",
+                            "parent_id": "",
+                            "holder_referent_id": "",
+                            "evidence_text": "",
+                        }
+                    ],
+                    "identity_hypotheses": [],
+                    "temporal_records": [],
+                },
+                "_model_raw": "{}",
+                "_model_elapsed_seconds": 0.01,
+                "_model_response_metadata": {"finish_reason": "stop"},
+            }
+
+    schema = chunk_drs_skeleton_json_schema("records.jsonl", 4, [""])
+    model = RetryModel()
+    constraint = model_planner._constraint_settings(
+        model_planner.CHUNK_DRS_GRAMMAR,
+        schema,
+        model_planner.CHUNK_DRS_SCHEMA_VERSION,
+    )
+    prompt_hash = model_planner._cache_hash(
+        "chunk_drs_skeleton",
+        "prompt",
+        model,  # type: ignore[arg-type]
+        {
+            "n_predict": 4096,
+            "schema": model_planner.CHUNK_DRS_SCHEMA_VERSION,
+            "stage_failure_cache_policy": model_planner.CHUNK_DRS_STAGE_FAILURE_CACHE_POLICY,
+            **constraint,
+        },
+    )
+    cached_path = tmp_path / f"{prompt_hash}.json"
+    cached_path.write_text(
+        json.dumps(
+            {
+                "accepted": False,
+                "reason": "output_limit_exhausted",
+                "response_metadata": {"requested_output_tokens": 4096},
+                "elapsed": 1.0,
+            }
+        ),
+        encoding="utf-8",
+    )
+
+    result, _elapsed, _constraint = model_planner._complete_chunk_drs_stage(
+        model,  # type: ignore[arg-type]
+        tmp_path / "main.json",
+        "prompt",
+        schema,
+        stage="chunk_drs_skeleton",
+        n_predict=4096,
+    )
+
+    assert calls == [8192]
+    assert result["_model_output_retry"]["effective_n_predict"] == 8192
+    assert result["_model_output_retry"]["attempts"][0]["source"] == "cache"

@@ -19,6 +19,7 @@ from functools import lru_cache
 from typing import Any
 
 from .answer_types import ExpectedAnswer, canonicalize_answer, is_value_compatible
+from .context_budget import context_token_capacity
 from .extractors import capitalized_phrases, identifiers, urls
 from .models import Answer, Document, Evidence, Sentence
 from .query import QueryFrame, expand_terms, frame_from_mapping, normalize_temporal_scope, plan_question, term_variants, visible_anchors
@@ -28,12 +29,6 @@ from .text import clean_extracted_value, content_tokens, normalize, text_quality
 DATE_TIME_RE = re.compile(r"\b(?:\d{4}-\d{2}-\d{2}(?:[ T]\d{1,2}:\d{2})?|\d{1,2}:\d{2})\b")
 PATH_RE = re.compile(r"\b[A-Za-z0-9_-]+(?:/[A-Za-z0-9_.-]+)+\b|\b[A-Za-z0-9_.-]+\.[A-Za-z0-9]{1,12}\b")
 INACCESSIBLE_CONTEXT_PREFIXES = ("modality:",)
-IDENTITY_GRAPH_MAX_DEPTH = 3
-IDENTITY_RERANK_MAX_ROUNDS = 6
-IDENTITY_LOAD_MAX_EDGES = 2048
-IDENTITY_SEED_LABEL_MAX_REFERENTS = 256
-RECORD_CACHE_MAX_ITEMS = 262144
-GROUP_MATERIAL_CACHE_MAX_ITEMS = 65536
 ANSWER_SLOT_SKIP_TERMS = {
     "answer",
     "content",
@@ -205,27 +200,27 @@ SCOPE_CARRIER_PREDICATE_SCOPES = {
 RELATION_TERM_SKIP_TERMS = {"answer", "argument", "mean", "meaning", "means", "what", "which", "who", "why"}
 
 
-@lru_cache(maxsize=8192)
+@lru_cache(maxsize=None)
 def _normalized_token_set(value: str) -> frozenset[str]:
     return frozenset(token for token in re.split(r"[^a-z0-9]+", normalize(value)) if token)
 
 
-@lru_cache(maxsize=16384)
+@lru_cache(maxsize=None)
 def _material_parts(material: str) -> tuple[str, ...]:
     return tuple(part for part in re.split(r"[^a-z0-9]+", material) if part)
 
 
-@lru_cache(maxsize=2048)
+@lru_cache(maxsize=None)
 def _normalized_terms(terms: tuple[str, ...]) -> tuple[str, ...]:
     return tuple(dict.fromkeys(term_norm for term in terms if (term_norm := normalize(term))))
 
 
-@lru_cache(maxsize=2048)
+@lru_cache(maxsize=None)
 def _normalized_term_set(terms: tuple[str, ...]) -> frozenset[str]:
     return frozenset(_normalized_terms(terms))
 
 
-@lru_cache(maxsize=2048)
+@lru_cache(maxsize=None)
 def _normalized_term_token_sets(terms: tuple[str, ...]) -> tuple[frozenset[str], ...]:
     return tuple(token_set for term in _normalized_terms(terms) if (token_set := _normalized_token_set(term)))
 
@@ -575,9 +570,7 @@ def _stable_text_fingerprint(value: str) -> tuple[int, str]:
     return (len(text), hashlib.sha256(text.encode("utf-8", errors="replace")).hexdigest())
 
 
-def _bounded_cache_set(cache: dict[Any, Any], key: Any, value: Any, *, max_items: int = RECORD_CACHE_MAX_ITEMS) -> None:
-    if len(cache) >= max_items:
-        cache.clear()
+def _bounded_cache_set(cache: dict[Any, Any], key: Any, value: Any) -> None:
     cache[key] = value
 
 
@@ -636,12 +629,11 @@ def _document_material(document: Document, sentences: list[Sentence]) -> str:
         str(metadata.get("stem", "")),
         str(metadata.get("suffix", "")),
         str(metadata.get("parent_rel_path", "")),
-        " ".join(sentence.text for sentence in sentences[:80]),
+        " ".join(sentence.text for sentence in sentences),
     ]
     return normalize(" ".join(pieces))
 
 
-_SOURCE_LOW_PRIORITY_CACHE_MAX = 65536
 _SOURCE_LOW_PRIORITY_CACHE: dict[tuple[str, int, str], bool] = {}
 
 
@@ -666,7 +658,7 @@ def _source_is_low_priority(rel_path: str, text: str) -> bool:
     if cached is not None:
         return cached
     result = _source_low_priority_from_text(value)
-    _bounded_cache_set(_SOURCE_LOW_PRIORITY_CACHE, key, result, max_items=_SOURCE_LOW_PRIORITY_CACHE_MAX)
+    _bounded_cache_set(_SOURCE_LOW_PRIORITY_CACHE, key, result)
     return result
 
 
@@ -777,12 +769,12 @@ def _rank_scope(
         "relation_only_candidate_document_rows": len(relation_doc_scores),
         "relation_only_selected_document_count": relation_only_selected,
         "relation_only_provenance_document_ids": [
-            doc_id for _score, doc_id, _rel_path in relation_doc_scores[: min(8, max(1, doc_limit))]
+            doc_id for _score, doc_id, _rel_path in relation_doc_scores[:doc_limit]
         ],
         "candidate_chunk_rows": len(chunk_scores),
         "selected_chunk_count": len(selected_chunks),
-        "target_terms": target_terms[:32],
-        "relation_terms": relation_terms[:32],
+        "target_terms": target_terms,
+        "relation_terms": relation_terms,
     }
 
 
@@ -809,13 +801,8 @@ def _bounded_identity_chunk_ids(
     selected_chunk_ids: list[str],
 ) -> list[str]:
     selected = list(dict.fromkeys(selected_chunk_ids))
-    try:
-        max_chunks = int(os.environ.get("KMD_BOUNDED_IDENTITY_CHUNK_MAX", "512"))
-    except ValueError:
-        max_chunks = 512
-    cap = max(1, max_chunks)
     document_chunks = _current_chunk_ids_for_documents(documents, sentences_by_document, document_ids)
-    return list(dict.fromkeys([*selected, *document_chunks]))[:cap]
+    return list(dict.fromkeys([*selected, *document_chunks]))
 
 
 def _fetch_by_ids(connection: Any, table: str, key: str, ids: list[str]) -> list[dict[str, Any]]:
@@ -888,8 +875,6 @@ def _expand_seed_referents_by_label(connection: Any, run_id: str, seed_ids: list
                 label_norms.append(label_norm)
     expanded = list(dict.fromkeys(seed_ids))
     for group in _batched_values(label_norms):
-        if len(expanded) >= IDENTITY_SEED_LABEL_MAX_REFERENTS:
-            break
         placeholders = ",".join("?" for _ in group)
         for row in connection.execute(
             f"""
@@ -902,8 +887,6 @@ def _expand_seed_referents_by_label(connection: Any, run_id: str, seed_ids: list
             referent_id = str(row["referent_id"] or "")
             if referent_id and referent_id not in expanded:
                 expanded.append(referent_id)
-                if len(expanded) >= IDENTITY_SEED_LABEL_MAX_REFERENTS:
-                    break
     return expanded
 
 
@@ -1019,10 +1002,6 @@ def _fetch_identity_hypotheses(
     seed_referent_ids: list[str] | None = None,
     current_document_chunk_ids: list[str] | None = None,
 ) -> list[dict[str, Any]]:
-    try:
-        max_edges = max(1, int(os.environ.get("KMD_BOUNDED_IDENTITY_EDGE_MAX", str(IDENTITY_LOAD_MAX_EDGES))))
-    except ValueError:
-        max_edges = IDENTITY_LOAD_MAX_EDGES
     rows_by_id: dict[str, dict[str, Any]] = {}
     traversal_seed_ids = set(seed_referent_ids or [])
     current_chunk_id_set = set(current_document_chunk_ids) if current_document_chunk_ids is not None else None
@@ -1060,8 +1039,6 @@ def _fetch_identity_hypotheses(
             key = str(payload.get("hypothesis_id") or json.dumps(payload, sort_keys=True, default=str))
             if key in rows_by_id:
                 continue
-            if len(rows_by_id) >= max_edges:
-                return
             rows_by_id.setdefault(key, payload)
 
     for group in _batched_values(span_ids):
@@ -1089,15 +1066,13 @@ def _fetch_identity_hypotheses(
 
     frontier = set(ref_id for ref_id in traversal_seed_ids if ref_id)
     visited = set(frontier)
-    for _depth in range(IDENTITY_GRAPH_MAX_DEPTH):
-        if not frontier or len(rows_by_id) >= max_edges:
+    while frontier:
+        if not frontier:
             break
         next_frontier: set[str] = set()
         for side in ("left_referent_id", "right_referent_id"):
             other_side = "right_referent_id" if side == "left_referent_id" else "left_referent_id"
             for group in _batched_values(list(frontier)):
-                if len(rows_by_id) >= max_edges:
-                    break
                 placeholders = ",".join("?" for _ in group)
                 rows = connection.execute(
                     f"""
@@ -1113,8 +1088,6 @@ def _fetch_identity_hypotheses(
                         continue
                     key = str(payload.get("hypothesis_id") or json.dumps(payload, sort_keys=True, default=str))
                     if key not in rows_by_id:
-                        if len(rows_by_id) >= max_edges:
-                            break
                         rows_by_id[key] = payload
                     if not identity_relation_allows_expansion(str(payload.get("relation") or "")):
                         continue
@@ -1534,7 +1507,7 @@ def _context_requirements(frame: QueryFrame) -> list[str]:
     return list(dict.fromkeys(normalize(value) for value in values if normalize(value)))
 
 
-@lru_cache(maxsize=131072)
+@lru_cache(maxsize=None)
 def _terms_match_material_cached(terms: tuple[str, ...], material: str, use_morphology: bool) -> bool:
     if not terms or not material:
         return False
@@ -1624,7 +1597,8 @@ def _identity_labels_for_referent(
     visited = {referent_id}
     frontier = {referent_id}
     edges_by_ref = _identity_edges_by_ref(records)
-    for _depth in range(IDENTITY_GRAPH_MAX_DEPTH):
+    minimum_confidence = _identity_expansion_min_confidence()
+    while frontier:
         next_frontier: set[str] = set()
         seen_hypotheses: set[str] = set()
         for current_ref in frontier:
@@ -1634,6 +1608,12 @@ def _identity_labels_for_referent(
                     continue
                 seen_hypotheses.add(hypothesis_id)
                 if not identity_relation_allows_expansion(str(hypothesis.get("relation") or "")):
+                    continue
+                try:
+                    hypothesis_confidence = float(hypothesis.get("confidence") or 0.0)
+                except (TypeError, ValueError):
+                    hypothesis_confidence = 0.0
+                if hypothesis_confidence < minimum_confidence:
                     continue
                 context_id = str(hypothesis.get("context_id") or "")
                 if not _identity_context_accessible(context_id, records, frame):
@@ -1658,7 +1638,7 @@ def _identity_labels_for_referent(
     return labels
 
 
-def _dedupe_evidence(items: list[Evidence], *, limit: int = 12) -> list[Evidence]:
+def _dedupe_evidence(items: list[Evidence], *, limit: int | None = None) -> list[Evidence]:
     values: list[Evidence] = []
     seen: set[tuple[str, str, int | None, str]] = set()
     for item in items:
@@ -1667,10 +1647,22 @@ def _dedupe_evidence(items: list[Evidence], *, limit: int = 12) -> list[Evidence
             continue
         seen.add(key)
         values.append(item)
-        if len(values) >= limit:
+        if limit is not None and len(values) >= limit:
             break
     return values
 
+
+
+
+def _identity_expansion_min_confidence() -> float:
+    raw = os.environ.get("KMD_IDENTITY_EXPANSION_MIN_CONFIDENCE", "0.75").strip()
+    try:
+        value = float(raw)
+    except ValueError as error:
+        raise ValueError("KMD_IDENTITY_EXPANSION_MIN_CONFIDENCE must be between 0 and 1") from error
+    if not 0.0 <= value <= 1.0:
+        raise ValueError("KMD_IDENTITY_EXPANSION_MIN_CONFIDENCE must be between 0 and 1")
+    return value
 
 def _identity_expansion(
     records: dict[str, Any],
@@ -1728,7 +1720,8 @@ def _identity_expansion(
     frontier = set(seed_ids)
     visited = set(seed_ids)
     edges_by_ref = _identity_edges_by_ref(records)
-    for _depth in range(IDENTITY_GRAPH_MAX_DEPTH):
+    minimum_confidence = _identity_expansion_min_confidence()
+    while frontier:
         next_frontier: set[str] = set()
         seen_hypotheses: set[str] = set()
         for current_ref in frontier:
@@ -1738,6 +1731,12 @@ def _identity_expansion(
                     continue
                 seen_hypotheses.add(hypothesis_id)
                 if not identity_relation_allows_expansion(str(hypothesis.get("relation") or "")):
+                    continue
+                try:
+                    hypothesis_confidence = float(hypothesis.get("confidence") or 0.0)
+                except (TypeError, ValueError):
+                    hypothesis_confidence = 0.0
+                if hypothesis_confidence < minimum_confidence:
                     continue
                 context_id = str(hypothesis.get("context_id") or "")
                 if not _identity_context_accessible(context_id, records, frame):
@@ -1899,7 +1898,7 @@ def _source_provenance_sample(
     target_terms: list[str],
     relation_terms: list[str],
     *,
-    limit: int = 8,
+    limit: int | None = None,
 ) -> list[dict[str, Any]]:
     rows: list[tuple[float, int, str, int, str, dict[str, Any]]] = []
     for span in records.get("source_spans", []):
@@ -1944,7 +1943,7 @@ def _source_provenance_sample(
         seen_chunks.add(chunk_key)
         ranked_payloads.append(payload)
 
-    if target_terms and relation_terms and limit >= 2:
+    if limit is not None and target_terms and relation_terms and limit >= 2:
         selected: list[dict[str, Any]] = []
         selected_keys: set[tuple[str, str, int | None, str]] = set()
 
@@ -1998,9 +1997,9 @@ def _source_provenance_sample(
             add(payload)
         for payload in ranked_payloads:
             add(payload)
-        return selected[:limit]
+        return selected[:limit] if limit is not None else selected
 
-    return ranked_payloads[:limit]
+    return ranked_payloads[:limit] if limit is not None else ranked_payloads
 
 
 def _candidate_evidence_sample(
@@ -2008,7 +2007,7 @@ def _candidate_evidence_sample(
     expected: ExpectedAnswer,
     records: dict[str, Any] | None = None,
     *,
-    limit: int = 8,
+    limit: int | None = None,
 ) -> list[dict[str, Any]]:
     rows: list[tuple[float, str, dict[str, Any]]] = []
     for score, value, evidence, reason in candidates:
@@ -2032,7 +2031,8 @@ def _candidate_evidence_sample(
             )
         )
     rows.sort(key=lambda item: (-item[0], len(item[1]), item[1]))
-    return [payload for _score, _value, payload in rows[:limit]]
+    selected = rows[:limit] if limit is not None else rows
+    return [payload for _score, _value, payload in selected]
 
 
 def _identity_row_metadata(row: dict[str, Any]) -> dict[str, Any]:
@@ -2047,7 +2047,7 @@ def _blocked_identity_provenance_sample(
     records: dict[str, Any],
     target_terms: list[str],
     *,
-    limit: int = 6,
+    limit: int | None = None,
 ) -> list[dict[str, Any]]:
     rows: list[tuple[str, int, str, dict[str, Any]]] = []
     for row in records.get("drs_identity_hypotheses", []):
@@ -2126,15 +2126,15 @@ def _scattered_source_provenance_without_binding(
         for relation_payload in relation_payloads
     ):
         return None
-    target_sources = _dedupe_provenance_payloads(target_payloads, limit=6)
-    relation_sources = _dedupe_provenance_payloads(relation_payloads, limit=6)
+    target_sources = _dedupe_provenance_payloads(target_payloads)
+    relation_sources = _dedupe_provenance_payloads(relation_payloads)
     return {
         "target_rel_paths": sorted(
             {str(payload.get("rel_path") or "") for payload in target_payloads if str(payload.get("rel_path") or "")}
-        )[:6],
+        ),
         "relation_rel_paths": sorted(
             {str(payload.get("rel_path") or "") for payload in relation_payloads if str(payload.get("rel_path") or "")}
-        )[:6],
+        ),
         "target_sources": target_sources,
         "relation_sources": relation_sources,
     }
@@ -2173,7 +2173,7 @@ def _answer_source_provenance_sample(
     answer: Answer,
     records: dict[str, Any],
     *,
-    limit: int = 8,
+    limit: int | None = None,
 ) -> list[dict[str, Any]]:
     rows: list[dict[str, Any]] = []
     seen: set[tuple[str, str, int | None, str]] = set()
@@ -2189,7 +2189,7 @@ def _answer_source_provenance_sample(
             continue
         seen.add(key)
         rows.append(payload)
-        if len(rows) >= limit:
+        if limit is not None and len(rows) >= limit:
             break
     return rows
 
@@ -2207,7 +2207,7 @@ def _evidence_provenance_payload(evidence: Evidence, records: dict[str, Any]) ->
     return payload
 
 
-def _dedupe_provenance_payloads(payloads: list[dict[str, Any]], *, limit: int = 12) -> list[dict[str, Any]]:
+def _dedupe_provenance_payloads(payloads: list[dict[str, Any]], *, limit: int | None = None) -> list[dict[str, Any]]:
     rows: list[dict[str, Any]] = []
     seen: set[tuple[str, str, int | None, str]] = set()
     for payload in payloads:
@@ -2221,7 +2221,7 @@ def _dedupe_provenance_payloads(payloads: list[dict[str, Any]], *, limit: int = 
             continue
         seen.add(key)
         rows.append(payload)
-        if len(rows) >= limit:
+        if limit is not None and len(rows) >= limit:
             break
     return rows
 
@@ -3690,7 +3690,7 @@ def _answer_values_from_frame(
             # For where-questions, the evidence sentence preserves articles and
             # prepositions better than decomposed frame arguments.  Prefer the
             # complete grounded locative phrase rather than letting a shorter
-            # argument such as "on red desk" win tie-breaking.
+            # argument with a dropped article win tie-breaking.
             values = [locative]
     compatible = _compatible_values(expected, values)
     compatible = _without_exact_target_values(compatible, target_terms)
@@ -3849,6 +3849,173 @@ def _bind_relation_conditions(records: dict[str, Any], frame: QueryFrame, expect
             frame,
         ):
             candidates.append((score * float(row.get("confidence") or 0.7), value, evidence, "relation_condition_binding"))
+    return candidates
+
+
+def _drs_condition_join_material(
+    condition: dict[str, Any],
+    records: dict[str, Any],
+    frame: QueryFrame,
+) -> str:
+    args = _drs_arguments_by_condition_id(records).get(
+        str(condition.get("drs_condition_id") or ""),
+        [],
+    )
+    parts = [
+        str(condition.get("predicate") or ""),
+        str(condition.get("evidence_surface") or ""),
+        str(condition.get("temporal_text") or ""),
+    ]
+    for arg in args:
+        parts.extend(
+            [
+                str(arg.get("role") or ""),
+                str(arg.get("value_type") or ""),
+                *_drs_argument_surface_values(arg, records, frame),
+            ]
+        )
+    return normalize(" ".join(parts))
+
+
+def _drs_condition_argument_keys(
+    condition: dict[str, Any],
+    records: dict[str, Any],
+    frame: QueryFrame,
+) -> set[str]:
+    keys: set[str] = set()
+    for arg in _drs_arguments_by_condition_id(records).get(
+        str(condition.get("drs_condition_id") or ""),
+        [],
+    ):
+        for value in _drs_argument_surface_values(arg, records, frame):
+            value_norm = normalize(value)
+            if value_norm and content_tokens(value_norm):
+                keys.add(value_norm)
+    return keys
+
+
+def _combined_material_covers_target_anchors(material: str, frame: QueryFrame) -> bool:
+    if not frame.target_anchors:
+        return False
+    material_norm = normalize(material)
+    material_tokens = _normalized_token_set(material_norm)
+    for anchor in frame.target_anchors:
+        tokens = [token for token in content_tokens(anchor) if token]
+        if not tokens:
+            continue
+        if not all(
+            token in material_tokens
+            or any(variant in material_tokens for variant in expand_terms([token]))
+            for token in tokens
+        ):
+            return False
+    return True
+
+
+def _shared_context_drs_condition_candidates(
+    records: dict[str, Any],
+    frame: QueryFrame,
+    expected: ExpectedAnswer,
+    target_terms: list[str],
+    relation_terms: list[str],
+) -> list[tuple[float, str, Evidence, str]]:
+    """Bind an answer condition through a tightly bounded sibling DRS condition.
+
+    The two conditions must share source span, box, context, a nonempty temporal
+    record, and at least one exact argument value.  The combined condition
+    material must cover every token of every target anchor.  This permits a
+    structured record to distribute its entity target and answer field across
+    adjacent conditions without opening document-wide joins.
+    """
+
+    if not target_terms or not relation_terms:
+        return []
+    answer_slot_terms = _answer_slot_terms(frame, target_terms)
+    conditions_by_scope: dict[tuple[str, str, str, str], list[dict[str, Any]]] = defaultdict(list)
+    for condition in records.get("drs_conditions", []):
+        temporal_id = str(condition.get("temporal_id") or "")
+        if not temporal_id:
+            continue
+        key = (
+            str(condition.get("source_span_id") or ""),
+            str(condition.get("box_id") or ""),
+            str(condition.get("context_id") or ""),
+            temporal_id,
+        )
+        conditions_by_scope[key].append(condition)
+
+    candidates: list[tuple[float, str, Evidence, str]] = []
+    for row in records.get("relations", []):
+        if str(row.get("relation_type") or "") != "drs_condition":
+            continue
+        if not _relation_scope_accessible(row, records, frame):
+            continue
+        if not _drs_condition_polarity_matches_query(row, records, frame):
+            continue
+        evidence = _evidence_for_span(str(row.get("source_span_id") or ""), records)
+        row_material = _relation_local_material(
+            row,
+            evidence,
+            include_evidence=False,
+            include_context=True,
+            records=records,
+        )
+        if not _has_specific_relation_hit(row_material, relation_terms, target_terms):
+            continue
+        values = _answer_values_from_relation(
+            row,
+            evidence,
+            expected,
+            [],
+            relation_terms,
+            answer_slot_terms,
+            records,
+            frame,
+        )
+        if not values:
+            continue
+        for condition in _drs_conditions_for_relation(row, records):
+            temporal_id = str(condition.get("temporal_id") or "")
+            if not temporal_id:
+                continue
+            scope_key = (
+                str(condition.get("source_span_id") or ""),
+                str(condition.get("box_id") or ""),
+                str(condition.get("context_id") or ""),
+                temporal_id,
+            )
+            condition_keys = _drs_condition_argument_keys(condition, records, frame)
+            if not condition_keys:
+                continue
+            condition_material = _drs_condition_join_material(condition, records, frame)
+            for sibling in conditions_by_scope.get(scope_key, []):
+                if sibling is condition or str(sibling.get("drs_condition_id") or "") == str(condition.get("drs_condition_id") or ""):
+                    continue
+                sibling_polarity = normalize(str(sibling.get("polarity") or "positive"))
+                condition_polarity = normalize(str(condition.get("polarity") or "positive"))
+                if sibling_polarity != condition_polarity:
+                    continue
+                sibling_keys = _drs_condition_argument_keys(sibling, records, frame)
+                shared_keys = condition_keys & sibling_keys
+                if not shared_keys:
+                    continue
+                combined_material = normalize(
+                    " ".join(
+                        [
+                            condition_material,
+                            _drs_condition_join_material(sibling, records, frame),
+                        ]
+                    )
+                )
+                if not _combined_material_covers_target_anchors(combined_material, frame):
+                    continue
+                relation_hits = sum(1 for term in relation_terms if _has_term(condition_material, term))
+                target_hits = sum(1 for term in target_terms if _has_term(combined_material, term))
+                score = 36.0 + relation_hits * 5.0 + target_hits * 3.0 + min(len(shared_keys), 3) * 2.0
+                score *= float(row.get("confidence") or 0.7)
+                for value in values:
+                    candidates.append((score, value, evidence, "shared_context_drs_binding"))
+                break
     return candidates
 
 
@@ -4585,7 +4752,7 @@ def _group_material(
             context_rel_paths.add(evidence.rel_path)
             parts.append((records.get("document_context_norm_by_rel_path") or {}).get(evidence.rel_path, ""))
     material = normalize(" ".join(parts))
-    _bounded_cache_set(cache, cache_key, material, max_items=GROUP_MATERIAL_CACHE_MAX_ITEMS)
+    _bounded_cache_set(cache, cache_key, material)
     return material
 
 
@@ -4819,6 +4986,36 @@ def _row_local_count_match_rel_paths(
     return target_rel_paths, relation_group_rel_paths
 
 
+COUNT_RECORD_UNIT_TERMS = {
+    "record", "records", "row", "rows", "entry", "entries", "item", "items", "object", "objects",
+}
+
+
+def _count_target_matches_material(material: str, frame: QueryFrame, target_terms: list[str]) -> bool:
+    if not target_terms:
+        return True
+    if _contains_any(material, target_terms):
+        return True
+    material_tokens = _normalized_token_set(material)
+    for anchor in frame.target_anchors:
+        anchor_tokens = content_tokens(anchor)
+        if not any(token in COUNT_RECORD_UNIT_TERMS for token in anchor_tokens):
+            continue
+        distinctive = [
+            token
+            for token in anchor_tokens
+            if token not in COUNT_RECORD_UNIT_TERMS and token not in COUNT_AGGREGATION_SKIP_TERMS
+        ]
+        if not distinctive:
+            continue
+        if all(
+            token in material_tokens or any(variant in material_tokens for variant in expand_terms([token]))
+            for token in distinctive
+        ):
+            return True
+    return False
+
+
 def _count_matching_record_groups(
     records: dict[str, Any],
     frame: QueryFrame,
@@ -4857,11 +5054,11 @@ def _count_matching_record_groups(
                 continue
             span_material = _group_material(span_rows, records, include_source_evidence=False)
             scoped_material = ""
-            if target_terms and not _contains_any(span_material, target_terms):
+            if target_terms and not _count_target_matches_material(span_material, frame, target_terms):
                 if evidence.rel_path in target_row_local_rel_paths:
                     continue
                 scoped_material = _group_material(span_rows, records, include_document_context=True, include_source_evidence=False)
-                if not _contains_any(scoped_material, target_terms):
+                if not _count_target_matches_material(scoped_material, frame, target_terms):
                     continue
             group_failed = False
             for index, group in enumerate(required_relation_groups):
@@ -6382,9 +6579,31 @@ def execute_bounded_query(
     question: str,
     plan: dict[str, Any] | QueryFrame | None = None,
     *,
-    doc_limit: int = 40,
-    chunk_limit: int = 160,
+    context_size: int | None = None,
+    doc_limit: int | None = None,
+    chunk_limit: int | None = None,
 ) -> tuple[Answer | None, dict[str, Any]]:
+    if doc_limit is None:
+        doc_limit = (
+            context_token_capacity(
+                context_size,
+                ratio_names=("KMD_BOUNDED_DOCUMENT_RATIO",),
+                ratio_default=5.0 / 8192.0,
+            )
+            if context_size and context_size > 0
+            else len(documents)
+        )
+    if chunk_limit is None:
+        total_chunks = sum(len(items) for items in sentences_by_document.values())
+        chunk_limit = (
+            context_token_capacity(
+                context_size,
+                ratio_names=("KMD_BOUNDED_CHUNK_RATIO",),
+                ratio_default=5.0 / 2048.0,
+            )
+            if context_size and context_size > 0
+            else total_chunks
+        )
     frame = _frame_with_aggregation_fallback(_frame(plan, question), question)
     expected = _expected_from_frame(frame)
     target_terms = _target_terms(frame, question)
@@ -6428,7 +6647,7 @@ def execute_bounded_query(
     identity_expansion_evidence: list[Evidence] = []
     identity_expansion_provenance: list[dict[str, Any]] = []
     identity_expansion_rounds = 0
-    for _round in range(IDENTITY_RERANK_MAX_ROUNDS):
+    while True:
         identity_terms, identity_evidence = _identity_expansion(records, target_terms, frame)
         identity_expansion_evidence = _dedupe_evidence([*identity_expansion_evidence, *identity_evidence])
         identity_expansion_provenance = _dedupe_provenance_payloads(
@@ -6446,7 +6665,7 @@ def execute_bounded_query(
         if not binding_identity_terms:
             break
         target_terms = list(dict.fromkeys([*target_terms, *binding_identity_terms]))
-        ranking["identity_expanded_target_terms"] = identity_expanded_terms[:32]
+        ranking["identity_expanded_target_terms"] = identity_expanded_terms
         # Identity-linked labels are alternatives for the same discourse
         # referent, not additional conjunctive scope requirements.  Rank the
         # next retrieval round by the newly reached labels, then merge those
@@ -6558,6 +6777,7 @@ def execute_bounded_query(
     candidates.extend(_structural_chain_candidates(records, frame, expected, target_terms))
     candidates.extend(_bind_frame_conditions(records, frame, expected, target_terms, relation_terms))
     candidates.extend(_bind_relation_conditions(records, frame, expected, target_terms, relation_terms))
+    candidates.extend(_shared_context_drs_condition_candidates(records, frame, expected, target_terms, relation_terms))
     candidates.extend(_bind_document_scoped_label_values(records, frame, expected, target_terms, relation_terms))
     candidates.extend(_document_scoped_structural_row_candidates(records, frame, expected, target_terms, relation_terms))
     candidates.extend(_document_scoped_drs_condition_candidates(records, frame, expected, target_terms, relation_terms))

@@ -6,6 +6,8 @@ import sqlite3
 import sys
 from typing import Any
 
+from context_capacity import context_char_capacity, context_token_capacity
+
 from .content_pipeline import EmbeddingClient, search_literal_chunks, search_semantic_entries
 
 
@@ -19,22 +21,26 @@ def parser() -> argparse.ArgumentParser:
     literal.add_argument("--case-sensitive", action="store_true")
     literal.add_argument("--whole-word", action="store_true")
     literal.add_argument("--max-matches", type=int)
-    literal.add_argument("--excerpt-characters", type=int, default=120)
+    literal.add_argument("--excerpt-characters", type=int)
     semantic = subparsers.add_parser("semantic")
     semantic.add_argument("query")
     semantic.add_argument("--embedding-url", default="http://127.0.0.1:18139")
     semantic.add_argument("--embedding-model", default="qwen3-embedding-0.6b-q8")
     semantic.add_argument("--embedding-revision", default="370f27d7550e0def9b39c1f16d3fbaa13aa67728:Q8_0")
-    semantic.add_argument("--top", type=int, default=20)
-    semantic.add_argument("--text-limit", type=int, default=500)
+    semantic.add_argument("--top", type=int)
+    semantic.add_argument("--text-limit", type=int)
     return value
 
 
-def _compact(item: dict[str, Any], limit: int) -> dict[str, Any]:
+def _compact(item: dict[str, Any], limit: int | None) -> dict[str, Any]:
     result = dict(item)
     text = str(result.pop("analysis_text", ""))
-    result["matched_text"] = text if len(text) <= limit else text[:limit] + "…"
-    result["matched_text_truncated"] = len(text) > limit
+    if limit is None:
+        result["matched_text"] = text
+        result["matched_text_truncated"] = False
+    else:
+        result["matched_text"] = text if len(text) <= limit else text[:limit] + "…"
+        result["matched_text_truncated"] = len(text) > limit
     return result
 
 
@@ -55,16 +61,28 @@ def main(argv: list[str] | None = None) -> int:
                     excerpt_characters=arguments.excerpt_characters,
                 )
             else:
-                if arguments.top < 1 or arguments.text_limit < 0:
-                    raise ValueError("top must be positive and text-limit nonnegative")
                 embedding = EmbeddingClient(
                     arguments.embedding_url,
                     model=arguments.embedding_model,
                     revision=arguments.embedding_revision,
-                    batch_size=1,
                 )
+                context = int(embedding.model_context().configured_tokens)
+                top = arguments.top or context_token_capacity(
+                    context,
+                    ratio_names=("KMD_CONTENT_SEARCH_RESULT_RATIO",),
+                    ratio_default=1.0 / 1024.0,
+                )
+                text_limit = arguments.text_limit
+                if text_limit is None:
+                    text_limit = context_char_capacity(
+                        context,
+                        ratio_names=("KMD_CONTENT_SEARCH_TEXT_RATIO",),
+                        ratio_default=1.0 / 64.0,
+                    )
+                if top < 1 or text_limit < 0:
+                    raise ValueError("top must be positive and text-limit nonnegative")
                 vector = embedding.embed([arguments.query])[0]
-                results = [_compact(item, arguments.text_limit) for item in search_semantic_entries(connection, vector)[:arguments.top]]
+                results = [_compact(item, text_limit) for item in search_semantic_entries(connection, vector)[:top]]
         finally:
             connection.close()
         print(json.dumps({"mode": arguments.mode, "query": arguments.query, "results": results}, indent=2))

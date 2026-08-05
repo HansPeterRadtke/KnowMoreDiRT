@@ -13,6 +13,8 @@ from typing import Any, Sequence
 
 import numpy as np
 
+from context_capacity import context_char_capacity, context_token_capacity, schema_array_capacity
+
 from .content_pipeline import (
     AnalysisClient,
     ContentSemanticPipeline,
@@ -48,19 +50,19 @@ def query_plan_schema() -> dict[str, Any]:
     action = _closed_object(
         {
             "action_type": {"type": "string", "enum": list(PLAN_ACTION_TYPES)},
-            "purpose": {"type": "string"},
-            "query": {"type": "string"},
+            "purpose": {"type": "string", "x-kmd-string-profile": "reason"},
+            "query": {"type": "string", "x-kmd-string-profile": "value"},
             "case_sensitive": {"type": "boolean"},
             "whole_word": {"type": "boolean"},
             "top_k": {"type": "integer"},
-            "path_contains": {"type": "string"},
-            "name_contains": {"type": "string"},
-            "extension": {"type": "string"},
-            "mime_prefix": {"type": "string"},
+            "path_contains": {"type": "string", "x-kmd-string-profile": "value"},
+            "name_contains": {"type": "string", "x-kmd-string-profile": "value"},
+            "extension": {"type": "string", "x-kmd-string-profile": "short"},
+            "mime_prefix": {"type": "string", "x-kmd-string-profile": "short"},
             "min_size_bytes": {"type": "integer"},
             "max_size_bytes": {"type": "integer"},
-            "modified_after": {"type": "string"},
-            "modified_before": {"type": "string"},
+            "modified_after": {"type": "string", "x-kmd-string-profile": "short"},
+            "modified_before": {"type": "string", "x-kmd-string-profile": "short"},
             "sort_by": {"type": "string", "enum": list(SORT_MODES)},
             "limit": {"type": "integer"},
         }
@@ -69,8 +71,8 @@ def query_plan_schema() -> dict[str, Any]:
         {
             "answer_mode": {"type": "string", "enum": list(ANSWER_MODES)},
             "combine_mode": {"type": "string", "enum": list(COMBINE_MODES)},
-            "actions": {"type": "array", "items": action},
-            "rationale": {"type": "string"},
+            "actions": {"type": "array", "x-kmd-array-profile": "compact", "items": action},
+            "rationale": {"type": "string", "x-kmd-string-profile": "reason"},
         }
     )
 
@@ -80,15 +82,16 @@ def answer_schema(evidence_ids: Sequence[str]) -> dict[str, Any]:
     citation = _closed_object(
         {
             "evidence_id": {"type": "string", "enum": evidence_enum},
-            "claim": {"type": "string"},
+            "claim": {"type": "string", "x-kmd-string-profile": "reason"},
         }
     )
     file_item = _closed_object(
         {
-            "path": {"type": "string"},
-            "reason": {"type": "string"},
+            "path": {"type": "string", "x-kmd-string-profile": "value"},
+            "reason": {"type": "string", "x-kmd-string-profile": "reason"},
             "evidence_ids": {
                 "type": "array",
+                "x-kmd-array-profile": "dense",
                 "items": {"type": "string", "enum": evidence_enum},
             },
         }
@@ -96,14 +99,14 @@ def answer_schema(evidence_ids: Sequence[str]) -> dict[str, Any]:
     return _closed_object(
         {
             "status": {"type": "string", "enum": list(ANSWER_STATUSES)},
-            "answer": {"type": "string"},
-            "files": {"type": "array", "items": file_item},
-            "citations": {"type": "array", "items": citation},
+            "answer": {"type": "string", "x-kmd-string-profile": "reason"},
+            "files": {"type": "array", "x-kmd-array-profile": "dense", "items": file_item},
+            "citations": {"type": "array", "x-kmd-array-profile": "dense", "items": citation},
         }
     )
 
 
-PLAN_SYSTEM_PROMPT = """You plan searches over a text-folder catalog. Return only schema-valid JSON and never answer the user's question. Use literal search for exact words, exact phrases, quotations, identifiers or wording such as contains, says, occurs or literally mentions. Use semantic search for concepts, paraphrases, related subjects, synonyms and ordinary content questions. If wording such as mentions could mean either exact occurrence or conceptual subject, use both literal and semantic actions. Use metadata search only for path, filename, extension, MIME type, size, modification time, file counts or ordering. Split genuinely independent concepts into separate semantic actions. Use intersection only when every concept must occur in the same file, union when any concept is acceptable, and independent for comparison or separate reporting. Do not search each ordinary word separately. Keep actions distinct and necessary. For irrelevant fields use empty strings, false or zero. Use top_k and limit between one and fifty. ISO dates may be placed in modified_after or modified_before; otherwise use empty strings."""
+PLAN_SYSTEM_PROMPT = """You plan searches over a text-folder catalog. Return only schema-valid JSON and never answer the user's question. Use literal search for exact words, exact phrases, quotations, identifiers or wording such as contains, says, occurs or literally mentions. Use semantic search for concepts, paraphrases, related subjects, synonyms and ordinary content questions. If wording such as mentions could mean either exact occurrence or conceptual subject, use both literal and semantic actions. Use metadata search only for path, filename, extension, MIME type, size, modification time, file counts or ordering. Split genuinely independent concepts into separate semantic actions. Use intersection only when every concept must occur in the same file, union when any concept is acceptable, and independent for comparison or separate reporting. Do not search each ordinary word separately. Keep actions distinct and necessary. For irrelevant fields use empty strings, false or zero. Use positive top_k and limit values; the runtime will derive their maximums from the active model context. ISO dates may be placed in modified_after or modified_before; otherwise use empty strings."""
 
 ANSWER_SYSTEM_PROMPT = """Answer the user's folder question using only the supplied tool evidence. Do not use outside knowledge. Distinguish literal matches from semantic matches. A semantic match means conceptual similarity, not that the exact words occurred. If the evidence is insufficient, say so and use partial or not_found. Every factual claim must be supported by one or more citation entries. Cite evidence IDs in the answer using square brackets such as [E1]. Do not invent files, paths, passages, counts or relationships. For file-list questions, include every supported returned file up to the evidence supplied. Keep the answer direct and useful."""
 
@@ -114,7 +117,21 @@ def default_collection_id(root: os.PathLike[str] | str) -> str:
     return f"text-folder:{digest}"
 
 
-def normalize_plan(value: dict[str, Any], question: str) -> dict[str, Any]:
+def normalize_plan(value: dict[str, Any], question: str, *, context_size: int) -> dict[str, Any]:
+    if context_size <= 0:
+        raise ValueError("context_size must be positive")
+    plan_output = context_token_capacity(
+        context_size,
+        ratio_names=("KMD_FOLDER_PLAN_OUTPUT_RATIO",),
+        ratio_default=1.0 / 32.0,
+    )
+    action_capacity = schema_array_capacity(plan_output, "compact")
+    result_capacity = context_token_capacity(
+        context_size,
+        ratio_names=("KMD_FOLDER_RESULT_COUNT_RATIO",),
+        ratio_default=1.0 / 1024.0,
+    )
+    default_top_k = max(1, result_capacity // 2)
     answer_mode = str(value.get("answer_mode", "answer"))
     if answer_mode not in ANSWER_MODES:
         answer_mode = "answer"
@@ -125,7 +142,7 @@ def normalize_plan(value: dict[str, Any], question: str) -> dict[str, Any]:
     actions: list[dict[str, Any]] = []
     seen: set[str] = set()
     if isinstance(raw_actions, list):
-        for raw in raw_actions[:8]:
+        for raw in raw_actions[:action_capacity]:
             if not isinstance(raw, dict):
                 continue
             action_type = str(raw.get("action_type", ""))
@@ -138,8 +155,8 @@ def normalize_plan(value: dict[str, Any], question: str) -> dict[str, Any]:
             mime_prefix = str(raw.get("mime_prefix", "")).strip()
             if action_type in {"literal", "semantic"} and not query:
                 continue
-            top_k = max(1, min(50, int(raw.get("top_k", 12) or 12)))
-            limit = max(1, min(100, int(raw.get("limit", 30) or 30)))
+            top_k = max(1, min(result_capacity, int(raw.get("top_k", default_top_k) or default_top_k)))
+            limit = max(1, min(result_capacity, int(raw.get("limit", result_capacity) or result_capacity)))
             min_size = max(0, int(raw.get("min_size_bytes", 0) or 0))
             max_size = max(0, int(raw.get("max_size_bytes", 0) or 0))
             sort_by = str(raw.get("sort_by", "path"))
@@ -176,28 +193,24 @@ def normalize_plan(value: dict[str, Any], question: str) -> dict[str, Any]:
     if len(actions) == 1 and combine_mode == "independent":
         combine_mode = "union"
     if not actions:
-        actions.append(
-            {
-                "action_type": "semantic",
-                "purpose": "Find passages relevant to the question.",
-                "query": question,
-                "case_sensitive": False,
-                "whole_word": False,
-                "top_k": 12,
-                "path_contains": "",
-                "name_contains": "",
-                "extension": "",
-                "mime_prefix": "",
-                "min_size_bytes": 0,
-                "max_size_bytes": 0,
-                "modified_after": "",
-                "modified_before": "",
-                "sort_by": "path",
-                "limit": 30,
-            }
-        )
-    if len(actions) == 1 and combine_mode == "independent":
-        combine_mode = "union"
+        actions.append({
+            "action_type": "semantic",
+            "purpose": "Find passages relevant to the question.",
+            "query": question,
+            "case_sensitive": False,
+            "whole_word": False,
+            "top_k": default_top_k,
+            "path_contains": "",
+            "name_contains": "",
+            "extension": "",
+            "mime_prefix": "",
+            "min_size_bytes": 0,
+            "max_size_bytes": 0,
+            "modified_after": "",
+            "modified_before": "",
+            "sort_by": "path",
+            "limit": result_capacity,
+        })
     return {
         "answer_mode": answer_mode,
         "combine_mode": combine_mode,
@@ -291,7 +304,7 @@ def _read_source(root: Path, relative_path_b64: str) -> str:
         return handle.read().decode("utf-8", "replace")
 
 
-def _window_text(text: str, absolute_start: int, *, target: int = 1600, overlap: int = 220) -> list[dict[str, Any]]:
+def _window_text(text: str, absolute_start: int, *, target: int, overlap: int) -> list[dict[str, Any]]:
     if len(text) <= target:
         return [{"text": text, "start": absolute_start, "end": absolute_start + len(text)}]
     windows: list[dict[str, Any]] = []
@@ -300,7 +313,7 @@ def _window_text(text: str, absolute_start: int, *, target: int = 1600, overlap:
         desired = min(len(text), cursor + target)
         end = desired
         if desired < len(text):
-            search_start = max(cursor + target // 2, desired - 350)
+            search_start = max(cursor + target // 2, desired - overlap)
             candidates = [
                 text.rfind("\n\n", search_start, desired),
                 text.rfind(". ", search_start, desired),
@@ -323,7 +336,7 @@ def _window_text(text: str, absolute_start: int, *, target: int = 1600, overlap:
         if end >= len(text):
             break
         cursor = max(cursor + 1, end - overlap)
-    return windows[:64]
+    return windows
 
 
 def _best_chunk_row(
@@ -355,15 +368,31 @@ def semantic_evidence(
 ) -> list[dict[str, Any]]:
     query_vector = embedding_client.embed([query])[0]
     ranked = search_semantic_entries(connection, query_vector)[:top_k]
+    embedding_context = int(embedding_client.model_context().configured_tokens)
+    window_target = context_char_capacity(
+        embedding_context,
+        ratio_names=("KMD_FOLDER_SEMANTIC_WINDOW_RATIO",),
+        ratio_default=1.0 / 64.0,
+    )
+    window_overlap = context_char_capacity(
+        embedding_context,
+        ratio_names=("KMD_FOLDER_SEMANTIC_OVERLAP_RATIO",),
+        ratio_default=1.0 / 512.0,
+    )
     evidence: list[dict[str, Any]] = []
-    for result in ranked[: min(top_k, 12)]:
+    for result in ranked:
         chunk = _best_chunk_row(connection, str(result["file_id"]), query_vector)
         if chunk is None:
             continue
         source = _read_source(root, chunk["relative_path_b64"])
         start, end = int(chunk["start_char"]), int(chunk["end_char"])
         chunk_text = source[start:end]
-        windows = _window_text(chunk_text, start)
+        windows = _window_text(
+            chunk_text,
+            start,
+            target=window_target,
+            overlap=window_overlap,
+        )
         window_vectors = embedding_client.embed([window["text"] for window in windows])
         scored = sorted(
             (
@@ -438,7 +467,7 @@ def initialize_text_folder(
             foreign_keys = connection.execute("PRAGMA foreign_key_check").fetchall()
             if integrity != "ok" or foreign_keys:
                 raise RuntimeError(
-                    f"initialized database validation failed: integrity={integrity}, foreign_keys={foreign_keys[:10]}"
+                    f"initialized database validation failed: integrity={integrity}, foreign_keys={foreign_keys}"
                 )
         finally:
             connection.close()
@@ -466,13 +495,24 @@ class FolderQuestionAssistant:
         database: os.PathLike[str] | str,
         analysis_client: AnalysisClient,
         embedding_client: EmbeddingClient,
-        max_evidence: int = 24,
     ) -> None:
         self.root = Path(root).resolve()
         self.database = Path(database).resolve()
         self.analysis_client = analysis_client
         self.embedding_client = embedding_client
-        self.max_evidence = max(1, min(50, max_evidence))
+        self.context_size = int(self.analysis_client.model_context().configured_tokens)
+        self.plan_output_tokens = self.analysis_client.output_token_budget(
+            ratio_names=("KMD_FOLDER_PLAN_OUTPUT_RATIO",), ratio_default=1.0 / 32.0
+        )
+        self.answer_output_tokens = self.analysis_client.output_token_budget(
+            ratio_names=("KMD_FOLDER_ANSWER_OUTPUT_RATIO",), ratio_default=1.0 / 16.0
+        )
+        self.max_evidence = schema_array_capacity(self.answer_output_tokens, "dense")
+        self.literal_excerpt_characters = context_char_capacity(
+            self.context_size,
+            ratio_names=("KMD_FOLDER_LITERAL_EXCERPT_RATIO",),
+            ratio_default=1.0 / 64.0,
+        )
 
     def plan(self, question: str) -> dict[str, Any]:
         generated = self.analysis_client.complete(
@@ -480,9 +520,9 @@ class FolderQuestionAssistant:
             schema=query_plan_schema(),
             system=PLAN_SYSTEM_PROMPT,
             user=f"User question:\n{question}",
-            max_tokens=1400,
+            max_tokens=self.plan_output_tokens,
         )
-        return normalize_plan(generated.value, question)
+        return normalize_plan(generated.value, question, context_size=self.context_size)
 
     def _execute(self, plan: dict[str, Any]) -> tuple[list[dict[str, Any]], list[dict[str, Any]]]:
         connection = sqlite3.connect(self.database, timeout=60.0)
@@ -502,6 +542,7 @@ class FolderQuestionAssistant:
                         case_sensitive=action["case_sensitive"],
                         whole_word=action["whole_word"],
                         max_matches=action["limit"],
+                        excerpt_characters=self.literal_excerpt_characters,
                     )
                     rows = []
                     for item in matches:
@@ -656,7 +697,7 @@ class FolderQuestionAssistant:
                 f"\n\nTool result summaries:\n{json.dumps(list(action_results), ensure_ascii=False)}"
                 f"\n\nEvidence:\n{json.dumps(evidence_payload, ensure_ascii=False)}"
             ),
-            max_tokens=2200,
+            max_tokens=self.answer_output_tokens,
         )
         result = generated.value
         valid_ids = set(ids)
@@ -695,5 +736,6 @@ class FolderQuestionAssistant:
             "plan": plan,
             "action_results": action_results,
             "evidence": evidence,
+            "evidence_capacity": self.max_evidence,
             "result": answer,
         }

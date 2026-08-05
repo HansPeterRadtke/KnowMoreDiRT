@@ -1,25 +1,43 @@
-"""Two-function public API for KnowMoreDiRT."""
+"""Thread-safe two-function public API for KnowMoreDiRT."""
 
 from __future__ import annotations
 
+import threading
 from pathlib import Path
 
 from .engine import KnowMoreDiRTEngine
 
 _ENGINE: KnowMoreDiRTEngine | None = None
+_ENGINE_LOCK = threading.RLock()
 
 
 def initialize(folder_path: str | Path) -> None:
-    """Initialize the global KMD knowledge base from a raw folder path."""
+    """Atomically replace the global KMD knowledge base."""
 
     global _ENGINE
-    _ENGINE = KnowMoreDiRTEngine(folder_path)
+    with _ENGINE_LOCK:
+        previous = _ENGINE
+        replacement = KnowMoreDiRTEngine(folder_path)
+        _ENGINE = replacement
+        if previous is not None:
+            previous.close()
 
 
 def question(text: str) -> str:
-    """Answer a plain question string using the initialized knowledge base."""
+    """Answer one question while holding the engine lifecycle lock."""
 
-    if _ENGINE is None:
-        raise RuntimeError("KnowMoreDiRT is not initialized; call initialize(folder_path) first")
-    return _ENGINE.answer(text).text
+    with _ENGINE_LOCK:
+        if _ENGINE is None:
+            raise RuntimeError("KnowMoreDiRT is not initialized; call initialize(folder_path) first")
+        return _ENGINE.answer(text).text
 
+
+def _reset() -> None:
+    """Close and clear the global engine."""
+
+    global _ENGINE
+    with _ENGINE_LOCK:
+        previous = _ENGINE
+        _ENGINE = None
+        if previous is not None:
+            previous.close()

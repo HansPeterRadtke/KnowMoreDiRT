@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import hashlib
+import json
 import mimetypes
 import os
 import stat as stat_module
@@ -72,27 +73,69 @@ def read_text_file(path: Path) -> str | None:
         return None
 
 
-def read_text_file_with_metadata(path: Path) -> tuple[str, dict[str, object]] | None:
-    """Read a file as raw text and return structural read metadata."""
+def _read_text_file_snapshot(
+    path: Path,
+) -> tuple[str, dict[str, object], os.stat_result] | None:
+    """Read one regular file from a stable descriptor without following symlinks."""
 
+    flags = os.O_RDONLY
+    if hasattr(os, "O_CLOEXEC"):
+        flags |= os.O_CLOEXEC
+    if hasattr(os, "O_NOFOLLOW"):
+        flags |= os.O_NOFOLLOW
     try:
-        return path.read_text(encoding="utf-8"), {
+        descriptor = os.open(path, flags)
+    except OSError:
+        return None
+    try:
+        stat_result = os.fstat(descriptor)
+        if not stat_module.S_ISREG(stat_result.st_mode):
+            return None
+        with os.fdopen(descriptor, "rb", closefd=False) as handle:
+            data = handle.read()
+    except OSError:
+        return None
+    finally:
+        try:
+            os.close(descriptor)
+        except OSError:
+            pass
+    try:
+        text = data.decode("utf-8")
+        metadata = {
             "encoding": "utf-8",
             "decode_errors": False,
             "read_mode": "strict_text",
         }
     except UnicodeDecodeError:
-        try:
-            return path.read_text(encoding="utf-8", errors="replace"), {
-                "encoding": "utf-8",
-                "decode_errors": True,
-                "read_mode": "replacement_text",
-            }
-        except OSError:
-            return None
-    except OSError:
-        return None
+        text = data.decode("utf-8", errors="replace")
+        metadata = {
+            "encoding": "utf-8",
+            "decode_errors": True,
+            "read_mode": "replacement_text",
+        }
+    return text, metadata, stat_result
 
+
+def read_text_file_with_metadata(path: Path) -> tuple[str, dict[str, object]] | None:
+    """Read a regular file as text without following a symbolic link."""
+
+    result = _read_text_file_snapshot(path)
+    if result is None:
+        return None
+    text, metadata, _stat_result = result
+    return text, metadata
+
+
+def _default_max_unit_chars() -> int:
+    raw = os.environ.get("KMD_SCANNER_DEFAULT_UNIT_CHARS", "1048576").strip()
+    try:
+        value = int(raw)
+    except ValueError as error:
+        raise ValueError("KMD_SCANNER_DEFAULT_UNIT_CHARS must be a positive integer") from error
+    if value <= 0:
+        raise ValueError("KMD_SCANNER_DEFAULT_UNIT_CHARS must be a positive integer")
+    return value
 
 def _path_is_relative_to(path: Path, parent: Path) -> bool:
     try:
@@ -135,6 +178,158 @@ def _strip_original_span(text: str, start: int, end: int) -> tuple[int, int, str
     if not stripped:
         return start, start, ""
     return start + leading, start + leading + len(stripped), stripped
+
+
+def _append_bounded_record_unit(
+    units: list[tuple[int, int, str]],
+    *,
+    start: int,
+    value: str,
+    max_unit_chars: int,
+) -> None:
+    if max_unit_chars <= 0 or len(value) <= max_unit_chars:
+        units.append((start, start + len(value), value))
+        return
+    offset = 0
+    while offset < len(value):
+        hard_end = min(len(value), offset + max_unit_chars)
+        split_end = hard_end
+        if hard_end < len(value):
+            floor = offset + max(1, max_unit_chars // 2)
+            whitespace = value.rfind(" ", floor, hard_end)
+            if whitespace > offset:
+                split_end = whitespace
+        chunk = value[offset:split_end].strip()
+        if chunk:
+            leading = len(value[offset:split_end]) - len(value[offset:split_end].lstrip())
+            units.append((start + offset + leading, start + offset + leading + len(chunk), chunk))
+        offset = split_end
+        while offset < len(value) and value[offset].isspace():
+            offset += 1
+
+
+def _json_structural_split_positions(text: str) -> list[int]:
+    """Return safe lexical split positions for a valid JSON value.
+
+    Positions are taken after commas, line endings, or completed values at the
+    two shallowest container levels. This preserves every non-whitespace source
+    character while preferring object fields and array records over arbitrary
+    character cuts.
+    """
+
+    positions: list[int] = []
+    stack: list[str] = []
+    in_string = False
+    escaped = False
+    for index, character in enumerate(text):
+        if in_string:
+            if escaped:
+                escaped = False
+            elif character == "\\":
+                escaped = True
+            elif character == '"':
+                in_string = False
+            continue
+        if character == '"':
+            in_string = True
+            continue
+        if character in "{[":
+            stack.append(character)
+            continue
+        if character in "}]":
+            if stack:
+                stack.pop()
+            if len(stack) <= 2:
+                positions.append(index + 1)
+            continue
+        if character == "," and len(stack) <= 2:
+            positions.append(index + 1)
+            continue
+        if character == "\n" and len(stack) <= 2:
+            positions.append(index + 1)
+    return sorted(set(position for position in positions if 0 < position < len(text)))
+
+
+def _split_json_structure_units(
+    text: str,
+    *,
+    max_unit_chars: int = 0,
+) -> list[tuple[int, int, str]]:
+    """Split a valid JSON document at structural boundaries when required."""
+
+    if max_unit_chars <= 0 or len(text) <= max_unit_chars:
+        return []
+    try:
+        json.loads(text)
+    except json.JSONDecodeError:
+        return []
+    positions = _json_structural_split_positions(text)
+    if not positions:
+        return []
+    units: list[tuple[int, int, str]] = []
+    start = 0
+    while start < len(text):
+        hard_end = min(len(text), start + max_unit_chars)
+        if hard_end >= len(text):
+            split_end = len(text)
+        else:
+            candidates = [position for position in positions if start < position <= hard_end]
+            split_end = candidates[-1] if candidates else hard_end
+        out_start, out_end, value = _strip_original_span(text, start, split_end)
+        if value:
+            units.append((out_start, out_end, value))
+        start = split_end
+        while start < len(text) and text[start].isspace():
+            start += 1
+    return units
+
+
+def _split_jsonl_units(
+    text: str,
+    *,
+    max_unit_chars: int = 0,
+) -> list[tuple[int, int, str]]:
+    """Return one offset-preserving unit per valid nonblank JSONL record.
+
+    A malformed nonblank line disables record mode for the entire file so the
+    generic text splitter remains the safe fallback for ordinary files that
+    merely use a .jsonl suffix.
+    """
+
+    units: list[tuple[int, int, str]] = []
+    cursor = 0
+    for line in text.splitlines(keepends=True):
+        without_newline = line.rstrip("\r\n")
+        value = without_newline.strip()
+        if value:
+            try:
+                json.loads(value)
+            except json.JSONDecodeError:
+                return []
+            leading = len(without_newline) - len(without_newline.lstrip())
+            _append_bounded_record_unit(
+                units,
+                start=cursor + leading,
+                value=value,
+                max_unit_chars=max_unit_chars,
+            )
+        cursor += len(line)
+    if cursor < len(text):
+        tail = text[cursor:]
+        value = tail.strip()
+        if value:
+            try:
+                json.loads(value)
+            except json.JSONDecodeError:
+                return []
+            leading = len(tail) - len(tail.lstrip())
+            _append_bounded_record_unit(
+                units,
+                start=cursor + leading,
+                value=value,
+                max_unit_chars=max_unit_chars,
+            )
+    return units
 
 
 def _pack_split_units(
@@ -186,6 +381,8 @@ def scan_folder(
     if not root.is_dir():
         raise NotADirectoryError(root)
 
+    root_resolved = root.resolve(strict=True)
+    effective_max_unit_chars = int(max_unit_chars) if int(max_unit_chars) > 0 else _default_max_unit_chars()
     cache_roots = _configured_cache_roots(root)
     documents: list[Document] = []
     sentences: list[Sentence] = []
@@ -197,20 +394,20 @@ def scan_folder(
             rel_parts = path.parts
         if not include_generated and any(part in GENERATED_DIRECTORY_NAMES for part in rel_parts[:-1]):
             continue
-        if not path.is_file():
+        if path.is_symlink():
             continue
-        if cache_roots:
-            try:
-                resolved_path = path.resolve(strict=False)
-            except OSError:
-                resolved_path = path
-            if any(_path_is_relative_to(resolved_path, cache_root) for cache_root in cache_roots):
-                continue
-        read_result = read_text_file_with_metadata(path)
+        try:
+            resolved_path = path.resolve(strict=True)
+        except OSError:
+            continue
+        if not _path_is_relative_to(resolved_path, root_resolved):
+            continue
+        if cache_roots and any(_path_is_relative_to(resolved_path, cache_root) for cache_root in cache_roots):
+            continue
+        read_result = _read_text_file_snapshot(path)
         if read_result is None:
             continue
-        text, read_metadata = read_result
-        stat = path.stat()
+        text, read_metadata, stat = read_result
         rel_path = path.relative_to(root).as_posix()
         content_hash = hashlib.sha256(text.encode("utf-8", errors="replace")).hexdigest()
         document_id = _stable_scan_id("doc", rel_path, content_hash)
@@ -234,8 +431,8 @@ def scan_folder(
             "atime": stat.st_atime,
             "mtime": stat.st_mtime,
             "ctime": stat.st_ctime,
-            "symlink": path.is_symlink(),
-            "symlink_target": str(path.readlink()) if path.is_symlink() else "",
+            "symlink": False,
+            "symlink_target": "",
             "mime_type": mimetypes.guess_type(path.name)[0] or "",
             "line_count": text.count("\n") + (1 if text else 0),
             "word_count": len(tokenize(text)),
@@ -252,7 +449,21 @@ def scan_folder(
             metadata=metadata,
         )
         documents.append(document)
-        raw_units = split_units(text, max_unit_chars=max_unit_chars)
+        record_units = (
+            _split_jsonl_units(text, max_unit_chars=effective_max_unit_chars)
+            if path.suffix.lower() == ".jsonl"
+            else []
+        )
+        structured_json_units = (
+            _split_json_structure_units(text, max_unit_chars=effective_max_unit_chars)
+            if path.suffix.lower() == ".json"
+            else []
+        )
+        raw_units = record_units or structured_json_units or split_units(text, max_unit_chars=effective_max_unit_chars)
+        document.metadata["record_delimited_jsonl"] = bool(record_units)
+        document.metadata["record_unit_count"] = len(record_units)
+        document.metadata["structurally_split_json"] = bool(structured_json_units)
+        document.metadata["structured_json_unit_count"] = len(structured_json_units)
         packed_units = _pack_split_units(
             text,
             raw_units,

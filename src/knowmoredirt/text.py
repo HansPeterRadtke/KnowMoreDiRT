@@ -100,16 +100,6 @@ def split_units(text: str, *, max_unit_chars: int = 0) -> list[tuple[int, int, s
     for source, target in ABBREVIATION_DOTS.items():
         protected = protected.replace(source, target)
     units: list[tuple[int, int, str]] = []
-    if max_unit_chars > 0 and len(protected) > max_unit_chars:
-        value = protected.strip()
-        for source, target in ABBREVIATION_DOTS.items():
-            value = value.replace(target, source)
-        if value:
-            leading = len(protected) - len(protected.lstrip())
-            _append_bounded_unit(units, start=leading, value=value, max_unit_chars=max_unit_chars)
-        return units
-    for match in SENTENCE_SPLIT_RE.finditer(protected):
-        pass
     cursor = 0
     for part in SENTENCE_SPLIT_RE.split(protected):
         start = protected.find(part, cursor)

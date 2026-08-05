@@ -24,6 +24,7 @@ from .answer_types import (
     is_value_compatible,
 )
 from .bounded_dspg import execute_bounded_query
+from .context_budget import context_char_capacity, context_token_capacity
 from .drs import frame_from_model_dict
 from .extractors import capitalized_phrases
 from .ingest import ingest_folder
@@ -232,6 +233,11 @@ class KnowMoreDiRTEngine:
         self.last_answer: Answer | None = None
         self.last_bounded_diagnostics: dict[str, object] = {}
 
+    def close(self) -> None:
+        store = getattr(self, "store", None)
+        if store is not None:
+            store.close()
+
     def _test_no_model_allowed(self) -> bool:
         if _env_true("KMD_USE_LOCAL_MODEL"):
             return False
@@ -251,11 +257,7 @@ class KnowMoreDiRTEngine:
     def _required_local_model_client(self) -> LocalModelClient:
         endpoint = os.environ.get("KMD_LOCAL_MODEL_ENDPOINT", "http://127.0.0.1:14829/v1").rstrip("/")
         try:
-            probe_timeout = float(os.environ.get("KMD_MODEL_PROBE_TIMEOUT", "1.5"))
-        except ValueError:
-            probe_timeout = 1.5
-        try:
-            client = LocalModelClient(endpoint=endpoint, timeout_seconds=probe_timeout)
+            client = LocalModelClient(endpoint=endpoint)
         except TypeError:
             client = LocalModelClient()
         if "PYTEST_CURRENT_TEST" in os.environ and not hasattr(client, "models"):
@@ -314,23 +316,23 @@ class KnowMoreDiRTEngine:
             raise LocalModelUnavailableError(
                 f"{env_name} must be a positive number when set."
             )
-        if abs(timeout - float(getattr(client, "timeout_seconds", timeout))) < 0.001:
+        if abs(timeout - float(getattr(client, "per_token_timeout_seconds", timeout))) < 0.001:
             return client
         self._log_progress(
             f"kmd-init {progress_label} "
-            f"previous_per_token_timeout={getattr(client, 'timeout_seconds', '')} "
+            f"previous_per_token_timeout={getattr(client, 'per_token_timeout_seconds', '')} "
             f"per_token_timeout={timeout:g}"
         )
-        return LocalModelClient(endpoint=client.endpoint, timeout_seconds=timeout)
+        return LocalModelClient(endpoint=client.endpoint, per_token_timeout_seconds=timeout)
 
     def _raise_model_request_failed(self, result: dict[str, object], operation: str) -> None:
         if str(result.get("reason") or "") != "request_failed":
             return
         cache_context = result.get("cache_context") if isinstance(result.get("cache_context"), dict) else {}
         try:
-            cache_context_text = json.dumps(cache_context, sort_keys=True, default=str)[:4000]
+            cache_context_text = json.dumps(cache_context, sort_keys=True, default=str)
         except Exception:
-            cache_context_text = str(cache_context)[:4000]
+            cache_context_text = str(cache_context)
         raise LocalModelUnavailableError(
             "KnowMoreDiRT requires reachable llama.cpp for normal question answering. "
             f"Local model request failed during {operation}: {result.get('error') or 'request_failed'}. "
@@ -369,13 +371,50 @@ class KnowMoreDiRTEngine:
                 trace.grounding_rejection_count += 1
 
     def _fallback_model_client(self) -> LocalModelClient | None:
-        if self._model_client is None:
-            return None
-        timeout_default = os.environ.get("KMD_LOCAL_MODEL_PER_TOKEN_TIMEOUT_SECONDS", "120")
-        timeout = float(os.environ.get("KMD_FALLBACK_MODEL_PER_TOKEN_TIMEOUT_SECONDS", timeout_default))
-        if timeout <= 0 or abs(timeout - float(getattr(self._model_client, "timeout_seconds", timeout))) < 0.001:
-            return self._model_client
-        return LocalModelClient(endpoint=self._model_client.endpoint, timeout_seconds=timeout)
+        return self._model_client
+
+    def _active_model_context_size(self) -> int:
+        client = getattr(self, "_model_client", None)
+        if client is None or not hasattr(client, "context_size"):
+            return 0
+        try:
+            return max(0, int(client.context_size()))
+        except Exception:
+            return 0
+
+    def _context_count_capacity(
+        self,
+        ratio_name: str,
+        ratio_default: float,
+        *,
+        available: int | None = None,
+    ) -> int:
+        context_size = self._active_model_context_size()
+        if context_size <= 0:
+            return max(0, int(available or 0))
+        value = context_token_capacity(
+            context_size,
+            ratio_names=(ratio_name,),
+            ratio_default=ratio_default,
+        )
+        return min(value, available) if available is not None else value
+
+    def _context_char_capacity(
+        self,
+        ratio_name: str,
+        ratio_default: float,
+        *,
+        available: int | None = None,
+    ) -> int:
+        context_size = self._active_model_context_size()
+        if context_size <= 0:
+            return max(0, int(available or 0))
+        value = context_char_capacity(
+            context_size,
+            ratio_names=(ratio_name,),
+            ratio_default=ratio_default,
+        )
+        return min(value, available) if available is not None else value
 
     def dspg_counts(self) -> dict[str, int]:
         return self.store.counts()
@@ -696,25 +735,29 @@ class KnowMoreDiRTEngine:
         title_words = {"mr", "mrs", "ms", "dr", "officer", "teacher", "professor"}
         candidates: list[str] = []
         for item in evidence:
-            window = self._evidence_window_text(item, radius=2, max_chars=900)
+            window = self._evidence_window_text(item)
             for phrase in capitalized_phrases(window):
                 parts = phrase.split()
                 if len(parts) < 2:
                     continue
                 if normalize(parts[0].strip(".")) in title_words:
                     continue
-                if normalize(parts[0]) == token and phrase not in candidates:
-                    candidates.append(phrase)
+                normalized_parts = {normalize(part.strip(".,;:")) for part in parts}
+                candidate_phrase = clean_extracted_value(phrase).strip()
+                if token in normalized_parts and candidate_phrase not in candidates:
+                    candidates.append(candidate_phrase)
         if not candidates:
-            for document in self.documents:
+            for document in getattr(self, "documents", []):
                 for phrase in capitalized_phrases(document.text):
                     parts = phrase.split()
                     if len(parts) < 2:
                         continue
                     if normalize(parts[0].strip(".")) in title_words:
                         continue
-                    if normalize(parts[0]) == token and phrase not in candidates:
-                        candidates.append(phrase)
+                    normalized_parts = {normalize(part.strip(".,;:")) for part in parts}
+                    candidate_phrase = clean_extracted_value(phrase).strip()
+                    if token in normalized_parts and candidate_phrase not in candidates:
+                        candidates.append(candidate_phrase)
         return candidates[0] if len(candidates) == 1 else text
 
     def _question_target_from_preposition(self, question: str, prepositions: tuple[str, ...] = ("for", "about", "of")) -> str:
@@ -749,7 +792,7 @@ class KnowMoreDiRTEngine:
                 line_tokens = set(re.findall(r"[a-z0-9]+", line_norm))
                 if "no" not in line_tokens:
                     continue
-                if missing_targets and not all(self._source_field_contains_any(window_norm, [term]) for term in missing_targets[:3]):
+                if missing_targets and not all(self._source_field_contains_any(window_norm, [term]) for term in missing_targets):
                     continue
                 if requested_missing_terms and not any(term in line_tokens or term in line_norm for term in requested_missing_terms):
                     continue
@@ -759,7 +802,7 @@ class KnowMoreDiRTEngine:
             matching_target: Evidence | None = None
             for line, evidence_item, window_norm in lines:
                 line_norm = normalize(line)
-                if target_terms and not all(self._source_field_contains_any(window_norm, [term]) for term in target_terms[:3]):
+                if target_terms and not all(self._source_field_contains_any(window_norm, [term]) for term in target_terms):
                     continue
                 if TOK_CUSTOMER_ID in line_norm or TOK_CUSTOMER_IDENTIFIER in line_norm:
                     match = re.search(rf"{TOK_CUSTOMER}\s+(?:id|identifier)\s*[:=]\s*(?P<value>[A-Za-z0-9_-]+)", line, re.I)
@@ -774,7 +817,7 @@ class KnowMoreDiRTEngine:
                 line_norm = normalize(line)
                 if "disagree" not in line_norm:
                     continue
-                if about_terms and not all(self._source_field_contains_any(window_norm, [term]) for term in about_terms[:2]):
+                if about_terms and not all(self._source_field_contains_any(window_norm, [term]) for term in about_terms):
                     continue
                 match = re.search(r"^(?P<person>[A-Z][a-z]+(?:\s+[A-Z][a-z]+)?)\s*:\s*I\s+disagree\b", line, re.I)
                 if match:
@@ -785,7 +828,7 @@ class KnowMoreDiRTEngine:
                 line_norm = normalize(line)
                 if "believes" not in line_norm and "believed" not in line_norm:
                     continue
-                if belief_terms and not all(self._source_field_contains_any(line_norm, [term]) for term in belief_terms[:4]):
+                if belief_terms and not all(self._source_field_contains_any(line_norm, [term]) for term in belief_terms):
                     continue
                 match = re.search(r"^(?P<person>[A-Z][a-z]+(?:\s+[A-Z][a-z]+)?)\s+believ", line, re.I)
                 if match:
@@ -835,7 +878,7 @@ class KnowMoreDiRTEngine:
             window_norm = normalize(window)
             if target_ids and not any(normalize(target) in window_norm for target in target_ids):
                 continue
-            if target_terms and not all(self._source_field_contains_any(window_norm, [term]) for term in target_terms[:4]):
+            if target_terms and not all(self._source_field_contains_any(window_norm, [term]) for term in target_terms):
                 continue
             for raw_line in window.splitlines():
                 line = clean_extracted_value(raw_line).strip()
@@ -857,7 +900,7 @@ class KnowMoreDiRTEngine:
                 line_norm = normalize(line)
                 if "alleg" not in line_norm:
                     continue
-                if terms and not all(self._source_field_contains_any(line_norm, [term]) for term in terms[:4]):
+                if terms and not all(self._source_field_contains_any(line_norm, [term]) for term in terms):
                     continue
                 match = re.search(rf"\b(?:plaintiff|{TOK_CUSTOMER}|party)\s+(?P<name>[A-Z][A-Za-z0-9_-]*(?:\s+[A-Z][A-Za-z0-9_-]*)*)\s+alleg", line)
                 if not match:
@@ -872,7 +915,7 @@ class KnowMoreDiRTEngine:
                 line_norm = normalize(line)
                 if "reported" not in line_norm:
                     continue
-                if target_terms and not all(self._source_field_contains_any(line_norm, [term]) for term in target_terms[:3]):
+                if target_terms and not all(self._source_field_contains_any(line_norm, [term]) for term in target_terms):
                     continue
                 match = re.search(r"(?P<party>[A-Z][A-Za-z0-9_-]*(?:\s+[A-Z][A-Za-z0-9_-]*)*)\s+reported\b", line)
                 if match:
@@ -888,7 +931,7 @@ class KnowMoreDiRTEngine:
             target_terms = [term for term in content_tokens(question) if term not in {"what", "when", "was", "is", "the", "for", "source", "file", "copied", "measurement", "date", "readings"}]
             for document in self.documents:
                 doc_norm = normalize(document.text)
-                if target_terms and not all(self._source_field_contains_any(doc_norm, [term]) for term in target_terms[:2]):
+                if target_terms and not all(self._source_field_contains_any(doc_norm, [term]) for term in target_terms):
                     continue
                 for index, raw_line in enumerate(document.text.splitlines()):
                     line = clean_extracted_value(raw_line).strip()
@@ -906,7 +949,7 @@ class KnowMoreDiRTEngine:
             wanted_status = sensor_match.group("status")
             for document in self.documents:
                 doc_norm = normalize(document.text)
-                if context_terms and not all(self._source_field_contains_any(doc_norm, [term]) for term in context_terms[:2]):
+                if context_terms and not all(self._source_field_contains_any(doc_norm, [term]) for term in context_terms):
                     continue
                 headers: list[str] = []
                 for index, raw_line in enumerate(document.text.splitlines()):
@@ -1016,7 +1059,7 @@ class KnowMoreDiRTEngine:
             line_norm = normalize(line)
             if target_ids and not any(normalize(target) in window_norm for target in target_ids):
                 continue
-            if target_terms and not all(self._source_field_contains_any(window_norm, [term]) for term in target_terms[:4]):
+            if target_terms and not all(self._source_field_contains_any(window_norm, [term]) for term in target_terms):
                 continue
             chat_match = re.search(rf"^(?P<person>[A-Z][a-z]+(?:\s+[A-Z][a-z]+)+)\s*:\s*(?:I\s+)?(?:will\s+)?{verb_pattern}\b", line, re.I)
             if chat_match:
@@ -1050,7 +1093,7 @@ class KnowMoreDiRTEngine:
                 line_norm = normalize(line)
                 if "correction" not in line_norm or TOK_OWNER not in line_norm:
                     continue
-                if target_terms and not all(self._source_field_contains_any(line_norm, [term]) for term in target_terms[:3]):
+                if target_terms and not all(self._source_field_contains_any(line_norm, [term]) for term in target_terms):
                     continue
                 match = re.search(r"\bowner\s+(?:is|=|:)\s+(?P<person>(?:Dr\.\s*)?[A-Z][a-z]+(?:\s+[A-Z][a-z]+)*)\b", line)
                 if match:
@@ -1079,7 +1122,7 @@ class KnowMoreDiRTEngine:
         if "really" in qnorm:
             terms = [term for term in content_tokens(question) if term not in {"did", "really", "open", "opened", "was", "were", "the"}]
             for line, evidence_item, window_norm in lines:
-                if terms and not all(self._source_field_contains_any(window_norm, [term]) for term in terms[:3]):
+                if terms and not all(self._source_field_contains_any(window_norm, [term]) for term in terms):
                     continue
                 if any(scope in window_norm for scope in ["dream", "fiction", "homework", "imagined"]) and any(marker in window_norm for marker in ["no real", "not real", "not recorded", "no actual"]):
                     return Answer("unknown", 0.0, [evidence_item], "source discourse non-real guard", "unknown")
@@ -1087,7 +1130,7 @@ class KnowMoreDiRTEngine:
             terms = [term for term in content_tokens(question) if term not in {"was", "were", "proven", "proof", "the"}]
             for line, evidence_item, _window_norm in lines:
                 line_norm = normalize(line)
-                if terms and not all(self._source_field_contains_any(line_norm, [term]) for term in terms[:3]):
+                if terms and not all(self._source_field_contains_any(line_norm, [term]) for term in terms):
                     continue
                 if re.search(r"\bnot\s+proven\b", line_norm):
                     return Answer("unknown", 0.0, [evidence_item], "source discourse not-proven guard", "unknown")
@@ -1117,7 +1160,7 @@ class KnowMoreDiRTEngine:
             target_terms = [term for term in content_tokens(question) if term not in {"what", "was", "the", "corrected", "crate", "color"}]
             for line, evidence_item, _window_norm in lines:
                 line_norm = normalize(line)
-                if target_terms and not all(self._source_field_contains_any(line_norm, [term]) for term in target_terms[:2]):
+                if target_terms and not all(self._source_field_contains_any(line_norm, [term]) for term in target_terms):
                     continue
                 match = re.search(r"corrected\s+[^.;]*?color\s+was\s+(?P<value>[A-Za-z0-9_-]+)", line, re.I)
                 if match:
@@ -1128,7 +1171,7 @@ class KnowMoreDiRTEngine:
                 line_norm = normalize(line)
                 if "correction" not in line_norm:
                     continue
-                if target_terms and not all(self._source_field_contains_any(line_norm, [term]) for term in target_terms[:3]):
+                if target_terms and not all(self._source_field_contains_any(line_norm, [term]) for term in target_terms):
                     continue
                 body = line
                 body = re.sub(r"^\s*\[?\d{1,2}:\d{2}\]?\s*", "", body)
@@ -1227,7 +1270,7 @@ class KnowMoreDiRTEngine:
                     continue
                 local_scope = "\n".join(lines[max(0, index - 2): index + 1])
                 local_norm = normalize(local_scope)
-                if all(self._source_field_contains_any(local_norm, [term]) for term in target_terms[:3]):
+                if all(self._source_field_contains_any(local_norm, [term]) for term in target_terms):
                     return Answer("unknown", 0.0, [self._evidence_for_document_line(document.rel_path, index, line)], "explicit missing organization owner", "unknown")
         return None
 
@@ -1283,7 +1326,7 @@ class KnowMoreDiRTEngine:
             for line, line_norm, evidence in lines:
                 if "manage" not in line_norm:
                     continue
-                if manage_terms and not all(term in line_norm for term in manage_terms[:3]):
+                if manage_terms and not all(term in line_norm for term in manage_terms):
                     continue
                 match = re.search(r"(?P<value>(?:Dr\.\s*)?[A-Z][A-Za-z. -]+?)\s+manages?\b", line, re.I)
                 if match:
@@ -1358,7 +1401,7 @@ class KnowMoreDiRTEngine:
             for line, line_norm, evidence in lines:
                 if anchors and not any(anchor in line_norm for anchor in anchors):
                     continue
-                if asked_actions and not any(action in line_norm for action in asked_actions[:3]):
+                if asked_actions and not any(action in line_norm for action in asked_actions):
                     continue
                 match = re.search(r"\b(?P<value>\d{4}-\d{2}-\d{2}\s+\d{1,2}:\d{2})\b", line)
                 if match:
@@ -1373,7 +1416,7 @@ class KnowMoreDiRTEngine:
                 if token not in {"was", "did", "does", "is", "should", "the", "a", "an", "really", "proven", "proof", "found", "find", "later", "inspection"}
             ]
             for line, line_norm, evidence in lines:
-                if negative_targets and not all(term in line_norm for term in negative_targets[:3]):
+                if negative_targets and not all(term in line_norm for term in negative_targets):
                     continue
                 clean_line = re.sub(r"^\[?\d{1,2}:\d{2}\]?\s*", "", line).strip()
                 if "no crack" in line_norm and "crack" in qnorm:
@@ -1396,7 +1439,7 @@ class KnowMoreDiRTEngine:
             for line, line_norm, evidence in lines:
                 if anchors and not any(anchor in line_norm for anchor in anchors):
                     continue
-                if not anchors and state_target_tokens and not all(token in line_norm for token in state_target_tokens[:4]):
+                if not anchors and state_target_tokens and not all(token in line_norm for token in state_target_tokens):
                     continue
                 m = re.search(r"\b(?P<date>\d{4}-\d{2}-\d{2})(?:\s+\d{1,2}:\d{2})?.*?\bstate\s*:\s*(?P<value>[A-Za-z0-9_-]+)", line, re.I)
                 if m:
@@ -1411,7 +1454,7 @@ class KnowMoreDiRTEngine:
             for line, line_norm, evidence in lines:
                 if "statement" not in line_norm or ":" not in line:
                     continue
-                if target_terms and not all(term in line_norm for term in target_terms[:2]):
+                if target_terms and not all(term in line_norm for term in target_terms):
                     continue
                 match = re.search(r"\bstatement\s*:\s*(?P<value>[^|.;]+)", line, re.I)
                 if match:
@@ -1422,7 +1465,7 @@ class KnowMoreDiRTEngine:
             for item in evidence_pool:
                 window = self._evidence_window_text(item, radius=4, max_chars=1600)
                 window_norm = normalize(window)
-                if target_terms and not all(term in window_norm for term in target_terms[:3]):
+                if target_terms and not all(term in window_norm for term in target_terms):
                     continue
                 for raw_line in window.splitlines():
                     line = clean_extracted_value(raw_line).strip()
@@ -1436,7 +1479,7 @@ class KnowMoreDiRTEngine:
             for item in evidence_pool:
                 window = self._evidence_window_text(item, radius=4, max_chars=1600)
                 window_norm = normalize(window)
-                if target_terms and not all(term in window_norm for term in target_terms[:2]):
+                if target_terms and not all(term in window_norm for term in target_terms):
                     continue
                 match = re.search(r"\bowner\s*:\s*(?P<person>[A-Z][A-Za-z. ]+?)\.\s*.*?\bbadge\s+id\s*:\s*(?P<value>[A-Za-z0-9_ -]+)", window, re.I | re.S)
                 if match:
@@ -1458,7 +1501,7 @@ class KnowMoreDiRTEngine:
             for item in evidence_pool:
                 window = self._evidence_window_text(item, radius=4, max_chars=1600)
                 window_norm = normalize(window)
-                if target_terms and not all(term in window_norm for term in target_terms[:3]):
+                if target_terms and not all(term in window_norm for term in target_terms):
                     continue
                 for raw_line in window.splitlines():
                     line = clean_extracted_value(raw_line).strip()
@@ -1475,7 +1518,7 @@ class KnowMoreDiRTEngine:
             target_tokens = [token for token in content_tokens(qnorm) if token not in {"did", "really", "delete", "the", "a", "an"}]
             material = "\n".join(line for line, _line_norm, _ev in lines)
             material_norm = normalize(material)
-            if target_tokens and all(token in material_norm for token in target_tokens[:3]) and "still contained" in material_norm:
+            if target_tokens and all(token in material_norm for token in target_tokens) and "still contained" in material_norm:
                 file_token = next((token for token in target_tokens if "." in token), target_tokens[-1] if target_tokens else "")
                 return Answer("No; the deletion occurred only in a dream and the repository still contained " + file_token + ".", 0.86, [lines[0][2]] if lines else [], "generic source dream negation", "boolean")
         # Explicit no final choice means unknown.
@@ -1515,7 +1558,7 @@ class KnowMoreDiRTEngine:
                     raw_lines = [clean_extracted_value(raw).strip() for raw in document.text.splitlines()]
                     norms = [normalize(raw) for raw in raw_lines]
                     for idx, line_norm in enumerate(norms):
-                        if not all(term in line_norm for term in direct_owner_terms[:2]):
+                        if not all(term in line_norm for term in direct_owner_terms):
                             continue
                         if "do not confuse" in line_norm or "cache file" in line_norm or "wrong" in line_norm:
                             continue
@@ -1541,7 +1584,7 @@ class KnowMoreDiRTEngine:
                 norms = [normalize(raw) for raw in raw_lines]
                 target_indices = [
                     idx for idx, line_norm in enumerate(norms)
-                    if owner_terms and all(term in line_norm for term in owner_terms[:2])
+                    if owner_terms and all(term in line_norm for term in owner_terms)
                     and "do not confuse" not in line_norm and "cache file" not in line_norm and "wrong" not in line_norm
                 ]
                 for idx in target_indices:
@@ -1550,13 +1593,13 @@ class KnowMoreDiRTEngine:
                         line_norm = norms[j]
                         if j > idx and not line:
                             break
-                        if "\t" in line and owner_terms and all(term in line_norm for term in owner_terms[:2]):
+                        if "\t" in line and owner_terms and all(term in line_norm for term in owner_terms):
                             cells = [cell.strip() for cell in line.split("\t")]
                             if len(cells) >= 3 and normalize(cells[1]) in {"active", "current", "ready", "stable"}:
                                 return Answer(cells[2], 0.86, [item], "generic source owner table row", "person")
                         if line.lstrip().startswith(("{", "[")):
                             json_match = re.search(r"\bname\s*:\s*\"?(?P<name>[A-Z][A-Za-z0-9 _-]+)\"?.*?\bowner\s*:\s*\"?(?P<value>[A-Z][A-Za-z. -]+)\"?", line, re.I)
-                            if json_match and owner_terms and all(term in normalize(json_match.group("name")) for term in owner_terms[:2]):
+                            if json_match and owner_terms and all(term in normalize(json_match.group("name")) for term in owner_terms):
                                 return Answer(clean_extracted_value(json_match.group("value")).strip(" .;:\""), 0.86, [item], "generic source owner object row", "person")
                             continue
                         match = re.search(r"\bowner\s*:\s*(?P<value>(?:Dr\.\s*)?[A-Z][A-Za-z]+(?:\s+[A-Z][A-Za-z]+)*)\b", line, re.I)
@@ -1592,7 +1635,7 @@ class KnowMoreDiRTEngine:
             for item in evidence_pool:
                 window = self._evidence_window_text(item, radius=4, max_chars=1600)
                 window_norm = normalize(window)
-                if target_terms and not all(term in window_norm for term in target_terms[:2]):
+                if target_terms and not all(term in window_norm for term in target_terms):
                     continue
                 for raw_line in window.splitlines():
                     line = clean_extracted_value(raw_line).strip()
@@ -1683,7 +1726,7 @@ class KnowMoreDiRTEngine:
         for item in evidence_pool:
             window = self._evidence_window_text(item, radius=2, max_chars=1200)
             window_norm = normalize(window)
-            if target_terms and not any(self._source_field_contains_any(window_norm, [term]) for term in target_terms[:3]):
+            if target_terms and not any(self._source_field_contains_any(window_norm, [term]) for term in target_terms):
                 continue
             for raw_line in window.splitlines():
                 line = clean_extracted_value(raw_line).strip()
@@ -1741,7 +1784,7 @@ class KnowMoreDiRTEngine:
                 for section in sections:
                     section_text = "\n".join(line for _index, line in section)
                     section_norm = normalize(section_text)
-                    if target_terms and not all(self._source_field_contains_any(section_norm, [term]) for term in target_terms[:3]):
+                    if target_terms and not all(self._source_field_contains_any(section_norm, [term]) for term in target_terms):
                         continue
                     for index, line in section:
                         line_norm = normalize(line)
@@ -1814,7 +1857,7 @@ class KnowMoreDiRTEngine:
                 target_material = window_norm
                 if answer_type == "identifier" and "person" in qnorm and item.rel_path in document_material_by_path:
                     target_material = " ".join([target_material, document_material_by_path[item.rel_path]])
-                if not all(self._source_field_contains_any(target_material, [term]) for term in target_terms[:1]):
+                if not all(self._source_field_contains_any(target_material, [term]) for term in target_terms):
                     continue
                 if answer_type == "organization" and any(term in qnorm for term in ["own", TOK_OWNS, TOK_OWNER, TOK_OWNING]):
                     missing_owner_org = (
@@ -2107,7 +2150,7 @@ class KnowMoreDiRTEngine:
         frame = plan_question(question)
         target_terms = [clean_extracted_value(anchor).strip() for anchor in frame.target_anchors if normalize(anchor)]
         target_from_prep = self._question_target_from_preposition(question)
-        if target_from_prep:
+        if target_from_prep and not target_terms:
             target_terms.append(target_from_prep)
         target_terms = list(dict.fromkeys(term for term in target_terms if normalize(term)))
         lines: list[tuple[str, Evidence, str]] = []
@@ -2121,7 +2164,7 @@ class KnowMoreDiRTEngine:
 
         if qnorm.startswith("who ") and TOK_REVIEWER in qnorm:
             for line, evidence, _doc_material in lines:
-                if target_terms and not self._line_has_all_terms(line, target_terms[:1]):
+                if target_terms and not self._line_has_all_terms(line, target_terms):
                     continue
                 match = re.search(r'["\']?reviewer["\']?\s*[:=]\s*["\'](?P<value>[^"\']+)', line, re.I)
                 if not match:
@@ -2133,7 +2176,7 @@ class KnowMoreDiRTEngine:
             about = self._question_target_from_preposition(question, ("about",))
             about_terms = [term for term in content_tokens(about) if len(term) > 2 and term not in {TOK_CLAIM, "listed"}]
             for line, evidence, _doc_material in lines:
-                if target_terms and not self._line_has_all_terms(line, target_terms[:1]):
+                if target_terms and not self._line_has_all_terms(line, target_terms):
                     continue
                 claims = [clean_extracted_value(m).strip() for m in re.findall(r'["\']?claim["\']?\s*[:=]\s*["\']([^"\']+)', line, re.I)]
                 if not claims:
@@ -2146,7 +2189,7 @@ class KnowMoreDiRTEngine:
 
         if "approved" in qnorm or TOK_APPROVER in qnorm:
             for line, evidence, _doc_material in lines:
-                if target_terms and not self._line_has_all_terms(line, target_terms[:1]):
+                if target_terms and not self._line_has_all_terms(line, target_terms):
                     continue
                 match = re.search(r'(?P<person>[A-Z][a-z]+\s+[A-Z][a-z]+)\s+approved\b', line)
                 if not match:
@@ -2194,7 +2237,7 @@ class KnowMoreDiRTEngine:
         if "file path" in qnorm or ("path" in qnorm and "what" in qnorm):
             path_re = re.compile(r"\b(?!https?://)(?:[A-Za-z0-9_-]+/)+[A-Za-z0-9_.-]+\b")
             for line, evidence, doc_material in lines:
-                if target_terms and not all(self._source_field_contains_any(doc_material, [term]) for term in target_terms[:1]):
+                if target_terms and not all(self._source_field_contains_any(doc_material, [term]) for term in target_terms):
                     continue
                 if "path" not in normalize(line) and "file" not in normalize(line):
                     continue
@@ -2288,7 +2331,7 @@ class KnowMoreDiRTEngine:
                 if not line_norm:
                     continue
                 term_material = line_norm if any(verb.startswith("manage") for verb in requested_verbs) else window_norm
-                if terms and not all(self._source_field_contains_any(term_material, [term]) for term in terms[:4]):
+                if terms and not all(self._source_field_contains_any(term_material, [term]) for term in terms):
                     continue
                 if TOK_CLAIM in qnorm:
                     speaker_match = re.search(r"^(?P<holder>(?:(?:Dr|Ms|Mr|Mrs)\.\s*)?[A-Z][a-z]+(?:\s+[A-Z][a-z]+)?)\s*:\s+", line)
@@ -2429,7 +2472,7 @@ class KnowMoreDiRTEngine:
         records: list[tuple[dict[str, str], Evidence]] = []
         dt_pattern = r"(?P<date>\d{4}-\d{2}-\d{2})(?:\s+(?P<time>\d{2}:\d{2}))?"
         for document in self.documents:
-            document_target_material = normalize(document.text[:800])
+            document_target_material = normalize(document.text)
             for index, raw_line in enumerate(document.text.splitlines()):
                 line = clean_extracted_value(raw_line).strip()
                 if not line:
@@ -2810,7 +2853,7 @@ class KnowMoreDiRTEngine:
                 return None
             if not matched:
                 return None
-            return Answer(str(len(matched)), 0.86, [e for _r, e in matched[:4]], "source-row count aggregation", "count")
+            return Answer(str(len(matched)), 0.86, [e for _r, e in matched], "source-row count aggregation", "count")
         return None
 
     def _requested_source_field(self, question: str, frame: QueryFrame) -> tuple[str, list[str]]:
@@ -3103,7 +3146,7 @@ class KnowMoreDiRTEngine:
     def _unknown_answer(self, reason: str) -> Answer:
         return Answer("unknown", 0.0, self._diagnostic_unknown_evidence(), reason, "unknown")
 
-    def _diagnostic_unknown_evidence(self, *, limit: int = 6) -> list[Evidence]:
+    def _diagnostic_unknown_evidence(self, *, limit: int | None = None) -> list[Evidence]:
         diagnostics = self.last_bounded_diagnostics if isinstance(self.last_bounded_diagnostics, dict) else {}
         execution = diagnostics.get("execution") if isinstance(diagnostics.get("execution"), dict) else {}
         payloads: list[dict[str, object]] = []
@@ -3132,6 +3175,12 @@ class KnowMoreDiRTEngine:
             if isinstance(source, dict):
                 payloads.append(source)
 
+        if limit is None:
+            limit = self._context_count_capacity(
+                "KMD_UNKNOWN_DIAGNOSTIC_EVIDENCE_RATIO",
+                1.0 / 1024.0,
+                available=len(payloads),
+            )
         evidence_items: list[Evidence] = []
         seen: set[tuple[str, str, str]] = set()
         chunk_indexes: dict[tuple[str, int | None, str], int] = {}
@@ -3183,6 +3232,88 @@ class KnowMoreDiRTEngine:
                 break
         return evidence_items
 
+    def _evidence_directly_negates_requested_relation(
+        self,
+        frame: QueryFrame,
+        evidence_span: str,
+    ) -> bool:
+        material = normalize(evidence_span)
+        if not material:
+            return False
+        generic = {
+            "answer", "argument", "asserted", "actual", "fact", "real", "really",
+            "whether", "what", "which", "where", "when", "who", "why", "how",
+            "is", "are", "was", "were", "be", "been", "being", "do", "does", "did",
+            "has", "have", "had", "can", "could", "will", "would", "shall", "should",
+            "may", "might", "must",
+        }
+        relation_variants: set[str] = set()
+        raw_relation_tokens: list[str] = []
+        for value in [frame.requested_relation, *frame.relation_terms, *frame.constraints]:
+            for token in content_tokens(value):
+                token_norm = normalize(token)
+                if len(token_norm) <= 2 or token_norm in generic:
+                    continue
+                raw_relation_tokens.append(token_norm)
+                relation_variants.update(term_variants(token_norm))
+        question_material = normalize(frame.question_text)
+        relation_positions: list[tuple[int, int]] = []
+        for token in dict.fromkeys(raw_relation_tokens):
+            for variant in term_variants(token):
+                match = re.search(rf"\b{re.escape(variant)}\b", question_material)
+                if match:
+                    relation_positions.append((match.start(), match.end()))
+        if relation_positions:
+            _, relation_end = min(relation_positions, key=lambda item: item[0])
+            tail = question_material[relation_end:]
+            tail = re.sub(r"^\s+(?:as|to)\s+", " ", tail)
+            tail = re.sub(r"^\s+(?:a|an|the)\s+", " ", tail)
+            object_segment = re.split(
+                r"\b(?:in|on|at|by|with|from|during|after|before|for|of)\b",
+                tail,
+                maxsplit=1,
+            )[0]
+            for token in content_tokens(object_segment):
+                token_norm = normalize(token)
+                if len(token_norm) <= 2 or token_norm in generic:
+                    continue
+                relation_variants.update(term_variants(token_norm))
+        if not relation_variants:
+            return False
+        negated_windows: list[str] = []
+        for match in re.finditer(
+            r"\b(?:not|never|without)\b(?P<tail>(?:\s+[a-z0-9_-]+){1,8})",
+            material,
+        ):
+            negated_windows.append(match.group("tail"))
+        for match in re.finditer(
+            r"\bno\b(?P<tail>(?:\s+[a-z0-9_-]+){1,8})",
+            material,
+        ):
+            negated_windows.append(match.group("tail"))
+        for window in negated_windows:
+            window_variants: set[str] = set()
+            for token in content_tokens(window):
+                window_variants.update(term_variants(token))
+            if relation_variants.intersection(window_variants):
+                return True
+        return False
+
+    def _evidence_is_absence_of_record_only(self, evidence_span: str) -> bool:
+        material = normalize(evidence_span)
+        if not material:
+            return False
+        absence_nouns = r"(?:record|report|documentation|evidence|proof|confirmation|entry|log|mention|audit trail)"
+        absence_verbs = r"(?:recorded|documented|reported|logged|confirmed|established|verified|mentioned|proved|proven)"
+        patterns = (
+            rf"\bno\s+(?:official\s+)?{absence_nouns}\b",
+            rf"\b(?:not|never)\s+(?:been\s+)?{absence_verbs}\b",
+            rf"\b{absence_nouns}\s+(?:is|was|are|were)\s+(?:missing|absent|unavailable)\b",
+            rf"\b(?:missing|absent|unavailable)\s+{absence_nouns}\b",
+            rf"\bno\b.{{0,96}}\b(?:is|was|are|were)\s+{absence_verbs}\b",
+        )
+        return any(re.search(pattern, material) for pattern in patterns)
+
     def _expected_from_frame(self, frame: QueryFrame) -> ExpectedAnswer:
         allowed = {
             "person",
@@ -3205,7 +3336,7 @@ class KnowMoreDiRTEngine:
     def _verify_with_local_model(self, question: str, frame: QueryFrame, answer: Answer, expected: ExpectedAnswer) -> bool:
         if self._model_client is None:
             return True
-        evidence_payload = self._evidence_payload(answer.evidence, limit=8)
+        evidence_payload = self._evidence_payload(answer.evidence)
         if not evidence_payload:
             return False
         discourse_frames = self._diagnostic_frames_for_answer(answer)
@@ -3234,14 +3365,14 @@ class KnowMoreDiRTEngine:
                 trace.verifier_rejected_count += 1
                 self._log_progress(
                     "kmd-answer verifier_request_failed "
-                    f"error={str(result.get('error') or 'request_failed')[:240]}"
+                    f"error={str(result.get('error') or 'request_failed')}"
                 )
                 continue
             self._record_model_result(result)
             if result.get("prompt_hash"):
-                trace.prompt_hashes = [*list(trace.prompt_hashes or []), str(result["prompt_hash"])][-20:]
+                trace.prompt_hashes = [ *list(trace.prompt_hashes or []), str(result["prompt_hash"]) ]
             if result.get("output_hash"):
-                trace.response_hashes = [*list(trace.response_hashes or []), str(result["output_hash"])][-20:]
+                trace.response_hashes = [ *list(trace.response_hashes or []), str(result["output_hash"]) ]
             if not result.get("accepted"):
                 trace.verifier_rejected_count += 1
                 continue
@@ -3268,52 +3399,19 @@ class KnowMoreDiRTEngine:
                     or proof_kind == "explicit_exclusion"
                 )
                 if negative_proof_valid and proof_kind == "explicit_negation":
-                    audit_question = (
-                        "Proof audit: Is the cited evidence only an absence-of-record statement, such as no record, "
-                        "not recorded, no report, not documented, or missing evidence, rather than a direct assertion "
-                        "that the original event did not occur? Answer yes for absence-of-record only and no only for "
-                        f"a direct asserted negation. Original question: {question}"
+                    relation_frame = frame
+                    if isinstance(trace.last_plan, dict):
+                        planned_frame = frame_from_mapping(
+                            question,
+                            trace.last_plan,
+                            source="model_query_drs",
+                        )
+                        if planned_frame.requested_relation or planned_frame.relation_terms:
+                            relation_frame = planned_frame
+                    negative_proof_valid = (
+                        self._evidence_directly_negates_requested_relation(relation_frame, span)
+                        and not self._evidence_is_absence_of_record_only(span)
                     )
-                    audit_frame = {
-                        "answer_type": "boolean",
-                        "answer_variables": ["whether absence-of-record only"],
-                        "target_anchors": list(frame.target_anchors),
-                        "requested_relation": "absence-of-record proof classification",
-                        "relation_terms": ["absence of record", "direct negation"],
-                        "constraints": [],
-                        "scope_requirements": [],
-                        "modality_requirements": [],
-                        "temporal_scope": "",
-                        "negated": False,
-                        "aggregation": "",
-                        "requires_evidence": True,
-                    }
-                    trace.verifier_call_count += 1
-                    audit_result = call_model_answer_verification(
-                        audit_question,
-                        audit_frame,
-                        "yes",
-                        evidence_payload,
-                        discourse_frames,
-                        self._model_client,
-                    )
-                    self._record_model_result(audit_result)
-                    if audit_result.get("prompt_hash"):
-                        trace.prompt_hashes = [*list(trace.prompt_hashes or []), str(audit_result["prompt_hash"])][-20:]
-                    if audit_result.get("output_hash"):
-                        trace.response_hashes = [*list(trace.response_hashes or []), str(audit_result["output_hash"])][-20:]
-                    audit_span = str(audit_result.get("evidence_span") or "")
-                    audit_answer = normalize(str(audit_result.get("answer") or "")).split(";", 1)[0].strip()
-                    audit_direct_negation = (
-                        bool(audit_result.get("accepted"))
-                        and bool(audit_result.get("entailed"))
-                        and audit_answer in {"no", "false"}
-                        and (not audit_span or any(audit_span in item.get("text", "") for item in evidence_payload))
-                    )
-                    if audit_result.get("accepted"):
-                        trace.verifier_parsed_count += 1
-                    if not audit_direct_negation:
-                        negative_proof_valid = False
                 if not negative_proof_valid:
                     trace.verifier_rejected_count += 1
                     continue
@@ -3339,19 +3437,16 @@ class KnowMoreDiRTEngine:
 
 
     def _diagnostic_frames_for_answer(self, answer: Answer) -> list[dict[str, object]]:
-        if not answer.evidence:
+        if not answer.evidence or getattr(self, "store", None) is None:
             return []
-        try:
-            frame_limit = int(os.environ.get("KMD_VERIFIER_DISCOURSE_FRAME_LIMIT", "0"))
-        except ValueError:
-            frame_limit = 8
-        frame_limit = max(0, min(32, frame_limit))
-        if frame_limit <= 0:
-            return []
-        rel_paths = list({evidence.rel_path for evidence in answer.evidence if evidence.rel_path})
+        rel_paths = list(dict.fromkeys(evidence.rel_path for evidence in answer.evidence if evidence.rel_path))
         if not rel_paths:
             return []
-        placeholders = ",".join("?" for _ in rel_paths[:8])
+        frame_limit = self._context_count_capacity(
+            "KMD_VERIFIER_DISCOURSE_FRAME_RATIO",
+            1.0 / 8192.0,
+        )
+        placeholders = ",".join("?" for _ in rel_paths)
         rows = self.store.execute(
             f"""
             SELECT d.rel_path, f.predicate, f.trigger_surface, f.source, c.kind
@@ -3362,18 +3457,22 @@ class KnowMoreDiRTEngine:
             WHERE d.rel_path IN ({placeholders})
             LIMIT ?
             """,
-            (*rel_paths[:8], frame_limit),
+            (*rel_paths, frame_limit),
         ).fetchall()
         return [dict(row) for row in rows]
 
+
     def _discourse_payload_for_evidence(self, evidence: list[Evidence], *, limit: int | None = None) -> list[dict[str, object]]:
         if limit is None:
-            limit = int(os.environ.get("KMD_DISCOURSE_PAYLOAD_LIMIT", "32"))
+            limit = self._context_count_capacity(
+                "KMD_DISCOURSE_PAYLOAD_RATIO",
+                1.0 / 2048.0,
+            )
         rel_paths = list(dict.fromkeys(item.rel_path for item in evidence if item.rel_path))
         if not rel_paths:
             return []
-        per_kind_limit = max(8, limit // 2)
-        placeholders = ",".join("?" for _ in rel_paths[:8])
+        per_kind_limit = max(1, limit // 2)
+        placeholders = ",".join("?" for _ in rel_paths)
         frame_rows = self.store.execute(
             f"""
             SELECT
@@ -3395,7 +3494,7 @@ class KnowMoreDiRTEngine:
             WHERE d.rel_path IN ({placeholders})
             LIMIT ?
             """,
-            (*rel_paths[:8], per_kind_limit),
+            (*rel_paths, per_kind_limit),
         ).fetchall()
         relation_rows = self.store.execute(
             f"""
@@ -3417,7 +3516,7 @@ class KnowMoreDiRTEngine:
             WHERE d.rel_path IN ({placeholders})
             LIMIT ?
             """,
-            (*rel_paths[:8], per_kind_limit),
+            (*rel_paths, per_kind_limit),
         ).fetchall()
         records: list[dict[str, object]] = []
         records.extend({"record_kind": "frame", **dict(row)} for row in frame_rows)
@@ -3436,11 +3535,19 @@ class KnowMoreDiRTEngine:
         )
 
     def _evidence_window_text(self, evidence: Evidence, *, radius: int | None = None, max_chars: int | None = None) -> str:
+        sentences = getattr(self, "_sentences_by_document", {}).get(evidence.rel_path, {})
         if radius is None:
-            radius = int(os.environ.get("KMD_EVIDENCE_WINDOW_RADIUS", "3"))
+            radius = self._context_count_capacity(
+                "KMD_EVIDENCE_WINDOW_RADIUS_RATIO",
+                1.0 / 16384.0,
+                available=len(sentences),
+            )
         if max_chars is None:
-            max_chars = int(os.environ.get("KMD_EVIDENCE_TEXT_CHARS", "1200"))
-        sentences = self._sentences_by_document.get(evidence.rel_path, {})
+            max_chars = self._context_char_capacity(
+                "KMD_EVIDENCE_TEXT_RATIO",
+                1.0 / 16.0,
+                available=sum(len(sentence.text) for sentence in sentences.values()) or len(evidence.text),
+            )
         center_order = evidence.chunk_order if evidence.chunk_order in sentences else None
         for order, sentence in sentences.items():
             if center_order is not None:
@@ -3457,15 +3564,20 @@ class KnowMoreDiRTEngine:
         ]
         return "\n".join(parts)[:max_chars]
 
+
     def _focused_evidence_windows(
         self,
         question: str,
         frame: QueryFrame,
         *,
-        limit: int = 8,
-        window_chars: int = 1800,
+        limit: int | None = None,
+        window_chars: int | None = None,
     ) -> list[Evidence]:
         """Lexically focus large raw sources without deciding the answer value."""
+        if limit is None:
+            limit = self._context_count_capacity("KMD_FOCUSED_EVIDENCE_COUNT_RATIO", 1.0 / 1024.0)
+        if window_chars is None:
+            window_chars = self._context_char_capacity("KMD_FOCUSED_EVIDENCE_WINDOW_RATIO", 1.0 / 8.0)
         stop_tokens = {
             "what", "which", "who", "when", "where", "find", "added", "add", "adds", "new",
             "feature", "features", "related", "relate", "with", "about", "have", "been", "are",
@@ -3479,11 +3591,11 @@ class KnowMoreDiRTEngine:
         if not query_tokens:
             return []
         windows: list[tuple[float, str, int, int, str]] = []
-        half = max(300, window_chars // 2)
+        half = max(1, window_chars // 2)
         for document in self.documents:
             rel_norm = normalize(document.rel_path)
             doc_norm = normalize(document.text)
-            material_norm = normalize(" ".join([rel_norm, doc_norm[:120000]]))
+            material_norm = normalize(" ".join([rel_norm, doc_norm]))
             anchors = [normalize(anchor) for anchor in self._frame_scope_anchors(frame) if normalize(anchor)]
             if anchors and not all(self._anchor_has_grounded_token(anchor, material_norm) for anchor in anchors):
                 continue
@@ -3492,7 +3604,7 @@ class KnowMoreDiRTEngine:
             for token in query_tokens:
                 search_token = token.lower()
                 start = 0
-                for _ in range(16):
+                while True:
                     pos = lowered.find(search_token, start)
                     if pos < 0:
                         break
@@ -3515,7 +3627,7 @@ class KnowMoreDiRTEngine:
         selected: list[Evidence] = []
         seen: set[tuple[str, int, int]] = set()
         for score, rel_path, start, end, window in windows:
-            key = (rel_path, start // 500, end // 500)
+            key = (rel_path, start, end)
             if key in seen:
                 continue
             seen.add(key)
@@ -3533,7 +3645,13 @@ class KnowMoreDiRTEngine:
                 break
         return selected
 
-    def _evidence_payload(self, evidence: list[Evidence], *, limit: int = 8) -> list[dict[str, str]]:
+    def _evidence_payload(self, evidence: list[Evidence], *, limit: int | None = None) -> list[dict[str, str]]:
+        if limit is None:
+            limit = self._context_count_capacity(
+                "KMD_MODEL_EVIDENCE_COUNT_RATIO",
+                1.0 / 1024.0,
+                available=len(evidence),
+            )
         payload: list[dict[str, str]] = []
         for item in evidence[:limit]:
             if not item.rel_path or not item.text:
@@ -3596,7 +3714,11 @@ class KnowMoreDiRTEngine:
             "char_start": evidence.char_start,
             "char_end": evidence.char_end,
             "source_kind": evidence.source_kind,
-            "text": evidence.text[:500],
+            "text": evidence.text[: self._context_char_capacity(
+                "KMD_PROVENANCE_TEXT_RATIO",
+                1.0 / 32.0,
+                available=len(evidence.text),
+            )],
             "score": round(float(evidence.score), 3),
         }
         if sentence is not None:
@@ -3617,7 +3739,13 @@ class KnowMoreDiRTEngine:
             payload["document"] = document_summary
         return {key: value for key, value in payload.items() if value is not None and value != ""}
 
-    def _model_answer_source_provenance_sample(self, answer: Answer, *, limit: int = 8) -> list[dict[str, object]]:
+    def _model_answer_source_provenance_sample(self, answer: Answer, *, limit: int | None = None) -> list[dict[str, object]]:
+        if limit is None:
+            limit = self._context_count_capacity(
+                "KMD_PROVENANCE_COUNT_RATIO",
+                1.0 / 1024.0,
+                available=len(answer.evidence),
+            )
         rows: list[dict[str, object]] = []
         seen: set[tuple[str, str, int | None, str]] = set()
         for evidence in answer.evidence:
@@ -3751,9 +3879,9 @@ class KnowMoreDiRTEngine:
                 "elapsed": query_drs_model.get("elapsed"),
             }
         if model.get("prompt_hash"):
-            trace.prompt_hashes = [*list(trace.prompt_hashes or []), str(model["prompt_hash"])][-20:]
+            trace.prompt_hashes = [ *list(trace.prompt_hashes or []), str(model["prompt_hash"]) ]
         if model.get("output_hash"):
-            trace.response_hashes = [*list(trace.response_hashes or []), str(model["output_hash"])][-20:]
+            trace.response_hashes = [ *list(trace.response_hashes or []), str(model["output_hash"]) ]
         trace.parsed_count += 1
         trace.accepted_count += 1
         plan = model
@@ -3813,7 +3941,7 @@ class KnowMoreDiRTEngine:
         answer_norm = normalize(answer.text)
         if not answer_norm:
             return False
-        for span_id in span_ids[:8]:
+        for span_id in span_ids:
             if answer.answer_type == "boolean":
                 row = self.store.execute(
                     """
@@ -3912,11 +4040,20 @@ class KnowMoreDiRTEngine:
     def _materialize_question_semantics(self, question: str, frame: QueryFrame) -> None:
         if self._model_client is None or not self._lazy_semantic_frames_enabled():
             return
-        limit = int(os.environ.get("KMD_LAZY_FRAME_SEARCH_LIMIT", "10"))
-        chunk_limit = int(os.environ.get("KMD_LAZY_FRAME_CHUNK_LIMIT", "5"))
+        limit = self._context_count_capacity(
+            "KMD_LAZY_FRAME_SEARCH_RATIO",
+            5.0 / 32768.0,
+            available=len(self.sentences),
+        )
+        chunk_limit = self._context_count_capacity(
+            "KMD_LAZY_FRAME_CHUNK_RATIO",
+            5.0 / 65536.0,
+            available=limit,
+        )
         required = list(frame.target_anchors) if frame.target_anchors else None
         candidates = self._search(question, limit=limit, required=required)
-        if len(candidates) < min(3, limit) and required:
+        fallback_threshold = max(1, chunk_limit // 2)
+        if len(candidates) < fallback_threshold and required:
             candidates = self._search(question, limit=limit, required=None)
         target_terms = [normalize(anchor) for anchor in frame.target_anchors if normalize(anchor)]
         relation_terms = [normalize(term) for term in [frame.requested_relation, *frame.relation_terms, *frame.constraints] if normalize(term)]
@@ -4117,9 +4254,9 @@ class KnowMoreDiRTEngine:
             return 0
         self._record_model_result(result)
         if result.get("prompt_hash"):
-            self.model_query_trace.prompt_hashes = [*list(self.model_query_trace.prompt_hashes or []), str(result["prompt_hash"])][-20:]
+            self.model_query_trace.prompt_hashes = [ *list(self.model_query_trace.prompt_hashes or []), str(result["prompt_hash"]) ]
         if result.get("output_hash"):
-            self.model_query_trace.response_hashes = [*list(self.model_query_trace.response_hashes or []), str(result["output_hash"])][-20:]
+            self.model_query_trace.response_hashes = [ *list(self.model_query_trace.response_hashes or []), str(result["output_hash"]) ]
         self.model_query_trace.chunk_frame_call_count += 0 if result.get("source") in {"cache", "skipped_noise", "skipped_long_chunk", "disabled"} else 1
         if model_frames:
             self.model_query_trace.chunk_frame_parsed_count += len(model_frames)
@@ -4372,25 +4509,16 @@ class KnowMoreDiRTEngine:
         if frame_data is None:
             return None
         evidence_frame = frame_from_mapping(question, frame_data, source="model_query_drs")
-        focused = self._focused_evidence_windows(
-            question,
-            evidence_frame,
-            limit=int(os.environ.get("KMD_FOCUSED_EVIDENCE_LIMIT", "8")),
-            window_chars=int(os.environ.get("KMD_FOCUSED_EVIDENCE_WINDOW_CHARS", "1800")),
-        )
-        candidates = self._search(
-            question,
-            limit=int(os.environ.get("KMD_EVIDENCE_SEARCH_LIMIT", "18")),
-            required=None,
-        )
+        focused = self._focused_evidence_windows(question, evidence_frame)
+        candidates = self._search(question, required=None)
         evidence = list(focused)
-        for sentence, score in candidates[: int(os.environ.get("KMD_EVIDENCE_PAYLOAD_LIMIT", "10"))]:
+        for sentence, score in candidates:
             item = self._evidence(sentence, score)
             if not any(existing.rel_path == item.rel_path and existing.text == item.text for existing in evidence):
                 evidence.append(item)
         if not evidence:
             return None
-        payload = self._evidence_payload(evidence, limit=len(evidence))
+        payload = self._evidence_payload(evidence)
         if not payload:
             return None
         trace = self.model_query_trace
@@ -4398,16 +4526,28 @@ class KnowMoreDiRTEngine:
         fallback_client = self._fallback_model_client()
         if fallback_client is None:
             return None
-        model = call_model_query_evidence_answer(question, payload, fallback_client, discourse_records=discourse_payload)
+        authoritative_expected = (
+            expected_hint
+            if expected_hint and expected_hint.answer_type != "unknown"
+            else self._expected_from_frame(evidence_frame)
+        )
+        model = call_model_query_evidence_answer(
+            question,
+            payload,
+            fallback_client,
+            discourse_records=discourse_payload,
+            authoritative_query_frame=evidence_frame.as_dict(),
+            authoritative_answer_type=authoritative_expected.answer_type,
+        )
         try:
             self._record_model_result(model)
         except LocalModelUnavailableError:
             trace.evidence_rejected_count += 1
             return None
         if model.get("prompt_hash"):
-            trace.prompt_hashes = [*list(trace.prompt_hashes or []), str(model["prompt_hash"])][-20:]
+            trace.prompt_hashes = [ *list(trace.prompt_hashes or []), str(model["prompt_hash"]) ]
         if model.get("output_hash"):
-            trace.response_hashes = [*list(trace.response_hashes or []), str(model["output_hash"])][-20:]
+            trace.response_hashes = [ *list(trace.response_hashes or []), str(model["output_hash"]) ]
         if not model.get("accepted"):
             trace.evidence_rejected_count += 1
             return None
@@ -4418,7 +4558,7 @@ class KnowMoreDiRTEngine:
             unknown = Answer(
                 "unknown",
                 0.0,
-                [item for item in evidence[:6] if item.rel_path and item.text],
+                [item for item in evidence if item.rel_path and item.text],
                 "local model query-DRS insufficient evidence",
                 "unknown",
             )
@@ -4427,8 +4567,8 @@ class KnowMoreDiRTEngine:
         proposed = str(model.get("answer") or "")
         evidence_span = str(model.get("evidence_span") or "")
         answer_type = str(model.get("answer_type") or "content_phrase")
-        frame = frame_from_mapping(question, model.get("query_frame") if isinstance(model.get("query_frame"), dict) else None)
-        expected = expected_hint if expected_hint and expected_hint.answer_type != "unknown" else self._expected_from_frame(frame)
+        frame = evidence_frame
+        expected = authoritative_expected
         if answer_type:
             direct_expected = ExpectedAnswer(answer_type if answer_type in {
                 "person", "actor", "organization", "identifier", "url", "file_path", "count",
@@ -4451,15 +4591,13 @@ class KnowMoreDiRTEngine:
             if self._is_boolean_text(proposed) and not self._boolean_answer_has_target_grounding(frame, evidence_span, matching):
                 trace.evidence_rejected_count += 1
                 return Answer("unknown", reason="local model boolean answer lacked target grounding")
-        support = list(matching[:3])
+        support = list(matching)
         if expected.answer_type in {"person", "actor"} or classify_value(proposed) == "person":
             proposed_norm = normalize(proposed)
             for item in evidence:
                 if item not in support and proposed_norm and proposed_norm in normalize(self._evidence_window_text(item)):
                     support.append(item)
-                if len(support) >= 6:
-                    break
-        answer = Answer(proposed, 0.78, support[:6], "local model query-DRS evidence verification", expected.answer_type)
+        answer = Answer(proposed, 0.78, support, "local model query-DRS evidence verification", expected.answer_type)
         finalized = self._finalize_answer(question, answer, expected, "local model query-DRS evidence verification", frame)
         if not finalized:
             trace.evidence_rejected_count += 1
@@ -4481,13 +4619,15 @@ class KnowMoreDiRTEngine:
             return None
         expected = expected or self._expected_from_frame(frame)
         required = list(frame.target_anchors) if frame.target_anchors else None
-        candidates = self._search(question, limit=int(os.environ.get("KMD_EVIDENCE_SEARCH_LIMIT", "18")), required=required)
-        if len(candidates) < 4 and required:
-            candidates = self._search(question, limit=int(os.environ.get("KMD_EVIDENCE_SEARCH_LIMIT", "18")), required=None)
+        candidates = self._search(question, required=required)
+        if required:
+            unrestricted = self._search(question, required=None)
+            seen = {sentence.sentence_id for sentence, _score in candidates}
+            candidates.extend((sentence, score) for sentence, score in unrestricted if sentence.sentence_id not in seen)
         if not candidates:
             return None
-        evidence = [self._evidence(sentence, score) for sentence, score in candidates[: int(os.environ.get("KMD_EVIDENCE_PAYLOAD_LIMIT", "10"))]]
-        payload = self._evidence_payload(evidence, limit=len(evidence))
+        evidence = [self._evidence(sentence, score) for sentence, score in candidates]
+        payload = self._evidence_payload(evidence)
         if not payload:
             return None
         trace = self.model_query_trace
@@ -4502,9 +4642,9 @@ class KnowMoreDiRTEngine:
             trace.evidence_rejected_count += 1
             return None
         if model.get("prompt_hash"):
-            trace.prompt_hashes = [*list(trace.prompt_hashes or []), str(model["prompt_hash"])][-20:]
+            trace.prompt_hashes = [ *list(trace.prompt_hashes or []), str(model["prompt_hash"]) ]
         if model.get("output_hash"):
-            trace.response_hashes = [*list(trace.response_hashes or []), str(model["output_hash"])][-20:]
+            trace.response_hashes = [ *list(trace.response_hashes or []), str(model["output_hash"]) ]
         if not model.get("accepted"):
             trace.evidence_rejected_count += 1
             return None
@@ -4532,7 +4672,7 @@ class KnowMoreDiRTEngine:
         answer = Answer(
             proposed,
             0.74,
-            matching[:3],
+            matching,
             "local model bounded evidence extraction",
             str(model.get("answer_type") or "unknown"),
         )
@@ -4600,7 +4740,7 @@ class KnowMoreDiRTEngine:
         material = normalize(
             "\n".join(
                 " ".join([item.rel_path or "", item.text or "", self._evidence_window_text(item)])
-                for item in evidence[:6]
+                for item in evidence
             )
         )
         return all(self._anchor_has_grounded_token(anchor, material) for anchor in anchors)
@@ -4639,6 +4779,7 @@ class KnowMoreDiRTEngine:
             self._sentences_by_document,
             question,
             frame,
+            context_size=self._active_model_context_size(),
         )
         self.last_bounded_diagnostics = diagnostics
         if not bounded_answer:
@@ -4773,7 +4914,7 @@ class KnowMoreDiRTEngine:
             source_norm = normalize(source)
             if source_norm:
                 relation_tokens.add(source_norm)
-        if not target_tokens or not relation_tokens:
+        if not target_tokens or not slot_tokens or not relation_tokens:
             return text
         relation_indexes = [
             index for index, token in enumerate(normalized_words)
@@ -4844,6 +4985,91 @@ class KnowMoreDiRTEngine:
             return True
         return re.fullmatch(r"\d{1,2}:\d{2}", normalize(value)) is None
 
+    def _select_authoritative_answer_clause(self, text: str, frame: QueryFrame | None) -> str:
+        if frame is None or frame.aggregation in {"count", "list", "set"} or ";" not in text:
+            return text
+        clauses = [clean_extracted_value(value).strip(" .;:") for value in text.split(";")]
+        clauses = [value for value in clauses if value]
+        if len(clauses) < 2:
+            return text
+        target_terms = {
+            term
+            for anchor in frame.target_anchors
+            for term in content_tokens(anchor)
+            if term
+        }
+        relation_terms: set[str] = set()
+        for source in [frame.requested_relation, *frame.relation_terms]:
+            for term in content_tokens(source):
+                relation_terms.update(term_variants(term))
+        if not target_terms and not relation_terms:
+            return text
+        scores: list[int] = []
+        for clause in clauses:
+            clause_terms: set[str] = set()
+            for term in content_tokens(clause):
+                clause_terms.update(term_variants(term))
+            scores.append(2 * len(clause_terms & target_terms) + len(clause_terms & relation_terms))
+        best = max(scores)
+        if best <= 0 or scores.count(best) != 1:
+            return text
+        return clauses[scores.index(best)]
+
+    def _extract_reported_subject_binding(self, question: str, text: str) -> str:
+        words = clean_extracted_value(text).strip(" .;:?").split()
+        if len(words) < 3:
+            return text
+        question_norm = normalize(question)
+        matches: list[tuple[int, str]] = []
+        for index in range(1, len(words) - 1):
+            suffix = " ".join(words[index:]).strip(" .;:?")
+            if len(content_tokens(suffix)) < 2 or normalize(suffix) not in question_norm:
+                continue
+            prefix = " ".join(words[:index]).strip(" .;:?")
+            if prefix:
+                matches.append((len(content_tokens(suffix)), prefix))
+        if not matches:
+            return text
+        matches.sort(reverse=True)
+        best_length = matches[0][0]
+        best = [value for length, value in matches if length == best_length]
+        return best[0] if len(set(best)) == 1 else text
+
+    def _collapse_reported_content_wrapper(
+        self,
+        question: str,
+        text: str,
+        expected: ExpectedAnswer | None = None,
+    ) -> str:
+        if expected is not None and expected.answer_type not in {"content_phrase", "metadata_value", "state"}:
+            return text
+        match = re.match(
+            r"^(?P<speaker>[A-Z][A-Za-z0-9_-]*(?:\s+[A-Z][A-Za-z0-9_-]*){0,3})\s+"
+            r"(?P<bridge>[a-z][a-z_-]*)\s+(?:he|she|they)\s+(?P<body>.+)$",
+            text.strip(),
+        )
+        if not match:
+            return text
+        return clean_extracted_value(f"{match.group('speaker')} {match.group('body')}").strip(" .;:")
+
+    def _cleanup_authoritative_surface_answer(
+        self,
+        question: str,
+        text: str,
+        expected: ExpectedAnswer,
+        frame: QueryFrame | None,
+        evidence: list[Evidence],
+    ) -> str:
+        if expected.answer_type == "boolean":
+            return str(text or "").strip()
+        value = self._select_authoritative_answer_clause(text, frame)
+        value = self._extract_reported_subject_binding(question, value)
+        value = self._collapse_reported_content_wrapper(question, value, expected)
+        value = self._cleanup_canonical_answer(value, expected, frame)
+        if expected.answer_type in {"person", "actor", "organization"}:
+            value = self._expand_single_name_from_evidence(value, evidence)
+        return value
+
     def _finalize_answer(
         self,
         question: str,
@@ -4875,20 +5101,24 @@ class KnowMoreDiRTEngine:
         if not canonical:
             return None
         production_model_query = frame is not None and frame.source == "model_query_drs"
+        if expected.answer_type == "date_time" and not self._date_time_shape_compatible(frame, canonical):
+            return None
+        pre_cleanup_canonical = canonical
+        canonical = self._cleanup_authoritative_surface_answer(
+            question,
+            canonical,
+            expected,
+            frame,
+            answer.evidence,
+        )
         if not production_model_query:
-            if expected.answer_type == "date_time" and not self._date_time_shape_compatible(frame, canonical):
-                return None
-            pre_cleanup_canonical = canonical
-            canonical = self._cleanup_canonical_answer(canonical, expected, frame)
-            if expected.answer_type in {"person", "actor", "organization"}:
-                canonical = self._expand_single_name_from_evidence(canonical, answer.evidence)
             canonical = self._central_answer_guard(question, canonical, expected, frame, answer.evidence)
-            canonical = self._restore_sentence_terminal_punctuation(
-                canonical,
-                pre_cleanup_canonical,
-                expected,
-                answer.evidence,
-            )
+        canonical = self._restore_sentence_terminal_punctuation(
+            canonical,
+            pre_cleanup_canonical,
+            expected,
+            answer.evidence,
+        )
         if not canonical:
             return None
         if normalize(canonical) == "unknown":
@@ -5007,7 +5237,7 @@ class KnowMoreDiRTEngine:
             return value
         if len(str(value).split()) < 2:
             return value
-        evidence_payload = self._evidence_payload(evidence, limit=6)
+        evidence_payload = self._evidence_payload(evidence)
         if not evidence_payload:
             return value
         source_resolved = self._source_resolve_model_answer_with_local_model(
@@ -5029,9 +5259,9 @@ class KnowMoreDiRTEngine:
         )
         self._record_model_result(result)
         if result.get("prompt_hash"):
-            trace.prompt_hashes = [*list(trace.prompt_hashes or []), str(result["prompt_hash"])][-20:]
+            trace.prompt_hashes = [ *list(trace.prompt_hashes or []), str(result["prompt_hash"]) ]
         if result.get("output_hash"):
-            trace.response_hashes = [*list(trace.response_hashes or []), str(result["output_hash"])][-20:]
+            trace.response_hashes = [ *list(trace.response_hashes or []), str(result["output_hash"]) ]
         if not result.get("accepted"):
             trace.canonicalization_rejected_count += 1
             return value
@@ -5070,9 +5300,9 @@ class KnowMoreDiRTEngine:
         )
         self._record_model_result(result)
         if result.get("prompt_hash"):
-            trace.prompt_hashes = [*list(trace.prompt_hashes or []), str(result["prompt_hash"])][-20:]
+            trace.prompt_hashes = [ *list(trace.prompt_hashes or []), str(result["prompt_hash"]) ]
         if result.get("output_hash"):
-            trace.response_hashes = [*list(trace.response_hashes or []), str(result["output_hash"])][-20:]
+            trace.response_hashes = [ *list(trace.response_hashes or []), str(result["output_hash"]) ]
         if not result.get("accepted"):
             trace.canonicalization_rejected_count += 1
             return value
@@ -5091,7 +5321,13 @@ class KnowMoreDiRTEngine:
         tokens = [token.lower().strip(".,;:!?()[]{}\"'`") for token in re.findall(r"[A-Za-z]+", value or "")]
         return any(token in SOURCE_DEICTIC_TOKENS for token in tokens)
 
-    def _search(self, question: str, limit: int = 12, required: list[str] | None = None) -> list[tuple[Sentence, float]]:
+    def _search(self, question: str, limit: int | None = None, required: list[str] | None = None) -> list[tuple[Sentence, float]]:
+        if limit is None:
+            limit = self._context_count_capacity(
+                "KMD_SEARCH_RESULT_RATIO",
+                1.0 / 1024.0,
+                available=len(self.sentences),
+            )
         frame_data = self.model_query_trace.last_plan if isinstance(self.model_query_trace.last_plan, dict) else None
         if frame_data is not None:
             frame = frame_from_mapping(question, frame_data)
@@ -5122,14 +5358,19 @@ class KnowMoreDiRTEngine:
             if sentence:
                 previous = combined.get(sentence.sentence_id, (sentence, 0.0))[1]
                 combined[sentence.sentence_id] = (sentence, previous + 2.5)
-        for sentence, score in self._metadata_bounded_candidates(question, limit=max(limit * 2, 24)):
+        for sentence, score in self._metadata_bounded_candidates(question, limit=min(len(self.sentences), limit * 2)):
             previous = combined.get(sentence.sentence_id, (sentence, 0.0))[1]
             combined[sentence.sentence_id] = (sentence, max(previous, score))
 
         seed_items = list(combined.values())
+        neighbor_radius = self._context_count_capacity(
+            "KMD_SEARCH_NEIGHBOR_RADIUS_RATIO",
+            1.0 / 16384.0,
+            available=max((len(items) for items in self._sentences_by_document.values()), default=0),
+        )
         for sentence, score in seed_items:
             document_sentences = self._sentences_by_document.get(sentence.rel_path, {})
-            for offset in range(-4, 5):
+            for offset in range(-neighbor_radius, neighbor_radius + 1):
                 if offset == 0:
                     continue
                 neighbor = document_sentences.get(sentence.order + offset)
@@ -5150,7 +5391,13 @@ class KnowMoreDiRTEngine:
         scored = sorted(adjusted, key=lambda item: (-item[1], item[0].rel_path, item[0].order))
         return scored[:limit]
 
-    def _metadata_bounded_candidates(self, question: str, limit: int = 24) -> list[tuple[Sentence, float]]:
+    def _metadata_bounded_candidates(self, question: str, limit: int | None = None) -> list[tuple[Sentence, float]]:
+        if limit is None:
+            limit = self._context_count_capacity(
+                "KMD_METADATA_RESULT_RATIO",
+                1.0 / 4096.0,
+                available=len(self.sentences),
+            )
         frame_data = self.model_query_trace.last_plan if isinstance(self.model_query_trace.last_plan, dict) else None
         if frame_data is not None:
             frame = frame_from_mapping(question, frame_data, source="model_query_drs")
@@ -5181,7 +5428,7 @@ class KnowMoreDiRTEngine:
                 doc_scores.append((score, rel_path))
                 score_by_doc[rel_path] = score
         doc_scores.sort(key=lambda item: (-item[0], item[1]))
-        selected_docs = {rel_path for _, rel_path in doc_scores[:8]}
+        selected_docs = {rel_path for _, rel_path in doc_scores[:limit]}
         candidates: list[tuple[Sentence, float]] = []
         for rel_path in selected_docs:
             for sentence in self._sentences_by_document.get(rel_path, {}).values():

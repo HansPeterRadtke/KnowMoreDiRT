@@ -14,11 +14,14 @@ from unittest.mock import patch
 
 import numpy as np
 
+from context_capacity import context_token_capacity
+
 from file_system_catalog.content_pipeline import (
     AnalysisClient,
     Chunk,
     ContentSemanticPipeline,
     GeneratedAnalysis,
+    ModelContext,
     chunk_analysis_schema_for_keys,
     chunk_text,
     migrate_legacy_content_schema,
@@ -40,6 +43,40 @@ from file_system_catalog.scanner import FilesystemScanner
 class FakeAnalysisClient:
     model = "fake-analysis-model"
     seed = 42
+
+    def model_context(self) -> ModelContext:
+        return ModelContext(configured_tokens=65536, trained_tokens=65536)
+
+    def output_token_budget(
+        self,
+        *,
+        ratio_names: tuple[str, ...] = (),
+        ratio_default: float = 1.0 / 32.0,
+    ) -> int:
+        return context_token_capacity(
+            self.model_context().configured_tokens,
+            ratio_names=ratio_names,
+            ratio_default=ratio_default,
+        )
+
+    def request_fits(
+        self,
+        *,
+        system: str,
+        user: str,
+        max_tokens: int,
+        worst_retry: bool = True,
+    ) -> bool:
+        return self.token_count(system) + self.token_count(user) + max_tokens < self.model_context().configured_tokens
+
+    def available_content_tokens(
+        self,
+        *,
+        system: str,
+        user_without_content: str,
+        max_tokens: int,
+    ) -> int:
+        return self.model_context().configured_tokens - self.token_count(system) - self.token_count(user_without_content) - max_tokens
 
     def health(self) -> dict[str, Any]:
         return {"status": "ok"}
@@ -174,6 +211,13 @@ class FakeEmbeddingClient:
     def health(self) -> dict[str, Any]:
         return {"status": "ok"}
 
+    def model_context(self):
+        from file_system_catalog.content_pipeline import ModelContext
+        return ModelContext(configured_tokens=32768, trained_tokens=32768)
+
+    def token_count(self, text: str, *, add_special: bool = True) -> int:
+        return (max(1, math.ceil(len(text) / 4)) if text else 0) + int(add_special)
+
     def embed(self, texts: Sequence[str]) -> list[np.ndarray]:
         result = []
         for text in texts:
@@ -208,7 +252,7 @@ class ContentPipelineTest(unittest.TestCase):
                 self.assertEqual(value.get("required"), list(value["properties"]))
                 self.assertIs(value.get("additionalProperties"), False)
             self.assertNotIn("const", value)
-            for forbidden in ("minItems", "maxItems", "minimum", "maximum"):
+            for forbidden in ("minimum", "maximum"):
                 self.assertNotIn(forbidden, value)
             for child in value.values():
                 if isinstance(child, dict):
@@ -218,7 +262,10 @@ class ContentPipelineTest(unittest.TestCase):
                         inspect(item)
 
         inspect(schema)
-        key_schema = schema["properties"]["analyses"]["items"]["properties"]["chunk_key"]
+        analyses_schema = schema["properties"]["analyses"]
+        self.assertEqual(analyses_schema["minItems"], 2)
+        self.assertEqual(analyses_schema["maxItems"], 2)
+        key_schema = analyses_schema["items"]["properties"]["chunk_key"]
         self.assertEqual(key_schema["enum"], ["0", "1"])
 
     def test_normalized_pipeline_stores_chunk_metadata_once_and_unlimited_children(self) -> None:
@@ -427,22 +474,122 @@ class ContentPipelineTest(unittest.TestCase):
         payloads = []
 
         def fake_request(url: str, payload: dict[str, Any] | None = None, *, timeout: int = 600) -> dict[str, Any]:
+            if url.endswith("/v1/models"):
+                return {"data": [{"id": "fake", "meta": {"n_ctx": 4096, "n_ctx_train": 4096}}]}
+            if url.endswith("/apply-template"):
+                assert payload is not None
+                return {"prompt": "rendered prompt"}
+            if url.endswith("/tokenize"):
+                return {"tokens": list(range(12))}
             assert payload is not None
             payloads.append(payload)
             return responses.pop(0)
 
+        def fake_completion_request(
+            url: str,
+            payload: dict[str, Any],
+            *,
+            per_token_timeout_seconds: float,
+        ) -> dict[str, Any]:
+            self.assertEqual(per_token_timeout_seconds, 180)
+            self.assertIs(payload["stream"], True)
+            payloads.append(payload)
+            response = responses.pop(0)
+            choice = response["choices"][0]
+            return {
+                "content": choice.get("message", {}).get("content", ""),
+                "reasoning_content": choice.get("message", {}).get("reasoning_content", ""),
+                "finish_reason": choice.get("finish_reason"),
+                "model": response.get("model"),
+                "stream": True,
+            }
+
         client = AnalysisClient("http://unused", model="fake", retries=2)
-        with patch("file_system_catalog.content_pipeline.request_json", side_effect=fake_request):
+        with patch(
+            "file_system_catalog.content_pipeline.request_json", side_effect=fake_request
+        ), patch(
+            "file_system_catalog.content_pipeline.stream_chat_completion_json",
+            side_effect=fake_completion_request,
+        ):
             result = client.complete(
                 schema_name="x",
-                schema={"type": "object", "properties": {}, "required": [], "additionalProperties": False},
+                schema={
+                    "type": "object",
+                    "properties": {
+                        "document_summary": {"type": "string", "x-kmd-string-profile": "reason"},
+                        "facets": {"type": "array", "x-kmd-array-profile": "dense", "items": {"type": "object", "properties": {}, "required": [], "additionalProperties": False}},
+                    },
+                    "required": ["document_summary", "facets"],
+                    "additionalProperties": False,
+                },
                 system="x",
                 user="x",
                 max_tokens=100,
             )
         self.assertEqual(result.value["document_summary"], "ok")
-        self.assertEqual([payload["max_tokens"] for payload in payloads], [100, 150])
+        self.assertEqual([payload["max_tokens"] for payload in payloads], [100, 200])
         self.assertTrue(all(payload["provider"]["require_parameters"] for payload in payloads))
+        self.assertTrue(all(payload["reasoning_format"] == "deepseek" for payload in payloads))
+        self.assertTrue(all(payload["reasoning_budget"] == 0 for payload in payloads))
+        self.assertTrue(all(payload["enable_thinking"] is False for payload in payloads))
+
+
+    def test_length_growth_is_not_limited_by_transient_retry_count(self) -> None:
+        responses = [
+            {"finish_reason": "length", "content": "{}"},
+            {"finish_reason": "length", "content": "{}"},
+            {"finish_reason": "length", "content": "{}"},
+            {
+                "finish_reason": "stop",
+                "content": '{"document_summary":"complete","facets":[]}',
+                "model": "fake",
+            },
+        ]
+        payloads: list[dict[str, Any]] = []
+
+        def fake_request(url: str, payload: dict[str, Any] | None = None, *, timeout: float | None = 600) -> dict[str, Any]:
+            if url.endswith("/v1/models"):
+                return {"data": [{"id": "fake", "meta": {"n_ctx": 4096, "n_ctx_train": 4096}}]}
+            if url.endswith("/apply-template"):
+                return {"prompt": "rendered prompt"}
+            if url.endswith("/tokenize"):
+                return {"tokens": list(range(12))}
+            raise AssertionError(url)
+
+        def fake_completion(
+            url: str,
+            payload: dict[str, Any],
+            *,
+            per_token_timeout_seconds: float,
+        ) -> dict[str, Any]:
+            payloads.append(payload)
+            return responses.pop(0)
+
+        client = AnalysisClient("http://unused", model="fake", retries=1)
+        with patch("file_system_catalog.content_pipeline.request_json", side_effect=fake_request), patch(
+            "file_system_catalog.content_pipeline.stream_chat_completion_json",
+            side_effect=fake_completion,
+        ):
+            result = client.complete(
+                schema_name="x",
+                schema={
+                    "type": "object",
+                    "properties": {
+                        "document_summary": {"type": "string", "x-kmd-string-profile": "reason"},
+                        "facets": {"type": "array", "x-kmd-array-profile": "dense", "items": {"type": "object", "properties": {}, "required": [], "additionalProperties": False}},
+                    },
+                    "required": ["document_summary", "facets"],
+                    "additionalProperties": False,
+                },
+                system="x",
+                user="x",
+                max_tokens=100,
+            )
+
+        assert result.value["document_summary"] == "complete"
+        assert [payload["max_tokens"] for payload in payloads] == [100, 200, 400, 800]
+        assert result.response_metadata["output_budget_index"] == 4
+        assert result.response_metadata["output_budget_count"] > client.retries
 
     def test_chunking_preserves_ranges(self) -> None:
         text = "\n\n".join("Mountain biking material. " * 150 for _ in range(80))
@@ -451,6 +598,197 @@ class ContentPipelineTest(unittest.TestCase):
         self.assertEqual(chunks[0].start_char, 0)
         self.assertEqual(chunks[-1].end_char, len(text))
         self.assertTrue(all(chunk.token_count <= 10500 for chunk in chunks))
+
+
+    def test_chunking_uses_context_relative_embedding_input_share(self) -> None:
+        from file_system_catalog.content_pipeline import ModelContext, chunk_text
+
+        class Analysis:
+            def model_context(self) -> ModelContext:
+                return ModelContext(configured_tokens=1000, trained_tokens=1000)
+
+            def token_count(self, text: str) -> int:
+                return len(text.split())
+
+        class Embedding:
+            def model_context(self) -> ModelContext:
+                return ModelContext(configured_tokens=100, trained_tokens=100)
+
+            def token_count(self, text: str, *, add_special: bool = True) -> int:
+                return len(text.split())
+
+        source = " ".join(f"token{index}" for index in range(80))
+        chunks = chunk_text(
+            source,
+            Analysis(),  # type: ignore[arg-type]
+            embedding_client=Embedding(),  # type: ignore[arg-type]
+            max_tokens=500,
+            max_chars=len(source),
+            target_chars=len(source),
+            overlap_chars=0,
+        )
+
+        assert len(chunks) > 1
+        assert all(len(chunk.text.split()) <= 25 for chunk in chunks)
+        assert "".join("".join(chunk.text.split()) for chunk in chunks) == "".join(source.split())
+
+    def test_embedding_request_uses_finite_response_deadline(self) -> None:
+        client = __import__(
+            "file_system_catalog.content_pipeline", fromlist=["EmbeddingClient"]
+        ).EmbeddingClient(
+            "http://unused", model="fake", revision="r", expected_dimension=2,
+            request_timeout_seconds=23, retries=1,
+        )
+        client._model_context = __import__(
+            "file_system_catalog.content_pipeline", fromlist=["ModelContext"]
+        ).ModelContext(configured_tokens=100, trained_tokens=100)
+        with patch.object(client, "_validate_input", return_value=2), patch(
+            "file_system_catalog.content_pipeline.request_json",
+            return_value={"data": [{"index": 0, "embedding": [1.0, 0.0]}]},
+        ) as request:
+            vectors = client.embed(["x"])
+        self.assertEqual(len(vectors), 1)
+        self.assertEqual(request.call_args.kwargs["timeout"], 23.0)
+
+
+    def test_embedding_batches_respect_context_relative_total_token_budget(self) -> None:
+        from file_system_catalog.content_pipeline import EmbeddingClient, ModelContext
+
+        client = EmbeddingClient(
+            "http://unused",
+            model="fake",
+            revision="r",
+            expected_dimension=2,
+            request_timeout_seconds=23,
+            retries=1,
+        )
+        client._model_context = ModelContext(configured_tokens=80, trained_tokens=80)
+        payloads: list[list[str]] = []
+
+        def fake_request(url: str, payload: dict[str, Any] | None = None, *, timeout: float | None = 600) -> dict[str, Any]:
+            assert payload is not None
+            batch = list(payload["input"])
+            payloads.append(batch)
+            return {
+                "data": [
+                    {"index": index, "embedding": [1.0, 0.0]}
+                    for index, _value in enumerate(batch)
+                ]
+            }
+
+        with patch.object(client, "_validate_input", return_value=6), patch(
+            "file_system_catalog.content_pipeline.request_json", side_effect=fake_request
+        ):
+            vectors = client.embed(["a", "b", "c", "d"])
+
+        assert len(vectors) == 4
+        assert payloads == [["a"], ["b"], ["c"], ["d"]]
+
+    def test_embedding_rejects_oversized_input_before_request(self) -> None:
+        calls: list[str] = []
+
+        def fake_request(url: str, payload: dict[str, Any] | None = None, *, timeout: int = 600) -> dict[str, Any]:
+            calls.append(url)
+            if url.endswith("/v1/models"):
+                return {"data": [{"id": "fake", "meta": {"n_ctx": 5, "n_ctx_train": 8}}]}
+            if url.endswith("/tokenize"):
+                return {"tokens": list(range(6))}
+            raise AssertionError(f"embedding request must not be transmitted: {url}")
+
+        client = __import__(
+            "file_system_catalog.content_pipeline", fromlist=["EmbeddingClient"]
+        ).EmbeddingClient("http://unused", model="fake", revision="r", expected_dimension=2)
+        with patch("file_system_catalog.content_pipeline.request_json", side_effect=fake_request):
+            with self.assertRaisesRegex(RuntimeError, "before transmission"):
+                client.embed(["too large"] )
+        self.assertNotIn("http://unused/v1/embeddings", calls)
+
+
+    def test_analysis_completion_streams_with_per_token_timeout(self) -> None:
+        client = AnalysisClient(
+            "http://unused", model="fake", retries=1, per_token_timeout_seconds=23
+        )
+        response = {
+            "model": "fake",
+            "content": "{}",
+            "reasoning_content": "",
+            "finish_reason": "stop",
+            "stream": True,
+        }
+        from file_system_catalog.content_pipeline import ModelContext
+
+        client._model_context = ModelContext(configured_tokens=4096, trained_tokens=4096)
+        with patch.object(
+            client,
+            "_output_token_budgets",
+            return_value=(12, [21]),
+        ), patch.object(client, "_ensure_request_fits", return_value=12), patch(
+            "file_system_catalog.content_pipeline.stream_chat_completion_json",
+            return_value=response,
+        ) as request:
+            generated = client.complete(
+                schema_name="x",
+                schema={"type": "object", "properties": {}, "required": [], "additionalProperties": False},
+                system="s",
+                user="u",
+                max_tokens=21,
+            )
+        self.assertEqual(generated.value, {})
+        self.assertIs(request.call_args.args[1]["stream"], True)
+        self.assertEqual(
+            request.call_args.kwargs, {"per_token_timeout_seconds": 23.0}
+        )
+        self.assertIs(generated.response_metadata["stream"], True)
+        self.assertEqual(generated.response_metadata["per_token_timeout_seconds"], 23.0)
+
+
+    def test_analysis_rejects_prompt_plus_output_before_request(self) -> None:
+        calls: list[str] = []
+
+        def fake_request(url: str, payload: dict[str, Any] | None = None, *, timeout: int = 600) -> dict[str, Any]:
+            calls.append(url)
+            if url.endswith("/v1/models"):
+                return {"data": [{"id": "fake", "meta": {"n_ctx": 100, "n_ctx_train": 100}}]}
+            if url.endswith("/apply-template"):
+                return {"prompt": "rendered"}
+            if url.endswith("/tokenize"):
+                return {"tokens": list(range(80))}
+            raise AssertionError(f"completion request must not be transmitted: {url}")
+
+        client = AnalysisClient("http://unused", model="fake", retries=1)
+        with patch("file_system_catalog.content_pipeline.request_json", side_effect=fake_request):
+            with self.assertRaisesRegex(RuntimeError, "before transmission"):
+                client.complete(
+                    schema_name="x",
+                    schema={"type": "object", "properties": {}, "required": [], "additionalProperties": False},
+                    system="s",
+                    user="u",
+                    max_tokens=21,
+                )
+        self.assertNotIn("http://unused/v1/chat/completions", calls)
+
+    def test_chunking_obeys_embedding_tokenizer_context(self) -> None:
+        class TinyEmbedding(FakeEmbeddingClient):
+            def model_context(self):
+                from file_system_catalog.content_pipeline import ModelContext
+                return ModelContext(configured_tokens=50, trained_tokens=50)
+
+            def token_count(self, text: str, *, add_special: bool = True) -> int:
+                return len(text) + int(add_special)
+
+        text = "alpha beta gamma delta " * 30
+        chunks = chunk_text(
+            text,
+            FakeAnalysisClient(),
+            embedding_client=TinyEmbedding(),
+            target_chars=300,
+            max_chars=400,
+            overlap_chars=10,
+        )
+        self.assertGreater(len(chunks), 1)
+        self.assertEqual(chunks[0].start_char, 0)
+        self.assertEqual(chunks[-1].end_char, len(text))
+        self.assertTrue(all(len(chunk.text) + 1 <= 50 for chunk in chunks))
 
     def test_legacy_schema_migrates_without_raw_text_duplication(self) -> None:
         with tempfile.TemporaryDirectory() as temporary:
@@ -517,3 +855,43 @@ class ContentPipelineTest(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
+
+
+def test_analysis_and_embedding_control_requests_use_their_own_timeout_attributes() -> None:
+    from file_system_catalog.content_pipeline import AnalysisClient, EmbeddingClient, ModelContext
+
+    analysis = AnalysisClient(
+        "http://unused",
+        model="analysis",
+        retries=1,
+        per_token_timeout_seconds=17,
+    )
+    embedding = EmbeddingClient(
+        "http://unused",
+        model="embedding",
+        revision="r",
+        expected_dimension=2,
+        request_timeout_seconds=23,
+        retries=1,
+    )
+    embedding._model_context = ModelContext(configured_tokens=100, trained_tokens=100)
+    calls: list[tuple[str, float | None]] = []
+
+    def fake_request(url: str, payload: dict[str, Any] | None = None, *, timeout: float | None = 600) -> dict[str, Any]:
+        calls.append((url, timeout))
+        if url.endswith("/health"):
+            return {"status": "ok"}
+        if url.endswith("/tokenize"):
+            return {"tokens": [1, 2]}
+        raise AssertionError(url)
+
+    with patch("file_system_catalog.content_pipeline.request_json", side_effect=fake_request):
+        assert analysis.health() == {"status": "ok"}
+        assert embedding.health() == {"status": "ok"}
+        assert embedding.token_count("x") == 2
+
+    assert calls == [
+        ("http://unused/health", 17.0),
+        ("http://unused/health", 23.0),
+        ("http://unused/tokenize", 23.0),
+    ]

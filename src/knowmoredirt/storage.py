@@ -50,7 +50,11 @@ def open_sqlite(config: StoreConfig) -> sqlite3.Connection:
             f"storage backend {config.backend!r} is not implemented; "
             "use sqlite or provide a backend adapter"
         )
-    connection = sqlite3.connect(config.location, timeout=max(config.busy_timeout_ms, 0) / 1000)
+    connection = sqlite3.connect(
+        config.location,
+        timeout=max(config.busy_timeout_ms, 0) / 1000,
+        check_same_thread=False,
+    )
     connection.row_factory = sqlite3.Row
     connection.execute(f"PRAGMA busy_timeout={max(config.busy_timeout_ms, 0)}")
     connection.execute("PRAGMA foreign_keys=ON")

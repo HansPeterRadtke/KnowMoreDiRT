@@ -597,16 +597,63 @@ def image_metadata(path: bytes) -> tuple[dict[str, Any], str | None]:
         return {}, safe_error(error)
 
 
+def _host_memory_bytes() -> int:
+    try:
+        return int(os.sysconf("SC_PAGE_SIZE")) * int(os.sysconf("SC_PHYS_PAGES"))
+    except (AttributeError, OSError, ValueError):
+        return 1024 * 1024 * 1024
+
+
+def _office_metadata_member_limit_bytes(archive_size: int) -> int:
+    raw_memory = os.environ.get("KMD_OFFICE_METADATA_MEMORY_RATIO", "0.01").strip()
+    raw_expansion = os.environ.get("KMD_OFFICE_METADATA_MAX_EXPANSION_RATIO", "20").strip()
+    try:
+        memory_ratio = float(raw_memory)
+        expansion_ratio = float(raw_expansion)
+    except ValueError as error:
+        raise ValueError("Office metadata limits must be positive numbers") from error
+    if not 0.0 < memory_ratio <= 1.0 or expansion_ratio <= 0.0:
+        raise ValueError("Office metadata limits must be positive numbers")
+    memory_limit = max(1, int(_host_memory_bytes() * memory_ratio))
+    expansion_limit = max(1, int(max(archive_size, 1) * expansion_ratio))
+    return min(memory_limit, expansion_limit)
+
+
+def _read_bounded_zip_member(
+    archive: zipfile.ZipFile,
+    member: str,
+    *,
+    limit: int,
+) -> bytes:
+    info = archive.getinfo(member)
+    if info.file_size > limit:
+        raise RuntimeError(
+            f"Office metadata member exceeds safety limit: member={member} size={info.file_size} limit={limit}"
+        )
+    with archive.open(info, "r") as handle:
+        data = handle.read(limit + 1)
+    if len(data) > limit:
+        raise RuntimeError(f"Office metadata member grew beyond safety limit: {member}")
+    return data
+
+
 def office_metadata(path: bytes) -> tuple[dict[str, Any], str | None]:
     try:
         descriptor = open_for_read(path)
         file_object = os.fdopen(descriptor, "rb", closefd=True)
         with file_object, zipfile.ZipFile(file_object) as archive:
-            result: dict[str, Any] = {"members": len(archive.infolist())}
+            archive_size = os.fstat(file_object.fileno()).st_size
+            member_limit = _office_metadata_member_limit_bytes(archive_size)
+            result: dict[str, Any] = {
+                "members": len(archive.infolist()),
+                "metadata_member_limit_bytes": member_limit,
+            }
             for member, section in (("docProps/core.xml", "core"), ("docProps/app.xml", "app"), ("docProps/custom.xml", "custom")):
                 if member not in archive.namelist():
                     continue
-                root = ElementTree.fromstring(archive.read(member))
+                root = ElementTree.fromstring(
+                    _read_bounded_zip_member(archive, member, limit=member_limit)
+                )
                 values: dict[str, Any] = {}
                 for element in root.iter():
                     if element is root:

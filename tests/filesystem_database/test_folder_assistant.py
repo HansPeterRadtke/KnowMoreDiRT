@@ -10,7 +10,8 @@ from typing import Any, Sequence
 
 import numpy as np
 
-from file_system_catalog.content_pipeline import GeneratedAnalysis
+from context_capacity import context_token_capacity
+from file_system_catalog.content_pipeline import GeneratedAnalysis, ModelContext
 from file_system_catalog.content_schema import CHUNK_TABLE_NAME, REPRESENTATION_TABLE_NAME
 from file_system_catalog.folder_assistant import (
     FolderQuestionAssistant,
@@ -24,6 +25,40 @@ class AssistantAnalysisClient:
     model = "assistant-fake-model"
     seed = 42
     temperature = 0.0
+
+    def model_context(self) -> ModelContext:
+        return ModelContext(configured_tokens=65536, trained_tokens=65536)
+
+    def output_token_budget(
+        self,
+        *,
+        ratio_names: tuple[str, ...] = (),
+        ratio_default: float = 1.0 / 32.0,
+    ) -> int:
+        return context_token_capacity(
+            self.model_context().configured_tokens,
+            ratio_names=ratio_names,
+            ratio_default=ratio_default,
+        )
+
+    def request_fits(
+        self,
+        *,
+        system: str,
+        user: str,
+        max_tokens: int,
+        worst_retry: bool = True,
+    ) -> bool:
+        return self.token_count(system) + self.token_count(user) + max_tokens < self.model_context().configured_tokens
+
+    def available_content_tokens(
+        self,
+        *,
+        system: str,
+        user_without_content: str,
+        max_tokens: int,
+    ) -> int:
+        return self.model_context().configured_tokens - self.token_count(system) - self.token_count(user_without_content) - max_tokens
 
     def health(self) -> dict[str, Any]:
         return {"status": "ok"}
@@ -139,6 +174,9 @@ class AssistantEmbeddingClient:
     model = "assistant-fake-embedding"
     revision = "assistant-fake-revision"
 
+    def model_context(self) -> ModelContext:
+        return ModelContext(configured_tokens=32768, trained_tokens=32768)
+
     def health(self) -> dict[str, Any]:
         return {"status": "ok"}
 
@@ -203,10 +241,16 @@ class FolderAssistantTest(unittest.TestCase):
                 AssistantAnalysisClient._action("semantic", " bicycles ", top_k=500, limit=1000),
             ],
         }
-        plan = normalize_plan(raw, "question")
+        context_size = 65536
+        result_capacity = context_token_capacity(
+            context_size,
+            ratio_names=("KMD_FOLDER_RESULT_COUNT_RATIO",),
+            ratio_default=1.0 / 1024.0,
+        )
+        plan = normalize_plan(raw, "question", context_size=context_size)
         self.assertEqual(len(plan["actions"]), 1)
-        self.assertEqual(plan["actions"][0]["top_k"], 50)
-        self.assertEqual(plan["actions"][0]["limit"], 100)
+        self.assertEqual(plan["actions"][0]["top_k"], result_capacity)
+        self.assertEqual(plan["actions"][0]["limit"], result_capacity)
         inconsistent = normalize_plan(
             {
                 "answer_mode": "metadata",
@@ -215,6 +259,7 @@ class FolderAssistantTest(unittest.TestCase):
                 "actions": [AssistantAnalysisClient._action("semantic", "bicycles")],
             },
             "Which files are about bicycles?",
+            context_size=context_size,
         )
         self.assertEqual(inconsistent["answer_mode"], "files")
         self.assertEqual(inconsistent["combine_mode"], "union")

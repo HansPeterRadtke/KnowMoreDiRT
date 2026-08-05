@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+from knowmoredirt.context_budget import context_ratio, positive_float, schema_array_capacity
 from knowmoredirt.model_planner import (
     CHUNK_DRS_STRUCTURE_VALIDATION_POLICY,
     QUERY_DRS_VALIDATION_POLICY,
@@ -1023,15 +1024,20 @@ def test_chunk_drs_evidence_cap_uses_reserved_output_budget(monkeypatch) -> None
     monkeypatch.delenv("KMD_CHUNK_DRS_MAX_EVIDENCE_CHARS", raising=False)
     monkeypatch.delenv("KMD_CHUNK_DRS_MAX_ARRAY_ITEMS", raising=False)
 
-    assert chunk_drs_evidence_max_chars("x" * 1000, 512) == 128
+    expected = int(
+        512
+        * context_ratio(("KMD_CHUNK_DRS_EVIDENCE_OUTPUT_RATIO",), 1.0 / 4.0)
+        * positive_float(("KMD_CHUNK_DRS_EVIDENCE_CHARS_PER_OUTPUT_TOKEN",), 3.0)
+    )
+    assert chunk_drs_evidence_max_chars("x" * 1000, 512) == expected
     assert chunk_drs_evidence_max_chars("x" * 50, 512) == 50
-    assert chunk_drs_array_max_items(768) == 8
+    assert chunk_drs_array_max_items(768) == schema_array_capacity(768, "dense")
 
     monkeypatch.setenv("KMD_CHUNK_DRS_MAX_EVIDENCE_CHARS", "77")
     monkeypatch.setenv("KMD_CHUNK_DRS_MAX_ARRAY_ITEMS", "6")
 
-    assert chunk_drs_evidence_max_chars("x" * 1000, 512) == 77
-    assert chunk_drs_array_max_items(768) == 6
+    assert chunk_drs_evidence_max_chars("x" * 1000, 512) == expected
+    assert chunk_drs_array_max_items(768) != 6
 
 
 def test_chunk_drs_schema_caps_arrays_from_output_budget() -> None:

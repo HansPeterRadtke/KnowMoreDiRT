@@ -7,14 +7,33 @@ from typing import Any
 import pytest
 
 from knowmoredirt.engine import KnowMoreDiRTEngine
+from knowmoredirt.context_budget import context_relative_budget, context_safety_tokens, context_token_capacity, contextualize_json_schema
 from knowmoredirt.model import (
     LocalModelClient,
     LocalModelJSONError,
+    LocalModelContextError,
     LocalModelUnavailableError,
-    _append_missing_json_closers,
 )
 from knowmoredirt.models import Answer, Evidence
 from knowmoredirt import model_planner
+ORIGINAL_EXACT_CONTEXT_BUDGET = LocalModelClient.exact_context_budget
+
+
+@pytest.fixture(autouse=True)
+def _stub_exact_context_budget_for_transport_units(monkeypatch) -> None:
+    def fake_budget(self, endpoint, body, *, output_tokens):
+        return {
+            "context_size": 4096,
+            "prompt_tokens": 64,
+            "output_tokens": int(output_tokens),
+            "safety_tokens": 128,
+            "available_output_tokens": 3904,
+            "total_reserved_tokens": 64 + int(output_tokens) + 128,
+        }
+
+    monkeypatch.setattr(LocalModelClient, "exact_context_budget", fake_budget)
+
+
 from knowmoredirt.model_planner import (
     _repair_chunk_drs_payload,
     _validate_chunk_drs_payload,
@@ -63,26 +82,17 @@ def test_verifier_prompt_allows_scoped_embedded_bindings() -> None:
     assert "instead of requiring the candidate text itself to repeat the target anchor" in prompt
 
 
-def test_json_fragment_repair_appends_missing_trailing_closer() -> None:
-    repaired = _append_missing_json_closers(
-        '{"a":"content_phrase","targets":["Mist Vale"],"predicates":["say"]'
-    )
-
-    assert repaired == '{"a":"content_phrase","targets":["Mist Vale"],"predicates":["say"]}'
-    assert _append_missing_json_closers("not json") is None
-
-
 def test_engine_chunk_stage_uses_per_token_timeout(monkeypatch) -> None:
     created: list[tuple[str, float]] = []
 
     class FakeClient:
-        def __init__(self, endpoint: str, timeout_seconds: float) -> None:
+        def __init__(self, endpoint: str, per_token_timeout_seconds: float) -> None:
             self.endpoint = endpoint
-            self.timeout_seconds = timeout_seconds
+            self.per_token_timeout_seconds = per_token_timeout_seconds
 
-    def fake_local_model_client(endpoint: str, timeout_seconds: float) -> FakeClient:
-        created.append((endpoint, timeout_seconds))
-        return FakeClient(endpoint, timeout_seconds)
+    def fake_local_model_client(endpoint: str, per_token_timeout_seconds: float) -> FakeClient:
+        created.append((endpoint, per_token_timeout_seconds))
+        return FakeClient(endpoint, per_token_timeout_seconds)
 
     monkeypatch.setenv("KMD_LOCAL_MODEL_PER_TOKEN_TIMEOUT_SECONDS", "420")
     monkeypatch.setattr("knowmoredirt.engine.LocalModelClient", fake_local_model_client)
@@ -92,15 +102,15 @@ def test_engine_chunk_stage_uses_per_token_timeout(monkeypatch) -> None:
     chunk_client = engine._chunk_stage_model_client(default_client)
 
     assert chunk_client is not default_client
-    assert chunk_client.timeout_seconds == 420
-    assert default_client.timeout_seconds == 240
+    assert chunk_client.per_token_timeout_seconds == 420
+    assert default_client.per_token_timeout_seconds == 240
     assert created == [("http://127.0.0.1:14829/v1", 420.0)]
 
 
 def test_engine_question_stage_per_token_timeout_uses_shared_positive_validation(monkeypatch) -> None:
     class FakeClient:
         endpoint = "http://127.0.0.1:14829/v1"
-        timeout_seconds = 240
+        per_token_timeout_seconds = 240
 
     engine = KnowMoreDiRTEngine.__new__(KnowMoreDiRTEngine)
     monkeypatch.setenv("KMD_LOCAL_MODEL_PER_TOKEN_TIMEOUT_SECONDS", "not-a-number")
@@ -112,7 +122,7 @@ def test_engine_question_stage_per_token_timeout_uses_shared_positive_validation
 def test_engine_chunk_stage_per_token_timeout_rejects_non_positive_values(monkeypatch) -> None:
     class FakeClient:
         endpoint = "http://127.0.0.1:14829/v1"
-        timeout_seconds = 240
+        per_token_timeout_seconds = 240
 
     engine = KnowMoreDiRTEngine.__new__(KnowMoreDiRTEngine)
     monkeypatch.setenv("KMD_LOCAL_MODEL_PER_TOKEN_TIMEOUT_SECONDS", "0")
@@ -171,7 +181,7 @@ def test_answer_verification_old_request_failure_cache_is_ignored(monkeypatch) -
     assert result["accepted"] is True
     assert result["entailed"] is True
     assert result["answer"] == "ready"
-    assert result["cache_context"]["n_predict"] == 128
+    assert result["cache_context"]["n_predict"] == context_token_capacity(model.context_size(), ratio_default=1.0 / 64.0)
     assert result["cache_context"]["expected_answer_type"] == "state"
     assert result["cache_context"]["evidence_count"] == 1
     assert result["cache_context"]["discourse_frame_count"] == 1
@@ -231,7 +241,9 @@ def test_drs_ingest_scan_unit_default_scales_to_large_model_context(monkeypatch)
     monkeypatch.delenv("KMD_SCAN_UNIT_CHARS_PER_TOKEN", raising=False)
     monkeypatch.delenv("KMD_CONTEXT_CHARS_PER_TOKEN", raising=False)
 
-    assert _scan_unit_max_chars(LargeContextModel()) == 263454
+    context = LargeContextModel().context_size()
+    expected = int(context * (1.0 - 0.25 - 0.02 - 0.03 - 0.125) * 3.0)
+    assert _scan_unit_max_chars(LargeContextModel()) == expected
 
 
 def test_drs_ingest_scan_unit_budget_ratios_are_configurable(monkeypatch) -> None:
@@ -246,6 +258,7 @@ def test_drs_ingest_scan_unit_budget_ratios_are_configurable(monkeypatch) -> Non
     monkeypatch.setenv("KMD_SCAN_UNIT_SAFETY_RATIO", "0")
     monkeypatch.setenv("KMD_SCAN_UNIT_OVERHEAD_RATIO", "0")
     monkeypatch.setenv("KMD_SCAN_UNIT_CHARS_PER_TOKEN", "2")
+    monkeypatch.setenv("KMD_SCAN_UNIT_STAGED_SKELETON_RATIO", "0")
 
     assert _scan_unit_max_chars(ContextModel()) == 1000
 
@@ -506,6 +519,248 @@ def test_chunk_drs_repair_preserves_ungrounded_box_evidence_for_validation() -> 
     assert validation["grounding_failure_count"] >= 1
 
 
+
+def test_chunk_drs_repair_restores_exact_source_whitespace_for_provenance() -> None:
+    source_text = (
+        "record=001 | note=ordinary structured log row with ids and links\n"
+        "record=002 | note=another row"
+    )
+    payload = {
+        "drs": {
+            "schema_version": "chunk-drs-v5",
+            "source_id": "logs/events.raw",
+            "referents": [
+                {"id": "r0", "label": "record", "kind": "entity", "evidence_text": "record=001"}
+            ],
+            "boxes": [
+                {
+                    "id": "b0",
+                    "kind": "asserted",
+                    "parent_id": "",
+                    "holder_referent_id": "",
+                    "evidence_text": "record=001 | note=ordinary structured logrow",
+                }
+            ],
+            "conditions": [
+                {
+                    "id": "c0",
+                    "predicate": "note",
+                    "box_id": "b0",
+                    "polarity": "positive",
+                    "modality": "asserted",
+                    "temporal_id": "",
+                    "arguments": [
+                        {
+                            "role": "record",
+                            "target_kind": "referent",
+                            "target_id": "r0",
+                            "value": "record=001",
+                            "value_type": "record",
+                            "evidence_text": "record=001",
+                        }
+                    ],
+                    "evidence_text": "record=001 | note=ordinary structured log row with ids and links",
+                }
+            ],
+            "identity_hypotheses": [],
+            "temporal_records": [],
+            "evidence_spans": [],
+            "semantic_notes": [],
+        }
+    }
+
+    repaired = _repair_chunk_drs_payload(payload, source_text)
+    validation = _validate_chunk_drs_payload(repaired, source_text)
+
+    assert repaired["drs"]["boxes"][0]["evidence_text"] == (
+        "record=001 | note=ordinary structured log row"
+    )
+    assert validation["schema_valid"] is True
+
+
+def test_chunk_drs_repair_does_not_map_non_whitespace_provenance_changes() -> None:
+    source_text = "record=001 | note=ordinary structured log row"
+    payload = {
+        "drs": {
+            "schema_version": "chunk-drs-v5",
+            "source_id": "logs/events.raw",
+            "referents": [],
+            "boxes": [
+                {
+                    "id": "b0",
+                    "kind": "asserted",
+                    "parent_id": "",
+                    "holder_referent_id": "",
+                    "evidence_text": "record=001 | note=ordinary altered log row",
+                }
+            ],
+            "conditions": [],
+            "identity_hypotheses": [],
+            "temporal_records": [],
+            "evidence_spans": [],
+            "semantic_notes": [],
+        }
+    }
+
+    repaired = _repair_chunk_drs_payload(payload, source_text)
+
+    assert repaired["drs"]["boxes"][0]["evidence_text"] == (
+        "record=001 | note=ordinary altered log row"
+    )
+    assert _validate_chunk_drs_payload(repaired, source_text)["schema_valid"] is False
+
+
+def test_chunk_drs_repair_unwraps_only_exact_source_backed_quote_delimiters() -> None:
+    source_text = "Mira owns the scheduler. Additional context follows."
+    payload = {
+        "drs": {
+            "schema_version": "chunk-drs-v5",
+            "source_id": "product.json",
+            "referents": [
+                {"id": "r0", "label": "Mira", "kind": "person", "evidence_text": "Mira"}
+            ],
+            "boxes": [
+                {
+                    "id": "b0",
+                    "kind": "asserted",
+                    "parent_id": "",
+                    "holder_referent_id": "",
+                    "evidence_text": '"Mira owns the scheduler."',
+                }
+            ],
+            "conditions": [
+                {
+                    "id": "c0",
+                    "predicate": "owns",
+                    "box_id": "b0",
+                    "polarity": "positive",
+                    "modality": "asserted",
+                    "temporal_id": "",
+                    "arguments": [
+                        {
+                            "role": "owner",
+                            "target_kind": "referent",
+                            "target_id": "r0",
+                            "value": "Mira",
+                            "value_type": "person",
+                            "evidence_text": "Mira",
+                        }
+                    ],
+                    "evidence_text": '"Mira owns the scheduler."',
+                }
+            ],
+            "identity_hypotheses": [],
+            "temporal_records": [],
+            "evidence_spans": [],
+            "semantic_notes": [],
+        }
+    }
+
+    repaired = _repair_chunk_drs_payload(payload, source_text)
+
+    assert repaired["drs"]["boxes"][0]["evidence_text"] == "Mira owns the scheduler."
+    assert repaired["drs"]["conditions"][0]["evidence_text"] == "Mira owns the scheduler."
+    assert _validate_chunk_drs_payload(repaired, source_text)["schema_valid"] is True
+
+
+def test_chunk_drs_repair_preserves_quoted_non_source_semantics_for_rejection() -> None:
+    source_text = "Mira owns the scheduler."
+    payload = {
+        "drs": {
+            "schema_version": "chunk-drs-v5",
+            "source_id": "product.json",
+            "referents": [],
+            "boxes": [
+                {
+                    "id": "b0",
+                    "kind": "asserted",
+                    "parent_id": "",
+                    "holder_referent_id": "",
+                    "evidence_text": '"Mira sold the scheduler."',
+                }
+            ],
+            "conditions": [],
+            "identity_hypotheses": [],
+            "temporal_records": [],
+            "evidence_spans": [],
+            "semantic_notes": [],
+        }
+    }
+
+    repaired = _repair_chunk_drs_payload(payload, source_text)
+
+    assert repaired["drs"]["boxes"][0]["evidence_text"] == '"Mira sold the scheduler."'
+    assert _validate_chunk_drs_payload(repaired, source_text)["schema_valid"] is False
+
+
+def test_chunk_drs_repair_maps_invalid_structural_root_box_to_exact_source_prefix() -> None:
+    source_text = '{\n  "product": "BeaconForce",\n  "owner": "Mara Chen"\n}'
+    payload = {
+        "drs": {
+            "schema_version": "chunk-drs-v5",
+            "source_id": "products/BeaconForce.json",
+            "referents": [],
+            "boxes": [
+                {
+                    "id": "b0",
+                    "kind": "asserted",
+                    "parent_id": "",
+                    "holder_referent_id": "",
+                    "evidence_text": "products/BeaconForce.json",
+                }
+            ],
+            "conditions": [],
+            "identity_hypotheses": [],
+            "temporal_records": [],
+            "evidence_spans": [],
+            "semantic_notes": [],
+        }
+    }
+
+    repaired = _repair_chunk_drs_payload(payload, source_text)
+    evidence = repaired["drs"]["boxes"][0]["evidence_text"]
+
+    assert evidence in source_text
+    assert evidence == source_text[: len("products/BeaconForce.json")]
+    assert _validate_chunk_drs_payload(repaired, source_text)["schema_valid"] is True
+
+
+def test_chunk_drs_repair_does_not_remap_invalid_subordinate_box_provenance() -> None:
+    source_text = "Mara Chen owns the scheduler."
+    payload = {
+        "drs": {
+            "schema_version": "chunk-drs-v5",
+            "source_id": "products/BeaconForce.json",
+            "referents": [],
+            "boxes": [
+                {
+                    "id": "b0",
+                    "kind": "asserted",
+                    "parent_id": "",
+                    "holder_referent_id": "",
+                    "evidence_text": "Mara Chen owns the scheduler.",
+                },
+                {
+                    "id": "b1",
+                    "kind": "reported",
+                    "parent_id": "b0",
+                    "holder_referent_id": "",
+                    "evidence_text": "products/BeaconForce.json",
+                },
+            ],
+            "conditions": [],
+            "identity_hypotheses": [],
+            "temporal_records": [],
+            "evidence_spans": [],
+            "semantic_notes": [],
+        }
+    }
+
+    repaired = _repair_chunk_drs_payload(payload, source_text)
+
+    assert repaired["drs"]["boxes"][1]["evidence_text"] == "products/BeaconForce.json"
+    assert _validate_chunk_drs_payload(repaired, source_text)["schema_valid"] is False
+
 def test_query_drs_projection_does_not_inherit_deterministic_question_plan_defaults() -> None:
     from knowmoredirt.model_planner import query_frame_from_query_drs
 
@@ -632,7 +887,7 @@ def test_local_model_client_discovers_runtime_metadata(monkeypatch) -> None:
     monkeypatch.setattr("urllib.request.urlopen", fake_urlopen)
     monkeypatch.setenv("KMD_LOCAL_MODEL_API", "chat")
 
-    client = LocalModelClient(endpoint="http://127.0.0.1:14829/v1", timeout_seconds=30)
+    client = LocalModelClient(endpoint="http://127.0.0.1:14829/v1", per_token_timeout_seconds=30)
 
     assert client.model_id() == "Qwen2.5-14B-Instruct-Q4_K_M.gguf"
     assert client.context_size() == 24576
@@ -644,14 +899,20 @@ def test_local_model_client_discovers_runtime_metadata(monkeypatch) -> None:
     transport = fingerprint["transport_settings"]
     assert transport["api"] == "chat"
     assert transport["cache_prompt"] is True
-    assert transport["min_constrained_json_tokens"] == 16384
+    assert transport["context_contract_policy"] == "exact-rendered-prompt-explicit-output-terminal-stream-v4"
+    assert transport["context_safety_tokens"] == context_safety_tokens(client.context_size())
+    assert transport["schema_bounds_native"] is True
+    assert transport["terminal_stream_required"] is True
     assert transport["constraint_mode"] == "auto"
     assert transport["native_constraints"] is True
     assert transport["reasoning_control_token_model"] is False
     chunk_transport = chunk_drs_cache_context(client)["model_fingerprint"]["transport_settings"]
     assert chunk_transport["api"] == "chat"
     assert chunk_transport["cache_prompt"] is True
-    assert chunk_transport["min_constrained_json_tokens"] == 16384
+    assert chunk_transport["context_contract_policy"] == "exact-rendered-prompt-explicit-output-terminal-stream-v4"
+    assert chunk_transport["context_safety_tokens"] == context_safety_tokens(client.context_size())
+    assert chunk_transport["schema_bounds_native"] is True
+    assert chunk_transport["terminal_stream_required"] is True
     assert chunk_transport["constraint_mode"] == "auto"
     assert chunk_transport["native_constraints"] is True
 
@@ -670,7 +931,7 @@ def test_local_model_auto_constraints_stay_native_for_reasoning_control_models(m
     monkeypatch.setattr("urllib.request.urlopen", fake_urlopen)
     monkeypatch.delenv("KMD_LOCAL_MODEL_CONSTRAINT_MODE", raising=False)
 
-    client = LocalModelClient(endpoint="http://127.0.0.1:14829/v1", timeout_seconds=30)
+    client = LocalModelClient(endpoint="http://127.0.0.1:14829/v1", per_token_timeout_seconds=30)
     transport = client.transport_settings()
 
     assert transport["constraint_mode"] == "auto"
@@ -692,7 +953,7 @@ def test_local_model_prompt_constraint_mode_is_diagnostic_only_without_override(
     monkeypatch.setattr("urllib.request.urlopen", fake_urlopen)
     monkeypatch.setenv("KMD_LOCAL_MODEL_CONSTRAINT_MODE", "prompt")
 
-    client = LocalModelClient(endpoint="http://127.0.0.1:14829/v1", timeout_seconds=30)
+    client = LocalModelClient(endpoint="http://127.0.0.1:14829/v1", per_token_timeout_seconds=30)
     transport = client.transport_settings()
 
     assert transport["constraint_mode"] == "prompt"
@@ -737,9 +998,10 @@ def test_local_model_prompt_constraint_mode_requires_explicit_soft_json_override
     monkeypatch.setenv("KMD_LOCAL_MODEL_CONSTRAINT_MODE", "prompt")
     monkeypatch.setenv("KMD_LOCAL_MODEL_ALLOW_PROMPT_CONSTRAINTS", "1")
 
-    client = LocalModelClient(endpoint="http://127.0.0.1:14829/v1", timeout_seconds=30)
+    client = LocalModelClient(endpoint="http://127.0.0.1:14829/v1", per_token_timeout_seconds=30)
     result = client.complete_json(
         "Return JSON.",
+        n_predict=context_token_capacity(4096, ratio_default=1.0 / 64.0),
         json_schema={
             "type": "object",
             "additionalProperties": False,
@@ -781,7 +1043,7 @@ def test_local_model_complete_json_returns_exact_request_audit(monkeypatch) -> N
     monkeypatch.setenv("KMD_LOCAL_MODEL_CONSTRAINT_MODE", "native")
     monkeypatch.setenv("KMD_LOCAL_MODEL_MIN_CONSTRAINED_JSON_TOKENS", "1")
 
-    client = LocalModelClient(endpoint="http://127.0.0.1:14829/v1", timeout_seconds=30)
+    client = LocalModelClient(endpoint="http://127.0.0.1:14829/v1", per_token_timeout_seconds=30)
     result = client.complete_json(
         "Return JSON.",
         n_predict=16,
@@ -828,7 +1090,9 @@ def test_local_model_complete_json_records_throughput(monkeypatch) -> None:
                             }
                         )
                         + "\n\n"
-                    ).encode()
+                    ).encode(),
+                    b'data: {"choices":[{"finish_reason":"stop","delta":{}}],"timings":{"prompt_n":12,"predicted_n":4,"predicted_per_second":42.5}}\n\n',
+                    b"data: [DONE]\n\n",
                 ]
             )
         raise AssertionError(f"unexpected URL {url}")
@@ -837,7 +1101,7 @@ def test_local_model_complete_json_records_throughput(monkeypatch) -> None:
     monkeypatch.setenv("KMD_LOCAL_MODEL_API", "chat")
     monkeypatch.setenv("KMD_LOCAL_MODEL_CONSTRAINT_MODE", "native")
     monkeypatch.delenv("KMD_MODEL_THROUGHPUT_LOG", raising=False)
-    client = LocalModelClient(endpoint="http://127.0.0.1:14829/v1", timeout_seconds=30)
+    client = LocalModelClient(endpoint="http://127.0.0.1:14829/v1", per_token_timeout_seconds=30)
 
     parsed = client.complete_json("return ok", n_predict=64, json_schema={"type": "object", "additionalProperties": False, "required": ["ok"], "properties": {"ok": {"type": "boolean"}}})
 
@@ -923,15 +1187,20 @@ def test_verifier_diagnostic_frames_are_capped(monkeypatch) -> None:
             ]
             return FakeCursor(rows[:limit])
 
-    monkeypatch.setenv("KMD_VERIFIER_DISCOURSE_FRAME_LIMIT", "8")
+    class ContextModel:
+        def context_size(self) -> int:
+            return 65536
+
     engine = KnowMoreDiRTEngine.__new__(KnowMoreDiRTEngine)
+    engine._model_client = ContextModel()  # type: ignore[assignment]
     store = FakeStore()
     engine.store = store
+    expected_limit = context_token_capacity(65536, ratio_default=1.0 / 8192.0)
 
     frames = engine._diagnostic_frames_for_answer(Answer("ready", evidence=[Evidence("note.txt", "Aero Gate is ready.")]))
 
-    assert len(frames) == 8
-    assert store.params == ("note.txt", 8)
+    assert len(frames) == expected_limit
+    assert store.params == ("note.txt", expected_limit)
 
 
 def test_engine_requires_reachable_local_model_in_normal_runtime(monkeypatch, tmp_path) -> None:
@@ -965,13 +1234,15 @@ def test_local_model_client_uses_completion_stream_and_json_schema(monkeypatch) 
                 lines=[
                     b'data: {"content":"{\\"ok\\":true"}\n\n',
                     b'data: {"content":"} trailing text"}\n\n',
+                    b'data: {"stop":true,"timings":{"prompt_n":10,"predicted_n":2}}\n\n',
+                    b"data: [DONE]\n\n",
                 ]
             )
         raise AssertionError(f"unexpected URL {url}")
 
     monkeypatch.setattr("urllib.request.urlopen", fake_urlopen)
     monkeypatch.setenv("KMD_LOCAL_MODEL_API", "completion")
-    client = LocalModelClient(endpoint="http://127.0.0.1:14829/v1", timeout_seconds=30)
+    client = LocalModelClient(endpoint="http://127.0.0.1:14829/v1", per_token_timeout_seconds=30)
     client.server_metadata()
 
     parsed = client.complete_json(
@@ -983,14 +1254,14 @@ def test_local_model_client_uses_completion_stream_and_json_schema(monkeypatch) 
 
     assert parsed["ok"] is True
     assert parsed["_model_endpoint"] == "http://127.0.0.1:14829/completion"
-    assert parsed["_model_stream_closed_after_json"] is True
+    assert parsed["_model_stream_closed_after_json"] is False
     assert requests[0]["body"]["stream"] is True
-    assert requests[0]["body"]["n_predict"] == 16384
+    assert requests[0]["body"]["n_predict"] == 64
     assert requests[0]["body"]["json_schema"]["type"] == "object"
     assert "grammar" not in requests[0]["body"]
     assert parsed["_model_constraint_settings"]["mode"] == "completion_json_schema"
     assert parsed["_model_constraint_settings"]["requested_n_predict"] == 64
-    assert parsed["_model_constraint_settings"]["effective_n_predict"] == 16384
+    assert parsed["_model_constraint_settings"]["effective_n_predict"] == 64
 
 
 
@@ -1008,12 +1279,18 @@ def test_local_model_client_chat_json_schema_uses_response_format(monkeypatch) -
         if str(url).endswith("/v1/chat/completions"):
             body = json.loads(request.data.decode("utf-8"))
             requests.append({"url": str(url), "body": body})
-            return FakeHTTPResponse(lines=[('data: ' + json.dumps({"choices": [{"delta": {"content": '{\"ok\":true}'}}]}) + '\n\n').encode()])
+            return FakeHTTPResponse(
+                lines=[
+                    ('data: ' + json.dumps({"choices": [{"delta": {"content": '{\"ok\":true}'}}]}) + '\n\n').encode(),
+                    b'data: {"choices":[{"finish_reason":"stop","delta":{}}],"timings":{"prompt_n":10,"predicted_n":4}}\n\n',
+                    b"data: [DONE]\n\n",
+                ]
+            )
         raise AssertionError(f"unexpected URL {url}")
 
     monkeypatch.setattr("urllib.request.urlopen", fake_urlopen)
     monkeypatch.setenv("KMD_LOCAL_MODEL_API", "chat")
-    client = LocalModelClient(endpoint="http://127.0.0.1:14829/v1", timeout_seconds=30)
+    client = LocalModelClient(endpoint="http://127.0.0.1:14829/v1", per_token_timeout_seconds=30)
 
     parsed = client.complete_json(
         "return ok",
@@ -1029,24 +1306,24 @@ def test_local_model_client_chat_json_schema_uses_response_format(monkeypatch) -
     assert parsed["ok"] is True
     body = requests[0]["body"]
     assert "json_schema" not in body
-    assert body["max_tokens"] == 16384
+    assert body["max_tokens"] == 64
     assert body["response_format"]["type"] == "json_schema"
     assert body["response_format"]["json_schema"]["schema"]["properties"]["ok"]["type"] == "boolean"
     assert parsed["_model_constraint_settings"]["mode"] == "chat_response_format_json_schema"
     assert parsed["_model_constraint_settings"]["requested_n_predict"] == 64
-    assert parsed["_model_constraint_settings"]["effective_n_predict"] == 16384
+    assert parsed["_model_constraint_settings"]["effective_n_predict"] == 64
 
 
 def test_local_model_client_rejects_grammar_only_semantic_contract(monkeypatch) -> None:
     monkeypatch.setenv("KMD_LOCAL_MODEL_API", "chat")
-    client = LocalModelClient(endpoint="http://127.0.0.1:14829/v1", timeout_seconds=30)
+    client = LocalModelClient(endpoint="http://127.0.0.1:14829/v1", per_token_timeout_seconds=30)
     with pytest.raises(LocalModelUnavailableError, match="grammar-only"):
         client.complete_json("return ok", grammar='root ::= "{}"')
 
 
 def test_local_model_client_rejects_nonportable_open_schema(monkeypatch) -> None:
     monkeypatch.setenv("KMD_LOCAL_MODEL_API", "chat")
-    client = LocalModelClient(endpoint="http://127.0.0.1:14829/v1", timeout_seconds=30)
+    client = LocalModelClient(endpoint="http://127.0.0.1:14829/v1", per_token_timeout_seconds=30)
     with pytest.raises(ValueError, match="additionalProperties=false"):
         client.complete_json(
             "return ok",
@@ -1069,6 +1346,8 @@ def test_local_model_client_stream_uses_per_token_read_timeout_only(monkeypatch)
                 lines=[
                     b'data: {"content": "{\\"ok\\":"}\n\n',
                     b'data: {"content": "true}"}\n\n',
+                    b'data: {"stop":true,"timings":{"prompt_n":10,"predicted_n":2}}\n\n',
+                    b"data: [DONE]\n\n",
                 ]
             )
         raise AssertionError(f"unexpected URL {url}")
@@ -1081,7 +1360,7 @@ def test_local_model_client_stream_uses_per_token_read_timeout_only(monkeypatch)
     monkeypatch.setattr("urllib.request.urlopen", fake_urlopen)
     monkeypatch.setattr("knowmoredirt.model.time.time", fake_time)
     monkeypatch.setenv("KMD_LOCAL_MODEL_API", "completion")
-    client = LocalModelClient(endpoint="http://127.0.0.1:14829/v1", timeout_seconds=2)
+    client = LocalModelClient(endpoint="http://127.0.0.1:14829/v1", per_token_timeout_seconds=2)
     client.server_metadata()
 
     parsed = client.complete_json("return ok", n_predict=64, json_schema={"type": "object", "additionalProperties": False, "required": ["ok"], "properties": {"ok": {"type": "boolean"}}})
@@ -1201,7 +1480,7 @@ def test_query_evidence_invalid_json_after_failed_repair_is_bounded(monkeypatch,
     assert result["repair_failure_reason"] == "invalid_json"
     assert result["repair_prompt_hash"]
     assert result["cache_context"]["repair"] is False
-    assert result["cache_context"]["n_predict"] == 128
+    assert result["cache_context"]["n_predict"] == context_token_capacity(model.context_size(), ratio_default=1.0 / 32.0)
     assert result["cache_context"]["model_fingerprint"]["model_id"] == "fake-query-evidence-invalid-repair"
     assert result["repair_cache_context"]["repair"] is True
     assert result["repair_cache_context"]["model_fingerprint"]["model_id"] == "fake-query-evidence-invalid-repair"
@@ -1386,7 +1665,7 @@ def test_answer_canonicalization_old_request_failure_cache_is_ignored(monkeypatc
     assert result["accepted"] is True
     assert result["answer"] == "ready"
     assert result["fresh_or_cached"] == "fresh"
-    assert result["cache_context"]["n_predict"] == 96
+    assert result["cache_context"]["n_predict"] == context_token_capacity(model.context_size(), ratio_default=1.0 / 128.0)
     assert result["cache_context"]["answer_type"] == "state"
     assert result["cache_context"]["evidence_count"] == 1
     assert result["cache_context"]["model_fingerprint"]["model_id"] == "fake-canonicalization-old-request-cache"
@@ -1501,7 +1780,7 @@ def test_source_resolved_answer_rewrites_deictic_reported_content(monkeypatch) -
 
     assert result["accepted"] is True
     assert result["answer"] == "Taylor expected patch.py to land tomorrow."
-    assert result["cache_context"]["n_predict"] == 160
+    assert result["cache_context"]["n_predict"] == context_token_capacity(4096, ratio_default=1.0 / 128.0)
     assert result["cache_context"]["constraint_mode"] == "json_schema"
 
 
@@ -1592,7 +1871,7 @@ def test_identity_canonicalization_old_invalid_cache_is_ignored(monkeypatch) -> 
     assert result["same_referent"] is True
     assert result["answer"] == "Aero Gate"
     assert result["fresh_or_cached"] == "fresh"
-    assert result["cache_context"]["n_predict"] == 96
+    assert result["cache_context"]["n_predict"] == context_token_capacity(model.context_size(), ratio_default=1.0 / 128.0)
     assert result["cache_context"]["fuller_candidate_count"] == 1
     assert result["cache_context"]["evidence_count"] == 1
     assert result["cache_context"]["model_fingerprint"]["model_id"] == "fake-identity-old-invalid-cache"
@@ -1726,7 +2005,7 @@ def test_query_frame_invalid_json_failure_is_cached(monkeypatch, tmp_path) -> No
     assert second["accepted"] is False
     assert second["reason"] == "invalid_json"
     assert second["cache_context"]["model_fingerprint"]["model_id"] == "fake-query-frame-invalid-cache"
-    assert model.calls == 1
+    assert model.calls == 2
 
 
 def test_query_frame_request_failure_does_not_poison_cache(monkeypatch, tmp_path) -> None:
@@ -2146,8 +2425,13 @@ def test_query_drs_planner_uses_json_schema(monkeypatch, tmp_path) -> None:
     assert query_schema["properties"]["schema_version"]["enum"] == ["query-drs-v3"]
     assert query_schema["properties"]["temporal_scope"]["enum"] == ["", "earliest", "latest"]
     assert query_schema["properties"]["aggregation"]["enum"] == ["", "count", "list", "set"]
-    assert "maxItems" not in query_schema["properties"]["requested_conditions"]
-    assert "maxItems" not in query_schema["properties"]["requested_conditions"]["items"]["properties"]["arguments"]
+    assert query_schema["properties"]["requested_conditions"]["maxItems"] == query_drs_array_max_items(result["cache_context"]["n_predict"])
+    resolved_query_schema = contextualize_json_schema(
+        model.json_schema,
+        context_size=model.context_size(),
+        output_tokens=result["cache_context"]["n_predict"],
+    )["properties"]["query_drs"]
+    assert resolved_query_schema["properties"]["requested_conditions"]["items"]["properties"]["arguments"]["maxItems"] > 0
     assert "generic DRT query DRS" in model.prompt
 
 
@@ -2299,7 +2583,7 @@ def test_compact_query_drs_rejects_cached_missing_relation_without_deterministic
     class CachedMissingRelationModel:
         def __init__(self) -> None:
             self.calls = 0
-            self.timeout_seconds = 420
+            self.per_token_timeout_seconds = 420
 
         def context_size(self) -> int:
             return 4096
@@ -2370,7 +2654,8 @@ def test_compact_query_drs_rejects_cached_missing_relation_without_deterministic
 
     result = call_model_query_drs(question, model)  # type: ignore[arg-type]
 
-    assert model.calls == 5
+    expected_calls = 2 + len(model_planner._query_drs_retry_budgets(default_query_drs_n_predict(model, question)))
+    assert model.calls == expected_calls
     assert result["accepted"] is False
     assert result["reason"] == "request_failed"
 
@@ -2379,7 +2664,7 @@ def test_compact_query_drs_rejects_cached_wrong_answer_argument_without_determin
     class CachedWrongAnswerArgumentModel:
         def __init__(self) -> None:
             self.calls = 0
-            self.timeout_seconds = 420
+            self.per_token_timeout_seconds = 420
 
         def context_size(self) -> int:
             return 4096
@@ -2478,7 +2763,8 @@ def test_compact_query_drs_rejects_cached_wrong_answer_argument_without_determin
 
     result = call_model_query_drs(question, model)  # type: ignore[arg-type]
 
-    assert model.calls == 5
+    expected_calls = 2 + len(model_planner._query_drs_retry_budgets(default_query_drs_n_predict(model, question)))
+    assert model.calls == expected_calls
     assert result["accepted"] is False
     assert result["reason"] == "request_failed"
 
@@ -2550,22 +2836,22 @@ def test_short_query_drs_uses_smaller_surface_budget(monkeypatch, tmp_path) -> N
     monkeypatch.setenv("KMD_QUERY_DRS_CACHE_DIR", str(tmp_path / "query-drs-cache"))
     model = LargeContextQueryModel()
 
-    assert default_query_drs_n_predict(model, "Who reviewed Aero Gate?") == 1024  # type: ignore[arg-type]
+    assert default_query_drs_n_predict(model, "Who reviewed Aero Gate?") == context_token_capacity(model.context_size(), ratio_default=1.0 / 32.0)  # type: ignore[arg-type]
     result = call_model_query_drs("Who reviewed Aero Gate?", model)  # type: ignore[arg-type]
 
     assert result["accepted"] is True
     assert result["output_budget_policy"] == QUERY_DRS_DYNAMIC_OUTPUT_BUDGET_POLICY
     assert result["operator_schema_policy"] == QUERY_OPERATOR_SCHEMA_POLICY
-    assert result["cache_context"]["n_predict"] == 1024
+    assert result["cache_context"]["n_predict"] == default_query_drs_n_predict(model, "Who reviewed Aero Gate?")
     assert result["cache_context"]["output_budget_policy"] == QUERY_DRS_DYNAMIC_OUTPUT_BUDGET_POLICY
     assert result["cache_context"]["operator_schema_policy"] == QUERY_OPERATOR_SCHEMA_POLICY
     assert result["cache_context"]["max_array_items"] == query_drs_array_max_items(1024)
     assert result["cache_context"]["model_fingerprint"]["model_id"] == "fake-large-context-query-drs"
     assert result["cache_context"]["model_fingerprint"]["context_size"] == 32768
-    assert model.n_predict == 1024
+    assert model.n_predict == default_query_drs_n_predict(model, "Who reviewed Aero Gate?")
     assert model.json_schema is not None
     query_schema = model.json_schema["properties"]["query_drs"]
-    assert "maxItems" not in query_schema["properties"]["requested_conditions"]
+    assert query_schema["properties"]["requested_conditions"]["maxItems"] == query_drs_array_max_items(default_query_drs_n_predict(model, "Who reviewed Aero Gate?"))
 
 
 def test_query_drs_request_failure_does_not_poison_cache(monkeypatch, tmp_path) -> None:
@@ -2822,7 +3108,8 @@ def test_query_drs_request_failure_retries_smaller_budget(monkeypatch, tmp_path)
     result = call_model_query_drs("Who reviewed Aero Gate?", model)  # type: ignore[arg-type]
 
     assert result["accepted"] is True
-    assert model.calls == [1024, 2048]
+    base = default_query_drs_n_predict(model, "Who reviewed Aero Gate?")
+    assert model.calls == [base, int(base * 1.5)]
     assert result["request_failure_retry_index"] == 1
     assert result["query_drs_retry_attempts"][0]["reason"] == "request_failed"
 
@@ -2857,7 +3144,7 @@ def test_compact_chunk_drs_regenerates_empty_legacy_definition_cache(monkeypatch
     class DefinitionCompactModel:
         def __init__(self) -> None:
             self.calls = 0
-            self.timeout_seconds = 240
+            self.per_token_timeout_seconds = 240
 
         def context_size(self) -> int:
             return 4096
@@ -2942,7 +3229,7 @@ def test_compact_chunk_drs_retries_empty_current_cache(monkeypatch, tmp_path) ->
     class EmptyCacheRetryCompactModel:
         def __init__(self) -> None:
             self.calls: list[int] = []
-            self.timeout_seconds = 240
+            self.per_token_timeout_seconds = 240
 
         def context_size(self) -> int:
             return 4096
@@ -3018,7 +3305,7 @@ def test_compact_chunk_drs_retries_empty_current_cache(monkeypatch, tmp_path) ->
         refresh_empty_legacy=True,
     )
 
-    assert model.calls == [768]
+    assert model.calls == [int(72 * 2.0)]
     assert result["accepted"] is True
     assert result["drs"]["conditions"][0]["predicate"] == "means"
 
@@ -3030,7 +3317,7 @@ def test_compact_chunk_drs_retries_empty_current_cache(monkeypatch, tmp_path) ->
 
 def test_compact_chunk_drs_cache_file_ties_output_to_model_input_audit(monkeypatch, tmp_path) -> None:
     class AuditedCompactModel:
-        timeout_seconds = 30
+        per_token_timeout_seconds = 30
 
         def context_size(self) -> int:
             return 4096
@@ -3083,13 +3370,25 @@ def test_compact_chunk_drs_cache_file_ties_output_to_model_input_audit(monkeypat
     assert "Glossary: luro means silver path." in stored["model_input_audit"]["request_body_json"]
 
 
-def test_only_transport_failures_are_retryable_for_structured_json_calls() -> None:
-    assert model_planner._cached_structured_failure_retryable({"reason": "request_failed"}) is True
-    assert model_planner._cached_request_failed({"reason": "request_failed"}) is True
-    for reason in ["invalid_json", "schema_validation_failed", "grounding_validation_failed"]:
-        assert model_planner._cached_structured_failure_retryable({"reason": reason}) is False
-        assert model_planner._cached_request_failed({"reason": reason}) is False
-    assert model_planner._cached_structured_failure_retryable({"reason": "compact_drs", "accepted": True}) is False
+def test_incomplete_and_truncated_structured_calls_are_retryable() -> None:
+    for reason in [
+        "request_failed",
+        "invalid_json",
+        "schema_validation_failed",
+        "incomplete_stream",
+        "context_limit_exhausted",
+        "output_limit_exhausted",
+        "generation_limit_exhausted",
+        "context_budget_exceeded",
+    ]:
+        assert model_planner._cached_structured_failure_retryable({"reason": reason}) is True
+        assert model_planner._cached_request_failed({"reason": reason}) is True
+    assert model_planner._cached_structured_failure_retryable(
+        {"reason": "grounding_validation_failed"}
+    ) is False
+    assert model_planner._cached_structured_failure_retryable(
+        {"reason": "compact_drs", "accepted": True}
+    ) is False
 
 
 def test_cached_schema_and_grounding_failures_are_retryable() -> None:
@@ -3102,7 +3401,7 @@ def test_compact_chunk_drs_does_not_reuse_source_cache_from_old_constraint_polic
     class PolicyAwareCompactModel:
         def __init__(self) -> None:
             self.calls = 0
-            self.timeout_seconds = 240
+            self.per_token_timeout_seconds = 240
 
         def context_size(self) -> int:
             return 4096
@@ -3169,7 +3468,7 @@ def test_chunk_drs_does_not_skip_structured_json_records_before_model(monkeypatc
     class StructuredRecordModel:
         def __init__(self) -> None:
             self.calls = 0
-            self.timeout_seconds = 240
+            self.per_token_timeout_seconds = 240
 
         def context_size(self) -> int:
             return 4096
@@ -3240,12 +3539,12 @@ def test_chunk_drs_does_not_skip_structured_json_records_before_model(monkeypatc
 def test_compact_chunk_schema_is_portable_and_strict() -> None:
     facts_schema = model_planner.COMPACT_CHUNK_DRS_JSON_SCHEMA["properties"]["facts"]
     assert facts_schema["type"] == "array"
-    assert "maxItems" not in facts_schema
+    assert facts_schema["x-kmd-array-profile"] == "compact"
     fact_item = facts_schema["items"]
     assert fact_item["additionalProperties"] is False
     arg_schema = fact_item["properties"]["arguments"]
     assert arg_schema["type"] == "array"
-    assert "maxItems" not in arg_schema
+    assert arg_schema["x-kmd-array-profile"] == "arguments"
     assert arg_schema["items"]["additionalProperties"] is False
 
 
@@ -3253,7 +3552,7 @@ def test_compact_chunk_drs_uses_json_schema_and_explicit_arguments(monkeypatch, 
     class CompactSchemaModel:
         def __init__(self) -> None:
             self.calls: list[dict[str, object]] = []
-            self.timeout_seconds = 240
+            self.per_token_timeout_seconds = 240
 
         def context_size(self) -> int:
             return 4096
@@ -3390,7 +3689,7 @@ def test_compact_chunk_drs_reuses_condition_retry_cache_after_empty_current_cach
     class CachedRetryCompactModel:
         def __init__(self) -> None:
             self.calls = 0
-            self.timeout_seconds = 240
+            self.per_token_timeout_seconds = 240
 
         def context_size(self) -> int:
             return 4096
@@ -3527,13 +3826,13 @@ def test_compact_chunk_drs_reuses_equivalent_condition_cache_after_empty_current
     class EquivalentCacheCompactModel:
         def __init__(self) -> None:
             self.calls = 0
-            self.timeout_seconds = 240.0
+            self.per_token_timeout_seconds = 240.0
 
         def context_size(self) -> int:
             return 4096
 
         def cache_fingerprint(self) -> dict[str, Any]:
-            return {"model_id": "fake-equivalent-cache-compact", "context_size": 4096, "timeout_seconds": 240.0}
+            return {"model_id": "fake-equivalent-cache-compact", "context_size": 4096, "per_token_timeout_seconds": 240.0}
 
         def complete_json(self, prompt: str, *, n_predict: int = 128, grammar=None, json_schema=None):
             self.calls += 1
@@ -3598,7 +3897,7 @@ def test_compact_chunk_drs_reuses_equivalent_condition_cache_after_empty_current
                     "model_fingerprint": {
                         "model_id": "fake-equivalent-cache-compact",
                         "context_size": 4096,
-                        "timeout_seconds": 240,
+                        "per_token_timeout_seconds": 240,
                     },
                     "source_rel_path": rel_path,
                 },
@@ -3665,7 +3964,7 @@ def test_compact_chunk_drs_reuses_equivalent_condition_cache_before_live_call(mo
     class EquivalentCacheOnlyCompactModel:
         def __init__(self) -> None:
             self.calls = 0
-            self.timeout_seconds = 240.0
+            self.per_token_timeout_seconds = 240.0
 
         def context_size(self) -> int:
             return 4096
@@ -4058,7 +4357,7 @@ def test_qwen35_chat_requests_disable_thinking_through_template_kwargs(monkeypat
 
     monkeypatch.setattr("urllib.request.urlopen", fake_urlopen)
     monkeypatch.delenv("KMD_LOCAL_MODEL_SEND_THINKING_CONTROLS", raising=False)
-    client = LocalModelClient(endpoint="http://127.0.0.1:14829/v1", timeout_seconds=30)
+    client = LocalModelClient(endpoint="http://127.0.0.1:14829/v1", per_token_timeout_seconds=30)
     parsed = client.complete_json(
         "return ok",
         n_predict=64,
@@ -4066,6 +4365,210 @@ def test_qwen35_chat_requests_disable_thinking_through_template_kwargs(monkeypat
     )
     assert parsed["ok"] is True
     assert requests[0]["enable_thinking"] is False
-    assert "reasoning_format" not in requests[0]
+    assert requests[0]["reasoning_format"] == "deepseek"
+    assert requests[0]["reasoning_budget"] == 0
     assert requests[0]["chat_template_kwargs"] == {"enable_thinking": False}
     assert parsed["_model_transport_settings"]["thinking_controls_sent"] is True
+
+
+def _prime_contract_test_client(client: LocalModelClient, context_size: int = 4096) -> None:
+    client._metadata = {
+        "models": {"data": [{"id": "test-model", "meta": {"n_ctx": context_size}}]},
+        "slots": [{"n_ctx": context_size, "params": {}}],
+        "props": {"default_generation_settings": {"n_ctx": context_size, "params": {}}},
+    }
+
+
+def test_exact_context_budget_uses_rendered_prompt_tokens_and_safety(monkeypatch) -> None:
+    client = LocalModelClient(endpoint="http://127.0.0.1:14829/v1", per_token_timeout_seconds=30)
+    _prime_contract_test_client(client)
+    monkeypatch.setenv("KMD_LOCAL_MODEL_CONTEXT_SAFETY_RATIO", str(32 / 4096))
+    monkeypatch.setattr(client, "context_size", lambda metadata=None: 4096)
+    monkeypatch.setattr(client, "rendered_prompt", lambda endpoint, body: "rendered prompt")
+    monkeypatch.setattr(client, "token_count", lambda text: 700)
+
+    budget = ORIGINAL_EXACT_CONTEXT_BUDGET(
+        client,
+        "http://127.0.0.1:14829/v1/chat/completions",
+        {"messages": []},
+        output_tokens=256,
+    )
+
+    assert budget == {
+        "context_size": 4096,
+        "prompt_tokens": 700,
+        "output_tokens": 256,
+        "safety_tokens": 32,
+        "available_output_tokens": 3364,
+        "total_reserved_tokens": 988,
+    }
+
+
+def test_complete_json_rejects_context_overflow_before_generation(monkeypatch) -> None:
+    client = LocalModelClient(endpoint="http://127.0.0.1:14829/v1", per_token_timeout_seconds=30)
+    _prime_contract_test_client(client)
+    monkeypatch.setattr(
+        client,
+        "exact_context_budget",
+        lambda endpoint, body, *, output_tokens: {
+            "context_size": 4096,
+            "prompt_tokens": 4000,
+            "output_tokens": output_tokens,
+            "safety_tokens": 128,
+            "available_output_tokens": -32,
+            "total_reserved_tokens": 4000 + output_tokens + 128,
+        },
+    )
+    monkeypatch.setattr(
+        "urllib.request.urlopen",
+        lambda *args, **kwargs: (_ for _ in ()).throw(AssertionError("generation request must not be sent")),
+    )
+
+    with pytest.raises(LocalModelContextError, match="does not fit model context"):
+        client.complete_json(
+            "return ok",
+            n_predict=64,
+            json_schema={
+                "type": "object",
+                "additionalProperties": False,
+                "required": ["ok"],
+                "properties": {"ok": {"type": "boolean"}},
+            },
+        )
+
+
+def test_complete_json_rejects_balanced_json_without_terminal_stream_event(monkeypatch) -> None:
+    def fake_urlopen(request, timeout: float = 0) -> FakeHTTPResponse:
+        url = str(getattr(request, "full_url", request))
+        if url.endswith("/v1/chat/completions"):
+            return FakeHTTPResponse(
+                lines=[b'data: {"choices":[{"delta":{"content":"{\\"ok\\":true}"}}]}\n\n']
+            )
+        raise AssertionError(f"unexpected URL {url}")
+
+    monkeypatch.setattr("urllib.request.urlopen", fake_urlopen)
+    client = LocalModelClient(endpoint="http://127.0.0.1:14829/v1", per_token_timeout_seconds=30)
+    _prime_contract_test_client(client)
+
+    with pytest.raises(LocalModelJSONError) as caught:
+        client.complete_json(
+            "return ok",
+            n_predict=64,
+            json_schema={
+                "type": "object",
+                "additionalProperties": False,
+                "required": ["ok"],
+                "properties": {"ok": {"type": "boolean"}},
+            },
+        )
+
+    assert caught.value.reason == "incomplete_stream"
+    assert caught.value.response_metadata["saw_done"] is False
+    assert caught.value.raw_text == '{"ok":true}'
+
+
+def test_complete_json_classifies_output_limit_exhaustion(monkeypatch) -> None:
+    def fake_urlopen(request, timeout: float = 0) -> FakeHTTPResponse:
+        url = str(getattr(request, "full_url", request))
+        if url.endswith("/v1/chat/completions"):
+            return FakeHTTPResponse(
+                lines=[
+                    b'data: {"choices":[{"delta":{"content":"{\\"value\\":\\"abc"}}]}\n\n',
+                    b'data: {"choices":[{"finish_reason":"length","delta":{}}],"usage":{"prompt_tokens":64,"completion_tokens":4}}\n\n',
+                    b"data: [DONE]\n\n",
+                ]
+            )
+        raise AssertionError(f"unexpected URL {url}")
+
+    monkeypatch.setattr("urllib.request.urlopen", fake_urlopen)
+    client = LocalModelClient(endpoint="http://127.0.0.1:14829/v1", per_token_timeout_seconds=30)
+    _prime_contract_test_client(client)
+
+    with pytest.raises(LocalModelJSONError) as caught:
+        client.complete_json(
+            "return value",
+            n_predict=4,
+            json_schema={
+                "type": "object",
+                "additionalProperties": False,
+                "required": ["value"],
+                "properties": {"value": {"type": "string", "maxLength": 100}},
+            },
+        )
+
+    assert caught.value.reason == "output_limit_exhausted"
+    assert caught.value.response_metadata["finish_reason"] == "length"
+    assert caught.value.response_metadata["completion_tokens"] == 4
+
+
+def test_complete_json_preserves_native_size_bounds_in_request(monkeypatch) -> None:
+    captured: dict[str, Any] = {}
+
+    def fake_urlopen(request, timeout: float = 0) -> FakeHTTPResponse:
+        url = str(getattr(request, "full_url", request))
+        if url.endswith("/v1/chat/completions"):
+            captured.update(json.loads(request.data.decode("utf-8")))
+            return FakeHTTPResponse(
+                lines=[
+                    b'data: {"choices":[{"delta":{"content":"{\\"values\\":[\\"abc\\"]}"}}]}\n\n',
+                    b'data: {"choices":[{"finish_reason":"stop","delta":{}}]}\n\n',
+                    b"data: [DONE]\n\n",
+                ]
+            )
+        raise AssertionError(f"unexpected URL {url}")
+
+    monkeypatch.setattr("urllib.request.urlopen", fake_urlopen)
+    client = LocalModelClient(endpoint="http://127.0.0.1:14829/v1", per_token_timeout_seconds=30)
+    _prime_contract_test_client(client)
+    schema = {
+        "type": "object",
+        "additionalProperties": False,
+        "required": ["values"],
+        "properties": {
+            "values": {
+                "type": "array",
+                "maxItems": 2,
+                "items": {"type": "string", "maxLength": 5},
+            }
+        },
+    }
+
+    parsed = client.complete_json("return values", n_predict=32, json_schema=schema)
+
+    sent = captured["response_format"]["json_schema"]["schema"]
+    assert sent["properties"]["values"]["maxItems"] == 2
+    assert sent["properties"]["values"]["items"]["maxLength"] == 5
+    assert captured["max_tokens"] == 32
+    assert parsed["values"] == ["abc"]
+
+
+def test_complete_json_rejects_completed_json_outside_schema_bounds(monkeypatch) -> None:
+    def fake_urlopen(request, timeout: float = 0) -> FakeHTTPResponse:
+        url = str(getattr(request, "full_url", request))
+        if url.endswith("/v1/chat/completions"):
+            return FakeHTTPResponse(
+                lines=[
+                    b'data: {"choices":[{"delta":{"content":"{\\"value\\":\\"too long\\"}"}}]}\n\n',
+                    b'data: {"choices":[{"finish_reason":"stop","delta":{}}]}\n\n',
+                    b"data: [DONE]\n\n",
+                ]
+            )
+        raise AssertionError(f"unexpected URL {url}")
+
+    monkeypatch.setattr("urllib.request.urlopen", fake_urlopen)
+    client = LocalModelClient(endpoint="http://127.0.0.1:14829/v1", per_token_timeout_seconds=30)
+    _prime_contract_test_client(client)
+
+    with pytest.raises(LocalModelJSONError) as caught:
+        client.complete_json(
+            "return value",
+            n_predict=32,
+            json_schema={
+                "type": "object",
+                "additionalProperties": False,
+                "required": ["value"],
+                "properties": {"value": {"type": "string", "maxLength": 3}},
+            },
+        )
+
+    assert caught.value.reason == "schema_validation_failed"

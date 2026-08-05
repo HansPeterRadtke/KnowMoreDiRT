@@ -17,13 +17,9 @@ def parser() -> argparse.ArgumentParser:
     value.add_argument("--embedding-url", default="http://127.0.0.1:18139")
     value.add_argument("--embedding-model", default="qwen3-embedding-0.6b-q8")
     value.add_argument("--embedding-revision", default="370f27d7550e0def9b39c1f16d3fbaa13aa67728:Q8_0")
-    value.add_argument("--embedding-batch-size", type=int, default=32)
-    value.add_argument("--embedding-max-batch-characters", type=int, default=60000)
     value.add_argument("--raw-only", action="store_true", help="migrate or refresh chunk metadata and whole-chunk vectors without rerunning the LLM")
     value.add_argument("--path", action="append", dest="paths", help="analyze only this relative path; repeatable")
     value.add_argument("--max-files", type=int)
-    value.add_argument("--chunk-batch-size", type=int, default=3)
-    value.add_argument("--chunk-batch-token-budget", type=int, default=25000)
     value.add_argument("--seed", type=int, default=42)
     value.add_argument("--temperature", type=float, default=0.0)
     return value
@@ -42,8 +38,6 @@ def main(argv: list[str] | None = None) -> int:
             arguments.embedding_url,
             model=arguments.embedding_model,
             revision=arguments.embedding_revision,
-            batch_size=arguments.embedding_batch_size,
-            max_batch_characters=arguments.embedding_max_batch_characters,
         )
         pipeline = ContentSemanticPipeline(
             database=arguments.database,
@@ -52,8 +46,6 @@ def main(argv: list[str] | None = None) -> int:
             analysis_client=analysis,
             embedding_client=embedding,
             seed=arguments.seed,
-            chunk_batch_size=arguments.chunk_batch_size,
-            chunk_batch_token_budget=arguments.chunk_batch_token_budget,
         )
         if arguments.raw_only:
             result = pipeline.backfill_chunks(

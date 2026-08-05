@@ -18,13 +18,24 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import Any
 
-from .context_budget import context_ratio, context_relative_budget
+from .answer_types import ExpectedAnswer, classify_value, is_value_compatible
+from .atomic_io import atomic_write_json, quarantine_corrupt_file
+from .context_budget import (
+    CONTEXT_CAPACITY_POLICY,
+    context_char_capacity,
+    context_ratio,
+    context_relative_budget,
+    context_token_capacity,
+    contextualize_json_schema,
+    positive_float,
+    schema_array_capacity,
+)
 from .drs_validation import box_parent_cycle_errors, box_root_errors, condition_argument_cycle_errors
-from .model import LocalModelClient, LocalModelJSONError
+from .model import LocalModelClient, LocalModelContextError, LocalModelJSONError, LocalModelUnavailableError
 from .extractors import identifiers, urls
 from .query import QueryFrame, frame_from_mapping, term_variants, visible_anchors
 from .relations import extract_relations
-from .text import content_tokens, normalize
+from .text import content_tokens, normalize, split_units
 
 
 ANSWER_TYPES = {
@@ -113,12 +124,12 @@ QUERY_QUESTION_COVERAGE_SKIP_TERMS = {
     "with",
 }
 
-PROMPT_VERSION = "kmd-drt-2026-05-28-v35"
-CHUNK_FRAME_SCHEMA_VERSION = "chunk-frames-v5"
+PROMPT_VERSION = "kmd-drt-2026-08-04-v39-locality-atomic-transactional"
+CHUNK_FRAME_SCHEMA_VERSION = "chunk-frames-v7"
 CHUNK_FRAME_CONTEXT_BUDGET_POLICY = "runtime-context-minus-output-prompt-overhead-v1"
-CHUNK_DRS_SCHEMA_VERSION = "chunk-drs-v2"
-CHUNK_DRS_STAGED_FALLBACK_POLICY = "retry-invalid-json-schema-grounding-staged-temporal-scope-v3"
-CHUNK_DRS_GROUNDING_REPAIR_POLICY = "model-label-value-escaped-evidence-span-v3"
+CHUNK_DRS_SCHEMA_VERSION = "chunk-drs-v5"
+CHUNK_DRS_STAGED_FALLBACK_POLICY = "retry-explicit-truncation-schema-grounding-staged-v4"
+CHUNK_DRS_GROUNDING_REPAIR_POLICY = "source-locality-json-array-nested-sentence-all-arguments-v7"
 CHUNK_DRS_IDENTITY_PROVENANCE_POLICY = "identity-evidence-bilateral-surface-box-scope-v2"
 CHUNK_DRS_TEMPORAL_PROVENANCE_POLICY = "condition-stage-declared-temporal-records-v2"
 CHUNK_DRS_SPARSE_RETRY_POLICY = "retry-validated-sparse-drs-staged-v2"
@@ -130,37 +141,39 @@ CHUNK_DRS_NEGATION_CONTRACT = (
     "automatically negate an embedded event merely mentioned inside it. Do not leave negation only in evidence text, "
     "argument text, a context label, or a positive predicate. "
 )
-CHUNK_DRS_STRUCTURE_VALIDATION_POLICY = "single-root-acyclic-box-parent-condition-arguments-v4"
+CHUNK_DRS_STRUCTURE_VALIDATION_POLICY = "record-consistent-evidence-single-root-acyclic-v5"
 CHUNK_DRS_BOX_COMPLETION_POLICY = "model-complete-missing-box-declarations-v1"
-CHUNK_DRS_SOURCE_SPAN_POLICY = "chunk-drs-delimiter-source-span-enum-v2"
+CHUNK_DRS_SOURCE_SPAN_POLICY = "exact-contiguous-source-span-record-consistent-v3"
 CHUNK_DRS_SKELETON_SOURCE_SPAN_POLICY = "stage1-source-span-evidence-enum-v1"
 CHUNK_DRS_SKELETON_ID_POLICY = "stage1-stable-id-enums-no-holder-v2"
 CHUNK_DRS_MONOLITHIC_ID_POLICY = "monolithic-stable-id-enums-v1"
 CHUNK_DRS_COMPACT_UNDERCOVERAGE_POLICY = "retry-delimiter-rich-low-condition-density-v1"
 CHUNK_DRS_STAGED_RETRY_DIAGNOSTICS_POLICY = "record-non-improving-staged-retry-v1"
-CHUNK_DRS_STAGE_FAILURE_CACHE_POLICY = "cache-invalid-json-stage-failures-v2"
-CHUNK_DRS_DYNAMIC_SKELETON_BUDGET_POLICY = "large-source-root-box-floor-2048-v3"
-CHUNK_DRS_DYNAMIC_OUTPUT_BUDGET_POLICY = "source-aware-tiny-prose-544-short-768-1024-v2"
-CHUNK_DRS_DYNAMIC_CONDITION_BUDGET_POLICY = "compact-nontemporal-condition-stage-floor-528-v2"
-CHUNK_DRS_STAGED_FIRST_POLICY = "field-like-source-spans-before-monolithic-v1"
+CHUNK_DRS_STAGE_FAILURE_CACHE_POLICY = "transient-stage-failures-never-authoritative-v3"
+CHUNK_DRS_DYNAMIC_SKELETON_BUDGET_POLICY = "large-source-finite-skeleton-8192-v4"
+CHUNK_DRS_DYNAMIC_OUTPUT_BUDGET_POLICY = "context-relative-exact-admission-v4"
+CHUNK_DRS_DYNAMIC_CONDITION_BUDGET_POLICY = "finite-condition-stage-16384-v3"
+CHUNK_DRS_STAGED_FIRST_POLICY = "context-relative-structured-density-route-v2"
 CHUNK_DRS_COMPACT_FACT_POLICY_LEGACY = "compact-model-facts-to-root-drs-v1"
 CHUNK_DRS_COMPACT_FACT_POLICY_PREVIOUS = "compact-model-facts-to-root-drs-v2"
-CHUNK_DRS_COMPACT_FACT_POLICY = "compact-model-facts-with-embedded-scope-predicate-v6"
+CHUNK_DRS_COMPACT_FACT_POLICY_NEGATED_SCOPE_LEGACY = "compact-model-facts-with-embedded-scope-predicate-v6"
+CHUNK_DRS_COMPACT_FACT_POLICY = "compact-model-facts-negated-scope-to-negative-polarity-v7"
+CHUNK_DRS_COMPACT_NEGATION_MIGRATION_POLICY = "negated-scope-positive-condition-to-root-negative-v1"
 CHUNK_DRS_COMPACT_TEMPORAL_SOURCE_POLICY = "compact-source-span-explicit-timestamp-v1"
 CHUNK_DRS_COMPACT_RETRY_POLICY = "retry-compact-invalid-json-larger-budget-v2"
 QUERY_DRS_SCHEMA_VERSION = "query-drs-v3"
 QUERY_DRS_VALIDATION_POLICY = "strict-query-drs-version-question-evidence-box-dag-repair-operators-semantic-coverage-repair-v13"
 QUERY_DRS_ARRAY_CAP_POLICY = "reserved_output_tokens_div_96_4_8-v1"
-QUERY_DRS_DYNAMIC_OUTPUT_BUDGET_POLICY = "surface-token-budget-compound1024-large2048-v2"
+QUERY_DRS_DYNAMIC_OUTPUT_BUDGET_POLICY = "context-relative-query-output-v3"
 QUERY_DRS_COMPACT_PLAN_POLICY = "compact-model-plan-to-query-drs-cache-revalidate-v3"
-CONSTRAINT_TRANSPORT_POLICY = "bounded-json-schema-min4096-structured-record-route-v1"
+CONSTRAINT_TRANSPORT_POLICY = "context-relative-native-bounds-exact-output-v4"
 QUERY_DRS_COMPACT_UNDERCOVERAGE_POLICY = "broad-slot-uncovered-token-full-fallback-v1"
 QUERY_DRS_REQUEST_FAILURE_RETRY_POLICY = "retry-query-drs-grow-output-budget-v2"
 CHUNK_DRS_STRUCTURED_RECORD_ROUTE_POLICY = "structured-records-use-deterministic-extraction-no-drs-skip-v1"
 QUERY_OPERATOR_SCHEMA_POLICY = "query-temporal-aggregation-operator-enums-v1"
-QUERY_FRAME_SCHEMA_VERSION = "query-frame-v6"
-ANSWER_SCHEMA_VERSION = "answer-v4"
-VERIFIER_SCHEMA_VERSION = "answer-verification-v4"
+QUERY_FRAME_SCHEMA_VERSION = "query-frame-v8"
+ANSWER_SCHEMA_VERSION = "answer-v8-locality-authoritative-frame"
+VERIFIER_SCHEMA_VERSION = "answer-verification-v7-locality"
 
 QUERY_FRAME_GRAMMAR = r'''
 root ::= "{" ws "\"query_frame\"" ws ":" ws "{" ws "\"target_anchors\"" ws ":" ws string_array ws "," ws "\"answer_variables\"" ws ":" ws string_array ws "," ws "\"requested_relation\"" ws ":" ws string ws "," ws "\"relation_terms\"" ws ":" ws string_array ws "," ws "\"constraints\"" ws ":" ws string_array ws "," ws "\"scope_requirements\"" ws ":" ws string_array ws "," ws "\"modality_requirements\"" ws ":" ws string_array ws "," ws "\"answer_type\"" ws ":" ws answer_type ws "," ws "\"temporal_scope\"" ws ":" ws string ws "," ws "\"negated\"" ws ":" ws bool ws "," ws "\"aggregation\"" ws ":" ws string ws "," ws "\"requires_evidence\"" ws ":" ws bool ws "}" ws "}"
@@ -203,7 +216,7 @@ def _client_fingerprint(client: LocalModelClient | None) -> dict[str, Any]:
         return payload if isinstance(payload, dict) else {}
     return {
         "endpoint": getattr(client, "endpoint", ""),
-        "per_token_timeout_seconds": getattr(client, "timeout_seconds", ""),
+        "per_token_timeout_seconds": getattr(client, "per_token_timeout_seconds", ""),
         "seed": os.environ.get("KMD_LOCAL_MODEL_SEED", "1778779265"),
         "transport_settings": _local_model_transport_fingerprint(),
     }
@@ -221,100 +234,70 @@ def _client_context_size(client: LocalModelClient | None) -> int:
     return 0
 
 
-def default_chunk_frame_n_predict(client: LocalModelClient | None = None) -> int:
-    configured = os.environ.get("KMD_CHUNK_FRAME_N_PREDICT")
-    if configured:
-        try:
-            return max(1, int(configured))
-        except ValueError:
-            pass
+def _context_output_tokens(
+    client: LocalModelClient | None,
+    *,
+    ratio_names: tuple[str, ...],
+    ratio_default: float,
+) -> int:
     context_size = _client_context_size(client)
-    if context_size > 0:
-        return max(192, min(1024, context_size // 32))
-    return 192
+    if context_size <= 0:
+        raise LocalModelUnavailableError("model context size is required to derive an output budget")
+    return context_token_capacity(
+        context_size,
+        ratio_names=ratio_names,
+        ratio_default=ratio_default,
+    )
+
+
+def default_chunk_frame_n_predict(client: LocalModelClient | None = None) -> int:
+    return _context_output_tokens(
+        client,
+        ratio_names=("KMD_CHUNK_FRAME_OUTPUT_RATIO",),
+        ratio_default=1.0 / 16.0,
+    )
 
 
 def default_chunk_drs_n_predict(client: LocalModelClient | None = None, chunk_text: str = "") -> int:
-    configured = os.environ.get("KMD_CHUNK_DRS_N_PREDICT")
-    if configured:
-        try:
-            return max(1, int(configured))
-        except ValueError:
-            pass
-    context_size = _client_context_size(client)
-    source_text = str(chunk_text or "")
-    if context_size > 0:
-        context_budget = context_relative_budget(
-            context_size,
-            output_ratio_names=("KMD_CHUNK_DRS_OUTPUT_RATIO",),
-        )
-        if not source_text:
-            return context_budget.output_tokens
-        source_tokens = max(1, _estimate_tokens(source_text))
-        floor_ratio = context_ratio(("KMD_CHUNK_DRS_OUTPUT_FLOOR_RATIO",), 1.0 / 512.0)
-        source_ratio = float(os.environ.get("KMD_CHUNK_DRS_OUTPUT_SOURCE_TOKEN_RATIO", "64"))
-        if source_ratio <= 0.0:
-            source_ratio = 64.0
-        source_scaled = int(round(source_tokens * source_ratio))
-        floor_tokens = int(round(context_size * floor_ratio))
-        return max(1, min(context_budget.output_tokens, max(floor_tokens, source_scaled)))
-    fallback = os.environ.get("KMD_CHUNK_DRS_FALLBACK_N_PREDICT", "").strip()
-    if fallback:
-        try:
-            return max(1, int(fallback))
-        except ValueError:
-            pass
-    return 384
+    del chunk_text
+    return _context_output_tokens(
+        client,
+        ratio_names=("KMD_CHUNK_DRS_OUTPUT_RATIO",),
+        ratio_default=1.0 / 4.0,
+    )
 
 
 def default_query_drs_n_predict(client: LocalModelClient | None = None, question: str = "") -> int:
-    configured = os.environ.get("KMD_QUERY_DRS_N_PREDICT")
-    if configured:
-        try:
-            return max(1, int(configured))
-        except ValueError:
-            pass
-    context_size = _client_context_size(client)
-    if context_size <= 0:
-        return 1024
-    context_budget = max(1024, min(2048, context_size // 32))
-    token_count = len(content_tokens(question))
-    anchor_count = len(visible_anchors(question))
-    q_norm = normalize(question)
-    compound_role = any(token in q_norm for token in [" and ", " or ", "review", "author", "approv", "owner"])
-    if compound_role or anchor_count >= 3:
-        return min(context_budget, 1536)
-    if question and token_count <= 14 and anchor_count <= 3:
-        return min(context_budget, 768)
-    if question and token_count <= 32 and anchor_count <= 6:
-        return min(context_budget, 1024)
-    return context_budget
+    del question
+    return _context_output_tokens(
+        client,
+        ratio_names=("KMD_QUERY_DRS_OUTPUT_RATIO",),
+        ratio_default=1.0 / 32.0,
+    )
 
 
-def default_compact_query_drs_n_predict(question: str = "") -> int:
-    configured = os.environ.get("KMD_QUERY_DRS_COMPACT_N_PREDICT")
-    if configured:
-        try:
-            return max(1, int(configured))
-        except ValueError:
-            pass
-    token_count = len(content_tokens(question))
-    return 64 if token_count <= 20 else 96
+def default_compact_query_drs_n_predict(
+    client: LocalModelClient | None = None,
+    question: str = "",
+) -> int:
+    del question
+    return _context_output_tokens(
+        client,
+        ratio_names=("KMD_QUERY_DRS_COMPACT_OUTPUT_RATIO",),
+        ratio_default=1.0 / 256.0,
+    )
 
 
-def default_compact_chunk_drs_n_predict(chunk_text: str = "") -> int:
-    configured = os.environ.get("KMD_CHUNK_DRS_COMPACT_N_PREDICT")
-    if configured:
-        try:
-            return max(1, int(configured))
-        except ValueError:
-            pass
-    token_count = len(content_tokens(chunk_text))
-    if token_count <= 20:
-        return 384
-    if token_count <= 60:
-        return 768
-    return 1024
+def default_compact_chunk_drs_n_predict(
+    client: LocalModelClient | None = None,
+    chunk_text: str = "",
+) -> int:
+    del chunk_text
+    return _context_output_tokens(
+        client,
+        ratio_names=("KMD_CHUNK_DRS_COMPACT_OUTPUT_RATIO",),
+        ratio_default=1.0 / 64.0,
+    )
 
 
 ANSWER_TYPE_ALIASES = {
@@ -384,7 +367,7 @@ def _cache_material(stage: str, prompt: str, client: LocalModelClient | None, se
         "prompt_version": PROMPT_VERSION,
         "prompt": prompt,
         "model_endpoint": getattr(client, "endpoint", os.environ.get("KMD_LOCAL_MODEL_ENDPOINT", "")),
-        "model_per_token_timeout_seconds": getattr(client, "timeout_seconds", os.environ.get("KMD_LOCAL_MODEL_PER_TOKEN_TIMEOUT_SECONDS", "")),
+        "model_per_token_timeout_seconds": getattr(client, "per_token_timeout_seconds", os.environ.get("KMD_LOCAL_MODEL_PER_TOKEN_TIMEOUT_SECONDS", "")),
         "model_identity": os.environ.get("KMD_LOCAL_MODEL_ID", ""),
         "seed": os.environ.get("KMD_LOCAL_MODEL_SEED", "1778779265"),
         "model_fingerprint": _client_fingerprint(client),
@@ -410,6 +393,7 @@ def _constraint_settings(grammar: str, json_schema: dict[str, Any] | None, schem
     return {
         "constraint_mode": "json_schema" if use_json_schema else ("gbnf" if _optional_grammar(grammar) else "none"),
         "constraint_transport_policy": CONSTRAINT_TRANSPORT_POLICY,
+        "capacity_policy": CONTEXT_CAPACITY_POLICY,
         "grammar_hash": _grammar_hash(grammar, schema_version),
         "json_schema_hash": _json_schema_hash(json_schema, schema_version) if json_schema else "",
     }
@@ -428,24 +412,14 @@ def _complete_structured(
         raise LocalModelUnavailableError(
             "Every semantic model call requires portable strict JSON Schema constrained decoding."
         )
-    portable_schema = copy.deepcopy(json_schema)
-    forbidden = {
-        "maxLength", "minLength", "maxItems", "minItems",
-        "maximum", "minimum", "exclusiveMaximum", "exclusiveMinimum",
-    }
-
-    def strip_nonportable(node: Any) -> None:
-        if isinstance(node, dict):
-            for key in list(node):
-                if key in forbidden:
-                    node.pop(key, None)
-            for value in node.values():
-                strip_nonportable(value)
-        elif isinstance(node, list):
-            for value in node:
-                strip_nonportable(value)
-
-    strip_nonportable(portable_schema)
+    context_size = _client_context_size(client)
+    if context_size <= 0:
+        raise LocalModelUnavailableError("model context size is required for structured schema resolution")
+    portable_schema = contextualize_json_schema(
+        json_schema,
+        context_size=context_size,
+        output_tokens=int(n_predict),
+    )
     return client.complete_json(prompt, n_predict=n_predict, json_schema=portable_schema)
 
 
@@ -464,21 +438,45 @@ def _read_cache(path: Path | None) -> dict[str, Any] | None:
         return None
     try:
         cached = json.loads(path.read_text(encoding="utf-8"))
-    except Exception:
+    except FileNotFoundError:
+        return None
+    except json.JSONDecodeError:
+        quarantine_corrupt_file(path)
+        return None
+    except OSError:
         return None
     if isinstance(cached, dict):
         cached["fresh_or_cached"] = "cache"
         return cached
+    quarantine_corrupt_file(path)
     return None
 
 
-def _cached_structured_failure_retryable(payload: dict[str, Any] | None) -> bool:
-    """Retry only transient transport failures under an unchanged contract."""
+TRANSIENT_STRUCTURED_FAILURE_REASONS = {
+    "request_failed",
+    "invalid_json",
+    "incomplete_stream",
+    "context_limit_exhausted",
+    "output_limit_exhausted",
+    "generation_limit_exhausted",
+    "context_budget_exceeded",
+    "schema_validation_failed",
+}
+
+
+def _payload_has_transient_structured_failure(payload: dict[str, Any] | None) -> bool:
     if payload is None:
         return False
-    return str(payload.get("reason") or "") == "request_failed" or str(
-        payload.get("repair_failure_reason") or ""
-    ) == "request_failed"
+    return (
+        str(payload.get("reason") or "") in TRANSIENT_STRUCTURED_FAILURE_REASONS
+        or str(payload.get("repair_failure_reason") or "") in TRANSIENT_STRUCTURED_FAILURE_REASONS
+    )
+
+
+def _cached_structured_failure_retryable(payload: dict[str, Any] | None) -> bool:
+    """Retry incomplete, truncated, transport, and schema-invalid structured calls."""
+
+    return _payload_has_transient_structured_failure(payload)
 
 
 def _cached_request_failed(payload: dict[str, Any] | None) -> bool:
@@ -486,20 +484,13 @@ def _cached_request_failed(payload: dict[str, Any] | None) -> bool:
 
 
 def _cached_evidence_answer_retryable(payload: dict[str, Any] | None) -> bool:
-    if payload is None:
-        return False
-    return str(payload.get("reason") or "") == "request_failed" or str(
-        payload.get("repair_failure_reason") or ""
-    ) == "request_failed"
+    return _payload_has_transient_structured_failure(payload)
 
 
 def _query_drs_retryable_failure(payload: dict[str, Any] | None) -> bool:
-    if payload is None:
+    if payload is None or payload.get("accepted") is not False:
         return False
-    return payload.get("accepted") is False and str(payload.get("reason") or "") in {
-        "request_failed",
-        "invalid_json",
-        "schema_validation_failed",
+    return _payload_has_transient_structured_failure(payload) or str(payload.get("reason") or "") in {
         "grounding_validation_failed",
     }
 
@@ -511,12 +502,8 @@ def _query_drs_cached_retryable_failure(payload: dict[str, Any] | None) -> bool:
 def _write_cache(path: Path | None, payload: dict[str, Any]) -> None:
     if path is None:
         return
-    try:
-        path.parent.mkdir(parents=True, exist_ok=True)
-        payload = _with_model_input_audits(payload, payload)
-        path.write_text(json.dumps(payload, sort_keys=True) + "\n", encoding="utf-8")
-    except Exception:
-        pass
+    payload = _with_model_input_audits(payload, payload)
+    atomic_write_json(path, payload, ensure_ascii=False, sort_keys=True)
 
 
 def _model_input_audit_from(value: Any) -> dict[str, Any] | None:
@@ -793,40 +780,45 @@ def _schema_obj(required: list[str], props: dict[str, Any]) -> dict[str, Any]:
     return {"type": "object", "additionalProperties": False, "required": required, "properties": props}
 
 
+def _schema_string_profile(profile: str) -> dict[str, Any]:
+    return {"type": "string", "x-kmd-string-profile": profile}
+
+
+def _schema_array_profile(item: dict[str, Any], profile: str) -> dict[str, Any]:
+    return {"type": "array", "items": item, "x-kmd-array-profile": profile}
+
+
 def _schema_array(item: dict[str, Any]) -> dict[str, Any]:
-    return {"type": "array", "items": item}
-
-
-def _schema_string_limited(max_length: int) -> dict[str, Any]:
-    del max_length
-    return {"type": "string"}
-
-
-def _schema_array_bounded(item: dict[str, Any], max_items: int) -> dict[str, Any]:
-    del max_items
-    return {"type": "array", "items": item}
+    return _schema_array_profile(item, "standard")
 
 
 def _schema_enum(values: set[str]) -> dict[str, Any]:
     return {"type": "string", "enum": sorted(values)}
 
 
-STRING_SCHEMA = {"type": "string"}
+ID_SCHEMA = _schema_string_profile("id")
+SHORT_TEXT_SCHEMA = _schema_string_profile("short")
+LABEL_SCHEMA = _schema_string_profile("label")
+VALUE_SCHEMA = _schema_string_profile("value")
+EVIDENCE_SCHEMA = _schema_string_profile("evidence")
+REASON_SCHEMA = _schema_string_profile("reason")
+STRING_SCHEMA = VALUE_SCHEMA
 BOOL_SCHEMA = {"type": "boolean"}
-NUMBER_SCHEMA = {"type": "number"}
+NUMBER_SCHEMA = {"type": "number", "enum": [round(index / 20.0, 2) for index in range(21)]}
 ANSWER_TYPE_SCHEMA = _schema_enum(ANSWER_TYPES)
 TEMPORAL_SCOPE_SCHEMA = _schema_enum({"", "earliest", "latest"})
 AGGREGATION_SCHEMA = _schema_enum({"", "count", "list", "set"})
-STRING_ARRAY_SCHEMA = _schema_array(STRING_SCHEMA)
+STRING_ARRAY_SCHEMA = _schema_array_profile(LABEL_SCHEMA, "standard")
+
 
 COMPACT_QUERY_DRS_JSON_SCHEMA = _schema_obj(
     ["a", "answer", "targets", "predicates", "constraints", "temporal_scope", "aggregation"],
     {
         "a": ANSWER_TYPE_SCHEMA,
-        "answer": _schema_string_limited(96),
-        "targets": _schema_array_bounded(_schema_string_limited(128), 8),
-        "predicates": _schema_array_bounded(_schema_string_limited(64), 8),
-        "constraints": _schema_array_bounded(_schema_string_limited(160), 8),
+        "answer": _schema_string_profile("short"),
+        "targets": _schema_array_profile(_schema_string_profile("label"), "compact"),
+        "predicates": _schema_array_profile(_schema_string_profile("short"), "compact"),
+        "constraints": _schema_array_profile(_schema_string_profile("label"), "compact"),
         "temporal_scope": TEMPORAL_SCOPE_SCHEMA,
         "aggregation": AGGREGATION_SCHEMA,
     },
@@ -834,23 +826,23 @@ COMPACT_QUERY_DRS_JSON_SCHEMA = _schema_obj(
 
 COMPACT_CHUNK_FACT_ARGUMENT_JSON_SCHEMA = _schema_obj(
     ["role", "value"],
-    {"role": _schema_string_limited(48), "value": _schema_string_limited(160)},
+    {"role": _schema_string_profile("short"), "value": _schema_string_profile("label")},
 )
 
 COMPACT_CHUNK_FACT_JSON_SCHEMA = _schema_obj(
     ["p", "e", "arguments", "temporal_text", "scope"],
     {
-        "p": _schema_string_limited(64),
-        "e": _schema_string_limited(260),
-        "arguments": _schema_array_bounded(COMPACT_CHUNK_FACT_ARGUMENT_JSON_SCHEMA, 6),
-        "temporal_text": _schema_string_limited(96),
+        "p": _schema_string_profile("short"),
+        "e": _schema_string_profile("value"),
+        "arguments": _schema_array_profile(COMPACT_CHUNK_FACT_ARGUMENT_JSON_SCHEMA, "arguments"),
+        "temporal_text": _schema_string_profile("short"),
         "scope": _schema_enum(DRS_CONTEXT_KINDS),
     },
 )
 
 COMPACT_CHUNK_DRS_JSON_SCHEMA = _schema_obj(
     ["facts"],
-    {"facts": _schema_array_bounded(COMPACT_CHUNK_FACT_JSON_SCHEMA, 8)},
+    {"facts": _schema_array_profile(COMPACT_CHUNK_FACT_JSON_SCHEMA, "compact")},
 )
 
 QUERY_FRAME_JSON_SCHEMA = _schema_obj(
@@ -858,27 +850,18 @@ QUERY_FRAME_JSON_SCHEMA = _schema_obj(
     {
         "query_frame": _schema_obj(
             [
-                "target_anchors",
-                "answer_variables",
-                "requested_relation",
-                "relation_terms",
-                "constraints",
-                "scope_requirements",
-                "modality_requirements",
-                "answer_type",
-                "temporal_scope",
-                "negated",
-                "aggregation",
-                "requires_evidence",
+                "target_anchors", "answer_variables", "requested_relation", "relation_terms",
+                "constraints", "scope_requirements", "modality_requirements", "answer_type",
+                "temporal_scope", "negated", "aggregation", "requires_evidence",
             ],
             {
-                "target_anchors": STRING_ARRAY_SCHEMA,
-                "answer_variables": STRING_ARRAY_SCHEMA,
-                "requested_relation": STRING_SCHEMA,
-                "relation_terms": STRING_ARRAY_SCHEMA,
-                "constraints": STRING_ARRAY_SCHEMA,
-                "scope_requirements": STRING_ARRAY_SCHEMA,
-                "modality_requirements": STRING_ARRAY_SCHEMA,
+                "target_anchors": _schema_array_profile(LABEL_SCHEMA, "compact"),
+                "answer_variables": _schema_array_profile(SHORT_TEXT_SCHEMA, "compact"),
+                "requested_relation": LABEL_SCHEMA,
+                "relation_terms": _schema_array_profile(SHORT_TEXT_SCHEMA, "compact"),
+                "constraints": _schema_array_profile(VALUE_SCHEMA, "compact"),
+                "scope_requirements": _schema_array_profile(SHORT_TEXT_SCHEMA, "compact"),
+                "modality_requirements": _schema_array_profile(SHORT_TEXT_SCHEMA, "compact"),
                 "answer_type": ANSWER_TYPE_SCHEMA,
                 "temporal_scope": TEMPORAL_SCOPE_SCHEMA,
                 "negated": BOOL_SCHEMA,
@@ -889,6 +872,7 @@ QUERY_FRAME_JSON_SCHEMA = _schema_obj(
     },
 )
 
+
 ANSWER_JSON_SCHEMA = _schema_obj(
     ["answer"],
     {
@@ -897,8 +881,8 @@ ANSWER_JSON_SCHEMA = _schema_obj(
             {
                 "sufficient_evidence": BOOL_SCHEMA,
                 "answer_type": ANSWER_TYPE_SCHEMA,
-                "answer": STRING_SCHEMA,
-                "evidence_span": STRING_SCHEMA,
+                "answer": VALUE_SCHEMA,
+                "evidence_span": EVIDENCE_SCHEMA,
             },
         )
     },
@@ -913,9 +897,9 @@ QUERY_EVIDENCE_ANSWER_JSON_SCHEMA = _schema_obj(
                 "query_frame": QUERY_FRAME_JSON_SCHEMA["properties"]["query_frame"],
                 "sufficient_evidence": BOOL_SCHEMA,
                 "answer_type": ANSWER_TYPE_SCHEMA,
-                "answer": STRING_SCHEMA,
-                "evidence_span": STRING_SCHEMA,
-                "reason": STRING_SCHEMA,
+                "answer": VALUE_SCHEMA,
+                "evidence_span": EVIDENCE_SCHEMA,
+                "reason": REASON_SCHEMA,
             },
         )
     },
@@ -940,11 +924,11 @@ FRAME_JSON_SCHEMA = _schema_obj(
                 ],
                 {
                     "frame_type": STRING_SCHEMA,
-                    "predicate": STRING_SCHEMA,
+                    "predicate": SHORT_TEXT_SCHEMA,
                     "arguments": _schema_array(
                         _schema_obj(
                             ["role", "text", "value_type"],
-                            {"role": STRING_SCHEMA, "text": STRING_SCHEMA, "value_type": STRING_SCHEMA},
+                            {"role": SHORT_TEXT_SCHEMA, "text": STRING_SCHEMA, "value_type": SHORT_TEXT_SCHEMA},
                         )
                     ),
                     "identity_hypotheses": _schema_array(
@@ -954,7 +938,7 @@ FRAME_JSON_SCHEMA = _schema_obj(
                                 "left_text": STRING_SCHEMA,
                                 "right_text": STRING_SCHEMA,
                                 "relation": STRING_SCHEMA,
-                                "evidence_text": STRING_SCHEMA,
+                                "evidence_text": EVIDENCE_SCHEMA,
                                 "confidence": NUMBER_SCHEMA,
                             },
                         )
@@ -963,7 +947,7 @@ FRAME_JSON_SCHEMA = _schema_obj(
                     "modality": STRING_SCHEMA,
                     "context_holder": STRING_SCHEMA,
                     "temporal_text": STRING_SCHEMA,
-                    "evidence_text": STRING_SCHEMA,
+                    "evidence_text": EVIDENCE_SCHEMA,
                     "confidence": NUMBER_SCHEMA,
                 },
             )
@@ -974,104 +958,104 @@ FRAME_JSON_SCHEMA = _schema_obj(
 DRS_ARGUMENT_JSON_SCHEMA = _schema_obj(
     ["role", "target_kind", "target_id", "value", "value_type", "evidence_text"],
     {
-        "role": STRING_SCHEMA,
+        "role": SHORT_TEXT_SCHEMA,
         "target_kind": _schema_enum({"referent", "box", "condition", "literal", "unknown"}),
-        "target_id": STRING_SCHEMA,
-        "value": STRING_SCHEMA,
-        "value_type": STRING_SCHEMA,
-        "evidence_text": STRING_SCHEMA,
+        "target_id": ID_SCHEMA,
+        "value": VALUE_SCHEMA,
+        "value_type": SHORT_TEXT_SCHEMA,
+        "evidence_text": EVIDENCE_SCHEMA,
     },
 )
 
 QUERY_VARIABLE_JSON_SCHEMA = _schema_obj(
     ["id", "label", "answer_type", "evidence_text"],
     {
-        "id": STRING_SCHEMA,
-        "label": STRING_SCHEMA,
+        "id": ID_SCHEMA,
+        "label": LABEL_SCHEMA,
         "answer_type": ANSWER_TYPE_SCHEMA,
-        "evidence_text": STRING_SCHEMA,
+        "evidence_text": EVIDENCE_SCHEMA,
     },
 )
 
 QUERY_DRS_ARGUMENT_JSON_SCHEMA = _schema_obj(
     ["role", "target_kind", "target_id", "value", "value_type", "evidence_text"],
     {
-        "role": STRING_SCHEMA,
+        "role": SHORT_TEXT_SCHEMA,
         "target_kind": _schema_enum({"answer_variable", "referent", "box", "condition", "temporal", "literal", "unknown"}),
-        "target_id": STRING_SCHEMA,
-        "value": STRING_SCHEMA,
-        "value_type": STRING_SCHEMA,
-        "evidence_text": STRING_SCHEMA,
+        "target_id": ID_SCHEMA,
+        "value": VALUE_SCHEMA,
+        "value_type": SHORT_TEXT_SCHEMA,
+        "evidence_text": EVIDENCE_SCHEMA,
     },
 )
 
 QUERY_DRS_CONDITION_JSON_SCHEMA = _schema_obj(
     ["id", "predicate", "box_id", "polarity", "modality", "temporal_id", "arguments", "evidence_text"],
     {
-        "id": STRING_SCHEMA,
-        "predicate": STRING_SCHEMA,
-        "box_id": STRING_SCHEMA,
+        "id": ID_SCHEMA,
+        "predicate": SHORT_TEXT_SCHEMA,
+        "box_id": ID_SCHEMA,
         "polarity": _schema_enum(DRS_POLARITIES),
         "modality": _schema_enum(DRS_CONTEXT_KINDS),
-        "temporal_id": STRING_SCHEMA,
+        "temporal_id": ID_SCHEMA,
         "arguments": _schema_array(QUERY_DRS_ARGUMENT_JSON_SCHEMA),
-        "evidence_text": STRING_SCHEMA,
+        "evidence_text": EVIDENCE_SCHEMA,
     },
 )
 
 DRS_REFERENT_JSON_SCHEMA = _schema_obj(
     ["id", "label", "kind", "evidence_text"],
     {
-        "id": STRING_SCHEMA,
-        "label": STRING_SCHEMA,
-        "kind": STRING_SCHEMA,
-        "evidence_text": STRING_SCHEMA,
+        "id": ID_SCHEMA,
+        "label": LABEL_SCHEMA,
+        "kind": SHORT_TEXT_SCHEMA,
+        "evidence_text": EVIDENCE_SCHEMA,
     },
 )
 
 DRS_BOX_JSON_SCHEMA = _schema_obj(
     ["id", "kind", "parent_id", "holder_referent_id", "evidence_text"],
     {
-        "id": STRING_SCHEMA,
+        "id": ID_SCHEMA,
         "kind": _schema_enum(DRS_CONTEXT_KINDS),
-        "parent_id": STRING_SCHEMA,
-        "holder_referent_id": STRING_SCHEMA,
-        "evidence_text": STRING_SCHEMA,
+        "parent_id": ID_SCHEMA,
+        "holder_referent_id": ID_SCHEMA,
+        "evidence_text": EVIDENCE_SCHEMA,
     },
 )
 
 DRS_TEMPORAL_JSON_SCHEMA = _schema_obj(
     ["id", "value", "value_type", "evidence_text"],
     {
-        "id": STRING_SCHEMA,
-        "value": STRING_SCHEMA,
-        "value_type": STRING_SCHEMA,
-        "evidence_text": STRING_SCHEMA,
+        "id": ID_SCHEMA,
+        "value": VALUE_SCHEMA,
+        "value_type": SHORT_TEXT_SCHEMA,
+        "evidence_text": EVIDENCE_SCHEMA,
     },
 )
 
 DRS_CONDITION_JSON_SCHEMA = _schema_obj(
     ["id", "predicate", "box_id", "polarity", "modality", "temporal_id", "arguments", "evidence_text"],
     {
-        "id": STRING_SCHEMA,
-        "predicate": STRING_SCHEMA,
-        "box_id": STRING_SCHEMA,
+        "id": ID_SCHEMA,
+        "predicate": SHORT_TEXT_SCHEMA,
+        "box_id": ID_SCHEMA,
         "polarity": _schema_enum(DRS_POLARITIES),
         "modality": _schema_enum(DRS_CONTEXT_KINDS),
-        "temporal_id": STRING_SCHEMA,
+        "temporal_id": ID_SCHEMA,
         "arguments": _schema_array(DRS_ARGUMENT_JSON_SCHEMA),
-        "evidence_text": STRING_SCHEMA,
+        "evidence_text": EVIDENCE_SCHEMA,
     },
 )
 
 DRS_IDENTITY_JSON_SCHEMA = _schema_obj(
-    ["left_referent_id", "right_referent_id", "status", "evidence_text", "confidence"],
+    ["left_referent_id", "right_referent_id", "box_id", "status", "evidence_text", "confidence"],
     {
-        "left_referent_id": STRING_SCHEMA,
-        "right_referent_id": STRING_SCHEMA,
-        "box_id": STRING_SCHEMA,
+        "left_referent_id": ID_SCHEMA,
+        "right_referent_id": ID_SCHEMA,
+        "box_id": ID_SCHEMA,
         "status": _schema_enum(DRS_IDENTITY_STATUSES),
-        "evidence_text": STRING_SCHEMA,
+        "evidence_text": EVIDENCE_SCHEMA,
         "confidence": NUMBER_SCHEMA,
     },
 )
@@ -1116,7 +1100,8 @@ def chunk_drs_json_schema(
     evidence_text_values: list[str] | None = None,
     constrain_stable_ids: bool = False,
 ) -> dict[str, Any]:
-    schema = json.loads(json.dumps(DRS_JSON_SCHEMA))
+    del evidence_text_values
+    schema = copy.deepcopy(DRS_JSON_SCHEMA)
     drs_schema = schema["properties"]["drs"]
     if not include_auxiliary_fields:
         required = drs_schema.get("required")
@@ -1126,62 +1111,57 @@ def chunk_drs_json_schema(
         if isinstance(properties, dict):
             properties.pop("evidence_spans", None)
             properties.pop("semantic_notes", None)
-    if (
-        not max_evidence_chars
-        and not max_array_items
-        and source_id is None
-        and not evidence_text_values
-        and not constrain_stable_ids
-    ):
-        return schema
     max_length = max(1, int(max_evidence_chars)) if max_evidence_chars else None
     max_items = max(1, int(max_array_items)) if max_array_items else None
-
-    string_limits = {
-        "id": 24,
-        "schema_version": 24,
-        "source_id": 256,
-        "label": 160,
-        "kind": 48,
-        "predicate": 64,
-        "box_id": 24,
-        "parent_id": 24,
-        "holder_referent_id": 24,
-        "temporal_id": 24,
-        "role": 48,
-        "target_kind": 24,
-        "target_id": 24,
-        "value": 160,
-        "value_type": 48,
-        "left_referent_id": 24,
-        "right_referent_id": 24,
-        "status": 24,
+    string_profiles = {
+        "id": "id",
+        "schema_version": "id",
+        "source_id": "value",
+        "label": "label",
+        "kind": "short",
+        "predicate": "short",
+        "box_id": "id",
+        "parent_id": "id",
+        "holder_referent_id": "id",
+        "temporal_id": "id",
+        "role": "short",
+        "target_kind": "short",
+        "target_id": "id",
+        "value": "value",
+        "value_type": "short",
+        "left_referent_id": "id",
+        "right_referent_id": "id",
+        "status": "short",
+        "evidence_text": "evidence",
+    }
+    dense_arrays = {
+        "referents",
+        "boxes",
+        "conditions",
+        "identity_hypotheses",
+        "temporal_records",
+        "evidence_spans",
+        "semantic_notes",
     }
 
     def visit(node: Any, parent_key: str = "") -> None:
         if isinstance(node, dict):
-            if node.get("type") == "string" and parent_key in string_limits:
-                node["maxLength"] = string_limits[parent_key]
-            if max_length is not None and parent_key == "evidence_text" and node.get("type") == "string":
-                node["maxLength"] = min(max_length, 260)
-            if max_length is not None and parent_key == "evidence_spans" and isinstance(node.get("items"), dict):
-                node["items"]["maxLength"] = min(max_length, 260)
-            if (
-                max_items is not None
-                and node.get("type") == "array"
-                and parent_key
-                in {
-                    "referents",
-                    "boxes",
-                    "conditions",
-                    "arguments",
-                    "identity_hypotheses",
-                    "temporal_records",
-                    "evidence_spans",
-                    "semantic_notes",
-                }
-            ):
-                node["maxItems"] = max_items
+            if node.get("type") == "string" and parent_key in string_profiles:
+                node["x-kmd-string-profile"] = string_profiles[parent_key]
+            if parent_key == "evidence_text" and node.get("type") == "string" and max_length is not None:
+                node["maxLength"] = max_length
+            if parent_key == "evidence_spans" and isinstance(node.get("items"), dict):
+                node["items"]["x-kmd-string-profile"] = "evidence"
+                if max_length is not None:
+                    node["items"]["maxLength"] = max_length
+            if node.get("type") == "array" and parent_key in dense_arrays:
+                node["x-kmd-array-profile"] = "dense"
+                if max_items is not None:
+                    node["maxItems"] = max_items
+            elif node.get("type") == "array" and parent_key == "arguments":
+                node["x-kmd-array-profile"] = "arguments"
+                if max_items is not None:
+                    node["maxItems"] = max_items
             for key, value in node.items():
                 visit(value, key)
         elif isinstance(node, list):
@@ -1196,11 +1176,12 @@ def chunk_drs_json_schema(
     if source_id is not None:
         drs_properties["source_id"] = _schema_enum({source_id})
     if constrain_stable_ids:
-        stable_item_count = max_items or 8
-        referent_ids = [f"r{index}" for index in range(stable_item_count)]
-        box_ids = [f"b{index}" for index in range(stable_item_count)]
-        condition_ids = [f"c{index}" for index in range(stable_item_count)]
-        temporal_ids = [f"t{index}" for index in range(stable_item_count)]
+        if max_items is None:
+            raise ValueError("stable-id constrained DRS schemas require a context-derived item capacity")
+        referent_ids = [f"r{index}" for index in range(max_items)]
+        box_ids = [f"b{index}" for index in range(max_items)]
+        condition_ids = [f"c{index}" for index in range(max_items)]
+        temporal_ids = [f"t{index}" for index in range(max_items)]
         referent_schema = drs_properties["referents"]["items"]
         box_schema = drs_properties["boxes"]["items"]
         condition_schema = drs_properties["conditions"]["items"]
@@ -1222,45 +1203,24 @@ def chunk_drs_json_schema(
         identity_schema["properties"]["right_referent_id"] = {"type": "string", "enum": referent_ids}
         identity_schema["properties"]["box_id"] = {"type": "string", "enum": ["", *box_ids]}
         temporal_schema["properties"]["id"] = {"type": "string", "enum": temporal_ids}
-    if evidence_text_values:
-        evidence_values = list(dict.fromkeys(str(value) for value in evidence_text_values))
-        evidence_schema: dict[str, Any] = {"type": "string", "enum": evidence_values}
-        if max_length is not None:
-            evidence_schema["maxLength"] = max_length
-        condition_schema = drs_properties["conditions"]["items"]
-        argument_schema = condition_schema["properties"]["arguments"]["items"]
-        condition_schema["properties"]["evidence_text"] = copy.deepcopy(evidence_schema)
-        argument_schema["properties"]["evidence_text"] = copy.deepcopy(evidence_schema)
     return schema
 
 
 def chunk_drs_evidence_max_chars(chunk_text: str, n_predict: int | None = None) -> int | None:
     if not chunk_text:
         return None
-    configured = os.environ.get("KMD_CHUNK_DRS_MAX_EVIDENCE_CHARS")
-    if configured:
-        try:
-            return max(1, min(len(chunk_text), int(configured)))
-        except ValueError:
-            pass
     if not n_predict:
-        return len(chunk_text)
-    evidence_ratio = context_ratio(("KMD_CHUNK_DRS_EVIDENCE_OUTPUT_RATIO",), 0.25)
-    budgeted = max(1, int(round(int(n_predict) * evidence_ratio)))
-    return max(1, min(len(chunk_text), budgeted))
+        raise ValueError("a context-derived output budget is required for evidence capacity")
+    evidence_ratio = context_ratio(("KMD_CHUNK_DRS_EVIDENCE_OUTPUT_RATIO",), 1.0 / 4.0)
+    chars_per_token = positive_float(("KMD_CHUNK_DRS_EVIDENCE_CHARS_PER_OUTPUT_TOKEN",), 3.0)
+    budgeted = max(1, int(int(n_predict) * evidence_ratio * chars_per_token))
+    return min(len(chunk_text), budgeted)
 
 
 def chunk_drs_array_max_items(n_predict: int | None = None) -> int | None:
-    configured = os.environ.get("KMD_CHUNK_DRS_MAX_ARRAY_ITEMS")
-    if configured:
-        try:
-            return max(1, int(configured))
-        except ValueError:
-            pass
     if not n_predict:
-        return None
-    item_ratio = context_ratio(("KMD_CHUNK_DRS_ARRAY_ITEM_OUTPUT_RATIO",), 1.0 / 96.0)
-    return max(1, int(round(int(n_predict) * item_ratio)))
+        raise ValueError("a context-derived output budget is required for DRS array capacity")
+    return schema_array_capacity(int(n_predict), "dense")
 
 
 def _staged_chunk_drs_enabled() -> bool:
@@ -1301,7 +1261,7 @@ def _staged_fallback_failure_summary(fallback: dict[str, Any]) -> dict[str, Any]
             summary[key] = value
     raw_text = str(fallback.get("raw_text") or "")
     if raw_text:
-        summary["raw_snippet"] = summary.get("raw_snippet") or raw_text[:4000]
+        summary["raw_snippet"] = summary.get("raw_snippet") or raw_text
     return summary
 
 
@@ -1341,13 +1301,13 @@ def _chunk_drs_staged_retry_reason(
         return "structural_sparsity"
     condition_count = _validation_count(validation, "condition_count")
     box_count = _validation_count(validation, "box_count")
-    if box_count >= 3 and condition_count < box_count - 1:
+    if box_count > 1 and condition_count < box_count - 1:
         return "scoped_box_undercoverage"
     field_like_span_count = _chunk_drs_structural_condition_floor(
         source_text,
         (context_budget or {}).get("max_evidence_chars"),
     )
-    if field_like_span_count >= 3 and condition_count < 2:
+    if field_like_span_count > condition_count:
         return "structural_undercoverage"
     return ""
 
@@ -1360,7 +1320,7 @@ def _chunk_drs_staged_first_reason(
         source_text,
         (context_budget or {}).get("max_evidence_chars"),
     )
-    if field_like_span_count >= 4:
+    if field_like_span_count > 0:
         return "field_like_source_spans"
     return ""
 
@@ -1368,9 +1328,12 @@ def _chunk_drs_staged_first_reason(
 def chunk_drs_source_span_candidates(
     chunk_text: str,
     max_evidence_chars: int | None = None,
-    *,
-    max_candidates: int = 24,
 ) -> list[str]:
+    """Enumerate all qualifying spans for deterministic diagnostics only.
+
+    This list is never inserted into a model schema or prompt and has no item-count cap.
+    """
+
     candidates = [""]
     if not chunk_text:
         return candidates
@@ -1378,9 +1341,7 @@ def chunk_drs_source_span_candidates(
 
     def add(candidate: str) -> None:
         span = candidate.strip()
-        if not span or span in candidates or span not in chunk_text:
-            return
-        if span.endswith(":"):
+        if not span or span in candidates or span not in chunk_text or span.endswith(":"):
             return
         if max_len and len(span) > max_len:
             return
@@ -1395,12 +1356,11 @@ def chunk_drs_source_span_candidates(
                 continue
             _head, tail = text.split(separator, 1)
             value = tail.strip()
-            if not value:
-                continue
-            add(value)
-            unquoted = value.strip("\"'")
-            if unquoted != value:
-                add(unquoted)
+            if value:
+                add(value)
+                unquoted = value.strip("\"'")
+                if unquoted != value:
+                    add(unquoted)
             break
 
     add(chunk_text)
@@ -1410,9 +1370,7 @@ def chunk_drs_source_span_candidates(
     for segment in normalized_separators.split("|"):
         add(segment)
         add_value_spans(segment)
-        if len(candidates) >= max_candidates:
-            break
-    return candidates[:max_candidates]
+    return candidates
 
 
 def default_staged_chunk_drs_skeleton_n_predict(
@@ -1420,25 +1378,9 @@ def default_staged_chunk_drs_skeleton_n_predict(
     source_text: str = "",
     max_evidence_chars: int | None = None,
 ) -> int:
-    configured = os.environ.get("KMD_CHUNK_DRS_STAGED_SKELETON_N_PREDICT")
-    if configured:
-        try:
-            return max(1, int(configured))
-        except ValueError:
-            pass
-    estimated_source_tokens = _estimate_tokens(source_text) if source_text else 0
-    base = max(384, min(int(n_predict), 768))
-    if estimated_source_tokens >= 8192:
-        base = max(base, min(int(n_predict), 2048))
-    if estimated_source_tokens >= 32768:
-        base = max(base, min(int(n_predict), 4096))
-    if (
-        source_text
-        and _chunk_drs_structural_condition_floor(source_text, max_evidence_chars) >= 4
-        and any(delimiter in source_text for delimiter in "{}[]")
-    ):
-        return max(base, min(int(n_predict), 2048))
-    return base
+    del source_text, max_evidence_chars
+    ratio = context_ratio(("KMD_CHUNK_DRS_STAGED_SKELETON_OUTPUT_SHARE",), 1.0 / 2.0)
+    return max(1, int(int(n_predict) * ratio))
 
 
 def default_staged_chunk_drs_condition_n_predict(
@@ -1446,35 +1388,26 @@ def default_staged_chunk_drs_condition_n_predict(
     source_text: str = "",
     max_evidence_chars: int | None = None,
 ) -> int:
-    configured = os.environ.get("KMD_CHUNK_DRS_STAGED_CONDITION_N_PREDICT")
-    if configured:
-        try:
-            return max(1, int(configured))
-        except ValueError:
-            pass
-    if (
-        source_text
-        and _estimate_tokens(source_text) <= 64
-        and _chunk_drs_structural_condition_floor(source_text, max_evidence_chars) <= 8
-        and not _chunk_drs_has_temporal_surface(source_text)
-    ):
-        return 528
-    return max(int(n_predict), 768)
+    del source_text, max_evidence_chars
+    ratio = context_ratio(("KMD_CHUNK_DRS_STAGED_CONDITION_OUTPUT_SHARE",), 1.0)
+    return max(1, int(int(n_predict) * ratio))
 
 
 def default_chunk_drs_box_completion_n_predict(n_predict: int) -> int:
-    configured = os.environ.get("KMD_CHUNK_DRS_BOX_COMPLETION_N_PREDICT")
-    if configured:
-        try:
-            return max(1, int(configured))
-        except ValueError:
-            pass
-    return max(128, min(int(n_predict), 384))
+    ratio = context_ratio(("KMD_CHUNK_DRS_BOX_COMPLETION_OUTPUT_SHARE",), 1.0 / 16.0)
+    return max(1, int(int(n_predict) * ratio))
 
 
-def _schema_array_limited(item: dict[str, Any], max_items: int | None = None) -> dict[str, Any]:
-    del max_items
-    return _schema_array(item)
+def _schema_array_limited(
+    item: dict[str, Any],
+    max_items: int | None = None,
+    *,
+    profile: str = "dense",
+) -> dict[str, Any]:
+    schema = _schema_array_profile(item, profile)
+    if max_items is not None:
+        schema["maxItems"] = max(1, int(max_items))
+    return schema
 
 
 def chunk_drs_skeleton_json_schema(
@@ -1482,7 +1415,9 @@ def chunk_drs_skeleton_json_schema(
     max_array_items: int | None = None,
     evidence_text_values: list[str] | None = None,
 ) -> dict[str, Any]:
-    max_items = max(1, int(max_array_items)) if max_array_items else 8
+    if max_array_items is None:
+        raise ValueError("skeleton schema requires a context-derived array capacity")
+    max_items = max(1, int(max_array_items))
     referent_ids = [f"r{index}" for index in range(max_items)]
     box_ids = [f"b{index}" for index in range(max_items)]
     temporal_ids = [f"t{index}" for index in range(max_items)]
@@ -1498,21 +1433,15 @@ def chunk_drs_skeleton_json_schema(
     # through grounded referents and conditions rather than deterministic post-hoc id repair.
     box_schema["properties"]["holder_referent_id"] = {"type": "string", "enum": [""]}
     temporal_schema["properties"]["id"] = {"type": "string", "enum": temporal_ids}
-    referent_schema["properties"]["label"] = _schema_string_limited(160)
-    referent_schema["properties"]["kind"] = _schema_string_limited(48)
+    referent_schema["properties"]["label"] = copy.deepcopy(LABEL_SCHEMA)
+    referent_schema["properties"]["kind"] = copy.deepcopy(SHORT_TEXT_SCHEMA)
     box_schema["properties"]["kind"] = _schema_enum(DRS_CONTEXT_KINDS)
-    temporal_schema["properties"]["value"] = _schema_string_limited(160)
-    temporal_schema["properties"]["value_type"] = _schema_string_limited(48)
-    if evidence_text_values:
-        evidence_values = list(dict.fromkeys(str(value) for value in evidence_text_values))
-        evidence_schema = {"type": "string", "enum": evidence_values}
-        referent_schema["properties"]["evidence_text"] = copy.deepcopy(evidence_schema)
-        box_schema["properties"]["evidence_text"] = copy.deepcopy(evidence_schema)
-        temporal_schema["properties"]["evidence_text"] = copy.deepcopy(evidence_schema)
-    else:
-        referent_schema["properties"]["evidence_text"] = _schema_string_limited(260)
-        box_schema["properties"]["evidence_text"] = _schema_string_limited(260)
-        temporal_schema["properties"]["evidence_text"] = _schema_string_limited(260)
+    temporal_schema["properties"]["value"] = copy.deepcopy(VALUE_SCHEMA)
+    temporal_schema["properties"]["value_type"] = copy.deepcopy(SHORT_TEXT_SCHEMA)
+    del evidence_text_values
+    referent_schema["properties"]["evidence_text"] = copy.deepcopy(EVIDENCE_SCHEMA)
+    box_schema["properties"]["evidence_text"] = copy.deepcopy(EVIDENCE_SCHEMA)
+    temporal_schema["properties"]["evidence_text"] = copy.deepcopy(EVIDENCE_SCHEMA)
     return _schema_obj(
         ["drs_skeleton"],
         {
@@ -1545,23 +1474,19 @@ def chunk_drs_condition_json_schema(
     condition_ids = [f"c{index}" for index in range(max(1, int(max_conditions)))] if max_conditions else []
     allowed_targets = sorted(set(["", *box_ids, *condition_ids, *referent_ids]))
     allowed_temporals = sorted(set(["", *(temporal_ids or [])]))
-    condition_schema["properties"]["predicate"] = _schema_string_limited(64)
-    argument_schema["properties"]["role"] = _schema_string_limited(48)
-    argument_schema["properties"]["value"] = _schema_string_limited(160)
-    argument_schema["properties"]["value_type"] = _schema_string_limited(48)
+    condition_schema["properties"]["predicate"] = copy.deepcopy(SHORT_TEXT_SCHEMA)
+    argument_schema["properties"]["role"] = copy.deepcopy(SHORT_TEXT_SCHEMA)
+    argument_schema["properties"]["value"] = copy.deepcopy(VALUE_SCHEMA)
+    argument_schema["properties"]["value_type"] = copy.deepcopy(SHORT_TEXT_SCHEMA)
     argument_schema["properties"]["target_id"] = {"type": "string", "enum": allowed_targets}
     condition_schema["properties"]["box_id"] = {"type": "string", "enum": box_ids or [""]}
     condition_schema["properties"]["temporal_id"] = {"type": "string", "enum": allowed_temporals}
     if condition_ids:
         condition_schema["properties"]["id"] = {"type": "string", "enum": condition_ids}
-    if evidence_text_values:
-        evidence_values = list(dict.fromkeys(str(value) for value in evidence_text_values))
-        condition_schema["properties"]["evidence_text"] = {"type": "string", "enum": evidence_values}
-        argument_schema["properties"]["evidence_text"] = {"type": "string", "enum": evidence_values}
-    else:
-        condition_schema["properties"]["evidence_text"] = _schema_string_limited(260)
-        argument_schema["properties"]["evidence_text"] = _schema_string_limited(260)
-    condition_schema["properties"]["arguments"] = _schema_array_limited(argument_schema, max_arguments)
+    del evidence_text_values
+    condition_schema["properties"]["evidence_text"] = copy.deepcopy(EVIDENCE_SCHEMA)
+    argument_schema["properties"]["evidence_text"] = copy.deepcopy(EVIDENCE_SCHEMA)
+    condition_schema["properties"]["arguments"] = _schema_array_limited(argument_schema, max_arguments, profile="arguments")
     return _schema_obj(
         ["condition_stage"],
         {
@@ -1590,7 +1515,7 @@ def chunk_drs_box_completion_json_schema(
     box_schema["properties"]["kind"] = _schema_enum(DRS_CONTEXT_KINDS)
     box_schema["properties"]["parent_id"] = {"type": "string", "enum": sorted(set(["", *existing_box_ids]))}
     box_schema["properties"]["holder_referent_id"] = {"type": "string", "enum": sorted(set(["", *referent_ids]))}
-    box_schema["properties"]["evidence_text"] = _schema_string_limited(260)
+    box_schema["properties"]["evidence_text"] = copy.deepcopy(EVIDENCE_SCHEMA)
     return _schema_obj(
         ["box_completion"],
         {
@@ -1644,15 +1569,9 @@ QUERY_DRS_JSON_SCHEMA = _schema_obj(
 
 
 def query_drs_array_max_items(n_predict: int | None = None) -> int | None:
-    configured = os.environ.get("KMD_QUERY_DRS_MAX_ARRAY_ITEMS")
-    if configured:
-        try:
-            return max(1, int(configured))
-        except ValueError:
-            pass
     if not n_predict:
-        return None
-    return max(4, min(8, int(n_predict) // 96))
+        raise ValueError("a context-derived output budget is required for query array capacity")
+    return schema_array_capacity(int(n_predict), "compact")
 
 
 def query_drs_json_schema(question: str | None = None, max_array_items: int | None = None) -> dict[str, Any]:
@@ -1675,7 +1594,9 @@ def query_drs_json_schema(question: str | None = None, max_array_items: int | No
                     "box_requirements",
                     "arguments",
                 }:
-                    node["maxItems"] = capped
+                    node["x-kmd-array-profile"] = "arguments" if parent_key == "arguments" else "compact"
+                    if parent_key != "arguments":
+                        node["maxItems"] = capped
                 for key, value in node.items():
                     visit(value, key)
             elif isinstance(node, list):
@@ -1705,15 +1626,15 @@ VERIFICATION_JSON_SCHEMA = _schema_obj(
             {
                 "entailed": BOOL_SCHEMA,
                 "answer_type": ANSWER_TYPE_SCHEMA,
-                "answer": STRING_SCHEMA,
-                "evidence_span": STRING_SCHEMA,
+                "answer": VALUE_SCHEMA,
+                "evidence_span": EVIDENCE_SCHEMA,
                 "proof_kind": _schema_enum({"direct_positive", "explicit_negation", "explicit_exclusion", "same_scope_incompatibility", "identity_binding", "aggregate", "unknown"}),
                 "accessibility": _schema_enum({"asserted", "subordinate", "mixed", "unknown"}),
                 "temporal_alignment": _schema_enum({"same_scope", "different_scope", "unspecified"}),
                 "explicit_negation": BOOL_SCHEMA,
                 "absence_of_record_only": BOOL_SCHEMA,
-                "incompatible_condition_span": STRING_SCHEMA,
-                "reason": STRING_SCHEMA,
+                "incompatible_condition_span": EVIDENCE_SCHEMA,
+                "reason": REASON_SCHEMA,
             },
         )
     },
@@ -1724,7 +1645,7 @@ CANONICAL_ANSWER_JSON_SCHEMA = _schema_obj(
     {
         "canonical_answer": _schema_obj(
             ["answer", "evidence_span", "reason"],
-            {"answer": STRING_SCHEMA, "evidence_span": STRING_SCHEMA, "reason": STRING_SCHEMA},
+            {"answer": VALUE_SCHEMA, "evidence_span": EVIDENCE_SCHEMA, "reason": REASON_SCHEMA},
         )
     },
 )
@@ -1734,7 +1655,7 @@ SOURCE_RESOLVED_ANSWER_JSON_SCHEMA = _schema_obj(
     {
         "source_resolved_answer": _schema_obj(
             ["answer", "evidence_span", "reason"],
-            {"answer": STRING_SCHEMA, "evidence_span": STRING_SCHEMA, "reason": STRING_SCHEMA},
+            {"answer": VALUE_SCHEMA, "evidence_span": EVIDENCE_SCHEMA, "reason": REASON_SCHEMA},
         )
     },
 )
@@ -1746,8 +1667,8 @@ IDENTITY_CANONICALIZATION_JSON_SCHEMA = _schema_obj(
             ["same_referent", "answer", "evidence_span", "reason"],
             {
                 "same_referent": BOOL_SCHEMA,
-                "answer": STRING_SCHEMA,
-                "evidence_span": STRING_SCHEMA,
+                "answer": VALUE_SCHEMA,
+                "evidence_span": EVIDENCE_SCHEMA,
                 "reason": STRING_SCHEMA,
             },
         )
@@ -1847,7 +1768,7 @@ def build_query_plan_prompt(question: str) -> str:
         "visible_anchors": visible_anchors(question),
         "urls": urls(question),
         "identifiers": identifiers(question),
-        "content_tokens": content_tokens(question)[:32],
+        "content_tokens": content_tokens(question),
     }
     return (
         "JSON only. Convert the question into a generic DRT/DSPG query frame; do not answer it. "
@@ -1881,7 +1802,11 @@ def build_query_plan_prompt(question: str) -> str:
 
 def call_model_query_plan_test_only(question: str, client: LocalModelClient, *, n_predict: int | None = None) -> dict[str, Any]:
     if n_predict is None:
-        n_predict = int(os.environ.get("KMD_QUERY_PLAN_N_PREDICT", "128"))
+        n_predict = _context_output_tokens(
+            client,
+            ratio_names=("KMD_QUERY_PLAN_OUTPUT_RATIO",),
+            ratio_default=1.0 / 64.0,
+        )
     prompt = build_query_plan_prompt(question)
     constraint = _constraint_settings(QUERY_FRAME_GRAMMAR, QUERY_FRAME_JSON_SCHEMA, QUERY_FRAME_SCHEMA_VERSION)
     grammar_hash = str(constraint["grammar_hash"])
@@ -1996,7 +1921,7 @@ def build_query_drs_prompt(question: str) -> str:
         "visible_anchors": visible_anchors(question),
         "urls": urls(question),
         "identifiers": identifiers(question),
-        "content_tokens": content_tokens(question)[:32],
+        "content_tokens": content_tokens(question),
     }
     return (
         "JSON only. Convert the question into a generic DRT query DRS; do not answer it. "
@@ -2230,7 +2155,7 @@ def _compact_query_drs_answer_slot_undercovered(question: str, payload: dict[str
 
 def call_model_query_drs_compact(question: str, client: LocalModelClient, *, n_predict: int | None = None) -> dict[str, Any]:
     if n_predict is None:
-        n_predict = default_compact_query_drs_n_predict(question)
+        n_predict = default_compact_query_drs_n_predict(client, question)
     prompt = build_compact_query_drs_prompt(question)
     constraint = _constraint_settings(QUERY_DRS_GRAMMAR, COMPACT_QUERY_DRS_JSON_SCHEMA, QUERY_DRS_SCHEMA_VERSION)
     cache_settings = {
@@ -2275,7 +2200,7 @@ def call_model_query_drs_compact(question: str, client: LocalModelClient, *, n_p
     except LocalModelJSONError as exc:
         payload = {
             "accepted": False,
-            "reason": "invalid_json",
+            "reason": str(getattr(exc, "reason", "invalid_json")),
             "error": str(exc),
             "raw_text": exc.raw_text,
             "raw_snippet": exc.snippet,
@@ -2430,7 +2355,7 @@ def _validate_query_drs_payload(payload: Any, question: str) -> dict[str, Any]:
     def check_grounding(value: Any, label: str) -> None:
         span = str(value or "").strip()
         if span and span not in question:
-            grounding_failures.append(f"{label}:{span[:100]}")
+            grounding_failures.append(f"{label}:{span}")
 
     if query_drs.get("question") != question:
         errors.append("question_mismatch")
@@ -2547,8 +2472,8 @@ def _validate_query_drs_payload(payload: Any, question: str) -> dict[str, Any]:
             check_grounding(arg.get("evidence_text"), f"argument:{condition_id}:{arg.get('role')}")
     return {
         "schema_valid": not errors and not grounding_failures,
-        "errors": errors[:50],
-        "grounding_failures": grounding_failures[:50],
+        "errors": errors,
+        "grounding_failures": grounding_failures,
         "grounding_failure_count": len(grounding_failures),
         "answer_variable_count": len(answer_variable_ids) or len(answer_variable_labels),
         "target_count": len(targets),
@@ -2558,25 +2483,38 @@ def _validate_query_drs_payload(payload: Any, question: str) -> dict[str, Any]:
     }
 
 
-def _query_drs_retry_budgets(n_predict: int) -> list[int]:
-    configured = os.environ.get("KMD_QUERY_DRS_RETRY_N_PREDICTS", "").strip()
-    if configured:
-        budgets: list[int] = []
-        for item in configured.split(","):
+def _relative_retry_budgets(
+    n_predict: int,
+    *,
+    env_name: str,
+    default_multipliers: tuple[float, ...],
+) -> list[int]:
+    raw = os.environ.get(env_name, "").strip()
+    multipliers: list[float] = []
+    if raw:
+        for item in raw.split(","):
             try:
-                value = int(item.strip())
+                value = float(item.strip())
             except ValueError:
                 continue
-            if value > 0 and value != n_predict and value not in budgets:
-                budgets.append(value)
-        return budgets
-    candidates = [n_predict * 2, 2048, 3072]
+            if value > 1.0 and value not in multipliers:
+                multipliers.append(value)
+    if not multipliers:
+        multipliers = list(default_multipliers)
     budgets: list[int] = []
-    for value in candidates:
-        value = max(256, min(4096, int(value)))
+    for multiplier in multipliers:
+        value = max(1, int(int(n_predict) * multiplier))
         if value != n_predict and value not in budgets:
             budgets.append(value)
     return budgets
+
+
+def _query_drs_retry_budgets(n_predict: int) -> list[int]:
+    return _relative_retry_budgets(
+        n_predict,
+        env_name="KMD_QUERY_DRS_RETRY_OUTPUT_MULTIPLIERS",
+        default_multipliers=(1.5, 2.0),
+    )
 
 
 def _call_model_query_drs_full_once(
@@ -2671,7 +2609,7 @@ def _call_model_query_drs_full_once(
     except LocalModelJSONError as exc:
         payload = {
             "accepted": False,
-            "reason": "invalid_json",
+            "reason": str(getattr(exc, "reason", "invalid_json")),
             "error": str(exc),
             "raw_text": exc.raw_text,
             "raw_snippet": exc.snippet,
@@ -2864,6 +2802,33 @@ def call_model_query_drs(question: str, client: LocalModelClient, *, n_predict: 
     return last
 
 
+def _question_supports_structural_answer_type(question: str, answer_type: str) -> bool:
+    """Validate only non-semantic surface requirements for structural answer types."""
+
+    low = normalize(question)
+    if answer_type == "file_path":
+        return bool(
+            re.search(r"\b(?:file|filename|path|directory|folder|repository|repo|document)\b", low)
+            or re.search(r'(?:^|[\s"\'])[^/\\\s]+\.[A-Za-z0-9]{1,12}(?:$|[\s?"\'])', question)
+            or "/" in question
+            or "\\" in question
+        )
+    if answer_type == "count":
+        return bool(re.search(r"\b(?:how many|number of|count of|total number)\b", low))
+    if answer_type == "date_time":
+        return True
+    if answer_type == "url":
+        return True
+    return True
+
+
+def _reconcile_query_answer_type(question: str, answer_type: str) -> str:
+    value = answer_type if answer_type in ANSWER_TYPES else "unknown"
+    if value != "unknown" and not _question_supports_structural_answer_type(question, value):
+        return "unknown"
+    return value
+
+
 def query_frame_from_query_drs(question: str, query_drs: dict[str, Any] | None) -> dict[str, Any] | None:
     if not isinstance(query_drs, dict):
         return None
@@ -2954,6 +2919,7 @@ def query_frame_from_query_drs(question: str, query_drs: dict[str, Any] | None) 
         typed_variables = [value for value in answer_variable_types if value and value != "unknown"]
         if typed_variables:
             answer_type = typed_variables[0]
+    answer_type = _reconcile_query_answer_type(question, answer_type)
     frame = frame_from_mapping(
         question,
         {
@@ -3006,7 +2972,11 @@ def call_model_evidence_answer(
     n_predict: int | None = None,
 ) -> dict[str, Any]:
     if n_predict is None:
-        n_predict = int(os.environ.get("KMD_EVIDENCE_ANSWER_N_PREDICT", "128"))
+        n_predict = _context_output_tokens(
+            client,
+            ratio_names=("KMD_EVIDENCE_ANSWER_OUTPUT_RATIO",),
+            ratio_default=1.0 / 128.0,
+        )
     prompt = build_evidence_extraction_prompt(question, expected_answer_type, evidence_items)
     constraint = _constraint_settings(EVIDENCE_EXTRACTION_GRAMMAR, ANSWER_JSON_SCHEMA, ANSWER_SCHEMA_VERSION)
     grammar_hash = str(constraint["grammar_hash"])
@@ -3104,12 +3074,13 @@ def build_query_evidence_answer_prompt(
     question: str,
     evidence_items: list[dict[str, str]],
     discourse_records: list[dict[str, Any]] | None = None,
+    authoritative_query_frame: dict[str, Any] | None = None,
 ) -> str:
     surface = {
         "visible_anchors": visible_anchors(question),
         "urls": urls(question),
         "identifiers": identifiers(question),
-        "content_tokens": content_tokens(question)[:32],
+        "content_tokens": content_tokens(question),
     }
     return (
         "JSON only. Perform a bounded DRT/DSPG question analysis and grounded entailment check. "
@@ -3125,7 +3096,9 @@ def build_query_evidence_answer_prompt(
         "negates the queried condition or entails an incompatible condition in the same relevant temporal scope; "
         "otherwise return unknown. For arithmetic explicitly stated in bounded evidence, "
         "compute the requested result and ground the operands in the evidence. "
-        "First convert the question into the required generic query_frame object. Then answer only if the provided "
+        "The authoritative_query_frame, when provided, is the already accepted semantic interpretation of the question. "
+        "Copy it exactly into query_frame; do not reinterpret or replace its answer type, target, relation, aggregation, "
+        "scope, polarity, modality, or temporal requirements. Then answer only if the provided "
         "DRS/DSPG discourse records and raw-text evidence entail a complete answer to that frame. Relation words "
         "are data from the question, discourse records, and evidence, not handler names. Reject values that do not "
         "satisfy the query frame's type, role, scope, polarity, modality, temporal, identity, and provenance "
@@ -3155,6 +3128,7 @@ def build_query_evidence_answer_prompt(
         + json.dumps(
             {
                 "question": question,
+                "authoritative_query_frame": authoritative_query_frame or {},
                 "surface_observations": surface,
                 "evidence": evidence_items,
                 "discourse_records": discourse_records or [],
@@ -3169,13 +3143,15 @@ def build_query_evidence_answer_repair_prompt(
     evidence_items: list[dict[str, str]],
     raw_response: str,
     discourse_records: list[dict[str, Any]] | None = None,
+    authoritative_query_frame: dict[str, Any] | None = None,
 ) -> str:
     return (
         "JSON only. Repair the previous local-model output into the exact bounded DRT/DSPG answer schema. "
         "Use only the question, bounded evidence, and previous output shown here. This is an LLM semantic repair: "
         "do not fill missing truth conditions by formatting guesses. If the evidence does not entail the previous "
         "answer, or no exact supporting sentence/line can be copied as evidence_span, return sufficient_evidence=false "
-        "and answer='unknown'. The repaired answer must preserve the query frame's referents, roles, type, scope, "
+        "and answer='unknown'. The authoritative_query_frame, when provided, must be copied exactly and must not be "
+        "reinterpreted. The repaired answer must preserve the query frame's referents, roles, type, scope, "
         "polarity, modality, temporal constraints, identity constraints, and provenance. For a count answer, return "
         "evidence_span as exactly the counted matching source rows, one nonempty row per line, with no title, header, "
         "introduction, explanation, or nonmatching row; the number of nonempty lines must equal answer. Return exactly "
@@ -3187,6 +3163,7 @@ def build_query_evidence_answer_repair_prompt(
         + json.dumps(
             {
                 "question": question,
+                "authoritative_query_frame": authoritative_query_frame or {},
                 "evidence": evidence_items,
                 "discourse_records": discourse_records or [],
                 "previous_model_output": raw_response,
@@ -3194,6 +3171,58 @@ def build_query_evidence_answer_repair_prompt(
             ensure_ascii=False,
         )
     )
+
+
+def _explicit_denial_of_positive_answer_slot(
+    answer_value: str,
+    evidence_span: str,
+    authoritative_query_frame: dict[str, Any] | None,
+) -> bool:
+    """Return true when grounded evidence explicitly denies the requested positive slot.
+
+    This is a structural polarity check, not semantic answer extraction. It only
+    applies when an authoritative positive query frame names one or more answer
+    variables, and the evidence explicitly negates one of those variables.
+    """
+
+    if not isinstance(authoritative_query_frame, dict) or not authoritative_query_frame:
+        return False
+    if bool(authoritative_query_frame.get("negated")):
+        return False
+    variables = [
+        normalize(str(value or ""))
+        for value in authoritative_query_frame.get("answer_variables") or []
+        if normalize(str(value or ""))
+    ]
+    if not variables:
+        return False
+    material = normalize(" ".join([answer_value, evidence_span]))
+    if not material:
+        return False
+    auxiliaries = r"(?:is|are|was|were|be|been|being|has|have|had|do|does|did|can|could|will|would|shall|should|may|might|must)"
+    for variable in variables:
+        phrase = r"\s+".join(re.escape(part) for part in variable.split())
+        if re.search(rf"\bno\s+{phrase}\b", material):
+            return True
+        if re.search(rf"\bthere\s+{auxiliaries}\s+no\s+{phrase}\b", material):
+            return True
+        if re.search(rf"\b{phrase}\b(?:\s+\w+){{0,3}}\s+{auxiliaries}\s+not\b", material):
+            return True
+    query_variants: set[str] = set()
+    query_materials = [
+        *[str(value or "") for value in authoritative_query_frame.get("answer_variables") or []],
+        str(authoritative_query_frame.get("requested_relation") or ""),
+        *[str(value or "") for value in authoritative_query_frame.get("relation_terms") or []],
+        *[str(value or "") for value in authoritative_query_frame.get("constraints") or []],
+    ]
+    for query_material in query_materials:
+        for token in content_tokens(query_material):
+            query_variants.update(term_variants(token))
+    for match in re.finditer(r"\bno\s+(?P<phrase>(?:[a-z0-9_-]+\s+){0,3}[a-z0-9_-]+)", material):
+        for token in content_tokens(match.group("phrase")):
+            if query_variants.intersection(term_variants(token)):
+                return True
+    return False
 
 
 def _query_evidence_payload_from_result(
@@ -3208,11 +3237,18 @@ def _query_evidence_payload_from_result(
     fresh_or_cached: str,
     repair_prompt_hash: str = "",
     cache_context: dict[str, Any] | None = None,
+    authoritative_query_frame: dict[str, Any] | None = None,
+    authoritative_answer_type: str = "unknown",
 ) -> dict[str, Any]:
-    frame_payload = result.get("query_frame") if isinstance(result.get("query_frame"), dict) else {}
-    if not frame_payload and isinstance(result.get("generic_query_frame"), dict):
-        frame_payload = result.get("generic_query_frame")
-    frame_payload = _repair_query_frame_payload(frame_payload, question)
+    model_frame_payload = result.get("query_frame") if isinstance(result.get("query_frame"), dict) else {}
+    if not model_frame_payload and isinstance(result.get("generic_query_frame"), dict):
+        model_frame_payload = result.get("generic_query_frame")
+    model_frame_payload = _repair_query_frame_payload(model_frame_payload, question)
+    frame_payload = (
+        _repair_query_frame_payload(dict(authoritative_query_frame), question)
+        if isinstance(authoritative_query_frame, dict) and authoritative_query_frame
+        else model_frame_payload
+    )
     answer_payload = _repair_answer_payload(result, "unknown")
     answer_payload = _repair_evidence_span(answer_payload, evidence_items)
     if not _valid_query_frame_payload(frame_payload) or not _valid_answer_payload(answer_payload):
@@ -3227,7 +3263,35 @@ def _query_evidence_payload_from_result(
         }
     sufficient = bool(answer_payload.get("sufficient_evidence"))
     evidence_span = str(answer_payload.get("evidence_span") or "")
-    answer_type = str(answer_payload.get("answer_type") or "")
+    answer_value = str(answer_payload.get("answer") or "")
+    model_answer_type = str(answer_payload.get("answer_type") or "unknown")
+    frame_answer_type = str(frame_payload.get("answer_type") or "unknown")
+    requested_answer_type = authoritative_answer_type if authoritative_answer_type in ANSWER_TYPES else "unknown"
+    if requested_answer_type == "unknown":
+        requested_answer_type = frame_answer_type if frame_answer_type in ANSWER_TYPES else "unknown"
+    if requested_answer_type != "unknown":
+        answer_type = requested_answer_type
+    elif model_answer_type in ANSWER_TYPES and model_answer_type != "unknown" and is_value_compatible(
+        ExpectedAnswer(model_answer_type), answer_value
+    ):
+        answer_type = model_answer_type
+    else:
+        answer_type = classify_value(answer_value)
+    answer_payload["answer_type"] = answer_type
+    explicit_denial_normalized = False
+    model_answer_value = answer_value
+    if sufficient and _explicit_denial_of_positive_answer_slot(
+        answer_value,
+        evidence_span,
+        authoritative_query_frame,
+    ):
+        explicit_denial_normalized = True
+        sufficient = False
+        answer_type = "unknown"
+        answer_payload["sufficient_evidence"] = False
+        answer_payload["answer_type"] = "unknown"
+        answer_payload["answer"] = "unknown"
+        answer_payload["reason"] = "The grounded evidence explicitly denies the requested positive answer slot."
     if sufficient:
         if answer_type == "count":
             proof_lines = [line for line in evidence_span.splitlines() if line.strip()]
@@ -3268,7 +3332,11 @@ def _query_evidence_payload_from_result(
         "accepted": True,
         "query_frame": frame,
         "sufficient_evidence": sufficient,
-        "answer_type": str(answer_payload.get("answer_type") or frame.get("answer_type") or "unknown"),
+        "answer_type": answer_type,
+        "model_answer_type": model_answer_type,
+        "model_answer": model_answer_value,
+        "authoritative_query_frame": bool(authoritative_query_frame),
+        "explicit_denial_normalized": explicit_denial_normalized,
         "answer": str(answer_payload.get("answer") or ""),
         "evidence_span": evidence_span,
         "reason": str(answer_payload.get("reason") or ""),
@@ -3293,8 +3361,12 @@ def _call_model_query_evidence_answer_repair(
     *,
     n_predict: int,
     discourse_records: list[dict[str, Any]] | None = None,
+    authoritative_query_frame: dict[str, Any] | None = None,
+    authoritative_answer_type: str = "unknown",
 ) -> dict[str, Any]:
-    prompt = build_query_evidence_answer_repair_prompt(question, evidence_items, raw_response, discourse_records)
+    prompt = build_query_evidence_answer_repair_prompt(
+        question, evidence_items, raw_response, discourse_records, authoritative_query_frame
+    )
     constraint = _constraint_settings(QUERY_EVIDENCE_ANSWER_GRAMMAR, QUERY_EVIDENCE_ANSWER_JSON_SCHEMA, ANSWER_SCHEMA_VERSION)
     grammar_hash = str(constraint["grammar_hash"])
     cache_settings = {"n_predict": n_predict, "schema": ANSWER_SCHEMA_VERSION, **constraint}
@@ -3304,6 +3376,8 @@ def _call_model_query_evidence_answer_repair(
         "evidence_count": len(evidence_items),
         "discourse_record_count": len(discourse_records or []),
         "repair": True,
+        "authoritative_query_frame": authoritative_query_frame or {},
+        "authoritative_answer_type": authoritative_answer_type,
     }
     prompt_hash = _cache_hash(
         "query_evidence_answer_repair",
@@ -3368,6 +3442,8 @@ def _call_model_query_evidence_answer_repair(
         grammar_hash,
         fresh_or_cached="fresh_repair",
         cache_context=cache_context,
+        authoritative_query_frame=authoritative_query_frame,
+        authoritative_answer_type=authoritative_answer_type,
     )
     payload = _with_model_input_audits(payload, locals().get("parsed"), locals().get("exc"), locals().get("repaired"), locals().get("fallback"), locals().get("box_completion"))
     _write_cache(cache_path, payload)
@@ -3381,10 +3457,18 @@ def call_model_query_evidence_answer(
     *,
     n_predict: int | None = None,
     discourse_records: list[dict[str, Any]] | None = None,
+    authoritative_query_frame: dict[str, Any] | None = None,
+    authoritative_answer_type: str = "unknown",
 ) -> dict[str, Any]:
     if n_predict is None:
-        n_predict = int(os.environ.get("KMD_QUERY_EVIDENCE_N_PREDICT", "128"))
-    prompt = build_query_evidence_answer_prompt(question, evidence_items, discourse_records)
+        n_predict = _context_output_tokens(
+            client,
+            ratio_names=("KMD_QUERY_EVIDENCE_OUTPUT_RATIO",),
+            ratio_default=1.0 / 32.0,
+        )
+    prompt = build_query_evidence_answer_prompt(
+        question, evidence_items, discourse_records, authoritative_query_frame
+    )
     constraint = _constraint_settings(QUERY_EVIDENCE_ANSWER_GRAMMAR, QUERY_EVIDENCE_ANSWER_JSON_SCHEMA, ANSWER_SCHEMA_VERSION)
     grammar_hash = str(constraint["grammar_hash"])
     cache_settings = {"n_predict": n_predict, "schema": ANSWER_SCHEMA_VERSION, **constraint}
@@ -3394,6 +3478,8 @@ def call_model_query_evidence_answer(
         "evidence_count": len(evidence_items),
         "discourse_record_count": len(discourse_records or []),
         "repair": False,
+        "authoritative_query_frame": authoritative_query_frame or {},
+        "authoritative_answer_type": authoritative_answer_type,
     }
     prompt_hash = _cache_hash(
         "query_evidence_answer",
@@ -3437,6 +3523,8 @@ def call_model_query_evidence_answer(
             client,
             n_predict=n_predict,
             discourse_records=discourse_records,
+            authoritative_query_frame=authoritative_query_frame,
+            authoritative_answer_type=authoritative_answer_type,
         )
         if repaired.get("accepted"):
             payload = {**repaired, "repair_of_prompt_hash": prompt_hash}
@@ -3470,6 +3558,8 @@ def call_model_query_evidence_answer(
         grammar_hash,
         fresh_or_cached="fresh",
         cache_context=cache_context,
+        authoritative_query_frame=authoritative_query_frame,
+        authoritative_answer_type=authoritative_answer_type,
     )
     needs_repair = missing_required or payload.get("reason") in {"schema_validation_failed", "grounding_validation_failed"}
     if needs_repair:
@@ -3480,6 +3570,8 @@ def call_model_query_evidence_answer(
             client,
             n_predict=n_predict,
             discourse_records=discourse_records,
+            authoritative_query_frame=authoritative_query_frame,
+            authoritative_answer_type=authoritative_answer_type,
         )
         if repaired.get("accepted"):
             payload = {**repaired, "repair_of_prompt_hash": prompt_hash}
@@ -3522,49 +3614,28 @@ def _context_limited_chunk_frame_text(
     n_predict: int,
 ) -> tuple[str, dict[str, Any]]:
     context_size = _client_context_size(client)
-    budget: dict[str, Any] = {
+    if context_size <= 0:
+        raise LocalModelUnavailableError("model context size is required for chunk-frame admission")
+    budget = context_relative_budget(
+        context_size,
+        output_ratio_names=("KMD_CHUNK_FRAME_OUTPUT_RATIO",),
+        safety_ratio_names=("KMD_CHUNK_FRAME_SAFETY_RATIO",),
+        overhead_ratio_names=("KMD_CHUNK_FRAME_OVERHEAD_RATIO",),
+    )
+    estimated_input_tokens = _estimate_tokens(chunk_text)
+    return chunk_text, {
         "runtime_context_size": context_size,
         "reserved_output_tokens": int(n_predict),
-        "context_source": "client_metadata" if context_size > 0 else "unavailable",
+        "context_source": "client_metadata",
         "context_budget_policy": CHUNK_FRAME_CONTEXT_BUDGET_POLICY,
+        "capacity_policy": CONTEXT_CAPACITY_POLICY,
+        "safe_input_tokens": budget.safe_input_tokens,
+        "estimated_input_tokens": estimated_input_tokens,
+        "input_chars": len(chunk_text),
+        "prompt_chunk_chars": len(chunk_text),
+        "input_truncated": False,
+        "final_admission": "exact_rendered_prompt_tokenizer_preflight",
     }
-    if context_size <= 0:
-        configured_chars = os.environ.get("KMD_CHUNK_FRAME_MAX_CHARS")
-        if configured_chars:
-            try:
-                max_chars = max(1, int(configured_chars))
-            except ValueError:
-                max_chars = len(chunk_text)
-            limited = chunk_text[:max_chars]
-        else:
-            limited = chunk_text
-        budget.update(
-            {
-                "prompt_budget_tokens": 0,
-                "prompt_overhead_tokens": 0,
-                "chunk_budget_tokens": _estimate_tokens(limited),
-                "input_chars": len(chunk_text),
-                "prompt_chunk_chars": len(limited),
-                "input_truncated": len(limited) < len(chunk_text),
-            }
-        )
-        return limited, budget
-    seed_budget = {**budget, "prompt_budget_tokens": max(0, context_size - int(n_predict)), "chunk_budget_tokens": 0}
-    overhead_tokens = _estimate_tokens(build_chunk_frame_prompt("", rel_path=rel_path, context_budget=seed_budget))
-    prompt_budget_tokens = max(0, context_size - int(n_predict) - overhead_tokens)
-    max_chars = max(0, prompt_budget_tokens * 4)
-    limited = chunk_text[:max_chars] if max_chars else ""
-    budget.update(
-        {
-            "prompt_budget_tokens": prompt_budget_tokens,
-            "prompt_overhead_tokens": overhead_tokens,
-            "chunk_budget_tokens": _estimate_tokens(limited),
-            "input_chars": len(chunk_text),
-            "prompt_chunk_chars": len(limited),
-            "input_truncated": len(limited) < len(chunk_text),
-        }
-    )
-    return limited, budget
 
 
 def chunk_frame_cache_context(
@@ -3812,7 +3883,7 @@ def build_compact_chunk_drs_prompt(chunk_text: str, *, rel_path: str = "") -> st
         "Each e and every argument value must be exact substrings of the chunk. Use short predicate labels from the chunk. "
         "Preserve attribute-value structure: for a field such as 'X state: Y', emit predicate state, a subject argument X, "
         "and a value argument Y; do not fold the attribute word into the subject and do not use Y as the predicate. "
-        "Apply the same rule to key-value, label-value, and colon-delimited records. Extract all useful conditions from the chunk. "
+        "Apply the same rule to key-value, label-value, and colon-delimited records. Treat each JSON array element, JSONL row, nested leaf record, or plain-text sentence as a separate locality unit; never combine fields across units or use the whole multi-unit chunk as one fact evidence span. Extract all useful conditions from the chunk. "
         "Include source-stated definitions, meanings, names, aliases, and terminology as ordinary "
         "relations when the chunk asserts them. Return {\"facts\":[]} when the chunk asserts no useful source-grounded DRS "
         "condition. Do not answer questions and do not use outside knowledge. "
@@ -4083,9 +4154,11 @@ def _compact_chunk_drs_to_payload(parsed: dict[str, Any], source_text: str, *, r
         if not predicate or not evidence:
             continue
         scope = _compact_fact_scope(fact)
+        polarity = "negative" if scope == "negated" else "positive"
+        box_scope = "asserted" if scope == "negated" else scope
         box_id = "b0"
-        if scope != "asserted":
-            box_key = (scope, evidence)
+        if box_scope != "asserted":
+            box_key = (box_scope, evidence)
             box_id = box_ids_by_scope_evidence.get(box_key, "")
             if not box_id:
                 box_id = f"b{len(boxes)}"
@@ -4093,7 +4166,7 @@ def _compact_chunk_drs_to_payload(parsed: dict[str, Any], source_text: str, *, r
                 boxes.append(
                     {
                         "id": box_id,
-                        "kind": scope,
+                        "kind": box_scope,
                         "parent_id": "b0",
                         "holder_referent_id": "",
                         "evidence_text": evidence,
@@ -4144,7 +4217,7 @@ def _compact_chunk_drs_to_payload(parsed: dict[str, Any], source_text: str, *, r
                 "id": condition_id,
                 "box_id": box_id,
                 "predicate": predicate,
-                "polarity": "positive",
+                "polarity": polarity,
                 "modality": "asserted",
                 "temporal_id": temporal_id,
                 "evidence_text": evidence,
@@ -4167,6 +4240,116 @@ def _compact_chunk_drs_to_payload(parsed: dict[str, Any], source_text: str, *, r
     }, source_text)
 
 
+def _compact_negation_cache_recoverable(payload: dict[str, Any]) -> bool:
+    if payload.get("accepted") is True or payload.get("reason") != "schema_validation_failed":
+        return False
+    validation = payload.get("validation") if isinstance(payload.get("validation"), dict) else {}
+    errors = [str(value) for value in validation.get("errors", [])]
+    if "missing_negative_condition_for_grounded_negated_clause" not in errors:
+        return False
+    raw_text = str(payload.get("raw_text") or "")
+    if not raw_text:
+        return False
+    try:
+        parsed = json.loads(raw_text)
+    except json.JSONDecodeError:
+        return False
+    return isinstance(parsed, dict)
+
+
+def _migrate_compact_negated_scope_payload(
+    payload: dict[str, Any],
+    chunk_text: str,
+    *,
+    rel_path: str = "",
+) -> dict[str, Any]:
+    """Upgrade the compact-v6 negation encoding without another model call."""
+    source_policy = str(payload.get("compact_fact_policy") or "")
+    validation = payload.get("validation") if isinstance(payload.get("validation"), dict) else {}
+    validation_errors = [str(value) for value in validation.get("errors", [])]
+    raw_text = str(payload.get("raw_text") or "")
+    if _compact_negation_cache_recoverable(payload):
+        try:
+            parsed = json.loads(raw_text)
+        except json.JSONDecodeError:
+            parsed = None
+        if isinstance(parsed, dict):
+            converted = _compact_chunk_drs_to_payload(parsed, chunk_text, rel_path=rel_path)
+            repaired = _repair_chunk_drs_payload(converted, chunk_text)
+            converted_validation = _validate_chunk_drs_payload(repaired, chunk_text)
+            if converted_validation.get("schema_valid"):
+                return {
+                    **payload,
+                    "accepted": True,
+                    "reason": "compact_drs",
+                    "drs": repaired["drs"],
+                    "validation": converted_validation,
+                    "compact_fact_policy": CHUNK_DRS_COMPACT_FACT_POLICY,
+                    "compact_negation_migration": {
+                        "policy": CHUNK_DRS_COMPACT_NEGATION_MIGRATION_POLICY,
+                        "from_policy": source_policy or CHUNK_DRS_COMPACT_FACT_POLICY_NEGATED_SCOPE_LEGACY,
+                        "source": "rejected_compact_raw_text",
+                    },
+                }
+    if (
+        payload.get("accepted") is not True
+        or not isinstance(payload.get("drs"), dict)
+        or str(payload.get("reason") or "") != "compact_drs"
+        or source_policy not in {
+            CHUNK_DRS_COMPACT_FACT_POLICY_NEGATED_SCOPE_LEGACY,
+            CHUNK_DRS_COMPACT_FACT_POLICY,
+        }
+    ):
+        return payload
+    drs = json.loads(json.dumps(payload["drs"]))
+    boxes = [item for item in drs.get("boxes", []) if isinstance(item, dict)]
+    conditions = [item for item in drs.get("conditions", []) if isinstance(item, dict)]
+    boxes_by_id = {str(item.get("id") or ""): item for item in boxes}
+    migrated_box_ids: set[str] = set()
+    changed = False
+    for condition in conditions:
+        box_id = str(condition.get("box_id") or "")
+        box = boxes_by_id.get(box_id)
+        if (
+            box is None
+            or str(box.get("kind") or "") != "negated"
+            or str(condition.get("polarity") or "") != "positive"
+        ):
+            continue
+        condition["polarity"] = "negative"
+        condition["box_id"] = str(box.get("parent_id") or "b0")
+        migrated_box_ids.add(box_id)
+        changed = True
+    if not changed:
+        return payload
+    referenced_box_ids = {
+        str(condition.get("box_id") or "") for condition in conditions
+    }
+    drs["boxes"] = [
+        box
+        for box in boxes
+        if str(box.get("id") or "") not in migrated_box_ids
+        or str(box.get("id") or "") in referenced_box_ids
+    ]
+    drs["conditions"] = conditions
+    repaired = _repair_chunk_drs_payload({"drs": drs}, chunk_text)
+    migrated_validation = _validate_chunk_drs_payload(repaired, chunk_text)
+    if not migrated_validation.get("schema_valid"):
+        return payload
+    return {
+        **payload,
+        "drs": repaired["drs"],
+        "validation": migrated_validation,
+        "compact_fact_policy": CHUNK_DRS_COMPACT_FACT_POLICY,
+        "compact_negation_migration": {
+            "policy": CHUNK_DRS_COMPACT_NEGATION_MIGRATION_POLICY,
+            "from_policy": source_policy,
+            "source": "accepted_compact_drs",
+            "migrated_box_ids": sorted(migrated_box_ids),
+        },
+    }
+
+
 def _compact_chunk_drs_enabled() -> bool:
     return os.environ.get("KMD_CHUNK_DRS_COMPACT_FIRST", "1").strip().lower() not in {"0", "false", "no", "off"}
 
@@ -4178,29 +4361,24 @@ def _compact_live_model_path_allowed(client: LocalModelClient) -> bool:
     ).strip().lower() in {"1", "true", "yes", "on"}
 
 
-def _compact_chunk_drs_eligible(chunk_text: str) -> bool:
-    configured = os.environ.get("KMD_CHUNK_DRS_COMPACT_MAX_CHARS", "")
-    try:
-        max_chars = int(configured) if configured else 1200
-    except ValueError:
-        max_chars = 1200
+def _compact_chunk_drs_eligible(chunk_text: str, client: LocalModelClient) -> bool:
+    context_size = _client_context_size(client)
+    if context_size <= 0:
+        raise LocalModelUnavailableError("model context size is required for compact-path eligibility")
+    max_chars = context_char_capacity(
+        context_size,
+        ratio_names=("KMD_CHUNK_DRS_COMPACT_INPUT_RATIO",),
+        ratio_default=1.0 / 128.0,
+    )
     return len(str(chunk_text or "")) <= max_chars
 
 
 def _compact_chunk_drs_retry_budgets(n_predict: int) -> list[int]:
-    configured = os.environ.get("KMD_CHUNK_DRS_COMPACT_RETRY_N_PREDICTS", "").strip()
-    if configured:
-        budgets: list[int] = []
-        for item in configured.split(","):
-            try:
-                value = int(item.strip())
-            except ValueError:
-                continue
-            if value > 0 and value != n_predict and value not in budgets:
-                budgets.append(value)
-        return budgets
-    budgets = [max(768, n_predict * 2), max(1536, n_predict * 4)]
-    return [value for value in dict.fromkeys(budgets) if value > n_predict]
+    return _relative_retry_budgets(
+        n_predict,
+        env_name="KMD_CHUNK_DRS_COMPACT_RETRY_OUTPUT_MULTIPLIERS",
+        default_multipliers=(2.0, 4.0),
+    )
 
 
 def _finalize_compact_cached_payload(
@@ -4212,6 +4390,11 @@ def _finalize_compact_cached_payload(
     migrated_from_prompt_hash: str = "",
 ) -> dict[str, Any]:
     payload = {**payload}
+    payload = _migrate_compact_negated_scope_payload(
+        payload,
+        chunk_text,
+        rel_path=str(cache_context.get("source_rel_path") or ""),
+    )
     payload.setdefault("cache_context", cache_context)
     if not payload.get("accepted") or not isinstance(payload.get("drs"), dict):
         return payload
@@ -4248,7 +4431,7 @@ def call_model_chunk_drs_compact(
     refresh_empty_legacy: bool = False,
 ) -> dict[str, Any]:
     if n_predict is None:
-        n_predict = default_compact_chunk_drs_n_predict(chunk_text)
+        n_predict = default_compact_chunk_drs_n_predict(client, chunk_text)
     prompt = build_compact_chunk_drs_prompt(chunk_text, rel_path=rel_path)
     source_text_hash = hashlib.sha256(str(chunk_text or "").encode("utf-8", errors="replace")).hexdigest()
     budgets = [n_predict, *_compact_chunk_drs_retry_budgets(n_predict)]
@@ -4398,6 +4581,7 @@ def call_model_chunk_drs_compact(
                 return finalized
         if not retry_index:
             legacy_variants = [
+                (build_compact_chunk_drs_prompt(chunk_text, rel_path=rel_path), CHUNK_DRS_COMPACT_FACT_POLICY_NEGATED_SCOPE_LEGACY),
                 (_build_compact_chunk_drs_prompt_v2(chunk_text, rel_path=rel_path), CHUNK_DRS_COMPACT_FACT_POLICY_PREVIOUS),
                 (_build_compact_chunk_drs_prompt_v1(chunk_text, rel_path=rel_path), CHUNK_DRS_COMPACT_FACT_POLICY_LEGACY),
             ]
@@ -4409,10 +4593,19 @@ def call_model_chunk_drs_compact(
                 legacy_prompt_hash = _cache_hash("chunk_drs_compact", legacy_prompt, client, legacy_settings)
                 legacy_cache_path = _cache_path("KMD_CHUNK_DRS_CACHE_DIR", legacy_prompt_hash)
                 legacy_cached = _read_cache(legacy_cache_path)
+                legacy_recoverable = bool(
+                    isinstance(legacy_cached, dict)
+                    and _compact_negation_cache_recoverable(legacy_cached)
+                )
                 if (
                     legacy_cached is not None
-                    and not _query_drs_cached_retryable_failure(legacy_cached)
-                    and (not refresh_empty_legacy or _compact_cached_payload_has_conditions(legacy_cached))
+                    and (
+                        legacy_recoverable
+                        or (
+                            not _query_drs_cached_retryable_failure(legacy_cached)
+                            and (not refresh_empty_legacy or _compact_cached_payload_has_conditions(legacy_cached))
+                        )
+                    )
                 ):
                     finalized_legacy = _finalize_compact_cached_payload(
                         legacy_cached,
@@ -4443,7 +4636,7 @@ def call_model_chunk_drs_compact(
         except LocalModelJSONError as exc:
             payload = {
                 "accepted": False,
-                "reason": "invalid_json",
+                "reason": str(getattr(exc, "reason", "invalid_json")),
                 "error": str(exc),
                 "raw_text": exc.raw_text,
                 "raw_snippet": exc.snippet,
@@ -4579,7 +4772,6 @@ def call_model_chunk_drs_compact(
 def build_chunk_drs_prompt(chunk_text: str, *, rel_path: str = "", context_budget: dict[str, Any] | None = None) -> str:
     max_evidence_chars = int((context_budget or {}).get("max_evidence_chars") or 0)
     max_array_items = int((context_budget or {}).get("max_array_items") or 0)
-    source_span_policy = str((context_budget or {}).get("source_span_policy") or "")
     evidence_budget_text = (
         f" Each evidence_text item must be at most {max_evidence_chars} characters."
         if max_evidence_chars > 0
@@ -4587,10 +4779,12 @@ def build_chunk_drs_prompt(chunk_text: str, *, rel_path: str = "", context_budge
     )
     array_budget_text = f" Each JSON array must contain at most {max_array_items} items." if max_array_items > 0 else ""
     source_span_text = (
-        " The JSON schema constrains condition and argument evidence_text to deterministic source-span options; "
-        "choose one exact listed source span or ''. "
-        if source_span_policy
-        else ""
+        " Evidence must be copied as one exact contiguous source substring. A source-locality unit is one JSON "
+        "array element, one nested JSON leaf record together with inherited scalar parent metadata, one JSONL "
+        "record, or one complete plain-text sentence/line. Every condition and every one of its arguments must be "
+        "supported inside the same source record or sentence, meaning the same single source-locality unit. Never use the whole chunk as condition evidence "
+        "when the chunk contains multiple records or sentences, and never combine a subject from one unit with a "
+        "value from another. "
     )
     return (
         CHUNK_DRS_NEGATION_CONTRACT
@@ -4686,22 +4880,25 @@ def _chunk_drs_validation_feedback_payload(validation: dict[str, Any], *, stage:
             corrections.append("If an argument targets a discourse referent, that referent id must be declared in the referents array with grounded evidence.")
         elif error.startswith("literal_argument_has_target_id:"):
             corrections.append("Literal and unknown arguments must use target_id ''.")
+    for failure in grounding_failures:
+        if failure.startswith("condition_evidence_not_localized:"):
+            corrections.append(
+                "Rewrite each condition evidence_text as one exact substring from a single JSON record or plain-text sentence; never cite the whole multi-record or multi-sentence chunk."
+            )
+        elif failure.startswith("condition_argument_record_mismatch:"):
+            corrections.append(
+                "Split the false combined condition: every condition and every argument must be supported inside the same single source record or sentence."
+            )
     return {
         "stage": stage,
         "errors": errors,
         "grounding_failures": grounding_failures,
-        "required_corrections": list(dict.fromkeys(corrections))[:20],
+        "required_corrections": list(dict.fromkeys(corrections)),
         "validation_retry_policy": "model-corrects-drs-topology-no-deterministic-id-rewrite-v1",
     }
 
 
 def build_chunk_drs_skeleton_prompt(chunk_text: str, *, rel_path: str = "", context_budget: dict[str, Any] | None = None) -> str:
-    source_span_candidates = (context_budget or {}).get("source_span_candidates")
-    span_candidate_text = (
-        "When source_span_candidates are provided, each evidence_text must be exactly one listed source span or ''. "
-        if isinstance(source_span_candidates, list) and source_span_candidates
-        else ""
-    )
     validation_feedback_text = _chunk_drs_validation_feedback_text(context_budget)
     return (
         CHUNK_DRS_NEGATION_CONTRACT
@@ -4719,9 +4916,10 @@ def build_chunk_drs_skeleton_prompt(chunk_text: str, *, rel_path: str = "", cont
         "the subordinate box_id, not b0, unless the chunk separately asserts that proposition as fact. "
         "When a scoped context contains embedded proposition content, declare a distinct subordinate box for that "
         "content so stage 2 can reference it; do not require a condition to point back to its own box. "
-        + span_candidate_text
-        + "Every evidence_text item must be one contiguous substring "
-        "copied exactly from the chunk."
+        + "Every evidence_text item must be one contiguous substring copied exactly from the chunk. Treat each "
+        "JSON array element, nested JSON leaf record with inherited scalar parent metadata, JSONL record, or "
+        "plain-text sentence/line as a separate source-locality unit. Referent and temporal evidence must come "
+        "from the one unit that contains that supported value; never cite the whole multi-unit chunk."
         + json.dumps(
             {
                 "source_id": rel_path,
@@ -4752,12 +4950,6 @@ def build_chunk_drs_condition_prompt(
     temporal_records: list[dict[str, Any]] | None = None,
     context_budget: dict[str, Any] | None = None,
 ) -> str:
-    source_span_candidates = (context_budget or {}).get("source_span_candidates")
-    span_candidate_text = (
-        "When source_span_candidates are provided, each evidence_text must be exactly one listed source span or ''. "
-        if isinstance(source_span_candidates, list) and source_span_candidates
-        else ""
-    )
     validation_feedback_text = _chunk_drs_validation_feedback_text(context_budget)
     return (
         CHUNK_DRS_NEGATION_CONTRACT
@@ -4777,8 +4969,11 @@ def build_chunk_drs_condition_prompt(
         "For compact records, key/value lists, JSON-like objects, TSV/CSV rows, and log entries, emit grounded "
         "conditions for visible source-supported field/value or row structure when declared referents or literals "
         "can participate. "
-        + span_candidate_text
-        + "Every evidence_text item must be one contiguous substring copied exactly from the chunk."
+        + "Every evidence_text item must be one contiguous substring copied exactly from the chunk. Treat each "
+        "JSON array element, nested JSON leaf record with inherited scalar parent metadata, JSONL record, or "
+        "plain-text sentence/line as a separate source-locality unit. A condition and every argument it contains "
+        "must all be supported by the same one unit. Never use the whole multi-unit chunk as condition evidence, "
+        "and never combine a subject from one unit with a literal or referent from another."
         + json.dumps(
             {
                 "source_id": rel_path,
@@ -4825,7 +5020,7 @@ def build_chunk_drs_box_completion_prompt(
                 "schema_version": CHUNK_DRS_SCHEMA_VERSION,
                 "context_budget": context_budget or {},
                 "missing_box_ids": missing_box_ids,
-                "validation_errors": validation_errors[:50],
+                "validation_errors": validation_errors,
                 "candidate_drs": candidate_drs,
                 "required_top_shape": {
                     "box_completion": {
@@ -4849,52 +5044,227 @@ def _context_limited_chunk_drs_text(
     n_predict: int,
 ) -> tuple[str, dict[str, Any]]:
     context_size = _client_context_size(client)
-    budget: dict[str, Any] = {
+    if context_size <= 0:
+        raise LocalModelUnavailableError("model context size is required for chunk-DRS admission")
+    budget = context_relative_budget(
+        context_size,
+        output_ratio_names=("KMD_CHUNK_DRS_OUTPUT_RATIO",),
+        safety_ratio_names=("KMD_CHUNK_DRS_SAFETY_RATIO",),
+        overhead_ratio_names=("KMD_CHUNK_DRS_OVERHEAD_RATIO",),
+    )
+    estimated_input_tokens = _estimate_tokens(chunk_text)
+    return chunk_text, {
         "runtime_context_size": context_size,
         "reserved_output_tokens": int(n_predict),
-        "context_source": "client_metadata" if context_size > 0 else "unavailable",
+        "context_source": "client_metadata",
+        "capacity_policy": CONTEXT_CAPACITY_POLICY,
+        "safe_input_tokens": budget.safe_input_tokens,
+        "estimated_input_tokens": estimated_input_tokens,
+        "input_chars": len(chunk_text),
+        "prompt_chunk_chars": len(chunk_text),
+        "max_evidence_chars": chunk_drs_evidence_max_chars(chunk_text, n_predict),
+        "max_array_items": chunk_drs_array_max_items(n_predict),
+        "input_truncated": False,
+        "final_admission": "exact_rendered_prompt_tokenizer_preflight",
     }
-    if context_size <= 0:
-        configured_chars = os.environ.get("KMD_CHUNK_DRS_MAX_CHARS")
-        if configured_chars:
-            try:
-                max_chars = max(1, int(configured_chars))
-            except ValueError:
-                max_chars = len(chunk_text)
-            limited = chunk_text[:max_chars]
-        else:
-            limited = chunk_text
-        budget.update(
-            {
-                "prompt_budget_tokens": 0,
-                "prompt_overhead_tokens": 0,
-                "chunk_budget_tokens": _estimate_tokens(limited),
-                "input_chars": len(chunk_text),
-                "prompt_chunk_chars": len(limited),
-                "max_evidence_chars": chunk_drs_evidence_max_chars(limited, n_predict),
-                "max_array_items": chunk_drs_array_max_items(n_predict),
-                "input_truncated": len(limited) < len(chunk_text),
+
+
+def _chunk_drs_substantive_structured_source(source_text: str) -> bool:
+    """Return true when JSONL input contains source text that requires semantics.
+
+    Prepared structured corpora keep evaluation metadata outside the source tree
+    and place the actual record content in ``raw_text``. A completely empty DRS
+    for such a record is extraction failure, not a valid semantic result.
+    Ordinary prose and metadata-only JSON remain governed by the existing
+    structural and grounding validators.
+    """
+
+    nonblank_lines = [line.strip() for line in str(source_text or "").splitlines() if line.strip()]
+    if not nonblank_lines:
+        return False
+    parsed_records: list[dict[str, Any]] = []
+    for line in nonblank_lines:
+        try:
+            value = json.loads(line)
+        except json.JSONDecodeError:
+            return False
+        if not isinstance(value, dict):
+            return False
+        parsed_records.append(value)
+    for record in parsed_records:
+        raw_text = record.get("raw_text")
+        if not isinstance(raw_text, str):
+            continue
+        content = raw_text.strip()
+        if content and any(character.isalnum() for character in content):
+            return True
+    return False
+
+
+def _json_source_container_roots(source_text: str) -> list[dict[str, Any]]:
+    """Return a lexical JSON container tree with exact source offsets.
+
+    The scanner accepts complete JSON documents, JSONL, and comma-separated
+    JSON fragments.  It deliberately does not normalize or reserialize record
+    spans because evidence validation must operate on the original bytes.
+    """
+
+    roots: list[dict[str, Any]] = []
+    stack: list[dict[str, Any]] = []
+    in_string = False
+    escaped = False
+    matching = {"}": "object", "]": "array"}
+    for index, character in enumerate(str(source_text or "")):
+        if in_string:
+            if escaped:
+                escaped = False
+            elif character == "\\":
+                escaped = True
+            elif character == '"':
+                in_string = False
+            continue
+        if character == '"':
+            in_string = True
+            continue
+        if character in "{[":
+            node: dict[str, Any] = {
+                "kind": "object" if character == "{" else "array",
+                "start": index,
+                "end": None,
+                "parent": stack[-1] if stack else None,
+                "children": [],
             }
+            if stack:
+                stack[-1]["children"].append(node)
+            else:
+                roots.append(node)
+            stack.append(node)
+            continue
+        if character in "}]":
+            if not stack or stack[-1]["kind"] != matching[character]:
+                return []
+            stack[-1]["end"] = index + 1
+            stack.pop()
+    if in_string or stack:
+        return []
+    return roots
+
+
+def _json_direct_scalar_context(node: dict[str, Any], source_text: str) -> list[str]:
+    end = node.get("end")
+    if node.get("kind") != "object" or not isinstance(end, int):
+        return []
+    surface = source_text[int(node["start"]):end]
+    try:
+        value = json.loads(surface)
+    except (json.JSONDecodeError, TypeError):
+        return []
+    if not isinstance(value, dict):
+        return []
+    context: list[str] = []
+    for key, item in value.items():
+        if isinstance(item, (dict, list)):
+            continue
+        context.append(
+            f"{json.dumps(str(key), ensure_ascii=False)}:"
+            f"{json.dumps(item, ensure_ascii=False, separators=(',', ':'))}"
         )
-        return limited, budget
-    seed_budget = {**budget, "prompt_budget_tokens": max(0, context_size - int(n_predict)), "chunk_budget_tokens": 0}
-    overhead_tokens = _estimate_tokens(build_chunk_drs_prompt("", rel_path=rel_path, context_budget=seed_budget))
-    prompt_budget_tokens = max(0, context_size - int(n_predict) - overhead_tokens)
-    max_chars = max(0, prompt_budget_tokens * 4)
-    limited = chunk_text[:max_chars] if max_chars else ""
-    budget.update(
-        {
-            "prompt_budget_tokens": prompt_budget_tokens,
-            "prompt_overhead_tokens": overhead_tokens,
-            "chunk_budget_tokens": _estimate_tokens(limited),
-            "input_chars": len(chunk_text),
-            "prompt_chunk_chars": len(limited),
-            "max_evidence_chars": chunk_drs_evidence_max_chars(limited, n_predict),
-            "max_array_items": chunk_drs_array_max_items(n_predict),
-            "input_truncated": len(limited) < len(chunk_text),
-        }
-    )
-    return limited, budget
+    return context
+
+
+def _json_source_locality_surfaces(source_text: str) -> list[str]:
+    roots = _json_source_container_roots(source_text)
+    if not roots:
+        return []
+    nodes: list[dict[str, Any]] = []
+
+    def visit(node: dict[str, Any]) -> None:
+        nodes.append(node)
+        for child in node.get("children", []):
+            if isinstance(child, dict):
+                visit(child)
+
+    for root in roots:
+        visit(root)
+    units: list[str] = []
+    for node in nodes:
+        end = node.get("end")
+        if node.get("kind") != "object" or not isinstance(end, int):
+            continue
+        surface = source_text[int(node["start"]):end]
+        try:
+            value = json.loads(surface)
+        except (json.JSONDecodeError, TypeError):
+            continue
+        if not isinstance(value, dict):
+            continue
+        parent = node.get("parent")
+        children = [child for child in node.get("children", []) if isinstance(child, dict)]
+        # Array elements are records even when they contain nested structures.
+        # Otherwise use leaf objects, avoiding a root/container object that
+        # would merge separate descendant records back into one locality unit.
+        if not ((isinstance(parent, dict) and parent.get("kind") == "array") or not children):
+            continue
+        inherited: list[str] = []
+        ancestor = parent
+        while isinstance(ancestor, dict):
+            inherited.extend(_json_direct_scalar_context(ancestor, source_text))
+            ancestor = ancestor.get("parent")
+        unit = "\n".join([*reversed(inherited), surface]).strip()
+        if unit:
+            units.append(unit)
+    return list(dict.fromkeys(units))
+
+
+def _plain_source_locality_surfaces(source_text: str) -> list[str]:
+    return [value for _start, _end, value in split_units(str(source_text or "")) if value]
+
+
+def _structured_source_record_surfaces(source_text: str) -> list[str]:
+    """Return source-locality units for grounding validation.
+
+    The historical name is retained for cache/test compatibility.  JSON uses
+    array elements and nested leaf objects, carrying ancestor scalar metadata
+    into each descendant record without including sibling records.  Non-JSON
+    input uses exact sentence/line units.  A condition whose evidence spans
+    multiple units therefore cannot silently bind a subject from one unit to a
+    value from another.
+    """
+
+    structured = _json_source_locality_surfaces(str(source_text or ""))
+    if structured:
+        return structured
+    return _plain_source_locality_surfaces(str(source_text or ""))
+
+def _surface_record_indexes(surface: str, records: list[str]) -> set[int]:
+    text = str(surface or "").strip()
+    if not text:
+        return set()
+    normalized = normalize(text)
+    return {
+        index
+        for index, record in enumerate(records)
+        if text in record or (normalized and normalized in normalize(record))
+    }
+
+
+def _evidence_supports_surface(
+    evidence: str,
+    support: str,
+    source_text: str,
+    records: list[str],
+) -> bool:
+    evidence = str(evidence or "").strip()
+    support = str(support or "").strip()
+    if not evidence or not support:
+        return False
+    if support not in source_text and normalize(support) not in normalize(source_text):
+        return True
+    if records:
+        evidence_records = _surface_record_indexes(evidence, records)
+        support_records = _surface_record_indexes(support, records)
+        return bool(evidence_records and support_records and evidence_records.intersection(support_records))
+    return support in evidence or normalize(support) in normalize(evidence)
 
 
 def _validate_chunk_drs_payload(payload: Any, source_text: str) -> dict[str, Any]:
@@ -4903,6 +5273,7 @@ def _validate_chunk_drs_payload(payload: Any, source_text: str) -> dict[str, Any
     drs = payload["drs"]
     errors: list[str] = []
     grounding_failures: list[str] = []
+    structured_records = _structured_source_record_surfaces(source_text)
 
     def collection(name: str) -> list[dict[str, Any]]:
         value = drs.get(name)
@@ -4922,6 +5293,12 @@ def _validate_chunk_drs_payload(payload: Any, source_text: str) -> dict[str, Any
     conditions = collection("conditions")
     identities = collection("identity_hypotheses")
     temporals = collection("temporal_records")
+    substantive_structured_source = _chunk_drs_substantive_structured_source(source_text)
+    if not referents and not conditions and substantive_structured_source:
+        errors.append("empty_semantics_for_substantive_structured_source")
+    if not conditions and substantive_structured_source:
+        errors.append("missing_conditions_for_substantive_structured_source")
+
     evidence_spans = drs.get("evidence_spans", [])
     if evidence_spans is None:
         evidence_spans = []
@@ -4951,10 +5328,16 @@ def _validate_chunk_drs_payload(payload: Any, source_text: str) -> dict[str, Any
     if len(temporal_ids) != len([value for value in temporal_id_values if value]):
         errors.append("duplicate_or_missing_temporal_id")
 
-    def check_span(value: Any, label: str) -> None:
+    def check_span(value: Any, label: str, support: Any = "") -> None:
         span = str(value or "").strip()
         if span and span not in source_text:
-            grounding_failures.append(f"{label}:{span[:100]}")
+            grounding_failures.append(f"{label}:{span}")
+            return
+        support_text = str(support or "").strip()
+        if support_text and not _evidence_supports_surface(span, support_text, source_text, structured_records):
+            grounding_failures.append(
+                f"unsupported_evidence:{label}:{support_text}<-{span}"
+            )
 
     if not box_ids:
         errors.append("missing_box")
@@ -4964,7 +5347,7 @@ def _validate_chunk_drs_payload(payload: Any, source_text: str) -> dict[str, Any
         ref_id = str(item.get("id") or "")
         if not ref_id or not str(item.get("label") or "").strip():
             errors.append(f"bad_referent:{ref_id}")
-        check_span(item.get("evidence_text"), f"referent:{ref_id}")
+        check_span(item.get("evidence_text"), f"referent:{ref_id}", item.get("label"))
     for item in boxes:
         box_id = str(item.get("id") or "")
         parent_id = str(item.get("parent_id") or "")
@@ -4984,7 +5367,65 @@ def _validate_chunk_drs_payload(payload: Any, source_text: str) -> dict[str, Any
         temporal_id = str(item.get("id") or "")
         if not temporal_id or not str(item.get("value") or "").strip():
             errors.append(f"bad_temporal:{temporal_id}")
-        check_span(item.get("evidence_text"), f"temporal:{temporal_id}")
+        check_span(item.get("evidence_text"), f"temporal:{temporal_id}", item.get("value"))
+    def argument_support_surfaces(argument: dict[str, Any]) -> list[str]:
+        target_kind = str(argument.get("target_kind") or "")
+        target_id = str(argument.get("target_id") or "")
+        values: list[str] = []
+        if target_kind == "referent" and target_id in referents_by_id:
+            target = referents_by_id[target_id]
+            values.extend(
+                [
+                    str(target.get("label") or "").strip(),
+                    str(target.get("evidence_text") or "").strip(),
+                    str(argument.get("evidence_text") or "").strip(),
+                ]
+            )
+        elif target_kind in {"literal", "unknown"}:
+            values.extend(
+                [
+                    str(argument.get("value") or "").strip(),
+                    str(argument.get("evidence_text") or "").strip(),
+                ]
+            )
+        return list(dict.fromkeys(value for value in values if value))
+
+    def condition_argument_has_direct_temporal_bridge(
+        condition: dict[str, Any],
+        support_surfaces: list[str],
+    ) -> bool:
+        temporal_id = str(condition.get("temporal_id") or "")
+        box_id = str(condition.get("box_id") or "")
+        if not temporal_id or not support_surfaces:
+            return False
+        normalized_supports = {normalize(value) for value in support_surfaces if normalize(value)}
+        for sibling in conditions:
+            if sibling is condition or not isinstance(sibling, dict):
+                continue
+            if str(sibling.get("temporal_id") or "") != temporal_id:
+                continue
+            if str(sibling.get("box_id") or "") != box_id:
+                continue
+            sibling_evidence = str(sibling.get("evidence_text") or "").strip()
+            sibling_records = _surface_record_indexes(sibling_evidence, structured_records)
+            if not sibling_records:
+                continue
+            for sibling_argument in sibling.get("arguments") or []:
+                if not isinstance(sibling_argument, dict):
+                    continue
+                sibling_surfaces = argument_support_surfaces(sibling_argument)
+                sibling_normalized = {normalize(value) for value in sibling_surfaces if normalize(value)}
+                if not normalized_supports.intersection(sibling_normalized):
+                    continue
+                sibling_support_records: set[int] = set()
+                for value in sibling_surfaces:
+                    sibling_support_records.update(
+                        _surface_record_indexes(value, structured_records)
+                    )
+                if sibling_records.intersection(sibling_support_records):
+                    return True
+        return False
+
     for item in conditions:
         condition_id = str(item.get("id") or "")
         box_id = str(item.get("box_id") or "")
@@ -5023,7 +5464,32 @@ def _validate_chunk_drs_payload(payload: Any, source_text: str) -> dict[str, Any
                 errors.append(f"literal_argument_has_target_id:{condition_id}->{target_id}")
             elif target_kind not in {"referent", "box", "condition", "literal", "unknown"}:
                 errors.append(f"bad_argument_target_kind:{condition_id}:{target_kind}")
-            check_span(arg.get("evidence_text"), f"argument:{condition_id}:{arg.get('role')}")
+            check_span(
+                arg.get("evidence_text"),
+                f"argument:{condition_id}:{arg.get('role')}",
+                arg.get("value"),
+            )
+            condition_evidence = str(item.get("evidence_text") or "").strip()
+            if structured_records:
+                condition_records = _surface_record_indexes(condition_evidence, structured_records)
+                if condition_evidence and not condition_records:
+                    failure = f"condition_evidence_not_localized:{condition_id}"
+                    if failure not in grounding_failures:
+                        grounding_failures.append(failure)
+                supports = argument_support_surfaces(arg)
+                support_records: set[int] = set()
+                for support in supports:
+                    if support:
+                        support_records.update(_surface_record_indexes(support, structured_records))
+                if (
+                    condition_records
+                    and support_records
+                    and not condition_records.intersection(support_records)
+                    and not condition_argument_has_direct_temporal_bridge(item, supports)
+                ):
+                    grounding_failures.append(
+                        f"condition_argument_record_mismatch:{condition_id}:{arg.get('role')}"
+                    )
     errors.extend(condition_argument_cycle_errors(conditions))
     negation_pattern = re.compile(
         r"\b(?:not|never|cannot|without|no\s+[A-Za-z0-9])\b|\b[A-Za-z]+n['’]t\b",
@@ -5068,8 +5534,8 @@ def _validate_chunk_drs_payload(payload: Any, source_text: str) -> dict[str, Any
         check_span(item.get("evidence_text"), f"identity:{left_id}:{right_id}")
     return {
         "schema_valid": not errors and not grounding_failures,
-        "errors": errors[:50],
-        "grounding_failures": grounding_failures[:50],
+        "errors": errors,
+        "grounding_failures": grounding_failures,
         "grounding_failure_count": len(grounding_failures),
         "referent_count": len(referents),
         "box_count": len(boxes),
@@ -5077,6 +5543,35 @@ def _validate_chunk_drs_payload(payload: Any, source_text: str) -> dict[str, Any
         "identity_hypothesis_count": len(identities),
         "temporal_record_count": len(temporals),
     }
+
+
+def _exact_source_span_with_equivalent_whitespace(value: str, source_text: str) -> str:
+    """Map a whitespace-only provenance transcription back to its exact source span."""
+
+    candidate = str(value or "").strip()
+    if not candidate or not source_text:
+        return ""
+    compact_candidate = "".join(character for character in candidate if not character.isspace())
+    if not compact_candidate:
+        return ""
+    compact_source_characters: list[str] = []
+    source_positions: list[int] = []
+    for index, character in enumerate(source_text):
+        if character.isspace():
+            continue
+        compact_source_characters.append(character)
+        source_positions.append(index)
+    compact_source = "".join(compact_source_characters)
+    compact_start = compact_source.find(compact_candidate)
+    if compact_start < 0:
+        return ""
+    compact_end = compact_start + len(compact_candidate) - 1
+    if compact_end >= len(source_positions):
+        return ""
+    source_span = source_text[source_positions[compact_start] : source_positions[compact_end] + 1]
+    if "".join(character for character in source_span if not character.isspace()) != compact_candidate:
+        return ""
+    return source_span
 
 
 def _repair_evidence_text_from_declared_value(
@@ -5088,13 +5583,22 @@ def _repair_evidence_text_from_declared_value(
     if not source_text or (evidence_text and evidence_text in source_text):
         return False
     if evidence_text:
+        unwrapped_candidates = []
+        if len(evidence_text) >= 2 and evidence_text[0] == evidence_text[-1] and evidence_text[0] in {"\"", "'"}:
+            unwrapped_candidates.append(evidence_text[1:-1].strip())
         for candidate in (
-            evidence_text.replace('\\"', '"'),
+            evidence_text,
+            evidence_text.replace('\"', '"'),
             evidence_text.replace("\\/", "/"),
             evidence_text.replace('\\"', '"').replace("\\/", "/"),
+            *unwrapped_candidates,
         ):
             if candidate and candidate in source_text:
                 item["evidence_text"] = candidate
+                return True
+            exact_source_span = _exact_source_span_with_equivalent_whitespace(candidate, source_text)
+            if exact_source_span:
+                item["evidence_text"] = exact_source_span
                 return True
     for field_name in field_names:
         candidate = str(item.get(field_name) or "").strip()
@@ -5102,7 +5606,6 @@ def _repair_evidence_text_from_declared_value(
             item["evidence_text"] = candidate
             return True
     return False
-
 
 def _normalize_chunk_drs_shape(payload: Any) -> Any:
     if not isinstance(payload, dict) or not isinstance(payload.get("drs"), dict):
@@ -5121,6 +5624,33 @@ def _normalize_chunk_drs_shape(payload: Any) -> Any:
     return {**payload, "drs": drs} if changed else payload
 
 
+def _root_box_source_evidence_span(
+    box: dict[str, Any],
+    source_text: str,
+    source_id: str,
+) -> str:
+    """Replace only a source-id placeholder used as structural root provenance."""
+
+    if not source_text:
+        return ""
+    if str(box.get("kind") or "") != "asserted":
+        return ""
+    if str(box.get("parent_id") or "") or str(box.get("holder_referent_id") or ""):
+        return ""
+    existing = str(box.get("evidence_text") or "").strip()
+    if not existing or existing in source_text:
+        return ""
+    if not source_id or existing != str(source_id).strip():
+        return ""
+    start = next((index for index, character in enumerate(source_text) if not character.isspace()), -1)
+    if start < 0:
+        return ""
+    preferred_chars = max(1, len(existing))
+    end = min(len(source_text), start + preferred_chars)
+    candidate = source_text[start:end]
+    return candidate if candidate and candidate in source_text else ""
+
+
 def _repair_chunk_drs_payload(payload: Any, source_text: str = "", *, prune_unreferenced_temporals: bool = True) -> Any:
     """Repair exact provenance strings only; never alter model-declared DRS semantics."""
     del prune_unreferenced_temporals
@@ -5135,7 +5665,17 @@ def _repair_chunk_drs_payload(payload: Any, source_text: str = "", *, prune_unre
                 repaired |= _repair_evidence_text_from_declared_value(item, source_text, ("label",))
         for item in drs.get("boxes", []):
             if isinstance(item, dict):
-                repaired |= _repair_evidence_text_from_declared_value(item, source_text, ())
+                item_repaired = _repair_evidence_text_from_declared_value(item, source_text, ())
+                if not item_repaired:
+                    root_evidence = _root_box_source_evidence_span(
+                        item,
+                        source_text,
+                        str(drs.get("source_id") or ""),
+                    )
+                    if root_evidence:
+                        item["evidence_text"] = root_evidence
+                        item_repaired = True
+                repaired |= item_repaired
         for item in drs.get("conditions", []):
             if not isinstance(item, dict):
                 continue
@@ -5162,7 +5702,7 @@ def _drs_exact_span_failures(items: list[dict[str, Any]], source_text: str, pref
         span = str(item.get("evidence_text") or "").strip()
         item_id = str(item.get("id") or item.get("role") or "")
         if span and span not in source_text:
-            failures.append(f"{prefix}:{item_id}:{span[:100]}")
+            failures.append(f"{prefix}:{item_id}:{span}")
     return failures
 
 
@@ -5191,47 +5731,183 @@ def _complete_chunk_drs_stage(
     cached = _read_cache(path)
     if cached is not None and not _cached_structured_failure_retryable(cached):
         return cached, 0.0, {"prompt_hash": prompt_hash, **constraint}
-    start = time.time()
-    try:
-        parsed = _complete_structured(
-            client,
-            prompt,
-            n_predict=n_predict,
-            grammar=CHUNK_DRS_GRAMMAR,
-            json_schema=schema,
+
+    retryable_limit_reasons = {
+        "output_limit_exhausted",
+        "generation_limit_exhausted",
+        "context_limit_exhausted",
+    }
+    max_retry_tokens = max(
+        int(n_predict),
+        context_token_capacity(
+            client.context_size(),
+            ratio_names=("KMD_CHUNK_DRS_STAGE_MAX_OUTPUT_RATIO",),
+            ratio_default=1.0 / 2.0,
+        ),
+    )
+    attempt_n_predict = int(n_predict)
+    attempts: list[dict[str, Any]] = []
+    if isinstance(cached, dict):
+        attempts.append(
+            {
+                "source": "cache",
+                "n_predict": int(
+                    ((cached.get("response_metadata") or {}).get("requested_output_tokens") or n_predict)
+                ),
+                "reason": str(cached.get("reason") or ""),
+                "elapsed": float(cached.get("elapsed") or 0.0),
+            }
         )
-    except LocalModelJSONError as exc:
-        elapsed = round(time.time() - start, 3)
-        payload = {
-            "accepted": False,
-            "reason": "invalid_json",
-            "error": str(exc),
-            "raw_text": exc.raw_text,
-            "raw_snippet": exc.snippet[:4000],
-            "elapsed": elapsed,
-            "prompt_hash": prompt_hash,
-            **constraint,
+        cached_reason = str(cached.get("reason") or "")
+        if cached_reason in retryable_limit_reasons:
+            cached_budget = int(
+                ((cached.get("response_metadata") or {}).get("requested_output_tokens") or n_predict)
+            )
+            retry_multiplier = 1.0 + context_ratio(
+                ("KMD_CHUNK_DRS_STAGE_RETRY_GROWTH_RATIO",),
+                1.0,
+            )
+            attempt_n_predict = min(max_retry_tokens, max(1, int(cached_budget * retry_multiplier)))
+
+    total_elapsed = 0.0
+    while True:
+        start = time.time()
+        try:
+            parsed = _complete_structured(
+                client,
+                prompt,
+                n_predict=attempt_n_predict,
+                grammar=CHUNK_DRS_GRAMMAR,
+                json_schema=schema,
+            )
+        except LocalModelJSONError as exc:
+            elapsed = round(time.time() - start, 3)
+            total_elapsed += elapsed
+            reason = str(exc.reason or "invalid_json")
+            attempts.append(
+                {
+                    "source": "fresh",
+                    "n_predict": attempt_n_predict,
+                    "reason": reason,
+                    "elapsed": elapsed,
+                    "response_metadata": exc.response_metadata,
+                }
+            )
+            if reason in retryable_limit_reasons and attempt_n_predict < max_retry_tokens:
+                retry_multiplier = 1.0 + context_ratio(
+                    ("KMD_CHUNK_DRS_STAGE_RETRY_GROWTH_RATIO",),
+                    1.0,
+                )
+                next_budget = min(
+                    max_retry_tokens,
+                    max(1, int(attempt_n_predict * retry_multiplier)),
+                )
+                if next_budget > attempt_n_predict:
+                    attempt_n_predict = next_budget
+                    continue
+            payload = {
+                "accepted": False,
+                "reason": reason,
+                "error": str(exc),
+                "raw_text": exc.raw_text,
+                "raw_snippet": exc.snippet,
+                "response_metadata": exc.response_metadata,
+                "elapsed": round(total_elapsed, 3),
+                "prompt_hash": prompt_hash,
+                "output_retry": {
+                    "policy": "adaptive-stage-output-doubling-with-context-preflight-v1",
+                    "initial_n_predict": int(n_predict),
+                    "maximum_n_predict": max_retry_tokens,
+                    "attempts": attempts,
+                },
+                **constraint,
+            }
+            payload = _with_model_input_audits(payload, exc)
+            _write_cache(path, payload)
+            return payload, float(total_elapsed), {"prompt_hash": prompt_hash, **constraint}
+        except LocalModelContextError as exc:
+            elapsed = round(time.time() - start, 3)
+            total_elapsed += elapsed
+            audit = (
+                (exc.cache_context.get("model_input_audit") or {})
+                if isinstance(exc.cache_context, dict)
+                else {}
+            )
+            context_budget = audit.get("context_budget") if isinstance(audit, dict) else {}
+            available = int((context_budget or {}).get("available_output_tokens") or 0)
+            attempts.append(
+                {
+                    "source": "fresh",
+                    "n_predict": attempt_n_predict,
+                    "reason": "context_budget_exceeded",
+                    "elapsed": elapsed,
+                    "available_output_tokens": available,
+                }
+            )
+            if available > int(n_predict) and available < attempt_n_predict:
+                reduced = max(int(n_predict), min(max_retry_tokens, available))
+                if reduced > int(n_predict) and reduced != attempt_n_predict:
+                    attempt_n_predict = reduced
+                    continue
+            payload = _with_model_input_audits(
+                {
+                    "accepted": False,
+                    "reason": "context_budget_exceeded",
+                    "error": str(exc),
+                    "raw_text": "",
+                    "elapsed": round(total_elapsed, 3),
+                    "output_retry": {
+                        "policy": "adaptive-stage-output-doubling-with-context-preflight-v1",
+                        "initial_n_predict": int(n_predict),
+                        "maximum_n_predict": max_retry_tokens,
+                        "attempts": attempts,
+                    },
+                },
+                exc.cache_context,
+            )
+            _write_cache(path, payload)
+            return payload, float(total_elapsed), {"prompt_hash": prompt_hash, **constraint}
+        except Exception as exc:
+            elapsed = round(time.time() - start, 3)
+            total_elapsed += elapsed
+            payload = _with_model_input_audits(
+                {
+                    "accepted": False,
+                    "reason": "request_failed",
+                    "error": str(exc),
+                    "raw_text": "",
+                    "elapsed": round(total_elapsed, 3),
+                    "output_retry": {
+                        "policy": "adaptive-stage-output-doubling-with-context-preflight-v1",
+                        "initial_n_predict": int(n_predict),
+                        "maximum_n_predict": max_retry_tokens,
+                        "attempts": attempts,
+                    },
+                },
+                exc,
+            )
+            return payload, float(total_elapsed), {"prompt_hash": prompt_hash, **constraint}
+
+        elapsed = float(parsed.get("_model_elapsed_seconds", round(time.time() - start, 3)))
+        total_elapsed += elapsed
+        attempts.append(
+            {
+                "source": "fresh",
+                "n_predict": attempt_n_predict,
+                "reason": "completed",
+                "elapsed": elapsed,
+                "response_metadata": parsed.get("_model_response_metadata") or {},
+            }
+        )
+        parsed["_model_output_retry"] = {
+            "policy": "adaptive-stage-output-doubling-with-context-preflight-v1",
+            "initial_n_predict": int(n_predict),
+            "effective_n_predict": attempt_n_predict,
+            "maximum_n_predict": max_retry_tokens,
+            "attempts": attempts,
         }
-        payload = _with_model_input_audits(payload, exc)
-        _write_cache(path, payload)
-        return (
-            payload,
-            elapsed,
-            {"prompt_hash": prompt_hash, **constraint},
-        )
-    except Exception as exc:
-        payload = _with_model_input_audits(
-            {"accepted": False, "reason": "request_failed", "error": str(exc), "raw_text": ""},
-            exc,
-        )
-        return (
-            payload,
-            round(time.time() - start, 3),
-            {"prompt_hash": prompt_hash, **constraint},
-        )
-    elapsed = parsed.get("_model_elapsed_seconds", round(time.time() - start, 3))
-    _write_cache(path, parsed)
-    return parsed, float(elapsed), {"prompt_hash": prompt_hash, **constraint}
+        _write_cache(path, parsed)
+        return parsed, float(total_elapsed), {"prompt_hash": prompt_hash, **constraint}
 
 
 def _missing_argument_box_ids(validation: dict[str, Any]) -> list[str]:
@@ -5414,28 +6090,28 @@ def _call_model_chunk_drs_staged(
         prompt_chunk,
         context_budget.get("max_evidence_chars"),
     )
-    max_items = context_budget.get("max_array_items") or chunk_drs_array_max_items(n_predict)
-    source_span_candidates = chunk_drs_source_span_candidates(
-        prompt_chunk,
-        context_budget.get("max_evidence_chars"),
-    )
     skeleton_n_predict = default_staged_chunk_drs_skeleton_n_predict(
         n_predict,
         prompt_chunk,
         context_budget.get("max_evidence_chars"),
     )
+    overall_max_items = int(context_budget.get("max_array_items") or chunk_drs_array_max_items(n_predict))
+    skeleton_max_items = min(overall_max_items, chunk_drs_array_max_items(skeleton_n_predict))
+    condition_max_items = min(overall_max_items, chunk_drs_array_max_items(condition_n_predict))
+    condition_max_arguments = schema_array_capacity(condition_n_predict, "arguments")
     skeleton_context_budget = {
         **context_budget,
+        "max_evidence_chars": chunk_drs_evidence_max_chars(prompt_chunk, skeleton_n_predict),
+        "max_array_items": skeleton_max_items,
         "source_span_policy": CHUNK_DRS_SOURCE_SPAN_POLICY,
         "skeleton_source_span_policy": CHUNK_DRS_SKELETON_SOURCE_SPAN_POLICY,
-        "source_span_candidates": source_span_candidates,
     }
     skeleton_prompt = build_chunk_drs_skeleton_prompt(
         prompt_chunk,
         rel_path=rel_path,
         context_budget=skeleton_context_budget,
     )
-    skeleton_schema = chunk_drs_skeleton_json_schema(rel_path, max_items, source_span_candidates)
+    skeleton_schema = chunk_drs_skeleton_json_schema(rel_path, skeleton_max_items)
     skeleton, skeleton_elapsed, skeleton_constraint = _complete_chunk_drs_stage(
         client,
         cache_path,
@@ -5501,7 +6177,7 @@ def _call_model_chunk_drs_staged(
                 "accepted": False,
                 "reason": "grounding_validation_failed",
                 "stage": "skeleton",
-                "grounding_failures": skeleton_span_failures[:50],
+                "grounding_failures": skeleton_span_failures,
                 "elapsed": skeleton_elapsed,
                 **skeleton_constraint,
             },
@@ -5512,9 +6188,11 @@ def _call_model_chunk_drs_staged(
     temporal_ids = [str(item.get("id") or "") for item in temporals if str(item.get("id") or "")]
     condition_context_budget = {
         **context_budget,
+        "max_evidence_chars": chunk_drs_evidence_max_chars(prompt_chunk, condition_n_predict),
+        "max_array_items": condition_max_items,
+        "max_argument_items": condition_max_arguments,
         "source_span_policy": CHUNK_DRS_SOURCE_SPAN_POLICY,
         "skeleton_source_span_policy": CHUNK_DRS_SKELETON_SOURCE_SPAN_POLICY,
-        "source_span_candidates": source_span_candidates,
     }
     condition_prompt = build_chunk_drs_condition_prompt(
         prompt_chunk,
@@ -5529,9 +6207,8 @@ def _call_model_chunk_drs_staged(
         box_ids=box_ids,
         referent_ids=referent_ids,
         temporal_ids=temporal_ids,
-        max_conditions=max_items,
-        max_arguments=max_items,
-        evidence_text_values=source_span_candidates,
+        max_conditions=condition_max_items,
+        max_arguments=condition_max_arguments,
     )
     condition_stage, condition_elapsed, condition_constraint = _complete_chunk_drs_stage(
         client,
@@ -5636,6 +6313,9 @@ def _call_model_chunk_drs_staged(
                         "dynamic_condition_budget_policy": CHUNK_DRS_DYNAMIC_CONDITION_BUDGET_POLICY,
                         "staged_skeleton_n_predict": skeleton_n_predict,
                         "staged_condition_n_predict": condition_n_predict,
+                        "staged_skeleton_max_items": skeleton_max_items,
+                        "staged_condition_max_items": condition_max_items,
+                        "staged_condition_max_arguments": condition_max_arguments,
                         "box_completion_n_predict": box_completion["context_budget"]["box_completion_n_predict"],
                     },
                     "output_hash": hashlib.sha256(raw.encode()).hexdigest(),
@@ -5649,7 +6329,7 @@ def _call_model_chunk_drs_staged(
             )
         reason = "grounding_validation_failed" if validation.get("grounding_failure_count") else "schema_validation_failed"
         validation_retry_summary: dict[str, Any] | None = None
-        if validation_feedback is None and reason == "schema_validation_failed":
+        if validation_feedback is None:
             retry_feedback = _chunk_drs_validation_feedback_payload(validation, stage="staged_merge")
             retry = _call_model_chunk_drs_staged(
                 prompt_chunk,
@@ -5793,9 +6473,9 @@ def chunk_drs_cache_context(
         "dynamic_condition_budget_policy": CHUNK_DRS_DYNAMIC_CONDITION_BUDGET_POLICY,
         "dynamic_output_budget_policy": CHUNK_DRS_DYNAMIC_OUTPUT_BUDGET_POLICY,
         "staged_first_policy": CHUNK_DRS_STAGED_FIRST_POLICY,
-        "compact_first": _compact_chunk_drs_enabled() and _compact_chunk_drs_eligible(chunk_text),
+        "compact_first": _compact_chunk_drs_enabled() and _compact_chunk_drs_eligible(chunk_text, client),
         "compact_fact_policy": CHUNK_DRS_COMPACT_FACT_POLICY,
-        "compact_n_predict": default_compact_chunk_drs_n_predict(chunk_text),
+        "compact_n_predict": default_compact_chunk_drs_n_predict(client, chunk_text),
         "staged_skeleton_n_predict": default_staged_chunk_drs_skeleton_n_predict(int(n_predict)),
         "staged_condition_n_predict": default_staged_chunk_drs_condition_n_predict(int(n_predict)),
         "box_completion_n_predict": default_chunk_drs_box_completion_n_predict(int(n_predict)),
@@ -5813,14 +6493,9 @@ def chunk_drs_cache_context(
             rel_path=rel_path,
             n_predict=n_predict,
         )
-        source_span_candidates = chunk_drs_source_span_candidates(
-            prompt_chunk,
-            context_budget.get("max_evidence_chars"),
-        )
         context["context_budget"] = {
             **context_budget,
             "source_span_policy": CHUNK_DRS_SOURCE_SPAN_POLICY,
-            "source_span_candidate_count": len(source_span_candidates),
             "skeleton_source_span_policy": CHUNK_DRS_SKELETON_SOURCE_SPAN_POLICY,
         }
     return context
@@ -5836,7 +6511,7 @@ def call_model_chunk_drs(
     n_predict: int | None = None,
     refresh_empty_compact_legacy: bool = False,
 ) -> dict[str, Any]:
-    if _compact_live_model_path_allowed(client) and _compact_chunk_drs_enabled() and _compact_chunk_drs_eligible(chunk_text):
+    if _compact_live_model_path_allowed(client) and _compact_chunk_drs_enabled() and _compact_chunk_drs_eligible(chunk_text, client):
         compact = call_model_chunk_drs_compact(
             chunk_text,
             client,
@@ -5853,14 +6528,9 @@ def call_model_chunk_drs(
         rel_path=rel_path,
         n_predict=n_predict,
     )
-    source_span_candidates = chunk_drs_source_span_candidates(
-        prompt_chunk,
-        context_budget.get("max_evidence_chars"),
-    )
     context_budget = {
         **context_budget,
         "source_span_policy": CHUNK_DRS_SOURCE_SPAN_POLICY,
-        "source_span_candidate_count": len(source_span_candidates),
         "skeleton_source_span_policy": CHUNK_DRS_SKELETON_SOURCE_SPAN_POLICY,
         "monolithic_id_policy": CHUNK_DRS_MONOLITHIC_ID_POLICY,
         "compact_undercoverage_policy": CHUNK_DRS_COMPACT_UNDERCOVERAGE_POLICY,
@@ -5878,7 +6548,6 @@ def call_model_chunk_drs(
         context_budget.get("max_array_items"),
         include_auxiliary_fields=False,
         source_id=rel_path,
-        evidence_text_values=source_span_candidates,
         constrain_stable_ids=True,
     )
     constraint = _constraint_settings(CHUNK_DRS_GRAMMAR, drs_json_schema, CHUNK_DRS_SCHEMA_VERSION)
@@ -5907,7 +6576,6 @@ def call_model_chunk_drs(
         "dynamic_condition_budget_policy": CHUNK_DRS_DYNAMIC_CONDITION_BUDGET_POLICY,
         "dynamic_output_budget_policy": CHUNK_DRS_DYNAMIC_OUTPUT_BUDGET_POLICY,
         "staged_first_policy": CHUNK_DRS_STAGED_FIRST_POLICY,
-        "source_span_candidate_count": len(source_span_candidates),
         "staged_skeleton_n_predict": default_staged_chunk_drs_skeleton_n_predict(
             int(n_predict),
             prompt_chunk,
@@ -5936,8 +6604,19 @@ def call_model_chunk_drs(
     cache_path = _cache_path("KMD_CHUNK_DRS_CACHE_DIR", prompt_hash)
     cached = _read_cache(cache_path)
     if cached is not None and not _cached_structured_failure_retryable(cached):
-        cached.setdefault("cache_context", cache_context)
-        return cached
+        if cached.get("accepted") is True and isinstance(cached.get("drs"), dict):
+            cached_repaired = _repair_chunk_drs_payload(cached, prompt_chunk)
+            cached_validation = _validate_chunk_drs_payload(cached_repaired, prompt_chunk)
+            if cached_validation.get("schema_valid"):
+                cached = {
+                    **cached_repaired,
+                    "validation": cached_validation,
+                }
+                cached.setdefault("cache_context", cache_context)
+                return cached
+        else:
+            cached.setdefault("cache_context", cache_context)
+            return cached
     staged_first_reason = _chunk_drs_staged_first_reason(prompt_chunk, context_budget)
     staged_first_summary: dict[str, Any] | None = None
     if _staged_chunk_drs_enabled() and staged_first_reason:
@@ -5974,10 +6653,10 @@ def call_model_chunk_drs(
     except LocalModelJSONError as exc:
         payload = {
             "accepted": False,
-            "reason": "invalid_json",
+            "reason": str(getattr(exc, "reason", "invalid_json")),
             "error": str(exc),
             "raw_text": exc.raw_text,
-            "raw_snippet": exc.snippet[:4000],
+            "raw_snippet": exc.snippet,
             "prompt_hash": prompt_hash,
             **constraint,
             "elapsed": round(time.time() - start, 3),
@@ -6012,7 +6691,7 @@ def call_model_chunk_drs(
             "reason": "request_failed",
             "error": str(exc),
             "raw_text": raw_text,
-            "raw_snippet": str(getattr(exc, "snippet", "") or raw_text)[:4000],
+            "raw_snippet": str(getattr(exc, "snippet", "") or raw_text),
             "prompt_hash": prompt_hash,
             **constraint,
             "elapsed": round(time.time() - start, 3),
@@ -6224,7 +6903,11 @@ def call_model_answer_verification(
     n_predict: int | None = None,
 ) -> dict[str, Any]:
     if n_predict is None:
-        n_predict = int(os.environ.get("KMD_VERIFIER_N_PREDICT", "128"))
+        n_predict = _context_output_tokens(
+            client,
+            ratio_names=("KMD_VERIFIER_OUTPUT_RATIO",),
+            ratio_default=1.0 / 64.0,
+        )
     prompt = build_answer_verification_prompt(question, query_frame, candidate_answer, evidence_items, discourse_frames)
     constraint = _constraint_settings(ANSWER_VERIFICATION_GRAMMAR, VERIFICATION_JSON_SCHEMA, VERIFIER_SCHEMA_VERSION)
     grammar_hash = str(constraint["grammar_hash"])
@@ -6259,7 +6942,7 @@ def call_model_answer_verification(
     except LocalModelJSONError as exc:
         return {
             "accepted": False,
-            "reason": "invalid_json",
+            "reason": str(getattr(exc, "reason", "invalid_json")),
             "error": str(exc),
             "raw_text": exc.raw_text,
             "snippet": exc.snippet,
@@ -6361,7 +7044,11 @@ def call_model_answer_canonicalization(
     n_predict: int | None = None,
 ) -> dict[str, Any]:
     if n_predict is None:
-        n_predict = int(os.environ.get("KMD_ANSWER_CANONICALIZATION_N_PREDICT", "96"))
+        n_predict = _context_output_tokens(
+            client,
+            ratio_names=("KMD_ANSWER_CANONICALIZATION_OUTPUT_RATIO",),
+            ratio_default=1.0 / 128.0,
+        )
     prompt = build_answer_canonicalization_prompt(question, candidate_answer, answer_type, evidence_items)
     constraint = _constraint_settings(ANSWER_CANONICALIZATION_GRAMMAR, CANONICAL_ANSWER_JSON_SCHEMA, ANSWER_SCHEMA_VERSION)
     grammar_hash = str(constraint["grammar_hash"])
@@ -6400,7 +7087,7 @@ def call_model_answer_canonicalization(
     except LocalModelJSONError as exc:
         return {
             "accepted": False,
-            "reason": "invalid_json",
+            "reason": str(getattr(exc, "reason", "invalid_json")),
             "error": str(exc),
             "raw_text": exc.raw_text,
             "snippet": exc.snippet,
@@ -6545,7 +7232,11 @@ def call_model_source_resolved_answer(
     n_predict: int | None = None,
 ) -> dict[str, Any]:
     if n_predict is None:
-        n_predict = int(os.environ.get("KMD_SOURCE_RESOLUTION_N_PREDICT", "160"))
+        n_predict = _context_output_tokens(
+            client,
+            ratio_names=("KMD_SOURCE_RESOLUTION_OUTPUT_RATIO",),
+            ratio_default=1.0 / 128.0,
+        )
     prompt = build_source_resolved_answer_prompt(question, candidate_answer, answer_type, evidence_items)
     constraint = _constraint_settings(SOURCE_RESOLVED_ANSWER_GRAMMAR, SOURCE_RESOLVED_ANSWER_JSON_SCHEMA, ANSWER_SCHEMA_VERSION)
     grammar_hash = str(constraint["grammar_hash"])
@@ -6584,7 +7275,7 @@ def call_model_source_resolved_answer(
     except LocalModelJSONError as exc:
         return {
             "accepted": False,
-            "reason": "invalid_json",
+            "reason": str(getattr(exc, "reason", "invalid_json")),
             "error": str(exc),
             "raw_text": exc.raw_text,
             "snippet": exc.snippet,
@@ -6728,7 +7419,11 @@ def call_model_identity_canonicalization(
     n_predict: int | None = None,
 ) -> dict[str, Any]:
     if n_predict is None:
-        n_predict = int(os.environ.get("KMD_IDENTITY_N_PREDICT", "96"))
+        n_predict = _context_output_tokens(
+            client,
+            ratio_names=("KMD_IDENTITY_OUTPUT_RATIO",),
+            ratio_default=1.0 / 128.0,
+        )
     prompt = build_identity_canonicalization_prompt(question, candidate_answer, fuller_candidates, evidence_items)
     constraint = _constraint_settings(IDENTITY_CANONICALIZATION_GRAMMAR, IDENTITY_CANONICALIZATION_JSON_SCHEMA, ANSWER_SCHEMA_VERSION)
     grammar_hash = str(constraint["grammar_hash"])
@@ -6766,7 +7461,7 @@ def call_model_identity_canonicalization(
     except LocalModelJSONError as exc:
         return {
             "accepted": False,
-            "reason": "invalid_json",
+            "reason": str(getattr(exc, "reason", "invalid_json")),
             "error": str(exc),
             "raw_text": exc.raw_text,
             "snippet": exc.snippet,

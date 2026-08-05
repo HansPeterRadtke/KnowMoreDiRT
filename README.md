@@ -13,11 +13,9 @@ The input may be an arbitrary folder tree containing prose, logs, tables, transc
 
 ## Current status
 
-The current model-backed benchmark result is `263/273`. This is the strongest current system state, but it is not evidence that the architecture is finished. The remaining failures cluster around referent identity, target binding, scope, temporal roles, reported versus asserted content, and multi-hop retrieval. Recent experiments show that cross-chunk identity resolution is the most important architectural bottleneck.
+The strongest fully verified broad benchmark result is `73/73`. A later full run answered 202 cases correctly and left five failures: `hrq055`, `hrq107`, `hrq108`, `hrq110`, and `hrq112`. Targeted fixes were implemented for their shared overgeneralized-negative-inference failure family, but connectivity failed before a complete verification run. Those fixes must therefore be treated as implemented but unverified.
 
-The current production path is stable enough that new retrieval and identity ideas should be tested separately before integration. Isolated vector and identity-resolution experiments now exist in the filesystem devtest repository and under `tests/experiments/identity_resolution/` in this repository.
-
-The authoritative continuation plan is [`docs/current_work.md`](docs/current_work.md). The newly vendored fast semantic database is documented in [`docs/filesystem_database.md`](docs/filesystem_database.md).
+The authoritative description of the running architecture is [`docs/current_system.md`](docs/current_system.md). Verified benchmark history is recorded in [`docs/benchmark_status.md`](docs/benchmark_status.md). The current continuation and research plan remains in [`docs/current_work.md`](docs/current_work.md).
 
 ## Fast filesystem database
 
@@ -96,4 +94,4 @@ The main test areas are unit behavior, smoke coverage of the two-function API, m
 
 ## Documentation
 
-The main documents are [`docs/current_work.md`](docs/current_work.md), [`docs/architecture.md`](docs/architecture.md), [`docs/theory.md`](docs/theory.md), [`docs/evaluation.md`](docs/evaluation.md), [`docs/storage_architecture.md`](docs/storage_architecture.md), and [`docs/public_api.md`](docs/public_api.md).
+Start with [`docs/current_system.md`](docs/current_system.md), [`docs/llm_roles.md`](docs/llm_roles.md), [`docs/cache_contract.md`](docs/cache_contract.md), [`docs/benchmark_status.md`](docs/benchmark_status.md), and [`docs/conversational_boundary.md`](docs/conversational_boundary.md). The deeper references remain [`docs/architecture.md`](docs/architecture.md), [`docs/theory.md`](docs/theory.md), [`docs/evaluation.md`](docs/evaluation.md), [`docs/storage_architecture.md`](docs/storage_architecture.md), [`docs/filesystem_database.md`](docs/filesystem_database.md), [`docs/public_api.md`](docs/public_api.md), and [`docs/current_work.md`](docs/current_work.md).

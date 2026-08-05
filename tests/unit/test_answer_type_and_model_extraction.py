@@ -26,6 +26,46 @@ def test_person_canonicalization_preserves_honorifics() -> None:
     assert canonicalize_answer(ExpectedAnswer("person"), "Officer Talen") == "Talen"
 
 
+def test_bounded_person_answer_completes_unique_name_across_chunk_boundary(
+    tmp_path: Path,
+    monkeypatch,
+) -> None:
+    monkeypatch.setenv("KMD_TEST_ALLOW_NO_MODEL", "1")
+    monkeypatch.setenv("KMD_USE_LOCAL_MODEL", "0")
+    source = (
+        "Atlas dossier handoff narrative.\n\n"
+        "After the handoff, the responsible engineer is Mara\n\n"
+        "Voss.\n"
+    )
+    (tmp_path / "record.txt").write_text(source, encoding="utf-8")
+    engine = KnowMoreDiRTEngine(tmp_path)
+    evidence = engine._evidence(engine.sentences[-1])
+    assert "Mara" in engine.sentences[-2].text
+    assert "Voss" in engine.sentences[-1].text
+    frame = QueryFrame(
+        question_text="Who is the responsible engineer for Atlas dossier?",
+        answer_type="person",
+        answer_variables=("responsible engineer",),
+        target_anchors=("Atlas dossier",),
+        requested_relation="responsible engineer",
+        relation_terms=("responsible engineer", "engineer"),
+        constraints=(),
+        source="model_query_drs",
+    )
+
+    finalized = engine._finalize_answer(
+        frame.question_text,
+        Answer("Voss", 0.78, [evidence], "bounded relation binding", "person"),
+        ExpectedAnswer("person"),
+        "bounded DSPG query-frame execution",
+        frame,
+    )
+
+    assert finalized is not None
+    assert finalized.text == "Mara Voss"
+    assert finalized.evidence == [evidence]
+
+
 def test_identifier_answer_accepts_url_shaped_structural_identifier() -> None:
     expected = ExpectedAnswer("identifier")
 
@@ -49,6 +89,9 @@ def test_identifier_answer_rejects_unstructured_comma_list_phrase() -> None:
 
 
 class FakeEvidenceModel:
+    def context_size(self) -> int:
+        return 4096
+
     def __init__(self, *, incompatible: bool = False) -> None:
         self.incompatible = incompatible
         self.calls: list[str] = []
@@ -330,7 +373,17 @@ def test_fake_model_evidence_extraction_rejects_incompatible_answer_type(tmp_pat
 
 def test_count_evidence_extraction_accepts_grounded_multiline_aggregate(tmp_path: Path) -> None:
     class CountEvidenceModel:
-        def complete_json(self, prompt: str, *, n_predict: int = 128, grammar: str | None = None) -> dict[str, object]:
+        def context_size(self) -> int:
+            return 4096
+
+        def complete_json(
+            self,
+            prompt: str,
+            *,
+            n_predict: int = 128,
+            grammar: str | None = None,
+            json_schema: dict[str, object] | None = None,
+        ) -> dict[str, object]:
             if "generic DRT query DRS" in prompt or "generic DRT/DSPG query frame" in prompt:
                 return {
                     "query_frame": {
@@ -497,7 +550,12 @@ def test_query_drs_bounded_miss_uses_grounded_query_evidence_fallback(tmp_path: 
         _client: object,
         *,
         discourse_records: list[dict[str, object]] | None = None,
+        authoritative_query_frame: dict[str, object] | None = None,
+        authoritative_answer_type: str = "unknown",
     ) -> dict[str, object]:
+        assert authoritative_query_frame is not None
+        assert authoritative_query_frame["answer_type"] == "boolean"
+        assert authoritative_answer_type == "boolean"
         return {
             "accepted": True,
             "query_frame": query_frame,
@@ -523,8 +581,11 @@ def test_query_drs_bounded_miss_uses_grounded_query_evidence_fallback(tmp_path: 
     assert engine.model_query_trace.evidence_call_count == 1
 
 
-def test_invalid_model_evidence_answer_is_cached(tmp_path: Path, monkeypatch) -> None:
+def test_invalid_model_evidence_answer_is_retried(tmp_path: Path, monkeypatch) -> None:
     class InvalidEvidenceModel:
+        def context_size(self) -> int:
+            return 4096
+
         def __init__(self) -> None:
             self.calls = 0
 
@@ -539,13 +600,12 @@ def test_invalid_model_evidence_answer_is_cached(tmp_path: Path, monkeypatch) ->
     first = call_model_evidence_answer("Who is the conservator for Ash Meadow?", "person", evidence, model)  # type: ignore[arg-type]
     second = call_model_evidence_answer("Who is the conservator for Ash Meadow?", "person", evidence, model)  # type: ignore[arg-type]
 
-    assert model.calls == 1
+    assert model.calls == 2
     assert first["accepted"] is False
     assert first["cache_context"]["expected_answer_type"] == "person"
-    assert first["cache_context"]["n_predict"] == 128
+    assert first["cache_context"]["n_predict"] == 32
     assert first["cache_context"]["evidence_count"] == 1
     assert second["accepted"] is False
-    assert second["fresh_or_cached"] == "cache"
     assert second["cache_context"]["expected_answer_type"] == "person"
 
 
@@ -1689,20 +1749,120 @@ def test_negative_boolean_verifier_rejects_absence_of_record_proof(monkeypatch) 
     assert engine._verify_with_local_model(frame.question_text, frame, answer, ExpectedAnswer("boolean")) is False
 
 
-def test_negative_boolean_verifier_rejects_when_independent_audit_calls_it_absence_only(monkeypatch) -> None:
+def test_negative_boolean_verifier_rejects_absence_only_even_when_model_mislabels_it(monkeypatch) -> None:
     engine = object.__new__(KnowMoreDiRTEngine)
     engine._model_client = object()
     engine._sentences_by_document = {}
     engine.model_query_trace = ModelQueryTrace(enabled=True, prompt_hashes=[], response_hashes=[])
     frame = QueryFrame(question_text="Did Pearl Engine really open the hidden gate?", answer_type="boolean", answer_variables=("whether",), target_anchors=("Pearl Engine", "hidden gate"), requested_relation="open", relation_terms=("open",), constraints=(), source="model_query_drs")
     monkeypatch.setattr(engine, "_canonicalize_model_answer_with_local_model", lambda *_args, **_kwargs: None)
-    results = iter([
-        {"accepted": True, "entailed": True, "answer": "no", "evidence_span": "Waking note: no real gate opening is recorded.", "proof_kind": "explicit_negation", "accessibility": "asserted", "temporal_alignment": "same_scope", "explicit_negation": True, "absence_of_record_only": False, "incompatible_condition_span": ""},
-        {"accepted": True, "entailed": True, "answer": "yes", "evidence_span": "Waking note: no real gate opening is recorded.", "proof_kind": "direct_positive", "accessibility": "asserted", "temporal_alignment": "unspecified", "explicit_negation": False, "absence_of_record_only": True, "incompatible_condition_span": ""},
-    ])
-    monkeypatch.setattr(engine_module, "call_model_answer_verification", lambda *_args, **_kwargs: next(results))
+    monkeypatch.setattr(engine_module, "call_model_answer_verification", lambda *_args, **_kwargs: {"accepted": True, "entailed": True, "answer": "no", "evidence_span": "Waking note: no real gate opening is recorded.", "proof_kind": "explicit_negation", "accessibility": "asserted", "temporal_alignment": "same_scope", "explicit_negation": True, "absence_of_record_only": False, "incompatible_condition_span": ""})
     answer = Answer("no", 0.9, [Evidence("dream.txt", "Waking note: no real gate opening is recorded.")], "model", "boolean")
     assert engine._verify_with_local_model(frame.question_text, frame, answer, ExpectedAnswer("boolean")) is False
+    assert engine.model_query_trace.verifier_call_count == 1
+
+
+def test_negative_boolean_verifier_rejects_not_proven_as_absence_of_proof(monkeypatch) -> None:
+    engine = object.__new__(KnowMoreDiRTEngine)
+    engine._model_client = object()
+    engine._sentences_by_document = {}
+    engine.model_query_trace = ModelQueryTrace(enabled=True, prompt_hashes=[], response_hashes=[])
+    frame = QueryFrame(question_text="Was the north hinge crack proven?", answer_type="boolean", answer_variables=("proven",), target_anchors=("north hinge crack",), requested_relation="proven", relation_terms=("proven",), constraints=(), source="model_query_drs")
+    monkeypatch.setattr(engine, "_canonicalize_model_answer_with_local_model", lambda *_args, **_kwargs: None)
+    monkeypatch.setattr(engine_module, "call_model_answer_verification", lambda *_args, **_kwargs: {"accepted": True, "entailed": True, "answer": "no", "evidence_span": "Judgment note: the north hinge crack was not proven.", "proof_kind": "explicit_negation", "accessibility": "asserted", "temporal_alignment": "unspecified", "explicit_negation": True, "absence_of_record_only": False, "incompatible_condition_span": ""})
+    answer = Answer("no", 0.9, [Evidence("scoped_claims.txt", "Judgment note: the north hinge crack was not proven.")], "model", "boolean")
+    assert engine._verify_with_local_model(frame.question_text, frame, answer, ExpectedAnswer("boolean")) is False
+    assert engine.model_query_trace.verifier_call_count == 1
+
+
+def test_absence_classifier_recognizes_not_proved_and_not_proven_but_not_direct_class_negation() -> None:
+    engine = object.__new__(KnowMoreDiRTEngine)
+    assert engine._evidence_is_absence_of_record_only("The claim was not proved.") is True
+    assert engine._evidence_is_absence_of_record_only("The claim was not proven.") is True
+    assert engine._evidence_is_absence_of_record_only("This is not an engineering record.") is False
+
+
+def test_negative_boolean_verifier_accepts_negated_relation_object(monkeypatch) -> None:
+    engine = object.__new__(KnowMoreDiRTEngine)
+    engine._model_client = object()
+    engine._sentences_by_document = {}
+    engine.model_query_trace = ModelQueryTrace(enabled=True, prompt_hashes=[], response_hashes=[])
+    engine.model_query_trace.last_plan = {
+        "question_text": "Did later inspection find a crack in the blue pump?",
+        "answer_type": "boolean",
+        "answer_variables": ["Did"],
+        "target_anchors": ["crack", "blue pump"],
+        "requested_relation": "find",
+        "relation_terms": ["found", "find"],
+        "constraints": ["later inspection"],
+        "source": "model_query_drs",
+    }
+    frame = QueryFrame(question_text="Did later inspection find a crack in the blue pump?", answer_type="boolean", answer_variables=("boolean",), target_anchors=(), requested_relation="", relation_terms=("later", "inspection", "find", "crack", "blue", "pump"), constraints=(), source="deterministic")
+    monkeypatch.setattr(engine, "_canonicalize_model_answer_with_local_model", lambda *_args, **_kwargs: None)
+    monkeypatch.setattr(engine_module, "call_model_answer_verification", lambda *_args, **_kwargs: {"accepted": True, "entailed": True, "answer": "no", "evidence_span": "Later inspection found no crack in the blue pump.", "proof_kind": "explicit_negation", "accessibility": "asserted", "temporal_alignment": "same_scope", "explicit_negation": True, "absence_of_record_only": False, "incompatible_condition_span": ""})
+    answer = Answer("no", 0.9, [Evidence("conversations.log", "Later inspection found no crack in the blue pump.")], "model", "boolean")
+    assert engine._verify_with_local_model(frame.question_text, frame, answer, ExpectedAnswer("boolean")) is True
+
+
+def test_negative_boolean_verifier_rejects_incompatible_state_without_direct_negation(monkeypatch) -> None:
+    engine = object.__new__(KnowMoreDiRTEngine)
+    engine._model_client = object()
+    engine._sentences_by_document = {}
+    engine.model_query_trace = ModelQueryTrace(enabled=True, prompt_hashes=[], response_hashes=[])
+    frame = QueryFrame(question_text="Was the latch confirmed broken?", answer_type="boolean", answer_variables=("Was",), target_anchors=("latch",), requested_relation="confirmed broken", relation_terms=("confirmed", "broken"), constraints=(), source="model_query_drs")
+    monkeypatch.setattr(engine, "_canonicalize_model_answer_with_local_model", lambda *_args, **_kwargs: None)
+    monkeypatch.setattr(engine_module, "call_model_answer_verification", lambda *_args, **_kwargs: {"accepted": True, "entailed": True, "answer": "no", "evidence_span": "Later inspection confirmed the latch was intact.", "proof_kind": "explicit_negation", "accessibility": "asserted", "temporal_alignment": "same_scope", "explicit_negation": True, "absence_of_record_only": False, "incompatible_condition_span": ""})
+    answer = Answer("no", 0.9, [Evidence("scoped_claims.txt", "Later inspection confirmed the latch was intact.")], "model", "boolean")
+    assert engine._verify_with_local_model(frame.question_text, frame, answer, ExpectedAnswer("boolean")) is False
+
+
+def test_negative_boolean_verifier_rejects_no_decision_for_confirmed_plan(monkeypatch) -> None:
+    engine = object.__new__(KnowMoreDiRTEngine)
+    engine._model_client = object()
+    engine._sentences_by_document = {}
+    engine.model_query_trace = ModelQueryTrace(enabled=True, prompt_hashes=[], response_hashes=[])
+    engine.model_query_trace.last_plan = {
+        "question_text": "Was the river reroute confirmed as a plan?",
+        "answer_type": "boolean",
+        "answer_variables": ["Was"],
+        "target_anchors": ["the river reroute"],
+        "requested_relation": "confirmed",
+        "relation_terms": ["confirmed", "confirm"],
+        "constraints": ["as a plan"],
+        "source": "model_query_drs",
+    }
+    frame = QueryFrame(question_text="Was the river reroute confirmed as a plan?", answer_type="boolean", answer_variables=("boolean",), target_anchors=(), requested_relation="", relation_terms=("river", "reroute", "confirm", "confirmed", "confirme", "as", "plan"), constraints=("river", "reroute", "confirm", "confirmed", "confirme", "as", "plan"), source="deterministic")
+    monkeypatch.setattr(engine, "_canonicalize_model_answer_with_local_model", lambda *_args, **_kwargs: None)
+    monkeypatch.setattr(engine_module, "call_model_answer_verification", lambda *_args, **_kwargs: {"accepted": True, "entailed": True, "answer": "no", "evidence_span": "Confirmed plan: no reroute decision was made.", "proof_kind": "explicit_negation", "accessibility": "asserted", "temporal_alignment": "same_scope", "explicit_negation": True, "absence_of_record_only": False, "incompatible_condition_span": ""})
+    answer = Answer("no", 0.9, [Evidence("scoped_claims.txt", "Confirmed plan: no reroute decision was made.")], "model", "boolean")
+    assert engine._verify_with_local_model(frame.question_text, frame, answer, ExpectedAnswer("boolean")) is False
+
+
+def test_direct_negation_relation_match_distinguishes_four_regression_cases() -> None:
+    engine = object.__new__(KnowMoreDiRTEngine)
+    q031 = QueryFrame(question_text="Should the drawing be treated as an engineering record?", answer_type="boolean", answer_variables=("whether",), target_anchors=("drawing",), requested_relation="is", relation_terms=("engineering record",), constraints=(), source="model_query_drs")
+    hrq108 = QueryFrame(question_text="Was the north hinge crack proven?", answer_type="boolean", answer_variables=("proven",), target_anchors=("north hinge crack",), requested_relation="proven", relation_terms=("proven",), constraints=(), source="model_query_drs")
+    hrq059 = QueryFrame(question_text="Did later inspection find a crack in the blue pump?", answer_type="boolean", answer_variables=("Did",), target_anchors=("crack", "blue pump"), requested_relation="find", relation_terms=("found", "find"), constraints=("later inspection",), source="model_query_drs")
+    hrq110 = QueryFrame(question_text="Was the latch confirmed broken?", answer_type="boolean", answer_variables=("Was",), target_anchors=("latch",), requested_relation="confirmed broken", relation_terms=("confirmed", "broken"), constraints=(), source="model_query_drs")
+    hrq112 = QueryFrame(question_text="Was the river reroute confirmed as a plan?", answer_type="boolean", answer_variables=("Was",), target_anchors=("river reroute",), requested_relation="confirmed as a plan", relation_terms=("confirmed", "plan"), constraints=("as a plan",), source="model_query_drs")
+    assert engine._evidence_directly_negates_requested_relation(q031, "This is fiction homework, not an engineering record.") is True
+    assert engine._evidence_directly_negates_requested_relation(hrq108, "The north hinge crack was not proven.") is True
+    assert engine._evidence_directly_negates_requested_relation(hrq059, "Later inspection found no crack in the blue pump.") is True
+    assert engine._evidence_directly_negates_requested_relation(hrq110, "Later inspection confirmed the latch was intact.") is False
+    assert engine._evidence_directly_negates_requested_relation(hrq112, "Confirmed plan: no reroute decision was made.") is False
+
+
+def test_negative_boolean_verifier_accepts_not_an_engineering_record(monkeypatch) -> None:
+    engine = object.__new__(KnowMoreDiRTEngine)
+    engine._model_client = object()
+    engine._sentences_by_document = {}
+    engine.model_query_trace = ModelQueryTrace(enabled=True, prompt_hashes=[], response_hashes=[])
+    frame = QueryFrame(question_text="Should the drawing be treated as an engineering record?", answer_type="boolean", answer_variables=("whether",), target_anchors=("drawing",), requested_relation="is", relation_terms=("engineering record",), constraints=(), source="model_query_drs")
+    monkeypatch.setattr(engine, "_canonicalize_model_answer_with_local_model", lambda *_args, **_kwargs: None)
+    monkeypatch.setattr(engine_module, "call_model_answer_verification", lambda *_args, **_kwargs: {"accepted": True, "entailed": True, "answer": "no", "evidence_span": "Teacher note: this is fiction homework, not an engineering record.", "proof_kind": "explicit_negation", "accessibility": "asserted", "temporal_alignment": "unspecified", "explicit_negation": True, "absence_of_record_only": False, "incompatible_condition_span": ""})
+    answer = Answer("no", 0.9, [Evidence("story.txt", "Teacher note: this is fiction homework, not an engineering record.")], "model", "boolean")
+    assert engine._verify_with_local_model(frame.question_text, frame, answer, ExpectedAnswer("boolean")) is True
+    assert engine.model_query_trace.verifier_call_count == 1
 
 
 def test_cleanup_arithmetic_count_removes_explanatory_unit(tmp_path):

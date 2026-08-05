@@ -13,23 +13,30 @@ from __future__ import annotations
 import argparse
 import atexit
 import faulthandler
+import fcntl
+import hashlib
 import json
 import os
 import re
 import signal
 import sys
 import threading
+import tempfile
 import time
 import traceback
 from pathlib import Path
 from typing import Any
 
 
-DEFAULT_RAW_FOLDER = Path("/data/var/herb_benchmark/raw/herb_raw/hf_snapshot")
+DEFAULT_PREPARED_ROOT = Path("/data/var/herb_benchmark/prepared/kmd_raw_v1")
+DEFAULT_RAW_FOLDER = DEFAULT_PREPARED_ROOT / "source"
+DEFAULT_QUESTIONS_FILE = DEFAULT_PREPARED_ROOT / "questions.jsonl"
+DEFAULT_PREPARED_MANIFEST = DEFAULT_PREPARED_ROOT / "manifest.json"
 DEFAULT_HERB_ROOT = Path("/data/src/github/devtests/herb_benchmark")
 DEFAULT_VAR_ROOT = Path("/data/var/herb_benchmark")
 DEFAULT_KMD_REPORT_ROOT = Path("/data/var/knowmoredirt/reports")
 DEFAULT_KMD_RUN_ROOT = Path("/data/var/knowmoredirt/herb_runs")
+HERB_RESUME_SCHEMA = "kmd-herb-resume-v2"
 
 
 _RUN_STATE: dict[str, Any] = {"stage": "startup"}
@@ -60,14 +67,33 @@ def _flush_file(handle: Any) -> None:
         pass
 
 
-def log_event(log_path: Path, event: str, **payload: Any) -> None:
-    log_path.parent.mkdir(parents=True, exist_ok=True)
-    row = {"ts": time.strftime("%Y-%m-%dT%H:%M:%S%z"), "pid": os.getpid(), "event": event, **payload}
-    with log_path.open("a", encoding="utf-8") as handle:
-        handle.write(json.dumps(row, ensure_ascii=False, sort_keys=True) + "\n")
-        _flush_file(handle)
-    print("kmd-herb " + json.dumps(row, ensure_ascii=False, sort_keys=True), flush=True)
+def _fsync_directory(path: Path) -> None:
+    flags = os.O_RDONLY | getattr(os, "O_DIRECTORY", 0)
+    try:
+        descriptor = os.open(path, flags)
+    except OSError:
+        return
+    try:
+        os.fsync(descriptor)
+    finally:
+        os.close(descriptor)
 
+
+def _append_json_line(path: Path, row: dict[str, Any]) -> None:
+    path.parent.mkdir(parents=True, exist_ok=True)
+    with path.open("a", encoding="utf-8") as handle:
+        fcntl.flock(handle.fileno(), fcntl.LOCK_EX)
+        try:
+            handle.write(json.dumps(row, ensure_ascii=False, sort_keys=True) + "\n")
+            _flush_file(handle)
+        finally:
+            fcntl.flock(handle.fileno(), fcntl.LOCK_UN)
+
+
+def log_event(log_path: Path, event: str, **payload: Any) -> None:
+    row = {"ts": time.strftime("%Y-%m-%dT%H:%M:%S%z"), "pid": os.getpid(), "event": event, **payload}
+    _append_json_line(log_path, row)
+    print("kmd-herb " + json.dumps(row, ensure_ascii=False, sort_keys=True), flush=True)
 
 def register_process_diagnostics(log_path: Path) -> None:
     def record_exit() -> None:
@@ -110,18 +136,153 @@ def read_official_questions(path: Path) -> list[dict[str, str]]:
 
 def write_jsonl(path: Path, rows: list[dict[str, Any]]) -> None:
     path.parent.mkdir(parents=True, exist_ok=True)
-    with path.open("w", encoding="utf-8") as handle:
-        for row in rows:
-            handle.write(json.dumps(row, ensure_ascii=False, sort_keys=True) + "\n")
-        _flush_file(handle)
+    descriptor, temporary_name = tempfile.mkstemp(
+        prefix=f".{path.name}.", suffix=".tmp", dir=str(path.parent)
+    )
+    temporary = Path(temporary_name)
+    try:
+        with os.fdopen(descriptor, "w", encoding="utf-8") as handle:
+            for row in rows:
+                handle.write(json.dumps(row, ensure_ascii=False, sort_keys=True) + "\n")
+            _flush_file(handle)
+        os.replace(temporary, path)
+        _fsync_directory(path.parent)
+    except BaseException:
+        temporary.unlink(missing_ok=True)
+        raise
 
 
 def append_jsonl(path: Path, row: dict[str, Any]) -> None:
-    path.parent.mkdir(parents=True, exist_ok=True)
-    with path.open("a", encoding="utf-8") as handle:
-        handle.write(json.dumps(row, ensure_ascii=False, sort_keys=True) + "\n")
-        _flush_file(handle)
+    _append_json_line(path, row)
 
+
+def _sha256_file(path: Path) -> str:
+    digest = hashlib.sha256()
+    with path.open("rb") as handle:
+        for chunk in iter(lambda: handle.read(1024 * 1024), b""):
+            digest.update(chunk)
+    return digest.hexdigest()
+
+
+def _tree_hash(root: Path) -> str:
+    digest = hashlib.sha256()
+    for path in sorted(item for item in root.rglob("*") if item.is_file() and not item.is_symlink()):
+        digest.update(path.relative_to(root).as_posix().encode("utf-8"))
+        digest.update(b"\0")
+        digest.update(_sha256_file(path).encode("ascii"))
+        digest.update(b"\0")
+    return digest.hexdigest()
+
+
+def _atomic_write_json(path: Path, payload: Any) -> None:
+    path.parent.mkdir(parents=True, exist_ok=True)
+    descriptor, temporary_name = tempfile.mkstemp(
+        prefix=f".{path.name}.", suffix=".tmp", dir=str(path.parent)
+    )
+    temporary = Path(temporary_name)
+    try:
+        with os.fdopen(descriptor, "w", encoding="utf-8") as handle:
+            json.dump(payload, handle, ensure_ascii=False, indent=2, sort_keys=True)
+            handle.write("\n")
+            _flush_file(handle)
+        os.replace(temporary, path)
+        _fsync_directory(path.parent)
+    except BaseException:
+        temporary.unlink(missing_ok=True)
+        raise
+
+
+def _herb_resume_manifest(
+    *,
+    repo_root: Path,
+    herb_root: Path,
+    raw_folder: Path,
+    questions_path: Path,
+    prepared_manifest: Path,
+    questions: list[dict[str, str]],
+    args: argparse.Namespace,
+) -> dict[str, Any]:
+    env = {
+        key: value
+        for key, value in sorted(os.environ.items())
+        if key.startswith("KMD_") or key in {"LLM_BASE_URL", "HERB_BENCHMARK_SOURCE_ROOT", "HERB_BENCHMARK_VAR_ROOT"}
+    }
+    return {
+        "schema": HERB_RESUME_SCHEMA,
+        "kmd_source_tree_hash": _tree_hash(repo_root / "src"),
+        "runner_hash": _sha256_file(Path(__file__).resolve()),
+        "herb_evaluator_hash": _sha256_file(herb_root / "src" / "herb_kgqa" / "evaluator.py"),
+        "raw_folder": str(raw_folder),
+        "raw_tree_hash": _tree_hash(raw_folder),
+        "questions_path": str(questions_path),
+        "questions_hash": _sha256_file(questions_path),
+        "prepared_manifest": str(prepared_manifest),
+        "prepared_manifest_hash": _sha256_file(prepared_manifest),
+        "questions": questions,
+        "use_local_model": bool(args.use_local_model),
+        "limit": int(args.limit),
+        "question_ids": sorted(str(value) for value in args.question_id or []),
+        "environment": env,
+    }
+
+
+def _prepare_herb_resume_manifest(path: Path, manifest: dict[str, Any], *, resume: bool) -> None:
+    if resume:
+        if not path.exists():
+            raise RuntimeError("refusing HERB resume: compatibility manifest is missing")
+        try:
+            previous = json.loads(path.read_text(encoding="utf-8"))
+        except (OSError, json.JSONDecodeError) as error:
+            raise RuntimeError(f"refusing HERB resume: invalid compatibility manifest: {error}") from error
+        if previous != manifest:
+            raise RuntimeError("refusing HERB resume: code, data, model configuration, or question selection changed")
+    _atomic_write_json(path, manifest)
+
+
+def _load_jsonl_strict(path: Path) -> list[dict[str, Any]]:
+    if not path.exists():
+        return []
+    rows: list[dict[str, Any]] = []
+    with path.open("r", encoding="utf-8") as handle:
+        for line_number, line in enumerate(handle, start=1):
+            if not line.strip():
+                continue
+            try:
+                row = json.loads(line)
+            except json.JSONDecodeError as error:
+                raise RuntimeError(f"malformed HERB JSONL at {path}:{line_number}: {error}") from error
+            if not isinstance(row, dict):
+                raise RuntimeError(f"non-object HERB JSONL row at {path}:{line_number}")
+            rows.append(row)
+    return rows
+
+
+def _reconcile_resume_outputs(run_dir: Path) -> tuple[set[str], int]:
+    names = (
+        "retrieved_sources.jsonl",
+        "evidence_packets.jsonl",
+        "predictions.jsonl",
+        "kmd_public_answers.jsonl",
+    )
+    latest: dict[str, dict[str, dict[str, Any]]] = {}
+    order: list[str] = []
+    for name in names:
+        per_id: dict[str, dict[str, Any]] = {}
+        for row in _load_jsonl_strict(run_dir / name):
+            question_id = str(row.get("question_id") or "")
+            if not question_id:
+                raise RuntimeError(f"HERB row missing question_id in {name}")
+            per_id[question_id] = row
+            if question_id not in order:
+                order.append(question_id)
+        latest[name] = per_id
+    complete = set.intersection(*(set(rows) for rows in latest.values())) if latest else set()
+    canonical_order = [question_id for question_id in order if question_id in complete]
+    for name in names:
+        write_jsonl(run_dir / name, [latest[name][question_id] for question_id in canonical_order])
+    checkpoints = latest["kmd_public_answers.jsonl"]
+    answered = sum(bool(checkpoints[question_id].get("answered")) for question_id in complete)
+    return complete, answered
 
 def serialize_answer(public_answer: str) -> str | list[str]:
     answer = str(public_answer or "").strip()
@@ -137,6 +298,8 @@ def main() -> int:
     parser = argparse.ArgumentParser(description="Run KMD raw-folder public API on local HERB.")
     parser.add_argument("--raw-folder", default=str(DEFAULT_RAW_FOLDER))
     parser.add_argument("--herb-root", default=str(DEFAULT_HERB_ROOT))
+    parser.add_argument("--questions-file", default=str(DEFAULT_QUESTIONS_FILE))
+    parser.add_argument("--prepared-manifest", default=str(DEFAULT_PREPARED_MANIFEST))
     parser.add_argument("--var-root", default=str(DEFAULT_VAR_ROOT))
     parser.add_argument("--run-root", default=str(DEFAULT_KMD_RUN_ROOT))
     parser.add_argument("--report-root", default=str(DEFAULT_KMD_REPORT_ROOT))
@@ -153,9 +316,11 @@ def main() -> int:
     var_root = Path(args.var_root).resolve()
     run_dir = Path(args.run_root).resolve() / args.run_name
     report_root = Path(args.report_root).resolve()
-    normalized_questions = var_root / "normalized" / "herb_normalized" / "questions.jsonl"
+    normalized_questions = Path(args.questions_file).resolve()
+    prepared_manifest = Path(args.prepared_manifest).resolve()
     log_path = run_dir / "progress.jsonl"
     checkpoint_path = run_dir / "kmd_public_answers.jsonl"
+    compatibility_path = run_dir / "run_compatibility.json"
     sanitized_questions_path = run_dir / "questions_sanitized_for_kmd.jsonl"
 
     configure_process_io()
@@ -167,8 +332,23 @@ def main() -> int:
         raise FileNotFoundError(raw_folder)
     if not normalized_questions.exists():
         raise FileNotFoundError(normalized_questions)
+    if not prepared_manifest.is_file():
+        raise FileNotFoundError(prepared_manifest)
     if not herb_root.is_dir():
         raise FileNotFoundError(herb_root)
+
+    from prepare_herb_kmd_bundle import validate_prepared_bundle
+
+    prepared = validate_prepared_bundle(prepared_manifest)
+    if prepared["source_root"].resolve() != raw_folder:
+        raise ValueError(
+            f"raw folder does not match prepared manifest: {raw_folder} != {prepared['source_root']}"
+        )
+    if prepared["questions_path"].resolve() != normalized_questions:
+        raise ValueError(
+            "questions file does not match prepared manifest: "
+            f"{normalized_questions} != {prepared['questions_path']}"
+        )
 
     sys.path.insert(0, str(repo_root / "src"))
     sys.path.insert(0, str(herb_root / "src"))
@@ -178,6 +358,8 @@ def main() -> int:
         shared_cache_root = Path(configured_shared_cache_root) if configured_shared_cache_root else var_root / "kmd_model_caches"
         os.environ.setdefault("KMD_SHARED_MODEL_CACHE_ROOT", str(shared_cache_root))
         os.environ.setdefault("KMD_LOCAL_MODEL_CACHE_PROMPT", "1")
+        os.environ["KMD_SCAN_PACK_UNITS"] = "1"
+        os.environ["KMD_SCAN_PACK_MAX_UNITS"] = "0"
         for cache_name, subdir in {
             "KMD_FRAME_CACHE_DIR": "frame",
             "KMD_CHUNK_FRAME_CACHE_DIR": "chunk_frame",
@@ -204,30 +386,29 @@ def main() -> int:
 
     run_dir.mkdir(parents=True, exist_ok=True)
     if not args.resume:
-        for output_name in ["retrieved_sources.jsonl", "evidence_packets.jsonl", "predictions.jsonl", "kmd_public_answers.jsonl"]:
-            output_path = run_dir / output_name
-            if output_path.exists():
-                output_path.unlink()
+        for output_name in ["retrieved_sources.jsonl", "evidence_packets.jsonl", "predictions.jsonl", "kmd_public_answers.jsonl", "run_compatibility.json"]:
+            (run_dir / output_name).unlink(missing_ok=True)
 
     all_questions = read_official_questions(normalized_questions)
     selected_ids = {str(value) for value in args.question_id or []}
     if selected_ids:
         all_questions = [row for row in all_questions if str(row.get("question_id") or "") in selected_ids]
     questions = all_questions[: args.limit] if args.limit else all_questions
+    compatibility_manifest = _herb_resume_manifest(
+        repo_root=repo_root,
+        herb_root=herb_root,
+        raw_folder=raw_folder,
+        questions_path=normalized_questions,
+        prepared_manifest=prepared_manifest,
+        questions=questions,
+        args=args,
+    )
+    _prepare_herb_resume_manifest(compatibility_path, compatibility_manifest, resume=bool(args.resume))
     write_jsonl(sanitized_questions_path, questions)
-    completed_ids: set[str] = set()
-    answered_count = 0
-    if args.resume and checkpoint_path.exists():
-        with checkpoint_path.open("r", encoding="utf-8") as handle:
-            for line in handle:
-                if not line.strip():
-                    continue
-                checkpoint = json.loads(line)
-                question_id = str(checkpoint.get("question_id") or "")
-                if question_id:
-                    completed_ids.add(question_id)
-                    if checkpoint.get("answered"):
-                        answered_count += 1
+    if args.resume:
+        completed_ids, answered_count = _reconcile_resume_outputs(run_dir)
+    else:
+        completed_ids, answered_count = set(), 0
     _RUN_STATE.update({"stage": "run_start", "total_questions": len(questions)})
     log_event(
         log_path,
@@ -243,6 +424,11 @@ def main() -> int:
         limit=args.limit,
         query_input_fields=["question_id", "question"],
         model_status="optional localhost migrated DRT model-query planner enabled" if args.use_local_model else "not used; current KMD public API is deterministic",
+        prepared_manifest=str(prepared_manifest),
+        prepared_format=prepared["manifest"]["format"],
+        prepared_artifact_count=prepared["manifest"]["artifact_count"],
+        prepared_source_file_count=prepared["manifest"]["source_file_count"],
+        prepared_source_tree_sha256=prepared["manifest"]["output_hashes"]["source_tree"],
     )
 
     init_started = time.time()
@@ -443,7 +629,7 @@ def main() -> int:
     report_root.mkdir(parents=True, exist_ok=True)
     report_json = report_root / f"{args.run_name}.json"
     report_md = report_root / f"{args.run_name}.md"
-    report_json.write_text(json.dumps(report, ensure_ascii=False, indent=2, sort_keys=True) + "\n", encoding="utf-8")
+    _atomic_write_json(report_json, report)
     score_lines = json.dumps(scores, ensure_ascii=False, indent=2, sort_keys=True)
     report_md.write_text(
         "\n".join(

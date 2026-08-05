@@ -53,6 +53,39 @@ def model_endpoint() -> str:
     return os.environ.get("DRT_PHASE3_MODEL_ENDPOINT", "http://127.0.0.1:14829")
 
 
+def _per_token_timeout_seconds() -> float:
+    value = float(os.environ.get("KMD_LOCAL_MODEL_PER_TOKEN_TIMEOUT_SECONDS", "180"))
+    if value <= 0:
+        raise ValueError("KMD_LOCAL_MODEL_PER_TOKEN_TIMEOUT_SECONDS must be positive")
+    return value
+
+
+def _stream_completion(body: dict[str, Any]) -> str:
+    payload = dict(body)
+    payload["stream"] = True
+    request = urllib.request.Request(
+        model_endpoint() + "/completion",
+        data=json.dumps(payload).encode(),
+        headers={"Content-Type": "application/json"},
+        method="POST",
+    )
+    parts: list[str] = []
+    with urllib.request.urlopen(
+        request, timeout=_per_token_timeout_seconds()
+    ) as response:
+        for raw_line in response:
+            line = raw_line.decode("utf-8", errors="replace").strip()
+            if not line:
+                continue
+            if line.startswith("data:"):
+                line = line[5:].strip()
+            if line == "[DONE]":
+                break
+            event = json.loads(line)
+            parts.append(str(event.get("content") or ""))
+    return "".join(parts)
+
+
 def one_shot_answer(case: dict[str, Any], question: dict[str, Any]) -> dict[str, Any]:
     texts = []
     for path in sorted(case["corpus"].rglob("*")):
@@ -64,12 +97,9 @@ def one_shot_answer(case: dict[str, Any], question: dict[str, Any]) -> dict[str,
         + json.dumps({"sources": texts, "question": question["question"]}, ensure_ascii=False)
     )
     grammar = 'root ::= "{" ws "\\"answer\\"" ws ":" ws string ws "}"\nstring ::= "\\"" chars "\\""\nchars ::= ([^"\\\\] | "\\\\" ["\\\\/bfnrt])*\nws ::= [ \\t\\n\\r]*'
-    body = {"prompt": prompt, "n_predict": 160, "temperature": 0.0, "top_p": 1.0, "stream": False, "grammar": grammar}
+    body = {"prompt": prompt, "n_predict": 160, "temperature": 0.0, "top_p": 1.0, "stream": True, "grammar": grammar}
     try:
-        req = urllib.request.Request(model_endpoint() + "/completion", data=json.dumps(body).encode(), headers={"Content-Type": "application/json"}, method="POST")
-        with urllib.request.urlopen(req, timeout=30) as resp:
-            data = json.loads(resp.read().decode())
-        raw = data.get("content", "")
+        raw = _stream_completion(body)
         start = raw.find("{")
         obj = json.loads(raw[start: raw.rfind("}") + 1]) if start >= 0 and "}" in raw else {}
         return {"answer": obj.get("answer", "unknown"), "raw": raw, "accepted": bool(obj), "evidence": []}

@@ -13,10 +13,11 @@ import os
 from pathlib import Path
 from typing import Any
 
+from .atomic_io import atomic_write_json, quarantine_corrupt_file
 from .model_planner import CHUNK_FRAME_SCHEMA_VERSION, PROMPT_VERSION
 
 
-CACHE_VERSION = "semantic-frames-v6"
+CACHE_VERSION = "semantic-frames-v7-atomic-runtime-fingerprint"
 
 
 def _default_cache_dir() -> Path:
@@ -55,7 +56,12 @@ class SemanticFrameCache:
         path = self.root / f"{self.key_for(text, context=context)}.json"
         try:
             payload = json.loads(path.read_text(encoding="utf-8"))
-        except (OSError, json.JSONDecodeError):
+        except FileNotFoundError:
+            return None
+        except json.JSONDecodeError:
+            quarantine_corrupt_file(path)
+            return None
+        except OSError:
             return None
         if payload.get("version") != CACHE_VERSION:
             return None
@@ -79,4 +85,4 @@ class SemanticFrameCache:
             "metadata": metadata or {},
             "context": context or {},
         }
-        path.write_text(json.dumps(payload, ensure_ascii=False, sort_keys=True), encoding="utf-8")
+        atomic_write_json(path, payload, ensure_ascii=False, sort_keys=True)

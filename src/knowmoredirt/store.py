@@ -6,6 +6,7 @@ documents, chunks, spans, mentions, referents, contexts, frames, and arguments.
 
 from __future__ import annotations
 
+import copy
 import hashlib
 import json
 import sqlite3
@@ -469,6 +470,7 @@ class DSPGStore:
             "INSERT INTO extraction_runs(run_id, started_at, input_root, status, metrics_json) VALUES (?, ?, ?, ?, ?)",
             (run_id, time.time(), str(input_root), "running", "{}"),
         )
+        self.connection.commit()
         return run_id
 
     def latest_run_id(self, input_root: str | Path) -> str:
@@ -484,7 +486,250 @@ class DSPGStore:
         ).fetchone()
         return str(row["run_id"]) if row is not None else ""
 
+    def semantic_integrity_errors(self) -> list[dict[str, Any]]:
+        """Return orphan semantic references not covered by legacy SQLite FKs."""
+
+        references = (
+            ("chunks.document_id", "chunks", "document_id", "documents", "document_id"),
+            ("source_spans.document_id", "source_spans", "document_id", "documents", "document_id"),
+            ("source_spans.chunk_id", "source_spans", "chunk_id", "chunks", "chunk_id"),
+            ("mentions.span_id", "mentions", "span_id", "source_spans", "span_id"),
+            ("mention_referents.mention_id", "mention_referents", "mention_id", "mentions", "mention_id"),
+            ("mention_referents.referent_id", "mention_referents", "referent_id", "referents", "referent_id"),
+            ("metadata_records.document_id", "metadata_records", "document_id", "documents", "document_id"),
+            ("model_attempts.source_span_id", "model_attempts", "source_span_id", "source_spans", "span_id"),
+            ("identity_hypotheses.source_span_id", "identity_hypotheses", "source_span_id", "source_spans", "span_id"),
+            ("identity_hypotheses.context_id", "identity_hypotheses", "context_id", "contexts", "context_id"),
+            ("identity_hypotheses.drs_box_id", "identity_hypotheses", "drs_box_id", "drs_boxes", "drs_box_id"),
+            ("identity_hypotheses.left_referent_id", "identity_hypotheses", "left_referent_id", "referents", "referent_id"),
+            ("identity_hypotheses.right_referent_id", "identity_hypotheses", "right_referent_id", "referents", "referent_id"),
+            ("contexts.parent_context_id", "contexts", "parent_context_id", "contexts", "context_id"),
+            ("context_assignments.context_id", "context_assignments", "context_id", "contexts", "context_id"),
+            ("context_assignments.source_span_id", "context_assignments", "source_span_id", "source_spans", "span_id"),
+            ("context_carriers.context_id", "context_carriers", "context_id", "contexts", "context_id"),
+            ("context_carriers.document_id", "context_carriers", "document_id", "documents", "document_id"),
+            ("context_carriers.source_span_id", "context_carriers", "source_span_id", "source_spans", "span_id"),
+            ("frames.context_id", "frames", "context_id", "contexts", "context_id"),
+            ("frames.span_id", "frames", "span_id", "source_spans", "span_id"),
+            ("frame_arguments.frame_id", "frame_arguments", "frame_id", "frames", "frame_id"),
+            ("frame_arguments.mention_id", "frame_arguments", "mention_id", "mentions", "mention_id"),
+            ("frame_arguments.referent_id", "frame_arguments", "referent_id", "referents", "referent_id"),
+            ("drs_boxes.source_span_id", "drs_boxes", "source_span_id", "source_spans", "span_id"),
+            ("drs_boxes.context_id", "drs_boxes", "context_id", "contexts", "context_id"),
+            ("drs_boxes.parent_drs_box_id", "drs_boxes", "parent_drs_box_id", "drs_boxes", "drs_box_id"),
+            ("drs_boxes.holder_referent_id", "drs_boxes", "holder_referent_id", "referents", "referent_id"),
+            ("drs_referents.source_span_id", "drs_referents", "source_span_id", "source_spans", "span_id"),
+            ("drs_referents.referent_id", "drs_referents", "referent_id", "referents", "referent_id"),
+            ("drs_referents.box_id", "drs_referents", "box_id", "drs_boxes", "drs_box_id"),
+            ("drs_conditions.source_span_id", "drs_conditions", "source_span_id", "source_spans", "span_id"),
+            ("drs_conditions.box_id", "drs_conditions", "box_id", "drs_boxes", "drs_box_id"),
+            ("drs_conditions.context_id", "drs_conditions", "context_id", "contexts", "context_id"),
+            ("drs_conditions.frame_id", "drs_conditions", "frame_id", "frames", "frame_id"),
+            ("drs_condition_arguments.drs_condition_id", "drs_condition_arguments", "drs_condition_id", "drs_conditions", "drs_condition_id"),
+            ("drs_condition_arguments.referent_id", "drs_condition_arguments", "referent_id", "referents", "referent_id"),
+            ("drs_condition_arguments.target_box_id", "drs_condition_arguments", "target_box_id", "drs_boxes", "drs_box_id"),
+            ("drs_condition_arguments.target_condition_id", "drs_condition_arguments", "target_condition_id", "drs_conditions", "drs_condition_id"),
+            ("drs_identity_hypotheses.source_span_id", "drs_identity_hypotheses", "source_span_id", "source_spans", "span_id"),
+            ("drs_identity_hypotheses.context_id", "drs_identity_hypotheses", "context_id", "contexts", "context_id"),
+            ("drs_identity_hypotheses.box_id", "drs_identity_hypotheses", "box_id", "drs_boxes", "drs_box_id"),
+            ("drs_identity_hypotheses.left_referent_id", "drs_identity_hypotheses", "left_referent_id", "referents", "referent_id"),
+            ("drs_identity_hypotheses.right_referent_id", "drs_identity_hypotheses", "right_referent_id", "referents", "referent_id"),
+            ("relations.source_span_id", "relations", "source_span_id", "source_spans", "span_id"),
+            ("relations.context_id", "relations", "context_id", "contexts", "context_id"),
+            ("temporal_edges.source_span_id", "temporal_edges", "source_span_id", "source_spans", "span_id"),
+            ("temporal_edges.referent_id", "temporal_edges", "referent_id", "referents", "referent_id"),
+            ("temporal_edges.context_id", "temporal_edges", "context_id", "contexts", "context_id"),
+        )
+        errors: list[dict[str, Any]] = []
+        for label, child_table, child_column, parent_table, parent_column in references:
+            row = self.connection.execute(
+                f"""
+                SELECT COUNT(*) AS count
+                FROM {child_table} AS child
+                LEFT JOIN {parent_table} AS parent
+                  ON parent.{parent_column}=child.{child_column}
+                WHERE NULLIF(CAST(child.{child_column} AS TEXT), '') IS NOT NULL
+                  AND parent.{parent_column} IS NULL
+                """
+            ).fetchone()
+            count = int(row["count"] if row is not None else 0)
+            if count:
+                errors.append({"reference": label, "count": count})
+        return errors
+
+    @staticmethod
+    def _sql_placeholders(values: set[str]) -> str:
+        return ",".join("?" for _value in values)
+
+    def prune_stale_documents(self, run_id: str, active_document_ids: set[str]) -> dict[str, int]:
+        """Physically remove source-derived rows for deleted or superseded files."""
+
+        if active_document_ids:
+            placeholders = self._sql_placeholders(active_document_ids)
+            rows = self.connection.execute(
+                f"SELECT document_id FROM documents WHERE run_id=? AND document_id NOT IN ({placeholders})",
+                (run_id, *sorted(active_document_ids)),
+            ).fetchall()
+        else:
+            rows = self.connection.execute(
+                "SELECT document_id FROM documents WHERE run_id=?",
+                (run_id,),
+            ).fetchall()
+        document_ids = {str(row["document_id"]) for row in rows}
+        if not document_ids:
+            return {}
+        document_placeholders = self._sql_placeholders(document_ids)
+        chunk_ids = {
+            str(row["chunk_id"])
+            for row in self.connection.execute(
+                f"SELECT chunk_id FROM chunks WHERE document_id IN ({document_placeholders})",
+                tuple(sorted(document_ids)),
+            ).fetchall()
+        }
+        span_ids = {
+            str(row["span_id"])
+            for row in self.connection.execute(
+                f"SELECT span_id FROM source_spans WHERE document_id IN ({document_placeholders})",
+                tuple(sorted(document_ids)),
+            ).fetchall()
+        }
+        mention_ids: set[str] = set()
+        frame_ids: set[str] = set()
+        relation_ids: set[str] = set()
+        condition_ids: set[str] = set()
+        box_ids: set[str] = set()
+        if span_ids:
+            span_placeholders = self._sql_placeholders(span_ids)
+            span_params = tuple(sorted(span_ids))
+            mention_ids = {str(row["mention_id"]) for row in self.connection.execute(f"SELECT mention_id FROM mentions WHERE span_id IN ({span_placeholders})", span_params).fetchall()}
+            frame_ids = {str(row["frame_id"]) for row in self.connection.execute(f"SELECT frame_id FROM frames WHERE span_id IN ({span_placeholders})", span_params).fetchall()}
+            relation_ids = {str(row["relation_id"]) for row in self.connection.execute(f"SELECT relation_id FROM relations WHERE source_span_id IN ({span_placeholders})", span_params).fetchall()}
+            condition_ids = {str(row["drs_condition_id"]) for row in self.connection.execute(f"SELECT drs_condition_id FROM drs_conditions WHERE source_span_id IN ({span_placeholders})", span_params).fetchall()}
+            box_ids = {str(row["drs_box_id"]) for row in self.connection.execute(f"SELECT drs_box_id FROM drs_boxes WHERE source_span_id IN ({span_placeholders})", span_params).fetchall()}
+        savepoint = stable_id("prune", run_id, *sorted(document_ids)).replace("-", "_")
+        self.connection.execute(f"SAVEPOINT {savepoint}")
+        deleted: dict[str, int] = {}
+
+        def remove(table: str, where: str, params: tuple[Any, ...]) -> None:
+            cursor = self.connection.execute(f"DELETE FROM {table} WHERE {where}", params)
+            count = max(0, int(cursor.rowcount if cursor.rowcount is not None else 0))
+            if count:
+                deleted[table] = deleted.get(table, 0) + count
+
+        try:
+            if span_ids:
+                sp = self._sql_placeholders(span_ids)
+                params = tuple(sorted(span_ids))
+                remove("context_assignments", f"source_span_id IN ({sp})", params)
+                remove("temporal_edges", f"source_span_id IN ({sp})", params)
+                remove("identity_hypotheses", f"source_span_id IN ({sp})", params)
+                remove("drs_identity_hypotheses", f"source_span_id IN ({sp})", params)
+                remove("relations", f"source_span_id IN ({sp})", params)
+                remove("model_attempts", f"source_span_id IN ({sp})", params)
+            applies_to_ids = mention_ids | frame_ids | relation_ids
+            if applies_to_ids:
+                ap = self._sql_placeholders(applies_to_ids)
+                remove("context_assignments", f"applies_to_id IN ({ap})", tuple(sorted(applies_to_ids)))
+            if condition_ids:
+                cp = self._sql_placeholders(condition_ids)
+                remove("drs_condition_arguments", f"drs_condition_id IN ({cp}) OR target_condition_id IN ({cp})", tuple(sorted(condition_ids)) * 2)
+            if box_ids:
+                bp = self._sql_placeholders(box_ids)
+                remove("drs_condition_arguments", f"target_box_id IN ({bp})", tuple(sorted(box_ids)))
+            if frame_ids or mention_ids:
+                clauses: list[str] = []
+                params_list: list[str] = []
+                if frame_ids:
+                    fp = self._sql_placeholders(frame_ids)
+                    clauses.append(f"frame_id IN ({fp})")
+                    params_list.extend(sorted(frame_ids))
+                if mention_ids:
+                    mp = self._sql_placeholders(mention_ids)
+                    clauses.append(f"mention_id IN ({mp})")
+                    params_list.extend(sorted(mention_ids))
+                remove("frame_arguments", " OR ".join(clauses), tuple(params_list))
+            if mention_ids:
+                mp = self._sql_placeholders(mention_ids)
+                remove("mention_referents", f"mention_id IN ({mp})", tuple(sorted(mention_ids)))
+            if span_ids:
+                sp = self._sql_placeholders(span_ids)
+                params = tuple(sorted(span_ids))
+                remove("drs_conditions", f"source_span_id IN ({sp})", params)
+                remove("drs_referents", f"source_span_id IN ({sp})", params)
+                remove("drs_boxes", f"source_span_id IN ({sp})", params)
+                remove("frames", f"span_id IN ({sp})", params)
+                remove("mentions", f"span_id IN ({sp})", params)
+                remove("context_carriers", f"source_span_id IN ({sp})", params)
+            remove("context_carriers", f"document_id IN ({document_placeholders})", tuple(sorted(document_ids)))
+            remove("metadata_records", f"document_id IN ({document_placeholders})", tuple(sorted(document_ids)))
+            if span_ids:
+                sp = self._sql_placeholders(span_ids)
+                remove("source_spans", f"span_id IN ({sp})", tuple(sorted(span_ids)))
+            if chunk_ids:
+                chp = self._sql_placeholders(chunk_ids)
+                remove("chunks", f"chunk_id IN ({chp})", tuple(sorted(chunk_ids)))
+            remove("documents", f"document_id IN ({document_placeholders})", tuple(sorted(document_ids)))
+            remove(
+                "referents",
+                """
+                run_id=?
+                AND NOT EXISTS (SELECT 1 FROM mention_referents mr WHERE mr.referent_id=referents.referent_id)
+                AND NOT EXISTS (SELECT 1 FROM drs_referents dr WHERE dr.referent_id=referents.referent_id)
+                AND NOT EXISTS (SELECT 1 FROM frame_arguments fa WHERE fa.referent_id=referents.referent_id)
+                AND NOT EXISTS (SELECT 1 FROM drs_condition_arguments da WHERE da.referent_id=referents.referent_id)
+                AND NOT EXISTS (SELECT 1 FROM identity_hypotheses ih WHERE ih.left_referent_id=referents.referent_id OR ih.right_referent_id=referents.referent_id)
+                AND NOT EXISTS (SELECT 1 FROM drs_identity_hypotheses dh WHERE dh.left_referent_id=referents.referent_id OR dh.right_referent_id=referents.referent_id)
+                AND NOT EXISTS (SELECT 1 FROM temporal_edges te WHERE te.referent_id=referents.referent_id)
+                AND NOT EXISTS (SELECT 1 FROM drs_boxes db WHERE db.holder_referent_id=referents.referent_id)
+                """,
+                (run_id,),
+            )
+            while True:
+                cursor = self.connection.execute(
+                    """
+                    DELETE FROM contexts
+                    WHERE run_id=?
+                      AND NOT EXISTS (SELECT 1 FROM contexts child WHERE child.parent_context_id=contexts.context_id)
+                      AND NOT EXISTS (SELECT 1 FROM context_assignments ca WHERE ca.context_id=contexts.context_id)
+                      AND NOT EXISTS (SELECT 1 FROM context_carriers cc WHERE cc.context_id=contexts.context_id)
+                      AND NOT EXISTS (SELECT 1 FROM frames f WHERE f.context_id=contexts.context_id)
+                      AND NOT EXISTS (SELECT 1 FROM identity_hypotheses ih WHERE ih.context_id=contexts.context_id)
+                      AND NOT EXISTS (SELECT 1 FROM drs_boxes db WHERE db.context_id=contexts.context_id)
+                      AND NOT EXISTS (SELECT 1 FROM drs_conditions dc WHERE dc.context_id=contexts.context_id)
+                      AND NOT EXISTS (SELECT 1 FROM drs_identity_hypotheses dh WHERE dh.context_id=contexts.context_id)
+                      AND NOT EXISTS (SELECT 1 FROM relations r WHERE r.context_id=contexts.context_id)
+                      AND NOT EXISTS (SELECT 1 FROM temporal_edges te WHERE te.context_id=contexts.context_id)
+                    """,
+                    (run_id,),
+                )
+                count = max(0, int(cursor.rowcount if cursor.rowcount is not None else 0))
+                if count:
+                    deleted["contexts"] = deleted.get("contexts", 0) + count
+                if not count:
+                    break
+        except BaseException:
+            self.connection.execute(f"ROLLBACK TO SAVEPOINT {savepoint}")
+            self.connection.execute(f"RELEASE SAVEPOINT {savepoint}")
+            raise
+        else:
+            self.connection.execute(f"RELEASE SAVEPOINT {savepoint}")
+            self.connection.commit()
+        return deleted
+
     def finish_run(self, run_id: str, metrics: dict[str, Any]) -> None:
+        integrity_errors = self.semantic_integrity_errors()
+        if integrity_errors:
+            self.connection.rollback()
+            failed_metrics = {**metrics, "semantic_integrity_errors": integrity_errors}
+            self.connection.execute(
+                "UPDATE extraction_runs SET status=?, metrics_json=? WHERE run_id=?",
+                ("failed", json.dumps(failed_metrics, sort_keys=True), run_id),
+            )
+            self.connection.commit()
+            raise RuntimeError(
+                "semantic integrity validation failed: "
+                + json.dumps(integrity_errors, sort_keys=True)
+            )
         self.connection.execute(
             "UPDATE extraction_runs SET status=?, metrics_json=? WHERE run_id=?",
             ("completed", json.dumps(metrics, sort_keys=True), run_id),
@@ -493,6 +738,9 @@ class DSPGStore:
 
     def execute(self, sql: str, params: tuple[Any, ...] = ()) -> sqlite3.Cursor:
         return self.connection.execute(sql, params)
+
+    def close(self) -> None:
+        self.connection.close()
 
     def commit(self) -> None:
         self.connection.commit()
@@ -571,6 +819,7 @@ class DSPGStore:
         source_span_id: str,
         *,
         source: str = "local_model_drs",
+        commit: bool = True,
     ) -> dict[str, int]:
         """Remove one model DRS materialization without touching raw source rows.
 
@@ -729,7 +978,8 @@ class DSPGStore:
         delete_by_ids("source_spans", "span_id", evidence_span_ids)
         delete_by_ids("chunks", "chunk_id", evidence_chunk_ids)
         delete_orphan_referents(referent_ids)
-        self.connection.commit()
+        if commit:
+            self.connection.commit()
         return {table: count for table, count in deleted.items() if count}
 
     def delete_frame_materialization_for_span(
@@ -1037,6 +1287,48 @@ class DSPGStore:
         drs = payload.get("drs") if isinstance(payload, dict) else None
         if not isinstance(drs, dict):
             return {"accepted": False, "reason": "missing_drs_object", "inserted": {}}
+        working_payload = copy.deepcopy(payload)
+        working_drs = working_payload["drs"]
+        normalized_conditions: list[dict[str, Any]] = []
+        for condition in working_drs.get("conditions") or []:
+            if not isinstance(condition, dict):
+                continue
+            normalized = copy.deepcopy(condition)
+            predicate, polarity = normalize_predicate_polarity(
+                str(normalized.get("predicate") or ""),
+                str(normalized.get("polarity") or "positive"),
+            )
+            normalized["predicate"] = predicate
+            normalized["polarity"] = polarity
+            normalized_conditions.append(normalized)
+        working_drs["conditions"] = normalized_conditions
+        working_drs["identity_hypotheses"] = [
+            copy.deepcopy(identity)
+            for identity in working_drs.get("identity_hypotheses") or []
+            if isinstance(identity, dict)
+            and str(identity.get("left_referent_id") or "")
+            != str(identity.get("right_referent_id") or "")
+        ]
+        payload = working_payload
+        drs = working_drs
+        # The store is a trust boundary too.  Re-run the authoritative source-
+        # locality validator here so direct callers cannot bypass the planner's
+        # grounding gate before persistence.
+        from .model_planner import _validate_chunk_drs_payload
+
+        authoritative_validation = _validate_chunk_drs_payload(payload, source_text)
+        if not authoritative_validation.get("schema_valid"):
+            return {
+                "accepted": False,
+                "reason": (
+                    "grounding_validation_failed"
+                    if authoritative_validation.get("grounding_failures")
+                    else "schema_validation_failed"
+                ),
+                "errors": list(authoritative_validation.get("errors") or [])[:50],
+                "grounding_failures": list(authoritative_validation.get("grounding_failures") or [])[:50],
+                "inserted": {},
+            }
         errors: list[str] = []
         grounding_failures: list[str] = []
 
@@ -1211,524 +1503,541 @@ class DSPGStore:
             except (TypeError, ValueError):
                 return default
 
-        parent_span = self.connection.execute(
-            """
-            SELECT ss.document_id, ss.chunk_id, ss.char_start, ss.char_end,
-                   c.chunk_order
-            FROM source_spans ss
-            JOIN chunks c ON c.chunk_id=ss.chunk_id
-            WHERE ss.span_id=?
-            LIMIT 1
-            """,
-            (source_span_id,),
-        ).fetchone()
+        savepoint_name = stable_id("savepoint", run_id, source_span_id, source).replace("-", "_")
+        self.connection.execute(f"SAVEPOINT {savepoint_name}")
+        replaced: dict[str, int] = {}
+        try:
+            replaced = self.delete_drs_materialization_for_span(
+                run_id,
+                source_span_id,
+                source=source,
+                commit=False,
+            )
+            parent_span = self.connection.execute(
+                """
+                SELECT ss.document_id, ss.chunk_id, ss.char_start, ss.char_end,
+                       c.chunk_order
+                FROM source_spans ss
+                JOIN chunks c ON c.chunk_id=ss.chunk_id
+                WHERE ss.span_id=?
+                LIMIT 1
+                """,
+                (source_span_id,),
+            ).fetchone()
 
-        def evidence_source_span(evidence: str) -> str:
-            """Create precise provenance inside a packed model-input chunk."""
-            value = str(evidence or "").strip()
-            if not value or value == source_text or parent_span is None:
-                return source_span_id
-            offset = source_text.find(value)
-            if offset < 0:
-                return source_span_id
-            unit_start, unit_end, unit_text = offset, offset + len(value), value
-            for candidate_start, candidate_end, candidate_text in split_units(source_text):
-                if candidate_start <= offset and offset + len(value) <= candidate_end:
-                    unit_start, unit_end, unit_text = candidate_start, candidate_end, candidate_text
-                    break
-            if unit_start == 0 and unit_end == len(source_text):
-                return source_span_id
-            absolute_start = int(parent_span["char_start"]) + unit_start
-            absolute_end = int(parent_span["char_start"]) + unit_end
-            child_chunk_id = stable_id(
-                "drs_evidence_chunk", source_span_id, absolute_start, absolute_end, unit_text
-            )
-            child_span_id = stable_id(
-                "drs_evidence_span", source_span_id, absolute_start, absolute_end, unit_text
-            )
-            self.connection.execute(
-                """
-                INSERT OR IGNORE INTO chunks(
-                  chunk_id, document_id, chunk_order, char_start, char_end, text, token_estimate
-                ) VALUES (?, ?, ?, ?, ?, ?, ?)
-                """,
-                (
-                    child_chunk_id,
-                    str(parent_span["document_id"]),
-                    int(parent_span["chunk_order"]),
-                    absolute_start,
-                    absolute_end,
-                    unit_text,
-                    max(1, len(unit_text.split())),
-                ),
-            )
-            self.connection.execute(
-                """
-                INSERT OR IGNORE INTO source_spans(
-                  span_id, document_id, chunk_id, char_start, char_end,
-                  surface, surface_norm, span_kind
-                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?)
-                """,
-                (
-                    child_span_id,
-                    str(parent_span["document_id"]),
-                    child_chunk_id,
-                    absolute_start,
-                    absolute_end,
-                    unit_text,
-                    normalize(unit_text),
-                    f"drs_evidence:{source_span_id}",
-                ),
-            )
-            return child_span_id
-
-        external_to_referent: dict[str, str] = {}
-        external_to_drs_referent: dict[str, str] = {}
-        external_to_referent_label: dict[str, str] = {}
-        last_non_demonstrative_referent_id: str | None = None
-        demonstratives = {"this", "that", "these", "those", "it"}
-        for item in referents:
-            external_id = text_value(item, "id")
-            label = text_value(item, "label")
-            value_type = text_value(item, "kind") or text_value(item, "value_type") or "unknown"
-            label_norm = normalize(label)
-            if label_norm in demonstratives and last_non_demonstrative_referent_id:
-                referent_id = last_non_demonstrative_referent_id
-            else:
-                referent_id = stable_id("ref", run_id, source_span_id, external_id, label_norm, value_type)
-                if label_norm not in demonstratives:
-                    last_non_demonstrative_referent_id = referent_id
-            self.connection.execute(
-                """
-                INSERT OR IGNORE INTO referents(
-                  referent_id, run_id, canonical_label, canonical_label_norm, entity_type, status, attributes_json
-                ) VALUES (?, ?, ?, ?, ?, ?, ?)
-                """,
-                (
-                    referent_id,
-                    run_id,
-                    label,
-                    normalize(label),
-                    value_type,
-                    "candidate",
-                    json.dumps(
-                        {
-                            "source": source,
-                            "source_span_id": source_span_id,
-                            "external_referent_id": external_id,
-                        },
-                        sort_keys=True,
-                    ),
-                ),
-            )
-            drs_referent_id = stable_id("drsref", run_id, source_span_id, external_id, label)
-            external_to_referent[external_id] = referent_id
-            external_to_drs_referent[external_id] = drs_referent_id
-            external_to_referent_label[external_id] = label
-            self.connection.execute(
-                """
-                INSERT OR IGNORE INTO drs_referents(
-                  drs_referent_id, run_id, source_span_id, external_referent_id, referent_id, box_id,
-                  surface, surface_norm, value_type, evidence_surface, confidence, source, metadata_json
-                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-                """,
-                (
-                    drs_referent_id,
-                    run_id,
-                    source_span_id,
-                    external_id,
-                    referent_id,
-                    None,
-                    label,
-                    normalize(label),
-                    value_type,
-                    text_value(item, "evidence_text"),
-                    confidence(item.get("confidence"), 0.65),
-                    source,
-                    json.dumps({"model_referent": item}, sort_keys=True),
-                ),
-            )
-
-        temporal_values: dict[str, dict[str, Any]] = {text_value(item, "id"): item for item in temporals}
-        external_to_box: dict[str, str] = {}
-        external_to_context: dict[str, str] = {}
-        external_to_box_evidence: dict[str, str] = {}
-        root_asserted_box_ids = [
-            text_value(item, "id")
-            for item in boxes
-            if text_value(item, "kind") == "asserted" and not text_value(item, "parent_id")
-        ]
-        has_contextual_boxes = any(
-            text_value(item, "parent_id") or text_value(item, "kind") not in {"", "asserted"}
-            for item in boxes
-        )
-        for item in boxes:
-            external_id = text_value(item, "id")
-            kind = text_value(item, "kind") or "asserted"
-            evidence = text_value(item, "evidence_text")
-            external_to_context[external_id] = stable_id(
-                "ctx", run_id, "drs_box", source_span_id, external_id, kind, evidence
-            )
-            external_to_box[external_id] = stable_id(
-                "drsbox", run_id, source_span_id, external_id, kind, evidence
-            )
-            external_to_box_evidence[external_id] = evidence
-
-        for item in boxes:
-            external_id = text_value(item, "id")
-            kind = text_value(item, "kind") or "asserted"
-            parent_external = text_value(item, "parent_id")
-            holder_external = text_value(item, "holder_referent_id")
-            evidence = text_value(item, "evidence_text")
-            context_id = external_to_context[external_id]
-            drs_box_id = external_to_box[external_id]
-            self.connection.execute(
-                """
-                INSERT OR IGNORE INTO contexts(
-                  context_id, run_id, kind, parent_context_id, holder_surface, evidence_surface, confidence
-                ) VALUES (?, ?, ?, ?, ?, ?, ?)
-                """,
-                (
-                    context_id,
-                    run_id,
-                    f"drs:{kind}",
-                    external_to_context.get(parent_external),
-                    external_to_referent_label.get(holder_external) or holder_external or None,
-                    evidence or kind,
-                    confidence(item.get("confidence"), 0.75),
-                ),
-            )
-            self.connection.execute(
-                """
-                INSERT OR IGNORE INTO drs_boxes(
-                  drs_box_id, run_id, source_span_id, external_box_id, context_id, parent_drs_box_id,
-                  parent_external_box_id, kind, holder_referent_id, holder_external_referent_id,
-                  evidence_surface, confidence, source, metadata_json
-                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-                """,
-                (
-                    drs_box_id,
-                    run_id,
-                    source_span_id,
-                    external_id,
-                    context_id,
-                    external_to_box.get(parent_external),
-                    parent_external or None,
-                    kind,
-                    external_to_referent.get(holder_external),
-                    holder_external or None,
-                    evidence,
-                    confidence(item.get("confidence"), 0.75),
-                    source,
-                    json.dumps({"model_box": item}, sort_keys=True),
-                ),
-            )
-
-        external_to_condition: dict[str, str] = {}
-        external_to_condition_evidence: dict[str, str] = {}
-        for item in conditions:
-            external_id = text_value(item, "id")
-            predicate, condition_polarity = normalize_predicate_polarity(
-                text_value(item, "predicate"),
-                text_value(item, "polarity") or "positive",
-            )
-            evidence = text_value(item, "evidence_text")
-            if external_id:
-                external_to_condition[external_id] = stable_id(
-                    "drscond", run_id, source_span_id, external_id, predicate, evidence
+            def evidence_source_span(evidence: str) -> str:
+                """Create precise provenance inside a packed model-input chunk."""
+                value = str(evidence or "").strip()
+                if not value or value == source_text or parent_span is None:
+                    return source_span_id
+                offset = source_text.find(value)
+                if offset < 0:
+                    return source_span_id
+                unit_start, unit_end, unit_text = offset, offset + len(value), value
+                for candidate_start, candidate_end, candidate_text in split_units(source_text):
+                    if candidate_start <= offset and offset + len(value) <= candidate_end:
+                        unit_start, unit_end, unit_text = candidate_start, candidate_end, candidate_text
+                        break
+                if unit_start == 0 and unit_end == len(source_text):
+                    return source_span_id
+                absolute_start = int(parent_span["char_start"]) + unit_start
+                absolute_end = int(parent_span["char_start"]) + unit_end
+                child_chunk_id = stable_id(
+                    "drs_evidence_chunk", source_span_id, absolute_start, absolute_end, unit_text
                 )
-                external_to_condition_evidence[external_id] = evidence
-
-        def condition_targets_identity_sides(
-            condition: dict[str, Any],
-            left_external: str,
-            right_external: str,
-        ) -> bool:
-            target_ids = {
-                text_value(arg, "target_id")
-                for arg in condition.get("arguments") or []
-                if isinstance(arg, dict) and text_value(arg, "target_kind") == "referent"
-            }
-            return bool(left_external and right_external and left_external in target_ids and right_external in target_ids)
-
-        def resolved_argument_surface(arg: dict[str, Any]) -> str:
-            value = text_value(arg, "value")
-            if value:
-                return value
-            target_kind = text_value(arg, "target_kind")
-            target_external = text_value(arg, "target_id")
-            if target_kind == "referent":
-                return external_to_referent_label.get(target_external, "")
-            if target_kind == "box":
-                return external_to_box_evidence.get(target_external, "")
-            if target_kind == "condition":
-                return external_to_condition_evidence.get(target_external, "")
-            return text_value(arg, "evidence_text")
-
-        inserted_arguments = 0
-        for item in conditions:
-            external_id = text_value(item, "id")
-            predicate, condition_polarity = normalize_predicate_polarity(
-                text_value(item, "predicate"),
-                text_value(item, "polarity") or "positive",
-            )
-            box_external = text_value(item, "box_id")
-            context_id = external_to_context[box_external]
-            temporal_id = text_value(item, "temporal_id")
-            temporal_text = text_value(temporal_values.get(temporal_id, {}), "value") if temporal_id else ""
-            evidence = text_value(item, "evidence_text")
-            condition_id = external_to_condition[external_id]
-            frame_id = stable_id("frm", run_id, source_span_id, "drs", external_id, predicate, evidence)
-            condition_confidence = confidence(item.get("confidence"), 0.65)
-            self.connection.execute(
-                "INSERT OR IGNORE INTO frames(frame_id, run_id, context_id, predicate, predicate_norm, trigger_surface, confidence, source, span_id) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)",
-                (
-                    frame_id,
-                    run_id,
-                    context_id,
-                    predicate,
-                    normalize(predicate),
-                    predicate,
-                    condition_confidence,
-                    source,
-                    source_span_id,
-                ),
-            )
-            self.connection.execute(
-                """
-                INSERT OR IGNORE INTO drs_conditions(
-                  drs_condition_id, run_id, source_span_id, external_condition_id, box_id, context_id, frame_id,
-                  predicate, predicate_norm, polarity, modality, temporal_id, temporal_text, evidence_surface,
-                  confidence, source, metadata_json
-                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-                """,
-                (
-                    condition_id,
-                    run_id,
-                    source_span_id,
-                    external_id,
-                    external_to_box[box_external],
-                    context_id,
-                    frame_id,
-                    predicate,
-                    normalize(predicate),
-                    condition_polarity,
-                    text_value(item, "modality") or "asserted",
-                    temporal_id or None,
-                    temporal_text,
-                    evidence,
-                    condition_confidence,
-                    source,
-                    json.dumps({"model_condition": item}, sort_keys=True),
-                ),
-            )
-            self.connection.execute(
-                """
-                INSERT OR IGNORE INTO relations(
-                  relation_id, run_id, relation_type, subject, subject_norm, predicate, predicate_norm,
-                  object, object_norm, value, value_norm, source_span_id, context_id, confidence, metadata_json
-                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-                """,
-                (
-                    stable_id("rel", run_id, condition_id, "drs_condition"),
-                    run_id,
-                    "drs_condition",
-                    text_value(item, "modality") or "asserted",
-                    normalize(text_value(item, "modality") or "asserted"),
-                    predicate,
-                    normalize(predicate),
-                    condition_polarity,
-                    normalize(condition_polarity),
-                    evidence,
-                    normalize(evidence),
-                    source_span_id,
-                    context_id,
-                    condition_confidence,
-                    json.dumps({"source": source, "external_condition_id": external_id, "external_box_id": box_external}, sort_keys=True),
-                ),
-            )
-            temporal_edge_values: list[str] = []
-            temporal_edge_referent_ids: list[str] = []
-            for arg_index, arg in enumerate(item.get("arguments") or []):
-                if not isinstance(arg, dict):
-                    continue
-                role = text_value(arg, "role") or "argument"
-                target_kind = text_value(arg, "target_kind") or "unknown"
-                target_external = text_value(arg, "target_id")
-                value = text_value(arg, "value")
-                value_type = text_value(arg, "value_type") or "unknown"
-                referent_id = external_to_referent.get(target_external) if target_kind == "referent" else None
-                if temporal_text and referent_id:
-                    temporal_edge_referent_ids.append(referent_id)
-                argument_surface = resolved_argument_surface(arg)
-                if temporal_text and target_kind in {"literal", "unknown"} and value:
-                    temporal_edge_values.append(value)
-                argument_id = stable_id("drsarg", run_id, condition_id, arg_index, role, target_kind, target_external, value)
+                child_span_id = stable_id(
+                    "drs_evidence_span", source_span_id, absolute_start, absolute_end, unit_text
+                )
                 self.connection.execute(
                     """
-                    INSERT OR IGNORE INTO drs_condition_arguments(
-                      drs_argument_id, run_id, drs_condition_id, role, target_kind, target_external_id,
-                      referent_id, target_box_id, target_condition_id, value, value_norm, value_type,
-                      evidence_surface, confidence, metadata_json
+                    INSERT OR IGNORE INTO chunks(
+                      chunk_id, document_id, chunk_order, char_start, char_end, text, token_estimate
+                    ) VALUES (?, ?, ?, ?, ?, ?, ?)
+                    """,
+                    (
+                        child_chunk_id,
+                        str(parent_span["document_id"]),
+                        int(parent_span["chunk_order"]),
+                        absolute_start,
+                        absolute_end,
+                        unit_text,
+                        max(1, len(unit_text.split())),
+                    ),
+                )
+                self.connection.execute(
+                    """
+                    INSERT OR IGNORE INTO source_spans(
+                      span_id, document_id, chunk_id, char_start, char_end,
+                      surface, surface_norm, span_kind
+                    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+                    """,
+                    (
+                        child_span_id,
+                        str(parent_span["document_id"]),
+                        child_chunk_id,
+                        absolute_start,
+                        absolute_end,
+                        unit_text,
+                        normalize(unit_text),
+                        f"drs_evidence:{source_span_id}",
+                    ),
+                )
+                return child_span_id
+
+            external_to_referent: dict[str, str] = {}
+            external_to_drs_referent: dict[str, str] = {}
+            external_to_referent_label: dict[str, str] = {}
+            last_non_demonstrative_referent_id: str | None = None
+            demonstratives = {"this", "that", "these", "those", "it"}
+            for item in referents:
+                external_id = text_value(item, "id")
+                label = text_value(item, "label")
+                value_type = text_value(item, "kind") or text_value(item, "value_type") or "unknown"
+                label_norm = normalize(label)
+                if label_norm in demonstratives and last_non_demonstrative_referent_id:
+                    referent_id = last_non_demonstrative_referent_id
+                else:
+                    referent_id = stable_id("ref", run_id, source_span_id, external_id, label_norm, value_type)
+                    if label_norm not in demonstratives:
+                        last_non_demonstrative_referent_id = referent_id
+                self.connection.execute(
+                    """
+                    INSERT OR IGNORE INTO referents(
+                      referent_id, run_id, canonical_label, canonical_label_norm, entity_type, status, attributes_json
+                    ) VALUES (?, ?, ?, ?, ?, ?, ?)
+                    """,
+                    (
+                        referent_id,
+                        run_id,
+                        label,
+                        normalize(label),
+                        value_type,
+                        "candidate",
+                        json.dumps(
+                            {
+                                "source": source,
+                                "source_span_id": source_span_id,
+                                "external_referent_id": external_id,
+                            },
+                            sort_keys=True,
+                        ),
+                    ),
+                )
+                drs_referent_id = stable_id("drsref", run_id, source_span_id, external_id, label)
+                external_to_referent[external_id] = referent_id
+                external_to_drs_referent[external_id] = drs_referent_id
+                external_to_referent_label[external_id] = label
+                self.connection.execute(
+                    """
+                    INSERT OR IGNORE INTO drs_referents(
+                      drs_referent_id, run_id, source_span_id, external_referent_id, referent_id, box_id,
+                      surface, surface_norm, value_type, evidence_surface, confidence, source, metadata_json
+                    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                    """,
+                    (
+                        drs_referent_id,
+                        run_id,
+                        source_span_id,
+                        external_id,
+                        referent_id,
+                        None,
+                        label,
+                        normalize(label),
+                        value_type,
+                        text_value(item, "evidence_text"),
+                        confidence(item.get("confidence"), 0.65),
+                        source,
+                        json.dumps({"model_referent": item}, sort_keys=True),
+                    ),
+                )
+
+            temporal_values: dict[str, dict[str, Any]] = {text_value(item, "id"): item for item in temporals}
+            external_to_box: dict[str, str] = {}
+            external_to_context: dict[str, str] = {}
+            external_to_box_evidence: dict[str, str] = {}
+            root_asserted_box_ids = [
+                text_value(item, "id")
+                for item in boxes
+                if text_value(item, "kind") == "asserted" and not text_value(item, "parent_id")
+            ]
+            has_contextual_boxes = any(
+                text_value(item, "parent_id") or text_value(item, "kind") not in {"", "asserted"}
+                for item in boxes
+            )
+            for item in boxes:
+                external_id = text_value(item, "id")
+                kind = text_value(item, "kind") or "asserted"
+                evidence = text_value(item, "evidence_text")
+                external_to_context[external_id] = stable_id(
+                    "ctx", run_id, "drs_box", source_span_id, external_id, kind, evidence
+                )
+                external_to_box[external_id] = stable_id(
+                    "drsbox", run_id, source_span_id, external_id, kind, evidence
+                )
+                external_to_box_evidence[external_id] = evidence
+
+            for item in boxes:
+                external_id = text_value(item, "id")
+                kind = text_value(item, "kind") or "asserted"
+                parent_external = text_value(item, "parent_id")
+                holder_external = text_value(item, "holder_referent_id")
+                evidence = text_value(item, "evidence_text")
+                context_id = external_to_context[external_id]
+                drs_box_id = external_to_box[external_id]
+                self.connection.execute(
+                    """
+                    INSERT OR IGNORE INTO contexts(
+                      context_id, run_id, kind, parent_context_id, holder_surface, evidence_surface, confidence
+                    ) VALUES (?, ?, ?, ?, ?, ?, ?)
+                    """,
+                    (
+                        context_id,
+                        run_id,
+                        f"drs:{kind}",
+                        external_to_context.get(parent_external),
+                        external_to_referent_label.get(holder_external) or holder_external or None,
+                        evidence or kind,
+                        confidence(item.get("confidence"), 0.75),
+                    ),
+                )
+                self.connection.execute(
+                    """
+                    INSERT OR IGNORE INTO drs_boxes(
+                      drs_box_id, run_id, source_span_id, external_box_id, context_id, parent_drs_box_id,
+                      parent_external_box_id, kind, holder_referent_id, holder_external_referent_id,
+                      evidence_surface, confidence, source, metadata_json
+                    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                    """,
+                    (
+                        drs_box_id,
+                        run_id,
+                        source_span_id,
+                        external_id,
+                        context_id,
+                        external_to_box.get(parent_external),
+                        parent_external or None,
+                        kind,
+                        external_to_referent.get(holder_external),
+                        holder_external or None,
+                        evidence,
+                        confidence(item.get("confidence"), 0.75),
+                        source,
+                        json.dumps({"model_box": item}, sort_keys=True),
+                    ),
+                )
+
+            external_to_condition: dict[str, str] = {}
+            external_to_condition_evidence: dict[str, str] = {}
+            for item in conditions:
+                external_id = text_value(item, "id")
+                predicate, condition_polarity = normalize_predicate_polarity(
+                    text_value(item, "predicate"),
+                    text_value(item, "polarity") or "positive",
+                )
+                evidence = text_value(item, "evidence_text")
+                if external_id:
+                    external_to_condition[external_id] = stable_id(
+                        "drscond", run_id, source_span_id, external_id, predicate, evidence
+                    )
+                    external_to_condition_evidence[external_id] = evidence
+
+            def condition_targets_identity_sides(
+                condition: dict[str, Any],
+                left_external: str,
+                right_external: str,
+            ) -> bool:
+                target_ids = {
+                    text_value(arg, "target_id")
+                    for arg in condition.get("arguments") or []
+                    if isinstance(arg, dict) and text_value(arg, "target_kind") == "referent"
+                }
+                return bool(left_external and right_external and left_external in target_ids and right_external in target_ids)
+
+            def resolved_argument_surface(arg: dict[str, Any]) -> str:
+                value = text_value(arg, "value")
+                if value:
+                    return value
+                target_kind = text_value(arg, "target_kind")
+                target_external = text_value(arg, "target_id")
+                if target_kind == "referent":
+                    return external_to_referent_label.get(target_external, "")
+                if target_kind == "box":
+                    return external_to_box_evidence.get(target_external, "")
+                if target_kind == "condition":
+                    return external_to_condition_evidence.get(target_external, "")
+                return text_value(arg, "evidence_text")
+
+            inserted_arguments = 0
+            for item in conditions:
+                external_id = text_value(item, "id")
+                predicate, condition_polarity = normalize_predicate_polarity(
+                    text_value(item, "predicate"),
+                    text_value(item, "polarity") or "positive",
+                )
+                box_external = text_value(item, "box_id")
+                context_id = external_to_context[box_external]
+                temporal_id = text_value(item, "temporal_id")
+                temporal_text = text_value(temporal_values.get(temporal_id, {}), "value") if temporal_id else ""
+                evidence = text_value(item, "evidence_text")
+                condition_id = external_to_condition[external_id]
+                frame_id = stable_id("frm", run_id, source_span_id, "drs", external_id, predicate, evidence)
+                condition_confidence = confidence(item.get("confidence"), 0.65)
+                self.connection.execute(
+                    "INSERT OR IGNORE INTO frames(frame_id, run_id, context_id, predicate, predicate_norm, trigger_surface, confidence, source, span_id) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)",
+                    (
+                        frame_id,
+                        run_id,
+                        context_id,
+                        predicate,
+                        normalize(predicate),
+                        predicate,
+                        condition_confidence,
+                        source,
+                        source_span_id,
+                    ),
+                )
+                self.connection.execute(
+                    """
+                    INSERT OR IGNORE INTO drs_conditions(
+                      drs_condition_id, run_id, source_span_id, external_condition_id, box_id, context_id, frame_id,
+                      predicate, predicate_norm, polarity, modality, temporal_id, temporal_text, evidence_surface,
+                      confidence, source, metadata_json
+                    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                    """,
+                    (
+                        condition_id,
+                        run_id,
+                        source_span_id,
+                        external_id,
+                        external_to_box[box_external],
+                        context_id,
+                        frame_id,
+                        predicate,
+                        normalize(predicate),
+                        condition_polarity,
+                        text_value(item, "modality") or "asserted",
+                        temporal_id or None,
+                        temporal_text,
+                        evidence,
+                        condition_confidence,
+                        source,
+                        json.dumps({"model_condition": item}, sort_keys=True),
+                    ),
+                )
+                self.connection.execute(
+                    """
+                    INSERT OR IGNORE INTO relations(
+                      relation_id, run_id, relation_type, subject, subject_norm, predicate, predicate_norm,
+                      object, object_norm, value, value_norm, source_span_id, context_id, confidence, metadata_json
                     ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
                     """,
                     (
-                        argument_id,
+                        stable_id("rel", run_id, condition_id, "drs_condition"),
                         run_id,
-                        condition_id,
-                        role,
-                        target_kind,
-                        target_external or None,
-                        referent_id,
-                        external_to_box.get(target_external) if target_kind == "box" else None,
-                        external_to_condition.get(target_external) if target_kind == "condition" else None,
-                        value,
-                        normalize(value),
-                        value_type,
-                        text_value(arg, "evidence_text"),
+                        "drs_condition",
+                        text_value(item, "modality") or "asserted",
+                        normalize(text_value(item, "modality") or "asserted"),
+                        predicate,
+                        normalize(predicate),
+                        condition_polarity,
+                        normalize(condition_polarity),
+                        evidence,
+                        normalize(evidence),
+                        source_span_id,
+                        context_id,
                         condition_confidence,
-                        json.dumps({"model_argument": arg}, sort_keys=True),
+                        json.dumps({"source": source, "external_condition_id": external_id, "external_box_id": box_external}, sort_keys=True),
                     ),
                 )
-                self.connection.execute(
-                    "INSERT OR IGNORE INTO frame_arguments(argument_id, frame_id, role, mention_id, referent_id, surface, value_type, confidence) VALUES (?, ?, ?, ?, ?, ?, ?, ?)",
-                    (
-                        stable_id("arg", frame_id, arg_index, role, target_kind, target_external, value),
-                        frame_id,
-                        role,
-                        None,
-                        referent_id,
-                        argument_surface,
-                        value_type,
-                        condition_confidence,
-                    ),
-                )
-                inserted_arguments += 1
-            if temporal_text:
-                edge_values = list(dict.fromkeys(temporal_edge_values)) or [evidence]
-                edge_referents = list(dict.fromkeys(temporal_edge_referent_ids)) or [None]
-                for edge_index, state_value in enumerate(edge_values):
-                    for edge_referent_id in edge_referents:
-                        self.connection.execute(
-                            """
-                            INSERT OR IGNORE INTO temporal_edges(
-                              edge_id, run_id, source_span_id, referent_id, context_id, relation, temporal_value, state_value, confidence
-                            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
-                            """,
-                            (
-                                stable_id(
-                                    "tmp",
-                                    run_id,
-                                    condition_id,
-                                    temporal_id,
-                                    temporal_text,
-                                    edge_index,
-                                    state_value,
-                                    edge_referent_id or "",
-                                ),
-                                run_id,
-                                source_span_id,
-                                edge_referent_id,
-                                context_id,
-                                predicate,
-                                temporal_text,
-                                state_value,
-                                condition_confidence,
-                            ),
-                        )
-
-        inserted_identity = 0
-        for index, item in enumerate(identities):
-            left_external = text_value(item, "left_referent_id")
-            right_external = text_value(item, "right_referent_id")
-            left_ref = external_to_referent[left_external]
-            right_ref = external_to_referent[right_external]
-            relation = text_value(item, "status") or text_value(item, "relation") or "candidate"
-            evidence = text_value(item, "evidence_text")
-            identity_source_span_id = evidence_source_span(evidence)
-            conf = confidence(item.get("confidence"), 0.65)
-            identity_box_external = text_value(item, "box_id")
-            if not identity_box_external and evidence:
-                matching_condition_boxes = [
-                    text_value(condition, "box_id")
-                    for condition in conditions
-                    if (
-                        text_value(condition, "evidence_text") == evidence
-                        and text_value(condition, "box_id")
-                        and condition_targets_identity_sides(condition, left_external, right_external)
+                temporal_edge_values: list[str] = []
+                temporal_edge_referent_ids: list[str] = []
+                for arg_index, arg in enumerate(item.get("arguments") or []):
+                    if not isinstance(arg, dict):
+                        continue
+                    role = text_value(arg, "role") or "argument"
+                    target_kind = text_value(arg, "target_kind") or "unknown"
+                    target_external = text_value(arg, "target_id")
+                    value = text_value(arg, "value")
+                    value_type = text_value(arg, "value_type") or "unknown"
+                    referent_id = external_to_referent.get(target_external) if target_kind == "referent" else None
+                    if temporal_text and referent_id:
+                        temporal_edge_referent_ids.append(referent_id)
+                    argument_surface = resolved_argument_surface(arg)
+                    if temporal_text and target_kind in {"literal", "unknown"} and value:
+                        temporal_edge_values.append(value)
+                    argument_id = stable_id("drsarg", run_id, condition_id, arg_index, role, target_kind, target_external, value)
+                    self.connection.execute(
+                        """
+                        INSERT OR IGNORE INTO drs_condition_arguments(
+                          drs_argument_id, run_id, drs_condition_id, role, target_kind, target_external_id,
+                          referent_id, target_box_id, target_condition_id, value, value_norm, value_type,
+                          evidence_surface, confidence, metadata_json
+                        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                        """,
+                        (
+                            argument_id,
+                            run_id,
+                            condition_id,
+                            role,
+                            target_kind,
+                            target_external or None,
+                            referent_id,
+                            external_to_box.get(target_external) if target_kind == "box" else None,
+                            external_to_condition.get(target_external) if target_kind == "condition" else None,
+                            value,
+                            normalize(value),
+                            value_type,
+                            text_value(arg, "evidence_text"),
+                            condition_confidence,
+                            json.dumps({"model_argument": arg}, sort_keys=True),
+                        ),
                     )
-                ]
-                if len(set(matching_condition_boxes)) == 1:
-                    identity_box_external = matching_condition_boxes[0]
-            if not identity_box_external and len(root_asserted_box_ids) == 1 and not has_contextual_boxes:
-                identity_box_external = root_asserted_box_ids[0]
-            identity_context_id = external_to_context.get(identity_box_external)
-            identity_drs_box_id = external_to_box.get(identity_box_external)
-            drs_hypothesis_id = stable_id("drsidh", run_id, identity_source_span_id, index, left_external, right_external, relation, evidence)
-            can_materialize_identity = (
-                identity_context_id or left_ref == right_ref
-            ) and identity_relation_allows_expansion(relation)
-            identity_metadata: dict[str, Any] = {
-                "model_identity_hypothesis": item,
-                "resolved_box_external_id": identity_box_external or None,
-            }
-            if identity_relation_allows_expansion(relation) and not can_materialize_identity:
-                identity_metadata["expansion_blocked_reason"] = "missing_grounded_box"
-            self.connection.execute(
-                """
-                INSERT OR IGNORE INTO drs_identity_hypotheses(
-                  drs_hypothesis_id, run_id, source_span_id, context_id, box_id, box_external_id,
-                  left_external_referent_id, right_external_referent_id,
-                  left_referent_id, right_referent_id, relation, evidence_surface, confidence, source, metadata_json
-                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-                """,
-                (
-                    drs_hypothesis_id,
-                    run_id,
-                    identity_source_span_id,
-                    identity_context_id,
-                    identity_drs_box_id,
-                    identity_box_external or None,
-                    left_external,
-                    right_external,
-                    left_ref,
-                    right_ref,
-                    relation,
-                    evidence,
-                    conf,
-                    source,
-                    json.dumps(identity_metadata, sort_keys=True),
-                ),
-            )
-            if can_materialize_identity:
+                    self.connection.execute(
+                        "INSERT OR IGNORE INTO frame_arguments(argument_id, frame_id, role, mention_id, referent_id, surface, value_type, confidence) VALUES (?, ?, ?, ?, ?, ?, ?, ?)",
+                        (
+                            stable_id("arg", frame_id, arg_index, role, target_kind, target_external, value),
+                            frame_id,
+                            role,
+                            None,
+                            referent_id,
+                            argument_surface,
+                            value_type,
+                            condition_confidence,
+                        ),
+                    )
+                    inserted_arguments += 1
+                if temporal_text:
+                    edge_values = list(dict.fromkeys(temporal_edge_values)) or [evidence]
+                    edge_referents = list(dict.fromkeys(temporal_edge_referent_ids)) or [None]
+                    for edge_index, state_value in enumerate(edge_values):
+                        for edge_referent_id in edge_referents:
+                            self.connection.execute(
+                                """
+                                INSERT OR IGNORE INTO temporal_edges(
+                                  edge_id, run_id, source_span_id, referent_id, context_id, relation, temporal_value, state_value, confidence
+                                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+                                """,
+                                (
+                                    stable_id(
+                                        "tmp",
+                                        run_id,
+                                        condition_id,
+                                        temporal_id,
+                                        temporal_text,
+                                        edge_index,
+                                        state_value,
+                                        edge_referent_id or "",
+                                    ),
+                                    run_id,
+                                    source_span_id,
+                                    edge_referent_id,
+                                    context_id,
+                                    predicate,
+                                    temporal_text,
+                                    state_value,
+                                    condition_confidence,
+                                ),
+                            )
+
+            inserted_identity = 0
+            for index, item in enumerate(identities):
+                left_external = text_value(item, "left_referent_id")
+                right_external = text_value(item, "right_referent_id")
+                left_ref = external_to_referent[left_external]
+                right_ref = external_to_referent[right_external]
+                relation = text_value(item, "status") or text_value(item, "relation") or "candidate"
+                evidence = text_value(item, "evidence_text")
+                identity_source_span_id = evidence_source_span(evidence)
+                conf = confidence(item.get("confidence"), 0.65)
+                identity_box_external = text_value(item, "box_id")
+                if not identity_box_external and evidence:
+                    matching_condition_boxes = [
+                        text_value(condition, "box_id")
+                        for condition in conditions
+                        if (
+                            text_value(condition, "evidence_text") == evidence
+                            and text_value(condition, "box_id")
+                            and condition_targets_identity_sides(condition, left_external, right_external)
+                        )
+                    ]
+                    if len(set(matching_condition_boxes)) == 1:
+                        identity_box_external = matching_condition_boxes[0]
+                if not identity_box_external and len(root_asserted_box_ids) == 1 and not has_contextual_boxes:
+                    identity_box_external = root_asserted_box_ids[0]
+                identity_context_id = external_to_context.get(identity_box_external)
+                identity_drs_box_id = external_to_box.get(identity_box_external)
+                drs_hypothesis_id = stable_id("drsidh", run_id, identity_source_span_id, index, left_external, right_external, relation, evidence)
+                can_materialize_identity = (
+                    identity_context_id or left_ref == right_ref
+                ) and identity_relation_allows_expansion(relation)
+                identity_metadata: dict[str, Any] = {
+                    "model_identity_hypothesis": item,
+                    "resolved_box_external_id": identity_box_external or None,
+                }
+                if identity_relation_allows_expansion(relation) and not can_materialize_identity:
+                    identity_metadata["expansion_blocked_reason"] = "missing_grounded_box"
                 self.connection.execute(
                     """
-                    INSERT OR IGNORE INTO identity_hypotheses(
-                      hypothesis_id, run_id, source_span_id, context_id, drs_box_id, box_external_id,
-                      left_referent_id, right_referent_id, relation, evidence, confidence, source
-                    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                    INSERT OR IGNORE INTO drs_identity_hypotheses(
+                      drs_hypothesis_id, run_id, source_span_id, context_id, box_id, box_external_id,
+                      left_external_referent_id, right_external_referent_id,
+                      left_referent_id, right_referent_id, relation, evidence_surface, confidence, source, metadata_json
+                    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
                     """,
                     (
-                        stable_id("idh", run_id, identity_source_span_id, "drs", left_external, right_external, relation, evidence),
+                        drs_hypothesis_id,
                         run_id,
                         identity_source_span_id,
                         identity_context_id,
                         identity_drs_box_id,
                         identity_box_external or None,
+                        left_external,
+                        right_external,
                         left_ref,
                         right_ref,
                         relation,
                         evidence,
                         conf,
                         source,
+                        json.dumps(identity_metadata, sort_keys=True),
                     ),
                 )
-            inserted_identity += 1
+                if can_materialize_identity:
+                    self.connection.execute(
+                        """
+                        INSERT OR IGNORE INTO identity_hypotheses(
+                          hypothesis_id, run_id, source_span_id, context_id, drs_box_id, box_external_id,
+                          left_referent_id, right_referent_id, relation, evidence, confidence, source
+                        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                        """,
+                        (
+                            stable_id("idh", run_id, identity_source_span_id, "drs", left_external, right_external, relation, evidence),
+                            run_id,
+                            identity_source_span_id,
+                            identity_context_id,
+                            identity_drs_box_id,
+                            identity_box_external or None,
+                            left_ref,
+                            right_ref,
+                            relation,
+                            evidence,
+                            conf,
+                            source,
+                        ),
+                    )
+                inserted_identity += 1
 
-        self.connection.commit()
+        except BaseException:
+            self.connection.execute(f"ROLLBACK TO SAVEPOINT {savepoint_name}")
+            self.connection.execute(f"RELEASE SAVEPOINT {savepoint_name}")
+            raise
+        else:
+            self.connection.execute(f"RELEASE SAVEPOINT {savepoint_name}")
+            self.connection.commit()
         return {
             "accepted": True,
             "reason": "materialized",
+            "replaced": replaced,
             "inserted": {
                 "drs_referents": len(referents),
                 "drs_boxes": len(boxes),

@@ -95,3 +95,57 @@ def test_scanner_pack_respects_unit_count_limit(tmp_path: Path) -> None:
     _, packed = scan_folder(tmp_path, pack_unit_chars=1000, pack_unit_count=2)
 
     assert [item.text for item in packed] == ["One.\nTwo.", "Three.\nFour.", "Five."]
+
+
+def test_scanner_preserves_jsonl_records_before_packing(tmp_path: Path) -> None:
+    records = [
+        {"id": "a", "text": "First sentence. Second sentence."},
+        {"id": "b", "text": "Third sentence. Fourth sentence."},
+        {"id": "c", "text": "Fifth sentence."},
+    ]
+    source = "\n".join(__import__("json").dumps(row, sort_keys=True) for row in records) + "\n"
+    (tmp_path / "records.jsonl").write_text(source, encoding="utf-8")
+
+    documents, unpacked = scan_folder(tmp_path)
+    _, packed = scan_folder(tmp_path, pack_unit_chars=10000, pack_unit_count=0)
+
+    assert len(documents) == 1
+    assert documents[0].metadata["record_delimited_jsonl"] is True
+    assert documents[0].metadata["record_unit_count"] == 3
+    assert [__import__("json").loads(item.text)["id"] for item in unpacked] == ["a", "b", "c"]
+    assert len(packed) == 1
+    assert packed[0].text == source.rstrip("\n")
+
+
+def test_scanner_falls_back_for_malformed_jsonl(tmp_path: Path) -> None:
+    text = '{"id":"a"}\nnot-json. Another sentence.'
+    (tmp_path / "records.jsonl").write_text(text, encoding="utf-8")
+
+    documents, units = scan_folder(tmp_path)
+
+    assert documents[0].metadata["record_delimited_jsonl"] is False
+    assert documents[0].metadata["record_unit_count"] == 0
+    assert len(units) >= 2
+
+
+def test_scanner_structurally_splits_large_json_without_content_loss(tmp_path: Path) -> None:
+    records = [
+        {"id": index, "owner": f"owner-{index}", "payload": "value " * 20}
+        for index in range(30)
+    ]
+    source = __import__("json").dumps(
+        {"project": "Atlas", "records": records},
+        indent=2,
+        sort_keys=True,
+    )
+    (tmp_path / "records.json").write_text(source, encoding="utf-8")
+
+    documents, units = scan_folder(tmp_path, max_unit_chars=max(1, len(source) // 3))
+
+    assert len(units) > 1
+    assert documents[0].metadata["structurally_split_json"] is True
+    assert documents[0].metadata["structured_json_unit_count"] == len(units)
+    assert all(len(unit.text) <= max(1, len(source) // 3) for unit in units)
+    assert "".join("".join(unit.text.split()) for unit in units) == "".join(source.split())
+    assert units[0].char_start == 0
+    assert units[-1].char_end == len(source)

@@ -18,6 +18,16 @@ from collections import deque
 from dataclasses import dataclass, field
 from typing import Any
 
+from jsonschema import Draft202012Validator
+from jsonschema.exceptions import ValidationError as JSONSchemaValidationError
+
+from .context_budget import (
+    CONTEXT_CAPACITY_POLICY,
+    context_relative_budget,
+    context_safety_tokens,
+    contextualize_json_schema,
+)
+
 
 def _server_root(endpoint: str) -> str:
     value = endpoint.rstrip("/")
@@ -81,13 +91,9 @@ def _default_per_token_timeout_seconds() -> float:
     return value if value > 0 else 180.0
 
 
-def _default_min_constrained_json_tokens() -> int:
-    raw = os.environ.get("KMD_LOCAL_MODEL_MIN_CONSTRAINED_JSON_TOKENS", "16384").strip()
-    try:
-        value = int(raw)
-    except ValueError:
-        value = 16384
-    return value if value > 0 else 16384
+def _default_context_safety_tokens(context_size: int) -> int:
+    return context_safety_tokens(context_size)
+
 
 def _env_float(name: str, default: float) -> float:
     try:
@@ -249,9 +255,66 @@ def _first_text(*values: Any) -> str:
     return ""
 
 
-def _fetch_json(url: str, timeout: float) -> Any:
+
+
+def _default_control_timeout_seconds() -> float:
+    raw = os.environ.get("KMD_LOCAL_MODEL_CONTROL_TIMEOUT_SECONDS", "30").strip()
+    try:
+        value = float(raw)
+    except ValueError as error:
+        raise ValueError("KMD_LOCAL_MODEL_CONTROL_TIMEOUT_SECONDS must be a positive number") from error
+    if value <= 0:
+        raise ValueError("KMD_LOCAL_MODEL_CONTROL_TIMEOUT_SECONDS must be a positive number")
+    return value
+
+
+def _stream_total_timeout_seconds(*, per_token_timeout_seconds: float, max_tokens: int) -> float:
+    configured = os.environ.get("KMD_LOCAL_MODEL_STREAM_TOTAL_TIMEOUT_SECONDS", "").strip()
+    if configured:
+        try:
+            value = float(configured)
+        except ValueError as error:
+            raise ValueError("KMD_LOCAL_MODEL_STREAM_TOTAL_TIMEOUT_SECONDS must be a positive number") from error
+        if value <= 0:
+            raise ValueError("KMD_LOCAL_MODEL_STREAM_TOTAL_TIMEOUT_SECONDS must be a positive number")
+        return value
+    return max(60.0, min(21600.0, float(per_token_timeout_seconds) * max(1, int(max_tokens))))
+
+
+def _stream_event_limit(max_tokens: int) -> int:
+    multiplier = int(os.environ.get("KMD_LOCAL_MODEL_STREAM_EVENT_MULTIPLIER", "4"))
+    if multiplier < 1:
+        raise ValueError("KMD_LOCAL_MODEL_STREAM_EVENT_MULTIPLIER must be positive")
+    return max(64, int(max_tokens) * multiplier + 64)
+
+
+def _stream_byte_limit(max_tokens: int) -> int:
+    multiplier = int(os.environ.get("KMD_LOCAL_MODEL_STREAM_BYTES_PER_TOKEN", "64"))
+    if multiplier < 1:
+        raise ValueError("KMD_LOCAL_MODEL_STREAM_BYTES_PER_TOKEN must be positive")
+    return max(65536, int(max_tokens) * multiplier + 65536)
+
+def _fetch_json(url: str, *, timeout: float | None = None) -> Any:
     _local_endpoint_required(url)
-    with urllib.request.urlopen(url, timeout=timeout) as response:
+    effective_timeout = _default_control_timeout_seconds() if timeout is None else float(timeout)
+    if effective_timeout <= 0:
+        raise ValueError("control timeout must be positive")
+    with urllib.request.urlopen(url, timeout=effective_timeout) as response:
+        return json.loads(response.read().decode("utf-8", errors="replace"))
+
+
+def _post_json(url: str, payload: dict[str, Any], *, timeout: float | None = None) -> Any:
+    _local_endpoint_required(url)
+    request = urllib.request.Request(
+        url,
+        data=json.dumps(payload, ensure_ascii=False).encode("utf-8"),
+        headers={"Content-Type": "application/json"},
+        method="POST",
+    )
+    effective_timeout = _default_control_timeout_seconds() if timeout is None else float(timeout)
+    if effective_timeout <= 0:
+        raise ValueError("control timeout must be positive")
+    with urllib.request.urlopen(request, timeout=effective_timeout) as response:
         return json.loads(response.read().decode("utf-8", errors="replace"))
 
 
@@ -330,13 +393,19 @@ def _schema_hint(json_schema: dict[str, Any] | None) -> str:
     )
 
 
-def _json_only_user_prompt(prompt: str, json_schema: dict[str, Any] | None) -> str:
+def _json_only_user_prompt(
+    prompt: str,
+    json_schema: dict[str, Any] | None,
+    *,
+    include_schema_hint: bool,
+) -> str:
     return (
         prompt.rstrip()
-        + _schema_hint(json_schema)
+        + (_schema_hint(json_schema) if include_schema_hint else "")
         + "\nOutput exactly one complete JSON object or JSON array as the final answer. "
         "Do not include analysis, chain of thought, markdown fences, or explanatory text."
     )
+
 
 def _extract_balanced_json(raw: str) -> str | None:
     object_start = raw.find("{")
@@ -370,50 +439,15 @@ def _extract_balanced_json(raw: str) -> str | None:
     return None
 
 
-def _append_missing_json_closers(snippet: str) -> str | None:
-    text = snippet.strip()
-    if not text or text[0] not in "{[":
-        return None
-    expected: list[str] = []
-    in_string = False
-    escape = False
-    for char in text:
-        if in_string:
-            if escape:
-                escape = False
-            elif char == "\\":
-                escape = True
-            elif char == '"':
-                in_string = False
-            continue
-        if char == '"':
-            in_string = True
-        elif char == "{":
-            expected.append("}")
-        elif char == "[":
-            expected.append("]")
-        elif char in "}]":
-            if not expected or expected[-1] != char:
-                return None
-            expected.pop()
-    if in_string or escape or not expected or len(expected) > 8:
-        return None
-    candidate = text + "".join(reversed(expected))
-    try:
-        json.loads(candidate)
-    except json.JSONDecodeError:
-        return None
-    return candidate
-
-
-
-
 def validate_portable_json_schema(schema: dict[str, Any]) -> None:
-    """Validate the infra portable strict Structured Outputs subset."""
+    """Validate the strict llama.cpp Structured Outputs subset used by KMD."""
 
     forbidden = {
-        "const", "maxLength", "minLength", "maxItems", "minItems",
-        "maximum", "minimum", "exclusiveMaximum", "exclusiveMinimum",
+        "const",
+        "maximum",
+        "minimum",
+        "exclusiveMaximum",
+        "exclusiveMinimum",
         "patternProperties",
     }
 
@@ -423,8 +457,19 @@ def validate_portable_json_schema(schema: dict[str, Any]) -> None:
         bad = forbidden.intersection(node)
         if bad:
             raise ValueError(f"nonportable JSON schema keywords at {path}: {sorted(bad)}")
-        if "const" in node:
-            raise ValueError(f"use string enum instead of const at {path}")
+        for minimum_key, maximum_key in (("minLength", "maxLength"), ("minItems", "maxItems")):
+            minimum = node.get(minimum_key)
+            maximum = node.get(maximum_key)
+            if minimum is not None and (
+                not isinstance(minimum, int) or isinstance(minimum, bool) or minimum < 0
+            ):
+                raise ValueError(f"{minimum_key} at {path} must be a non-negative integer")
+            if maximum is not None and (
+                not isinstance(maximum, int) or isinstance(maximum, bool) or maximum < 0
+            ):
+                raise ValueError(f"{maximum_key} at {path} must be a non-negative integer")
+            if minimum is not None and maximum is not None and minimum > maximum:
+                raise ValueError(f"{minimum_key} exceeds {maximum_key} at {path}")
         node_type = node.get("type")
         if node_type == "object":
             properties = node.get("properties")
@@ -453,10 +498,11 @@ def validate_portable_json_schema(schema: dict[str, Any]) -> None:
     if schema.get("type") != "object":
         raise ValueError("portable constrained decoding requires an object root schema")
     visit(schema, "root")
+    Draft202012Validator.check_schema(schema)
 
 
 class LocalModelJSONError(ValueError):
-    """Raised when the local model response cannot be parsed as JSON."""
+    """Raised when a structured generation is incomplete or invalid."""
 
     def __init__(
         self,
@@ -464,11 +510,15 @@ class LocalModelJSONError(ValueError):
         *,
         raw_text: str,
         snippet: str,
+        reason: str = "invalid_json",
+        response_metadata: dict[str, Any] | None = None,
         model_input_audit: dict[str, Any] | None = None,
     ) -> None:
         super().__init__(message)
         self.raw_text = raw_text
         self.snippet = snippet
+        self.reason = reason
+        self.response_metadata = response_metadata or {}
         self.model_input_audit = model_input_audit or {}
 
 
@@ -480,15 +530,19 @@ class LocalModelUnavailableError(RuntimeError):
         self.cache_context = cache_context or {}
 
 
+class LocalModelContextError(LocalModelUnavailableError):
+    """Raised before generation when prompt plus output reserve cannot fit."""
+
+
 @dataclass
 class LocalModelClient:
     endpoint: str = os.environ.get("KMD_LOCAL_MODEL_ENDPOINT", "http://127.0.0.1:14829/v1")
     # Socket/read timeout between streamed token chunks. Not a whole-answer wall timeout.
-    timeout_seconds: float = field(default_factory=_default_per_token_timeout_seconds)
+    per_token_timeout_seconds: float = field(default_factory=_default_per_token_timeout_seconds)
     _metadata: dict[str, Any] | None = field(default=None, init=False, repr=False)
 
     def models(self) -> dict:
-        return _fetch_json(_models_endpoint(self.endpoint), self.timeout_seconds)
+        return _fetch_json(_models_endpoint(self.endpoint))
 
     def server_metadata(self, *, refresh: bool = False) -> dict[str, Any]:
         """Best-effort llama.cpp runtime metadata used for budgeting and cache keys."""
@@ -496,7 +550,6 @@ class LocalModelClient:
         if self._metadata is not None and not refresh:
             return self._metadata
         root = _server_root(self.endpoint)
-        timeout = max(1.0, min(self.timeout_seconds, float(os.environ.get("KMD_LOCAL_MODEL_METADATA_TIMEOUT", "8"))))
         metadata: dict[str, Any] = {"endpoint": self.endpoint, "root": root, "errors": {}}
         for name, path in {
             "models": "/v1/models",
@@ -504,7 +557,7 @@ class LocalModelClient:
             "props": "/props",
         }.items():
             try:
-                metadata[name] = _fetch_json(root + path, timeout)
+                metadata[name] = _fetch_json(root + path)
             except (OSError, urllib.error.URLError, ValueError, json.JSONDecodeError) as exc:
                 metadata["errors"][name] = f"{type(exc).__name__}: {exc}"
         metadata["derived"] = {
@@ -615,16 +668,72 @@ class LocalModelClient:
             "api": os.environ.get("KMD_LOCAL_MODEL_API", "chat").strip().lower() or "chat",
             "cache_prompt": os.environ.get("KMD_LOCAL_MODEL_CACHE_PROMPT", "1").strip().lower()
             not in {"0", "false", "no", "off"},
-            "min_constrained_json_tokens": _default_min_constrained_json_tokens(),
+            "context_contract_policy": "exact-rendered-prompt-explicit-output-terminal-stream-v4",
+            "capacity_policy": CONTEXT_CAPACITY_POLICY,
+            "context_safety_ratio": float(os.environ.get("KMD_LOCAL_MODEL_CONTEXT_SAFETY_RATIO", os.environ.get("KMD_CONTEXT_SAFETY_RATIO", "0.02"))),
+            "context_safety_tokens": _default_context_safety_tokens(self.context_size()),
+            "schema_bounds_native": True,
+            "terminal_stream_required": True,
             "constraint_mode": constrained_mode,
             "native_constraints": native_constraints,
             "reasoning_control_token_model": reasoning_control_model,
         }
 
+    def token_count(self, text: str) -> int:
+        payload = _post_json(
+            _server_root(self.endpoint) + "/tokenize",
+            {"content": text, "add_special": False},
+        )
+        tokens = payload.get("tokens") if isinstance(payload, dict) else None
+        if not isinstance(tokens, list):
+            raise LocalModelUnavailableError("local tokenizer did not return a token list")
+        return len(tokens)
+
+    def rendered_prompt(self, endpoint: str, body: dict[str, Any]) -> str:
+        if endpoint.endswith("/chat/completions"):
+            payload: dict[str, Any] = {
+                "messages": body.get("messages") or [],
+                "add_generation_prompt": True,
+            }
+            if isinstance(body.get("chat_template_kwargs"), dict):
+                payload["chat_template_kwargs"] = body["chat_template_kwargs"]
+            rendered = _post_json(_server_root(self.endpoint) + "/apply-template", payload)
+            prompt = rendered.get("prompt") if isinstance(rendered, dict) else None
+            if not isinstance(prompt, str):
+                raise LocalModelUnavailableError("local chat template endpoint did not return a prompt")
+            return prompt
+        prompt = body.get("prompt")
+        if not isinstance(prompt, str):
+            raise LocalModelUnavailableError("completion request did not contain a prompt")
+        return prompt
+
+    def exact_context_budget(
+        self,
+        endpoint: str,
+        body: dict[str, Any],
+        *,
+        output_tokens: int,
+    ) -> dict[str, int]:
+        context_size = self.context_size()
+        if context_size <= 0:
+            raise LocalModelUnavailableError("local model context size is unavailable")
+        rendered_prompt = self.rendered_prompt(endpoint, body)
+        prompt_tokens = self.token_count(rendered_prompt)
+        safety_tokens = _default_context_safety_tokens(context_size)
+        available_output_tokens = context_size - prompt_tokens - safety_tokens
+        return {
+            "context_size": context_size,
+            "prompt_tokens": prompt_tokens,
+            "output_tokens": int(output_tokens),
+            "safety_tokens": safety_tokens,
+            "available_output_tokens": available_output_tokens,
+            "total_reserved_tokens": prompt_tokens + int(output_tokens) + safety_tokens,
+        }
+
     def cache_fingerprint(self) -> dict[str, Any]:
         metadata = self.server_metadata()
         return {
-            "fingerprint_schema": "local-model-stable-v2",
+            "fingerprint_schema": "local-model-stable-v4",
             "model_id": self.model_id(metadata),
             "context_size": self.context_size(metadata),
             "context_source": self.context_source(metadata),
@@ -636,7 +745,7 @@ class LocalModelClient:
         self,
         prompt: str,
         *,
-        n_predict: int = 128,
+        n_predict: int | None = None,
         grammar: str | None = None,
         json_schema: dict[str, Any] | None = None,
     ) -> dict[str, Any]:
@@ -648,25 +757,41 @@ class LocalModelClient:
             endpoint = _completion_endpoint(self.endpoint)
         _local_endpoint_required(endpoint)
         settings = self.request_settings()
+        if grammar is not None and json_schema is None:
+            raise LocalModelUnavailableError(
+                "Semantic model calls must use strict JSON Schema constrained decoding; grammar-only contracts are forbidden.",
+                cache_context={"structured_call": True},
+            )
+        if json_schema is None:
+            raise LocalModelUnavailableError(
+                "Semantic model calls require a portable strict JSON Schema.",
+                cache_context={"structured_call": True},
+            )
+        validate_portable_json_schema(json_schema)
         transport = self.transport_settings()
         native_constraints = bool(transport.get("native_constraints"))
+        context_size = self.context_size()
+        if context_size <= 0:
+            raise LocalModelUnavailableError("local model context size is unavailable")
+        if n_predict is None:
+            requested_n_predict = context_relative_budget(context_size).output_tokens
+        else:
+            requested_n_predict = int(n_predict)
+        if requested_n_predict <= 0:
+            raise ValueError("n_predict must be positive")
+        effective_n_predict = requested_n_predict
+        json_schema = contextualize_json_schema(
+            json_schema,
+            context_size=context_size,
+            output_tokens=effective_n_predict,
+        )
+        validate_portable_json_schema(json_schema)
         allow_prompt_constraints = os.environ.get("KMD_LOCAL_MODEL_ALLOW_PROMPT_CONSTRAINTS", "0").strip().lower() in {
             "1",
             "true",
             "yes",
             "on",
         }
-        if grammar is not None and json_schema is None:
-            raise LocalModelUnavailableError(
-                "Semantic model calls must use strict JSON Schema constrained decoding; grammar-only contracts are forbidden.",
-                cache_context={"transport_settings": transport, "structured_call": True},
-            )
-        if json_schema is None:
-            raise LocalModelUnavailableError(
-                "Semantic model calls require a portable strict JSON Schema.",
-                cache_context={"transport_settings": transport, "structured_call": True},
-            )
-        validate_portable_json_schema(json_schema)
         if not native_constraints and not allow_prompt_constraints:
             raise LocalModelUnavailableError(
                 "Structured local model calls require native constrained decoding. "
@@ -674,7 +799,11 @@ class LocalModelClient:
                 "KMD_LOCAL_MODEL_ALLOW_PROMPT_CONSTRAINTS=1 only for an explicit soft-JSON measurement run.",
                 cache_context={"transport_settings": transport, "structured_call": True},
             )
-        effective_prompt = _json_only_user_prompt(prompt, json_schema)
+        effective_prompt = _json_only_user_prompt(
+            prompt,
+            json_schema,
+            include_schema_hint=not native_constraints,
+        )
         thinking_control_env = os.environ.get("KMD_LOCAL_MODEL_SEND_THINKING_CONTROLS", "auto").strip().lower()
         if thinking_control_env in {"0", "false", "no", "off"}:
             send_thinking_controls = False
@@ -691,10 +820,6 @@ class LocalModelClient:
             "no",
             "off",
         }
-        requested_n_predict = int(n_predict)
-        effective_n_predict = requested_n_predict
-        if json_schema:
-            effective_n_predict = max(effective_n_predict, _default_min_constrained_json_tokens())
         if endpoint.endswith("/chat/completions"):
             body = {
                 "messages": [
@@ -749,10 +874,18 @@ class LocalModelClient:
         if send_thinking_controls:
             body["enable_thinking"] = False
             qwen_thinking_model = "qwen3.5" in self.model_id().lower() or "qwen35" in self.model_id().lower().replace("-", "").replace("_", "")
-            if not qwen_thinking_model:
+            if qwen_thinking_model:
+                body["reasoning_format"] = "deepseek"
+                body["reasoning_budget"] = 0
+            else:
                 body["reasoning_format"] = "hidden"
             if endpoint.endswith("/chat/completions"):
                 body["chat_template_kwargs"] = {"enable_thinking": False}
+        context_budget = self.exact_context_budget(
+            endpoint,
+            body,
+            output_tokens=effective_n_predict,
+        )
         request_body_json = json.dumps(body)
         model_input_audit: dict[str, Any] = {
             "audit_schema": "kmd-model-input-v1",
@@ -784,7 +917,18 @@ class LocalModelClient:
                 "schema_prompt_hint": bool(json_schema and not native_constraints),
                 "grammar_prompt_only": bool(grammar and not native_constraints),
             },
+            "context_budget": {
+                **context_budget,
+                "policy": "exact-rendered-prompt-plus-explicit-output-plus-safety-v1",
+            },
         }
+        if context_budget["available_output_tokens"] < effective_n_predict:
+            raise LocalModelContextError(
+                "structured generation does not fit model context: "
+                f"prompt={context_budget['prompt_tokens']} output={effective_n_predict} "
+                f"safety={context_budget['safety_tokens']} context={context_budget['context_size']}",
+                cache_context={"model_input_audit": model_input_audit},
+            )
         request = urllib.request.Request(
             endpoint,
             data=request_body_json.encode("utf-8"),
@@ -793,71 +937,179 @@ class LocalModelClient:
         )
         raw = ""
         response_obj: dict[str, Any] = {}
-        stream_closed_after_json = False
+        saw_done = False
+        saw_terminal_event = False
+        finish_reason = ""
+        stop_reason = ""
         started = time.time()
+        total_timeout_seconds = _stream_total_timeout_seconds(
+            per_token_timeout_seconds=self.per_token_timeout_seconds,
+            max_tokens=effective_n_predict,
+        )
+        event_limit = _stream_event_limit(effective_n_predict)
+        byte_limit = _stream_byte_limit(effective_n_predict)
+        stream_events = 0
+        stream_bytes = 0
         try:
-            with urllib.request.urlopen(request, timeout=self.timeout_seconds) as response:
+            with urllib.request.urlopen(request, timeout=self.per_token_timeout_seconds) as response:
                 for raw_line in response:
+                    stream_bytes += len(raw_line)
+                    if stream_bytes > byte_limit:
+                        raise LocalModelJSONError(
+                            "structured generation exceeded the client stream byte limit",
+                            raw_text=raw,
+                            snippet=raw,
+                            reason="stream_byte_limit_exhausted",
+                            response_metadata={"stream_bytes": stream_bytes, "stream_byte_limit": byte_limit},
+                            model_input_audit=model_input_audit,
+                        )
+                    if time.time() - started > total_timeout_seconds:
+                        raise LocalModelJSONError(
+                            "structured generation exceeded the client total stream timeout",
+                            raw_text=raw,
+                            snippet=raw,
+                            reason="stream_total_timeout_exhausted",
+                            response_metadata={"total_timeout_seconds": total_timeout_seconds},
+                            model_input_audit=model_input_audit,
+                        )
                     line = raw_line.decode("utf-8", errors="replace").strip()
                     if not line:
                         continue
                     if line.startswith("data:"):
                         line = line[5:].strip()
                     if line == "[DONE]":
+                        saw_done = True
                         break
+                    stream_events += 1
+                    if stream_events > event_limit:
+                        raise LocalModelJSONError(
+                            "structured generation exceeded the client stream event limit",
+                            raw_text=raw,
+                            snippet=raw,
+                            reason="stream_event_limit_exhausted",
+                            response_metadata={"stream_events": stream_events, "stream_event_limit": event_limit},
+                            model_input_audit=model_input_audit,
+                        )
                     try:
                         event = json.loads(line)
                     except json.JSONDecodeError:
                         continue
-                    if isinstance(event, dict):
-                        response_obj = event
-                        raw += _event_content(event) or ""
-                        if not raw and not native_constraints:
-                            _event_reasoning_content(event)
-                        if _extract_balanced_json(raw):
-                            stream_closed_after_json = True
-                            break
+                    if not isinstance(event, dict):
+                        continue
+                    response_obj = event
+                    raw += _event_content(event) or ""
+                    choices = event.get("choices")
+                    if isinstance(choices, list) and choices and isinstance(choices[0], dict):
+                        found_finish = str(choices[0].get("finish_reason") or "").strip()
+                        if found_finish:
+                            finish_reason = found_finish
+                            saw_terminal_event = True
+                    found_stop = str(event.get("stop_reason") or "").strip()
+                    if found_stop:
+                        stop_reason = found_stop
+                    if event.get("stop") is True or any(
+                        event.get(key) is True
+                        for key in ("stopped_eos", "stopped_word", "stopped_limit")
+                    ):
+                        saw_terminal_event = True
         except Exception as exc:
             try:
                 setattr(exc, "model_input_audit", model_input_audit)
             except Exception:
                 pass
             raise
-        snippet = _extract_balanced_json(raw) or raw
+        elapsed_seconds = round(time.time() - started, 3)
+        throughput = _model_throughput_observation(response_obj, raw, elapsed_seconds)
+        completion_tokens = int(throughput.get("completion_tokens") or 0)
+        response_metadata = {
+            "saw_done": saw_done,
+            "saw_terminal_event": saw_terminal_event,
+            "finish_reason": finish_reason,
+            "stop_reason": stop_reason,
+            "completion_tokens": completion_tokens,
+            "prompt_tokens": int(throughput.get("prompt_tokens") or context_budget["prompt_tokens"]),
+            "requested_output_tokens": effective_n_predict,
+            "context_size": context_budget["context_size"],
+            "context_safety_tokens": context_budget["safety_tokens"],
+            "stream_events": stream_events,
+            "stream_event_limit": event_limit,
+            "stream_bytes": stream_bytes,
+            "stream_byte_limit": byte_limit,
+            "stream_total_timeout_seconds": total_timeout_seconds,
+        }
+        snippet = _extract_balanced_json(raw)
+        if snippet is None:
+            reason = "incomplete_stream"
+            if finish_reason == "length" or response_obj.get("stopped_limit") is True:
+                if completion_tokens >= effective_n_predict:
+                    reason = "output_limit_exhausted"
+                elif (
+                    context_budget["prompt_tokens"]
+                    + completion_tokens
+                    + context_budget["safety_tokens"]
+                    >= context_budget["context_size"]
+                ):
+                    reason = "context_limit_exhausted"
+                else:
+                    reason = "generation_limit_exhausted"
+            elif (
+                context_budget["prompt_tokens"]
+                + completion_tokens
+                + context_budget["safety_tokens"]
+                >= context_budget["context_size"]
+            ):
+                reason = "context_limit_exhausted"
+            raise LocalModelJSONError(
+                f"structured generation ended without a complete JSON value ({reason})",
+                raw_text=raw,
+                snippet=raw,
+                reason=reason,
+                response_metadata=response_metadata,
+                model_input_audit=model_input_audit,
+            )
+        if not (saw_done or saw_terminal_event):
+            raise LocalModelJSONError(
+                "structured generation stream ended without terminal completion metadata",
+                raw_text=raw,
+                snippet=snippet,
+                reason="incomplete_stream",
+                response_metadata=response_metadata,
+                model_input_audit=model_input_audit,
+            )
         try:
             parsed = json.loads(snippet)
         except json.JSONDecodeError as exc:
-            repaired_snippet = _append_missing_json_closers(snippet)
-            if repaired_snippet is None:
-                raise LocalModelJSONError(
-                    str(exc),
-                    raw_text=raw,
-                    snippet=snippet,
-                    model_input_audit=model_input_audit,
-                ) from exc
-            snippet = repaired_snippet
-            try:
-                parsed = json.loads(snippet)
-            except json.JSONDecodeError as repair_exc:
-                raise LocalModelJSONError(
-                    str(repair_exc),
-                    raw_text=raw,
-                    snippet=snippet,
-                    model_input_audit=model_input_audit,
-                ) from repair_exc
+            raise LocalModelJSONError(
+                str(exc),
+                raw_text=raw,
+                snippet=snippet,
+                reason="invalid_json",
+                response_metadata=response_metadata,
+                model_input_audit=model_input_audit,
+            ) from exc
         if isinstance(parsed, list):
             parsed = {"items": parsed}
         if not isinstance(parsed, dict):
             raise ValueError("local model did not return a JSON object or array")
-        elapsed_seconds = round(time.time() - started, 3)
-        context_size = self.context_size()
-        throughput = _model_throughput_observation(response_obj, raw, elapsed_seconds)
+        try:
+            Draft202012Validator(json_schema).validate(parsed)
+        except JSONSchemaValidationError as exc:
+            raise LocalModelJSONError(
+                f"completed JSON failed response schema validation: {exc.message}",
+                raw_text=raw,
+                snippet=snippet,
+                reason="schema_validation_failed",
+                response_metadata=response_metadata,
+                model_input_audit=model_input_audit,
+            ) from exc
+        context_size = context_budget["context_size"]
         parsed["_model_raw"] = raw
         parsed["_model_elapsed_seconds"] = elapsed_seconds
         parsed["_model_endpoint"] = endpoint
         parsed["_model_stream"] = True
-        parsed["_model_per_token_timeout_seconds"] = self.timeout_seconds
-        parsed["_model_stream_closed_after_json"] = stream_closed_after_json
+        parsed["_model_per_token_timeout_seconds"] = self.per_token_timeout_seconds
+        parsed["_model_stream_closed_after_json"] = False
+        parsed["_model_response_metadata"] = response_metadata
         parsed["_model_context_size"] = context_size
         parsed["_model_id"] = self.model_id()
         parsed["_model_throughput"] = throughput
