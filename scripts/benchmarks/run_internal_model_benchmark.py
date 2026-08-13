@@ -29,6 +29,8 @@ REPO_ROOT = Path(__file__).resolve().parents[2]
 DEFAULT_OUTPUT_ROOT = Path("/data/src/github/devtests/kmd_model_benchmark")
 RUN_COMPATIBILITY_SCHEMA = "kmd-internal-benchmark-resume-v4-config-aware"
 CACHE_ENV_VARS = (
+    "KMD_MODEL_CALL_CACHE_DIR",
+    "KMD_QUERY_EXPANSION_CACHE_DIR",
     "KMD_FRAME_CACHE_DIR",
     "KMD_CHUNK_FRAME_CACHE_DIR",
     "KMD_CHUNK_DRS_CACHE_DIR",
@@ -72,6 +74,8 @@ MODEL_ENV_KEYS = (
     "KMD_VECTOR_RETRIEVAL_MODE",
     "KMD_VECTOR_MIN_SIMILARITY",
     "KMD_VECTOR_RESULT_MULTIPLIER",
+    "KMD_RRF_K",
+    "KMD_QUERY_EXPANSION_MAX_TERMS",
     "KMD_EMBEDDING_ENDPOINT",
     "KMD_EMBEDDING_MODEL",
     "KMD_EMBEDDING_REVISION",
@@ -89,6 +93,7 @@ MODEL_ENV_KEYS = (
     "KMD_DOCUMENT_CONTEXT_ENVELOPES",
     "KMD_DOCUMENT_CONTEXT_MIN_CONFIDENCE",
     "KMD_DOCUMENT_CONTEXT_BOUNDARY_RATIO",
+    "KMD_DOCUMENT_CONTEXT_COVERAGE_RATIO",
     "KMD_SCAN_PACK_UNITS",
 )
 SUITES = {
@@ -219,7 +224,6 @@ def _configure_environment(output_root: Path) -> None:
             os.environ[name] = value
 
     benchmark_default("KMD_LOCAL_MODEL_ENDPOINT", "http://127.0.0.1:14829/v1")
-    benchmark_default("KMD_LOCAL_MODEL_EXPECTED_ID", "Qwen3.5-27B-Q8_0.gguf")
     benchmark_default("KMD_LOCAL_MODEL_PER_TOKEN_TIMEOUT_SECONDS", "420")
     benchmark_default("KMD_LOCAL_MODEL_API", "chat")
     benchmark_default("KMD_LOCAL_MODEL_CONSTRAINT_MODE", "native")
@@ -247,7 +251,7 @@ def _cache_stats() -> dict[str, dict[str, int | str]]:
     stats: dict[str, dict[str, int | str]] = {}
     for name in CACHE_ENV_VARS:
         root = Path(os.environ.get(name, ""))
-        files = list(root.glob("*.json")) if root.exists() else []
+        files = list(root.rglob("*.json")) if root.exists() else []
         stats[name] = {
             "path": str(root),
             "json_files": len(files),
@@ -343,6 +347,7 @@ def _source_policy_hashes() -> dict[str, str]:
         "runner": Path(__file__).resolve(),
         "context_capacity": REPO_ROOT / "src" / "context_capacity.py",
         "runtime_config": REPO_ROOT / "src" / "kmd_runtime_config.py",
+        "model_call_cache": REPO_ROOT / "src" / "kmd_model_call_cache.py",
         "runtime_config_reexport": REPO_ROOT / "src" / "knowmoredirt" / "runtime_config.py",
         "default_config_xml": REPO_ROOT / "src" / "knowmoredirt" / "default_config.xml",
         "runtime_logging": REPO_ROOT / "src" / "knowmoredirt" / "runtime_logging.py",
@@ -964,7 +969,7 @@ def main() -> int:
     parser.add_argument(
         "--output-root",
         default=str(DEFAULT_OUTPUT_ROOT),
-        help="Directory for resumable results, metadata, logs, and model caches.",
+        help="Directory for resumable benchmark results, metadata, logs, and failure artifacts. Model caches remain KMD-wide.",
     )
     parser.add_argument("--force", action="store_true", help="Ignore existing results.jsonl entries.")
     parser.add_argument(
