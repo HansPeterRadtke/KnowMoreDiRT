@@ -26,6 +26,8 @@ from pathlib import Path
 from typing import Any, Iterator
 from xml.etree import ElementTree
 
+from kmd_runtime_config import floating as _config_float
+
 from . import __version__
 from .metadata_extractors import ExifToolClient, collect_raw_metadata
 from .content_schema import (
@@ -605,13 +607,8 @@ def _host_memory_bytes() -> int:
 
 
 def _office_metadata_member_limit_bytes(archive_size: int) -> int:
-    raw_memory = os.environ.get("KMD_OFFICE_METADATA_MEMORY_RATIO", "0.01").strip()
-    raw_expansion = os.environ.get("KMD_OFFICE_METADATA_MAX_EXPANSION_RATIO", "20").strip()
-    try:
-        memory_ratio = float(raw_memory)
-        expansion_ratio = float(raw_expansion)
-    except ValueError as error:
-        raise ValueError("Office metadata limits must be positive numbers") from error
+    memory_ratio = _config_float("KMD_OFFICE_METADATA_MEMORY_RATIO")
+    expansion_ratio = _config_float("KMD_OFFICE_METADATA_MAX_EXPANSION_RATIO")
     if not 0.0 < memory_ratio <= 1.0 or expansion_ratio <= 0.0:
         raise ValueError("Office metadata limits must be positive numbers")
     memory_limit = max(1, int(_host_memory_bytes() * memory_ratio))

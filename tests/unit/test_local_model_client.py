@@ -4572,3 +4572,170 @@ def test_complete_json_rejects_completed_json_outside_schema_bounds(monkeypatch)
         )
 
     assert caught.value.reason == "schema_validation_failed"
+
+
+def test_stream_transport_limits_are_retryable_cached_failures() -> None:
+    from knowmoredirt.model_planner import structured_failure_retryable
+
+    for reason in (
+        "stream_byte_limit_exhausted",
+        "stream_event_limit_exhausted",
+        "stream_total_timeout_exhausted",
+    ):
+        assert structured_failure_retryable({"accepted": False, "reason": reason}) is True
+    assert structured_failure_retryable({"accepted": False, "reason": "grounding_validation_failed"}) is False
+
+
+def test_explicit_thinking_control_override_participates_in_transport_fingerprint(monkeypatch) -> None:
+    from knowmoredirt.model import LocalModelClient
+
+    client = LocalModelClient(endpoint="http://127.0.0.1:14829/v1")
+    monkeypatch.setattr(client, "model_id", lambda *_args, **_kwargs: "Qwen3.5-27B-Q8_0.gguf")
+    monkeypatch.setattr(client, "context_size", lambda *_args, **_kwargs: 65536)
+    monkeypatch.delenv("KMD_LOCAL_MODEL_SEND_THINKING_CONTROLS", raising=False)
+    automatic = client.transport_settings()
+    monkeypatch.setenv("KMD_LOCAL_MODEL_SEND_THINKING_CONTROLS", "0")
+    disabled = client.transport_settings()
+    assert automatic["thinking_control_override"] == "auto"
+    assert disabled["thinking_control_override"] == "0"
+    assert automatic != disabled
+
+
+def test_compact_chunk_drs_migrates_rejected_v7_raw_without_model_call(monkeypatch, tmp_path) -> None:
+    class NoCallCompactModel:
+        def __init__(self) -> None:
+            self.calls = 0
+            self.per_token_timeout_seconds = 240
+
+        def context_size(self) -> int:
+            return 4096
+
+        def cache_fingerprint(self) -> dict[str, Any]:
+            return {"model_id": "fake-v7-local-migration", "context_size": 4096}
+
+        def complete_json(self, *args, **kwargs):
+            self.calls += 1
+            raise AssertionError("model must not be called for migratable v7 raw compact cache")
+
+    text = (
+        "Timmy's notebook says: I dreamed that I was standing in the city of Velora. "
+        'In the dream, a clerk told me, "Flying cars must display two blue lamps after sunset." '
+        "Then the dream moved on to a quiet park."
+    )
+    rel_path = "timmy_dream.txt"
+    cross_locality = (
+        'I dreamed that I was standing in the city of Velora. In the dream, a clerk told me, '
+        '"Flying cars must display two blue lamps after sunset." Then the dream moved'
+    )
+    compact = {
+        "facts": [
+            {
+                "p": "says",
+                "e": "Timmy's notebook says",
+                "arguments": [
+                    {"role": "subject", "value": "Timmy's notebook"},
+                    {"role": "content", "value": cross_locality},
+                ],
+                "temporal_text": "",
+                "scope": "asserted",
+            },
+            {
+                "p": "must display",
+                "e": "Flying cars must display two blue lamps after sunset",
+                "arguments": [
+                    {"role": "subject", "value": "Flying cars"},
+                    {"role": "object", "value": "two blue lamps"},
+                ],
+                "temporal_text": "after sunset",
+                "scope": "hypothetical",
+            },
+        ]
+    }
+    model = NoCallCompactModel()
+    monkeypatch.setenv("KMD_CHUNK_DRS_CACHE_DIR", str(tmp_path / "chunk-drs-cache"))
+    source_text_hash = hashlib.sha256(text.encode("utf-8", errors="replace")).hexdigest()
+    legacy_settings = {
+        "n_predict": 72,
+        "schema": model_planner.CHUNK_DRS_SCHEMA_VERSION,
+        "compact_fact_policy": model_planner.CHUNK_DRS_COMPACT_FACT_POLICY_LOCALITY_PREVIOUS,
+        **model_planner._constraint_settings(
+            model_planner.CHUNK_DRS_GRAMMAR,
+            model_planner.COMPACT_CHUNK_DRS_JSON_SCHEMA,
+            model_planner.CHUNK_DRS_SCHEMA_VERSION,
+        ),
+        "source_text_hash": source_text_hash,
+    }
+    legacy_hash = model_planner._cache_hash(
+        "chunk_drs_compact",
+        model_planner.build_compact_chunk_drs_prompt(text, rel_path=rel_path),
+        model,  # type: ignore[arg-type]
+        legacy_settings,
+    )
+    legacy_path = model_planner._cache_path("KMD_CHUNK_DRS_CACHE_DIR", legacy_hash)
+    assert legacy_path is not None
+    legacy_path.parent.mkdir(parents=True, exist_ok=True)
+    legacy_path.write_text(
+        json.dumps(
+            {
+                "accepted": False,
+                "reason": "schema_validation_failed",
+                "raw_text": json.dumps(compact),
+                "compact_fact_policy": model_planner.CHUNK_DRS_COMPACT_FACT_POLICY_LOCALITY_PREVIOUS,
+                "validation": {
+                    "schema_valid": False,
+                    "errors": ["ungrounded_drs_evidence"],
+                },
+            }
+        ),
+        encoding="utf-8",
+    )
+
+    result = call_model_chunk_drs_compact(  # type: ignore[arg-type]
+        text,
+        model,
+        rel_path=rel_path,
+        n_predict=72,
+    )
+
+    assert model.calls == 0
+    assert result["accepted"] is True
+    assert result["compact_fact_policy"] == model_planner.CHUNK_DRS_COMPACT_FACT_POLICY
+    assert result["compact_policy_migration"]["source"] == "cached_raw_text"
+    labels = {item["label"] for item in result["drs"]["referents"]}
+    assert cross_locality not in labels
+    assert "Flying cars" in labels
+
+
+def test_compact_retry_stops_when_rejected_raw_output_repeats(monkeypatch, tmp_path) -> None:
+    class RepeatingCompactModel:
+        def __init__(self) -> None:
+            self.calls = 0
+            self.per_token_timeout_seconds = 240
+        def context_size(self) -> int: return 4096
+        def cache_fingerprint(self) -> dict[str, Any]: return {"model_id": "repeat-test", "context_size": 4096}
+        def complete_json(self, *args, **kwargs):
+            self.calls += 1
+            parsed = {
+                "facts": [{
+                    "p": "removed",
+                    "e": "the silver gate was not removed",
+                    "arguments": [{"role": "subject", "value": "the silver gate"}],
+                    "temporal_text": "",
+                    "scope": "asserted",
+                }]
+            }
+            parsed["_model_raw"] = json.dumps({"facts": parsed["facts"]})
+            parsed["_model_elapsed_seconds"] = 0.01
+            return parsed
+
+    monkeypatch.setenv("KMD_CHUNK_DRS_CACHE_DIR", str(tmp_path / "cache"))
+    model = RepeatingCompactModel()
+    result = call_model_chunk_drs_compact(
+        "Inspection confirmed that the silver gate was not removed.",
+        model,  # type: ignore[arg-type]
+        rel_path="note.txt",
+        n_predict=128,
+    )
+    assert result["accepted"] is False
+    assert result["compact_retry_stopped_reason"] == "repeated_rejected_raw_output"
+    assert model.calls == 2

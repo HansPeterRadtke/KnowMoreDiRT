@@ -15,7 +15,7 @@ The input may be an arbitrary folder tree containing prose, logs, tables, transc
 
 The strongest fully verified broad benchmark result is `73/73`. A later full run answered 202 cases correctly and left five failures: `hrq055`, `hrq107`, `hrq108`, `hrq110`, and `hrq112`. Targeted fixes were implemented for their shared overgeneralized-negative-inference failure family, but connectivity failed before a complete verification run. Those fixes must therefore be treated as implemented but unverified.
 
-The authoritative description of the running architecture is [`docs/current_system.md`](docs/current_system.md). Verified benchmark history is recorded in [`docs/benchmark_status.md`](docs/benchmark_status.md). The current continuation and research plan remains in [`docs/current_work.md`](docs/current_work.md).
+The authoritative description of the running architecture is [`docs/current_system.md`](docs/current_system.md). Runtime configuration, persistent logging, retry policy, and benchmark continuation semantics are documented in [`docs/runtime_configuration.md`](docs/runtime_configuration.md). Verified benchmark history is recorded in [`docs/benchmark_status.md`](docs/benchmark_status.md). The current continuation and research plan remains in [`docs/current_work.md`](docs/current_work.md).
 
 ## Fast filesystem database
 
@@ -94,4 +94,4 @@ The main test areas are unit behavior, smoke coverage of the two-function API, m
 
 ## Documentation
 
-Start with [`docs/current_system.md`](docs/current_system.md), [`docs/llm_roles.md`](docs/llm_roles.md), [`docs/cache_contract.md`](docs/cache_contract.md), [`docs/benchmark_status.md`](docs/benchmark_status.md), and [`docs/conversational_boundary.md`](docs/conversational_boundary.md). The deeper references remain [`docs/architecture.md`](docs/architecture.md), [`docs/theory.md`](docs/theory.md), [`docs/evaluation.md`](docs/evaluation.md), [`docs/storage_architecture.md`](docs/storage_architecture.md), [`docs/filesystem_database.md`](docs/filesystem_database.md), [`docs/public_api.md`](docs/public_api.md), and [`docs/current_work.md`](docs/current_work.md).
+Start with [`docs/current_system.md`](docs/current_system.md), [`docs/runtime_configuration.md`](docs/runtime_configuration.md), [`docs/llm_roles.md`](docs/llm_roles.md), [`docs/cache_contract.md`](docs/cache_contract.md), [`docs/benchmark_status.md`](docs/benchmark_status.md), and [`docs/conversational_boundary.md`](docs/conversational_boundary.md). The deeper references remain [`docs/architecture.md`](docs/architecture.md), [`docs/theory.md`](docs/theory.md), [`docs/evaluation.md`](docs/evaluation.md), [`docs/storage_architecture.md`](docs/storage_architecture.md), [`docs/filesystem_database.md`](docs/filesystem_database.md), [`docs/public_api.md`](docs/public_api.md), and [`docs/current_work.md`](docs/current_work.md).

@@ -18,6 +18,14 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import Any
 
+from kmd_runtime_config import (
+    boolean as _config_boolean,
+    explicit_raw as _config_explicit_raw,
+    integer as _config_int,
+    text as _config_text,
+    model_cache_dir as _model_cache_dir,
+)
+
 from .answer_types import ExpectedAnswer, classify_value, is_value_compatible
 from .atomic_io import atomic_write_json, quarantine_corrupt_file
 from .context_budget import (
@@ -157,7 +165,9 @@ CHUNK_DRS_STAGED_FIRST_POLICY = "context-relative-structured-density-route-v2"
 CHUNK_DRS_COMPACT_FACT_POLICY_LEGACY = "compact-model-facts-to-root-drs-v1"
 CHUNK_DRS_COMPACT_FACT_POLICY_PREVIOUS = "compact-model-facts-to-root-drs-v2"
 CHUNK_DRS_COMPACT_FACT_POLICY_NEGATED_SCOPE_LEGACY = "compact-model-facts-with-embedded-scope-predicate-v6"
-CHUNK_DRS_COMPACT_FACT_POLICY = "compact-model-facts-negated-scope-to-negative-polarity-v7"
+CHUNK_DRS_COMPACT_FACT_POLICY_LOCALITY_PREVIOUS = "compact-model-facts-negated-scope-to-negative-polarity-v7"
+CHUNK_DRS_COMPACT_FACT_POLICY_NEGATION_LITERAL_PREVIOUS = "compact-model-facts-source-local-arguments-v8"
+CHUNK_DRS_COMPACT_FACT_POLICY = "compact-model-facts-source-local-arguments-negation-literal-v9"
 CHUNK_DRS_COMPACT_NEGATION_MIGRATION_POLICY = "negated-scope-positive-condition-to-root-negative-v1"
 CHUNK_DRS_COMPACT_TEMPORAL_SOURCE_POLICY = "compact-source-span-explicit-timestamp-v1"
 CHUNK_DRS_COMPACT_RETRY_POLICY = "retry-compact-invalid-json-larger-budget-v2"
@@ -187,11 +197,11 @@ ws ::= [ \t\n\r]*
 
 
 def _optional_grammar(grammar: str) -> str | None:
-    return None if os.environ.get("KMD_LOCAL_MODEL_GRAMMAR", "1").strip().lower() in {"0", "false", "no", "off"} else grammar
+    return grammar if _config_boolean("KMD_LOCAL_MODEL_GRAMMAR") else None
 
 
 def _json_schema_enabled() -> bool:
-    return os.environ.get("KMD_LOCAL_MODEL_JSON_SCHEMA", "1").strip().lower() not in {"0", "false", "no", "off"}
+    return _config_boolean("KMD_LOCAL_MODEL_JSON_SCHEMA")
 
 
 def _estimate_tokens(text: str) -> int:
@@ -200,7 +210,7 @@ def _estimate_tokens(text: str) -> int:
 
 def _local_model_transport_fingerprint() -> dict[str, Any]:
     return {
-        "api": os.environ.get("KMD_LOCAL_MODEL_API", "chat").strip().lower() or "chat",
+        "api": _config_text("KMD_LOCAL_MODEL_API").strip().lower() or "chat",
     }
 
 
@@ -217,7 +227,7 @@ def _client_fingerprint(client: LocalModelClient | None) -> dict[str, Any]:
     return {
         "endpoint": getattr(client, "endpoint", ""),
         "per_token_timeout_seconds": getattr(client, "per_token_timeout_seconds", ""),
-        "seed": os.environ.get("KMD_LOCAL_MODEL_SEED", "1778779265"),
+        "seed": _config_text("KMD_LOCAL_MODEL_SEED"),
         "transport_settings": _local_model_transport_fingerprint(),
     }
 
@@ -366,10 +376,10 @@ def _cache_material(stage: str, prompt: str, client: LocalModelClient | None, se
         "stage": stage,
         "prompt_version": PROMPT_VERSION,
         "prompt": prompt,
-        "model_endpoint": getattr(client, "endpoint", os.environ.get("KMD_LOCAL_MODEL_ENDPOINT", "")),
-        "model_per_token_timeout_seconds": getattr(client, "per_token_timeout_seconds", os.environ.get("KMD_LOCAL_MODEL_PER_TOKEN_TIMEOUT_SECONDS", "")),
-        "model_identity": os.environ.get("KMD_LOCAL_MODEL_ID", ""),
-        "seed": os.environ.get("KMD_LOCAL_MODEL_SEED", "1778779265"),
+        "model_endpoint": getattr(client, "endpoint", _config_text("KMD_LOCAL_MODEL_ENDPOINT")),
+        "model_per_token_timeout_seconds": getattr(client, "per_token_timeout_seconds", _config_text("KMD_LOCAL_MODEL_PER_TOKEN_TIMEOUT_SECONDS")),
+        "model_identity": str(_config_explicit_raw("KMD_LOCAL_MODEL_ID") or ""),
+        "seed": _config_text("KMD_LOCAL_MODEL_SEED"),
         "model_fingerprint": _client_fingerprint(client),
         "settings": settings or {},
     }
@@ -424,13 +434,14 @@ def _complete_structured(
 
 
 def _cache_path(env_var: str, prompt_hash: str) -> Path | None:
-    cache_dir = os.environ.get(env_var, "").strip()
-    if not cache_dir:
-        cache_name = env_var.lower()
-        if cache_name.startswith("kmd_"):
-            cache_name = cache_name[4:]
-        cache_dir = str(Path.home() / ".cache" / "knowmoredirt" / cache_name)
-    return Path(cache_dir) / f"{prompt_hash}.json" if cache_dir else None
+    try:
+        cache_dir = _model_cache_dir(env_var)
+    except KeyError:
+        configured = os.environ.get(env_var, "").strip()
+        if not configured:
+            return None
+        cache_dir = Path(configured)
+    return cache_dir / f"{prompt_hash}.json"
 
 
 def _read_cache(path: Path | None) -> dict[str, Any] | None:
@@ -459,6 +470,9 @@ TRANSIENT_STRUCTURED_FAILURE_REASONS = {
     "context_limit_exhausted",
     "output_limit_exhausted",
     "generation_limit_exhausted",
+    "stream_byte_limit_exhausted",
+    "stream_event_limit_exhausted",
+    "stream_total_timeout_exhausted",
     "context_budget_exceeded",
     "schema_validation_failed",
 }
@@ -473,10 +487,20 @@ def _payload_has_transient_structured_failure(payload: dict[str, Any] | None) ->
     )
 
 
-def _cached_structured_failure_retryable(payload: dict[str, Any] | None) -> bool:
-    """Retry incomplete, truncated, transport, and schema-invalid structured calls."""
+def structured_failure_retryable(payload: dict[str, Any] | None) -> bool:
+    """Return whether a cached structured failure must be retried.
+
+    Accepted results remain cacheable across changes to transport safety ceilings.
+    A failure caused by truncation, transport limits, or transient schema/stream
+    damage is not a semantic result and must never become a permanent negative
+    cache entry.
+    """
 
     return _payload_has_transient_structured_failure(payload)
+
+
+def _cached_structured_failure_retryable(payload: dict[str, Any] | None) -> bool:
+    return structured_failure_retryable(payload)
 
 
 def _cached_request_failed(payload: dict[str, Any] | None) -> bool:
@@ -1224,12 +1248,7 @@ def chunk_drs_array_max_items(n_predict: int | None = None) -> int | None:
 
 
 def _staged_chunk_drs_enabled() -> bool:
-    return os.environ.get("KMD_CHUNK_DRS_STAGED_FALLBACK", "1").strip().lower() not in {
-        "0",
-        "false",
-        "no",
-        "off",
-    }
+    return _config_boolean("KMD_CHUNK_DRS_STAGED_FALLBACK")
 
 
 def _validation_count(validation: dict[str, Any], key: str) -> int:
@@ -1307,7 +1326,15 @@ def _chunk_drs_staged_retry_reason(
         source_text,
         (context_budget or {}).get("max_evidence_chars"),
     )
-    if field_like_span_count > condition_count:
+    # Field-like span enumeration is exhaustive diagnostic evidence, not a
+    # required one-condition-per-field contract. Structured sources are already
+    # exhaustively represented by deterministic record/value extraction, while
+    # model DRS supplies semantic structure. Requiring condition_count to match
+    # every enumerated field becomes impossible once diagnostic enumeration is
+    # unbounded (for example 1,264 fields with a 64-condition schema cap).
+    # Preserve the original semantic floor: field-heavy chunks must contain at
+    # least two model conditions, but do not require a DRS mirror of every field.
+    if field_like_span_count >= 3 and condition_count < 2:
         return "structural_undercoverage"
     return ""
 
@@ -1706,6 +1733,9 @@ class ModelQueryTrace:
     invalid_json_count: int = 0
     schema_rejection_count: int = 0
     grounding_rejection_count: int = 0
+    vector_query_count: int = 0
+    vector_candidate_count: int = 0
+    last_vector_query: str = ""
     time_spent_seconds: float = 0.0
     prompt_hashes: list[str] | None = None
     response_hashes: list[str] | None = None
@@ -1737,6 +1767,9 @@ class ModelQueryTrace:
             "invalid_json_count": self.invalid_json_count,
             "schema_rejection_count": self.schema_rejection_count,
             "grounding_rejection_count": self.grounding_rejection_count,
+            "vector_query_count": self.vector_query_count,
+            "vector_candidate_count": self.vector_candidate_count,
+            "last_vector_query": self.last_vector_query,
             "time_spent_seconds": round(self.time_spent_seconds, 3),
             "prompt_hashes": self.prompt_hashes or [],
             "response_hashes": self.response_hashes or [],
@@ -2489,7 +2522,10 @@ def _relative_retry_budgets(
     env_name: str,
     default_multipliers: tuple[float, ...],
 ) -> list[int]:
-    raw = os.environ.get(env_name, "").strip()
+    try:
+        raw = _config_text(env_name).strip()
+    except KeyError:
+        raw = os.environ.get(env_name, "").strip()
     multipliers: list[float] = []
     if raw:
         for item in raw.split(","):
@@ -2706,10 +2742,10 @@ def call_model_query_drs(question: str, client: LocalModelClient, *, n_predict: 
     compact_attempt: dict[str, Any] | None = None
     if (
         _compact_live_model_path_allowed(client)
-        and os.environ.get("KMD_QUERY_DRS_COMPACT_FIRST", "1").strip().lower() not in {"0", "false", "no", "off"}
+        and _config_boolean("KMD_QUERY_DRS_COMPACT_FIRST")
     ):
         compact_attempt = call_model_query_drs_compact(question, client)
-        if compact_attempt.get("accepted") and os.environ.get("KMD_QUERY_DRS_FORCE_FULL", "0").strip().lower() in {"0", "false", "no", "off"}:
+        if compact_attempt.get("accepted") and not _config_boolean("KMD_QUERY_DRS_FORCE_FULL"):
             compact_attempt = {**compact_attempt}
             if _compact_query_drs_answer_slot_undercovered(question, compact_attempt):
                 compact_attempt["compact_undercoverage_accepted"] = True
@@ -3998,6 +4034,17 @@ def _source_temporal_text_for_evidence(source_text: str, evidence: str) -> str:
 
 def _compact_fact_arguments(fact: dict[str, Any], source_text: str) -> list[tuple[str, str]]:
     values: list[tuple[str, str]] = []
+    locality_records = _structured_source_record_surfaces(source_text)
+
+    def source_local(value: str) -> bool:
+        text = str(value or "").strip()
+        if not text or text not in source_text:
+            return False
+        # Compact extraction promises that each argument belongs to one source
+        # locality unit. An exact substring that crosses two sentence/record
+        # boundaries is still textually grounded, but it is not a valid compact
+        # fact argument because it merges locality units.
+        return not locality_records or bool(_surface_record_indexes(text, locality_records))
     role_values = fact.get("roles")
     if isinstance(role_values, dict):
         for role, value in role_values.items():
@@ -4005,19 +4052,19 @@ def _compact_fact_arguments(fact: dict[str, Any], source_text: str) -> list[tupl
             if role_key in COMPACT_TEMPORAL_FIELDS or role_key in COMPACT_SCOPE_FIELDS:
                 continue
             text = str(value or "").strip()
-            if text and text in source_text:
+            if source_local(text):
                 values.append((role_key or "argument", text))
     raw_arguments = fact.get("arguments")
     if isinstance(raw_arguments, list):
         for item in raw_arguments:
             if isinstance(item, str):
                 text = item.strip()
-                if text and text in source_text:
+                if source_local(text):
                     values.append(("argument", text))
             elif isinstance(item, dict):
                 explicit_role = str(item.get("role") or "").strip()
                 explicit_value = str(item.get("value") or "").strip()
-                if explicit_value and explicit_value in source_text:
+                if source_local(explicit_value):
                     values.append((explicit_role or "argument", explicit_value))
                     continue
                 for role, value in item.items():
@@ -4025,11 +4072,11 @@ def _compact_fact_arguments(fact: dict[str, Any], source_text: str) -> list[tupl
                     if role_key in {"role", "value"} or role_key in COMPACT_TEMPORAL_FIELDS or role_key in COMPACT_SCOPE_FIELDS:
                         continue
                     text = str(value or "").strip()
-                    if text and text in source_text:
+                    if source_local(text):
                         values.append((role_key or "argument", text))
     for role in ["agent", "patient", "theme", "holder", "topic", "value", "state", "identifier", "location"]:
         text = str(fact.get(role) or "").strip()
-        if text and text in source_text:
+        if source_local(text):
             values.append((role, text))
     deduped: list[tuple[str, str]] = []
     seen: set[tuple[str, str]] = set()
@@ -4240,6 +4287,82 @@ def _compact_chunk_drs_to_payload(parsed: dict[str, Any], source_text: str, *, r
     }, source_text)
 
 
+def _reconvert_compact_policy_payload(
+    payload: dict[str, Any],
+    chunk_text: str,
+    *,
+    rel_path: str = "",
+) -> dict[str, Any]:
+    """Rebuild derived compact DRS under the current converter without a model call.
+
+    The compact model response is itself expensive and source-grounded input to
+    deterministic conversion.  When only conversion semantics change, preserve
+    that raw response but invalidate/recompute the derived DRS.
+    """
+
+    source_policy = str(payload.get("compact_fact_policy") or "")
+    if source_policy in {"", CHUNK_DRS_COMPACT_FACT_POLICY}:
+        return payload
+    if source_policy not in {
+        CHUNK_DRS_COMPACT_FACT_POLICY_NEGATION_LITERAL_PREVIOUS,
+        CHUNK_DRS_COMPACT_FACT_POLICY_LOCALITY_PREVIOUS,
+        CHUNK_DRS_COMPACT_FACT_POLICY_NEGATED_SCOPE_LEGACY,
+        CHUNK_DRS_COMPACT_FACT_POLICY_PREVIOUS,
+        CHUNK_DRS_COMPACT_FACT_POLICY_LEGACY,
+    }:
+        return payload
+    raw_text = str(payload.get("raw_text") or "")
+    if not raw_text:
+        return payload
+    try:
+        parsed = json.loads(raw_text)
+    except json.JSONDecodeError:
+        return payload
+    if not isinstance(parsed, dict):
+        return payload
+    converted = _compact_chunk_drs_to_payload(parsed, chunk_text, rel_path=rel_path)
+    repaired = _repair_chunk_drs_payload(converted, chunk_text)
+    validation = _validate_chunk_drs_payload(repaired, chunk_text)
+    if not validation.get("schema_valid"):
+        return payload
+    migrated = {
+        **payload,
+        "accepted": True,
+        "reason": "compact_drs",
+        "drs": repaired["drs"],
+        "validation": validation,
+        "compact_fact_policy": CHUNK_DRS_COMPACT_FACT_POLICY,
+        "compact_policy_migration": {
+            "from_policy": source_policy,
+            "to_policy": CHUNK_DRS_COMPACT_FACT_POLICY,
+            "source": "cached_raw_text",
+        },
+    }
+    if source_policy == CHUNK_DRS_COMPACT_FACT_POLICY_NEGATED_SCOPE_LEGACY:
+        migrated["compact_negation_migration"] = {
+            "policy": CHUNK_DRS_COMPACT_NEGATION_MIGRATION_POLICY,
+            "from_policy": source_policy,
+            "source": (
+                "rejected_compact_raw_text" if payload.get("accepted") is not True
+                else "accepted_compact_raw_text"
+            ),
+        }
+    return migrated
+
+
+def _compact_cached_raw_reconvertible(payload: dict[str, Any] | None) -> bool:
+    if not isinstance(payload, dict):
+        return False
+    raw_text = str(payload.get("raw_text") or "")
+    if not raw_text:
+        return False
+    try:
+        parsed = json.loads(raw_text)
+    except json.JSONDecodeError:
+        return False
+    return isinstance(parsed, dict)
+
+
 def _compact_negation_cache_recoverable(payload: dict[str, Any]) -> bool:
     if payload.get("accepted") is True or payload.get("reason") != "schema_validation_failed":
         return False
@@ -4297,6 +4420,7 @@ def _migrate_compact_negated_scope_payload(
         or str(payload.get("reason") or "") != "compact_drs"
         or source_policy not in {
             CHUNK_DRS_COMPACT_FACT_POLICY_NEGATED_SCOPE_LEGACY,
+            CHUNK_DRS_COMPACT_FACT_POLICY_LOCALITY_PREVIOUS,
             CHUNK_DRS_COMPACT_FACT_POLICY,
         }
     ):
@@ -4351,14 +4475,11 @@ def _migrate_compact_negated_scope_payload(
 
 
 def _compact_chunk_drs_enabled() -> bool:
-    return os.environ.get("KMD_CHUNK_DRS_COMPACT_FIRST", "1").strip().lower() not in {"0", "false", "no", "off"}
+    return _config_boolean("KMD_CHUNK_DRS_COMPACT_FIRST")
 
 
 def _compact_live_model_path_allowed(client: LocalModelClient) -> bool:
-    return isinstance(client, LocalModelClient) or os.environ.get(
-        "KMD_FORCE_COMPACT_MODEL_PATH",
-        "",
-    ).strip().lower() in {"1", "true", "yes", "on"}
+    return isinstance(client, LocalModelClient) or _config_boolean("KMD_FORCE_COMPACT_MODEL_PATH")
 
 
 def _compact_chunk_drs_eligible(chunk_text: str, client: LocalModelClient) -> bool:
@@ -4390,6 +4511,11 @@ def _finalize_compact_cached_payload(
     migrated_from_prompt_hash: str = "",
 ) -> dict[str, Any]:
     payload = {**payload}
+    payload = _reconvert_compact_policy_payload(
+        payload,
+        chunk_text,
+        rel_path=str(cache_context.get("source_rel_path") or ""),
+    )
     payload = _migrate_compact_negated_scope_payload(
         payload,
         chunk_text,
@@ -4437,6 +4563,19 @@ def call_model_chunk_drs_compact(
     budgets = [n_predict, *_compact_chunk_drs_retry_budgets(n_predict)]
     failures: list[dict[str, Any]] = []
     last_payload: dict[str, Any] | None = None
+    rejected_raw_hashes: set[str] = set()
+
+    def repeated_rejected_raw(payload: dict[str, Any]) -> bool:
+        if payload.get("reason") != "schema_validation_failed":
+            return False
+        raw_text = str(payload.get("raw_text") or "")
+        if not raw_text:
+            return False
+        digest = hashlib.sha256(raw_text.encode("utf-8", errors="replace")).hexdigest()
+        if digest in rejected_raw_hashes:
+            return True
+        rejected_raw_hashes.add(digest)
+        return False
 
     def condition_retry_cache_available(next_index: int, retry_after: dict[str, Any]) -> bool:
         if next_index >= len(budgets):
@@ -4548,6 +4687,26 @@ def call_model_chunk_drs_compact(
         cache_path = _cache_path("KMD_CHUNK_DRS_CACHE_DIR", prompt_hash)
         cached = _read_cache(cache_path)
         cached_empty_undercoverage = False
+        if (
+            isinstance(cached, dict)
+            and cached.get("reason") == "schema_validation_failed"
+            and str(cached.get("compact_fact_policy") or "") == CHUNK_DRS_COMPACT_FACT_POLICY
+            and str(cached.get("raw_text") or "")
+        ):
+            marker = {
+                "n_predict": budget,
+                "reason": cached.get("reason"),
+                "elapsed": cached.get("elapsed"),
+                "prompt_hash": prompt_hash,
+                "validation": cached.get("validation"),
+            }
+            failures.append(marker)
+            last_payload = {**cached}
+            if repeated_rejected_raw(cached):
+                last_payload["compact_retry_stopped_reason"] = "repeated_rejected_raw_output"
+                last_payload["compact_retry_attempts"] = failures
+                break
+            continue
         if cached is not None and not _query_drs_cached_retryable_failure(cached):
             finalized = _finalize_compact_cached_payload(cached, chunk_text, cache_context, cache_path=cache_path)
             if refresh_empty_legacy and not _compact_cached_payload_has_conditions(finalized):
@@ -4581,6 +4740,8 @@ def call_model_chunk_drs_compact(
                 return finalized
         if not retry_index:
             legacy_variants = [
+                (build_compact_chunk_drs_prompt(chunk_text, rel_path=rel_path), CHUNK_DRS_COMPACT_FACT_POLICY_NEGATION_LITERAL_PREVIOUS),
+                (build_compact_chunk_drs_prompt(chunk_text, rel_path=rel_path), CHUNK_DRS_COMPACT_FACT_POLICY_LOCALITY_PREVIOUS),
                 (build_compact_chunk_drs_prompt(chunk_text, rel_path=rel_path), CHUNK_DRS_COMPACT_FACT_POLICY_NEGATED_SCOPE_LEGACY),
                 (_build_compact_chunk_drs_prompt_v2(chunk_text, rel_path=rel_path), CHUNK_DRS_COMPACT_FACT_POLICY_PREVIOUS),
                 (_build_compact_chunk_drs_prompt_v1(chunk_text, rel_path=rel_path), CHUNK_DRS_COMPACT_FACT_POLICY_LEGACY),
@@ -4597,10 +4758,12 @@ def call_model_chunk_drs_compact(
                     isinstance(legacy_cached, dict)
                     and _compact_negation_cache_recoverable(legacy_cached)
                 )
+                legacy_raw_reconvertible = _compact_cached_raw_reconvertible(legacy_cached)
                 if (
                     legacy_cached is not None
                     and (
                         legacy_recoverable
+                        or legacy_raw_reconvertible
                         or (
                             not _query_drs_cached_retryable_failure(legacy_cached)
                             and (not refresh_empty_legacy or _compact_cached_payload_has_conditions(legacy_cached))
@@ -4614,11 +4777,15 @@ def call_model_chunk_drs_compact(
                         cache_path=cache_path,
                         migrated_from_prompt_hash=legacy_prompt_hash,
                     )
-                    if not _compact_cached_payload_has_conditions(finalized_legacy):
-                        source_cached = condition_source_cache(cache_path, cache_context)
-                        if source_cached is not None:
-                            return source_cached
-                    return finalized_legacy
+                    if _compact_cached_payload_has_conditions(finalized_legacy):
+                        return finalized_legacy
+                    source_cached = condition_source_cache(cache_path, cache_context)
+                    if source_cached is not None:
+                        return source_cached
+                    # A legacy payload that cannot be migrated is not authoritative
+                    # under the current semantic policy. Keep searching older caches
+                    # and then fall through to a fresh model call.
+                    continue
         source_cached = condition_source_cache(cache_path, cache_context)
         if source_cached is not None:
             return source_cached
@@ -4716,6 +4883,10 @@ def call_model_chunk_drs_compact(
                 }
             )
             last_payload = payload
+            if repeated_rejected_raw(payload):
+                last_payload["compact_retry_stopped_reason"] = "repeated_rejected_raw_output"
+                last_payload["compact_retry_attempts"] = failures
+                break
             continue
         payload = {
             "accepted": True,
@@ -5145,31 +5316,74 @@ def _json_source_container_roots(source_text: str) -> list[dict[str, Any]]:
                 return []
             stack[-1]["end"] = index + 1
             stack.pop()
-    if in_string or stack:
+    if in_string:
         return []
+    # A scanner chunk can end while its outer JSON object/array is still open.
+    # Keep the lexical tree in that case: completed child containers still have
+    # exact end offsets and remain safe locality units. Incomplete ancestors are
+    # used only for direct scalar metadata, never as whole-record evidence.
     return roots
 
 
 def _json_direct_scalar_context(node: dict[str, Any], source_text: str) -> list[str]:
+    if node.get("kind") != "object":
+        return []
+    start = int(node.get("start") or 0)
     end = node.get("end")
-    if node.get("kind") != "object" or not isinstance(end, int):
-        return []
-    surface = source_text[int(node["start"]):end]
-    try:
-        value = json.loads(surface)
-    except (json.JSONDecodeError, TypeError):
-        return []
-    if not isinstance(value, dict):
-        return []
+    if isinstance(end, int):
+        surface = source_text[start:end]
+        try:
+            value = json.loads(surface)
+        except (json.JSONDecodeError, TypeError):
+            value = None
+        if isinstance(value, dict):
+            context: list[str] = []
+            for key, item in value.items():
+                if isinstance(item, (dict, list)):
+                    continue
+                context.append(
+                    f"{json.dumps(str(key), ensure_ascii=False)}:"
+                    f"{json.dumps(item, ensure_ascii=False, separators=(',', ':'))}"
+                )
+            return context
+
+    # Incomplete outer objects cannot be passed to json.loads, but their direct
+    # scalar metadata is still source-exact and useful to descendant locality
+    # units. Mask every child container first so nested/sibling fields can never
+    # be mistaken for ancestor metadata, then accept only complete scalar lines.
+    limit = int(end) if isinstance(end, int) else len(source_text)
+    chars = list(source_text[start:limit])
+    for child in node.get("children", []):
+        if not isinstance(child, dict):
+            continue
+        child_start = max(start, int(child.get("start") or start)) - start
+        raw_end = child.get("end")
+        child_end = (int(raw_end) if isinstance(raw_end, int) else limit) - start
+        child_start = max(0, min(len(chars), child_start))
+        child_end = max(child_start, min(len(chars), child_end))
+        for index in range(child_start, child_end):
+            if chars[index] not in "\r\n":
+                chars[index] = " "
+    direct_text = "".join(chars)
+    scalar_line = re.compile(
+        r'^\s*(?P<key>"(?:\\.|[^"\\])*")\s*:\s*'
+        r'(?P<value>"(?:\\.|[^"\\])*"|-?(?:0|[1-9]\d*)(?:\.\d+)?(?:[eE][+-]?\d+)?|true|false|null)\s*,?\s*$',
+        re.M,
+    )
     context: list[str] = []
-    for key, item in value.items():
-        if isinstance(item, (dict, list)):
+    for match in scalar_line.finditer(direct_text):
+        key_text = match.group("key")
+        value_text = match.group("value")
+        try:
+            key = json.loads(key_text)
+            value = json.loads(value_text)
+        except (json.JSONDecodeError, TypeError):
             continue
         context.append(
             f"{json.dumps(str(key), ensure_ascii=False)}:"
-            f"{json.dumps(item, ensure_ascii=False, separators=(',', ':'))}"
+            f"{json.dumps(value, ensure_ascii=False, separators=(',', ':'))}"
         )
-    return context
+    return list(dict.fromkeys(context))
 
 
 def _json_source_locality_surfaces(source_text: str) -> list[str]:
@@ -5187,6 +5401,14 @@ def _json_source_locality_surfaces(source_text: str) -> list[str]:
     for root in roots:
         visit(root)
     units: list[str] = []
+    scalar_context_cache: dict[int, list[str]] = {}
+
+    def direct_context(node: dict[str, Any]) -> list[str]:
+        key = id(node)
+        if key not in scalar_context_cache:
+            scalar_context_cache[key] = _json_direct_scalar_context(node, source_text)
+        return scalar_context_cache[key]
+
     for node in nodes:
         end = node.get("end")
         if node.get("kind") != "object" or not isinstance(end, int):
@@ -5208,7 +5430,7 @@ def _json_source_locality_surfaces(source_text: str) -> list[str]:
         inherited: list[str] = []
         ancestor = parent
         while isinstance(ancestor, dict):
-            inherited.extend(_json_direct_scalar_context(ancestor, source_text))
+            inherited.extend(direct_context(ancestor))
             ancestor = ancestor.get("parent")
         unit = "\n".join([*reversed(inherited), surface]).strip()
         if unit:
@@ -5241,10 +5463,15 @@ def _surface_record_indexes(surface: str, records: list[str]) -> set[int]:
     if not text:
         return set()
     normalized = normalize(text)
+    whitespace_compact = re.sub(r"\s+", "", text)
     return {
         index
         for index, record in enumerate(records)
-        if text in record or (normalized and normalized in normalize(record))
+        if (
+            text in record
+            or (normalized and normalized in normalize(record))
+            or (whitespace_compact and whitespace_compact in re.sub(r"\s+", "", record))
+        )
     }
 
 
@@ -5495,10 +5722,33 @@ def _validate_chunk_drs_payload(payload: Any, source_text: str) -> dict[str, Any
         r"\b(?:not|never|cannot|without|no\s+[A-Za-z0-9])\b|\b[A-Za-z]+n['’]t\b",
         re.I,
     )
+    structured_label_pattern = re.compile(
+        r"^\s*[A-Za-z_][A-Za-z0-9_. -]{0,80}\s*:\s*([\"'])([^\n]*?)\1\s*$"
+    )
+    finite_verb_pattern = re.compile(
+        r"\b(?:is|are|was|were|be|been|being|do|does|did|has|have|had|can|could|will|would|should|may|might|must|found|finds|reported|reports|said|says)\b",
+        re.I,
+    )
+
+    def requires_negative_condition(evidence: str) -> bool:
+        text = str(evidence or "").strip()
+        if not negation_pattern.search(text):
+            return False
+        match = structured_label_pattern.fullmatch(text)
+        if match is not None:
+            literal = match.group(2).strip()
+            # A short quoted field value such as project: "Not a schema" is a
+            # literal label/value, not a proposition whose truth polarity is
+            # negative. A clause-like quoted value containing a finite verb is
+            # still treated as propositional and must encode negation.
+            if len(content_tokens(literal)) <= 8 and not finite_verb_pattern.search(literal):
+                return False
+        return True
+
     grounded_negated_conditions = [
         item
         for item in conditions
-        if negation_pattern.search(str(item.get("evidence_text") or ""))
+        if requires_negative_condition(str(item.get("evidence_text") or ""))
     ]
     if grounded_negated_conditions and not any(
         normalize(str(item.get("polarity") or "")) == "negative"
@@ -6503,6 +6753,46 @@ def chunk_drs_cache_context(
 
 
 
+def _revalidate_cached_chunk_drs_raw(
+    cached: dict[str, Any],
+    chunk_text: str,
+    cache_context: dict[str, Any],
+    cache_path: Path | None,
+) -> dict[str, Any] | None:
+    """Repair/revalidate cached monolithic model JSON without another model call."""
+
+    if cached.get("accepted") is True:
+        return None
+    raw_text = str(cached.get("raw_text") or "")
+    if not raw_text:
+        return None
+    try:
+        parsed = json.loads(raw_text)
+    except json.JSONDecodeError:
+        return None
+    if not isinstance(parsed, dict) or not isinstance(parsed.get("drs"), dict):
+        return None
+    repaired = _repair_chunk_drs_payload(parsed, chunk_text)
+    validation = _validate_chunk_drs_payload(repaired, chunk_text)
+    if not validation.get("schema_valid") or validation.get("grounding_failure_count"):
+        return None
+    payload = {
+        **cached,
+        "accepted": True,
+        "reason": "cached_raw_revalidated",
+        "drs": repaired["drs"],
+        "validation": validation,
+        "cache_context": cache_context,
+        "cache_revalidation": {
+            "source": "raw_text",
+            "from_reason": str(cached.get("reason") or ""),
+            "policy": "cached-monolithic-raw-repair-revalidate-v1",
+        },
+    }
+    _write_cache(cache_path, payload)
+    return payload
+
+
 def call_model_chunk_drs(
     chunk_text: str,
     client: LocalModelClient,
@@ -6603,18 +6893,39 @@ def call_model_chunk_drs(
     )
     cache_path = _cache_path("KMD_CHUNK_DRS_CACHE_DIR", prompt_hash)
     cached = _read_cache(cache_path)
-    if cached is not None and not _cached_structured_failure_retryable(cached):
+    if cached is not None:
+        cached_retryable = _cached_structured_failure_retryable(cached)
+        accepted_undercoverage = False
         if cached.get("accepted") is True and isinstance(cached.get("drs"), dict):
-            cached_repaired = _repair_chunk_drs_payload(cached, prompt_chunk)
-            cached_validation = _validate_chunk_drs_payload(cached_repaired, prompt_chunk)
-            if cached_validation.get("schema_valid"):
-                cached = {
-                    **cached_repaired,
-                    "validation": cached_validation,
-                }
-                cached.setdefault("cache_context", cache_context)
-                return cached
+            if not cached_retryable:
+                cached_repaired = _repair_chunk_drs_payload(cached, prompt_chunk)
+                cached_validation = _validate_chunk_drs_payload(cached_repaired, prompt_chunk)
+                if cached_validation.get("schema_valid") and not cached_validation.get("grounding_failure_count"):
+                    retry_reason = _chunk_drs_staged_retry_reason(
+                        cached_validation,
+                        prompt_chunk,
+                        context_budget,
+                    )
+                    if not retry_reason:
+                        cached = {
+                            **cached_repaired,
+                            "validation": cached_validation,
+                        }
+                        cached.setdefault("cache_context", cache_context)
+                        return cached
+                # Any accepted cache that fails current validation or current
+                # structural coverage policy is stale under today's semantics.
+                accepted_undercoverage = True
         else:
+            # Rejected monolithic outputs may become valid after deterministic
+            # provenance/locality repair. Try that before deciding whether the
+            # cached failure is terminal or requires another model call.
+            cached_revalidated = _revalidate_cached_chunk_drs_raw(
+                cached, prompt_chunk, cache_context, cache_path
+            )
+            if cached_revalidated is not None:
+                return cached_revalidated
+        if not cached_retryable and not accepted_undercoverage:
             cached.setdefault("cache_context", cache_context)
             return cached
     staged_first_reason = _chunk_drs_staged_first_reason(prompt_chunk, context_budget)
@@ -6837,7 +7148,22 @@ def build_answer_verification_prompt(
     candidate_answer: str,
     evidence_items: list[dict[str, str]],
     discourse_frames: list[dict[str, Any]],
+    *,
+    meta_status_verification: bool = False,
 ) -> str:
+    meta_status_policy = (
+        " For this meta-status query only: when the query predicate itself asks whether something was confirmed, "
+        "verified, established, proven, or finalized, source-explicit negation of that status can be direct negative "
+        "evidence. Examples include 'the belief is not confirmed as fact' for a confirmed-as-fact query, an "
+        "authoritative final court/tribunal judgment stating 'found no proof that P' for a query asking whether P was "
+        "proven, and 'no final decision was made' for a finalized-decision query. A bare 'P was not proven' statement "
+        "remains absence of proof and is not enough for this exception. For this exception emit "
+        "proof_kind=explicit_negation, explicit_negation=true, and absence_of_record_only=false. Do not apply the "
+        "exception when the question asks whether the underlying event itself happened, and do not apply it to no "
+        "record, not recorded, no report, not documented, or missing evidence."
+        if meta_status_verification
+        else ""
+    )
     return (
         "JSON only. Verify whether the candidate answer is entailed by the bounded raw-text evidence and "
         "generic discourse frames. Reject candidates that do not satisfy the query frame's answer type, predicate, "
@@ -6879,6 +7205,7 @@ def build_answer_verification_prompt(
         "the same query frame and omit any unentailed value. If evidence is insufficient, return entailed=false "
         "and answer='unknown'. "
         "Do not use outside knowledge. If evidence is insufficient, return entailed=false and answer='unknown'."
+        + meta_status_policy
         + json.dumps(
             {
                 "question": question,
@@ -6901,6 +7228,7 @@ def call_model_answer_verification(
     client: LocalModelClient,
     *,
     n_predict: int | None = None,
+    meta_status_verification: bool = False,
 ) -> dict[str, Any]:
     if n_predict is None:
         n_predict = _context_output_tokens(
@@ -6908,7 +7236,14 @@ def call_model_answer_verification(
             ratio_names=("KMD_VERIFIER_OUTPUT_RATIO",),
             ratio_default=1.0 / 64.0,
         )
-    prompt = build_answer_verification_prompt(question, query_frame, candidate_answer, evidence_items, discourse_frames)
+    prompt = build_answer_verification_prompt(
+        question,
+        query_frame,
+        candidate_answer,
+        evidence_items,
+        discourse_frames,
+        meta_status_verification=meta_status_verification,
+    )
     constraint = _constraint_settings(ANSWER_VERIFICATION_GRAMMAR, VERIFICATION_JSON_SCHEMA, VERIFIER_SCHEMA_VERSION)
     grammar_hash = str(constraint["grammar_hash"])
     cache_settings = {"n_predict": n_predict, "schema": VERIFIER_SCHEMA_VERSION, **constraint}
@@ -6918,6 +7253,7 @@ def call_model_answer_verification(
         "expected_answer_type": str(query_frame.get("answer_type") or "unknown"),
         "evidence_count": len(evidence_items),
         "discourse_frame_count": len(discourse_frames),
+        "meta_status_verification": meta_status_verification,
     }
     prompt_hash = _cache_hash(
         "answer_verification",
@@ -7214,11 +7550,6 @@ def build_source_resolved_answer_prompt(
 
 
 def _source_resolution_cache_path(prompt_hash: str) -> Path | None:
-    cache_dir = os.environ.get("KMD_SOURCE_RESOLUTION_CACHE_DIR", "").strip()
-    if not cache_dir:
-        cache_dir = os.environ.get("KMD_ANSWER_CANONICALIZATION_CACHE_DIR", "").strip()
-    if cache_dir:
-        return Path(cache_dir) / f"{prompt_hash}.json"
     return _cache_path("KMD_SOURCE_RESOLUTION_CACHE_DIR", prompt_hash)
 
 

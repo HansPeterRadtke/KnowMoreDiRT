@@ -21,6 +21,14 @@ def test_prepare_bundle_separates_source_questions_and_gold(tmp_path: Path) -> N
     normalized = tmp_path / "normalized"
     artifacts = [
         {
+            "artifact_id": "product::alpha",
+            "artifact_type": "product",
+            "product_id": "alpha",
+            "employee_ids": ["eid_oracle"],
+            "raw_text": "Product: Alpha\nTeam Members: eid_oracle\nCustomers: CUST-ORACLE",
+            "metadata": {"kind": "product"},
+        },
+        {
             "artifact_id": "doc-1",
             "artifact_type": "document",
             "product_id": "alpha",
@@ -60,17 +68,25 @@ def test_prepare_bundle_separates_source_questions_and_gold(tmp_path: Path) -> N
     manifest = MODULE.prepare_bundle(normalized, output)
     validated = MODULE.validate_prepared_bundle(output / "manifest.json")
 
+    assert manifest["normalized_artifact_count"] == 3
     assert manifest["artifact_count"] == 2
+    assert manifest["excluded_oracle_artifact_count"] == 1
+    assert manifest["excluded_oracle_artifacts_by_type"] == {"product": 1}
     assert manifest["question_count"] == 1
     assert manifest["forbidden_key_hits"] == {}
     assert manifest["official_question_text_hits"] == 0
-    source_text = "\n".join(path.read_text() for path in (output / "source").rglob("*.jsonl"))
+    source_files = sorted((output / "source").rglob("*.txt"))
+    assert len(source_files) == 2
+    source_text = "\n".join(path.read_text() for path in source_files)
     assert "Who owns REF-1?" not in source_text
     assert "ground_truth" not in source_text
     assert "gold_answer" not in source_text
+    assert "eid_oracle" not in source_text
+    assert "CUST-ORACLE" not in source_text
     prepared_questions = [json.loads(line) for line in (output / "questions.jsonl").read_text().splitlines()]
     assert prepared_questions == [{"question_id": "q1", "question": "Who owns REF-1?"}]
     assert validated["validation"]["source_record_count"] == 2
+    assert validated["manifest"]["source_representation"] == "one-artifact-per-plain-text-file"
 
 
 def test_prepare_bundle_rejects_benchmark_fields_in_source(tmp_path: Path) -> None:
@@ -96,3 +112,20 @@ def test_prepare_bundle_rejects_benchmark_fields_in_source(tmp_path: Path) -> No
         assert "forbidden benchmark keys" in str(error)
     else:
         raise AssertionError("expected forbidden source key failure")
+
+
+def test_prepare_bundle_rejects_unknown_source_artifact_type(tmp_path: Path) -> None:
+    normalized = tmp_path / "normalized"
+    write_jsonl(
+        normalized / "artifacts.jsonl",
+        [{"artifact_id": "mystery", "artifact_type": "mystery", "raw_text": "fact"}],
+    )
+    write_jsonl(normalized / "questions.jsonl", [{"question_id": "q1", "question": "Question?"}])
+    write_jsonl(normalized / "gold.jsonl", [{"question_id": "q1", "gold_answer": ["answer"]}])
+
+    try:
+        MODULE.prepare_bundle(normalized, tmp_path / "prepared")
+    except ValueError as error:
+        assert "unsupported HERB RAG artifact type" in str(error)
+    else:
+        raise AssertionError("expected unknown source artifact type failure")

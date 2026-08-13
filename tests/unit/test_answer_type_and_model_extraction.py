@@ -1846,7 +1846,7 @@ def test_direct_negation_relation_match_distinguishes_four_regression_cases() ->
     hrq110 = QueryFrame(question_text="Was the latch confirmed broken?", answer_type="boolean", answer_variables=("Was",), target_anchors=("latch",), requested_relation="confirmed broken", relation_terms=("confirmed", "broken"), constraints=(), source="model_query_drs")
     hrq112 = QueryFrame(question_text="Was the river reroute confirmed as a plan?", answer_type="boolean", answer_variables=("Was",), target_anchors=("river reroute",), requested_relation="confirmed as a plan", relation_terms=("confirmed", "plan"), constraints=("as a plan",), source="model_query_drs")
     assert engine._evidence_directly_negates_requested_relation(q031, "This is fiction homework, not an engineering record.") is True
-    assert engine._evidence_directly_negates_requested_relation(hrq108, "The north hinge crack was not proven.") is True
+    assert engine._evidence_directly_negates_requested_relation(hrq108, "The north hinge crack was not proven.") is False
     assert engine._evidence_directly_negates_requested_relation(hrq059, "Later inspection found no crack in the blue pump.") is True
     assert engine._evidence_directly_negates_requested_relation(hrq110, "Later inspection confirmed the latch was intact.") is False
     assert engine._evidence_directly_negates_requested_relation(hrq112, "Confirmed plan: no reroute decision was made.") is False
@@ -1877,3 +1877,340 @@ def test_cleanup_non_arithmetic_count_keeps_unit_phrase(tmp_path):
     answer = Answer("12 apples", 0.9, [], "model", "count")
     cleaned = engine._cleanup_public_answer(answer, question="How many apples were stored?")
     assert cleaned.text == "12 apples"
+
+
+def test_explicit_negative_clause_recovers_exhaustive_only_exclusion() -> None:
+    from knowmoredirt.engine import KnowMoreDiRTEngine
+    from knowmoredirt.model_planner import ModelQueryTrace
+    from knowmoredirt.models import Evidence, Sentence
+
+    engine = KnowMoreDiRTEngine.__new__(KnowMoreDiRTEngine)
+    engine.model_query_trace = ModelQueryTrace(enabled=True, prompt_hashes=[], response_hashes=[])
+    engine.model_query_trace.last_plan = {
+        "answer_type": "boolean",
+        "target_anchors": ["QuillCache", "plaintext passwords"],
+        "requested_relation": "stores",
+        "relation_terms": ["stores", "store"],
+        "constraints": ["audit"],
+        "answer_variables": ["Does"],
+    }
+    sentence = Sentence("s", "d", "audit.txt", "The audit says QuillCache stores only salted password hashes.", 0, 0, 62)
+    evidence = Evidence("audit.txt", sentence.text, span_id="s")
+    engine._search = lambda *args, **kwargs: [(sentence, 1.0)]
+    engine._evidence = lambda *_args, **_kwargs: evidence
+    engine._evidence_window_text = lambda *_args, **_kwargs: sentence.text
+    engine._central_answer_guard = lambda _q, text, _expected, _frame, _evidence: text
+    answer = engine._answer_with_explicit_negative_clause(
+        "Does the audit say QuillCache stores plaintext passwords?"
+    )
+    assert answer is not None
+    assert answer.text == "No"
+    assert answer.reason == "explicit exhaustive exclusion"
+
+
+def test_row_url_field_binding_preserves_scheme_and_requires_same_target_row(tmp_path: Path, monkeypatch) -> None:
+    (tmp_path / "records.log").write_text(
+        "owner=Mara Chen | component=retry scheduler | canonical_pr=https://github.com/example/BeaconForce/pull/2780\n"
+        "owner=Ilya Stone | component=oauth callback | repair_pr=https://github.com/example/BeaconForce/pull/2814\n",
+        encoding="utf-8",
+    )
+    monkeypatch.setenv("KMD_TEST_ALLOW_NO_MODEL", "1")
+    monkeypatch.setenv("PYTEST_CURRENT_TEST", "1")
+    engine = KnowMoreDiRTEngine(tmp_path)
+
+    rows = [row for row, _evidence in engine._source_row_records() if row.get("component") == "retry scheduler"]
+    assert len(rows) == 1
+    assert rows[0]["canonical_pr"] == "https://github.com/example/BeaconForce/pull/2780"
+
+    answer = engine._answer_with_row_field_source(
+        "What is the tracking PR URL for the BeaconForce retry scheduler?"
+    )
+    assert answer is not None
+    assert answer.text == "https://github.com/example/BeaconForce/pull/2780"
+    assert answer.answer_type == "url"
+    assert answer.reason == "source-row same-record url field"
+
+
+def test_negative_boolean_verifier_rejects_not_proven_for_underlying_event_query(monkeypatch) -> None:
+    engine = object.__new__(KnowMoreDiRTEngine)
+    engine._model_client = object()
+    engine._sentences_by_document = {}
+    engine.model_query_trace = ModelQueryTrace(enabled=True, prompt_hashes=[], response_hashes=[])
+    frame = QueryFrame(
+        question_text="Did the north hinge crack happen?",
+        answer_type="boolean",
+        answer_variables=("whether",),
+        target_anchors=("north hinge crack",),
+        requested_relation="happen",
+        relation_terms=("happen",),
+        constraints=(),
+        source="model_query_drs",
+    )
+    monkeypatch.setattr(engine, "_canonicalize_model_answer_with_local_model", lambda *_args, **_kwargs: None)
+    monkeypatch.setattr(engine_module, "call_model_answer_verification", lambda *_args, **_kwargs: {
+        "accepted": True,
+        "entailed": True,
+        "answer": "no",
+        "evidence_span": "Judgment note: the north hinge crack was not proven.",
+        "proof_kind": "explicit_negation",
+        "accessibility": "asserted",
+        "temporal_alignment": "unspecified",
+        "explicit_negation": True,
+        "absence_of_record_only": False,
+        "incompatible_condition_span": "",
+    })
+    answer = Answer("no", 0.9, [Evidence("judgment.txt", "Judgment note: the north hinge crack was not proven.")], "model", "boolean")
+    assert engine._verify_with_local_model(frame.question_text, frame, answer, ExpectedAnswer("boolean")) is False
+
+
+def test_meta_status_direct_negation_distinguishes_confirmation_proof_and_finalization() -> None:
+    engine = object.__new__(KnowMoreDiRTEngine)
+    confirmed = QueryFrame(
+        question_text="Is Kalo Reed belief confirmed as fact?",
+        answer_type="boolean",
+        answer_variables=("Is",),
+        target_anchors=("Kalo Reed belief",),
+        requested_relation="confirmed",
+        relation_terms=("confirmed", "confirm"),
+        constraints=("as fact",),
+        source="model_query_drs",
+    )
+    proven = QueryFrame(
+        question_text="Was FlowQuill proven to have caused invoice drift?",
+        answer_type="boolean",
+        answer_variables=("Was",),
+        target_anchors=("FlowQuill", "invoice drift"),
+        requested_relation="proven caused",
+        relation_terms=("proven", "caused"),
+        constraints=(),
+        source="model_query_drs",
+    )
+    finalized = QueryFrame(
+        question_text="Was the River Dial archive decision finalized?",
+        answer_type="boolean",
+        answer_variables=("finalized",),
+        target_anchors=("River Dial archive decision",),
+        requested_relation="finalized",
+        relation_terms=("finalized",),
+        constraints=(),
+        source="model_query_drs",
+    )
+    event = QueryFrame(
+        question_text="Did FlowQuill cause invoice drift?",
+        answer_type="boolean",
+        answer_variables=("Did",),
+        target_anchors=("FlowQuill", "invoice drift"),
+        requested_relation="cause",
+        relation_terms=("cause",),
+        constraints=(),
+        source="model_query_drs",
+    )
+    confirmed_span = "Inspection note: the lantern color remains green; the belief is not confirmed as fact."
+    proof_span = "Final judgment summary. The court found no proof that FlowQuill caused invoice drift."
+    final_span = "River Dial note: discussion only, no final decision about archive."
+    assert engine._evidence_directly_negates_requested_relation(confirmed, confirmed_span) is True
+    assert engine._evidence_is_absence_of_record_only(confirmed_span, confirmed) is False
+    assert engine._evidence_directly_negates_requested_relation(proven, proof_span) is True
+    assert engine._evidence_is_absence_of_record_only(proof_span, proven) is False
+    bare_not_proven = "Judgment note: the north hinge crack was not proven."
+    assert engine._evidence_directly_negates_requested_relation(proven, bare_not_proven) is False
+    assert engine._evidence_is_absence_of_record_only(bare_not_proven, proven) is True
+    assert engine._evidence_directly_negates_requested_relation(finalized, final_span) is True
+    assert engine._evidence_is_absence_of_record_only(final_span, finalized) is False
+    assert engine._evidence_directly_negates_requested_relation(event, proof_span) is False
+    assert engine._evidence_is_absence_of_record_only(proof_span, event) is True
+
+
+def test_negative_boolean_verifier_accepts_authoritative_no_proof_for_proven_status(monkeypatch) -> None:
+    engine = object.__new__(KnowMoreDiRTEngine)
+    engine._model_client = object()
+    engine._sentences_by_document = {}
+    engine.model_query_trace = ModelQueryTrace(enabled=True, prompt_hashes=[], response_hashes=[])
+    frame = QueryFrame(
+        question_text="Was FlowQuill proven to have caused invoice drift?",
+        answer_type="boolean",
+        answer_variables=("Was",),
+        target_anchors=("FlowQuill", "invoice drift"),
+        requested_relation="proven caused",
+        relation_terms=("proven", "caused"),
+        constraints=(),
+        source="model_query_drs",
+    )
+    monkeypatch.setattr(engine, "_canonicalize_model_answer_with_local_model", lambda *_args, **_kwargs: None)
+    monkeypatch.setattr(engine_module, "call_model_answer_verification", lambda *_args, **_kwargs: {
+        "accepted": True,
+        "entailed": True,
+        "answer": "no",
+        "evidence_span": "The court found no proof that FlowQuill caused invoice drift.",
+        "proof_kind": "explicit_negation",
+        "accessibility": "asserted",
+        "temporal_alignment": "unspecified",
+        "explicit_negation": True,
+        "absence_of_record_only": False,
+        "incompatible_condition_span": "",
+    })
+    answer = Answer("no", 0.9, [Evidence("judgment.final", "The court found no proof that FlowQuill caused invoice drift.")], "model", "boolean")
+    assert engine._verify_with_local_model(frame.question_text, frame, answer, ExpectedAnswer("boolean")) is True
+
+
+def test_atomic_absence_model_answer_requires_requested_relation_grounding() -> None:
+    engine = object.__new__(KnowMoreDiRTEngine)
+    engine._evidence_window_text = lambda item, **_kwargs: (
+        "A sky-bicycle rule applies only inside the sleep story. " + item.text
+    )
+    frame = QueryFrame(
+        question_text="What rule applies in waking life?",
+        answer_type="content_phrase",
+        answer_variables=("rule",),
+        target_anchors=("waking life",),
+        requested_relation="applies",
+        relation_terms=("applies",),
+        constraints=(),
+        source="model_query_drs",
+    )
+    closing = Evidence(
+        "sleep.txt",
+        "None of it happened in waking life.",
+        span_id="span-1",
+    )
+    assert engine._absence_like_model_answer_has_relation_grounding(
+        frame,
+        "none",
+        closing.text,
+        [closing],
+    ) is False
+
+    explicit = Evidence("record.txt", "owner: none", span_id="span-2")
+    owner_frame = QueryFrame(
+        question_text="What owner is listed?",
+        answer_type="content_phrase",
+        answer_variables=("owner",),
+        target_anchors=(),
+        requested_relation="owner",
+        relation_terms=("owner",),
+        constraints=(),
+        source="model_query_drs",
+    )
+    assert engine._absence_like_model_answer_has_relation_grounding(
+        owner_frame,
+        "none",
+        explicit.text,
+        [explicit],
+    ) is True
+    assert engine._absence_like_model_answer_has_relation_grounding(
+        frame,
+        "three glass bells",
+        closing.text,
+        [closing],
+    ) is True
+
+
+def test_production_query_evidence_rejects_atomic_none_without_relation_grounding(monkeypatch) -> None:
+    engine = object.__new__(KnowMoreDiRTEngine)
+    engine._model_client = object()
+    engine.model_query_trace = ModelQueryTrace(enabled=True, prompt_hashes=[], response_hashes=[])
+    engine.last_bounded_diagnostics = {}
+    engine.documents = []
+    engine._documents_by_rel_path = {}
+    engine._sentences_by_document = {}
+    engine._sentences_by_location = {}
+    engine._context_size = 65536
+    engine.sentences = []
+    engine._search = lambda *args, **kwargs: []
+    engine._evidence_window_text = lambda item, **_kwargs: item.text
+    engine._matching_evidence = lambda evidence, evidence_span, proposed: evidence
+    engine._attach_model_answer_provenance = lambda answer: None
+    engine._record_model_result = lambda model: None
+    evidence = [Evidence("sleep.txt", "None of it happened in waking life.", span_id="s1")]
+    engine._focused_evidence_windows = lambda *args, **kwargs: evidence
+    engine._discourse_payload_for_evidence = lambda *args, **kwargs: []
+    engine._fallback_model_client = lambda: object()
+    engine._evidence_payload = lambda evidence, **kwargs: [
+        {"source": "sleep.txt", "text": evidence[0].text, "span_id": "s1"}
+    ]
+    frame = QueryFrame(
+        question_text="What sky-bicycle rule applies in waking life?",
+        answer_type="content_phrase",
+        answer_variables=("sky-bicycle rule",),
+        target_anchors=("waking life",),
+        requested_relation="applies",
+        relation_terms=("applies", "sky-bicycle rule"),
+        constraints=(),
+        source="model_query_drs",
+    )
+    engine.model_query_trace.last_plan = frame.as_dict()
+    monkeypatch.setattr(engine_module, "call_model_query_evidence_answer", lambda *_args, **_kwargs: {
+        "accepted": True,
+        "sufficient_evidence": True,
+        "answer": "none",
+        "answer_type": "content_phrase",
+        "evidence_span": "None of it happened in waking life.",
+        "prompt_hash": "p",
+        "output_hash": "o",
+    })
+    result = engine._answer_with_model_query_evidence(
+        frame.question_text,
+        ExpectedAnswer("content_phrase"),
+    )
+    assert result is not None
+    assert result.text == "unknown"
+    assert "lacked relation grounding" in result.reason
+
+
+def test_explicit_negative_clause_handles_relation_verb_no_object() -> None:
+    from knowmoredirt.models import Sentence
+    engine = object.__new__(KnowMoreDiRTEngine)
+    engine.model_query_trace = ModelQueryTrace(enabled=True, prompt_hashes=[], response_hashes=[])
+    engine.model_query_trace.last_plan = {
+        "answer_type": "boolean",
+        "target_anchors": ["tank wall"],
+        "requested_relation": "found",
+        "relation_terms": ["find", "found"],
+        "constraints": ["crack"],
+        "answer_variables": ["Was a crack found"],
+    }
+    sentence = Sentence(
+        "s1",
+        "d1",
+        "law.note",
+        "Later inspection found no crack in the tank wall.",
+        0,
+        0,
+        50,
+    )
+    engine._search = lambda *args, **kwargs: [(sentence, 1.0)]
+    engine._evidence = lambda sent, score: Evidence("law.note", sent.text, score=score, span_id="s1")
+    engine._evidence_window_text = lambda item, **kwargs: item.text
+    engine._central_answer_guard = lambda _q, text, _expected, _frame, _evidence: text
+    answer = engine._answer_with_explicit_negative_clause("Was a crack found in the tank wall?")
+    assert answer is not None
+    assert answer.text == "No"
+    assert answer.answer_type == "boolean"
+
+
+def test_explicit_negative_clause_does_not_turn_no_record_into_event_negation() -> None:
+    from knowmoredirt.models import Sentence
+    engine = object.__new__(KnowMoreDiRTEngine)
+    engine.model_query_trace = ModelQueryTrace(enabled=True, prompt_hashes=[], response_hashes=[])
+    engine.model_query_trace.last_plan = {
+        "answer_type": "boolean",
+        "target_anchors": ["tank wall"],
+        "requested_relation": "found",
+        "relation_terms": ["find", "found"],
+        "constraints": ["crack"],
+        "answer_variables": ["Was a crack found"],
+    }
+    sentence = Sentence(
+        "s1",
+        "d1",
+        "law.note",
+        "Later inspection found no record of a crack in the tank wall.",
+        0,
+        0,
+        62,
+    )
+    engine._search = lambda *args, **kwargs: [(sentence, 1.0)]
+    engine._evidence = lambda sent, score: Evidence("law.note", sent.text, score=score, span_id="s1")
+    engine._evidence_window_text = lambda item, **kwargs: item.text
+    engine._central_answer_guard = lambda _q, text, _expected, _frame, _evidence: text
+    assert engine._answer_with_explicit_negative_clause("Was a crack found in the tank wall?") is None

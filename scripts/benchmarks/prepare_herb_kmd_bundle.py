@@ -1,10 +1,11 @@
 #!/usr/bin/env python3
-"""Create a leakage-free, record-safe HERB bundle for KnowMoreDiRT.
+"""Create a leakage-free, artifact-preserving HERB bundle for KnowMoreDiRT.
 
-The HERB repository's canonical normalized artifacts are already separated from
-questions and gold labels. This transform groups those artifacts into JSONL
-source files while preserving one complete artifact per line. Questions and
-scoring gold remain sibling files outside the source folder.
+The HERB normalized layer is used only as an intermediate representation. Each
+admissible RAG artifact is extracted to its own plain-text source file using the
+normalized raw_text field. Benchmark questions and scoring gold remain sibling
+files outside the source folder and oracle-only product membership records are
+excluded.
 """
 
 from __future__ import annotations
@@ -20,9 +21,22 @@ from collections import Counter, defaultdict
 from pathlib import Path
 from typing import Any, Iterable
 
-FORMAT_VERSION = "herb-kmd-prepared-v1"
+FORMAT_VERSION = "herb-kmd-official-rag-v1"
 DEFAULT_NORMALIZED_ROOT = Path("/data/var/herb_benchmark/normalized/herb_normalized")
-DEFAULT_OUTPUT_ROOT = Path("/data/var/herb_benchmark/prepared/kmd_raw_v1")
+DEFAULT_OUTPUT_ROOT = Path("/data/var/herb_benchmark/prepared/kmd_official_rag_v1")
+RAG_SOURCE_ARTIFACT_TYPES = frozenset(
+    {
+        "employee",
+        "customer",
+        "document",
+        "meeting_transcript",
+        "meeting_chat",
+        "url",
+        "pull_request",
+        "slack",
+    }
+)
+ORACLE_ONLY_ARTIFACT_TYPES = frozenset({"product"})
 FORBIDDEN_SOURCE_KEYS = frozenset(
     {
         "answerable_questions",
@@ -136,17 +150,28 @@ def prepare_bundle(
     tmp_root = Path(tempfile.mkdtemp(prefix=f".{output_root.name}.tmp-", dir=tmp_parent))
     source_root = tmp_root / "source"
     source_root.mkdir(parents=True)
-    handles: dict[Path, Any] = {}
     output_counts: Counter[str] = Counter()
-    output_records: defaultdict[str, list[dict[str, Any]]] = defaultdict(list)
     artifact_index: list[dict[str, Any]] = []
     forbidden_hits: Counter[str] = Counter()
     leaked_questions: list[dict[str, str]] = []
     max_seen_chars = 0
     max_seen_artifact = ""
+    normalized_artifact_count = 0
+    excluded_oracle_artifacts: Counter[str] = Counter()
+    seen_artifact_ids: set[str] = set()
+    deduplicated_occurrences: Counter[str] = Counter()
 
     try:
         for line_number, artifact in enumerate(iter_jsonl(artifacts_path), start=1):
+            normalized_artifact_count += 1
+            artifact_type_value = str(artifact.get("artifact_type") or "")
+            if artifact_type_value in ORACLE_ONLY_ARTIFACT_TYPES:
+                excluded_oracle_artifacts[artifact_type_value] += 1
+                continue
+            if artifact_type_value not in RAG_SOURCE_ARTIFACT_TYPES:
+                raise ValueError(
+                    f"unsupported HERB RAG artifact type {artifact_type_value!r} at normalized line {line_number}"
+                )
             keys, strings = walk_keys_and_strings(artifact)
             for key in sorted(keys.intersection(FORBIDDEN_SOURCE_KEYS)):
                 forbidden_hits[key] += 1
@@ -159,44 +184,51 @@ def prepare_bundle(
                         "question": question,
                     }
                 )
-            encoded = canonical_json(artifact)
-            if len(encoded) > max_record_chars:
+            artifact_id = str(artifact.get("artifact_id") or "").strip()
+            if not artifact_id:
+                raise ValueError(f"normalized artifact at line {line_number} has no artifact_id")
+            if artifact_id in seen_artifact_ids:
+                if artifact_type_value != "url":
+                    raise ValueError(f"duplicate non-URL HERB artifact_id: {artifact_id}")
+                deduplicated_occurrences[artifact_type_value] += 1
+                continue
+            seen_artifact_ids.add(artifact_id)
+            body = str(artifact.get("raw_text") or "").strip()
+            if not body:
+                raise ValueError(f"artifact {artifact_id} has empty raw_text")
+            if len(body) > max_record_chars:
                 raise ValueError(
-                    f"artifact {artifact.get('artifact_id')} has {len(encoded)} chars, "
+                    f"artifact {artifact_id} has {len(body)} chars, "
                     f"exceeding max_record_chars={max_record_chars}"
                 )
-            if len(encoded) > max_seen_chars:
-                max_seen_chars = len(encoded)
-                max_seen_artifact = str(artifact.get("artifact_id") or "")
+            if len(body) > max_seen_chars:
+                max_seen_chars = len(body)
+                max_seen_artifact = artifact_id
             product = slug(artifact.get("product_id"), "global")
             artifact_type = slug(artifact.get("artifact_type"), "artifact")
-            rel = Path(product) / f"{artifact_type}.jsonl"
+            identity_material = f"{artifact_type}\x1f{artifact_id}"
+            identity_hash = hashlib.sha256(identity_material.encode("utf-8")).hexdigest()[:16]
+            artifact_slug = slug(artifact_id, "artifact")[:96]
+            rel = Path(product) / artifact_type / f"{artifact_slug}--{identity_hash}.txt"
             target = source_root / rel
-            handle = handles.get(target)
-            if handle is None:
-                target.parent.mkdir(parents=True, exist_ok=True)
-                handle = target.open("w", encoding="utf-8", newline="\n")
-                handles[target] = handle
-            handle.write(encoded + "\n")
+            if target.exists():
+                raise ValueError(f"prepared source path collision for {artifact_id}: {rel}")
+            target.parent.mkdir(parents=True, exist_ok=True)
+            encoded_body = (body + "\n").encode("utf-8")
+            target.write_bytes(encoded_body)
             key = rel.as_posix()
-            output_counts[key] += 1
+            output_counts[key] = 1
             artifact_index.append(
                 {
-                    "artifact_id": str(artifact.get("artifact_id") or ""),
-                    "artifact_type": str(artifact.get("artifact_type") or ""),
+                    "artifact_id": artifact_id,
+                    "artifact_type": artifact_type_value,
                     "product_id": str(artifact.get("product_id") or ""),
                     "source_file": key,
-                    "source_record_index": output_counts[key] - 1,
                     "normalized_line_number": line_number,
-                    "record_sha256": sha256_bytes(encoded.encode("utf-8")),
-                    "record_chars": len(encoded),
+                    "source_text_sha256": sha256_bytes(encoded_body),
+                    "source_text_chars": len(body),
                 }
             )
-        for handle in handles.values():
-            handle.flush()
-            os.fsync(handle.fileno())
-            handle.close()
-        handles.clear()
 
         if forbidden_hits:
             raise ValueError(f"forbidden benchmark keys found in source artifacts: {dict(forbidden_hits)}")
@@ -216,7 +248,7 @@ def prepare_bundle(
 
         validation = validate_source_folder(
             source_root,
-            expected_records=len(artifact_index),
+            artifact_index=artifact_index,
             expected_questions=exact_questions,
             max_record_chars=max_record_chars,
         )
@@ -227,9 +259,18 @@ def prepare_bundle(
             "questions_file": "questions.jsonl",
             "gold_file": "gold.jsonl",
             "artifact_index_file": "artifact_index.jsonl",
+            "normalized_artifact_count": normalized_artifact_count,
             "artifact_count": len(artifact_index),
+            "excluded_oracle_artifact_count": sum(excluded_oracle_artifacts.values()),
+            "excluded_oracle_artifacts_by_type": dict(sorted(excluded_oracle_artifacts.items())),
+            "deduplicated_occurrence_count": sum(deduplicated_occurrences.values()),
+            "deduplicated_occurrences_by_type": dict(sorted(deduplicated_occurrences.items())),
+            "rag_source_artifact_types": sorted(RAG_SOURCE_ARTIFACT_TYPES),
+            "oracle_only_artifact_types": sorted(ORACLE_ONLY_ARTIFACT_TYPES),
             "question_count": len(questions),
             "gold_count": len(gold_rows),
+            "source_representation": "one-artifact-per-plain-text-file",
+            "source_text_field": "raw_text",
             "source_file_count": len(output_counts),
             "source_records_by_file": dict(sorted(output_counts.items())),
             "max_record_chars": max_seen_chars,
@@ -260,11 +301,6 @@ def prepare_bundle(
         tmp_root.replace(output_root)
         return json.loads((output_root / "manifest.json").read_text(encoding="utf-8"))
     except Exception:
-        for handle in handles.values():
-            try:
-                handle.close()
-            except Exception:
-                pass
         shutil.rmtree(tmp_root, ignore_errors=True)
         raise
 
@@ -272,48 +308,49 @@ def prepare_bundle(
 def validate_source_folder(
     source_root: Path,
     *,
-    expected_records: int,
+    artifact_index: list[dict[str, Any]],
     expected_questions: set[str],
     max_record_chars: int,
 ) -> dict[str, Any]:
-    record_count = 0
-    file_count = 0
-    forbidden_hits: Counter[str] = Counter()
+    expected_by_path = {str(row["source_file"]): row for row in artifact_index}
+    if len(expected_by_path) != len(artifact_index):
+        raise ValueError("artifact index contains duplicate source paths")
+    actual_paths = {
+        path.relative_to(source_root).as_posix(): path
+        for path in source_root.rglob("*")
+        if path.is_file()
+    }
+    missing = sorted(set(expected_by_path) - set(actual_paths))
+    extra = sorted(set(actual_paths) - set(expected_by_path))
+    if missing or extra:
+        raise ValueError(f"prepared source file set mismatch: missing={missing[:5]} extra={extra[:5]}")
     leaked_questions: list[dict[str, str]] = []
     max_seen = 0
-    for path in sorted(source_root.rglob("*.jsonl")):
-        file_count += 1
-        with path.open("r", encoding="utf-8") as handle:
-            for line_number, line in enumerate(handle, start=1):
-                if not line.strip():
-                    continue
-                record_count += 1
-                encoded = line.rstrip("\r\n")
-                max_seen = max(max_seen, len(encoded))
-                if len(encoded) > max_record_chars:
-                    raise ValueError(f"{path}:{line_number} exceeds record character contract")
-                value = json.loads(encoded)
-                if not isinstance(value, dict):
-                    raise ValueError(f"{path}:{line_number} is not an object")
-                keys, strings = walk_keys_and_strings(value)
-                for key in keys.intersection(FORBIDDEN_SOURCE_KEYS):
-                    forbidden_hits[key] += 1
-                overlaps = expected_questions.intersection({item.strip() for item in strings if item.strip()})
-                for question in overlaps:
-                    leaked_questions.append({"path": str(path), "question": question})
-    if record_count != expected_records:
-        raise ValueError(f"source record count mismatch: {record_count} != {expected_records}")
-    if forbidden_hits:
-        raise ValueError(f"forbidden source keys found: {dict(forbidden_hits)}")
+    for rel, path in sorted(actual_paths.items()):
+        if path.suffix.lower() != ".txt":
+            raise ValueError(f"prepared HERB source is not plain text: {rel}")
+        body = path.read_text(encoding="utf-8")
+        stripped = body.strip()
+        if not stripped:
+            raise ValueError(f"prepared HERB source is empty: {rel}")
+        max_seen = max(max_seen, len(stripped))
+        if len(stripped) > max_record_chars:
+            raise ValueError(f"{rel} exceeds source character contract")
+        row = expected_by_path[rel]
+        if sha256_file(path) != str(row["source_text_sha256"]):
+            raise ValueError(f"prepared HERB source hash mismatch: {rel}")
+        if stripped in expected_questions:
+            leaked_questions.append({"path": rel, "question": stripped})
     if leaked_questions:
         raise ValueError(f"official question text found in source folder: {leaked_questions[:5]}")
     return {
-        "source_file_count": file_count,
-        "source_record_count": record_count,
+        "source_file_count": len(actual_paths),
+        "source_record_count": len(actual_paths),
         "max_record_chars": max_seen,
         "forbidden_key_hits": 0,
         "official_question_text_hits": 0,
         "json_parse_errors": 0,
+        "plain_text_source_files": len(actual_paths),
     }
 
 
@@ -349,9 +386,38 @@ def validate_prepared_bundle(manifest_path: Path) -> dict[str, Any]:
     index_rows = list(iter_jsonl(index_path))
     if len(index_rows) != int(manifest["artifact_count"]):
         raise ValueError("prepared artifact index count mismatch")
+    if set(manifest.get("rag_source_artifact_types", [])) != RAG_SOURCE_ARTIFACT_TYPES:
+        raise ValueError("prepared RAG artifact-type allowlist mismatch")
+    if set(manifest.get("oracle_only_artifact_types", [])) != ORACLE_ONLY_ARTIFACT_TYPES:
+        raise ValueError("prepared oracle-only artifact-type list mismatch")
+    normalized_count = int(manifest.get("normalized_artifact_count", manifest["artifact_count"]))
+    excluded_count = int(manifest.get("excluded_oracle_artifact_count", 0))
+    deduplicated_count = int(manifest.get("deduplicated_occurrence_count", 0))
+    if normalized_count != int(manifest["artifact_count"]) + excluded_count + deduplicated_count:
+        raise ValueError("prepared normalized/included/excluded/deduplicated artifact accounting mismatch")
+    if normalized_count == 39280:
+        expected_type_counts = {
+            "slack": 33632,
+            "document": 400,
+            "pull_request": 3562,
+            "url": 575,
+            "meeting_transcript": 321,
+            "meeting_chat": 50,
+            "customer": 120,
+            "employee": 530,
+        }
+        actual_type_counts = Counter(str(row.get("artifact_type") or "") for row in index_rows)
+        if dict(actual_type_counts) != expected_type_counts:
+            raise ValueError(f"prepared HERB type counts do not match published pool: {dict(actual_type_counts)} != {expected_type_counts}")
+        if int(manifest["artifact_count"]) != 39190:
+            raise ValueError(f"prepared HERB artifact count must be 39190, got {manifest['artifact_count']}")
+    if manifest.get("source_representation") != "one-artifact-per-plain-text-file":
+        raise ValueError("prepared source representation mismatch")
+    if manifest.get("source_text_field") != "raw_text":
+        raise ValueError("prepared source text field mismatch")
     validation = validate_source_folder(
         source_root,
-        expected_records=int(manifest["artifact_count"]),
+        artifact_index=index_rows,
         expected_questions={row["question"].strip() for row in questions if row["question"].strip()},
         max_record_chars=int(manifest["max_record_chars_contract"]),
     )

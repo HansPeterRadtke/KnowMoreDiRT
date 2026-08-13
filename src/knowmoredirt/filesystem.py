@@ -7,9 +7,11 @@ that package directly importable and usable through its own command-line tools.
 from __future__ import annotations
 
 import os
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any
+
+from kmd_runtime_config import floating as _config_float, integer as _config_int, text as _config_text
 
 from file_system_catalog.content_pipeline import AnalysisClient, EmbeddingClient
 from file_system_catalog.folder_assistant import FolderQuestionAssistant, initialize_text_folder
@@ -17,35 +19,33 @@ from file_system_catalog.folder_assistant import FolderQuestionAssistant, initia
 
 @dataclass(frozen=True)
 class FilesystemModelConfig:
-    analysis_url: str = "http://127.0.0.1:14829"
-    analysis_model: str = "/data/models/llm/Qwen3.5-27B-Q8_0/Qwen3.5-27B-Q8_0.gguf"
-    embedding_url: str = "http://127.0.0.1:18139"
-    embedding_model: str = "qwen3-embedding-0.6b-q8"
-    embedding_revision: str = "370f27d7550e0def9b39c1f16d3fbaa13aa67728:Q8_0"
-    embedding_batch_size: int = 8
-    embedding_max_batch_characters: int = 60_000
-    seed: int = 42
-    temperature: float = 0.0
+    analysis_url: str = field(default_factory=lambda: _config_text("KMD_LOCAL_MODEL_ENDPOINT").rstrip("/"))
+    analysis_model: str = field(default_factory=lambda: _config_text("KMD_LOCAL_MODEL_NAME"))
+    embedding_url: str = field(default_factory=lambda: _config_text("KMD_EMBEDDING_ENDPOINT").rstrip("/"))
+    embedding_model: str = field(default_factory=lambda: _config_text("KMD_EMBEDDING_MODEL"))
+    embedding_revision: str = field(default_factory=lambda: _config_text("KMD_EMBEDDING_REVISION"))
+    embedding_batch_size: int = field(default_factory=lambda: _config_int("KMD_EMBEDDING_BATCH_SIZE"))
+    embedding_max_batch_characters: int = field(default_factory=lambda: _config_int("KMD_EMBEDDING_MAX_BATCH_CHARACTERS"))
+    seed: int = field(default_factory=lambda: _config_int("KMD_MODEL_SEED"))
+    temperature: float = field(default_factory=lambda: _config_float("KMD_MODEL_TEMPERATURE"))
 
     @classmethod
     def from_environment(cls) -> "FilesystemModelConfig":
-        analysis_url = os.getenv("KMD_LOCAL_MODEL_ENDPOINT", cls.analysis_url).rstrip("/")
+        analysis_url = _config_text("KMD_LOCAL_MODEL_ENDPOINT").rstrip("/")
         for suffix in ("/v1/chat/completions", "/chat/completions", "/v1"):
             if analysis_url.endswith(suffix):
                 analysis_url = analysis_url[: -len(suffix)]
                 break
         return cls(
             analysis_url=analysis_url,
-            analysis_model=os.getenv("KMD_LOCAL_MODEL_NAME", cls.analysis_model),
-            embedding_url=os.getenv("KMD_EMBEDDING_ENDPOINT", cls.embedding_url).rstrip("/"),
-            embedding_model=os.getenv("KMD_EMBEDDING_MODEL", cls.embedding_model),
-            embedding_revision=os.getenv("KMD_EMBEDDING_REVISION", cls.embedding_revision),
-            embedding_batch_size=int(os.getenv("KMD_EMBEDDING_BATCH_SIZE", str(cls.embedding_batch_size))),
-            embedding_max_batch_characters=int(
-                os.getenv("KMD_EMBEDDING_MAX_BATCH_CHARACTERS", str(cls.embedding_max_batch_characters))
-            ),
-            seed=int(os.getenv("KMD_MODEL_SEED", str(cls.seed))),
-            temperature=float(os.getenv("KMD_MODEL_TEMPERATURE", str(cls.temperature))),
+            analysis_model=_config_text("KMD_LOCAL_MODEL_NAME"),
+            embedding_url=_config_text("KMD_EMBEDDING_ENDPOINT").rstrip("/"),
+            embedding_model=_config_text("KMD_EMBEDDING_MODEL"),
+            embedding_revision=_config_text("KMD_EMBEDDING_REVISION"),
+            embedding_batch_size=_config_int("KMD_EMBEDDING_BATCH_SIZE"),
+            embedding_max_batch_characters=_config_int("KMD_EMBEDDING_MAX_BATCH_CHARACTERS"),
+            seed=_config_int("KMD_MODEL_SEED"),
+            temperature=_config_float("KMD_MODEL_TEMPERATURE"),
         )
 
     def clients(self) -> tuple[AnalysisClient, EmbeddingClient]:

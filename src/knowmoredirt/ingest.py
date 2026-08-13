@@ -9,6 +9,9 @@ import time
 from pathlib import Path
 from typing import Any
 
+from kmd_runtime_config import boolean as _config_boolean, default_specs as _config_specs
+
+from .runtime_logging import get_logger
 from .context_budget import context_ratio, positive_float
 from .drs import DiscourseArgument, DiscourseCondition, frame_from_model_dict
 from .extractors import capitalized_phrases, identifiers, urls
@@ -20,6 +23,7 @@ from .model_planner import (
     chunk_drs_cache_context,
     chunk_frame_cache_context,
     default_chunk_drs_n_predict,
+    structured_failure_retryable,
 )
 from .relations import ExtractedRelation, extract_relations, transcript_turn_parts
 from .scanner import scan_folder
@@ -29,23 +33,25 @@ from .text import clean_extracted_value, normalize, text_quality_metrics, tokeni
 
 
 TABLE_SPLIT_RE = re.compile(r"\s*(?:\||\t)\s*")
+LOGGER = get_logger("ingest")
 PROGRESS_TRUE_VALUES = {"1", "true", "yes", "on"}
 FIRST_PERSON_REFERENCE_NORMS = {"i", "me", "myself", "we", "us", "ourselves"}
 STRUCTURAL_SPEAKER_LABEL_NORMS = {"author", "from", "sender", "speaker"}
 
 
 def _progress_enabled() -> bool:
-    return os.environ.get("KMD_PROGRESS", "").strip().lower() in PROGRESS_TRUE_VALUES or os.environ.get(
-        "KMD_EVAL_PROGRESS", ""
-    ).strip().lower() in PROGRESS_TRUE_VALUES
+    return _config_boolean("KMD_PROGRESS") or _config_boolean("KMD_EVAL_PROGRESS")
 
 
 def _log_progress(message: str) -> None:
+    LOGGER.info(message)
     if _progress_enabled():
         print(message, flush=True)
 
 
 def _env_true(name: str) -> bool:
+    if name in _config_specs():
+        return _config_boolean(name)
     return os.environ.get(name, "").strip().lower() in PROGRESS_TRUE_VALUES
 
 
@@ -103,6 +109,8 @@ def _attempt_was_nonrequest_failure(row: Any | None) -> bool:
         return False
     reason = str(row["reason"] or "")
     if reason in {"", "request_failed"} or bool(row["materialized"]):
+        return False
+    if structured_failure_retryable({"reason": reason}):
         return False
     if bool(row["accepted"]):
         try:
@@ -447,7 +455,7 @@ def _scan_pack_unit_count() -> int:
 
 
 def _scan_pack_unit_chars(semantic_client: Any | None) -> int:
-    enabled = os.environ.get("KMD_SCAN_PACK_UNITS", "1").strip().lower() not in {"0", "false", "no", "off"}
+    enabled = _config_boolean("KMD_SCAN_PACK_UNITS")
     if not enabled:
         return 0
     return _scan_unit_max_chars(semantic_client)

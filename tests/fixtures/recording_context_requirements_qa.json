@@ -1,0 +1,53 @@
+{
+  "description": "Long-range context edge cases derived from the KMD voice requirements.",
+  "questions": [
+    {
+      "id": "rcr001",
+      "category": "implicit_sleep_real_world_scope",
+      "question": "What sky-bicycle rule applies in waking life?",
+      "answer": "unknown"
+    },
+    {
+      "id": "rcr002",
+      "category": "implicit_sleep_requested_scope",
+      "question": "What rule about sky bicycles was described during Nera Vale's sleep-only experience?",
+      "answer": "Sky bicycles must ring three glass bells before crossing the amber bridge"
+    },
+    {
+      "id": "rcr003",
+      "category": "retroactive_dream_real_world_scope",
+      "question": "What canal-scooter rule applies in the real world?",
+      "answer": "unknown"
+    },
+    {
+      "id": "rcr004",
+      "category": "retroactive_dream_requested_scope",
+      "question": "What canal-scooter rule was stated in Timmy's dream?",
+      "answer": "Canal scooters must carry a white pennant after midnight"
+    },
+    {
+      "id": "rcr005",
+      "category": "hypothetical_header_real_world_scope",
+      "question": "What cargo-walker rule is actually operating in the eastern service yard?",
+      "answer": "unknown"
+    },
+    {
+      "id": "rcr006",
+      "category": "hypothetical_header_requested_scope",
+      "question": "What cargo-walker rule does the hypothetical safety exercise specify?",
+      "answer": "Cargo walkers must carry two red flags while crossing the eastern service yard"
+    },
+    {
+      "id": "rcr007",
+      "category": "dated_section_first_scope",
+      "question": "What was Sensor A pressure in the field log dated 2044-05-17?",
+      "answer": "19 kPa"
+    },
+    {
+      "id": "rcr008",
+      "category": "dated_section_second_scope",
+      "question": "What was Sensor A pressure in the field log dated 2044-06-01?",
+      "answer": "23 kPa"
+    }
+  ]
+}

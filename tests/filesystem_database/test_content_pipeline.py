@@ -895,3 +895,20 @@ def test_analysis_and_embedding_control_requests_use_their_own_timeout_attribute
         ("http://unused/health", 23.0),
         ("http://unused/tokenize", 23.0),
     ]
+
+
+def test_discover_model_context_rejects_wrong_advertised_model(monkeypatch) -> None:
+    import pytest
+    from file_system_catalog import content_pipeline as module
+
+    def fake_request_json(url, payload=None, **kwargs):
+        assert url.endswith('/v1/models')
+        return {
+            'data': [
+                {'id': 'different-model', 'meta': {'n_ctx': 8192, 'n_ctx_train': 8192}},
+            ]
+        }
+
+    monkeypatch.setattr(module, 'request_json', fake_request_json)
+    with pytest.raises(RuntimeError, match='configured model is not advertised'):
+        module.discover_model_context('http://127.0.0.1:18139', 'expected-model')

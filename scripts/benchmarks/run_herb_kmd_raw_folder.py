@@ -28,7 +28,7 @@ from pathlib import Path
 from typing import Any
 
 
-DEFAULT_PREPARED_ROOT = Path("/data/var/herb_benchmark/prepared/kmd_raw_v1")
+DEFAULT_PREPARED_ROOT = Path("/data/var/herb_benchmark/prepared/kmd_official_rag_v1")
 DEFAULT_RAW_FOLDER = DEFAULT_PREPARED_ROOT / "source"
 DEFAULT_QUESTIONS_FILE = DEFAULT_PREPARED_ROOT / "questions.jsonl"
 DEFAULT_PREPARED_MANIFEST = DEFAULT_PREPARED_ROOT / "manifest.json"
@@ -36,11 +36,101 @@ DEFAULT_HERB_ROOT = Path("/data/src/github/devtests/herb_benchmark")
 DEFAULT_VAR_ROOT = Path("/data/var/herb_benchmark")
 DEFAULT_KMD_REPORT_ROOT = Path("/data/var/knowmoredirt/reports")
 DEFAULT_KMD_RUN_ROOT = Path("/data/var/knowmoredirt/herb_runs")
-HERB_RESUME_SCHEMA = "kmd-herb-resume-v2"
+HERB_RESUME_SCHEMA = "kmd-herb-resume-v3"
+HERB_ANSWER_ENV_KEYS = (
+    "KMD_USE_LOCAL_MODEL",
+    "KMD_LOCAL_MODEL_ENDPOINT",
+    "KMD_LOCAL_MODEL_NAME",
+    "KMD_LOCAL_MODEL_ID",
+    "KMD_LOCAL_MODEL_EXPECTED_ID",
+    "KMD_LOCAL_MODEL_PER_TOKEN_TIMEOUT_SECONDS",
+    "KMD_LOCAL_MODEL_API",
+    "KMD_LOCAL_MODEL_CONSTRAINT_MODE",
+    "KMD_LOCAL_MODEL_CACHE_PROMPT",
+    "KMD_LOCAL_MODEL_JSON_SCHEMA",
+    "KMD_LOCAL_MODEL_GRAMMAR",
+    "KMD_LOCAL_MODEL_STREAM_BYTES_PER_TOKEN",
+    "KMD_LOCAL_MODEL_STREAM_EVENT_MULTIPLIER",
+    "KMD_LOCAL_MODEL_STREAM_TOTAL_TIMEOUT_SECONDS",
+    "KMD_LOCAL_MODEL_SEND_THINKING_CONTROLS",
+    "KMD_LOCAL_MODEL_SEED",
+    "KMD_LOCAL_MODEL_TEMPERATURE",
+    "KMD_LOCAL_MODEL_TOP_P",
+    "KMD_LOCAL_MODEL_TOP_K",
+    "KMD_LOCAL_MODEL_MIN_P",
+    "KMD_LOCAL_MODEL_REPEAT_PENALTY",
+    "KMD_LLM_DRS_INGEST",
+    "KMD_QUERY_DRS_PLAN",
+    "KMD_CHUNK_DRS_COMPACT_FIRST",
+    "KMD_QUERY_DRS_COMPACT_FIRST",
+    "KMD_LAZY_LLM_FRAMES",
+    "KMD_DRS_RETRY_FAILED_ATTEMPTS",
+    "KMD_SCAN_UNIT_MAX_CHARS",
+    "KMD_SCAN_PACK_UNITS",
+    "KMD_SCAN_PACK_MAX_CHARS",
+    "KMD_SCAN_PACK_MAX_UNITS",
+    "KMD_VECTOR_RETRIEVAL_MODE",
+    "KMD_VECTOR_MIN_SIMILARITY",
+    "KMD_VECTOR_RESULT_MULTIPLIER",
+    "KMD_DOCUMENT_CONTEXT_ENVELOPES",
+    "KMD_DOCUMENT_CONTEXT_MIN_CONFIDENCE",
+    "KMD_DOCUMENT_CONTEXT_BOUNDARY_RATIO",
+    "KMD_EMBEDDING_MODEL",
+    "KMD_EMBEDDING_REVISION",
+    "KMD_FILESYSTEM_CHUNK_INPUT_RATIO",
+    "KMD_FILESYSTEM_CHUNK_CHARS_PER_TOKEN",
+    "KMD_FILESYSTEM_CHUNK_TARGET_RATIO",
+    "KMD_FILESYSTEM_CHUNK_OVERLAP_RATIO",
+)
 
 
 _RUN_STATE: dict[str, Any] = {"stage": "startup"}
 _TERMINATION_LOGGED = False
+
+
+def _normalize_embedding_base_url() -> str:
+    """Normalize KMD_EMBEDDING_ENDPOINT to the server base URL.
+
+    KMD's EmbeddingClient appends /v1/models and /v1/embeddings itself.  A full
+    request endpoint here would produce invalid doubled paths.
+    """
+
+    value = os.environ.get("KMD_EMBEDDING_ENDPOINT", "").strip().rstrip("/")
+    if not value:
+        return value
+    for suffix in ("/v1/embeddings", "/embeddings", "/v1"):
+        if value.endswith(suffix):
+            value = value[: -len(suffix)].rstrip("/")
+            break
+    if not value:
+        raise RuntimeError("KMD_EMBEDDING_ENDPOINT normalized to an empty base URL")
+    os.environ["KMD_EMBEDDING_ENDPOINT"] = value
+    return value
+
+
+def _pin_kmd_model_identity() -> str:
+    """Pin every KMD model-identity setting to the benchmark judge/model id.
+
+    HERB uses one local model endpoint for KMD semantic analysis and for the
+    evaluator-model substitution.  Refuse conflicting explicit identities so a
+    run cannot mix models across subsystems or reuse a cache under the wrong id.
+    """
+
+    model_id = os.environ.get("LLM_MODEL", "").strip()
+    if not model_id:
+        model_id = os.environ.get("KMD_LOCAL_MODEL_NAME", "").strip()
+    if not model_id:
+        raise RuntimeError(
+            "HERB local-model run requires LLM_MODEL or KMD_LOCAL_MODEL_NAME to pin the live model identity"
+        )
+    for key in ("KMD_LOCAL_MODEL_NAME", "KMD_LOCAL_MODEL_ID", "KMD_LOCAL_MODEL_EXPECTED_ID"):
+        configured = os.environ.get(key, "").strip()
+        if configured and configured != model_id:
+            raise RuntimeError(
+                f"conflicting HERB/KMD model identity: LLM_MODEL={model_id!r} {key}={configured!r}"
+            )
+        os.environ[key] = model_id
+    return model_id
 
 
 def configure_process_io() -> None:
@@ -134,6 +224,18 @@ def read_official_questions(path: Path) -> list[dict[str, str]]:
     return rows
 
 
+def read_jsonl(path: Path) -> list[dict[str, Any]]:
+    rows: list[dict[str, Any]] = []
+    with path.open("r", encoding="utf-8") as handle:
+        for line in handle:
+            if line.strip():
+                value = json.loads(line)
+                if not isinstance(value, dict):
+                    raise ValueError(f"{path} contains a non-object JSONL row")
+                rows.append(value)
+    return rows
+
+
 def write_jsonl(path: Path, rows: list[dict[str, Any]]) -> None:
     path.parent.mkdir(parents=True, exist_ok=True)
     descriptor, temporary_name = tempfile.mkstemp(
@@ -192,6 +294,113 @@ def _atomic_write_json(path: Path, payload: Any) -> None:
         raise
 
 
+HERB_FILESYSTEM_CACHE_SCHEMA = "kmd-herb-filesystem-vector-cache-v1"
+
+
+def _canonical_json(value: Any) -> str:
+    return json.dumps(value, ensure_ascii=False, sort_keys=True, separators=(",", ":"))
+
+
+def _herb_answer_source_hashes(repo_root: Path) -> dict[str, str]:
+    """Hash KMD source that can affect public answer outputs.
+
+    Evaluation/scoring code is intentionally excluded so corrected scoring can
+    be rerun against unchanged expensive KMD answers. Filesystem vector-builder
+    source is covered separately by the catalog manifest embedded below.
+    """
+
+    source_root = repo_root / "src" / "knowmoredirt"
+    files = {
+        path.relative_to(repo_root).as_posix(): path
+        for path in source_root.glob("*.py")
+        if path.name != "evaluation.py"
+    }
+    files["src/context_capacity.py"] = repo_root / "src" / "context_capacity.py"
+    return {name: _sha256_file(path) for name, path in sorted(files.items())}
+
+
+def _filesystem_catalog_source_hashes(repo_root: Path) -> dict[str, str]:
+    files = {
+        "filesystem_facade": repo_root / "src" / "knowmoredirt" / "filesystem.py",
+        "content_pipeline": repo_root / "src" / "file_system_catalog" / "content_pipeline.py",
+        "content_schema": repo_root / "src" / "file_system_catalog" / "content_schema.py",
+        "filesystem_schema": repo_root / "src" / "file_system_catalog" / "schema.py",
+        "filesystem_scanner": repo_root / "src" / "file_system_catalog" / "scanner.py",
+        "context_capacity": repo_root / "src" / "context_capacity.py",
+    }
+    return {name: _sha256_file(path) for name, path in files.items()}
+
+
+def _herb_filesystem_catalog_manifest(repo_root: Path, raw_folder: Path) -> dict[str, Any]:
+    from knowmoredirt.filesystem import FilesystemModelConfig
+
+    config = FilesystemModelConfig.from_environment()
+    env = {
+        key: value
+        for key, value in sorted(os.environ.items())
+        if key.startswith("KMD_EMBEDDING_")
+        or key.startswith("KMD_FILESYSTEM_CHUNK_")
+        or key in {"KMD_LOCAL_MODEL_ENDPOINT", "KMD_LOCAL_MODEL_NAME"}
+    }
+    return {
+        "schema": HERB_FILESYSTEM_CACHE_SCHEMA,
+        "raw_folder": str(raw_folder.resolve()),
+        "raw_tree_hash": _tree_hash(raw_folder),
+        "analysis_url": config.analysis_url,
+        "analysis_model": config.analysis_model,
+        "embedding_url": config.embedding_url,
+        "embedding_model": config.embedding_model,
+        "embedding_revision": config.embedding_revision,
+        "embedding_batch_size": config.embedding_batch_size,
+        "embedding_max_batch_characters": config.embedding_max_batch_characters,
+        "environment": env,
+        "source_hashes": _filesystem_catalog_source_hashes(repo_root),
+        "chunks_only": True,
+    }
+
+
+def _prepare_herb_filesystem_catalog(
+    repo_root: Path,
+    raw_folder: Path,
+    var_root: Path,
+    *,
+    manifest: dict[str, Any] | None = None,
+) -> tuple[Path, dict[str, Any]]:
+    from knowmoredirt.filesystem import initialize_filesystem_database
+
+    manifest = manifest or _herb_filesystem_catalog_manifest(repo_root, raw_folder)
+    digest = hashlib.sha256(_canonical_json(manifest).encode("utf-8")).hexdigest()
+    cache_root = Path(
+        os.environ.get(
+            "KMD_HERB_FILESYSTEM_CACHE_ROOT",
+            str(var_root / "kmd_filesystem_catalog_cache"),
+        )
+    )
+    root = cache_root / digest
+    database = root / "catalog.sqlite3"
+    manifest_path = root / "manifest.json"
+    if database.is_file() and manifest_path.is_file():
+        try:
+            cached = json.loads(manifest_path.read_text(encoding="utf-8"))
+        except (OSError, json.JSONDecodeError):
+            cached = None
+        if cached == manifest:
+            return database, {"reused_existing": True, "cache_key": digest, "manifest": manifest}
+    root.mkdir(parents=True, exist_ok=True)
+    result = initialize_filesystem_database(
+        raw_folder,
+        database,
+        replace=database.exists(),
+        chunks_only=True,
+        collection_id=f"herb-kmd:{digest[:16]}",
+        progress_every=25,
+    )
+    _atomic_write_json(manifest_path, manifest)
+    payload = dict(result) if isinstance(result, dict) else {"result": result}
+    payload.update({"reused_existing": False, "cache_key": digest, "manifest": manifest})
+    return database, payload
+
+
 def _herb_resume_manifest(
     *,
     repo_root: Path,
@@ -201,23 +410,20 @@ def _herb_resume_manifest(
     prepared_manifest: Path,
     questions: list[dict[str, str]],
     args: argparse.Namespace,
+    filesystem_catalog_manifest: dict[str, Any] | None = None,
 ) -> dict[str, Any]:
-    env = {
-        key: value
-        for key, value in sorted(os.environ.items())
-        if key.startswith("KMD_") or key in {"LLM_BASE_URL", "HERB_BENCHMARK_SOURCE_ROOT", "HERB_BENCHMARK_VAR_ROOT"}
-    }
+    env = {key: os.environ.get(key, "") for key in HERB_ANSWER_ENV_KEYS}
     return {
         "schema": HERB_RESUME_SCHEMA,
-        "kmd_source_tree_hash": _tree_hash(repo_root / "src"),
+        "kmd_answer_source_hashes": _herb_answer_source_hashes(repo_root),
         "runner_hash": _sha256_file(Path(__file__).resolve()),
-        "herb_evaluator_hash": _sha256_file(herb_root / "src" / "herb_kgqa" / "evaluator.py"),
         "raw_folder": str(raw_folder),
         "raw_tree_hash": _tree_hash(raw_folder),
         "questions_path": str(questions_path),
         "questions_hash": _sha256_file(questions_path),
         "prepared_manifest": str(prepared_manifest),
         "prepared_manifest_hash": _sha256_file(prepared_manifest),
+        "filesystem_catalog_manifest": filesystem_catalog_manifest or {},
         "questions": questions,
         "use_local_model": bool(args.use_local_model),
         "limit": int(args.limit),
@@ -286,7 +492,8 @@ def _reconcile_resume_outputs(run_dir: Path) -> tuple[set[str], int]:
 
 def serialize_answer(public_answer: str) -> str | list[str]:
     answer = str(public_answer or "").strip()
-    if not answer or answer.lower() == "unknown":
+    normalized = answer.lower()
+    if not answer or normalized == "unknown" or re.match(r"^unknown(?:\s|$|[—–:;,-])", normalized):
         return ""
     values = re.findall(r"(?:https?://[^\s,;]+|[A-Z][A-Z0-9]{1,9}-\d+[A-Z0-9-]*|eid_[a-z0-9]+|CUST-\d+)", answer)
     if values and len(" ".join(values)) >= max(3, len(answer.strip()) - 4):
@@ -340,6 +547,13 @@ def main() -> int:
     from prepare_herb_kmd_bundle import validate_prepared_bundle
 
     prepared = validate_prepared_bundle(prepared_manifest)
+    artifact_index_path = prepared["root"] / str(prepared["manifest"]["artifact_index_file"])
+    source_to_artifact = {
+        str(row["source_file"]): str(row["artifact_id"])
+        for row in read_jsonl(artifact_index_path)
+    }
+    if len(source_to_artifact) != int(prepared["manifest"]["artifact_count"]):
+        raise ValueError("prepared HERB artifact/source map is incomplete")
     if prepared["source_root"].resolve() != raw_folder:
         raise ValueError(
             f"raw folder does not match prepared manifest: {raw_folder} != {prepared['source_root']}"
@@ -354,39 +568,32 @@ def main() -> int:
     sys.path.insert(0, str(herb_root / "src"))
     if args.use_local_model:
         os.environ["KMD_USE_LOCAL_MODEL"] = "1"
-        configured_shared_cache_root = os.environ.get("KMD_SHARED_MODEL_CACHE_ROOT", "").strip()
-        shared_cache_root = Path(configured_shared_cache_root) if configured_shared_cache_root else var_root / "kmd_model_caches"
-        os.environ.setdefault("KMD_SHARED_MODEL_CACHE_ROOT", str(shared_cache_root))
+        _pin_kmd_model_identity()
+        _normalize_embedding_base_url()
+        from kmd_runtime_config import configure_model_cache_environment
+
+        configure_model_cache_environment()
         os.environ.setdefault("KMD_LOCAL_MODEL_CACHE_PROMPT", "1")
         os.environ["KMD_SCAN_PACK_UNITS"] = "1"
         os.environ["KMD_SCAN_PACK_MAX_UNITS"] = "0"
-        for cache_name, subdir in {
-            "KMD_FRAME_CACHE_DIR": "frame",
-            "KMD_CHUNK_FRAME_CACHE_DIR": "chunk_frame",
-            "KMD_CHUNK_DRS_CACHE_DIR": "chunk_drs",
-            "KMD_QUERY_PLAN_CACHE_DIR": "query_plan",
-            "KMD_QUERY_DRS_CACHE_DIR": "query_drs",
-            "KMD_QUERY_EVIDENCE_REPAIR_CACHE_DIR": "query_evidence_repair",
-            "KMD_QUERY_EVIDENCE_CACHE_DIR": "query_evidence",
-            "KMD_EVIDENCE_ANSWER_CACHE_DIR": "evidence_answer",
-            "KMD_VERIFIER_CACHE_DIR": "verifier",
-            "KMD_QUERY_VERIFIER_CACHE_DIR": "verifier",
-            "KMD_ANSWER_CANONICALIZATION_CACHE_DIR": "answer_canonicalization",
-            "KMD_QUERY_CANONICAL_CACHE_DIR": "answer_canonicalization",
-            "KMD_IDENTITY_CACHE_DIR": "identity",
-            "KMD_IDENTITY_CANONICAL_CACHE_DIR": "identity",
-            "KMD_SOURCE_RESOLUTION_CACHE_DIR": "source_resolution",
-        }.items():
-            os.environ.setdefault(cache_name, str(shared_cache_root / subdir))
 
-    import knowmoredirt as kmd  # noqa: WPS433 - operational benchmark adapter
-    from knowmoredirt import public as kmd_public  # noqa: WPS433
-    from herb_kgqa.config import get_settings  # noqa: WPS433
-    from herb_kgqa.evaluator import evaluate_run  # noqa: WPS433
+
+    os.environ.setdefault("KMD_VECTOR_RETRIEVAL_MODE", "required")
+    os.environ.setdefault("KMD_EVALUATION_USE_LOCAL_JUDGE", "1")
+    os.environ.setdefault("KMD_DOCUMENT_CONTEXT_ENVELOPES", "1")
 
     run_dir.mkdir(parents=True, exist_ok=True)
     if not args.resume:
-        for output_name in ["retrieved_sources.jsonl", "evidence_packets.jsonl", "predictions.jsonl", "kmd_public_answers.jsonl", "run_compatibility.json"]:
+        for output_name in [
+            "retrieved_sources.jsonl",
+            "evidence_packets.jsonl",
+            "predictions.jsonl",
+            "kmd_public_answers.jsonl",
+            "run_compatibility.json",
+            "scores.json",
+            "question_details.jsonl",
+            "error_report.md",
+        ]:
             (run_dir / output_name).unlink(missing_ok=True)
 
     all_questions = read_official_questions(normalized_questions)
@@ -394,6 +601,10 @@ def main() -> int:
     if selected_ids:
         all_questions = [row for row in all_questions if str(row.get("question_id") or "") in selected_ids]
     questions = all_questions[: args.limit] if args.limit else all_questions
+
+    # Computing the catalog manifest is cheap and does not contact embedding/model
+    # endpoints. Validate resume compatibility before any expensive vector build.
+    filesystem_catalog_manifest = _herb_filesystem_catalog_manifest(repo_root, raw_folder)
     compatibility_manifest = _herb_resume_manifest(
         repo_root=repo_root,
         herb_root=herb_root,
@@ -402,8 +613,20 @@ def main() -> int:
         prepared_manifest=prepared_manifest,
         questions=questions,
         args=args,
+        filesystem_catalog_manifest=filesystem_catalog_manifest,
     )
     _prepare_herb_resume_manifest(compatibility_path, compatibility_manifest, resume=bool(args.resume))
+
+    filesystem_database, filesystem_catalog_result = _prepare_herb_filesystem_catalog(
+        repo_root, raw_folder, var_root, manifest=filesystem_catalog_manifest
+    )
+    os.environ["KMD_FILESYSTEM_DATABASE"] = str(filesystem_database)
+
+    import knowmoredirt as kmd  # noqa: WPS433 - operational benchmark adapter
+    from knowmoredirt import public as kmd_public  # noqa: WPS433
+    from herb_kgqa.config import get_settings  # noqa: WPS433
+    from evaluate_herb_official_local import evaluate_run_official_local  # noqa: WPS433
+
     write_jsonl(sanitized_questions_path, questions)
     if args.resume:
         completed_ids, answered_count = _reconcile_resume_outputs(run_dir)
@@ -423,12 +646,15 @@ def main() -> int:
         already_answered=answered_count,
         limit=args.limit,
         query_input_fields=["question_id", "question"],
-        model_status="optional localhost migrated DRT model-query planner enabled" if args.use_local_model else "not used; current KMD public API is deterministic",
+        model_status="localhost KMD model pipeline enabled" if args.use_local_model else "legacy no-model path",
         prepared_manifest=str(prepared_manifest),
         prepared_format=prepared["manifest"]["format"],
         prepared_artifact_count=prepared["manifest"]["artifact_count"],
         prepared_source_file_count=prepared["manifest"]["source_file_count"],
         prepared_source_tree_sha256=prepared["manifest"]["output_hashes"]["source_tree"],
+        filesystem_database=str(filesystem_database),
+        filesystem_catalog_reused=bool(filesystem_catalog_result.get("reused_existing")),
+        filesystem_catalog_cache_key=str(filesystem_catalog_result.get("cache_key") or ""),
     )
 
     init_started = time.time()
@@ -477,10 +703,15 @@ def main() -> int:
         bounded_diagnostics = getattr(getattr(kmd_public, "_ENGINE", None), "last_bounded_diagnostics", None)
         evidence_items = []
         for evidence in getattr(internal_answer, "evidence", []) or []:
+            herb_source_id = source_to_artifact.get(evidence.rel_path, evidence.rel_path)
             evidence_items.append(
                 {
-                    "source_id": evidence.rel_path,
-                    "chunk_id": evidence.rel_path,
+                    "source_id": herb_source_id,
+                    "source_rel_path": evidence.rel_path,
+                    "chunk_id": (
+                        evidence.span_id
+                        or (f"{herb_source_id}#chunk-{evidence.chunk_order}" if evidence.chunk_order is not None else herb_source_id)
+                    ),
                     "text": evidence.text,
                     "score": evidence.score,
                 }
@@ -586,8 +817,8 @@ def main() -> int:
         os.environ.setdefault("LLM_BASE_URL", "http://127.0.0.1:14829/v1")
         get_settings.cache_clear()
         settings = get_settings()
-        log_event(log_path, "scorer_start", scorer="herb_kgqa.evaluator.evaluate_run", use_local_judge=False)
-        scores = evaluate_run(run_dir, settings=settings, use_local_judge=False)
+        log_event(log_path, "scorer_start", scorer="Salesforce HERB official evaluate.py semantics; localhost judge substitution", use_local_judge=True)
+        scores = evaluate_run_official_local(run_dir, settings=settings)
         log_event(log_path, "scorer_done", scores_path=str(run_dir / "scores.json"))
 
     report = {
@@ -600,8 +831,8 @@ def main() -> int:
         "completed_question_count": completed_after,
         "completed_percent": round((completed_after / len(all_questions)) * 100, 3) if all_questions else 0.0,
         "answered_count": answered_count,
-        "deterministic_model_status": "optional localhost migrated DRT model-query planner enabled" if args.use_local_model else "deterministic KMD public API; no LLM calls made",
-        "scorer": "herb_kgqa.evaluator.evaluate_run(use_local_judge=False)",
+        "deterministic_model_status": "localhost KMD model pipeline enabled" if args.use_local_model else "legacy no-model path",
+        "scorer": "Salesforce HERB official evaluate.py semantics; get_gpt4_response replaced only by localhost judge",
         "run_dir": str(run_dir),
         "progress_log": str(log_path),
         "checkpoint": str(checkpoint_path),
@@ -609,6 +840,9 @@ def main() -> int:
         "retrieved_sources": str(run_dir / "retrieved_sources.jsonl"),
         "evidence_packets": str(run_dir / "evidence_packets.jsonl"),
         "scores_path": str(run_dir / "scores.json"),
+        "question_details_path": str(run_dir / "question_details.jsonl"),
+        "filesystem_database": str(filesystem_database),
+        "filesystem_catalog": filesystem_catalog_result,
         "scores": scores,
         "model_query_trace": (
             getattr(getattr(kmd_public, "_ENGINE", None), "model_query_trace", None).as_dict()
@@ -620,9 +854,10 @@ def main() -> int:
             "gold_answers_used_for_query": False,
             "answerability_labels_used_for_query": False,
             "official_question_type_used_for_query": False,
-            "prepared_corpus_used": False,
+            "prepared_corpus_used": True,
             "metadata_wrappers_used": False,
-            "raw_folder_only": True,
+            "prepared_source_folder_only": True,
+            "raw_hf_snapshot_ingested": False,
             "local_model_enabled": bool(args.use_local_model),
         },
     }
@@ -651,7 +886,7 @@ def main() -> int:
                 "",
                 "- Query input contained only `question_id` and `question`.",
                 "- Gold answers, answerability labels, question type labels, citations, and scores were not used for querying.",
-                "- KMD source input was the raw HERB folder only; no prepared DRT corpus or metadata wrapper was used.",
+                "- KMD source input was the validated leakage-free prepared HERB source folder; the mixed raw HF snapshot was not ingested.",
                 "",
                 "## Scores",
                 "",

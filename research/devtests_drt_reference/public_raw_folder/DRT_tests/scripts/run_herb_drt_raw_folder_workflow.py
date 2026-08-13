@@ -13,7 +13,9 @@ from typing import Any
 
 DRT_ROOT = Path(__file__).resolve().parents[1]
 HERB_ROOT = Path("/data/src/github/devtests/herb_benchmark")
-DEFAULT_RAW_FOLDER = Path("/data/var/herb_benchmark/raw/herb_raw/hf_snapshot")
+DEFAULT_PREPARED_ROOT = Path("/data/var/herb_benchmark/prepared/kmd_official_rag_v1")
+DEFAULT_RAW_FOLDER = DEFAULT_PREPARED_ROOT / "source"
+DEFAULT_QUESTIONS_JSONL = DEFAULT_PREPARED_ROOT / "questions.jsonl"
 DEFAULT_RUNTIME_ROOT = Path("/data/var/herb_benchmark/drt_raw_folder")
 
 
@@ -49,7 +51,7 @@ def main() -> int:
     parser = argparse.ArgumentParser(description="Run DRT/HERB using direct raw-folder DRT ingestion.")
     parser.add_argument("--raw-folder", default=str(DEFAULT_RAW_FOLDER), help="Existing raw source folder to ingest as text.")
     parser.add_argument("--runtime-root", default=str(DEFAULT_RUNTIME_ROOT), help="Runtime output root for DB/query/scorer artifacts.")
-    parser.add_argument("--questions-jsonl", default=None, help="Sanitized DRT questions JSONL for scorer/query execution.")
+    parser.add_argument("--questions-jsonl", default=str(DEFAULT_QUESTIONS_JSONL), help="Sanitized HERB questions JSONL for scorer/query execution.")
     parser.add_argument("--question-map", default=None, help="Adapter DRT-to-HERB ID map for scorer output only.")
     parser.add_argument("--run-name", default=None, help="HERB run name when scorer is enabled.")
     parser.add_argument("--variant", default="all_model_assisted", help="DRT ingestion variant.")
@@ -177,7 +179,7 @@ def main() -> int:
         "skip_query": args.skip_query,
         "skip_scorer": args.skip_scorer,
         "commands": commands,
-        "input_contract": "existing raw folder; every readable file is treated as raw text by DRT ingestion",
+        "input_contract": "validated leakage-free HERB source folder; every readable source file is treated as raw text by DRT ingestion",
         "adapter_glue": "sanitized question IDs and HERB ID mapping only; source files stay untouched",
     }
     workflow_report.write_text(json.dumps(report, indent=2, ensure_ascii=False, sort_keys=True) + "\n", encoding="utf-8")

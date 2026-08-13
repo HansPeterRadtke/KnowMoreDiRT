@@ -12197,3 +12197,74 @@ def test_shared_context_drs_join_binds_target_split_across_conditions_without_te
     assert answer.text == "https://example.test/pull/42"
     assert answer.reason == "shared_context_drs_binding"
     assert "pull/99" not in answer.text
+
+
+def test_asserted_box_ignores_ungrounded_fictional_condition_scope_in_relation(tmp_path: Path) -> None:
+    text = "Mara Chen owns the retry scheduler for BeaconForce."
+    store = DSPGStore()
+    run_id = store.start_run(tmp_path)
+    document_id = stable_id("doc", run_id, "note.txt")
+    chunk_id = stable_id("chunk", document_id, 0)
+    span_id = stable_id("span", chunk_id, "sentence")
+    store.execute(
+        "INSERT INTO documents(document_id, run_id, path, rel_path, content_hash, size_bytes, mtime, ctime, char_count, metadata_json) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
+        (document_id, run_id, str(tmp_path / "note.txt"), "note.txt", "sha", len(text), 0.0, 0.0, len(text), "{}"),
+    )
+    store.execute(
+        "INSERT INTO chunks(chunk_id, document_id, chunk_order, char_start, char_end, text, token_estimate) VALUES (?, ?, ?, ?, ?, ?, ?)",
+        (chunk_id, document_id, 0, 0, len(text), text, 12),
+    )
+    store.execute(
+        "INSERT INTO source_spans(span_id, document_id, chunk_id, char_start, char_end, surface, surface_norm, span_kind) VALUES (?, ?, ?, ?, ?, ?, ?, ?)",
+        (span_id, document_id, chunk_id, 0, len(text), text, text.lower(), "sentence"),
+    )
+    payload = {"drs": {
+        "schema_version": "chunk-drs-v5", "source_id": "note.txt",
+        "referents": [
+            {"id": "r0", "label": "Mara Chen", "kind": "person", "evidence_text": "Mara Chen"},
+            {"id": "r1", "label": "BeaconForce", "kind": "product", "evidence_text": "BeaconForce"},
+        ],
+        "boxes": [{"id": "b0", "kind": "asserted", "parent_id": "", "holder_referent_id": "", "evidence_text": text}],
+        "conditions": [{
+            "id": "c0", "predicate": "owns", "box_id": "b0", "polarity": "positive", "modality": "fictional", "temporal_id": "",
+            "arguments": [
+                {"role": "subject", "target_kind": "referent", "target_id": "r0", "value": "Mara Chen", "value_type": "person", "evidence_text": "Mara Chen"},
+                {"role": "object", "target_kind": "literal", "target_id": "", "value": "retry scheduler", "value_type": "string", "evidence_text": "retry scheduler"},
+            ],
+            "evidence_text": text,
+        }],
+        "identity_hypotheses": [], "temporal_records": [], "evidence_spans": [], "semantic_notes": [],
+    }}
+    assert store.materialize_drs_payload(run_id, span_id, text, payload)["accepted"] is True
+    relation = store.execute("SELECT subject, metadata_json FROM relations WHERE relation_type='drs_condition'").fetchone()
+    assert relation["subject"] == "asserted"
+    metadata = json.loads(relation["metadata_json"])
+    assert metadata["raw_condition_modality"] == "fictional"
+    assert metadata["effective_condition_modality"] == "asserted"
+    condition = store.execute("SELECT modality FROM drs_conditions").fetchone()
+    assert condition["modality"] == "fictional"
+
+
+def test_asserted_box_keeps_source_grounded_fictional_condition_scope(tmp_path: Path) -> None:
+    text = "In this fictional story, Mara Chen owns BeaconForce."
+    store = DSPGStore()
+    run_id = store.start_run(tmp_path)
+    document_id = stable_id("doc", run_id, "story.txt")
+    chunk_id = stable_id("chunk", document_id, 0)
+    span_id = stable_id("span", chunk_id, "sentence")
+    store.execute(
+        "INSERT INTO documents(document_id, run_id, path, rel_path, content_hash, size_bytes, mtime, ctime, char_count, metadata_json) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
+        (document_id, run_id, str(tmp_path / "story.txt"), "story.txt", "sha", len(text), 0.0, 0.0, len(text), "{}"),
+    )
+    store.execute("INSERT INTO chunks(chunk_id, document_id, chunk_order, char_start, char_end, text, token_estimate) VALUES (?, ?, ?, ?, ?, ?, ?)", (chunk_id, document_id, 0, 0, len(text), text, 12))
+    store.execute("INSERT INTO source_spans(span_id, document_id, chunk_id, char_start, char_end, surface, surface_norm, span_kind) VALUES (?, ?, ?, ?, ?, ?, ?, ?)", (span_id, document_id, chunk_id, 0, len(text), text, text.lower(), "sentence"))
+    payload = {"drs": {
+        "schema_version": "chunk-drs-v5", "source_id": "story.txt",
+        "referents": [{"id": "r0", "label": "Mara Chen", "kind": "person", "evidence_text": "Mara Chen"}],
+        "boxes": [{"id": "b0", "kind": "asserted", "parent_id": "", "holder_referent_id": "", "evidence_text": text}],
+        "conditions": [{"id": "c0", "predicate": "owns", "box_id": "b0", "polarity": "positive", "modality": "fictional", "temporal_id": "", "arguments": [{"role": "subject", "target_kind": "referent", "target_id": "r0", "value": "Mara Chen", "value_type": "person", "evidence_text": "Mara Chen"}], "evidence_text": text}],
+        "identity_hypotheses": [], "temporal_records": [], "evidence_spans": [], "semantic_notes": [],
+    }}
+    assert store.materialize_drs_payload(run_id, span_id, text, payload)["accepted"] is True
+    relation = store.execute("SELECT subject FROM relations WHERE relation_type='drs_condition'").fetchone()
+    assert relation["subject"] == "fictional"

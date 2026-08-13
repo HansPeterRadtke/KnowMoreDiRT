@@ -48,6 +48,20 @@ _DATE_TIME_RE = re.compile(
 _DURATION_RE = re.compile(r"\b\d+(?:\.\d+)?\s*(?:seconds?|minutes?|hours?|days?|weeks?|months?|years?)\b", re.I)
 
 
+
+
+def is_unknown_text(value: str) -> bool:
+    """Return whether text explicitly carries KMD's open-world unknown status.
+
+    Qualified unknowns may append grounded subordinate evidence after an
+    explicit ``unknown`` prefix; they remain unanswerable values everywhere in
+    the engine and external adapters.
+    """
+
+    low = normalize(str(value or ""))
+    return low == "unknown" or bool(re.match(r"^unknown(?:\s|$|[—–:;,-])", low))
+
+
 def infer_expected_answer(question: str) -> ExpectedAnswer:
     """Return a non-semantic default expectation.
 
@@ -79,7 +93,7 @@ def classify_value(value: str) -> AnswerType:
 
     text = clean_extracted_value(value)
     low = normalize(text)
-    if not text or low == "unknown":
+    if not text or is_unknown_text(text):
         return "unknown"
     if low in {"the", "a", "an"}:
         return "content_phrase"

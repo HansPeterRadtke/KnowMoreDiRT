@@ -21,6 +21,13 @@ import numpy as np
 from jsonschema import Draft202012Validator
 from jsonschema.exceptions import ValidationError as JSONSchemaValidationError
 
+from kmd_runtime_config import (
+    csv_integers as _config_csv_integers,
+    floating as _config_float,
+    integer as _config_int,
+    optional_float as _config_optional_float,
+)
+
 from context_capacity import (
     CONTEXT_CAPACITY_POLICY,
     context_char_capacity,
@@ -86,35 +93,30 @@ def _positive_int(value: Any) -> int | None:
 
 
 def _default_control_timeout_seconds() -> float:
-    raw = os.environ.get("KMD_LOCAL_MODEL_CONTROL_TIMEOUT_SECONDS", "30").strip()
-    try:
-        value = float(raw)
-    except ValueError as error:
-        raise ValueError("KMD_LOCAL_MODEL_CONTROL_TIMEOUT_SECONDS must be a positive number") from error
+    value = _config_float("KMD_LOCAL_MODEL_CONTROL_TIMEOUT_SECONDS")
     if value <= 0:
         raise ValueError("KMD_LOCAL_MODEL_CONTROL_TIMEOUT_SECONDS must be a positive number")
     return value
 
 
 def _stream_total_timeout_seconds(*, per_token_timeout_seconds: float, max_tokens: int) -> float:
-    configured = os.environ.get("KMD_LOCAL_MODEL_STREAM_TOTAL_TIMEOUT_SECONDS", "").strip()
-    if configured:
-        value = float(configured)
-        if value <= 0:
+    configured = _config_optional_float("KMD_LOCAL_MODEL_STREAM_TOTAL_TIMEOUT_SECONDS")
+    if configured is not None:
+        if configured <= 0:
             raise ValueError("KMD_LOCAL_MODEL_STREAM_TOTAL_TIMEOUT_SECONDS must be positive")
-        return value
+        return configured
     return max(60.0, min(21600.0, float(per_token_timeout_seconds) * max(1, int(max_tokens))))
 
 
 def _stream_event_limit(max_tokens: int) -> int:
-    multiplier = int(os.environ.get("KMD_LOCAL_MODEL_STREAM_EVENT_MULTIPLIER", "4"))
+    multiplier = _config_int("KMD_LOCAL_MODEL_STREAM_EVENT_MULTIPLIER")
     if multiplier < 1:
         raise ValueError("KMD_LOCAL_MODEL_STREAM_EVENT_MULTIPLIER must be positive")
     return max(64, int(max_tokens) * multiplier + 64)
 
 
 def _stream_byte_limit(max_tokens: int) -> int:
-    multiplier = int(os.environ.get("KMD_LOCAL_MODEL_STREAM_BYTES_PER_TOKEN", "64"))
+    multiplier = _config_int("KMD_LOCAL_MODEL_STREAM_BYTES_PER_TOKEN")
     if multiplier < 1:
         raise ValueError("KMD_LOCAL_MODEL_STREAM_BYTES_PER_TOKEN must be positive")
     return max(65536, int(max_tokens) * multiplier + 65536)
@@ -138,6 +140,19 @@ def discover_model_context(base_url: str, model: str = "", *, timeout: float | N
         if model and model in names:
             selected = record
             break
+    if selected is None and model:
+        advertised: set[str] = set()
+        for record in records:
+            if not isinstance(record, dict):
+                continue
+            advertised.update(str(record.get(key) or "") for key in ("id", "name", "model"))
+            aliases = record.get("aliases")
+            if isinstance(aliases, list):
+                advertised.update(str(value) for value in aliases)
+        raise RuntimeError(
+            f"configured model is not advertised by endpoint: model={model!r} "
+            f"endpoint={base}/v1/models advertised={sorted(name for name in advertised if name)!r}"
+        )
     if selected is None:
         selected = next((record for record in records if isinstance(record, dict)), None)
     if selected is None:
@@ -219,55 +234,52 @@ def request_json(url: str, payload: dict[str, Any] | None = None, *, timeout: fl
         headers={"Content-Type": "application/json"} if data is not None else {},
         method="POST" if data is not None else "GET",
     )
-    try:
-        with urllib.request.urlopen(request, timeout=effective_timeout) as response:
-            raw = response.read()
-    except urllib.error.HTTPError as error:
-        body = error.read().decode("utf-8", "backslashreplace")
-        raise RuntimeError(f"HTTP {error.code} from {url}: {body}") from error
-    except urllib.error.URLError as error:
-        raise RuntimeError(f"request failed for {url}: {error}") from error
+    attempts = _config_int("KMD_LOCAL_MODEL_CONTROL_RETRY_ATTEMPTS")
+    retry_statuses = set(_config_csv_integers("KMD_LOCAL_MODEL_RETRY_HTTP_STATUSES"))
+    backoff = _config_float("KMD_LOCAL_MODEL_CONTROL_RETRY_BACKOFF_SECONDS")
+    backoff_multiplier = _config_float("KMD_LOCAL_MODEL_RETRY_BACKOFF_MULTIPLIER")
+    for attempt in range(attempts):
+        try:
+            with urllib.request.urlopen(request, timeout=effective_timeout) as response:
+                raw = response.read()
+            break
+        except urllib.error.HTTPError as error:
+            body = error.read().decode("utf-8", "backslashreplace")
+            retryable = int(error.code) in retry_statuses
+            if not retryable or attempt + 1 >= attempts:
+                raise RuntimeError(f"HTTP {error.code} from {url}: {body}") from error
+        except urllib.error.URLError as error:
+            if attempt + 1 >= attempts:
+                raise RuntimeError(f"request failed for {url}: {error}") from error
+        delay = backoff * (backoff_multiplier ** attempt)
+        if delay > 0:
+            time.sleep(delay)
+    else:
+        raise RuntimeError(f"request retries exhausted for {url}")
     try:
         return json.loads(raw.decode("utf-8"))
     except Exception as error:
         raise RuntimeError(f"invalid JSON from {url}: {raw!r}") from error
 
 
-
 def _default_per_token_timeout_seconds() -> float:
-    raw = os.environ.get("KMD_LOCAL_MODEL_PER_TOKEN_TIMEOUT_SECONDS", "180").strip()
-    try:
-        value = float(raw)
-    except ValueError as error:
-        raise ValueError(
-            "KMD_LOCAL_MODEL_PER_TOKEN_TIMEOUT_SECONDS must be a positive number"
-        ) from error
+    value = _config_float("KMD_LOCAL_MODEL_PER_TOKEN_TIMEOUT_SECONDS")
     if value <= 0:
-        raise ValueError(
-            "KMD_LOCAL_MODEL_PER_TOKEN_TIMEOUT_SECONDS must be a positive number"
-        )
+        raise ValueError("KMD_LOCAL_MODEL_PER_TOKEN_TIMEOUT_SECONDS must be a positive number")
     return value
 
 
 def _default_embedding_request_retries() -> int:
-    raw = os.environ.get("KMD_EMBEDDING_REQUEST_RETRIES", "2").strip()
-    try:
-        value = int(raw)
-    except ValueError as error:
-        raise ValueError("KMD_EMBEDDING_REQUEST_RETRIES must be a positive integer") from error
+    value = _config_int("KMD_EMBEDDING_REQUEST_RETRIES")
     if value <= 0:
         raise ValueError("KMD_EMBEDDING_REQUEST_RETRIES must be a positive integer")
     return value
 
 
 def _embedding_request_timeout_seconds() -> float:
-    raw = os.environ.get("KMD_EMBEDDING_REQUEST_TIMEOUT_SECONDS", "").strip()
-    if not raw:
+    value = _config_optional_float("KMD_EMBEDDING_REQUEST_TIMEOUT_SECONDS")
+    if value is None:
         return _default_per_token_timeout_seconds()
-    try:
-        value = float(raw)
-    except ValueError as error:
-        raise ValueError("KMD_EMBEDDING_REQUEST_TIMEOUT_SECONDS must be a positive number") from error
     if value <= 0:
         raise ValueError("KMD_EMBEDDING_REQUEST_TIMEOUT_SECONDS must be a positive number")
     return value
@@ -1335,11 +1347,7 @@ def _host_memory_bytes() -> int:
 
 
 def _content_file_memory_limit_bytes() -> int:
-    raw = os.environ.get("KMD_FILESYSTEM_CONTENT_MEMORY_RATIO", "0.10").strip()
-    try:
-        ratio = float(raw)
-    except ValueError as error:
-        raise ValueError("KMD_FILESYSTEM_CONTENT_MEMORY_RATIO must be between 0 and 1") from error
+    ratio = _config_float("KMD_FILESYSTEM_CONTENT_MEMORY_RATIO")
     if not 0.0 < ratio <= 1.0:
         raise ValueError("KMD_FILESYSTEM_CONTENT_MEMORY_RATIO must be between 0 and 1")
     return max(1, int(_host_memory_bytes() * ratio))

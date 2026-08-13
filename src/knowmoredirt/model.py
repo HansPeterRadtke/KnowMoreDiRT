@@ -21,12 +21,27 @@ from typing import Any
 from jsonschema import Draft202012Validator
 from jsonschema.exceptions import ValidationError as JSONSchemaValidationError
 
+from kmd_runtime_config import (
+    boolean as _config_boolean,
+    csv_integers as _config_csv_integers,
+    default_specs as _config_specs,
+    explicit_raw as _config_explicit_raw,
+    floating as _config_float,
+    integer as _config_int,
+    optional_float as _config_optional_float,
+    text as _config_text,
+)
+
+from .runtime_logging import get_logger
 from .context_budget import (
     CONTEXT_CAPACITY_POLICY,
     context_relative_budget,
     context_safety_tokens,
     contextualize_json_schema,
 )
+
+
+LOGGER = get_logger("model")
 
 
 def _server_root(endpoint: str) -> str:
@@ -83,11 +98,7 @@ def _local_endpoint_required(endpoint: str) -> None:
 
 
 def _default_per_token_timeout_seconds() -> float:
-    raw = os.environ.get("KMD_LOCAL_MODEL_PER_TOKEN_TIMEOUT_SECONDS", "180").strip()
-    try:
-        value = float(raw)
-    except ValueError:
-        value = 180.0
+    value = _env_float("KMD_LOCAL_MODEL_PER_TOKEN_TIMEOUT_SECONDS", 180.0)
     return value if value > 0 else 180.0
 
 
@@ -95,22 +106,35 @@ def _default_context_safety_tokens(context_size: int) -> int:
     return context_safety_tokens(context_size)
 
 
+def _configured_or_fallback(name: str, default: Any) -> str:
+    specs = _config_specs()
+    if name in specs:
+        explicit = _config_explicit_raw(name)
+        if explicit is not None:
+            return explicit
+        packaged = str(specs[name].value or "")
+        if packaged.strip():
+            return packaged
+    return str(default)
+
+
 def _env_float(name: str, default: float) -> float:
     try:
-        return float(os.environ.get(name, str(default)))
+        return float(_configured_or_fallback(name, default))
     except ValueError:
         return default
 
 
 def _env_int(name: str, default: int) -> int:
     try:
-        return int(os.environ.get(name, str(default)))
+        return int(_configured_or_fallback(name, default))
     except ValueError:
         return default
 
 
-def _env_true(name: str, default: str = "0") -> bool:
-    return os.environ.get(name, default).strip().lower() in {"1", "true", "yes", "on"}
+def _env_true(name: str, default: str | bool = "0") -> bool:
+    raw_default = "1" if default is True else "0" if default is False else str(default)
+    return _configured_or_fallback(name, raw_default).strip().lower() in {"1", "true", "yes", "on"}
 
 
 _MODEL_THROUGHPUT_OBSERVATIONS: deque[dict[str, float]] = deque(maxlen=128)
@@ -258,49 +282,122 @@ def _first_text(*values: Any) -> str:
 
 
 def _default_control_timeout_seconds() -> float:
-    raw = os.environ.get("KMD_LOCAL_MODEL_CONTROL_TIMEOUT_SECONDS", "30").strip()
-    try:
-        value = float(raw)
-    except ValueError as error:
-        raise ValueError("KMD_LOCAL_MODEL_CONTROL_TIMEOUT_SECONDS must be a positive number") from error
+    value = _config_float("KMD_LOCAL_MODEL_CONTROL_TIMEOUT_SECONDS")
     if value <= 0:
         raise ValueError("KMD_LOCAL_MODEL_CONTROL_TIMEOUT_SECONDS must be a positive number")
     return value
 
 
 def _stream_total_timeout_seconds(*, per_token_timeout_seconds: float, max_tokens: int) -> float:
-    configured = os.environ.get("KMD_LOCAL_MODEL_STREAM_TOTAL_TIMEOUT_SECONDS", "").strip()
-    if configured:
-        try:
-            value = float(configured)
-        except ValueError as error:
-            raise ValueError("KMD_LOCAL_MODEL_STREAM_TOTAL_TIMEOUT_SECONDS must be a positive number") from error
-        if value <= 0:
+    configured = _config_optional_float("KMD_LOCAL_MODEL_STREAM_TOTAL_TIMEOUT_SECONDS")
+    if configured is not None:
+        if configured <= 0:
             raise ValueError("KMD_LOCAL_MODEL_STREAM_TOTAL_TIMEOUT_SECONDS must be a positive number")
-        return value
+        return configured
     return max(60.0, min(21600.0, float(per_token_timeout_seconds) * max(1, int(max_tokens))))
 
 
 def _stream_event_limit(max_tokens: int) -> int:
-    multiplier = int(os.environ.get("KMD_LOCAL_MODEL_STREAM_EVENT_MULTIPLIER", "4"))
+    multiplier = _config_int("KMD_LOCAL_MODEL_STREAM_EVENT_MULTIPLIER")
     if multiplier < 1:
         raise ValueError("KMD_LOCAL_MODEL_STREAM_EVENT_MULTIPLIER must be positive")
     return max(64, int(max_tokens) * multiplier + 64)
 
 
 def _stream_byte_limit(max_tokens: int) -> int:
-    multiplier = int(os.environ.get("KMD_LOCAL_MODEL_STREAM_BYTES_PER_TOKEN", "64"))
+    multiplier = _config_int("KMD_LOCAL_MODEL_STREAM_BYTES_PER_TOKEN")
     if multiplier < 1:
         raise ValueError("KMD_LOCAL_MODEL_STREAM_BYTES_PER_TOKEN must be positive")
     return max(65536, int(max_tokens) * multiplier + 65536)
+
+def _retry_attempts(env_name: str, default: int) -> int:
+    try:
+        value = int(_configured_or_fallback(env_name, default))
+    except ValueError as error:
+        raise ValueError(f"{env_name} must be a positive integer") from error
+    if value < 1:
+        raise ValueError(f"{env_name} must be a positive integer")
+    return value
+
+
+def _retry_backoff_seconds(env_name: str, default: float) -> float:
+    raw = _configured_or_fallback(env_name, default).strip()
+    try:
+        value = float(raw)
+    except ValueError as error:
+        raise ValueError(f"{env_name} must be a non-negative number") from error
+    if not math.isfinite(value) or value < 0:
+        raise ValueError(f"{env_name} must be a non-negative number")
+    return value
+
+
+def _retry_backoff_multiplier() -> float:
+    raw = _config_text("KMD_LOCAL_MODEL_RETRY_BACKOFF_MULTIPLIER").strip()
+    try:
+        value = float(raw)
+    except ValueError as error:
+        raise ValueError("KMD_LOCAL_MODEL_RETRY_BACKOFF_MULTIPLIER must be at least 1") from error
+    if not math.isfinite(value) or value < 1:
+        raise ValueError("KMD_LOCAL_MODEL_RETRY_BACKOFF_MULTIPLIER must be at least 1")
+    return value
+
+
+def _retry_http_statuses() -> set[int]:
+    values = set(_config_csv_integers("KMD_LOCAL_MODEL_RETRY_HTTP_STATUSES"))
+    if any(code < 100 or code > 599 for code in values):
+        raise ValueError("KMD_LOCAL_MODEL_RETRY_HTTP_STATUSES contains an invalid HTTP status")
+    return values
+
+
+def _retryable_transport_exception(exc: BaseException) -> bool:
+    if isinstance(exc, urllib.error.HTTPError):
+        return int(exc.code) in _retry_http_statuses()
+    return isinstance(exc, (urllib.error.URLError, TimeoutError, ConnectionError, OSError))
+
+
+def _retry_delay_seconds(attempt_index: int, *, env_name: str, default: float) -> float:
+    base = _retry_backoff_seconds(env_name, default)
+    if base <= 0:
+        return 0.0
+    return base * (_retry_backoff_multiplier() ** max(0, int(attempt_index)))
+
+
+def _control_json_request(request_or_url: Any, *, timeout: float) -> Any:
+    attempts = _retry_attempts("KMD_LOCAL_MODEL_CONTROL_RETRY_ATTEMPTS", 3)
+    last_error: BaseException | None = None
+    for attempt in range(attempts):
+        try:
+            with urllib.request.urlopen(request_or_url, timeout=timeout) as response:
+                return json.loads(response.read().decode("utf-8", errors="replace"))
+        except Exception as exc:
+            if not _retryable_transport_exception(exc) or attempt + 1 >= attempts:
+                raise
+            last_error = exc
+            delay = _retry_delay_seconds(
+                attempt,
+                env_name="KMD_LOCAL_MODEL_CONTROL_RETRY_BACKOFF_SECONDS",
+                default=0.25,
+            )
+            LOGGER.warning(
+                "model_control_retry attempt=%s/%s error=%s delay_seconds=%g",
+                attempt + 1,
+                attempts,
+                f"{type(exc).__name__}: {exc}",
+                delay,
+            )
+            if delay > 0:
+                time.sleep(delay)
+    if last_error is not None:
+        raise last_error
+    raise RuntimeError("control request retry loop exhausted without an attempt")
+
 
 def _fetch_json(url: str, *, timeout: float | None = None) -> Any:
     _local_endpoint_required(url)
     effective_timeout = _default_control_timeout_seconds() if timeout is None else float(timeout)
     if effective_timeout <= 0:
         raise ValueError("control timeout must be positive")
-    with urllib.request.urlopen(url, timeout=effective_timeout) as response:
-        return json.loads(response.read().decode("utf-8", errors="replace"))
+    return _control_json_request(url, timeout=effective_timeout)
 
 
 def _post_json(url: str, payload: dict[str, Any], *, timeout: float | None = None) -> Any:
@@ -314,8 +411,7 @@ def _post_json(url: str, payload: dict[str, Any], *, timeout: float | None = Non
     effective_timeout = _default_control_timeout_seconds() if timeout is None else float(timeout)
     if effective_timeout <= 0:
         raise ValueError("control timeout must be positive")
-    with urllib.request.urlopen(request, timeout=effective_timeout) as response:
-        return json.loads(response.read().decode("utf-8", errors="replace"))
+    return _control_json_request(request, timeout=effective_timeout)
 
 
 def _response_content(response_obj: dict[str, Any]) -> str:
@@ -534,9 +630,59 @@ class LocalModelContextError(LocalModelUnavailableError):
     """Raised before generation when prompt plus output reserve cannot fit."""
 
 
+def complete_json_with_transport_retry(
+    client: Any,
+    prompt: str,
+    *,
+    n_predict: int,
+    json_schema: dict[str, Any],
+) -> dict[str, Any]:
+    """Retry only transient transport failures for direct semantic callers.
+
+    Planner-owned semantic calls already have higher-level retry policies and do
+    not use this helper.  This wrapper exists for direct callers such as the
+    long-range document-context classifier and semantic evaluator so a temporary
+    localhost disconnect does not make the whole operation terminal.
+    """
+
+    attempts = _retry_attempts("KMD_LOCAL_MODEL_DIRECT_RETRY_ATTEMPTS", 3)
+    transient_json_reasons = {
+        "incomplete_stream",
+        "stream_total_timeout_exhausted",
+    }
+    for attempt in range(attempts):
+        retry_error: BaseException | None = None
+        try:
+            return client.complete_json(prompt, n_predict=n_predict, json_schema=json_schema)
+        except LocalModelJSONError as exc:
+            retryable = str(exc.reason or "") in transient_json_reasons
+            if not retryable or attempt + 1 >= attempts:
+                raise
+            retry_error = exc
+        except Exception as exc:
+            if not _retryable_transport_exception(exc) or attempt + 1 >= attempts:
+                raise
+            retry_error = exc
+        delay = _retry_delay_seconds(
+            attempt,
+            env_name="KMD_LOCAL_MODEL_DIRECT_RETRY_BACKOFF_SECONDS",
+            default=0.25,
+        )
+        LOGGER.warning(
+            "model_direct_retry attempt=%s/%s error=%s delay_seconds=%g",
+            attempt + 1,
+            attempts,
+            f"{type(retry_error).__name__}: {retry_error}",
+            delay,
+        )
+        if delay > 0:
+            time.sleep(delay)
+    raise RuntimeError("direct model retry loop exhausted without an attempt")
+
+
 @dataclass
 class LocalModelClient:
-    endpoint: str = os.environ.get("KMD_LOCAL_MODEL_ENDPOINT", "http://127.0.0.1:14829/v1")
+    endpoint: str = field(default_factory=lambda: _config_text("KMD_LOCAL_MODEL_ENDPOINT"))
     # Socket/read timeout between streamed token chunks. Not a whole-answer wall timeout.
     per_token_timeout_seconds: float = field(default_factory=_default_per_token_timeout_seconds)
     _metadata: dict[str, Any] | None = field(default=None, init=False, repr=False)
@@ -584,7 +730,7 @@ class LocalModelClient:
             meta = first.get("meta") if isinstance(first, dict) else {}
             if isinstance(meta, dict) and _first_int(meta.get("n_ctx"), meta.get("n_ctx_train")):
                 return "/v1/models.data[0].meta"
-        if _first_int(os.environ.get("KMD_LOCAL_MODEL_CONTEXT_SIZE")):
+        if _first_int(_config_text("KMD_LOCAL_MODEL_CONTEXT_SIZE")):
             return "KMD_LOCAL_MODEL_CONTEXT_SIZE"
         return "unavailable"
 
@@ -610,7 +756,7 @@ class LocalModelClient:
                 model_value = _first_int(meta.get("n_ctx"), meta.get("n_ctx_train"))
                 if model_value:
                     return model_value
-        return _first_int(os.environ.get("KMD_LOCAL_MODEL_CONTEXT_SIZE"))
+        return _first_int(_config_text("KMD_LOCAL_MODEL_CONTEXT_SIZE"))
 
     def model_id(self, metadata: dict[str, Any] | None = None) -> str:
         data = metadata or self._metadata or self.server_metadata()
@@ -631,7 +777,7 @@ class LocalModelClient:
             found = _first_text(props.get("model_alias"), props.get("model_path"))
             if found:
                 return found
-        return _first_text(os.environ.get("KMD_LOCAL_MODEL_ID"), self.endpoint, "local-llama")
+        return _first_text(_config_text("KMD_LOCAL_MODEL_ID"), self.endpoint, "local-llama")
 
     def default_generation_params(self, metadata: dict[str, Any] | None = None) -> dict[str, Any]:
         data = metadata or self._metadata or self.server_metadata()
@@ -648,35 +794,47 @@ class LocalModelClient:
 
     def request_settings(self) -> dict[str, Any]:
         defaults = self.default_generation_params()
+        top_k_override = _config_explicit_raw("KMD_LOCAL_MODEL_TOP_K")
+        min_p_override = _config_explicit_raw("KMD_LOCAL_MODEL_MIN_P")
+        repeat_override = _config_explicit_raw("KMD_LOCAL_MODEL_REPEAT_PENALTY")
         return {
-            "seed": _env_int("KMD_LOCAL_MODEL_SEED", 1778779265),
-            "temperature": _env_float("KMD_LOCAL_MODEL_TEMPERATURE", 0.0),
-            "top_p": _env_float("KMD_LOCAL_MODEL_TOP_P", 1.0),
-            "top_k": _env_int("KMD_LOCAL_MODEL_TOP_K", _first_int(defaults.get("top_k")) or 40),
-            "min_p": _env_float("KMD_LOCAL_MODEL_MIN_P", float(defaults.get("min_p") or 0.05)),
-            "repeat_penalty": _env_float("KMD_LOCAL_MODEL_REPEAT_PENALTY", float(defaults.get("repeat_penalty") or 1.0)),
+            "seed": _config_int("KMD_LOCAL_MODEL_SEED"),
+            "temperature": _config_float("KMD_LOCAL_MODEL_TEMPERATURE"),
+            "top_p": _config_float("KMD_LOCAL_MODEL_TOP_P"),
+            "top_k": int(top_k_override) if str(top_k_override or "").strip() else (_first_int(defaults.get("top_k")) or 40),
+            "min_p": float(min_p_override) if str(min_p_override or "").strip() else float(defaults.get("min_p") or 0.05),
+            "repeat_penalty": float(repeat_override) if str(repeat_override or "").strip() else float(defaults.get("repeat_penalty") or 1.0),
         }
 
     def transport_settings(self) -> dict[str, Any]:
         model_id = self.model_id()
-        constrained_mode = os.environ.get("KMD_LOCAL_MODEL_CONSTRAINT_MODE", "auto").strip().lower() or "auto"
+        constrained_mode = _config_text("KMD_LOCAL_MODEL_CONSTRAINT_MODE").strip().lower() or "auto"
         if constrained_mode not in {"auto", "native", "prompt"}:
             constrained_mode = "auto"
         reasoning_control_model = _model_id_looks_like_reasoning_control_token_model(model_id)
         native_constraints = constrained_mode != "prompt"
+        thinking_control_override = str(_config_explicit_raw("KMD_LOCAL_MODEL_SEND_THINKING_CONTROLS") or "").strip().lower()
         return {
-            "api": os.environ.get("KMD_LOCAL_MODEL_API", "chat").strip().lower() or "chat",
-            "cache_prompt": os.environ.get("KMD_LOCAL_MODEL_CACHE_PROMPT", "1").strip().lower()
-            not in {"0", "false", "no", "off"},
+            "api": _config_text("KMD_LOCAL_MODEL_API").strip().lower() or "chat",
+            "cache_prompt": _config_boolean("KMD_LOCAL_MODEL_CACHE_PROMPT"),
             "context_contract_policy": "exact-rendered-prompt-explicit-output-terminal-stream-v4",
             "capacity_policy": CONTEXT_CAPACITY_POLICY,
-            "context_safety_ratio": float(os.environ.get("KMD_LOCAL_MODEL_CONTEXT_SAFETY_RATIO", os.environ.get("KMD_CONTEXT_SAFETY_RATIO", "0.02"))),
+            "context_safety_ratio": _env_float(
+                "KMD_LOCAL_MODEL_CONTEXT_SAFETY_RATIO",
+                _config_float("KMD_CONTEXT_SAFETY_RATIO"),
+            ),
             "context_safety_tokens": _default_context_safety_tokens(self.context_size()),
             "schema_bounds_native": True,
             "terminal_stream_required": True,
             "constraint_mode": constrained_mode,
             "native_constraints": native_constraints,
             "reasoning_control_token_model": reasoning_control_model,
+            # The automatic behavior is already determined by model_id above.  Only an
+            # explicit override is output-influencing state and therefore belongs in
+            # the stable cache fingerprint.  Stream byte/event ceilings are safety
+            # guards, not output semantics: raising them must preserve accepted cache
+            # entries while allowing truncated failures to retry.
+            "thinking_control_override": thinking_control_override or "auto",
         }
 
     def token_count(self, text: str) -> int:
@@ -751,7 +909,7 @@ class LocalModelClient:
     ) -> dict[str, Any]:
         """Return a parsed JSON object from the local completion endpoint."""
 
-        api = os.environ.get("KMD_LOCAL_MODEL_API", "chat").strip().lower()
+        api = _config_text("KMD_LOCAL_MODEL_API").strip().lower()
         endpoint = _chat_endpoint(self.endpoint) if api == "chat" else _completion_endpoint(self.endpoint)
         if endpoint is None:
             endpoint = _completion_endpoint(self.endpoint)
@@ -786,12 +944,7 @@ class LocalModelClient:
             output_tokens=effective_n_predict,
         )
         validate_portable_json_schema(json_schema)
-        allow_prompt_constraints = os.environ.get("KMD_LOCAL_MODEL_ALLOW_PROMPT_CONSTRAINTS", "0").strip().lower() in {
-            "1",
-            "true",
-            "yes",
-            "on",
-        }
+        allow_prompt_constraints = _config_boolean("KMD_LOCAL_MODEL_ALLOW_PROMPT_CONSTRAINTS")
         if not native_constraints and not allow_prompt_constraints:
             raise LocalModelUnavailableError(
                 "Structured local model calls require native constrained decoding. "
@@ -804,7 +957,7 @@ class LocalModelClient:
             json_schema,
             include_schema_hint=not native_constraints,
         )
-        thinking_control_env = os.environ.get("KMD_LOCAL_MODEL_SEND_THINKING_CONTROLS", "auto").strip().lower()
+        thinking_control_env = _config_text("KMD_LOCAL_MODEL_SEND_THINKING_CONTROLS").strip().lower() or "auto"
         if thinking_control_env in {"0", "false", "no", "off"}:
             send_thinking_controls = False
         elif thinking_control_env in {"1", "true", "yes", "on"}:
@@ -814,12 +967,7 @@ class LocalModelClient:
         # Local model calls must stream. The timeout below is only the socket/read
         # timeout while waiting for the next streamed token chunk. There is no
         # whole-answer, whole-question, or whole-chunk wall timeout here.
-        use_cache_prompt = os.environ.get("KMD_LOCAL_MODEL_CACHE_PROMPT", "1").strip().lower() not in {
-            "0",
-            "false",
-            "no",
-            "off",
-        }
+        use_cache_prompt = _config_boolean("KMD_LOCAL_MODEL_CACHE_PROMPT")
         if endpoint.endswith("/chat/completions"):
             body = {
                 "messages": [

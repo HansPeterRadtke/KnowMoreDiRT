@@ -1,0 +1,47 @@
+{
+  "description": "Requirements transcribed from the KMD voice recordings: source-only answers, subordinate dream/report context, qualified unknown, official asserted material, semantic/vector retrieval, and wording-equivalence evaluation.",
+  "questions": [
+    {
+      "id": "rrq001",
+      "category": "dream_real_world_scope",
+      "question": "What law about flying cars applies in the real world?",
+      "answer": "unknown"
+    },
+    {
+      "id": "rrq002",
+      "category": "dream_requested_scope",
+      "question": "What rule about flying cars did Timmy dream about?",
+      "answer": "Flying cars must display two blue lamps after sunset"
+    },
+    {
+      "id": "rrq003",
+      "category": "reported_real_world_scope",
+      "question": "What is the actual official bridge permit code?",
+      "answer": "unknown"
+    },
+    {
+      "id": "rrq004",
+      "category": "reported_requested_scope",
+      "question": "What bridge permit code did Mara report?",
+      "answer": "RPT-91"
+    },
+    {
+      "id": "rrq005",
+      "category": "asserted_official_scope",
+      "question": "Which ordinance governs the cargo-drone registration plate?",
+      "answer": "OX-42"
+    },
+    {
+      "id": "rrq006",
+      "category": "semantic_vector_retrieval",
+      "question": "What permit identifier is assigned to cars in the North Annex?",
+      "answer": "SABLE-22"
+    },
+    {
+      "id": "rrq007",
+      "category": "source_only_no_world_knowledge",
+      "question": "What is the capital of France?",
+      "answer": "unknown"
+    }
+  ]
+}

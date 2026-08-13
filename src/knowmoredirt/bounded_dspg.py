@@ -18,6 +18,8 @@ from dataclasses import replace
 from functools import lru_cache
 from typing import Any
 
+from kmd_runtime_config import boolean as _config_boolean, floating as _config_float
+
 from .answer_types import ExpectedAnswer, canonicalize_answer, is_value_compatible
 from .context_budget import context_token_capacity
 from .extractors import capitalized_phrases, identifiers, urls
@@ -707,10 +709,9 @@ def _rank_scope(
     relation_doc_scores.sort(key=lambda item: (-item[0], item[2]))
     selected_docs = [doc_id for _score, doc_id, _rel_path in doc_scores[:doc_limit]]
     relation_only_selected = 0
-    allow_relation_only_target_fallback = os.environ.get(
-        "KMD_BOUNDED_RELATION_ONLY_TARGET_FALLBACK",
-        "0",
-    ).strip().lower() in {"1", "true", "yes", "on"}
+    allow_relation_only_target_fallback = _config_boolean(
+        "KMD_BOUNDED_RELATION_ONLY_TARGET_FALLBACK"
+    )
     legacy_relation_fallback = frame.source != "model_query_drs" and not selected_docs
     if relation_doc_scores and len(selected_docs) < doc_limit and (
         not target_terms or allow_relation_only_target_fallback or legacy_relation_fallback
@@ -1655,11 +1656,12 @@ def _dedupe_evidence(items: list[Evidence], *, limit: int | None = None) -> list
 
 
 def _identity_expansion_min_confidence() -> float:
-    raw = os.environ.get("KMD_IDENTITY_EXPANSION_MIN_CONFIDENCE", "0.75").strip()
     try:
-        value = float(raw)
-    except ValueError as error:
-        raise ValueError("KMD_IDENTITY_EXPANSION_MIN_CONFIDENCE must be between 0 and 1") from error
+        value = _config_float("KMD_IDENTITY_EXPANSION_MIN_CONFIDENCE")
+    except ValueError as exc:
+        raise ValueError(
+            "KMD_IDENTITY_EXPANSION_MIN_CONFIDENCE must be between 0 and 1"
+        ) from exc
     if not 0.0 <= value <= 1.0:
         raise ValueError("KMD_IDENTITY_EXPANSION_MIN_CONFIDENCE must be between 0 and 1")
     return value
@@ -5016,13 +5018,110 @@ def _count_target_matches_material(material: str, frame: QueryFrame, target_term
     return False
 
 
+def _record_like_document_paths(records: dict[str, Any]) -> set[str]:
+    """Return structured-looking paths not already tagged by the scanner.
+
+    This is intentionally conservative and is only consumed for explicit
+    row/record count aggregation.  A source span must contain multiple
+    object-like record lines, each beginning with ``{`` and containing at least
+    two key/value fields. Ordinary prose therefore never becomes countable
+    merely because a model extracted several entities from it.
+
+    Bounded records intentionally keep document rows metadata-only; canonical
+    source text lives on ``source_spans``.  Inspecting document ``text`` here
+    silently missed real structured raw files after scope loading.
+    """
+
+    paths: set[str] = set()
+    field_pattern = re.compile(r"\b[A-Za-z_][A-Za-z0-9_.-]*\s*:\s*")
+    for span in records.get("source_spans", []):
+        span_id = str(span.get("span_id") or "")
+        text = str(span.get("surface") or span.get("text") or "")
+        if not span_id or not text:
+            continue
+        record_lines = [
+            line
+            for line in text.splitlines()
+            if line.lstrip().startswith("{") and len(field_pattern.findall(line)) >= 2
+        ]
+        if len(record_lines) < 2:
+            continue
+        evidence = _evidence_for_span(span_id, records)
+        if evidence.rel_path:
+            paths.add(evidence.rel_path)
+    return paths
+
+
+def _model_drs_count_groups(
+    records: dict[str, Any],
+    structured_rel_paths: set[str],
+) -> dict[str, list[dict[str, Any]]]:
+    """Project source-grounded model DRS conditions into per-subject record groups.
+
+    This is only consumed by explicit row/record count aggregation and only for
+    files already proven structured by deterministic scanner relations. Arbitrary
+    prose DRS conditions therefore never become countable records.
+    """
+
+    conditions = {
+        str(row.get("drs_condition_id") or ""): row
+        for row in records.get("drs_conditions", [])
+    }
+    args_by_condition: dict[str, list[dict[str, Any]]] = defaultdict(list)
+    for row in records.get("drs_condition_arguments", []):
+        args_by_condition[str(row.get("drs_condition_id") or "")].append(row)
+    groups: dict[str, list[dict[str, Any]]] = defaultdict(list)
+    for condition_id, condition in conditions.items():
+        span_id = str(condition.get("source_span_id") or "")
+        evidence = _evidence_for_span(span_id, records)
+        if not evidence.rel_path or evidence.rel_path not in structured_rel_paths:
+            continue
+        arguments = args_by_condition.get(condition_id, [])
+        subject_arg = next(
+            (row for row in arguments if normalize(str(row.get("role") or "")) in {"subject", "entity", "record", "item"}),
+            None,
+        )
+        if subject_arg is None:
+            continue
+        subject = str(subject_arg.get("value") or subject_arg.get("evidence_surface") or "").strip()
+        if not subject:
+            continue
+        others = [
+            str(row.get("value") or row.get("evidence_surface") or "").strip()
+            for row in arguments
+            if row is not subject_arg and str(row.get("value") or row.get("evidence_surface") or "").strip()
+        ]
+        group_name = f"model_drs_record:{normalize(subject)}"
+        groups[f"{span_id}|{group_name}"].append(
+            {
+                "relation_id": f"count:{condition_id}",
+                "relation_type": "record_value",
+                "subject": subject,
+                "predicate": str(condition.get("predicate") or ""),
+                "object": " ".join(others),
+                "value": str(condition.get("evidence_surface") or ""),
+                "source_span_id": span_id,
+                "context_id": str(condition.get("context_id") or ""),
+                "metadata_json": json.dumps(
+                    {
+                        "record_group": group_name,
+                        "surface_format": "json_like",
+                        "model_drs_record_group": True,
+                    },
+                    sort_keys=True,
+                ),
+            }
+        )
+    return groups
+
+
 def _count_matching_record_groups(
     records: dict[str, Any],
     frame: QueryFrame,
     target_terms: list[str],
     relation_terms: list[str],
 ) -> tuple[int, list[Evidence]]:
-    groups = _record_groups(records)
+    groups = dict(_record_groups(records))
     required_relation_groups = _relation_term_groups_for_frame(frame, target_terms)
     target_row_local_rel_paths, relation_group_row_local_rel_paths = _row_local_count_match_rel_paths(
         records,
@@ -5030,7 +5129,18 @@ def _count_matching_record_groups(
         required_relation_groups,
     )
     countable_rel_paths = _countable_structured_rel_paths(records)
+    structured_rel_paths = set(countable_rel_paths)
+    for row in records.get("relations", []):
+        if not _structured_source_row(row):
+            continue
+        evidence = _evidence_for_span(str(row.get("source_span_id") or ""), records)
+        if evidence.rel_path:
+            structured_rel_paths.add(evidence.rel_path)
     require_structured_unit = _frame_requests_row_units(frame)
+    if require_structured_unit:
+        structured_rel_paths.update(_record_like_document_paths(records))
+        for group_id, rows in _model_drs_count_groups(records, structured_rel_paths).items():
+            groups.setdefault(group_id, []).extend(rows)
     matched: list[tuple[str, Evidence]] = []
     for group_id, rows in groups.items():
         accessible_rows = [
@@ -5060,10 +5170,21 @@ def _count_matching_record_groups(
                 scoped_material = _group_material(span_rows, records, include_document_context=True, include_source_evidence=False)
                 if not _count_target_matches_material(scoped_material, frame, target_terms):
                     continue
+            is_model_drs_record_group = any(
+                bool(_relation_metadata(row).get("model_drs_record_group"))
+                for row in span_rows
+            )
             group_failed = False
             for index, group in enumerate(required_relation_groups):
                 if _material_matches_term_group(span_material, group):
                     continue
+                # Model-DRS record groups are already projected at record-local
+                # scope. Falling back to document context here lets a value from
+                # a sibling record satisfy the current record (for example one
+                # ready row making a paused row look ready).
+                if is_model_drs_record_group:
+                    group_failed = True
+                    break
                 if not span_is_structured:
                     group_failed = True
                     break
@@ -5077,7 +5198,7 @@ def _count_matching_record_groups(
                     break
             if group_failed:
                 continue
-            provenance_key = span_id or group_id
+            provenance_key = group_id if is_model_drs_record_group else (span_id or group_id)
             matched.append((provenance_key, evidence))
     unique: dict[str, Evidence] = {}
     for group_id, evidence in matched:

@@ -1,0 +1,6 @@
+FIELD LOG — DATED 2044-05-17.
+The observations below belong to that dated section.
+Sensor A pressure was 19 kPa.
+FIELD LOG — DATED 2044-06-01.
+The observations below belong to the new dated section.
+Sensor A pressure was 23 kPa.

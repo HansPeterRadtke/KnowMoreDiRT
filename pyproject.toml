@@ -18,6 +18,9 @@ kmd-filesystem-search = "file_system_catalog.content_search_cli:main"
 [project.optional-dependencies]
 test = ["pytest>=7"]
 
+[tool.setuptools]
+py-modules = ["context_capacity", "kmd_runtime_config"]
+
 [tool.setuptools.packages.find]
 where = ["src"]
 
@@ -25,3 +28,6 @@ where = ["src"]
 testpaths = ["tests"]
 addopts = "-q"
 
+
+[tool.setuptools.package-data]
+knowmoredirt = ["default_config.xml"]

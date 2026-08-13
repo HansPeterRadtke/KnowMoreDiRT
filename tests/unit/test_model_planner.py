@@ -188,3 +188,223 @@ def test_verification_prompt_marks_absence_of_record_as_non_entailing() -> None:
     )
     assert "absence_of_record_only=true" in prompt
     assert "no record, not recorded, no report" in prompt
+
+
+def test_compact_fact_arguments_drop_cross_locality_content_span() -> None:
+    from knowmoredirt.model_planner import _compact_chunk_drs_to_payload, _validate_chunk_drs_payload
+
+    source = (
+        "Timmy's notebook says: I dreamed that I was standing in the city of Velora. "
+        'In the dream, a clerk told me, "Flying cars must display two blue lamps after sunset." '
+        "Then the dream moved on to a quiet park."
+    )
+    cross_locality = (
+        'I dreamed that I was standing in the city of Velora. In the dream, a clerk told me, '
+        '"Flying cars must display two blue lamps after sunset." Then the dream moved'
+    )
+    parsed = {
+        "facts": [
+            {
+                "p": "says",
+                "e": "Timmy's notebook says",
+                "arguments": [
+                    {"role": "subject", "value": "Timmy's notebook"},
+                    {"role": "content", "value": cross_locality},
+                ],
+                "temporal_text": "",
+                "scope": "asserted",
+            },
+            {
+                "p": "must display",
+                "e": "Flying cars must display two blue lamps after sunset",
+                "arguments": [
+                    {"role": "subject", "value": "Flying cars"},
+                    {"role": "object", "value": "two blue lamps"},
+                ],
+                "temporal_text": "after sunset",
+                "scope": "hypothetical",
+            },
+        ]
+    }
+    payload = _compact_chunk_drs_to_payload(parsed, source, rel_path="timmy_dream.txt")
+    labels = {item["label"] for item in payload["drs"]["referents"]}
+    assert cross_locality not in labels
+    assert "Timmy's notebook" in labels
+    assert "Flying cars" in labels
+    validation = _validate_chunk_drs_payload(payload, source)
+    assert validation["schema_valid"] is True
+    assert validation["grounding_failures"] == []
+
+
+def test_compact_v7_cached_raw_is_reconverted_under_v8_without_model_call() -> None:
+    import json
+    from knowmoredirt.model_planner import (
+        CHUNK_DRS_COMPACT_FACT_POLICY,
+        CHUNK_DRS_COMPACT_FACT_POLICY_LOCALITY_PREVIOUS,
+        _reconvert_compact_policy_payload,
+    )
+
+    source = (
+        "Timmy's notebook says: I dreamed that I was standing in the city of Velora. "
+        'In the dream, a clerk told me, "Flying cars must display two blue lamps after sunset." '
+        "Then the dream moved on to a quiet park."
+    )
+    cross_locality = (
+        'I dreamed that I was standing in the city of Velora. In the dream, a clerk told me, '
+        '"Flying cars must display two blue lamps after sunset." Then the dream moved'
+    )
+    compact = {
+        "facts": [
+            {
+                "p": "says",
+                "e": "Timmy's notebook says",
+                "arguments": [
+                    {"role": "subject", "value": "Timmy's notebook"},
+                    {"role": "content", "value": cross_locality},
+                ],
+                "temporal_text": "",
+                "scope": "asserted",
+            },
+            {
+                "p": "must display",
+                "e": "Flying cars must display two blue lamps after sunset",
+                "arguments": [
+                    {"role": "subject", "value": "Flying cars"},
+                    {"role": "object", "value": "two blue lamps"},
+                ],
+                "temporal_text": "after sunset",
+                "scope": "hypothetical",
+            },
+        ]
+    }
+    old = {
+        "accepted": False,
+        "reason": "schema_validation_failed",
+        "compact_fact_policy": CHUNK_DRS_COMPACT_FACT_POLICY_LOCALITY_PREVIOUS,
+        "raw_text": json.dumps(compact),
+    }
+    migrated = _reconvert_compact_policy_payload(old, source, rel_path="timmy_dream.txt")
+    assert migrated["accepted"] is True
+    assert migrated["compact_fact_policy"] == CHUNK_DRS_COMPACT_FACT_POLICY
+    assert migrated["compact_policy_migration"]["source"] == "cached_raw_text"
+    assert cross_locality not in {r["label"] for r in migrated["drs"]["referents"]}
+
+
+def test_compact_validator_does_not_treat_quoted_not_label_as_negated_clause() -> None:
+    from knowmoredirt.model_planner import _compact_chunk_drs_to_payload, _validate_chunk_drs_payload
+
+    source = '{ project: "Not a schema", owner: "Zia Fern", status: "observed", ticket: "TXT-991" }\nThis line says the braces are ordinary raw text.'
+    parsed = {
+        "facts": [
+            {"p": "project", "e": 'project: "Not a schema"', "arguments": [{"role": "subject", "value": "project"}, {"role": "value", "value": "Not a schema"}], "temporal_text": "", "scope": "asserted"},
+            {"p": "owner", "e": 'owner: "Zia Fern"', "arguments": [{"role": "subject", "value": "owner"}, {"role": "value", "value": "Zia Fern"}], "temporal_text": "", "scope": "asserted"},
+            {"p": "status", "e": 'status: "observed"', "arguments": [{"role": "subject", "value": "status"}, {"role": "value", "value": "observed"}], "temporal_text": "", "scope": "asserted"},
+            {"p": "ticket", "e": 'ticket: "TXT-991"', "arguments": [{"role": "subject", "value": "ticket"}, {"role": "value", "value": "TXT-991"}], "temporal_text": "", "scope": "asserted"},
+            {"p": "says", "e": "This line says the braces are ordinary raw text.", "arguments": [{"role": "subject", "value": "This line"}, {"role": "object", "value": "the braces are ordinary raw text"}], "temporal_text": "", "scope": "asserted"},
+        ]
+    }
+    payload = _compact_chunk_drs_to_payload(parsed, source, rel_path="data/raw_json_like.blob")
+    validation = _validate_chunk_drs_payload(payload, source)
+    assert validation["schema_valid"] is True
+    assert "missing_negative_condition_for_grounded_negated_clause" not in validation["errors"]
+
+
+def test_compact_validator_still_requires_negative_polarity_for_real_negated_clause() -> None:
+    from knowmoredirt.model_planner import _compact_chunk_drs_to_payload, _validate_chunk_drs_payload
+
+    source = "Inspection confirmed that the silver gate was not removed."
+    parsed = {
+        "facts": [
+            {
+                "p": "removed",
+                "e": "the silver gate was not removed",
+                "arguments": [{"role": "subject", "value": "the silver gate"}],
+                "temporal_text": "",
+                "scope": "asserted",
+            }
+        ]
+    }
+    payload = _compact_chunk_drs_to_payload(parsed, source, rel_path="note.txt")
+    validation = _validate_chunk_drs_payload(payload, source)
+    assert validation["schema_valid"] is False
+    assert "missing_negative_condition_for_grounded_negated_clause" in validation["errors"]
+
+
+def test_json_record_locality_treats_formatting_whitespace_as_equivalent() -> None:
+    from knowmoredirt.model_planner import _surface_record_indexes
+
+    records = ['"product":"BeaconForce"\n{"blocking_pr":"PR-2814"}']
+    assert _surface_record_indexes('"product": "BeaconForce"', records) == {0}
+
+
+def test_incomplete_json_shard_preserves_ancestor_context_without_merging_siblings() -> None:
+    from knowmoredirt.model_planner import _structured_source_record_surfaces, _surface_record_indexes
+
+    source = '''{
+  "product": "BeaconForce",
+  "release_state": {
+    "blocking_pr": "PR-2814",
+    "gate": "HOLD"
+  },
+  "threads": [
+    {"userId": "eid_cc30ff03", "text": "Mara Chen owns the retry scheduler."},
+    {"userId": "eid_dd40ff04", "text": "Ilya Stone opened the repair PR."}
+'''
+    records = _structured_source_record_surfaces(source)
+    product = _surface_record_indexes('"product": "BeaconForce"', records)
+    blocking = _surface_record_indexes('"blocking_pr": "PR-2814"', records)
+    mara_id = _surface_record_indexes('"userId": "eid_cc30ff03"', records)
+    mara = _surface_record_indexes("Mara Chen", records)
+    ilya = _surface_record_indexes("Ilya Stone", records)
+    assert product and blocking and product.intersection(blocking)
+    assert mara_id and mara and mara_id.intersection(mara)
+    assert not mara_id.intersection(ilya)
+
+
+def test_verification_prompt_allows_direct_negation_of_meta_status_but_not_underlying_event() -> None:
+    prompt = build_answer_verification_prompt(
+        "Was FlowQuill proven to have caused invoice drift?",
+        {"answer_type": "boolean", "requested_relation": "proven caused"},
+        "no",
+        [{"rel_path": "judgment.final", "text": "The court found no proof that FlowQuill caused invoice drift."}],
+        [],
+        meta_status_verification=True,
+    )
+    assert "For this meta-status query only" in prompt
+    assert "found no proof" in prompt
+    assert "A bare 'P was not proven' statement" in prompt
+    assert "Do not apply the exception when the question asks whether the underlying event itself happened" in prompt
+
+
+def test_verification_prompt_default_preserves_historical_absence_policy() -> None:
+    prompt = build_answer_verification_prompt(
+        "Did the event happen?",
+        {"answer_type": "boolean", "requested_relation": "happen"},
+        "no",
+        [{"rel_path": "note.txt", "text": "There is no proof that the event happened."}],
+        [],
+    )
+    assert "Phrases such as not confirmed, no proof, no record, not established, unknown, unverified" in prompt
+    assert "narrow meta-status" not in prompt
+    assert "For this meta-status query only" not in prompt
+
+
+def test_verification_prompt_meta_status_policy_is_opt_in() -> None:
+    default_prompt = build_answer_verification_prompt(
+        "Was it proven?",
+        {"answer_type": "boolean", "requested_relation": "proven"},
+        "no",
+        [{"rel_path": "judgment.txt", "text": "The court found no proof."}],
+        [],
+    )
+    meta_prompt = build_answer_verification_prompt(
+        "Was it proven?",
+        {"answer_type": "boolean", "requested_relation": "proven"},
+        "no",
+        [{"rel_path": "judgment.txt", "text": "The court found no proof."}],
+        [],
+        meta_status_verification=True,
+    )
+    assert "For this meta-status query only" not in default_prompt
+    assert "For this meta-status query only" in meta_prompt
+    assert meta_prompt != default_prompt

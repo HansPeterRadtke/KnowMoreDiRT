@@ -15,17 +15,29 @@ from dataclasses import dataclass, replace
 from pathlib import Path
 from typing import Any
 
+from kmd_runtime_config import (
+    boolean as _config_boolean,
+    default_specs as _config_specs,
+    explicit_raw as _config_explicit_raw,
+    floating as _config_float,
+    integer as _config_int,
+    text as _config_text,
+)
+
+from .runtime_logging import get_logger
 from .answer_types import (
     ExpectedAnswer,
     answer_parts,
     canonicalize_answer,
     classify_value,
     is_metadata_evidence_text,
+    is_unknown_text,
     is_value_compatible,
 )
 from .bounded_dspg import execute_bounded_query
 from .context_budget import context_char_capacity, context_token_capacity
 from .drs import frame_from_model_dict
+from .document_context import apply_document_context_envelopes
 from .extractors import capitalized_phrases
 from .ingest import ingest_folder
 from .index import LexicalIndex
@@ -43,14 +55,17 @@ from .model_planner import (
     call_model_source_resolved_answer,
     chunk_frame_cache_context,
     query_frame_from_query_drs,
+    structured_failure_retryable,
 )
 from .models import Answer, Document, Evidence, Sentence
 from .query import QueryFrame, frame_from_mapping, plan_question, term_variants
 from .semantic_cache import SemanticFrameCache
 from .store import stable_id
 from .text import clean_extracted_value, content_tokens, is_low_semantic_noise, normalize, text_quality_metrics
+from .vector_retrieval import VectorCandidateRetriever, VectorRetrievalUnavailable
 
 
+LOGGER = get_logger("engine")
 PROGRESS_TRUE_VALUES = {"1", "true", "yes", "on"}
 
 
@@ -124,6 +139,12 @@ TRUSTED_STRUCTURAL_ANSWER_TYPES = {
 
 
 def _env_true(name: str) -> bool:
+    spec = _config_specs().get(name)
+    if spec is not None:
+        if spec.value_type == "bool":
+            return _config_boolean(name)
+        explicit = str(_config_explicit_raw(name) or "").strip().lower()
+        return explicit in PROGRESS_TRUE_VALUES
     return os.environ.get(name, "").strip().lower() in PROGRESS_TRUE_VALUES
 
 
@@ -137,6 +158,8 @@ def _attempt_was_nonrequest_failure(row: Any | None) -> bool:
     except Exception:
         return False
     if reason in {"", "request_failed"} or materialized:
+        return False
+    if structured_failure_retryable({"reason": reason}):
         return False
     if accepted:
         try:
@@ -170,10 +193,8 @@ class KnowMoreDiRTEngine:
         self._use_local_model = self._model_client is not None
         self.model_query_trace = ModelQueryTrace(enabled=self._use_local_model, prompt_hashes=[], response_hashes=[])
         self._semantic_cache = SemanticFrameCache() if self._use_local_model else None
-        llm_ingest_setting = os.environ.get("KMD_LLM_INGEST", "0").strip().lower()
-        use_semantic_frames = self._use_local_model and llm_ingest_setting in {"1", "true", "yes", "on"}
-        drs_ingest_setting = os.environ.get("KMD_LLM_DRS_INGEST", "1").strip().lower()
-        use_drs_semantics = self._use_local_model and drs_ingest_setting not in {"0", "false", "no", "off"}
+        use_semantic_frames = self._use_local_model and _config_boolean("KMD_LLM_INGEST")
+        use_drs_semantics = self._use_local_model and _config_boolean("KMD_LLM_DRS_INGEST")
         self._log_progress(
             "kmd-init start "
             f"local_model={self._use_local_model} "
@@ -194,6 +215,16 @@ class KnowMoreDiRTEngine:
         )
         self._log_progress(
             f"kmd-init indexed documents={len(self.documents)} chunks={len(self.sentences)} run_id={self.run_id}"
+        )
+        self.document_context_stats = apply_document_context_envelopes(
+            self.store, self.run_id, self.documents, self.sentences, self._model_client
+        )
+        self._log_progress(
+            "kmd-init document_context "
+            f"considered={self.document_context_stats['documents_considered']} "
+            f"contexts={self.document_context_stats['context_segments_applied']} "
+            f"temporals={self.document_context_stats['temporal_scopes_applied']} "
+            f"spans={self.document_context_stats['spans_rebound']}"
         )
         if self._model_client is not None:
             self._model_client = self._question_stage_model_client(self._model_client)
@@ -223,6 +254,10 @@ class KnowMoreDiRTEngine:
         self._low_semantic_noise_paths = {
             document.rel_path for document in self.documents if is_low_semantic_noise(document.text)
         }
+        try:
+            self._vector_retriever = VectorCandidateRetriever.from_environment(self.folder_path)
+        except VectorRetrievalUnavailable as error:
+            raise LocalModelUnavailableError(str(error)) from error
         if use_semantic_frames:
             semantic_frame_rows = self.store.execute(
                 "SELECT COUNT(*) FROM frames WHERE source='local_model'"
@@ -244,10 +279,7 @@ class KnowMoreDiRTEngine:
         return _env_true("KMD_TEST_ALLOW_NO_MODEL") and "PYTEST_CURRENT_TEST" in os.environ
 
     def _model_evidence_tools_allowed(self) -> bool:
-        value = os.environ.get("KMD_MODEL_EVIDENCE_TOOLS", "1").strip().lower()
-        if value in {"0", "false", "no", "off"}:
-            return False
-        return True
+        return _config_boolean("KMD_MODEL_EVIDENCE_TOOLS")
 
     def _test_model_evidence_helpers_allowed(self) -> bool:
         if _env_true("KMD_TEST_ALLOW_MODEL_EVIDENCE_TOOLS") and "PYTEST_CURRENT_TEST" in os.environ:
@@ -255,7 +287,7 @@ class KnowMoreDiRTEngine:
         return self._model_evidence_tools_allowed()
 
     def _required_local_model_client(self) -> LocalModelClient:
-        endpoint = os.environ.get("KMD_LOCAL_MODEL_ENDPOINT", "http://127.0.0.1:14829/v1").rstrip("/")
+        endpoint = _config_text("KMD_LOCAL_MODEL_ENDPOINT").rstrip("/")
         try:
             client = LocalModelClient(endpoint=endpoint)
         except TypeError:
@@ -266,7 +298,8 @@ class KnowMoreDiRTEngine:
             models = client.models()
         except Exception as exc:
             disabled_hint = ""
-            if os.environ.get("KMD_USE_LOCAL_MODEL", "").strip().lower() in {"0", "false", "no", "off"}:
+            local_model_preference = str(_config_explicit_raw("KMD_USE_LOCAL_MODEL") or "").strip().lower()
+            if local_model_preference in {"0", "false", "no", "off"}:
                 disabled_hint = " KMD_USE_LOCAL_MODEL=0 no longer disables the production model requirement."
             raise LocalModelUnavailableError(
                 "KnowMoreDiRT requires a reachable localhost llama.cpp endpoint for initialize(folder_path). "
@@ -277,7 +310,7 @@ class KnowMoreDiRTEngine:
                 "KnowMoreDiRT requires a reachable localhost llama.cpp endpoint for initialize(folder_path). "
                 f"Probe {endpoint!r} returned a non-JSON-object model listing."
             )
-        expected_model = os.environ.get("KMD_LOCAL_MODEL_EXPECTED_ID", "").strip()
+        expected_model = _config_text("KMD_LOCAL_MODEL_EXPECTED_ID").strip()
         if expected_model:
             found_model = client.model_id({"models": models})
             if expected_model not in found_model:
@@ -303,11 +336,8 @@ class KnowMoreDiRTEngine:
         progress_label: str,
     ) -> LocalModelClient:
         env_name = "KMD_LOCAL_MODEL_PER_TOKEN_TIMEOUT_SECONDS"
-        raw_timeout = os.environ.get(env_name, "").strip()
-        if not raw_timeout:
-            return client
         try:
-            timeout = float(raw_timeout)
+            timeout = _config_float(env_name)
         except ValueError as exc:
             raise LocalModelUnavailableError(
                 f"{env_name} must be a positive number when set."
@@ -341,11 +371,10 @@ class KnowMoreDiRTEngine:
         )
 
     def _progress_enabled(self) -> bool:
-        return os.environ.get("KMD_PROGRESS", "").strip().lower() in {"1", "true", "yes", "on"} or os.environ.get(
-            "KMD_EVAL_PROGRESS", ""
-        ).strip().lower() in {"1", "true", "yes", "on"}
+        return _config_boolean("KMD_PROGRESS") or _config_boolean("KMD_EVAL_PROGRESS")
 
     def _log_progress(self, message: str) -> None:
+        LOGGER.info(message)
         if self._progress_enabled():
             print(message, flush=True)
 
@@ -428,7 +457,7 @@ class KnowMoreDiRTEngine:
         text = str(answer.text or "").strip()
         if not text:
             return False
-        return normalize(text) != "unknown"
+        return not is_unknown_text(text)
 
     def answer(self, question: str) -> Answer:
         text = str(question or "").strip()
@@ -493,7 +522,7 @@ class KnowMoreDiRTEngine:
         frame = plan_question(text)
         expected = self._expected_from_frame(frame)
         bounded = self._answer_with_bounded_dspg(text, frame, expected)
-        if bounded and normalize(bounded.text) != "unknown":
+        if bounded and not is_unknown_text(bounded.text):
             if self._use_local_model and not self._verify_with_local_model(text, frame, bounded, expected):
                 bounded = None
             if bounded is None:
@@ -550,6 +579,27 @@ class KnowMoreDiRTEngine:
             for index, line in enumerate(clauses):
                 line_norm = normalize(line)
                 local_context = normalize(" ".join(clauses[max(0, index - 2): index + 1]))
+                only_exclusion = re.search(r"\bonly\s+(?P<allowed>[^.;]+)$", line, re.I)
+                if only_exclusion:
+                    subject_anchor = target_anchors[0] if target_anchors else ""
+                    if subject_anchor and not all(token in local_context for token in content_tokens(subject_anchor)):
+                        continue
+                    line_roots = lexical_roots(content_tokens(line))
+                    if query_roots and not query_roots.intersection(line_roots):
+                        continue
+                    requested_value_anchors = target_anchors[1:]
+                    allowed_norm = normalize(only_exclusion.group("allowed"))
+                    excluded_requested_value = bool(requested_value_anchors) and all(
+                        not all(token in allowed_norm for token in content_tokens(anchor))
+                        for anchor in requested_value_anchors
+                    )
+                    if excluded_requested_value:
+                        support = [item]
+                        guarded = self._central_answer_guard(question, "No", ExpectedAnswer("boolean"), frame, support)
+                        if guarded and not is_unknown_text(guarded):
+                            return Answer(guarded, 0.90, support, "explicit exhaustive exclusion", "boolean")
+                    continue
+
                 if target_anchors and not all(
                     all(token in local_context for token in content_tokens(anchor))
                     for anchor in target_anchors
@@ -571,6 +621,11 @@ class KnowMoreDiRTEngine:
                     line,
                     re.I,
                 )
+                relation_no_object = re.search(
+                    r"\b(?P<verb>[A-Za-z][A-Za-z0-9_-]*)\s+no\s+(?P<object>[A-Za-z0-9][^.;]{0,180})$",
+                    line,
+                    re.I,
+                )
                 no_nominal = re.search(
                     r"(?:^|[,;:]\s*)no\s+(?P<noun>[A-Za-z0-9][A-Za-z0-9 _-]{1,100}?)(?:\s+(?:about|regarding|concerning|for)\s+(?P<object>[^.;,]+))?(?:$|[.;,])",
                     line,
@@ -585,6 +640,25 @@ class KnowMoreDiRTEngine:
                     if "final judgment" not in authority_context and "court" not in line_norm:
                         continue
                     text = "No; the final judgment found no proof."
+                elif relation_no_object:
+                    verb_roots = lexical_roots([relation_no_object.group("verb")])
+                    if query_roots and not query_roots.intersection(verb_roots):
+                        continue
+                    object_text = normalize(relation_no_object.group("object"))
+                    object_roots = lexical_roots(content_tokens(object_text))
+                    if {"record", "evidence", "proof", "prove", "report", "documentation"}.intersection(object_roots):
+                        continue
+                    target_material = normalize(" ".join([*target_anchors, *frame.constraints]))
+                    target_tokens = [
+                        token for token in content_tokens(target_material)
+                        if len(token) > 2
+                    ]
+                    if target_tokens and not any(
+                        any(variant and variant in object_text for variant in term_variants(token))
+                        for token in target_tokens
+                    ):
+                        continue
+                    text = "No"
                 elif direct_not:
                     predicate_roots = lexical_roots(content_tokens(direct_not.group("predicate")))
                     if query_roots and not query_roots.intersection(predicate_roots):
@@ -615,7 +689,7 @@ class KnowMoreDiRTEngine:
 
                 support = [item]
                 guarded = self._central_answer_guard(question, text, ExpectedAnswer("boolean"), frame, support)
-                if guarded and normalize(guarded) != "unknown":
+                if guarded and not is_unknown_text(guarded):
                     return Answer(guarded, 0.92, support, "explicit local negative proposition", "boolean")
         return None
 
@@ -664,7 +738,7 @@ class KnowMoreDiRTEngine:
         if not text:
             return ""
         low = normalize(text)
-        if low == "unknown":
+        if is_unknown_text(text):
             return text
         qnorm = normalize(question)
         if "email" in qnorm and not re.search(r"[A-Z0-9._%+-]+@[A-Z0-9.-]+\.[A-Z]{2,}", text, re.I):
@@ -2622,6 +2696,66 @@ class KnowMoreDiRTEngine:
         rows = self._source_row_records()
         if not rows:
             return None
+
+        # Generic same-row URL binding.  A row is eligible only when it matches
+        # the non-field target anchors, and a URL-valued field is eligible only
+        # when its key overlaps the requested URL role (for example a pull-request URL may
+        # bind to canonical_pr). This avoids document-wide URL guessing.
+        if qnorm.startswith(("what ", "which ")) and ("url" in qnorm or "link" in qnorm):
+            frame_data = self.model_query_trace.last_plan if isinstance(self.model_query_trace.last_plan, dict) else None
+            frame = frame_from_mapping(question, frame_data) if frame_data else plan_question(question)
+            field_anchor_tokens = {"url", "link", "uri", "reference", "address"}
+            target_terms = []
+            for anchor_value in frame.target_anchors:
+                anchor = clean_extracted_value(anchor_value).strip()
+                tokens = set(content_tokens(anchor))
+                if not anchor or (tokens and tokens.intersection(field_anchor_tokens) and len(tokens - field_anchor_tokens) <= 2):
+                    continue
+                target_terms.append(anchor)
+            prep_target = self._question_target_from_preposition(question, ("for", "of"))
+            if prep_target:
+                prep_target = re.sub(r"^(?:the|a|an)\s+", "", clean_extracted_value(prep_target).strip(), flags=re.I)
+                prep_tokens = set(content_tokens(prep_target))
+                if prep_target and not (prep_tokens and prep_tokens.intersection(field_anchor_tokens) and len(prep_tokens - field_anchor_tokens) <= 2):
+                    if normalize(prep_target) not in {normalize(value) for value in target_terms}:
+                        target_terms.append(prep_target)
+            generic_query_tokens = {
+                "what", "which", "is", "was", "are", "were", "the", "a", "an", "for", "of", "to",
+                "url", "link", "uri", "address", "answer", "argument",
+            }
+            query_role_tokens = {
+                token
+                for token in re.findall(r"[a-z0-9]+", qnorm)
+                if token not in generic_query_tokens
+            }
+            # Metadata keys often contain meaningful short abbreviations such
+            # as pull-request, identifier, network-address, or URL abbreviations. Use raw identifier tokens here rather than
+            # content_tokens(), which intentionally drops short prose tokens.
+            for target in target_terms:
+                query_role_tokens.difference_update(re.findall(r"[a-z0-9]+", normalize(target)))
+            scored_urls: list[tuple[int, str, Evidence, str]] = []
+            for row, evidence in rows:
+                if target_terms and not self._row_matches_terms(row, target_terms):
+                    continue
+                for key, raw_value in row.items():
+                    if key.startswith("_"):
+                        continue
+                    value = clean_extracted_value(raw_value).strip(" .;:")
+                    if not re.match(r"^https?://", value, re.I):
+                        continue
+                    key_tokens = set(re.findall(r"[a-z0-9]+", normalize(key.replace("_", " "))))
+                    overlap = len(key_tokens.intersection(query_role_tokens))
+                    if overlap <= 0:
+                        continue
+                    scored_urls.append((overlap, value, evidence, key))
+            if scored_urls:
+                scored_urls.sort(key=lambda item: (-item[0], len(item[1]), item[1], item[3]))
+                best_score = scored_urls[0][0]
+                best_values = list(dict.fromkeys(value for score, value, _evidence, _key in scored_urls if score == best_score))
+                if len(best_values) == 1:
+                    value = best_values[0]
+                    evidence = next(ev for score, candidate, ev, _key in scored_urls if score == best_score and candidate == value)
+                    return Answer(value, 0.9, [evidence], "source-row same-record url field", "url")
         # Generic keyed table lookup.
         field_match = re.search(
             r"\bwhat\s+(?P<field>[a-z0-9_ -]+?)\s+(?:is|are|was|were)\s+(?:listed|recorded|shown|given|stored|set)\s+(?:for|of)\b",
@@ -2717,10 +2851,12 @@ class KnowMoreDiRTEngine:
                     for part in [part.strip() for part in line.split("|")]:
                         if not part:
                             continue
-                        if ":" in part:
-                            key, value = part.split(":", 1)
-                        elif "=" in part:
+                        eq_index = part.find("=")
+                        colon_index = part.find(":")
+                        if eq_index >= 0 and (colon_index < 0 or eq_index < colon_index):
                             key, value = part.split("=", 1)
+                        elif colon_index >= 0:
+                            key, value = part.split(":", 1)
                         else:
                             continue
                         key_norm = normalize(key).replace(" ", "_")
@@ -3020,7 +3156,7 @@ class KnowMoreDiRTEngine:
                 if any(label in line_norm for label in specific_missing_labels) and "no" in line_tokens and ("url" in line_tokens or "link" in line_tokens):
                     return Answer("unknown", 0.0, [ev], "explicit missing source field", "unknown")
         target_terms = self._exact_source_target_terms(frame, deterministic_frame, labels, field_kind)
-        candidates = self._search(question, limit=int(os.environ.get("KMD_EXACT_FIELD_SOURCE_LIMIT", "36")), required=None)
+        candidates = self._search(question, limit=_config_int("KMD_EXACT_FIELD_SOURCE_LIMIT"), required=None)
         evidence = [self._evidence(sentence, score) for sentence, score in candidates]
         if prior_answer is not None:
             evidence = [*prior_answer.evidence, *evidence]
@@ -3063,7 +3199,7 @@ class KnowMoreDiRTEngine:
         if not canonical:
             return None
         canonical = self._central_answer_guard(question, canonical, expected, frame, [best_evidence])
-        if not canonical or normalize(canonical) == "unknown":
+        if not canonical or is_unknown_text(canonical):
             return None
         return Answer(canonical, 0.86, [best_evidence], "general exact source field extraction", expected.answer_type)
 
@@ -3093,7 +3229,7 @@ class KnowMoreDiRTEngine:
         qnorm = normalize(question)
         if not ("what does" in qnorm or TOK_TRANSLATION in qnorm or "plural of" in qnorm):
             return None
-        candidates = self._search(question, limit=int(os.environ.get("KMD_DEFINITION_SOURCE_LIMIT", "24")), required=None)
+        candidates = self._search(question, limit=_config_int("KMD_DEFINITION_SOURCE_LIMIT"), required=None)
         evidence = [self._evidence(sentence, score) for sentence, score in candidates]
         for item in evidence:
             window = self._evidence_window_text(item, radius=2, max_chars=900)
@@ -3144,7 +3280,158 @@ class KnowMoreDiRTEngine:
         return Answer(text, answer.confidence, answer.evidence, answer.reason, answer.answer_type)
 
     def _unknown_answer(self, reason: str) -> Answer:
-        return Answer("unknown", 0.0, self._diagnostic_unknown_evidence(), reason, "unknown")
+        evidence = self._diagnostic_unknown_evidence()
+        return Answer(self._qualified_unknown_text(evidence), 0.0, evidence, reason, "unknown")
+
+    def _evidence_context_kinds(self, evidence: Evidence) -> tuple[str, ...]:
+        if getattr(self, "store", None) is None:
+            return ()
+        span_id = evidence.span_id
+        if not span_id and evidence.chunk_order is not None:
+            sentence = self._sentences_by_document.get(evidence.rel_path, {}).get(evidence.chunk_order)
+            if sentence is not None:
+                span_id = self._sentence_span_id(sentence)
+        if not span_id:
+            return ()
+        rows = self.store.execute(
+            """
+            SELECT DISTINCT context_id FROM (
+              SELECT f.context_id AS context_id FROM frames f WHERE f.span_id=?
+              UNION ALL
+              SELECT d.context_id AS context_id FROM drs_conditions d WHERE d.source_span_id=?
+              UNION ALL
+              SELECT r.context_id AS context_id FROM relations r WHERE r.source_span_id=?
+              UNION ALL
+              SELECT ca.context_id AS context_id FROM context_assignments ca
+              WHERE ca.run_id=? AND ca.applies_to_type='source_span' AND ca.applies_to_id=?
+            ) WHERE context_id IS NOT NULL
+            """,
+            (span_id, span_id, span_id, self.run_id, span_id),
+        ).fetchall()
+        pending = [str(row["context_id"]) for row in rows]
+        seen: set[str] = set()
+        kinds: set[str] = set()
+        while pending:
+            context_id = pending.pop()
+            if not context_id or context_id in seen:
+                continue
+            seen.add(context_id)
+            row = self.store.execute(
+                "SELECT kind, parent_context_id FROM contexts WHERE context_id=? LIMIT 1",
+                (context_id,),
+            ).fetchone()
+            if row is None:
+                continue
+            kind = str(row["kind"] or "")
+            if kind:
+                kinds.add(kind)
+            parent = str(row["parent_context_id"] or "")
+            if parent and parent not in seen:
+                pending.append(parent)
+        return tuple(sorted(kinds))
+
+    def _unknown_evidence_matches_query_target(self, evidence: Evidence) -> bool:
+        trace = getattr(self, "model_query_trace", None)
+        frame_data = trace.last_plan if trace is not None and isinstance(trace.last_plan, dict) else None
+        if frame_data is None:
+            return True
+        target_anchors = [
+            clean_extracted_value(str(value)).strip()
+            for value in frame_data.get("target_anchors") or []
+            if normalize(str(value or ""))
+        ]
+        answer_anchors = [
+            clean_extracted_value(str(value)).strip()
+            for value in frame_data.get("answer_variables") or []
+            if normalize(str(value or ""))
+        ]
+        # A multi-token answer slot often names the queried topic more precisely
+        # than a scope-shaped target such as "waking life". Prefer that topic for
+        # optional unknown qualification, while generic slots such as "Who",
+        # "law", or "capital" continue to rely on true target anchors.
+        specific_answer_anchors = [
+            anchor for anchor in answer_anchors if len(content_tokens(anchor)) >= 2
+        ]
+        anchors = specific_answer_anchors or target_anchors
+        material = normalize(evidence.text)
+        if anchors:
+            def anchor_matches(anchor: str) -> bool:
+                anchor_norm = normalize(anchor)
+                if anchor_norm and anchor_norm in material:
+                    return True
+                slot_descriptor_tokens = {
+                    "answer", "code", "identifier", "law", "name", "number",
+                    "result", "rule", "state", "value",
+                }
+                topic_parts = [
+                    token
+                    for token in re.findall(r"[a-z0-9]+", anchor_norm)
+                    if len(token) > 2 and token not in slot_descriptor_tokens
+                ]
+                if topic_parts:
+                    return all(
+                        any(variant and variant in material for variant in term_variants(token))
+                        for token in topic_parts
+                    )
+                return self._anchor_has_grounded_token(anchor, material)
+
+            meaningful = [anchor for anchor in anchors if content_tokens(anchor)]
+            if not meaningful:
+                return False
+            # Qualified unknown evidence is optional diagnostic context. For a
+            # multi-anchor query, every meaningful target must be grounded in the
+            # same evidence item; matching only a broad entity anchor can attach
+            # unrelated subordinate text to an otherwise correct unknown answer.
+            return all(anchor_matches(anchor) for anchor in meaningful)
+        # When the query has no target referent, demand at least one meaningful
+        # relation/constraint term.  Unknown qualification is intentionally
+        # conservative: omitting a note is safer than attaching unrelated source.
+        semantic_terms: list[str] = []
+        for value in [
+            frame_data.get("requested_relation"),
+            *(frame_data.get("relation_terms") or []),
+            *(frame_data.get("constraints") or []),
+        ]:
+            semantic_terms.extend(
+                normalize(token) for token in content_tokens(str(value or "")) if len(normalize(token)) > 3
+            )
+        return any(
+            any(variant and variant in material for variant in term_variants(term))
+            for term in semantic_terms
+        ) if semantic_terms else False
+
+    def _qualified_unknown_text(self, evidence: list[Evidence]) -> str:
+        subordinate = {
+            "dreamed",
+            "reported",
+            "quoted",
+            "hypothetical",
+            "conditional",
+            "counterfactual",
+            "negated",
+        }
+        for item in evidence:
+            if not self._unknown_evidence_matches_query_target(item):
+                continue
+            kinds = self._evidence_context_kinds(item)
+            relevant = [
+                kind.removeprefix("drs:")
+                for kind in kinds
+                if kind.removeprefix("drs:") in subordinate
+            ]
+            if not relevant:
+                continue
+            kind = relevant[0]
+            snippet = " ".join(item.text.split())
+            max_chars = self._context_char_capacity(
+                "KMD_QUALIFIED_UNKNOWN_SNIPPET_RATIO",
+                1.0 / 128.0,
+                available=len(snippet),
+            )
+            if len(snippet) > max_chars:
+                snippet = snippet[: max(1, max_chars - 1)].rstrip() + "…"
+            return f"unknown — relevant {kind} evidence in {item.rel_path}: {snippet}"
+        return "unknown"
 
     def _diagnostic_unknown_evidence(self, *, limit: int | None = None) -> list[Evidence]:
         diagnostics = self.last_bounded_diagnostics if isinstance(self.last_bounded_diagnostics, dict) else {}
@@ -3232,6 +3519,54 @@ class KnowMoreDiRTEngine:
                 break
         return evidence_items
 
+    def _requested_meta_status_kind(self, frame: QueryFrame) -> str:
+        material = normalize(
+            " ".join(
+                [
+                    frame.requested_relation,
+                    *frame.relation_terms,
+                    *frame.constraints,
+                    frame.question_text,
+                ]
+            )
+        )
+        if re.search(r"\b(?:confirm|confirmed|confirmation|verify|verified|verification|establish|established)\b", material):
+            return "confirmation"
+        if re.search(r"\b(?:prove|proved|proven|proof)\b", material):
+            return "proof"
+        if re.search(r"\b(?:finalize|finalized|finalization)\b", material) or TOK_FINAL_DECISION in material:
+            return "finalization"
+        return ""
+
+    def _evidence_directly_negates_meta_status(self, frame: QueryFrame, evidence_span: str) -> bool:
+        material = normalize(evidence_span)
+        kind = self._requested_meta_status_kind(frame)
+        if not material or not kind:
+            return False
+        if kind == "confirmation":
+            return bool(
+                re.search(r"\b(?:not|never)\s+(?:been\s+)?(?:confirmed|verified|established)\b", material)
+                or re.search(r"\bno\s+(?:final\s+)?(?:confirmation|verification)\b", material)
+            )
+        if kind == "proof":
+            # A bare "not proven" statement is still absence of proof, not an
+            # adjudicative finding that can settle the queried proof status.
+            # Accept only source-explicit authoritative adjudication: a final
+            # judgment/court/tribunal finding that there is no proof/evidence.
+            return bool(
+                re.search(
+                    r"\b(?:final\s+judgment|court|tribunal)\b.*?"
+                    r"\b(?:found|established|concluded)\s+no\s+(?:proof|evidence)\b",
+                    material,
+                )
+            )
+        if kind == "finalization":
+            return bool(
+                re.search(r"\bno\s+final\s+decision\b", material)
+                or re.search(r"\b(?:decision|plan)\b.{0,80}\bnot\s+final(?:ized)?\b", material)
+            )
+        return False
+
     def _evidence_directly_negates_requested_relation(
         self,
         frame: QueryFrame,
@@ -3240,6 +3575,14 @@ class KnowMoreDiRTEngine:
         material = normalize(evidence_span)
         if not material:
             return False
+        meta_status_kind = self._requested_meta_status_kind(frame)
+        if meta_status_kind == "proof":
+            # Proof-status queries are intentionally stricter than generic
+            # lexical negation: a bare "not proven" is absence of proof and
+            # must not fall through to the generic "not <relation>" matcher.
+            return self._evidence_directly_negates_meta_status(frame, evidence_span)
+        if self._evidence_directly_negates_meta_status(frame, evidence_span):
+            return True
         generic = {
             "answer", "argument", "asserted", "actual", "fact", "real", "really",
             "whether", "what", "which", "where", "when", "who", "why", "how",
@@ -3290,7 +3633,17 @@ class KnowMoreDiRTEngine:
             r"\bno\b(?P<tail>(?:\s+[a-z0-9_-]+){1,8})",
             material,
         ):
-            negated_windows.append(match.group("tail"))
+            tail = match.group("tail")
+            tail_norm = normalize(tail)
+            # "No proof/evidence/confirmation that P" is absence of an
+            # evidentiary status, not direct negation of P. Meta-status queries
+            # are handled explicitly above before this generic relation matcher.
+            if re.match(
+                r"^(?:proof|evidence|confirmation|verification|record|report|documentation|entry|log|mention)\b",
+                tail_norm,
+            ):
+                continue
+            negated_windows.append(tail)
         for window in negated_windows:
             window_variants: set[str] = set()
             for token in content_tokens(window):
@@ -3299,9 +3652,15 @@ class KnowMoreDiRTEngine:
                 return True
         return False
 
-    def _evidence_is_absence_of_record_only(self, evidence_span: str) -> bool:
+    def _evidence_is_absence_of_record_only(
+        self,
+        evidence_span: str,
+        frame: QueryFrame | None = None,
+    ) -> bool:
         material = normalize(evidence_span)
         if not material:
+            return False
+        if frame is not None and self._evidence_directly_negates_meta_status(frame, evidence_span):
             return False
         absence_nouns = r"(?:record|report|documentation|evidence|proof|confirmation|entry|log|mention|audit trail)"
         absence_verbs = r"(?:recorded|documented|reported|logged|confirmed|established|verified|mentioned|proved|proven)"
@@ -3359,6 +3718,7 @@ class KnowMoreDiRTEngine:
                 evidence_payload,
                 discourse_frames,
                 self._model_client,
+                meta_status_verification=bool(self._requested_meta_status_kind(frame)),
             )
             if str(result.get("reason") or "") == "request_failed":
                 trace.rejected_output_count += 1
@@ -3410,7 +3770,7 @@ class KnowMoreDiRTEngine:
                             relation_frame = planned_frame
                     negative_proof_valid = (
                         self._evidence_directly_negates_requested_relation(relation_frame, span)
-                        and not self._evidence_is_absence_of_record_only(span)
+                        and not self._evidence_is_absence_of_record_only(span, relation_frame)
                     )
                 if not negative_proof_valid:
                     trace.verifier_rejected_count += 1
@@ -3832,7 +4192,7 @@ class KnowMoreDiRTEngine:
             return None
         trace = self.model_query_trace
         trace.call_count += 1
-        if os.environ.get("KMD_QUERY_DRS_PLAN", "1").strip().lower() in {"0", "false", "no", "off"}:
+        if not _config_boolean("KMD_QUERY_DRS_PLAN"):
             if "PYTEST_CURRENT_TEST" not in os.environ:
                 raise LocalModelUnavailableError(
                     "KnowMoreDiRT production runtime requires query DRS planning; KMD_QUERY_DRS_PLAN=0 is not supported."
@@ -3897,7 +4257,7 @@ class KnowMoreDiRTEngine:
             if isinstance(execution, dict):
                 execution["target_scope_rejected"] = True
             answer = None
-        if answer and normalize(answer.text) != "unknown":
+        if answer and not is_unknown_text(answer.text):
             if self._verify_with_local_model(question, planned_frame, answer, expected):
                 trace.model_answer_count += 1
                 answer.reason = "model-verified DRT query execution"
@@ -3924,11 +4284,20 @@ class KnowMoreDiRTEngine:
                 trace.evidence_rejected_count += 1
         for recovery_fn in (
             self._answer_with_explicit_negative_clause,
+            self._answer_with_row_field_source,
             self._answer_with_labeled_attribute_source,
             self._answer_with_temporal_source_records,
         ):
             recovery = recovery_fn(question, answer)
             if self._complete_answer(recovery):
+                normalized_recovery = normalize(recovery.text).split(";", 1)[0].strip()
+                if (
+                    recovery.answer_type == "boolean"
+                    and normalized_recovery in {"no", "false"}
+                    and not self._verify_with_local_model(question, planned_frame, recovery, expected)
+                ):
+                    trace.evidence_rejected_count += 1
+                    continue
                 recovery.reason = f"post-plan {recovery.reason}"
                 self._attach_model_answer_provenance(recovery)
                 return recovery
@@ -4035,7 +4404,7 @@ class KnowMoreDiRTEngine:
         return False
 
     def _lazy_semantic_frames_enabled(self) -> bool:
-        return os.environ.get("KMD_LAZY_LLM_FRAMES", "0").strip().lower() in {"1", "true", "yes", "on"}
+        return _config_boolean("KMD_LAZY_LLM_FRAMES")
 
     def _materialize_question_semantics(self, question: str, frame: QueryFrame) -> None:
         if self._model_client is None or not self._lazy_semantic_frames_enabled():
@@ -4588,6 +4957,14 @@ class KnowMoreDiRTEngine:
             if not matching:
                 trace.evidence_rejected_count += 1
                 return None
+            if not self._absence_like_model_answer_has_relation_grounding(
+                frame,
+                proposed,
+                evidence_span,
+                matching,
+            ):
+                trace.evidence_rejected_count += 1
+                return Answer("unknown", reason="local model atomic absence answer lacked relation grounding")
             if self._is_boolean_text(proposed) and not self._boolean_answer_has_target_grounding(frame, evidence_span, matching):
                 trace.evidence_rejected_count += 1
                 return Answer("unknown", reason="local model boolean answer lacked target grounding")
@@ -4606,6 +4983,30 @@ class KnowMoreDiRTEngine:
         trace.model_answer_count += 1
         self._attach_model_answer_provenance(finalized)
         return finalized
+
+    def _absence_like_model_answer_has_relation_grounding(
+        self,
+        frame: QueryFrame,
+        proposed: str,
+        evidence_span: str,
+        evidence: list[Evidence],
+    ) -> bool:
+        if normalize(proposed) not in {"none", "nothing", "nobody", "no one", "no-one"}:
+            return True
+        relation_tokens = [
+            token for token in content_tokens(frame.requested_relation) if len(token) > 2
+        ]
+        if not relation_tokens:
+            return False
+        # Atomic absence answers are definitive claims. The requested relation
+        # must be present in the model-selected evidence span itself; neighboring
+        # context may help retrieval but cannot convert an absence statement into
+        # a grounded relation binding.
+        material = normalize(evidence_span)
+        for token in relation_tokens:
+            if any(variant and variant in material for variant in term_variants(token)):
+                return True
+        return False
 
     def _answer_with_model_evidence_extraction(
         self,
@@ -4667,6 +5068,14 @@ class KnowMoreDiRTEngine:
                 expected = model_expected
         matching = self._matching_evidence(evidence, evidence_span, proposed)
         if not matching:
+            trace.evidence_rejected_count += 1
+            return None
+        if not self._absence_like_model_answer_has_relation_grounding(
+            frame,
+            proposed,
+            evidence_span,
+            matching,
+        ):
             trace.evidence_rejected_count += 1
             return None
         answer = Answer(
@@ -4793,7 +5202,7 @@ class KnowMoreDiRTEngine:
         return self._finalize_answer(question, bounded_answer, final_expected, source, frame)
 
     def _answer_has_source_grounding(self, answer: Answer) -> bool:
-        if normalize(answer.text) == "unknown":
+        if is_unknown_text(answer.text):
             return True
         return any(evidence.rel_path and evidence.text for evidence in answer.evidence)
 
@@ -4809,7 +5218,7 @@ class KnowMoreDiRTEngine:
         if not text:
             return text
         text = self._cleanup_definition_complement(text, frame)
-        if normalize(text) == "unknown":
+        if is_unknown_text(text):
             return "unknown"
         if frame is None and expected.answer_type in {"content_phrase", "state", "metadata_value"} and normalize(text).startswith("is "):
             parts = text.split(None, 1)
@@ -5078,7 +5487,7 @@ class KnowMoreDiRTEngine:
         source: str,
         frame: QueryFrame | None = None,
     ) -> Answer | None:
-        if normalize(answer.text) == "unknown":
+        if is_unknown_text(answer.text):
             return answer
         has_metadata_evidence = any(is_metadata_evidence_text(evidence.text) for evidence in answer.evidence)
         if expected.answer_type == "unknown":
@@ -5096,7 +5505,7 @@ class KnowMoreDiRTEngine:
         canonical = canonicalize_answer(expected, answer.text)
         if canonical and source.startswith("local model") and expected.answer_type in {"content_phrase", "state", "metadata_value"}:
             canonical = self._canonicalize_model_answer_with_local_model(question, canonical, expected, answer.evidence) or canonical
-        if normalize(canonical) == "unknown":
+        if is_unknown_text(canonical):
             return Answer("unknown", 0.0, answer.evidence, source, "unknown")
         if not canonical:
             return None
@@ -5121,7 +5530,7 @@ class KnowMoreDiRTEngine:
         )
         if not canonical:
             return None
-        if normalize(canonical) == "unknown":
+        if is_unknown_text(canonical):
             return Answer("unknown", 0.0, answer.evidence, source, "unknown")
         return Answer(canonical, answer.confidence, answer.evidence, source, expected.answer_type)
 
@@ -5266,7 +5675,7 @@ class KnowMoreDiRTEngine:
             trace.canonicalization_rejected_count += 1
             return value
         proposed = str(result.get("answer") or "")
-        if normalize(proposed) == "unknown":
+        if is_unknown_text(proposed):
             trace.canonicalization_accepted_count += 1
             return "unknown"
         canonical = canonicalize_answer(expected, proposed)
@@ -5307,7 +5716,7 @@ class KnowMoreDiRTEngine:
             trace.canonicalization_rejected_count += 1
             return value
         proposed = str(result.get("answer") or "")
-        if normalize(proposed) == "unknown":
+        if is_unknown_text(proposed):
             trace.canonicalization_accepted_count += 1
             return "unknown"
         canonical = canonicalize_answer(expected, proposed)
@@ -5320,6 +5729,55 @@ class KnowMoreDiRTEngine:
     def _answer_has_source_deictic_terms(self, value: str) -> bool:
         tokens = [token.lower().strip(".,;:!?()[]{}\"'`") for token in re.findall(r"[A-Za-z]+", value or "")]
         return any(token in SOURCE_DEICTIC_TOKENS for token in tokens)
+
+    def _vector_bounded_candidates(
+        self, question: str, frame: QueryFrame, *, limit: int
+    ) -> list[tuple[Sentence, float]]:
+        retriever = getattr(self, "_vector_retriever", None)
+        if retriever is None or limit <= 0:
+            return []
+        query_parts = [
+            question,
+            *frame.target_anchors,
+            frame.requested_relation,
+            *frame.relation_terms,
+            *frame.constraints,
+        ]
+        vector_query = " ".join(part for part in query_parts if str(part or "").strip())
+        try:
+            hits = retriever.search(vector_query, limit=limit)
+        except VectorRetrievalUnavailable as error:
+            raise LocalModelUnavailableError(str(error)) from error
+        trace = self.model_query_trace
+        trace.vector_query_count += 1
+        trace.vector_candidate_count += len(hits)
+        trace.last_vector_query = vector_query
+        mapped: dict[str, tuple[Sentence, float]] = {}
+        for hit in hits:
+            document_sentences = self._sentences_by_document.get(hit.rel_path, {})
+            if not document_sentences:
+                continue
+            overlaps = [
+                sentence
+                for sentence in document_sentences.values()
+                if sentence.char_end > hit.start_char and sentence.char_start < hit.end_char
+            ]
+            if not overlaps:
+                midpoint = (hit.start_char + hit.end_char) / 2.0
+                overlaps = [
+                    min(
+                        document_sentences.values(),
+                        key=lambda sentence: abs(((sentence.char_start + sentence.char_end) / 2.0) - midpoint),
+                    )
+                ]
+            for sentence in overlaps:
+                # Similarity only ranks candidates.  The existing DRT/DSPG path
+                # remains authoritative for context, scope, time, and truth.
+                score = max(0.0, float(hit.score)) * 6.0
+                previous = mapped.get(sentence.sentence_id)
+                if previous is None or score > previous[1]:
+                    mapped[sentence.sentence_id] = (sentence, score)
+        return sorted(mapped.values(), key=lambda item: (-item[1], item[0].rel_path, item[0].order))[:limit]
 
     def _search(self, question: str, limit: int | None = None, required: list[str] | None = None) -> list[tuple[Sentence, float]]:
         if limit is None:
@@ -5340,6 +5798,9 @@ class KnowMoreDiRTEngine:
         combined: dict[str, tuple[Sentence, float]] = {}
         for sentence, score in self.index.search(question, limit=limit, required=required):
             combined[sentence.sentence_id] = (sentence, score)
+        for sentence, score in self._vector_bounded_candidates(question, frame, limit=limit):
+            previous = combined.get(sentence.sentence_id, (sentence, 0.0))[1]
+            combined[sentence.sentence_id] = (sentence, previous + score)
 
         anchors = list(frame.target_anchors)
         relation_terms = list(frame.relation_terms)

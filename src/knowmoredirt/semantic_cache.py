@@ -13,6 +13,8 @@ import os
 from pathlib import Path
 from typing import Any
 
+from kmd_runtime_config import explicit_raw as _config_explicit_raw, text as _config_text, model_cache_dir as _model_cache_dir
+
 from .atomic_io import atomic_write_json, quarantine_corrupt_file
 from .model_planner import CHUNK_FRAME_SCHEMA_VERSION, PROMPT_VERSION
 
@@ -21,10 +23,7 @@ CACHE_VERSION = "semantic-frames-v7-atomic-runtime-fingerprint"
 
 
 def _default_cache_dir() -> Path:
-    value = os.environ.get("KMD_FRAME_CACHE_DIR")
-    if value:
-        return Path(value)
-    return Path.home() / ".cache" / "knowmoredirt" / "semantic_frames"
+    return _model_cache_dir("KMD_FRAME_CACHE_DIR")
 
 
 class SemanticFrameCache:
@@ -38,12 +37,12 @@ class SemanticFrameCache:
         material = json.dumps(
             {
                 "cache_version": CACHE_VERSION,
-                "endpoint": os.environ.get("KMD_LOCAL_MODEL_ENDPOINT", "http://127.0.0.1:14829/v1"),
-                "env_model_id": os.environ.get("KMD_LOCAL_MODEL_ID", ""),
-                "seed": os.environ.get("KMD_LOCAL_MODEL_SEED", "1778779265"),
+                "endpoint": _config_text("KMD_LOCAL_MODEL_ENDPOINT"),
+                "env_model_id": str(_config_explicit_raw("KMD_LOCAL_MODEL_ID") or ""),
+                "seed": _config_text("KMD_LOCAL_MODEL_SEED"),
                 "prompt_version": PROMPT_VERSION,
                 "schema_version": CHUNK_FRAME_SCHEMA_VERSION,
-                "grammar_enabled": os.environ.get("KMD_LOCAL_MODEL_GRAMMAR", ""),
+                "grammar_enabled": str(_config_explicit_raw("KMD_LOCAL_MODEL_GRAMMAR") or ""),
                 "runtime_context": context or {},
                 "text": text,
             },

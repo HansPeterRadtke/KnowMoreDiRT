@@ -2310,3 +2310,13 @@ def test_chunk_drs_stage_resumes_cached_output_limit_at_larger_budget(monkeypatc
     assert calls == [8192]
     assert result["_model_output_retry"]["effective_n_predict"] == 8192
     assert result["_model_output_retry"]["attempts"][0]["source"] == "cache"
+
+
+def test_structural_undercoverage_floor_is_bounded_for_field_heavy_sources() -> None:
+    from knowmoredirt.model_planner import _chunk_drs_staged_retry_reason
+
+    source = "\n".join(f"field_{index}: value_{index}" for index in range(200))
+    sparse = {"schema_valid": True, "grounding_failure_count": 0, "condition_count": 1, "box_count": 1}
+    covered = {"schema_valid": True, "grounding_failure_count": 0, "condition_count": 2, "box_count": 1}
+    assert _chunk_drs_staged_retry_reason(sparse, source, {"max_evidence_chars": 4096}) == "structural_undercoverage"
+    assert _chunk_drs_staged_retry_reason(covered, source, {"max_evidence_chars": 4096}) == ""

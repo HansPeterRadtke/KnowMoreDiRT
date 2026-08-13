@@ -1349,3 +1349,16 @@ def test_core_has_no_prepared_or_herb_marker_dependencies() -> None:
 
     for marker in forbidden:
         assert marker not in source_text
+
+
+def test_ingest_does_not_treat_stream_transport_failure_as_terminal_previous_attempt() -> None:
+    import sqlite3
+
+    from knowmoredirt.ingest import _attempt_was_nonrequest_failure
+
+    connection = sqlite3.connect(":memory:")
+    connection.row_factory = sqlite3.Row
+    row = connection.execute(
+        "SELECT 0 AS accepted, 0 AS materialized, 'stream_byte_limit_exhausted' AS reason, '{}' AS metadata_json"
+    ).fetchone()
+    assert _attempt_was_nonrequest_failure(row) is False

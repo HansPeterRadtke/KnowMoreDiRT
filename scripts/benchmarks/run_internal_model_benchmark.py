@@ -13,6 +13,7 @@ import fcntl
 import hashlib
 import json
 import os
+import shutil
 import sqlite3
 import subprocess
 import tempfile
@@ -26,7 +27,7 @@ from typing import Any
 
 REPO_ROOT = Path(__file__).resolve().parents[2]
 DEFAULT_OUTPUT_ROOT = Path("/data/src/github/devtests/kmd_model_benchmark")
-RUN_COMPATIBILITY_SCHEMA = "kmd-internal-benchmark-resume-v2"
+RUN_COMPATIBILITY_SCHEMA = "kmd-internal-benchmark-resume-v4-config-aware"
 CACHE_ENV_VARS = (
     "KMD_FRAME_CACHE_DIR",
     "KMD_CHUNK_FRAME_CACHE_DIR",
@@ -64,6 +65,31 @@ MODEL_ENV_KEYS = (
     "KMD_LAZY_LLM_FRAMES",
     "KMD_CHUNK_DRS_COMPACT_FIRST",
     "KMD_QUERY_DRS_COMPACT_FIRST",
+    "KMD_LOCAL_MODEL_STREAM_BYTES_PER_TOKEN",
+    "KMD_LOCAL_MODEL_STREAM_EVENT_MULTIPLIER",
+    "KMD_LOCAL_MODEL_STREAM_TOTAL_TIMEOUT_SECONDS",
+    "KMD_LOCAL_MODEL_SEND_THINKING_CONTROLS",
+    "KMD_VECTOR_RETRIEVAL_MODE",
+    "KMD_VECTOR_MIN_SIMILARITY",
+    "KMD_VECTOR_RESULT_MULTIPLIER",
+    "KMD_EMBEDDING_ENDPOINT",
+    "KMD_EMBEDDING_MODEL",
+    "KMD_EMBEDDING_REVISION",
+    "KMD_EMBEDDING_BATCH_SIZE",
+    "KMD_EMBEDDING_MAX_BATCH_CHARACTERS",
+    "KMD_EMBEDDING_BATCH_COUNT_RATIO",
+    "KMD_EMBEDDING_BATCH_CHARACTER_RATIO",
+    "KMD_EMBEDDING_BATCH_TOKEN_RATIO",
+    "KMD_EMBEDDING_INPUT_RATIO",
+    "KMD_FILESYSTEM_CHUNK_INPUT_RATIO",
+    "KMD_FILESYSTEM_CHUNK_CHARS_PER_TOKEN",
+    "KMD_FILESYSTEM_CHUNK_TARGET_RATIO",
+    "KMD_FILESYSTEM_CHUNK_OVERLAP_RATIO",
+    "KMD_EVALUATION_USE_LOCAL_JUDGE",
+    "KMD_DOCUMENT_CONTEXT_ENVELOPES",
+    "KMD_DOCUMENT_CONTEXT_MIN_CONFIDENCE",
+    "KMD_DOCUMENT_CONTEXT_BOUNDARY_RATIO",
+    "KMD_SCAN_PACK_UNITS",
 )
 SUITES = {
     "broad_raw_world": {
@@ -85,6 +111,15 @@ SUITES = {
     "structured_record_json": {
         "corpus": REPO_ROOT / "tests" / "fixtures" / "structured_record_json",
         "qa": REPO_ROOT / "tests" / "fixtures" / "structured_record_json_qa.json",
+    },
+    "recording_requirements": {
+        "corpus": REPO_ROOT / "tests" / "fixtures" / "recording_requirements",
+        "qa": REPO_ROOT / "tests" / "fixtures" / "recording_requirements_qa.json",
+    },
+    "recording_context_requirements": {
+        "corpus": REPO_ROOT / "tests" / "fixtures" / "recording_context_requirements",
+        "qa": REPO_ROOT / "tests" / "fixtures" / "recording_context_requirements_qa.json",
+        "env": {"KMD_SCAN_PACK_UNITS": "0"},
     },
 }
 
@@ -115,18 +150,30 @@ def _tree_hash(root: Path) -> str:
 
 
 def _fetch_json(url: str) -> Any:
-    raw_timeout = os.environ.get("KMD_LOCAL_MODEL_CONTROL_TIMEOUT_SECONDS", "30").strip()
-    try:
-        timeout = float(raw_timeout)
-    except ValueError:
-        timeout = 30.0
-    if timeout <= 0:
-        timeout = 30.0
-    try:
-        with urllib.request.urlopen(url, timeout=timeout) as response:
-            return json.loads(response.read().decode("utf-8", errors="replace"))
-    except (OSError, urllib.error.URLError, json.JSONDecodeError) as exc:
-        return {"error": f"{type(exc).__name__}: {exc}"}
+    from kmd_runtime_config import csv_integers, floating, integer
+
+    timeout = floating("KMD_LOCAL_MODEL_CONTROL_TIMEOUT_SECONDS")
+    attempts = integer("KMD_LOCAL_MODEL_CONTROL_RETRY_ATTEMPTS")
+    retry_statuses = set(csv_integers("KMD_LOCAL_MODEL_RETRY_HTTP_STATUSES"))
+    backoff = floating("KMD_LOCAL_MODEL_CONTROL_RETRY_BACKOFF_SECONDS")
+    multiplier = floating("KMD_LOCAL_MODEL_RETRY_BACKOFF_MULTIPLIER")
+    last_error: Exception | None = None
+    for attempt in range(attempts):
+        try:
+            with urllib.request.urlopen(url, timeout=timeout) as response:
+                return json.loads(response.read().decode("utf-8", errors="replace"))
+        except urllib.error.HTTPError as exc:
+            last_error = exc
+            if int(exc.code) not in retry_statuses or attempt + 1 >= attempts:
+                break
+        except (OSError, urllib.error.URLError, json.JSONDecodeError) as exc:
+            last_error = exc
+            if attempt + 1 >= attempts:
+                break
+        delay = backoff * (multiplier ** attempt)
+        if delay > 0:
+            time.sleep(delay)
+    return {"error": f"{type(last_error).__name__}: {last_error}" if last_error else "request failed"}
 
 
 def _endpoint_root(endpoint: str) -> str:
@@ -159,34 +206,41 @@ def _git_revision() -> dict[str, str]:
 
 
 def _configure_environment(output_root: Path) -> None:
-    os.environ.setdefault("KMD_LOCAL_MODEL_ENDPOINT", "http://127.0.0.1:14829/v1")
-    os.environ.setdefault("KMD_LOCAL_MODEL_EXPECTED_ID", "Qwen3.5-27B-Q8_0.gguf")
-    os.environ.setdefault("KMD_LOCAL_MODEL_PER_TOKEN_TIMEOUT_SECONDS", "420")
-    os.environ.setdefault("KMD_LOCAL_MODEL_API", "chat")
-    os.environ.setdefault("KMD_LOCAL_MODEL_CONSTRAINT_MODE", "native")
-    os.environ.setdefault("KMD_LOCAL_MODEL_CACHE_PROMPT", "1")
-    os.environ.setdefault("KMD_LOCAL_MODEL_JSON_SCHEMA", "1")
-    os.environ.setdefault("KMD_LOCAL_MODEL_GRAMMAR", "1")
-    os.environ.setdefault("KMD_LOCAL_MODEL_SEED", "1778779265")
-    os.environ.setdefault("KMD_LOCAL_MODEL_TEMPERATURE", "0.0")
-    os.environ.setdefault("KMD_LOCAL_MODEL_TOP_P", "1.0")
-    os.environ.setdefault("KMD_LLM_DRS_INGEST", "1")
-    os.environ.setdefault("KMD_QUERY_DRS_PLAN", "1")
-    os.environ.setdefault("KMD_CHUNK_DRS_COMPACT_FIRST", "1")
-    os.environ.setdefault("KMD_QUERY_DRS_COMPACT_FIRST", "1")
+    from kmd_runtime_config import explicit_raw as config_explicit_raw
+
+    def benchmark_default(name: str, value: str) -> None:
+        if name in os.environ:
+            return
+        try:
+            explicit = config_explicit_raw(name)
+        except KeyError:
+            explicit = None
+        if explicit is None:
+            os.environ[name] = value
+
+    benchmark_default("KMD_LOCAL_MODEL_ENDPOINT", "http://127.0.0.1:14829/v1")
+    benchmark_default("KMD_LOCAL_MODEL_EXPECTED_ID", "Qwen3.5-27B-Q8_0.gguf")
+    benchmark_default("KMD_LOCAL_MODEL_PER_TOKEN_TIMEOUT_SECONDS", "420")
+    benchmark_default("KMD_LOCAL_MODEL_API", "chat")
+    benchmark_default("KMD_LOCAL_MODEL_CONSTRAINT_MODE", "native")
+    benchmark_default("KMD_LOCAL_MODEL_CACHE_PROMPT", "1")
+    benchmark_default("KMD_LOCAL_MODEL_JSON_SCHEMA", "1")
+    benchmark_default("KMD_LOCAL_MODEL_GRAMMAR", "1")
+    benchmark_default("KMD_LOCAL_MODEL_SEED", "1778779265")
+    benchmark_default("KMD_LOCAL_MODEL_TEMPERATURE", "0.0")
+    benchmark_default("KMD_LOCAL_MODEL_TOP_P", "1.0")
+    benchmark_default("KMD_LLM_DRS_INGEST", "1")
+    benchmark_default("KMD_QUERY_DRS_PLAN", "1")
+    benchmark_default("KMD_CHUNK_DRS_COMPACT_FIRST", "1")
+    benchmark_default("KMD_QUERY_DRS_COMPACT_FIRST", "1")
     os.environ.setdefault("KMD_TEST_ALLOW_NO_MODEL", "0")
-    os.environ.setdefault("KMD_PROGRESS", "1")
-    os.environ.setdefault("KMD_EVAL_PROGRESS", "1")
-    shared_cache_root = Path(os.environ.get("KMD_SHARED_MODEL_CACHE_ROOT", str(output_root.parent / ".kmd_model_cache_shared")))
-    for name in CACHE_ENV_VARS:
-        cache_name = name.lower()
-        if cache_name.startswith("kmd_"):
-            cache_name = cache_name[4:]
-        if cache_name.endswith("_dir"):
-            cache_name = cache_name[:-4]
-        os.environ.setdefault(name, str(shared_cache_root / cache_name))
-    for name in CACHE_ENV_VARS:
-        Path(os.environ[name]).mkdir(parents=True, exist_ok=True)
+    benchmark_default("KMD_PROGRESS", "1")
+    benchmark_default("KMD_EVAL_PROGRESS", "1")
+
+    from kmd_runtime_config import configure_model_cache_environment
+
+    configure_model_cache_environment()
+
 
 
 def _cache_stats() -> dict[str, dict[str, int | str]]:
@@ -258,6 +312,15 @@ def _load_existing_results(path: Path) -> dict[tuple[str, str], dict[str, Any]]:
     return existing
 
 
+def _clear_forced_run_outputs(
+    output_root: Path,
+    *paths: Path,
+) -> None:
+    for path in paths:
+        path.unlink(missing_ok=True)
+    shutil.rmtree(output_root / "failures", ignore_errors=True)
+
+
 def _append_jsonl(path: Path, record: dict[str, Any]) -> None:
     path.parent.mkdir(parents=True, exist_ok=True)
     with path.open("a", encoding="utf-8") as handle:
@@ -279,14 +342,59 @@ def _source_policy_hashes() -> dict[str, str]:
     files = {
         "runner": Path(__file__).resolve(),
         "context_capacity": REPO_ROOT / "src" / "context_capacity.py",
+        "runtime_config": REPO_ROOT / "src" / "kmd_runtime_config.py",
+        "runtime_config_reexport": REPO_ROOT / "src" / "knowmoredirt" / "runtime_config.py",
+        "default_config_xml": REPO_ROOT / "src" / "knowmoredirt" / "default_config.xml",
+        "runtime_logging": REPO_ROOT / "src" / "knowmoredirt" / "runtime_logging.py",
+        "model": REPO_ROOT / "src" / "knowmoredirt" / "model.py",
         "model_planner": REPO_ROOT / "src" / "knowmoredirt" / "model_planner.py",
         "engine": REPO_ROOT / "src" / "knowmoredirt" / "engine.py",
+        "ingest": REPO_ROOT / "src" / "knowmoredirt" / "ingest.py",
+        "vector_retrieval": REPO_ROOT / "src" / "knowmoredirt" / "vector_retrieval.py",
+        "document_context": REPO_ROOT / "src" / "knowmoredirt" / "document_context.py",
+        "filesystem_facade": REPO_ROOT / "src" / "knowmoredirt" / "filesystem.py",
+        "filesystem_content_pipeline": REPO_ROOT / "src" / "file_system_catalog" / "content_pipeline.py",
+        "filesystem_content_schema": REPO_ROOT / "src" / "file_system_catalog" / "content_schema.py",
+        "filesystem_schema": REPO_ROOT / "src" / "file_system_catalog" / "schema.py",
         "bounded_dspg": REPO_ROOT / "src" / "knowmoredirt" / "bounded_dspg.py",
         "store": REPO_ROOT / "src" / "knowmoredirt" / "store.py",
         "scanner": REPO_ROOT / "src" / "knowmoredirt" / "scanner.py",
         "evaluation": REPO_ROOT / "src" / "knowmoredirt" / "evaluation.py",
     }
     return {name: _sha256_file(path) for name, path in files.items()}
+
+
+def _effective_model_env_manifest() -> dict[str, dict[str, str]]:
+    from kmd_runtime_config import default_specs, raw as config_raw, source as config_source
+
+    specs = default_specs()
+    result: dict[str, dict[str, str]] = {}
+    for key in MODEL_ENV_KEYS:
+        if key in specs:
+            result[key] = {"value": config_raw(key), "source": config_source(key)}
+        else:
+            result[key] = {
+                "value": os.environ.get(key, ""),
+                "source": "environment" if key in os.environ else "unset",
+            }
+    return result
+
+
+def _runtime_config_manifest() -> dict[str, str]:
+    from kmd_runtime_config import DEFAULT_CONFIG_PATH
+
+    user_text = os.environ.get("KMD_CONFIG_FILE", "").strip()
+    user_path = Path(user_text).expanduser() if user_text else None
+    return {
+        "default_path": str(DEFAULT_CONFIG_PATH.resolve()),
+        "default_hash": _sha256_file(DEFAULT_CONFIG_PATH),
+        "user_path": str(user_path.resolve()) if user_path is not None else "",
+        "user_hash": _sha256_file(user_path) if user_path is not None else "",
+    }
+
+
+def _stop_on_failure(args: argparse.Namespace) -> bool:
+    return bool(getattr(args, "stop_on_failure", False))
 
 
 def _build_run_compatibility_manifest(
@@ -306,9 +414,11 @@ def _build_run_compatibility_manifest(
             questions = [item for item in questions if str(item.get("id") or "") in allowed]
         suite_inputs[suite_name] = {
             "corpus": str(corpus.resolve()),
+            "suite_env": {str(key): str(value) for key, value in dict(suite.get("env") or {}).items()},
             "corpus_tree_hash": _tree_hash(corpus),
             "qa": str(qa_path.resolve()),
             "qa_hash": _sha256_file(qa_path),
+            "filesystem_catalog_manifest": _filesystem_catalog_manifest(corpus),
             "questions": [
                 {
                     "id": str(item.get("id") or ""),
@@ -329,11 +439,13 @@ def _build_run_compatibility_manifest(
             "endpoint": model_metadata.get("endpoint"),
             "models": model_metadata.get("models"),
             "props": model_metadata.get("props"),
+            "fingerprint": model_metadata.get("fingerprint"),
         },
-        "model_env": {key: os.environ.get(key, "") for key in MODEL_ENV_KEYS},
+        "model_env": _effective_model_env_manifest(),
+        "runtime_config": _runtime_config_manifest(),
         "selected_suites": selected,
         "selected_question_ids": selected_question_ids,
-        "continue_on_failure": bool(getattr(args, "continue_on_failure", False)),
+        "stop_on_failure": _stop_on_failure(args),
         "suite_inputs": suite_inputs,
     }
 
@@ -402,6 +514,89 @@ def _engine_trace() -> dict[str, Any]:
 
 
 
+FILESYSTEM_CATALOG_CACHE_SCHEMA = "kmd-filesystem-vector-cache-v1"
+FILESYSTEM_CATALOG_CACHE_ROOT = Path(
+    os.environ.get("KMD_INTERNAL_FILESYSTEM_CACHE_ROOT", "/data/var/knowmoredirt/internal_filesystem_catalog_cache")
+)
+
+
+def _filesystem_catalog_source_hashes() -> dict[str, str]:
+    files = {
+        "filesystem_facade": REPO_ROOT / "src" / "knowmoredirt" / "filesystem.py",
+        "content_pipeline": REPO_ROOT / "src" / "file_system_catalog" / "content_pipeline.py",
+        "content_schema": REPO_ROOT / "src" / "file_system_catalog" / "content_schema.py",
+        "filesystem_schema": REPO_ROOT / "src" / "file_system_catalog" / "schema.py",
+        "filesystem_scanner": REPO_ROOT / "src" / "file_system_catalog" / "scanner.py",
+        "context_capacity": REPO_ROOT / "src" / "context_capacity.py",
+    }
+    return {name: _sha256_file(path) for name, path in files.items()}
+
+
+def _filesystem_catalog_manifest(corpus: Path) -> dict[str, Any]:
+    from knowmoredirt.filesystem import FilesystemModelConfig
+
+    config = FilesystemModelConfig.from_environment()
+    from kmd_runtime_config import default_specs, raw as config_raw, source as config_source
+    specs = default_specs()
+    relevant_keys = sorted(
+        key
+        for key in specs
+        if key.startswith("KMD_EMBEDDING_")
+        or key.startswith("KMD_FILESYSTEM_CHUNK_")
+        or key in {"KMD_LOCAL_MODEL_ENDPOINT", "KMD_LOCAL_MODEL_NAME"}
+    )
+    env = {
+        key: {"value": config_raw(key), "source": config_source(key)}
+        for key in relevant_keys
+    }
+    return {
+        "schema": FILESYSTEM_CATALOG_CACHE_SCHEMA,
+        "corpus": str(corpus.resolve()),
+        "corpus_tree_hash": _tree_hash(corpus),
+        "analysis_url": config.analysis_url,
+        "analysis_model": config.analysis_model,
+        "embedding_url": config.embedding_url,
+        "embedding_model": config.embedding_model,
+        "embedding_revision": config.embedding_revision,
+        "embedding_batch_size": config.embedding_batch_size,
+        "embedding_max_batch_characters": config.embedding_max_batch_characters,
+        "env": env,
+        "source_hashes": _filesystem_catalog_source_hashes(),
+        "chunks_only": True,
+    }
+
+
+def _prepare_shared_filesystem_catalog(corpus: Path, suite_name: str) -> tuple[Path, dict[str, Any], float]:
+    from knowmoredirt.filesystem import initialize_filesystem_database
+
+    manifest = _filesystem_catalog_manifest(corpus)
+    digest = _manifest_digest(manifest)
+    root = FILESYSTEM_CATALOG_CACHE_ROOT / digest
+    database = root / "catalog.sqlite3"
+    manifest_path = root / "manifest.json"
+    if database.exists() and manifest_path.exists():
+        try:
+            cached_manifest = json.loads(manifest_path.read_text(encoding="utf-8"))
+        except (OSError, json.JSONDecodeError):
+            cached_manifest = None
+        if cached_manifest == manifest:
+            return database, {"reused_existing": True, "cache_key": digest}, 0.0
+    root.mkdir(parents=True, exist_ok=True)
+    started = time.time()
+    result = initialize_filesystem_database(
+        corpus,
+        database,
+        replace=database.exists(),
+        chunks_only=True,
+        collection_id=f"internal-benchmark:{suite_name}:{digest[:16]}",
+        progress_every=25,
+    )
+    _atomic_write_json(manifest_path, manifest)
+    payload = dict(result) if isinstance(result, dict) else {"result": result}
+    payload.update({"reused_existing": False, "cache_key": digest})
+    return database, payload, round(time.time() - started, 3)
+
+
 def _filesystem_catalog_diagnostics(database: Path) -> dict[str, Any]:
     if not database.exists():
         return {"exists": False, "path": str(database)}
@@ -451,6 +646,8 @@ def _score_records(records: list[dict[str, Any]]) -> dict[str, Any]:
                     "question": record.get("question"),
                     "expected": record.get("expected"),
                     "predicted": record.get("predicted"),
+                    "evaluation_reason": record.get("evaluation_reason"),
+                    "evaluation_judge_used": record.get("evaluation_judge_used"),
                 }
             )
     correct_total = sum(1 for record in records if record.get("correct"))
@@ -492,17 +689,28 @@ def run_benchmark(args: argparse.Namespace) -> dict[str, Any]:
     output_root = Path(args.output_root)
     output_root.mkdir(parents=True, exist_ok=True)
     _configure_environment(output_root)
+    # These are benchmark policy, not incidental per-suite state.  Establish
+    # them before compatibility hashing so a resumed result was necessarily
+    # produced under the same retrieval/evaluation/context contract.
+    os.environ["KMD_VECTOR_RETRIEVAL_MODE"] = "required"
+    os.environ["KMD_EVALUATION_USE_LOCAL_JUDGE"] = "1"
+    os.environ["KMD_DOCUMENT_CONTEXT_ENVELOPES"] = "1"
+    from knowmoredirt.runtime_logging import configure_logging, get_logger
+    configure_logging()
+    run_logger = get_logger("benchmark")
     from knowmoredirt import initialize as kmd_initialize
     from knowmoredirt import question as kmd_question
-    from knowmoredirt.evaluation import answer_matches
+    from knowmoredirt.evaluation import answer_matches, semantic_answer_judgment
+    from knowmoredirt.model import LocalModelClient
 
     results_path = output_root / "results.jsonl"
     summary_path = output_root / "summary.json"
     compatibility_path = output_root / "run_compatibility.json"
     selected = _selected_suites(args.suite)
     if args.force:
-        for path in (results_path, summary_path, compatibility_path):
-            path.unlink(missing_ok=True)
+        _clear_forced_run_outputs(
+            output_root, results_path, summary_path, compatibility_path
+        )
     started = time.time()
     endpoint = os.environ["KMD_LOCAL_MODEL_ENDPOINT"].rstrip("/")
     root = _endpoint_root(endpoint)
@@ -512,6 +720,8 @@ def run_benchmark(args: argparse.Namespace) -> dict[str, Any]:
         "props": _fetch_json(root + "/props"),
         "slots": _fetch_json(root + "/slots"),
     }
+    client = LocalModelClient(endpoint=endpoint)
+    metadata["fingerprint"] = client.cache_fingerprint()
     compatibility_manifest = _build_run_compatibility_manifest(selected, args, metadata)
     compatibility_digest = _prepare_resume_manifest(
         compatibility_path,
@@ -524,7 +734,8 @@ def run_benchmark(args: argparse.Namespace) -> dict[str, Any]:
         "started_at": time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime(started)),
         "repo": _git_revision(),
         "model": metadata,
-        "env": {key: os.environ.get(key, "") for key in MODEL_ENV_KEYS},
+        "env": _effective_model_env_manifest(),
+        "runtime_config": _runtime_config_manifest(),
         "cache_dirs": {key: os.environ.get(key, "") for key in CACHE_ENV_VARS},
         "cache_stats_before": _cache_stats(),
         "run_compatibility_path": str(compatibility_path),
@@ -533,16 +744,21 @@ def run_benchmark(args: argparse.Namespace) -> dict[str, Any]:
     }
     run_metadata_path = output_root / "run_metadata.json"
     _atomic_write_json(run_metadata_path, run_metadata)
-    print(
+    run_start_message = (
         "kmd-model-benchmark run_start "
         f"output_root={output_root} results={results_path} summary={summary_path} "
-        f"metadata={run_metadata_path} endpoint={endpoint}",
-        flush=True,
+        f"metadata={run_metadata_path} endpoint={endpoint}"
     )
+    run_logger.info(run_start_message)
+    print(run_start_message, flush=True)
 
     completed_records: list[dict[str, Any]] = []
     for suite_name in selected:
         suite = SUITES[suite_name]
+        suite_env = {str(key): str(value) for key, value in dict(suite.get("env") or {}).items()}
+        suite_env_previous = {key: os.environ.get(key) for key in suite_env}
+        for key, value in suite_env.items():
+            os.environ[key] = value
         corpus = Path(args.corpus_override) if getattr(args, "corpus_override", None) else Path(suite["corpus"])
         qa_path = Path(suite["qa"])
         questions = _load_questions(qa_path)
@@ -558,14 +774,15 @@ def run_benchmark(args: argparse.Namespace) -> dict[str, Any]:
                     item=item,
                     manifest_digest=compatibility_digest,
                 )
-                if not existing[key].get("correct") and not getattr(args, "continue_on_failure", False):
+                if not existing[key].get("correct") and _stop_on_failure(args):
                     raise RuntimeError(f"refusing benchmark resume after cached incorrect answer: {suite_name}/{key[1]}")
         suite_started = time.time()
-        print(
+        suite_start_message = (
             f"kmd-model-benchmark suite_start {suite_name} "
-            f"questions={len(questions)} corpus={corpus}",
-            flush=True,
+            f"questions={len(questions)} corpus={corpus}"
         )
+        run_logger.info(suite_start_message)
+        print(suite_start_message, flush=True)
         suite_records: list[dict[str, Any]] = [
             existing[(suite_name, str(item.get("id") or ""))]
             for item in questions
@@ -577,26 +794,14 @@ def run_benchmark(args: argparse.Namespace) -> dict[str, Any]:
         initialized = False
         filesystem_init_seconds = 0.0
         filesystem_init_result: dict[str, Any] = {}
-        filesystem_database = output_root / "filesystem_catalogs" / f"{suite_name}.sqlite3"
+        filesystem_database: Path | None = None
         filesystem_diagnostics: dict[str, Any] = {}
         if missing_questions:
-            from knowmoredirt.filesystem import initialize_filesystem_database
-
-            filesystem_database.parent.mkdir(parents=True, exist_ok=True)
-            if filesystem_database.exists() and not args.force:
-                filesystem_init_result = {"reused_existing": True}
-                filesystem_init_seconds = 0.0
-            else:
-                fs_started = time.time()
-                filesystem_init_result = initialize_filesystem_database(
-                    corpus,
-                    filesystem_database,
-                    replace=filesystem_database.exists(),
-                    chunks_only=False,
-                    collection_id=f"internal-benchmark:{suite_name}",
-                    progress_every=25,
-                )
-                filesystem_init_seconds = round(time.time() - fs_started, 3)
+            filesystem_database, filesystem_init_result, filesystem_init_seconds = _prepare_shared_filesystem_catalog(
+                corpus, suite_name
+            )
+            os.environ["KMD_FILESYSTEM_DATABASE"] = str(filesystem_database)
+            os.environ["KMD_VECTOR_RETRIEVAL_MODE"] = "required"
             filesystem_diagnostics = _filesystem_catalog_diagnostics(filesystem_database)
             if not filesystem_diagnostics.get("exists") or not filesystem_diagnostics.get("tables"):
                 raise RuntimeError(f"filesystem catalog initialization failed for {suite_name}: {filesystem_diagnostics}")
@@ -646,7 +851,9 @@ def run_benchmark(args: argparse.Namespace) -> dict[str, Any]:
             answer_started = time.time()
             predicted = kmd_question(question_text)
             elapsed = round(time.time() - answer_started, 3)
-            correct = answer_matches(predicted, expected)
+            deterministic_match = answer_matches(predicted, expected)
+            judgment = semantic_answer_judgment(question_text, predicted, expected)
+            correct = bool(judgment.get("equivalent"))
             diagnostics = _engine_trace()
             record = {
                 "suite": suite_name,
@@ -656,6 +863,10 @@ def run_benchmark(args: argparse.Namespace) -> dict[str, Any]:
                 "expected": expected,
                 "predicted": predicted,
                 "correct": correct,
+                "deterministic_match": deterministic_match,
+                "evaluation_reason": str(judgment.get("reason") or ""),
+                "evaluation_judge_used": bool(judgment.get("judge_used")),
+                "evaluation_judge_cache_hit": bool(judgment.get("cache_hit")),
                 "elapsed_seconds": elapsed,
                 "answered_at": time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime()),
                 "run_compatibility_sha256": compatibility_digest,
@@ -667,13 +878,14 @@ def run_benchmark(args: argparse.Namespace) -> dict[str, Any]:
             _append_jsonl(results_path, record)
             existing[key] = record
             suite_records.append(record)
-            print(
+            answer_done_message = (
                 f"kmd-model-benchmark answer_done {suite_name} "
                 f"{index}/{len(questions)} id={question_id} correct={correct} "
-                f"predicted={predicted!r} seconds={elapsed:.3f}",
-                flush=True,
+                f"predicted={predicted!r} seconds={elapsed:.3f}"
             )
-            if not correct and not getattr(args, "continue_on_failure", False):
+            run_logger.info(answer_done_message)
+            print(answer_done_message, flush=True)
+            if not correct and _stop_on_failure(args):
                 partial_summary = {
                     **run_metadata,
                     "stopped_at": time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime()),
@@ -703,10 +915,11 @@ def run_benchmark(args: argparse.Namespace) -> dict[str, Any]:
                 "wall_time_seconds": round(time.time() - suite_started, 3),
                 "initialize_seconds": init_seconds,
                 "filesystem_initialize_seconds": filesystem_init_seconds,
-                "filesystem_database": str(filesystem_database),
+                "filesystem_database": str(filesystem_database) if filesystem_database is not None else "",
                 "filesystem_diagnostics": filesystem_diagnostics,
                 "initialized_this_run": initialized,
                 "initialize_diagnostics": init_diagnostics,
+                "suite_env": suite_env,
             }
         )
         run_metadata["suites"][suite_name] = suite_score
@@ -724,12 +937,18 @@ def run_benchmark(args: argparse.Namespace) -> dict[str, Any]:
             f"summary={summary_path} results={results_path}",
             flush=True,
         )
-        print(
+        suite_done_message = (
             f"kmd-model-benchmark suite_done {suite_name} "
             f"score={suite_score['correct']}/{suite_score['total']} "
-            f"percent={suite_score['score'] * 100:.2f}",
-            flush=True,
+            f"percent={suite_score['score'] * 100:.2f}"
         )
+        run_logger.info(suite_done_message)
+        print(suite_done_message, flush=True)
+        for key, previous in suite_env_previous.items():
+            if previous is None:
+                os.environ.pop(key, None)
+            else:
+                os.environ[key] = previous
 
     return json.loads(summary_path.read_text(encoding="utf-8"))
 
@@ -751,7 +970,13 @@ def main() -> int:
     parser.add_argument(
         "--continue-on-failure",
         action="store_true",
-        help="Continue after an incorrect answer. The default is to stop after the first failure.",
+        default=True,
+        help=argparse.SUPPRESS,
+    )
+    parser.add_argument(
+        "--stop-on-failure",
+        action="store_true",
+        help="Debugging opt-in: stop after the first incorrect answer. Default behavior always continues.",
     )
     parser.add_argument(
         "--question-id",

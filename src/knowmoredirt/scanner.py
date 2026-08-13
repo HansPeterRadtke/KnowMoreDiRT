@@ -9,6 +9,8 @@ import os
 import stat as stat_module
 from pathlib import Path
 
+from kmd_runtime_config import boolean as _config_boolean, integer as _config_int, text as _config_text
+
 from .models import Document, Sentence
 from .text import split_units, tokenize
 
@@ -130,11 +132,7 @@ def read_text_file_with_metadata(path: Path) -> tuple[str, dict[str, object]] | 
 
 
 def _default_max_unit_chars() -> int:
-    raw = os.environ.get("KMD_SCANNER_DEFAULT_UNIT_CHARS", "1048576").strip()
-    try:
-        value = int(raw)
-    except ValueError as error:
-        raise ValueError("KMD_SCANNER_DEFAULT_UNIT_CHARS must be a positive integer") from error
+    value = _config_int("KMD_SCANNER_DEFAULT_UNIT_CHARS")
     if value <= 0:
         raise ValueError("KMD_SCANNER_DEFAULT_UNIT_CHARS must be a positive integer")
     return value
@@ -148,16 +146,16 @@ def _path_is_relative_to(path: Path, parent: Path) -> bool:
 
 
 def _include_generated_cache_content() -> bool:
-    return os.environ.get("KMD_SCAN_INCLUDE_GENERATED_CACHES", "").strip().lower() in {"1", "true", "yes", "on"}
+    return _config_boolean("KMD_SCAN_INCLUDE_GENERATED_CACHES")
 
 
 def _configured_cache_roots(root: Path) -> list[Path]:
     if _include_generated_cache_content():
         return []
     values = [
-        os.environ.get(name, "").strip()
+        _config_text(name).strip()
         for name in KMD_CACHE_DIR_ENV_VARS
-        if os.environ.get(name, "").strip()
+        if _config_text(name).strip()
     ]
     values.append(str(Path.home() / ".cache" / "knowmoredirt"))
     root_resolved = root.resolve()

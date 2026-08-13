@@ -9,6 +9,7 @@ from __future__ import annotations
 import copy
 import hashlib
 import json
+import re
 import sqlite3
 import time
 from pathlib import Path
@@ -1655,6 +1656,7 @@ class DSPGStore:
             external_to_box: dict[str, str] = {}
             external_to_context: dict[str, str] = {}
             external_to_box_evidence: dict[str, str] = {}
+            external_to_box_kind: dict[str, str] = {}
             root_asserted_box_ids = [
                 text_value(item, "id")
                 for item in boxes
@@ -1675,6 +1677,7 @@ class DSPGStore:
                     "drsbox", run_id, source_span_id, external_id, kind, evidence
                 )
                 external_to_box_evidence[external_id] = evidence
+                external_to_box_kind[external_id] = kind
 
             for item in boxes:
                 external_id = text_value(item, "id")
@@ -1767,6 +1770,29 @@ class DSPGStore:
                     return external_to_condition_evidence.get(target_external, "")
                 return text_value(arg, "evidence_text")
 
+            fictional_cue_pattern = re.compile(
+                r"\b(?:fiction(?:al)?|story|novel|imaginary|make[- ]?believe|made[- ]?up|pretend(?:ed|ing)?)\b",
+                re.I,
+            )
+
+            def effective_condition_modality(item: dict[str, Any], box_external: str) -> str:
+                raw_modality = text_value(item, "modality") or "asserted"
+                if raw_modality != "fictional":
+                    return raw_modality
+                if external_to_box_kind.get(box_external, "asserted") != "asserted":
+                    return raw_modality
+                grounding_material = " ".join(
+                    [
+                        text_value(item, "evidence_text"),
+                        external_to_box_evidence.get(box_external, ""),
+                    ]
+                )
+                # Fictionality is a source-scoped claim. If the governing box is
+                # asserted and neither the condition nor box evidence contains a
+                # fiction cue, keep the model's raw label for audit but do not let
+                # that unsupported label make an asserted fact inaccessible.
+                return "fictional" if fictional_cue_pattern.search(grounding_material) else "asserted"
+
             inserted_arguments = 0
             for item in conditions:
                 external_id = text_value(item, "id")
@@ -1776,6 +1802,7 @@ class DSPGStore:
                 )
                 box_external = text_value(item, "box_id")
                 context_id = external_to_context[box_external]
+                effective_modality = effective_condition_modality(item, box_external)
                 temporal_id = text_value(item, "temporal_id")
                 temporal_text = text_value(temporal_values.get(temporal_id, {}), "value") if temporal_id else ""
                 evidence = text_value(item, "evidence_text")
@@ -1835,8 +1862,8 @@ class DSPGStore:
                         stable_id("rel", run_id, condition_id, "drs_condition"),
                         run_id,
                         "drs_condition",
-                        text_value(item, "modality") or "asserted",
-                        normalize(text_value(item, "modality") or "asserted"),
+                        effective_modality,
+                        normalize(effective_modality),
                         predicate,
                         normalize(predicate),
                         condition_polarity,
@@ -1846,7 +1873,16 @@ class DSPGStore:
                         source_span_id,
                         context_id,
                         condition_confidence,
-                        json.dumps({"source": source, "external_condition_id": external_id, "external_box_id": box_external}, sort_keys=True),
+                        json.dumps(
+                            {
+                                "source": source,
+                                "external_condition_id": external_id,
+                                "external_box_id": box_external,
+                                "raw_condition_modality": text_value(item, "modality") or "asserted",
+                                "effective_condition_modality": effective_modality,
+                            },
+                            sort_keys=True,
+                        ),
                     ),
                 )
                 temporal_edge_values: list[str] = []

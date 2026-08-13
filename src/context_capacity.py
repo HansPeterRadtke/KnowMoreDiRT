@@ -13,6 +13,8 @@ import os
 from dataclasses import dataclass
 from typing import Any, Iterable
 
+from kmd_runtime_config import default_specs as _config_specs, explicit_raw as _config_explicit_raw
+
 
 CONTEXT_CAPACITY_POLICY = "context-relative-capacities-v1"
 
@@ -29,8 +31,30 @@ class ContextBudget:
 
 
 def _env_float(names: Iterable[str], default: float) -> float:
-    for name in names:
-        raw = os.environ.get(name, "").strip()
+    names_tuple = tuple(names)
+    specs = _config_specs()
+    # Explicit environment/user-config overrides retain ordered precedence among
+    # aliases. Packaged XML defaults are considered only after no explicit alias
+    # is present, so a blank model-specific override can fall through to the
+    # shared context setting exactly as before.
+    for name in names_tuple:
+        if name in specs:
+            raw_value = _config_explicit_raw(name)
+        else:
+            raw_value = os.environ.get(name)
+        raw = str(raw_value or "").strip()
+        if not raw:
+            continue
+        try:
+            value = float(raw)
+        except ValueError as error:
+            raise ValueError(f"{name} must be a finite number") from error
+        if not math.isfinite(value):
+            raise ValueError(f"{name} must be a finite number")
+        return value
+    for name in names_tuple:
+        spec = specs.get(name)
+        raw = str(spec.value if spec is not None else "").strip()
         if not raw:
             continue
         try:
