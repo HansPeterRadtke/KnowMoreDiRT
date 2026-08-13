@@ -35,7 +35,7 @@ DRS_CONTEXT_KINDS = {
     "dreamed",
 }
 DRS_POLARITIES = {"positive", "negative", "unknown"}
-SCHEMA_VERSION = 10
+SCHEMA_VERSION = 13
 IDENTITY_EXPANSION_RELATIONS = {"accepted", "same_referent", "same_surface", "alias", "coreference", "coreferent"}
 
 
@@ -169,7 +169,10 @@ class DSPGStore:
               parent_context_id TEXT,
               holder_surface TEXT,
               evidence_surface TEXT,
-              confidence REAL NOT NULL
+              confidence REAL NOT NULL,
+              declared_authority TEXT NOT NULL DEFAULT '',
+              verified_authority TEXT NOT NULL DEFAULT '',
+              authority_source_span_id TEXT REFERENCES source_spans(span_id)
             )
             """,
             """
@@ -349,6 +352,23 @@ class DSPGStore:
             )
             """,
             """
+            CREATE TABLE IF NOT EXISTS discourse_edges (
+              edge_id TEXT PRIMARY KEY,
+              run_id TEXT NOT NULL REFERENCES extraction_runs(run_id) ON DELETE CASCADE,
+              relation_type TEXT NOT NULL,
+              document_id TEXT REFERENCES documents(document_id) ON DELETE CASCADE,
+              source_span_id TEXT REFERENCES source_spans(span_id) ON DELETE CASCADE,
+              from_context_id TEXT REFERENCES contexts(context_id) ON DELETE CASCADE,
+              to_context_id TEXT REFERENCES contexts(context_id) ON DELETE CASCADE,
+              from_span_id TEXT REFERENCES source_spans(span_id) ON DELETE CASCADE,
+              to_span_id TEXT REFERENCES source_spans(span_id) ON DELETE CASCADE,
+              evidence_surface TEXT NOT NULL,
+              confidence REAL NOT NULL,
+              source TEXT NOT NULL,
+              metadata_json TEXT
+            )
+            """,
+            """
             CREATE TABLE IF NOT EXISTS metadata_records (
               metadata_id TEXT PRIMARY KEY,
               run_id TEXT NOT NULL,
@@ -380,20 +400,162 @@ class DSPGStore:
         ]
         for statement in statements:
             self.connection.execute(statement)
-        self._ensure_column("identity_hypotheses", "source_span_id", "TEXT")
-        self._ensure_column("identity_hypotheses", "context_id", "TEXT")
-        self._ensure_column("identity_hypotheses", "drs_box_id", "TEXT")
-        self._ensure_column("identity_hypotheses", "box_external_id", "TEXT")
-        self._ensure_column("drs_identity_hypotheses", "context_id", "TEXT")
-        self._ensure_column("drs_identity_hypotheses", "box_id", "TEXT")
-        self._ensure_column("drs_identity_hypotheses", "box_external_id", "TEXT")
+        current_version = self._stored_schema_version()
+        self._migrate_schema(current_version)
         if create_indexes:
             self.create_indexes()
+        self.connection.commit()
+
+    def _stored_schema_version(self) -> int:
+        row = self.connection.execute(
+            "SELECT value FROM schema_meta WHERE key='schema_version'"
+        ).fetchone()
+        if row is None:
+            # Databases created by the historical schema had no version until
+            # initialization finished.  The CREATE IF NOT EXISTS statements above
+            # establish the v10 baseline before explicit migrations run.
+            return 10
+        try:
+            version = int(row["value"])
+        except (TypeError, ValueError) as exc:
+            raise RuntimeError("invalid KMD DSPG schema_version metadata") from exc
+        if version > SCHEMA_VERSION:
+            raise RuntimeError(
+                f"KMD DSPG schema {version} is newer than supported schema {SCHEMA_VERSION}"
+            )
+        if version < 10:
+            raise RuntimeError(
+                f"KMD DSPG schema {version} predates the supported explicit migration baseline 10"
+            )
+        return version
+
+    def _record_schema_version(self, version: int) -> None:
         self.connection.execute(
             "INSERT OR REPLACE INTO schema_meta(key, value) VALUES ('schema_version', ?)",
-            (str(SCHEMA_VERSION),),
+            (str(version),),
         )
+
+    def _migrate_schema(self, current_version: int) -> None:
+        # Legacy v10 identity columns were historically added ad hoc.  Keep the
+        # normalization as the explicit v10 baseline step so old databases are
+        # deterministic before v11/v12 migrations.
+        for table, column, definition in (
+            ("identity_hypotheses", "source_span_id", "TEXT"),
+            ("identity_hypotheses", "context_id", "TEXT"),
+            ("identity_hypotheses", "drs_box_id", "TEXT"),
+            ("identity_hypotheses", "box_external_id", "TEXT"),
+            ("drs_identity_hypotheses", "context_id", "TEXT"),
+            ("drs_identity_hypotheses", "box_id", "TEXT"),
+            ("drs_identity_hypotheses", "box_external_id", "TEXT"),
+        ):
+            self._ensure_column(table, column, definition)
+        version = current_version
+        while version < SCHEMA_VERSION:
+            target = version + 1
+            if target == 13:
+                self._migrate_v13_foreign_keys()
+                version = target
+                continue
+            savepoint = f"schema_migration_{target}"
+            self.connection.execute(f"SAVEPOINT {savepoint}")
+            try:
+                if target == 11:
+                    self._ensure_column("contexts", "declared_authority", "TEXT NOT NULL DEFAULT ''")
+                    self._ensure_column("contexts", "verified_authority", "TEXT NOT NULL DEFAULT ''")
+                    self._ensure_column("contexts", "authority_source_span_id", "TEXT")
+                elif target == 12:
+                    self.connection.execute(
+                        """
+                        CREATE TABLE IF NOT EXISTS discourse_edges (
+                          edge_id TEXT PRIMARY KEY,
+                          run_id TEXT NOT NULL REFERENCES extraction_runs(run_id) ON DELETE CASCADE,
+                          relation_type TEXT NOT NULL,
+                          document_id TEXT REFERENCES documents(document_id) ON DELETE CASCADE,
+                          source_span_id TEXT REFERENCES source_spans(span_id) ON DELETE CASCADE,
+                          from_context_id TEXT REFERENCES contexts(context_id) ON DELETE CASCADE,
+                          to_context_id TEXT REFERENCES contexts(context_id) ON DELETE CASCADE,
+                          from_span_id TEXT REFERENCES source_spans(span_id) ON DELETE CASCADE,
+                          to_span_id TEXT REFERENCES source_spans(span_id) ON DELETE CASCADE,
+                          evidence_surface TEXT NOT NULL,
+                          confidence REAL NOT NULL,
+                          source TEXT NOT NULL,
+                          metadata_json TEXT
+                        )
+                        """
+                    )
+                self._record_schema_version(target)
+                self.connection.execute(f"RELEASE SAVEPOINT {savepoint}")
+            except BaseException:
+                self.connection.execute(f"ROLLBACK TO SAVEPOINT {savepoint}")
+                self.connection.execute(f"RELEASE SAVEPOINT {savepoint}")
+                raise
+            version = target
+
+    @staticmethod
+    def _v13_fk_table_definitions() -> dict[str, str]:
+        return {
+            "extraction_runs": """CREATE TABLE {name} (run_id TEXT PRIMARY KEY, started_at REAL NOT NULL, input_root TEXT NOT NULL, status TEXT NOT NULL, metrics_json TEXT)""",
+            "documents": """CREATE TABLE {name} (document_id TEXT PRIMARY KEY, run_id TEXT NOT NULL REFERENCES extraction_runs(run_id) ON DELETE CASCADE, path TEXT NOT NULL, rel_path TEXT NOT NULL, content_hash TEXT NOT NULL, size_bytes INTEGER NOT NULL, mtime REAL NOT NULL, ctime REAL NOT NULL, char_count INTEGER NOT NULL, metadata_json TEXT)""",
+            "chunks": """CREATE TABLE {name} (chunk_id TEXT PRIMARY KEY, document_id TEXT NOT NULL REFERENCES documents(document_id) ON DELETE CASCADE, chunk_order INTEGER NOT NULL, char_start INTEGER NOT NULL, char_end INTEGER NOT NULL, text TEXT NOT NULL, token_estimate INTEGER NOT NULL)""",
+            "source_spans": """CREATE TABLE {name} (span_id TEXT PRIMARY KEY, document_id TEXT NOT NULL REFERENCES documents(document_id) ON DELETE CASCADE, chunk_id TEXT NOT NULL REFERENCES chunks(chunk_id) ON DELETE CASCADE, char_start INTEGER NOT NULL, char_end INTEGER NOT NULL, surface TEXT NOT NULL, surface_norm TEXT NOT NULL, span_kind TEXT NOT NULL)""",
+            "mentions": """CREATE TABLE {name} (mention_id TEXT PRIMARY KEY, run_id TEXT NOT NULL REFERENCES extraction_runs(run_id) ON DELETE CASCADE, span_id TEXT NOT NULL REFERENCES source_spans(span_id) ON DELETE CASCADE, surface TEXT NOT NULL, surface_norm TEXT NOT NULL, mention_kind TEXT NOT NULL, entity_type TEXT NOT NULL, confidence REAL NOT NULL, source TEXT NOT NULL)""",
+            "referents": """CREATE TABLE {name} (referent_id TEXT PRIMARY KEY, run_id TEXT NOT NULL REFERENCES extraction_runs(run_id) ON DELETE CASCADE, canonical_label TEXT NOT NULL, canonical_label_norm TEXT NOT NULL, entity_type TEXT NOT NULL, status TEXT NOT NULL, attributes_json TEXT)""",
+            "mention_referents": """CREATE TABLE {name} (mention_id TEXT NOT NULL REFERENCES mentions(mention_id) ON DELETE CASCADE, referent_id TEXT NOT NULL REFERENCES referents(referent_id) ON DELETE CASCADE, link_status TEXT NOT NULL, confidence REAL NOT NULL, PRIMARY KEY (mention_id, referent_id))""",
+            "contexts": """CREATE TABLE {name} (context_id TEXT PRIMARY KEY, run_id TEXT NOT NULL REFERENCES extraction_runs(run_id) ON DELETE CASCADE, kind TEXT NOT NULL, parent_context_id TEXT REFERENCES contexts(context_id) ON DELETE SET NULL DEFERRABLE INITIALLY DEFERRED, holder_surface TEXT, evidence_surface TEXT, confidence REAL NOT NULL, declared_authority TEXT NOT NULL DEFAULT '', verified_authority TEXT NOT NULL DEFAULT '', authority_source_span_id TEXT REFERENCES source_spans(span_id) ON DELETE SET NULL)""",
+            "identity_hypotheses": """CREATE TABLE {name} (hypothesis_id TEXT PRIMARY KEY, run_id TEXT NOT NULL REFERENCES extraction_runs(run_id) ON DELETE CASCADE, source_span_id TEXT REFERENCES source_spans(span_id) ON DELETE CASCADE, context_id TEXT REFERENCES contexts(context_id) ON DELETE SET NULL, drs_box_id TEXT REFERENCES drs_boxes(drs_box_id) ON DELETE SET NULL, box_external_id TEXT, left_referent_id TEXT NOT NULL REFERENCES referents(referent_id) ON DELETE CASCADE, right_referent_id TEXT NOT NULL REFERENCES referents(referent_id) ON DELETE CASCADE, relation TEXT NOT NULL, evidence TEXT NOT NULL, confidence REAL NOT NULL, source TEXT NOT NULL)""",
+            "context_carriers": """CREATE TABLE {name} (carrier_id TEXT PRIMARY KEY, run_id TEXT NOT NULL REFERENCES extraction_runs(run_id) ON DELETE CASCADE, context_id TEXT NOT NULL REFERENCES contexts(context_id) ON DELETE CASCADE, document_id TEXT REFERENCES documents(document_id) ON DELETE CASCADE, source_span_id TEXT REFERENCES source_spans(span_id) ON DELETE CASCADE, carrier_kind TEXT NOT NULL, carrier_surface TEXT NOT NULL, temporal_value TEXT, temporal_value_type TEXT, confidence REAL NOT NULL)""",
+            "context_assignments": """CREATE TABLE {name} (assignment_id TEXT PRIMARY KEY, run_id TEXT NOT NULL REFERENCES extraction_runs(run_id) ON DELETE CASCADE, context_id TEXT NOT NULL REFERENCES contexts(context_id) ON DELETE CASCADE, applies_to_type TEXT NOT NULL, applies_to_id TEXT NOT NULL, source_span_id TEXT REFERENCES source_spans(span_id) ON DELETE CASCADE, confidence REAL NOT NULL)""",
+            "frames": """CREATE TABLE {name} (frame_id TEXT PRIMARY KEY, run_id TEXT NOT NULL REFERENCES extraction_runs(run_id) ON DELETE CASCADE, context_id TEXT NOT NULL REFERENCES contexts(context_id) ON DELETE CASCADE, predicate TEXT NOT NULL, predicate_norm TEXT NOT NULL, trigger_surface TEXT NOT NULL, confidence REAL NOT NULL, source TEXT NOT NULL, span_id TEXT REFERENCES source_spans(span_id) ON DELETE CASCADE)""",
+            "frame_arguments": """CREATE TABLE {name} (argument_id TEXT PRIMARY KEY, frame_id TEXT NOT NULL REFERENCES frames(frame_id) ON DELETE CASCADE, role TEXT NOT NULL, mention_id TEXT REFERENCES mentions(mention_id) ON DELETE SET NULL, referent_id TEXT REFERENCES referents(referent_id) ON DELETE SET NULL, surface TEXT, value_type TEXT, confidence REAL NOT NULL)""",
+            "drs_boxes": """CREATE TABLE {name} (drs_box_id TEXT PRIMARY KEY, run_id TEXT NOT NULL REFERENCES extraction_runs(run_id) ON DELETE CASCADE, source_span_id TEXT NOT NULL REFERENCES source_spans(span_id) ON DELETE CASCADE, external_box_id TEXT NOT NULL, context_id TEXT NOT NULL REFERENCES contexts(context_id) ON DELETE CASCADE, parent_drs_box_id TEXT REFERENCES drs_boxes(drs_box_id) ON DELETE SET NULL DEFERRABLE INITIALLY DEFERRED, parent_external_box_id TEXT, kind TEXT NOT NULL, holder_referent_id TEXT REFERENCES referents(referent_id) ON DELETE SET NULL, holder_external_referent_id TEXT, evidence_surface TEXT, confidence REAL NOT NULL, source TEXT NOT NULL, metadata_json TEXT)""",
+            "drs_referents": """CREATE TABLE {name} (drs_referent_id TEXT PRIMARY KEY, run_id TEXT NOT NULL REFERENCES extraction_runs(run_id) ON DELETE CASCADE, source_span_id TEXT NOT NULL REFERENCES source_spans(span_id) ON DELETE CASCADE, external_referent_id TEXT NOT NULL, referent_id TEXT NOT NULL REFERENCES referents(referent_id) ON DELETE CASCADE, box_id TEXT REFERENCES drs_boxes(drs_box_id) ON DELETE SET NULL, surface TEXT NOT NULL, surface_norm TEXT NOT NULL, value_type TEXT NOT NULL, evidence_surface TEXT, confidence REAL NOT NULL, source TEXT NOT NULL, metadata_json TEXT)""",
+            "drs_conditions": """CREATE TABLE {name} (drs_condition_id TEXT PRIMARY KEY, run_id TEXT NOT NULL REFERENCES extraction_runs(run_id) ON DELETE CASCADE, source_span_id TEXT NOT NULL REFERENCES source_spans(span_id) ON DELETE CASCADE, external_condition_id TEXT NOT NULL, box_id TEXT NOT NULL REFERENCES drs_boxes(drs_box_id) ON DELETE CASCADE, context_id TEXT NOT NULL REFERENCES contexts(context_id) ON DELETE CASCADE, frame_id TEXT REFERENCES frames(frame_id) ON DELETE SET NULL, predicate TEXT NOT NULL, predicate_norm TEXT NOT NULL, polarity TEXT NOT NULL, modality TEXT NOT NULL, temporal_id TEXT, temporal_text TEXT, evidence_surface TEXT NOT NULL, confidence REAL NOT NULL, source TEXT NOT NULL, metadata_json TEXT)""",
+            "drs_condition_arguments": """CREATE TABLE {name} (drs_argument_id TEXT PRIMARY KEY, run_id TEXT NOT NULL REFERENCES extraction_runs(run_id) ON DELETE CASCADE, drs_condition_id TEXT NOT NULL REFERENCES drs_conditions(drs_condition_id) ON DELETE CASCADE, role TEXT NOT NULL, target_kind TEXT NOT NULL, target_external_id TEXT, referent_id TEXT REFERENCES referents(referent_id) ON DELETE SET NULL, target_box_id TEXT REFERENCES drs_boxes(drs_box_id) ON DELETE SET NULL, target_condition_id TEXT REFERENCES drs_conditions(drs_condition_id) ON DELETE SET NULL, value TEXT, value_norm TEXT, value_type TEXT, evidence_surface TEXT, confidence REAL NOT NULL, metadata_json TEXT)""",
+            "drs_identity_hypotheses": """CREATE TABLE {name} (drs_hypothesis_id TEXT PRIMARY KEY, run_id TEXT NOT NULL REFERENCES extraction_runs(run_id) ON DELETE CASCADE, source_span_id TEXT NOT NULL REFERENCES source_spans(span_id) ON DELETE CASCADE, context_id TEXT REFERENCES contexts(context_id) ON DELETE SET NULL, box_id TEXT REFERENCES drs_boxes(drs_box_id) ON DELETE SET NULL, box_external_id TEXT, left_external_referent_id TEXT NOT NULL, right_external_referent_id TEXT NOT NULL, left_referent_id TEXT NOT NULL REFERENCES referents(referent_id) ON DELETE CASCADE, right_referent_id TEXT NOT NULL REFERENCES referents(referent_id) ON DELETE CASCADE, relation TEXT NOT NULL, evidence_surface TEXT NOT NULL, confidence REAL NOT NULL, source TEXT NOT NULL, metadata_json TEXT)""",
+            "temporal_edges": """CREATE TABLE {name} (edge_id TEXT PRIMARY KEY, run_id TEXT NOT NULL REFERENCES extraction_runs(run_id) ON DELETE CASCADE, source_span_id TEXT NOT NULL REFERENCES source_spans(span_id) ON DELETE CASCADE, referent_id TEXT REFERENCES referents(referent_id) ON DELETE SET NULL, context_id TEXT REFERENCES contexts(context_id) ON DELETE SET NULL, relation TEXT NOT NULL, temporal_value TEXT NOT NULL, state_value TEXT, confidence REAL NOT NULL)""",
+            "relations": """CREATE TABLE {name} (relation_id TEXT PRIMARY KEY, run_id TEXT NOT NULL REFERENCES extraction_runs(run_id) ON DELETE CASCADE, relation_type TEXT NOT NULL, subject TEXT, subject_norm TEXT, predicate TEXT NOT NULL, predicate_norm TEXT NOT NULL, object TEXT, object_norm TEXT, value TEXT, value_norm TEXT, source_span_id TEXT NOT NULL REFERENCES source_spans(span_id) ON DELETE CASCADE, context_id TEXT REFERENCES contexts(context_id) ON DELETE SET NULL, confidence REAL NOT NULL, metadata_json TEXT)""",
+            "metadata_records": """CREATE TABLE {name} (metadata_id TEXT PRIMARY KEY, run_id TEXT NOT NULL REFERENCES extraction_runs(run_id) ON DELETE CASCADE, document_id TEXT NOT NULL REFERENCES documents(document_id) ON DELETE CASCADE, key TEXT NOT NULL, value TEXT NOT NULL, value_norm TEXT NOT NULL, source TEXT NOT NULL, confidence REAL NOT NULL)""",
+            "model_attempts": """CREATE TABLE {name} (attempt_id TEXT PRIMARY KEY, run_id TEXT NOT NULL REFERENCES extraction_runs(run_id) ON DELETE CASCADE, source_span_id TEXT NOT NULL REFERENCES source_spans(span_id) ON DELETE CASCADE, task TEXT NOT NULL, source TEXT NOT NULL, cache_key TEXT NOT NULL, accepted INTEGER NOT NULL, materialized INTEGER NOT NULL, reason TEXT, prompt_hash TEXT, output_hash TEXT, elapsed REAL, metadata_json TEXT)""",
+            "discourse_edges": """CREATE TABLE {name} (edge_id TEXT PRIMARY KEY, run_id TEXT NOT NULL REFERENCES extraction_runs(run_id) ON DELETE CASCADE, relation_type TEXT NOT NULL, document_id TEXT REFERENCES documents(document_id) ON DELETE CASCADE, source_span_id TEXT REFERENCES source_spans(span_id) ON DELETE CASCADE, from_context_id TEXT REFERENCES contexts(context_id) ON DELETE CASCADE, to_context_id TEXT REFERENCES contexts(context_id) ON DELETE CASCADE, from_span_id TEXT REFERENCES source_spans(span_id) ON DELETE CASCADE, to_span_id TEXT REFERENCES source_spans(span_id) ON DELETE CASCADE, evidence_surface TEXT NOT NULL, confidence REAL NOT NULL, source TEXT NOT NULL, metadata_json TEXT)""",
+        }
+
+    def _migrate_v13_foreign_keys(self) -> None:
+        definitions = self._v13_fk_table_definitions()
+        tables = list(definitions)
+        integrity_errors = self.semantic_integrity_errors()
+        if integrity_errors:
+            raise RuntimeError(f"cannot migrate KMD DSPG schema to v13 with orphan references: {integrity_errors}")
+        columns_by_table: dict[str, list[str]] = {
+            table: [str(row["name"]) for row in self.connection.execute(f"PRAGMA table_info({table})").fetchall()]
+            for table in tables
+        }
         self.connection.commit()
+        self.connection.execute("PRAGMA foreign_keys=OFF")
+        try:
+            self.connection.execute("BEGIN IMMEDIATE")
+            for table in reversed(tables):
+                self.connection.execute(f"ALTER TABLE {table} RENAME TO __v12_{table}")
+            for table in tables:
+                self.connection.execute(definitions[table].format(name=table))
+            # Copy in dependency order. Self-references are declared DEFERRABLE.
+            for table in tables:
+                columns = columns_by_table[table]
+                column_sql = ", ".join(columns)
+                self.connection.execute(
+                    f"INSERT INTO {table} ({column_sql}) SELECT {column_sql} FROM __v12_{table}"
+                )
+            for table in reversed(tables):
+                self.connection.execute(f"DROP TABLE __v12_{table}")
+            self._record_schema_version(13)
+            self.connection.commit()
+        except BaseException:
+            self.connection.rollback()
+            raise
+        finally:
+            self.connection.execute("PRAGMA foreign_keys=ON")
+        violations = self.connection.execute("PRAGMA foreign_key_check").fetchall()
+        if violations:
+            raise RuntimeError(f"KMD DSPG v13 foreign-key migration produced violations: {[tuple(row) for row in violations]}")
 
     def _ensure_column(self, table: str, column: str, definition: str) -> None:
         rows = self.connection.execute(f"PRAGMA table_info({table})").fetchall()
@@ -455,6 +617,10 @@ class DSPGStore:
             "CREATE INDEX IF NOT EXISTS idx_relations_object ON relations(object_norm)",
             "CREATE INDEX IF NOT EXISTS idx_relations_value ON relations(value_norm)",
             "CREATE INDEX IF NOT EXISTS idx_relations_type ON relations(relation_type)",
+            "CREATE INDEX IF NOT EXISTS idx_discourse_run_type ON discourse_edges(run_id, relation_type)",
+            "CREATE INDEX IF NOT EXISTS idx_discourse_doc ON discourse_edges(document_id)",
+            "CREATE INDEX IF NOT EXISTS idx_discourse_from_context ON discourse_edges(from_context_id)",
+            "CREATE INDEX IF NOT EXISTS idx_discourse_to_context ON discourse_edges(to_context_id)",
             "CREATE INDEX IF NOT EXISTS idx_metadata_records_run_doc ON metadata_records(run_id, document_id)",
             "CREATE INDEX IF NOT EXISTS idx_metadata_records_doc ON metadata_records(document_id)",
             "CREATE INDEX IF NOT EXISTS idx_metadata_records_key ON metadata_records(key)",
@@ -540,6 +706,13 @@ class DSPGStore:
             ("temporal_edges.source_span_id", "temporal_edges", "source_span_id", "source_spans", "span_id"),
             ("temporal_edges.referent_id", "temporal_edges", "referent_id", "referents", "referent_id"),
             ("temporal_edges.context_id", "temporal_edges", "context_id", "contexts", "context_id"),
+            ("discourse_edges.document_id", "discourse_edges", "document_id", "documents", "document_id"),
+            ("discourse_edges.source_span_id", "discourse_edges", "source_span_id", "source_spans", "span_id"),
+            ("discourse_edges.from_context_id", "discourse_edges", "from_context_id", "contexts", "context_id"),
+            ("discourse_edges.to_context_id", "discourse_edges", "to_context_id", "contexts", "context_id"),
+            ("discourse_edges.from_span_id", "discourse_edges", "from_span_id", "source_spans", "span_id"),
+            ("discourse_edges.to_span_id", "discourse_edges", "to_span_id", "source_spans", "span_id"),
+            ("contexts.authority_source_span_id", "contexts", "authority_source_span_id", "source_spans", "span_id"),
         )
         errors: list[dict[str, Any]] = []
         for label, child_table, child_column, parent_table, parent_column in references:
@@ -622,6 +795,7 @@ class DSPGStore:
                 sp = self._sql_placeholders(span_ids)
                 params = tuple(sorted(span_ids))
                 remove("context_assignments", f"source_span_id IN ({sp})", params)
+                remove("discourse_edges", f"source_span_id IN ({sp}) OR from_span_id IN ({sp}) OR to_span_id IN ({sp})", params * 3)
                 remove("temporal_edges", f"source_span_id IN ({sp})", params)
                 remove("identity_hypotheses", f"source_span_id IN ({sp})", params)
                 remove("drs_identity_hypotheses", f"source_span_id IN ({sp})", params)

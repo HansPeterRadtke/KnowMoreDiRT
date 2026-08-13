@@ -110,7 +110,7 @@ def test_engine_vector_mapping_uses_source_offsets() -> None:
 def test_vector_retriever_from_environment_uses_filesystem_config_names(tmp_path: Path, monkeypatch) -> None:
     root = tmp_path / "raw"; root.mkdir()
     db = tmp_path / "catalog.sqlite3"; _catalog(db, root)
-    monkeypatch.setenv("KMD_VECTOR_RETRIEVAL_MODE", "optional")
+    monkeypatch.setenv("KMD_VECTOR_RETRIEVAL_MODE", "required")
     monkeypatch.setenv("KMD_FILESYSTEM_DATABASE", str(db))
     monkeypatch.setenv("KMD_EMBEDDING_MODEL", FakeEmbeddingClient.model)
     monkeypatch.setenv("KMD_EMBEDDING_REVISION", FakeEmbeddingClient.revision)
@@ -121,17 +121,25 @@ def test_vector_retriever_from_environment_uses_filesystem_config_names(tmp_path
     assert retriever.client.revision == FakeEmbeddingClient.revision
 
 
-def test_optional_vector_retrieval_degrades_on_stale_catalog(tmp_path: Path, monkeypatch) -> None:
+def test_required_vector_retrieval_rejects_stale_catalog(tmp_path: Path, monkeypatch) -> None:
     root = tmp_path / "raw"; root.mkdir()
     other = tmp_path / "other"; other.mkdir()
     db = tmp_path / "catalog.sqlite3"; _catalog(db, other)
-    monkeypatch.setenv("KMD_VECTOR_RETRIEVAL_MODE", "optional")
+    monkeypatch.setenv("KMD_VECTOR_RETRIEVAL_MODE", "required")
     monkeypatch.setenv("KMD_FILESYSTEM_DATABASE", str(db))
     monkeypatch.setenv("KMD_EMBEDDING_MODEL", FakeEmbeddingClient.model)
     monkeypatch.setenv("KMD_EMBEDDING_REVISION", FakeEmbeddingClient.revision)
     from knowmoredirt import vector_retrieval as module
     monkeypatch.setattr(module, "EmbeddingClient", lambda *args, **kwargs: FakeEmbeddingClient())
-    assert module.VectorCandidateRetriever.from_environment(root) is None
+    with pytest.raises(VectorRetrievalUnavailable):
+        module.VectorCandidateRetriever.from_environment(root)
+
+
+def test_vector_mode_cannot_be_disabled(monkeypatch) -> None:
+    from knowmoredirt import vector_retrieval as module
+    monkeypatch.setenv("KMD_VECTOR_RETRIEVAL_MODE", "off")
+    with pytest.raises(ValueError):
+        module._mode()
 
 
 def test_vector_catalog_embeddings_are_loaded_once(tmp_path: Path) -> None:

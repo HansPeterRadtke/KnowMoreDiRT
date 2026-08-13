@@ -18,3 +18,6 @@ HARD_REASONING_QA_PATH = REPO_ROOT / "tests" / "fixtures" / "hard_raw_reasoning_
 def pytest_configure() -> None:
     os.environ.setdefault("KMD_TEST_ALLOW_NO_MODEL", "1")
     os.environ.setdefault("KMD_TEST_ALLOW_MODEL_EVIDENCE_TOOLS", "1")
+    os.environ.setdefault("KMD_TEST_ALLOW_NO_VECTOR", "1")
+    os.environ.setdefault("KMD_TEST_ALLOW_SEMANTIC_INVARIANT_BYPASS", "1")
+    os.environ.setdefault("KMD_TEST_DISABLE_MODEL_CALL_CACHE", "1")

@@ -46,6 +46,35 @@ from knowmoredirt.store import DSPGStore, stable_id
 from conftest import FIXTURE_ROOT
 
 
+def _seed_store_lineage(
+    store: DSPGStore,
+    source_text: str,
+    *,
+    run_id: str = "run",
+    document_id: str = "doc",
+    chunk_id: str = "chunk",
+    span_id: str = "span",
+) -> tuple[str, str, str, str]:
+    store.execute(
+        "INSERT OR IGNORE INTO extraction_runs(run_id, started_at, input_root, status, metrics_json) VALUES (?, ?, ?, ?, ?)",
+        (run_id, 0.0, "/test", "running", "{}"),
+    )
+    store.execute(
+        "INSERT OR IGNORE INTO documents(document_id, run_id, path, rel_path, content_hash, size_bytes, mtime, ctime, char_count, metadata_json) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
+        (document_id, run_id, document_id, document_id, "hash", len(source_text.encode("utf-8")), 0.0, 0.0, len(source_text), "{}"),
+    )
+    store.execute(
+        "INSERT OR IGNORE INTO chunks(chunk_id, document_id, chunk_order, char_start, char_end, text, token_estimate) VALUES (?, ?, ?, ?, ?, ?, ?)",
+        (chunk_id, document_id, 0, 0, len(source_text), source_text, max(1, len(source_text.split()))),
+    )
+    store.execute(
+        "INSERT OR IGNORE INTO source_spans(span_id, document_id, chunk_id, char_start, char_end, surface, surface_norm, span_kind) VALUES (?, ?, ?, ?, ?, ?, ?, ?)",
+        (span_id, document_id, chunk_id, 0, len(source_text), source_text, source_text.lower(), "sentence"),
+    )
+    store.commit()
+    return run_id, document_id, chunk_id, span_id
+
+
 def test_ingest_builds_normalized_dspg_tables() -> None:
     store, run_id, documents, sentences = ingest_folder(FIXTURE_ROOT)
     counts = store.counts()
@@ -1842,21 +1871,10 @@ def test_finalize_restores_terminal_period_from_source_span_surface() -> None:
     engine = object.__new__(KnowMoreDiRTEngine)
     engine.store = DSPGStore()
     span_id = "span-source-sentence"
-    engine.store.execute(
-        """
-        INSERT INTO source_spans(span_id, document_id, chunk_id, char_start, char_end, surface, surface_norm, span_kind)
-        VALUES (?, ?, ?, ?, ?, ?, ?, ?)
-        """,
-        (
-            span_id,
-            "doc",
-            "chunk",
-            0,
-            57,
-            "Mira believes the cache should rotate every 7 minutes.",
-            "mira believes the cache should rotate every 7 minutes.",
-            "sentence",
-        ),
+    _seed_store_lineage(
+        engine.store,
+        "Mira believes the cache should rotate every 7 minutes.",
+        span_id=span_id,
     )
     frame = QueryFrame(
         question_text="What does Mira believe about the Argon cache?",
@@ -2703,6 +2721,42 @@ def test_boolean_query_returns_unknown_for_unscoped_inaccessible_drs_condition(t
 
     assert answer is None
     assert diagnostics["execution"].get("answer_binding_reason") is None
+
+
+def test_drs_scope_ablation_changes_real_world_dream_result(tmp_path: Path) -> None:
+    source_surface = "Operator dreamed that Cobalt Hoist deleted latch.cfg."
+    (tmp_path / "note.txt").write_text(source_surface + "\n", encoding="utf-8")
+    store, run_id, documents, sentences = ingest_folder(tmp_path)
+    _materialize_scoped_boolean_probe_drs(
+        store,
+        run_id,
+        source_surface,
+        scope="dreamed",
+        patient_value="latch.cfg",
+    )
+    frame = QueryFrame(
+        question_text="Did Cobalt Hoist delete latch.cfg?",
+        answer_type="boolean",
+        answer_variables=("Did Cobalt Hoist delete latch.cfg",),
+        target_anchors=("Cobalt Hoist", "latch.cfg"),
+        requested_relation="delete",
+        relation_terms=("delete",),
+        constraints=(),
+    )
+    scoped_answer, _ = execute_bounded_query(
+        store, run_id, documents, _sentences_by_document(sentences), frame.question_text, frame
+    )
+    assert scoped_answer is None
+    # Explicit ablation: flatten the subordinate DRS/context. The same proposition
+    # then becomes accessible, proving the scope mechanism is causally required.
+    store.execute("UPDATE contexts SET kind='drs:asserted' WHERE kind='drs:dreamed'")
+    store.execute("UPDATE drs_boxes SET kind='asserted' WHERE kind='dreamed'")
+    store.commit()
+    ablated_answer, _ = execute_bounded_query(
+        store, run_id, documents, _sentences_by_document(sentences), frame.question_text, frame
+    )
+    assert ablated_answer is not None
+    assert ablated_answer.text.startswith("Yes;")
 
 
 def test_boolean_query_can_request_inaccessible_drs_scope(tmp_path: Path) -> None:
@@ -3807,6 +3861,7 @@ def test_store_rejects_identity_hypothesis_without_bilateral_grounding() -> None
 def test_candidate_drs_identity_is_preserved_but_not_used_for_expansion() -> None:
     store = DSPGStore()
     text = "AX-9 may be the same artifact as Amber Kite."
+    _seed_store_lineage(store, text)
     payload = {
         "drs": {
             "schema_version": "chunk-drs-v2",
@@ -6916,6 +6971,7 @@ def test_store_rejects_cyclic_drs_box_parent_graphs() -> None:
 def test_store_preserves_out_of_order_drs_box_parent_links() -> None:
     store = DSPGStore()
     text = "Rhea Vale reports that CB-44 status is green."
+    _seed_store_lineage(store, text)
     payload = {
         "drs": {
             "schema_version": "chunk-drs-v2",
@@ -10719,6 +10775,7 @@ def test_count_aggregation_requires_each_query_drs_term_group(tmp_path: Path) ->
     (tmp_path / "states.txt").write_text(
         "\n".join(
             [
+                "Complete unit inventory.",
                 "Alpha unit status: ready.",
                 "Beta unit status: ready.",
                 "Gamma unit status: blocked.",
@@ -10803,6 +10860,7 @@ def test_count_aggregation_is_not_blocked_by_unscoped_temporal_candidates(tmp_pa
     (tmp_path / "rows.tsv").write_text(
         "\n".join(
             [
+                "Complete unit row inventory.",
                 "unit\tstate",
                 "Alpha unit\topen",
                 "Beta unit\topen",
@@ -10854,6 +10912,7 @@ def test_count_aggregation_ignores_query_unit_terms_for_record_groups(tmp_path: 
     (tmp_path / "rows.tsv").write_text(
         "\n".join(
             [
+                "Complete actor row inventory.",
                 "actor\titem\tstate\tid",
                 "Mira Sol\tAster One\topen\tAS-001",
                 "Mira Sol\tAster Two\topen\tAS-002",
@@ -11061,6 +11120,7 @@ def test_row_count_aggregation_excludes_non_table_state_mentions(tmp_path: Path)
     (tmp_path / "rows.tsv").write_text(
         "\n".join(
             [
+                "Complete actor row inventory.",
                 "actor\titem\tstate",
                 "Mira Sol\tAster One\topen",
                 "Mira Sol\tAster Two\topen",
@@ -11400,6 +11460,7 @@ def test_count_aggregation_ignores_how_many_relation_term_from_model_query(tmp_p
         encoding="utf-8",
     )
     (tmp_path / "rows.tsv").write_text(
+        "Complete Quartz row inventory.\n"
         "item\tstate\tnote\treference\n"
         "Blue Quartz\tready\talpha\tBQ-1201\n"
         "Blue Quartz\tretired\tbeta\tBQ-1200\n"
@@ -11432,6 +11493,7 @@ def test_count_aggregation_treats_entries_as_row_units_and_skips_noise(tmp_path:
         encoding="utf-8",
     )
     (tmp_path / "rows.tsv").write_text(
+        "Complete Vela entry inventory.\n"
         "item\tstate\tnote\n"
         "North Vela\tready\tone\n"
         "North Vela\tarchived\ttwo\n"
@@ -11459,6 +11521,7 @@ def test_count_aggregation_treats_entries_as_row_units_and_skips_noise(tmp_path:
 
 def test_count_aggregation_keeps_target_and_state_constraints_row_local(tmp_path: Path) -> None:
     (tmp_path / "rows.tsv").write_text(
+        "Complete station row inventory.\n"
         "Table: station state.\n"
         "team\titem\tstate\n"
         "North Team\tGauge One\topen\n"
@@ -11487,6 +11550,7 @@ def test_count_aggregation_keeps_target_and_state_constraints_row_local(tmp_path
 def test_count_aggregation_uses_document_context_without_counting_heading_rows(tmp_path: Path) -> None:
     (tmp_path / "roster.txt").write_text(
         "Ledger for Acme Bridge.\n"
+        "Complete monitor list.\n"
         "A table below lists monitors:\n"
         "name | role | lane\n"
         "Lio Reed | primary monitor | north\n"
@@ -11513,6 +11577,7 @@ def test_count_aggregation_uses_document_context_without_counting_heading_rows(t
 
 def test_count_aggregation_matches_field_value_tokens_not_whole_verb_phrase(tmp_path: Path) -> None:
     (tmp_path / "rows.tsv").write_text(
+        "Complete Finch row inventory.\n"
         "name\tstatus\n"
         "Bell Finch\tactive\n"
         "Dune Finch\tactive\n"
@@ -11543,6 +11608,7 @@ def test_argmax_count_by_record_groups_works_without_model_aggregation(tmp_path:
     (tmp_path / "ledger.tsv").write_text(
         "\n".join(
             [
+                "Complete defect ledger inventory.",
                 "product\tsupplier\tkind\tstate\tref",
                 "AtlasApp\tNorth Forge\tdefect\tunresolved\tAA-1",
                 "AtlasApp\tNorth Forge\tdefect\tunresolved\tAA-2",
@@ -12076,6 +12142,7 @@ def test_materialize_binds_demonstrative_to_recent_referent(tmp_path):
 def test_count_aggregation_matches_plural_record_family_by_distinctive_target_token(tmp_path: Path) -> None:
     (tmp_path / "family.raw").write_text(
         "group: Cedar Set\n"
+        "Complete Cedar record inventory.\n"
         "records:\n"
         "{ name: \"Cedar Alpha\", status: \"ready\" }\n"
         "{ name: \"Cedar Beta\", status: \"paused\" }\n"

@@ -279,6 +279,8 @@ MODEL_CACHE_NAMESPACES: dict[str, str] = {
     "KMD_CHUNK_FRAME_CACHE_DIR": "chunk_frame",
     "KMD_CHUNK_DRS_CACHE_DIR": "chunk_drs",
     "KMD_QUERY_PLAN_CACHE_DIR": "query_plan",
+    "KMD_QUERY_EXPANSION_CACHE_DIR": "query_expansion",
+    "KMD_MODEL_CALL_CACHE_DIR": "model_call",
     "KMD_QUERY_DRS_CACHE_DIR": "query_drs",
     "KMD_QUERY_EVIDENCE_REPAIR_CACHE_DIR": "query_evidence_repair",
     "KMD_QUERY_EVIDENCE_CACHE_DIR": "query_evidence",

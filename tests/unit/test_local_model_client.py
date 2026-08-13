@@ -898,23 +898,14 @@ def test_local_model_client_discovers_runtime_metadata(monkeypatch) -> None:
     assert fingerprint["context_size"] == 24576
     transport = fingerprint["transport_settings"]
     assert transport["api"] == "chat"
-    assert transport["cache_prompt"] is True
-    assert transport["context_contract_policy"] == "exact-rendered-prompt-explicit-output-terminal-stream-v4"
-    assert transport["context_safety_tokens"] == context_safety_tokens(client.context_size())
-    assert transport["schema_bounds_native"] is True
-    assert transport["terminal_stream_required"] is True
+    assert "cache_prompt" not in transport  # runtime optimization must not alter semantic cache identity
+    assert "context_contract_policy" not in transport  # runtime validation policy is not model output identity
     assert transport["constraint_mode"] == "auto"
-    assert transport["native_constraints"] is True
-    assert transport["reasoning_control_token_model"] is False
+    assert transport["thinking_control_override"] == "auto"
+    assert "chat_template_sha256" in transport
+    assert set(transport) == {"api", "constraint_mode", "thinking_control_override", "chat_template_sha256"}
     chunk_transport = chunk_drs_cache_context(client)["model_fingerprint"]["transport_settings"]
-    assert chunk_transport["api"] == "chat"
-    assert chunk_transport["cache_prompt"] is True
-    assert chunk_transport["context_contract_policy"] == "exact-rendered-prompt-explicit-output-terminal-stream-v4"
-    assert chunk_transport["context_safety_tokens"] == context_safety_tokens(client.context_size())
-    assert chunk_transport["schema_bounds_native"] is True
-    assert chunk_transport["terminal_stream_required"] is True
-    assert chunk_transport["constraint_mode"] == "auto"
-    assert chunk_transport["native_constraints"] is True
+    assert chunk_transport == transport
 
 
 def test_local_model_auto_constraints_stay_native_for_reasoning_control_models(monkeypatch) -> None:
@@ -4438,6 +4429,7 @@ def test_complete_json_rejects_context_overflow_before_generation(monkeypatch) -
 
 
 def test_complete_json_rejects_balanced_json_without_terminal_stream_event(monkeypatch) -> None:
+    monkeypatch.setattr("knowmoredirt.model.read_model_call", lambda _hash: None)
     def fake_urlopen(request, timeout: float = 0) -> FakeHTTPResponse:
         url = str(getattr(request, "full_url", request))
         if url.endswith("/v1/chat/completions"):

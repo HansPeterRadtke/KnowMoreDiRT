@@ -36,10 +36,12 @@ class VectorChunkCandidate:
 
 
 def _mode() -> str:
-    value = _config_text("KMD_VECTOR_RETRIEVAL_MODE").strip().lower() or "optional"
-    if value not in {"off", "optional", "required"}:
-        raise ValueError("KMD_VECTOR_RETRIEVAL_MODE must be off, optional, or required")
-    return value
+    value = _config_text("KMD_VECTOR_RETRIEVAL_MODE").strip().lower() or "required"
+    if value != "required":
+        raise VectorRetrievalUnavailable(
+            "KMD vector retrieval is a production invariant; KMD_VECTOR_RETRIEVAL_MODE must be required"
+        )
+    return "required"
 
 
 def _minimum_similarity() -> float:
@@ -70,15 +72,11 @@ class VectorCandidateRetriever:
     @classmethod
     def from_environment(cls, root: str | Path) -> "VectorCandidateRetriever | None":
         mode = _mode()
-        if mode == "off":
-            return None
         database_text = _config_text("KMD_FILESYSTEM_DATABASE").strip()
         if not database_text:
-            if mode == "required":
-                raise VectorRetrievalUnavailable(
-                    "KMD vector retrieval is required but KMD_FILESYSTEM_DATABASE is not configured"
-                )
-            return None
+            raise VectorRetrievalUnavailable(
+                "KMD vector retrieval is required but KMD_FILESYSTEM_DATABASE is not configured"
+            )
         config = FilesystemModelConfig.from_environment()
         client = EmbeddingClient(
             config.embedding_url,
@@ -88,17 +86,11 @@ class VectorCandidateRetriever:
             batch_size=config.embedding_batch_size,
             max_batch_characters=config.embedding_max_batch_characters,
         )
+        retriever = cls(Path(root), Path(database_text), client, required=True)
         try:
-            retriever = cls(Path(root), Path(database_text), client, required=mode == "required")
-        except VectorRetrievalUnavailable:
-            if mode == "required":
-                raise
-            return None
-        if mode == "required":
-            try:
-                client.health()
-            except Exception as error:
-                raise VectorRetrievalUnavailable(f"required embedding endpoint is unavailable: {error}") from error
+            client.health()
+        except Exception as error:
+            raise VectorRetrievalUnavailable(f"required embedding endpoint is unavailable: {error}") from error
         return retriever
 
     def _validate_catalog_and_load(self) -> tuple[tuple[str, str, int, int, Any], ...]:

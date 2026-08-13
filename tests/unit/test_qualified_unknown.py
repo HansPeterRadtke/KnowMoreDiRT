@@ -48,8 +48,20 @@ def test_qualified_unknown_sees_subordinate_ancestor_context() -> None:
     engine._sentences_by_document = {}
     engine._context_char_capacity = lambda *_args, **kwargs: int(kwargs.get("available") or 500)
     engine.store.execute("INSERT INTO extraction_runs VALUES (?, ?, ?, ?, ?)", ("run", 1.0, "/tmp", "running", "{}"))
-    engine.store.execute("INSERT INTO contexts VALUES (?, ?, ?, ?, NULL, ?, ?)", ("root", "run", "drs:asserted", "dream", "asserted", 1.0))
-    engine.store.execute("INSERT INTO contexts VALUES (?, ?, ?, NULL, NULL, ?, ?)", ("dream", "run", "drs:dreamed", "all a dream", 0.99))
+    engine.store.execute(
+        "INSERT INTO documents(document_id, run_id, path, rel_path, content_hash, size_bytes, mtime, ctime, char_count, metadata_json) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
+        ("doc-1", "run", "doc-1", "doc-1", "hash", 10, 0.0, 0.0, 10, "{}"),
+    )
+    engine.store.execute(
+        "INSERT INTO chunks(chunk_id, document_id, chunk_order, char_start, char_end, text, token_estimate) VALUES (?, ?, ?, ?, ?, ?, ?)",
+        ("chunk-1", "doc-1", 0, 0, 10, "dream fact", 2),
+    )
+    engine.store.execute(
+        "INSERT INTO source_spans(span_id, document_id, chunk_id, char_start, char_end, surface, surface_norm, span_kind) VALUES (?, ?, ?, ?, ?, ?, ?, ?)",
+        ("span-1", "doc-1", "chunk-1", 0, 10, "dream fact", "dream fact", "sentence"),
+    )
+    engine.store.execute("INSERT INTO contexts(context_id, run_id, kind, parent_context_id, holder_surface, evidence_surface, confidence) VALUES (?, ?, ?, ?, NULL, ?, ?)", ("root", "run", "drs:asserted", "dream", "asserted", 1.0))
+    engine.store.execute("INSERT INTO contexts(context_id, run_id, kind, parent_context_id, holder_surface, evidence_surface, confidence) VALUES (?, ?, ?, NULL, NULL, ?, ?)", ("dream", "run", "drs:dreamed", "all a dream", 0.99))
     engine.store.execute(
         "INSERT INTO context_assignments VALUES (?, ?, ?, 'source_span', ?, ?, ?)",
         ("ca", "run", "root", "span-1", "span-1", 1.0),

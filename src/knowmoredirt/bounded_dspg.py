@@ -337,12 +337,13 @@ def _target_terms(frame: QueryFrame, question: str) -> list[str]:
             and len(anchor_tokens) == 1
             and _has_term(relation_material, norm)
             and (not anchor_visible or _has_term(constraint_material, norm))
+            and not _count_extreme_mode(frame, question)
         ):
             # Model query DRS can put a requested relation/slot such as
             # "feedback" into target_anchors.  That is not an entity target and
             # should stay available through relation terms instead.
             continue
-        if frame.aggregation == "count" and anchor_tokens:
+        if frame.aggregation == "count" and anchor_tokens and not _count_extreme_mode(frame, question):
             relation_group_tokens: set[str] = set()
             for group in _relation_term_groups_for_frame(frame, target_terms=[]):
                 for term in group:
@@ -1148,6 +1149,36 @@ def _load_records(
     chunk_ids = [chunk["chunk_id"] for chunk in chunks]
     spans = _fetch_by_ids(connection, "source_spans", "chunk_id", chunk_ids)
     span_ids = [span["span_id"] for span in spans]
+    discourse_edges: list[dict[str, Any]] = []
+    if span_ids:
+        placeholders = ",".join("?" for _ in span_ids)
+        rows = connection.execute(
+            f"""
+            SELECT * FROM discourse_edges
+            WHERE run_id=? AND (
+              source_span_id IN ({placeholders}) OR from_span_id IN ({placeholders}) OR to_span_id IN ({placeholders})
+            )
+            """,
+            (run_id, *span_ids, *span_ids, *span_ids),
+        ).fetchall()
+        discourse_edges = [dict(row) for row in rows]
+        linked_span_ids = list(dict.fromkeys(
+            str(edge.get(key) or "")
+            for edge in discourse_edges
+            for key in ("source_span_id", "from_span_id", "to_span_id")
+            if str(edge.get(key) or "") and str(edge.get(key) or "") not in set(span_ids)
+        ))
+        if linked_span_ids:
+            linked_spans = _fetch_by_ids(connection, "source_spans", "span_id", linked_span_ids)
+            spans = _merge_rows_by_id(spans, linked_spans, "span_id")
+            linked_chunk_ids = [
+                str(span.get("chunk_id") or "") for span in linked_spans
+                if str(span.get("chunk_id") or "") and str(span.get("chunk_id") or "") not in set(chunk_ids)
+            ]
+            if linked_chunk_ids:
+                chunks = _merge_rows_by_id(chunks, _fetch_by_ids(connection, "chunks", "chunk_id", linked_chunk_ids), "chunk_id")
+                chunk_ids = [chunk["chunk_id"] for chunk in chunks]
+            span_ids = [span["span_id"] for span in spans]
     seed_mentions = _fetch_by_ids(connection, "mentions", "span_id", span_ids)
     seed_mention_referents = _fetch_by_ids(
         connection,
@@ -1259,6 +1290,9 @@ def _load_records(
                 *_context_ids_from_rows(temporal),
                 *_context_ids_from_rows(identity_hypotheses),
                 *_context_ids_from_rows(context_carriers),
+                *_context_ids_from_rows(discourse_edges),
+                *[str(row.get("from_context_id") or "") for row in discourse_edges if str(row.get("from_context_id") or "")],
+                *[str(row.get("to_context_id") or "") for row in discourse_edges if str(row.get("to_context_id") or "")],
             ]
         )
     )
@@ -1269,7 +1303,19 @@ def _load_records(
         doc = docs_by_document_id.get(str(chunk.get("document_id")), {})
         rel_path = str(doc.get("rel_path") or "")
         document_context_norm_by_rel_path[rel_path] += " " + normalize(str(chunk.get("text") or ""))
+    total_run_chunks_row = connection.execute(
+        """
+        SELECT COUNT(*) AS n
+        FROM chunks c JOIN documents d ON d.document_id=c.document_id
+        WHERE d.run_id=?
+        """,
+        (run_id,),
+    ).fetchone()
+    total_run_chunks = int(total_run_chunks_row["n"] if total_run_chunks_row is not None else 0)
+    exhaustive_run_coverage = total_run_chunks > 0 and len({str(chunk.get("chunk_id")) for chunk in chunks}) >= total_run_chunks
     records = {
+        "exhaustive_run_coverage": exhaustive_run_coverage,
+        "total_run_chunks": total_run_chunks,
         "documents": documents,
         "chunks": chunks,
         "source_spans": spans,
@@ -1287,6 +1333,7 @@ def _load_records(
         "referents": referents,
         "contexts": contexts,
         "context_carriers": context_carriers,
+        "discourse_edges": discourse_edges,
         "document_context_norm_by_rel_path": dict(document_context_norm_by_rel_path),
         "record_counts": {
             "documents": len(documents),
@@ -1306,6 +1353,7 @@ def _load_records(
             "referents": len(referents),
             "contexts": len(contexts),
             "context_carriers": len(context_carriers),
+            "discourse_edges": len(discourse_edges),
         },
     }
     _finalize_records(records)
@@ -2253,10 +2301,35 @@ def _metadata_evidence(record: dict[str, Any], records: dict[str, Any]) -> Evide
     )
 
 
-def _context_accessible_cache_key(context_id: str, frame: QueryFrame) -> tuple[str, tuple[str, ...], str, str, bool]:
+def _authority_requirements(frame: QueryFrame) -> tuple[str, ...]:
+    material = normalize(frame.question_text)
+    if re.search(r"\b(?:labeled|labelled|called|titled|self-described|self described)\s+(?:as\s+)?(?:official|authoritative)\b", material):
+        return ("declared",)
+    if re.search(r"\b(?:official|verified|authoritative|legally authoritative)\b", material):
+        return ("verified",)
+    return ()
+
+
+def _context_satisfies_authority(context_id: str, records: dict[str, Any], frame: QueryFrame) -> bool:
+    requirements = _authority_requirements(frame)
+    if not requirements:
+        return True
+    chain = _context_chain(context_id, records)
+    if not chain:
+        return False
+    for context in chain:
+        if "verified" in requirements and str(context.get("verified_authority") or "").strip():
+            return True
+        if "declared" in requirements and str(context.get("declared_authority") or "").strip():
+            return True
+    return False
+
+
+def _context_accessible_cache_key(context_id: str, frame: QueryFrame) -> tuple[str, tuple[str, ...], tuple[str, ...], str, str, bool]:
     return (
         str(context_id or ""),
         tuple(_context_requirements(frame)),
+        _authority_requirements(frame),
         normalize(frame.requested_relation),
         str(frame.answer_type or ""),
         bool(frame.negated),
@@ -2274,6 +2347,9 @@ def _context_accessible(context_id: str, records: dict[str, Any], frame: QueryFr
         cache[cache_key] = True
         return True
     if not _context_satisfies_requirements(context_id, records, frame):
+        cache[cache_key] = False
+        return False
+    if not _context_satisfies_authority(context_id, records, frame):
         cache[cache_key] = False
         return False
     requirements = _context_requirements(frame)
@@ -4962,6 +5038,25 @@ def _countable_structured_rel_paths(records: dict[str, Any]) -> set[str]:
     return rel_paths
 
 
+def _row_local_structured_material(rows: list[dict[str, Any]]) -> str:
+    """Material from the actual structured row only; excludes document/context metadata."""
+
+    return normalize(
+        " ".join(
+            str(value or "")
+            for row in rows
+            for value in (
+                row.get("relation_type"),
+                row.get("predicate"),
+                row.get("subject"),
+                row.get("object"),
+                row.get("value"),
+                row.get("role"),
+            )
+        )
+    )
+
+
 def _row_local_count_match_rel_paths(
     records: dict[str, Any],
     target_terms: list[str],
@@ -5413,25 +5508,30 @@ def _extreme_count_by_record_groups(
             continue
         evidence = _evidence_for_span(str(accessible_rows[0].get("source_span_id") or ""), records)
         local_material = _group_material(accessible_rows, records, include_source_evidence=False)
+        row_local_material = _row_local_structured_material(accessible_rows)
         scoped_material = local_material
-        if target_terms and not _contains_any_for_records(records, local_material, target_terms):
+        if target_terms:
             if evidence.rel_path in target_row_local_rel_paths:
-                continue
-            scoped_material = _group_material(
-                accessible_rows,
-                records,
-                include_document_context=True,
-                include_source_evidence=False,
-            )
-            if not _contains_any_for_records(records, scoped_material, target_terms):
-                continue
+                if not _contains_any_for_records(records, row_local_material, target_terms):
+                    continue
+            elif not _contains_any_for_records(records, local_material, target_terms):
+                scoped_material = _group_material(
+                    accessible_rows,
+                    records,
+                    include_document_context=True,
+                    include_source_evidence=False,
+                )
+                if not _contains_any_for_records(records, scoped_material, target_terms):
+                    continue
         group_failed = False
         for index, required_group in enumerate(required_groups):
+            if evidence.rel_path in relation_group_row_local_rel_paths.get(index, set()):
+                if not _material_matches_term_group(row_local_material, required_group):
+                    group_failed = True
+                    break
+                continue
             if _material_matches_term_group(local_material, required_group):
                 continue
-            if evidence.rel_path in relation_group_row_local_rel_paths.get(index, set()):
-                group_failed = True
-                break
             if scoped_material == local_material:
                 scoped_material = _group_material(
                     accessible_rows,
@@ -6573,7 +6673,14 @@ def _arithmetic_answer(
             break
     if not evidence:
         return None
-    return Answer(answer_text, 0.9, evidence[:1], "deterministic arithmetic binding", expected.answer_type)
+    return Answer(
+        answer_text, 0.9, evidence[:1], "deterministic arithmetic binding", expected.answer_type,
+        derivation={
+            "operation": {"plus": "add", "minus": "subtract", "times": "multiply", "multiplied by": "multiply", "divided by": "divide"}[op],
+            "premises": [left, right],
+            "evidence_ids": [item.evidence_id() for item in evidence[:1]],
+        },
+    )
 
 
 def _person_values_from_relation_text(value: str, expected: ExpectedAnswer) -> list[str]:
@@ -6692,6 +6799,41 @@ def _relation_label_value_candidates(
             candidates.append((6.8 + slot_bonus, item, evidence, "relation_label_value_binding"))
     return candidates
 
+def _requires_completeness(frame: QueryFrame, expected: ExpectedAnswer) -> bool:
+    material = normalize(frame.question_text)
+    if frame.aggregation in {"count", "list", "set", "max", "min"}:
+        return True
+    return bool(re.search(r"\b(?:all|every|none|only|exactly|complete|entire|exhaustive|how many|total|most|least|highest|lowest|maximum|minimum)\b", material))
+
+
+def _completeness_proof(records: dict[str, Any], frame: QueryFrame) -> dict[str, Any] | None:
+    question = normalize(frame.question_text)
+    if any(
+        re.search(pattern, question)
+        for pattern in (
+            r"\b(?:in|from|within)\s+(?:the\s+)?(?:database|corpus|folder|file|document|table|list|records?|rows?|entries)\b",
+            r"\b(?:listed|recorded|documented|stored|present|contained)\s+(?:in|by|within)\b",
+            r"\baccording to\s+(?:the\s+)?(?:database|corpus|folder|file|document|table|list|records?)\b",
+        )
+    ):
+        return {"kind": "closed_initialized_corpus_scope"}
+    markers = (
+        r"\bcomplete(?:\s+[a-z0-9_-]+){0,3}\s+(?:list|inventory|table|record|records|set)\b",
+        r"\bfull(?:\s+[a-z0-9_-]+){0,3}\s+(?:list|inventory|table|record|records|set)\b",
+        r"\bexhaustive\b",
+        r"\bcontains?\s+exactly\s+\d+\b",
+        r"\bthere\s+(?:is|are)\s+exactly\s+\d+\b",
+        r"\btotal\s*[:=]\s*\d+\b",
+        r"\bonly\s+[^.;]+",
+        r"\ball\s+[^.;]+\s+(?:are|is|were|was)\b",
+    )
+    for span in records.get("source_spans", []):
+        text = normalize(str(span.get("text") or span.get("surface") or ""))
+        if any(re.search(pattern, text) for pattern in markers):
+            return {"kind": "explicit_source_completeness", "span_id": str(span.get("span_id") or span.get("source_span_id") or "")}
+    return None
+
+
 def execute_bounded_query(
     store: Any,
     run_id: str,
@@ -6733,6 +6875,27 @@ def execute_bounded_query(
     if answer_slot_terms:
         relation_terms = list(dict.fromkeys([*relation_terms, *answer_slot_terms]))
     selected_docs, selected_chunks, ranking = _rank_scope(documents, sentences_by_document, question, frame, doc_limit, chunk_limit)
+    # Exhaustive/cardinality semantics require a closed search space. Candidate
+    # retrieval is allowed to stay bounded for ordinary questions, but exact
+    # count/list/set/extreme queries must inspect the complete initialized corpus
+    # deterministically before claiming completeness. This does not expand the
+    # later LLM evidence pack; it expands only database-side semantic execution.
+    if _requires_completeness(frame, expected):
+        selected_docs = [document.document_id for document in documents]
+        run_chunk_rows = store.connection.execute(
+            """
+            SELECT c.chunk_id
+            FROM chunks c
+            JOIN documents d ON d.document_id=c.document_id
+            WHERE d.run_id=?
+            ORDER BY d.rel_path, c.chunk_order, c.chunk_id
+            """,
+            (run_id,),
+        ).fetchall()
+        selected_chunks = [str(row["chunk_id"]) for row in run_chunk_rows]
+        ranking["completeness_exhaustive_scan"] = True
+        ranking["completeness_scanned_document_count"] = len(selected_docs)
+        ranking["completeness_scanned_chunk_count"] = len(selected_chunks)
     if not selected_docs and frame.target_anchors:
         fallback_anchors = tuple(
             dict.fromkeys(
@@ -6850,6 +7013,10 @@ def execute_bounded_query(
             ),
         )
     diagnostics = {"ranking": ranking, "execution": {"record_counts": records["record_counts"], "query_frame": frame.as_dict()}}
+    completeness_required = _requires_completeness(frame, expected)
+    completeness_proof = _completeness_proof(records, frame) if completeness_required else {"kind": "not_required"}
+    diagnostics["execution"]["completeness_required"] = completeness_required
+    diagnostics["execution"]["completeness_proof"] = completeness_proof
     if identity_expansion_provenance:
         diagnostics["execution"]["identity_expansion_evidence"] = identity_expansion_provenance
 
@@ -6884,8 +7051,9 @@ def execute_bounded_query(
         _attach_answer_provenance(diagnostics, records, arithmetic_answer)
         return arithmetic_answer, diagnostics
 
-    extreme_count_answer = _extreme_count_by_record_groups(records, frame, expected, target_terms, relation_terms)
+    extreme_count_answer = _extreme_count_by_record_groups(records, frame, expected, target_terms, relation_terms) if completeness_proof else None
     if extreme_count_answer is not None:
+        extreme_count_answer.derivation = {**extreme_count_answer.derivation, "completeness": completeness_proof}
         extreme_count_answer = _with_supporting_evidence(extreme_count_answer, identity_expansion_evidence)
         _attach_answer_provenance(diagnostics, records, extreme_count_answer)
         diagnostics["execution"]["aggregation_fallback"] = _count_extreme_mode(frame, frame.question_text)
@@ -6956,14 +7124,17 @@ def execute_bounded_query(
     candidates = _apply_answer_slot_evidence_preference(candidates, frame, target_terms)
     candidates = _prefer_drs_argument_values(candidates, frame, expected, relation_terms)
 
-    if expected.answer_type == "count" and frame.aggregation == "count":
+    if expected.answer_type == "count" and frame.aggregation == "count" and completeness_proof:
         group_count, group_evidence = _count_matching_record_groups(records, frame, target_terms, relation_terms)
         if group_count:
-            answer = Answer(str(group_count), 0.86, group_evidence, "record-group aggregation DRS binding", "count")
+            answer = Answer(
+                str(group_count), 0.86, group_evidence, "record-group aggregation DRS binding", "count",
+                derivation={"operation": "count", "evidence_ids": [item.evidence_id() for item in group_evidence], "completeness": completeness_proof},
+            )
             answer = _with_supporting_evidence(answer, identity_expansion_evidence)
             _attach_answer_provenance(diagnostics, records, answer)
             return answer, diagnostics
-    if expected.answer_type == "count" and frame.aggregation == "count" and candidates:
+    if expected.answer_type == "count" and frame.aggregation == "count" and candidates and completeness_proof:
         # Count over provenance-bearing bindings, not over raw extracted numeric
         # values.  Counting the values themselves caused row-count questions to
         # return unrelated numbers found in the corpus.
@@ -6975,7 +7146,10 @@ def execute_bounded_query(
                 provenance_keys.append(key)
                 evidence.append(item_evidence)
         if provenance_keys:
-            answer = Answer(str(len(provenance_keys)), 0.82, evidence[:4], "binding-provenance aggregation DRS binding", "count")
+            answer = Answer(
+                str(len(provenance_keys)), 0.82, evidence[:4], "binding-provenance aggregation DRS binding", "count",
+                derivation={"operation": "count", "evidence_ids": [item.evidence_id() for item in evidence], "completeness": completeness_proof},
+            )
             answer = _with_supporting_evidence(answer, identity_expansion_evidence)
             _attach_answer_provenance(diagnostics, records, answer)
             return answer, diagnostics
@@ -6993,6 +7167,12 @@ def execute_bounded_query(
         )
         return None, diagnostics
 
+    if frame.aggregation in {"list", "set"} and completeness_required and not completeness_proof:
+        _attach_no_answer_provenance(
+            diagnostics, provenance_records, target_terms, relation_terms, candidates, expected,
+            "completeness_not_established",
+        )
+        return None, diagnostics
     if frame.aggregation in {"list", "set"}:
         answer = _with_supporting_evidence(
             _choose_list_answer(

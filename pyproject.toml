@@ -19,7 +19,7 @@ kmd-filesystem-search = "file_system_catalog.content_search_cli:main"
 test = ["pytest>=7"]
 
 [tool.setuptools]
-py-modules = ["context_capacity", "kmd_runtime_config"]
+py-modules = ["context_capacity", "kmd_runtime_config", "kmd_model_call_cache"]
 
 [tool.setuptools.packages.find]
 where = ["src"]

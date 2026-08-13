@@ -21,6 +21,8 @@ from typing import Any
 from jsonschema import Draft202012Validator
 from jsonschema.exceptions import ValidationError as JSONSchemaValidationError
 
+from kmd_model_call_cache import model_content_fingerprint, read_model_call, semantic_request_hash, write_model_call
+
 from kmd_runtime_config import (
     boolean as _config_boolean,
     csv_integers as _config_csv_integers,
@@ -888,15 +890,31 @@ class LocalModelClient:
             "total_reserved_tokens": prompt_tokens + int(output_tokens) + safety_tokens,
         }
 
+    def semantic_transport_settings(self, metadata: dict[str, Any] | None = None) -> dict[str, Any]:
+        data = metadata or self._metadata or self.server_metadata()
+        props = data.get("props") if isinstance(data, dict) else {}
+        chat_template = str(props.get("chat_template") or "") if isinstance(props, dict) else ""
+        constrained_mode = _config_text("KMD_LOCAL_MODEL_CONSTRAINT_MODE").strip().lower() or "auto"
+        if constrained_mode not in {"auto", "native", "prompt"}:
+            constrained_mode = "auto"
+        thinking_override = str(_config_explicit_raw("KMD_LOCAL_MODEL_SEND_THINKING_CONTROLS") or "").strip().lower() or "auto"
+        return {
+            "api": _config_text("KMD_LOCAL_MODEL_API").strip().lower() or "chat",
+            "constraint_mode": constrained_mode,
+            "thinking_control_override": thinking_override,
+            "chat_template_sha256": hashlib.sha256(chat_template.encode("utf-8", errors="replace")).hexdigest() if chat_template else "",
+        }
+
     def cache_fingerprint(self) -> dict[str, Any]:
         metadata = self.server_metadata()
+        model_id = self.model_id(metadata)
         return {
-            "fingerprint_schema": "local-model-stable-v4",
-            "model_id": self.model_id(metadata),
+            "fingerprint_schema": "local-model-semantic-v5",
+            "model": model_content_fingerprint(model_id),
+            "model_id": model_id,
             "context_size": self.context_size(metadata),
-            "context_source": self.context_source(metadata),
             "request_settings": self.request_settings(),
-            "transport_settings": self.transport_settings(),
+            "transport_settings": self.semantic_transport_settings(metadata),
         }
 
     def complete_json(
@@ -1077,6 +1095,21 @@ class LocalModelClient:
                 f"safety={context_budget['safety_tokens']} context={context_budget['context_size']}",
                 cache_context={"model_input_audit": model_input_audit},
             )
+        semantic_body = {key: value for key, value in body.items() if key not in {"stream", "cache_prompt"}}
+        model_call_request = {
+            "cache_schema": "kmd-exact-model-request-v1",
+            "model_fingerprint": self.cache_fingerprint(),
+            "request": semantic_body,
+        }
+        model_call_hash = semantic_request_hash(model_call_request)
+        cached_call = read_model_call(model_call_hash)
+        if cached_call is not None:
+            cached = dict(cached_call)
+            cached["_model_elapsed_seconds"] = 0.0
+            cached["_model_call_cache_hit"] = True
+            cached["_model_call_cache_hash"] = model_call_hash
+            cached["_model_input_audit"] = model_input_audit
+            return cached
         request = urllib.request.Request(
             endpoint,
             data=request_body_json.encode("utf-8"),
@@ -1280,5 +1313,13 @@ class LocalModelClient:
             "thinking_controls_sent": send_thinking_controls,
         }
         parsed["_model_input_audit"] = model_input_audit
+        parsed["_model_call_cache_hit"] = False
+        parsed["_model_call_cache_hash"] = model_call_hash
+        cache_response = dict(parsed)
+        cache_response.pop("_model_elapsed_seconds", None)
+        cache_response.pop("_model_per_token_timeout_seconds", None)
+        cache_response.pop("_model_throughput", None)
+        cache_response.pop("_model_input_audit", None)
+        write_model_call(model_call_hash, cache_response)
         _log_model_throughput(throughput, endpoint=endpoint, context_size=context_size, effective_n_predict=effective_n_predict)
         return parsed

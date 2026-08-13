@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import json
+import sqlite3
 from pathlib import Path
 
 import pytest
@@ -9,27 +10,15 @@ from knowmoredirt.ingest import ingest_folder
 from knowmoredirt.store import DSPGStore
 
 
-def test_finish_run_rejects_orphan_semantic_reference(tmp_path: Path) -> None:
+def test_sqlite_foreign_keys_reject_orphan_semantic_reference_immediately(tmp_path: Path) -> None:
     store = DSPGStore(tmp_path / "store.sqlite3")
-    run_id = store.start_run(tmp_path)
-    store.execute(
-        "INSERT INTO frame_arguments(argument_id,frame_id,role,mention_id,referent_id,surface,value_type,confidence) VALUES(?,?,?,?,?,?,?,?)",
-        ("orphan", "missing-frame", "value", None, None, "x", "string", 1.0),
-    )
-
-    with pytest.raises(RuntimeError, match="frame_arguments.frame_id"):
-        store.finish_run(run_id, {"done": True})
-
-    row = store.execute(
-        "SELECT status, metrics_json FROM extraction_runs WHERE run_id=?",
-        (run_id,),
-    ).fetchone()
-    assert row is not None
-    assert row["status"] == "failed"
-    metrics = json.loads(row["metrics_json"])
-    assert metrics["semantic_integrity_errors"] == [
-        {"reference": "frame_arguments.frame_id", "count": 1}
-    ]
+    store.start_run(tmp_path)
+    with pytest.raises(sqlite3.IntegrityError, match="FOREIGN KEY"):
+        store.execute(
+            "INSERT INTO frame_arguments(argument_id,frame_id,role,mention_id,referent_id,surface,value_type,confidence) VALUES(?,?,?,?,?,?,?,?)",
+            ("orphan", "missing-frame", "value", None, None, "x", "string", 1.0),
+        )
+    assert store.semantic_integrity_errors() == []
 
 
 def test_removed_file_rows_are_physically_pruned(tmp_path: Path) -> None:

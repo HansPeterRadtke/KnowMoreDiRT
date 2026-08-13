@@ -435,6 +435,7 @@ def test_count_evidence_extraction_accepts_grounded_multiline_aggregate(tmp_path
             }
 
     (tmp_path / "items").write_text(
+        "Complete item inventory:\n"
         "item: Blue Reef | status: open\n"
         "item: Stone Vale | status: closed\n"
         "item: Glass Pier | status: open\n",
