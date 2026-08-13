@@ -474,6 +474,18 @@ def _model_id_looks_like_reasoning_control_token_model(model_id: str) -> bool:
     )
 
 
+def _reasoning_control_mode(model_id: str) -> dict[str, object]:
+    """Resolve output-influencing reasoning transport for llama.cpp chat requests."""
+
+    if not _model_id_looks_like_reasoning_control_token_model(model_id):
+        return {"enabled": False, "format": "none", "budget": None}
+    # llama.cpp accepts none, auto, deepseek, and deepseek-legacy. KMD requests
+    # no model reasoning and a JSON-only final answer; deepseek plus a zero
+    # reasoning budget is the supported transport for the reasoning-token models
+    # we run, and is already exercised by filesystem semantic analysis.
+    return {"enabled": True, "format": "deepseek", "budget": 0}
+
+
 def _schema_hint(json_schema: dict[str, Any] | None) -> str:
     if not json_schema:
         return ""
@@ -814,8 +826,11 @@ class LocalModelClient:
         if constrained_mode not in {"auto", "native", "prompt"}:
             constrained_mode = "auto"
         reasoning_control_model = _model_id_looks_like_reasoning_control_token_model(model_id)
+        reasoning_control_mode = _reasoning_control_mode(model_id)
         native_constraints = constrained_mode != "prompt"
         thinking_control_override = str(_config_explicit_raw("KMD_LOCAL_MODEL_SEND_THINKING_CONTROLS") or "").strip().lower()
+        if thinking_control_override in {"0", "false", "no", "off"}:
+            reasoning_control_mode = {"enabled": False, "format": "none", "budget": None}
         return {
             "api": _config_text("KMD_LOCAL_MODEL_API").strip().lower() or "chat",
             "cache_prompt": _config_boolean("KMD_LOCAL_MODEL_CACHE_PROMPT"),
@@ -831,6 +846,7 @@ class LocalModelClient:
             "constraint_mode": constrained_mode,
             "native_constraints": native_constraints,
             "reasoning_control_token_model": reasoning_control_model,
+            "reasoning_control_mode": reasoning_control_mode,
             # The automatic behavior is already determined by model_id above.  Only an
             # explicit override is output-influencing state and therefore belongs in
             # the stable cache fingerprint.  Stream byte/event ceilings are safety
@@ -898,10 +914,15 @@ class LocalModelClient:
         if constrained_mode not in {"auto", "native", "prompt"}:
             constrained_mode = "auto"
         thinking_override = str(_config_explicit_raw("KMD_LOCAL_MODEL_SEND_THINKING_CONTROLS") or "").strip().lower() or "auto"
+        model_id = self.model_id(data)
+        reasoning_mode = _reasoning_control_mode(model_id)
+        if thinking_override in {"0", "false", "no", "off"}:
+            reasoning_mode = {"enabled": False, "format": "none", "budget": None}
         return {
             "api": _config_text("KMD_LOCAL_MODEL_API").strip().lower() or "chat",
             "constraint_mode": constrained_mode,
             "thinking_control_override": thinking_override,
+            "reasoning_control_mode": reasoning_mode,
             "chat_template_sha256": hashlib.sha256(chat_template.encode("utf-8", errors="replace")).hexdigest() if chat_template else "",
         }
 
@@ -1038,13 +1059,11 @@ class LocalModelClient:
         if "openrouter.ai" in endpoint:
             body["provider"] = {"require_parameters": True}
         if send_thinking_controls:
+            reasoning_mode = _reasoning_control_mode(self.model_id())
             body["enable_thinking"] = False
-            qwen_thinking_model = "qwen3.5" in self.model_id().lower() or "qwen35" in self.model_id().lower().replace("-", "").replace("_", "")
-            if qwen_thinking_model:
-                body["reasoning_format"] = "deepseek"
-                body["reasoning_budget"] = 0
-            else:
-                body["reasoning_format"] = "hidden"
+            body["reasoning_format"] = str(reasoning_mode["format"])
+            if reasoning_mode.get("budget") is not None:
+                body["reasoning_budget"] = int(reasoning_mode["budget"])
             if endpoint.endswith("/chat/completions"):
                 body["chat_template_kwargs"] = {"enable_thinking": False}
         context_budget = self.exact_context_budget(

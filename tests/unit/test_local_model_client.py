@@ -903,7 +903,7 @@ def test_local_model_client_discovers_runtime_metadata(monkeypatch) -> None:
     assert transport["constraint_mode"] == "auto"
     assert transport["thinking_control_override"] == "auto"
     assert "chat_template_sha256" in transport
-    assert set(transport) == {"api", "constraint_mode", "thinking_control_override", "chat_template_sha256"}
+    assert set(transport) == {"api", "constraint_mode", "thinking_control_override", "reasoning_control_mode", "chat_template_sha256"}
     chunk_transport = chunk_drs_cache_context(client)["model_fingerprint"]["transport_settings"]
     assert chunk_transport == transport
 
@@ -927,6 +927,7 @@ def test_local_model_auto_constraints_stay_native_for_reasoning_control_models(m
 
     assert transport["constraint_mode"] == "auto"
     assert transport["reasoning_control_token_model"] is True
+    assert transport["reasoning_control_mode"] == {"enabled": True, "format": "deepseek", "budget": 0}
     assert transport["native_constraints"] is True
 
 
@@ -4360,6 +4361,43 @@ def test_qwen35_chat_requests_disable_thinking_through_template_kwargs(monkeypat
     assert requests[0]["reasoning_budget"] == 0
     assert requests[0]["chat_template_kwargs"] == {"enable_thinking": False}
     assert parsed["_model_transport_settings"]["thinking_controls_sent"] is True
+
+
+def test_gpt_oss_chat_requests_use_llamacpp_supported_deepseek_reasoning_format(monkeypatch) -> None:
+    requests: list[dict[str, object]] = []
+
+    def fake_urlopen(request, timeout: float = 0) -> FakeHTTPResponse:
+        url = str(getattr(request, "full_url", request))
+        if url.endswith("/v1/models"):
+            return FakeHTTPResponse({"data": [{"id": "/models/gpt-oss-120b.gguf", "meta": {"n_ctx": 131072}}]})
+        if url.endswith("/slots"):
+            return FakeHTTPResponse([{"n_ctx": 131072, "params": {}}])
+        if url.endswith("/props"):
+            return FakeHTTPResponse({"model_alias": "gpt-oss-120b.gguf", "default_generation_settings": {}})
+        if url.endswith("/v1/chat/completions"):
+            payload = json.loads(getattr(request, "data", b"{}").decode("utf-8"))
+            requests.append(payload)
+            content_event = ("data: " + json.dumps({"choices": [{"delta": {"content": '{"ok":true}'}, "finish_reason": None}]})).encode("utf-8")
+            terminal_event = ("data: " + json.dumps({"choices": [{"delta": {}, "finish_reason": "stop"}]})).encode("utf-8")
+            return FakeHTTPResponse(lines=[content_event, terminal_event, b"data: [DONE]"])
+        raise AssertionError(f"unexpected URL {url}")
+
+    monkeypatch.setattr("urllib.request.urlopen", fake_urlopen)
+    monkeypatch.delenv("KMD_LOCAL_MODEL_SEND_THINKING_CONTROLS", raising=False)
+    client = LocalModelClient(endpoint="http://127.0.0.1:14829/v1", per_token_timeout_seconds=30)
+    parsed = client.complete_json(
+        "return ok",
+        n_predict=64,
+        json_schema={"type": "object", "additionalProperties": False, "required": ["ok"], "properties": {"ok": {"type": "boolean"}}},
+    )
+    assert parsed["ok"] is True
+    assert requests[0]["enable_thinking"] is False
+    assert requests[0]["reasoning_format"] == "deepseek"
+    assert requests[0]["reasoning_budget"] == 0
+    assert requests[0]["chat_template_kwargs"] == {"enable_thinking": False}
+    assert "hidden" not in json.dumps(requests[0])
+    semantic = client.semantic_transport_settings()
+    assert semantic["reasoning_control_mode"] == {"enabled": True, "format": "deepseek", "budget": 0}
 
 
 def _prime_contract_test_client(client: LocalModelClient, context_size: int = 4096) -> None:
