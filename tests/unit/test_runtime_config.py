@@ -131,3 +131,9 @@ def test_model_cache_specific_override_remains_available_for_tests(tmp_path: Pat
     override = tmp_path / "chunk-drs"
     monkeypatch.setenv("KMD_CHUNK_DRS_CACHE_DIR", str(override))
     assert config.model_cache_dir("KMD_CHUNK_DRS_CACHE_DIR") == override
+
+
+def test_packaged_filesystem_analysis_model_default_is_discovery_sentinel(monkeypatch) -> None:
+    from kmd_runtime_config import text
+    monkeypatch.delenv("KMD_LOCAL_MODEL_NAME", raising=False)
+    assert text("KMD_LOCAL_MODEL_NAME") == ""

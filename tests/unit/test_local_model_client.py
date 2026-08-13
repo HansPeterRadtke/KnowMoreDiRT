@@ -4731,3 +4731,57 @@ def test_compact_retry_stops_when_rejected_raw_output_repeats(monkeypatch, tmp_p
     assert result["accepted"] is False
     assert result["compact_retry_stopped_reason"] == "repeated_rejected_raw_output"
     assert model.calls == 2
+
+
+def test_filesystem_analysis_client_discovers_single_endpoint_model_when_unconfigured(monkeypatch) -> None:
+    from file_system_catalog.content_pipeline import AnalysisClient
+    import file_system_catalog.content_pipeline as pipeline
+
+    def fake_request(url: str, payload=None, *, timeout=None):
+        if url.endswith("/v1/models"):
+            return {"data": [{"id": "/models/live-120b.gguf", "meta": {"n_ctx": 32768, "n_ctx_train": 32768}}]}
+        raise AssertionError(url)
+
+    monkeypatch.setattr(pipeline, "request_json", fake_request)
+    client = AnalysisClient("http://model", model="")
+    assert client.effective_model() == "/models/live-120b.gguf"
+    assert client.model == "/models/live-120b.gguf"
+    assert client.model_context().configured_tokens == 32768
+
+
+def test_filesystem_analysis_client_explicit_model_mismatch_remains_strict(monkeypatch) -> None:
+    from file_system_catalog.content_pipeline import AnalysisClient
+    import file_system_catalog.content_pipeline as pipeline
+    import pytest
+
+    monkeypatch.setattr(
+        pipeline,
+        "request_json",
+        lambda url, payload=None, *, timeout=None: {
+            "data": [{"id": "/models/live-120b.gguf", "meta": {"n_ctx": 32768, "n_ctx_train": 32768}}]
+        },
+    )
+    client = AnalysisClient("http://model", model="/models/stale-27b.gguf")
+    assert client.effective_model() == "/models/stale-27b.gguf"
+    with pytest.raises(RuntimeError, match="configured model is not advertised"):
+        client.model_context()
+
+
+def test_filesystem_analysis_client_requires_explicit_pin_if_endpoint_has_multiple_models(monkeypatch) -> None:
+    from file_system_catalog.content_pipeline import AnalysisClient
+    import file_system_catalog.content_pipeline as pipeline
+    import pytest
+
+    monkeypatch.setattr(
+        pipeline,
+        "request_json",
+        lambda url, payload=None, *, timeout=None: {
+            "data": [
+                {"id": "/models/a.gguf", "meta": {"n_ctx": 32768}},
+                {"id": "/models/b.gguf", "meta": {"n_ctx": 32768}},
+            ]
+        },
+    )
+    client = AnalysisClient("http://model", model="")
+    with pytest.raises(RuntimeError, match="does not advertise exactly one model"):
+        client.effective_model()

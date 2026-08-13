@@ -132,6 +132,50 @@ def _stream_byte_limit(max_tokens: int) -> int:
     return max(65536, int(max_tokens) * multiplier + 65536)
 
 
+def discover_model_identity(base_url: str, model: str = "", *, timeout: float | None = None) -> str:
+    base = base_url.rstrip("/")
+    effective_timeout = _default_control_timeout_seconds() if timeout is None else float(timeout)
+    payload = request_json(f"{base}/v1/models", timeout=effective_timeout)
+    records = payload.get("data")
+    if not isinstance(records, list) or not records:
+        raise RuntimeError(f"model endpoint advertised no models: {base}/v1/models")
+    usable = [record for record in records if isinstance(record, dict)]
+    if model:
+        for record in usable:
+            names = {str(record.get(key) or "") for key in ("id", "name", "model")}
+            aliases = record.get("aliases")
+            if isinstance(aliases, list):
+                names.update(str(value) for value in aliases)
+            if model in names:
+                return str(record.get("id") or record.get("name") or record.get("model") or model)
+        advertised = sorted(
+            {
+                str(value)
+                for record in usable
+                for value in [record.get("id"), record.get("name"), record.get("model")]
+                if value
+            }
+        )
+        raise RuntimeError(
+            f"configured model is not advertised by endpoint: model={model!r} "
+            f"endpoint={base}/v1/models advertised={advertised!r}"
+        )
+    if len(usable) != 1:
+        advertised = sorted(
+            str(record.get("id") or record.get("name") or record.get("model") or "")
+            for record in usable
+            if record.get("id") or record.get("name") or record.get("model")
+        )
+        raise RuntimeError(
+            "analysis model is not explicitly configured and endpoint does not advertise exactly one model: "
+            f"endpoint={base}/v1/models advertised={advertised!r}"
+        )
+    identity = str(usable[0].get("id") or usable[0].get("name") or usable[0].get("model") or "")
+    if not identity:
+        raise RuntimeError(f"model endpoint returned one record without an identity: {base}/v1/models")
+    return identity
+
+
 def discover_model_context(base_url: str, model: str = "", *, timeout: float | None = None) -> ModelContext:
     base = base_url.rstrip("/")
     effective_timeout = _default_control_timeout_seconds() if timeout is None else float(timeout)
@@ -429,7 +473,8 @@ class AnalysisClient:
         retries: int = 3,
     ) -> None:
         self.base_url = base_url.rstrip("/")
-        self.model = model
+        self.model = model.strip()
+        self._resolved_model: str | None = None
         self.seed = seed
         self.temperature = temperature
         self.per_token_timeout_seconds = (
@@ -454,9 +499,28 @@ class AnalysisClient:
     def health(self) -> dict[str, Any]:
         return request_json(f"{self.base_url}/health", timeout=self.control_timeout_seconds)
 
+    def effective_model(self) -> str:
+        if self._resolved_model is None:
+            if self.model:
+                # An explicit model string is already a concrete semantic identity.
+                # model_context() remains responsible for validating that the
+                # endpoint actually advertises it before production generation.
+                self._resolved_model = self.model
+            else:
+                self._resolved_model = discover_model_identity(
+                    self.base_url,
+                    "",
+                    timeout=self.control_timeout_seconds,
+                )
+                # Downstream representation IDs and metadata must use the concrete
+                # endpoint identity, never an empty discovery sentinel.
+                self.model = self._resolved_model
+        return self._resolved_model
+
     def model_context(self) -> ModelContext:
         if self._model_context is None:
-            self._model_context = discover_model_context(self.base_url, self.model, timeout=self.control_timeout_seconds)
+            model = self.effective_model()
+            self._model_context = discover_model_context(self.base_url, model, timeout=self.control_timeout_seconds)
         return self._model_context
 
     def token_count(self, text: str) -> int:
@@ -635,8 +699,9 @@ class AnalysisClient:
                         output_tokens=attempt_max_tokens,
                     )
                     Draft202012Validator.check_schema(resolved_schema)
+                    model_identity = self.effective_model()
                     payload = {
-                        "model": self.model,
+                        "model": model_identity,
                         "temperature": self.temperature,
                         "seed": self.seed,
                         "max_tokens": attempt_max_tokens,
@@ -660,7 +725,7 @@ class AnalysisClient:
                     rendered_prompt = "" if test_cache_disabled else self._render_prompt(system=system, user=user)
                     model_call_request = {
                         "cache_schema": "kmd-exact-model-request-v1",
-                        "model": model_content_fingerprint(self.model),
+                        "model": model_content_fingerprint(model_identity),
                         "context_size": context,
                         "rendered_prompt_sha256": sha256_text(rendered_prompt),
                         "request": semantic_payload,
@@ -2087,6 +2152,8 @@ class ContentSemanticPipeline:
             raise NotADirectoryError(self.root)
         analysis_health = self.analysis_client.health()
         embedding_health = self.embedding_client.health()
+        resolver = getattr(self.analysis_client, "effective_model", None)
+        analysis_model = str(resolver() if resolver is not None else getattr(self.analysis_client, "model", ""))
         started = time.monotonic()
         connection = sqlite3.connect(self.database, timeout=60.0)
         connection.row_factory = sqlite3.Row
@@ -2133,6 +2200,7 @@ class ContentSemanticPipeline:
                 "representation_rows": connection.execute(f"SELECT count(*) FROM {REPRESENTATION_TABLE_NAME}").fetchone()[0],
                 "duration_seconds": round(time.monotonic() - started, 6),
                 "analysis_health": analysis_health,
+                "analysis_model": analysis_model,
                 "embedding_health": embedding_health,
                 "files": results,
             }

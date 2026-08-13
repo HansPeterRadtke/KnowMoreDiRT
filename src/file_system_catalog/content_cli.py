@@ -13,7 +13,7 @@ def parser() -> argparse.ArgumentParser:
     value.add_argument("database", help="existing filesystem SQLite catalog")
     value.add_argument("--collection-id", required=True, help="stable logical collection identifier")
     value.add_argument("--analysis-url", default="http://127.0.0.1:14829")
-    value.add_argument("--analysis-model", default="/data/models/llm/Qwen3.5-27B-Q8_0/Qwen3.5-27B-Q8_0.gguf")
+    value.add_argument("--analysis-model", default="")
     value.add_argument("--embedding-url", default="http://127.0.0.1:18139")
     value.add_argument("--embedding-model", default="qwen3-embedding-0.6b-q8")
     value.add_argument("--embedding-revision", default="370f27d7550e0def9b39c1f16d3fbaa13aa67728:Q8_0")

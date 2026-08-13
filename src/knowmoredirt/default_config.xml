@@ -12,7 +12,7 @@
 
     <setting name="KMD_USE_LOCAL_MODEL" type="enum_or_empty" value="" choices="1,0,true,false,yes,no,on,off" group="model.connection" risk="high" change_frequency="rare" description="Legacy explicit local-model preference; production still requires a reachable local model." />
     <setting name="KMD_LOCAL_MODEL_ENDPOINT" type="str" value="http://127.0.0.1:14829/v1" group="model.connection" risk="high" change_frequency="occasional" description="Local llama.cpp-compatible endpoint; localhost only." />
-    <setting name="KMD_LOCAL_MODEL_NAME" type="str" value="/data/models/llm/Qwen3.5-27B-Q8_0/Qwen3.5-27B-Q8_0.gguf" group="model.identity" risk="high" change_frequency="rare" description="Expected analysis model name/path for filesystem semantic catalog operations." />
+    <setting name="KMD_LOCAL_MODEL_NAME" type="str" value="" group="model.identity" risk="high" change_frequency="rare" description="Optional explicit filesystem analysis model identity. Empty discovers the endpoint's sole advertised model and pins that concrete identity." />
     <setting name="KMD_LOCAL_MODEL_EXPECTED_ID" type="str" value="" group="model.identity" risk="high" change_frequency="rare" description="Optional exact model id requirement." />
     <setting name="KMD_LOCAL_MODEL_ID" type="str" value="" group="model.identity" risk="high" change_frequency="rare" description="Optional explicit model identity override." />
     <setting name="KMD_LOCAL_MODEL_CONTEXT_SIZE" type="int" value="0" unit="tokens" minimum="0" maximum="4194304" enforce_range="true" group="model.capacity" risk="high" change_frequency="rare" description="Optional context-size fallback; zero means discover from server." />
