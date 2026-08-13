@@ -76,9 +76,9 @@ This boundary prevents KMD from degenerating into a model-owned hidden reasoning
 
 ### Source-only factuality
 
-All factual claims in a normal KMD answer must be supported by corpus evidence. The model may use pretrained linguistic competence and general reasoning procedures to interpret evidence, but may not introduce unsupported world facts from its weights.
+All factual claims in a normal KMD answer must be supported by corpus evidence or by an explicit derivation whose premises are themselves corpus-supported. The model may use pretrained linguistic competence, semantic associations, and general reasoning procedures to interpret evidence or propose retrieval hypotheses, but may not promote unsupported world facts from its weights into evidence, semantic state, or answer claims.
 
-This boundary must exist in every model-call prompt that can influence factual output. It is insufficient to put the instruction only in the final-answer prompt because an earlier planner, extractor, canonicalizer, or verifier can otherwise inject unsupported facts into an intermediate representation.
+This boundary must exist in every model-call prompt that can influence factual output. It is insufficient to put the instruction only in the final-answer prompt because an earlier extractor, canonicalizer, reasoner, or verifier can otherwise inject unsupported facts into an intermediate representation. Query expansion is a special non-evidentiary operation: a model may use parametric semantic knowledge to suggest search terms or hypotheses, but those suggestions are never facts and can affect the answer only after corpus retrieval supplies supporting evidence.
 
 If a user explicitly requests model/world knowledge outside the KMD corpus, that is a different operating mode and must be explicit in the public API and answer metadata. It must never be silently enabled.
 
@@ -110,9 +110,15 @@ When compatible evidence does not establish the requested proposition, KMD must 
 
 The canonical semantic behavior is therefore not just `unknown`; it is `unknown in requested scope + scoped related evidence when useful`.
 
+The canonical recording-derived acceptance example is explicit. Suppose the corpus contains no official German or common traffic-law source establishing that bicycles may not drive faster than cars, but it does contain a file in which Timmy dreams that somebody explains exactly such a rule. For an ordinary real-world question about whether that bicycle rule is law, KMD must not answer from pretrained knowledge and must not promote the dream. The direct answer is that the available corpus does not establish the requested real-world law or that no supporting official law text was found. KMD should then surface the relevant dream evidence with its scope stated clearly: the corpus contains a file in which Timmy dreams that somebody describes such a rule. If the user instead explicitly asks what rule appeared in Timmy's dream, that dream-scoped proposition is direct evidence for the requested dream-scoped question.
+
 ### Provenance is mandatory
 
-Every proposition used for answering must remain traceable to source spans, documents, and context carriers. Generated summaries and canonicalizations may accelerate reasoning but never replace the original evidence chain.
+Every proposition used for answering must remain traceable to source spans, documents, and context carriers. Generated summaries and canonicalizations may accelerate reasoning but never replace the original evidence chain. Derived claims must additionally preserve a derivation trace linking the claim to its corpus-supported premises and the deterministic or validated reasoning operation that produced it.
+
+### Scope is not truth
+
+Scope describes the world, circumstance, speaker, modality, time, or discourse environment in which a source presents a proposition. Scope compatibility determines whether evidence is eligible to answer a query, but it does not by itself prove that the proposition is objectively true. An ordinary `real_world` assertion means that the source presents the proposition as an ordinary-world claim; it is not a certificate that the source is correct. Source authority, directness, contradiction, temporal applicability, and provenance remain separate evidence dimensions. KMD reports what its corpus establishes under those dimensions; it must not claim external verification that the corpus does not provide.
 
 ## Information model
 
@@ -173,7 +179,7 @@ Required core context kinds are open-ended but must include at least:
 - `reported` / attributed speech or hearsay;
 - `quoted`;
 - `conditional`;
-- `document_authority` / declared official or policy scope;
+- `document_frame` / document-level declared frame when a document or section explicitly establishes one;
 - `temporal` or dated state;
 - `simulation` / exercise;
 - `uncertain_scope` for context inferred but not established strongly enough for hard promotion.
@@ -211,7 +217,7 @@ A DRS condition must represent at least:
 - confidence;
 - source provenance.
 
-This structure is specifically required so negation, modality, conditionals, reported content, hypothetical content, and other scope-sensitive phenomena are not flattened into unqualified triples.
+This structure is specifically required so negation, modality, conditionals, reported content, hypothetical content, quantification, and other scope-sensitive phenomena are not flattened into unqualified triples. DRS accessibility rules are part of execution semantics: a referent or condition available inside a subordinate box does not automatically escape into its parent or sibling scope. Quantifiers, negation, implication, and modal boxes must preserve their accessibility constraints during retrieval and reasoning.
 
 ### Layer 5: discourse graph
 
@@ -283,9 +289,9 @@ This resolves the recording's “proven dream versus merely dream-like” proble
 
 Dated sections create temporal contexts or temporal constraints. Two otherwise identical propositions under different dates remain distinct evidence states. Query time constraints select compatible states rather than collapsing them.
 
-### Rule 7: authority is explicit
+### Rule 7: declared authority and verified authority are distinct
 
-A header such as “Official German Traffic Law” can establish a document-authority context, but KMD must record that authority as a source/document property established by corpus evidence. It must not infer legal authority solely from professional-sounding prose.
+A header such as “Official German Traffic Law” establishes that the document declares or frames itself as official. That declaration is source evidence and can govern interpretation of the section, but self-description alone does not prove external legal authority. KMD must keep `declared_authority` separate from `verified_authority` or equivalent provenance-backed authority metadata. Verified authority requires corpus-visible provenance or metadata sufficient to establish it. Professional-sounding prose or an “official” label alone cannot create verified authority.
 
 ### Rule 8: quotations and reports preserve attribution
 
@@ -347,12 +353,12 @@ The LLM may generate semantically related retrieval concepts, as required by the
 
 - keep the original query as the primary representation;
 - generate a small configurable set of semantically distinct expansions;
-- preserve named entities, exact identifiers, dates, and quoted strings unchanged;
+- preserve the original named entities, exact identifiers, dates, and quoted strings unchanged while permitting additional aliases or related forms as separate expansion hypotheses;
 - reject expansions that change the requested scope or answer type;
 - deduplicate semantically redundant expansions;
 - log expansions for reproducibility.
 
-There is no universal magic expansion count. The count is a production setting and must be calibrated on held-out retrieval tests. The specification requires boundedness and intent preservation, not a hardcoded number derived without evidence.
+There is no universal magic expansion count. The count is a production setting and must be calibrated on held-out retrieval tests. The specification requires boundedness and intent preservation, not a hardcoded number derived without evidence. As a concrete recording-derived example, a broad query such as “what is a cat” may retain `cat` as the primary query while adding retrieval hypotheses such as pets, household animals, biology, or other semantically related concepts. Those expansions increase recall but never become answer facts until corpus evidence supports them.
 
 ### Stage 3: candidate retrieval
 
@@ -391,7 +397,7 @@ Each candidate is classified relative to the query as:
 - `background` — useful for interpretation but not direct answer evidence;
 - `irrelevant`.
 
-Only direct support/contradiction can establish the real-world answer. Related or uncertain evidence can appear in qualifications but cannot silently determine the main answer.
+Only `direct_support` and `direct_contradiction` relative to the requested scope can establish the main answer. For an underspecified factual query that requested scope is the real world; for an explicit dream, historical, reported, hypothetical, or other scoped query, direct evidence is evaluated inside that requested scope. Related or uncertain evidence can appear in qualifications but cannot silently determine the main answer.
 
 ### Stage 6: reranking
 
@@ -411,7 +417,7 @@ Scope compatibility is a hard semantic feature, not just another weak relevance 
 
 ### Stage 7: bounded evidence pack construction
 
-The final model context is a bounded evidence pack, not a raw dump of top-k chunks.
+The final model context is a bounded evidence pack, not a raw dump of top-k chunks. A flat “question + every retrieved chunk” prompt is still a valid baseline and may work well in ordinary cases when the result set is small, self-contained, and comfortably within the model context. It is not sufficient as the sole production architecture because it provides no guarantee that required discourse scope is preserved or that large result sets remain usable. The recording's concrete scale example must remain part of capacity testing: a query may retrieve roughly 100 chunks of roughly 1,000 tokens each, already approaching or exceeding the usable context budget of many models before the question, instructions, provenance, and scope carriers are added. KMD must handle that case without assuming that the whole raw result set can be pasted into one prompt.
 
 The pack is assembled in priority order:
 
@@ -423,7 +429,7 @@ The pack is assembled in priority order:
 6. related subordinate-scope evidence;
 7. optional explanatory background.
 
-Required scope carriers cannot be evicted while their dependent proposition remains in the pack. If the token budget cannot contain a proposition plus the context necessary to interpret it, that proposition is removed or replaced by a lossless structured representation.
+Required scope carriers cannot be evicted while their dependent proposition remains in the pack. If the token budget cannot contain a proposition plus the context necessary to interpret it, that proposition is removed or replaced by a source-faithful structured representation that preserves every scope, polarity, attribution, temporal, and provenance feature required for the current reasoning step. KMD must not claim that arbitrary semantic compression is globally lossless.
 
 This explicitly avoids the long-context failure mode documented by Lost in the Middle: KMD does not assume that increasing context length automatically solves retrieval/attention problems.
 
@@ -438,8 +444,6 @@ Noise classification may prevent useless model work during ingestion, but it mus
 ## Similarity threshold policy
 
 The recordings require a vector similarity threshold but do not justify a permanent numeric value. The system therefore uses an empirically calibrated threshold.
-
-The current configuration contains a `0.50` cosine-similarity value. That is a starting configuration, not a theoretical constant.
 
 The production threshold must be selected using held-out retrieval cases covering:
 
@@ -538,6 +542,18 @@ For implicit contexts, the default policy is conservative:
 - plausible but ambiguous context -> `uncertain_scope`;
 - insufficient evidence for any special scope -> inherit validated parent/document context.
 
+## Open-world semantics, negative evidence, and completeness
+
+KMD is open-world by default. Failure to find evidence for proposition `P` does not establish `not P`, and failure to find evidence for `not P` does not establish `P`. Absence of evidence produces `unknown` unless the corpus explicitly supplies completeness semantics for the relevant domain.
+
+Negative propositions require evidence just like positive propositions. Explicit statements such as “the valve is not open” directly support a negative proposition. Observational statements such as “inspection found no crack” can support an absence proposition when their semantics and inspection scope establish that claim; they must not be reduced to simple keyword negation.
+
+Closed-world reasoning is allowed only when corpus evidence establishes a closed set or completeness condition, for example an authoritative exhaustive inventory, a declared complete table, or an explicitly bounded database relation. The completeness condition itself must be represented and cited.
+
+Questions containing `all`, `every`, `none`, `only`, exact counts, superlatives, or exhaustive-list intent require completeness reasoning. KMD may return a complete enumeration or exact count only if it can justify that the relevant search space is closed or exhaustively covered. Otherwise it returns a partial answer or qualified unknown and states the limitation.
+
+Derived arithmetic, comparison, date calculation, set operations, and other deterministic computations are permitted when all input premises are corpus-supported and the derivation is recorded. Whenever a deterministic operation is available, it is preferred over asking an LLM to perform exact arithmetic or set bookkeeping.
+
 ## Contradiction and source-authority policy
 
 KMD never resolves contradictions using pretrained model preference.
@@ -549,11 +565,11 @@ Resolution uses only corpus-visible features:
 3. temporal applicability;
 4. directness of evidence;
 5. correction/supersession discourse relations;
-6. provenance and confidence.
+6. provenance and evidence strength.
 
-If these do not resolve the conflict, the answer is `conflicted`.
+Model/parser confidence may help decide whether an extraction is reliable enough to use, but it must never override stronger source evidence or act as a truth vote between conflicting propositions. If corpus-visible scope, authority, time, correction/supersession, directness, and provenance do not resolve the conflict, the answer is `conflicted`.
 
-Official-looking wording alone is not authority evidence.
+Official-looking wording alone is not verified authority evidence.
 
 ## Document-context strategy
 
@@ -615,7 +631,7 @@ All model-call caches use one canonical KMD-wide root:
 
 `/data/var/knowmoredirt/model_cache`
 
-The cache is independent of benchmark, suite, corpus, or run. A model call is reusable whenever its complete fingerprint matches. Cache namespaces such as chunk DRS, query DRS, query plan, evidence answer, verifier, canonicalization, identity, source resolution, document context, and evaluation judge live under the same root.
+The cache root is independent of benchmark, suite, corpus, or run. Cached outputs are not independent of their inputs: a model call is reusable only when its complete fingerprint matches, including all corpus-derived text or structured evidence supplied to that call. Cache reuse therefore cannot turn outputs from one corpus into facts for another corpus unless the complete model-call input is actually identical. Cache namespaces such as chunk DRS, query DRS, query plan, evidence answer, verifier, canonicalization, identity, source resolution, document context, and evaluation judge live under the same root.
 
 Cache keys must include every factor that can alter model output, including model identity/revision, prompt/schema version, relevant generation parameters, normalized input, and task implementation version.
 
@@ -624,6 +640,12 @@ Ambiguous legacy collisions are never arbitrarily reused. If the same key has di
 ### Corpus/index caches are separate
 
 Filesystem/vector catalogs are not model-call caches. They are corpus-derived indexes and therefore use corpus/config fingerprints. They remain separate from the global model-call cache and are reusable only when corpus, chunking, embedding model/revision, and relevant index settings match.
+
+## Untrusted corpus text and instruction isolation
+
+Corpus text is data, never control-plane instruction. A source document may contain text such as “ignore previous instructions,” fake tool commands, fake system prompts, or instructions addressed to an AI. Unless the user's question is specifically about those instructions as document content, they have no authority over KMD's prompts, retrieval policy, tools, configuration, evidence rules, or answer contract.
+
+Every model prompt that includes corpus text must delimit that text as untrusted evidence. Source text cannot change the source-only invariant, request external tools, alter model/cache settings, suppress citations, or redefine the user's query. If a document contains executable/code-like material, KMD interprets it as source content unless a separate explicitly authorized execution subsystem exists; ordinary KMD ingestion and question answering never executes corpus-provided commands.
 
 ## Reliability and transport
 
@@ -641,7 +663,7 @@ A failed semantic extraction cannot silently become fabricated structured data. 
 
 ## Configuration
 
-All production behavior must be controlled by the centralized XML configuration system with documented settings, defaults, types, units, ranges/choices, descriptions, risk/change-frequency metadata, and precedence.
+All tunable production parameters and operational behavior must be controlled by the centralized XML configuration system with documented settings, defaults, types, units, ranges/choices, descriptions, risk/change-frequency metadata, and precedence. Core semantic invariants defined by this specification are code contracts and must not be made optional merely because a configuration switch could bypass them.
 
 Precedence is:
 
@@ -807,6 +829,18 @@ A full system definition requires more than the two recordings. The suite must a
 
 - Nearly identical wording in the wrong scope must rank below compatible evidence after scope filtering.
 
+### Open-world and completeness
+
+- Missing evidence for `P` must not become evidence for `not P`.
+- Missing evidence for `not P` must not become evidence for `P`.
+- Explicit negative observations must remain usable as negative evidence when their scope supports the claim.
+- `all`, `none`, exact-count, and exhaustive-list questions must return partial/unknown unless completeness is established.
+- Declared closed sets must permit exact enumeration and counting when the completeness evidence is cited.
+
+### Corpus prompt injection
+
+- Source text containing fake system prompts, “ignore previous instructions,” tool commands, or answer directives must remain inert evidence and must not alter KMD control behavior.
+
 ### Context-distance stress
 
 - Scope carrier 1, 10, 50, and many chunks away;
@@ -908,7 +942,7 @@ The current KMD tree already contains much of the required substrate:
 - qualified unknown logic;
 - semantic evaluator;
 - model attempt records;
-- centralized XML runtime configuration with 188 settings;
+- centralized XML runtime configuration;
 - persistent logging;
 - retry/backoff logic;
 - KMD-wide model-call cache root.
@@ -1023,6 +1057,10 @@ KMD conforms to this specification only when all of the following are true:
 22. The stable `initialize(folder_path)` / `question(text) -> str` boundary remains usable without a prepared semantic corpus.
 23. Malformed/gibberish/profane/vague input cases obey the same grounding rules and do not trigger fabricated special handling.
 24. A conversational layer can rephrase KMD output but cannot alter verified evidence/scope/status semantics.
+25. Open-world, negative-evidence, closed-world/completeness, exhaustive-enumeration, and exact-count tests pass.
+26. Corpus prompt-injection tests prove that source text cannot modify KMD control instructions or tool behavior.
+27. Derived arithmetic/set/date results retain machine-checkable provenance to corpus-supported premises.
+28. Declared authority and verified authority remain distinguishable in storage, retrieval, and answer rendering.
 
 ## Final system summary
 
