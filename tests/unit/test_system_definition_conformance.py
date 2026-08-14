@@ -6,7 +6,7 @@ import sqlite3
 from file_system_catalog.content_pipeline import EmbeddingClient
 from kmd_model_call_cache import semantic_request_hash
 from knowmoredirt.bounded_dspg import _context_accessible, execute_bounded_query
-from knowmoredirt.engine import _reciprocal_rank_fusion
+from knowmoredirt.engine import KnowMoreDiRTEngine, _reciprocal_rank_fusion
 from knowmoredirt.ingest import ingest_folder
 from knowmoredirt.model_planner import (
     _cache_hash,
@@ -14,12 +14,16 @@ from knowmoredirt.model_planner import (
     call_model_query_expansion,
 )
 from knowmoredirt.models import Answer, Evidence, Sentence
+from knowmoredirt.model import LocalModelJSONError, LocalModelUnavailableError
 from knowmoredirt.query import QueryFrame
 from knowmoredirt.store import DSPGStore, SCHEMA_VERSION
 
 
 class _FingerprintClient:
     endpoint = "http://runtime-location-that-is-not-semantic-identity"
+
+    def context_size(self) -> int:
+        return 131072
 
     def cache_fingerprint(self) -> dict[str, object]:
         return {
@@ -295,3 +299,54 @@ def test_populated_v12_database_migrates_to_v13_without_row_loss(tmp_path: Path)
             )
     finally:
         store.close()
+
+
+def test_query_expansion_retries_output_limit_with_larger_budget(tmp_path: Path, monkeypatch) -> None:
+    import knowmoredirt.model_planner as planner
+
+    monkeypatch.setenv("KMD_QUERY_EXPANSION_CACHE_DIR", str(tmp_path / "expansion-cache"))
+    monkeypatch.setenv("KMD_QUERY_EXPANSION_MAX_TERMS", "8")
+    budgets: list[int] = []
+
+    def fake_complete(_client, _prompt, *, n_predict, grammar, json_schema):
+        budgets.append(int(n_predict))
+        if len(budgets) == 1:
+            raise LocalModelJSONError(
+                "truncated",
+                raw_text='{"terms":["shopping",")',
+                snippet='{"terms":["shopping",")',
+                reason="output_limit_exhausted",
+            )
+        return {"terms": ["shopping list", "status"], "_model_raw": '{"terms":["shopping list","status"]}'}
+
+    monkeypatch.setattr(planner, "_complete_structured", fake_complete)
+    result = call_model_query_expansion(
+        "What is the shopping list status?",
+        {"target_anchors": ["shopping list"], "requested_scope": "real_world"},
+        _FingerprintClient(),  # type: ignore[arg-type]
+    )
+    assert result["accepted"] is True
+    assert budgets[1] > budgets[0]
+    assert result["attempts"][0]["reason"] == "output_limit_exhausted"
+    assert result["attempts"][1]["accepted"] is True
+
+
+def test_optional_query_expansion_failure_does_not_raise_but_required_model_failure_does() -> None:
+    from knowmoredirt.engine import ModelQueryTrace
+    import pytest
+
+    engine = KnowMoreDiRTEngine.__new__(KnowMoreDiRTEngine)
+    engine.model_query_trace = ModelQueryTrace(enabled=True)
+    failure = {
+        "accepted": False,
+        "reason": "request_failed",
+        "failure_reason": "output_limit_exhausted",
+        "error": "structured generation ended without a complete JSON value",
+        "elapsed": 1.5,
+        "cache_context": {},
+    }
+    engine._record_model_result(failure, required=False)
+    assert engine.model_query_trace.rejected_output_count == 1
+    assert engine.model_query_trace.time_spent_seconds == 1.5
+    with pytest.raises(LocalModelUnavailableError):
+        engine._record_model_result(failure, required=True)

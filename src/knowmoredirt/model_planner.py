@@ -172,7 +172,7 @@ CHUNK_DRS_COMPACT_NEGATION_MIGRATION_POLICY = "negated-scope-positive-condition-
 CHUNK_DRS_COMPACT_TEMPORAL_SOURCE_POLICY = "compact-source-span-explicit-timestamp-v1"
 CHUNK_DRS_COMPACT_RETRY_POLICY = "retry-compact-invalid-json-larger-budget-v2"
 QUERY_DRS_SCHEMA_VERSION = "query-drs-v3"
-QUERY_EXPANSION_SCHEMA_VERSION = "query-expansion-v1"
+QUERY_EXPANSION_SCHEMA_VERSION = "query-expansion-v2-retry-output-limit"
 QUERY_DRS_VALIDATION_POLICY = "strict-query-drs-version-question-evidence-box-dag-repair-operators-semantic-coverage-repair-v13"
 QUERY_DRS_ARRAY_CAP_POLICY = "reserved_output_tokens_div_96_4_8-v1"
 QUERY_DRS_DYNAMIC_OUTPUT_BUDGET_POLICY = "context-relative-query-output-v3"
@@ -2233,10 +2233,56 @@ def call_model_query_expansion(
         terms = cached.get("terms") if isinstance(cached.get("terms"), list) else []
         return {**cached, "terms": [str(x) for x in terms][:max_terms], "fresh_or_cached": "cache"}
     start = time.time()
-    try:
-        parsed = _complete_structured(client, prompt, n_predict=n_predict, grammar="", json_schema=QUERY_EXPANSION_JSON_SCHEMA)
-    except Exception as exc:
-        return {"accepted": False, "reason": "request_failed", "error": str(exc), "prompt_hash": prompt_hash, "elapsed": round(time.time()-start,3)}
+    attempts: list[dict[str, Any]] = []
+    parsed: dict[str, Any] | None = None
+    budgets = [n_predict]
+    retry_budget = max(
+        n_predict + 1,
+        min(
+            max(n_predict * 2, 512),
+            _context_output_tokens(
+                client,
+                ratio_names=("KMD_QUERY_EXPANSION_RETRY_OUTPUT_RATIO",),
+                ratio_default=1.0 / 128.0,
+            ),
+        ),
+    )
+    if retry_budget > n_predict:
+        budgets.append(retry_budget)
+    last_error: Exception | None = None
+    for attempt_index, attempt_budget in enumerate(budgets, start=1):
+        try:
+            parsed = _complete_structured(
+                client,
+                prompt,
+                n_predict=attempt_budget,
+                grammar="",
+                json_schema=QUERY_EXPANSION_JSON_SCHEMA,
+            )
+            attempts.append({"attempt": attempt_index, "n_predict": attempt_budget, "accepted": True})
+            break
+        except LocalModelJSONError as exc:
+            reason = str(exc.reason or "invalid_json")
+            attempts.append({"attempt": attempt_index, "n_predict": attempt_budget, "accepted": False, "reason": reason})
+            last_error = exc
+            if reason not in {"output_limit_exhausted", "generation_limit_exhausted", "incomplete_stream"}:
+                break
+        except Exception as exc:
+            attempts.append({"attempt": attempt_index, "n_predict": attempt_budget, "accepted": False, "reason": "request_failed"})
+            last_error = exc
+            break
+    if parsed is None:
+        reason = str(getattr(last_error, "reason", "request_failed") or "request_failed")
+        return {
+            "accepted": False,
+            "reason": "request_failed",
+            "failure_reason": reason,
+            "error": str(last_error or "query expansion generation failed"),
+            "prompt_hash": prompt_hash,
+            "elapsed": round(time.time() - start, 3),
+            "attempts": attempts,
+            "cache_context": settings,
+        }
     raw_terms = parsed.get("terms") if isinstance(parsed, dict) and isinstance(parsed.get("terms"), list) else []
     exact_question_values = {normalize(value) for value in [*visible_anchors(question), *urls(question), *identifiers(question)] if normalize(value)}
     terms: list[str] = []
@@ -2258,6 +2304,7 @@ def call_model_query_expansion(
         "elapsed": parsed.get("_model_elapsed_seconds", round(time.time()-start,3)) if isinstance(parsed, dict) else round(time.time()-start,3),
         "fresh_or_cached": "fresh",
         "cache_context": settings,
+        "attempts": attempts,
     }
     _write_cache(cache_path, payload)
     return payload

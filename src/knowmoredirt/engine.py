@@ -409,8 +409,9 @@ class KnowMoreDiRTEngine:
         if self._progress_enabled():
             print(message, flush=True)
 
-    def _record_model_result(self, result: dict[str, object]) -> None:
-        self._raise_model_request_failed(result, "model operation")
+    def _record_model_result(self, result: dict[str, object], *, required: bool = True) -> None:
+        if required:
+            self._raise_model_request_failed(result, "model operation")
         trace = self.model_query_trace
         cache_hit = result.get("fresh_or_cached") == "cache" or result.get("source") == "cache"
         if cache_hit:
@@ -4402,7 +4403,12 @@ class KnowMoreDiRTEngine:
             expansion = {"accepted": True, "terms": [], "fresh_or_cached": "test_ablation"}
         else:
             expansion = call_model_query_expansion(question, planned_frame.as_dict(), self._model_client)
-            self._record_model_result(expansion)
+            self._record_model_result(expansion, required=False)
+            if not expansion.get("accepted"):
+                self._log_progress(
+                    "kmd-answer query_expansion_skipped "
+                    f"reason={expansion.get('failure_reason') or expansion.get('reason') or 'unavailable'}"
+                )
             if expansion.get("prompt_hash"):
                 trace.prompt_hashes = [*list(trace.prompt_hashes or []), str(expansion["prompt_hash"])]
             if expansion.get("output_hash"):
