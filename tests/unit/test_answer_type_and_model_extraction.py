@@ -2325,3 +2325,28 @@ def test_explicit_exclusion_guard_requires_source_only_construction() -> None:
         invalid,
         "Morning fact: the kitchen table remained in the dining room.",
     ) is False
+
+
+def test_when_question_binds_generic_leading_timestamp_to_trailing_event(tmp_path: Path, monkeypatch) -> None:
+    (tmp_path / "schedule.txt").write_text(
+        "Calendar fragment.\n"
+        "2026-06-01 09:00 dentist appointment.\n"
+        "2026-06-02 18:00 piano recital.\n"
+        "2026-06-03 20:00 unrelated dinner.\n",
+        encoding="utf-8",
+    )
+    monkeypatch.setenv("KMD_TEST_ALLOW_NO_MODEL", "1")
+    monkeypatch.setenv("PYTEST_CURRENT_TEST", "1")
+    engine = KnowMoreDiRTEngine(tmp_path)
+    try:
+        assert engine._temporal_question_should_bind("When is the piano recital?") is True
+        rows = engine._temporal_line_records()
+        piano = [row for row, _ev in rows if str(row.get("target", "")).strip().lower() == "piano recital"]
+        assert len(piano) == 1
+        assert piano[0]["timestamp"] == "2026-06-02 18:00"
+        answer = engine._answer_with_temporal_source_records("When is the piano recital?")
+        assert answer is not None
+        assert answer.text == "2026-06-02 18:00"
+        assert answer.answer_type == "date_time"
+    finally:
+        engine.close()

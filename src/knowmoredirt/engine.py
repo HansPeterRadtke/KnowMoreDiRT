@@ -2545,6 +2545,21 @@ class KnowMoreDiRTEngine:
             phrase = match.group(1).strip()
             if normalize(phrase) not in generic:
                 values.append(phrase)
+        # Ordinary calendar questions may have no model-derived anchor in the
+        # deterministic/test path. Extract the event phrase itself so a timestamp
+        # can only bind to a row whose trailing event text matches that phrase.
+        if not values and normalize(question).startswith("when "):
+            simple = re.match(r"when\s+(?:is|was|will)\s+(?:the\s+)?(?P<target>[^?]+)", question, re.I)
+            did = re.match(
+                r"when\s+did\s+(?:the\s+)?(?P<target>.+?)\s+(?:begin|start|reopen|reopened|occur|happen|finish|end)(?:\s+according\b.*)?[?]?\s*$",
+                question,
+                re.I,
+            )
+            match = simple or did
+            if match:
+                phrase = clean_extracted_value(match.group("target")).strip(" .;:?")
+                if normalize(phrase) and normalize(phrase) not in generic:
+                    values.append(phrase)
         return list(dict.fromkeys(value for value in values if normalize(value)))
 
     def _temporal_question_should_bind(self, question: str) -> bool:
@@ -2553,6 +2568,8 @@ class KnowMoreDiRTEngine:
             return False
         if "final cause" in qnorm:
             return False
+        if qnorm.startswith("when ") or " when " in f" {qnorm} ":
+            return True
         if "assigned" in qnorm or "currently assigned" in qnorm:
             return True
         if "reopen" in qnorm or "reopened" in qnorm:
@@ -2632,6 +2649,10 @@ class KnowMoreDiRTEngine:
                     if assign_match:
                         row["target"] = assign_match.group("target").strip()
                         row["assigned_to"] = assign_match.group("person").strip()
+                    if not row.get("target") and not row.get("state") and material:
+                        generic_target = clean_extracted_value(material).strip(" .;:")
+                        if generic_target:
+                            row["target"] = generic_target
                     if "recorded" in line_norm and " at " in line_norm:
                         row["event_text"] = normalize(line)
                     records.append((row, evidence))
