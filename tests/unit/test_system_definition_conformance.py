@@ -61,7 +61,7 @@ def test_stage_cache_identity_is_benchmark_independent_but_semantics_sensitive()
     herb = _cache_hash("herb", prompt, client, settings)  # type: ignore[arg-type]
     assert internal == herb
     assert internal != _cache_hash("herb", prompt + " changed", client, settings)  # type: ignore[arg-type]
-    assert internal != _cache_hash("herb", prompt, client, {**settings, "n_predict": 257})  # type: ignore[arg-type]
+    assert internal == _cache_hash("herb", prompt, client, {**settings, "n_predict": 257})  # type: ignore[arg-type]
 
 
 def test_raw_semantic_request_hash_has_no_implicit_benchmark_namespace() -> None:
@@ -301,34 +301,24 @@ def test_populated_v12_database_migrates_to_v13_without_row_loss(tmp_path: Path)
         store.close()
 
 
-def test_query_expansion_retries_output_limit_with_larger_budget(tmp_path: Path, monkeypatch) -> None:
+def test_query_expansion_has_no_artificial_term_or_generation_cap(tmp_path: Path, monkeypatch) -> None:
     import knowmoredirt.model_planner as planner
 
     monkeypatch.setenv("KMD_QUERY_EXPANSION_CACHE_DIR", str(tmp_path / "expansion-cache"))
-    monkeypatch.setenv("KMD_QUERY_EXPANSION_MAX_TERMS", "8")
-    budgets: list[int] = []
-
-    def fake_complete(_client, _prompt, *, n_predict, grammar, json_schema):
-        budgets.append(int(n_predict))
-        if len(budgets) == 1:
-            raise LocalModelJSONError(
-                "truncated",
-                raw_text='{"terms":["shopping",")',
-                snippet='{"terms":["shopping",")',
-                reason="output_limit_exhausted",
-            )
-        return {"terms": ["shopping list", "status"], "_model_raw": '{"terms":["shopping list","status"]}'}
-
-    monkeypatch.setattr(planner, "_complete_structured", fake_complete)
+    terms = [f"term-{index}" for index in range(50)]
+    monkeypatch.setattr(
+        planner,
+        "_complete_structured",
+        lambda *_args, **_kwargs: {"terms": terms, "_model_raw": "{}"},
+    )
     result = call_model_query_expansion(
-        "What is the shopping list status?",
-        {"target_anchors": ["shopping list"], "requested_scope": "real_world"},
+        "Find related evidence",
+        {"target_anchors": [], "constraints": [], "answer_variables": []},
         _FingerprintClient(),  # type: ignore[arg-type]
     )
     assert result["accepted"] is True
-    assert budgets[1] > budgets[0]
-    assert result["attempts"][0]["reason"] == "output_limit_exhausted"
-    assert result["attempts"][1]["accepted"] is True
+    assert result["terms"] == terms
+    assert result["attempts"] == [{"attempt": 1, "accepted": True}]
 
 
 def test_optional_query_expansion_failure_does_not_raise_but_required_model_failure_does() -> None:
@@ -350,3 +340,71 @@ def test_optional_query_expansion_failure_does_not_raise_but_required_model_fail
     assert engine.model_query_trace.time_spent_seconds == 1.5
     with pytest.raises(LocalModelUnavailableError):
         engine._record_model_result(failure, required=True)
+
+
+def test_production_source_contains_no_artificial_model_output_limit_machinery() -> None:
+    import re
+
+    repo = Path(__file__).resolve().parents[2]
+    roots = [repo / "src", repo / "scripts" / "benchmarks"]
+    forbidden = re.compile(
+        r"KMD_[A-Z0-9_]*(?:OUTPUT_RATIO|RETRY_OUTPUT|STREAM_EVENT|STREAM_BYTES|STREAM_TOTAL)"
+        r"|CHARS_PER_OUTPUT_TOKEN|SQRT_OUTPUT_RATIO|reserved_output_tokens"
+        r"|output_token_budget\(|context_relative_budget\(|schema_(?:array|string)_capacity\("
+        r"|adaptive-stage-output|max_tokens\s*=\s*[0-9]+|n_predict\s*=\s*[0-9]+"
+    )
+    violations: list[str] = []
+    for root in roots:
+        for path in sorted(root.rglob("*")):
+            if path.suffix not in {".py", ".xml"}:
+                continue
+            for line_number, line in enumerate(path.read_text(encoding="utf-8").splitlines(), start=1):
+                if forbidden.search(line):
+                    violations.append(f"{path.relative_to(repo)}:{line_number}:{line.strip()}")
+    assert violations == []
+
+
+def test_caller_n_predict_cannot_reduce_actual_generation_capacity(monkeypatch) -> None:
+    """Legacy compatibility hints must be semantically inert and excluded from requests."""
+    import json
+    from knowmoredirt.model import LocalModelClient
+
+    captured: list[dict[str, object]] = []
+
+    class Response:
+        def __enter__(self): return self
+        def __exit__(self, *args): return False
+        def read(self): return b"{}"
+        def __iter__(self):
+            payload = json.dumps({"choices": [{"delta": {"content": '{"ok":true}'}, "finish_reason": None}]})
+            terminal = json.dumps({"choices": [{"delta": {}, "finish_reason": "stop"}]})
+            return iter([(f"data: {payload}\n").encode(), (f"data: {terminal}\n").encode(), b"data: [DONE]\n"])
+
+    def fake_urlopen(request, timeout=None):
+        url = str(getattr(request, "full_url", request))
+        if url.endswith("/v1/models"):
+            return type("R", (), {"__enter__": lambda self:self, "__exit__":lambda *a:False, "read":lambda self: json.dumps({"data":[{"id":"/models/test.gguf","meta":{"n_ctx":4096,"n_ctx_train":4096}}]}).encode()})()
+        if url.endswith("/slots"):
+            return type("R", (), {"__enter__": lambda self:self, "__exit__":lambda *a:False, "read":lambda self: json.dumps([{"n_ctx":4096,"params":{}}]).encode()})()
+        if url.endswith("/props"):
+            return type("R", (), {"__enter__": lambda self:self, "__exit__":lambda *a:False, "read":lambda self: json.dumps({"model_alias":"test.gguf","default_generation_settings":{}}).encode()})()
+        if url.endswith("/tokenize"):
+            body = json.loads(getattr(request, "data", b"{}").decode())
+            return type("R", (), {"__enter__": lambda self:self, "__exit__":lambda *a:False, "read":lambda self: json.dumps({"tokens": list(range(max(1, len(str(body.get('content','')))//4))) }).encode()})()
+        if url.endswith("/apply-template"):
+            return type("R", (), {"__enter__": lambda self:self, "__exit__":lambda *a:False, "read":lambda self: json.dumps({"prompt":"rendered prompt"}).encode()})()
+        if url.endswith("/v1/chat/completions"):
+            captured.append(json.loads(getattr(request, "data", b"{}").decode()))
+            return Response()
+        raise AssertionError(url)
+
+    monkeypatch.setattr("urllib.request.urlopen", fake_urlopen)
+    monkeypatch.setenv("KMD_TEST_DISABLE_MODEL_CALL_CACHE", "1")
+    client = LocalModelClient(endpoint="http://127.0.0.1:9999/v1")
+    client.complete_json(
+        "answer",
+        n_predict=1,
+        json_schema={"type":"object","additionalProperties":False,"required":["ok"],"properties":{"ok":{"type":"boolean"}}},
+    )
+    assert captured
+    assert int(captured[0]["max_tokens"]) > 1

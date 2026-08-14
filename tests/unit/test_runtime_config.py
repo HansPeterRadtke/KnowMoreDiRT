@@ -32,7 +32,7 @@ def _write_config(path: Path, *settings: tuple[str, str]) -> None:
 
 def test_packaged_config_is_complete_and_metadata_rich() -> None:
     specs = config.default_specs()
-    assert len(specs) >= 170
+    assert len(specs) >= 150
     assert config.DEFAULT_CONFIG_PATH.is_file()
     for name, spec in specs.items():
         assert name.startswith("KMD_")
@@ -43,6 +43,8 @@ def test_packaged_config_is_complete_and_metadata_rich() -> None:
     assert specs["KMD_LOCAL_MODEL_CONTROL_TIMEOUT_SECONDS"].unit == "seconds"
     assert specs["KMD_VECTOR_MIN_SIMILARITY"].minimum == -1
     assert specs["KMD_VECTOR_MIN_SIMILARITY"].maximum == 1
+    forbidden = ("OUTPUT_RATIO", "RETRY_OUTPUT", "STREAM_EVENT", "STREAM_BYTES", "STREAM_TOTAL")
+    assert not [name for name in specs if any(token in name for token in forbidden)]
 
 
 def test_config_precedence_environment_over_user_xml_over_packaged_default(tmp_path: Path, monkeypatch) -> None:

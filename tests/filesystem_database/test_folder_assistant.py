@@ -49,7 +49,7 @@ class AssistantAnalysisClient:
         max_tokens: int,
         worst_retry: bool = True,
     ) -> bool:
-        return self.token_count(system) + self.token_count(user) + max_tokens < self.model_context().configured_tokens
+        return self.token_count(system) + self.token_count(user) + (max_tokens or 0) < self.model_context().configured_tokens
 
     def available_content_tokens(
         self,
@@ -58,7 +58,7 @@ class AssistantAnalysisClient:
         user_without_content: str,
         max_tokens: int,
     ) -> int:
-        return self.model_context().configured_tokens - self.token_count(system) - self.token_count(user_without_content) - max_tokens
+        return self.model_context().configured_tokens - self.token_count(system) - self.token_count(user_without_content) - (max_tokens or 0)
 
     def health(self) -> dict[str, Any]:
         return {"status": "ok"}

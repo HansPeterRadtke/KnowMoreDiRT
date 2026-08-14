@@ -37,7 +37,6 @@ from kmd_runtime_config import (
 from .runtime_logging import get_logger
 from .context_budget import (
     CONTEXT_CAPACITY_POLICY,
-    context_relative_budget,
     context_safety_tokens,
     contextualize_json_schema,
 )
@@ -290,27 +289,8 @@ def _default_control_timeout_seconds() -> float:
     return value
 
 
-def _stream_total_timeout_seconds(*, per_token_timeout_seconds: float, max_tokens: int) -> float:
-    configured = _config_optional_float("KMD_LOCAL_MODEL_STREAM_TOTAL_TIMEOUT_SECONDS")
-    if configured is not None:
-        if configured <= 0:
-            raise ValueError("KMD_LOCAL_MODEL_STREAM_TOTAL_TIMEOUT_SECONDS must be a positive number")
-        return configured
-    return max(60.0, min(21600.0, float(per_token_timeout_seconds) * max(1, int(max_tokens))))
 
 
-def _stream_event_limit(max_tokens: int) -> int:
-    multiplier = _config_int("KMD_LOCAL_MODEL_STREAM_EVENT_MULTIPLIER")
-    if multiplier < 1:
-        raise ValueError("KMD_LOCAL_MODEL_STREAM_EVENT_MULTIPLIER must be positive")
-    return max(64, int(max_tokens) * multiplier + 64)
-
-
-def _stream_byte_limit(max_tokens: int) -> int:
-    multiplier = _config_int("KMD_LOCAL_MODEL_STREAM_BYTES_PER_TOKEN")
-    if multiplier < 1:
-        raise ValueError("KMD_LOCAL_MODEL_STREAM_BYTES_PER_TOKEN must be positive")
-    return max(65536, int(max_tokens) * multiplier + 65536)
 
 def _retry_attempts(env_name: str, default: int) -> int:
     try:
@@ -648,7 +628,7 @@ def complete_json_with_transport_retry(
     client: Any,
     prompt: str,
     *,
-    n_predict: int,
+    n_predict: int | None = None,
     json_schema: dict[str, Any],
 ) -> dict[str, Any]:
     """Retry only transient transport failures for direct semantic callers.
@@ -659,15 +639,15 @@ def complete_json_with_transport_retry(
     localhost disconnect does not make the whole operation terminal.
     """
 
+    del n_predict
     attempts = _retry_attempts("KMD_LOCAL_MODEL_DIRECT_RETRY_ATTEMPTS", 3)
     transient_json_reasons = {
         "incomplete_stream",
-        "stream_total_timeout_exhausted",
     }
     for attempt in range(attempts):
         retry_error: BaseException | None = None
         try:
-            return client.complete_json(prompt, n_predict=n_predict, json_schema=json_schema)
+            return client.complete_json(prompt, json_schema=json_schema)
         except LocalModelJSONError as exc:
             retryable = str(exc.reason or "") in transient_json_reasons
             if not retryable or attempt + 1 >= attempts:
@@ -970,17 +950,16 @@ class LocalModelClient:
         context_size = self.context_size()
         if context_size <= 0:
             raise LocalModelUnavailableError("local model context size is unavailable")
-        if n_predict is None:
-            requested_n_predict = context_relative_budget(context_size).output_tokens
-        else:
-            requested_n_predict = int(n_predict)
-        if requested_n_predict <= 0:
-            raise ValueError("n_predict must be positive")
-        effective_n_predict = requested_n_predict
+        caller_n_predict = int(n_predict) if n_predict is not None else None
+        if caller_n_predict is not None and caller_n_predict <= 0:
+            raise ValueError("n_predict must be positive when supplied")
+        # Caller/stage output budgets are intentionally ignored. The only output
+        # ceiling is the actual remaining model context after the exact rendered
+        # prompt and the genuine context-safety reserve.
         json_schema = contextualize_json_schema(
             json_schema,
             context_size=context_size,
-            output_tokens=effective_n_predict,
+            output_tokens=None,
         )
         validate_portable_json_schema(json_schema)
         allow_prompt_constraints = _config_boolean("KMD_LOCAL_MODEL_ALLOW_PROMPT_CONSTRAINTS")
@@ -1019,7 +998,6 @@ class LocalModelClient:
                     },
                     {"role": "user", "content": effective_prompt},
                 ],
-                "max_tokens": effective_n_predict,
                 "temperature": settings["temperature"],
                 "top_p": settings["top_p"],
                 "seed": settings["seed"],
@@ -1029,7 +1007,6 @@ class LocalModelClient:
         else:
             body = {
                 "prompt": effective_prompt,
-                "n_predict": effective_n_predict,
                 "temperature": settings["temperature"],
                 "top_p": settings["top_p"],
                 "top_k": settings["top_k"],
@@ -1066,6 +1043,19 @@ class LocalModelClient:
                 body["reasoning_budget"] = int(reasoning_mode["budget"])
             if endpoint.endswith("/chat/completions"):
                 body["chat_template_kwargs"] = {"enable_thinking": False}
+        # Render exactly what the server will see, then allocate every remaining
+        # context token (minus the safety reserve) to generation.
+        provisional_budget = self.exact_context_budget(endpoint, body, output_tokens=0)
+        effective_n_predict = int(provisional_budget["available_output_tokens"])
+        if effective_n_predict < 1:
+            raise LocalModelContextError(
+                "structured generation has no remaining model context after the rendered prompt and safety reserve",
+                cache_context={"context_budget": provisional_budget},
+            )
+        if endpoint.endswith("/chat/completions"):
+            body["max_tokens"] = effective_n_predict
+        else:
+            body["n_predict"] = effective_n_predict
         context_budget = self.exact_context_budget(
             endpoint,
             body,
@@ -1086,8 +1076,9 @@ class LocalModelClient:
             ).hexdigest(),
             "request_settings": {
                 **settings,
-                "n_predict": requested_n_predict,
+                "caller_n_predict_ignored": caller_n_predict,
                 "effective_n_predict": effective_n_predict,
+                "output_policy": "remaining_context_capacity",
             },
             "transport_settings": {
                 **transport,
@@ -1096,7 +1087,7 @@ class LocalModelClient:
             },
             "constraint_settings": {
                 **constraint_settings,
-                "requested_n_predict": requested_n_predict,
+                "caller_n_predict_ignored": caller_n_predict,
                 "effective_n_predict": effective_n_predict,
                 "native_constraints_applied": native_constraints,
                 "schema_prompt_hint": bool(json_schema and not native_constraints),
@@ -1104,7 +1095,7 @@ class LocalModelClient:
             },
             "context_budget": {
                 **context_budget,
-                "policy": "exact-rendered-prompt-plus-explicit-output-plus-safety-v1",
+                "policy": "exact-rendered-prompt-plus-all-remaining-output-plus-safety-v2",
             },
         }
         if context_budget["available_output_tokens"] < effective_n_predict:
@@ -1142,36 +1133,12 @@ class LocalModelClient:
         finish_reason = ""
         stop_reason = ""
         started = time.time()
-        total_timeout_seconds = _stream_total_timeout_seconds(
-            per_token_timeout_seconds=self.per_token_timeout_seconds,
-            max_tokens=effective_n_predict,
-        )
-        event_limit = _stream_event_limit(effective_n_predict)
-        byte_limit = _stream_byte_limit(effective_n_predict)
         stream_events = 0
         stream_bytes = 0
         try:
             with urllib.request.urlopen(request, timeout=self.per_token_timeout_seconds) as response:
                 for raw_line in response:
                     stream_bytes += len(raw_line)
-                    if stream_bytes > byte_limit:
-                        raise LocalModelJSONError(
-                            "structured generation exceeded the client stream byte limit",
-                            raw_text=raw,
-                            snippet=raw,
-                            reason="stream_byte_limit_exhausted",
-                            response_metadata={"stream_bytes": stream_bytes, "stream_byte_limit": byte_limit},
-                            model_input_audit=model_input_audit,
-                        )
-                    if time.time() - started > total_timeout_seconds:
-                        raise LocalModelJSONError(
-                            "structured generation exceeded the client total stream timeout",
-                            raw_text=raw,
-                            snippet=raw,
-                            reason="stream_total_timeout_exhausted",
-                            response_metadata={"total_timeout_seconds": total_timeout_seconds},
-                            model_input_audit=model_input_audit,
-                        )
                     line = raw_line.decode("utf-8", errors="replace").strip()
                     if not line:
                         continue
@@ -1181,15 +1148,6 @@ class LocalModelClient:
                         saw_done = True
                         break
                     stream_events += 1
-                    if stream_events > event_limit:
-                        raise LocalModelJSONError(
-                            "structured generation exceeded the client stream event limit",
-                            raw_text=raw,
-                            snippet=raw,
-                            reason="stream_event_limit_exhausted",
-                            response_metadata={"stream_events": stream_events, "stream_event_limit": event_limit},
-                            model_input_audit=model_input_audit,
-                        )
                     try:
                         event = json.loads(line)
                     except json.JSONDecodeError:
@@ -1232,17 +1190,14 @@ class LocalModelClient:
             "context_size": context_budget["context_size"],
             "context_safety_tokens": context_budget["safety_tokens"],
             "stream_events": stream_events,
-            "stream_event_limit": event_limit,
             "stream_bytes": stream_bytes,
-            "stream_byte_limit": byte_limit,
-            "stream_total_timeout_seconds": total_timeout_seconds,
         }
         snippet = _extract_balanced_json(raw)
         if snippet is None:
             reason = "incomplete_stream"
             if finish_reason == "length" or response_obj.get("stopped_limit") is True:
                 if completion_tokens >= effective_n_predict:
-                    reason = "output_limit_exhausted"
+                    reason = "context_limit_exhausted"
                 elif (
                     context_budget["prompt_tokens"]
                     + completion_tokens
@@ -1251,7 +1206,7 @@ class LocalModelClient:
                 ):
                     reason = "context_limit_exhausted"
                 else:
-                    reason = "generation_limit_exhausted"
+                    reason = "context_limit_exhausted"
             elif (
                 context_budget["prompt_tokens"]
                 + completion_tokens
@@ -1315,12 +1270,13 @@ class LocalModelClient:
         parsed["_model_throughput"] = throughput
         parsed["_model_request_settings"] = {
             **settings,
-            "n_predict": requested_n_predict,
+            "caller_n_predict_ignored": caller_n_predict,
             "effective_n_predict": effective_n_predict,
+            "output_policy": "remaining_context_capacity",
         }
         parsed["_model_constraint_settings"] = {
             **constraint_settings,
-            "requested_n_predict": requested_n_predict,
+            "caller_n_predict_ignored": caller_n_predict,
             "effective_n_predict": effective_n_predict,
             "native_constraints_applied": native_constraints,
             "schema_prompt_hint": bool(json_schema and not native_constraints),

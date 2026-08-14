@@ -109,27 +109,7 @@ def _default_control_timeout_seconds() -> float:
     return value
 
 
-def _stream_total_timeout_seconds(*, per_token_timeout_seconds: float, max_tokens: int) -> float:
-    configured = _config_optional_float("KMD_LOCAL_MODEL_STREAM_TOTAL_TIMEOUT_SECONDS")
-    if configured is not None:
-        if configured <= 0:
-            raise ValueError("KMD_LOCAL_MODEL_STREAM_TOTAL_TIMEOUT_SECONDS must be positive")
-        return configured
-    return max(60.0, min(21600.0, float(per_token_timeout_seconds) * max(1, int(max_tokens))))
 
-
-def _stream_event_limit(max_tokens: int) -> int:
-    multiplier = _config_int("KMD_LOCAL_MODEL_STREAM_EVENT_MULTIPLIER")
-    if multiplier < 1:
-        raise ValueError("KMD_LOCAL_MODEL_STREAM_EVENT_MULTIPLIER must be positive")
-    return max(64, int(max_tokens) * multiplier + 64)
-
-
-def _stream_byte_limit(max_tokens: int) -> int:
-    multiplier = _config_int("KMD_LOCAL_MODEL_STREAM_BYTES_PER_TOKEN")
-    if multiplier < 1:
-        raise ValueError("KMD_LOCAL_MODEL_STREAM_BYTES_PER_TOKEN must be positive")
-    return max(65536, int(max_tokens) * multiplier + 65536)
 
 
 def discover_model_identity(base_url: str, model: str = "", *, timeout: float | None = None) -> str:
@@ -367,24 +347,12 @@ def stream_chat_completion_json(
     saw_event = False
     saw_done = False
     saw_terminal_event = False
-    max_tokens = int(body.get("max_tokens") or body.get("n_predict") or 1)
-    total_timeout_seconds = _stream_total_timeout_seconds(
-        per_token_timeout_seconds=per_token_timeout_seconds,
-        max_tokens=max_tokens,
-    )
-    event_limit = _stream_event_limit(max_tokens)
-    byte_limit = _stream_byte_limit(max_tokens)
-    started = time.monotonic()
     stream_events = 0
     stream_bytes = 0
     try:
         with urllib.request.urlopen(request, timeout=per_token_timeout_seconds) as response:
             for raw_line in response:
                 stream_bytes += len(raw_line)
-                if stream_bytes > byte_limit:
-                    raise RuntimeError(f"model stream exceeded byte limit {byte_limit}: {url}")
-                if time.monotonic() - started > total_timeout_seconds:
-                    raise RuntimeError(f"model stream exceeded total timeout {total_timeout_seconds}: {url}")
                 line = raw_line.decode("utf-8", "replace").strip()
                 if not line or line.startswith("event:"):
                     continue
@@ -394,8 +362,6 @@ def stream_chat_completion_json(
                     saw_done = True
                     break
                 stream_events += 1
-                if stream_events > event_limit:
-                    raise RuntimeError(f"model stream exceeded event limit {event_limit}: {url}")
                 try:
                     event = json.loads(line)
                 except json.JSONDecodeError as error:
@@ -453,10 +419,7 @@ def stream_chat_completion_json(
         "stream": True,
         "per_token_timeout_seconds": per_token_timeout_seconds,
         "stream_events": stream_events,
-        "stream_event_limit": event_limit,
         "stream_bytes": stream_bytes,
-        "stream_byte_limit": byte_limit,
-        "stream_total_timeout_seconds": total_timeout_seconds,
     }
 
 
@@ -567,97 +530,40 @@ class AnalysisClient:
         self._prompt_token_cache[digest] = count
         return count
 
-    def output_token_budget(
-        self,
-        *,
-        ratio_names: tuple[str, ...] = (),
-        ratio_default: float = 1.0 / 32.0,
-    ) -> int:
-        return context_token_capacity(
-            self.model_context().configured_tokens,
-            ratio_names=ratio_names,
-            ratio_default=ratio_default,
-        )
+    def maximum_output_tokens(self, *, system: str, user: str) -> tuple[int, int]:
+        """Return exact prompt tokens and every token remaining for generation."""
 
-    def maximum_attempt_tokens(self, max_tokens: int) -> int:
-        if max_tokens < 1:
-            raise ValueError("max_tokens must be positive")
-        context = self.model_context().configured_tokens
-        policy_maximum = context_token_capacity(
-            context,
-            ratio_names=("KMD_FILESYSTEM_MAX_OUTPUT_RATIO",),
-            ratio_default=1.0 / 2.0,
-        )
-        return max(int(max_tokens), policy_maximum)
-
-    def _output_token_budgets(
-        self,
-        *,
-        system: str,
-        user: str,
-        base_tokens: int,
-    ) -> tuple[int, list[int]]:
-        if base_tokens < 1:
-            raise ValueError("base_tokens must be positive")
         prompt_tokens = self.prompt_token_count(system=system, user=user)
         context = self.model_context().configured_tokens
         safety = context_safety_tokens(context)
-        exact_maximum = context - prompt_tokens - safety
-        if exact_maximum < base_tokens:
+        available = context - prompt_tokens - safety
+        if available < 1:
             raise RuntimeError(
-                "analysis request would exceed configured model context before transmission: "
-                f"prompt={prompt_tokens} output_limit={base_tokens} safety={safety} context={context}"
+                "analysis request has no remaining model context after prompt and safety reserve: "
+                f"prompt={prompt_tokens} safety={safety} context={context}"
             )
-        maximum = min(self.maximum_attempt_tokens(base_tokens), exact_maximum)
-        multiplier = positive_float(("KMD_FILESYSTEM_RETRY_OUTPUT_MULTIPLIER",), 2.0)
-        budgets: list[int] = []
-        current = min(int(base_tokens), maximum)
-        while True:
-            budgets.append(current)
-            if current >= maximum:
-                break
-            candidate = max(current + 1, int(current * multiplier))
-            current = min(candidate, maximum)
-        return prompt_tokens, budgets
+        return prompt_tokens, available
 
     def request_fits(
-        self, *, system: str, user: str, max_tokens: int, worst_retry: bool = True
+        self, *, system: str, user: str, max_tokens: int | None = None, worst_retry: bool = True
     ) -> bool:
+        del max_tokens, worst_retry
         try:
-            prompt_tokens, budgets = self._output_token_budgets(
-                system=system,
-                user=user,
-                base_tokens=max_tokens,
-            )
+            self.maximum_output_tokens(system=system, user=user)
         except RuntimeError:
             return False
-        output_tokens = budgets[-1] if worst_retry else budgets[0]
-        context = self.model_context().configured_tokens
-        safety = context_safety_tokens(context)
-        return prompt_tokens + output_tokens + safety <= context
-
+        return True
 
     def available_content_tokens(
-        self, *, system: str, user_without_content: str, max_tokens: int
+        self, *, system: str, user_without_content: str, max_tokens: int | None = None
     ) -> int:
-        output_tokens = self.maximum_attempt_tokens(max_tokens)
+        del max_tokens
         overhead = self.prompt_token_count(system=system, user=user_without_content)
         context = self.model_context().configured_tokens
         safety = context_safety_tokens(context)
-        return max(1, context - output_tokens - overhead - safety)
-
-    def _ensure_request_fits(
-        self, *, system: str, user: str, output_tokens: int
-    ) -> int:
-        prompt_tokens = self.prompt_token_count(system=system, user=user)
-        context = self.model_context().configured_tokens
-        safety = context_safety_tokens(context)
-        if prompt_tokens + output_tokens + safety > context:
-            raise RuntimeError(
-                "analysis request would exceed configured model context before transmission: "
-                f"prompt={prompt_tokens} output_limit={output_tokens} safety={safety} context={context}"
-            )
-        return prompt_tokens
+        # Keep one real output token available; callers can fill the remainder with
+        # source content without reserving an arbitrary stage-specific output share.
+        return max(1, context - overhead - safety - 1)
 
 
     def complete(
@@ -669,145 +575,133 @@ class AnalysisClient:
         user: str,
         max_tokens: int | None = None,
     ) -> GeneratedAnalysis:
+        """Generate one structured analysis using all actual remaining context.
+
+        ``max_tokens`` is retained only for source compatibility with older
+        callers. It is deliberately ignored: no analysis stage may impose an
+        artificial output ceiling below the model's real remaining context.
+        """
+
+        del max_tokens
         context = self.model_context().configured_tokens
         effective_system = _guard_system_prompt(system)
-        base_tokens = max_tokens or self.output_token_budget(
-            ratio_names=("KMD_FILESYSTEM_ANALYSIS_OUTPUT_RATIO",),
-            ratio_default=1.0 / 32.0,
+        prompt_tokens, output_tokens = self.maximum_output_tokens(system=system, user=user)
+        resolved_schema = contextualize_json_schema(
+            schema,
+            context_size=context,
+            output_tokens=None,
         )
-        prompt_tokens, output_budgets = self._output_token_budgets(
-            system=system,
-            user=user,
-            base_tokens=base_tokens,
-        )
+        Draft202012Validator.check_schema(resolved_schema)
+        model_identity = self.effective_model()
+        payload = {
+            "model": model_identity,
+            "temperature": self.temperature,
+            "seed": self.seed,
+            "max_tokens": output_tokens,
+            "provider": {"require_parameters": True},
+            "enable_thinking": False,
+            "reasoning_format": "deepseek",
+            "reasoning_budget": 0,
+            "chat_template_kwargs": {"enable_thinking": False},
+            "response_format": {
+                "type": "json_schema",
+                "json_schema": {"name": schema_name, "strict": True, "schema": resolved_schema},
+            },
+            "messages": [
+                {"role": "system", "content": effective_system},
+                {"role": "user", "content": user},
+            ],
+            "stream": True,
+        }
+        semantic_payload = {key: value for key, value in payload.items() if key != "stream"}
+        test_cache_disabled = bool(os.environ.get("PYTEST_CURRENT_TEST")) and os.environ.get(
+            "KMD_TEST_DISABLE_MODEL_CALL_CACHE", ""
+        ).strip().lower() in {"1", "true", "yes", "on"}
+        rendered_prompt = "" if test_cache_disabled else self._render_prompt(system=system, user=user)
+        model_call_request = {
+            "cache_schema": "kmd-exact-model-request-v2-remaining-context",
+            "model": model_content_fingerprint(model_identity),
+            "context_size": context,
+            "rendered_prompt_sha256": sha256_text(rendered_prompt),
+            "request": semantic_payload,
+        }
+        model_call_hash = semantic_request_hash(model_call_request)
+        cached_call = read_model_call(model_call_hash)
+        if cached_call is not None and isinstance(cached_call.get("value"), dict):
+            return GeneratedAnalysis(
+                value=dict(cached_call["value"]),
+                response_metadata={
+                    "model_call_cache_hit": True,
+                    "model_call_cache_hash": model_call_hash,
+                    "max_tokens": output_tokens,
+                    "prompt_tokens": prompt_tokens,
+                    "configured_context_tokens": context,
+                    "output_policy": "remaining_context_capacity",
+                    "finish_reason": "cache",
+                },
+            )
+
         retry_delay_multiplier = positive_float(("KMD_FILESYSTEM_RETRY_DELAY_MULTIPLIER",), 2.0)
         last_error: Exception | None = None
-        total_attempt = 0
-        for budget_index, attempt_max_tokens in enumerate(output_budgets, start=1):
-            transient_attempt = 0
-            while True:
-                total_attempt += 1
+        for attempt in range(1, self.retries + 1):
+            try:
+                response = stream_chat_completion_json(
+                    f"{self.base_url}/v1/chat/completions",
+                    payload,
+                    per_token_timeout_seconds=self.per_token_timeout_seconds,
+                )
+                finish_reason = response.get("finish_reason")
+                if finish_reason == "length":
+                    raise RuntimeError(
+                        "generation exhausted the model's actual remaining context before terminal completion"
+                    )
+                if finish_reason != "stop":
+                    raise RuntimeError(f"generation did not finish cleanly: {finish_reason}")
+                if response.get("reasoning_content"):
+                    raise RuntimeError("reasoning mode was not disabled")
+                content = response.get("content")
+                if not isinstance(content, str) or not content.strip():
+                    raise RuntimeError("generation returned no content")
+                value = json.loads(content)
                 try:
-                    self._ensure_request_fits(
-                        system=system,
-                        user=user,
-                        output_tokens=attempt_max_tokens,
-                    )
-                    resolved_schema = contextualize_json_schema(
-                        schema,
-                        context_size=context,
-                        output_tokens=attempt_max_tokens,
-                    )
-                    Draft202012Validator.check_schema(resolved_schema)
-                    model_identity = self.effective_model()
-                    payload = {
-                        "model": model_identity,
-                        "temperature": self.temperature,
-                        "seed": self.seed,
-                        "max_tokens": attempt_max_tokens,
-                        "provider": {"require_parameters": True},
-                        "enable_thinking": False,
-                        "reasoning_format": "deepseek",
-                        "reasoning_budget": 0,
-                        "chat_template_kwargs": {"enable_thinking": False},
-                        "response_format": {
-                            "type": "json_schema",
-                            "json_schema": {"name": schema_name, "strict": True, "schema": resolved_schema},
-                        },
-                        "messages": [
-                            {"role": "system", "content": effective_system},
-                            {"role": "user", "content": user},
-                        ],
-                        "stream": True,
-                    }
-                    semantic_payload = {key: value for key, value in payload.items() if key != "stream"}
-                    test_cache_disabled = bool(os.environ.get("PYTEST_CURRENT_TEST")) and os.environ.get("KMD_TEST_DISABLE_MODEL_CALL_CACHE", "").strip().lower() in {"1", "true", "yes", "on"}
-                    rendered_prompt = "" if test_cache_disabled else self._render_prompt(system=system, user=user)
-                    model_call_request = {
-                        "cache_schema": "kmd-exact-model-request-v1",
-                        "model": model_content_fingerprint(model_identity),
-                        "context_size": context,
-                        "rendered_prompt_sha256": sha256_text(rendered_prompt),
-                        "request": semantic_payload,
-                    }
-                    model_call_hash = semantic_request_hash(model_call_request)
-                    cached_call = read_model_call(model_call_hash)
-                    if cached_call is not None and isinstance(cached_call.get("value"), dict):
-                        return GeneratedAnalysis(
-                            value=dict(cached_call["value"]),
-                            response_metadata={
-                                "model_call_cache_hit": True,
-                                "model_call_cache_hash": model_call_hash,
-                                "max_tokens": attempt_max_tokens,
-                                "prompt_tokens": prompt_tokens,
-                                "configured_context_tokens": context,
-                                "finish_reason": "cache",
-                            },
-                        )
-                    response = stream_chat_completion_json(
-                        f"{self.base_url}/v1/chat/completions",
-                        payload,
-                        per_token_timeout_seconds=self.per_token_timeout_seconds,
-                    )
-                    finish_reason = response.get("finish_reason")
-                    if finish_reason == "length":
-                        last_error = RuntimeError(
-                            f"generation reached output budget {attempt_max_tokens} before terminal completion"
-                        )
-                        break
-                    if finish_reason != "stop":
-                        raise RuntimeError(f"generation did not finish cleanly: {finish_reason}")
-                    if response.get("reasoning_content"):
-                        raise RuntimeError("reasoning mode was not disabled")
-                    content = response.get("content")
-                    if not isinstance(content, str) or not content.strip():
-                        raise RuntimeError("generation returned no content")
-                    value = json.loads(content)
-                    try:
-                        Draft202012Validator(resolved_schema).validate(value)
-                    except JSONSchemaValidationError as error:
-                        raise RuntimeError(
-                            f"generation failed response schema validation: {error.message}"
-                        ) from error
-                    model_context = self.model_context()
-                    metadata = {
-                        "model_call_cache_hit": False,
-                        "model_call_cache_hash": model_call_hash,
-                        "attempt": total_attempt,
-                        "output_budget_index": budget_index,
-                        "output_budget_count": len(output_budgets),
-                        "max_tokens": attempt_max_tokens,
-                        "prompt_tokens": prompt_tokens,
-                        "safety_tokens": context_safety_tokens(context),
-                        "capacity_policy": CONTEXT_CAPACITY_POLICY,
-                        "configured_context_tokens": model_context.configured_tokens,
-                        "trained_context_tokens": model_context.trained_tokens,
-                        "model": response.get("model"),
-                        "system_fingerprint": response.get("system_fingerprint"),
-                        "usage": response.get("usage"),
-                        "timings": response.get("timings"),
-                        "finish_reason": finish_reason,
-                        "saw_done": response.get("saw_done"),
-                        "saw_terminal_event": response.get("saw_terminal_event"),
-                        "stream": True,
-                        "per_token_timeout_seconds": self.per_token_timeout_seconds,
-                        "parsed": value,
-                    }
-                    write_model_call(model_call_hash, {"value": value})
-                    return GeneratedAnalysis(value=value, response_metadata=metadata)
-                except Exception as error:
-                    last_error = error
-                    transient_attempt += 1
-                    if transient_attempt >= self.retries:
-                        raise RuntimeError(
-                            f"analysis failed after {transient_attempt} transient attempts "
-                            f"at output budget {attempt_max_tokens}: {last_error}"
-                        ) from last_error
-                    time.sleep(min(retry_delay_multiplier ** transient_attempt, 8.0))
+                    Draft202012Validator(resolved_schema).validate(value)
+                except JSONSchemaValidationError as error:
+                    raise RuntimeError(
+                        f"generation failed response schema validation: {error.message}"
+                    ) from error
+                model_context = self.model_context()
+                metadata = {
+                    "model_call_cache_hit": False,
+                    "model_call_cache_hash": model_call_hash,
+                    "attempt": attempt,
+                    "output_policy": "remaining_context_capacity",
+                    "max_tokens": output_tokens,
+                    "prompt_tokens": prompt_tokens,
+                    "safety_tokens": context_safety_tokens(context),
+                    "capacity_policy": CONTEXT_CAPACITY_POLICY,
+                    "configured_context_tokens": model_context.configured_tokens,
+                    "trained_context_tokens": model_context.trained_tokens,
+                    "model": response.get("model"),
+                    "system_fingerprint": response.get("system_fingerprint"),
+                    "usage": response.get("usage"),
+                    "timings": response.get("timings"),
+                    "finish_reason": finish_reason,
+                    "saw_done": response.get("saw_done"),
+                    "saw_terminal_event": response.get("saw_terminal_event"),
+                    "stream": True,
+                    "per_token_timeout_seconds": self.per_token_timeout_seconds,
+                    "parsed": value,
+                }
+                write_model_call(model_call_hash, {"value": value})
+                return GeneratedAnalysis(value=value, response_metadata=metadata)
+            except Exception as error:
+                last_error = error
+                if attempt >= self.retries:
+                    break
+                time.sleep(min(retry_delay_multiplier ** attempt, 8.0))
         assert last_error is not None
         raise RuntimeError(
-            "analysis exhausted every context-derived output budget without terminal completion: "
-            f"budgets={output_budgets} last_error={last_error}"
+            f"analysis failed after {self.retries} transport/generation attempts: {last_error}"
         ) from last_error
 
 
@@ -1576,60 +1470,31 @@ class ContentSemanticPipeline:
                 pass
         return data.decode("utf-8", "replace")
 
-    def _analysis_request_fits(
-        self, *, system: str, user: str, max_tokens: int
-    ) -> bool:
+    def _analysis_request_fits(self, *, system: str, user: str) -> bool:
         checker = getattr(self.analysis_client, "request_fits", None)
         if checker is None:
             return True
-        return bool(checker(system=system, user=user, max_tokens=max_tokens))
+        return bool(checker(system=system, user=user, max_tokens=None))
 
-    def _analysis_content_limit(
-        self, *, system: str, user_without_content: str, max_tokens: int
-    ) -> int:
+    def _analysis_content_limit(self, *, system: str, user_without_content: str) -> int:
         calculator = getattr(self.analysis_client, "available_content_tokens", None)
         if calculator is None:
             context_reader = getattr(self.analysis_client, "model_context", None)
             if context_reader is None:
                 raise RuntimeError("analysis client must expose context sizing")
-            return context_token_capacity(
-                int(context_reader().configured_tokens),
-                ratio_names=("KMD_FILESYSTEM_CHUNK_INPUT_RATIO",),
-                ratio_default=0.16,
-            )
-        return int(
-            calculator(
-                system=system,
-                user_without_content=user_without_content,
-                max_tokens=max_tokens,
-            )
-        )
+            context = int(context_reader().configured_tokens)
+            return max(1, context - context_safety_tokens(context) - 1)
+        return int(calculator(system=system, user_without_content=user_without_content, max_tokens=None))
 
-    def _analysis_output_tokens(self, profile: str) -> int:
-        reader = getattr(self.analysis_client, "output_token_budget", None)
-        ratio_names = (f"KMD_FILESYSTEM_{profile.upper()}_OUTPUT_RATIO",)
-        ratio_default = 1.0 / 16.0 if profile in {"chunk_batch", "file"} else 1.0 / 32.0
-        if reader is not None:
-            return int(reader(ratio_names=ratio_names, ratio_default=ratio_default))
-        context_reader = getattr(self.analysis_client, "model_context", None)
-        if context_reader is None:
-            raise RuntimeError("analysis client must expose context sizing")
-        return context_token_capacity(
-            int(context_reader().configured_tokens),
-            ratio_names=ratio_names,
-            ratio_default=ratio_default,
-        )
 
     def _chunk_batches(self, chunks: Sequence[Chunk], relative_path: str) -> list[list[Chunk]]:
         batches: list[list[Chunk]] = []
         current: list[Chunk] = []
-        output_tokens = self._analysis_output_tokens("chunk_batch")
         for chunk in chunks:
             candidate = [*current, chunk]
             if current and not self._analysis_request_fits(
                 system=CHUNK_SYSTEM_PROMPT,
                 user=self._render_chunks(candidate, relative_path),
-                max_tokens=output_tokens,
             ):
                 batches.append(current)
                 current = [chunk]
@@ -1638,7 +1503,6 @@ class ContentSemanticPipeline:
             if not self._analysis_request_fits(
                 system=CHUNK_SYSTEM_PROMPT,
                 user=self._render_chunks(current, relative_path),
-                max_tokens=output_tokens,
             ):
                 raise RuntimeError(
                     f"single chunk exceeds configured analysis context for {relative_path}: "
@@ -1677,7 +1541,7 @@ class ContentSemanticPipeline:
                     schema=chunk_analysis_schema_for_keys(sorted(expected)),
                     system=CHUNK_SYSTEM_PROMPT,
                     user=self._render_chunks(batch, relative_path),
-                    max_tokens=self._analysis_output_tokens("chunk_batch"),
+                    max_tokens=None,
                 )
                 values = generated.value.get("analyses")
                 if isinstance(values, list):
@@ -1701,7 +1565,7 @@ class ContentSemanticPipeline:
                         schema=chunk_analysis_schema_for_keys([key]),
                         system=CHUNK_SYSTEM_PROMPT,
                         user=self._render_chunks([chunk], relative_path),
-                        max_tokens=self._analysis_output_tokens("chunk_single"),
+                        max_tokens=None,
                     )
                     values = generated.value.get("analyses")
                     if not isinstance(values, list) or len(values) != 1 or str(values[0].get("chunk_key")) != key:
@@ -1740,7 +1604,7 @@ class ContentSemanticPipeline:
             schema=FILE_ANALYSIS_SCHEMA,
             system=FILE_SYSTEM_PROMPT,
             user=user,
-            max_tokens=self._analysis_output_tokens("file"),
+            max_tokens=None,
         )
         return normalize_analysis(generated.value), generated.response_metadata
 
@@ -1754,7 +1618,7 @@ class ContentSemanticPipeline:
         while len(working) > 1:
             full_user = self._render_file_analyses(working, relative_path)
             if self._analysis_request_fits(
-                system=FILE_SYSTEM_PROMPT, user=full_user, max_tokens=self._analysis_output_tokens("file")
+                system=FILE_SYSTEM_PROMPT, user=full_user
             ):
                 final, metadata = self._reduce_file_group(working, relative_path)
                 metadata = dict(metadata)
@@ -1766,7 +1630,7 @@ class ContentSemanticPipeline:
                 candidate = [*current, analysis]
                 candidate_user = self._render_file_analyses(candidate, relative_path)
                 if current and not self.analysis_client.request_fits(
-                    system=FILE_SYSTEM_PROMPT, user=candidate_user, max_tokens=self._analysis_output_tokens("file")
+                    system=FILE_SYSTEM_PROMPT, user=candidate_user
                 ):
                     groups.append(current)
                     current = [analysis]
@@ -1775,8 +1639,7 @@ class ContentSemanticPipeline:
                 if not self._analysis_request_fits(
                     system=FILE_SYSTEM_PROMPT,
                     user=self._render_file_analyses(current, relative_path),
-                    max_tokens=self._analysis_output_tokens("file"),
-                ):
+                        ):
                     raise RuntimeError(
                         f"one chunk analysis exceeds configured file-reduction context for {relative_path}"
                     )
@@ -1916,7 +1779,6 @@ class ContentSemanticPipeline:
         analysis_source_limit = self._analysis_content_limit(
             system=CHUNK_SYSTEM_PROMPT,
             user_without_content=empty_user,
-            max_tokens=self._analysis_output_tokens("chunk_single"),
         )
         chunks = chunk_text(
             text,
@@ -2069,8 +1931,7 @@ class ContentSemanticPipeline:
                 analysis_source_limit = self._analysis_content_limit(
                     system=CHUNK_SYSTEM_PROMPT,
                     user_without_content=empty_user,
-                    max_tokens=self._analysis_output_tokens("chunk_single"),
-                )
+                        )
                 chunks = chunk_text(
                     text,
                     self.analysis_client,

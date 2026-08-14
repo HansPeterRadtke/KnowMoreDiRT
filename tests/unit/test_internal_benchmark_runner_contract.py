@@ -35,7 +35,7 @@ def test_runner_tracks_central_cache_namespaces_and_new_semantic_settings() -> N
     assert "KMD_MODEL_CALL_CACHE_DIR" in module.CACHE_ENV_VARS
     assert "KMD_QUERY_EXPANSION_CACHE_DIR" in module.CACHE_ENV_VARS
     assert "KMD_RRF_K" in module.MODEL_ENV_KEYS
-    assert "KMD_QUERY_EXPANSION_MAX_TERMS" in module.MODEL_ENV_KEYS
+    assert "KMD_QUERY_EXPANSION_MAX_TERMS" not in module.MODEL_ENV_KEYS
     assert "KMD_DOCUMENT_CONTEXT_COVERAGE_RATIO" in module.MODEL_ENV_KEYS
     assert "KMD_MODEL_CALL_CACHE_DIR" not in module.MODEL_ENV_KEYS
 

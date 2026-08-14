@@ -4,12 +4,9 @@ import ast
 from pathlib import Path
 
 from knowmoredirt.context_budget import (
-    context_relative_budget,
     context_safety_tokens,
     context_token_capacity,
     contextualize_json_schema,
-    schema_array_capacity,
-    schema_string_capacity,
 )
 from knowmoredirt.model_planner import (
     CHUNK_DRS_SOURCE_SPAN_POLICY,
@@ -74,21 +71,17 @@ def test_obsolete_absolute_model_capacity_paths_are_absent() -> None:
         assert token not in source
 
 
-def test_context_capacities_scale_monotonically() -> None:
+def test_context_safety_and_input_capacities_scale_monotonically() -> None:
     small = 4096
     large = 65536
     assert context_safety_tokens(large) > context_safety_tokens(small)
-    assert context_relative_budget(large).output_tokens > context_relative_budget(small).output_tokens
-    assert context_relative_budget(large).safe_input_tokens > context_relative_budget(small).safe_input_tokens
     assert context_token_capacity(large, ratio_default=1.0 / 64.0) > context_token_capacity(
         small,
         ratio_default=1.0 / 64.0,
     )
-    assert schema_string_capacity(large, "evidence") > schema_string_capacity(small, "evidence")
-    assert schema_array_capacity(large // 4, "dense") > schema_array_capacity(small // 4, "dense")
 
 
-def test_schema_profiles_resolve_from_context_and_output_budget() -> None:
+def test_schema_profiles_are_annotations_only_and_never_create_output_caps() -> None:
     schema = {
         "type": "object",
         "additionalProperties": False,
@@ -101,14 +94,12 @@ def test_schema_profiles_resolve_from_context_and_output_budget() -> None:
             }
         },
     }
-    small = contextualize_json_schema(schema, context_size=4096, output_tokens=1024)
-    large = contextualize_json_schema(schema, context_size=65536, output_tokens=16384)
-    small_items = small["properties"]["items"]
-    large_items = large["properties"]["items"]
-    assert "x-kmd-array-profile" not in small_items
-    assert "x-kmd-string-profile" not in small_items["items"]
-    assert large_items["maxItems"] > small_items["maxItems"]
-    assert large_items["items"]["maxLength"] > small_items["items"]["maxLength"]
+    resolved = contextualize_json_schema(schema, context_size=65536, output_tokens=1)
+    items = resolved["properties"]["items"]
+    assert "x-kmd-array-profile" not in items
+    assert "x-kmd-string-profile" not in items["items"]
+    assert "maxItems" not in items
+    assert "maxLength" not in items["items"]
 
 
 def test_chunk_drs_schema_never_enumerates_an_evidence_subset() -> None:
@@ -170,7 +161,6 @@ def test_context_limited_chunk_path_never_silently_truncates_source() -> None:
         source,
         Client(),  # type: ignore[arg-type]
         rel_path="records.txt",
-        n_predict=16384,
     )
     assert prompt_source == source
     assert audit["input_truncated"] is False

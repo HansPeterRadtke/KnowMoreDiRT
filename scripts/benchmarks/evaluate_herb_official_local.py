@@ -6,13 +6,53 @@ from collections import defaultdict
 from pathlib import Path
 from typing import Any
 from herb_kgqa.config import Settings
-from herb_kgqa.local_llm import LocalLLM
+from knowmoredirt.model import LocalModelClient
+
+
+class KMDJudgeLLM:
+    """HERB evaluator adapter backed by KMD's global full-context model client."""
+
+    def __init__(self, settings: Settings):
+        endpoint = str(settings.llm_base_url).rstrip("/")
+        if not endpoint.endswith("/v1"):
+            endpoint += "/v1"
+        self.client = LocalModelClient(endpoint=endpoint)
+        self.request_count = 0
+
+    def chat_json(
+        self,
+        messages: list[dict[str, str]],
+        *,
+        run_dir: Path | None = None,
+        temperature: float = 0.0,
+        max_tokens: int | None = None,
+        retries: int = 2,
+    ) -> dict[str, Any]:
+        del temperature, max_tokens, retries
+        self.request_count += 1
+        prompt = "\n\n".join(
+            f"[{str(message.get('role') or 'user').upper()}]\n{str(message.get('content') or '')}"
+            for message in messages
+        )
+        result = self.client.complete_json(
+            prompt,
+            json_schema={"type": "object", "additionalProperties": True},
+        )
+        clean = {key: value for key, value in result.items() if not str(key).startswith("_model_")}
+        if run_dir is not None:
+            log_dir = run_dir / "llm_logs"
+            log_dir.mkdir(parents=True, exist_ok=True)
+            (log_dir / f"{self.request_count:05d}-kmd-judge.json").write_text(
+                json.dumps({"messages": messages, "response": clean}, ensure_ascii=False, indent=2),
+                encoding="utf-8",
+            )
+        return clean
 
 def _read_jsonl(path: Path):
     with path.open('r', encoding='utf-8') as h: return [json.loads(x) for x in h if x.strip()]
 
 def _local(llm, run_dir, messages):
-    return llm.chat_json(messages, run_dir=run_dir, temperature=0.0, max_tokens=768, retries=2)
+    return llm.chat_json(messages, run_dir=run_dir, temperature=0.0, retries=2)
 
 def unanswerability_eval(question, answer, llm, run_dir):
     prompt = '''Given a question and its corresponding answer, determine whether the answer provides sufficient information to fully or even partially respond to the question.
@@ -68,7 +108,7 @@ def f1_score_sets(y_true,y_pred):
 def evaluate_run_official_local(run_dir: Path, *, settings: Settings) -> dict[str, Any]:
     questions={str(x['question_id']):x for x in _read_jsonl(settings.normalized_root/'questions.jsonl')}; gold={str(x['question_id']):x for x in _read_jsonl(settings.normalized_root/'gold.jsonl')}; predictions={str(x['question_id']):x for x in _read_jsonl(run_dir/'predictions.jsonl')}
     if set(questions)!=set(gold) or set(questions)!=set(predictions): raise ValueError('official HERB scoring requires exactly one frozen prediction and gold row for every question')
-    llm=LocalLLM(settings); ans=[]; bytype=defaultdict(list); unans=[]; details=[]; ac=uc=0
+    llm=KMDJudgeLLM(settings); ans=[]; bytype=defaultdict(list); unans=[]; details=[]; ac=uc=0
     for qid,q in questions.items():
         g=gold[qid]; raw=predictions[qid].get('answer',''); answer=', '.join(map(str,raw)) if isinstance(raw,list) else str(raw or ''); answer=answer.split('</think>')[-1].strip() if '</think>' in answer else answer; qtype=str(g.get('question_type') or q.get('question_type') or 'content'); ref=g.get('gold_answer',[])
         if bool(g.get('answerable',False)):
@@ -83,7 +123,7 @@ def evaluate_run_official_local(run_dir: Path, *, settings: Settings) -> dict[st
             else: s=int(not unanswerability_eval(q['question'],answer,llm,run_dir)); rendered=answer
             unans.append({'q':q['question'],'a':rendered,'s':s}); details.append({'question_id':qid,'answerable':False,'type':qtype,'score':s})
     if (ac,uc)!=(815,699): raise ValueError(f'official HERB split must be 815/699, got {ac}/{uc}')
-    scores={'evaluation_protocol':'SalesforceAIResearch/HERB code/evaluate.py semantics','judge_substitution':'get_gpt4_response -> localhost LocalLLM only','judge_base_url':settings.llm_base_url,'judge_model':settings.llm_model,'answerable_count':ac,'unanswerable_count':uc,'question_count':ac+uc,'gpt4-correctness-avg':sum(ans)/len(ans),'answerable_type_averages':{k:sum(v)/len(v) if v else 0 for k,v in bytype.items()},'answerable_type_counts':{k:len(v) for k,v in bytype.items()},'unanswerable_accuracy':sum(x['s'] for x in unans)/len(unans),'unanswerable_correct':sum(x['s'] for x in unans),'local_judge_request_count':llm.request_count}
+    scores={'evaluation_protocol':'SalesforceAIResearch/HERB code/evaluate.py semantics','judge_substitution':'get_gpt4_response -> localhost KMD LocalModelClient only','judge_base_url':settings.llm_base_url,'judge_model':settings.llm_model,'answerable_count':ac,'unanswerable_count':uc,'question_count':ac+uc,'gpt4-correctness-avg':sum(ans)/len(ans),'answerable_type_averages':{k:sum(v)/len(v) if v else 0 for k,v in bytype.items()},'answerable_type_counts':{k:len(v) for k,v in bytype.items()},'unanswerable_accuracy':sum(x['s'] for x in unans)/len(unans),'unanswerable_correct':sum(x['s'] for x in unans),'local_judge_request_count':llm.request_count}
     (run_dir/'scores.json').write_text(json.dumps(scores,ensure_ascii=False,indent=2,sort_keys=True)+'\n'); (run_dir/'official_unanswerable_results.json').write_text(json.dumps(unans,ensure_ascii=False,indent=2)+'\n');
     with (run_dir/'official_question_details.jsonl').open('w') as h:
         for row in details: h.write(json.dumps(row,ensure_ascii=False,sort_keys=True)+'\n')

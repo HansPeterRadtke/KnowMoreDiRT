@@ -162,13 +162,11 @@ def test_failed_replacement_model_call_preserves_previous_graph(tmp_path: Path, 
     assert first["accepted"] is True
     before = _semantic_counts(store)
 
-    monkeypatch.setattr(ingest, "default_chunk_drs_n_predict", lambda *_args, **_kwargs: 128)
     monkeypatch.setattr(
         ingest,
         "chunk_drs_cache_context",
         lambda *_args, **_kwargs: {
             "source_text_hash": "hash",
-            "n_predict": 128,
             "schema_version": "chunk-drs-v5",
             "model_fingerprint": {"model_id": "fake"},
         },

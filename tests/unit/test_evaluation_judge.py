@@ -11,10 +11,10 @@ class FakeJudgeClient:
     def cache_fingerprint(self):
         return {"model_id": "fake", "context_size": 1024, "request_settings": {}, "transport_settings": {}}
 
-    def complete_json(self, prompt, *, n_predict, json_schema):
+    def complete_json(self, prompt, *, n_predict=None, json_schema=None):
         self.calls += 1
         assert "EXPECTED ANSWER" in prompt and "PREDICTED ANSWER" in prompt
-        assert n_predict == 256
+        assert n_predict is None
         assert json_schema["required"] == ["equivalent", "reason"]
         return {"equivalent": True, "reason": "same meaning in different wording"}
 

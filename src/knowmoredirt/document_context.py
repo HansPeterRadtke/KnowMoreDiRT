@@ -281,7 +281,6 @@ def _coverage_clue_schema() -> dict[str, Any]:
         "properties": {
             "clues": {
                 "type": "array",
-                "maxItems": 64,
                 "items": {
                     "type": "object",
                     "additionalProperties": False,
@@ -335,7 +334,6 @@ def _full_coverage_clues(
             raw = complete_json_with_transport_retry(
                 client,
                 prompt,
-                n_predict=512,
                 json_schema=_coverage_clue_schema(),
             )
             for item in raw.get("clues", []) if isinstance(raw, dict) else []:
@@ -422,7 +420,6 @@ def _classify_document_context_map_full(
         raw = complete_json_with_transport_retry(
             client,
             prompt,
-            n_predict=max(512, min(4096, 256 + 192 * len(sentences))),
             json_schema=_map_schema(len(sentences)),
         )
 

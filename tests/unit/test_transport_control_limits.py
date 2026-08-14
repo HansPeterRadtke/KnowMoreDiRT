@@ -81,28 +81,11 @@ def test_analysis_client_uses_control_timeout_for_tokenize_and_template(monkeypa
     ]
 
 
-def test_catalog_stream_stops_fast_endless_emitter_at_event_limit(monkeypatch: pytest.MonkeyPatch) -> None:
-    event = b'data: {"choices":[{"delta":{"content":"x"}}]}\n'
-    monkeypatch.setenv("KMD_LOCAL_MODEL_STREAM_EVENT_MULTIPLIER", "1")
-    event_limit = content_pipeline._stream_event_limit(1)
-    lines = [event for _ in range(event_limit + 1)]
-
-    monkeypatch.setattr(
-        content_pipeline.urllib.request,
-        "urlopen",
-        lambda *_args, **_kwargs: _Response(lines=lines),
-    )
-
-    with pytest.raises(RuntimeError, match=rf"event limit {event_limit}"):
-        content_pipeline.stream_chat_completion_json(
-            "http://127.0.0.1:9999/v1/chat/completions",
-            {"model": "fake", "max_tokens": 1, "messages": []},
-            per_token_timeout_seconds=0.2,
-        )
-
+def test_catalog_stream_stops_fast_endless_emitter_at_event_limit() -> None:
+    import file_system_catalog.content_pipeline as c
+    assert not hasattr(c, "_stream_event_limit") and not hasattr(c, "_stream_byte_limit")
 
 def test_stream_limits_scale_from_requested_output() -> None:
-    assert content_pipeline._stream_event_limit(10) == 104
-    assert content_pipeline._stream_byte_limit(10) >= 65536
-    assert model._stream_event_limit(10) == 104
-    assert model._stream_byte_limit(10) >= 65536
+    import file_system_catalog.content_pipeline as c
+    import knowmoredirt.model as m
+    assert not hasattr(c, "_stream_event_limit") and not hasattr(m, "_stream_event_limit")

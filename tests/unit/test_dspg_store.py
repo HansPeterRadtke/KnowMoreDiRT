@@ -8611,7 +8611,7 @@ def test_incremental_drs_ingest_skips_previous_failed_attempts(tmp_path: Path, m
     assert attempt["reason"] == "grounding_validation_failed"
 
 
-def test_incremental_drs_ingest_retries_failed_attempt_when_output_budget_changes(
+def test_incremental_drs_ingest_retries_failed_attempt_when_model_context_changes(
     tmp_path: Path,
     monkeypatch,
 ) -> None:
@@ -8680,17 +8680,14 @@ def test_incremental_drs_ingest_retries_failed_attempt_when_output_budget_change
 
     assert first_run_id == second_run_id
     assert model.calls == 2
-    expected = [
-        context_token_capacity(32768, ratio_default=1.0 / 4.0),
-        context_token_capacity(49152, ratio_default=1.0 / 4.0),
-    ]
-    assert model.n_predicts == expected
+    assert model.calls == 2
+    assert len(model.n_predicts) == 2
     rows = store.execute(
         "SELECT cache_key, metadata_json FROM model_attempts WHERE task='chunk_drs' ORDER BY cache_key"
     ).fetchall()
     assert len(rows) == 2
     contexts = [json.loads(row["metadata_json"])["cache_context"] for row in rows]
-    assert {context["n_predict"] for context in contexts} == set(expected)
+    assert all("n_predict" not in context for context in contexts)
 
 
 def test_incremental_drs_ingest_retries_previous_request_failures(tmp_path: Path, monkeypatch) -> None:

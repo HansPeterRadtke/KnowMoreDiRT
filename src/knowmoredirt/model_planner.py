@@ -32,11 +32,9 @@ from .context_budget import (
     CONTEXT_CAPACITY_POLICY,
     context_char_capacity,
     context_ratio,
-    context_relative_budget,
     context_token_capacity,
     contextualize_json_schema,
     positive_float,
-    schema_array_capacity,
 )
 from .drs_validation import box_parent_cycle_errors, box_root_errors, condition_argument_cycle_errors
 from .model import LocalModelClient, LocalModelContextError, LocalModelJSONError, LocalModelUnavailableError
@@ -174,7 +172,7 @@ CHUNK_DRS_COMPACT_RETRY_POLICY = "retry-compact-invalid-json-larger-budget-v2"
 QUERY_DRS_SCHEMA_VERSION = "query-drs-v3"
 QUERY_EXPANSION_SCHEMA_VERSION = "query-expansion-v2-retry-output-limit"
 QUERY_DRS_VALIDATION_POLICY = "strict-query-drs-version-question-evidence-box-dag-repair-operators-semantic-coverage-repair-v13"
-QUERY_DRS_ARRAY_CAP_POLICY = "reserved_output_tokens_div_96_4_8-v1"
+QUERY_DRS_ARRAY_CAP_POLICY = "no-heuristic-array-cap-v2"
 QUERY_DRS_DYNAMIC_OUTPUT_BUDGET_POLICY = "context-relative-query-output-v3"
 QUERY_DRS_COMPACT_PLAN_POLICY = "compact-model-plan-to-query-drs-cache-revalidate-v3"
 CONSTRAINT_TRANSPORT_POLICY = "context-relative-native-bounds-exact-output-v4"
@@ -248,67 +246,40 @@ def _client_context_size(client: LocalModelClient | None) -> int:
 def _context_output_tokens(
     client: LocalModelClient | None,
     *,
-    ratio_names: tuple[str, ...],
-    ratio_default: float,
+    ratio_names: tuple[str, ...] = (),
+    ratio_default: float = 1.0,
 ) -> int:
+    del ratio_names, ratio_default
     context_size = _client_context_size(client)
     if context_size <= 0:
-        raise LocalModelUnavailableError("model context size is required to derive an output budget")
-    return context_token_capacity(
-        context_size,
-        ratio_names=ratio_names,
-        ratio_default=ratio_default,
-    )
+        raise LocalModelUnavailableError("model context size is required for semantic generation")
+    # Compatibility only. LocalModelClient computes the real output allowance from
+    # the exact rendered prompt and ignores this legacy stage hint.
+    return context_size
 
 
 def default_chunk_frame_n_predict(client: LocalModelClient | None = None) -> int:
-    return _context_output_tokens(
-        client,
-        ratio_names=("KMD_CHUNK_FRAME_OUTPUT_RATIO",),
-        ratio_default=1.0 / 16.0,
-    )
+    return _context_output_tokens(client)
 
 
 def default_chunk_drs_n_predict(client: LocalModelClient | None = None, chunk_text: str = "") -> int:
     del chunk_text
-    return _context_output_tokens(
-        client,
-        ratio_names=("KMD_CHUNK_DRS_OUTPUT_RATIO",),
-        ratio_default=1.0 / 4.0,
-    )
+    return _context_output_tokens(client)
 
 
 def default_query_drs_n_predict(client: LocalModelClient | None = None, question: str = "") -> int:
     del question
-    return _context_output_tokens(
-        client,
-        ratio_names=("KMD_QUERY_DRS_OUTPUT_RATIO",),
-        ratio_default=1.0 / 32.0,
-    )
+    return _context_output_tokens(client)
 
 
-def default_compact_query_drs_n_predict(
-    client: LocalModelClient | None = None,
-    question: str = "",
-) -> int:
+def default_compact_query_drs_n_predict(client: LocalModelClient | None = None, question: str = "") -> int:
     del question
-    return _context_output_tokens(
-        client,
-        ratio_names=("KMD_QUERY_DRS_COMPACT_OUTPUT_RATIO",),
-        ratio_default=1.0 / 256.0,
-    )
+    return _context_output_tokens(client)
 
 
-def default_compact_chunk_drs_n_predict(
-    client: LocalModelClient | None = None,
-    chunk_text: str = "",
-) -> int:
+def default_compact_chunk_drs_n_predict(client: LocalModelClient | None = None, chunk_text: str = "") -> int:
     del chunk_text
-    return _context_output_tokens(
-        client,
-        ratio_names=("KMD_CHUNK_DRS_COMPACT_OUTPUT_RATIO",),
-        ratio_default=1.0 / 64.0,
-    )
+    return _context_output_tokens(client)
 
 
 ANSWER_TYPE_ALIASES = {
@@ -372,11 +343,46 @@ def _coerce_confidence(value: Any, default: float = 0.65) -> float:
     return max(0.0, min(1.0, parsed))
 
 
+_OUTPUT_BUDGET_METADATA_KEYS = {
+    "n_predict",
+    "compact_n_predict",
+    "staged_skeleton_n_predict",
+    "staged_condition_n_predict",
+    "box_completion_n_predict",
+    "max_evidence_chars",
+    "max_array_items",
+    "max_argument_items",
+    "array_cap_policy",
+    "evidence_cap_policy",
+    "output_budget_policy",
+    "dynamic_output_budget_policy",
+    "dynamic_skeleton_budget_policy",
+    "dynamic_condition_budget_policy",
+    "initial_n_predict",
+    "effective_n_predict",
+    "maximum_n_predict",
+}
+
+
+def _without_output_budget_metadata(value: Any) -> Any:
+    if isinstance(value, dict):
+        return {
+            key: _without_output_budget_metadata(item)
+            for key, item in value.items()
+            if key not in _OUTPUT_BUDGET_METADATA_KEYS
+            and "output_ratio" not in key.lower()
+            and "output_budget" not in key.lower()
+        }
+    if isinstance(value, list):
+        return [_without_output_budget_metadata(item) for item in value]
+    return value
+
+
 def _cache_material(stage: str, prompt: str, client: LocalModelClient | None, settings: dict[str, Any] | None = None) -> str:
     payload = {
         "prompt": _guarded_prompt(prompt),
         "model_fingerprint": _client_fingerprint(client),
-        "settings": settings or {},
+        "settings": _without_output_budget_metadata(settings or {}),
     }
     return json.dumps(payload, ensure_ascii=False, sort_keys=True)
 
@@ -419,11 +425,11 @@ def _complete_structured(
     client: LocalModelClient,
     prompt: str,
     *,
-    n_predict: int,
-    grammar: str,
+    n_predict: int | None = None,
+    grammar: str = "",
     json_schema: dict[str, Any] | None,
 ) -> dict[str, Any]:
-    del grammar
+    del grammar, n_predict
     if not json_schema or not _json_schema_enabled():
         raise LocalModelUnavailableError(
             "Every semantic model call requires portable strict JSON Schema constrained decoding."
@@ -434,9 +440,9 @@ def _complete_structured(
     portable_schema = contextualize_json_schema(
         json_schema,
         context_size=context_size,
-        output_tokens=int(n_predict),
+        output_tokens=None,
     )
-    return client.complete_json(_guarded_prompt(prompt), n_predict=n_predict, json_schema=portable_schema)
+    return client.complete_json(_guarded_prompt(prompt), json_schema=portable_schema)
 
 
 def _cache_path(env_var: str, prompt_hash: str) -> Path | None:
@@ -473,12 +479,6 @@ TRANSIENT_STRUCTURED_FAILURE_REASONS = {
     "request_failed",
     "invalid_json",
     "incomplete_stream",
-    "context_limit_exhausted",
-    "output_limit_exhausted",
-    "generation_limit_exhausted",
-    "stream_byte_limit_exhausted",
-    "stream_event_limit_exhausted",
-    "stream_total_timeout_exhausted",
     "context_budget_exceeded",
     "schema_validation_failed",
 }
@@ -1134,7 +1134,7 @@ def chunk_drs_json_schema(
     evidence_text_values: list[str] | None = None,
     constrain_stable_ids: bool = False,
 ) -> dict[str, Any]:
-    del evidence_text_values
+    del evidence_text_values, max_evidence_chars, max_array_items
     schema = copy.deepcopy(DRS_JSON_SCHEMA)
     drs_schema = schema["properties"]["drs"]
     if not include_auxiliary_fields:
@@ -1145,8 +1145,6 @@ def chunk_drs_json_schema(
         if isinstance(properties, dict):
             properties.pop("evidence_spans", None)
             properties.pop("semantic_notes", None)
-    max_length = max(1, int(max_evidence_chars)) if max_evidence_chars else None
-    max_items = max(1, int(max_array_items)) if max_array_items else None
     string_profiles = {
         "id": "id",
         "schema_version": "id",
@@ -1182,20 +1180,12 @@ def chunk_drs_json_schema(
         if isinstance(node, dict):
             if node.get("type") == "string" and parent_key in string_profiles:
                 node["x-kmd-string-profile"] = string_profiles[parent_key]
-            if parent_key == "evidence_text" and node.get("type") == "string" and max_length is not None:
-                node["maxLength"] = max_length
             if parent_key == "evidence_spans" and isinstance(node.get("items"), dict):
                 node["items"]["x-kmd-string-profile"] = "evidence"
-                if max_length is not None:
-                    node["items"]["maxLength"] = max_length
             if node.get("type") == "array" and parent_key in dense_arrays:
                 node["x-kmd-array-profile"] = "dense"
-                if max_items is not None:
-                    node["maxItems"] = max_items
             elif node.get("type") == "array" and parent_key == "arguments":
                 node["x-kmd-array-profile"] = "arguments"
-                if max_items is not None:
-                    node["maxItems"] = max_items
             for key, value in node.items():
                 visit(value, key)
         elif isinstance(node, list):
@@ -1210,51 +1200,36 @@ def chunk_drs_json_schema(
     if source_id is not None:
         drs_properties["source_id"] = _schema_enum({source_id})
     if constrain_stable_ids:
-        if max_items is None:
-            raise ValueError("stable-id constrained DRS schemas require a context-derived item capacity")
-        referent_ids = [f"r{index}" for index in range(max_items)]
-        box_ids = [f"b{index}" for index in range(max_items)]
-        condition_ids = [f"c{index}" for index in range(max_items)]
-        temporal_ids = [f"t{index}" for index in range(max_items)]
         referent_schema = drs_properties["referents"]["items"]
         box_schema = drs_properties["boxes"]["items"]
         condition_schema = drs_properties["conditions"]["items"]
         argument_schema = condition_schema["properties"]["arguments"]["items"]
         identity_schema = drs_properties["identity_hypotheses"]["items"]
         temporal_schema = drs_properties["temporal_records"]["items"]
-        referent_schema["properties"]["id"] = {"type": "string", "enum": referent_ids}
-        box_schema["properties"]["id"] = {"type": "string", "enum": box_ids}
-        box_schema["properties"]["parent_id"] = {"type": "string", "enum": ["", *box_ids]}
-        box_schema["properties"]["holder_referent_id"] = {"type": "string", "enum": ["", *referent_ids]}
-        condition_schema["properties"]["id"] = {"type": "string", "enum": condition_ids}
-        condition_schema["properties"]["box_id"] = {"type": "string", "enum": box_ids}
-        condition_schema["properties"]["temporal_id"] = {"type": "string", "enum": ["", *temporal_ids]}
-        argument_schema["properties"]["target_id"] = {
-            "type": "string",
-            "enum": sorted(set(["", *box_ids, *condition_ids, *referent_ids])),
-        }
-        identity_schema["properties"]["left_referent_id"] = {"type": "string", "enum": referent_ids}
-        identity_schema["properties"]["right_referent_id"] = {"type": "string", "enum": referent_ids}
-        identity_schema["properties"]["box_id"] = {"type": "string", "enum": ["", *box_ids]}
-        temporal_schema["properties"]["id"] = {"type": "string", "enum": temporal_ids}
+        referent_schema["properties"]["id"] = {"type": "string", "pattern": r"^r[0-9]+$"}
+        box_schema["properties"]["id"] = {"type": "string", "pattern": r"^b[0-9]+$"}
+        box_schema["properties"]["parent_id"] = {"type": "string", "pattern": r"^(?:|b[0-9]+)$"}
+        box_schema["properties"]["holder_referent_id"] = {"type": "string", "pattern": r"^(?:|r[0-9]+)$"}
+        condition_schema["properties"]["id"] = {"type": "string", "pattern": r"^c[0-9]+$"}
+        condition_schema["properties"]["box_id"] = {"type": "string", "pattern": r"^b[0-9]+$"}
+        condition_schema["properties"]["temporal_id"] = {"type": "string", "pattern": r"^(?:|t[0-9]+)$"}
+        argument_schema["properties"]["target_id"] = {"type": "string", "pattern": r"^(?:|[bcrt][0-9]+)$"}
+        identity_schema["properties"]["left_referent_id"] = {"type": "string", "pattern": r"^r[0-9]+$"}
+        identity_schema["properties"]["right_referent_id"] = {"type": "string", "pattern": r"^r[0-9]+$"}
+        identity_schema["properties"]["box_id"] = {"type": "string", "pattern": r"^(?:|b[0-9]+)$"}
+        temporal_schema["properties"]["id"] = {"type": "string", "pattern": r"^t[0-9]+$"}
     return schema
 
 
 def chunk_drs_evidence_max_chars(chunk_text: str, n_predict: int | None = None) -> int | None:
-    if not chunk_text:
-        return None
-    if not n_predict:
-        raise ValueError("a context-derived output budget is required for evidence capacity")
-    evidence_ratio = context_ratio(("KMD_CHUNK_DRS_EVIDENCE_OUTPUT_RATIO",), 1.0 / 4.0)
-    chars_per_token = positive_float(("KMD_CHUNK_DRS_EVIDENCE_CHARS_PER_OUTPUT_TOKEN",), 3.0)
-    budgeted = max(1, int(int(n_predict) * evidence_ratio * chars_per_token))
-    return min(len(chunk_text), budgeted)
+    del n_predict
+    return len(chunk_text) if chunk_text else None
 
 
 def chunk_drs_array_max_items(n_predict: int | None = None) -> int | None:
-    if not n_predict:
-        raise ValueError("a context-derived output budget is required for DRS array capacity")
-    return schema_array_capacity(int(n_predict), "dense")
+    del n_predict
+    return None
+
 
 
 def _staged_chunk_drs_enabled() -> bool:
@@ -1416,8 +1391,7 @@ def default_staged_chunk_drs_skeleton_n_predict(
     max_evidence_chars: int | None = None,
 ) -> int:
     del source_text, max_evidence_chars
-    ratio = context_ratio(("KMD_CHUNK_DRS_STAGED_SKELETON_OUTPUT_SHARE",), 1.0 / 2.0)
-    return max(1, int(int(n_predict) * ratio))
+    return int(n_predict)
 
 
 def default_staged_chunk_drs_condition_n_predict(
@@ -1426,13 +1400,11 @@ def default_staged_chunk_drs_condition_n_predict(
     max_evidence_chars: int | None = None,
 ) -> int:
     del source_text, max_evidence_chars
-    ratio = context_ratio(("KMD_CHUNK_DRS_STAGED_CONDITION_OUTPUT_SHARE",), 1.0)
-    return max(1, int(int(n_predict) * ratio))
+    return int(n_predict)
 
 
 def default_chunk_drs_box_completion_n_predict(n_predict: int) -> int:
-    ratio = context_ratio(("KMD_CHUNK_DRS_BOX_COMPLETION_OUTPUT_SHARE",), 1.0 / 16.0)
-    return max(1, int(int(n_predict) * ratio))
+    return int(n_predict)
 
 
 def _schema_array_limited(
@@ -1452,30 +1424,20 @@ def chunk_drs_skeleton_json_schema(
     max_array_items: int | None = None,
     evidence_text_values: list[str] | None = None,
 ) -> dict[str, Any]:
-    if max_array_items is None:
-        raise ValueError("skeleton schema requires a context-derived array capacity")
-    max_items = max(1, int(max_array_items))
-    referent_ids = [f"r{index}" for index in range(max_items)]
-    box_ids = [f"b{index}" for index in range(max_items)]
-    temporal_ids = [f"t{index}" for index in range(max_items)]
+    del max_array_items, evidence_text_values
     referent_schema = copy.deepcopy(DRS_REFERENT_JSON_SCHEMA)
     box_schema = copy.deepcopy(DRS_BOX_JSON_SCHEMA)
     temporal_schema = copy.deepcopy(DRS_TEMPORAL_JSON_SCHEMA)
-    referent_schema["properties"]["id"] = {"type": "string", "enum": referent_ids}
-    box_schema["properties"]["id"] = {"type": "string", "enum": box_ids}
-    box_schema["properties"]["parent_id"] = {"type": "string", "enum": ["", *box_ids]}
-    # Stage 1 declares referents and boxes in one model object; JSON schema cannot condition holder ids on
-    # the referents actually emitted in that same object. Keep stage-1 holder links empty so the model cannot
-    # emit an unbound holder id such as b0 -> r0 without declaring r0. Holder/source semantics remain model-owned
-    # through grounded referents and conditions rather than deterministic post-hoc id repair.
+    referent_schema["properties"]["id"] = {"type": "string", "pattern": r"^r[0-9]+$"}
+    box_schema["properties"]["id"] = {"type": "string", "pattern": r"^b[0-9]+$"}
+    box_schema["properties"]["parent_id"] = {"type": "string", "pattern": r"^(?:|b[0-9]+)$"}
     box_schema["properties"]["holder_referent_id"] = {"type": "string", "enum": [""]}
-    temporal_schema["properties"]["id"] = {"type": "string", "enum": temporal_ids}
+    temporal_schema["properties"]["id"] = {"type": "string", "pattern": r"^t[0-9]+$"}
     referent_schema["properties"]["label"] = copy.deepcopy(LABEL_SCHEMA)
     referent_schema["properties"]["kind"] = copy.deepcopy(SHORT_TEXT_SCHEMA)
     box_schema["properties"]["kind"] = _schema_enum(DRS_CONTEXT_KINDS)
     temporal_schema["properties"]["value"] = copy.deepcopy(VALUE_SCHEMA)
     temporal_schema["properties"]["value_type"] = copy.deepcopy(SHORT_TEXT_SCHEMA)
-    del evidence_text_values
     referent_schema["properties"]["evidence_text"] = copy.deepcopy(EVIDENCE_SCHEMA)
     box_schema["properties"]["evidence_text"] = copy.deepcopy(EVIDENCE_SCHEMA)
     temporal_schema["properties"]["evidence_text"] = copy.deepcopy(EVIDENCE_SCHEMA)
@@ -1487,9 +1449,9 @@ def chunk_drs_skeleton_json_schema(
                 {
                     "schema_version": _schema_enum({CHUNK_DRS_SCHEMA_VERSION}),
                     "source_id": _schema_enum({source_id}),
-                    "referents": _schema_array_limited(referent_schema, max_array_items),
-                    "boxes": {**_schema_array_limited(box_schema, max_array_items), "minItems": 1},
-                    "temporal_records": _schema_array_limited(temporal_schema, max_array_items),
+                    "referents": _schema_array_limited(referent_schema),
+                    "boxes": {**_schema_array_limited(box_schema), "minItems": 1},
+                    "temporal_records": _schema_array_limited(temporal_schema),
                 },
             )
         },
@@ -1506,24 +1468,22 @@ def chunk_drs_condition_json_schema(
     max_arguments: int | None = None,
     evidence_text_values: list[str] | None = None,
 ) -> dict[str, Any]:
+    del max_conditions, max_arguments, evidence_text_values
     condition_schema = copy.deepcopy(DRS_CONDITION_JSON_SCHEMA)
     argument_schema = copy.deepcopy(DRS_ARGUMENT_JSON_SCHEMA)
-    condition_ids = [f"c{index}" for index in range(max(1, int(max_conditions)))] if max_conditions else []
-    allowed_targets = sorted(set(["", *box_ids, *condition_ids, *referent_ids]))
+    allowed_targets_pattern = r"^(?:|[bcrt][0-9]+)$"
     allowed_temporals = sorted(set(["", *(temporal_ids or [])]))
     condition_schema["properties"]["predicate"] = copy.deepcopy(SHORT_TEXT_SCHEMA)
     argument_schema["properties"]["role"] = copy.deepcopy(SHORT_TEXT_SCHEMA)
     argument_schema["properties"]["value"] = copy.deepcopy(VALUE_SCHEMA)
     argument_schema["properties"]["value_type"] = copy.deepcopy(SHORT_TEXT_SCHEMA)
-    argument_schema["properties"]["target_id"] = {"type": "string", "enum": allowed_targets}
+    argument_schema["properties"]["target_id"] = {"type": "string", "pattern": allowed_targets_pattern}
     condition_schema["properties"]["box_id"] = {"type": "string", "enum": box_ids or [""]}
     condition_schema["properties"]["temporal_id"] = {"type": "string", "enum": allowed_temporals}
-    if condition_ids:
-        condition_schema["properties"]["id"] = {"type": "string", "enum": condition_ids}
-    del evidence_text_values
+    condition_schema["properties"]["id"] = {"type": "string", "pattern": r"^c[0-9]+$"}
     condition_schema["properties"]["evidence_text"] = copy.deepcopy(EVIDENCE_SCHEMA)
     argument_schema["properties"]["evidence_text"] = copy.deepcopy(EVIDENCE_SCHEMA)
-    condition_schema["properties"]["arguments"] = _schema_array_limited(argument_schema, max_arguments, profile="arguments")
+    condition_schema["properties"]["arguments"] = _schema_array_limited(argument_schema, profile="arguments")
     return _schema_obj(
         ["condition_stage"],
         {
@@ -1532,7 +1492,7 @@ def chunk_drs_condition_json_schema(
                 {
                     "schema_version": _schema_enum({CHUNK_DRS_SCHEMA_VERSION}),
                     "source_id": _schema_enum({source_id}),
-                    "conditions": _schema_array_limited(condition_schema, max_conditions),
+                    "conditions": _schema_array_limited(condition_schema),
                 },
             )
         },
@@ -1606,42 +1566,20 @@ QUERY_DRS_JSON_SCHEMA = _schema_obj(
 
 
 def query_drs_array_max_items(n_predict: int | None = None) -> int | None:
-    if not n_predict:
-        raise ValueError("a context-derived output budget is required for query array capacity")
-    return schema_array_capacity(int(n_predict), "compact")
+    del n_predict
+    return None
+
 
 
 def query_drs_json_schema(question: str | None = None, max_array_items: int | None = None) -> dict[str, Any]:
+    del max_array_items
     schema = copy.deepcopy(QUERY_DRS_JSON_SCHEMA)
     query_schema = schema["properties"]["query_drs"]
     query_schema["properties"]["schema_version"] = _schema_enum({QUERY_DRS_SCHEMA_VERSION})
     if question is not None:
         query_schema["properties"]["question"] = _schema_enum({question})
-    if max_array_items:
-        capped = max(1, int(max_array_items))
-
-        def visit(node: Any, parent_key: str = "") -> None:
-            if isinstance(node, dict):
-                if node.get("type") == "array" and parent_key in {
-                    "answer_variables",
-                    "target_referents",
-                    "temporal_records",
-                    "requested_conditions",
-                    "constraints",
-                    "box_requirements",
-                    "arguments",
-                }:
-                    node["x-kmd-array-profile"] = "arguments" if parent_key == "arguments" else "compact"
-                    if parent_key != "arguments":
-                        node["maxItems"] = capped
-                for key, value in node.items():
-                    visit(value, key)
-            elif isinstance(node, list):
-                for item in node:
-                    visit(item, parent_key)
-
-        visit(schema)
     return schema
+
 
 VERIFICATION_JSON_SCHEMA = _schema_obj(
     ["verification"],
@@ -1849,16 +1787,11 @@ def build_query_plan_prompt(question: str) -> str:
 
 def call_model_query_plan_test_only(question: str, client: LocalModelClient, *, n_predict: int | None = None) -> dict[str, Any]:
     if n_predict is None:
-        n_predict = _context_output_tokens(
-            client,
-            ratio_names=("KMD_QUERY_PLAN_OUTPUT_RATIO",),
-            ratio_default=1.0 / 64.0,
-        )
+        n_predict = _context_output_tokens(client)
     prompt = build_query_plan_prompt(question)
     constraint = _constraint_settings(QUERY_FRAME_GRAMMAR, QUERY_FRAME_JSON_SCHEMA, QUERY_FRAME_SCHEMA_VERSION)
     grammar_hash = str(constraint["grammar_hash"])
     cache_settings = {
-        "n_predict": n_predict,
         "schema": QUERY_FRAME_SCHEMA_VERSION,
         "operator_schema_policy": QUERY_OPERATOR_SCHEMA_POLICY,
         **constraint,
@@ -1896,7 +1829,7 @@ def call_model_query_plan_test_only(question: str, client: LocalModelClient, *, 
             "prompt_hash": prompt_hash,
             **constraint,
             "operator_schema_policy": QUERY_OPERATOR_SCHEMA_POLICY,
-            "cache_context": cache_context,
+            "cache_context": _without_output_budget_metadata(cache_context),
             "elapsed": round(time.time() - start, 3),
         }
         return _with_model_input_audits(payload, exc)
@@ -1916,7 +1849,7 @@ def call_model_query_plan_test_only(question: str, client: LocalModelClient, *, 
             "prompt_hash": prompt_hash,
             **constraint,
             "operator_schema_policy": QUERY_OPERATOR_SCHEMA_POLICY,
-            "cache_context": cache_context,
+            "cache_context": _without_output_budget_metadata(cache_context),
             "elapsed": round(time.time() - start, 3),
         }
         payload = _with_model_input_audits(payload, locals().get("parsed"), locals().get("exc"), locals().get("repaired"), locals().get("fallback"), locals().get("box_completion"))
@@ -1935,7 +1868,7 @@ def call_model_query_plan_test_only(question: str, client: LocalModelClient, *, 
             "prompt_hash": prompt_hash,
             **constraint,
             "operator_schema_policy": QUERY_OPERATOR_SCHEMA_POLICY,
-            "cache_context": cache_context,
+            "cache_context": _without_output_budget_metadata(cache_context),
             "elapsed": round(time.time() - start, 3),
         }
         payload = _with_model_input_audits(payload, locals().get("parsed"), locals().get("exc"), locals().get("repaired"), locals().get("fallback"), locals().get("box_completion"))
@@ -1951,7 +1884,7 @@ def call_model_query_plan_test_only(question: str, client: LocalModelClient, *, 
         "prompt_hash": prompt_hash,
         **constraint,
         "operator_schema_policy": QUERY_OPERATOR_SCHEMA_POLICY,
-        "cache_context": cache_context,
+        "cache_context": _without_output_budget_metadata(cache_context),
         "output_hash": hashlib.sha256(raw.encode()).hexdigest(),
         "fresh_or_cached": "fresh",
     }
@@ -2207,23 +2140,16 @@ def call_model_query_expansion(
 ) -> dict[str, Any]:
     """Generate retrieval-only semantic hypotheses; never factual answer content."""
 
-    max_terms = max(0, _config_int("KMD_QUERY_EXPANSION_MAX_TERMS"))
-    if max_terms == 0:
-        return {"accepted": True, "terms": [], "fresh_or_cached": "disabled", "prompt_hash": "", "output_hash": ""}
     prompt = (
         "JSON only. Generate retrieval-only semantic search terms for the question. "
         "You may use general linguistic/semantic associations to improve recall, but do not answer the question and do not state facts. "
         "Preserve the user's named entities, identifiers, dates, quoted strings, requested scope, polarity, and answer type; do not replace or alter them. "
         "Return only distinct short terms or phrases that could occur in relevant corpus evidence. "
-        f"Return at most {max_terms} terms.\n"
         f"Question: {question}\n"
         f"Authoritative query frame: {json.dumps(query_frame, ensure_ascii=False, sort_keys=True)}"
     )
-    n_predict = max(64, min(512, 32 * max_terms + 64))
     settings = {
-        "n_predict": n_predict,
         "schema": QUERY_EXPANSION_SCHEMA_VERSION,
-        "max_terms": max_terms,
         **_constraint_settings("", QUERY_EXPANSION_JSON_SCHEMA, QUERY_EXPANSION_SCHEMA_VERSION),
     }
     prompt_hash = _cache_hash("query_expansion", prompt, client, settings)
@@ -2231,71 +2157,47 @@ def call_model_query_expansion(
     cached = _read_cache(cache_path)
     if cached is not None and cached.get("accepted"):
         terms = cached.get("terms") if isinstance(cached.get("terms"), list) else []
-        return {**cached, "terms": [str(x) for x in terms][:max_terms], "fresh_or_cached": "cache"}
+        return {**cached, "terms": [str(x) for x in terms], "fresh_or_cached": "cache"}
     start = time.time()
     attempts: list[dict[str, Any]] = []
-    parsed: dict[str, Any] | None = None
-    budgets = [n_predict]
-    retry_budget = max(
-        n_predict + 1,
-        min(
-            max(n_predict * 2, 512),
-            _context_output_tokens(
-                client,
-                ratio_names=("KMD_QUERY_EXPANSION_RETRY_OUTPUT_RATIO",),
-                ratio_default=1.0 / 128.0,
-            ),
-        ),
-    )
-    if retry_budget > n_predict:
-        budgets.append(retry_budget)
-    last_error: Exception | None = None
-    for attempt_index, attempt_budget in enumerate(budgets, start=1):
-        try:
-            parsed = _complete_structured(
-                client,
-                prompt,
-                n_predict=attempt_budget,
-                grammar="",
-                json_schema=QUERY_EXPANSION_JSON_SCHEMA,
-            )
-            attempts.append({"attempt": attempt_index, "n_predict": attempt_budget, "accepted": True})
-            break
-        except LocalModelJSONError as exc:
-            reason = str(exc.reason or "invalid_json")
-            attempts.append({"attempt": attempt_index, "n_predict": attempt_budget, "accepted": False, "reason": reason})
-            last_error = exc
-            if reason not in {"output_limit_exhausted", "generation_limit_exhausted", "incomplete_stream"}:
-                break
-        except Exception as exc:
-            attempts.append({"attempt": attempt_index, "n_predict": attempt_budget, "accepted": False, "reason": "request_failed"})
-            last_error = exc
-            break
-    if parsed is None:
-        reason = str(getattr(last_error, "reason", "request_failed") or "request_failed")
+    try:
+        parsed = _complete_structured(
+            client,
+            prompt,
+            grammar="",
+            json_schema=QUERY_EXPANSION_JSON_SCHEMA,
+        )
+        attempts.append({"attempt": 1, "accepted": True})
+    except Exception as exc:
+        reason = str(getattr(exc, "reason", "request_failed") or "request_failed")
+        attempts.append({"attempt": 1, "accepted": False, "reason": reason})
         return {
             "accepted": False,
             "reason": "request_failed",
             "failure_reason": reason,
-            "error": str(last_error or "query expansion generation failed"),
+            "error": str(exc),
             "prompt_hash": prompt_hash,
             "elapsed": round(time.time() - start, 3),
             "attempts": attempts,
             "cache_context": settings,
         }
-    raw_terms = parsed.get("terms") if isinstance(parsed, dict) and isinstance(parsed.get("terms"), list) else []
-    exact_question_values = {normalize(value) for value in [*visible_anchors(question), *urls(question), *identifiers(question)] if normalize(value)}
-    terms: list[str] = []
-    for raw in raw_terms:
-        term = str(raw or "").strip()
-        norm = normalize(term)
-        if not term or not norm or norm in exact_question_values or norm in {normalize(question)}:
-            continue
-        if term not in terms:
-            terms.append(term)
-        if len(terms) >= max_terms:
-            break
     raw = str(parsed.get("_model_raw") or "") if isinstance(parsed, dict) else ""
+    parsed_terms = parsed.get("terms") if isinstance(parsed, dict) and isinstance(parsed.get("terms"), list) else []
+    terms: list[str] = []
+    seen_terms: set[str] = set()
+    protected = {
+        normalize(str(value))
+        for key in ("target_anchors", "constraints", "answer_variables")
+        for value in (query_frame.get(key) or [])
+        if str(value).strip()
+    }
+    for value in parsed_terms:
+        term = str(value).strip()
+        norm = normalize(term)
+        if not term or not norm or norm in seen_terms or norm in protected:
+            continue
+        seen_terms.add(norm)
+        terms.append(term)
     payload = {
         "accepted": True,
         "terms": terms,
@@ -2316,7 +2218,6 @@ def call_model_query_drs_compact(question: str, client: LocalModelClient, *, n_p
     prompt = build_compact_query_drs_prompt(question)
     constraint = _constraint_settings(QUERY_DRS_GRAMMAR, COMPACT_QUERY_DRS_JSON_SCHEMA, QUERY_DRS_SCHEMA_VERSION)
     cache_settings = {
-        "n_predict": n_predict,
         "schema": QUERY_DRS_SCHEMA_VERSION,
         "compact_plan_policy": QUERY_DRS_COMPACT_PLAN_POLICY,
         "validation_policy": QUERY_DRS_VALIDATION_POLICY,
@@ -2363,7 +2264,7 @@ def call_model_query_drs_compact(question: str, client: LocalModelClient, *, n_p
             "raw_snippet": exc.snippet,
             "prompt_hash": prompt_hash,
             "compact_plan_policy": QUERY_DRS_COMPACT_PLAN_POLICY,
-            "cache_context": cache_context,
+            "cache_context": _without_output_budget_metadata(cache_context),
             "elapsed": round(time.time() - start, 3),
         }
         payload = _with_model_input_audits(payload, exc)
@@ -2376,7 +2277,7 @@ def call_model_query_drs_compact(question: str, client: LocalModelClient, *, n_p
             "error": str(exc),
             "prompt_hash": prompt_hash,
             "compact_plan_policy": QUERY_DRS_COMPACT_PLAN_POLICY,
-            "cache_context": cache_context,
+            "cache_context": _without_output_budget_metadata(cache_context),
             "elapsed": round(time.time() - start, 3),
         }
     raw = str(parsed.get("_model_raw") or "") if isinstance(parsed, dict) else ""
@@ -2390,7 +2291,7 @@ def call_model_query_drs_compact(question: str, client: LocalModelClient, *, n_p
             "raw_text": raw,
             "prompt_hash": prompt_hash,
             "compact_plan_policy": QUERY_DRS_COMPACT_PLAN_POLICY,
-            "cache_context": cache_context,
+            "cache_context": _without_output_budget_metadata(cache_context),
             "elapsed": parsed.get("_model_elapsed_seconds", round(time.time() - start, 3)),
             "validation": validation,
         }
@@ -2404,7 +2305,7 @@ def call_model_query_drs_compact(question: str, client: LocalModelClient, *, n_p
         "elapsed": parsed.get("_model_elapsed_seconds", round(time.time() - start, 3)),
         "prompt_hash": prompt_hash,
         "compact_plan_policy": QUERY_DRS_COMPACT_PLAN_POLICY,
-        "cache_context": cache_context,
+        "cache_context": _without_output_budget_metadata(cache_context),
         "validation": validation,
         "output_hash": hashlib.sha256(raw.encode()).hexdigest(),
         "fresh_or_cached": "fresh",
@@ -2646,34 +2547,17 @@ def _relative_retry_budgets(
     env_name: str,
     default_multipliers: tuple[float, ...],
 ) -> list[int]:
-    try:
-        raw = _config_text(env_name).strip()
-    except KeyError:
-        raw = os.environ.get(env_name, "").strip()
-    multipliers: list[float] = []
-    if raw:
-        for item in raw.split(","):
-            try:
-                value = float(item.strip())
-            except ValueError:
-                continue
-            if value > 1.0 and value not in multipliers:
-                multipliers.append(value)
-    if not multipliers:
-        multipliers = list(default_multipliers)
-    budgets: list[int] = []
-    for multiplier in multipliers:
-        value = max(1, int(int(n_predict) * multiplier))
-        if value != n_predict and value not in budgets:
-            budgets.append(value)
-    return budgets
+    del env_name
+    # Preserve semantic retry count only; every retry gets the same real
+    # remaining-context allowance from LocalModelClient.
+    return [int(n_predict) for _ in default_multipliers]
 
 
 def _query_drs_retry_budgets(n_predict: int) -> list[int]:
     return _relative_retry_budgets(
         n_predict,
-        env_name="KMD_QUERY_DRS_RETRY_OUTPUT_MULTIPLIERS",
-        default_multipliers=(1.5, 2.0),
+        env_name="",
+        default_multipliers=(1.0, 1.0),
     )
 
 
@@ -2714,11 +2598,8 @@ def _call_model_query_drs_full_once(
     json_schema = query_drs_json_schema(question, max_array_items=max_array_items)
     constraint = _constraint_settings(QUERY_DRS_GRAMMAR, json_schema, QUERY_DRS_SCHEMA_VERSION)
     cache_settings = {
-        "n_predict": n_predict,
         "schema": QUERY_DRS_SCHEMA_VERSION,
         "validation_policy": QUERY_DRS_VALIDATION_POLICY,
-        "array_cap_policy": QUERY_DRS_ARRAY_CAP_POLICY,
-        "output_budget_policy": QUERY_DRS_DYNAMIC_OUTPUT_BUDGET_POLICY,
         "operator_schema_policy": QUERY_OPERATOR_SCHEMA_POLICY,
         "max_array_items": max_array_items,
         **constraint,
@@ -2776,11 +2657,9 @@ def _call_model_query_drs_full_once(
             "prompt_hash": prompt_hash,
             **constraint,
             "validation_policy": QUERY_DRS_VALIDATION_POLICY,
-            "array_cap_policy": QUERY_DRS_ARRAY_CAP_POLICY,
-            "output_budget_policy": QUERY_DRS_DYNAMIC_OUTPUT_BUDGET_POLICY,
             "operator_schema_policy": QUERY_OPERATOR_SCHEMA_POLICY,
             "max_array_items": max_array_items,
-            "cache_context": cache_context,
+            "cache_context": _without_output_budget_metadata(cache_context),
             "elapsed": round(time.time() - start, 3),
         }
         if retry_index:
@@ -2798,11 +2677,9 @@ def _call_model_query_drs_full_once(
             "prompt_hash": prompt_hash,
             **constraint,
             "validation_policy": QUERY_DRS_VALIDATION_POLICY,
-            "array_cap_policy": QUERY_DRS_ARRAY_CAP_POLICY,
-            "output_budget_policy": QUERY_DRS_DYNAMIC_OUTPUT_BUDGET_POLICY,
             "operator_schema_policy": QUERY_OPERATOR_SCHEMA_POLICY,
             "max_array_items": max_array_items,
-            "cache_context": cache_context,
+            "cache_context": _without_output_budget_metadata(cache_context),
             "elapsed": round(time.time() - start, 3),
         }
         if retry_index:
@@ -2821,11 +2698,9 @@ def _call_model_query_drs_full_once(
             "prompt_hash": prompt_hash,
             **constraint,
             "validation_policy": QUERY_DRS_VALIDATION_POLICY,
-            "array_cap_policy": QUERY_DRS_ARRAY_CAP_POLICY,
-            "output_budget_policy": QUERY_DRS_DYNAMIC_OUTPUT_BUDGET_POLICY,
             "operator_schema_policy": QUERY_OPERATOR_SCHEMA_POLICY,
             "max_array_items": max_array_items,
-            "cache_context": cache_context,
+            "cache_context": _without_output_budget_metadata(cache_context),
             "elapsed": parsed.get("_model_elapsed_seconds", round(time.time() - start, 3)),
             "validation": validation,
         }
@@ -2844,11 +2719,9 @@ def _call_model_query_drs_full_once(
         "prompt_hash": prompt_hash,
         **constraint,
         "validation_policy": QUERY_DRS_VALIDATION_POLICY,
-        "array_cap_policy": QUERY_DRS_ARRAY_CAP_POLICY,
-        "output_budget_policy": QUERY_DRS_DYNAMIC_OUTPUT_BUDGET_POLICY,
         "operator_schema_policy": QUERY_OPERATOR_SCHEMA_POLICY,
         "max_array_items": max_array_items,
-        "cache_context": cache_context,
+        "cache_context": _without_output_budget_metadata(cache_context),
         "validation": validation,
         "output_hash": hashlib.sha256(raw.encode()).hexdigest(),
         "fresh_or_cached": "fresh",
@@ -2886,7 +2759,6 @@ def call_model_query_drs(question: str, client: LocalModelClient, *, n_predict: 
         retry_attempts.append(
             {
                 "stage": "compact",
-                "n_predict": compact_attempt.get("cache_context", {}).get("n_predict"),
                 "reason": compact_attempt.get("reason"),
                 "error": compact_attempt.get("error"),
                 "elapsed": compact_attempt.get("elapsed"),
@@ -2897,7 +2769,6 @@ def call_model_query_drs(question: str, client: LocalModelClient, *, n_predict: 
     retry_attempts.append(
         {
             "stage": "full",
-            "n_predict": n_predict,
             "reason": result.get("reason"),
             "error": result.get("error"),
             "elapsed": result.get("elapsed"),
@@ -2919,7 +2790,6 @@ def call_model_query_drs(question: str, client: LocalModelClient, *, n_predict: 
     last = result
     for retry_index, retry_budget in enumerate(_query_drs_retry_budgets(n_predict), start=1):
         retry_after = {
-            "n_predict": n_predict if retry_index == 1 else retry_attempts[-1].get("n_predict"),
             "reason": last.get("reason"),
             "error": last.get("error"),
             "prompt_hash": last.get("prompt_hash"),
@@ -2935,7 +2805,6 @@ def call_model_query_drs(question: str, client: LocalModelClient, *, n_predict: 
         retry_attempts.append(
             {
                 "stage": "full_retry",
-                "n_predict": retry_budget,
                 "reason": last.get("reason"),
                 "error": last.get("error"),
                 "elapsed": last.get("elapsed"),
@@ -3132,16 +3001,11 @@ def call_model_evidence_answer(
     n_predict: int | None = None,
 ) -> dict[str, Any]:
     if n_predict is None:
-        n_predict = _context_output_tokens(
-            client,
-            ratio_names=("KMD_EVIDENCE_ANSWER_OUTPUT_RATIO",),
-            ratio_default=1.0 / 128.0,
-        )
+        n_predict = _context_output_tokens(client)
     prompt = build_evidence_extraction_prompt(question, expected_answer_type, evidence_items)
     constraint = _constraint_settings(EVIDENCE_EXTRACTION_GRAMMAR, ANSWER_JSON_SCHEMA, ANSWER_SCHEMA_VERSION)
     grammar_hash = str(constraint["grammar_hash"])
     cache_settings = {
-        "n_predict": n_predict,
         "schema": ANSWER_SCHEMA_VERSION,
         "expected_answer_type": expected_answer_type,
         **constraint,
@@ -3178,7 +3042,7 @@ def call_model_evidence_answer(
             "error": str(exc),
             "prompt_hash": prompt_hash,
             **constraint,
-            "cache_context": cache_context,
+            "cache_context": _without_output_budget_metadata(cache_context),
             "elapsed": round(time.time() - start, 3),
         }
     answer = parsed.get("answer") if isinstance(parsed, dict) else None
@@ -3190,7 +3054,7 @@ def call_model_evidence_answer(
             "raw_text": raw,
             "prompt_hash": prompt_hash,
             **constraint,
-            "cache_context": cache_context,
+            "cache_context": _without_output_budget_metadata(cache_context),
             "elapsed": round(time.time() - start, 3),
         }
         payload = _with_model_input_audits(payload, locals().get("parsed"), locals().get("exc"), locals().get("repaired"), locals().get("fallback"), locals().get("box_completion"))
@@ -3205,7 +3069,7 @@ def call_model_evidence_answer(
             "raw_text": raw,
             "prompt_hash": prompt_hash,
             **constraint,
-            "cache_context": cache_context,
+            "cache_context": _without_output_budget_metadata(cache_context),
             "elapsed": round(time.time() - start, 3),
         }
         payload = _with_model_input_audits(payload, locals().get("parsed"), locals().get("exc"), locals().get("repaired"), locals().get("fallback"), locals().get("box_completion"))
@@ -3221,7 +3085,7 @@ def call_model_evidence_answer(
         "elapsed": parsed.get("_model_elapsed_seconds", round(time.time() - start, 3)),
         "prompt_hash": prompt_hash,
         **constraint,
-        "cache_context": cache_context,
+        "cache_context": _without_output_budget_metadata(cache_context),
         "output_hash": hashlib.sha256(raw.encode()).hexdigest(),
         "fresh_or_cached": "fresh",
     }
@@ -3529,7 +3393,7 @@ def _call_model_query_evidence_answer_repair(
     )
     constraint = _constraint_settings(QUERY_EVIDENCE_ANSWER_GRAMMAR, QUERY_EVIDENCE_ANSWER_JSON_SCHEMA, ANSWER_SCHEMA_VERSION)
     grammar_hash = str(constraint["grammar_hash"])
-    cache_settings = {"n_predict": n_predict, "schema": ANSWER_SCHEMA_VERSION, **constraint}
+    cache_settings = {"schema": ANSWER_SCHEMA_VERSION, **constraint}
     cache_context = {
         **cache_settings,
         "model_fingerprint": _client_fingerprint(client),
@@ -3571,7 +3435,7 @@ def _call_model_query_evidence_answer_repair(
             "error": str(exc),
             "prompt_hash": prompt_hash,
             "grammar_hash": grammar_hash,
-            "cache_context": cache_context,
+            "cache_context": _without_output_budget_metadata(cache_context),
             "elapsed": round(time.time() - start, 3),
         }
         return _with_model_input_audits(payload, exc)
@@ -3586,7 +3450,7 @@ def _call_model_query_evidence_answer_repair(
             "raw_text": raw,
             "prompt_hash": prompt_hash,
             "grammar_hash": grammar_hash,
-            "cache_context": cache_context,
+            "cache_context": _without_output_budget_metadata(cache_context),
             "elapsed": round(time.time() - start, 3),
         }
         payload = _with_model_input_audits(payload, locals().get("parsed"), locals().get("exc"), locals().get("repaired"), locals().get("fallback"), locals().get("box_completion"))
@@ -3621,17 +3485,13 @@ def call_model_query_evidence_answer(
     authoritative_answer_type: str = "unknown",
 ) -> dict[str, Any]:
     if n_predict is None:
-        n_predict = _context_output_tokens(
-            client,
-            ratio_names=("KMD_QUERY_EVIDENCE_OUTPUT_RATIO",),
-            ratio_default=1.0 / 32.0,
-        )
+        n_predict = _context_output_tokens(client)
     prompt = build_query_evidence_answer_prompt(
         question, evidence_items, discourse_records, authoritative_query_frame
     )
     constraint = _constraint_settings(QUERY_EVIDENCE_ANSWER_GRAMMAR, QUERY_EVIDENCE_ANSWER_JSON_SCHEMA, ANSWER_SCHEMA_VERSION)
     grammar_hash = str(constraint["grammar_hash"])
-    cache_settings = {"n_predict": n_predict, "schema": ANSWER_SCHEMA_VERSION, **constraint}
+    cache_settings = {"schema": ANSWER_SCHEMA_VERSION, **constraint}
     cache_context = {
         **cache_settings,
         "model_fingerprint": _client_fingerprint(client),
@@ -3668,7 +3528,7 @@ def call_model_query_evidence_answer(
             "error": str(exc),
             "prompt_hash": prompt_hash,
             "grammar_hash": grammar_hash,
-            "cache_context": cache_context,
+            "cache_context": _without_output_budget_metadata(cache_context),
             "elapsed": round(time.time() - start, 3),
         }
     raw = str(parsed.get("_model_raw") or "") if isinstance(parsed, dict) else ""
@@ -3697,7 +3557,7 @@ def call_model_query_evidence_answer(
             "raw_text": raw,
             "prompt_hash": prompt_hash,
             "grammar_hash": grammar_hash,
-            "cache_context": cache_context,
+            "cache_context": _without_output_budget_metadata(cache_context),
             "elapsed": round(time.time() - start, 3),
             "repair_failure_reason": repaired.get("reason"),
             "repair_prompt_hash": repaired.get("prompt_hash"),
@@ -3762,7 +3622,7 @@ def build_chunk_frame_prompt(chunk_text: str, *, rel_path: str = "", context_bud
         "and temporal_text only when the chunk itself supports that DRT interpretation. Encode negation structurally: "
         "keep predicate text positive and set polarity to negative; never hide negation inside predicates such as is not, "
         "did not, cannot, has no, or never."
-        + json.dumps({"source": rel_path, "context_budget": context_budget or {}, "chunk": chunk_text}, ensure_ascii=False)
+        + json.dumps({"source": rel_path, "context_metadata": _without_output_budget_metadata(context_budget or {}), "chunk": chunk_text}, ensure_ascii=False)
     )
 
 
@@ -3771,26 +3631,17 @@ def _context_limited_chunk_frame_text(
     client: LocalModelClient | None,
     *,
     rel_path: str,
-    n_predict: int,
+    n_predict: int | None = None,
 ) -> tuple[str, dict[str, Any]]:
+    del rel_path, n_predict
     context_size = _client_context_size(client)
     if context_size <= 0:
         raise LocalModelUnavailableError("model context size is required for chunk-frame admission")
-    budget = context_relative_budget(
-        context_size,
-        output_ratio_names=("KMD_CHUNK_FRAME_OUTPUT_RATIO",),
-        safety_ratio_names=("KMD_CHUNK_FRAME_SAFETY_RATIO",),
-        overhead_ratio_names=("KMD_CHUNK_FRAME_OVERHEAD_RATIO",),
-    )
-    estimated_input_tokens = _estimate_tokens(chunk_text)
     return chunk_text, {
         "runtime_context_size": context_size,
-        "reserved_output_tokens": int(n_predict),
         "context_source": "client_metadata",
-        "context_budget_policy": CHUNK_FRAME_CONTEXT_BUDGET_POLICY,
-        "capacity_policy": CONTEXT_CAPACITY_POLICY,
-        "safe_input_tokens": budget.safe_input_tokens,
-        "estimated_input_tokens": estimated_input_tokens,
+        "capacity_policy": "exact-rendered-prompt-remaining-context-output-v1",
+        "estimated_input_tokens": _estimate_tokens(chunk_text),
         "input_chars": len(chunk_text),
         "prompt_chunk_chars": len(chunk_text),
         "input_truncated": False,
@@ -3813,7 +3664,6 @@ def chunk_frame_cache_context(
         "schema_version": CHUNK_FRAME_SCHEMA_VERSION,
         "context_budget_policy": CHUNK_FRAME_CONTEXT_BUDGET_POLICY,
         **constraint,
-        "n_predict": int(n_predict),
         "model_fingerprint": _client_fingerprint(client),
     }
     if rel_path:
@@ -3848,10 +3698,9 @@ def call_model_chunk_frames(
     constraint = _constraint_settings(FRAME_EXTRACTION_GRAMMAR, FRAME_JSON_SCHEMA, CHUNK_FRAME_SCHEMA_VERSION)
     grammar_hash = str(constraint["grammar_hash"])
     cache_settings = {
-        "n_predict": n_predict,
         "schema": CHUNK_FRAME_SCHEMA_VERSION,
         **constraint,
-        "context_budget": context_budget,
+        "context_budget": _without_output_budget_metadata(context_budget),
     }
     cache_context = {**cache_settings, "model_fingerprint": _client_fingerprint(client)}
     prompt_hash = _cache_hash(
@@ -3877,8 +3726,8 @@ def call_model_chunk_frames(
             "prompt_hash": prompt_hash,
             "grammar_hash": grammar_hash,
             "elapsed": round(time.time() - start, 3),
-            "context_budget": context_budget,
-            "cache_context": cache_context,
+            "context_budget": _without_output_budget_metadata(context_budget),
+            "cache_context": _without_output_budget_metadata(cache_context),
         }
     raw = str(parsed.get("_model_raw") or "") if isinstance(parsed, dict) else ""
     frames = parsed.get("frames") if isinstance(parsed, dict) else None
@@ -3894,8 +3743,8 @@ def call_model_chunk_frames(
             "prompt_hash": prompt_hash,
             "grammar_hash": grammar_hash,
             "elapsed": round(time.time() - start, 3),
-            "context_budget": context_budget,
-            "cache_context": cache_context,
+            "context_budget": _without_output_budget_metadata(context_budget),
+            "cache_context": _without_output_budget_metadata(cache_context),
         }
     grounded: list[dict[str, Any]] = []
     rejected_for_grounding = 0
@@ -3983,8 +3832,8 @@ def call_model_chunk_frames(
             "grammar_hash": grammar_hash,
             "elapsed": parsed.get("_model_elapsed_seconds", round(time.time() - start, 3)),
             "rejected_for_grounding": rejected_for_grounding,
-            "context_budget": context_budget,
-            "cache_context": cache_context,
+            "context_budget": _without_output_budget_metadata(context_budget),
+            "cache_context": _without_output_budget_metadata(cache_context),
         }
     return {
         "accepted": True,
@@ -3993,8 +3842,8 @@ def call_model_chunk_frames(
         "elapsed": parsed.get("_model_elapsed_seconds", round(time.time() - start, 3)),
         "prompt_hash": prompt_hash,
         "grammar_hash": grammar_hash,
-        "context_budget": context_budget,
-        "cache_context": cache_context,
+        "context_budget": _without_output_budget_metadata(context_budget),
+        "cache_context": _without_output_budget_metadata(cache_context),
         "output_hash": hashlib.sha256(raw.encode()).hexdigest(),
         "fresh_or_cached": "fresh",
         "rejected_for_grounding": rejected_for_grounding,
@@ -4619,11 +4468,8 @@ def _compact_chunk_drs_eligible(chunk_text: str, client: LocalModelClient) -> bo
 
 
 def _compact_chunk_drs_retry_budgets(n_predict: int) -> list[int]:
-    return _relative_retry_budgets(
-        n_predict,
-        env_name="KMD_CHUNK_DRS_COMPACT_RETRY_OUTPUT_MULTIPLIERS",
-        default_multipliers=(2.0, 4.0),
-    )
+    return [int(n_predict), int(n_predict)]
+
 
 
 def _finalize_compact_cached_payload(
@@ -4657,7 +4503,7 @@ def _finalize_compact_cached_payload(
         **upgraded,
         "drs": repaired["drs"],
         "validation": validation,
-        "cache_context": cache_context,
+        "cache_context": _without_output_budget_metadata(cache_context),
         "compact_fact_policy": CHUNK_DRS_COMPACT_FACT_POLICY,
         "fresh_or_cached": "cache",
     }
@@ -4707,7 +4553,6 @@ def call_model_chunk_drs_compact(
         retry_budget = budgets[next_index]
         compact_constraint = _constraint_settings(CHUNK_DRS_GRAMMAR, COMPACT_CHUNK_DRS_JSON_SCHEMA, CHUNK_DRS_SCHEMA_VERSION)
         retry_settings = {
-            "n_predict": retry_budget,
             "schema": CHUNK_DRS_SCHEMA_VERSION,
             "compact_fact_policy": CHUNK_DRS_COMPACT_FACT_POLICY,
             **compact_constraint,
@@ -4789,7 +4634,6 @@ def call_model_chunk_drs_compact(
     compact_constraint = _constraint_settings(CHUNK_DRS_GRAMMAR, COMPACT_CHUNK_DRS_JSON_SCHEMA, CHUNK_DRS_SCHEMA_VERSION)
     for retry_index, budget in enumerate(budgets):
         cache_settings = {
-            "n_predict": budget,
             "schema": CHUNK_DRS_SCHEMA_VERSION,
             "compact_fact_policy": CHUNK_DRS_COMPACT_FACT_POLICY,
             **compact_constraint,
@@ -4818,7 +4662,6 @@ def call_model_chunk_drs_compact(
             and str(cached.get("raw_text") or "")
         ):
             marker = {
-                "n_predict": budget,
                 "reason": cached.get("reason"),
                 "elapsed": cached.get("elapsed"),
                 "prompt_hash": prompt_hash,
@@ -4836,7 +4679,6 @@ def call_model_chunk_drs_compact(
             if refresh_empty_legacy and not _compact_cached_payload_has_conditions(finalized):
                 failures.append(
                     {
-                        "n_predict": budget,
                         "reason": "empty_compact_drs_cache",
                         "elapsed": finalized.get("elapsed"),
                         "prompt_hash": prompt_hash,
@@ -4846,7 +4688,6 @@ def call_model_chunk_drs_compact(
                 cached_empty_undercoverage = True
             elif not _compact_cached_payload_has_conditions(finalized):
                 failure_marker = {
-                    "n_predict": budget,
                     "reason": "empty_compact_drs_cache",
                     "elapsed": finalized.get("elapsed"),
                     "prompt_hash": prompt_hash,
@@ -4933,7 +4774,7 @@ def call_model_chunk_drs_compact(
                 "raw_snippet": exc.snippet,
                 "prompt_hash": prompt_hash,
                 "compact_fact_policy": CHUNK_DRS_COMPACT_FACT_POLICY,
-                "cache_context": cache_context,
+                "cache_context": _without_output_budget_metadata(cache_context),
                 "elapsed": round(time.time() - start, 3),
             }
             if retry_index:
@@ -4943,7 +4784,6 @@ def call_model_chunk_drs_compact(
             _write_cache(cache_path, payload)
             failures.append(
                 {
-                    "n_predict": budget,
                     "reason": payload.get("reason"),
                     "error": payload.get("error"),
                     "elapsed": payload.get("elapsed"),
@@ -4959,7 +4799,7 @@ def call_model_chunk_drs_compact(
                 "error": str(exc),
                 "prompt_hash": prompt_hash,
                 "compact_fact_policy": CHUNK_DRS_COMPACT_FACT_POLICY,
-                "cache_context": cache_context,
+                "cache_context": _without_output_budget_metadata(cache_context),
                 "elapsed": round(time.time() - start, 3),
             }
             if retry_index:
@@ -4968,7 +4808,6 @@ def call_model_chunk_drs_compact(
             payload = _with_model_input_audits(payload, exc)
             failures.append(
                 {
-                    "n_predict": budget,
                     "reason": payload.get("reason"),
                     "error": payload.get("error"),
                     "elapsed": payload.get("elapsed"),
@@ -4988,7 +4827,7 @@ def call_model_chunk_drs_compact(
                 "raw_text": raw,
                 "prompt_hash": prompt_hash,
                 "compact_fact_policy": CHUNK_DRS_COMPACT_FACT_POLICY,
-                "cache_context": cache_context,
+                "cache_context": _without_output_budget_metadata(cache_context),
                 "elapsed": parsed.get("_model_elapsed_seconds", round(time.time() - start, 3)),
                 "validation": validation,
             }
@@ -4999,7 +4838,6 @@ def call_model_chunk_drs_compact(
             _write_cache(cache_path, payload)
             failures.append(
                 {
-                    "n_predict": budget,
                     "reason": payload.get("reason"),
                     "elapsed": payload.get("elapsed"),
                     "prompt_hash": prompt_hash,
@@ -5020,12 +4858,11 @@ def call_model_chunk_drs_compact(
             "elapsed": parsed.get("_model_elapsed_seconds", round(time.time() - start, 3)),
             "prompt_hash": prompt_hash,
             "compact_fact_policy": CHUNK_DRS_COMPACT_FACT_POLICY,
-            "cache_context": cache_context,
+            "cache_context": _without_output_budget_metadata(cache_context),
             "validation": validation,
             "context_budget": {
                 "compact": True,
                 "input_chars": len(chunk_text),
-                "reserved_output_tokens": budget,
                 "source_text_hash": source_text_hash,
             },
             "output_hash": hashlib.sha256(raw.encode()).hexdigest(),
@@ -5042,7 +4879,6 @@ def call_model_chunk_drs_compact(
         if refresh_empty_legacy and not _compact_cached_payload_has_conditions(payload):
             failures.append(
                 {
-                    "n_predict": budget,
                     "reason": "empty_compact_drs",
                     "elapsed": payload.get("elapsed"),
                     "prompt_hash": prompt_hash,
@@ -5065,14 +4901,6 @@ def call_model_chunk_drs_compact(
 
 
 def build_chunk_drs_prompt(chunk_text: str, *, rel_path: str = "", context_budget: dict[str, Any] | None = None) -> str:
-    max_evidence_chars = int((context_budget or {}).get("max_evidence_chars") or 0)
-    max_array_items = int((context_budget or {}).get("max_array_items") or 0)
-    evidence_budget_text = (
-        f" Each evidence_text item must be at most {max_evidence_chars} characters."
-        if max_evidence_chars > 0
-        else ""
-    )
-    array_budget_text = f" Each JSON array must contain at most {max_array_items} items." if max_array_items > 0 else ""
     source_span_text = (
         " Evidence must be copied as one exact contiguous source substring. A source-locality unit is one JSON "
         "array element, one nested JSON leaf record together with inherited scalar parent metadata, one JSONL "
@@ -5112,16 +4940,13 @@ def build_chunk_drs_prompt(chunk_text: str, *, rel_path: str = "", context_budge
         "grounded DRS conditions for visible source-supported field/value or row structure; do not leave "
         "conditions empty solely because the chunk is terse or delimiter-heavy. "
         + source_span_text
-        + "Every evidence_text item must be one contiguous substring copied exactly from the chunk."
-        + evidence_budget_text
-        + array_budget_text
-        + " "
+        + "Every evidence_text item must be one contiguous substring copied exactly from the chunk. "
         "Copy each evidence substring at most once; never concatenate or repeat the chunk inside a string."
         + json.dumps(
             {
                 "source_id": rel_path,
                 "schema_version": CHUNK_DRS_SCHEMA_VERSION,
-                "context_budget": context_budget or {},
+                "context_metadata": _without_output_budget_metadata(context_budget or {}),
                 "required_top_shape": {
                     "drs": {
                         "schema_version": CHUNK_DRS_SCHEMA_VERSION,
@@ -5219,7 +5044,7 @@ def build_chunk_drs_skeleton_prompt(chunk_text: str, *, rel_path: str = "", cont
             {
                 "source_id": rel_path,
                 "schema_version": CHUNK_DRS_SCHEMA_VERSION,
-                "context_budget": context_budget or {},
+                "context_metadata": _without_output_budget_metadata(context_budget or {}),
                 "required_top_shape": {
                     "drs_skeleton": {
                         "schema_version": CHUNK_DRS_SCHEMA_VERSION,
@@ -5273,7 +5098,7 @@ def build_chunk_drs_condition_prompt(
             {
                 "source_id": rel_path,
                 "schema_version": CHUNK_DRS_SCHEMA_VERSION,
-                "context_budget": context_budget or {},
+                "context_metadata": _without_output_budget_metadata(context_budget or {}),
                 "declared_referents": referents,
                 "declared_boxes": boxes,
                 "declared_temporal_records": temporal_records or [],
@@ -5313,7 +5138,7 @@ def build_chunk_drs_box_completion_prompt(
             {
                 "source_id": rel_path,
                 "schema_version": CHUNK_DRS_SCHEMA_VERSION,
-                "context_budget": context_budget or {},
+                "context_metadata": _without_output_budget_metadata(context_budget or {}),
                 "missing_box_ids": missing_box_ids,
                 "validation_errors": validation_errors,
                 "candidate_drs": candidate_drs,
@@ -5336,29 +5161,19 @@ def _context_limited_chunk_drs_text(
     client: LocalModelClient,
     *,
     rel_path: str,
-    n_predict: int,
+    n_predict: int | None = None,
 ) -> tuple[str, dict[str, Any]]:
+    del rel_path, n_predict
     context_size = _client_context_size(client)
     if context_size <= 0:
         raise LocalModelUnavailableError("model context size is required for chunk-DRS admission")
-    budget = context_relative_budget(
-        context_size,
-        output_ratio_names=("KMD_CHUNK_DRS_OUTPUT_RATIO",),
-        safety_ratio_names=("KMD_CHUNK_DRS_SAFETY_RATIO",),
-        overhead_ratio_names=("KMD_CHUNK_DRS_OVERHEAD_RATIO",),
-    )
-    estimated_input_tokens = _estimate_tokens(chunk_text)
     return chunk_text, {
         "runtime_context_size": context_size,
-        "reserved_output_tokens": int(n_predict),
         "context_source": "client_metadata",
-        "capacity_policy": CONTEXT_CAPACITY_POLICY,
-        "safe_input_tokens": budget.safe_input_tokens,
-        "estimated_input_tokens": estimated_input_tokens,
+        "capacity_policy": "exact-rendered-prompt-remaining-context-output-v1",
+        "estimated_input_tokens": _estimate_tokens(chunk_text),
         "input_chars": len(chunk_text),
         "prompt_chunk_chars": len(chunk_text),
-        "max_evidence_chars": chunk_drs_evidence_max_chars(chunk_text, n_predict),
-        "max_array_items": chunk_drs_array_max_items(n_predict),
         "input_truncated": False,
         "final_admission": "exact_rendered_prompt_tokenizer_preflight",
     }
@@ -6087,15 +5902,15 @@ def _complete_chunk_drs_stage(
     schema: dict[str, Any],
     *,
     stage: str,
-    n_predict: int,
+    n_predict: int | None = None,
 ) -> tuple[dict[str, Any], float, dict[str, Any]]:
+    del n_predict
     constraint = _constraint_settings(CHUNK_DRS_GRAMMAR, schema, CHUNK_DRS_SCHEMA_VERSION)
     prompt_hash = _cache_hash(
         stage,
         prompt,
         client,
         {
-            "n_predict": n_predict,
             "schema": CHUNK_DRS_SCHEMA_VERSION,
             "stage_failure_cache_policy": CHUNK_DRS_STAGE_FAILURE_CACHE_POLICY,
             **constraint,
@@ -6105,183 +5920,50 @@ def _complete_chunk_drs_stage(
     cached = _read_cache(path)
     if cached is not None and not _cached_structured_failure_retryable(cached):
         return cached, 0.0, {"prompt_hash": prompt_hash, **constraint}
-
-    retryable_limit_reasons = {
-        "output_limit_exhausted",
-        "generation_limit_exhausted",
-        "context_limit_exhausted",
-    }
-    max_retry_tokens = max(
-        int(n_predict),
-        context_token_capacity(
-            client.context_size(),
-            ratio_names=("KMD_CHUNK_DRS_STAGE_MAX_OUTPUT_RATIO",),
-            ratio_default=1.0 / 2.0,
-        ),
-    )
-    attempt_n_predict = int(n_predict)
-    attempts: list[dict[str, Any]] = []
-    if isinstance(cached, dict):
-        attempts.append(
-            {
-                "source": "cache",
-                "n_predict": int(
-                    ((cached.get("response_metadata") or {}).get("requested_output_tokens") or n_predict)
-                ),
-                "reason": str(cached.get("reason") or ""),
-                "elapsed": float(cached.get("elapsed") or 0.0),
-            }
+    start = time.time()
+    try:
+        parsed = _complete_structured(
+            client,
+            prompt,
+            grammar=CHUNK_DRS_GRAMMAR,
+            json_schema=schema,
         )
-        cached_reason = str(cached.get("reason") or "")
-        if cached_reason in retryable_limit_reasons:
-            cached_budget = int(
-                ((cached.get("response_metadata") or {}).get("requested_output_tokens") or n_predict)
-            )
-            retry_multiplier = 1.0 + context_ratio(
-                ("KMD_CHUNK_DRS_STAGE_RETRY_GROWTH_RATIO",),
-                1.0,
-            )
-            attempt_n_predict = min(max_retry_tokens, max(1, int(cached_budget * retry_multiplier)))
-
-    total_elapsed = 0.0
-    while True:
-        start = time.time()
-        try:
-            parsed = _complete_structured(
-                client,
-                prompt,
-                n_predict=attempt_n_predict,
-                grammar=CHUNK_DRS_GRAMMAR,
-                json_schema=schema,
-            )
-        except LocalModelJSONError as exc:
-            elapsed = round(time.time() - start, 3)
-            total_elapsed += elapsed
-            reason = str(exc.reason or "invalid_json")
-            attempts.append(
-                {
-                    "source": "fresh",
-                    "n_predict": attempt_n_predict,
-                    "reason": reason,
-                    "elapsed": elapsed,
-                    "response_metadata": exc.response_metadata,
-                }
-            )
-            if reason in retryable_limit_reasons and attempt_n_predict < max_retry_tokens:
-                retry_multiplier = 1.0 + context_ratio(
-                    ("KMD_CHUNK_DRS_STAGE_RETRY_GROWTH_RATIO",),
-                    1.0,
-                )
-                next_budget = min(
-                    max_retry_tokens,
-                    max(1, int(attempt_n_predict * retry_multiplier)),
-                )
-                if next_budget > attempt_n_predict:
-                    attempt_n_predict = next_budget
-                    continue
-            payload = {
+    except LocalModelJSONError as exc:
+        elapsed = round(time.time() - start, 3)
+        payload = _with_model_input_audits(
+            {
                 "accepted": False,
-                "reason": reason,
+                "reason": str(exc.reason or "invalid_json"),
                 "error": str(exc),
                 "raw_text": exc.raw_text,
                 "raw_snippet": exc.snippet,
                 "response_metadata": exc.response_metadata,
-                "elapsed": round(total_elapsed, 3),
-                "prompt_hash": prompt_hash,
-                "output_retry": {
-                    "policy": "adaptive-stage-output-doubling-with-context-preflight-v1",
-                    "initial_n_predict": int(n_predict),
-                    "maximum_n_predict": max_retry_tokens,
-                    "attempts": attempts,
-                },
-                **constraint,
-            }
-            payload = _with_model_input_audits(payload, exc)
-            _write_cache(path, payload)
-            return payload, float(total_elapsed), {"prompt_hash": prompt_hash, **constraint}
-        except LocalModelContextError as exc:
-            elapsed = round(time.time() - start, 3)
-            total_elapsed += elapsed
-            audit = (
-                (exc.cache_context.get("model_input_audit") or {})
-                if isinstance(exc.cache_context, dict)
-                else {}
-            )
-            context_budget = audit.get("context_budget") if isinstance(audit, dict) else {}
-            available = int((context_budget or {}).get("available_output_tokens") or 0)
-            attempts.append(
-                {
-                    "source": "fresh",
-                    "n_predict": attempt_n_predict,
-                    "reason": "context_budget_exceeded",
-                    "elapsed": elapsed,
-                    "available_output_tokens": available,
-                }
-            )
-            if available > int(n_predict) and available < attempt_n_predict:
-                reduced = max(int(n_predict), min(max_retry_tokens, available))
-                if reduced > int(n_predict) and reduced != attempt_n_predict:
-                    attempt_n_predict = reduced
-                    continue
-            payload = _with_model_input_audits(
-                {
-                    "accepted": False,
-                    "reason": "context_budget_exceeded",
-                    "error": str(exc),
-                    "raw_text": "",
-                    "elapsed": round(total_elapsed, 3),
-                    "output_retry": {
-                        "policy": "adaptive-stage-output-doubling-with-context-preflight-v1",
-                        "initial_n_predict": int(n_predict),
-                        "maximum_n_predict": max_retry_tokens,
-                        "attempts": attempts,
-                    },
-                },
-                exc.cache_context,
-            )
-            _write_cache(path, payload)
-            return payload, float(total_elapsed), {"prompt_hash": prompt_hash, **constraint}
-        except Exception as exc:
-            elapsed = round(time.time() - start, 3)
-            total_elapsed += elapsed
-            payload = _with_model_input_audits(
-                {
-                    "accepted": False,
-                    "reason": "request_failed",
-                    "error": str(exc),
-                    "raw_text": "",
-                    "elapsed": round(total_elapsed, 3),
-                    "output_retry": {
-                        "policy": "adaptive-stage-output-doubling-with-context-preflight-v1",
-                        "initial_n_predict": int(n_predict),
-                        "maximum_n_predict": max_retry_tokens,
-                        "attempts": attempts,
-                    },
-                },
-                exc,
-            )
-            return payload, float(total_elapsed), {"prompt_hash": prompt_hash, **constraint}
-
-        elapsed = float(parsed.get("_model_elapsed_seconds", round(time.time() - start, 3)))
-        total_elapsed += elapsed
-        attempts.append(
-            {
-                "source": "fresh",
-                "n_predict": attempt_n_predict,
-                "reason": "completed",
                 "elapsed": elapsed,
-                "response_metadata": parsed.get("_model_response_metadata") or {},
-            }
+                "prompt_hash": prompt_hash,
+                **constraint,
+            },
+            exc,
         )
-        parsed["_model_output_retry"] = {
-            "policy": "adaptive-stage-output-doubling-with-context-preflight-v1",
-            "initial_n_predict": int(n_predict),
-            "effective_n_predict": attempt_n_predict,
-            "maximum_n_predict": max_retry_tokens,
-            "attempts": attempts,
-        }
-        _write_cache(path, parsed)
-        return parsed, float(total_elapsed), {"prompt_hash": prompt_hash, **constraint}
+        _write_cache(path, payload)
+        return payload, elapsed, {"prompt_hash": prompt_hash, **constraint}
+    except Exception as exc:
+        elapsed = round(time.time() - start, 3)
+        payload = _with_model_input_audits(
+            {
+                "accepted": False,
+                "reason": "request_failed",
+                "error": str(exc),
+                "raw_text": "",
+                "elapsed": elapsed,
+                "prompt_hash": prompt_hash,
+                **constraint,
+            },
+            exc,
+        )
+        return payload, elapsed, {"prompt_hash": prompt_hash, **constraint}
+    elapsed = float(parsed.get("_model_elapsed_seconds", round(time.time() - start, 3)))
+    _write_cache(path, parsed)
+    return parsed, elapsed, {"prompt_hash": prompt_hash, **constraint}
 
 
 def _missing_argument_box_ids(validation: dict[str, Any]) -> list[str]:
@@ -6361,7 +6043,6 @@ def _call_model_chunk_drs_box_completion(
                 if isinstance(completion, dict)
                 else "",
                 "elapsed": elapsed,
-                "box_completion_n_predict": box_n_predict,
                 **constraint,
             },
             completion,
@@ -6378,7 +6059,6 @@ def _call_model_chunk_drs_box_completion(
                 "stage": "box_completion",
                 "raw_text": str(completion.get("_model_raw") or "") if isinstance(completion, dict) else "",
                 "elapsed": elapsed,
-                "box_completion_n_predict": box_n_predict,
                 **constraint,
             },
             completion,
@@ -6402,7 +6082,6 @@ def _call_model_chunk_drs_box_completion(
                 "raw_text": str(completion.get("_model_raw") or "") if isinstance(completion, dict) else "",
                 "elapsed": elapsed,
                 "validation": merged_validation,
-                "box_completion_n_predict": box_n_predict,
                 **constraint,
             },
             completion,
@@ -6427,7 +6106,6 @@ def _call_model_chunk_drs_box_completion(
             "context_budget": {
                 **context_budget,
                 "box_completion_policy": CHUNK_DRS_BOX_COMPLETION_POLICY,
-                "box_completion_n_predict": box_n_predict,
             },
             "output_hash": hashlib.sha256(raw.encode()).hexdigest(),
             "fresh_or_cached": "fresh",
@@ -6469,14 +6147,11 @@ def _call_model_chunk_drs_staged(
         prompt_chunk,
         context_budget.get("max_evidence_chars"),
     )
-    overall_max_items = int(context_budget.get("max_array_items") or chunk_drs_array_max_items(n_predict))
-    skeleton_max_items = min(overall_max_items, chunk_drs_array_max_items(skeleton_n_predict))
-    condition_max_items = min(overall_max_items, chunk_drs_array_max_items(condition_n_predict))
-    condition_max_arguments = schema_array_capacity(condition_n_predict, "arguments")
+    skeleton_max_items = None
+    condition_max_items = None
+    condition_max_arguments = None
     skeleton_context_budget = {
         **context_budget,
-        "max_evidence_chars": chunk_drs_evidence_max_chars(prompt_chunk, skeleton_n_predict),
-        "max_array_items": skeleton_max_items,
         "source_span_policy": CHUNK_DRS_SOURCE_SPAN_POLICY,
         "skeleton_source_span_policy": CHUNK_DRS_SKELETON_SOURCE_SPAN_POLICY,
     }
@@ -6485,7 +6160,7 @@ def _call_model_chunk_drs_staged(
         rel_path=rel_path,
         context_budget=skeleton_context_budget,
     )
-    skeleton_schema = chunk_drs_skeleton_json_schema(rel_path, skeleton_max_items)
+    skeleton_schema = chunk_drs_skeleton_json_schema(rel_path)
     skeleton, skeleton_elapsed, skeleton_constraint = _complete_chunk_drs_stage(
         client,
         cache_path,
@@ -6562,9 +6237,6 @@ def _call_model_chunk_drs_staged(
     temporal_ids = [str(item.get("id") or "") for item in temporals if str(item.get("id") or "")]
     condition_context_budget = {
         **context_budget,
-        "max_evidence_chars": chunk_drs_evidence_max_chars(prompt_chunk, condition_n_predict),
-        "max_array_items": condition_max_items,
-        "max_argument_items": condition_max_arguments,
         "source_span_policy": CHUNK_DRS_SOURCE_SPAN_POLICY,
         "skeleton_source_span_policy": CHUNK_DRS_SKELETON_SOURCE_SPAN_POLICY,
     }
@@ -6581,8 +6253,6 @@ def _call_model_chunk_drs_staged(
         box_ids=box_ids,
         referent_ids=referent_ids,
         temporal_ids=temporal_ids,
-        max_conditions=condition_max_items,
-        max_arguments=condition_max_arguments,
     )
     condition_stage, condition_elapsed, condition_constraint = _complete_chunk_drs_stage(
         client,
@@ -6683,14 +6353,9 @@ def _call_model_chunk_drs_staged(
                         "source_span_policy": CHUNK_DRS_SOURCE_SPAN_POLICY,
                         "skeleton_source_span_policy": CHUNK_DRS_SKELETON_SOURCE_SPAN_POLICY,
                         "skeleton_id_policy": CHUNK_DRS_SKELETON_ID_POLICY,
-                        "dynamic_skeleton_budget_policy": CHUNK_DRS_DYNAMIC_SKELETON_BUDGET_POLICY,
-                        "dynamic_condition_budget_policy": CHUNK_DRS_DYNAMIC_CONDITION_BUDGET_POLICY,
-                        "staged_skeleton_n_predict": skeleton_n_predict,
-                        "staged_condition_n_predict": condition_n_predict,
                         "staged_skeleton_max_items": skeleton_max_items,
                         "staged_condition_max_items": condition_max_items,
                         "staged_condition_max_arguments": condition_max_arguments,
-                        "box_completion_n_predict": box_completion["context_budget"]["box_completion_n_predict"],
                     },
                     "output_hash": hashlib.sha256(raw.encode()).hexdigest(),
                     "fresh_or_cached": "fresh",
@@ -6796,11 +6461,6 @@ def _call_model_chunk_drs_staged(
                 "source_span_policy": CHUNK_DRS_SOURCE_SPAN_POLICY,
                 "skeleton_source_span_policy": CHUNK_DRS_SKELETON_SOURCE_SPAN_POLICY,
                 "skeleton_id_policy": CHUNK_DRS_SKELETON_ID_POLICY,
-                "dynamic_skeleton_budget_policy": CHUNK_DRS_DYNAMIC_SKELETON_BUDGET_POLICY,
-                "dynamic_condition_budget_policy": CHUNK_DRS_DYNAMIC_CONDITION_BUDGET_POLICY,
-                "staged_skeleton_n_predict": skeleton_n_predict,
-                "staged_condition_n_predict": condition_n_predict,
-                "box_completion_n_predict": default_chunk_drs_box_completion_n_predict(n_predict),
             },
             "output_hash": hashlib.sha256(raw.encode()).hexdigest(),
             "fresh_or_cached": "fresh",
@@ -6825,8 +6485,6 @@ def chunk_drs_cache_context(
     context = {
         "prompt_version": PROMPT_VERSION,
         "schema_version": CHUNK_DRS_SCHEMA_VERSION,
-        "evidence_cap_policy": "min_chunk_or_reserved_output_ratio",
-        "array_cap_policy": "reserved_output_tokens_ratio",
         "staged_fallback": _staged_chunk_drs_enabled(),
         "staged_fallback_policy": CHUNK_DRS_STAGED_FALLBACK_POLICY,
         "grounding_repair_policy": CHUNK_DRS_GROUNDING_REPAIR_POLICY,
@@ -6843,18 +6501,10 @@ def chunk_drs_cache_context(
         "structured_record_route_policy": CHUNK_DRS_STRUCTURED_RECORD_ROUTE_POLICY,
         "staged_retry_diagnostics_policy": CHUNK_DRS_STAGED_RETRY_DIAGNOSTICS_POLICY,
         "stage_failure_cache_policy": CHUNK_DRS_STAGE_FAILURE_CACHE_POLICY,
-        "dynamic_skeleton_budget_policy": CHUNK_DRS_DYNAMIC_SKELETON_BUDGET_POLICY,
-        "dynamic_condition_budget_policy": CHUNK_DRS_DYNAMIC_CONDITION_BUDGET_POLICY,
-        "dynamic_output_budget_policy": CHUNK_DRS_DYNAMIC_OUTPUT_BUDGET_POLICY,
         "staged_first_policy": CHUNK_DRS_STAGED_FIRST_POLICY,
         "compact_first": _compact_chunk_drs_enabled() and _compact_chunk_drs_eligible(chunk_text, client),
         "compact_fact_policy": CHUNK_DRS_COMPACT_FACT_POLICY,
-        "compact_n_predict": default_compact_chunk_drs_n_predict(client, chunk_text),
-        "staged_skeleton_n_predict": default_staged_chunk_drs_skeleton_n_predict(int(n_predict)),
-        "staged_condition_n_predict": default_staged_chunk_drs_condition_n_predict(int(n_predict)),
-        "box_completion_n_predict": default_chunk_drs_box_completion_n_predict(int(n_predict)),
         **constraint,
-        "n_predict": int(n_predict),
         "model_fingerprint": _client_fingerprint(client),
     }
     if rel_path:
@@ -6906,7 +6556,7 @@ def _revalidate_cached_chunk_drs_raw(
         "reason": "cached_raw_revalidated",
         "drs": repaired["drs"],
         "validation": validation,
-        "cache_context": cache_context,
+        "cache_context": _without_output_budget_metadata(cache_context),
         "cache_revalidation": {
             "source": "raw_text",
             "from_reason": str(cached.get("reason") or ""),
@@ -6951,9 +6601,6 @@ def call_model_chunk_drs(
         "structured_record_route_policy": CHUNK_DRS_STRUCTURED_RECORD_ROUTE_POLICY,
         "staged_retry_diagnostics_policy": CHUNK_DRS_STAGED_RETRY_DIAGNOSTICS_POLICY,
         "stage_failure_cache_policy": CHUNK_DRS_STAGE_FAILURE_CACHE_POLICY,
-        "dynamic_skeleton_budget_policy": CHUNK_DRS_DYNAMIC_SKELETON_BUDGET_POLICY,
-        "dynamic_condition_budget_policy": CHUNK_DRS_DYNAMIC_CONDITION_BUDGET_POLICY,
-        "dynamic_output_budget_policy": CHUNK_DRS_DYNAMIC_OUTPUT_BUDGET_POLICY,
         "staged_first_policy": CHUNK_DRS_STAGED_FIRST_POLICY,
     }
     prompt = build_chunk_drs_prompt(prompt_chunk, rel_path=rel_path, context_budget=context_budget)
@@ -6966,10 +6613,9 @@ def call_model_chunk_drs(
     )
     constraint = _constraint_settings(CHUNK_DRS_GRAMMAR, drs_json_schema, CHUNK_DRS_SCHEMA_VERSION)
     cache_settings = {
-        "n_predict": n_predict,
         "schema": CHUNK_DRS_SCHEMA_VERSION,
         **constraint,
-        "context_budget": context_budget,
+        "context_budget": _without_output_budget_metadata(context_budget),
         "staged_fallback": _staged_chunk_drs_enabled(),
         "staged_fallback_policy": CHUNK_DRS_STAGED_FALLBACK_POLICY,
         "grounding_repair_policy": CHUNK_DRS_GROUNDING_REPAIR_POLICY,
@@ -6986,21 +6632,7 @@ def call_model_chunk_drs(
         "structured_record_route_policy": CHUNK_DRS_STRUCTURED_RECORD_ROUTE_POLICY,
         "staged_retry_diagnostics_policy": CHUNK_DRS_STAGED_RETRY_DIAGNOSTICS_POLICY,
         "stage_failure_cache_policy": CHUNK_DRS_STAGE_FAILURE_CACHE_POLICY,
-        "dynamic_skeleton_budget_policy": CHUNK_DRS_DYNAMIC_SKELETON_BUDGET_POLICY,
-        "dynamic_condition_budget_policy": CHUNK_DRS_DYNAMIC_CONDITION_BUDGET_POLICY,
-        "dynamic_output_budget_policy": CHUNK_DRS_DYNAMIC_OUTPUT_BUDGET_POLICY,
         "staged_first_policy": CHUNK_DRS_STAGED_FIRST_POLICY,
-        "staged_skeleton_n_predict": default_staged_chunk_drs_skeleton_n_predict(
-            int(n_predict),
-            prompt_chunk,
-            context_budget.get("max_evidence_chars"),
-        ),
-        "staged_condition_n_predict": default_staged_chunk_drs_condition_n_predict(
-            int(n_predict),
-            prompt_chunk,
-            context_budget.get("max_evidence_chars"),
-        ),
-        "box_completion_n_predict": default_chunk_drs_box_completion_n_predict(int(n_predict)),
     }
     cache_context = {
         **cache_settings,
@@ -7095,8 +6727,8 @@ def call_model_chunk_drs(
             "prompt_hash": prompt_hash,
             **constraint,
             "elapsed": round(time.time() - start, 3),
-            "context_budget": context_budget,
-            "cache_context": cache_context,
+            "context_budget": _without_output_budget_metadata(context_budget),
+            "cache_context": _without_output_budget_metadata(cache_context),
         }
         if _staged_chunk_drs_enabled():
             fallback = _call_model_chunk_drs_staged(
@@ -7130,8 +6762,8 @@ def call_model_chunk_drs(
             "prompt_hash": prompt_hash,
             **constraint,
             "elapsed": round(time.time() - start, 3),
-            "context_budget": context_budget,
-            "cache_context": cache_context,
+            "context_budget": _without_output_budget_metadata(context_budget),
+            "cache_context": _without_output_budget_metadata(cache_context),
         }
         return _with_model_input_audits(payload, exc)
     raw = str(parsed.get("_model_raw") or "") if isinstance(parsed, dict) else ""
@@ -7149,8 +6781,8 @@ def call_model_chunk_drs(
             **constraint,
             "elapsed": monolithic_elapsed,
             "validation": validation,
-            "context_budget": context_budget,
-            "cache_context": cache_context,
+            "context_budget": _without_output_budget_metadata(context_budget),
+            "cache_context": _without_output_budget_metadata(cache_context),
         }
         if _staged_chunk_drs_enabled():
             fallback = _call_model_chunk_drs_staged(
@@ -7209,8 +6841,8 @@ def call_model_chunk_drs(
             **constraint,
             "elapsed": parsed.get("_model_elapsed_seconds", round(time.time() - start, 3)),
             "validation": validation,
-            "context_budget": context_budget,
-            "cache_context": cache_context,
+            "context_budget": _without_output_budget_metadata(context_budget),
+            "cache_context": _without_output_budget_metadata(cache_context),
         }
         payload = _with_model_input_audits(payload, parsed)
         _write_cache(cache_path, payload)
@@ -7251,8 +6883,8 @@ def call_model_chunk_drs(
         "elapsed": parsed.get("_model_elapsed_seconds", round(time.time() - start, 3)),
         "prompt_hash": prompt_hash,
         **constraint,
-        "context_budget": context_budget,
-        "cache_context": cache_context,
+        "context_budget": _without_output_budget_metadata(context_budget),
+        "cache_context": _without_output_budget_metadata(cache_context),
         "validation": validation,
         "output_hash": hashlib.sha256(raw.encode()).hexdigest(),
         "fresh_or_cached": "fresh",
@@ -7355,11 +6987,7 @@ def call_model_answer_verification(
     meta_status_verification: bool = False,
 ) -> dict[str, Any]:
     if n_predict is None:
-        n_predict = _context_output_tokens(
-            client,
-            ratio_names=("KMD_VERIFIER_OUTPUT_RATIO",),
-            ratio_default=1.0 / 64.0,
-        )
+        n_predict = _context_output_tokens(client)
     prompt = build_answer_verification_prompt(
         question,
         query_frame,
@@ -7370,7 +6998,7 @@ def call_model_answer_verification(
     )
     constraint = _constraint_settings(ANSWER_VERIFICATION_GRAMMAR, VERIFICATION_JSON_SCHEMA, VERIFIER_SCHEMA_VERSION)
     grammar_hash = str(constraint["grammar_hash"])
-    cache_settings = {"n_predict": n_predict, "schema": VERIFIER_SCHEMA_VERSION, **constraint}
+    cache_settings = {"schema": VERIFIER_SCHEMA_VERSION, **constraint}
     cache_context = {
         **cache_settings,
         "model_fingerprint": _client_fingerprint(client),
@@ -7408,7 +7036,7 @@ def call_model_answer_verification(
             "snippet": exc.snippet,
             "prompt_hash": prompt_hash,
             "grammar_hash": grammar_hash,
-            "cache_context": cache_context,
+            "cache_context": _without_output_budget_metadata(cache_context),
             "elapsed": round(time.time() - start, 3),
         }
     except Exception as exc:
@@ -7418,7 +7046,7 @@ def call_model_answer_verification(
             "error": str(exc),
             "prompt_hash": prompt_hash,
             "grammar_hash": grammar_hash,
-            "cache_context": cache_context,
+            "cache_context": _without_output_budget_metadata(cache_context),
             "elapsed": round(time.time() - start, 3),
         }
     raw = str(parsed.get("_model_raw") or "") if isinstance(parsed, dict) else ""
@@ -7432,7 +7060,7 @@ def call_model_answer_verification(
             "raw_text": raw,
             "prompt_hash": prompt_hash,
             "grammar_hash": grammar_hash,
-            "cache_context": cache_context,
+            "cache_context": _without_output_budget_metadata(cache_context),
             "elapsed": round(time.time() - start, 3),
         }
     payload = {
@@ -7452,7 +7080,7 @@ def call_model_answer_verification(
         "elapsed": parsed.get("_model_elapsed_seconds", round(time.time() - start, 3)),
         "prompt_hash": prompt_hash,
         "grammar_hash": grammar_hash,
-        "cache_context": cache_context,
+        "cache_context": _without_output_budget_metadata(cache_context),
         "output_hash": hashlib.sha256(raw.encode()).hexdigest(),
         "fresh_or_cached": "fresh",
     }
@@ -7504,15 +7132,11 @@ def call_model_answer_canonicalization(
     n_predict: int | None = None,
 ) -> dict[str, Any]:
     if n_predict is None:
-        n_predict = _context_output_tokens(
-            client,
-            ratio_names=("KMD_ANSWER_CANONICALIZATION_OUTPUT_RATIO",),
-            ratio_default=1.0 / 128.0,
-        )
+        n_predict = _context_output_tokens(client)
     prompt = build_answer_canonicalization_prompt(question, candidate_answer, answer_type, evidence_items)
     constraint = _constraint_settings(ANSWER_CANONICALIZATION_GRAMMAR, CANONICAL_ANSWER_JSON_SCHEMA, ANSWER_SCHEMA_VERSION)
     grammar_hash = str(constraint["grammar_hash"])
-    cache_settings = {"n_predict": n_predict, "schema": ANSWER_SCHEMA_VERSION, **constraint}
+    cache_settings = {"schema": ANSWER_SCHEMA_VERSION, **constraint}
     cache_context = {
         **cache_settings,
         "model_fingerprint": _client_fingerprint(client),
@@ -7553,7 +7177,7 @@ def call_model_answer_canonicalization(
             "snippet": exc.snippet,
             "prompt_hash": prompt_hash,
             "grammar_hash": grammar_hash,
-            "cache_context": cache_context,
+            "cache_context": _without_output_budget_metadata(cache_context),
             "elapsed": round(time.time() - start, 3),
         }
     except Exception as exc:
@@ -7563,7 +7187,7 @@ def call_model_answer_canonicalization(
             "error": str(exc),
             "prompt_hash": prompt_hash,
             "grammar_hash": grammar_hash,
-            "cache_context": cache_context,
+            "cache_context": _without_output_budget_metadata(cache_context),
             "elapsed": round(time.time() - start, 3),
         }
     raw = str(parsed.get("_model_raw") or "") if isinstance(parsed, dict) else ""
@@ -7577,7 +7201,7 @@ def call_model_answer_canonicalization(
             "raw_text": raw,
             "prompt_hash": prompt_hash,
             "grammar_hash": grammar_hash,
-            "cache_context": cache_context,
+            "cache_context": _without_output_budget_metadata(cache_context),
             "elapsed": round(time.time() - start, 3),
         }
     answer = str(result.get("answer") or "").strip()
@@ -7590,7 +7214,7 @@ def call_model_answer_canonicalization(
             "raw_text": raw,
             "prompt_hash": prompt_hash,
             "grammar_hash": grammar_hash,
-            "cache_context": cache_context,
+            "cache_context": _without_output_budget_metadata(cache_context),
             "elapsed": round(time.time() - start, 3),
         }
     span_grounded = False
@@ -7621,7 +7245,7 @@ def call_model_answer_canonicalization(
             "raw_text": raw,
             "prompt_hash": prompt_hash,
             "grammar_hash": grammar_hash,
-            "cache_context": cache_context,
+            "cache_context": _without_output_budget_metadata(cache_context),
             "elapsed": round(time.time() - start, 3),
         }
     payload = {
@@ -7633,7 +7257,7 @@ def call_model_answer_canonicalization(
         "elapsed": parsed.get("_model_elapsed_seconds", round(time.time() - start, 3)),
         "prompt_hash": prompt_hash,
         "grammar_hash": grammar_hash,
-        "cache_context": cache_context,
+        "cache_context": _without_output_budget_metadata(cache_context),
         "output_hash": hashlib.sha256(raw.encode()).hexdigest(),
         "fresh_or_cached": "fresh",
     }
@@ -7687,15 +7311,11 @@ def call_model_source_resolved_answer(
     n_predict: int | None = None,
 ) -> dict[str, Any]:
     if n_predict is None:
-        n_predict = _context_output_tokens(
-            client,
-            ratio_names=("KMD_SOURCE_RESOLUTION_OUTPUT_RATIO",),
-            ratio_default=1.0 / 128.0,
-        )
+        n_predict = _context_output_tokens(client)
     prompt = build_source_resolved_answer_prompt(question, candidate_answer, answer_type, evidence_items)
     constraint = _constraint_settings(SOURCE_RESOLVED_ANSWER_GRAMMAR, SOURCE_RESOLVED_ANSWER_JSON_SCHEMA, ANSWER_SCHEMA_VERSION)
     grammar_hash = str(constraint["grammar_hash"])
-    cache_settings = {"n_predict": n_predict, "schema": ANSWER_SCHEMA_VERSION, **constraint}
+    cache_settings = {"schema": ANSWER_SCHEMA_VERSION, **constraint}
     cache_context = {
         **cache_settings,
         "model_fingerprint": _client_fingerprint(client),
@@ -7736,7 +7356,7 @@ def call_model_source_resolved_answer(
             "snippet": exc.snippet,
             "prompt_hash": prompt_hash,
             "grammar_hash": grammar_hash,
-            "cache_context": cache_context,
+            "cache_context": _without_output_budget_metadata(cache_context),
             "elapsed": round(time.time() - start, 3),
         }
     except Exception as exc:
@@ -7746,7 +7366,7 @@ def call_model_source_resolved_answer(
             "error": str(exc),
             "prompt_hash": prompt_hash,
             "grammar_hash": grammar_hash,
-            "cache_context": cache_context,
+            "cache_context": _without_output_budget_metadata(cache_context),
             "elapsed": round(time.time() - start, 3),
         }
     raw = str(parsed.get("_model_raw") or "") if isinstance(parsed, dict) else ""
@@ -7760,7 +7380,7 @@ def call_model_source_resolved_answer(
             "raw_text": raw,
             "prompt_hash": prompt_hash,
             "grammar_hash": grammar_hash,
-            "cache_context": cache_context,
+            "cache_context": _without_output_budget_metadata(cache_context),
             "elapsed": round(time.time() - start, 3),
         }
     answer = str(result.get("answer") or "").strip()
@@ -7773,7 +7393,7 @@ def call_model_source_resolved_answer(
             "raw_text": raw,
             "prompt_hash": prompt_hash,
             "grammar_hash": grammar_hash,
-            "cache_context": cache_context,
+            "cache_context": _without_output_budget_metadata(cache_context),
             "elapsed": round(time.time() - start, 3),
         }
     span_grounded = False
@@ -7804,7 +7424,7 @@ def call_model_source_resolved_answer(
             "raw_text": raw,
             "prompt_hash": prompt_hash,
             "grammar_hash": grammar_hash,
-            "cache_context": cache_context,
+            "cache_context": _without_output_budget_metadata(cache_context),
             "elapsed": round(time.time() - start, 3),
         }
     payload = {
@@ -7816,7 +7436,7 @@ def call_model_source_resolved_answer(
         "elapsed": parsed.get("_model_elapsed_seconds", round(time.time() - start, 3)),
         "prompt_hash": prompt_hash,
         "grammar_hash": grammar_hash,
-        "cache_context": cache_context,
+        "cache_context": _without_output_budget_metadata(cache_context),
         "output_hash": hashlib.sha256(raw.encode()).hexdigest(),
         "fresh_or_cached": "fresh",
     }
@@ -7874,15 +7494,11 @@ def call_model_identity_canonicalization(
     n_predict: int | None = None,
 ) -> dict[str, Any]:
     if n_predict is None:
-        n_predict = _context_output_tokens(
-            client,
-            ratio_names=("KMD_IDENTITY_OUTPUT_RATIO",),
-            ratio_default=1.0 / 128.0,
-        )
+        n_predict = _context_output_tokens(client)
     prompt = build_identity_canonicalization_prompt(question, candidate_answer, fuller_candidates, evidence_items)
     constraint = _constraint_settings(IDENTITY_CANONICALIZATION_GRAMMAR, IDENTITY_CANONICALIZATION_JSON_SCHEMA, ANSWER_SCHEMA_VERSION)
     grammar_hash = str(constraint["grammar_hash"])
-    cache_settings = {"n_predict": n_predict, "schema": ANSWER_SCHEMA_VERSION, **constraint}
+    cache_settings = {"schema": ANSWER_SCHEMA_VERSION, **constraint}
     cache_context = {
         **cache_settings,
         "model_fingerprint": _client_fingerprint(client),
@@ -7922,7 +7538,7 @@ def call_model_identity_canonicalization(
             "snippet": exc.snippet,
             "prompt_hash": prompt_hash,
             "grammar_hash": grammar_hash,
-            "cache_context": cache_context,
+            "cache_context": _without_output_budget_metadata(cache_context),
             "elapsed": round(time.time() - start, 3),
         }
     except Exception as exc:
@@ -7932,7 +7548,7 @@ def call_model_identity_canonicalization(
             "error": str(exc),
             "prompt_hash": prompt_hash,
             "grammar_hash": grammar_hash,
-            "cache_context": cache_context,
+            "cache_context": _without_output_budget_metadata(cache_context),
             "elapsed": round(time.time() - start, 3),
         }
     raw = str(parsed.get("_model_raw") or "") if isinstance(parsed, dict) else ""
@@ -7954,7 +7570,7 @@ def call_model_identity_canonicalization(
             "raw_text": raw,
             "prompt_hash": prompt_hash,
             "grammar_hash": grammar_hash,
-            "cache_context": cache_context,
+            "cache_context": _without_output_budget_metadata(cache_context),
             "elapsed": round(time.time() - start, 3),
         }
     answer = str(result.get("answer") or "")
@@ -7966,7 +7582,7 @@ def call_model_identity_canonicalization(
             "raw_text": raw,
             "prompt_hash": prompt_hash,
             "grammar_hash": grammar_hash,
-            "cache_context": cache_context,
+            "cache_context": _without_output_budget_metadata(cache_context),
             "elapsed": round(time.time() - start, 3),
         }
     if not span and answer != candidate_answer:
@@ -7982,7 +7598,7 @@ def call_model_identity_canonicalization(
             "raw_text": raw,
             "prompt_hash": prompt_hash,
             "grammar_hash": grammar_hash,
-            "cache_context": cache_context,
+            "cache_context": _without_output_budget_metadata(cache_context),
             "elapsed": round(time.time() - start, 3),
         }
     payload = {
@@ -7995,7 +7611,7 @@ def call_model_identity_canonicalization(
         "elapsed": parsed.get("_model_elapsed_seconds", round(time.time() - start, 3)),
         "prompt_hash": prompt_hash,
         "grammar_hash": grammar_hash,
-        "cache_context": cache_context,
+        "cache_context": _without_output_budget_metadata(cache_context),
         "output_hash": hashlib.sha256(raw.encode()).hexdigest(),
         "fresh_or_cached": "fresh",
     }

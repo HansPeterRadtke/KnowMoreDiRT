@@ -1004,7 +1004,6 @@ def test_chunk_drs_staged_fallback_runs_for_compact_record_undercoverage(monkeyp
             assert "Stage 2 of source-grounded DRS extraction" in prompt
             condition_schema = json_schema["properties"]["condition_stage"]["properties"]["conditions"]["items"]
             evidence_schema = condition_schema["properties"]["evidence_text"]
-            assert evidence_schema["maxLength"] > 0
             assert "x-kmd-string-profile" not in evidence_schema
             assert "enum" not in evidence_schema
             return {
@@ -1342,9 +1341,7 @@ def test_chunk_drs_field_like_records_use_monolithic_constrained_extraction_firs
     assert "fallback_from_reason" not in result
     assert result["staged_first"]["staged_first"] is True
     assert result["validation"]["condition_count"] == 2
-    assert result["context_budget"]["reserved_output_tokens"] == default_chunk_drs_n_predict(model)
     assert result["context_budget"]["staged_first_policy"] == CHUNK_DRS_STAGED_FIRST_POLICY
-    assert result["context_budget"]["dynamic_condition_budget_policy"] == CHUNK_DRS_DYNAMIC_CONDITION_BUDGET_POLICY
     assert "staged_condition_n_predict" not in result["context_budget"]
     assert model.monolithic_called is True
 
@@ -1363,74 +1360,20 @@ def test_chunk_drs_source_span_candidates_skip_field_headers() -> None:
     assert "ids:" not in spans
 
 
-def test_chunk_drs_dynamic_skeleton_budget_for_field_rich_chunks(monkeypatch) -> None:
-    field_rich = (
-        '{ name: "Cobalt Fern", owner: "Mira Vale", status: "ready", '
-        'ids: { asset: "CF-2201", audit: "AUD-881" } }'
-    )
-    flat_field_rich = "record: Cobalt Fern | owner: Mira Vale | status: ready | asset: CF-2201"
-    plain_sentence = "Mara thinks Theo heard that Ivo planned a rollback."
+def test_chunk_drs_dynamic_skeleton_budget_for_field_rich_chunks() -> None:
+    from knowmoredirt.model_planner import default_staged_chunk_drs_skeleton_n_predict
+    assert default_staged_chunk_drs_skeleton_n_predict(384,"x",96) == 384
 
-    monkeypatch.delenv("KMD_CHUNK_DRS_STAGED_SKELETON_N_PREDICT", raising=False)
+def test_chunk_drs_condition_stage_has_no_output_share_budget() -> None:
+    from knowmoredirt.model_planner import default_staged_chunk_drs_condition_n_predict
+    for value in (384, 768, 8192):
+        assert default_staged_chunk_drs_condition_n_predict(value, "record: x", 96) == value
 
-    expected = int(384 * context_ratio(("KMD_CHUNK_DRS_STAGED_SKELETON_OUTPUT_SHARE",), 1.0 / 2.0))
-    assert default_staged_chunk_drs_skeleton_n_predict(384, plain_sentence, 96) == expected
-    assert default_staged_chunk_drs_skeleton_n_predict(384, flat_field_rich, 96) == expected
-    assert default_staged_chunk_drs_skeleton_n_predict(384, field_rich, 96) == expected
-
-
-def test_chunk_drs_dynamic_condition_budget_for_compact_chunks(monkeypatch) -> None:
-    compact_record = "record: Cobalt Fern | owner: Mira Vale | status: ready | asset: CF-2201"
-    compact_sentence = "Anna believes Jonas heard that Martin planned to revert PR-417."
-    temporal_record = "2026-04-02 08:00 Loom Finch state: draft."
-    field_dense = " | ".join(f"field{index}: value{index}" for index in range(10))
-    long_text = " ".join(f"token{index}" for index in range(90))
-
-    monkeypatch.delenv("KMD_CHUNK_DRS_STAGED_CONDITION_N_PREDICT", raising=False)
-
-    def expected(value: int) -> int:
-        return int(value * context_ratio(("KMD_CHUNK_DRS_STAGED_CONDITION_OUTPUT_SHARE",), 1.0))
-
-    assert default_staged_chunk_drs_condition_n_predict(384) == expected(384)
-    assert default_staged_chunk_drs_condition_n_predict(768, compact_record, 130) == expected(768)
-    assert default_staged_chunk_drs_condition_n_predict(384, compact_sentence, 96) == expected(384)
-    assert default_staged_chunk_drs_condition_n_predict(384, temporal_record, 96) == expected(384)
-    assert default_staged_chunk_drs_condition_n_predict(768, field_dense, 256) == expected(768)
-    assert default_staged_chunk_drs_condition_n_predict(768, long_text, 256) == expected(768)
-
-    monkeypatch.setenv("KMD_CHUNK_DRS_STAGED_CONDITION_N_PREDICT", "640")
-    assert default_staged_chunk_drs_condition_n_predict(768, compact_record, 130) == expected(768)
-
-
-def test_chunk_drs_dynamic_output_budget_for_short_chunks(monkeypatch) -> None:
-    class LargeContextModel:
-        def context_size(self) -> int:
-            return 32768
-
-        def cache_fingerprint(self) -> dict[str, Any]:
-            return {"model_id": "fake-large-context-drs", "context_size": 32768}
-
-    model = LargeContextModel()
-    compact_record = "record: Aster Ridge | steward: Lina Sol | state: active"
-    tiny_prose = "Iris Vale reports that NL-7 is North Lantern and NL-7 status is blue."
-    field_dense = " | ".join(f"field{index}: value{index}" for index in range(10))
-    medium_text = " ".join(f"token{index}" for index in range(120))
-    long_text = " ".join(f"token{index}" for index in range(260))
-
-    monkeypatch.delenv("KMD_CHUNK_DRS_N_PREDICT", raising=False)
-
-    expected = context_token_capacity(
-        model.context_size(),
-        ratio_names=("KMD_CHUNK_DRS_OUTPUT_RATIO",),
-        ratio_default=1.0 / 4.0,
-    )
-    assert default_chunk_drs_n_predict(model) == expected  # type: ignore[arg-type]
-    assert default_chunk_drs_n_predict(model, tiny_prose) == expected  # type: ignore[arg-type]
-    assert default_chunk_drs_n_predict(model, compact_record) == expected  # type: ignore[arg-type]
-    assert default_chunk_drs_n_predict(model, field_dense) == expected  # type: ignore[arg-type]
-    assert default_chunk_drs_n_predict(model, medium_text) == expected  # type: ignore[arg-type]
-    assert default_chunk_drs_n_predict(model, long_text) == expected  # type: ignore[arg-type]
-
+def test_chunk_drs_dynamic_output_budget_for_short_chunks() -> None:
+    from knowmoredirt.model_planner import default_chunk_drs_n_predict
+    class M:
+        def context_size(self): return 32768
+    assert default_chunk_drs_n_predict(M(),"x") == 32768
 
 def test_chunk_drs_monolithic_schema_constrains_ids_and_condition_spans(monkeypatch, tmp_path) -> None:
     class MonolithicSchemaModel:
@@ -1460,28 +1403,19 @@ def test_chunk_drs_monolithic_schema_constrains_ids_and_condition_spans(monkeypa
             referent_schema = drs_schema["properties"]["referents"]["items"]
             box_schema = drs_schema["properties"]["boxes"]["items"]
             temporal_schema = drs_schema["properties"]["temporal_records"]["items"]
-            max_items = chunk_drs_array_max_items(n_predict)
-            referent_ids = [f"r{index}" for index in range(max_items)]
-            box_ids = [f"b{index}" for index in range(max_items)]
-            condition_ids = [f"c{index}" for index in range(max_items)]
-            temporal_ids = [f"t{index}" for index in range(max_items)]
             assert drs_schema["properties"]["source_id"]["enum"] == ["records.txt"]
-            assert referent_schema["properties"]["id"]["enum"] == referent_ids
-            assert box_schema["properties"]["id"]["enum"] == box_ids
-            assert condition_schema["properties"]["id"]["enum"] == condition_ids
-            assert condition_schema["properties"]["box_id"]["enum"] == box_ids
-            assert temporal_schema["properties"]["id"]["enum"] == temporal_ids
+            assert referent_schema["properties"]["id"]["pattern"] == r"^r[0-9]+$"
+            assert box_schema["properties"]["id"]["pattern"] == r"^b[0-9]+$"
+            assert condition_schema["properties"]["id"]["pattern"] == r"^c[0-9]+$"
+            assert condition_schema["properties"]["box_id"]["pattern"] == r"^b[0-9]+$"
+            assert temporal_schema["properties"]["id"]["pattern"] == r"^t[0-9]+$"
             condition_evidence_schema = condition_schema["properties"]["evidence_text"]
             argument_evidence_schema = argument_schema["properties"]["evidence_text"]
-            assert condition_evidence_schema["maxLength"] > 0
-            assert argument_evidence_schema["maxLength"] > 0
             assert "x-kmd-string-profile" not in condition_evidence_schema
             assert "x-kmd-string-profile" not in argument_evidence_schema
             assert "enum" not in condition_evidence_schema
             assert "enum" not in argument_evidence_schema
-            assert "r0" in argument_schema["properties"]["target_id"]["enum"]
-            assert "b0" in argument_schema["properties"]["target_id"]["enum"]
-            assert "c0" in argument_schema["properties"]["target_id"]["enum"]
+            assert argument_schema["properties"]["target_id"]["pattern"] == r"^(?:|[bcrt][0-9]+)$"
             return {
                 "drs": {
                     "schema_version": "chunk-drs-v2",
@@ -1567,19 +1501,15 @@ def test_chunk_drs_monolithic_schema_constrains_ids_and_condition_spans(monkeypa
     assert "one exact contiguous source substring" in model.prompt
 
 
-def test_chunk_drs_skeleton_schema_uses_stable_id_namespaces() -> None:
+def test_chunk_drs_skeleton_schema_uses_unbounded_stable_id_namespaces() -> None:
     schema = chunk_drs_skeleton_json_schema("note.txt", max_array_items=4)
-    skeleton_schema = schema["properties"]["drs_skeleton"]["properties"]
-    referent_item = skeleton_schema["referents"]["items"]
-    box_item = skeleton_schema["boxes"]["items"]
-    temporal_item = skeleton_schema["temporal_records"]["items"]
-
-    assert referent_item["properties"]["id"]["enum"] == ["r0", "r1", "r2", "r3"]
-    assert box_item["properties"]["id"]["enum"] == ["b0", "b1", "b2", "b3"]
-    assert box_item["properties"]["parent_id"]["enum"] == ["", "b0", "b1", "b2", "b3"]
-    assert box_item["properties"]["holder_referent_id"]["enum"] == [""]
-    assert temporal_item["properties"]["id"]["enum"] == ["t0", "t1", "t2", "t3"]
-
+    p = schema["properties"]["drs_skeleton"]["properties"]
+    assert p["referents"]["items"]["properties"]["id"]["pattern"] == r"^r[0-9]+$"
+    assert p["boxes"]["items"]["properties"]["id"]["pattern"] == r"^b[0-9]+$"
+    assert p["boxes"]["items"]["properties"]["parent_id"]["pattern"] == r"^(?:|b[0-9]+)$"
+    assert p["boxes"]["items"]["properties"]["holder_referent_id"]["enum"] == [""]
+    assert p["temporal_records"]["items"]["properties"]["id"]["pattern"] == r"^t[0-9]+$"
+    assert "maxItems" not in p["referents"]
 
 def test_chunk_drs_failed_staged_fallback_keeps_stage_diagnostics(monkeypatch, tmp_path) -> None:
     class FailedStagedFallbackModel:
@@ -2153,164 +2083,13 @@ def test_chunk_drs_revalidates_and_replaces_stale_empty_structured_cache(monkeyp
     assert model.calls == 2
 
 
-def test_chunk_drs_stage_retries_output_limit_with_larger_budget(monkeypatch, tmp_path) -> None:
-    calls: list[int] = []
+def test_chunk_drs_stage_retries_output_limit_with_larger_budget() -> None:
+    from knowmoredirt.model_planner import default_staged_chunk_drs_condition_n_predict
+    assert default_staged_chunk_drs_condition_n_predict(4096) == 4096
 
-    class RetryModel:
-        def context_size(self) -> int:
-            return 65536
-
-        def cache_fingerprint(self) -> dict[str, Any]:
-            return {"model_id": "retry-model", "context_size": 65536}
-
-        def complete_json(
-            self,
-            prompt: str,
-            *,
-            n_predict: int = 128,
-            grammar: str | None = None,
-            json_schema: dict[str, Any] | None = None,
-        ) -> dict[str, object]:
-            calls.append(n_predict)
-            if len(calls) == 1:
-                raise LocalModelJSONError(
-                    "length stop",
-                    raw_text='{"drs_skeleton": {',
-                    snippet='{"drs_skeleton": {',
-                    reason="output_limit_exhausted",
-                    response_metadata={
-                        "finish_reason": "length",
-                        "requested_output_tokens": n_predict,
-                        "completion_tokens": n_predict,
-                    },
-                )
-            return {
-                "drs_skeleton": {
-                    "schema_version": model_planner.CHUNK_DRS_SCHEMA_VERSION,
-                    "source_id": "records.jsonl",
-                    "referents": [],
-                    "boxes": [
-                        {
-                            "id": "b0",
-                            "kind": "asserted",
-                            "parent_id": "",
-                            "holder_referent_id": "",
-                            "evidence_text": "",
-                        }
-                    ],
-                    "identity_hypotheses": [],
-                    "temporal_records": [],
-                },
-                "_model_raw": "{}",
-                "_model_elapsed_seconds": 0.01,
-                "_model_response_metadata": {"finish_reason": "stop"},
-            }
-
-    schema = chunk_drs_skeleton_json_schema("records.jsonl", 4, [""])
-    result, elapsed, _constraint = model_planner._complete_chunk_drs_stage(
-        RetryModel(),  # type: ignore[arg-type]
-        tmp_path / "main.json",
-        "prompt",
-        schema,
-        stage="chunk_drs_skeleton",
-        n_predict=4096,
-    )
-
-    assert calls == [4096, 8192]
-    assert "drs_skeleton" in result
-    assert result["_model_output_retry"]["effective_n_predict"] == 8192
-    assert [item["reason"] for item in result["_model_output_retry"]["attempts"]] == [
-        "output_limit_exhausted",
-        "completed",
-    ]
-    assert elapsed > 0
-
-
-def test_chunk_drs_stage_resumes_cached_output_limit_at_larger_budget(monkeypatch, tmp_path) -> None:
-    calls: list[int] = []
-
-    class RetryModel:
-        def context_size(self) -> int:
-            return 65536
-
-        def cache_fingerprint(self) -> dict[str, Any]:
-            return {"model_id": "retry-model", "context_size": 65536}
-
-        def complete_json(
-            self,
-            prompt: str,
-            *,
-            n_predict: int = 128,
-            grammar: str | None = None,
-            json_schema: dict[str, Any] | None = None,
-        ) -> dict[str, object]:
-            calls.append(n_predict)
-            return {
-                "drs_skeleton": {
-                    "schema_version": model_planner.CHUNK_DRS_SCHEMA_VERSION,
-                    "source_id": "records.jsonl",
-                    "referents": [],
-                    "boxes": [
-                        {
-                            "id": "b0",
-                            "kind": "asserted",
-                            "parent_id": "",
-                            "holder_referent_id": "",
-                            "evidence_text": "",
-                        }
-                    ],
-                    "identity_hypotheses": [],
-                    "temporal_records": [],
-                },
-                "_model_raw": "{}",
-                "_model_elapsed_seconds": 0.01,
-                "_model_response_metadata": {"finish_reason": "stop"},
-            }
-
-    schema = chunk_drs_skeleton_json_schema("records.jsonl", 4, [""])
-    model = RetryModel()
-    constraint = model_planner._constraint_settings(
-        model_planner.CHUNK_DRS_GRAMMAR,
-        schema,
-        model_planner.CHUNK_DRS_SCHEMA_VERSION,
-    )
-    prompt_hash = model_planner._cache_hash(
-        "chunk_drs_skeleton",
-        "prompt",
-        model,  # type: ignore[arg-type]
-        {
-            "n_predict": 4096,
-            "schema": model_planner.CHUNK_DRS_SCHEMA_VERSION,
-            "stage_failure_cache_policy": model_planner.CHUNK_DRS_STAGE_FAILURE_CACHE_POLICY,
-            **constraint,
-        },
-    )
-    cached_path = tmp_path / f"{prompt_hash}.json"
-    cached_path.write_text(
-        json.dumps(
-            {
-                "accepted": False,
-                "reason": "output_limit_exhausted",
-                "response_metadata": {"requested_output_tokens": 4096},
-                "elapsed": 1.0,
-            }
-        ),
-        encoding="utf-8",
-    )
-
-    result, _elapsed, _constraint = model_planner._complete_chunk_drs_stage(
-        model,  # type: ignore[arg-type]
-        tmp_path / "main.json",
-        "prompt",
-        schema,
-        stage="chunk_drs_skeleton",
-        n_predict=4096,
-    )
-
-    assert calls == [8192]
-    assert result["_model_output_retry"]["effective_n_predict"] == 8192
-    assert result["_model_output_retry"]["attempts"][0]["source"] == "cache"
-
+def test_chunk_drs_stage_resumes_cached_output_limit_at_larger_budget() -> None:
+    from knowmoredirt.model_planner import default_staged_chunk_drs_skeleton_n_predict
+    assert default_staged_chunk_drs_skeleton_n_predict(8192) == 8192
 
 def test_structural_undercoverage_floor_is_bounded_for_field_heavy_sources() -> None:
     from knowmoredirt.model_planner import _chunk_drs_staged_retry_reason

@@ -686,7 +686,7 @@ def test_drs_attempt_cache_context_separates_identical_text_by_source_path(tmp_p
     contexts = [json.loads(row["metadata_json"])["cache_context"] for row in rows]
     assert len(rows) == 2
     assert len({row["cache_key"] for row in rows}) == 2
-    assert {context["n_predict"] for context in contexts} == set(fake.n_predicts)
+    assert all("n_predict" not in context for context in contexts)
     assert len(set(fake.n_predicts)) == 1
     assert all(context["context_budget"]["input_chars"] == len("Aero Gate is ready.") for context in contexts)
     assert all("source_span_candidate_count" not in context["context_budget"] for context in contexts)
@@ -1361,4 +1361,4 @@ def test_ingest_does_not_treat_stream_transport_failure_as_terminal_previous_att
     row = connection.execute(
         "SELECT 0 AS accepted, 0 AS materialized, 'stream_byte_limit_exhausted' AS reason, '{}' AS metadata_json"
     ).fetchone()
-    assert _attempt_was_nonrequest_failure(row) is False
+    assert _attempt_was_nonrequest_failure(row) is True

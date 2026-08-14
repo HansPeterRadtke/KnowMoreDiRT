@@ -22,7 +22,6 @@ from .model_planner import (
     call_model_chunk_frames,
     chunk_drs_cache_context,
     chunk_frame_cache_context,
-    default_chunk_drs_n_predict,
     structured_failure_retryable,
 )
 from .relations import ExtractedRelation, extract_relations, transcript_turn_parts
@@ -468,10 +467,6 @@ def _scan_unit_max_chars(semantic_client: Any | None) -> int:
         except Exception:
             context_size = 0
         if context_size > 0:
-            output_ratio = context_ratio(
-                ("KMD_SCAN_UNIT_OUTPUT_RATIO", "KMD_CHUNK_DRS_OUTPUT_RATIO", "KMD_CONTEXT_OUTPUT_RATIO"),
-                1.0 / 4.0,
-            )
             safety_ratio = context_ratio(
                 ("KMD_SCAN_UNIT_SAFETY_RATIO", "KMD_CONTEXT_SAFETY_RATIO"),
                 1.0 / 50.0,
@@ -480,18 +475,10 @@ def _scan_unit_max_chars(semantic_client: Any | None) -> int:
                 ("KMD_SCAN_UNIT_OVERHEAD_RATIO", "KMD_CONTEXT_OVERHEAD_RATIO"),
                 3.0 / 100.0,
             )
-            skeleton_share = context_ratio(
-                ("KMD_CHUNK_DRS_STAGED_SKELETON_OUTPUT_SHARE",),
-                1.0 / 2.0,
-            )
-            staged_skeleton_ratio = context_ratio(
-                ("KMD_SCAN_UNIT_STAGED_SKELETON_RATIO",),
-                output_ratio * skeleton_share,
-            )
-            safe_input_ratio = max(
-                0.0,
-                1.0 - output_ratio - safety_ratio - base_overhead_ratio - staged_skeleton_ratio,
-            )
+            # Input packing leaves room only for real prompt overhead/safety. It
+            # does not reserve an arbitrary model-output share; generation gets
+            # whatever context remains after the exact rendered prompt.
+            safe_input_ratio = max(0.0, 1.0 - safety_ratio - base_overhead_ratio)
             chars_per_token = positive_float(
                 ("KMD_SCAN_UNIT_CHARS_PER_TOKEN", "KMD_CONTEXT_CHARS_PER_TOKEN"),
                 3.0,
@@ -512,10 +499,8 @@ def _ingest_model_drs_for_sentence(
     refresh_empty_compact_legacy: bool = False,
 ) -> int:
     semantic_index += 1
-    drs_n_predict = default_chunk_drs_n_predict(semantic_client, sentence.text)
     drs_cache_context = chunk_drs_cache_context(
         semantic_client,
-        n_predict=drs_n_predict,
         rel_path=sentence.rel_path,
         chunk_text=sentence.text,
     )
@@ -531,7 +516,7 @@ def _ingest_model_drs_for_sentence(
         ("chunk_drs", "local_model_drs", drs_cache_key),
     ).fetchone()
     if previous_attempt is None:
-        stable_contract_fields = ("source_text_hash", "n_predict", "schema_version", "model_fingerprint")
+        stable_contract_fields = ("source_text_hash", "schema_version", "model_fingerprint")
         candidate_attempts = store.execute(
             """
             SELECT accepted, materialized, reason, metadata_json
@@ -598,7 +583,6 @@ def _ingest_model_drs_for_sentence(
         sentence.text,
         semantic_client,
         rel_path=sentence.rel_path,
-        n_predict=drs_n_predict,
         refresh_empty_compact_legacy=refresh_empty_compact_legacy,
     )
     actual_drs_cache_context = (

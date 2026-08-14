@@ -23,7 +23,7 @@ class FakeContextClient:
 
     def context_size(self): return 65536
     def cache_fingerprint(self): return {"model_id": "fake", "context_size": 65536, "request_settings": {}, "transport_settings": {}}
-    def complete_json(self, prompt, *, n_predict, json_schema):
+    def complete_json(self, prompt, *, n_predict=None, json_schema=None):
         self.calls += 1
         assert "[CHUNK 0]" in prompt and "[CHUNK 2]" in prompt
         return {
@@ -32,6 +32,7 @@ class FakeContextClient:
                 "evidence_text": "Then I woke up. It had all been a dream.", "holder_surface": "",
                 "reason": "closing boundary scopes prior chunks", "confidence": 0.99,
             }],
+            "discourse_relations": [],
             "temporal_scopes": [{
                 "temporal_value": "2026-07-01", "start_chunk": 1, "end_chunk": 1, "evidence_chunk": 1,
                 "evidence_text": "Dated 2026-07-01", "reason": "dated section header", "confidence": 0.95,
@@ -143,7 +144,7 @@ def test_invalid_document_context_result_is_not_cached(tmp_path: Path, monkeypat
     monkeypatch.setenv("KMD_DOCUMENT_CONTEXT_CACHE_DIR", str(cache_root))
 
     class BadClient(FakeContextClient):
-        def complete_json(self, prompt, *, n_predict, json_schema):
+        def complete_json(self, prompt, *, n_predict=None, json_schema=None):
             self.calls += 1
             return {
                 "context_segments": [{
@@ -151,6 +152,7 @@ def test_invalid_document_context_result_is_not_cached(tmp_path: Path, monkeypat
                     "evidence_text": "fabricated evidence", "holder_surface": "", "reason": "bad", "confidence": 0.99,
                 }],
                 "temporal_scopes": [],
+                "discourse_relations": [],
             }
 
     client = BadClient()
@@ -212,6 +214,7 @@ def test_document_context_rejects_out_of_range_index_after_decode(tmp_path, monk
                     "confidence": 1.0,
                 }],
                 "temporal_scopes": [],
+                "discourse_relations": [],
             }
 
     monkeypatch.setenv("KMD_DOCUMENT_CONTEXT_CACHE_DIR", str(tmp_path / "bad-index-cache"))
@@ -223,7 +226,7 @@ def test_document_context_rejects_out_of_range_index_after_decode(tmp_path, monk
 
 def test_document_context_prompt_allows_unmistakable_sleep_scope_without_dream_word(tmp_path: Path, monkeypatch) -> None:
     class PromptClient(FakeContextClient):
-        def complete_json(self, prompt, *, n_predict, json_schema):
+        def complete_json(self, prompt, *, n_predict=None, json_schema=None):
             self.calls += 1
             assert "does not require the literal words dream or dreamed" in prompt
             assert "occurred only during sleep" in prompt

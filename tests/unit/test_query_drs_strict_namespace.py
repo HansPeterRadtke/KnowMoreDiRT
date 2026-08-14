@@ -1,6 +1,5 @@
 from __future__ import annotations
 
-from knowmoredirt.context_budget import context_ratio, positive_float, schema_array_capacity
 from knowmoredirt.model_planner import (
     CHUNK_DRS_STRUCTURE_VALIDATION_POLICY,
     QUERY_DRS_VALIDATION_POLICY,
@@ -1020,37 +1019,21 @@ def test_chunk_drs_rejects_multiple_root_boxes(monkeypatch, tmp_path) -> None:
     assert "multiple_root_boxes:b0,b1" in result["validation"]["errors"]
 
 
-def test_chunk_drs_evidence_cap_uses_reserved_output_budget(monkeypatch) -> None:
-    monkeypatch.delenv("KMD_CHUNK_DRS_MAX_EVIDENCE_CHARS", raising=False)
-    monkeypatch.delenv("KMD_CHUNK_DRS_MAX_ARRAY_ITEMS", raising=False)
-
-    expected = int(
-        512
-        * context_ratio(("KMD_CHUNK_DRS_EVIDENCE_OUTPUT_RATIO",), 1.0 / 4.0)
-        * positive_float(("KMD_CHUNK_DRS_EVIDENCE_CHARS_PER_OUTPUT_TOKEN",), 3.0)
-    )
-    assert chunk_drs_evidence_max_chars("x" * 1000, 512) == expected
-    assert chunk_drs_evidence_max_chars("x" * 50, 512) == 50
-    assert chunk_drs_array_max_items(768) == schema_array_capacity(768, "dense")
-
-    monkeypatch.setenv("KMD_CHUNK_DRS_MAX_EVIDENCE_CHARS", "77")
-    monkeypatch.setenv("KMD_CHUNK_DRS_MAX_ARRAY_ITEMS", "6")
-
-    assert chunk_drs_evidence_max_chars("x" * 1000, 512) == expected
-    assert chunk_drs_array_max_items(768) != 6
+def test_chunk_drs_evidence_and_array_helpers_do_not_derive_output_caps() -> None:
+    assert chunk_drs_evidence_max_chars("x" * 1000, 1) == 1000
+    assert chunk_drs_evidence_max_chars("x" * 50, 999999) == 50
+    assert chunk_drs_array_max_items(1) is None
+    assert chunk_drs_array_max_items(999999) is None
 
 
-def test_chunk_drs_schema_caps_arrays_from_output_budget() -> None:
+def test_chunk_drs_schema_does_not_cap_arrays_or_evidence_from_output_budget() -> None:
     schema = chunk_drs_json_schema(31, 7)
     drs_schema = schema["properties"]["drs"]
     condition_schema = drs_schema["properties"]["conditions"]["items"]
-
-    assert drs_schema["properties"]["referents"]["maxItems"] == 7
-    assert drs_schema["properties"]["boxes"]["maxItems"] == 7
-    assert drs_schema["properties"]["conditions"]["maxItems"] == 7
-    assert condition_schema["properties"]["arguments"]["maxItems"] == 7
-    assert drs_schema["properties"]["evidence_spans"]["maxItems"] == 7
-    assert drs_schema["properties"]["evidence_spans"]["items"]["maxLength"] == 31
+    for name in ("referents", "boxes", "conditions", "evidence_spans"):
+        assert "maxItems" not in drs_schema["properties"][name]
+    assert "maxItems" not in condition_schema["properties"]["arguments"]
+    assert "maxLength" not in drs_schema["properties"]["evidence_spans"]["items"]
 
 
 def test_chunk_drs_production_schema_omits_auxiliary_note_arrays(monkeypatch, tmp_path) -> None:

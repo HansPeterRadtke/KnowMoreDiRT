@@ -13,7 +13,7 @@ from typing import Any, Sequence
 
 import numpy as np
 
-from context_capacity import context_char_capacity, context_token_capacity, schema_array_capacity
+from context_capacity import context_char_capacity, context_token_capacity
 
 from .content_pipeline import (
     AnalysisClient,
@@ -120,12 +120,6 @@ def default_collection_id(root: os.PathLike[str] | str) -> str:
 def normalize_plan(value: dict[str, Any], question: str, *, context_size: int) -> dict[str, Any]:
     if context_size <= 0:
         raise ValueError("context_size must be positive")
-    plan_output = context_token_capacity(
-        context_size,
-        ratio_names=("KMD_FOLDER_PLAN_OUTPUT_RATIO",),
-        ratio_default=1.0 / 32.0,
-    )
-    action_capacity = schema_array_capacity(plan_output, "compact")
     result_capacity = context_token_capacity(
         context_size,
         ratio_names=("KMD_FOLDER_RESULT_COUNT_RATIO",),
@@ -142,7 +136,7 @@ def normalize_plan(value: dict[str, Any], question: str, *, context_size: int) -
     actions: list[dict[str, Any]] = []
     seen: set[str] = set()
     if isinstance(raw_actions, list):
-        for raw in raw_actions[:action_capacity]:
+        for raw in raw_actions:
             if not isinstance(raw, dict):
                 continue
             action_type = str(raw.get("action_type", ""))
@@ -501,13 +495,6 @@ class FolderQuestionAssistant:
         self.analysis_client = analysis_client
         self.embedding_client = embedding_client
         self.context_size = int(self.analysis_client.model_context().configured_tokens)
-        self.plan_output_tokens = self.analysis_client.output_token_budget(
-            ratio_names=("KMD_FOLDER_PLAN_OUTPUT_RATIO",), ratio_default=1.0 / 32.0
-        )
-        self.answer_output_tokens = self.analysis_client.output_token_budget(
-            ratio_names=("KMD_FOLDER_ANSWER_OUTPUT_RATIO",), ratio_default=1.0 / 16.0
-        )
-        self.max_evidence = schema_array_capacity(self.answer_output_tokens, "dense")
         self.literal_excerpt_characters = context_char_capacity(
             self.context_size,
             ratio_names=("KMD_FOLDER_LITERAL_EXCERPT_RATIO",),
@@ -520,7 +507,7 @@ class FolderQuestionAssistant:
             schema=query_plan_schema(),
             system=PLAN_SYSTEM_PROMPT,
             user=f"User question:\n{question}",
-            max_tokens=self.plan_output_tokens,
+            max_tokens=None,
         )
         return normalize_plan(generated.value, question, context_size=self.context_size)
 
@@ -662,9 +649,9 @@ class FolderQuestionAssistant:
                 continue
             seen.add(key)
             deduplicated.append(item)
-        for index, item in enumerate(deduplicated[: self.max_evidence], start=1):
+        for index, item in enumerate(deduplicated, start=1):
             item["evidence_id"] = f"E{index}"
-        return action_results, deduplicated[: self.max_evidence]
+        return action_results, deduplicated
 
     def answer(
         self,
@@ -687,17 +674,24 @@ class FolderQuestionAssistant:
             }
             for item in evidence
         ]
-        ids = [item["evidence_id"] for item in evidence]
+        while True:
+            ids = [item["evidence_id"] for item in evidence_payload]
+            user = (
+                f"Question:\n{question}\n\nSearch plan:\n{json.dumps(plan, ensure_ascii=False)}"
+                f"\n\nTool result summaries:\n{json.dumps(list(action_results), ensure_ascii=False)}"
+                f"\n\nEvidence:\n{json.dumps(evidence_payload, ensure_ascii=False)}"
+            )
+            if self.analysis_client.request_fits(system=ANSWER_SYSTEM_PROMPT, user=user, max_tokens=None):
+                break
+            if not evidence_payload:
+                raise RuntimeError("folder answer prompt cannot fit model context even without evidence")
+            evidence_payload.pop()
         generated = self.analysis_client.complete(
             schema_name="grounded_folder_answer",
             schema=answer_schema(ids),
             system=ANSWER_SYSTEM_PROMPT,
-            user=(
-                f"Question:\n{question}\n\nSearch plan:\n{json.dumps(plan, ensure_ascii=False)}"
-                f"\n\nTool result summaries:\n{json.dumps(list(action_results), ensure_ascii=False)}"
-                f"\n\nEvidence:\n{json.dumps(evidence_payload, ensure_ascii=False)}"
-            ),
-            max_tokens=self.answer_output_tokens,
+            user=user,
+            max_tokens=None,
         )
         result = generated.value
         valid_ids = set(ids)
@@ -736,6 +730,6 @@ class FolderQuestionAssistant:
             "plan": plan,
             "action_results": action_results,
             "evidence": evidence,
-            "evidence_capacity": self.max_evidence,
+            "evidence_capacity": len(evidence),
             "result": answer,
         }

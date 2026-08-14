@@ -192,12 +192,11 @@ def test_internal_manifest_tracks_vector_and_transport_policy(
     args = type("Args", (), {"corpus_override": None, "question_id": [], "stop_on_failure": False})()
     metadata = {"endpoint": "http://127.0.0.1:14829/v1", "models": {}, "props": {}}
     monkeypatch.setenv("KMD_VECTOR_MIN_SIMILARITY", "0.50")
-    monkeypatch.setenv("KMD_LOCAL_MODEL_STREAM_BYTES_PER_TOKEN", "256")
     first = internal_runner._build_run_compatibility_manifest(["s"], args, metadata)
     monkeypatch.setenv("KMD_VECTOR_MIN_SIMILARITY", "0.60")
     second = internal_runner._build_run_compatibility_manifest(["s"], args, metadata)
     assert first != second
-    assert first["model_env"]["KMD_LOCAL_MODEL_STREAM_BYTES_PER_TOKEN"]["value"] == "256"
+    assert "KMD_LOCAL_MODEL_STREAM_BYTES_PER_TOKEN" not in first["model_env"]
     assert first["model_env"]["KMD_VECTOR_MIN_SIMILARITY"]["value"] == "0.50"
     assert second["model_env"]["KMD_VECTOR_MIN_SIMILARITY"]["value"] == "0.60"
     assert first["model_env"]["KMD_VECTOR_MIN_SIMILARITY"]["source"] == "environment"

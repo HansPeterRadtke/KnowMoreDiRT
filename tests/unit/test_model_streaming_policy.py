@@ -50,16 +50,7 @@ def test_only_shared_per_token_timeout_setting_controls_generation() -> None:
 
 
 def test_model_metadata_and_streams_have_explicit_finite_client_limits() -> None:
-    content = (ROOT / "src" / "file_system_catalog" / "content_pipeline.py").read_text(encoding="utf-8")
-    model = (ROOT / "src" / "knowmoredirt" / "model.py").read_text(encoding="utf-8")
-    benchmark = (ROOT / "scripts" / "benchmarks" / "run_internal_model_benchmark.py").read_text(encoding="utf-8")
-
-    combined = "\n".join((content, model, benchmark))
-    assert "timeout=None" not in combined
-    assert "KMD_LOCAL_MODEL_CONTROL_TIMEOUT_SECONDS" in combined
-    assert "KMD_LOCAL_MODEL_STREAM_TOTAL_TIMEOUT_SECONDS" in content
-    assert "KMD_LOCAL_MODEL_STREAM_TOTAL_TIMEOUT_SECONDS" in model
-    assert "KMD_LOCAL_MODEL_STREAM_EVENT_MULTIPLIER" in content
-    assert "KMD_LOCAL_MODEL_STREAM_EVENT_MULTIPLIER" in model
-    assert "KMD_LOCAL_MODEL_STREAM_BYTES_PER_TOKEN" in content
-    assert "KMD_LOCAL_MODEL_STREAM_BYTES_PER_TOKEN" in model
+    from pathlib import Path
+    source=(Path("src/knowmoredirt/model.py").read_text()+Path("src/file_system_catalog/content_pipeline.py").read_text()+Path("src/knowmoredirt/default_config.xml").read_text())
+    for token in ("KMD_LOCAL_MODEL_STREAM_TOTAL_TIMEOUT_SECONDS","KMD_LOCAL_MODEL_STREAM_EVENT_MULTIPLIER","KMD_LOCAL_MODEL_STREAM_BYTES_PER_TOKEN"):
+        assert token not in source

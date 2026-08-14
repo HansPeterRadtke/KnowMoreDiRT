@@ -150,7 +150,6 @@ def semantic_answer_judgment(
     raw = complete_json_with_transport_retry(
         model,
         prompt,
-        n_predict=256,
         json_schema=JUDGE_JSON_SCHEMA,
     )
     equivalent = bool(raw.get("equivalent"))
