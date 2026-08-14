@@ -2215,3 +2215,113 @@ def test_explicit_negative_clause_does_not_turn_no_record_into_event_negation() 
     engine._evidence_window_text = lambda item, **kwargs: item.text
     engine._central_answer_guard = lambda _q, text, _expected, _frame, _evidence: text
     assert engine._answer_with_explicit_negative_clause("Was a crack found in the tank wall?") is None
+
+
+def test_definition_completion_expands_strict_prefix_from_explicit_source(monkeypatch) -> None:
+    engine = object.__new__(KnowMoreDiRTEngine)
+    grounded = Answer(
+        "good morning",
+        0.82,
+        [Evidence("languages/spanish_lesson.txt", "Spanish phrase: buenos dias means good morning.")],
+        "general definition source extraction",
+        "content_phrase",
+    )
+    monkeypatch.setattr(engine, "_answer_with_definition_source_explanation", lambda _q: grounded)
+    answer = Answer(
+        "good",
+        0.9,
+        [Evidence("languages/spanish_lesson.txt", "Spanish phrase: buenos dias means good morning.")],
+        "bounded dspg",
+        "content_phrase",
+    )
+    completed = engine._complete_definition_answer_from_source("What does buenos dias mean?", answer)
+    assert completed.text == "good morning"
+    assert "completed from explicit definition source" in completed.reason
+
+
+def test_definition_completion_does_not_replace_nonprefix_answer(monkeypatch) -> None:
+    engine = object.__new__(KnowMoreDiRTEngine)
+    grounded = Answer(
+        "good morning",
+        0.82,
+        [Evidence("languages/spanish_lesson.txt", "Spanish phrase: buenos dias means good morning.")],
+        "source",
+        "content_phrase",
+    )
+    monkeypatch.setattr(engine, "_answer_with_definition_source_explanation", lambda _q: grounded)
+    answer = Answer("hello", 0.9, [], "model", "content_phrase")
+    assert engine._complete_definition_answer_from_source("What does buenos dias mean?", answer).text == "hello"
+
+
+def test_negative_boolean_verifier_rejects_hallucinated_explicit_exclusion(monkeypatch) -> None:
+    engine = object.__new__(KnowMoreDiRTEngine)
+    engine._model_client = object()
+    engine._sentences_by_document = {}
+    engine.model_query_trace = ModelQueryTrace(enabled=True, prompt_hashes=[], response_hashes=[])
+    frame = QueryFrame(
+        question_text="Did the silver train really carry the kitchen table away?",
+        answer_type="boolean",
+        answer_variables=("whether",),
+        target_anchors=("silver train", "kitchen table"),
+        requested_relation="carry",
+        relation_terms=("carry",),
+        constraints=(),
+        source="model_query_drs",
+    )
+    monkeypatch.setattr(engine, "_canonicalize_model_answer_with_local_model", lambda *_args, **_kwargs: None)
+    monkeypatch.setattr(
+        engine_module,
+        "call_model_answer_verification",
+        lambda *_args, **_kwargs: {
+            "accepted": True,
+            "entailed": True,
+            "answer": "no",
+            "evidence_span": "Morning fact: the kitchen table remained in the dining room.",
+            "proof_kind": "explicit_exclusion",
+            "accessibility": "asserted",
+            "temporal_alignment": "same_scope",
+            "explicit_negation": False,
+            "absence_of_record_only": False,
+            "incompatible_condition_span": "",
+        },
+    )
+    answer = Answer(
+        "no",
+        0.9,
+        [Evidence("dream.txt", "Morning fact: the kitchen table remained in the dining room.")],
+        "model",
+        "boolean",
+    )
+    assert engine._verify_with_local_model(frame.question_text, frame, answer, ExpectedAnswer("boolean")) is False
+
+
+def test_explicit_exclusion_guard_requires_source_only_construction() -> None:
+    engine = object.__new__(KnowMoreDiRTEngine)
+    valid = QueryFrame(
+        question_text="Does QuillCache store plaintext passwords?",
+        answer_type="boolean",
+        answer_variables=("whether",),
+        target_anchors=("QuillCache",),
+        requested_relation="stores plaintext passwords",
+        relation_terms=("stores", "plaintext passwords"),
+        constraints=(),
+        source="model_query_drs",
+    )
+    assert engine._evidence_directly_excludes_requested_relation(
+        valid,
+        "Audit result: QuillCache stores only salted password hashes.",
+    ) is True
+    invalid = QueryFrame(
+        question_text="Did the silver train really carry the kitchen table away?",
+        answer_type="boolean",
+        answer_variables=("whether",),
+        target_anchors=("silver train", "kitchen table"),
+        requested_relation="carry",
+        relation_terms=("carry",),
+        constraints=(),
+        source="model_query_drs",
+    )
+    assert engine._evidence_directly_excludes_requested_relation(
+        invalid,
+        "Morning fact: the kitchen table remained in the dining room.",
+    ) is False

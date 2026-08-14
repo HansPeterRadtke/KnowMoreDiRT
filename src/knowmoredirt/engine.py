@@ -511,6 +511,8 @@ class KnowMoreDiRTEngine:
                 restored = self._restore_where_preposition(text, model_answer.text, expected, model_answer.evidence)
                 if restored and restored != model_answer.text:
                     model_answer = replace(model_answer, text=restored)
+                if expected.answer_type == "content_phrase":
+                    model_answer = self._complete_definition_answer_from_source(text, model_answer)
                 model_answer = self._cleanup_public_answer(model_answer, question=text)
                 model_answer = self._structure_answer(model_answer, frame)
                 self.last_answer = model_answer
@@ -3309,6 +3311,25 @@ class KnowMoreDiRTEngine:
                         return clean_extracted_value(match.group("value")).strip(" .;:")
         return ""
 
+    def _complete_definition_answer_from_source(self, question: str, answer: Answer) -> Answer:
+        """Expand only a strict-prefix definition answer from explicit source text."""
+        source_answer = self._answer_with_definition_source_explanation(question)
+        if source_answer is None:
+            return answer
+        current = normalize(answer.text)
+        grounded = normalize(source_answer.text)
+        if not current or not grounded or current == grounded:
+            return answer
+        if not grounded.startswith(current + " "):
+            return answer
+        evidence = list(dict.fromkeys([*answer.evidence, *source_answer.evidence]))
+        return replace(
+            answer,
+            text=source_answer.text,
+            evidence=evidence,
+            reason=f"{answer.reason}; completed from explicit definition source",
+        )
+
     def _cleanup_public_answer(self, answer: Answer, *, question: str = "") -> Answer:
         """Apply presentation-only normalization after model semantic acceptance."""
         text = str(answer.text or "").strip()
@@ -3712,6 +3733,42 @@ class KnowMoreDiRTEngine:
                 return True
         return False
 
+    def _evidence_directly_excludes_requested_relation(
+        self,
+        frame: QueryFrame,
+        evidence_span: str,
+    ) -> bool:
+        material = normalize(evidence_span)
+        if not material:
+            return False
+        match = re.search(r"\bonly\s+(?P<allowed>[^.;]+)", evidence_span, re.I)
+        if not match:
+            return False
+        allowed = normalize(match.group("allowed"))
+        prefix = normalize(evidence_span[: match.start()])
+        subject = normalize(frame.target_anchors[0]) if frame.target_anchors else ""
+        if subject and not all(token in material for token in content_tokens(subject)):
+            return False
+        relation_tokens = [normalize(token) for token in content_tokens(frame.requested_relation) if len(normalize(token)) > 2]
+        if not relation_tokens:
+            relation_tokens = [normalize(token) for value in frame.relation_terms for token in content_tokens(value) if len(normalize(token)) > 2]
+        if not relation_tokens:
+            return False
+        relation_root = relation_tokens[0]
+        if not any(variant and variant in prefix for variant in term_variants(relation_root)):
+            return False
+        requested_values: list[str] = [normalize(anchor) for anchor in frame.target_anchors[1:] if normalize(anchor)]
+        if not requested_values and len(relation_tokens) > 1:
+            requested_values = [" ".join(relation_tokens[1:])]
+        requested_values.extend(normalize(value) for value in frame.constraints if normalize(value))
+        if not requested_values:
+            return False
+        for value in requested_values:
+            tokens = [token for token in content_tokens(value) if len(token) > 2]
+            if tokens and not all(token in allowed for token in tokens):
+                return True
+        return False
+
     def _evidence_is_absence_of_record_only(
         self,
         evidence_span: str,
@@ -3887,19 +3944,24 @@ class KnowMoreDiRTEngine:
                     (proof_kind == "explicit_negation" and explicit_negation)
                     or proof_kind == "explicit_exclusion"
                 )
+                relation_frame = frame
+                if isinstance(trace.last_plan, dict):
+                    planned_frame = frame_from_mapping(
+                        question,
+                        trace.last_plan,
+                        source="model_query_drs",
+                    )
+                    if planned_frame.requested_relation or planned_frame.relation_terms:
+                        relation_frame = planned_frame
                 if negative_proof_valid and proof_kind == "explicit_negation":
-                    relation_frame = frame
-                    if isinstance(trace.last_plan, dict):
-                        planned_frame = frame_from_mapping(
-                            question,
-                            trace.last_plan,
-                            source="model_query_drs",
-                        )
-                        if planned_frame.requested_relation or planned_frame.relation_terms:
-                            relation_frame = planned_frame
                     negative_proof_valid = (
                         self._evidence_directly_negates_requested_relation(relation_frame, span)
                         and not self._evidence_is_absence_of_record_only(span, relation_frame)
+                    )
+                elif negative_proof_valid and proof_kind == "explicit_exclusion":
+                    negative_proof_valid = self._evidence_directly_excludes_requested_relation(
+                        relation_frame,
+                        span,
                     )
                 if not negative_proof_valid:
                     trace.verifier_rejected_count += 1
