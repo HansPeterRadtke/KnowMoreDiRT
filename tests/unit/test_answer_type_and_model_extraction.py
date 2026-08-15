@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 from pathlib import Path
+from dataclasses import replace
 
 import knowmoredirt.engine as engine_module
 from knowmoredirt.answer_types import ExpectedAnswer, canonicalize_answer
@@ -1011,7 +1012,7 @@ def test_source_row_object_and_pipe_table_counts(tmp_path: Path, monkeypatch) ->
     assert engine._answer_with_source_rows("How many Orchid records are ready?").text == "2"
     assert engine._answer_with_source_rows("Which asset id belongs to the paused Orchid record?").text == "OB-7002"
     assert engine._answer_with_source_rows("How many customers have requested refund status in the refunds sheet?").text == "2"
-    assert engine._answer_with_source_rows("How many contacts are listed for Northstar Credit?") is None
+    assert engine._answer_with_source_rows("How many contacts are listed for Northstar Credit?").text == "2"
 
 
 
@@ -2350,3 +2351,119 @@ def test_when_question_binds_generic_leading_timestamp_to_trailing_event(tmp_pat
         assert answer.answer_type == "date_time"
     finally:
         engine.close()
+
+
+def test_scoped_contact_count_does_not_count_unrelated_contact_tables(tmp_path: Path, monkeypatch) -> None:
+    (tmp_path / "northstar.txt").write_text(
+        "Crate ID CR-18 belongs to customer Northstar Credit.\n"
+        "A table below lists contacts:\n"
+        "Ari Moss | invoice contact | ari.moss@northstar.example\n"
+        "Bex Vale | technical contact | bex.vale@northstar.example\n",
+        encoding="utf-8",
+    )
+    (tmp_path / "other.txt").write_text(
+        "Customer Other Company.\n"
+        "A table below lists contacts:\n"
+        "Cia North | invoice contact | cia@other.example\n"
+        "Dan West | technical contact | dan@other.example\n"
+        "Eli South | legal contact | eli@other.example\n",
+        encoding="utf-8",
+    )
+    monkeypatch.setenv("KMD_TEST_ALLOW_NO_MODEL", "1")
+    monkeypatch.setenv("PYTEST_CURRENT_TEST", "1")
+    engine = KnowMoreDiRTEngine(tmp_path)
+    try:
+        answer = engine._answer_with_source_rows("How many contacts are listed for Northstar Credit?")
+        assert answer is not None
+        assert answer.text == "2"
+        assert {item.rel_path for item in answer.evidence} == {"northstar.txt"}
+    finally:
+        engine.close()
+
+
+def test_structured_record_sentence_recovery_for_owner_customer_and_reviewer(tmp_path: Path, monkeypatch) -> None:
+    (tmp_path / "record.json").write_text(
+        '{"messages": ['
+        '"Mara Chen owns the retry scheduler for BeaconForce.", '
+        '"Blue Ridge Analytics is blocked by the telemetry export delay.", '
+        '"Ilya Stone opened the OAuth callback repair PR. Omar Vale should review it before merge."'
+        ']}',
+        encoding="utf-8",
+    )
+    monkeypatch.setenv("KMD_TEST_ALLOW_NO_MODEL", "1")
+    monkeypatch.setenv("PYTEST_CURRENT_TEST", "1")
+    engine = KnowMoreDiRTEngine(tmp_path)
+    try:
+        owner = engine._answer_with_generic_sentence_source("Who owns the retry scheduler for BeaconForce?")
+        blocked = engine._answer_with_generic_sentence_source("Which customer is blocked by the telemetry export delay?")
+        reviewer = engine._answer_with_review_or_approval_source("Who should review the OAuth callback repair PR before merge?")
+        assert owner is not None and owner.text == "Mara Chen"
+        assert blocked is not None and blocked.text == "Blue Ridge Analytics"
+        assert reviewer is not None and reviewer.text == "Omar Vale"
+    finally:
+        engine.close()
+
+
+def test_grounded_model_completion_expands_partial_person_but_never_substitutes(monkeypatch) -> None:
+    engine = object.__new__(KnowMoreDiRTEngine)
+    evidence = [Evidence("review.txt", "Correction: Omar reviewed PR-8042; Omar Kestrel performed the risk review.")]
+    frame = QueryFrame(
+        question_text="Who reviewed PR-8042?",
+        answer_type="person",
+        answer_variables=("who",),
+        target_anchors=("PR-8042",),
+        requested_relation="reviewed",
+        relation_terms=("reviewed",),
+        constraints=(),
+        source="model_query_drs",
+    )
+    monkeypatch.setattr(engine, "_expand_single_name_from_evidence", lambda value, _evidence: "Omar Kestrel" if value == "Omar" else value)
+    monkeypatch.setattr(engine, "_answer_with_review_or_approval_source", lambda *_args, **_kwargs: None)
+    completed = engine._complete_grounded_model_answer(
+        frame.question_text,
+        Answer("Omar", 0.9, evidence, "model", "person"),
+        ExpectedAnswer("person"),
+        frame,
+    )
+    assert completed.text == "Omar Kestrel"
+    monkeypatch.setattr(engine, "_expand_single_name_from_evidence", lambda value, _evidence: "Priya Moon")
+    unchanged = engine._complete_grounded_model_answer(
+        frame.question_text,
+        Answer("Omar", 0.9, evidence, "model", "person"),
+        ExpectedAnswer("person"),
+        frame,
+    )
+    assert unchanged.text == "Omar"
+
+
+def test_grounded_model_completion_restores_full_source_phrase_only_when_containing_candidate(monkeypatch) -> None:
+    engine = object.__new__(KnowMoreDiRTEngine)
+    evidence = [Evidence("objects.raw", 'summary: "Only ready records are valid for release."')]
+    frame = QueryFrame(
+        question_text="What does the Orchid Frame summary say about ready records?",
+        answer_type="content_phrase",
+        answer_variables=("ready records",),
+        target_anchors=("Orchid Frame summary",),
+        requested_relation="say",
+        relation_terms=("say",),
+        constraints=(),
+        source="model_query_drs",
+    )
+    grounded = Answer("Only ready records are valid for release", 0.9, evidence, "source", "content_phrase")
+    monkeypatch.setattr(engine, "_answer_with_generic_sentence_source", lambda *_args, **_kwargs: grounded)
+    completed = engine._complete_grounded_model_answer(
+        frame.question_text,
+        Answer("are valid for release", 0.9, evidence, "model", "content_phrase"),
+        ExpectedAnswer("content_phrase"),
+        frame,
+    )
+    assert completed.text == "Only ready records are valid for release"
+    unrelated = replace(grounded, text="Only paused records are invalid for release")
+    monkeypatch.setattr(engine, "_answer_with_generic_sentence_source", lambda *_args, **_kwargs: unrelated)
+    unchanged = engine._complete_grounded_model_answer(
+        frame.question_text,
+        Answer("are valid for release", 0.9, evidence, "model", "content_phrase"),
+        ExpectedAnswer("content_phrase"),
+        frame,
+    )
+    assert unchanged.text == "are valid for release"

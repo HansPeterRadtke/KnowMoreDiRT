@@ -666,3 +666,38 @@ def test_chunk_drs_validator_rejects_semantic_inconsistency_instead_of_repairing
     assert "self_identity:" in text
     assert "identity_evidence_missing_side:" in text
     assert "bad_collection_item:" in text
+
+
+def test_production_grounded_recovery_has_explicit_audited_contract() -> None:
+    source = (REPO_ROOT / "src" / "knowmoredirt" / "engine.py").read_text(encoding="utf-8")
+    tree = ast.parse(source)
+    engine_class = next(node for node in tree.body if isinstance(node, ast.ClassDef) and node.name == "KnowMoreDiRTEngine")
+    methods = {node.name: node for node in engine_class.body if isinstance(node, ast.FunctionDef)}
+    model_text = ast.get_source_segment(source, methods["_answer_with_local_model"]) or ""
+    recovery_text = ast.get_source_segment(source, methods["_grounded_post_plan_recovery"]) or ""
+    completion_text = ast.get_source_segment(source, methods["_complete_grounded_model_answer"]) or ""
+    assert "_grounded_post_plan_recovery" in model_text
+    assert "_complete_grounded_model_answer" in model_text
+    allowed = {
+        "_answer_with_generic_sentence_source",
+        "_answer_with_actor_role_ids_source",
+        "_answer_with_review_or_approval_source",
+        "_answer_with_table_field_source",
+        "_answer_with_source_rows",
+        "_answer_with_exact_source_field",
+        "_answer_with_structured_object_source",
+        "_answer_with_precise_source_content",
+        "_answer_with_explicit_negative_clause",
+        "_answer_with_row_field_source",
+        "_answer_with_labeled_attribute_source",
+        "_answer_with_temporal_source_records",
+    }
+    actual = {
+        node.attr
+        for node in ast.walk(methods["_grounded_post_plan_recovery"])
+        if isinstance(node, ast.Attribute)
+        and node.attr.startswith("_answer_with_")
+    }
+    assert actual == allowed
+    assert "_verify_with_local_model" in recovery_text
+    assert "current not in grounded" in completion_text

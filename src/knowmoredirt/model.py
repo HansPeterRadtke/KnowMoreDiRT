@@ -750,7 +750,17 @@ class LocalModelClient:
                 model_value = _first_int(meta.get("n_ctx"), meta.get("n_ctx_train"))
                 if model_value:
                     return model_value
-        return _first_int(_config_text("KMD_LOCAL_MODEL_CONTEXT_SIZE"))
+        configured = _first_int(_config_text("KMD_LOCAL_MODEL_CONTEXT_SIZE"))
+        if configured:
+            return configured
+        # Metadata probes are best-effort and can transiently fail while the
+        # model server is busy/reloading. Never let one incomplete cached probe
+        # poison all later semantic calls: refresh once when the caller did not
+        # explicitly supply a snapshot.
+        if metadata is None and self._metadata is not None:
+            refreshed = self.server_metadata(refresh=True)
+            return self.context_size(refreshed)
+        return 0
 
     def model_id(self, metadata: dict[str, Any] | None = None) -> str:
         data = metadata or self._metadata or self.server_metadata()

@@ -4552,3 +4552,44 @@ def test_filesystem_analysis_client_requires_explicit_pin_if_endpoint_has_multip
     client = AnalysisClient("http://model", model="")
     with pytest.raises(RuntimeError, match="does not advertise exactly one model"):
         client.effective_model()
+
+
+def test_context_size_refreshes_transiently_incomplete_cached_metadata(monkeypatch) -> None:
+    client = LocalModelClient(endpoint="http://127.0.0.1:14829/v1")
+    client._metadata = {
+        "endpoint": client.endpoint,
+        "root": "http://127.0.0.1:14829",
+        "errors": {"slots": "temporary failure", "props": "temporary failure", "models": "temporary failure"},
+    }
+    refreshed = {
+        "endpoint": client.endpoint,
+        "root": "http://127.0.0.1:14829",
+        "errors": {},
+        "slots": [{"n_ctx": 131072, "params": {}}],
+        "props": {},
+        "models": {"data": [{"id": "/models/live.gguf", "meta": {"n_ctx": 131072}}]},
+    }
+    calls: list[bool] = []
+
+    def fake_server_metadata(*, refresh: bool = False):
+        calls.append(refresh)
+        client._metadata = refreshed
+        return refreshed
+
+    monkeypatch.setattr(client, "server_metadata", fake_server_metadata)
+    assert client.context_size() == 131072
+    assert calls == [True]
+
+
+def test_transport_settings_recovers_from_stale_zero_context_metadata(monkeypatch) -> None:
+    client = LocalModelClient(endpoint="http://127.0.0.1:14829/v1")
+    client._metadata = {"errors": {"slots": "temporary failure"}}
+    refreshed = {
+        "errors": {},
+        "slots": [{"n_ctx": 32768, "params": {}}],
+        "props": {},
+        "models": {"data": [{"id": "/models/gpt-oss-120b.gguf", "meta": {"n_ctx": 32768}}]},
+    }
+    monkeypatch.setattr(client, "server_metadata", lambda *, refresh=False: refreshed)
+    transport = client.transport_settings()
+    assert transport["context_safety_tokens"] > 0

@@ -1177,7 +1177,11 @@ class KnowMoreDiRTEngine:
             chat_match = re.search(rf"^(?P<person>[A-Z][a-z]+(?:\s+[A-Z][a-z]+)+)\s*:\s*(?:I\s+)?(?:will\s+)?{verb_pattern}\b", line, re.I)
             if chat_match:
                 return Answer(chat_match.group("person").strip(), 0.9, [evidence_item], "source review/approval actor binding", "person")
-            prose_match = re.search(rf"(?:^|[:;.][\s\"']*)[\"']?(?P<person>[A-Z][a-z]+(?:\s+[A-Z][a-z]+)?)\s+{verb_pattern}\b", line, re.I)
+            prose_match = re.search(
+                rf"(?:^|[:;.][\s\"']*)[\"']?(?P<person>[A-Z][a-z]+(?:\s+[A-Z][a-z]+)?)\s+(?:(?:should|must|will|can|may|needs?\s+to)\s+)?{verb_pattern}\b",
+                line,
+                re.I,
+            )
             if prose_match:
                 person = prose_match.group("person").strip()
                 person = self._expand_single_name_from_evidence(person, [evidence_item])
@@ -1430,6 +1434,44 @@ class KnowMoreDiRTEngine:
                 match = re.search(r"\b" + re.escape(term) + r"\s+means\s+(?P<value>[^.;]+)", line, re.I) if term else None
                 if match:
                     return Answer(clean_extracted_value(match.group("value")).strip(" .;:"), 0.86, [evidence], "generic source meaning clause", "content_phrase")
+
+        if qnorm.startswith("who ") and (" own" in f" {qnorm}" or "owns" in qnorm):
+            frame = plan_question(question)
+            anchors = [normalize(anchor) for anchor in frame.target_anchors if normalize(anchor)]
+            for line, line_norm, evidence in lines:
+                if anchors and not all(self._source_field_contains_any(line_norm, [anchor]) for anchor in anchors):
+                    continue
+                match = re.search(
+                    r"(?P<value>(?:Dr\.\s*)?[A-Z][A-Za-z.-]+(?:\s+[A-Z][A-Za-z.-]+)+)\s+owns?\s+(?P<object>[^.;]+)",
+                    line,
+                )
+                if match:
+                    return Answer(
+                        clean_extracted_value(match.group("value")).strip(" .;:"),
+                        0.9,
+                        [evidence],
+                        "generic source ownership clause",
+                        "person",
+                    )
+
+        if qnorm.startswith("which ") and TOK_CUSTOMER in qnorm and "blocked by" in qnorm:
+            reason_match = re.search(r"blocked\s+by\s+(?:the\s+)?(?P<reason>[^?]+)", question, re.I)
+            reason = normalize(reason_match.group("reason")) if reason_match else ""
+            for line, line_norm, evidence in lines:
+                if reason and not self._source_field_contains_any(line_norm, [reason]):
+                    continue
+                match = re.search(
+                    r"(?P<value>[A-Z][A-Za-z0-9&.'_-]*(?:\s+[A-Z][A-Za-z0-9&.'_-]*)+)\s+is\s+blocked\s+by\s+(?P<reason>[^.;]+)",
+                    line,
+                )
+                if match:
+                    return Answer(
+                        clean_extracted_value(match.group("value")).strip(" .;:"),
+                        0.9,
+                        [evidence],
+                        "generic source blocked entity clause",
+                        "organization",
+                    )
 
         if qnorm.startswith("who ") and "manage" in qnorm:
             manage_terms = [
@@ -3053,6 +3095,62 @@ class KnowMoreDiRTEngine:
             return Answer(ordered[0][0], 0.86, [evidence_by_owner[ordered[0][0]]], "source-row argmax aggregation", "person")
         if "how many" in qnorm:
             if not filters and "contact" in qnorm:
+                # Contact rows often inherit their entity scope from prose just
+                # above a local table, so the scoped name is not repeated in
+                # every row. Count only a table in a document that explicitly
+                # names the requested target and labels the following rows as
+                # contacts; never count unrelated contact-like rows elsewhere.
+                target_norms = [normalize(term) for term in target_terms if normalize(term)]
+                for document in self.documents:
+                    doc_norm = normalize(document.text)
+                    if target_norms and not all(term in doc_norm for term in target_norms):
+                        continue
+                    raw_lines = document.text.splitlines()
+                    for index, raw_line in enumerate(raw_lines):
+                        line_norm = normalize(raw_line)
+                        cells_here = [cell.strip() for cell in raw_line.split("|")] if "|" in raw_line else []
+                        header_norms_here = [normalize(cell) for cell in cells_here]
+                        explicit_label = "contact" in line_norm and any(token in line_norm for token in ["table", "lists", "contacts"])
+                        explicit_header = (
+                            len(header_norms_here) >= 2
+                            and any(value in {"name", "contact", "contact_name"} for value in header_norms_here)
+                            and any("role" in value for value in header_norms_here)
+                        )
+                        if not (explicit_label or explicit_header):
+                            continue
+                        headers: list[str] = header_norms_here if explicit_header else []
+                        count = 0
+                        evidence_items: list[Evidence] = []
+                        for j in range(index + 1, len(raw_lines)):
+                            line = raw_lines[j].strip()
+                            if not line:
+                                if headers or count:
+                                    break
+                                continue
+                            delimiter = "|" if "|" in line else "\t" if "\t" in line else ""
+                            if not delimiter:
+                                if count:
+                                    break
+                                continue
+                            cells = [cell.strip() for cell in line.split(delimiter)]
+                            if not headers:
+                                header_norms = [normalize(cell) for cell in cells]
+                                if any("name" == value or "contact" in value for value in header_norms) and any("role" in value for value in header_norms):
+                                    headers = header_norms
+                                    continue
+                                # Some contact tables omit a header after an
+                                # explicit "lists contacts" label; require a
+                                # plausible person plus a contact role.
+                            line_norm = normalize(line)
+                            if "contact" not in line_norm:
+                                if count:
+                                    break
+                                continue
+                            if cells and re.match(r"^[A-Z][A-Za-z.-]+(?:\s+[A-Z][A-Za-z.-]+)+$", cells[0]):
+                                count += 1
+                                evidence_items.append(self._evidence_for_document_line(document.rel_path, j, line))
+                        if count:
+                            return Answer(str(count), 0.9, evidence_items, "source scoped contact-table count", "count")
                 return None
             if not matched:
                 return None
@@ -4513,6 +4611,7 @@ class KnowMoreDiRTEngine:
             if self._verify_with_local_model(question, planned_frame, answer, expected):
                 trace.model_answer_count += 1
                 answer.reason = "model-verified DRT query execution"
+                answer = self._complete_grounded_model_answer(question, answer, expected, planned_frame)
                 self._attach_model_answer_provenance(answer)
                 return answer
         if not self._bounded_conflict_blocks_model_evidence_fallback():
@@ -4531,28 +4630,101 @@ class KnowMoreDiRTEngine:
                     trace.model_answer_count += 1
                     if requires_negative_verification:
                         evidence_answer.reason = "model-verified query-DRS evidence answer"
+                    evidence_answer = self._complete_grounded_model_answer(
+                        question, evidence_answer, expected, planned_frame
+                    )
                     self._attach_model_answer_provenance(evidence_answer)
                     return evidence_answer
                 trace.evidence_rejected_count += 1
-        for recovery_fn in (
+        recovery = self._grounded_post_plan_recovery(question, answer, planned_frame, expected)
+        if self._complete_answer(recovery):
+            self._attach_model_answer_provenance(recovery)
+            return recovery
+        return None
+
+    def _complete_grounded_model_answer(
+        self,
+        question: str,
+        answer: Answer,
+        expected: ExpectedAnswer,
+        frame: QueryFrame,
+    ) -> Answer:
+        """Repair only a strict incomplete surface from explicit grounded source text."""
+        if is_unknown_text(answer.text):
+            return answer
+        current = normalize(answer.text)
+        if not current:
+            return answer
+        candidate: Answer | None = None
+        if expected.answer_type in {"person", "actor", "organization"} and len(answer.text.split()) == 1:
+            expanded = self._expand_single_name_from_evidence(answer.text, answer.evidence)
+            if normalize(expanded) != current:
+                candidate = replace(answer, text=expanded)
+            if candidate is None:
+                candidate = self._answer_with_review_or_approval_source(question, answer)
+        elif expected.answer_type == "content_phrase":
+            candidate = self._answer_with_generic_sentence_source(question, answer)
+        if candidate is None or is_unknown_text(candidate.text):
+            return answer
+        grounded = normalize(candidate.text)
+        if not grounded or grounded == current:
+            return answer
+        # Completeness repair may only add source-grounded material around the
+        # already accepted value; it may not substitute a different proposition.
+        if current not in grounded:
+            return answer
+        evidence = list(dict.fromkeys([*answer.evidence, *candidate.evidence]))
+        return replace(
+            answer,
+            text=candidate.text,
+            evidence=evidence,
+            reason=f"{answer.reason}; completed from explicit grounded source",
+        )
+
+    def _grounded_post_plan_recovery(
+        self,
+        question: str,
+        prior_answer: Answer | None,
+        planned_frame: QueryFrame,
+        expected: ExpectedAnswer,
+    ) -> Answer | None:
+        """Production-safe source recovery after model DRT/evidence paths fail.
+
+        Every handler below returns a value copied or aggregated from ingested
+        source material. Negative booleans are still model-verified under the
+        open-world proof contract before they can become definitive.
+        """
+        recovery_fns = (
+            self._answer_with_generic_sentence_source,
+            self._answer_with_actor_role_ids_source,
+            self._answer_with_review_or_approval_source,
+            self._answer_with_table_field_source,
+            self._answer_with_source_rows,
+            self._answer_with_exact_source_field,
+            self._answer_with_structured_object_source,
+            self._answer_with_precise_source_content,
             self._answer_with_explicit_negative_clause,
             self._answer_with_row_field_source,
             self._answer_with_labeled_attribute_source,
             self._answer_with_temporal_source_records,
-        ):
-            recovery = recovery_fn(question, answer)
-            if self._complete_answer(recovery):
-                normalized_recovery = normalize(recovery.text).split(";", 1)[0].strip()
-                if (
-                    recovery.answer_type == "boolean"
-                    and normalized_recovery in {"no", "false"}
-                    and not self._verify_with_local_model(question, planned_frame, recovery, expected)
-                ):
-                    trace.evidence_rejected_count += 1
-                    continue
-                recovery.reason = f"post-plan {recovery.reason}"
-                self._attach_model_answer_provenance(recovery)
-                return recovery
+        )
+        trace = self.model_query_trace
+        for recovery_fn in recovery_fns:
+            recovery = recovery_fn(question, prior_answer)
+            if not self._complete_answer(recovery):
+                continue
+            normalized = normalize(recovery.text).split(";", 1)[0].strip()
+            if (
+                recovery.answer_type == "boolean"
+                and normalized in {"no", "false"}
+                and not self._verify_with_local_model(question, planned_frame, recovery, expected)
+            ):
+                trace.evidence_rejected_count += 1
+                continue
+            # Structural/source handlers already guarantee local grounding. Keep
+            # the authoritative query frame for scope/provenance structuring.
+            recovery.reason = f"post-plan {recovery.reason}"
+            return self._structure_answer(recovery, planned_frame)
         return None
 
     def _answer_evidence_has_model_drs(self, answer: Answer) -> bool:
