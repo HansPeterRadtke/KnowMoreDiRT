@@ -38,7 +38,7 @@ def test_control_get_retries_transient_url_error(monkeypatch) -> None:
         return _Response({"ok": True})
 
     monkeypatch.setenv("KMD_LOCAL_MODEL_CONTROL_RETRY_ATTEMPTS", "3")
-    monkeypatch.setenv("KMD_LOCAL_MODEL_CONTROL_RETRY_BACKOFF_SECONDS", "0")
+    monkeypatch.setenv("KMD_LOCAL_MODEL_TRANSIENT_RETRY_SECONDS", "0")
     monkeypatch.setattr("knowmoredirt.model.urllib.request.urlopen", fake_urlopen)
     assert _fetch_json("http://127.0.0.1:14829/health", timeout=1) == {"ok": True}
     assert calls == 3
@@ -59,7 +59,7 @@ def test_control_get_does_not_retry_nontransient_http_error(monkeypatch) -> None
         )
 
     monkeypatch.setenv("KMD_LOCAL_MODEL_CONTROL_RETRY_ATTEMPTS", "5")
-    monkeypatch.setenv("KMD_LOCAL_MODEL_CONTROL_RETRY_BACKOFF_SECONDS", "0")
+    monkeypatch.setenv("KMD_LOCAL_MODEL_TRANSIENT_RETRY_SECONDS", "0")
     monkeypatch.setattr("knowmoredirt.model.urllib.request.urlopen", fake_urlopen)
     with pytest.raises(urllib.error.HTTPError):
         _fetch_json("http://127.0.0.1:14829/health", timeout=1)
@@ -79,7 +79,7 @@ def test_direct_semantic_retry_retries_transport_disconnect(monkeypatch) -> None
 
     client = Client()
     monkeypatch.setenv("KMD_LOCAL_MODEL_DIRECT_RETRY_ATTEMPTS", "3")
-    monkeypatch.setenv("KMD_LOCAL_MODEL_DIRECT_RETRY_BACKOFF_SECONDS", "0")
+    monkeypatch.setenv("KMD_LOCAL_MODEL_TRANSIENT_RETRY_SECONDS", "0")
     assert complete_json_with_transport_retry(
         client,
         "prompt",
@@ -105,7 +105,7 @@ def test_direct_semantic_retry_does_not_retry_schema_failure(monkeypatch) -> Non
 
     client = Client()
     monkeypatch.setenv("KMD_LOCAL_MODEL_DIRECT_RETRY_ATTEMPTS", "4")
-    monkeypatch.setenv("KMD_LOCAL_MODEL_DIRECT_RETRY_BACKOFF_SECONDS", "0")
+    monkeypatch.setenv("KMD_LOCAL_MODEL_TRANSIENT_RETRY_SECONDS", "0")
     with pytest.raises(LocalModelJSONError):
         complete_json_with_transport_retry(
             client,

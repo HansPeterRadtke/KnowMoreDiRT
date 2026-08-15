@@ -1167,17 +1167,27 @@ def test_verifier_diagnostic_frames_are_capped(monkeypatch) -> None:
     assert store.params == ("note.txt", expected_limit)
 
 
-def test_engine_requires_reachable_local_model_in_normal_runtime(monkeypatch, tmp_path) -> None:
+def test_engine_required_model_probe_waits_through_connection_refused_until_recovery(monkeypatch) -> None:
+    calls = 0
+
     def fake_urlopen(request, timeout: float = 0) -> object:
-        raise OSError("connection refused")
+        nonlocal calls
+        calls += 1
+        if calls <= 5:
+            raise OSError("connection refused")
+        return FakeHTTPResponse({"data": [{"id": "test-model", "meta": {"n_ctx": 4096}}]})
 
     monkeypatch.setattr("urllib.request.urlopen", fake_urlopen)
+    monkeypatch.setattr("knowmoredirt.model.time.sleep", lambda _seconds: None)
     monkeypatch.delenv("KMD_TEST_ALLOW_NO_MODEL", raising=False)
-    monkeypatch.setenv("KMD_LOCAL_MODEL_ENDPOINT", "http://127.0.0.1:9/v1")
-    (tmp_path / "note.txt").write_text("Aster Lock is guarded by Mira Vale.\n", encoding="utf-8")
+    monkeypatch.setenv("KMD_LOCAL_MODEL_ENDPOINT", "http://127.0.0.1:14829/v1")
+    monkeypatch.setenv("KMD_LOCAL_MODEL_TRANSIENT_RETRY_SECONDS", "0")
+    monkeypatch.delenv("KMD_LOCAL_MODEL_EXPECTED_ID", raising=False)
 
-    with pytest.raises(LocalModelUnavailableError, match="requires a reachable localhost llama.cpp"):
-        KnowMoreDiRTEngine(tmp_path)
+    engine = object.__new__(KnowMoreDiRTEngine)
+    client = engine._required_local_model_client()
+    assert isinstance(client, LocalModelClient)
+    assert calls == 6
 
 
 def test_local_model_client_uses_completion_stream_and_json_schema(monkeypatch) -> None:
@@ -4593,3 +4603,56 @@ def test_transport_settings_recovers_from_stale_zero_context_metadata(monkeypatc
     monkeypatch.setattr(client, "server_metadata", lambda *, refresh=False: refreshed)
     transport = client.transport_settings()
     assert transport["context_safety_tokens"] > 0
+
+
+def test_control_request_retries_connection_refused_until_recovery(monkeypatch) -> None:
+    import io
+    import urllib.error
+    import knowmoredirt.model as model_module
+
+    attempts = {"count": 0}
+    sleeps: list[float] = []
+
+    class Response:
+        def __enter__(self): return self
+        def __exit__(self, *args): return False
+        def read(self): return b'{"ok":true}'
+
+    def fake_urlopen(_request, timeout=None):
+        attempts["count"] += 1
+        if attempts["count"] <= 7:
+            raise urllib.error.URLError(ConnectionRefusedError(111, "Connection refused"))
+        return Response()
+
+    monkeypatch.setattr(model_module.urllib.request, "urlopen", fake_urlopen)
+    monkeypatch.setattr(model_module.time, "sleep", lambda seconds: sleeps.append(seconds))
+    monkeypatch.setenv("KMD_LOCAL_MODEL_TRANSIENT_RETRY_SECONDS", "0.01")
+    result = model_module._control_json_request("http://127.0.0.1:14829/health", timeout=1.0)
+    assert result == {"ok": True}
+    assert attempts["count"] == 8
+    assert len(sleeps) == 7
+
+
+def test_direct_semantic_retry_has_no_transport_attempt_limit(monkeypatch) -> None:
+    import urllib.error
+    from knowmoredirt.model import complete_json_with_transport_retry
+    import knowmoredirt.model as model_module
+
+    class Client:
+        def __init__(self): self.calls = 0
+        def complete_json(self, _prompt, *, json_schema):
+            self.calls += 1
+            if self.calls <= 9:
+                raise urllib.error.URLError(ConnectionRefusedError(111, "Connection refused"))
+            return {"ok": True}
+
+    client = Client()
+    monkeypatch.setattr(model_module.time, "sleep", lambda _seconds: None)
+    monkeypatch.setenv("KMD_LOCAL_MODEL_TRANSIENT_RETRY_SECONDS", "0")
+    result = complete_json_with_transport_retry(
+        client,
+        "probe",
+        json_schema={"type": "object", "additionalProperties": False, "required": ["ok"], "properties": {"ok": {"type": "boolean"}}},
+    )
+    assert result == {"ok": True}
+    assert client.calls == 10

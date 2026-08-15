@@ -746,3 +746,62 @@ def test_discover_model_context_rejects_wrong_advertised_model(monkeypatch) -> N
     monkeypatch.setattr(module, 'request_json', fake_request_json)
     with pytest.raises(RuntimeError, match='configured model is not advertised'):
         module.discover_model_context('http://127.0.0.1:18139', 'expected-model')
+
+
+def test_request_json_retries_connection_refused_until_recovery(monkeypatch) -> None:
+    import urllib.error
+    import file_system_catalog.content_pipeline as pipeline
+
+    attempts = {"count": 0}
+
+    class Response:
+        def __enter__(self): return self
+        def __exit__(self, *args): return False
+        def read(self): return b'{"ok":true}'
+
+    def fake_urlopen(_request, timeout=None):
+        attempts["count"] += 1
+        if attempts["count"] <= 8:
+            raise urllib.error.URLError(ConnectionRefusedError(111, "Connection refused"))
+        return Response()
+
+    monkeypatch.setattr(pipeline.urllib.request, "urlopen", fake_urlopen)
+    monkeypatch.setattr(pipeline.time, "sleep", lambda _seconds: None)
+    monkeypatch.setenv("KMD_LOCAL_MODEL_TRANSIENT_RETRY_SECONDS", "0")
+    assert pipeline.request_json("http://127.0.0.1:18139/health", timeout=1.0) == {"ok": True}
+    assert attempts["count"] == 9
+
+
+def test_stream_chat_retries_connection_refused_until_recovery(monkeypatch) -> None:
+    import urllib.error
+    import file_system_catalog.content_pipeline as pipeline
+
+    attempts = {"count": 0}
+
+    class StreamResponse:
+        def __enter__(self): return self
+        def __exit__(self, *args): return False
+        def __iter__(self):
+            return iter([
+                b'data: {"choices":[{"delta":{"content":"{\\"ok\\":true}"},"finish_reason":null}]}\n',
+                b'data: {"choices":[{"delta":{},"finish_reason":"stop"}]}\n',
+                b'data: [DONE]\n',
+            ])
+
+    def fake_urlopen(_request, timeout=None):
+        attempts["count"] += 1
+        if attempts["count"] <= 6:
+            raise urllib.error.URLError(ConnectionRefusedError(111, "Connection refused"))
+        return StreamResponse()
+
+    monkeypatch.setattr(pipeline.urllib.request, "urlopen", fake_urlopen)
+    monkeypatch.setattr(pipeline.time, "sleep", lambda _seconds: None)
+    monkeypatch.setenv("KMD_LOCAL_MODEL_TRANSIENT_RETRY_SECONDS", "0")
+    result = pipeline.stream_chat_completion_json(
+        "http://127.0.0.1:14829/v1/chat/completions",
+        {"messages": []},
+        per_token_timeout_seconds=1.0,
+    )
+    assert result["content"] == '{"ok":true}'
+    assert result["finish_reason"] == "stop"
+    assert attempts["count"] == 7

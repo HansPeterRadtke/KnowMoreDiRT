@@ -257,6 +257,19 @@ def stable_representation_id(
     return str(uuid.uuid5(REPRESENTATION_ID_NAMESPACE, value))
 
 
+def _filesystem_transient_retry_seconds() -> float:
+    value = _config_float("KMD_LOCAL_MODEL_TRANSIENT_RETRY_SECONDS")
+    if not math.isfinite(value) or value < 0:
+        raise ValueError("KMD_LOCAL_MODEL_TRANSIENT_RETRY_SECONDS must be non-negative")
+    return value
+
+
+def _filesystem_retryable_transport_error(error: BaseException, retry_statuses: set[int]) -> bool:
+    if isinstance(error, urllib.error.HTTPError):
+        return int(error.code) in retry_statuses
+    return isinstance(error, (urllib.error.URLError, TimeoutError, ConnectionError, OSError))
+
+
 def request_json(url: str, payload: dict[str, Any] | None = None, *, timeout: float | None = None) -> dict[str, Any]:
     effective_timeout = _default_control_timeout_seconds() if timeout is None else float(timeout)
     if effective_timeout <= 0:
@@ -268,28 +281,24 @@ def request_json(url: str, payload: dict[str, Any] | None = None, *, timeout: fl
         headers={"Content-Type": "application/json"} if data is not None else {},
         method="POST" if data is not None else "GET",
     )
-    attempts = _config_int("KMD_LOCAL_MODEL_CONTROL_RETRY_ATTEMPTS")
     retry_statuses = set(_config_csv_integers("KMD_LOCAL_MODEL_RETRY_HTTP_STATUSES"))
-    backoff = _config_float("KMD_LOCAL_MODEL_CONTROL_RETRY_BACKOFF_SECONDS")
-    backoff_multiplier = _config_float("KMD_LOCAL_MODEL_RETRY_BACKOFF_MULTIPLIER")
-    for attempt in range(attempts):
+    attempt = 0
+    while True:
+        attempt += 1
         try:
             with urllib.request.urlopen(request, timeout=effective_timeout) as response:
                 raw = response.read()
             break
         except urllib.error.HTTPError as error:
             body = error.read().decode("utf-8", "backslashreplace")
-            retryable = int(error.code) in retry_statuses
-            if not retryable or attempt + 1 >= attempts:
+            if not _filesystem_retryable_transport_error(error, retry_statuses):
                 raise RuntimeError(f"HTTP {error.code} from {url}: {body}") from error
-        except urllib.error.URLError as error:
-            if attempt + 1 >= attempts:
-                raise RuntimeError(f"request failed for {url}: {error}") from error
-        delay = backoff * (backoff_multiplier ** attempt)
+        except Exception as error:
+            if not _filesystem_retryable_transport_error(error, retry_statuses):
+                raise
+        delay = _filesystem_transient_retry_seconds()
         if delay > 0:
             time.sleep(delay)
-    else:
-        raise RuntimeError(f"request retries exhausted for {url}")
     try:
         return json.loads(raw.decode("utf-8"))
     except Exception as error:
@@ -340,71 +349,79 @@ def stream_chat_completion_json(
         headers={"Content-Type": "application/json"},
         method="POST",
     )
-    content_parts: list[str] = []
-    reasoning_parts: list[str] = []
-    finish_reason: str | None = None
-    metadata: dict[str, Any] = {}
-    saw_event = False
-    saw_done = False
-    saw_terminal_event = False
-    stream_events = 0
-    stream_bytes = 0
-    try:
-        with urllib.request.urlopen(request, timeout=per_token_timeout_seconds) as response:
-            for raw_line in response:
-                stream_bytes += len(raw_line)
-                line = raw_line.decode("utf-8", "replace").strip()
-                if not line or line.startswith("event:"):
-                    continue
-                if line.startswith("data:"):
-                    line = line[5:].strip()
-                if line == "[DONE]":
-                    saw_done = True
-                    break
-                stream_events += 1
-                try:
-                    event = json.loads(line)
-                except json.JSONDecodeError as error:
-                    raise RuntimeError(f"invalid streamed JSON event from {url}: {line!r}") from error
-                if not isinstance(event, dict):
-                    raise RuntimeError(f"non-object streamed event from {url}: {event!r}")
-                if event.get("error"):
-                    raise RuntimeError(f"model stream error from {url}: {event['error']!r}")
-                saw_event = True
-                for key in ("model", "system_fingerprint", "usage", "timings"):
-                    if event.get(key) is not None:
-                        metadata[key] = event[key]
-                choices = event.get("choices")
-                if isinstance(choices, list) and choices:
-                    choice = choices[0]
-                    if isinstance(choice, dict):
-                        delta = choice.get("delta")
-                        if isinstance(delta, dict):
-                            if delta.get("content") is not None:
-                                content_parts.append(str(delta.get("content") or ""))
-                            if delta.get("reasoning_content") is not None:
-                                reasoning_parts.append(str(delta.get("reasoning_content") or ""))
-                        message = choice.get("message")
-                        if isinstance(message, dict):
-                            if message.get("content") is not None:
-                                content_parts.append(str(message.get("content") or ""))
-                            if message.get("reasoning_content") is not None:
-                                reasoning_parts.append(str(message.get("reasoning_content") or ""))
-                        if choice.get("text") is not None:
-                            content_parts.append(str(choice.get("text") or ""))
-                        if choice.get("finish_reason") is not None:
-                            finish_reason = str(choice.get("finish_reason"))
+    retry_statuses = set(_config_csv_integers("KMD_LOCAL_MODEL_RETRY_HTTP_STATUSES"))
+    while True:
+        content_parts: list[str] = []
+        reasoning_parts: list[str] = []
+        finish_reason: str | None = None
+        metadata: dict[str, Any] = {}
+        saw_event = False
+        saw_done = False
+        saw_terminal_event = False
+        stream_events = 0
+        stream_bytes = 0
+        try:
+            with urllib.request.urlopen(request, timeout=per_token_timeout_seconds) as response:
+                for raw_line in response:
+                    stream_bytes += len(raw_line)
+                    line = raw_line.decode("utf-8", "replace").strip()
+                    if not line or line.startswith("event:"):
+                        continue
+                    if line.startswith("data:"):
+                        line = line[5:].strip()
+                    if line == "[DONE]":
+                        saw_done = True
+                        break
+                    stream_events += 1
+                    try:
+                        event = json.loads(line)
+                    except json.JSONDecodeError as error:
+                        raise RuntimeError(f"invalid streamed JSON event from {url}: {line!r}") from error
+                    if not isinstance(event, dict):
+                        raise RuntimeError(f"non-object streamed event from {url}: {event!r}")
+                    if event.get("error"):
+                        raise RuntimeError(f"model stream error from {url}: {event['error']!r}")
+                    saw_event = True
+                    for key in ("model", "system_fingerprint", "usage", "timings"):
+                        if event.get(key) is not None:
+                            metadata[key] = event[key]
+                    choices = event.get("choices")
+                    if isinstance(choices, list) and choices:
+                        choice = choices[0]
+                        if isinstance(choice, dict):
+                            delta = choice.get("delta")
+                            if isinstance(delta, dict):
+                                if delta.get("content") is not None:
+                                    content_parts.append(str(delta.get("content") or ""))
+                                if delta.get("reasoning_content") is not None:
+                                    reasoning_parts.append(str(delta.get("reasoning_content") or ""))
+                            message = choice.get("message")
+                            if isinstance(message, dict):
+                                if message.get("content") is not None:
+                                    content_parts.append(str(message.get("content") or ""))
+                                if message.get("reasoning_content") is not None:
+                                    reasoning_parts.append(str(message.get("reasoning_content") or ""))
+                            if choice.get("text") is not None:
+                                content_parts.append(str(choice.get("text") or ""))
+                            if choice.get("finish_reason") is not None:
+                                finish_reason = str(choice.get("finish_reason"))
+                                saw_terminal_event = True
+                    elif event.get("content") is not None:
+                        content_parts.append(str(event.get("content") or ""))
+                        if event.get("stop") is True:
+                            finish_reason = "stop"
                             saw_terminal_event = True
-                elif event.get("content") is not None:
-                    content_parts.append(str(event.get("content") or ""))
-                    if event.get("stop") is True:
-                        finish_reason = "stop"
-                        saw_terminal_event = True
-    except urllib.error.HTTPError as error:
-        body_text = error.read().decode("utf-8", "backslashreplace")
-        raise RuntimeError(f"HTTP {error.code} from {url}: {body_text[:2000]}") from error
-    except urllib.error.URLError as error:
-        raise RuntimeError(f"stream request failed for {url}: {error}") from error
+            break
+        except urllib.error.HTTPError as error:
+            if not _filesystem_retryable_transport_error(error, retry_statuses):
+                body_text = error.read().decode("utf-8", "backslashreplace")
+                raise RuntimeError(f"HTTP {error.code} from {url}: {body_text[:2000]}") from error
+        except Exception as error:
+            if not _filesystem_retryable_transport_error(error, retry_statuses):
+                raise
+        delay = _filesystem_transient_retry_seconds()
+        if delay > 0:
+            time.sleep(delay)
     if not saw_event:
         raise RuntimeError(f"model stream returned no events: {url}")
     if not (saw_done or saw_terminal_event):

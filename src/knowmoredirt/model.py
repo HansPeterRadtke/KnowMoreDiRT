@@ -337,6 +337,26 @@ def _retryable_transport_exception(exc: BaseException) -> bool:
     return isinstance(exc, (urllib.error.URLError, TimeoutError, ConnectionError, OSError))
 
 
+def _transient_retry_sleep_seconds() -> float:
+    value = _config_float("KMD_LOCAL_MODEL_TRANSIENT_RETRY_SECONDS")
+    if not math.isfinite(value) or value < 0:
+        raise ValueError("KMD_LOCAL_MODEL_TRANSIENT_RETRY_SECONDS must be non-negative")
+    return value
+
+
+def _sleep_after_transient_failure(*, label: str, attempt: int, exc: BaseException) -> None:
+    delay = _transient_retry_sleep_seconds()
+    LOGGER.warning(
+        "%s transient_transport_retry attempt=%s error=%s delay_seconds=%g",
+        label,
+        attempt,
+        f"{type(exc).__name__}: {exc}",
+        delay,
+    )
+    if delay > 0:
+        time.sleep(delay)
+
+
 def _retry_delay_seconds(attempt_index: int, *, env_name: str, default: float) -> float:
     base = _retry_backoff_seconds(env_name, default)
     if base <= 0:
@@ -345,33 +365,16 @@ def _retry_delay_seconds(attempt_index: int, *, env_name: str, default: float) -
 
 
 def _control_json_request(request_or_url: Any, *, timeout: float) -> Any:
-    attempts = _retry_attempts("KMD_LOCAL_MODEL_CONTROL_RETRY_ATTEMPTS", 3)
-    last_error: BaseException | None = None
-    for attempt in range(attempts):
+    attempt = 0
+    while True:
+        attempt += 1
         try:
             with urllib.request.urlopen(request_or_url, timeout=timeout) as response:
                 return json.loads(response.read().decode("utf-8", errors="replace"))
         except Exception as exc:
-            if not _retryable_transport_exception(exc) or attempt + 1 >= attempts:
+            if not _retryable_transport_exception(exc):
                 raise
-            last_error = exc
-            delay = _retry_delay_seconds(
-                attempt,
-                env_name="KMD_LOCAL_MODEL_CONTROL_RETRY_BACKOFF_SECONDS",
-                default=0.25,
-            )
-            LOGGER.warning(
-                "model_control_retry attempt=%s/%s error=%s delay_seconds=%g",
-                attempt + 1,
-                attempts,
-                f"{type(exc).__name__}: {exc}",
-                delay,
-            )
-            if delay > 0:
-                time.sleep(delay)
-    if last_error is not None:
-        raise last_error
-    raise RuntimeError("control request retry loop exhausted without an attempt")
+            _sleep_after_transient_failure(label="model_control", attempt=attempt, exc=exc)
 
 
 def _fetch_json(url: str, *, timeout: float | None = None) -> Any:
@@ -631,47 +634,40 @@ def complete_json_with_transport_retry(
     n_predict: int | None = None,
     json_schema: dict[str, Any],
 ) -> dict[str, Any]:
-    """Retry only transient transport failures for direct semantic callers.
-
-    Planner-owned semantic calls already have higher-level retry policies and do
-    not use this helper.  This wrapper exists for direct callers such as the
-    long-range document-context classifier and semantic evaluator so a temporary
-    localhost disconnect does not make the whole operation terminal.
-    """
+    """Retry transient transport failures indefinitely; retry incomplete streams finitely."""
 
     del n_predict
-    attempts = _retry_attempts("KMD_LOCAL_MODEL_DIRECT_RETRY_ATTEMPTS", 3)
-    transient_json_reasons = {
-        "incomplete_stream",
-    }
-    for attempt in range(attempts):
-        retry_error: BaseException | None = None
+    incomplete_attempts = _retry_attempts("KMD_LOCAL_MODEL_DIRECT_RETRY_ATTEMPTS", 3)
+    incomplete_count = 0
+    transport_attempt = 0
+    while True:
         try:
             return client.complete_json(prompt, json_schema=json_schema)
         except LocalModelJSONError as exc:
-            retryable = str(exc.reason or "") in transient_json_reasons
-            if not retryable or attempt + 1 >= attempts:
+            if str(exc.reason or "") != "incomplete_stream":
                 raise
-            retry_error = exc
+            incomplete_count += 1
+            if incomplete_count >= incomplete_attempts:
+                raise
+            delay = _retry_delay_seconds(
+                incomplete_count - 1,
+                env_name="KMD_LOCAL_MODEL_DIRECT_RETRY_BACKOFF_SECONDS",
+                default=0.25,
+            )
+            LOGGER.warning(
+                "model_direct_incomplete_stream_retry attempt=%s/%s error=%s delay_seconds=%g",
+                incomplete_count,
+                incomplete_attempts,
+                f"{type(exc).__name__}: {exc}",
+                delay,
+            )
+            if delay > 0:
+                time.sleep(delay)
         except Exception as exc:
-            if not _retryable_transport_exception(exc) or attempt + 1 >= attempts:
+            if not _retryable_transport_exception(exc):
                 raise
-            retry_error = exc
-        delay = _retry_delay_seconds(
-            attempt,
-            env_name="KMD_LOCAL_MODEL_DIRECT_RETRY_BACKOFF_SECONDS",
-            default=0.25,
-        )
-        LOGGER.warning(
-            "model_direct_retry attempt=%s/%s error=%s delay_seconds=%g",
-            attempt + 1,
-            attempts,
-            f"{type(retry_error).__name__}: {retry_error}",
-            delay,
-        )
-        if delay > 0:
-            time.sleep(delay)
-    raise RuntimeError("direct model retry loop exhausted without an attempt")
+            transport_attempt += 1
+            _sleep_after_transient_failure(label="model_direct", attempt=transport_attempt, exc=exc)
 
 
 @dataclass
@@ -1136,56 +1132,62 @@ class LocalModelClient:
             headers={"Content-Type": "application/json"},
             method="POST",
         )
-        raw = ""
-        response_obj: dict[str, Any] = {}
-        saw_done = False
-        saw_terminal_event = False
-        finish_reason = ""
-        stop_reason = ""
+        transport_attempt = 0
         started = time.time()
-        stream_events = 0
-        stream_bytes = 0
-        try:
-            with urllib.request.urlopen(request, timeout=self.per_token_timeout_seconds) as response:
-                for raw_line in response:
-                    stream_bytes += len(raw_line)
-                    line = raw_line.decode("utf-8", errors="replace").strip()
-                    if not line:
-                        continue
-                    if line.startswith("data:"):
-                        line = line[5:].strip()
-                    if line == "[DONE]":
-                        saw_done = True
-                        break
-                    stream_events += 1
-                    try:
-                        event = json.loads(line)
-                    except json.JSONDecodeError:
-                        continue
-                    if not isinstance(event, dict):
-                        continue
-                    response_obj = event
-                    raw += _event_content(event) or ""
-                    choices = event.get("choices")
-                    if isinstance(choices, list) and choices and isinstance(choices[0], dict):
-                        found_finish = str(choices[0].get("finish_reason") or "").strip()
-                        if found_finish:
-                            finish_reason = found_finish
-                            saw_terminal_event = True
-                    found_stop = str(event.get("stop_reason") or "").strip()
-                    if found_stop:
-                        stop_reason = found_stop
-                    if event.get("stop") is True or any(
-                        event.get(key) is True
-                        for key in ("stopped_eos", "stopped_word", "stopped_limit")
-                    ):
-                        saw_terminal_event = True
-        except Exception as exc:
+        while True:
+            raw = ""
+            response_obj: dict[str, Any] = {}
+            saw_done = False
+            saw_terminal_event = False
+            finish_reason = ""
+            stop_reason = ""
+            stream_events = 0
+            stream_bytes = 0
             try:
-                setattr(exc, "model_input_audit", model_input_audit)
-            except Exception:
-                pass
-            raise
+                with urllib.request.urlopen(request, timeout=self.per_token_timeout_seconds) as response:
+                    for raw_line in response:
+                        stream_bytes += len(raw_line)
+                        line = raw_line.decode("utf-8", errors="replace").strip()
+                        if not line:
+                            continue
+                        if line.startswith("data:"):
+                            line = line[5:].strip()
+                        if line == "[DONE]":
+                            saw_done = True
+                            break
+                        stream_events += 1
+                        try:
+                            event = json.loads(line)
+                        except json.JSONDecodeError:
+                            continue
+                        if not isinstance(event, dict):
+                            continue
+                        response_obj = event
+                        raw += _event_content(event) or ""
+                        choices = event.get("choices")
+                        if isinstance(choices, list) and choices and isinstance(choices[0], dict):
+                            found_finish = str(choices[0].get("finish_reason") or "").strip()
+                            if found_finish:
+                                finish_reason = found_finish
+                                saw_terminal_event = True
+                        found_stop = str(event.get("stop_reason") or "").strip()
+                        if found_stop:
+                            stop_reason = found_stop
+                        if event.get("stop") is True or any(
+                            event.get(key) is True
+                            for key in ("stopped_eos", "stopped_word", "stopped_limit")
+                        ):
+                            saw_terminal_event = True
+                break
+            except Exception as exc:
+                try:
+                    setattr(exc, "model_input_audit", model_input_audit)
+                except Exception:
+                    pass
+                if not _retryable_transport_exception(exc):
+                    raise
+                transport_attempt += 1
+                _sleep_after_transient_failure(label="model_stream", attempt=transport_attempt, exc=exc)
         elapsed_seconds = round(time.time() - started, 3)
         throughput = _model_throughput_observation(response_obj, raw, elapsed_seconds)
         completion_tokens = int(throughput.get("completion_tokens") or 0)
