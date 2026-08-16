@@ -679,18 +679,20 @@ def test_production_grounded_recovery_has_explicit_audited_contract() -> None:
     assert "_grounded_post_plan_recovery" in model_text
     assert "_complete_grounded_model_answer" in model_text
     allowed = {
-        "_answer_with_generic_sentence_source",
+        "_answer_with_discussion_belief_source",
         "_answer_with_actor_role_ids_source",
         "_answer_with_review_or_approval_source",
+        "_answer_with_precise_source_content",
+        "_answer_with_discourse_clause_source",
+        "_answer_with_generic_sentence_source",
         "_answer_with_table_field_source",
         "_answer_with_source_rows",
-        "_answer_with_exact_source_field",
-        "_answer_with_structured_object_source",
-        "_answer_with_precise_source_content",
-        "_answer_with_explicit_negative_clause",
         "_answer_with_row_field_source",
+        "_answer_with_structured_object_source",
+        "_answer_with_explicit_negative_clause",
         "_answer_with_labeled_attribute_source",
         "_answer_with_temporal_source_records",
+        "_answer_with_exact_source_field",
     }
     actual = {
         node.attr

@@ -243,6 +243,11 @@ def _looks_like_named_entity_value(value: str) -> bool:
         return False
     if re.search(r"[/:=]|\d", text):
         return False
+    # Structural labels/codes such as URL-ONLY are not person or organization
+    # names merely because they are capitalized. Preserve normal hyphenated
+    # names (Jean-Luc) by limiting this guard to all-uppercase code-like forms.
+    if re.fullmatch(r"[A-Z]{2,}(?:[-_][A-Z0-9]{2,})+", text):
+        return False
     phrases = [phrase.strip() for phrase in capitalized_phrases(text) if phrase.strip()]
     if not phrases:
         return False

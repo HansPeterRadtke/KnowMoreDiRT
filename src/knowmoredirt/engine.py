@@ -1221,7 +1221,8 @@ class KnowMoreDiRTEngine:
         qnorm = normalize(question)
         if qnorm.startswith("who ") and (TOK_OWNER in qnorm or TOK_OWNS in qnorm) and "correction" in qnorm:
             return None
-        if not any(term in qnorm for term in ["really", "proven", "say", "said", TOK_SNAPPED, "corrected", "correction"]):
+        authority_requested = "actual" in qnorm or "official" in qnorm
+        if not authority_requested and not any(term in qnorm for term in ["really", "proven", "say", "said", TOK_SNAPPED, "corrected", "correction"]):
             return None
         evidence = list(prior_answer.evidence if prior_answer else [])
         evidence.extend(self._evidence(sentence, score) for sentence, score in self._search(question, limit=24))
@@ -1236,6 +1237,24 @@ class KnowMoreDiRTEngine:
                 line = clean_extracted_value(raw_line).strip()
                 if line:
                     lines.append((line, item, normalize(window)))
+        if authority_requested:
+            target_terms = [
+                term for term in content_tokens(question)
+                if term not in {"what", "which", "is", "the", "a", "an", "actual", "official", "code", "id", "identifier"}
+            ]
+            for line, evidence_item, window_norm in lines:
+                if target_terms and not all(self._source_field_contains_any(window_norm, [term]) for term in target_terms):
+                    continue
+                if (
+                    ("report" in window_norm or "reported" in window_norm)
+                    and any(marker in window_norm for marker in [
+                        "does not contain the underlying official",
+                        "does not contain underlying official",
+                        "not the official",
+                        "no official source",
+                    ])
+                ):
+                    return Answer("unknown", 0.0, [evidence_item], "source reported-only authority guard", "unknown")
         if "really" in qnorm:
             terms = [term for term in content_tokens(question) if term not in {"did", "really", "open", "opened", "was", "were", "the"}]
             for line, evidence_item, window_norm in lines:
@@ -1686,7 +1705,20 @@ class KnowMoreDiRTEngine:
             joined = "\n".join(line for line, _line_norm, _ev in lines)
             joined_norm = normalize(joined)
             if TOK_PLAIN_SECRET in qnorm and "stores only salted password hashes" in joined_norm:
-                return Answer("No; it stores only salted password hashes.", 0.86, [lines[0][2]] if lines else [], "generic source positive correction", "boolean")
+                proof_evidence: list[Evidence] = []
+                for line, line_norm, item in lines:
+                    if "stores only salted password hashes" not in line_norm:
+                        continue
+                    exact = item
+                    document = self._documents_by_rel_path.get(item.rel_path)
+                    if document is not None:
+                        for index, raw_line in enumerate(document.text.splitlines()):
+                            if clean_extracted_value(raw_line).strip() == line:
+                                exact = self._evidence_for_document_line(document.rel_path, index, line)
+                                break
+                    proof_evidence = [exact]
+                    break
+                return Answer("No; it stores only salted password hashes.", 0.86, proof_evidence, "generic source positive correction", "boolean")
             if "delete" in qnorm and ("flags " + TOK_OLD_BOOKS) in joined_norm and "does not delete" in joined_norm:
                 return Answer("No; runtime flags " + TOK_OLD_BOOKS + " for human review.", 0.86, [lines[0][2]] if lines else [], "generic source positive correction", "boolean")
         if qnorm.startswith("is ") and "product roadmap" in qnorm:
@@ -3165,7 +3197,7 @@ class KnowMoreDiRTEngine:
             TOK_WARRANTY, TOK_MANUAL, TOK_RUNBOOK, "guide", "support", "dataset", "map", "drawing", "report", "archive", "canonical", "design",
         ]
         id_labels = [
-            "contact", "asset", "invoice", "audit", "case", "parcel", "person", "actor", "badge", TOK_TICKET, "reference", "specimen", "confirmation", "hotel", "reservation", "booking", "model", "code", "commit", TOK_PR,
+            "contact", TOK_CUSTOMER, "asset", "invoice", "audit", "case", "parcel", "person", "actor", "badge", TOK_TICKET, "reference", "specimen", "confirmation", "hotel", "reservation", "booking", "model", "code", "commit", TOK_PR,
         ]
         requested: list[str] = []
         if any(term in material_terms for term in {"url", "uri", "link", "portal"}) or qnorm.startswith("where "):
@@ -3873,12 +3905,27 @@ class KnowMoreDiRTEngine:
             relation_tokens = [normalize(token) for value in frame.relation_terms for token in content_tokens(value) if len(normalize(token)) > 2]
         if not relation_tokens:
             return False
-        relation_root = relation_tokens[0]
-        if not any(variant and variant in prefix for variant in term_variants(relation_root)):
+        grounded_relation_index = next(
+            (
+                index for index, token in enumerate(relation_tokens)
+                if any(variant and re.search(rf"\b{re.escape(variant)}\b", prefix) for variant in term_variants(token))
+            ),
+            None,
+        )
+        if grounded_relation_index is None:
             return False
-        requested_values: list[str] = [normalize(anchor) for anchor in frame.target_anchors[1:] if normalize(anchor)]
-        if not requested_values and len(relation_tokens) > 1:
-            requested_values = [" ".join(relation_tokens[1:])]
+        requested_values: list[str] = []
+        for anchor in frame.target_anchors[1:]:
+            anchor_norm = normalize(anchor)
+            tokens = [token for token in content_tokens(anchor_norm) if len(token) > 2]
+            # Anchors already grounded before "only" are subject/context anchors,
+            # not excluded object values.
+            if tokens and all(token in prefix for token in tokens):
+                continue
+            if anchor_norm:
+                requested_values.append(anchor_norm)
+        if not requested_values and len(relation_tokens) > grounded_relation_index + 1:
+            requested_values = [" ".join(relation_tokens[grounded_relation_index + 1:])]
         requested_values.extend(normalize(value) for value in frame.constraints if normalize(value))
         if not requested_values:
             return False
@@ -4637,7 +4684,7 @@ class KnowMoreDiRTEngine:
                     return evidence_answer
                 trace.evidence_rejected_count += 1
         recovery = self._grounded_post_plan_recovery(question, answer, planned_frame, expected)
-        if self._complete_answer(recovery):
+        if recovery is not None:
             self._attach_model_answer_provenance(recovery)
             return recovery
         return None
@@ -4649,35 +4696,48 @@ class KnowMoreDiRTEngine:
         expected: ExpectedAnswer,
         frame: QueryFrame,
     ) -> Answer:
-        """Repair only a strict incomplete surface from explicit grounded source text."""
+        """Repair only an incomplete/incorrect structural surface from explicit source."""
         if is_unknown_text(answer.text):
             return answer
         current = normalize(answer.text)
         if not current:
             return answer
+        # Reject an answer that is structurally incompatible with the query type
+        # even when the semantic verifier mistakenly accepted it.
+        if expected.answer_type in {"person", "actor", "organization"} and not canonicalize_answer(expected, answer.text):
+            return Answer("unknown", 0.0, answer.evidence, "verified answer failed final type guard", "unknown")
         candidate: Answer | None = None
+        replace_without_prefix = False
         if expected.answer_type in {"person", "actor", "organization"} and len(answer.text.split()) == 1:
             expanded = self._expand_single_name_from_evidence(answer.text, answer.evidence)
             if normalize(expanded) != current:
                 candidate = replace(answer, text=expanded)
             if candidate is None:
-                candidate = self._answer_with_review_or_approval_source(question, answer)
+                candidate = self._answer_with_review_or_approval_source(question, None)
         elif expected.answer_type == "content_phrase":
-            candidate = self._answer_with_generic_sentence_source(question, answer)
+            candidate = self._answer_with_generic_sentence_source(question, None)
+        elif expected.answer_type == "count":
+            candidate = self._answer_with_source_rows(question, None)
+            replace_without_prefix = candidate is not None and candidate.answer_type == "count"
+        elif expected.answer_type in {"url", "identifier"}:
+            candidate = self._answer_with_row_field_source(question, None)
+            if candidate is None:
+                candidate = self._answer_with_exact_source_field(question, None)
         if candidate is None or is_unknown_text(candidate.text):
             return answer
         grounded = normalize(candidate.text)
         if not grounded or grounded == current:
             return answer
-        # Completeness repair may only add source-grounded material around the
-        # already accepted value; it may not substitute a different proposition.
-        if current not in grounded:
+        # Count aggregation is independently recomputed from scoped source rows.
+        # Other completion may only extend the already accepted value.
+        if not replace_without_prefix and current not in grounded:
             return answer
         evidence = list(dict.fromkeys([*answer.evidence, *candidate.evidence]))
         return replace(
             answer,
             text=candidate.text,
             evidence=evidence,
+            answer_type=candidate.answer_type or answer.answer_type,
             reason=f"{answer.reason}; completed from explicit grounded source",
         )
 
@@ -4695,34 +4755,50 @@ class KnowMoreDiRTEngine:
         open-world proof contract before they can become definitive.
         """
         recovery_fns = (
-            self._answer_with_generic_sentence_source,
+            self._answer_with_discussion_belief_source,
             self._answer_with_actor_role_ids_source,
             self._answer_with_review_or_approval_source,
+            self._answer_with_precise_source_content,
+            self._answer_with_discourse_clause_source,
+            self._answer_with_generic_sentence_source,
             self._answer_with_table_field_source,
             self._answer_with_source_rows,
-            self._answer_with_exact_source_field,
-            self._answer_with_structured_object_source,
-            self._answer_with_precise_source_content,
-            self._answer_with_explicit_negative_clause,
             self._answer_with_row_field_source,
+            self._answer_with_structured_object_source,
+            self._answer_with_explicit_negative_clause,
             self._answer_with_labeled_attribute_source,
             self._answer_with_temporal_source_records,
+            self._answer_with_exact_source_field,
         )
         trace = self.model_query_trace
         for recovery_fn in recovery_fns:
-            recovery = recovery_fn(question, prior_answer)
+            # Recovery is intentionally independent of the failed model/bounded
+            # candidate. Passing its evidence forward can bias the deterministic
+            # source scan toward the same bad region that just failed.
+            recovery = recovery_fn(question, None)
+            if recovery is None:
+                continue
+            if is_unknown_text(recovery.text):
+                recovery.reason = f"post-plan {recovery.reason}"
+                return self._structure_answer(recovery, planned_frame)
             if not self._complete_answer(recovery):
                 continue
             normalized = normalize(recovery.text).split(";", 1)[0].strip()
-            if (
-                recovery.answer_type == "boolean"
-                and normalized in {"no", "false"}
-                and not self._verify_with_local_model(question, planned_frame, recovery, expected)
-            ):
-                trace.evidence_rejected_count += 1
-                continue
-            # Structural/source handlers already guarantee local grounding. Keep
-            # the authoritative query frame for scope/provenance structuring.
+            if recovery.answer_type == "boolean" and normalized in {"no", "false"}:
+                # A deterministic explicit exclusion/negation from source can
+                # satisfy the negative proof contract directly. Otherwise keep
+                # the model verifier requirement.
+                material = "\n".join(self._evidence_window_text(item, radius=3, max_chars=1400) for item in recovery.evidence)
+                deterministic_negative = (
+                    self._evidence_directly_excludes_requested_relation(planned_frame, material)
+                    or (
+                        self._evidence_directly_negates_requested_relation(planned_frame, material)
+                        and not self._evidence_is_absence_of_record_only(material, planned_frame)
+                    )
+                )
+                if not deterministic_negative and not self._verify_with_local_model(question, planned_frame, recovery, expected):
+                    trace.evidence_rejected_count += 1
+                    continue
             recovery.reason = f"post-plan {recovery.reason}"
             return self._structure_answer(recovery, planned_frame)
         return None

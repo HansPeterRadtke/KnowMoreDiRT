@@ -135,10 +135,7 @@ def test_empty_document_context_map_has_complete_stats_shape(tmp_path: Path) -> 
     }
 
 
-def test_invalid_document_context_result_is_not_cached(tmp_path: Path, monkeypatch) -> None:
-    import pytest
-    from knowmoredirt.model import LocalModelUnavailableError
-
+def test_invalid_document_context_result_is_sanitized_and_cached(tmp_path: Path, monkeypatch) -> None:
     doc, sentences = _document(tmp_path)
     cache_root = tmp_path / "cache"
     monkeypatch.setenv("KMD_DOCUMENT_CONTEXT_CACHE_DIR", str(cache_root))
@@ -156,9 +153,47 @@ def test_invalid_document_context_result_is_not_cached(tmp_path: Path, monkeypat
             }
 
     client = BadClient()
-    with pytest.raises(LocalModelUnavailableError, match="exact source substring"):
-        classify_document_context_map(doc, sentences, client)
-    assert list(cache_root.glob("*.json")) == []
+    assert classify_document_context_map(doc, sentences, client) == ([], [])
+    assert classify_document_context_map(doc, sentences, client) == ([], [])
+    assert client.calls == 1
+    cached = list(cache_root.glob("*.json"))
+    assert len(cached) == 1
+    import json
+    payload = json.loads(cached[0].read_text())
+    assert payload["result"]["context_segments"] == []
+
+
+def test_document_context_keeps_valid_items_while_discarding_invalid_items(tmp_path: Path, monkeypatch) -> None:
+    doc, sentences = _document(tmp_path)
+    monkeypatch.setenv("KMD_DOCUMENT_CONTEXT_CACHE_DIR", str(tmp_path / "mixed-cache"))
+
+    class MixedClient(FakeContextClient):
+        def complete_json(self, prompt, *, n_predict=None, json_schema=None):
+            self.calls += 1
+            return {
+                "context_segments": [
+                    {
+                        "kind": "dreamed", "start_chunk": 0, "end_chunk": 1, "evidence_chunk": 2,
+                        "evidence_text": "Then I woke up. It had all been a dream.", "holder_surface": "", "reason": "valid", "confidence": 0.99,
+                    },
+                    {
+                        "kind": "reported", "start_chunk": 0, "end_chunk": 1, "evidence_chunk": 2,
+                        "evidence_text": "fabricated", "holder_surface": "", "reason": "invalid", "confidence": 0.99,
+                    },
+                ],
+                "temporal_scopes": [{
+                    "temporal_value": "2026-07-01", "start_chunk": 1, "end_chunk": 1, "evidence_chunk": 1,
+                    "evidence_text": "Dated 2026-07-01", "reason": "valid", "confidence": 0.95,
+                }],
+                "discourse_relations": [{
+                    "relation_type": "correction", "from_chunk": 0, "to_chunk": 2, "evidence_chunk": 2,
+                    "evidence_text": "not exact", "reason": "invalid", "confidence": 0.9,
+                }],
+            }
+
+    contexts, temporals = classify_document_context_map(doc, sentences, MixedClient())
+    assert len(contexts) == 1 and contexts[0].kind == "dreamed"
+    assert len(temporals) == 1 and temporals[0].temporal_value == "2026-07-01"
 
 
 def test_boundary_material_trims_header_overhead_instead_of_failing(monkeypatch) -> None:
@@ -219,9 +254,7 @@ def test_document_context_rejects_out_of_range_index_after_decode(tmp_path, monk
 
     monkeypatch.setenv("KMD_DOCUMENT_CONTEXT_CACHE_DIR", str(tmp_path / "bad-index-cache"))
     doc, sentences = _document(tmp_path)
-    import pytest
-    with pytest.raises(LocalModelUnavailableError, match="invalid context chunk range"):
-        classify_document_context_map(doc, sentences, BadIndexClient())
+    assert classify_document_context_map(doc, sentences, BadIndexClient()) == ([], [])
 
 
 def test_document_context_prompt_allows_unmistakable_sleep_scope_without_dream_word(tmp_path: Path, monkeypatch) -> None:
@@ -323,3 +356,20 @@ def test_hundred_large_chunks_keep_middle_scope_carrier_in_full_coverage_scan() 
     # chunks with roughly one thousand source tokens each.
     assert len(sentences) == 100
     assert all(len(sentence.text.split()) >= 1000 for sentence in sentences)
+
+
+def test_invalid_full_coverage_clue_is_discarded_without_failure(tmp_path: Path) -> None:
+    from knowmoredirt.document_context import _full_coverage_clues
+    text = "header\n" + ("A" * 5000) + "\nfooter"
+    path = tmp_path / "long.txt"
+    path.write_text(text, encoding="utf-8")
+    doc = Document("d", path, "long.txt", text, len(text), 1.0, 1.0, "sha")
+    sentence = Sentence("s", "d", "long.txt", text, 0, 0, len(text))
+
+    class Client:
+        def context_size(self): return 4096
+        def complete_json(self, *_args, **_kwargs):
+            return {"clues": [{"kind": "dreamed", "evidence_text": "fabricated evidence"}]}
+
+    clues = _full_coverage_clues(doc, [sentence], Client(), "[CHUNK 0]\nheader")
+    assert clues == []

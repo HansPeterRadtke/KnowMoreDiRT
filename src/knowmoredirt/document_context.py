@@ -11,6 +11,7 @@ from __future__ import annotations
 
 import hashlib
 import json
+import logging
 import os
 import re
 import tempfile
@@ -25,7 +26,7 @@ from .model import LocalModelClient, LocalModelUnavailableError, complete_json_w
 from .models import Document, Sentence
 from .store import DSPGStore, stable_id
 
-DOCUMENT_CONTEXT_POLICY = "document-context-map-v5-discourse-relations"
+DOCUMENT_CONTEXT_POLICY = "document-context-map-v6-sanitized-model-items"
 CONTEXT_KINDS = (
     "dreamed",
     "reported",
@@ -42,6 +43,8 @@ DISCOURSE_RELATION_TYPES = (
     "revision", "scope_close", "temporal_before", "temporal_after",
     "temporal_overlap", "same_topic", "section_membership",
 )
+
+LOGGER = logging.getLogger(__name__)
 
 
 @dataclass(frozen=True)
@@ -342,9 +345,10 @@ def _full_coverage_clues(
                 if kind not in {*CONTEXT_KINDS, "temporal"}:
                     continue
                 if not evidence or evidence not in window or evidence not in sentence.text:
-                    raise LocalModelUnavailableError(
-                        "document context coverage clue is not an exact source substring"
+                    LOGGER.warning(
+                        "document_context_discard_invalid kind=coverage_clue reason=not_exact_source_substring"
                     )
+                    continue
                 clue = {"chunk": sentence.order, "kind": kind, "evidence_text": evidence}
                 if clue not in clues:
                     clues.append(clue)
@@ -424,21 +428,25 @@ def _classify_document_context_map_full(
         )
 
     contexts: list[DocumentContextEnvelope] = []
+    valid_context_items: list[dict[str, Any]] = []
     for item in raw.get("context_segments", []) if isinstance(raw, dict) else []:
-        start = int(item.get("start_chunk", -1))
-        end = int(item.get("end_chunk", -1))
-        evidence_chunk = int(item.get("evidence_chunk", -1))
-        _validate_range(start, end, len(sentences), "context")
-        if evidence_chunk < 0 or evidence_chunk >= len(sentences):
-            raise LocalModelUnavailableError("document context evidence_chunk is out of range")
-        evidence = str(item.get("evidence_text") or "")
-        if not evidence or evidence not in sentences[evidence_chunk].text:
-            raise LocalModelUnavailableError("document context evidence is not an exact source substring")
-        kind = str(item.get("kind") or "")
-        if kind not in CONTEXT_KINDS:
-            raise LocalModelUnavailableError(f"unsupported document context kind: {kind!r}")
-        contexts.append(
-            DocumentContextEnvelope(
+        if not isinstance(item, dict):
+            LOGGER.warning("document_context_discard_invalid kind=context reason=non_object")
+            continue
+        try:
+            start = int(item.get("start_chunk", -1))
+            end = int(item.get("end_chunk", -1))
+            evidence_chunk = int(item.get("evidence_chunk", -1))
+            _validate_range(start, end, len(sentences), "context")
+            if evidence_chunk < 0 or evidence_chunk >= len(sentences):
+                raise LocalModelUnavailableError("document context evidence_chunk is out of range")
+            evidence = str(item.get("evidence_text") or "")
+            if not evidence or evidence not in sentences[evidence_chunk].text:
+                raise LocalModelUnavailableError("document context evidence is not an exact source substring")
+            kind = str(item.get("kind") or "")
+            if kind not in CONTEXT_KINDS:
+                raise LocalModelUnavailableError(f"unsupported document context kind: {kind!r}")
+            candidate = DocumentContextEnvelope(
                 True,
                 kind,
                 "chunk_range",
@@ -450,25 +458,33 @@ def _classify_document_context_map_full(
                 end,
                 evidence_chunk,
             )
-        )
-    _validate_nested_or_disjoint(contexts)
+            _validate_nested_or_disjoint([*contexts, candidate])
+        except (LocalModelUnavailableError, TypeError, ValueError) as exc:
+            LOGGER.warning("document_context_discard_invalid kind=context reason=%s", exc)
+            continue
+        contexts.append(candidate)
+        valid_context_items.append(item)
 
     temporals: list[DocumentTemporalScope] = []
+    valid_temporal_items: list[dict[str, Any]] = []
     for item in raw.get("temporal_scopes", []) if isinstance(raw, dict) else []:
-        start = int(item.get("start_chunk", -1))
-        end = int(item.get("end_chunk", -1))
-        evidence_chunk = int(item.get("evidence_chunk", -1))
-        _validate_range(start, end, len(sentences), "temporal")
-        if evidence_chunk < 0 or evidence_chunk >= len(sentences):
-            raise LocalModelUnavailableError("document temporal evidence_chunk is out of range")
-        evidence = str(item.get("evidence_text") or "")
-        if not evidence or evidence not in sentences[evidence_chunk].text:
-            raise LocalModelUnavailableError("document temporal evidence is not an exact source substring")
-        value = str(item.get("temporal_value") or "").strip()
-        if not value:
-            raise LocalModelUnavailableError("document temporal scope is missing temporal_value")
-        temporals.append(
-            DocumentTemporalScope(
+        if not isinstance(item, dict):
+            LOGGER.warning("document_context_discard_invalid kind=temporal reason=non_object")
+            continue
+        try:
+            start = int(item.get("start_chunk", -1))
+            end = int(item.get("end_chunk", -1))
+            evidence_chunk = int(item.get("evidence_chunk", -1))
+            _validate_range(start, end, len(sentences), "temporal")
+            if evidence_chunk < 0 or evidence_chunk >= len(sentences):
+                raise LocalModelUnavailableError("document temporal evidence_chunk is out of range")
+            evidence = str(item.get("evidence_text") or "")
+            if not evidence or evidence not in sentences[evidence_chunk].text:
+                raise LocalModelUnavailableError("document temporal evidence is not an exact source substring")
+            value = str(item.get("temporal_value") or "").strip()
+            if not value:
+                raise LocalModelUnavailableError("document temporal scope is missing temporal_value")
+            candidate = DocumentTemporalScope(
                 value,
                 evidence,
                 str(item.get("reason") or ""),
@@ -477,23 +493,32 @@ def _classify_document_context_map_full(
                 end,
                 evidence_chunk,
             )
-        )
+        except (LocalModelUnavailableError, TypeError, ValueError) as exc:
+            LOGGER.warning("document_context_discard_invalid kind=temporal reason=%s", exc)
+            continue
+        temporals.append(candidate)
+        valid_temporal_items.append(item)
+
     discourse_relations: list[DocumentDiscourseRelation] = []
+    valid_discourse_items: list[dict[str, Any]] = []
     for item in raw.get("discourse_relations", []) if isinstance(raw, dict) else []:
-        relation_type = str(item.get("relation_type") or "")
-        if relation_type not in DISCOURSE_RELATION_TYPES:
-            raise LocalModelUnavailableError(f"unsupported document discourse relation: {relation_type!r}")
-        from_chunk = int(item.get("from_chunk", -1))
-        to_chunk = int(item.get("to_chunk", -1))
-        evidence_chunk = int(item.get("evidence_chunk", -1))
-        for value, label in ((from_chunk, "from_chunk"), (to_chunk, "to_chunk"), (evidence_chunk, "evidence_chunk")):
-            if value < 0 or value >= len(sentences):
-                raise LocalModelUnavailableError(f"document discourse {label} is out of range")
-        evidence = str(item.get("evidence_text") or "")
-        if not evidence or evidence not in sentences[evidence_chunk].text:
-            raise LocalModelUnavailableError("document discourse evidence is not an exact source substring")
-        discourse_relations.append(
-            DocumentDiscourseRelation(
+        if not isinstance(item, dict):
+            LOGGER.warning("document_context_discard_invalid kind=discourse reason=non_object")
+            continue
+        try:
+            relation_type = str(item.get("relation_type") or "")
+            if relation_type not in DISCOURSE_RELATION_TYPES:
+                raise LocalModelUnavailableError(f"unsupported document discourse relation: {relation_type!r}")
+            from_chunk = int(item.get("from_chunk", -1))
+            to_chunk = int(item.get("to_chunk", -1))
+            evidence_chunk = int(item.get("evidence_chunk", -1))
+            for value, label in ((from_chunk, "from_chunk"), (to_chunk, "to_chunk"), (evidence_chunk, "evidence_chunk")):
+                if value < 0 or value >= len(sentences):
+                    raise LocalModelUnavailableError(f"document discourse {label} is out of range")
+            evidence = str(item.get("evidence_text") or "")
+            if not evidence or evidence not in sentences[evidence_chunk].text:
+                raise LocalModelUnavailableError("document discourse evidence is not an exact source substring")
+            candidate = DocumentDiscourseRelation(
                 relation_type,
                 from_chunk,
                 to_chunk,
@@ -502,9 +527,21 @@ def _classify_document_context_map_full(
                 str(item.get("reason") or ""),
                 max(0.0, min(1.0, float(item.get("confidence") or 0.0))),
             )
-        )
+        except (LocalModelUnavailableError, TypeError, ValueError) as exc:
+            LOGGER.warning("document_context_discard_invalid kind=discourse reason=%s", exc)
+            continue
+        discourse_relations.append(candidate)
+        valid_discourse_items.append(item)
+
     if fresh_result:
-        _atomic_write(path, {"cache_context": cache_context, "result": raw})
+        _atomic_write(path, {
+            "cache_context": cache_context,
+            "result": {
+                "context_segments": valid_context_items,
+                "temporal_scopes": valid_temporal_items,
+                "discourse_relations": valid_discourse_items,
+            },
+        })
     return contexts, temporals, discourse_relations
 
 

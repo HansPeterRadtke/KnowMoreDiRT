@@ -2467,3 +2467,88 @@ def test_grounded_model_completion_restores_full_source_phrase_only_when_contain
         frame,
     )
     assert unchanged.text == "are valid for release"
+
+
+def test_named_entity_type_guard_rejects_code_like_surface() -> None:
+    assert canonicalize_answer(ExpectedAnswer("person"), "URL-ONLY") == ""
+    assert canonicalize_answer(ExpectedAnswer("person"), "Omar") == "Omar"
+    assert canonicalize_answer(ExpectedAnswer("person"), "Jean-Luc") == "Jean-Luc"
+
+
+def test_grounded_completion_replaces_scoped_count_from_source(monkeypatch) -> None:
+    engine = object.__new__(KnowMoreDiRTEngine)
+    grounded = Answer("1", 0.9, [Evidence("rows.tsv", "A\tpaused")], "source", "count")
+    monkeypatch.setattr(engine, "_answer_with_source_rows", lambda *_args, **_kwargs: grounded)
+    frame = QueryFrame(
+        question_text="How many rows have state paused?",
+        answer_type="count",
+        answer_variables=("count",),
+        target_anchors=("rows",),
+        requested_relation="state paused",
+        relation_terms=("state", "paused"),
+        constraints=(),
+        source="model_query_drs",
+    )
+    completed = engine._complete_grounded_model_answer(
+        frame.question_text,
+        Answer("2", 0.9, [], "model", "count"),
+        ExpectedAnswer("count"),
+        frame,
+    )
+    assert completed.text == "1"
+
+
+def test_grounded_completion_expands_url_prefix_but_not_different_url(monkeypatch) -> None:
+    engine = object.__new__(KnowMoreDiRTEngine)
+    full = Answer(
+        "https://github.com/example/project/pull/2780",
+        0.9,
+        [Evidence("record.json", "tracking_pr=https://github.com/example/project/pull/2780")],
+        "source",
+        "url",
+    )
+    monkeypatch.setattr(engine, "_answer_with_row_field_source", lambda *_args, **_kwargs: full)
+    monkeypatch.setattr(engine, "_answer_with_exact_source_field", lambda *_args, **_kwargs: None)
+    frame = QueryFrame(
+        question_text="What is the tracking PR URL?",
+        answer_type="url",
+        answer_variables=("tracking PR URL",),
+        target_anchors=(),
+        requested_relation="tracking PR URL",
+        relation_terms=("tracking PR",),
+        constraints=(),
+        source="model_query_drs",
+    )
+    completed = engine._complete_grounded_model_answer(
+        frame.question_text,
+        Answer("https://gi", 0.9, [], "model", "url"),
+        ExpectedAnswer("url"),
+        frame,
+    )
+    assert completed.text == full.text
+    unrelated = replace(full, text="https://other.example/test")
+    monkeypatch.setattr(engine, "_answer_with_row_field_source", lambda *_args, **_kwargs: unrelated)
+    unchanged = engine._complete_grounded_model_answer(
+        frame.question_text,
+        Answer("https://gi", 0.9, [], "model", "url"),
+        ExpectedAnswer("url"),
+        frame,
+    )
+    assert unchanged.text == "https://gi"
+
+
+def test_reported_only_source_cannot_answer_actual_official_identifier(tmp_path: Path, monkeypatch) -> None:
+    (tmp_path / "report.txt").write_text(
+        "Mara's incident report says that the bridge permit code was RPT-91. "
+        "This file records what Mara reported; it does not contain the underlying official permit document.\n",
+        encoding="utf-8",
+    )
+    monkeypatch.setenv("KMD_TEST_ALLOW_NO_MODEL", "1")
+    monkeypatch.setenv("PYTEST_CURRENT_TEST", "1")
+    engine = KnowMoreDiRTEngine(tmp_path)
+    try:
+        answer = engine._answer_with_discourse_clause_source("What is the actual official bridge permit code?")
+        assert answer is not None
+        assert answer.text == "unknown"
+    finally:
+        engine.close()
