@@ -1119,6 +1119,28 @@ class KnowMoreDiRTEngine:
                             return Answer(cleaned, 0.9, [self._evidence_for_document_line(document.rel_path, index, line)], "source forwarded message clause", "content_phrase")
         return None
 
+    def _retrieved_source_lines(self, evidence_items: list[Evidence]) -> list[tuple[str, str, Evidence]]:
+        """Return every exact source line from retrieved documents, without prefix clipping."""
+        lines: list[tuple[str, str, Evidence]] = []
+        seen_docs: set[str] = set()
+        for item in evidence_items:
+            if item.rel_path in seen_docs:
+                continue
+            seen_docs.add(item.rel_path)
+            document = self._documents_by_rel_path.get(item.rel_path)
+            if document is None:
+                text = clean_extracted_value(item.text).strip()
+                if text:
+                    lines.append((text, normalize(text), item))
+                continue
+            for index, raw_line in enumerate(document.text.splitlines()):
+                line = clean_extracted_value(raw_line).strip()
+                if not line:
+                    continue
+                exact = self._evidence_for_document_line(document.rel_path, index, line)
+                lines.append((line, normalize(line), exact))
+        return lines
+
     def _answer_with_review_or_approval_source(self, question: str, prior_answer: Answer | None = None) -> Answer | None:
         qnorm = normalize(question)
         if not (qnorm.startswith("who ") or qnorm.startswith("which ")):
@@ -1135,17 +1157,10 @@ class KnowMoreDiRTEngine:
         target_terms = [term for term in content_tokens(question) if term not in generic]
         evidence = list(prior_answer.evidence if prior_answer else [])
         evidence.extend(self._evidence(sentence, score) for sentence, score in self._search(question, limit=28))
-        seen: set[tuple[str, str]] = set()
         lines: list[tuple[str, Evidence, str]] = []
-        for item in evidence:
-            if (item.rel_path, item.text) in seen:
-                continue
-            seen.add((item.rel_path, item.text))
-            window = self._evidence_window_text(item, radius=1, max_chars=1200)
-            for raw_line in window.splitlines():
-                line = clean_extracted_value(raw_line).strip()
-                if line:
-                    lines.append((line, item, normalize(window)))
+        for line, _line_norm, exact_evidence in self._retrieved_source_lines(evidence):
+            window = self._evidence_window_text(exact_evidence, radius=1, max_chars=None)
+            lines.append((line, exact_evidence, normalize(window)))
         if is_approve and qnorm.startswith("which "):
             name_match = re.search(r"which\s+(?P<name>[A-Z][a-z]+)\s+approved", question, re.I)
             if name_match:
@@ -1414,18 +1429,7 @@ class KnowMoreDiRTEngine:
         qnorm = normalize(question)
         evidence_pool = list(prior_answer.evidence if prior_answer else [])
         evidence_pool.extend(self._evidence(sentence, score) for sentence, score in self._search(question, limit=36))
-        seen: set[tuple[str, str]] = set()
-        lines: list[tuple[str, str, Evidence]] = []
-        for item in evidence_pool:
-            if (item.rel_path, item.text) in seen:
-                continue
-            seen.add((item.rel_path, item.text))
-            window = self._evidence_window_text(item, radius=2, max_chars=1200)
-            for raw_line in window.splitlines():
-                line = clean_extracted_value(raw_line).strip()
-                line_norm = normalize(line)
-                if line_norm:
-                    lines.append((line, line_norm, item))
+        lines = self._retrieved_source_lines(evidence_pool)
         # Explicitly unanswerable meanings/translations.
         if (TOK_TRANSLATION in qnorm or "mean" in qnorm) and "no stated" in qnorm:
             return Answer("unknown", 0.0, [], "explicit missing lexical meaning", "unknown")
@@ -6048,9 +6052,19 @@ class KnowMoreDiRTEngine:
         material = normalize(question)
         if frame is not None and frame.aggregation in {"count", "list", "set", "max", "min"}:
             return True
-        return bool(
-            re.search(r"\b(?:all|every|none|only|exactly|complete|entire|exhaustive|how many|total|most|least|highest|lowest|maximum|minimum)\b", material)
+        # "Return only the URL/ID/name" constrains output formatting; it does not
+        # assert that the source contains an exhaustive set. Treat "only" as a
+        # completeness cue only when it semantically restricts the source set.
+        formatting_only = bool(
+            re.search(
+                r"^(?:return|give|provide|output|respond with|answer with)\s+only\b",
+                material,
+            )
         )
+        completeness_terms = r"all|every|none|exactly|complete|entire|exhaustive|how many|total|most|least|highest|lowest|maximum|minimum"
+        if re.search(rf"\b(?:{completeness_terms})\b", material):
+            return True
+        return bool(re.search(r"\bonly\b", material)) and not formatting_only
 
     def _completeness_proof(self, question: str, evidence: list[Evidence]) -> dict[str, object] | None:
         q = normalize(question)

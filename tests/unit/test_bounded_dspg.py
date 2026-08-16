@@ -130,3 +130,45 @@ summary: "Only ready records are valid."
     }, source="model_query_drs")
     count, _ = b._count_matching_record_groups(records, frame, b._target_terms(frame, question), b._relation_terms(frame, question))
     assert count == 2
+
+
+def test_model_query_frame_drops_answer_variable_from_grounded_targets_and_relations() -> None:
+    from knowmoredirt.query import frame_from_mapping
+
+    frame = frame_from_mapping(
+        "Who should review the OAuth callback repair PR before merge?",
+        {
+            "answer_type": "person",
+            "answer_variables": ["reviewer"],
+            "target_anchors": ["reviewer", "OAuth callback repair PR"],
+            "requested_relation": "should review before merge",
+            "relation_terms": ["reviewer", "should review", "OAuth callback repair PR", "before merge"],
+            "constraints": ["before merge"],
+        },
+        source="model_query_drs",
+    )
+    assert frame.answer_variables == ("reviewer",)
+    assert frame.target_anchors == ("OAuth callback repair PR",)
+    assert "reviewer" not in frame.relation_terms
+    assert "should review" in frame.relation_terms
+
+
+def test_model_query_frame_drops_organization_answer_variable_from_target_anchor() -> None:
+    from knowmoredirt.query import frame_from_mapping
+
+    frame = frame_from_mapping(
+        "Which customer is blocked by the telemetry export delay?",
+        {
+            "answer_type": "organization",
+            "answer_variables": ["customer"],
+            "target_anchors": ["customer"],
+            "requested_relation": "is blocked by the telemetry export delay",
+            "relation_terms": ["customer", "blocked by", "telemetry export delay"],
+            "constraints": ["blocked by telemetry export delay"],
+        },
+        source="model_query_drs",
+    )
+    assert frame.answer_variables == ("customer",)
+    assert frame.target_anchors == ()
+    assert "customer" not in frame.relation_terms
+    assert "telemetry export delay" in frame.relation_terms

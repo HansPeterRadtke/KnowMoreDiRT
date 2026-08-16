@@ -475,6 +475,13 @@ def frame_from_mapping(question: str, mapping: dict[str, Any] | None, *, source:
         answer_variables = tuple(str(value).strip() for value in answer_variables_raw if str(value).strip())
     else:
         answer_variables = base.answer_variables
+    answer_variable_norms = {normalize(value) for value in answer_variables if normalize(value)}
+    # A query answer variable is an unbound slot, never a grounded referent.
+    # Model DRS projections occasionally repeat answer-role labels in
+    # target_anchors/relation_terms; retaining them corrupts
+    # retrieval by requiring/ranking the unknown answer role as source text.
+    anchor_tuple = tuple(value for value in anchor_tuple if normalize(value) not in answer_variable_norms)
+    relation_terms = tuple(value for value in relation_terms if normalize(value) not in answer_variable_norms)
     binding_roles_raw = raw.get("binding_roles")
     if isinstance(binding_roles_raw, str):
         binding_roles = tuple(value.strip() for value in binding_roles_raw.split(";") if value.strip())

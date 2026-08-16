@@ -408,3 +408,57 @@ def test_caller_n_predict_cannot_reduce_actual_generation_capacity(monkeypatch) 
     )
     assert captured
     assert int(captured[0]["max_tokens"]) > 1
+
+
+def test_output_format_only_does_not_require_exhaustive_completeness() -> None:
+    from knowmoredirt.answer_types import ExpectedAnswer
+
+    engine = object.__new__(KnowMoreDiRTEngine)
+    assert engine._requires_completeness(
+        "Return only the warranty URL for North Lantern.",
+        QueryFrame(
+            question_text="Return only the warranty URL for North Lantern.",
+            answer_type="url",
+            answer_variables=("url",),
+            target_anchors=("North Lantern",),
+            requested_relation="warranty url",
+            relation_terms=("warranty", "url"),
+            constraints=(),
+            aggregation="none",
+        ),
+        ExpectedAnswer("url"),
+    ) is False
+    assert engine._requires_completeness(
+        "Return only the actor id for Nira Sol.",
+        QueryFrame(
+            question_text="Return only the actor id for Nira Sol.",
+            answer_type="identifier",
+            answer_variables=("identifier",),
+            target_anchors=("Nira Sol",),
+            requested_relation="actor id",
+            relation_terms=("actor", "id"),
+            constraints=(),
+            aggregation="none",
+        ),
+        ExpectedAnswer("identifier"),
+    ) is False
+
+
+def test_semantic_only_still_requires_completeness() -> None:
+    from knowmoredirt.answer_types import ExpectedAnswer
+
+    engine = object.__new__(KnowMoreDiRTEngine)
+    assert engine._requires_completeness(
+        "Which records contain only ready items?",
+        QueryFrame(
+            question_text="Which records contain only ready items?",
+            answer_type="content_phrase",
+            answer_variables=("record",),
+            target_anchors=(),
+            requested_relation="contain",
+            relation_terms=("contain", "ready"),
+            constraints=("ready",),
+            aggregation="none",
+        ),
+        ExpectedAnswer("content_phrase"),
+    ) is True
