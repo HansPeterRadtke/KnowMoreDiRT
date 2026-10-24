@@ -1,0 +1,45 @@
+{
+  "source_url": "https://garfield.library.upenn.edu/papers/jasis40%283%29p152y1989%281%29.html",
+  "year": 1989,
+  "source_sha256": "b8528fe0ce99aafc4b52d5751716f5aadbba1ef0ff736d44d0a328721cfa4bed",
+  "document_type": "1989 first-person letter by original hypothesis author",
+  "historical_hypothesis_author": "Don R. Swanson",
+  "not_the_original_1986_paper": true,
+  "not_independent_clinical_replication": true,
+  "source_spans": {
+    "author_describes_cross_literature_hypothesis": {
+      "source_document_sha256": "b8528fe0ce99aafc4b52d5751716f5aadbba1ef0ff736d44d0a328721cfa4bed",
+      "source_char_offsets_in_whitespace_normalized_archive": [
+        338,
+        494
+      ],
+      "exact_short_snippet": "I showed how two noninteracting sets of articles together implied that dietary fish oil might benefit Raynaud patients, a hypothesis not previously proposed"
+    },
+    "author_places_original_medical_argument_in_1986": {
+      "source_document_sha256": "b8528fe0ce99aafc4b52d5751716f5aadbba1ef0ff736d44d0a328721cfa4bed",
+      "source_char_offsets_in_whitespace_normalized_archive": [
+        524,
+        604
+      ],
+      "exact_short_snippet": "The complete medical argument was published in the biomedical literature in 1986"
+    },
+    "author_reports_independent_clinical_test_later": {
+      "source_document_sha256": "b8528fe0ce99aafc4b52d5751716f5aadbba1ef0ff736d44d0a328721cfa4bed",
+      "source_char_offsets_in_whitespace_normalized_archive": [
+        606,
+        743
+      ],
+      "exact_short_snippet": "A controlled clinical trial of dietary fish oil in 32 Raynaud patients was recently reported by researchers at the Albany Medical College"
+    },
+    "signature": {
+      "source_document_sha256": "b8528fe0ce99aafc4b52d5751716f5aadbba1ef0ff736d44d0a328721cfa4bed",
+      "source_char_offsets_in_whitespace_normalized_archive": [
+        1160,
+        1220
+      ],
+      "exact_short_snippet": "Don R. Swanson Graduate Library School University of Chicago"
+    }
+  },
+  "attribution_rule": "Do not treat Swanson retrospective assertion of 1986 novelty as an independently comprehensive prior-art search. Separate from clinical trial authors and clinical results.",
+  "time_rule": "The retrospective 1989 letter was published after the 1986 hypothesis and 1988 conference trial report; it cannot be included in an as-of-1985 hypothesis generator."
+}

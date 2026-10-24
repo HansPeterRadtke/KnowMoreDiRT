@@ -1,0 +1,318 @@
+{
+  "purpose": "Source-grounded discovery potential and counterexamples on published independent studies; not production model DRS, not automated novel scientific discovery",
+  "sources": [
+    {
+      "id": "53042",
+      "pub_year": 1975,
+      "title": "Blood viscosity, plasma proteins, and Raynaud syndrome.",
+      "authors": "Tietjen GW, Chien S, Leroy EC, Gavras I, Gavras H, Gump FE.",
+      "doi": "10.1001/archsurg.1975.01360170083011",
+      "source_uri": "https://pubmed.ncbi.nlm.nih.gov/53042/",
+      "source_record_sha256": "81d1cd48d708c808d804c7e3313f71a2ab2e9f4720eb60a577d11a0137ea0a4e",
+      "abstract_sha256": "623d381fbd0186b3c3509ba470ce70e512828eb7881d193034281011f0f521df",
+      "abstract_available": true
+    },
+    {
+      "id": "58309",
+      "pub_year": 1976,
+      "title": "Abnormal blood viscosity in Raynaud's phenomenon.",
+      "authors": "Goyle KB, Dormandy JA.",
+      "doi": "10.1016/s0140-6736(76)92651-9",
+      "source_uri": "https://pubmed.ncbi.nlm.nih.gov/58309/",
+      "source_record_sha256": "7ed23e6cadc0e1ca3d387c9e25d181dd63a045552175a5f00a40a752e6270eff",
+      "abstract_sha256": "840d5bffbe97b62c32acb8a7a85d0e9cc1f747aad1246f22403e36dcef3efa72",
+      "abstract_available": true
+    },
+    {
+      "id": "72898",
+      "pub_year": 1977,
+      "title": "Blood viscosity and local response to cold in primary Raynaud's phenomenon.",
+      "authors": "Jahnsen T, Nielsen SL, Skovborg F.",
+      "doi": "10.1016/s0140-6736(77)92895-1",
+      "source_uri": "https://pubmed.ncbi.nlm.nih.gov/72898/",
+      "source_record_sha256": "a945f811c67130fe38082dc5e1b40cd1fed92d63326243183005117f88491532",
+      "abstract_sha256": "ac988dd50a4cc202fb96cfa235aee3d28704bd576895de18773e345376715ea6",
+      "abstract_available": true
+    },
+    {
+      "id": "6775675",
+      "pub_year": 1980,
+      "title": "Hyperviscosity and thrombotic changes in idiopathic and secondary Raynaud's syndrome.",
+      "authors": "Blunt RJ, George AJ, Hurlow RA, Strachan CJ, Stuart J.",
+      "doi": "10.1111/j.1365-2141.1980.tb07188.x",
+      "source_uri": "https://pubmed.ncbi.nlm.nih.gov/6775675/",
+      "source_record_sha256": "2a36297ca7d97ac0b3ba507d76830171de0b045afa244e288d870025eaaaed9e",
+      "abstract_sha256": "2d48a307e504494075422c725862b83783f17edbf0fccedccbd543c995d9263f",
+      "abstract_available": true
+    },
+    {
+      "id": "6320945",
+      "pub_year": 1984,
+      "title": "Beneficial effect of fish oil on blood viscosity in peripheral vascular disease.",
+      "authors": "Woodcock BE, Smith E, Lambert WH, Jones WM, Galloway JH, Greaves M, Preston FE.",
+      "doi": "10.1136/bmj.288.6417.592",
+      "source_uri": "https://pubmed.ncbi.nlm.nih.gov/6320945/",
+      "source_record_sha256": "afaf88a9095965fdbcbacd6175c29a4892441759954d3ca1f7d3558f7bf3297c",
+      "abstract_sha256": "5351cfa8f53fa9583a91638db378d5f125d7832906ced71d8c4b3a04fa338f6e",
+      "abstract_available": true
+    },
+    {
+      "id": "3797213",
+      "pub_year": 1986,
+      "title": "Fish oil, Raynaud's syndrome, and undiscovered public knowledge.",
+      "authors": "Swanson DR.",
+      "doi": "10.1353/pbm.1986.0087",
+      "source_uri": "https://pubmed.ncbi.nlm.nih.gov/3797213/",
+      "source_record_sha256": "8f802aca16f929c013e723eb75b3d88de89456c98e1029653df88fd68a1f11a3",
+      "abstract_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "abstract_available": false
+    },
+    {
+      "id": "2536517",
+      "pub_year": 1989,
+      "title": "Fish-oil dietary supplementation in patients with Raynaud's phenomenon: a double-blind, controlled, prospective study.",
+      "authors": "DiGiacomo RA, Kremer JM, Shah DM.",
+      "doi": "10.1016/0002-9343(89)90261-1",
+      "source_uri": "https://pubmed.ncbi.nlm.nih.gov/2536517/",
+      "source_record_sha256": "3f7190388771361ddd4968fb0ca9c0dbf75e3686beb1df99b626a383e7290238",
+      "abstract_sha256": "28e8f2e1c29097bcbbffee0dd251279bf1b2359484172957e9fc9ee5706e2634",
+      "abstract_available": true
+    }
+  ],
+  "pre1986_automatic_lexical_literature_bridge": {
+    "shared_literal_concept": "blood viscosity",
+    "fish_oil_source_pmids": [
+      "6320945"
+    ],
+    "raynaud_source_pmids": [
+      "53042",
+      "58309",
+      "72898",
+      "6775675"
+    ],
+    "candidate": "Could fish-oil supplementation affect Raynaud symptoms through a change in blood viscosity?",
+    "inference_type": "plausible_mediated_hypothesis_not_logical_entailment",
+    "not_entailed_reasons": [
+      "Vascular-disease treatment data are not automatically transportable to Raynaud primary or secondary cohorts",
+      "Association of Raynaud with viscosity is not causal proof",
+      "Pre-1986 primary-Raynaud null study and venesection intervention challenge a simplistic mediator",
+      "Trial and prior-art novelty were not established using the early source subset alone"
+    ],
+    "no_direct_claim_in_curated_pre1986_abstracts": true,
+    "not_exhaustive_world_prior_art_search": true
+  },
+  "pre1986_automatic_pattern_extractions": [
+    {
+      "claim_category": "raynaud_secondary_dominated_viscosity",
+      "relation_target": "blood viscosity",
+      "observational_polarity": "elevated",
+      "population_scope": "Raynaud_cohort_16_of_20_scleroderma",
+      "publication_year": 1975,
+      "status": "observed_in_study_not_universally_established",
+      "source_author": "Tietjen GW, Chien S, Leroy EC, Gavras I, Gavras H, Gump FE.",
+      "source_doi": "10.1001/archsurg.1975.01360170083011",
+      "source_uri": "https://pubmed.ncbi.nlm.nih.gov/53042/",
+      "source_provenance": {
+        "source_id": "53042",
+        "exact_char_offsets": [
+          623,
+          722
+        ],
+        "exact_evidence": "mean plasma viscosity was significantly (P less than .01) elevated over established normal controls",
+        "parent_abstract_sha256": "623d381fbd0186b3c3509ba470ce70e512828eb7881d193034281011f0f521df"
+      },
+      "known_limits": [
+        "Study primarily involves secondary disease, not primary",
+        "Association does not prove viscosity causes disease"
+      ]
+    },
+    {
+      "claim_category": "raynaud_observed_viscosity",
+      "relation_target": "blood viscosity",
+      "observational_polarity": "elevated",
+      "population_scope": "Raynaud_10_patients_phenotype_not_resolved",
+      "publication_year": 1976,
+      "status": "observed_in_study_not_universally_established",
+      "source_author": "Goyle KB, Dormandy JA.",
+      "source_doi": "10.1016/s0140-6736(76)92651-9",
+      "source_uri": "https://pubmed.ncbi.nlm.nih.gov/58309/",
+      "source_provenance": {
+        "source_id": "58309",
+        "exact_char_offsets": [
+          259,
+          411
+        ],
+        "exact_evidence": "viscosity of the patients' blood was significantly higher (p less than 0.05) at 27 degrees C than that of the controls when measured at a low shear-rate",
+        "parent_abstract_sha256": "840d5bffbe97b62c32acb8a7a85d0e9cc1f747aad1246f22403e36dcef3efa72"
+      },
+      "known_limits": [
+        "10 Raynaud and 10 control participants",
+        "Cold/shear-dependent, disease subtype not established"
+      ]
+    },
+    {
+      "claim_category": "primary_raynaud_no_detected_viscosity_difference",
+      "relation_target": "blood viscosity",
+      "observational_polarity": "no_detected_difference",
+      "population_scope": "primary_Raynaud_10_vs_10",
+      "publication_year": 1977,
+      "status": "observed_in_study_not_universally_established",
+      "source_author": "Jahnsen T, Nielsen SL, Skovborg F.",
+      "source_doi": "10.1016/s0140-6736(77)92895-1",
+      "source_uri": "https://pubmed.ncbi.nlm.nih.gov/72898/",
+      "source_provenance": {
+        "source_id": "72898",
+        "exact_char_offsets": [
+          106,
+          272
+        ],
+        "exact_evidence": "no significant difference, however, in whole-blood and plasma viscosity between ten young women with primary Raynaud's phenomenon and ten age and sex matched controls",
+        "parent_abstract_sha256": "ac988dd50a4cc202fb96cfa235aee3d28704bd576895de18773e345376715ea6"
+      },
+      "known_limits": [
+        "Failure to find a difference is not proof all primary Raynaud has normal viscosity",
+        "Sample ten patients and ten controls"
+      ],
+      "additional_intervention_negative": {
+        "source_id": "72898",
+        "exact_char_offsets": [
+          274,
+          404
+        ],
+        "exact_evidence": "Venesection, which reduces plasma viscosity, did not change the ease with which Raynaud's phenomenon was provoked in five patients",
+        "parent_abstract_sha256": "ac988dd50a4cc202fb96cfa235aee3d28704bd576895de18773e345376715ea6"
+      }
+    },
+    {
+      "claim_category": "raynaud_observed_viscosity",
+      "relation_target": "blood viscosity",
+      "observational_polarity": "elevated",
+      "population_scope": "Raynaud_women_29_subtype_not_determined",
+      "publication_year": 1980,
+      "status": "observed_in_study_not_universally_established",
+      "source_author": "Blunt RJ, George AJ, Hurlow RA, Strachan CJ, Stuart J.",
+      "source_doi": "10.1111/j.1365-2141.1980.tb07188.x",
+      "source_uri": "https://pubmed.ncbi.nlm.nih.gov/6775675/",
+      "source_provenance": {
+        "source_id": "6775675",
+        "exact_char_offsets": [
+          0,
+          122
+        ],
+        "exact_evidence": "Whole-blood viscosity (measured at 128, 23 and 0.2 s-(1) was significantly increased in 29 females with Raynaud's syndrome",
+        "parent_abstract_sha256": "2d48a307e504494075422c725862b83783f17edbf0fccedccbd543c995d9263f"
+      },
+      "known_limits": [
+        "Subtype unspecified",
+        "Disease mechanism may not be single-factor viscosity"
+      ]
+    },
+    {
+      "claim_category": "fish_oil_reduces_viscosity",
+      "relation_target": "whole blood viscosity",
+      "observational_polarity": "decreased",
+      "population_scope": "peripheral_arterial_disease_epa_rich_fish_oil",
+      "publication_year": 1984,
+      "status": "observed_in_study_not_universally_established",
+      "source_author": "Woodcock BE, Smith E, Lambert WH, Jones WM, Galloway JH, Greaves M, Preston FE.",
+      "source_doi": "10.1136/bmj.288.6417.592",
+      "source_uri": "https://pubmed.ncbi.nlm.nih.gov/6320945/",
+      "source_provenance": {
+        "source_id": "6320945",
+        "exact_char_offsets": [
+          506,
+          596
+        ],
+        "exact_evidence": "A statistically significant reduction in whole blood viscosity was observed at seven weeks",
+        "parent_abstract_sha256": "5351cfa8f53fa9583a91638db378d5f125d7832906ced71d8c4b3a04fa338f6e"
+      },
+      "known_limits": [
+        "Independent PAD group, not Raynaud patients",
+        "No transfer to clinical disease outcome without an additional causal premise"
+      ]
+    }
+  ],
+  "original_swanson_paper": {
+    "id": "3797213",
+    "year": 1986,
+    "author": "Swanson DR.",
+    "title": "Fish oil, Raynaud's syndrome, and undiscovered public knowledge.",
+    "abstract_in_original_pubmed": "UNAVAILABLE",
+    "cannot_extract_1986_full_text_from_metadata_alone": true,
+    "observational_status": "historical literature-based hypothesis, not an empirical fish-oil Raynaud trial"
+  },
+  "independent_followup_randomized_study": {
+    "trial_authors": "DiGiacomo RA, Kremer JM, Shah DM.",
+    "doi": "10.1016/0002-9343(89)90261-1",
+    "source_id": "2536517",
+    "publication_year": 1989,
+    "design_text": "Thirty-two patients with primary or secondary Raynaud's phenomenon were randomly assigned",
+    "total_randomized": 32,
+    "treatment": "fish oil vs olive oil placebo; subgroup primary versus secondary",
+    "measured_time_to_onset_baseline_minutes": 31.3,
+    "reported_plus_minus_at_baseline": 1.3,
+    "measured_time_to_onset_six_weeks_minutes": 46.5,
+    "reported_plus_minus_at_six_weeks": 2.1,
+    "descriptive_change_minutes": 15.2,
+    "reported_p_value": 0.04,
+    "reported_numbers_source": {
+      "offsets": [
+        1242,
+        1334
+      ],
+      "text": "increased from 31.3 +/- 1.3 minutes baseline to 46.5 +/- 2.1 minutes at six weeks (p = 0.04)"
+    },
+    "reported_primary_vasospasm_absence_fish_oil": "5 of 11",
+    "reported_primary_vasospasm_absence_placebo": "1 of 9",
+    "descriptive_risk_difference": 0.34343,
+    "reported_subgroup_result": "benefit in primary, not established in secondary",
+    "subgroup_conclusion_source": {
+      "source_id": "2536517",
+      "exact_char_offsets": [
+        2034,
+        2209
+      ],
+      "exact_evidence": "conclude that the ingestion of fish oil improves tolerance to cold exposure and delays the onset of vasospasm in patients with primary, but not secondary, Raynaud's phenomenon",
+      "parent_abstract_sha256": "28e8f2e1c29097bcbbffee0dd251279bf1b2359484172957e9fc9ee5706e2634"
+    },
+    "no_causal_mechanism_proven": true,
+    "critical_limitations": [
+      "Small n=32 full trial, subgroup numbers small; no patient-level data to independently recompute p values",
+      "Primary and secondary effects cannot be silently pooled as identical",
+      "Original trial did not prove effect mediated only by whole-blood viscosity",
+      "Published plus-minus statistics have no provided covariance; cannot compute paired uncertainty from aggregate text alone"
+    ]
+  },
+  "as_of_date_controls": {
+    "as_of_1985_12_31_source_pmids": [
+      "53042",
+      "58309",
+      "6320945",
+      "6775675",
+      "72898"
+    ],
+    "excluded_future_pmids": [
+      "3797213",
+      "2536517"
+    ],
+    "1986_hypothesis_available_by_1986_not_1985": true,
+    "1989_trial_unavailable_for_1986_hypothesis_generation": true
+  },
+  "negative_and_mismatch_controls": {
+    "1977_primary_null_venesection_negative_retained": true,
+    "1975_cohort_dominated_by_secondary_not_primary": true,
+    "a_positive_1989_primary_trial_does_not_validate_viscosity_only_mechanism": true,
+    "1989_no_detected_secondary_benefit_is_not_proof_of_harm": true,
+    "publication_dates_cannot_be_swapped_without_leakage": true,
+    "quoted_hypothesis_not_equivalent_to_clinical_observation": true
+  },
+  "limitations": [
+    "Curated small set of actual papers and narrow hand-specified text patterns; the system did NOT discover all relevant PubMed articles by itself",
+    "A lexical shared-concept join produces a candidate question, not logically valid causal inference or demonstrated novel discovery",
+    "Author identity and study group are read from metadata and bounded source spans, not model-extracted DRS",
+    "An original 1986 abstract is unavailable; no pretending its title is full original text",
+    "The later RCT interpretation relies on reported paper authors and text; there was no independent clinical replication or patient-level reanalysis",
+    "Other Raynaud studies were not exhaustively retrieved and current treatment recommendations are outside this historical discovery check",
+    "Some original 1975/1976/1977 differences are scope, cohort and measurement condition differences, not strict logical contradiction"
+  ]
+}
