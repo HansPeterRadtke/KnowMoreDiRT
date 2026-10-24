@@ -1,0 +1,450 @@
+{
+  "note": "Post-hoc exploratory scope-category comparison on the SAME 898 PMB source sentences; not a new blinded generalization experiment.",
+  "source_revisions": {
+    "reference_DRS": "190838f9adea2af616eb76156d2e66c8565a6c6e",
+    "published_neural_DRS": "81bcb26dfcc08f0da999cc7beaa2952f8820860c"
+  },
+  "source_sha256": {
+    "test.txt": "aa5668fb150d3332f42fdee828457a89e3acdf2a92846b8b6e8f027654a032e5",
+    "output1.txt": "7d56cceda381c66c9d890c5078161f22dedbaf3df002b04306a960e7bd8ed5a9",
+    "test.txt.raw": "4bd557c2e6655d9b9c32269d4f6aa32415a314777bf16b517d7ae3da280f6263"
+  },
+  "labels": {
+    "NEGATION": {
+      "gold_cases": 79,
+      "model_generated_drs": {
+        "tp": 79,
+        "fp": 1,
+        "fn": 0,
+        "tn": 818,
+        "precision": 0.9875,
+        "recall": 1.0,
+        "f1": 0.9937
+      },
+      "source_lexical_baseline": {
+        "tp": 73,
+        "fp": 3,
+        "fn": 6,
+        "tn": 816,
+        "precision": 0.9605,
+        "recall": 0.9241,
+        "f1": 0.9419
+      },
+      "model_false_negatives": [],
+      "baseline_false_negatives": [
+        {
+          "idx": 102,
+          "source": "The room was anything but tidy."
+        },
+        {
+          "idx": 130,
+          "source": "I'm too busy to help her."
+        },
+        {
+          "idx": 251,
+          "source": "Tom is too lazy to cook."
+        },
+        {
+          "idx": 455,
+          "source": "Mrs. Davis was anything but a perfect wife."
+        },
+        {
+          "idx": 590,
+          "source": "Tom puts honey in his tea instead of sugar."
+        },
+        {
+          "idx": 705,
+          "source": "She is too tired to study."
+        }
+      ]
+    },
+    "CONDITION": {
+      "gold_cases": 31,
+      "model_generated_drs": {
+        "tp": 29,
+        "fp": 1,
+        "fn": 2,
+        "tn": 866,
+        "precision": 0.9667,
+        "recall": 0.9355,
+        "f1": 0.9508
+      },
+      "source_lexical_baseline": {
+        "tp": 1,
+        "fp": 1,
+        "fn": 30,
+        "tn": 866,
+        "precision": 0.5,
+        "recall": 0.0323,
+        "f1": 0.0606
+      },
+      "model_false_negatives": [
+        {
+          "idx": 4,
+          "source": "You can't live on that island."
+        },
+        {
+          "idx": 337,
+          "source": "If you're tired, go to bed."
+        }
+      ],
+      "baseline_false_negatives": [
+        {
+          "idx": 4,
+          "source": "You can't live on that island."
+        },
+        {
+          "idx": 11,
+          "source": "Nowadays anybody can get books."
+        },
+        {
+          "idx": 15,
+          "source": "An elephant has a long nose."
+        },
+        {
+          "idx": 21,
+          "source": "I'm always tired."
+        },
+        {
+          "idx": 46,
+          "source": "Everyone shook hands."
+        },
+        {
+          "idx": 88,
+          "source": "Both Cristina and Luis always dreamt of studying medicine."
+        },
+        {
+          "idx": 146,
+          "source": "Everybody calls the small cat Tora."
+        },
+        {
+          "idx": 296,
+          "source": "Police arrested everyone in the room."
+        },
+        {
+          "idx": 324,
+          "source": "Everyone knows everyone."
+        },
+        {
+          "idx": 332,
+          "source": "A typhoon batters the Philippines."
+        },
+        {
+          "idx": 343,
+          "source": "I'm always bored with his boastful talk."
+        },
+        {
+          "idx": 361,
+          "source": "All the students are present."
+        }
+      ]
+    },
+    "CONSEQUENCE": {
+      "gold_cases": 31,
+      "model_generated_drs": {
+        "tp": 25,
+        "fp": 1,
+        "fn": 6,
+        "tn": 866,
+        "precision": 0.9615,
+        "recall": 0.8065,
+        "f1": 0.8772
+      },
+      "source_lexical_baseline": {
+        "tp": 0,
+        "fp": 0,
+        "fn": 31,
+        "tn": 867,
+        "precision": null,
+        "recall": 0.0,
+        "f1": 0.0
+      },
+      "model_false_negatives": [
+        {
+          "idx": 4,
+          "source": "You can't live on that island."
+        },
+        {
+          "idx": 11,
+          "source": "Nowadays anybody can get books."
+        },
+        {
+          "idx": 296,
+          "source": "Police arrested everyone in the room."
+        },
+        {
+          "idx": 337,
+          "source": "If you're tired, go to bed."
+        },
+        {
+          "idx": 376,
+          "source": "Tom filled both glasses with wine."
+        },
+        {
+          "idx": 414,
+          "source": "Russia rejected both demands."
+        }
+      ],
+      "baseline_false_negatives": [
+        {
+          "idx": 4,
+          "source": "You can't live on that island."
+        },
+        {
+          "idx": 11,
+          "source": "Nowadays anybody can get books."
+        },
+        {
+          "idx": 15,
+          "source": "An elephant has a long nose."
+        },
+        {
+          "idx": 21,
+          "source": "I'm always tired."
+        },
+        {
+          "idx": 46,
+          "source": "Everyone shook hands."
+        },
+        {
+          "idx": 88,
+          "source": "Both Cristina and Luis always dreamt of studying medicine."
+        },
+        {
+          "idx": 146,
+          "source": "Everybody calls the small cat Tora."
+        },
+        {
+          "idx": 296,
+          "source": "Police arrested everyone in the room."
+        },
+        {
+          "idx": 324,
+          "source": "Everyone knows everyone."
+        },
+        {
+          "idx": 332,
+          "source": "A typhoon batters the Philippines."
+        },
+        {
+          "idx": 337,
+          "source": "If you're tired, go to bed."
+        },
+        {
+          "idx": 343,
+          "source": "I'm always bored with his boastful talk."
+        }
+      ]
+    },
+    "POSSIBILITY": {
+      "gold_cases": 18,
+      "model_generated_drs": {
+        "tp": 17,
+        "fp": 0,
+        "fn": 1,
+        "tn": 880,
+        "precision": 1.0,
+        "recall": 0.9444,
+        "f1": 0.9714
+      },
+      "source_lexical_baseline": {
+        "tp": 0,
+        "fp": 3,
+        "fn": 18,
+        "tn": 877,
+        "precision": 0.0,
+        "recall": 0.0,
+        "f1": 0.0
+      },
+      "model_false_negatives": [
+        {
+          "idx": 11,
+          "source": "Nowadays anybody can get books."
+        }
+      ],
+      "baseline_false_negatives": [
+        {
+          "idx": 4,
+          "source": "You can't live on that island."
+        },
+        {
+          "idx": 11,
+          "source": "Nowadays anybody can get books."
+        },
+        {
+          "idx": 26,
+          "source": "We can't stop now."
+        },
+        {
+          "idx": 47,
+          "source": "Can you whistle?"
+        },
+        {
+          "idx": 82,
+          "source": "Can I borrow the hair dryer?"
+        },
+        {
+          "idx": 125,
+          "source": "I can't stand that noise anymore."
+        },
+        {
+          "idx": 130,
+          "source": "I'm too busy to help her."
+        },
+        {
+          "idx": 177,
+          "source": "Tom can't pronounce Mary's last name."
+        },
+        {
+          "idx": 219,
+          "source": "I can't beat Tom at chess."
+        },
+        {
+          "idx": 224,
+          "source": "Tom can drive now."
+        },
+        {
+          "idx": 251,
+          "source": "Tom is too lazy to cook."
+        },
+        {
+          "idx": 283,
+          "source": "I couldn't come to the birthday party."
+        }
+      ]
+    },
+    "ATTRIBUTION": {
+      "gold_cases": 18,
+      "model_generated_drs": {
+        "tp": 16,
+        "fp": 2,
+        "fn": 2,
+        "tn": 878,
+        "precision": 0.8889,
+        "recall": 0.8889,
+        "f1": 0.8889
+      },
+      "source_lexical_baseline": {
+        "tp": 4,
+        "fp": 0,
+        "fn": 14,
+        "tn": 880,
+        "precision": 1.0,
+        "recall": 0.2222,
+        "f1": 0.3636
+      },
+      "model_false_negatives": [
+        {
+          "idx": 327,
+          "source": "\"I was a boy,\" he said impatiently."
+        },
+        {
+          "idx": 756,
+          "source": "I need to shit."
+        }
+      ],
+      "baseline_false_negatives": [
+        {
+          "idx": 51,
+          "source": "I think he ate about 10 oysters."
+        },
+        {
+          "idx": 87,
+          "source": "Do you know where my watch is?"
+        },
+        {
+          "idx": 238,
+          "source": "I don't know where Tom's office is."
+        },
+        {
+          "idx": 370,
+          "source": "I do not want to clean up dog poop."
+        },
+        {
+          "idx": 447,
+          "source": "I think Tom is drunk."
+        },
+        {
+          "idx": 489,
+          "source": "Tom knows Mary lied."
+        },
+        {
+          "idx": 545,
+          "source": "I can't afford to buy a laptop for my son."
+        },
+        {
+          "idx": 547,
+          "source": "I am convinced that I am right."
+        },
+        {
+          "idx": 732,
+          "source": "I remember meeting him somewhere."
+        },
+        {
+          "idx": 756,
+          "source": "I need to shit."
+        },
+        {
+          "idx": 776,
+          "source": "Tom managed to sell his car for a lot of money."
+        },
+        {
+          "idx": 834,
+          "source": "Tom didn't realize he had his sweater on inside out."
+        }
+      ]
+    },
+    "YearOfCentury": {
+      "gold_cases": 18,
+      "model_generated_drs": {
+        "tp": 15,
+        "fp": 0,
+        "fn": 3,
+        "tn": 880,
+        "precision": 1.0,
+        "recall": 0.8333,
+        "f1": 0.9091
+      },
+      "source_lexical_baseline": {
+        "tp": 16,
+        "fp": 0,
+        "fn": 2,
+        "tn": 880,
+        "precision": 1.0,
+        "recall": 0.8889,
+        "f1": 0.9412
+      },
+      "model_false_negatives": [
+        {
+          "idx": 5,
+          "source": "George W. Bush was born in the state of Connecticut in 1946."
+        },
+        {
+          "idx": 431,
+          "source": "The Sioux had signed a treaty with the government in 1868."
+        },
+        {
+          "idx": 874,
+          "source": "The school was established in 1650."
+        }
+      ],
+      "baseline_false_negatives": [
+        {
+          "idx": 303,
+          "source": "Tom was born in the 1990s."
+        },
+        {
+          "idx": 874,
+          "source": "The school was established in 1650."
+        }
+      ]
+    }
+  },
+  "no_cross_document_inference": true,
+  "limits": [
+    "Only presence of operator, not full DRS semantic predicate/box correctness or evidence citation",
+    "Lexical patterns are simple post-hoc plausible controls, not matched-budget provenance+neighbor retrieval",
+    "No original train/model queries were rerun; precomputed published neural parses vs human-corrected PMB gold",
+    "No independent physical-world claim truth or science discovery addressed"
+  ]
+}

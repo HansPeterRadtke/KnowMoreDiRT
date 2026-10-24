@@ -1,0 +1,96 @@
+{
+  "protocol": "Untuned original lexical negation regex versus published automatically parsed DRS operator; independent PMB 3.0 gold. Exact same 898 original natural sentences.",
+  "source_revisions": {
+    "gold": "190838f9adea2af616eb76156d2e66c8565a6c6e",
+    "pred": "81bcb26dfcc08f0da999cc7beaa2952f8820860c"
+  },
+  "source_sha256": {
+    "test.txt": "aa5668fb150d3332f42fdee828457a89e3acdf2a92846b8b6e8f027654a032e5",
+    "test.txt.raw": "4bd557c2e6655d9b9c32269d4f6aa32415a314777bf16b517d7ae3da280f6263",
+    "output1.txt": "7d56cceda381c66c9d890c5078161f22dedbaf3df002b04306a960e7bd8ed5a9"
+  },
+  "total": 898,
+  "gold_negation_count": 79,
+  "models": {
+    "published_neural_DRS": {
+      "tp": 79,
+      "fp": 1,
+      "fn": 0,
+      "tn": 818,
+      "precision": 0.9875,
+      "recall": 1.0,
+      "f1": 0.9937106918238994
+    },
+    "lexical_unscoped_negation": {
+      "tp": 73,
+      "fp": 3,
+      "fn": 6,
+      "tn": 816,
+      "precision": 0.9605263157894737,
+      "recall": 0.9240506329113924,
+      "f1": 0.9419354838709677
+    }
+  },
+  "model_disagree_on_gold_negation": [],
+  "lexical_disagree_on_gold_negation": [
+    {
+      "index": 102,
+      "sentence_sha256": "4f12312d0de61e7d504e1a9578dfcb23da7c6ad40f5ed552aa23929ab84375ff",
+      "gold_negative": true,
+      "model_negative": true,
+      "lexical_negative": false,
+      "raw_source_sentence": "The room was anything but tidy."
+    },
+    {
+      "index": 130,
+      "sentence_sha256": "4c071824ecaab71f28ae696b0dbcf56fb9ab21f126b58f43877a3949518ac3be",
+      "gold_negative": true,
+      "model_negative": true,
+      "lexical_negative": false,
+      "raw_source_sentence": "I'm too busy to help her."
+    },
+    {
+      "index": 251,
+      "sentence_sha256": "ad3a5c333c549cb8e645785fb302692bdee0cf712cfbc19beefdb9958eac620e",
+      "gold_negative": true,
+      "model_negative": true,
+      "lexical_negative": false,
+      "raw_source_sentence": "Tom is too lazy to cook."
+    },
+    {
+      "index": 455,
+      "sentence_sha256": "e8530ac74f0827a90090a0b4608e0e930bb34f1a22c34d56c8e111e415cde338",
+      "gold_negative": true,
+      "model_negative": true,
+      "lexical_negative": false,
+      "raw_source_sentence": "Mrs. Davis was anything but a perfect wife."
+    },
+    {
+      "index": 590,
+      "sentence_sha256": "e802de6dc1a70bdcf0345422531f10fcb8a9585b47a1a4ec11e4248279c31437",
+      "gold_negative": true,
+      "model_negative": true,
+      "lexical_negative": false,
+      "raw_source_sentence": "Tom puts honey in his tea instead of sugar."
+    },
+    {
+      "index": 705,
+      "sentence_sha256": "caf28c9d8b5c0cdd6abb6ffebcf9eed973c535c80bb13a093a15bda81f47a06d",
+      "gold_negative": true,
+      "model_negative": true,
+      "lexical_negative": false,
+      "raw_source_sentence": "She is too tired to study."
+    }
+  ],
+  "gold_scope_operator_counts": {
+    "NEGATION": 80
+  },
+  "limits": [
+    "A model-extracted DRS from a specialized published model; not KMD Qwen and not a comparison of full DRS against end-to-end provenance-neighbor retrieval.",
+    "Only detection of the existence of a NEGATION box; ignores which proposition is negated and whether source context correctly applies.",
+    "PMB contains short utterances, not Wikipedia multi-document research, dreams or cross-document identity.",
+    "An operator F1 score is NOT a knowledge discovery or falsification rate; source paper and gold annotations are linguistic, not verified physical facts."
+  ],
+  "source_url_predictions": "https://github.com/RikVN/Neural_DRS",
+  "source_url_gold": "https://github.com/RikVN/DRS_parsing"
+}
