@@ -1,0 +1,669 @@
+{
+  "original_data_sha256": "4e9ecb5c8d3b719f624d66b60f8d56bf227f03914f5f0753d6fa1b359d7104ea",
+  "original_frozen_predictions_sha256": "3b458f9dca38f0fd6a00896928d7df98c6269297c0da4a65fd4b22dfbd76cdf8",
+  "human_gold_score_sha256": "6bdeaeb187816498b81ae9886b91fad78c4793c0cec8a8e84ba8e1a0a6bda15e",
+  "comparison": "Post-hoc audit of changed second-hop article: exact in-text title mention and whether two human gold supporting articles were recovered. Counts are descriptive, no new tuning.",
+  "total_differing_top2_doc_choices": 990,
+  "source_mention_outcome_counts": [
+    {
+      "type": "bridge",
+      "outcome": "loss",
+      "evidence_type": "exact_source_title_mention",
+      "count": 107
+    },
+    {
+      "type": "bridge",
+      "outcome": "neither",
+      "evidence_type": "exact_source_title_mention",
+      "count": 198
+    },
+    {
+      "type": "bridge",
+      "outcome": "win",
+      "evidence_type": "exact_source_title_mention",
+      "count": 605
+    },
+    {
+      "type": "comparison",
+      "outcome": "loss",
+      "evidence_type": "exact_source_title_mention",
+      "count": 17
+    },
+    {
+      "type": "comparison",
+      "outcome": "neither",
+      "evidence_type": "exact_source_title_mention",
+      "count": 62
+    },
+    {
+      "type": "comparison",
+      "outcome": "win",
+      "evidence_type": "no_exact_mention",
+      "count": 1
+    }
+  ],
+  "sample_link_cases": [
+    {
+      "uid": "5a8ae0ae55429950cd6afbc2",
+      "question": "What airline was a monopoly with a hub at Sheremetyevo International Airport?",
+      "question_type": "bridge",
+      "old_title_pair": [
+        "Babyflot",
+        "Avianova (Russia)"
+      ],
+      "new_title_pair": [
+        "Babyflot",
+        "Aeroflot"
+      ],
+      "human_gold_source_titles": [
+        "Aeroflot",
+        "Babyflot"
+      ],
+      "paired_outcome": "win",
+      "new_second_article_exactly_mentioned_by_first": true,
+      "source_mention_spans": [
+        {
+          "source_title": "Babyflot",
+          "source_sentence_index": 0,
+          "source_sentence_sha256": "3c64a814af5f0ecc0e99e8d66c9453db27d203eebd8317aadcd76025096c4d3a",
+          "match_start_in_sentence": 137,
+          "matched_title": "Aeroflot",
+          "short_source_substring": "ed from the dissolution of the Soviet airline monopoly Aeroflot in the early 1990s, at the time of the breakup of the Soviet Union"
+        }
+      ]
+    },
+    {
+      "uid": "5a75436155429974ef308cbc",
+      "question": "The Pluralist school is said to have included what creator of the theory of atomism? ",
+      "question_type": "bridge",
+      "old_title_pair": [
+        "Pluralist school",
+        "Buddhist atomism"
+      ],
+      "new_title_pair": [
+        "Pluralist school",
+        "Leucippus"
+      ],
+      "human_gold_source_titles": [
+        "Leucippus",
+        "Pluralist school"
+      ],
+      "paired_outcome": "win",
+      "new_second_article_exactly_mentioned_by_first": true,
+      "source_mention_spans": [
+        {
+          "source_title": "Pluralist school",
+          "source_sentence_index": 2,
+          "source_sentence_sha256": "7b200f8c5bcd767a48862b8b717b31f48455589df111d0827d43d0c1587d8101",
+          "match_start_in_sentence": 51,
+          "matched_title": "Leucippus",
+          "short_source_substring": " It can also be said to have included the Atomists, Leucippus and Democritus."
+        }
+      ]
+    },
+    {
+      "uid": "5abf8e135542990832d3a14f",
+      "question": "whiich Australian racing driver won the 44-lap race for the Red Bull Racing team?",
+      "question_type": "bridge",
+      "old_title_pair": [
+        "2014 Belgian Grand Prix",
+        "2014 Japanese Grand Prix"
+      ],
+      "new_title_pair": [
+        "2014 Belgian Grand Prix",
+        "Daniel Ricciardo"
+      ],
+      "human_gold_source_titles": [
+        "2014 Belgian Grand Prix",
+        "Daniel Ricciardo"
+      ],
+      "paired_outcome": "win",
+      "new_second_article_exactly_mentioned_by_first": true,
+      "source_mention_spans": [
+        {
+          "source_title": "2014 Belgian Grand Prix",
+          "source_sentence_index": 2,
+          "source_sentence_sha256": "d97f10e9f8407c3e342bdb2a8710a075a7918e9e8e20c96a1746fcc38ffe3dcc",
+          "match_start_in_sentence": 27,
+          "matched_title": "Daniel Ricciardo",
+          "short_source_substring": " The 44-lap race was won by Daniel Ricciardo for the Red Bull Racing team, after starting from fifth position."
+        }
+      ]
+    },
+    {
+      "uid": "5adf0ae45542992d7e9f9286",
+      "question": "Where was the film set in which the daughter of Shashi Kapoor, along side Sarat Pujari and Navni Parihar, set?",
+      "question_type": "bridge",
+      "old_title_pair": [
+        "Aranyaka (film)",
+        "Navni Parihar"
+      ],
+      "new_title_pair": [
+        "Aranyaka (film)",
+        "Sanjana Kapoor"
+      ],
+      "human_gold_source_titles": [
+        "Aranyaka (film)",
+        "Sanjana Kapoor"
+      ],
+      "paired_outcome": "win",
+      "new_second_article_exactly_mentioned_by_first": true,
+      "source_mention_spans": [
+        {
+          "source_title": "Aranyaka (film)",
+          "source_sentence_index": 1,
+          "source_sentence_sha256": "36c96a9576f4346a7d027017c2115606b11693560a41d518030a43f2946bfeb8",
+          "match_start_in_sentence": 44,
+          "matched_title": "Sanjana Kapoor",
+          "short_source_substring": " The film stars Sarat Pujari, Navni Parihar, Sanjana Kapoor and Mohan Gokhale in lead roles."
+        }
+      ]
+    },
+    {
+      "uid": "5abecdf45542997719eab5d4",
+      "question": "Lake Wales Ridge National Wildlife Refuge is on the US route that runs between a city in what Florida county?",
+      "question_type": "bridge",
+      "old_title_pair": [
+        "Lake Wales Ridge National Wildlife Refuge",
+        "Davenport, Florida"
+      ],
+      "new_title_pair": [
+        "Lake Wales Ridge National Wildlife Refuge",
+        "Florida scrub"
+      ],
+      "human_gold_source_titles": [
+        "Davenport, Florida",
+        "Lake Wales Ridge National Wildlife Refuge"
+      ],
+      "paired_outcome": "loss",
+      "new_second_article_exactly_mentioned_by_first": true,
+      "source_mention_spans": [
+        {
+          "source_title": "Lake Wales Ridge National Wildlife Refuge",
+          "source_sentence_index": 3,
+          "source_sentence_sha256": "c6eae37326f17345951445db18373ab5150a58127e466b8766099f1f96a50a70",
+          "match_start_in_sentence": 43,
+          "matched_title": "Florida scrub",
+          "short_source_substring": " It contains a high proportion of remaining Florida scrub habitat."
+        }
+      ]
+    },
+    {
+      "uid": "5ae22b8d554299234fd0440f",
+      "question": "What was the father of Kasper Schmeichel voted to be by the IFFHS in 1992?",
+      "question_type": "bridge",
+      "old_title_pair": [
+        "Peter Schmeichel",
+        "Kasper Schmeichel"
+      ],
+      "new_title_pair": [
+        "Peter Schmeichel",
+        "IFFHS World's Best Goalkeeper"
+      ],
+      "human_gold_source_titles": [
+        "Kasper Schmeichel",
+        "Peter Schmeichel"
+      ],
+      "paired_outcome": "loss",
+      "new_second_article_exactly_mentioned_by_first": true,
+      "source_mention_spans": [
+        {
+          "source_title": "Peter Schmeichel",
+          "source_sentence_index": 0,
+          "source_sentence_sha256": "aeacadc3b5f7cd329477a0ae33eee5ce8b912e2fb444caf1e576dfb2bf770b45",
+          "match_start_in_sentence": 146,
+          "matched_title": "IFFHS World's Best Goalkeeper",
+          "short_source_substring": "otballer who played as a goalkeeper, and was voted the IFFHS World's Best Goalkeeper in 1992 and 1993."
+        }
+      ]
+    },
+    {
+      "uid": "5ae26fad554299495565da6f",
+      "question": "Which historical drama filmed in the Winter Palace of the Russian State Hermitage Museum stars Sergey Dreyden?",
+      "question_type": "bridge",
+      "old_title_pair": [
+        "Russian Ark",
+        "Sergey Dreyden"
+      ],
+      "new_title_pair": [
+        "Russian Ark",
+        "Winter Palace"
+      ],
+      "human_gold_source_titles": [
+        "Russian Ark",
+        "Sergey Dreyden"
+      ],
+      "paired_outcome": "loss",
+      "new_second_article_exactly_mentioned_by_first": true,
+      "source_mention_spans": [
+        {
+          "source_title": "Russian Ark",
+          "source_sentence_index": 1,
+          "source_sentence_sha256": "21b0748eb8e2a4062031fdb2fead9c24468a2782be159f2fa52445f28e151489",
+          "match_start_in_sentence": 30,
+          "matched_title": "Winter Palace",
+          "short_source_substring": " It was filmed entirely in the Winter Palace of the Russian State Hermitage Museum using a single 96-minute Ste"
+        }
+      ]
+    },
+    {
+      "uid": "5ac1d4ad5542994d76dccef7",
+      "question": "Which of the seven Disney characters who had been given a series of their own, starring in cartoons who opened with their own logo  is a fictional character who first appeared in Disney's \"Pinocchio\"?",
+      "question_type": "bridge",
+      "old_title_pair": [
+        "Humphrey the Bear",
+        "Figaro (Disney)"
+      ],
+      "new_title_pair": [
+        "Humphrey the Bear",
+        "Donald Duck"
+      ],
+      "human_gold_source_titles": [
+        "Figaro (Disney)",
+        "Humphrey the Bear"
+      ],
+      "paired_outcome": "loss",
+      "new_second_article_exactly_mentioned_by_first": true,
+      "source_mention_spans": [
+        {
+          "source_title": "Humphrey the Bear",
+          "source_sentence_index": 2,
+          "source_sentence_sha256": "ed65edd1993d1982aa9d1d0a98a9467f3f86536cc04d3bf9582527e21248894a",
+          "match_start_in_sentence": 39,
+          "matched_title": "Donald Duck",
+          "short_source_substring": " After that he appeared in four classic Donald Duck cartoons: \"Rugged Bear\", \"Grin and Bear It\", \"Bearly Asleep\", and "
+        }
+      ]
+    },
+    {
+      "uid": "5a76648f5542992db9473795",
+      "question": "Figure 2 Ranch Airport supports launch operations of what aerospace manufacturer and space flight services company?",
+      "question_type": "bridge",
+      "old_title_pair": [
+        "Figure 2 Ranch Airport",
+        "SpaceX"
+      ],
+      "new_title_pair": [
+        "Figure 2 Ranch Airport",
+        "Figure 2 Ranch"
+      ],
+      "human_gold_source_titles": [
+        "Blue Origin",
+        "Figure 2 Ranch Airport"
+      ],
+      "paired_outcome": "neither",
+      "new_second_article_exactly_mentioned_by_first": true,
+      "source_mention_spans": [
+        {
+          "source_title": "Figure 2 Ranch Airport",
+          "source_sentence_index": 0,
+          "source_sentence_sha256": "988f35145ec4391970369f578caf8dec8d935f4a907469c65f6b396aa4d730fa",
+          "match_start_in_sentence": -1,
+          "matched_title": "Figure 2 Ranch",
+          "short_source_substring": "Figure 2 Ranch Airport (FAA LID: 88TA) is a private airport located 24 miles nort"
+        },
+        {
+          "source_title": "Figure 2 Ranch Airport",
+          "source_sentence_index": 1,
+          "source_sentence_sha256": "cb39b138de769458224685879a47a077d9898ed054e5cb85e65e3f794a76b0ac",
+          "match_start_in_sentence": 21,
+          "matched_title": "Figure 2 Ranch",
+          "short_source_substring": " It is located on the Figure 2 Ranch formerly owned by James M. West Sr. and his descendants who instal"
+        }
+      ]
+    },
+    {
+      "uid": "5a75e60e55429976ec32bc88",
+      "question": "During the Carnival in Rio de Janeiro who is the official singer of the samba school Mangueira?",
+      "question_type": "bridge",
+      "old_title_pair": [
+        "Jamelão",
+        "Estação Primeira de Mangueira"
+      ],
+      "new_title_pair": [
+        "Jamelão",
+        "Samba school"
+      ],
+      "human_gold_source_titles": [
+        "Jamelão",
+        "Rio Carnival"
+      ],
+      "paired_outcome": "neither",
+      "new_second_article_exactly_mentioned_by_first": true,
+      "source_mention_spans": [
+        {
+          "source_title": "Jamelão",
+          "source_sentence_index": 1,
+          "source_sentence_sha256": "8714dac80f57e7bb72007f078732bbda731c47599e71da973db8013eb335a4dc",
+          "match_start_in_sentence": 89,
+          "matched_title": "Samba school",
+          "short_source_substring": "ayer, but later became known as the official singer at samba school Mangueira's carnaval parades, performing in every Carnaval from 19"
+        }
+      ]
+    },
+    {
+      "uid": "5a7653d25542992db9473765",
+      "question": "Nick Hexum of which American rock band helped produce Decomposer by The Matches?",
+      "question_type": "bridge",
+      "old_title_pair": [
+        "Decomposer (album)",
+        "American Tragedy (album)"
+      ],
+      "new_title_pair": [
+        "Decomposer (album)",
+        "Nick Hexum"
+      ],
+      "human_gold_source_titles": [
+        "311 (band)",
+        "Decomposer (album)"
+      ],
+      "paired_outcome": "neither",
+      "new_second_article_exactly_mentioned_by_first": true,
+      "source_mention_spans": [
+        {
+          "source_title": "Decomposer (album)",
+          "source_sentence_index": 1,
+          "source_sentence_sha256": "e134789972fa9d03468ea18f8231b2292ae9cbd82199b5c78c45fb000ea09657",
+          "match_start_in_sentence": 160,
+          "matched_title": "Nick Hexum",
+          "short_source_substring": "dmann of Goldfinger, Mark Hoppus of +44 and Blink-182, Nick Hexum of 311, Tim Armstrong of Rancid and Brett Gurewitz of Bad Religion"
+        }
+      ]
+    },
+    {
+      "uid": "5a8f05b1554299458435d517",
+      "question": "William Pery served as Captain of the Yeomen of the Guard under the lord who served in what position from 1865 to 1868?",
+      "question_type": "bridge",
+      "old_title_pair": [
+        "William Pery, 3rd Earl of Limerick",
+        "William Monson, 1st Viscount Oxenbridge"
+      ],
+      "new_title_pair": [
+        "William Pery, 3rd Earl of Limerick",
+        "Yeomen of the Guard"
+      ],
+      "human_gold_source_titles": [
+        "Robert Gascoyne-Cecil, 3rd Marquess of Salisbury",
+        "William Pery, 3rd Earl of Limerick"
+      ],
+      "paired_outcome": "neither",
+      "new_second_article_exactly_mentioned_by_first": true,
+      "source_mention_spans": [
+        {
+          "source_title": "William Pery, 3rd Earl of Limerick",
+          "source_sentence_index": 1,
+          "source_sentence_sha256": "4808d6597e91cbe8bc3c25f5a577dcfa5819691655411630d8237b5ca1a3b33c",
+          "match_start_in_sentence": 28,
+          "matched_title": "Yeomen of the Guard",
+          "short_source_substring": " He served as Captain of the Yeomen of the Guard under Lord Salisbury between 1889 and 1892 and again between 1895 "
+        }
+      ]
+    },
+    {
+      "uid": "5ac2546a554299636651997b",
+      "question": "Who has released more studio albums, Candlelight Red or Motion City Soundtrack?",
+      "question_type": "comparison",
+      "old_title_pair": [
+        "Candlelight Red",
+        "Panic Stations (album)"
+      ],
+      "new_title_pair": [
+        "Candlelight Red",
+        "Motion City Soundtrack"
+      ],
+      "human_gold_source_titles": [
+        "Candlelight Red",
+        "Motion City Soundtrack"
+      ],
+      "paired_outcome": "win",
+      "new_second_article_exactly_mentioned_by_first": false,
+      "source_mention_spans": []
+    },
+    {
+      "uid": "5a80caac554299260e20a161",
+      "question": "Were both Prince and Patty Jenkins have been inducted into the Rock and Roll Hall of Fame?",
+      "question_type": "comparison",
+      "old_title_pair": [
+        "Prince (musician)",
+        "Patty Jenkins"
+      ],
+      "new_title_pair": [
+        "Prince (musician)",
+        "Rock and Roll Hall of Fame"
+      ],
+      "human_gold_source_titles": [
+        "Patty Jenkins",
+        "Prince (musician)"
+      ],
+      "paired_outcome": "loss",
+      "new_second_article_exactly_mentioned_by_first": true,
+      "source_mention_spans": [
+        {
+          "source_title": "Prince (musician)",
+          "source_sentence_index": 5,
+          "source_sentence_sha256": "83fed5fd479bcec2949543135290f36eb2cb9a9292ccc6e58d6cd6df7a858e6c",
+          "match_start_in_sentence": 25,
+          "matched_title": "Rock and Roll Hall of Fame",
+          "short_source_substring": " He was inducted into the Rock and Roll Hall of Fame in 2004, his first year of eligibility."
+        }
+      ]
+    },
+    {
+      "uid": "5ae1d656554299234fd04322",
+      "question": "Are Greater Swiss Mountain Dog and Harrier both dog breeds?",
+      "question_type": "comparison",
+      "old_title_pair": [
+        "Greater Swiss Mountain Dog",
+        "Harrier (dog)"
+      ],
+      "new_title_pair": [
+        "Greater Swiss Mountain Dog",
+        "Swiss mountain dog"
+      ],
+      "human_gold_source_titles": [
+        "Greater Swiss Mountain Dog",
+        "Harrier (dog)"
+      ],
+      "paired_outcome": "loss",
+      "new_second_article_exactly_mentioned_by_first": true,
+      "source_mention_spans": [
+        {
+          "source_title": "Greater Swiss Mountain Dog",
+          "source_sentence_index": 0,
+          "source_sentence_sha256": "a1797f4c7ea2e9a24c277398b66234adc5bceb94a60434f5e54efa66c9a8317a",
+          "match_start_in_sentence": 11,
+          "matched_title": "Swiss mountain dog",
+          "short_source_substring": "The Greater Swiss Mountain Dog (German: \"Grosser Schweizer Sennenhund\" or French: \"Grand Bouvier "
+        }
+      ]
+    },
+    {
+      "uid": "5ab596d95542992aa134a371",
+      "question": "WHere are both Sanming and Jiutai District located?",
+      "question_type": "comparison",
+      "old_title_pair": [
+        "Sanming",
+        "Jiutai District"
+      ],
+      "new_title_pair": [
+        "Sanming",
+        "Nanping"
+      ],
+      "human_gold_source_titles": [
+        "Jiutai District",
+        "Sanming"
+      ],
+      "paired_outcome": "loss",
+      "new_second_article_exactly_mentioned_by_first": true,
+      "source_mention_spans": [
+        {
+          "source_title": "Sanming",
+          "source_sentence_index": 1,
+          "source_sentence_sha256": "9698131fc17c1f8c231df3ae1ffa9a68b2640b8d1c4a73ff1c7109be552c651d",
+          "match_start_in_sentence": 11,
+          "matched_title": "Nanping",
+          "short_source_substring": " It borders Nanping City to the north, Fuzhou City to the east, Quanzhou City to the s"
+        }
+      ]
+    },
+    {
+      "uid": "5ac2ada255429967731025f9",
+      "question": "Was Rudolf Schwarzkogler closely associated with the Viennese Actionism group, while Howard Zieff was an American television commercial director?",
+      "question_type": "comparison",
+      "old_title_pair": [
+        "Rudolf Schwarzkogler",
+        "Howard Zieff"
+      ],
+      "new_title_pair": [
+        "Rudolf Schwarzkogler",
+        "Viennese Actionism"
+      ],
+      "human_gold_source_titles": [
+        "Howard Zieff",
+        "Rudolf Schwarzkogler"
+      ],
+      "paired_outcome": "loss",
+      "new_second_article_exactly_mentioned_by_first": true,
+      "source_mention_spans": [
+        {
+          "source_title": "Rudolf Schwarzkogler",
+          "source_sentence_index": 0,
+          "source_sentence_sha256": "4294e98e64789dbb3e13eaeaf78835bab24b5aafc31f75199b87d8f7aa968f41",
+          "match_start_in_sentence": 133,
+          "matched_title": "Viennese Actionism",
+          "short_source_substring": "ustrian performance artist closely associated with the Viennese Actionism group that included artists Günter Brus, Otto Mühl, and Hermann Ni"
+        }
+      ]
+    },
+    {
+      "uid": "5a7108fa5542994082a3e4ef",
+      "question": "Which battle, the Battle of Cold Harbor, or the Second Battle of Bull Run, was fought first?",
+      "question_type": "comparison",
+      "old_title_pair": [
+        "Cold Harbor, Virginia",
+        "Second Battle of Bull Run"
+      ],
+      "new_title_pair": [
+        "Cold Harbor, Virginia",
+        "Battle of Cold Harbor"
+      ],
+      "human_gold_source_titles": [
+        "Battle of Cold Harbor",
+        "Second Battle of Bull Run"
+      ],
+      "paired_outcome": "neither",
+      "new_second_article_exactly_mentioned_by_first": true,
+      "source_mention_spans": [
+        {
+          "source_title": "Cold Harbor, Virginia",
+          "source_sentence_index": 1,
+          "source_sentence_sha256": "9069ea108e9d1e8ec518fd634e2c54a8cab866656285d510e627c35c951ae356",
+          "match_start_in_sentence": 4,
+          "matched_title": "Battle of Cold Harbor",
+          "short_source_substring": " The Battle of Cold Harbor was fought in the area in 1864, during the American Civil War."
+        }
+      ]
+    },
+    {
+      "uid": "5a851cc85542997b5ce3ffa3",
+      "question": "Are both French Spaniel and Beagle universally recognized breeds?",
+      "question_type": "comparison",
+      "old_title_pair": [
+        "Beaglier",
+        "French Spaniel"
+      ],
+      "new_title_pair": [
+        "Beaglier",
+        "Beagle"
+      ],
+      "human_gold_source_titles": [
+        "Beagle",
+        "French Spaniel"
+      ],
+      "paired_outcome": "neither",
+      "new_second_article_exactly_mentioned_by_first": true,
+      "source_mention_spans": [
+        {
+          "source_title": "Beaglier",
+          "source_sentence_index": 0,
+          "source_sentence_sha256": "0fbcecc47a77374ac7e604aecece7fdf78b761a8e22db2d7a5398f81ba7f03a0",
+          "match_start_in_sentence": 52,
+          "matched_title": "Beagle",
+          "short_source_substring": "The Beaglier is a designer breed, the offspring of a Beagle and a Cavalier King Charles Spaniel."
+        },
+        {
+          "source_title": "Beaglier",
+          "source_sentence_index": 2,
+          "source_sentence_sha256": "84fb078ebad71599403df8ae52b60d41c3ba83ee516af6cca4ae7a7ff950a112",
+          "match_start_in_sentence": 89,
+          "matched_title": "Beagle",
+          "short_source_substring": "ffection for the Cavalier King Charles Spaniel and the Beagle breeds; the breeders were looking for a healthy, energetic small d"
+        }
+      ]
+    },
+    {
+      "uid": "5ac0cf0f554299294b219018",
+      "question": "Which band has more members, Test Icicles or X Ambassadors?",
+      "question_type": "comparison",
+      "old_title_pair": [
+        "Test Icicles",
+        "Dev Hynes"
+      ],
+      "new_title_pair": [
+        "Test Icicles",
+        "Rory Attwell"
+      ],
+      "human_gold_source_titles": [
+        "Test Icicles",
+        "X Ambassadors"
+      ],
+      "paired_outcome": "neither",
+      "new_second_article_exactly_mentioned_by_first": true,
+      "source_mention_spans": [
+        {
+          "source_title": "Test Icicles",
+          "source_sentence_index": 1,
+          "source_sentence_sha256": "6bb9fc6473ebc0384773cd04f2983c7394396a66dae6f4f147284f2a7b11eaf8",
+          "match_start_in_sentence": 31,
+          "matched_title": "Rory Attwell",
+          "short_source_substring": " The band was formed in 2004 by Rory Attwell and Sam Mehran, who were later joined by Devonte Hynes."
+        }
+      ]
+    },
+    {
+      "uid": "5a7f677455429969796c1a37",
+      "question": "Were Stanley Kubrick and Elio Petri from different countries?",
+      "question_type": "comparison",
+      "old_title_pair": [
+        "S Is for Stanley",
+        "Stanley Kubrick's Boxes"
+      ],
+      "new_title_pair": [
+        "S Is for Stanley",
+        "Stanley Kubrick"
+      ],
+      "human_gold_source_titles": [
+        "Elio Petri",
+        "Stanley Kubrick"
+      ],
+      "paired_outcome": "neither",
+      "new_second_article_exactly_mentioned_by_first": true,
+      "source_mention_spans": [
+        {
+          "source_title": "S Is for Stanley",
+          "source_sentence_index": 1,
+          "source_sentence_sha256": "b477f730dc13bf59d27c217fb3e29eb5a308984767661e5496206fc1094c139b",
+          "match_start_in_sentence": 56,
+          "matched_title": "Stanley Kubrick",
+          "short_source_substring": "t depicts the relationship between celebrated director Stanley Kubrick and his personal chauffeur and assistant, Emilio D'Alessandro."
+        }
+      ]
+    }
+  ],
+  "limitations": [
+    "Title occurrence in an article does not establish subject coreference or a true relationship; it only supplies an identifiable candidate relation",
+    "This audit was run after human labels were examined, so representative examples cannot serve as independent blinded performance evidence",
+    "The exact source title text may be a distractor or incidental mention; the graph is lexical and not production KMD DRS",
+    "Pre-selected ten article candidate set is an oracle dataset wrapper; global web retrieval quality is unmeasured"
+  ]
+}
