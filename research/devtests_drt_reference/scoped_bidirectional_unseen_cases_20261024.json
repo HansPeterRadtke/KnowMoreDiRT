@@ -1,0 +1,10415 @@
+{
+  "cases": [
+    {
+      "ask": "d",
+      "facts": [
+        "-a@real:2025"
+      ],
+      "id": "bidir-heldout-0000"
+    },
+    {
+      "ask": "c",
+      "facts": [
+        "+c@quote",
+        "+c@quote",
+        "+d@real:2026",
+        "a>b@dream",
+        "a>c@dream",
+        "+b",
+        "b>c",
+        "d>a",
+        "+a@quote"
+      ],
+      "id": "bidir-heldout-0001"
+    },
+    {
+      "ask": "a",
+      "facts": [],
+      "id": "bidir-heldout-0002"
+    },
+    {
+      "ask": "a",
+      "facts": [
+        "+a@real:2025",
+        "+b@real:2025",
+        "a>d@dream",
+        "d>a@dream",
+        "a>b@real:2026",
+        "c>b@quote"
+      ],
+      "id": "bidir-heldout-0003"
+    },
+    {
+      "ask": "b",
+      "facts": [
+        "b>d@real:2026",
+        "d>b@real:2025",
+        "a>b@dream",
+        "-b",
+        "b>d"
+      ],
+      "id": "bidir-heldout-0004"
+    },
+    {
+      "ask": "a",
+      "facts": [
+        "+d@real:2025",
+        "b>d@real:2025",
+        "-c@quote",
+        "a>c@dream",
+        "b>d@real:2026",
+        "c>d@quote",
+        "a>b@dream",
+        "d>b@real:2026"
+      ],
+      "id": "bidir-heldout-0005"
+    },
+    {
+      "ask": "d",
+      "facts": [
+        "-c@real:2026",
+        "-a@dream",
+        "c>a@quote",
+        "d>b@real:2026",
+        "c>d@real:2025",
+        "a>d",
+        "+c@real:2025",
+        "-c@quote"
+      ],
+      "id": "bidir-heldout-0006"
+    },
+    {
+      "ask": "c",
+      "facts": [
+        "a>d@quote"
+      ],
+      "id": "bidir-heldout-0007"
+    },
+    {
+      "ask": "a",
+      "facts": [
+        "b>a@real:2025",
+        "a>c@real:2025",
+        "a>c@real:2026",
+        "d>c",
+        "b>d"
+      ],
+      "id": "bidir-heldout-0008"
+    },
+    {
+      "ask": "a",
+      "facts": [
+        "-b@real:2025",
+        "c>d@real:2026",
+        "+c@real:2025",
+        "+c@quote",
+        "b>c@real:2026"
+      ],
+      "id": "bidir-heldout-0009"
+    },
+    {
+      "ask": "b",
+      "facts": [
+        "+a@real:2026",
+        "c>a@real:2025"
+      ],
+      "id": "bidir-heldout-0010"
+    },
+    {
+      "ask": "a",
+      "facts": [],
+      "id": "bidir-heldout-0011"
+    },
+    {
+      "ask": "d",
+      "facts": [
+        "d>b",
+        "b>c@quote",
+        "a>b@real:2026",
+        "-d@real:2025",
+        "d>b",
+        "+b@real:2025",
+        "-d@real:2025",
+        "b>c@quote"
+      ],
+      "id": "bidir-heldout-0012"
+    },
+    {
+      "ask": "c",
+      "facts": [
+        "b>a@quote",
+        "+d@real:2025"
+      ],
+      "id": "bidir-heldout-0013"
+    },
+    {
+      "ask": "d",
+      "facts": [
+        "a>b@quote",
+        "-d@dream",
+        "+d@quote"
+      ],
+      "id": "bidir-heldout-0014"
+    },
+    {
+      "ask": "b",
+      "facts": [
+        "b>c@real:2026",
+        "+b@quote",
+        "b>a@real:2026",
+        "d>b@dream"
+      ],
+      "id": "bidir-heldout-0015"
+    },
+    {
+      "ask": "a",
+      "facts": [],
+      "id": "bidir-heldout-0016"
+    },
+    {
+      "ask": "b",
+      "facts": [
+        "a>c"
+      ],
+      "id": "bidir-heldout-0017"
+    },
+    {
+      "ask": "a",
+      "facts": [
+        "-c@real:2026"
+      ],
+      "id": "bidir-heldout-0018"
+    },
+    {
+      "ask": "b",
+      "facts": [
+        "c>a",
+        "a>b",
+        "d>a@real:2026",
+        "-a@real:2026",
+        "+a@dream",
+        "b>d@real:2025",
+        "-d@quote",
+        "d>a"
+      ],
+      "id": "bidir-heldout-0019"
+    },
+    {
+      "ask": "d",
+      "facts": [
+        "d>b@dream",
+        "d>c@real:2026",
+        "c>b@real:2026",
+        "-c@quote",
+        "+d@real:2025"
+      ],
+      "id": "bidir-heldout-0020"
+    },
+    {
+      "ask": "a",
+      "facts": [],
+      "id": "bidir-heldout-0021"
+    },
+    {
+      "ask": "d",
+      "facts": [
+        "a>c@dream",
+        "+b@real:2026",
+        "b>a@quote",
+        "c>b@real:2025",
+        "c>b@real:2025",
+        "c>b@dream",
+        "b>d@quote"
+      ],
+      "id": "bidir-heldout-0022"
+    },
+    {
+      "ask": "a",
+      "facts": [
+        "a>b@real:2026",
+        "+c@quote"
+      ],
+      "id": "bidir-heldout-0023"
+    },
+    {
+      "ask": "a",
+      "facts": [
+        "a>c@real:2025",
+        "-b@real:2025",
+        "a>b",
+        "+d@dream",
+        "+d@quote",
+        "b>a@quote"
+      ],
+      "id": "bidir-heldout-0024"
+    },
+    {
+      "ask": "b",
+      "facts": [
+        "-b",
+        "d>c",
+        "-b@quote",
+        "a>b@quote",
+        "+d",
+        "a>c",
+        "a>b@real:2025",
+        "-c"
+      ],
+      "id": "bidir-heldout-0025"
+    },
+    {
+      "ask": "c",
+      "facts": [],
+      "id": "bidir-heldout-0026"
+    },
+    {
+      "ask": "a",
+      "facts": [
+        "+d@real:2026",
+        "+d@real:2026",
+        "c>b@real:2025",
+        "-a@real:2025",
+        "c>a@dream",
+        "d>a"
+      ],
+      "id": "bidir-heldout-0027"
+    },
+    {
+      "ask": "a",
+      "facts": [
+        "-a"
+      ],
+      "id": "bidir-heldout-0028"
+    },
+    {
+      "ask": "d",
+      "facts": [
+        "+d",
+        "+d",
+        "-d@dream"
+      ],
+      "id": "bidir-heldout-0029"
+    },
+    {
+      "ask": "a",
+      "facts": [
+        "b>a@dream",
+        "c>a",
+        "c>a@dream"
+      ],
+      "id": "bidir-heldout-0030"
+    },
+    {
+      "ask": "d",
+      "facts": [
+        "a>c@dream",
+        "a>c@real:2026",
+        "a>b@dream"
+      ],
+      "id": "bidir-heldout-0031"
+    },
+    {
+      "ask": "c",
+      "facts": [
+        "a>c@real:2025",
+        "c>d@real:2025"
+      ],
+      "id": "bidir-heldout-0032"
+    },
+    {
+      "ask": "a",
+      "facts": [
+        "-b@real:2026",
+        "d>a@quote",
+        "c>d@dream",
+        "d>b",
+        "-a@real:2026",
+        "b>d@dream",
+        "-a@quote",
+        "+c@real:2026"
+      ],
+      "id": "bidir-heldout-0033"
+    },
+    {
+      "ask": "a",
+      "facts": [
+        "b>a@real:2026",
+        "a>b@real:2026",
+        "c>a@real:2025",
+        "c>b@real:2025",
+        "-c@dream",
+        "b>d",
+        "+c@real:2025"
+      ],
+      "id": "bidir-heldout-0034"
+    },
+    {
+      "ask": "c",
+      "facts": [
+        "b>d@real:2025"
+      ],
+      "id": "bidir-heldout-0035"
+    },
+    {
+      "ask": "d",
+      "facts": [
+        "+d",
+        "+a@quote",
+        "c>a@real:2026",
+        "c>b@real:2026",
+        "c>d@quote"
+      ],
+      "id": "bidir-heldout-0036"
+    },
+    {
+      "ask": "a",
+      "facts": [
+        "+c@real:2025",
+        "a>b@dream"
+      ],
+      "id": "bidir-heldout-0037"
+    },
+    {
+      "ask": "c",
+      "facts": [
+        "c>d",
+        "c>d@real:2025"
+      ],
+      "id": "bidir-heldout-0038"
+    },
+    {
+      "ask": "c",
+      "facts": [
+        "a>c@dream",
+        "+c@real:2025",
+        "d>b@real:2026",
+        "a>c",
+        "+b@real:2026",
+        "+c@real:2026"
+      ],
+      "id": "bidir-heldout-0039"
+    },
+    {
+      "ask": "b",
+      "facts": [
+        "a>d@real:2025",
+        "d>a@quote",
+        "d>a@real:2026",
+        "c>d@real:2026",
+        "+a"
+      ],
+      "id": "bidir-heldout-0040"
+    },
+    {
+      "ask": "a",
+      "facts": [
+        "d>c@real:2025",
+        "-c"
+      ],
+      "id": "bidir-heldout-0041"
+    },
+    {
+      "ask": "c",
+      "facts": [
+        "c>b",
+        "-b@dream"
+      ],
+      "id": "bidir-heldout-0042"
+    },
+    {
+      "ask": "b",
+      "facts": [
+        "b>c@real:2026",
+        "d>a@quote",
+        "a>b@dream",
+        "d>a@real:2026",
+        "+d@real:2025",
+        "+b@real:2025",
+        "c>a@dream"
+      ],
+      "id": "bidir-heldout-0043"
+    },
+    {
+      "ask": "c",
+      "facts": [
+        "a>d@real:2026",
+        "c>b",
+        "c>d@quote",
+        "d>c@real:2026",
+        "a>b@real:2025",
+        "+a@quote",
+        "c>a"
+      ],
+      "id": "bidir-heldout-0044"
+    },
+    {
+      "ask": "d",
+      "facts": [],
+      "id": "bidir-heldout-0045"
+    },
+    {
+      "ask": "d",
+      "facts": [
+        "c>d@quote",
+        "+d@dream"
+      ],
+      "id": "bidir-heldout-0046"
+    },
+    {
+      "ask": "a",
+      "facts": [
+        "b>a",
+        "d>a@real:2025",
+        "b>c",
+        "-d",
+        "b>c@real:2025",
+        "b>a@real:2026",
+        "a>c@quote"
+      ],
+      "id": "bidir-heldout-0047"
+    },
+    {
+      "ask": "b",
+      "facts": [
+        "-c",
+        "a>d@real:2025",
+        "c>a@real:2025",
+        "+b@dream"
+      ],
+      "id": "bidir-heldout-0048"
+    },
+    {
+      "ask": "c",
+      "facts": [
+        "-c@dream",
+        "d>a",
+        "c>b@real:2026"
+      ],
+      "id": "bidir-heldout-0049"
+    },
+    {
+      "ask": "b",
+      "facts": [
+        "-a@dream",
+        "a>d",
+        "b>d@quote",
+        "a>d@dream",
+        "-c"
+      ],
+      "id": "bidir-heldout-0050"
+    },
+    {
+      "ask": "a",
+      "facts": [
+        "a>c@real:2025",
+        "-a@real:2025",
+        "c>b@quote"
+      ],
+      "id": "bidir-heldout-0051"
+    },
+    {
+      "ask": "b",
+      "facts": [
+        "c>d@real:2026",
+        "-b@real:2025",
+        "d>b@real:2025",
+        "a>c"
+      ],
+      "id": "bidir-heldout-0052"
+    },
+    {
+      "ask": "d",
+      "facts": [],
+      "id": "bidir-heldout-0053"
+    },
+    {
+      "ask": "a",
+      "facts": [
+        "d>a@quote",
+        "a>d@real:2025",
+        "b>a@real:2026",
+        "-a@real:2026",
+        "a>d@dream",
+        "-d@dream",
+        "c>d",
+        "+d@real:2026",
+        "c>a"
+      ],
+      "id": "bidir-heldout-0054"
+    },
+    {
+      "ask": "b",
+      "facts": [
+        "a>b@real:2025",
+        "b>d@real:2026",
+        "-c",
+        "a>b@real:2026",
+        "+d@dream"
+      ],
+      "id": "bidir-heldout-0055"
+    },
+    {
+      "ask": "c",
+      "facts": [
+        "-a@real:2026"
+      ],
+      "id": "bidir-heldout-0056"
+    },
+    {
+      "ask": "d",
+      "facts": [
+        "c>d@quote",
+        "-d@dream",
+        "d>b@real:2025"
+      ],
+      "id": "bidir-heldout-0057"
+    },
+    {
+      "ask": "d",
+      "facts": [
+        "+b",
+        "c>b@dream",
+        "-b@dream",
+        "d>a@real:2025",
+        "d>a@quote",
+        "b>a@real:2025",
+        "+c",
+        "c>a"
+      ],
+      "id": "bidir-heldout-0058"
+    },
+    {
+      "ask": "d",
+      "facts": [
+        "+b@quote",
+        "a>c",
+        "b>a@quote",
+        "a>d@real:2025",
+        "c>d",
+        "b>d@real:2026"
+      ],
+      "id": "bidir-heldout-0059"
+    },
+    {
+      "ask": "d",
+      "facts": [
+        "d>b@real:2025",
+        "b>c",
+        "b>a@dream",
+        "-a@real:2025",
+        "d>b@dream",
+        "a>b@real:2025",
+        "+a@real:2026",
+        "+d@quote"
+      ],
+      "id": "bidir-heldout-0060"
+    },
+    {
+      "ask": "b",
+      "facts": [],
+      "id": "bidir-heldout-0061"
+    },
+    {
+      "ask": "a",
+      "facts": [
+        "d>b@dream",
+        "-c@dream",
+        "b>a@real:2025",
+        "c>b@quote",
+        "d>a",
+        "a>c@real:2025"
+      ],
+      "id": "bidir-heldout-0062"
+    },
+    {
+      "ask": "c",
+      "facts": [
+        "b>d@real:2026",
+        "+d@real:2026",
+        "a>c",
+        "c>b"
+      ],
+      "id": "bidir-heldout-0063"
+    },
+    {
+      "ask": "a",
+      "facts": [
+        "+d@real:2026",
+        "d>a@dream",
+        "-c",
+        "-d",
+        "+d",
+        "c>a@quote"
+      ],
+      "id": "bidir-heldout-0064"
+    },
+    {
+      "ask": "d",
+      "facts": [
+        "b>d",
+        "-b@real:2025",
+        "-b@quote",
+        "b>d@real:2026",
+        "b>c@real:2025",
+        "-c@real:2025"
+      ],
+      "id": "bidir-heldout-0065"
+    },
+    {
+      "ask": "b",
+      "facts": [
+        "+c@real:2026",
+        "b>c@quote",
+        "b>a",
+        "-c@real:2025",
+        "-d@dream"
+      ],
+      "id": "bidir-heldout-0066"
+    },
+    {
+      "ask": "a",
+      "facts": [
+        "d>a",
+        "+b",
+        "b>d@quote"
+      ],
+      "id": "bidir-heldout-0067"
+    },
+    {
+      "ask": "c",
+      "facts": [
+        "d>b@real:2025",
+        "a>b@quote",
+        "-a",
+        "a>d",
+        "+a@real:2026",
+        "+b@dream"
+      ],
+      "id": "bidir-heldout-0068"
+    },
+    {
+      "ask": "d",
+      "facts": [],
+      "id": "bidir-heldout-0069"
+    },
+    {
+      "ask": "d",
+      "facts": [],
+      "id": "bidir-heldout-0070"
+    },
+    {
+      "ask": "c",
+      "facts": [
+        "-b@quote"
+      ],
+      "id": "bidir-heldout-0071"
+    },
+    {
+      "ask": "d",
+      "facts": [],
+      "id": "bidir-heldout-0072"
+    },
+    {
+      "ask": "d",
+      "facts": [
+        "b>c",
+        "d>b@real:2026",
+        "+b@real:2026",
+        "a>d",
+        "+c@quote"
+      ],
+      "id": "bidir-heldout-0073"
+    },
+    {
+      "ask": "b",
+      "facts": [],
+      "id": "bidir-heldout-0074"
+    },
+    {
+      "ask": "a",
+      "facts": [
+        "c>b@quote"
+      ],
+      "id": "bidir-heldout-0075"
+    },
+    {
+      "ask": "a",
+      "facts": [
+        "a>b@quote"
+      ],
+      "id": "bidir-heldout-0076"
+    },
+    {
+      "ask": "c",
+      "facts": [
+        "a>b",
+        "a>b@real:2025",
+        "b>a@dream",
+        "c>d"
+      ],
+      "id": "bidir-heldout-0077"
+    },
+    {
+      "ask": "a",
+      "facts": [],
+      "id": "bidir-heldout-0078"
+    },
+    {
+      "ask": "d",
+      "facts": [
+        "+d@real:2026",
+        "d>b@dream",
+        "-d@real:2025",
+        "d>c@dream",
+        "b>c@quote",
+        "-d",
+        "c>b@real:2025",
+        "-a@real:2026"
+      ],
+      "id": "bidir-heldout-0079"
+    },
+    {
+      "ask": "b",
+      "facts": [
+        "-b",
+        "b>a",
+        "b>a@quote",
+        "d>a",
+        "-a@real:2026",
+        "+d@real:2025"
+      ],
+      "id": "bidir-heldout-0080"
+    },
+    {
+      "ask": "b",
+      "facts": [
+        "-b@dream",
+        "+b@real:2026",
+        "-a@quote",
+        "a>d@real:2025"
+      ],
+      "id": "bidir-heldout-0081"
+    },
+    {
+      "ask": "b",
+      "facts": [
+        "a>c@real:2026",
+        "a>d@dream",
+        "c>a@dream",
+        "b>d@quote",
+        "-b@real:2025",
+        "-a@dream",
+        "a>c"
+      ],
+      "id": "bidir-heldout-0082"
+    },
+    {
+      "ask": "b",
+      "facts": [
+        "+a@dream",
+        "-d@real:2025",
+        "b>d@real:2026",
+        "+d@real:2026",
+        "-b@quote",
+        "b>a@dream"
+      ],
+      "id": "bidir-heldout-0083"
+    },
+    {
+      "ask": "d",
+      "facts": [],
+      "id": "bidir-heldout-0084"
+    },
+    {
+      "ask": "c",
+      "facts": [
+        "a>c@quote",
+        "+a@real:2025",
+        "b>a@quote",
+        "+b@real:2025"
+      ],
+      "id": "bidir-heldout-0085"
+    },
+    {
+      "ask": "b",
+      "facts": [
+        "+d@dream"
+      ],
+      "id": "bidir-heldout-0086"
+    },
+    {
+      "ask": "c",
+      "facts": [],
+      "id": "bidir-heldout-0087"
+    },
+    {
+      "ask": "b",
+      "facts": [
+        "d>a@real:2025",
+        "+c@quote"
+      ],
+      "id": "bidir-heldout-0088"
+    },
+    {
+      "ask": "b",
+      "facts": [
+        "+b@quote",
+        "+a@real:2025",
+        "+c@quote",
+        "d>a@real:2026",
+        "b>a@dream",
+        "-b@real:2025"
+      ],
+      "id": "bidir-heldout-0089"
+    },
+    {
+      "ask": "c",
+      "facts": [
+        "c>a@dream"
+      ],
+      "id": "bidir-heldout-0090"
+    },
+    {
+      "ask": "d",
+      "facts": [
+        "+d@quote",
+        "-d@dream",
+        "b>a@real:2025",
+        "c>a",
+        "c>d@dream"
+      ],
+      "id": "bidir-heldout-0091"
+    },
+    {
+      "ask": "d",
+      "facts": [
+        "+a@real:2026",
+        "+d@quote",
+        "a>c@real:2025",
+        "-c@dream",
+        "c>b@real:2026",
+        "b>a@real:2026",
+        "d>c@dream"
+      ],
+      "id": "bidir-heldout-0092"
+    },
+    {
+      "ask": "d",
+      "facts": [
+        "b>c@real:2025",
+        "c>d@dream",
+        "+a@quote",
+        "a>d@dream",
+        "a>b@real:2025",
+        "c>d@dream"
+      ],
+      "id": "bidir-heldout-0093"
+    },
+    {
+      "ask": "a",
+      "facts": [
+        "d>c@real:2026",
+        "+b@quote",
+        "a>d@quote",
+        "+b@real:2026",
+        "b>d@quote",
+        "-b",
+        "d>a@real:2025",
+        "-a@dream",
+        "+a@real:2026"
+      ],
+      "id": "bidir-heldout-0094"
+    },
+    {
+      "ask": "d",
+      "facts": [
+        "-b@real:2025",
+        "d>b",
+        "a>b@real:2025",
+        "+b"
+      ],
+      "id": "bidir-heldout-0095"
+    },
+    {
+      "ask": "b",
+      "facts": [
+        "+b@quote",
+        "+c",
+        "b>a@dream",
+        "-c",
+        "c>a@quote"
+      ],
+      "id": "bidir-heldout-0096"
+    },
+    {
+      "ask": "d",
+      "facts": [
+        "b>c@quote",
+        "b>a@quote",
+        "c>b@real:2025",
+        "-c",
+        "c>d@dream"
+      ],
+      "id": "bidir-heldout-0097"
+    },
+    {
+      "ask": "b",
+      "facts": [
+        "d>a",
+        "b>d",
+        "b>d",
+        "c>a@real:2025",
+        "c>d@quote",
+        "b>a@dream",
+        "a>c@dream",
+        "a>d@quote",
+        "b>c"
+      ],
+      "id": "bidir-heldout-0098"
+    },
+    {
+      "ask": "c",
+      "facts": [
+        "+c@real:2025",
+        "d>a@dream",
+        "-b@quote"
+      ],
+      "id": "bidir-heldout-0099"
+    },
+    {
+      "ask": "d",
+      "facts": [
+        "d>c",
+        "-b@real:2026",
+        "+d"
+      ],
+      "id": "bidir-heldout-0100"
+    },
+    {
+      "ask": "c",
+      "facts": [
+        "c>d@quote",
+        "c>d@quote",
+        "-c@quote",
+        "b>d",
+        "-b@real:2026",
+        "-a@real:2026",
+        "b>d@real:2026"
+      ],
+      "id": "bidir-heldout-0101"
+    },
+    {
+      "ask": "a",
+      "facts": [],
+      "id": "bidir-heldout-0102"
+    },
+    {
+      "ask": "d",
+      "facts": [
+        "c>d@real:2025",
+        "d>c",
+        "+d@real:2025",
+        "b>d@dream",
+        "b>a",
+        "a>d",
+        "+d",
+        "b>c",
+        "b>d@real:2025"
+      ],
+      "id": "bidir-heldout-0103"
+    },
+    {
+      "ask": "b",
+      "facts": [
+        "-b@real:2026",
+        "c>b@quote",
+        "-c@dream",
+        "-c@real:2026",
+        "c>b@quote",
+        "-a@quote",
+        "+c",
+        "d>b@real:2025"
+      ],
+      "id": "bidir-heldout-0104"
+    },
+    {
+      "ask": "b",
+      "facts": [
+        "b>c",
+        "-a@dream",
+        "c>b@quote",
+        "+b@real:2025",
+        "d>a@real:2026",
+        "a>d@dream"
+      ],
+      "id": "bidir-heldout-0105"
+    },
+    {
+      "ask": "a",
+      "facts": [
+        "b>c@quote",
+        "-b@real:2025",
+        "a>b@quote"
+      ],
+      "id": "bidir-heldout-0106"
+    },
+    {
+      "ask": "c",
+      "facts": [
+        "b>a",
+        "-b@dream"
+      ],
+      "id": "bidir-heldout-0107"
+    },
+    {
+      "ask": "b",
+      "facts": [
+        "a>c@real:2025",
+        "c>a@real:2026",
+        "+b@real:2025",
+        "d>a",
+        "d>c"
+      ],
+      "id": "bidir-heldout-0108"
+    },
+    {
+      "ask": "c",
+      "facts": [
+        "+a@dream",
+        "c>a@real:2025",
+        "-b@quote",
+        "b>d@real:2025",
+        "+a@real:2026",
+        "-b@dream",
+        "b>c@dream",
+        "-a@real:2026"
+      ],
+      "id": "bidir-heldout-0109"
+    },
+    {
+      "ask": "c",
+      "facts": [
+        "+d@dream",
+        "d>a@real:2026",
+        "-a@quote",
+        "b>c@real:2026",
+        "c>d@real:2025",
+        "d>c@dream",
+        "b>a@dream",
+        "a>b@quote",
+        "c>a@real:2025"
+      ],
+      "id": "bidir-heldout-0110"
+    },
+    {
+      "ask": "d",
+      "facts": [
+        "b>d",
+        "b>d@dream",
+        "d>c@quote",
+        "-b@real:2026",
+        "d>a@real:2026",
+        "b>a",
+        "a>d@real:2025",
+        "a>c@real:2025"
+      ],
+      "id": "bidir-heldout-0111"
+    },
+    {
+      "ask": "a",
+      "facts": [],
+      "id": "bidir-heldout-0112"
+    },
+    {
+      "ask": "a",
+      "facts": [
+        "c>d@real:2026"
+      ],
+      "id": "bidir-heldout-0113"
+    },
+    {
+      "ask": "c",
+      "facts": [
+        "d>c",
+        "b>c@real:2025",
+        "b>d@real:2025",
+        "c>a@real:2026",
+        "b>d@quote",
+        "b>d",
+        "+c@real:2025",
+        "-b",
+        "d>a@dream"
+      ],
+      "id": "bidir-heldout-0114"
+    },
+    {
+      "ask": "a",
+      "facts": [
+        "+d",
+        "+c@real:2026"
+      ],
+      "id": "bidir-heldout-0115"
+    },
+    {
+      "ask": "d",
+      "facts": [
+        "-c@real:2025",
+        "+a@dream",
+        "b>c@real:2026",
+        "a>d@dream"
+      ],
+      "id": "bidir-heldout-0116"
+    },
+    {
+      "ask": "a",
+      "facts": [
+        "d>a@real:2026",
+        "+a@quote",
+        "-c@dream",
+        "a>d@dream",
+        "b>a@real:2025"
+      ],
+      "id": "bidir-heldout-0117"
+    },
+    {
+      "ask": "d",
+      "facts": [
+        "+a@real:2025",
+        "-d@real:2025",
+        "+d@dream",
+        "+c@quote",
+        "a>b@dream",
+        "a>d@dream"
+      ],
+      "id": "bidir-heldout-0118"
+    },
+    {
+      "ask": "c",
+      "facts": [
+        "b>a@dream",
+        "c>a@real:2026",
+        "d>a@real:2025",
+        "b>a",
+        "a>b@dream",
+        "+c@dream"
+      ],
+      "id": "bidir-heldout-0119"
+    },
+    {
+      "ask": "a",
+      "facts": [
+        "-b@real:2026",
+        "b>a@quote",
+        "+a@real:2025",
+        "b>c",
+        "a>b@quote",
+        "+d@quote"
+      ],
+      "id": "bidir-heldout-0120"
+    },
+    {
+      "ask": "d",
+      "facts": [
+        "+a@quote",
+        "d>c@real:2025",
+        "-a@real:2026",
+        "b>c"
+      ],
+      "id": "bidir-heldout-0121"
+    },
+    {
+      "ask": "a",
+      "facts": [
+        "d>c@quote",
+        "c>d@quote",
+        "+d",
+        "+b@quote",
+        "+a",
+        "c>d@quote",
+        "+a@dream",
+        "+c@dream"
+      ],
+      "id": "bidir-heldout-0122"
+    },
+    {
+      "ask": "b",
+      "facts": [
+        "c>d@quote",
+        "d>a",
+        "c>a@quote",
+        "+b@real:2025"
+      ],
+      "id": "bidir-heldout-0123"
+    },
+    {
+      "ask": "d",
+      "facts": [
+        "+c@real:2025",
+        "c>b@dream",
+        "+d@dream",
+        "d>b",
+        "b>a@dream",
+        "-d@real:2025",
+        "a>c@real:2026",
+        "d>a@quote",
+        "a>c@real:2026"
+      ],
+      "id": "bidir-heldout-0124"
+    },
+    {
+      "ask": "c",
+      "facts": [
+        "+d@real:2025"
+      ],
+      "id": "bidir-heldout-0125"
+    },
+    {
+      "ask": "d",
+      "facts": [
+        "-c@quote",
+        "+c@real:2026"
+      ],
+      "id": "bidir-heldout-0126"
+    },
+    {
+      "ask": "d",
+      "facts": [
+        "-c@real:2026",
+        "a>b@real:2026",
+        "d>b@real:2025",
+        "+d@dream",
+        "b>c@real:2025",
+        "+d",
+        "d>b@dream",
+        "a>c",
+        "-d"
+      ],
+      "id": "bidir-heldout-0127"
+    },
+    {
+      "ask": "b",
+      "facts": [
+        "-c@real:2026",
+        "b>d@quote"
+      ],
+      "id": "bidir-heldout-0128"
+    },
+    {
+      "ask": "c",
+      "facts": [
+        "c>b@real:2025",
+        "+d@dream",
+        "d>a@quote",
+        "d>a@real:2025"
+      ],
+      "id": "bidir-heldout-0129"
+    },
+    {
+      "ask": "c",
+      "facts": [
+        "+b@real:2026",
+        "a>b@real:2025",
+        "+a@quote",
+        "+a@real:2026",
+        "-d@quote"
+      ],
+      "id": "bidir-heldout-0130"
+    },
+    {
+      "ask": "d",
+      "facts": [
+        "d>c@real:2026",
+        "+c",
+        "c>d@real:2026"
+      ],
+      "id": "bidir-heldout-0131"
+    },
+    {
+      "ask": "b",
+      "facts": [
+        "+a@real:2026",
+        "-c@dream"
+      ],
+      "id": "bidir-heldout-0132"
+    },
+    {
+      "ask": "c",
+      "facts": [
+        "-d@real:2026",
+        "d>c@real:2025",
+        "a>c@quote"
+      ],
+      "id": "bidir-heldout-0133"
+    },
+    {
+      "ask": "b",
+      "facts": [
+        "+b@dream",
+        "c>a@dream",
+        "b>d@real:2025",
+        "d>a@real:2026",
+        "b>c"
+      ],
+      "id": "bidir-heldout-0134"
+    },
+    {
+      "ask": "d",
+      "facts": [
+        "+b",
+        "+d@dream",
+        "a>b@real:2025"
+      ],
+      "id": "bidir-heldout-0135"
+    },
+    {
+      "ask": "c",
+      "facts": [
+        "-d@quote",
+        "d>b@real:2025",
+        "-d@real:2026",
+        "-c@dream",
+        "-b@real:2026",
+        "d>b"
+      ],
+      "id": "bidir-heldout-0136"
+    },
+    {
+      "ask": "a",
+      "facts": [
+        "-c@dream"
+      ],
+      "id": "bidir-heldout-0137"
+    },
+    {
+      "ask": "d",
+      "facts": [
+        "-b@real:2025",
+        "a>c@quote",
+        "-a@dream",
+        "+b@quote",
+        "d>c@quote",
+        "b>d@real:2026",
+        "b>d",
+        "a>c@real:2026",
+        "c>d"
+      ],
+      "id": "bidir-heldout-0138"
+    },
+    {
+      "ask": "d",
+      "facts": [
+        "d>b@dream",
+        "d>b@real:2026",
+        "c>d@dream",
+        "+d@real:2026",
+        "+c@real:2026",
+        "a>b@quote",
+        "d>b",
+        "a>b@dream"
+      ],
+      "id": "bidir-heldout-0139"
+    },
+    {
+      "ask": "a",
+      "facts": [
+        "-b@quote",
+        "+c@real:2026",
+        "a>d@quote",
+        "-c"
+      ],
+      "id": "bidir-heldout-0140"
+    },
+    {
+      "ask": "b",
+      "facts": [
+        "+c@quote",
+        "-c@real:2025"
+      ],
+      "id": "bidir-heldout-0141"
+    },
+    {
+      "ask": "b",
+      "facts": [
+        "d>c@real:2025",
+        "+d@real:2026",
+        "b>a@dream",
+        "c>b@quote",
+        "+d@real:2026",
+        "c>d",
+        "-c@real:2026"
+      ],
+      "id": "bidir-heldout-0142"
+    },
+    {
+      "ask": "b",
+      "facts": [
+        "+b",
+        "-d@real:2025",
+        "-d@dream",
+        "c>d@real:2025"
+      ],
+      "id": "bidir-heldout-0143"
+    },
+    {
+      "ask": "d",
+      "facts": [
+        "a>d@quote",
+        "b>c@dream",
+        "-d@real:2025",
+        "d>b@dream",
+        "-a@real:2026",
+        "d>a@dream"
+      ],
+      "id": "bidir-heldout-0144"
+    },
+    {
+      "ask": "b",
+      "facts": [
+        "a>c@real:2026",
+        "+c@real:2025",
+        "b>a@real:2025"
+      ],
+      "id": "bidir-heldout-0145"
+    },
+    {
+      "ask": "b",
+      "facts": [
+        "+b@dream",
+        "b>a@real:2026",
+        "b>d",
+        "-a@real:2025"
+      ],
+      "id": "bidir-heldout-0146"
+    },
+    {
+      "ask": "a",
+      "facts": [
+        "-b",
+        "c>a@dream",
+        "a>b",
+        "+b",
+        "d>c@quote",
+        "-b"
+      ],
+      "id": "bidir-heldout-0147"
+    },
+    {
+      "ask": "c",
+      "facts": [
+        "d>b@quote",
+        "+d",
+        "d>c@real:2026",
+        "a>d@dream",
+        "b>a@real:2026",
+        "d>c@real:2025",
+        "d>b@quote",
+        "-c@dream",
+        "-c@dream"
+      ],
+      "id": "bidir-heldout-0148"
+    },
+    {
+      "ask": "b",
+      "facts": [
+        "b>a",
+        "c>b@real:2025",
+        "a>c",
+        "a>b@real:2025"
+      ],
+      "id": "bidir-heldout-0149"
+    },
+    {
+      "ask": "d",
+      "facts": [
+        "-b@real:2026",
+        "-c@real:2026",
+        "+c@real:2025",
+        "c>a@real:2026",
+        "b>c@dream",
+        "-a@quote",
+        "+c",
+        "a>c",
+        "a>d"
+      ],
+      "id": "bidir-heldout-0150"
+    },
+    {
+      "ask": "b",
+      "facts": [
+        "+d@quote",
+        "b>a@dream",
+        "d>b@quote",
+        "a>d@quote",
+        "d>b@quote",
+        "-d@dream",
+        "+b@dream"
+      ],
+      "id": "bidir-heldout-0151"
+    },
+    {
+      "ask": "c",
+      "facts": [
+        "b>d@real:2025",
+        "+a@dream",
+        "-a@quote",
+        "d>a@real:2026",
+        "-d@dream"
+      ],
+      "id": "bidir-heldout-0152"
+    },
+    {
+      "ask": "d",
+      "facts": [
+        "-a@real:2025",
+        "d>b",
+        "a>c",
+        "+a",
+        "d>a",
+        "d>a@dream",
+        "b>c"
+      ],
+      "id": "bidir-heldout-0153"
+    },
+    {
+      "ask": "a",
+      "facts": [
+        "c>d@real:2025",
+        "+b",
+        "a>d",
+        "+d@dream",
+        "b>a"
+      ],
+      "id": "bidir-heldout-0154"
+    },
+    {
+      "ask": "d",
+      "facts": [
+        "-a@real:2025",
+        "c>a@dream",
+        "d>b@real:2026",
+        "b>a@quote",
+        "-d@real:2025",
+        "+b@real:2026",
+        "-b@quote",
+        "b>a@quote",
+        "b>d@real:2026"
+      ],
+      "id": "bidir-heldout-0155"
+    },
+    {
+      "ask": "a",
+      "facts": [],
+      "id": "bidir-heldout-0156"
+    },
+    {
+      "ask": "c",
+      "facts": [
+        "-d",
+        "c>a@quote",
+        "b>a@real:2026",
+        "-a@quote",
+        "d>c",
+        "d>b"
+      ],
+      "id": "bidir-heldout-0157"
+    },
+    {
+      "ask": "a",
+      "facts": [],
+      "id": "bidir-heldout-0158"
+    },
+    {
+      "ask": "d",
+      "facts": [
+        "-b@dream",
+        "d>c@real:2026"
+      ],
+      "id": "bidir-heldout-0159"
+    },
+    {
+      "ask": "c",
+      "facts": [
+        "a>b@real:2026"
+      ],
+      "id": "bidir-heldout-0160"
+    },
+    {
+      "ask": "d",
+      "facts": [
+        "-c@real:2025",
+        "+c@real:2025",
+        "d>c@dream"
+      ],
+      "id": "bidir-heldout-0161"
+    },
+    {
+      "ask": "b",
+      "facts": [
+        "b>a@real:2025",
+        "-d@real:2026",
+        "a>c@real:2026"
+      ],
+      "id": "bidir-heldout-0162"
+    },
+    {
+      "ask": "a",
+      "facts": [],
+      "id": "bidir-heldout-0163"
+    },
+    {
+      "ask": "b",
+      "facts": [],
+      "id": "bidir-heldout-0164"
+    },
+    {
+      "ask": "b",
+      "facts": [
+        "-b@quote",
+        "a>c@dream",
+        "c>a@quote",
+        "+a",
+        "c>d@quote",
+        "-b@quote",
+        "+c@real:2025",
+        "a>d@real:2026"
+      ],
+      "id": "bidir-heldout-0165"
+    },
+    {
+      "ask": "d",
+      "facts": [
+        "a>d@real:2026",
+        "a>b@quote",
+        "b>a@quote",
+        "+a"
+      ],
+      "id": "bidir-heldout-0166"
+    },
+    {
+      "ask": "c",
+      "facts": [
+        "c>d@real:2026",
+        "+b@quote",
+        "+a@real:2026"
+      ],
+      "id": "bidir-heldout-0167"
+    },
+    {
+      "ask": "b",
+      "facts": [
+        "-a@real:2025",
+        "d>c@real:2025"
+      ],
+      "id": "bidir-heldout-0168"
+    },
+    {
+      "ask": "b",
+      "facts": [
+        "b>d@real:2025",
+        "-a@quote",
+        "-c",
+        "-a",
+        "-d@real:2025",
+        "d>a@quote",
+        "+a@real:2025",
+        "b>a"
+      ],
+      "id": "bidir-heldout-0169"
+    },
+    {
+      "ask": "b",
+      "facts": [
+        "d>c@real:2026"
+      ],
+      "id": "bidir-heldout-0170"
+    },
+    {
+      "ask": "d",
+      "facts": [
+        "c>a@real:2026",
+        "-a@real:2026",
+        "-a@real:2026",
+        "d>b@quote",
+        "c>d@quote",
+        "d>a@real:2026"
+      ],
+      "id": "bidir-heldout-0171"
+    },
+    {
+      "ask": "d",
+      "facts": [
+        "-c@real:2026",
+        "-b@dream",
+        "c>b@dream",
+        "-c",
+        "a>c@quote",
+        "a>b@real:2026",
+        "c>b@real:2025"
+      ],
+      "id": "bidir-heldout-0172"
+    },
+    {
+      "ask": "c",
+      "facts": [
+        "a>c@real:2025"
+      ],
+      "id": "bidir-heldout-0173"
+    },
+    {
+      "ask": "a",
+      "facts": [
+        "a>c",
+        "+d@dream"
+      ],
+      "id": "bidir-heldout-0174"
+    },
+    {
+      "ask": "d",
+      "facts": [
+        "-b@quote",
+        "d>a@real:2025",
+        "a>d@dream"
+      ],
+      "id": "bidir-heldout-0175"
+    },
+    {
+      "ask": "a",
+      "facts": [
+        "c>d@real:2026",
+        "a>d@real:2025",
+        "-a@dream",
+        "+b@dream"
+      ],
+      "id": "bidir-heldout-0176"
+    },
+    {
+      "ask": "a",
+      "facts": [],
+      "id": "bidir-heldout-0177"
+    },
+    {
+      "ask": "a",
+      "facts": [],
+      "id": "bidir-heldout-0178"
+    },
+    {
+      "ask": "b",
+      "facts": [
+        "a>b",
+        "-b",
+        "b>a@real:2026",
+        "+d@real:2025"
+      ],
+      "id": "bidir-heldout-0179"
+    },
+    {
+      "ask": "d",
+      "facts": [
+        "+c@real:2025",
+        "b>d",
+        "a>d@dream",
+        "d>b@dream",
+        "b>a@quote"
+      ],
+      "id": "bidir-heldout-0180"
+    },
+    {
+      "ask": "a",
+      "facts": [
+        "b>a",
+        "-d@dream",
+        "+a@real:2026",
+        "b>c@real:2025",
+        "d>a@dream"
+      ],
+      "id": "bidir-heldout-0181"
+    },
+    {
+      "ask": "d",
+      "facts": [
+        "a>d@real:2025",
+        "+c@real:2026",
+        "b>c@real:2026"
+      ],
+      "id": "bidir-heldout-0182"
+    },
+    {
+      "ask": "b",
+      "facts": [
+        "-c@dream",
+        "d>c",
+        "b>a@quote"
+      ],
+      "id": "bidir-heldout-0183"
+    },
+    {
+      "ask": "d",
+      "facts": [
+        "+d@dream",
+        "b>a@real:2026",
+        "-c",
+        "-c@quote",
+        "d>b@real:2026",
+        "d>a@dream"
+      ],
+      "id": "bidir-heldout-0184"
+    },
+    {
+      "ask": "d",
+      "facts": [],
+      "id": "bidir-heldout-0185"
+    },
+    {
+      "ask": "c",
+      "facts": [
+        "a>c@real:2026",
+        "d>a",
+        "c>d@dream",
+        "b>a@quote",
+        "+d@real:2026",
+        "-c@real:2026",
+        "b>d@dream",
+        "-a",
+        "a>d"
+      ],
+      "id": "bidir-heldout-0186"
+    },
+    {
+      "ask": "b",
+      "facts": [
+        "b>a@quote",
+        "b>d@quote",
+        "b>a@quote",
+        "-b@real:2026",
+        "d>a@quote"
+      ],
+      "id": "bidir-heldout-0187"
+    },
+    {
+      "ask": "a",
+      "facts": [
+        "+d",
+        "a>c"
+      ],
+      "id": "bidir-heldout-0188"
+    },
+    {
+      "ask": "c",
+      "facts": [
+        "c>b@real:2025",
+        "d>c",
+        "-a@real:2025",
+        "+a@quote",
+        "c>d@dream",
+        "+c@quote",
+        "b>d@quote",
+        "-d@quote",
+        "a>d@real:2025"
+      ],
+      "id": "bidir-heldout-0189"
+    },
+    {
+      "ask": "b",
+      "facts": [
+        "+c",
+        "-d@real:2025"
+      ],
+      "id": "bidir-heldout-0190"
+    },
+    {
+      "ask": "b",
+      "facts": [],
+      "id": "bidir-heldout-0191"
+    },
+    {
+      "ask": "b",
+      "facts": [
+        "c>b@dream"
+      ],
+      "id": "bidir-heldout-0192"
+    },
+    {
+      "ask": "d",
+      "facts": [
+        "b>d"
+      ],
+      "id": "bidir-heldout-0193"
+    },
+    {
+      "ask": "c",
+      "facts": [
+        "c>b@quote",
+        "d>a"
+      ],
+      "id": "bidir-heldout-0194"
+    },
+    {
+      "ask": "d",
+      "facts": [
+        "d>a@real:2026",
+        "d>c",
+        "d>b@real:2025",
+        "c>d@real:2025",
+        "+b@real:2026",
+        "-a",
+        "c>a",
+        "-a@real:2025"
+      ],
+      "id": "bidir-heldout-0195"
+    },
+    {
+      "ask": "b",
+      "facts": [
+        "c>a@real:2026",
+        "b>d@real:2026",
+        "+d",
+        "-c@quote",
+        "a>b@real:2025",
+        "c>d@quote",
+        "b>c@dream",
+        "c>d@quote",
+        "+b@real:2026"
+      ],
+      "id": "bidir-heldout-0196"
+    },
+    {
+      "ask": "b",
+      "facts": [
+        "+b@dream",
+        "+a@real:2026",
+        "b>d@dream",
+        "+b@real:2026"
+      ],
+      "id": "bidir-heldout-0197"
+    },
+    {
+      "ask": "d",
+      "facts": [
+        "+b@quote",
+        "-d@real:2026",
+        "c>d@real:2025"
+      ],
+      "id": "bidir-heldout-0198"
+    },
+    {
+      "ask": "a",
+      "facts": [
+        "d>c@dream",
+        "c>b@real:2025",
+        "b>c@quote",
+        "d>c@quote",
+        "+c@real:2026",
+        "d>b@real:2025",
+        "b>c",
+        "+d@dream",
+        "c>d@dream"
+      ],
+      "id": "bidir-heldout-0199"
+    },
+    {
+      "ask": "a",
+      "facts": [
+        "+a@dream",
+        "c>a@real:2025"
+      ],
+      "id": "bidir-heldout-0200"
+    },
+    {
+      "ask": "c",
+      "facts": [
+        "+d@dream"
+      ],
+      "id": "bidir-heldout-0201"
+    },
+    {
+      "ask": "d",
+      "facts": [
+        "b>a@real:2026",
+        "-a",
+        "+b@real:2025",
+        "-a@quote",
+        "+d@quote",
+        "b>a@quote",
+        "c>d@real:2025",
+        "-a@dream"
+      ],
+      "id": "bidir-heldout-0202"
+    },
+    {
+      "ask": "d",
+      "facts": [
+        "a>d",
+        "d>c@real:2026"
+      ],
+      "id": "bidir-heldout-0203"
+    },
+    {
+      "ask": "d",
+      "facts": [
+        "d>c@real:2026",
+        "b>c@quote"
+      ],
+      "id": "bidir-heldout-0204"
+    },
+    {
+      "ask": "c",
+      "facts": [
+        "b>a",
+        "c>b@quote"
+      ],
+      "id": "bidir-heldout-0205"
+    },
+    {
+      "ask": "b",
+      "facts": [
+        "b>d@dream",
+        "d>a@dream",
+        "a>b@real:2026",
+        "-a",
+        "a>d@real:2025",
+        "+d@dream",
+        "b>c@real:2025",
+        "-a",
+        "+c@quote"
+      ],
+      "id": "bidir-heldout-0206"
+    },
+    {
+      "ask": "c",
+      "facts": [
+        "a>d@quote",
+        "a>b@dream",
+        "+b@dream",
+        "c>b@real:2025",
+        "d>b@dream",
+        "a>b@real:2026"
+      ],
+      "id": "bidir-heldout-0207"
+    },
+    {
+      "ask": "b",
+      "facts": [
+        "-d",
+        "-c@dream",
+        "+c",
+        "b>d",
+        "a>c@quote",
+        "d>c@real:2026",
+        "-b"
+      ],
+      "id": "bidir-heldout-0208"
+    },
+    {
+      "ask": "c",
+      "facts": [
+        "c>a",
+        "b>a",
+        "+c",
+        "+c@quote",
+        "-d@real:2025"
+      ],
+      "id": "bidir-heldout-0209"
+    },
+    {
+      "ask": "b",
+      "facts": [
+        "a>d@dream",
+        "a>b@dream",
+        "d>c@dream",
+        "b>c@real:2026"
+      ],
+      "id": "bidir-heldout-0210"
+    },
+    {
+      "ask": "a",
+      "facts": [],
+      "id": "bidir-heldout-0211"
+    },
+    {
+      "ask": "c",
+      "facts": [
+        "d>a@quote",
+        "+b@real:2026",
+        "d>b@dream",
+        "-a@quote",
+        "+d@dream"
+      ],
+      "id": "bidir-heldout-0212"
+    },
+    {
+      "ask": "b",
+      "facts": [
+        "a>d@quote",
+        "c>b@dream",
+        "-c@real:2025",
+        "+a@real:2025",
+        "-a@real:2025",
+        "-a",
+        "-c@real:2026",
+        "a>c@dream"
+      ],
+      "id": "bidir-heldout-0213"
+    },
+    {
+      "ask": "a",
+      "facts": [
+        "a>c@real:2026",
+        "b>a@real:2025",
+        "-d@real:2026",
+        "+c@dream",
+        "d>a@dream",
+        "-b",
+        "-c@quote",
+        "a>b@quote",
+        "c>a@real:2025"
+      ],
+      "id": "bidir-heldout-0214"
+    },
+    {
+      "ask": "b",
+      "facts": [
+        "b>d@dream",
+        "c>a@quote",
+        "c>b@real:2026",
+        "+d",
+        "c>a@real:2025",
+        "c>d@real:2026"
+      ],
+      "id": "bidir-heldout-0215"
+    },
+    {
+      "ask": "d",
+      "facts": [
+        "-d",
+        "-b@quote",
+        "d>a"
+      ],
+      "id": "bidir-heldout-0216"
+    },
+    {
+      "ask": "d",
+      "facts": [
+        "d>a@dream",
+        "-a@real:2025",
+        "b>c@quote",
+        "-d",
+        "b>a@quote",
+        "-d@quote",
+        "-d@real:2026",
+        "b>d@real:2026",
+        "b>c@real:2025"
+      ],
+      "id": "bidir-heldout-0217"
+    },
+    {
+      "ask": "d",
+      "facts": [
+        "-d@dream",
+        "d>a@quote",
+        "a>d@real:2025",
+        "d>c@real:2026",
+        "a>c@real:2025",
+        "b>a@quote"
+      ],
+      "id": "bidir-heldout-0218"
+    },
+    {
+      "ask": "b",
+      "facts": [
+        "c>d@real:2025",
+        "+a@quote",
+        "b>a@real:2026",
+        "b>a@real:2025",
+        "a>b@dream",
+        "c>a@dream",
+        "d>b@dream"
+      ],
+      "id": "bidir-heldout-0219"
+    },
+    {
+      "ask": "a",
+      "facts": [
+        "b>c",
+        "+a@real:2025",
+        "c>b@quote",
+        "+b@real:2026",
+        "+c@quote"
+      ],
+      "id": "bidir-heldout-0220"
+    },
+    {
+      "ask": "a",
+      "facts": [
+        "+b@quote",
+        "b>a@real:2025",
+        "b>a@real:2025",
+        "+c@real:2025",
+        "+b@real:2026"
+      ],
+      "id": "bidir-heldout-0221"
+    },
+    {
+      "ask": "d",
+      "facts": [
+        "+d@real:2026",
+        "+d@real:2025",
+        "b>a@real:2025",
+        "a>b@real:2026",
+        "a>b@quote"
+      ],
+      "id": "bidir-heldout-0222"
+    },
+    {
+      "ask": "c",
+      "facts": [
+        "c>d@real:2025",
+        "a>d@quote",
+        "b>c@quote",
+        "b>a@quote",
+        "+a",
+        "-a@quote",
+        "a>c"
+      ],
+      "id": "bidir-heldout-0223"
+    },
+    {
+      "ask": "a",
+      "facts": [
+        "c>a@real:2025",
+        "d>c",
+        "b>a@real:2025",
+        "a>b@dream",
+        "c>d"
+      ],
+      "id": "bidir-heldout-0224"
+    },
+    {
+      "ask": "b",
+      "facts": [
+        "+b@dream",
+        "a>c",
+        "+c@quote",
+        "b>d@dream",
+        "+d@real:2025",
+        "+c@dream",
+        "d>b@real:2025",
+        "a>b@dream"
+      ],
+      "id": "bidir-heldout-0225"
+    },
+    {
+      "ask": "b",
+      "facts": [],
+      "id": "bidir-heldout-0226"
+    },
+    {
+      "ask": "d",
+      "facts": [
+        "-a",
+        "d>a@real:2025",
+        "d>b@real:2026",
+        "c>d@quote",
+        "-d@real:2025",
+        "-d@dream",
+        "a>b"
+      ],
+      "id": "bidir-heldout-0227"
+    },
+    {
+      "ask": "c",
+      "facts": [
+        "a>b@quote",
+        "a>b",
+        "+c@dream",
+        "+d@real:2025",
+        "d>a@real:2025",
+        "+a@dream"
+      ],
+      "id": "bidir-heldout-0228"
+    },
+    {
+      "ask": "a",
+      "facts": [
+        "b>a",
+        "a>c@real:2025",
+        "c>b@quote"
+      ],
+      "id": "bidir-heldout-0229"
+    },
+    {
+      "ask": "c",
+      "facts": [
+        "+b",
+        "d>b@real:2025",
+        "d>c@dream",
+        "a>b@real:2025",
+        "+a@dream",
+        "-b",
+        "-c"
+      ],
+      "id": "bidir-heldout-0230"
+    },
+    {
+      "ask": "c",
+      "facts": [
+        "d>b",
+        "-a@dream",
+        "c>a@dream",
+        "d>c@quote",
+        "+d",
+        "-c",
+        "d>b",
+        "d>a@quote",
+        "c>d@real:2025"
+      ],
+      "id": "bidir-heldout-0231"
+    },
+    {
+      "ask": "a",
+      "facts": [],
+      "id": "bidir-heldout-0232"
+    },
+    {
+      "ask": "b",
+      "facts": [
+        "a>d"
+      ],
+      "id": "bidir-heldout-0233"
+    },
+    {
+      "ask": "a",
+      "facts": [
+        "b>a@real:2026"
+      ],
+      "id": "bidir-heldout-0234"
+    },
+    {
+      "ask": "b",
+      "facts": [
+        "c>b@real:2025",
+        "-d@real:2026",
+        "c>d@dream",
+        "d>c@real:2026",
+        "a>d@quote"
+      ],
+      "id": "bidir-heldout-0235"
+    },
+    {
+      "ask": "b",
+      "facts": [
+        "c>a",
+        "-b@dream"
+      ],
+      "id": "bidir-heldout-0236"
+    },
+    {
+      "ask": "c",
+      "facts": [
+        "c>a@quote",
+        "d>a",
+        "b>c",
+        "+d@quote",
+        "+d@real:2025"
+      ],
+      "id": "bidir-heldout-0237"
+    },
+    {
+      "ask": "b",
+      "facts": [
+        "c>a@dream",
+        "b>a@real:2025",
+        "b>c",
+        "c>b@quote",
+        "+d@dream",
+        "b>c@quote",
+        "+b"
+      ],
+      "id": "bidir-heldout-0238"
+    },
+    {
+      "ask": "b",
+      "facts": [
+        "d>a@quote",
+        "a>c"
+      ],
+      "id": "bidir-heldout-0239"
+    },
+    {
+      "ask": "a",
+      "facts": [
+        "-c@quote",
+        "+c@dream",
+        "c>a@quote",
+        "c>d@quote",
+        "c>d",
+        "b>c@real:2026",
+        "d>b@real:2026",
+        "c>b",
+        "c>d@dream"
+      ],
+      "id": "bidir-heldout-0240"
+    },
+    {
+      "ask": "a",
+      "facts": [
+        "-d@real:2026",
+        "a>b@real:2026",
+        "a>d@dream",
+        "b>c@dream",
+        "a>d@real:2025",
+        "d>b",
+        "c>d@real:2025",
+        "b>a",
+        "+d@real:2025"
+      ],
+      "id": "bidir-heldout-0241"
+    },
+    {
+      "ask": "d",
+      "facts": [
+        "-a@dream"
+      ],
+      "id": "bidir-heldout-0242"
+    },
+    {
+      "ask": "c",
+      "facts": [],
+      "id": "bidir-heldout-0243"
+    },
+    {
+      "ask": "a",
+      "facts": [
+        "-a@real:2025",
+        "d>c@quote"
+      ],
+      "id": "bidir-heldout-0244"
+    },
+    {
+      "ask": "c",
+      "facts": [
+        "-a@quote",
+        "d>c@quote",
+        "-c",
+        "+d@dream",
+        "a>b@dream",
+        "a>d@real:2025",
+        "-b@real:2026",
+        "+c",
+        "+d@quote"
+      ],
+      "id": "bidir-heldout-0245"
+    },
+    {
+      "ask": "b",
+      "facts": [
+        "-a@real:2025",
+        "+d",
+        "+b@real:2026",
+        "b>c@dream",
+        "b>a@dream"
+      ],
+      "id": "bidir-heldout-0246"
+    },
+    {
+      "ask": "c",
+      "facts": [
+        "d>a"
+      ],
+      "id": "bidir-heldout-0247"
+    },
+    {
+      "ask": "b",
+      "facts": [
+        "a>c@real:2025",
+        "-a@real:2025"
+      ],
+      "id": "bidir-heldout-0248"
+    },
+    {
+      "ask": "c",
+      "facts": [
+        "+d@real:2025",
+        "a>b",
+        "a>d@real:2026"
+      ],
+      "id": "bidir-heldout-0249"
+    },
+    {
+      "ask": "d",
+      "facts": [
+        "b>c@real:2026",
+        "d>a",
+        "+d@quote",
+        "a>d@quote",
+        "b>a@real:2025",
+        "-d@quote",
+        "+b@quote",
+        "d>b@dream",
+        "a>b@real:2025"
+      ],
+      "id": "bidir-heldout-0250"
+    },
+    {
+      "ask": "a",
+      "facts": [],
+      "id": "bidir-heldout-0251"
+    },
+    {
+      "ask": "c",
+      "facts": [],
+      "id": "bidir-heldout-0252"
+    },
+    {
+      "ask": "d",
+      "facts": [
+        "+c@dream",
+        "a>c@dream",
+        "-a",
+        "+a@dream",
+        "+c@quote",
+        "a>b@real:2025",
+        "a>d@real:2026",
+        "-a@dream"
+      ],
+      "id": "bidir-heldout-0253"
+    },
+    {
+      "ask": "d",
+      "facts": [
+        "+a",
+        "a>c",
+        "a>c@real:2025",
+        "-a",
+        "b>c@quote",
+        "+a@quote",
+        "b>d@quote",
+        "c>b@real:2025",
+        "+c@quote"
+      ],
+      "id": "bidir-heldout-0254"
+    },
+    {
+      "ask": "b",
+      "facts": [
+        "c>d@real:2026",
+        "-d@quote"
+      ],
+      "id": "bidir-heldout-0255"
+    },
+    {
+      "ask": "a",
+      "facts": [
+        "c>b@dream",
+        "c>b",
+        "b>a",
+        "c>d@real:2025",
+        "b>a@quote"
+      ],
+      "id": "bidir-heldout-0256"
+    },
+    {
+      "ask": "b",
+      "facts": [
+        "c>a@real:2026",
+        "-b@real:2025",
+        "a>d@quote",
+        "c>b@dream",
+        "b>a@real:2026",
+        "-a@quote",
+        "b>c@quote"
+      ],
+      "id": "bidir-heldout-0257"
+    },
+    {
+      "ask": "b",
+      "facts": [
+        "a>b@real:2025",
+        "-a@dream",
+        "+b@quote",
+        "d>a@dream",
+        "b>c@quote"
+      ],
+      "id": "bidir-heldout-0258"
+    },
+    {
+      "ask": "a",
+      "facts": [
+        "-a@real:2026",
+        "c>d@quote",
+        "a>c",
+        "d>c",
+        "c>d@dream",
+        "c>b@real:2026",
+        "c>b@real:2026",
+        "+b@quote",
+        "-d"
+      ],
+      "id": "bidir-heldout-0259"
+    },
+    {
+      "ask": "d",
+      "facts": [
+        "b>d",
+        "a>d@real:2025"
+      ],
+      "id": "bidir-heldout-0260"
+    },
+    {
+      "ask": "c",
+      "facts": [
+        "-a",
+        "d>a@dream",
+        "+c@dream",
+        "b>d",
+        "c>a@quote",
+        "c>b@real:2026"
+      ],
+      "id": "bidir-heldout-0261"
+    },
+    {
+      "ask": "d",
+      "facts": [
+        "d>b@dream",
+        "b>a@real:2026",
+        "d>b@real:2026",
+        "-a@dream",
+        "b>d@dream",
+        "a>b",
+        "b>a"
+      ],
+      "id": "bidir-heldout-0262"
+    },
+    {
+      "ask": "a",
+      "facts": [
+        "a>d@real:2025",
+        "c>a@real:2025",
+        "+a@real:2025"
+      ],
+      "id": "bidir-heldout-0263"
+    },
+    {
+      "ask": "a",
+      "facts": [
+        "b>c@real:2026",
+        "+b@dream",
+        "-a@quote",
+        "d>c@dream",
+        "-b",
+        "b>a@real:2025",
+        "b>a@real:2025"
+      ],
+      "id": "bidir-heldout-0264"
+    },
+    {
+      "ask": "b",
+      "facts": [
+        "a>c",
+        "-a@real:2025",
+        "-a@dream",
+        "c>b@real:2026",
+        "b>c@dream",
+        "+c@real:2026",
+        "d>b@real:2025",
+        "d>c@real:2026"
+      ],
+      "id": "bidir-heldout-0265"
+    },
+    {
+      "ask": "c",
+      "facts": [
+        "-b",
+        "+c@real:2025"
+      ],
+      "id": "bidir-heldout-0266"
+    },
+    {
+      "ask": "d",
+      "facts": [],
+      "id": "bidir-heldout-0267"
+    },
+    {
+      "ask": "b",
+      "facts": [
+        "+d",
+        "a>d@real:2026",
+        "d>c@quote",
+        "d>b@dream",
+        "a>d@real:2026",
+        "b>d@real:2026",
+        "c>a@real:2025"
+      ],
+      "id": "bidir-heldout-0268"
+    },
+    {
+      "ask": "c",
+      "facts": [
+        "+d@real:2025",
+        "d>c@quote",
+        "-a"
+      ],
+      "id": "bidir-heldout-0269"
+    },
+    {
+      "ask": "b",
+      "facts": [
+        "a>b"
+      ],
+      "id": "bidir-heldout-0270"
+    },
+    {
+      "ask": "b",
+      "facts": [
+        "-d",
+        "c>d@quote",
+        "b>d@real:2026",
+        "a>c@quote",
+        "a>d",
+        "c>d@dream"
+      ],
+      "id": "bidir-heldout-0271"
+    },
+    {
+      "ask": "b",
+      "facts": [
+        "b>a@real:2026",
+        "-d",
+        "a>c@real:2025",
+        "d>c@quote",
+        "+c@real:2026",
+        "+d@dream",
+        "-b@real:2025"
+      ],
+      "id": "bidir-heldout-0272"
+    },
+    {
+      "ask": "b",
+      "facts": [
+        "b>c@real:2026",
+        "c>a@real:2025",
+        "b>c@dream",
+        "c>a@real:2026",
+        "-d@quote",
+        "-b",
+        "-d",
+        "-b"
+      ],
+      "id": "bidir-heldout-0273"
+    },
+    {
+      "ask": "d",
+      "facts": [
+        "+b@real:2026",
+        "d>a@real:2026",
+        "d>c@real:2025",
+        "-c@real:2025",
+        "c>b",
+        "d>c@real:2025"
+      ],
+      "id": "bidir-heldout-0274"
+    },
+    {
+      "ask": "b",
+      "facts": [
+        "d>c@real:2026",
+        "+a@real:2026",
+        "d>c",
+        "-b",
+        "+a@dream",
+        "d>a@real:2026",
+        "c>d@quote",
+        "b>c@real:2026"
+      ],
+      "id": "bidir-heldout-0275"
+    },
+    {
+      "ask": "c",
+      "facts": [
+        "c>d@quote",
+        "c>a@real:2025",
+        "-a@real:2026"
+      ],
+      "id": "bidir-heldout-0276"
+    },
+    {
+      "ask": "b",
+      "facts": [
+        "b>a@dream",
+        "d>c@dream",
+        "c>a@quote",
+        "c>a@real:2025",
+        "d>c",
+        "+d@dream",
+        "-c@real:2026",
+        "b>a@quote",
+        "c>d@quote"
+      ],
+      "id": "bidir-heldout-0277"
+    },
+    {
+      "ask": "b",
+      "facts": [
+        "d>a@dream",
+        "a>d",
+        "d>a@quote",
+        "+c@quote",
+        "d>a@real:2025",
+        "+c@quote"
+      ],
+      "id": "bidir-heldout-0278"
+    },
+    {
+      "ask": "b",
+      "facts": [
+        "+a"
+      ],
+      "id": "bidir-heldout-0279"
+    },
+    {
+      "ask": "a",
+      "facts": [
+        "-a@real:2025",
+        "-a@quote",
+        "b>a@quote"
+      ],
+      "id": "bidir-heldout-0280"
+    },
+    {
+      "ask": "b",
+      "facts": [
+        "b>c@quote",
+        "+a@real:2025",
+        "b>c@real:2026",
+        "c>b"
+      ],
+      "id": "bidir-heldout-0281"
+    },
+    {
+      "ask": "d",
+      "facts": [
+        "c>d@dream",
+        "-b@quote",
+        "-d@quote",
+        "-d",
+        "a>b@real:2025",
+        "c>d@dream",
+        "c>b@real:2026",
+        "-b@real:2026"
+      ],
+      "id": "bidir-heldout-0282"
+    },
+    {
+      "ask": "a",
+      "facts": [
+        "-b@quote",
+        "a>d@real:2025",
+        "+d@real:2026",
+        "+a@real:2025"
+      ],
+      "id": "bidir-heldout-0283"
+    },
+    {
+      "ask": "d",
+      "facts": [
+        "b>d",
+        "d>a@real:2026",
+        "+b",
+        "c>b@real:2026",
+        "d>b",
+        "d>b@real:2025"
+      ],
+      "id": "bidir-heldout-0284"
+    },
+    {
+      "ask": "d",
+      "facts": [
+        "+b@dream"
+      ],
+      "id": "bidir-heldout-0285"
+    },
+    {
+      "ask": "c",
+      "facts": [
+        "c>d@quote",
+        "b>d@real:2026",
+        "c>a@real:2026",
+        "-c@quote",
+        "b>a",
+        "-a@dream",
+        "-a@quote",
+        "c>b@real:2025"
+      ],
+      "id": "bidir-heldout-0286"
+    },
+    {
+      "ask": "c",
+      "facts": [
+        "-d@real:2025",
+        "c>d@real:2026",
+        "+a@quote",
+        "+c@dream",
+        "c>a@real:2026",
+        "c>b@real:2026"
+      ],
+      "id": "bidir-heldout-0287"
+    },
+    {
+      "ask": "d",
+      "facts": [
+        "b>a@dream",
+        "+b@real:2026",
+        "b>c",
+        "-b"
+      ],
+      "id": "bidir-heldout-0288"
+    },
+    {
+      "ask": "b",
+      "facts": [
+        "b>d",
+        "d>a@dream",
+        "c>b@dream",
+        "-b@quote",
+        "c>b"
+      ],
+      "id": "bidir-heldout-0289"
+    },
+    {
+      "ask": "c",
+      "facts": [
+        "a>d@real:2026",
+        "b>a",
+        "d>a@real:2025",
+        "-c@dream",
+        "-c@quote",
+        "a>d@real:2026",
+        "d>a@quote",
+        "a>d",
+        "-c@real:2026"
+      ],
+      "id": "bidir-heldout-0290"
+    },
+    {
+      "ask": "b",
+      "facts": [
+        "d>a@dream",
+        "a>c@real:2025",
+        "+b@real:2025",
+        "-c@real:2026",
+        "a>d"
+      ],
+      "id": "bidir-heldout-0291"
+    },
+    {
+      "ask": "c",
+      "facts": [
+        "-a@dream"
+      ],
+      "id": "bidir-heldout-0292"
+    },
+    {
+      "ask": "b",
+      "facts": [
+        "a>d@dream",
+        "+d",
+        "a>c@dream",
+        "-b@dream"
+      ],
+      "id": "bidir-heldout-0293"
+    },
+    {
+      "ask": "c",
+      "facts": [
+        "+d@real:2026",
+        "c>a@real:2026",
+        "-a",
+        "+c@real:2025",
+        "+a"
+      ],
+      "id": "bidir-heldout-0294"
+    },
+    {
+      "ask": "d",
+      "facts": [
+        "+a@quote",
+        "c>d@real:2025",
+        "+c@real:2025",
+        "-b@dream",
+        "c>b@real:2026",
+        "c>d@real:2026",
+        "c>b@real:2026"
+      ],
+      "id": "bidir-heldout-0295"
+    },
+    {
+      "ask": "b",
+      "facts": [
+        "+c@dream",
+        "-c@quote"
+      ],
+      "id": "bidir-heldout-0296"
+    },
+    {
+      "ask": "b",
+      "facts": [
+        "d>a@real:2025"
+      ],
+      "id": "bidir-heldout-0297"
+    },
+    {
+      "ask": "c",
+      "facts": [
+        "-c@dream"
+      ],
+      "id": "bidir-heldout-0298"
+    },
+    {
+      "ask": "a",
+      "facts": [
+        "c>d@real:2025"
+      ],
+      "id": "bidir-heldout-0299"
+    },
+    {
+      "ask": "d",
+      "facts": [
+        "b>a@quote",
+        "b>c",
+        "b>d@quote",
+        "c>d"
+      ],
+      "id": "bidir-heldout-0300"
+    },
+    {
+      "ask": "c",
+      "facts": [
+        "c>d",
+        "a>b@real:2026",
+        "c>b@real:2025",
+        "-d@real:2026",
+        "b>d@dream",
+        "d>a"
+      ],
+      "id": "bidir-heldout-0301"
+    },
+    {
+      "ask": "b",
+      "facts": [
+        "c>a@quote",
+        "+a@dream"
+      ],
+      "id": "bidir-heldout-0302"
+    },
+    {
+      "ask": "b",
+      "facts": [
+        "-a@quote",
+        "d>c@quote",
+        "a>c@real:2026",
+        "a>d@real:2026"
+      ],
+      "id": "bidir-heldout-0303"
+    },
+    {
+      "ask": "a",
+      "facts": [
+        "c>a@dream"
+      ],
+      "id": "bidir-heldout-0304"
+    },
+    {
+      "ask": "d",
+      "facts": [
+        "+b@quote",
+        "d>a@dream",
+        "+a@dream"
+      ],
+      "id": "bidir-heldout-0305"
+    },
+    {
+      "ask": "d",
+      "facts": [
+        "+d@real:2025"
+      ],
+      "id": "bidir-heldout-0306"
+    },
+    {
+      "ask": "c",
+      "facts": [],
+      "id": "bidir-heldout-0307"
+    },
+    {
+      "ask": "a",
+      "facts": [],
+      "id": "bidir-heldout-0308"
+    },
+    {
+      "ask": "a",
+      "facts": [
+        "a>d@quote"
+      ],
+      "id": "bidir-heldout-0309"
+    },
+    {
+      "ask": "c",
+      "facts": [
+        "b>d",
+        "c>b@real:2025",
+        "-c",
+        "d>a@real:2026"
+      ],
+      "id": "bidir-heldout-0310"
+    },
+    {
+      "ask": "d",
+      "facts": [],
+      "id": "bidir-heldout-0311"
+    },
+    {
+      "ask": "b",
+      "facts": [
+        "+b@dream",
+        "d>b@dream",
+        "d>c@quote",
+        "c>d@dream"
+      ],
+      "id": "bidir-heldout-0312"
+    },
+    {
+      "ask": "d",
+      "facts": [
+        "a>c@real:2026",
+        "d>a",
+        "a>b@real:2025",
+        "a>c@real:2025",
+        "b>a@real:2026",
+        "c>d@real:2025"
+      ],
+      "id": "bidir-heldout-0313"
+    },
+    {
+      "ask": "a",
+      "facts": [
+        "b>c@real:2025",
+        "+a@dream",
+        "d>b@dream",
+        "b>a@real:2025"
+      ],
+      "id": "bidir-heldout-0314"
+    },
+    {
+      "ask": "b",
+      "facts": [
+        "+a@dream",
+        "a>d@real:2025",
+        "a>d@quote",
+        "+a@real:2026",
+        "c>b@quote",
+        "c>d@quote",
+        "+c@dream",
+        "a>c@dream",
+        "c>b"
+      ],
+      "id": "bidir-heldout-0315"
+    },
+    {
+      "ask": "d",
+      "facts": [],
+      "id": "bidir-heldout-0316"
+    },
+    {
+      "ask": "d",
+      "facts": [
+        "b>c@real:2025",
+        "a>d@dream",
+        "c>a@dream",
+        "d>b@real:2026",
+        "a>d@quote"
+      ],
+      "id": "bidir-heldout-0317"
+    },
+    {
+      "ask": "c",
+      "facts": [],
+      "id": "bidir-heldout-0318"
+    },
+    {
+      "ask": "a",
+      "facts": [
+        "a>b@real:2025",
+        "d>c",
+        "+d@quote",
+        "c>b@quote",
+        "a>d@dream",
+        "b>a@dream",
+        "-d@dream",
+        "-c@real:2025"
+      ],
+      "id": "bidir-heldout-0319"
+    },
+    {
+      "ask": "c",
+      "facts": [
+        "b>c@quote",
+        "b>c@dream",
+        "c>d@quote"
+      ],
+      "id": "bidir-heldout-0320"
+    },
+    {
+      "ask": "b",
+      "facts": [
+        "a>c@quote",
+        "a>d",
+        "a>b@real:2025",
+        "d>b",
+        "d>a@real:2026",
+        "-b@real:2025",
+        "-b@quote",
+        "b>a@real:2026",
+        "d>a@real:2025"
+      ],
+      "id": "bidir-heldout-0321"
+    },
+    {
+      "ask": "a",
+      "facts": [
+        "a>b@real:2026",
+        "-d@dream"
+      ],
+      "id": "bidir-heldout-0322"
+    },
+    {
+      "ask": "c",
+      "facts": [
+        "+c@real:2026",
+        "d>c@dream",
+        "-c@real:2025",
+        "b>c@quote",
+        "b>c@dream",
+        "b>c@dream",
+        "d>a@quote"
+      ],
+      "id": "bidir-heldout-0323"
+    },
+    {
+      "ask": "c",
+      "facts": [
+        "-c",
+        "d>a@dream",
+        "d>a"
+      ],
+      "id": "bidir-heldout-0324"
+    },
+    {
+      "ask": "c",
+      "facts": [
+        "a>c@dream",
+        "-c@dream"
+      ],
+      "id": "bidir-heldout-0325"
+    },
+    {
+      "ask": "c",
+      "facts": [
+        "b>d@real:2025",
+        "-d@real:2026",
+        "+b@real:2026",
+        "-c",
+        "d>b@real:2026",
+        "c>d@dream"
+      ],
+      "id": "bidir-heldout-0326"
+    },
+    {
+      "ask": "d",
+      "facts": [
+        "a>b@real:2026"
+      ],
+      "id": "bidir-heldout-0327"
+    },
+    {
+      "ask": "b",
+      "facts": [
+        "+a",
+        "c>b@real:2026",
+        "b>d"
+      ],
+      "id": "bidir-heldout-0328"
+    },
+    {
+      "ask": "c",
+      "facts": [
+        "d>c@dream",
+        "b>d@real:2026",
+        "c>b",
+        "d>a",
+        "b>c@quote",
+        "-b@real:2026",
+        "c>d@dream"
+      ],
+      "id": "bidir-heldout-0329"
+    },
+    {
+      "ask": "b",
+      "facts": [
+        "+d@quote",
+        "b>a@dream",
+        "+a@quote",
+        "+a@quote",
+        "-c@quote",
+        "+a@real:2025",
+        "d>a@real:2026",
+        "c>a"
+      ],
+      "id": "bidir-heldout-0330"
+    },
+    {
+      "ask": "b",
+      "facts": [],
+      "id": "bidir-heldout-0331"
+    },
+    {
+      "ask": "a",
+      "facts": [
+        "d>c@dream"
+      ],
+      "id": "bidir-heldout-0332"
+    },
+    {
+      "ask": "b",
+      "facts": [
+        "+b"
+      ],
+      "id": "bidir-heldout-0333"
+    },
+    {
+      "ask": "b",
+      "facts": [
+        "+a",
+        "b>a@real:2025",
+        "+c@quote",
+        "+a@real:2026",
+        "d>c@real:2026",
+        "d>b@dream"
+      ],
+      "id": "bidir-heldout-0334"
+    },
+    {
+      "ask": "b",
+      "facts": [
+        "b>d@real:2026",
+        "+c@dream",
+        "+d@dream",
+        "c>a@real:2025"
+      ],
+      "id": "bidir-heldout-0335"
+    },
+    {
+      "ask": "a",
+      "facts": [
+        "c>b@quote",
+        "b>a"
+      ],
+      "id": "bidir-heldout-0336"
+    },
+    {
+      "ask": "c",
+      "facts": [
+        "-d@dream",
+        "c>b",
+        "+c",
+        "+c@real:2025",
+        "c>b"
+      ],
+      "id": "bidir-heldout-0337"
+    },
+    {
+      "ask": "c",
+      "facts": [
+        "a>c@dream"
+      ],
+      "id": "bidir-heldout-0338"
+    },
+    {
+      "ask": "b",
+      "facts": [],
+      "id": "bidir-heldout-0339"
+    },
+    {
+      "ask": "b",
+      "facts": [],
+      "id": "bidir-heldout-0340"
+    },
+    {
+      "ask": "d",
+      "facts": [
+        "b>a@real:2025",
+        "a>d@quote"
+      ],
+      "id": "bidir-heldout-0341"
+    },
+    {
+      "ask": "b",
+      "facts": [
+        "+c",
+        "-c@dream",
+        "a>c@real:2026"
+      ],
+      "id": "bidir-heldout-0342"
+    },
+    {
+      "ask": "b",
+      "facts": [
+        "c>b",
+        "+b@real:2026",
+        "-a"
+      ],
+      "id": "bidir-heldout-0343"
+    },
+    {
+      "ask": "a",
+      "facts": [
+        "a>b",
+        "a>b",
+        "d>b@dream",
+        "a>b",
+        "a>c@real:2026",
+        "b>c@real:2026"
+      ],
+      "id": "bidir-heldout-0344"
+    },
+    {
+      "ask": "d",
+      "facts": [
+        "-b@real:2026",
+        "a>c@real:2026",
+        "c>a@real:2026",
+        "a>c@quote",
+        "a>c@real:2025",
+        "c>d@quote"
+      ],
+      "id": "bidir-heldout-0345"
+    },
+    {
+      "ask": "a",
+      "facts": [
+        "+b",
+        "a>c@dream",
+        "+a@dream",
+        "c>b@real:2026",
+        "d>c@quote",
+        "a>c@quote",
+        "+b@dream",
+        "-d@quote"
+      ],
+      "id": "bidir-heldout-0346"
+    },
+    {
+      "ask": "b",
+      "facts": [
+        "a>b@quote",
+        "+d@real:2025",
+        "c>b@real:2026"
+      ],
+      "id": "bidir-heldout-0347"
+    },
+    {
+      "ask": "d",
+      "facts": [
+        "+a@real:2025",
+        "d>c",
+        "c>a@quote",
+        "c>b@real:2025",
+        "+d",
+        "a>c@dream",
+        "+c@quote",
+        "d>c@real:2025",
+        "-a"
+      ],
+      "id": "bidir-heldout-0348"
+    },
+    {
+      "ask": "a",
+      "facts": [],
+      "id": "bidir-heldout-0349"
+    },
+    {
+      "ask": "c",
+      "facts": [
+        "-a@dream"
+      ],
+      "id": "bidir-heldout-0350"
+    },
+    {
+      "ask": "b",
+      "facts": [
+        "c>d@quote",
+        "+c@dream",
+        "-c@real:2026",
+        "+a@dream",
+        "+a@real:2025"
+      ],
+      "id": "bidir-heldout-0351"
+    },
+    {
+      "ask": "b",
+      "facts": [
+        "+b",
+        "b>c@real:2025",
+        "-a@quote",
+        "+a@real:2026",
+        "d>b@quote"
+      ],
+      "id": "bidir-heldout-0352"
+    },
+    {
+      "ask": "a",
+      "facts": [
+        "-a@real:2025",
+        "c>a@real:2026",
+        "b>c@dream",
+        "b>d@dream",
+        "d>a@real:2026",
+        "-d",
+        "a>b@dream",
+        "-b@dream"
+      ],
+      "id": "bidir-heldout-0353"
+    },
+    {
+      "ask": "c",
+      "facts": [
+        "-b@dream",
+        "c>b@quote",
+        "b>a@quote",
+        "+b@real:2025",
+        "-a@real:2026",
+        "c>a@real:2025"
+      ],
+      "id": "bidir-heldout-0354"
+    },
+    {
+      "ask": "c",
+      "facts": [
+        "-b",
+        "b>a@dream",
+        "c>d",
+        "+c@real:2025",
+        "a>d@dream",
+        "c>d@quote",
+        "c>b@quote",
+        "c>d",
+        "+d@real:2025"
+      ],
+      "id": "bidir-heldout-0355"
+    },
+    {
+      "ask": "d",
+      "facts": [
+        "+a@real:2026",
+        "b>d@real:2025",
+        "+a@real:2025",
+        "+b",
+        "d>b@quote",
+        "b>c@real:2025"
+      ],
+      "id": "bidir-heldout-0356"
+    },
+    {
+      "ask": "c",
+      "facts": [
+        "a>b@dream",
+        "+c@dream",
+        "a>d@quote",
+        "c>a"
+      ],
+      "id": "bidir-heldout-0357"
+    },
+    {
+      "ask": "c",
+      "facts": [
+        "d>a@real:2025",
+        "+c@quote"
+      ],
+      "id": "bidir-heldout-0358"
+    },
+    {
+      "ask": "c",
+      "facts": [
+        "a>d",
+        "-a@quote",
+        "a>d@quote",
+        "c>a@dream",
+        "+d@real:2026",
+        "d>a",
+        "d>c@real:2025",
+        "-b@real:2025"
+      ],
+      "id": "bidir-heldout-0359"
+    },
+    {
+      "ask": "c",
+      "facts": [
+        "a>b@real:2026"
+      ],
+      "id": "bidir-heldout-0360"
+    },
+    {
+      "ask": "d",
+      "facts": [
+        "b>a@quote",
+        "b>c@real:2026",
+        "-d@real:2025",
+        "a>d@real:2026",
+        "-d@dream",
+        "+c"
+      ],
+      "id": "bidir-heldout-0361"
+    },
+    {
+      "ask": "b",
+      "facts": [
+        "+c@dream",
+        "d>b"
+      ],
+      "id": "bidir-heldout-0362"
+    },
+    {
+      "ask": "b",
+      "facts": [],
+      "id": "bidir-heldout-0363"
+    },
+    {
+      "ask": "d",
+      "facts": [],
+      "id": "bidir-heldout-0364"
+    },
+    {
+      "ask": "a",
+      "facts": [
+        "c>b@quote",
+        "c>b",
+        "-d@quote"
+      ],
+      "id": "bidir-heldout-0365"
+    },
+    {
+      "ask": "b",
+      "facts": [
+        "+a@dream",
+        "+b@real:2025",
+        "d>c@quote",
+        "+b@real:2025",
+        "+c@quote",
+        "+d"
+      ],
+      "id": "bidir-heldout-0366"
+    },
+    {
+      "ask": "b",
+      "facts": [
+        "-c@quote",
+        "c>b@real:2026",
+        "b>d@quote",
+        "c>a@dream",
+        "b>a@quote",
+        "b>c@real:2025",
+        "+d@real:2026",
+        "+c@quote",
+        "c>b@real:2026"
+      ],
+      "id": "bidir-heldout-0367"
+    },
+    {
+      "ask": "a",
+      "facts": [
+        "-a@real:2025",
+        "-b@real:2026",
+        "-d@quote",
+        "c>b@quote",
+        "a>c@quote",
+        "-a",
+        "-b"
+      ],
+      "id": "bidir-heldout-0368"
+    },
+    {
+      "ask": "b",
+      "facts": [
+        "b>d@dream",
+        "+a@dream",
+        "a>b@dream",
+        "-c@quote"
+      ],
+      "id": "bidir-heldout-0369"
+    },
+    {
+      "ask": "c",
+      "facts": [
+        "c>a@real:2026",
+        "+c@dream",
+        "b>c@dream",
+        "+a@dream"
+      ],
+      "id": "bidir-heldout-0370"
+    },
+    {
+      "ask": "a",
+      "facts": [
+        "d>b@dream",
+        "c>a@quote"
+      ],
+      "id": "bidir-heldout-0371"
+    },
+    {
+      "ask": "b",
+      "facts": [],
+      "id": "bidir-heldout-0372"
+    },
+    {
+      "ask": "d",
+      "facts": [
+        "-b",
+        "a>d@real:2026",
+        "-c@quote",
+        "-d@quote",
+        "a>c@real:2025",
+        "-b",
+        "d>b@real:2025",
+        "-d@dream"
+      ],
+      "id": "bidir-heldout-0373"
+    },
+    {
+      "ask": "d",
+      "facts": [
+        "-b@real:2025",
+        "c>b@dream",
+        "-b@quote",
+        "b>a@real:2025",
+        "-c@real:2025",
+        "b>a@quote",
+        "c>b@real:2025"
+      ],
+      "id": "bidir-heldout-0374"
+    },
+    {
+      "ask": "b",
+      "facts": [],
+      "id": "bidir-heldout-0375"
+    },
+    {
+      "ask": "c",
+      "facts": [
+        "-b@dream",
+        "a>b@real:2026",
+        "b>c@real:2026",
+        "d>a",
+        "b>a@real:2026",
+        "c>d@real:2025",
+        "d>c@real:2025"
+      ],
+      "id": "bidir-heldout-0376"
+    },
+    {
+      "ask": "a",
+      "facts": [
+        "-c@quote",
+        "-c@dream",
+        "d>a",
+        "d>a",
+        "d>c@real:2025",
+        "c>b@real:2026",
+        "-a"
+      ],
+      "id": "bidir-heldout-0377"
+    },
+    {
+      "ask": "c",
+      "facts": [
+        "-a",
+        "-a@real:2026",
+        "d>b@real:2026",
+        "c>b@real:2026",
+        "-d@real:2025",
+        "d>b"
+      ],
+      "id": "bidir-heldout-0378"
+    },
+    {
+      "ask": "d",
+      "facts": [
+        "+b@real:2026",
+        "+b@dream",
+        "a>c@real:2025",
+        "-b@real:2026",
+        "-d@quote",
+        "c>d@real:2026",
+        "-d@dream",
+        "+a",
+        "+b@dream"
+      ],
+      "id": "bidir-heldout-0379"
+    },
+    {
+      "ask": "d",
+      "facts": [
+        "c>a@real:2025",
+        "d>b@quote",
+        "a>c",
+        "+a@quote",
+        "d>a@real:2026",
+        "+b@quote",
+        "-d@dream",
+        "d>c@quote",
+        "b>d@real:2026"
+      ],
+      "id": "bidir-heldout-0380"
+    },
+    {
+      "ask": "a",
+      "facts": [],
+      "id": "bidir-heldout-0381"
+    },
+    {
+      "ask": "d",
+      "facts": [
+        "+b@dream",
+        "c>b@quote",
+        "-a",
+        "a>c@real:2026",
+        "+c@real:2025",
+        "c>d@real:2026",
+        "c>a@real:2025",
+        "-b@real:2026",
+        "d>a@quote"
+      ],
+      "id": "bidir-heldout-0382"
+    },
+    {
+      "ask": "d",
+      "facts": [
+        "a>b@quote",
+        "a>d@real:2025",
+        "-d@real:2025",
+        "b>c@quote",
+        "a>b@real:2025",
+        "a>d@real:2025",
+        "d>a@dream"
+      ],
+      "id": "bidir-heldout-0383"
+    },
+    {
+      "ask": "d",
+      "facts": [
+        "-a",
+        "-a@dream",
+        "a>d@real:2025",
+        "d>b@real:2025",
+        "-a@quote",
+        "+d@real:2025",
+        "-d@real:2026",
+        "c>a@real:2026",
+        "-a@quote"
+      ],
+      "id": "bidir-heldout-0384"
+    },
+    {
+      "ask": "b",
+      "facts": [
+        "d>c@dream",
+        "+d@quote",
+        "-d@real:2025",
+        "d>c@real:2026",
+        "d>a@quote"
+      ],
+      "id": "bidir-heldout-0385"
+    },
+    {
+      "ask": "c",
+      "facts": [
+        "d>c@real:2026",
+        "+d@quote"
+      ],
+      "id": "bidir-heldout-0386"
+    },
+    {
+      "ask": "d",
+      "facts": [
+        "a>c@quote",
+        "-b@dream",
+        "+d@dream",
+        "c>d@quote",
+        "a>c@real:2026",
+        "-c@dream",
+        "c>d@real:2025",
+        "c>d"
+      ],
+      "id": "bidir-heldout-0387"
+    },
+    {
+      "ask": "c",
+      "facts": [
+        "c>a@dream",
+        "c>d@real:2026",
+        "d>c@quote",
+        "+c@quote",
+        "-c@real:2026",
+        "a>c@dream"
+      ],
+      "id": "bidir-heldout-0388"
+    },
+    {
+      "ask": "a",
+      "facts": [
+        "d>b@real:2026"
+      ],
+      "id": "bidir-heldout-0389"
+    },
+    {
+      "ask": "a",
+      "facts": [
+        "-a@quote",
+        "+a",
+        "-d@dream"
+      ],
+      "id": "bidir-heldout-0390"
+    },
+    {
+      "ask": "a",
+      "facts": [
+        "-a@real:2026",
+        "c>a@dream",
+        "-b@real:2025",
+        "+b@real:2025",
+        "c>a@real:2025"
+      ],
+      "id": "bidir-heldout-0391"
+    },
+    {
+      "ask": "b",
+      "facts": [],
+      "id": "bidir-heldout-0392"
+    },
+    {
+      "ask": "c",
+      "facts": [
+        "-c@real:2026",
+        "c>a@quote",
+        "c>b@real:2025",
+        "a>d",
+        "b>a@real:2026",
+        "+a@real:2026"
+      ],
+      "id": "bidir-heldout-0393"
+    },
+    {
+      "ask": "a",
+      "facts": [],
+      "id": "bidir-heldout-0394"
+    },
+    {
+      "ask": "c",
+      "facts": [
+        "a>d@quote",
+        "a>c@quote",
+        "a>d@real:2026",
+        "+d",
+        "c>a@dream",
+        "c>d@real:2025",
+        "-b@real:2026",
+        "a>c@real:2025",
+        "c>d@real:2025"
+      ],
+      "id": "bidir-heldout-0395"
+    },
+    {
+      "ask": "d",
+      "facts": [
+        "a>b",
+        "c>b",
+        "b>d@real:2025",
+        "-a@real:2026",
+        "a>b@real:2025",
+        "d>a@dream",
+        "-d@real:2026",
+        "b>a"
+      ],
+      "id": "bidir-heldout-0396"
+    },
+    {
+      "ask": "b",
+      "facts": [
+        "-c@real:2025",
+        "b>a@real:2025"
+      ],
+      "id": "bidir-heldout-0397"
+    },
+    {
+      "ask": "d",
+      "facts": [
+        "d>a@dream",
+        "d>a@real:2025",
+        "d>a@real:2026",
+        "-a@real:2026",
+        "b>c@real:2026",
+        "a>b@quote"
+      ],
+      "id": "bidir-heldout-0398"
+    },
+    {
+      "ask": "d",
+      "facts": [
+        "a>d@quote"
+      ],
+      "id": "bidir-heldout-0399"
+    },
+    {
+      "ask": "c",
+      "facts": [
+        "-a@dream"
+      ],
+      "id": "bidir-heldout-0400"
+    },
+    {
+      "ask": "a",
+      "facts": [
+        "+b@dream",
+        "d>b@dream"
+      ],
+      "id": "bidir-heldout-0401"
+    },
+    {
+      "ask": "a",
+      "facts": [],
+      "id": "bidir-heldout-0402"
+    },
+    {
+      "ask": "d",
+      "facts": [
+        "a>c"
+      ],
+      "id": "bidir-heldout-0403"
+    },
+    {
+      "ask": "a",
+      "facts": [
+        "d>b@real:2026",
+        "d>c@real:2025",
+        "d>b@dream",
+        "a>c",
+        "a>b@real:2026",
+        "d>a@real:2025",
+        "c>a@dream",
+        "a>b@real:2025"
+      ],
+      "id": "bidir-heldout-0404"
+    },
+    {
+      "ask": "c",
+      "facts": [
+        "b>a@dream",
+        "+d@real:2026",
+        "a>c@dream"
+      ],
+      "id": "bidir-heldout-0405"
+    },
+    {
+      "ask": "a",
+      "facts": [
+        "d>b@dream",
+        "a>d",
+        "b>a@dream",
+        "c>a@real:2025",
+        "d>b",
+        "d>a@real:2026",
+        "+b@real:2025"
+      ],
+      "id": "bidir-heldout-0406"
+    },
+    {
+      "ask": "c",
+      "facts": [
+        "d>a@real:2026"
+      ],
+      "id": "bidir-heldout-0407"
+    },
+    {
+      "ask": "c",
+      "facts": [
+        "-c@real:2025",
+        "b>c",
+        "+d@real:2025",
+        "b>d@quote",
+        "d>b@dream"
+      ],
+      "id": "bidir-heldout-0408"
+    },
+    {
+      "ask": "c",
+      "facts": [
+        "a>b@real:2026",
+        "c>b@quote",
+        "d>b@dream",
+        "+d@dream",
+        "-a@real:2026",
+        "-d@real:2026",
+        "b>a@dream",
+        "c>a@real:2025"
+      ],
+      "id": "bidir-heldout-0409"
+    },
+    {
+      "ask": "b",
+      "facts": [
+        "c>a@real:2025",
+        "c>b@dream",
+        "-c@quote",
+        "b>c@quote",
+        "d>b@real:2026",
+        "-d@real:2025",
+        "+d@quote",
+        "-a",
+        "-a@dream"
+      ],
+      "id": "bidir-heldout-0410"
+    },
+    {
+      "ask": "a",
+      "facts": [
+        "b>d"
+      ],
+      "id": "bidir-heldout-0411"
+    },
+    {
+      "ask": "b",
+      "facts": [
+        "c>a",
+        "d>a",
+        "c>a",
+        "-c@dream",
+        "+b@real:2025",
+        "+c@real:2025",
+        "-c@quote",
+        "a>c@dream",
+        "-a@real:2026"
+      ],
+      "id": "bidir-heldout-0412"
+    },
+    {
+      "ask": "c",
+      "facts": [
+        "a>b@real:2025",
+        "b>c@real:2026",
+        "-d",
+        "c>b@real:2025",
+        "-c@real:2026",
+        "+b@quote",
+        "+d@real:2026",
+        "a>c",
+        "d>b@real:2025"
+      ],
+      "id": "bidir-heldout-0413"
+    },
+    {
+      "ask": "a",
+      "facts": [
+        "d>b@real:2025",
+        "-c@dream",
+        "-b@real:2026",
+        "+b@quote",
+        "d>b@quote",
+        "+b@dream",
+        "c>d@real:2025",
+        "c>a",
+        "+a@dream"
+      ],
+      "id": "bidir-heldout-0414"
+    },
+    {
+      "ask": "a",
+      "facts": [],
+      "id": "bidir-heldout-0415"
+    },
+    {
+      "ask": "d",
+      "facts": [
+        "c>b@dream",
+        "c>a@dream",
+        "+d",
+        "b>d@dream"
+      ],
+      "id": "bidir-heldout-0416"
+    },
+    {
+      "ask": "c",
+      "facts": [
+        "-d@quote",
+        "a>d@quote"
+      ],
+      "id": "bidir-heldout-0417"
+    },
+    {
+      "ask": "b",
+      "facts": [
+        "b>c@real:2025"
+      ],
+      "id": "bidir-heldout-0418"
+    },
+    {
+      "ask": "d",
+      "facts": [
+        "d>c",
+        "c>b",
+        "c>b@real:2026",
+        "c>a@real:2026"
+      ],
+      "id": "bidir-heldout-0419"
+    },
+    {
+      "ask": "c",
+      "facts": [
+        "-b@real:2026",
+        "+a@quote",
+        "a>b@dream"
+      ],
+      "id": "bidir-heldout-0420"
+    },
+    {
+      "ask": "b",
+      "facts": [
+        "a>c@real:2025",
+        "c>b@dream",
+        "+d@real:2025",
+        "c>a@real:2025",
+        "c>a@real:2025",
+        "b>c@real:2026",
+        "+d@dream",
+        "a>b@real:2025"
+      ],
+      "id": "bidir-heldout-0421"
+    },
+    {
+      "ask": "c",
+      "facts": [],
+      "id": "bidir-heldout-0422"
+    },
+    {
+      "ask": "c",
+      "facts": [
+        "-a",
+        "+a@real:2026",
+        "+c@real:2025",
+        "+c",
+        "-b@real:2026",
+        "a>c@real:2026",
+        "c>d@quote",
+        "a>d@real:2025",
+        "a>b"
+      ],
+      "id": "bidir-heldout-0423"
+    },
+    {
+      "ask": "c",
+      "facts": [
+        "d>b@real:2025",
+        "-a@dream",
+        "c>a",
+        "-b@dream",
+        "+a@real:2025",
+        "-b@quote"
+      ],
+      "id": "bidir-heldout-0424"
+    },
+    {
+      "ask": "a",
+      "facts": [
+        "c>a@quote",
+        "a>d@dream",
+        "-d@dream",
+        "-a@dream",
+        "-b@real:2025"
+      ],
+      "id": "bidir-heldout-0425"
+    },
+    {
+      "ask": "c",
+      "facts": [
+        "c>a@real:2025",
+        "-a@real:2025"
+      ],
+      "id": "bidir-heldout-0426"
+    },
+    {
+      "ask": "c",
+      "facts": [
+        "b>c@dream",
+        "c>a@real:2026",
+        "c>d@real:2026",
+        "+d@real:2025",
+        "a>d@real:2025",
+        "d>a@real:2025",
+        "-b",
+        "-d@dream",
+        "c>a@real:2025"
+      ],
+      "id": "bidir-heldout-0427"
+    },
+    {
+      "ask": "b",
+      "facts": [
+        "d>c@dream",
+        "-b@dream",
+        "b>c@real:2025",
+        "-d",
+        "a>c@quote",
+        "-d@dream"
+      ],
+      "id": "bidir-heldout-0428"
+    },
+    {
+      "ask": "b",
+      "facts": [
+        "d>c@real:2025",
+        "c>a@real:2026"
+      ],
+      "id": "bidir-heldout-0429"
+    },
+    {
+      "ask": "d",
+      "facts": [],
+      "id": "bidir-heldout-0430"
+    },
+    {
+      "ask": "c",
+      "facts": [
+        "c>d",
+        "-a@real:2025",
+        "c>b@quote",
+        "a>c@quote",
+        "+d@real:2026",
+        "c>a@real:2025",
+        "a>c@quote",
+        "a>d@real:2025",
+        "b>a"
+      ],
+      "id": "bidir-heldout-0431"
+    },
+    {
+      "ask": "c",
+      "facts": [
+        "c>b",
+        "c>a",
+        "+c@quote",
+        "+b@real:2026",
+        "c>a@real:2026",
+        "+a",
+        "a>b@real:2026"
+      ],
+      "id": "bidir-heldout-0432"
+    },
+    {
+      "ask": "b",
+      "facts": [
+        "c>d@dream",
+        "a>b@real:2025",
+        "+a@real:2026",
+        "d>a@quote"
+      ],
+      "id": "bidir-heldout-0433"
+    },
+    {
+      "ask": "a",
+      "facts": [
+        "-c@quote",
+        "b>d@dream",
+        "+c@quote",
+        "a>d@real:2025",
+        "c>d@quote",
+        "a>b@quote",
+        "+a",
+        "a>b@quote",
+        "-c@dream"
+      ],
+      "id": "bidir-heldout-0434"
+    },
+    {
+      "ask": "a",
+      "facts": [
+        "a>c@quote",
+        "d>b@real:2026",
+        "b>d@real:2026",
+        "+a@quote"
+      ],
+      "id": "bidir-heldout-0435"
+    },
+    {
+      "ask": "b",
+      "facts": [
+        "a>d@quote",
+        "a>d@real:2025",
+        "-b@real:2025",
+        "a>b@real:2025",
+        "c>a@real:2025",
+        "c>a@dream",
+        "c>b@dream",
+        "a>b"
+      ],
+      "id": "bidir-heldout-0436"
+    },
+    {
+      "ask": "d",
+      "facts": [
+        "+b",
+        "+c@real:2026",
+        "b>c@dream",
+        "+c@real:2026",
+        "+b@dream",
+        "-d@real:2025",
+        "d>a",
+        "b>c"
+      ],
+      "id": "bidir-heldout-0437"
+    },
+    {
+      "ask": "c",
+      "facts": [
+        "c>a",
+        "a>c@dream",
+        "-b",
+        "-d@quote",
+        "c>a@dream",
+        "-d@real:2025",
+        "-a",
+        "c>a@dream",
+        "-a@dream"
+      ],
+      "id": "bidir-heldout-0438"
+    },
+    {
+      "ask": "b",
+      "facts": [
+        "c>a@real:2026"
+      ],
+      "id": "bidir-heldout-0439"
+    },
+    {
+      "ask": "c",
+      "facts": [
+        "+c@real:2025",
+        "a>b@real:2026"
+      ],
+      "id": "bidir-heldout-0440"
+    },
+    {
+      "ask": "b",
+      "facts": [
+        "c>b",
+        "d>c@real:2026",
+        "b>d@dream",
+        "-a",
+        "c>d",
+        "-a@quote",
+        "d>a@quote"
+      ],
+      "id": "bidir-heldout-0441"
+    },
+    {
+      "ask": "c",
+      "facts": [
+        "d>c@real:2025",
+        "+a@quote",
+        "-d@real:2025"
+      ],
+      "id": "bidir-heldout-0442"
+    },
+    {
+      "ask": "d",
+      "facts": [
+        "+b@real:2026"
+      ],
+      "id": "bidir-heldout-0443"
+    },
+    {
+      "ask": "b",
+      "facts": [
+        "a>c@real:2025",
+        "c>b@dream",
+        "d>c",
+        "+d@real:2025",
+        "c>a",
+        "a>d@real:2026",
+        "c>a@dream",
+        "a>c@real:2025"
+      ],
+      "id": "bidir-heldout-0444"
+    },
+    {
+      "ask": "b",
+      "facts": [
+        "+a@quote",
+        "-d@quote",
+        "b>a@quote",
+        "-b@real:2025"
+      ],
+      "id": "bidir-heldout-0445"
+    },
+    {
+      "ask": "c",
+      "facts": [
+        "d>b",
+        "b>d@quote",
+        "-d@dream",
+        "b>a@real:2025",
+        "+b@dream",
+        "a>b"
+      ],
+      "id": "bidir-heldout-0446"
+    },
+    {
+      "ask": "d",
+      "facts": [
+        "-a@dream"
+      ],
+      "id": "bidir-heldout-0447"
+    },
+    {
+      "ask": "b",
+      "facts": [
+        "c>d@real:2025",
+        "+a@quote",
+        "-a",
+        "c>b@real:2025",
+        "d>b",
+        "a>b@quote",
+        "-c@real:2026",
+        "-c@dream"
+      ],
+      "id": "bidir-heldout-0448"
+    },
+    {
+      "ask": "c",
+      "facts": [
+        "c>d@dream",
+        "+a@real:2025",
+        "c>d@real:2025",
+        "-a@real:2026",
+        "d>b@real:2026",
+        "+a"
+      ],
+      "id": "bidir-heldout-0449"
+    },
+    {
+      "ask": "c",
+      "facts": [
+        "d>a@quote",
+        "a>d@real:2026",
+        "c>a@real:2026"
+      ],
+      "id": "bidir-heldout-0450"
+    },
+    {
+      "ask": "d",
+      "facts": [
+        "d>a@quote",
+        "c>a",
+        "+c",
+        "+c@real:2025",
+        "+a@real:2026"
+      ],
+      "id": "bidir-heldout-0451"
+    },
+    {
+      "ask": "a",
+      "facts": [
+        "a>b@real:2025"
+      ],
+      "id": "bidir-heldout-0452"
+    },
+    {
+      "ask": "d",
+      "facts": [
+        "-a@dream",
+        "b>d",
+        "+b@real:2026"
+      ],
+      "id": "bidir-heldout-0453"
+    },
+    {
+      "ask": "a",
+      "facts": [
+        "d>a",
+        "+a@dream",
+        "-a",
+        "-d@quote",
+        "a>c@real:2026",
+        "a>c@quote",
+        "d>b@real:2025",
+        "b>d@real:2025"
+      ],
+      "id": "bidir-heldout-0454"
+    },
+    {
+      "ask": "d",
+      "facts": [
+        "+d@real:2025",
+        "b>d",
+        "d>c@quote",
+        "+a",
+        "-d@real:2026",
+        "d>b@quote",
+        "b>d@quote",
+        "+c@quote"
+      ],
+      "id": "bidir-heldout-0455"
+    },
+    {
+      "ask": "d",
+      "facts": [
+        "b>a@real:2025",
+        "a>d@dream",
+        "d>b@quote",
+        "+a",
+        "-a",
+        "a>c@real:2026",
+        "+c@quote",
+        "-c@quote"
+      ],
+      "id": "bidir-heldout-0456"
+    },
+    {
+      "ask": "a",
+      "facts": [
+        "d>b@real:2025",
+        "-c",
+        "d>b@real:2026"
+      ],
+      "id": "bidir-heldout-0457"
+    },
+    {
+      "ask": "c",
+      "facts": [
+        "+d@real:2025",
+        "-a@real:2025",
+        "-b@quote",
+        "+a@quote",
+        "+c"
+      ],
+      "id": "bidir-heldout-0458"
+    },
+    {
+      "ask": "d",
+      "facts": [],
+      "id": "bidir-heldout-0459"
+    },
+    {
+      "ask": "d",
+      "facts": [
+        "d>b@real:2026",
+        "b>c@real:2025",
+        "a>b"
+      ],
+      "id": "bidir-heldout-0460"
+    },
+    {
+      "ask": "c",
+      "facts": [
+        "a>d",
+        "c>d@real:2026",
+        "-b@quote",
+        "b>d@quote",
+        "d>b@real:2026",
+        "c>a@real:2025",
+        "+d"
+      ],
+      "id": "bidir-heldout-0461"
+    },
+    {
+      "ask": "d",
+      "facts": [
+        "a>c@real:2026",
+        "-b@dream",
+        "+a@real:2026",
+        "c>d@dream"
+      ],
+      "id": "bidir-heldout-0462"
+    },
+    {
+      "ask": "d",
+      "facts": [
+        "c>d",
+        "d>a@quote",
+        "c>d@real:2025",
+        "d>c",
+        "c>d@real:2025"
+      ],
+      "id": "bidir-heldout-0463"
+    },
+    {
+      "ask": "b",
+      "facts": [
+        "a>b"
+      ],
+      "id": "bidir-heldout-0464"
+    },
+    {
+      "ask": "c",
+      "facts": [
+        "d>a@dream",
+        "c>d@quote",
+        "a>c@real:2026",
+        "-d@real:2025",
+        "b>c@dream",
+        "-c@dream",
+        "d>c",
+        "d>c@real:2026"
+      ],
+      "id": "bidir-heldout-0465"
+    },
+    {
+      "ask": "a",
+      "facts": [
+        "a>b",
+        "c>b@real:2025",
+        "b>c",
+        "+d@real:2025",
+        "c>d@real:2026",
+        "c>b@real:2026",
+        "d>b@dream"
+      ],
+      "id": "bidir-heldout-0466"
+    },
+    {
+      "ask": "b",
+      "facts": [
+        "b>a",
+        "a>c@quote",
+        "a>c",
+        "+c@quote"
+      ],
+      "id": "bidir-heldout-0467"
+    },
+    {
+      "ask": "d",
+      "facts": [
+        "d>a",
+        "c>d",
+        "-b@quote",
+        "a>b@quote",
+        "+c@real:2025",
+        "a>c@real:2025",
+        "a>d@real:2025",
+        "b>c@real:2026"
+      ],
+      "id": "bidir-heldout-0468"
+    },
+    {
+      "ask": "a",
+      "facts": [
+        "+c@dream",
+        "b>a@real:2026",
+        "a>d@real:2025",
+        "b>c"
+      ],
+      "id": "bidir-heldout-0469"
+    },
+    {
+      "ask": "a",
+      "facts": [],
+      "id": "bidir-heldout-0470"
+    },
+    {
+      "ask": "d",
+      "facts": [
+        "a>d",
+        "b>a@dream",
+        "-b@real:2026",
+        "-b",
+        "-c@real:2026",
+        "d>c@real:2026"
+      ],
+      "id": "bidir-heldout-0471"
+    },
+    {
+      "ask": "c",
+      "facts": [
+        "d>b@real:2026",
+        "-b@real:2025",
+        "a>b@dream",
+        "b>d@quote"
+      ],
+      "id": "bidir-heldout-0472"
+    },
+    {
+      "ask": "d",
+      "facts": [
+        "b>a@dream",
+        "d>b@quote",
+        "a>c@quote",
+        "+a@dream",
+        "+b",
+        "a>c@quote",
+        "+d@dream"
+      ],
+      "id": "bidir-heldout-0473"
+    },
+    {
+      "ask": "d",
+      "facts": [
+        "+d@quote",
+        "a>d@real:2025",
+        "+c@dream",
+        "a>b@real:2025",
+        "b>d"
+      ],
+      "id": "bidir-heldout-0474"
+    },
+    {
+      "ask": "b",
+      "facts": [],
+      "id": "bidir-heldout-0475"
+    },
+    {
+      "ask": "b",
+      "facts": [
+        "-a@dream",
+        "-c@dream",
+        "+b@real:2025",
+        "+a@quote",
+        "+b",
+        "a>b@real:2026",
+        "b>d"
+      ],
+      "id": "bidir-heldout-0476"
+    },
+    {
+      "ask": "c",
+      "facts": [
+        "b>a@real:2026",
+        "d>a@quote",
+        "+c@real:2025",
+        "-b@real:2026",
+        "-d",
+        "a>b@quote",
+        "c>b@dream",
+        "a>b",
+        "b>d@real:2025"
+      ],
+      "id": "bidir-heldout-0477"
+    },
+    {
+      "ask": "b",
+      "facts": [
+        "a>d@real:2026",
+        "-b@real:2025",
+        "-d@quote",
+        "+a@real:2026"
+      ],
+      "id": "bidir-heldout-0478"
+    },
+    {
+      "ask": "c",
+      "facts": [
+        "a>b@quote",
+        "c>a"
+      ],
+      "id": "bidir-heldout-0479"
+    },
+    {
+      "ask": "b",
+      "facts": [
+        "c>d",
+        "c>d@dream",
+        "b>a@real:2025",
+        "+c@real:2025",
+        "-d@dream"
+      ],
+      "id": "bidir-heldout-0480"
+    },
+    {
+      "ask": "b",
+      "facts": [
+        "+c@real:2025",
+        "b>c@dream",
+        "a>d",
+        "-a@dream"
+      ],
+      "id": "bidir-heldout-0481"
+    },
+    {
+      "ask": "d",
+      "facts": [],
+      "id": "bidir-heldout-0482"
+    },
+    {
+      "ask": "d",
+      "facts": [
+        "b>d@real:2025",
+        "c>b@real:2025",
+        "a>b@real:2026",
+        "d>b@quote",
+        "-a@quote",
+        "-c@real:2026",
+        "d>b@real:2025",
+        "d>a@quote"
+      ],
+      "id": "bidir-heldout-0483"
+    },
+    {
+      "ask": "a",
+      "facts": [
+        "a>d@real:2025",
+        "+b@real:2025",
+        "-c@real:2025",
+        "c>d@quote",
+        "b>a@real:2026",
+        "d>a@real:2026",
+        "a>d@quote",
+        "+d@quote",
+        "-b@real:2026"
+      ],
+      "id": "bidir-heldout-0484"
+    },
+    {
+      "ask": "a",
+      "facts": [
+        "a>b@real:2026",
+        "b>c@real:2026",
+        "-c@quote",
+        "d>b@real:2026",
+        "+b@dream",
+        "-a",
+        "c>b@dream",
+        "c>a@real:2025"
+      ],
+      "id": "bidir-heldout-0485"
+    },
+    {
+      "ask": "c",
+      "facts": [
+        "c>b"
+      ],
+      "id": "bidir-heldout-0486"
+    },
+    {
+      "ask": "a",
+      "facts": [
+        "a>b@real:2026",
+        "-d",
+        "-a",
+        "d>c@real:2025",
+        "d>a@real:2026",
+        "d>b@real:2026",
+        "-c"
+      ],
+      "id": "bidir-heldout-0487"
+    },
+    {
+      "ask": "a",
+      "facts": [
+        "b>a@quote",
+        "d>a",
+        "d>c",
+        "+c@quote"
+      ],
+      "id": "bidir-heldout-0488"
+    },
+    {
+      "ask": "d",
+      "facts": [
+        "b>d",
+        "d>a@real:2026",
+        "a>d@dream",
+        "+d@real:2026",
+        "a>c",
+        "-a",
+        "c>a@dream"
+      ],
+      "id": "bidir-heldout-0489"
+    },
+    {
+      "ask": "d",
+      "facts": [
+        "b>c",
+        "a>c@real:2025",
+        "a>c@dream",
+        "+d",
+        "-b@real:2026",
+        "+b@real:2026",
+        "+d@real:2025",
+        "+b@real:2026",
+        "+d@real:2026"
+      ],
+      "id": "bidir-heldout-0490"
+    },
+    {
+      "ask": "b",
+      "facts": [
+        "a>d@real:2025",
+        "d>a@real:2025",
+        "-a@real:2026",
+        "d>a@real:2025",
+        "-b@real:2025"
+      ],
+      "id": "bidir-heldout-0491"
+    },
+    {
+      "ask": "a",
+      "facts": [
+        "b>c"
+      ],
+      "id": "bidir-heldout-0492"
+    },
+    {
+      "ask": "b",
+      "facts": [
+        "d>b@real:2026"
+      ],
+      "id": "bidir-heldout-0493"
+    },
+    {
+      "ask": "c",
+      "facts": [
+        "+b@quote"
+      ],
+      "id": "bidir-heldout-0494"
+    },
+    {
+      "ask": "c",
+      "facts": [
+        "d>b@real:2026",
+        "-a@quote",
+        "+a@quote",
+        "d>a@real:2026",
+        "a>b",
+        "b>c@real:2026"
+      ],
+      "id": "bidir-heldout-0495"
+    },
+    {
+      "ask": "a",
+      "facts": [
+        "-b@real:2025",
+        "-c@real:2026",
+        "c>d@real:2026",
+        "+b@quote"
+      ],
+      "id": "bidir-heldout-0496"
+    },
+    {
+      "ask": "c",
+      "facts": [
+        "d>a@dream",
+        "d>a@quote"
+      ],
+      "id": "bidir-heldout-0497"
+    },
+    {
+      "ask": "b",
+      "facts": [
+        "c>b@quote",
+        "b>c@quote",
+        "a>c",
+        "c>a@dream",
+        "b>a@real:2026"
+      ],
+      "id": "bidir-heldout-0498"
+    },
+    {
+      "ask": "b",
+      "facts": [
+        "d>c@real:2026"
+      ],
+      "id": "bidir-heldout-0499"
+    },
+    {
+      "ask": "c",
+      "facts": [
+        "c>b",
+        "b>a",
+        "a>d@real:2025",
+        "c>b"
+      ],
+      "id": "bidir-heldout-0500"
+    },
+    {
+      "ask": "b",
+      "facts": [
+        "-d@dream",
+        "+d@dream",
+        "-c@quote",
+        "-b@real:2026",
+        "+c@dream"
+      ],
+      "id": "bidir-heldout-0501"
+    },
+    {
+      "ask": "b",
+      "facts": [
+        "+a@real:2026",
+        "d>c@quote",
+        "+a@quote",
+        "d>a@real:2026",
+        "-a",
+        "b>a@real:2025",
+        "+a@real:2026",
+        "b>d@quote"
+      ],
+      "id": "bidir-heldout-0502"
+    },
+    {
+      "ask": "a",
+      "facts": [
+        "+a",
+        "b>a",
+        "+a@dream",
+        "d>a",
+        "d>c@real:2025",
+        "+b@real:2025"
+      ],
+      "id": "bidir-heldout-0503"
+    },
+    {
+      "ask": "a",
+      "facts": [
+        "-c",
+        "d>c",
+        "b>c",
+        "+d",
+        "-d@real:2025",
+        "+c@real:2025",
+        "a>d@dream",
+        "-b",
+        "c>b"
+      ],
+      "id": "bidir-heldout-0504"
+    },
+    {
+      "ask": "c",
+      "facts": [
+        "+c@dream",
+        "b>a@dream",
+        "d>c@real:2025"
+      ],
+      "id": "bidir-heldout-0505"
+    },
+    {
+      "ask": "d",
+      "facts": [
+        "-c@quote",
+        "+b@real:2026",
+        "b>d@real:2026",
+        "-c",
+        "c>d@dream",
+        "d>c@dream",
+        "d>b@dream",
+        "-b@real:2025",
+        "-c"
+      ],
+      "id": "bidir-heldout-0506"
+    },
+    {
+      "ask": "c",
+      "facts": [
+        "+a@quote",
+        "a>c@quote",
+        "a>d@dream",
+        "d>b@real:2025",
+        "-c@dream",
+        "d>a@real:2025",
+        "+c",
+        "b>c@dream",
+        "b>a@quote"
+      ],
+      "id": "bidir-heldout-0507"
+    },
+    {
+      "ask": "d",
+      "facts": [],
+      "id": "bidir-heldout-0508"
+    },
+    {
+      "ask": "b",
+      "facts": [],
+      "id": "bidir-heldout-0509"
+    },
+    {
+      "ask": "b",
+      "facts": [
+        "d>c"
+      ],
+      "id": "bidir-heldout-0510"
+    },
+    {
+      "ask": "d",
+      "facts": [
+        "d>b@dream",
+        "+b@real:2026"
+      ],
+      "id": "bidir-heldout-0511"
+    },
+    {
+      "ask": "a",
+      "facts": [
+        "a>b@quote",
+        "a>b@real:2026"
+      ],
+      "id": "bidir-heldout-0512"
+    },
+    {
+      "ask": "d",
+      "facts": [
+        "b>d@real:2025",
+        "+d@real:2025",
+        "b>a@real:2025",
+        "-b@dream",
+        "+d@real:2025",
+        "c>d@dream",
+        "d>a@quote"
+      ],
+      "id": "bidir-heldout-0513"
+    },
+    {
+      "ask": "d",
+      "facts": [
+        "-b@quote",
+        "+a",
+        "+a@quote",
+        "-c@quote",
+        "d>c@quote",
+        "-c",
+        "+a@dream"
+      ],
+      "id": "bidir-heldout-0514"
+    },
+    {
+      "ask": "a",
+      "facts": [
+        "a>d@real:2025",
+        "a>b@quote",
+        "d>b@real:2026"
+      ],
+      "id": "bidir-heldout-0515"
+    },
+    {
+      "ask": "c",
+      "facts": [
+        "+b@dream",
+        "a>d@real:2026",
+        "-d@dream",
+        "+c"
+      ],
+      "id": "bidir-heldout-0516"
+    },
+    {
+      "ask": "d",
+      "facts": [
+        "c>a@real:2025",
+        "b>a"
+      ],
+      "id": "bidir-heldout-0517"
+    },
+    {
+      "ask": "d",
+      "facts": [
+        "+c",
+        "c>d@real:2025"
+      ],
+      "id": "bidir-heldout-0518"
+    },
+    {
+      "ask": "b",
+      "facts": [
+        "+c@real:2025"
+      ],
+      "id": "bidir-heldout-0519"
+    },
+    {
+      "ask": "c",
+      "facts": [
+        "c>a@dream",
+        "a>d@real:2025",
+        "+a@real:2026",
+        "a>b@real:2025",
+        "b>a@dream",
+        "+d",
+        "b>d",
+        "+b@real:2025",
+        "c>b@quote"
+      ],
+      "id": "bidir-heldout-0520"
+    },
+    {
+      "ask": "d",
+      "facts": [
+        "c>d@real:2025",
+        "-c@real:2026"
+      ],
+      "id": "bidir-heldout-0521"
+    },
+    {
+      "ask": "a",
+      "facts": [],
+      "id": "bidir-heldout-0522"
+    },
+    {
+      "ask": "c",
+      "facts": [
+        "-d@real:2026",
+        "-c",
+        "+a",
+        "-b",
+        "+a@real:2026",
+        "d>c@real:2025",
+        "b>d@dream",
+        "-a@real:2025"
+      ],
+      "id": "bidir-heldout-0523"
+    },
+    {
+      "ask": "d",
+      "facts": [],
+      "id": "bidir-heldout-0524"
+    },
+    {
+      "ask": "c",
+      "facts": [],
+      "id": "bidir-heldout-0525"
+    },
+    {
+      "ask": "d",
+      "facts": [],
+      "id": "bidir-heldout-0526"
+    },
+    {
+      "ask": "c",
+      "facts": [
+        "b>a@real:2025"
+      ],
+      "id": "bidir-heldout-0527"
+    },
+    {
+      "ask": "d",
+      "facts": [
+        "a>c@dream",
+        "b>a@real:2025",
+        "d>b@real:2026",
+        "c>d@real:2026",
+        "b>a@quote",
+        "a>b@real:2025",
+        "d>a@dream"
+      ],
+      "id": "bidir-heldout-0528"
+    },
+    {
+      "ask": "a",
+      "facts": [
+        "+b@real:2025",
+        "c>a",
+        "+c@quote",
+        "b>d@real:2025",
+        "d>b@dream",
+        "-c@real:2026"
+      ],
+      "id": "bidir-heldout-0529"
+    },
+    {
+      "ask": "d",
+      "facts": [
+        "c>a@dream",
+        "-d@dream",
+        "-d@dream",
+        "d>b@real:2026"
+      ],
+      "id": "bidir-heldout-0530"
+    },
+    {
+      "ask": "c",
+      "facts": [
+        "+b@dream",
+        "-d@real:2025",
+        "b>a@real:2025",
+        "d>a"
+      ],
+      "id": "bidir-heldout-0531"
+    },
+    {
+      "ask": "a",
+      "facts": [
+        "+a@real:2026",
+        "a>b@real:2026",
+        "+b@real:2025",
+        "b>d",
+        "d>b@real:2025",
+        "+a@quote",
+        "+a",
+        "+d"
+      ],
+      "id": "bidir-heldout-0532"
+    },
+    {
+      "ask": "a",
+      "facts": [
+        "c>b@real:2026",
+        "-a@dream",
+        "b>a@real:2026",
+        "+a@dream"
+      ],
+      "id": "bidir-heldout-0533"
+    },
+    {
+      "ask": "a",
+      "facts": [
+        "b>d@real:2025",
+        "b>c",
+        "c>d@real:2026"
+      ],
+      "id": "bidir-heldout-0534"
+    },
+    {
+      "ask": "d",
+      "facts": [
+        "a>c@quote",
+        "b>d@real:2026",
+        "-d@real:2025",
+        "-c@real:2026",
+        "b>c@real:2026",
+        "+a@quote",
+        "-d@dream"
+      ],
+      "id": "bidir-heldout-0535"
+    },
+    {
+      "ask": "d",
+      "facts": [
+        "c>a@quote",
+        "-a@quote",
+        "+b@quote",
+        "b>d@quote",
+        "-d@real:2025",
+        "+a",
+        "+d@real:2025",
+        "+c@dream"
+      ],
+      "id": "bidir-heldout-0536"
+    },
+    {
+      "ask": "d",
+      "facts": [
+        "-c@real:2026",
+        "-b@real:2025",
+        "+b@real:2026",
+        "b>d@dream",
+        "c>d",
+        "d>c@real:2026",
+        "+b@real:2026",
+        "-c@real:2026",
+        "b>c@real:2026"
+      ],
+      "id": "bidir-heldout-0537"
+    },
+    {
+      "ask": "d",
+      "facts": [
+        "+d@real:2026",
+        "-b@quote",
+        "a>c@real:2025",
+        "a>b@real:2025",
+        "-c",
+        "+a@dream",
+        "+c@quote",
+        "b>a",
+        "+d@quote"
+      ],
+      "id": "bidir-heldout-0538"
+    },
+    {
+      "ask": "b",
+      "facts": [],
+      "id": "bidir-heldout-0539"
+    },
+    {
+      "ask": "b",
+      "facts": [
+        "b>d",
+        "b>a@quote",
+        "+b@dream",
+        "c>a@quote",
+        "+c@quote",
+        "+d"
+      ],
+      "id": "bidir-heldout-0540"
+    },
+    {
+      "ask": "b",
+      "facts": [
+        "-c@dream"
+      ],
+      "id": "bidir-heldout-0541"
+    },
+    {
+      "ask": "a",
+      "facts": [
+        "-c@real:2026",
+        "d>a@real:2025",
+        "b>a@real:2025"
+      ],
+      "id": "bidir-heldout-0542"
+    },
+    {
+      "ask": "d",
+      "facts": [
+        "b>d@real:2025",
+        "-a",
+        "d>b@real:2025",
+        "c>d@dream",
+        "b>c"
+      ],
+      "id": "bidir-heldout-0543"
+    },
+    {
+      "ask": "a",
+      "facts": [],
+      "id": "bidir-heldout-0544"
+    },
+    {
+      "ask": "c",
+      "facts": [
+        "c>d@quote",
+        "b>d",
+        "-d@real:2026",
+        "+d@dream"
+      ],
+      "id": "bidir-heldout-0545"
+    },
+    {
+      "ask": "a",
+      "facts": [
+        "-a@real:2026",
+        "a>b@real:2026"
+      ],
+      "id": "bidir-heldout-0546"
+    },
+    {
+      "ask": "a",
+      "facts": [
+        "+d@quote",
+        "b>d@quote",
+        "-d@dream",
+        "+d",
+        "+a@real:2026",
+        "+b@quote"
+      ],
+      "id": "bidir-heldout-0547"
+    },
+    {
+      "ask": "c",
+      "facts": [
+        "a>c@dream",
+        "c>b@real:2025",
+        "a>d@dream",
+        "b>c",
+        "a>b"
+      ],
+      "id": "bidir-heldout-0548"
+    },
+    {
+      "ask": "b",
+      "facts": [
+        "c>b",
+        "d>c@quote",
+        "a>c@real:2026",
+        "d>c"
+      ],
+      "id": "bidir-heldout-0549"
+    },
+    {
+      "ask": "d",
+      "facts": [
+        "-c@quote",
+        "a>b@real:2025",
+        "a>d@real:2025"
+      ],
+      "id": "bidir-heldout-0550"
+    },
+    {
+      "ask": "a",
+      "facts": [
+        "d>a@dream",
+        "c>d@real:2026",
+        "-c",
+        "b>d@real:2025",
+        "+d@dream",
+        "a>b"
+      ],
+      "id": "bidir-heldout-0551"
+    },
+    {
+      "ask": "c",
+      "facts": [
+        "c>d@quote",
+        "d>a",
+        "+d@quote",
+        "c>d@dream"
+      ],
+      "id": "bidir-heldout-0552"
+    },
+    {
+      "ask": "b",
+      "facts": [
+        "d>b@real:2025",
+        "+b@real:2026",
+        "a>c@real:2026",
+        "+a",
+        "d>b@real:2025",
+        "c>d@real:2026",
+        "d>a",
+        "+d@real:2025",
+        "b>c@quote"
+      ],
+      "id": "bidir-heldout-0553"
+    },
+    {
+      "ask": "b",
+      "facts": [
+        "c>b@real:2026",
+        "d>b@dream",
+        "+c",
+        "+a@real:2025"
+      ],
+      "id": "bidir-heldout-0554"
+    },
+    {
+      "ask": "b",
+      "facts": [
+        "+b@quote"
+      ],
+      "id": "bidir-heldout-0555"
+    },
+    {
+      "ask": "d",
+      "facts": [
+        "-c@real:2025",
+        "c>d@real:2026",
+        "c>b",
+        "c>b",
+        "d>b@real:2025",
+        "a>d",
+        "d>a@real:2026",
+        "b>c@dream",
+        "+a@real:2026"
+      ],
+      "id": "bidir-heldout-0556"
+    },
+    {
+      "ask": "c",
+      "facts": [
+        "+c@dream",
+        "-a",
+        "-c@dream",
+        "a>b@dream",
+        "c>a",
+        "b>d@real:2025",
+        "c>d@quote",
+        "d>b"
+      ],
+      "id": "bidir-heldout-0557"
+    },
+    {
+      "ask": "d",
+      "facts": [
+        "c>a@quote",
+        "+a@quote",
+        "d>a",
+        "a>b@dream",
+        "c>d@dream",
+        "-c@real:2025",
+        "d>b@real:2025",
+        "d>b@dream",
+        "d>a@real:2026"
+      ],
+      "id": "bidir-heldout-0558"
+    },
+    {
+      "ask": "a",
+      "facts": [
+        "a>b@quote",
+        "-a@dream",
+        "+b@quote",
+        "c>d@real:2026",
+        "a>c@real:2025",
+        "+c@quote",
+        "-c@real:2026",
+        "c>b@dream"
+      ],
+      "id": "bidir-heldout-0559"
+    },
+    {
+      "ask": "d",
+      "facts": [
+        "b>d@dream",
+        "+d",
+        "c>a@quote",
+        "-d@real:2026",
+        "d>a@real:2025",
+        "+c@dream",
+        "a>b@real:2026",
+        "b>a@real:2026"
+      ],
+      "id": "bidir-heldout-0560"
+    },
+    {
+      "ask": "a",
+      "facts": [
+        "a>b@real:2026",
+        "a>b@real:2026",
+        "-a@quote"
+      ],
+      "id": "bidir-heldout-0561"
+    },
+    {
+      "ask": "d",
+      "facts": [
+        "d>b@real:2025",
+        "+b",
+        "+a",
+        "-d",
+        "+c@dream",
+        "b>d@quote",
+        "-c"
+      ],
+      "id": "bidir-heldout-0562"
+    },
+    {
+      "ask": "b",
+      "facts": [
+        "-d",
+        "-a@real:2026",
+        "c>d@real:2026",
+        "a>c@quote",
+        "a>b",
+        "a>c@quote"
+      ],
+      "id": "bidir-heldout-0563"
+    },
+    {
+      "ask": "d",
+      "facts": [
+        "b>a@real:2025",
+        "+c@dream",
+        "a>c@dream",
+        "c>b@dream",
+        "+b",
+        "d>c@quote",
+        "b>d@quote",
+        "d>c@real:2026"
+      ],
+      "id": "bidir-heldout-0564"
+    },
+    {
+      "ask": "d",
+      "facts": [
+        "c>a@quote",
+        "-a@quote",
+        "+c@dream"
+      ],
+      "id": "bidir-heldout-0565"
+    },
+    {
+      "ask": "d",
+      "facts": [
+        "c>a@real:2026",
+        "+d@quote",
+        "-d@dream",
+        "-b@dream",
+        "d>b@dream"
+      ],
+      "id": "bidir-heldout-0566"
+    },
+    {
+      "ask": "a",
+      "facts": [
+        "d>b@real:2025",
+        "a>c@dream",
+        "b>a",
+        "b>d@real:2026",
+        "a>d@real:2026",
+        "d>a@real:2025",
+        "b>d"
+      ],
+      "id": "bidir-heldout-0567"
+    },
+    {
+      "ask": "b",
+      "facts": [
+        "b>d@quote",
+        "b>c@real:2026",
+        "-a@dream"
+      ],
+      "id": "bidir-heldout-0568"
+    },
+    {
+      "ask": "c",
+      "facts": [
+        "+d@real:2025",
+        "c>b",
+        "+d@quote",
+        "d>c@real:2025",
+        "-c@dream",
+        "+b@dream",
+        "d>c@quote",
+        "c>a@real:2026"
+      ],
+      "id": "bidir-heldout-0569"
+    },
+    {
+      "ask": "d",
+      "facts": [
+        "c>b@quote",
+        "-b@real:2026",
+        "-d@real:2025",
+        "d>b@real:2025",
+        "b>c"
+      ],
+      "id": "bidir-heldout-0570"
+    },
+    {
+      "ask": "d",
+      "facts": [
+        "+a@quote"
+      ],
+      "id": "bidir-heldout-0571"
+    },
+    {
+      "ask": "a",
+      "facts": [],
+      "id": "bidir-heldout-0572"
+    },
+    {
+      "ask": "d",
+      "facts": [
+        "+b@dream",
+        "b>d@real:2026",
+        "d>a@real:2025",
+        "b>c@dream",
+        "c>b@real:2026"
+      ],
+      "id": "bidir-heldout-0573"
+    },
+    {
+      "ask": "a",
+      "facts": [],
+      "id": "bidir-heldout-0574"
+    },
+    {
+      "ask": "d",
+      "facts": [
+        "d>c@dream",
+        "+c@quote",
+        "-a@real:2025",
+        "+b@real:2026",
+        "-a@dream",
+        "b>a@dream",
+        "-b@dream",
+        "+a@quote",
+        "b>d@real:2025"
+      ],
+      "id": "bidir-heldout-0575"
+    },
+    {
+      "ask": "b",
+      "facts": [
+        "-d@quote",
+        "+b@real:2026",
+        "b>a@real:2025"
+      ],
+      "id": "bidir-heldout-0576"
+    },
+    {
+      "ask": "d",
+      "facts": [
+        "b>d@dream",
+        "-c@real:2025",
+        "d>b@real:2025",
+        "b>a@quote",
+        "c>d@real:2025"
+      ],
+      "id": "bidir-heldout-0577"
+    },
+    {
+      "ask": "b",
+      "facts": [
+        "+b@real:2026",
+        "a>b@real:2025",
+        "+a@dream",
+        "c>d@real:2025",
+        "+b@dream",
+        "-b@dream",
+        "-b@real:2025"
+      ],
+      "id": "bidir-heldout-0578"
+    },
+    {
+      "ask": "b",
+      "facts": [
+        "c>a",
+        "+c@dream",
+        "d>b@real:2025",
+        "+c@dream"
+      ],
+      "id": "bidir-heldout-0579"
+    },
+    {
+      "ask": "a",
+      "facts": [
+        "-b@real:2025",
+        "-d@real:2026",
+        "-a@quote",
+        "b>c@dream",
+        "+b@real:2025",
+        "c>d@real:2025",
+        "a>c@dream"
+      ],
+      "id": "bidir-heldout-0580"
+    },
+    {
+      "ask": "a",
+      "facts": [
+        "c>d@real:2026",
+        "+c@real:2025",
+        "b>d",
+        "+a@dream",
+        "b>a",
+        "+a",
+        "d>c",
+        "b>d",
+        "-c@quote"
+      ],
+      "id": "bidir-heldout-0581"
+    },
+    {
+      "ask": "a",
+      "facts": [],
+      "id": "bidir-heldout-0582"
+    },
+    {
+      "ask": "c",
+      "facts": [
+        "c>d",
+        "-a@real:2025",
+        "+b@dream",
+        "-b@dream",
+        "c>d@real:2025"
+      ],
+      "id": "bidir-heldout-0583"
+    },
+    {
+      "ask": "d",
+      "facts": [
+        "a>b@quote",
+        "b>c@real:2026",
+        "-d@real:2026",
+        "-b@dream",
+        "-c@quote"
+      ],
+      "id": "bidir-heldout-0584"
+    },
+    {
+      "ask": "a",
+      "facts": [],
+      "id": "bidir-heldout-0585"
+    },
+    {
+      "ask": "a",
+      "facts": [],
+      "id": "bidir-heldout-0586"
+    },
+    {
+      "ask": "c",
+      "facts": [],
+      "id": "bidir-heldout-0587"
+    },
+    {
+      "ask": "b",
+      "facts": [
+        "-a@real:2026",
+        "b>a@quote",
+        "d>a",
+        "c>d",
+        "+d@dream"
+      ],
+      "id": "bidir-heldout-0588"
+    },
+    {
+      "ask": "a",
+      "facts": [
+        "a>d",
+        "c>a@real:2026",
+        "+d",
+        "d>c@quote",
+        "-b@real:2025",
+        "a>b@real:2025",
+        "c>b@real:2025",
+        "d>c"
+      ],
+      "id": "bidir-heldout-0589"
+    },
+    {
+      "ask": "c",
+      "facts": [
+        "-d@real:2026",
+        "c>a@real:2026",
+        "+d@real:2025",
+        "+c@dream",
+        "b>c@dream"
+      ],
+      "id": "bidir-heldout-0590"
+    },
+    {
+      "ask": "d",
+      "facts": [
+        "c>b@dream",
+        "b>c@real:2025",
+        "+a",
+        "b>c",
+        "+a",
+        "c>a@dream",
+        "a>b@real:2025"
+      ],
+      "id": "bidir-heldout-0591"
+    },
+    {
+      "ask": "a",
+      "facts": [
+        "-a@real:2025",
+        "-b@real:2025",
+        "d>b@real:2026",
+        "+b@quote"
+      ],
+      "id": "bidir-heldout-0592"
+    },
+    {
+      "ask": "b",
+      "facts": [
+        "a>c@dream",
+        "d>c"
+      ],
+      "id": "bidir-heldout-0593"
+    },
+    {
+      "ask": "d",
+      "facts": [
+        "+d@real:2026",
+        "+a@dream"
+      ],
+      "id": "bidir-heldout-0594"
+    },
+    {
+      "ask": "c",
+      "facts": [
+        "b>c@quote",
+        "c>d@real:2025",
+        "a>c@real:2025",
+        "-a@quote",
+        "-c@real:2025",
+        "c>a@dream",
+        "d>c@dream",
+        "d>a@real:2025",
+        "b>d@real:2025"
+      ],
+      "id": "bidir-heldout-0595"
+    },
+    {
+      "ask": "b",
+      "facts": [],
+      "id": "bidir-heldout-0596"
+    },
+    {
+      "ask": "d",
+      "facts": [
+        "c>d"
+      ],
+      "id": "bidir-heldout-0597"
+    },
+    {
+      "ask": "a",
+      "facts": [
+        "a>c",
+        "+b@quote",
+        "b>d",
+        "d>b@real:2026",
+        "-a@real:2026"
+      ],
+      "id": "bidir-heldout-0598"
+    },
+    {
+      "ask": "b",
+      "facts": [
+        "a>c@real:2025",
+        "+a",
+        "+b@real:2025"
+      ],
+      "id": "bidir-heldout-0599"
+    },
+    {
+      "ask": "c",
+      "facts": [
+        "-c@real:2026",
+        "c>d@dream",
+        "a>b@dream"
+      ],
+      "id": "bidir-heldout-0600"
+    },
+    {
+      "ask": "d",
+      "facts": [],
+      "id": "bidir-heldout-0601"
+    },
+    {
+      "ask": "b",
+      "facts": [
+        "+d",
+        "d>c@quote",
+        "a>b@real:2025"
+      ],
+      "id": "bidir-heldout-0602"
+    },
+    {
+      "ask": "c",
+      "facts": [
+        "-a@real:2025",
+        "a>d",
+        "+a@quote",
+        "a>b@real:2025",
+        "a>c@real:2026",
+        "c>d@dream",
+        "d>a@dream",
+        "-d@quote"
+      ],
+      "id": "bidir-heldout-0603"
+    },
+    {
+      "ask": "c",
+      "facts": [
+        "d>c@dream",
+        "a>d"
+      ],
+      "id": "bidir-heldout-0604"
+    },
+    {
+      "ask": "b",
+      "facts": [
+        "a>c",
+        "b>c@quote",
+        "+d@real:2025",
+        "a>c@dream"
+      ],
+      "id": "bidir-heldout-0605"
+    },
+    {
+      "ask": "b",
+      "facts": [
+        "d>b@dream",
+        "-c@quote",
+        "d>c@real:2025",
+        "a>b@quote",
+        "b>a@dream",
+        "d>c@dream",
+        "+a@real:2026",
+        "+b@dream",
+        "a>b@real:2026"
+      ],
+      "id": "bidir-heldout-0606"
+    },
+    {
+      "ask": "c",
+      "facts": [
+        "c>b@real:2025",
+        "b>d",
+        "c>d@dream",
+        "b>d@quote",
+        "a>d@real:2025",
+        "-b@quote"
+      ],
+      "id": "bidir-heldout-0607"
+    },
+    {
+      "ask": "d",
+      "facts": [
+        "d>b@real:2025"
+      ],
+      "id": "bidir-heldout-0608"
+    },
+    {
+      "ask": "b",
+      "facts": [
+        "-a@real:2025",
+        "d>b@quote",
+        "c>a@real:2025",
+        "d>c@real:2025",
+        "a>c@real:2026",
+        "+a@quote",
+        "d>c@real:2025"
+      ],
+      "id": "bidir-heldout-0609"
+    },
+    {
+      "ask": "a",
+      "facts": [
+        "c>d@quote"
+      ],
+      "id": "bidir-heldout-0610"
+    },
+    {
+      "ask": "a",
+      "facts": [
+        "+c@quote",
+        "a>d@real:2025",
+        "+c@real:2026"
+      ],
+      "id": "bidir-heldout-0611"
+    },
+    {
+      "ask": "d",
+      "facts": [
+        "d>a@real:2025"
+      ],
+      "id": "bidir-heldout-0612"
+    },
+    {
+      "ask": "a",
+      "facts": [
+        "c>d@quote",
+        "-b@quote",
+        "+b@real:2025",
+        "b>d@dream",
+        "b>a@quote",
+        "d>c@real:2026",
+        "-b",
+        "b>a@dream",
+        "b>d@real:2026"
+      ],
+      "id": "bidir-heldout-0613"
+    },
+    {
+      "ask": "a",
+      "facts": [
+        "d>b@real:2025"
+      ],
+      "id": "bidir-heldout-0614"
+    },
+    {
+      "ask": "a",
+      "facts": [
+        "-b@dream",
+        "d>b@quote",
+        "b>d@quote",
+        "a>b@real:2025",
+        "b>a@real:2025",
+        "+b@dream",
+        "b>d@dream",
+        "b>c@real:2025",
+        "+a@dream"
+      ],
+      "id": "bidir-heldout-0615"
+    },
+    {
+      "ask": "c",
+      "facts": [
+        "d>a@real:2026",
+        "b>c@dream",
+        "b>c@real:2025",
+        "+c@dream",
+        "+c@real:2026",
+        "b>c@real:2026",
+        "d>b@dream"
+      ],
+      "id": "bidir-heldout-0616"
+    },
+    {
+      "ask": "c",
+      "facts": [
+        "c>b@real:2026",
+        "+b",
+        "+d@real:2025",
+        "b>c@quote"
+      ],
+      "id": "bidir-heldout-0617"
+    },
+    {
+      "ask": "d",
+      "facts": [
+        "b>d@real:2025",
+        "d>c@real:2026",
+        "-c@real:2026",
+        "c>d@real:2025",
+        "-b@real:2025"
+      ],
+      "id": "bidir-heldout-0618"
+    },
+    {
+      "ask": "a",
+      "facts": [
+        "a>b@real:2026",
+        "+c",
+        "a>c@dream",
+        "c>a@real:2026",
+        "a>d@real:2025",
+        "-d@real:2025",
+        "+d",
+        "-d@dream",
+        "-d@quote"
+      ],
+      "id": "bidir-heldout-0619"
+    },
+    {
+      "ask": "d",
+      "facts": [
+        "-a@quote"
+      ],
+      "id": "bidir-heldout-0620"
+    },
+    {
+      "ask": "d",
+      "facts": [],
+      "id": "bidir-heldout-0621"
+    },
+    {
+      "ask": "d",
+      "facts": [
+        "-d@quote",
+        "+d@real:2025",
+        "a>c@dream",
+        "b>c@dream",
+        "c>b@real:2026",
+        "d>c@real:2025"
+      ],
+      "id": "bidir-heldout-0622"
+    },
+    {
+      "ask": "c",
+      "facts": [
+        "b>a",
+        "c>b@real:2025",
+        "c>d@quote",
+        "a>d",
+        "b>d@quote"
+      ],
+      "id": "bidir-heldout-0623"
+    },
+    {
+      "ask": "b",
+      "facts": [
+        "b>c",
+        "d>a@quote",
+        "c>a@real:2025",
+        "a>c@real:2025",
+        "+a"
+      ],
+      "id": "bidir-heldout-0624"
+    },
+    {
+      "ask": "d",
+      "facts": [
+        "d>c@real:2026",
+        "c>b@quote",
+        "+b@real:2026"
+      ],
+      "id": "bidir-heldout-0625"
+    },
+    {
+      "ask": "a",
+      "facts": [
+        "c>d@real:2025"
+      ],
+      "id": "bidir-heldout-0626"
+    },
+    {
+      "ask": "b",
+      "facts": [
+        "b>d@real:2025"
+      ],
+      "id": "bidir-heldout-0627"
+    },
+    {
+      "ask": "b",
+      "facts": [
+        "-b@real:2026",
+        "b>a"
+      ],
+      "id": "bidir-heldout-0628"
+    },
+    {
+      "ask": "c",
+      "facts": [
+        "+c@real:2025",
+        "a>d@quote",
+        "d>a"
+      ],
+      "id": "bidir-heldout-0629"
+    },
+    {
+      "ask": "c",
+      "facts": [
+        "+d@real:2025"
+      ],
+      "id": "bidir-heldout-0630"
+    },
+    {
+      "ask": "b",
+      "facts": [],
+      "id": "bidir-heldout-0631"
+    },
+    {
+      "ask": "d",
+      "facts": [
+        "+b@real:2025",
+        "a>b@quote",
+        "-a@dream",
+        "d>b@real:2026",
+        "+b",
+        "d>c@real:2025",
+        "+d@dream",
+        "+c@dream",
+        "d>b"
+      ],
+      "id": "bidir-heldout-0632"
+    },
+    {
+      "ask": "c",
+      "facts": [
+        "a>d@dream"
+      ],
+      "id": "bidir-heldout-0633"
+    },
+    {
+      "ask": "c",
+      "facts": [
+        "b>a@quote",
+        "-c@real:2025",
+        "-a"
+      ],
+      "id": "bidir-heldout-0634"
+    },
+    {
+      "ask": "b",
+      "facts": [
+        "d>c",
+        "c>d@real:2025",
+        "+a",
+        "a>d@quote",
+        "b>c@dream",
+        "-b@quote",
+        "c>d"
+      ],
+      "id": "bidir-heldout-0635"
+    },
+    {
+      "ask": "b",
+      "facts": [
+        "c>b@quote",
+        "b>c",
+        "d>a@real:2026",
+        "c>a@real:2025"
+      ],
+      "id": "bidir-heldout-0636"
+    },
+    {
+      "ask": "c",
+      "facts": [
+        "c>b",
+        "+c@real:2026"
+      ],
+      "id": "bidir-heldout-0637"
+    },
+    {
+      "ask": "a",
+      "facts": [
+        "-c@real:2026",
+        "b>d@quote",
+        "+b@real:2025"
+      ],
+      "id": "bidir-heldout-0638"
+    },
+    {
+      "ask": "a",
+      "facts": [
+        "c>d@real:2025",
+        "b>d@quote",
+        "+d@real:2026",
+        "a>c",
+        "-c"
+      ],
+      "id": "bidir-heldout-0639"
+    },
+    {
+      "ask": "c",
+      "facts": [],
+      "id": "bidir-heldout-0640"
+    },
+    {
+      "ask": "b",
+      "facts": [
+        "c>b@dream",
+        "-a@real:2026",
+        "c>b",
+        "d>b@real:2025",
+        "c>a",
+        "+d@dream",
+        "a>b@real:2026"
+      ],
+      "id": "bidir-heldout-0641"
+    },
+    {
+      "ask": "a",
+      "facts": [
+        "+c",
+        "d>b@quote",
+        "c>a@real:2025"
+      ],
+      "id": "bidir-heldout-0642"
+    },
+    {
+      "ask": "d",
+      "facts": [],
+      "id": "bidir-heldout-0643"
+    },
+    {
+      "ask": "b",
+      "facts": [
+        "a>d@quote",
+        "a>c@quote",
+        "+c"
+      ],
+      "id": "bidir-heldout-0644"
+    },
+    {
+      "ask": "c",
+      "facts": [
+        "+a",
+        "+b@real:2025",
+        "+d@real:2026",
+        "-a@real:2026",
+        "a>c@real:2025",
+        "b>a@real:2025",
+        "-b@real:2026"
+      ],
+      "id": "bidir-heldout-0645"
+    },
+    {
+      "ask": "d",
+      "facts": [],
+      "id": "bidir-heldout-0646"
+    },
+    {
+      "ask": "a",
+      "facts": [],
+      "id": "bidir-heldout-0647"
+    },
+    {
+      "ask": "d",
+      "facts": [
+        "a>b@dream"
+      ],
+      "id": "bidir-heldout-0648"
+    },
+    {
+      "ask": "c",
+      "facts": [
+        "d>b",
+        "c>a@real:2026",
+        "+b",
+        "b>d@real:2025",
+        "-d@quote"
+      ],
+      "id": "bidir-heldout-0649"
+    },
+    {
+      "ask": "a",
+      "facts": [
+        "d>c@dream",
+        "b>d@real:2026",
+        "-b@dream"
+      ],
+      "id": "bidir-heldout-0650"
+    },
+    {
+      "ask": "c",
+      "facts": [
+        "c>b@dream",
+        "c>a@dream",
+        "-b",
+        "d>a@quote",
+        "-d@quote",
+        "a>c@real:2026",
+        "+c@quote"
+      ],
+      "id": "bidir-heldout-0651"
+    },
+    {
+      "ask": "a",
+      "facts": [
+        "-a@dream",
+        "c>a@dream",
+        "c>b@real:2025",
+        "+b@quote"
+      ],
+      "id": "bidir-heldout-0652"
+    },
+    {
+      "ask": "d",
+      "facts": [
+        "b>d@dream",
+        "a>c@real:2025"
+      ],
+      "id": "bidir-heldout-0653"
+    },
+    {
+      "ask": "d",
+      "facts": [
+        "c>d@quote",
+        "+c@real:2026",
+        "+b",
+        "-c@real:2026",
+        "d>b@real:2025",
+        "-c@real:2026",
+        "d>b"
+      ],
+      "id": "bidir-heldout-0654"
+    },
+    {
+      "ask": "b",
+      "facts": [
+        "a>d",
+        "-b",
+        "b>d",
+        "c>a@dream",
+        "b>c@quote"
+      ],
+      "id": "bidir-heldout-0655"
+    },
+    {
+      "ask": "d",
+      "facts": [
+        "b>d@dream",
+        "-a@quote",
+        "a>d",
+        "-b@real:2026"
+      ],
+      "id": "bidir-heldout-0656"
+    },
+    {
+      "ask": "d",
+      "facts": [],
+      "id": "bidir-heldout-0657"
+    },
+    {
+      "ask": "c",
+      "facts": [
+        "b>d@dream",
+        "+b@real:2025"
+      ],
+      "id": "bidir-heldout-0658"
+    },
+    {
+      "ask": "d",
+      "facts": [
+        "b>c",
+        "b>c",
+        "c>d@quote",
+        "c>d@dream",
+        "a>c@real:2026"
+      ],
+      "id": "bidir-heldout-0659"
+    },
+    {
+      "ask": "c",
+      "facts": [
+        "a>b@real:2025",
+        "+d@quote",
+        "+c@dream",
+        "-d@dream",
+        "+b@real:2026"
+      ],
+      "id": "bidir-heldout-0660"
+    },
+    {
+      "ask": "b",
+      "facts": [
+        "a>c@real:2025",
+        "-c@real:2026",
+        "+b@real:2025"
+      ],
+      "id": "bidir-heldout-0661"
+    },
+    {
+      "ask": "a",
+      "facts": [
+        "-c@quote",
+        "c>d@quote"
+      ],
+      "id": "bidir-heldout-0662"
+    },
+    {
+      "ask": "c",
+      "facts": [
+        "a>c@real:2025",
+        "d>b@real:2026",
+        "-c@real:2025",
+        "-a@real:2026"
+      ],
+      "id": "bidir-heldout-0663"
+    },
+    {
+      "ask": "c",
+      "facts": [
+        "+b@real:2026",
+        "b>a@quote",
+        "a>b@dream"
+      ],
+      "id": "bidir-heldout-0664"
+    },
+    {
+      "ask": "b",
+      "facts": [
+        "+b@real:2025",
+        "-c@dream",
+        "-d@real:2025"
+      ],
+      "id": "bidir-heldout-0665"
+    },
+    {
+      "ask": "c",
+      "facts": [
+        "+a@quote",
+        "b>a",
+        "-d@dream",
+        "d>b"
+      ],
+      "id": "bidir-heldout-0666"
+    },
+    {
+      "ask": "b",
+      "facts": [
+        "b>c@real:2026",
+        "d>b@quote"
+      ],
+      "id": "bidir-heldout-0667"
+    },
+    {
+      "ask": "a",
+      "facts": [
+        "d>a",
+        "d>c@real:2026",
+        "b>c",
+        "+d@real:2025",
+        "c>b@quote",
+        "d>b@real:2026"
+      ],
+      "id": "bidir-heldout-0668"
+    },
+    {
+      "ask": "b",
+      "facts": [
+        "a>c@quote",
+        "d>c",
+        "-a",
+        "-b@dream",
+        "c>d@dream"
+      ],
+      "id": "bidir-heldout-0669"
+    },
+    {
+      "ask": "b",
+      "facts": [
+        "+c@quote",
+        "b>c@real:2026",
+        "c>d@real:2026",
+        "-d@dream"
+      ],
+      "id": "bidir-heldout-0670"
+    },
+    {
+      "ask": "c",
+      "facts": [
+        "-b@real:2026",
+        "b>d@dream",
+        "+b",
+        "b>c@real:2025",
+        "+b",
+        "-b",
+        "a>c@real:2025",
+        "b>c@dream"
+      ],
+      "id": "bidir-heldout-0671"
+    },
+    {
+      "ask": "d",
+      "facts": [
+        "-a",
+        "+c@quote",
+        "b>a@quote",
+        "-d@real:2026"
+      ],
+      "id": "bidir-heldout-0672"
+    },
+    {
+      "ask": "d",
+      "facts": [
+        "c>b@real:2026",
+        "-b@quote",
+        "-b",
+        "+b@real:2026",
+        "+c@dream",
+        "a>c@real:2025",
+        "a>c@quote",
+        "d>a",
+        "-b"
+      ],
+      "id": "bidir-heldout-0673"
+    },
+    {
+      "ask": "d",
+      "facts": [
+        "b>c@dream",
+        "-b@dream",
+        "+a@dream"
+      ],
+      "id": "bidir-heldout-0674"
+    },
+    {
+      "ask": "d",
+      "facts": [
+        "-a@quote",
+        "c>d@real:2026",
+        "-c@real:2026"
+      ],
+      "id": "bidir-heldout-0675"
+    },
+    {
+      "ask": "c",
+      "facts": [
+        "b>c@real:2025",
+        "b>c@real:2025",
+        "-b@quote",
+        "b>d@dream",
+        "a>d@real:2025"
+      ],
+      "id": "bidir-heldout-0676"
+    },
+    {
+      "ask": "a",
+      "facts": [
+        "d>c",
+        "d>c@real:2025",
+        "+a",
+        "-c@real:2026",
+        "+d",
+        "d>c@quote",
+        "-b@real:2026",
+        "-b@dream",
+        "-d@quote"
+      ],
+      "id": "bidir-heldout-0677"
+    },
+    {
+      "ask": "c",
+      "facts": [
+        "+a",
+        "-d@dream",
+        "+b",
+        "b>c@quote",
+        "a>b@real:2025",
+        "b>d@real:2026",
+        "a>c@real:2026",
+        "+d@quote",
+        "d>a"
+      ],
+      "id": "bidir-heldout-0678"
+    },
+    {
+      "ask": "b",
+      "facts": [
+        "c>a@real:2026",
+        "+b@dream",
+        "d>b@real:2025",
+        "d>a@real:2025",
+        "-c@quote"
+      ],
+      "id": "bidir-heldout-0679"
+    },
+    {
+      "ask": "b",
+      "facts": [],
+      "id": "bidir-heldout-0680"
+    },
+    {
+      "ask": "d",
+      "facts": [
+        "b>c@dream",
+        "d>a@quote",
+        "d>a@dream",
+        "b>c",
+        "a>b@real:2026",
+        "a>c@quote"
+      ],
+      "id": "bidir-heldout-0681"
+    },
+    {
+      "ask": "c",
+      "facts": [
+        "d>b@real:2025",
+        "d>b",
+        "c>b@real:2025",
+        "-a@real:2025",
+        "b>c@real:2025"
+      ],
+      "id": "bidir-heldout-0682"
+    },
+    {
+      "ask": "a",
+      "facts": [
+        "-d@dream",
+        "c>b@dream",
+        "b>d@real:2025",
+        "-b@real:2026",
+        "c>b@real:2025",
+        "+c",
+        "b>d@real:2026"
+      ],
+      "id": "bidir-heldout-0683"
+    },
+    {
+      "ask": "c",
+      "facts": [
+        "d>c@real:2026"
+      ],
+      "id": "bidir-heldout-0684"
+    },
+    {
+      "ask": "b",
+      "facts": [
+        "-c@quote",
+        "+d"
+      ],
+      "id": "bidir-heldout-0685"
+    },
+    {
+      "ask": "b",
+      "facts": [
+        "d>a@real:2025",
+        "b>c@real:2026",
+        "d>b@real:2025",
+        "a>d@real:2025",
+        "c>a@real:2026",
+        "d>b@real:2025"
+      ],
+      "id": "bidir-heldout-0686"
+    },
+    {
+      "ask": "d",
+      "facts": [
+        "d>b@real:2025",
+        "-a@quote"
+      ],
+      "id": "bidir-heldout-0687"
+    },
+    {
+      "ask": "c",
+      "facts": [
+        "a>c@real:2025",
+        "+c",
+        "b>d@quote",
+        "a>b",
+        "-b@real:2025",
+        "+b"
+      ],
+      "id": "bidir-heldout-0688"
+    },
+    {
+      "ask": "b",
+      "facts": [
+        "+d@real:2026",
+        "c>d@dream"
+      ],
+      "id": "bidir-heldout-0689"
+    },
+    {
+      "ask": "c",
+      "facts": [
+        "d>c@dream",
+        "a>b",
+        "+d",
+        "+d@quote"
+      ],
+      "id": "bidir-heldout-0690"
+    },
+    {
+      "ask": "b",
+      "facts": [
+        "-b",
+        "a>b@dream"
+      ],
+      "id": "bidir-heldout-0691"
+    },
+    {
+      "ask": "d",
+      "facts": [
+        "c>b@real:2025",
+        "+a"
+      ],
+      "id": "bidir-heldout-0692"
+    },
+    {
+      "ask": "a",
+      "facts": [
+        "-d",
+        "b>d@dream",
+        "b>a@real:2026",
+        "+c@quote",
+        "d>c",
+        "-d"
+      ],
+      "id": "bidir-heldout-0693"
+    },
+    {
+      "ask": "d",
+      "facts": [
+        "d>a@real:2025",
+        "d>c@real:2026",
+        "-d@quote",
+        "c>b@real:2026",
+        "b>d@real:2026",
+        "-b@real:2025",
+        "-b",
+        "+a@real:2025",
+        "d>b@dream"
+      ],
+      "id": "bidir-heldout-0694"
+    },
+    {
+      "ask": "a",
+      "facts": [
+        "c>a@dream",
+        "a>b",
+        "b>d@dream",
+        "-d@real:2026",
+        "d>a@real:2025"
+      ],
+      "id": "bidir-heldout-0695"
+    },
+    {
+      "ask": "a",
+      "facts": [
+        "a>b@dream",
+        "+d"
+      ],
+      "id": "bidir-heldout-0696"
+    },
+    {
+      "ask": "c",
+      "facts": [
+        "+d@real:2026",
+        "d>a@quote",
+        "b>a@dream",
+        "d>b@quote",
+        "c>d@real:2026",
+        "b>d@real:2025",
+        "-d@quote",
+        "d>b@quote",
+        "d>a"
+      ],
+      "id": "bidir-heldout-0697"
+    },
+    {
+      "ask": "a",
+      "facts": [
+        "b>d@quote",
+        "b>d@quote"
+      ],
+      "id": "bidir-heldout-0698"
+    },
+    {
+      "ask": "a",
+      "facts": [
+        "b>c@real:2026",
+        "+c@real:2026"
+      ],
+      "id": "bidir-heldout-0699"
+    },
+    {
+      "ask": "d",
+      "facts": [
+        "+c@quote",
+        "d>c@real:2026",
+        "a>d@dream",
+        "-c@real:2025",
+        "+c@dream",
+        "-a@real:2025",
+        "a>d",
+        "c>b@dream"
+      ],
+      "id": "bidir-heldout-0700"
+    },
+    {
+      "ask": "b",
+      "facts": [
+        "d>a",
+        "-d@quote",
+        "+b@dream",
+        "+b@real:2026"
+      ],
+      "id": "bidir-heldout-0701"
+    },
+    {
+      "ask": "b",
+      "facts": [
+        "+a@dream",
+        "-b@real:2026",
+        "b>a@dream",
+        "+b",
+        "d>b",
+        "c>d@quote",
+        "c>a@quote",
+        "+b",
+        "+b@real:2025"
+      ],
+      "id": "bidir-heldout-0702"
+    },
+    {
+      "ask": "a",
+      "facts": [
+        "c>a",
+        "-d@real:2026",
+        "-d@real:2026"
+      ],
+      "id": "bidir-heldout-0703"
+    },
+    {
+      "ask": "c",
+      "facts": [
+        "+b@real:2026",
+        "-a@real:2025",
+        "b>c@dream",
+        "b>d@real:2025",
+        "c>d@real:2025"
+      ],
+      "id": "bidir-heldout-0704"
+    },
+    {
+      "ask": "d",
+      "facts": [
+        "b>c@real:2026",
+        "d>a",
+        "+b@real:2025",
+        "c>b@quote",
+        "+a@real:2026",
+        "a>c",
+        "d>a",
+        "-a@dream"
+      ],
+      "id": "bidir-heldout-0705"
+    },
+    {
+      "ask": "d",
+      "facts": [
+        "b>a@real:2025",
+        "-b@real:2026"
+      ],
+      "id": "bidir-heldout-0706"
+    },
+    {
+      "ask": "c",
+      "facts": [
+        "-d@real:2026",
+        "-a@dream",
+        "b>c@real:2025"
+      ],
+      "id": "bidir-heldout-0707"
+    },
+    {
+      "ask": "d",
+      "facts": [
+        "-a",
+        "-b@dream",
+        "-b@dream",
+        "+b@quote",
+        "-a@quote",
+        "c>b@real:2026",
+        "b>c",
+        "b>c@dream"
+      ],
+      "id": "bidir-heldout-0708"
+    },
+    {
+      "ask": "c",
+      "facts": [
+        "+b@quote",
+        "d>b@quote",
+        "a>c",
+        "-b@dream",
+        "c>b@real:2026",
+        "+b@dream"
+      ],
+      "id": "bidir-heldout-0709"
+    },
+    {
+      "ask": "d",
+      "facts": [
+        "c>b@dream",
+        "c>a@dream",
+        "d>c@dream",
+        "a>b",
+        "a>c@real:2025",
+        "d>a@dream",
+        "b>d@real:2026"
+      ],
+      "id": "bidir-heldout-0710"
+    },
+    {
+      "ask": "a",
+      "facts": [
+        "-a@real:2026",
+        "-d",
+        "c>d@quote",
+        "+c@quote",
+        "+a@real:2026",
+        "b>c@real:2026"
+      ],
+      "id": "bidir-heldout-0711"
+    },
+    {
+      "ask": "b",
+      "facts": [
+        "b>c@quote",
+        "+a@real:2026",
+        "c>a@real:2026",
+        "c>b@dream",
+        "b>a@real:2025",
+        "-b@dream",
+        "d>a@real:2025",
+        "-b@real:2026"
+      ],
+      "id": "bidir-heldout-0712"
+    },
+    {
+      "ask": "c",
+      "facts": [],
+      "id": "bidir-heldout-0713"
+    },
+    {
+      "ask": "a",
+      "facts": [
+        "c>b@real:2026",
+        "+a",
+        "+c@real:2025",
+        "b>d@real:2026",
+        "b>c@real:2025",
+        "-b",
+        "c>b@real:2026"
+      ],
+      "id": "bidir-heldout-0714"
+    },
+    {
+      "ask": "d",
+      "facts": [
+        "b>a@quote",
+        "c>a@real:2026",
+        "+a@real:2026",
+        "d>c@dream",
+        "c>a@real:2026",
+        "-a@quote",
+        "-d@real:2026",
+        "d>b@quote",
+        "c>a@real:2026"
+      ],
+      "id": "bidir-heldout-0715"
+    },
+    {
+      "ask": "c",
+      "facts": [
+        "a>c@real:2026",
+        "d>c@dream",
+        "+b@quote",
+        "-c@quote",
+        "a>d@dream",
+        "-c@dream",
+        "b>a@quote",
+        "-d@dream"
+      ],
+      "id": "bidir-heldout-0716"
+    },
+    {
+      "ask": "a",
+      "facts": [
+        "b>d",
+        "a>c@real:2025",
+        "-b@quote",
+        "b>a@quote",
+        "+d@real:2025",
+        "+c@quote",
+        "a>b@real:2026"
+      ],
+      "id": "bidir-heldout-0717"
+    },
+    {
+      "ask": "d",
+      "facts": [
+        "a>b@real:2025",
+        "+b",
+        "d>b@real:2025",
+        "b>a@real:2026",
+        "a>d@quote",
+        "a>b@real:2026",
+        "+a@quote",
+        "-b@quote"
+      ],
+      "id": "bidir-heldout-0718"
+    },
+    {
+      "ask": "c",
+      "facts": [
+        "a>b@quote",
+        "d>c",
+        "d>a@real:2025",
+        "-b",
+        "c>b",
+        "-a@real:2025"
+      ],
+      "id": "bidir-heldout-0719"
+    },
+    {
+      "ask": "b",
+      "facts": [
+        "-a@real:2026",
+        "c>b@real:2025",
+        "c>b"
+      ],
+      "id": "bidir-heldout-0720"
+    },
+    {
+      "ask": "a",
+      "facts": [
+        "b>a@real:2026",
+        "+a",
+        "d>a",
+        "+b@quote",
+        "c>d",
+        "d>a@dream"
+      ],
+      "id": "bidir-heldout-0721"
+    },
+    {
+      "ask": "d",
+      "facts": [
+        "c>b@dream",
+        "a>d@dream",
+        "b>c@quote"
+      ],
+      "id": "bidir-heldout-0722"
+    },
+    {
+      "ask": "a",
+      "facts": [
+        "+b@quote",
+        "c>a@real:2025",
+        "-b@real:2025",
+        "b>c@quote",
+        "b>d",
+        "+d@quote",
+        "d>b@dream",
+        "d>b@real:2026",
+        "b>c@quote"
+      ],
+      "id": "bidir-heldout-0723"
+    },
+    {
+      "ask": "a",
+      "facts": [
+        "b>d",
+        "-d@real:2026",
+        "+c@real:2025",
+        "a>b@quote",
+        "+d@real:2026",
+        "a>b@quote"
+      ],
+      "id": "bidir-heldout-0724"
+    },
+    {
+      "ask": "b",
+      "facts": [
+        "b>c@dream",
+        "c>b@dream",
+        "c>b",
+        "d>b@dream"
+      ],
+      "id": "bidir-heldout-0725"
+    },
+    {
+      "ask": "b",
+      "facts": [],
+      "id": "bidir-heldout-0726"
+    },
+    {
+      "ask": "b",
+      "facts": [
+        "c>a",
+        "a>c",
+        "-a",
+        "+d",
+        "a>b@real:2026",
+        "c>d@quote",
+        "-d@real:2026",
+        "a>d@real:2025"
+      ],
+      "id": "bidir-heldout-0727"
+    },
+    {
+      "ask": "b",
+      "facts": [
+        "b>d@real:2026",
+        "b>d",
+        "-b@real:2025",
+        "c>a@dream",
+        "-a",
+        "c>b@dream",
+        "b>a@real:2026"
+      ],
+      "id": "bidir-heldout-0728"
+    },
+    {
+      "ask": "b",
+      "facts": [
+        "b>d@real:2025",
+        "d>c@dream",
+        "b>c@quote",
+        "+c"
+      ],
+      "id": "bidir-heldout-0729"
+    },
+    {
+      "ask": "d",
+      "facts": [
+        "d>a@real:2025",
+        "a>b@dream"
+      ],
+      "id": "bidir-heldout-0730"
+    },
+    {
+      "ask": "b",
+      "facts": [
+        "c>d",
+        "c>d@quote",
+        "c>a",
+        "-b@dream",
+        "a>d@dream",
+        "+d@real:2025"
+      ],
+      "id": "bidir-heldout-0731"
+    },
+    {
+      "ask": "d",
+      "facts": [
+        "a>c@real:2025",
+        "a>b@quote",
+        "-b@dream",
+        "+c@dream"
+      ],
+      "id": "bidir-heldout-0732"
+    },
+    {
+      "ask": "a",
+      "facts": [
+        "-a",
+        "b>d@real:2026"
+      ],
+      "id": "bidir-heldout-0733"
+    },
+    {
+      "ask": "a",
+      "facts": [
+        "d>b@quote",
+        "a>b@quote",
+        "+a@real:2025",
+        "c>b",
+        "d>c@quote"
+      ],
+      "id": "bidir-heldout-0734"
+    },
+    {
+      "ask": "c",
+      "facts": [
+        "-c@dream",
+        "+a@real:2026",
+        "c>d@dream",
+        "b>d@quote",
+        "-d@dream",
+        "-d@dream",
+        "-d@real:2025"
+      ],
+      "id": "bidir-heldout-0735"
+    },
+    {
+      "ask": "b",
+      "facts": [
+        "c>d@real:2026",
+        "-d@dream",
+        "d>b@dream",
+        "-a@real:2025",
+        "-c"
+      ],
+      "id": "bidir-heldout-0736"
+    },
+    {
+      "ask": "b",
+      "facts": [
+        "c>d"
+      ],
+      "id": "bidir-heldout-0737"
+    },
+    {
+      "ask": "b",
+      "facts": [
+        "+a@quote",
+        "c>b@dream",
+        "-d@dream",
+        "c>a@real:2025",
+        "+a@dream"
+      ],
+      "id": "bidir-heldout-0738"
+    },
+    {
+      "ask": "a",
+      "facts": [
+        "c>d@dream",
+        "d>c",
+        "c>b@quote",
+        "+d@quote",
+        "-d@dream"
+      ],
+      "id": "bidir-heldout-0739"
+    },
+    {
+      "ask": "d",
+      "facts": [
+        "b>c@quote",
+        "+b@real:2025",
+        "-c",
+        "c>d"
+      ],
+      "id": "bidir-heldout-0740"
+    },
+    {
+      "ask": "c",
+      "facts": [
+        "+c@real:2026",
+        "b>d"
+      ],
+      "id": "bidir-heldout-0741"
+    },
+    {
+      "ask": "b",
+      "facts": [
+        "b>d@quote",
+        "+b@quote",
+        "d>b@real:2025",
+        "d>c"
+      ],
+      "id": "bidir-heldout-0742"
+    },
+    {
+      "ask": "a",
+      "facts": [
+        "+d@real:2026",
+        "a>d@dream",
+        "a>d@quote",
+        "+a@real:2026",
+        "a>d@quote",
+        "d>a",
+        "d>b@dream",
+        "-d",
+        "-c"
+      ],
+      "id": "bidir-heldout-0743"
+    },
+    {
+      "ask": "a",
+      "facts": [
+        "b>c@real:2026",
+        "a>c@quote",
+        "+c@real:2026",
+        "d>a@quote",
+        "+a@dream"
+      ],
+      "id": "bidir-heldout-0744"
+    },
+    {
+      "ask": "d",
+      "facts": [
+        "c>b@real:2025",
+        "b>a@real:2026"
+      ],
+      "id": "bidir-heldout-0745"
+    },
+    {
+      "ask": "b",
+      "facts": [
+        "b>c",
+        "+c"
+      ],
+      "id": "bidir-heldout-0746"
+    },
+    {
+      "ask": "d",
+      "facts": [
+        "b>c@real:2025",
+        "c>b@real:2025",
+        "-a"
+      ],
+      "id": "bidir-heldout-0747"
+    },
+    {
+      "ask": "a",
+      "facts": [
+        "-b@real:2025",
+        "c>b@real:2025",
+        "+a@real:2026",
+        "a>d@real:2025",
+        "d>c@quote",
+        "+a",
+        "b>a@real:2026"
+      ],
+      "id": "bidir-heldout-0748"
+    },
+    {
+      "ask": "b",
+      "facts": [
+        "b>c"
+      ],
+      "id": "bidir-heldout-0749"
+    },
+    {
+      "ask": "d",
+      "facts": [
+        "b>d@quote",
+        "-b@real:2026",
+        "a>d@real:2026"
+      ],
+      "id": "bidir-heldout-0750"
+    },
+    {
+      "ask": "b",
+      "facts": [
+        "-c",
+        "+b@real:2025",
+        "+a@quote"
+      ],
+      "id": "bidir-heldout-0751"
+    },
+    {
+      "ask": "b",
+      "facts": [
+        "c>a@real:2025",
+        "b>a@dream",
+        "c>a@real:2026",
+        "b>d@quote",
+        "b>c@real:2025"
+      ],
+      "id": "bidir-heldout-0752"
+    },
+    {
+      "ask": "a",
+      "facts": [],
+      "id": "bidir-heldout-0753"
+    },
+    {
+      "ask": "c",
+      "facts": [],
+      "id": "bidir-heldout-0754"
+    },
+    {
+      "ask": "a",
+      "facts": [
+        "b>c",
+        "a>d@real:2026",
+        "-c",
+        "d>c@real:2026"
+      ],
+      "id": "bidir-heldout-0755"
+    },
+    {
+      "ask": "a",
+      "facts": [
+        "a>d@dream",
+        "d>c@dream",
+        "-a@dream",
+        "-d@dream",
+        "-d@real:2025"
+      ],
+      "id": "bidir-heldout-0756"
+    },
+    {
+      "ask": "d",
+      "facts": [],
+      "id": "bidir-heldout-0757"
+    },
+    {
+      "ask": "a",
+      "facts": [
+        "+a@real:2025",
+        "-c@quote",
+        "d>b@quote",
+        "c>d",
+        "d>c@quote",
+        "a>b@real:2026",
+        "+d@dream",
+        "b>a@real:2026"
+      ],
+      "id": "bidir-heldout-0758"
+    },
+    {
+      "ask": "a",
+      "facts": [],
+      "id": "bidir-heldout-0759"
+    },
+    {
+      "ask": "d",
+      "facts": [
+        "a>b@quote",
+        "+c@dream",
+        "b>a@real:2025",
+        "c>b@real:2026",
+        "b>d",
+        "c>d@real:2025",
+        "a>c@dream",
+        "-d"
+      ],
+      "id": "bidir-heldout-0760"
+    },
+    {
+      "ask": "a",
+      "facts": [
+        "a>d@quote",
+        "-c@quote",
+        "+b",
+        "+a@quote",
+        "-c@real:2025"
+      ],
+      "id": "bidir-heldout-0761"
+    },
+    {
+      "ask": "a",
+      "facts": [
+        "-c"
+      ],
+      "id": "bidir-heldout-0762"
+    },
+    {
+      "ask": "a",
+      "facts": [
+        "b>c@dream",
+        "d>b@real:2025",
+        "+c",
+        "d>b",
+        "+c"
+      ],
+      "id": "bidir-heldout-0763"
+    },
+    {
+      "ask": "a",
+      "facts": [],
+      "id": "bidir-heldout-0764"
+    },
+    {
+      "ask": "c",
+      "facts": [
+        "+d@quote",
+        "-c@quote"
+      ],
+      "id": "bidir-heldout-0765"
+    },
+    {
+      "ask": "c",
+      "facts": [
+        "d>b@quote",
+        "d>b@real:2026",
+        "a>d",
+        "-d@real:2026",
+        "+a@real:2025",
+        "c>b@quote",
+        "b>c@real:2026"
+      ],
+      "id": "bidir-heldout-0766"
+    },
+    {
+      "ask": "b",
+      "facts": [
+        "a>d@dream",
+        "a>d@dream",
+        "d>c@quote",
+        "d>c",
+        "-a@dream",
+        "+c@quote",
+        "+d@dream",
+        "b>d@dream",
+        "a>d@real:2026"
+      ],
+      "id": "bidir-heldout-0767"
+    },
+    {
+      "ask": "c",
+      "facts": [
+        "-d@quote",
+        "d>b@real:2026",
+        "+c@real:2026",
+        "b>a@dream",
+        "-c",
+        "c>b@real:2026",
+        "d>b@quote"
+      ],
+      "id": "bidir-heldout-0768"
+    },
+    {
+      "ask": "b",
+      "facts": [
+        "+b",
+        "a>c@real:2025",
+        "b>c@quote",
+        "+b@real:2026",
+        "+b@real:2026",
+        "+d@real:2026"
+      ],
+      "id": "bidir-heldout-0769"
+    },
+    {
+      "ask": "a",
+      "facts": [
+        "c>b@dream",
+        "b>c",
+        "d>c",
+        "c>d@dream",
+        "-d@dream",
+        "+a@dream",
+        "-b@real:2026",
+        "-b@quote"
+      ],
+      "id": "bidir-heldout-0770"
+    },
+    {
+      "ask": "d",
+      "facts": [
+        "b>c@quote",
+        "b>c",
+        "b>a",
+        "+b",
+        "c>a@real:2026",
+        "d>b@quote",
+        "+b"
+      ],
+      "id": "bidir-heldout-0771"
+    },
+    {
+      "ask": "c",
+      "facts": [
+        "b>a@dream",
+        "+c@real:2026",
+        "d>b@quote"
+      ],
+      "id": "bidir-heldout-0772"
+    },
+    {
+      "ask": "d",
+      "facts": [],
+      "id": "bidir-heldout-0773"
+    },
+    {
+      "ask": "b",
+      "facts": [
+        "+c@dream",
+        "+a@dream",
+        "+b",
+        "a>c@real:2026",
+        "d>a",
+        "+b@real:2025",
+        "c>d@real:2025",
+        "c>d"
+      ],
+      "id": "bidir-heldout-0774"
+    },
+    {
+      "ask": "c",
+      "facts": [
+        "a>c@real:2026"
+      ],
+      "id": "bidir-heldout-0775"
+    },
+    {
+      "ask": "c",
+      "facts": [
+        "d>b@real:2026",
+        "c>a@real:2026",
+        "b>c",
+        "+b@dream"
+      ],
+      "id": "bidir-heldout-0776"
+    },
+    {
+      "ask": "d",
+      "facts": [
+        "a>b@quote",
+        "+c@quote"
+      ],
+      "id": "bidir-heldout-0777"
+    },
+    {
+      "ask": "a",
+      "facts": [],
+      "id": "bidir-heldout-0778"
+    },
+    {
+      "ask": "d",
+      "facts": [
+        "a>d@quote",
+        "c>d@real:2026",
+        "c>d@real:2025",
+        "c>a@real:2026",
+        "a>d@quote",
+        "+c@real:2025",
+        "+b"
+      ],
+      "id": "bidir-heldout-0779"
+    },
+    {
+      "ask": "c",
+      "facts": [
+        "c>a@real:2026",
+        "c>b",
+        "b>d@dream",
+        "d>b@real:2025",
+        "c>d",
+        "b>d@quote",
+        "b>c@real:2025"
+      ],
+      "id": "bidir-heldout-0780"
+    },
+    {
+      "ask": "c",
+      "facts": [
+        "-d@dream",
+        "d>a@dream",
+        "a>b@dream",
+        "d>c@quote",
+        "d>a@quote",
+        "-c@real:2025",
+        "-a@real:2026",
+        "d>c@real:2025"
+      ],
+      "id": "bidir-heldout-0781"
+    },
+    {
+      "ask": "b",
+      "facts": [
+        "b>a@dream",
+        "-d",
+        "b>a@dream",
+        "a>b@dream"
+      ],
+      "id": "bidir-heldout-0782"
+    },
+    {
+      "ask": "c",
+      "facts": [
+        "b>c@dream",
+        "a>c",
+        "+c@real:2026",
+        "c>b",
+        "a>d@dream",
+        "a>c@real:2025",
+        "-b@quote",
+        "a>c@quote"
+      ],
+      "id": "bidir-heldout-0783"
+    },
+    {
+      "ask": "d",
+      "facts": [
+        "+c@quote",
+        "d>b@dream",
+        "-d@real:2025",
+        "d>b@quote",
+        "b>a@real:2026",
+        "c>d@dream",
+        "-b@quote"
+      ],
+      "id": "bidir-heldout-0784"
+    },
+    {
+      "ask": "a",
+      "facts": [
+        "-b",
+        "+b@real:2026"
+      ],
+      "id": "bidir-heldout-0785"
+    },
+    {
+      "ask": "c",
+      "facts": [],
+      "id": "bidir-heldout-0786"
+    },
+    {
+      "ask": "c",
+      "facts": [
+        "a>d@real:2026",
+        "a>b@real:2025",
+        "+c@quote",
+        "b>d"
+      ],
+      "id": "bidir-heldout-0787"
+    },
+    {
+      "ask": "a",
+      "facts": [
+        "-d"
+      ],
+      "id": "bidir-heldout-0788"
+    },
+    {
+      "ask": "c",
+      "facts": [
+        "-c@real:2025",
+        "+d",
+        "+b@real:2026",
+        "b>a@dream",
+        "c>a@real:2026",
+        "+d@dream",
+        "+c@real:2026"
+      ],
+      "id": "bidir-heldout-0789"
+    },
+    {
+      "ask": "d",
+      "facts": [
+        "d>c@real:2025",
+        "a>c@real:2026",
+        "c>d@real:2026"
+      ],
+      "id": "bidir-heldout-0790"
+    },
+    {
+      "ask": "c",
+      "facts": [
+        "+a@dream",
+        "a>d@quote",
+        "b>d@real:2026",
+        "d>a@quote",
+        "-c@real:2025",
+        "-b@dream",
+        "c>b@dream",
+        "a>b@real:2025"
+      ],
+      "id": "bidir-heldout-0791"
+    },
+    {
+      "ask": "b",
+      "facts": [],
+      "id": "bidir-heldout-0792"
+    },
+    {
+      "ask": "c",
+      "facts": [],
+      "id": "bidir-heldout-0793"
+    },
+    {
+      "ask": "c",
+      "facts": [
+        "d>b@dream",
+        "-b@dream",
+        "-c@quote",
+        "a>c@dream",
+        "b>a@quote",
+        "c>b@quote",
+        "+b@dream",
+        "c>b@quote"
+      ],
+      "id": "bidir-heldout-0794"
+    },
+    {
+      "ask": "c",
+      "facts": [
+        "-d",
+        "a>b",
+        "c>a@dream",
+        "-a@real:2025",
+        "b>a@real:2025"
+      ],
+      "id": "bidir-heldout-0795"
+    },
+    {
+      "ask": "a",
+      "facts": [
+        "+b@dream",
+        "c>a@quote",
+        "+d",
+        "b>a@dream"
+      ],
+      "id": "bidir-heldout-0796"
+    },
+    {
+      "ask": "a",
+      "facts": [
+        "a>d",
+        "+d@real:2026",
+        "d>a",
+        "d>b@real:2025"
+      ],
+      "id": "bidir-heldout-0797"
+    },
+    {
+      "ask": "a",
+      "facts": [
+        "d>b@dream",
+        "-c",
+        "+c@quote",
+        "+c@quote",
+        "c>b@quote",
+        "c>d@real:2025",
+        "a>c@real:2025",
+        "b>c@quote"
+      ],
+      "id": "bidir-heldout-0798"
+    },
+    {
+      "ask": "a",
+      "facts": [
+        "+a@quote",
+        "a>d",
+        "-d@real:2025",
+        "d>a",
+        "c>a@real:2025",
+        "+d@real:2025",
+        "a>d@real:2026",
+        "b>c",
+        "c>a@real:2025"
+      ],
+      "id": "bidir-heldout-0799"
+    },
+    {
+      "ask": "b",
+      "facts": [
+        "-c@real:2026",
+        "d>a@dream"
+      ],
+      "id": "bidir-heldout-0800"
+    },
+    {
+      "ask": "b",
+      "facts": [
+        "a>b"
+      ],
+      "id": "bidir-heldout-0801"
+    },
+    {
+      "ask": "d",
+      "facts": [
+        "+a@real:2025",
+        "-b@dream"
+      ],
+      "id": "bidir-heldout-0802"
+    },
+    {
+      "ask": "a",
+      "facts": [],
+      "id": "bidir-heldout-0803"
+    },
+    {
+      "ask": "c",
+      "facts": [],
+      "id": "bidir-heldout-0804"
+    },
+    {
+      "ask": "a",
+      "facts": [
+        "d>c@dream"
+      ],
+      "id": "bidir-heldout-0805"
+    },
+    {
+      "ask": "a",
+      "facts": [],
+      "id": "bidir-heldout-0806"
+    },
+    {
+      "ask": "a",
+      "facts": [],
+      "id": "bidir-heldout-0807"
+    },
+    {
+      "ask": "c",
+      "facts": [
+        "c>d@dream"
+      ],
+      "id": "bidir-heldout-0808"
+    },
+    {
+      "ask": "d",
+      "facts": [
+        "a>d",
+        "d>c@real:2026",
+        "a>b@real:2025",
+        "+b@real:2025",
+        "a>b@real:2025",
+        "+c",
+        "a>c@quote",
+        "+b",
+        "a>d@real:2026"
+      ],
+      "id": "bidir-heldout-0809"
+    },
+    {
+      "ask": "b",
+      "facts": [
+        "c>a@real:2025",
+        "-d",
+        "+b@real:2025",
+        "d>b@real:2025",
+        "+b@dream",
+        "-c@dream"
+      ],
+      "id": "bidir-heldout-0810"
+    },
+    {
+      "ask": "a",
+      "facts": [
+        "d>b@real:2026",
+        "-a@real:2025",
+        "a>c@real:2025",
+        "+b",
+        "b>d@quote",
+        "b>d@quote",
+        "c>a@real:2025"
+      ],
+      "id": "bidir-heldout-0811"
+    },
+    {
+      "ask": "d",
+      "facts": [],
+      "id": "bidir-heldout-0812"
+    },
+    {
+      "ask": "b",
+      "facts": [
+        "+b@quote",
+        "d>a@quote"
+      ],
+      "id": "bidir-heldout-0813"
+    },
+    {
+      "ask": "a",
+      "facts": [
+        "d>c@dream",
+        "b>c@real:2025",
+        "+d@real:2026",
+        "d>a",
+        "-c",
+        "a>b@real:2025"
+      ],
+      "id": "bidir-heldout-0814"
+    },
+    {
+      "ask": "c",
+      "facts": [
+        "b>c@quote",
+        "c>a",
+        "b>a@real:2026",
+        "a>c",
+        "a>d@dream"
+      ],
+      "id": "bidir-heldout-0815"
+    },
+    {
+      "ask": "a",
+      "facts": [
+        "+b@dream",
+        "-d@real:2026"
+      ],
+      "id": "bidir-heldout-0816"
+    },
+    {
+      "ask": "a",
+      "facts": [
+        "+c",
+        "a>d@real:2025"
+      ],
+      "id": "bidir-heldout-0817"
+    },
+    {
+      "ask": "a",
+      "facts": [
+        "+c@real:2026",
+        "c>b@real:2025",
+        "a>d",
+        "b>d"
+      ],
+      "id": "bidir-heldout-0818"
+    },
+    {
+      "ask": "a",
+      "facts": [
+        "d>c@real:2025",
+        "+a@real:2025"
+      ],
+      "id": "bidir-heldout-0819"
+    },
+    {
+      "ask": "a",
+      "facts": [
+        "-b@quote"
+      ],
+      "id": "bidir-heldout-0820"
+    },
+    {
+      "ask": "c",
+      "facts": [
+        "+b@dream",
+        "b>a@real:2025",
+        "a>d@real:2025",
+        "c>d@dream",
+        "d>c@quote",
+        "-a@dream",
+        "+d@quote",
+        "-c@real:2025",
+        "b>c@quote"
+      ],
+      "id": "bidir-heldout-0821"
+    },
+    {
+      "ask": "a",
+      "facts": [
+        "a>b@quote",
+        "-a@real:2026",
+        "a>d@dream",
+        "b>d@real:2026",
+        "-d@quote",
+        "-b",
+        "c>b"
+      ],
+      "id": "bidir-heldout-0822"
+    },
+    {
+      "ask": "d",
+      "facts": [
+        "+d@quote",
+        "+d@quote",
+        "a>d@quote",
+        "a>d@dream",
+        "d>a@quote",
+        "-c@real:2025",
+        "b>a@real:2026"
+      ],
+      "id": "bidir-heldout-0823"
+    },
+    {
+      "ask": "c",
+      "facts": [
+        "-b@dream",
+        "c>b@dream",
+        "b>d@dream",
+        "+b@real:2026",
+        "d>b@real:2025",
+        "-c@real:2025"
+      ],
+      "id": "bidir-heldout-0824"
+    },
+    {
+      "ask": "a",
+      "facts": [
+        "a>d@real:2025",
+        "-c@dream",
+        "b>d@real:2026",
+        "c>d@real:2026"
+      ],
+      "id": "bidir-heldout-0825"
+    },
+    {
+      "ask": "b",
+      "facts": [
+        "d>b@real:2025",
+        "c>b@real:2026",
+        "a>d@quote",
+        "+b@real:2026",
+        "b>c@quote",
+        "+b@dream"
+      ],
+      "id": "bidir-heldout-0826"
+    },
+    {
+      "ask": "d",
+      "facts": [
+        "a>d@real:2026",
+        "b>c@quote",
+        "a>b@real:2026",
+        "c>a@dream",
+        "-a@quote",
+        "c>a",
+        "c>a@dream",
+        "a>b@dream",
+        "c>b@real:2025"
+      ],
+      "id": "bidir-heldout-0827"
+    },
+    {
+      "ask": "a",
+      "facts": [
+        "c>a@real:2025",
+        "c>a@quote",
+        "c>d@dream",
+        "d>b@real:2025",
+        "b>c@real:2026",
+        "c>d@quote",
+        "b>a@real:2025",
+        "-c@real:2025"
+      ],
+      "id": "bidir-heldout-0828"
+    },
+    {
+      "ask": "d",
+      "facts": [
+        "a>d@real:2026",
+        "b>a@quote",
+        "+d",
+        "a>b@quote",
+        "+a@quote",
+        "a>d@real:2026",
+        "-c@quote"
+      ],
+      "id": "bidir-heldout-0829"
+    },
+    {
+      "ask": "c",
+      "facts": [
+        "+b@dream",
+        "c>b@real:2025",
+        "-b@real:2026"
+      ],
+      "id": "bidir-heldout-0830"
+    },
+    {
+      "ask": "a",
+      "facts": [
+        "-a@quote"
+      ],
+      "id": "bidir-heldout-0831"
+    },
+    {
+      "ask": "b",
+      "facts": [
+        "c>a",
+        "+c",
+        "d>b@quote",
+        "d>b@quote",
+        "c>d",
+        "a>c@dream",
+        "-d",
+        "d>a@real:2026"
+      ],
+      "id": "bidir-heldout-0832"
+    },
+    {
+      "ask": "c",
+      "facts": [],
+      "id": "bidir-heldout-0833"
+    },
+    {
+      "ask": "d",
+      "facts": [
+        "+d@quote",
+        "-b@quote",
+        "c>b@real:2025",
+        "-c@real:2025",
+        "a>c@real:2026",
+        "-a@real:2025",
+        "d>c@dream"
+      ],
+      "id": "bidir-heldout-0834"
+    },
+    {
+      "ask": "b",
+      "facts": [
+        "b>a@real:2026",
+        "a>c@real:2026",
+        "+a",
+        "b>a@quote",
+        "b>d@quote",
+        "d>b@real:2026",
+        "-b@dream"
+      ],
+      "id": "bidir-heldout-0835"
+    },
+    {
+      "ask": "a",
+      "facts": [
+        "+c",
+        "-a@quote",
+        "b>d@quote",
+        "d>c@quote",
+        "b>a@quote"
+      ],
+      "id": "bidir-heldout-0836"
+    },
+    {
+      "ask": "d",
+      "facts": [],
+      "id": "bidir-heldout-0837"
+    },
+    {
+      "ask": "c",
+      "facts": [
+        "b>c@dream",
+        "+a@real:2025",
+        "d>a@quote",
+        "d>a@quote"
+      ],
+      "id": "bidir-heldout-0838"
+    },
+    {
+      "ask": "a",
+      "facts": [
+        "-b@real:2025",
+        "-a@real:2026",
+        "+a@dream",
+        "a>d@real:2025",
+        "d>b@dream"
+      ],
+      "id": "bidir-heldout-0839"
+    },
+    {
+      "ask": "d",
+      "facts": [
+        "b>d@dream",
+        "+b@quote",
+        "+a@real:2025",
+        "d>b@real:2025",
+        "+b",
+        "b>d@quote",
+        "c>b@quote",
+        "c>b@real:2025"
+      ],
+      "id": "bidir-heldout-0840"
+    },
+    {
+      "ask": "b",
+      "facts": [
+        "d>a@quote",
+        "c>d@real:2025",
+        "d>b@real:2026"
+      ],
+      "id": "bidir-heldout-0841"
+    },
+    {
+      "ask": "b",
+      "facts": [
+        "+d@dream",
+        "+a@dream",
+        "+c@real:2025",
+        "b>a@real:2025",
+        "-b@quote",
+        "a>b@real:2025",
+        "+d@quote"
+      ],
+      "id": "bidir-heldout-0842"
+    },
+    {
+      "ask": "d",
+      "facts": [
+        "a>c@quote",
+        "b>d@real:2025",
+        "d>c@quote",
+        "c>b"
+      ],
+      "id": "bidir-heldout-0843"
+    },
+    {
+      "ask": "a",
+      "facts": [
+        "+c",
+        "a>b@real:2026",
+        "+b@real:2025",
+        "a>b"
+      ],
+      "id": "bidir-heldout-0844"
+    },
+    {
+      "ask": "c",
+      "facts": [],
+      "id": "bidir-heldout-0845"
+    },
+    {
+      "ask": "a",
+      "facts": [
+        "+b@real:2025",
+        "b>a@dream",
+        "b>d@real:2025",
+        "-b@real:2025",
+        "+d@dream",
+        "-d@dream",
+        "-d",
+        "b>c",
+        "c>d@real:2026"
+      ],
+      "id": "bidir-heldout-0846"
+    },
+    {
+      "ask": "d",
+      "facts": [
+        "a>c@quote"
+      ],
+      "id": "bidir-heldout-0847"
+    },
+    {
+      "ask": "a",
+      "facts": [
+        "a>d",
+        "d>a@real:2026"
+      ],
+      "id": "bidir-heldout-0848"
+    },
+    {
+      "ask": "a",
+      "facts": [],
+      "id": "bidir-heldout-0849"
+    },
+    {
+      "ask": "b",
+      "facts": [
+        "d>b@real:2025",
+        "-d@dream",
+        "+d@dream",
+        "+c@dream",
+        "-d@real:2026"
+      ],
+      "id": "bidir-heldout-0850"
+    },
+    {
+      "ask": "c",
+      "facts": [
+        "-a@quote",
+        "a>c@real:2025"
+      ],
+      "id": "bidir-heldout-0851"
+    },
+    {
+      "ask": "d",
+      "facts": [
+        "a>c",
+        "c>d@dream"
+      ],
+      "id": "bidir-heldout-0852"
+    },
+    {
+      "ask": "a",
+      "facts": [
+        "-a",
+        "a>b",
+        "a>d"
+      ],
+      "id": "bidir-heldout-0853"
+    },
+    {
+      "ask": "b",
+      "facts": [
+        "+d@dream",
+        "b>d@real:2025"
+      ],
+      "id": "bidir-heldout-0854"
+    },
+    {
+      "ask": "b",
+      "facts": [
+        "b>d@real:2025",
+        "d>a@dream",
+        "c>a@real:2026",
+        "d>b@quote"
+      ],
+      "id": "bidir-heldout-0855"
+    },
+    {
+      "ask": "b",
+      "facts": [
+        "+b@dream",
+        "b>c@dream",
+        "+d@dream",
+        "a>b@real:2025"
+      ],
+      "id": "bidir-heldout-0856"
+    },
+    {
+      "ask": "c",
+      "facts": [
+        "+c@real:2026",
+        "c>b@real:2025",
+        "c>a@real:2025",
+        "c>b@real:2026",
+        "c>b@quote",
+        "+b@quote"
+      ],
+      "id": "bidir-heldout-0857"
+    },
+    {
+      "ask": "b",
+      "facts": [
+        "a>c@quote",
+        "d>b",
+        "+c@dream",
+        "b>a@quote",
+        "-a"
+      ],
+      "id": "bidir-heldout-0858"
+    },
+    {
+      "ask": "b",
+      "facts": [],
+      "id": "bidir-heldout-0859"
+    },
+    {
+      "ask": "a",
+      "facts": [
+        "-c@quote",
+        "c>a@real:2026",
+        "+c@real:2025",
+        "+b@real:2025",
+        "+c@real:2026"
+      ],
+      "id": "bidir-heldout-0860"
+    },
+    {
+      "ask": "d",
+      "facts": [],
+      "id": "bidir-heldout-0861"
+    },
+    {
+      "ask": "b",
+      "facts": [
+        "+d@real:2025",
+        "-d@real:2025",
+        "a>b@real:2025",
+        "+d@dream",
+        "+c@dream",
+        "b>a@dream"
+      ],
+      "id": "bidir-heldout-0862"
+    },
+    {
+      "ask": "c",
+      "facts": [
+        "c>d@dream"
+      ],
+      "id": "bidir-heldout-0863"
+    },
+    {
+      "ask": "b",
+      "facts": [],
+      "id": "bidir-heldout-0864"
+    },
+    {
+      "ask": "a",
+      "facts": [
+        "+a@quote",
+        "c>a@real:2025",
+        "+b@quote",
+        "b>a@quote"
+      ],
+      "id": "bidir-heldout-0865"
+    },
+    {
+      "ask": "d",
+      "facts": [
+        "-c@dream",
+        "c>b@quote",
+        "b>d@dream",
+        "-d@real:2026",
+        "d>b@real:2025"
+      ],
+      "id": "bidir-heldout-0866"
+    },
+    {
+      "ask": "c",
+      "facts": [
+        "b>d@quote",
+        "c>a@real:2026",
+        "d>b@real:2025",
+        "d>a@real:2026",
+        "+c@real:2026",
+        "a>c",
+        "-c@real:2025",
+        "c>a@dream"
+      ],
+      "id": "bidir-heldout-0867"
+    },
+    {
+      "ask": "c",
+      "facts": [
+        "a>c@quote",
+        "c>d@dream"
+      ],
+      "id": "bidir-heldout-0868"
+    },
+    {
+      "ask": "b",
+      "facts": [
+        "d>c@real:2025",
+        "a>b@real:2026",
+        "c>a@dream",
+        "c>d@dream",
+        "-a@real:2025",
+        "-b",
+        "d>b@quote",
+        "-a@quote"
+      ],
+      "id": "bidir-heldout-0869"
+    },
+    {
+      "ask": "c",
+      "facts": [
+        "a>c@dream",
+        "d>c@quote"
+      ],
+      "id": "bidir-heldout-0870"
+    },
+    {
+      "ask": "a",
+      "facts": [
+        "+a@quote",
+        "a>b",
+        "+b@real:2026",
+        "-b@quote",
+        "-d@dream",
+        "d>a"
+      ],
+      "id": "bidir-heldout-0871"
+    },
+    {
+      "ask": "c",
+      "facts": [
+        "c>a@quote",
+        "a>d@quote",
+        "c>d@real:2025",
+        "+d@real:2025",
+        "c>b"
+      ],
+      "id": "bidir-heldout-0872"
+    },
+    {
+      "ask": "d",
+      "facts": [
+        "+b@real:2025"
+      ],
+      "id": "bidir-heldout-0873"
+    },
+    {
+      "ask": "d",
+      "facts": [
+        "+a@dream",
+        "a>b@quote"
+      ],
+      "id": "bidir-heldout-0874"
+    },
+    {
+      "ask": "c",
+      "facts": [
+        "d>c",
+        "+d@dream",
+        "d>c",
+        "d>c@quote",
+        "-a@real:2026",
+        "+a@real:2025"
+      ],
+      "id": "bidir-heldout-0875"
+    },
+    {
+      "ask": "c",
+      "facts": [
+        "b>c@quote",
+        "a>b@real:2025"
+      ],
+      "id": "bidir-heldout-0876"
+    },
+    {
+      "ask": "a",
+      "facts": [
+        "b>c@dream",
+        "b>c@quote",
+        "c>a@dream",
+        "d>c@quote",
+        "c>a@real:2025",
+        "-a@quote",
+        "-c@quote"
+      ],
+      "id": "bidir-heldout-0877"
+    },
+    {
+      "ask": "a",
+      "facts": [
+        "+c@quote",
+        "b>a@real:2025",
+        "-d@real:2025"
+      ],
+      "id": "bidir-heldout-0878"
+    },
+    {
+      "ask": "a",
+      "facts": [
+        "+b@real:2026",
+        "b>c@dream",
+        "b>c@real:2025",
+        "c>d@real:2025"
+      ],
+      "id": "bidir-heldout-0879"
+    },
+    {
+      "ask": "b",
+      "facts": [
+        "b>d",
+        "d>c@quote",
+        "-c@real:2025",
+        "-b",
+        "c>b@real:2025",
+        "-d@real:2025",
+        "d>b@dream",
+        "b>c@real:2026",
+        "+b@quote"
+      ],
+      "id": "bidir-heldout-0880"
+    },
+    {
+      "ask": "c",
+      "facts": [
+        "+b@real:2026",
+        "b>a@quote"
+      ],
+      "id": "bidir-heldout-0881"
+    },
+    {
+      "ask": "b",
+      "facts": [
+        "c>b@quote",
+        "-c",
+        "d>b@real:2025"
+      ],
+      "id": "bidir-heldout-0882"
+    },
+    {
+      "ask": "d",
+      "facts": [
+        "c>d",
+        "+d",
+        "d>a",
+        "+b@real:2025",
+        "d>c@dream"
+      ],
+      "id": "bidir-heldout-0883"
+    },
+    {
+      "ask": "a",
+      "facts": [],
+      "id": "bidir-heldout-0884"
+    },
+    {
+      "ask": "d",
+      "facts": [
+        "-b@real:2026",
+        "a>d",
+        "a>b@quote",
+        "+b@dream",
+        "b>c@real:2026",
+        "+a@real:2025",
+        "-a@real:2026",
+        "+d@quote"
+      ],
+      "id": "bidir-heldout-0885"
+    },
+    {
+      "ask": "d",
+      "facts": [
+        "d>c@real:2025",
+        "b>a@real:2026",
+        "a>c",
+        "b>c@dream",
+        "+c@real:2026",
+        "+c@real:2026"
+      ],
+      "id": "bidir-heldout-0886"
+    },
+    {
+      "ask": "d",
+      "facts": [
+        "d>c@quote",
+        "c>d@dream",
+        "b>c@real:2026",
+        "c>d",
+        "a>c@dream",
+        "-b@real:2025",
+        "b>d@quote",
+        "d>a"
+      ],
+      "id": "bidir-heldout-0887"
+    },
+    {
+      "ask": "c",
+      "facts": [
+        "-c@real:2025",
+        "d>b@dream",
+        "b>c@quote"
+      ],
+      "id": "bidir-heldout-0888"
+    },
+    {
+      "ask": "d",
+      "facts": [
+        "d>a@quote",
+        "a>c@dream"
+      ],
+      "id": "bidir-heldout-0889"
+    },
+    {
+      "ask": "a",
+      "facts": [
+        "a>d@real:2025",
+        "+b@real:2026",
+        "a>b",
+        "-d@real:2025"
+      ],
+      "id": "bidir-heldout-0890"
+    },
+    {
+      "ask": "b",
+      "facts": [
+        "a>d@dream",
+        "c>b"
+      ],
+      "id": "bidir-heldout-0891"
+    },
+    {
+      "ask": "d",
+      "facts": [
+        "+c@real:2026",
+        "c>d@real:2026",
+        "c>a@quote",
+        "b>d@dream",
+        "c>a@real:2026",
+        "b>a@quote",
+        "a>c@dream"
+      ],
+      "id": "bidir-heldout-0892"
+    },
+    {
+      "ask": "b",
+      "facts": [
+        "d>c@real:2025",
+        "d>c@dream",
+        "-c@real:2025",
+        "c>d",
+        "d>a"
+      ],
+      "id": "bidir-heldout-0893"
+    },
+    {
+      "ask": "d",
+      "facts": [
+        "b>d@quote",
+        "b>d@dream",
+        "b>c@dream",
+        "b>d@real:2026",
+        "a>d@quote"
+      ],
+      "id": "bidir-heldout-0894"
+    },
+    {
+      "ask": "d",
+      "facts": [
+        "+d@real:2026",
+        "-a",
+        "c>b@real:2026",
+        "b>d@dream",
+        "c>a",
+        "b>d@dream",
+        "-a@real:2026",
+        "a>c@real:2026",
+        "d>c"
+      ],
+      "id": "bidir-heldout-0895"
+    },
+    {
+      "ask": "a",
+      "facts": [
+        "d>b@quote",
+        "-a@quote",
+        "+a@quote",
+        "+b@dream",
+        "-d@real:2026"
+      ],
+      "id": "bidir-heldout-0896"
+    },
+    {
+      "ask": "c",
+      "facts": [
+        "b>c@quote",
+        "+a@real:2025",
+        "b>a@dream",
+        "+b@real:2026",
+        "+c@dream",
+        "+d@dream",
+        "c>a@dream",
+        "c>d@quote",
+        "a>d@real:2026"
+      ],
+      "id": "bidir-heldout-0897"
+    },
+    {
+      "ask": "c",
+      "facts": [
+        "a>b@real:2025"
+      ],
+      "id": "bidir-heldout-0898"
+    },
+    {
+      "ask": "d",
+      "facts": [
+        "b>c@quote",
+        "a>c@dream",
+        "d>a@dream",
+        "c>b@dream",
+        "c>b@real:2025",
+        "+a",
+        "d>c@dream",
+        "c>a"
+      ],
+      "id": "bidir-heldout-0899"
+    },
+    {
+      "ask": "b",
+      "facts": [
+        "a>c@real:2026",
+        "c>b@quote",
+        "c>d@dream"
+      ],
+      "id": "bidir-heldout-0900"
+    },
+    {
+      "ask": "b",
+      "facts": [],
+      "id": "bidir-heldout-0901"
+    },
+    {
+      "ask": "a",
+      "facts": [
+        "d>c@real:2025",
+        "-c@dream",
+        "+a@real:2026",
+        "-a@quote",
+        "a>d"
+      ],
+      "id": "bidir-heldout-0902"
+    },
+    {
+      "ask": "b",
+      "facts": [
+        "b>c@dream",
+        "c>a@real:2026",
+        "a>b@real:2026"
+      ],
+      "id": "bidir-heldout-0903"
+    },
+    {
+      "ask": "d",
+      "facts": [
+        "d>a",
+        "b>c@dream"
+      ],
+      "id": "bidir-heldout-0904"
+    },
+    {
+      "ask": "a",
+      "facts": [],
+      "id": "bidir-heldout-0905"
+    },
+    {
+      "ask": "a",
+      "facts": [
+        "a>b@dream"
+      ],
+      "id": "bidir-heldout-0906"
+    },
+    {
+      "ask": "d",
+      "facts": [
+        "+b@real:2025",
+        "-d@dream",
+        "-d@dream",
+        "+c@dream"
+      ],
+      "id": "bidir-heldout-0907"
+    },
+    {
+      "ask": "c",
+      "facts": [
+        "-c@quote"
+      ],
+      "id": "bidir-heldout-0908"
+    },
+    {
+      "ask": "c",
+      "facts": [],
+      "id": "bidir-heldout-0909"
+    },
+    {
+      "ask": "a",
+      "facts": [
+        "b>c@real:2025",
+        "a>c@real:2026",
+        "d>a@dream",
+        "a>d@dream",
+        "+b@dream"
+      ],
+      "id": "bidir-heldout-0910"
+    },
+    {
+      "ask": "c",
+      "facts": [
+        "-c@real:2025",
+        "-a@dream"
+      ],
+      "id": "bidir-heldout-0911"
+    },
+    {
+      "ask": "c",
+      "facts": [
+        "a>c@real:2026",
+        "a>d@dream",
+        "+b@real:2025"
+      ],
+      "id": "bidir-heldout-0912"
+    },
+    {
+      "ask": "a",
+      "facts": [
+        "b>d@real:2025",
+        "d>a@real:2026",
+        "a>c@real:2026",
+        "d>b@quote",
+        "a>b@quote",
+        "c>d@dream",
+        "+d@real:2025"
+      ],
+      "id": "bidir-heldout-0913"
+    },
+    {
+      "ask": "b",
+      "facts": [
+        "+d@quote"
+      ],
+      "id": "bidir-heldout-0914"
+    },
+    {
+      "ask": "a",
+      "facts": [
+        "+c@dream",
+        "b>a@dream",
+        "d>b",
+        "+c@real:2026",
+        "-c@real:2026",
+        "-b@quote",
+        "c>d@real:2026",
+        "+a@real:2025",
+        "+d@dream"
+      ],
+      "id": "bidir-heldout-0915"
+    },
+    {
+      "ask": "c",
+      "facts": [
+        "+d@dream",
+        "d>b@dream",
+        "c>d@dream",
+        "b>a@quote"
+      ],
+      "id": "bidir-heldout-0916"
+    },
+    {
+      "ask": "b",
+      "facts": [
+        "b>d",
+        "a>b@quote",
+        "-a@dream"
+      ],
+      "id": "bidir-heldout-0917"
+    },
+    {
+      "ask": "c",
+      "facts": [
+        "+a@real:2025",
+        "b>d@dream",
+        "a>d@dream",
+        "+b@real:2025",
+        "c>b@real:2026",
+        "b>d",
+        "d>b@real:2026"
+      ],
+      "id": "bidir-heldout-0918"
+    },
+    {
+      "ask": "c",
+      "facts": [
+        "d>a@real:2026"
+      ],
+      "id": "bidir-heldout-0919"
+    },
+    {
+      "ask": "b",
+      "facts": [],
+      "id": "bidir-heldout-0920"
+    },
+    {
+      "ask": "a",
+      "facts": [
+        "b>c@real:2026",
+        "a>d@real:2025",
+        "d>a@dream",
+        "+d@real:2026"
+      ],
+      "id": "bidir-heldout-0921"
+    },
+    {
+      "ask": "a",
+      "facts": [
+        "d>a@real:2026",
+        "+a@real:2025",
+        "d>a",
+        "c>d@quote",
+        "+d@real:2026",
+        "b>a@real:2025",
+        "-b@dream"
+      ],
+      "id": "bidir-heldout-0922"
+    },
+    {
+      "ask": "d",
+      "facts": [
+        "+a@dream"
+      ],
+      "id": "bidir-heldout-0923"
+    },
+    {
+      "ask": "a",
+      "facts": [
+        "b>c@real:2025",
+        "c>a@real:2025",
+        "a>b@real:2025",
+        "b>c@real:2026",
+        "c>b@real:2026"
+      ],
+      "id": "bidir-heldout-0924"
+    },
+    {
+      "ask": "a",
+      "facts": [],
+      "id": "bidir-heldout-0925"
+    },
+    {
+      "ask": "a",
+      "facts": [
+        "a>b",
+        "c>d@real:2025",
+        "d>c@real:2026",
+        "d>b@quote",
+        "d>c@real:2026",
+        "+b@dream"
+      ],
+      "id": "bidir-heldout-0926"
+    },
+    {
+      "ask": "c",
+      "facts": [
+        "-a",
+        "c>b"
+      ],
+      "id": "bidir-heldout-0927"
+    },
+    {
+      "ask": "c",
+      "facts": [
+        "a>c@quote",
+        "c>d@dream",
+        "-d",
+        "a>d",
+        "d>b@real:2026",
+        "+c@real:2025"
+      ],
+      "id": "bidir-heldout-0928"
+    },
+    {
+      "ask": "c",
+      "facts": [
+        "d>c@real:2026",
+        "c>d",
+        "+c@quote"
+      ],
+      "id": "bidir-heldout-0929"
+    },
+    {
+      "ask": "d",
+      "facts": [
+        "c>b@quote",
+        "-a@real:2025",
+        "d>a",
+        "a>d@quote",
+        "b>d@dream",
+        "+d@real:2026",
+        "d>b@real:2025",
+        "b>d@real:2025",
+        "d>c@real:2026"
+      ],
+      "id": "bidir-heldout-0930"
+    },
+    {
+      "ask": "c",
+      "facts": [
+        "d>c@dream",
+        "-b@quote",
+        "a>c@real:2026",
+        "-d@real:2026",
+        "+a@quote"
+      ],
+      "id": "bidir-heldout-0931"
+    },
+    {
+      "ask": "d",
+      "facts": [
+        "+c",
+        "-a@dream",
+        "c>a@quote",
+        "+c@quote",
+        "+c"
+      ],
+      "id": "bidir-heldout-0932"
+    },
+    {
+      "ask": "b",
+      "facts": [
+        "-d@quote",
+        "d>b@dream",
+        "-c@dream",
+        "a>d@dream",
+        "+d@quote"
+      ],
+      "id": "bidir-heldout-0933"
+    },
+    {
+      "ask": "d",
+      "facts": [
+        "b>c@real:2026",
+        "-b@real:2025",
+        "b>a",
+        "+d",
+        "+a@real:2026",
+        "a>c@real:2025",
+        "-c@quote",
+        "-b",
+        "-d@real:2026"
+      ],
+      "id": "bidir-heldout-0934"
+    },
+    {
+      "ask": "b",
+      "facts": [
+        "a>d"
+      ],
+      "id": "bidir-heldout-0935"
+    },
+    {
+      "ask": "a",
+      "facts": [
+        "-c@quote",
+        "b>a",
+        "+d@real:2026",
+        "a>c@real:2026",
+        "+a@real:2026",
+        "a>d@real:2026",
+        "+d@dream",
+        "c>a"
+      ],
+      "id": "bidir-heldout-0936"
+    },
+    {
+      "ask": "c",
+      "facts": [
+        "+a@real:2025",
+        "a>d",
+        "d>c@dream",
+        "b>d",
+        "c>a@quote",
+        "-a@dream",
+        "d>a@dream"
+      ],
+      "id": "bidir-heldout-0937"
+    },
+    {
+      "ask": "b",
+      "facts": [
+        "-a@quote",
+        "+b@quote",
+        "c>b",
+        "b>d@real:2026",
+        "c>d@real:2025",
+        "c>a"
+      ],
+      "id": "bidir-heldout-0938"
+    },
+    {
+      "ask": "c",
+      "facts": [],
+      "id": "bidir-heldout-0939"
+    },
+    {
+      "ask": "b",
+      "facts": [
+        "+d@real:2025",
+        "b>c@real:2025",
+        "a>b@quote",
+        "b>c@real:2026",
+        "b>d@quote",
+        "b>a",
+        "a>d@real:2025",
+        "-c@real:2025"
+      ],
+      "id": "bidir-heldout-0940"
+    },
+    {
+      "ask": "d",
+      "facts": [
+        "-d"
+      ],
+      "id": "bidir-heldout-0941"
+    },
+    {
+      "ask": "a",
+      "facts": [
+        "c>b@real:2025"
+      ],
+      "id": "bidir-heldout-0942"
+    },
+    {
+      "ask": "d",
+      "facts": [
+        "a>b",
+        "c>b@real:2026"
+      ],
+      "id": "bidir-heldout-0943"
+    },
+    {
+      "ask": "b",
+      "facts": [
+        "a>d@dream",
+        "d>b"
+      ],
+      "id": "bidir-heldout-0944"
+    },
+    {
+      "ask": "b",
+      "facts": [
+        "-b@quote",
+        "-c@quote",
+        "+b@dream"
+      ],
+      "id": "bidir-heldout-0945"
+    },
+    {
+      "ask": "b",
+      "facts": [
+        "c>d"
+      ],
+      "id": "bidir-heldout-0946"
+    },
+    {
+      "ask": "c",
+      "facts": [
+        "+d@dream",
+        "-a@real:2026",
+        "d>c@dream",
+        "a>b@dream",
+        "+b@real:2026",
+        "b>c@dream",
+        "-c@dream",
+        "d>c"
+      ],
+      "id": "bidir-heldout-0947"
+    },
+    {
+      "ask": "c",
+      "facts": [
+        "-c@real:2025",
+        "d>b@real:2025",
+        "c>d@dream",
+        "c>b"
+      ],
+      "id": "bidir-heldout-0948"
+    },
+    {
+      "ask": "b",
+      "facts": [
+        "b>d@dream",
+        "-a",
+        "a>c@quote",
+        "+d",
+        "b>d",
+        "-a@real:2025",
+        "-c@dream",
+        "-d@real:2026"
+      ],
+      "id": "bidir-heldout-0949"
+    },
+    {
+      "ask": "b",
+      "facts": [],
+      "id": "bidir-heldout-0950"
+    },
+    {
+      "ask": "b",
+      "facts": [
+        "a>b@dream",
+        "+c@real:2026",
+        "-a@dream",
+        "b>c",
+        "b>a@quote"
+      ],
+      "id": "bidir-heldout-0951"
+    },
+    {
+      "ask": "a",
+      "facts": [
+        "-d@real:2026"
+      ],
+      "id": "bidir-heldout-0952"
+    },
+    {
+      "ask": "a",
+      "facts": [
+        "d>a@real:2026",
+        "-d@real:2026",
+        "d>a@real:2026",
+        "d>c@real:2025",
+        "a>c@quote"
+      ],
+      "id": "bidir-heldout-0953"
+    },
+    {
+      "ask": "a",
+      "facts": [],
+      "id": "bidir-heldout-0954"
+    },
+    {
+      "ask": "b",
+      "facts": [
+        "d>c@real:2025",
+        "a>c@dream",
+        "a>d@real:2025",
+        "c>d@real:2026",
+        "c>d@real:2026",
+        "d>a@dream",
+        "d>a",
+        "a>d"
+      ],
+      "id": "bidir-heldout-0955"
+    },
+    {
+      "ask": "b",
+      "facts": [
+        "-d",
+        "a>d@dream",
+        "-d",
+        "c>d@real:2026"
+      ],
+      "id": "bidir-heldout-0956"
+    },
+    {
+      "ask": "d",
+      "facts": [
+        "c>d@real:2026",
+        "d>b",
+        "b>d@real:2025",
+        "+c",
+        "-c",
+        "a>c@dream",
+        "a>d@quote",
+        "d>b@real:2025"
+      ],
+      "id": "bidir-heldout-0957"
+    },
+    {
+      "ask": "d",
+      "facts": [
+        "a>b@real:2026"
+      ],
+      "id": "bidir-heldout-0958"
+    },
+    {
+      "ask": "d",
+      "facts": [
+        "-a@quote",
+        "b>d@real:2025",
+        "d>a@dream"
+      ],
+      "id": "bidir-heldout-0959"
+    },
+    {
+      "ask": "d",
+      "facts": [
+        "d>c"
+      ],
+      "id": "bidir-heldout-0960"
+    },
+    {
+      "ask": "c",
+      "facts": [
+        "a>b@dream",
+        "b>c",
+        "+c@dream",
+        "d>c",
+        "-b"
+      ],
+      "id": "bidir-heldout-0961"
+    },
+    {
+      "ask": "d",
+      "facts": [
+        "+a@real:2025"
+      ],
+      "id": "bidir-heldout-0962"
+    },
+    {
+      "ask": "b",
+      "facts": [
+        "+c@dream"
+      ],
+      "id": "bidir-heldout-0963"
+    },
+    {
+      "ask": "b",
+      "facts": [
+        "c>d",
+        "a>b@quote",
+        "c>b",
+        "-c",
+        "c>d@dream",
+        "c>a@quote",
+        "d>c@quote",
+        "b>d@quote"
+      ],
+      "id": "bidir-heldout-0964"
+    },
+    {
+      "ask": "d",
+      "facts": [
+        "+b@real:2026",
+        "-d",
+        "+a@quote",
+        "c>d@dream"
+      ],
+      "id": "bidir-heldout-0965"
+    },
+    {
+      "ask": "a",
+      "facts": [
+        "d>a@real:2026",
+        "b>a@real:2025"
+      ],
+      "id": "bidir-heldout-0966"
+    },
+    {
+      "ask": "d",
+      "facts": [
+        "c>a@quote",
+        "+b@real:2026",
+        "d>b@real:2025",
+        "-a@quote",
+        "+b@dream",
+        "b>c@dream",
+        "c>a@real:2025",
+        "-a@real:2025",
+        "c>d@dream"
+      ],
+      "id": "bidir-heldout-0967"
+    },
+    {
+      "ask": "b",
+      "facts": [
+        "+d@dream",
+        "d>b@quote"
+      ],
+      "id": "bidir-heldout-0968"
+    },
+    {
+      "ask": "d",
+      "facts": [],
+      "id": "bidir-heldout-0969"
+    },
+    {
+      "ask": "c",
+      "facts": [],
+      "id": "bidir-heldout-0970"
+    },
+    {
+      "ask": "b",
+      "facts": [
+        "-a",
+        "d>a",
+        "d>a@real:2025",
+        "d>b",
+        "b>a@quote",
+        "+d",
+        "b>a",
+        "+a",
+        "-b@real:2026"
+      ],
+      "id": "bidir-heldout-0971"
+    },
+    {
+      "ask": "b",
+      "facts": [],
+      "id": "bidir-heldout-0972"
+    },
+    {
+      "ask": "c",
+      "facts": [
+        "a>c@real:2025",
+        "+b@dream",
+        "+d"
+      ],
+      "id": "bidir-heldout-0973"
+    },
+    {
+      "ask": "a",
+      "facts": [],
+      "id": "bidir-heldout-0974"
+    },
+    {
+      "ask": "a",
+      "facts": [
+        "d>b@real:2025"
+      ],
+      "id": "bidir-heldout-0975"
+    },
+    {
+      "ask": "d",
+      "facts": [
+        "c>b@quote",
+        "b>c@real:2026",
+        "a>c@quote",
+        "a>d@real:2025"
+      ],
+      "id": "bidir-heldout-0976"
+    },
+    {
+      "ask": "d",
+      "facts": [
+        "a>b@real:2025",
+        "a>b@quote",
+        "-b@quote",
+        "c>a@dream",
+        "c>a@dream",
+        "c>b@quote"
+      ],
+      "id": "bidir-heldout-0977"
+    },
+    {
+      "ask": "b",
+      "facts": [
+        "d>b@real:2026",
+        "b>a@real:2025",
+        "+c",
+        "a>b@quote",
+        "d>a@real:2026",
+        "-c",
+        "+b@dream",
+        "+a@real:2026"
+      ],
+      "id": "bidir-heldout-0978"
+    },
+    {
+      "ask": "a",
+      "facts": [
+        "b>d@real:2026",
+        "+b@dream",
+        "a>d@quote",
+        "-a@real:2026",
+        "d>c@real:2025",
+        "c>d@real:2026"
+      ],
+      "id": "bidir-heldout-0979"
+    },
+    {
+      "ask": "b",
+      "facts": [
+        "+a@dream",
+        "b>a@dream",
+        "a>d@real:2025",
+        "c>b@dream",
+        "-b@quote",
+        "d>b@dream"
+      ],
+      "id": "bidir-heldout-0980"
+    },
+    {
+      "ask": "c",
+      "facts": [
+        "+c",
+        "c>a@quote",
+        "+c@real:2025",
+        "b>c@dream"
+      ],
+      "id": "bidir-heldout-0981"
+    },
+    {
+      "ask": "b",
+      "facts": [
+        "c>b@real:2026",
+        "-c",
+        "d>b@real:2026",
+        "d>b@quote",
+        "-a@real:2025",
+        "c>a"
+      ],
+      "id": "bidir-heldout-0982"
+    },
+    {
+      "ask": "d",
+      "facts": [],
+      "id": "bidir-heldout-0983"
+    },
+    {
+      "ask": "a",
+      "facts": [
+        "a>c@real:2026",
+        "b>d@quote",
+        "b>c@real:2025",
+        "d>b@real:2026",
+        "a>c@real:2026",
+        "d>b@quote"
+      ],
+      "id": "bidir-heldout-0984"
+    },
+    {
+      "ask": "d",
+      "facts": [
+        "d>c@dream",
+        "d>c@real:2025",
+        "c>d@real:2026",
+        "+c@real:2025"
+      ],
+      "id": "bidir-heldout-0985"
+    },
+    {
+      "ask": "b",
+      "facts": [
+        "c>b@dream",
+        "+c@real:2026",
+        "b>d@real:2025"
+      ],
+      "id": "bidir-heldout-0986"
+    },
+    {
+      "ask": "d",
+      "facts": [
+        "-b@quote",
+        "a>d@quote",
+        "d>a",
+        "a>d@dream",
+        "+d",
+        "b>d@real:2025",
+        "a>d@real:2026"
+      ],
+      "id": "bidir-heldout-0987"
+    },
+    {
+      "ask": "a",
+      "facts": [
+        "-c@dream",
+        "+a",
+        "-a@dream",
+        "a>c@real:2026",
+        "+c@real:2026",
+        "c>b",
+        "-d@real:2025",
+        "b>c@quote"
+      ],
+      "id": "bidir-heldout-0988"
+    },
+    {
+      "ask": "c",
+      "facts": [
+        "c>d@real:2026",
+        "d>a@real:2026",
+        "-b@real:2026",
+        "-b@real:2025",
+        "-d@dream",
+        "a>d@real:2025",
+        "-b",
+        "c>d@real:2025",
+        "-c@real:2025"
+      ],
+      "id": "bidir-heldout-0989"
+    },
+    {
+      "ask": "c",
+      "facts": [
+        "+c",
+        "-d",
+        "b>c@quote",
+        "-c@quote",
+        "-b@real:2025",
+        "b>d@dream",
+        "a>c@dream",
+        "b>a@real:2026",
+        "b>a@quote"
+      ],
+      "id": "bidir-heldout-0990"
+    },
+    {
+      "ask": "c",
+      "facts": [],
+      "id": "bidir-heldout-0991"
+    },
+    {
+      "ask": "a",
+      "facts": [
+        "+c@quote",
+        "-c@real:2026"
+      ],
+      "id": "bidir-heldout-0992"
+    },
+    {
+      "ask": "d",
+      "facts": [
+        "d>a@real:2026",
+        "a>d@real:2025",
+        "d>a@real:2026",
+        "b>c@real:2026",
+        "a>c@real:2025",
+        "c>d@quote",
+        "-b@real:2025",
+        "b>c@real:2025",
+        "d>b@dream"
+      ],
+      "id": "bidir-heldout-0993"
+    },
+    {
+      "ask": "d",
+      "facts": [
+        "c>b",
+        "c>d@dream",
+        "-c@real:2025",
+        "b>c@real:2026"
+      ],
+      "id": "bidir-heldout-0994"
+    },
+    {
+      "ask": "c",
+      "facts": [
+        "b>a@quote"
+      ],
+      "id": "bidir-heldout-0995"
+    },
+    {
+      "ask": "d",
+      "facts": [
+        "c>b@quote",
+        "+d",
+        "b>a",
+        "a>c",
+        "c>a@quote",
+        "+d@dream"
+      ],
+      "id": "bidir-heldout-0996"
+    },
+    {
+      "ask": "d",
+      "facts": [],
+      "id": "bidir-heldout-0997"
+    },
+    {
+      "ask": "c",
+      "facts": [
+        "d>a"
+      ],
+      "id": "bidir-heldout-0998"
+    },
+    {
+      "ask": "b",
+      "facts": [],
+      "id": "bidir-heldout-0999"
+    },
+    {
+      "ask": "c",
+      "facts": [
+        "-d@dream",
+        "c>b"
+      ],
+      "id": "bidir-heldout-1000"
+    },
+    {
+      "ask": "a",
+      "facts": [],
+      "id": "bidir-heldout-1001"
+    },
+    {
+      "ask": "b",
+      "facts": [
+        "c>d",
+        "+a@real:2025",
+        "b>a@quote",
+        "d>b",
+        "+a@real:2025",
+        "b>d",
+        "b>c@real:2026",
+        "d>a@dream"
+      ],
+      "id": "bidir-heldout-1002"
+    },
+    {
+      "ask": "d",
+      "facts": [
+        "a>b@real:2026",
+        "b>c@real:2026",
+        "d>b@dream",
+        "-b@dream",
+        "d>b@real:2025"
+      ],
+      "id": "bidir-heldout-1003"
+    },
+    {
+      "ask": "a",
+      "facts": [
+        "c>a",
+        "c>a@real:2025"
+      ],
+      "id": "bidir-heldout-1004"
+    },
+    {
+      "ask": "c",
+      "facts": [
+        "a>c@dream",
+        "b>a@dream",
+        "-d@dream",
+        "+d@real:2025",
+        "+d",
+        "d>c@dream",
+        "d>a@real:2025",
+        "-a",
+        "-b@real:2026"
+      ],
+      "id": "bidir-heldout-1005"
+    },
+    {
+      "ask": "a",
+      "facts": [
+        "+c",
+        "+a@real:2026",
+        "a>c@real:2025",
+        "-a@real:2026",
+        "c>d@quote",
+        "d>b@quote"
+      ],
+      "id": "bidir-heldout-1006"
+    },
+    {
+      "ask": "a",
+      "facts": [
+        "c>a",
+        "b>a@real:2026",
+        "+b@quote"
+      ],
+      "id": "bidir-heldout-1007"
+    },
+    {
+      "ask": "b",
+      "facts": [
+        "d>b@real:2025",
+        "+c@real:2026"
+      ],
+      "id": "bidir-heldout-1008"
+    },
+    {
+      "ask": "c",
+      "facts": [],
+      "id": "bidir-heldout-1009"
+    },
+    {
+      "ask": "b",
+      "facts": [
+        "c>b@real:2026",
+        "+a@dream"
+      ],
+      "id": "bidir-heldout-1010"
+    },
+    {
+      "ask": "a",
+      "facts": [
+        "a>d@dream"
+      ],
+      "id": "bidir-heldout-1011"
+    },
+    {
+      "ask": "a",
+      "facts": [
+        "a>c@quote"
+      ],
+      "id": "bidir-heldout-1012"
+    },
+    {
+      "ask": "a",
+      "facts": [
+        "a>d@real:2025",
+        "-b@quote",
+        "-c",
+        "a>d@real:2025",
+        "b>d@quote",
+        "b>c@real:2026",
+        "a>d@dream",
+        "b>c@quote"
+      ],
+      "id": "bidir-heldout-1013"
+    },
+    {
+      "ask": "a",
+      "facts": [
+        "+b@real:2026",
+        "-c@real:2026",
+        "b>a@real:2026",
+        "d>c@dream",
+        "+c",
+        "d>a@quote",
+        "a>b@real:2026"
+      ],
+      "id": "bidir-heldout-1014"
+    },
+    {
+      "ask": "c",
+      "facts": [
+        "-b@real:2025"
+      ],
+      "id": "bidir-heldout-1015"
+    },
+    {
+      "ask": "d",
+      "facts": [
+        "a>d@quote",
+        "a>c@quote"
+      ],
+      "id": "bidir-heldout-1016"
+    },
+    {
+      "ask": "d",
+      "facts": [
+        "c>d@real:2025",
+        "a>b@real:2026",
+        "-a@quote",
+        "-d@real:2026",
+        "a>b",
+        "d>c",
+        "-b@real:2026",
+        "+c",
+        "c>a@dream"
+      ],
+      "id": "bidir-heldout-1017"
+    },
+    {
+      "ask": "b",
+      "facts": [
+        "-d",
+        "+b",
+        "-c@dream",
+        "d>b@real:2026",
+        "-d@real:2026",
+        "a>c@dream"
+      ],
+      "id": "bidir-heldout-1018"
+    },
+    {
+      "ask": "a",
+      "facts": [
+        "-c",
+        "d>c",
+        "c>a@quote",
+        "c>d@quote"
+      ],
+      "id": "bidir-heldout-1019"
+    },
+    {
+      "ask": "c",
+      "facts": [
+        "a>b@real:2025",
+        "b>a@quote",
+        "c>b@quote",
+        "c>b",
+        "a>c@dream"
+      ],
+      "id": "bidir-heldout-1020"
+    },
+    {
+      "ask": "d",
+      "facts": [],
+      "id": "bidir-heldout-1021"
+    },
+    {
+      "ask": "c",
+      "facts": [
+        "c>d",
+        "-d@real:2026",
+        "+b",
+        "c>b@real:2025",
+        "-a@dream",
+        "b>c@dream",
+        "b>a@real:2026",
+        "d>c@dream"
+      ],
+      "id": "bidir-heldout-1022"
+    },
+    {
+      "ask": "c",
+      "facts": [
+        "-c@dream"
+      ],
+      "id": "bidir-heldout-1023"
+    }
+  ],
+  "rule_pool": [
+    "+a",
+    "+b",
+    "+c",
+    "+d",
+    "-a",
+    "-b",
+    "-c",
+    "-d",
+    "a>b",
+    "a>c",
+    "a>d",
+    "b>a",
+    "b>c",
+    "b>d",
+    "c>a",
+    "c>b",
+    "c>d",
+    "d>a",
+    "d>b",
+    "d>c"
+  ],
+  "scope_pool": [
+    "",
+    "@real:2025",
+    "@dream",
+    "@quote",
+    "@real:2026"
+  ],
+  "seed": 88123
+}

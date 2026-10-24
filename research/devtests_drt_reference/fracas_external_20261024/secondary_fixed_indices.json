@@ -1,0 +1,32 @@
+{
+  "dataset_sha256": "754bd62c3d2db209c560ba7d32a360182c9005f5f468b1438eade91262706a1b",
+  "selection": "first 24 sorted by sha256 of index/premise/hypothesis without gold",
+  "indices": [
+    43,
+    13,
+    40,
+    64,
+    36,
+    48,
+    0,
+    25,
+    44,
+    4,
+    55,
+    59,
+    28,
+    15,
+    23,
+    30,
+    35,
+    6,
+    12,
+    38,
+    14,
+    37,
+    1,
+    7
+  ],
+  "prompt_version": "nli-open-world-three-way-v1",
+  "not_pristine_new_holdout": true
+}

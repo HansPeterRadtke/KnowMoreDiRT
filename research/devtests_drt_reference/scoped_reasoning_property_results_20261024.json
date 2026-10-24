@@ -1,0 +1,89 @@
+{
+  "case_sha256": "b7641cb92a372ca2c073fb4c2d6fb9a1a47957eb0f28c8c073123dc1e678affd",
+  "total": 512,
+  "correct": 509,
+  "incorrect": 3,
+  "confusion": [
+    {
+      "expected": "contradictory",
+      "actual": "contradictory",
+      "count": 13
+    },
+    {
+      "expected": "entailed",
+      "actual": "entailed",
+      "count": 37
+    },
+    {
+      "expected": "refuted",
+      "actual": "refuted",
+      "count": 31
+    },
+    {
+      "expected": "refuted",
+      "actual": "unknown",
+      "count": 3
+    },
+    {
+      "expected": "unknown",
+      "actual": "unknown",
+      "count": 428
+    }
+  ],
+  "label_totals": {
+    "unknown": 428,
+    "entailed": 37,
+    "refuted": 34,
+    "contradictory": 13
+  },
+  "failures": [
+    {
+      "id": "scoped-seed-067",
+      "expected_sympy_sat": "refuted",
+      "observed_existing_chaser": "unknown",
+      "correct": false,
+      "proof": {},
+      "source_facts": [
+        "-d@real:2026",
+        "b>d",
+        "b>c@real:2026",
+        "c>b@real:2025",
+        "c>d@real:2026"
+      ],
+      "asked_atom": "c"
+    },
+    {
+      "id": "scoped-seed-131",
+      "expected_sympy_sat": "refuted",
+      "observed_existing_chaser": "unknown",
+      "correct": false,
+      "proof": {},
+      "source_facts": [
+        "-a",
+        "c>a"
+      ],
+      "asked_atom": "c"
+    },
+    {
+      "id": "scoped-seed-510",
+      "expected_sympy_sat": "refuted",
+      "observed_existing_chaser": "unknown",
+      "correct": false,
+      "proof": {},
+      "source_facts": [
+        "-d@real:2026",
+        "+b@dream",
+        "b>a@dream",
+        "b>d@real:2026",
+        "d>a@real:2026"
+      ],
+      "asked_atom": "b"
+    }
+  ],
+  "limit": [
+    "Four Boolean atoms only, explicit premises/implication clauses, not full DRT/first-order logic",
+    "SymPy independent SAT oracle for logic labels; source assumptions themselves not verified",
+    "No natural language interpretation, real-world experiments or independent scientific discovery",
+    "The earlier 13/13 small fixtures and 7/7 observational labels are not retroactively overwritten"
+  ]
+}

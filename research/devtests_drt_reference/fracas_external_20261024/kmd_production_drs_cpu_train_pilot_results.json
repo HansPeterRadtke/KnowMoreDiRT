@@ -1,0 +1,26 @@
+{
+  "source": "external FraCaS train index 1",
+  "premise": "Clients at the demonstration were all impressed by the system's performance. Smith was a client at the demonstration.",
+  "train_sha256": "6194f7455a084e2bad8e4df4d82e24d206b938485f70365b780e153fa15e3c9d",
+  "model_sha256": "bd07d1c53b833d422272259b17b393270b8f81c937d14332dfa044fe1b349884",
+  "model": "TinyLlama-1.1B OpenOrca Q4_0; no shared model slots",
+  "schema": "production chunk_drs_json_schema; prompt build_chunk_drs_prompt",
+  "inference_configuration": {
+    "max_tokens": 320,
+    "n_ctx": 2048,
+    "n_threads": 2,
+    "temperature": 0,
+    "seed": 42
+  },
+  "accepted": false,
+  "errors": [
+    {
+      "stage": "runner",
+      "type": "AssertionError",
+      "message": "Unsupported pattern syntax \"?\" at index 1 of /(?:|b[0-9]+)/"
+    }
+  ],
+  "prompt_sha256": "2e48a28bfcc6dc96ed97796568ec6a55d38dfee72b6185609ac64fbf4822df33",
+  "json_schema_sha256": "32644c0e88979913e1a9ccb093dc0e5c1b1d80d7256f65a0aaa19e3722260424",
+  "elapsed_seconds": 0.94
+}

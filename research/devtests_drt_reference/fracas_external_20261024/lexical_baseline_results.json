@@ -1,0 +1,462 @@
+{
+  "source_sha256": "754bd62c3d2db209c560ba7d32a360182c9005f5f468b1438eade91262706a1b",
+  "source_split": "fracas/dev",
+  "method": "casefolded alphanumeric normalized exact hypothesis substring of the full premise; abstain neutral otherwise; fixed zero-training control",
+  "records": 70,
+  "gold_counts": {
+    "entailment": 34,
+    "neutral": 28,
+    "contradiction": 8
+  },
+  "exact_full_premise_correct": 32,
+  "all_neutral_correct": 28,
+  "confusion": [
+    {
+      "expected": "contradiction",
+      "predicted": "entailment",
+      "count": 1
+    },
+    {
+      "expected": "contradiction",
+      "predicted": "neutral",
+      "count": 7
+    },
+    {
+      "expected": "entailment",
+      "predicted": "entailment",
+      "count": 4
+    },
+    {
+      "expected": "entailment",
+      "predicted": "neutral",
+      "count": 30
+    },
+    {
+      "expected": "neutral",
+      "predicted": "neutral",
+      "count": 28
+    }
+  ],
+  "rows": [
+    {
+      "index": 0,
+      "prediction": "neutral",
+      "expected": "entailment",
+      "correct": false
+    },
+    {
+      "index": 1,
+      "prediction": "entailment",
+      "expected": "entailment",
+      "correct": true
+    },
+    {
+      "index": 2,
+      "prediction": "neutral",
+      "expected": "neutral",
+      "correct": true
+    },
+    {
+      "index": 3,
+      "prediction": "neutral",
+      "expected": "contradiction",
+      "correct": false
+    },
+    {
+      "index": 4,
+      "prediction": "neutral",
+      "expected": "contradiction",
+      "correct": false
+    },
+    {
+      "index": 5,
+      "prediction": "neutral",
+      "expected": "entailment",
+      "correct": false
+    },
+    {
+      "index": 6,
+      "prediction": "neutral",
+      "expected": "neutral",
+      "correct": true
+    },
+    {
+      "index": 7,
+      "prediction": "neutral",
+      "expected": "neutral",
+      "correct": true
+    },
+    {
+      "index": 8,
+      "prediction": "neutral",
+      "expected": "contradiction",
+      "correct": false
+    },
+    {
+      "index": 9,
+      "prediction": "neutral",
+      "expected": "contradiction",
+      "correct": false
+    },
+    {
+      "index": 10,
+      "prediction": "neutral",
+      "expected": "entailment",
+      "correct": false
+    },
+    {
+      "index": 11,
+      "prediction": "neutral",
+      "expected": "entailment",
+      "correct": false
+    },
+    {
+      "index": 12,
+      "prediction": "neutral",
+      "expected": "neutral",
+      "correct": true
+    },
+    {
+      "index": 13,
+      "prediction": "neutral",
+      "expected": "neutral",
+      "correct": true
+    },
+    {
+      "index": 14,
+      "prediction": "neutral",
+      "expected": "entailment",
+      "correct": false
+    },
+    {
+      "index": 15,
+      "prediction": "entailment",
+      "expected": "contradiction",
+      "correct": false
+    },
+    {
+      "index": 16,
+      "prediction": "neutral",
+      "expected": "neutral",
+      "correct": true
+    },
+    {
+      "index": 17,
+      "prediction": "neutral",
+      "expected": "neutral",
+      "correct": true
+    },
+    {
+      "index": 18,
+      "prediction": "neutral",
+      "expected": "neutral",
+      "correct": true
+    },
+    {
+      "index": 19,
+      "prediction": "neutral",
+      "expected": "entailment",
+      "correct": false
+    },
+    {
+      "index": 20,
+      "prediction": "neutral",
+      "expected": "entailment",
+      "correct": false
+    },
+    {
+      "index": 21,
+      "prediction": "neutral",
+      "expected": "neutral",
+      "correct": true
+    },
+    {
+      "index": 22,
+      "prediction": "neutral",
+      "expected": "neutral",
+      "correct": true
+    },
+    {
+      "index": 23,
+      "prediction": "neutral",
+      "expected": "neutral",
+      "correct": true
+    },
+    {
+      "index": 24,
+      "prediction": "neutral",
+      "expected": "neutral",
+      "correct": true
+    },
+    {
+      "index": 25,
+      "prediction": "neutral",
+      "expected": "neutral",
+      "correct": true
+    },
+    {
+      "index": 26,
+      "prediction": "neutral",
+      "expected": "entailment",
+      "correct": false
+    },
+    {
+      "index": 27,
+      "prediction": "entailment",
+      "expected": "entailment",
+      "correct": true
+    },
+    {
+      "index": 28,
+      "prediction": "neutral",
+      "expected": "neutral",
+      "correct": true
+    },
+    {
+      "index": 29,
+      "prediction": "entailment",
+      "expected": "entailment",
+      "correct": true
+    },
+    {
+      "index": 30,
+      "prediction": "neutral",
+      "expected": "entailment",
+      "correct": false
+    },
+    {
+      "index": 31,
+      "prediction": "neutral",
+      "expected": "neutral",
+      "correct": true
+    },
+    {
+      "index": 32,
+      "prediction": "neutral",
+      "expected": "entailment",
+      "correct": false
+    },
+    {
+      "index": 33,
+      "prediction": "neutral",
+      "expected": "neutral",
+      "correct": true
+    },
+    {
+      "index": 34,
+      "prediction": "neutral",
+      "expected": "neutral",
+      "correct": true
+    },
+    {
+      "index": 35,
+      "prediction": "neutral",
+      "expected": "entailment",
+      "correct": false
+    },
+    {
+      "index": 36,
+      "prediction": "neutral",
+      "expected": "entailment",
+      "correct": false
+    },
+    {
+      "index": 37,
+      "prediction": "neutral",
+      "expected": "entailment",
+      "correct": false
+    },
+    {
+      "index": 38,
+      "prediction": "neutral",
+      "expected": "entailment",
+      "correct": false
+    },
+    {
+      "index": 39,
+      "prediction": "neutral",
+      "expected": "neutral",
+      "correct": true
+    },
+    {
+      "index": 40,
+      "prediction": "neutral",
+      "expected": "entailment",
+      "correct": false
+    },
+    {
+      "index": 41,
+      "prediction": "neutral",
+      "expected": "entailment",
+      "correct": false
+    },
+    {
+      "index": 42,
+      "prediction": "neutral",
+      "expected": "entailment",
+      "correct": false
+    },
+    {
+      "index": 43,
+      "prediction": "neutral",
+      "expected": "neutral",
+      "correct": true
+    },
+    {
+      "index": 44,
+      "prediction": "neutral",
+      "expected": "neutral",
+      "correct": true
+    },
+    {
+      "index": 45,
+      "prediction": "neutral",
+      "expected": "entailment",
+      "correct": false
+    },
+    {
+      "index": 46,
+      "prediction": "neutral",
+      "expected": "neutral",
+      "correct": true
+    },
+    {
+      "index": 47,
+      "prediction": "neutral",
+      "expected": "entailment",
+      "correct": false
+    },
+    {
+      "index": 48,
+      "prediction": "neutral",
+      "expected": "contradiction",
+      "correct": false
+    },
+    {
+      "index": 49,
+      "prediction": "neutral",
+      "expected": "contradiction",
+      "correct": false
+    },
+    {
+      "index": 50,
+      "prediction": "neutral",
+      "expected": "entailment",
+      "correct": false
+    },
+    {
+      "index": 51,
+      "prediction": "neutral",
+      "expected": "entailment",
+      "correct": false
+    },
+    {
+      "index": 52,
+      "prediction": "neutral",
+      "expected": "neutral",
+      "correct": true
+    },
+    {
+      "index": 53,
+      "prediction": "neutral",
+      "expected": "entailment",
+      "correct": false
+    },
+    {
+      "index": 54,
+      "prediction": "neutral",
+      "expected": "entailment",
+      "correct": false
+    },
+    {
+      "index": 55,
+      "prediction": "neutral",
+      "expected": "entailment",
+      "correct": false
+    },
+    {
+      "index": 56,
+      "prediction": "neutral",
+      "expected": "neutral",
+      "correct": true
+    },
+    {
+      "index": 57,
+      "prediction": "neutral",
+      "expected": "entailment",
+      "correct": false
+    },
+    {
+      "index": 58,
+      "prediction": "neutral",
+      "expected": "neutral",
+      "correct": true
+    },
+    {
+      "index": 59,
+      "prediction": "neutral",
+      "expected": "neutral",
+      "correct": true
+    },
+    {
+      "index": 60,
+      "prediction": "neutral",
+      "expected": "neutral",
+      "correct": true
+    },
+    {
+      "index": 61,
+      "prediction": "neutral",
+      "expected": "entailment",
+      "correct": false
+    },
+    {
+      "index": 62,
+      "prediction": "entailment",
+      "expected": "entailment",
+      "correct": true
+    },
+    {
+      "index": 63,
+      "prediction": "neutral",
+      "expected": "entailment",
+      "correct": false
+    },
+    {
+      "index": 64,
+      "prediction": "neutral",
+      "expected": "contradiction",
+      "correct": false
+    },
+    {
+      "index": 65,
+      "prediction": "neutral",
+      "expected": "entailment",
+      "correct": false
+    },
+    {
+      "index": 66,
+      "prediction": "neutral",
+      "expected": "entailment",
+      "correct": false
+    },
+    {
+      "index": 67,
+      "prediction": "neutral",
+      "expected": "neutral",
+      "correct": true
+    },
+    {
+      "index": 68,
+      "prediction": "neutral",
+      "expected": "entailment",
+      "correct": false
+    },
+    {
+      "index": 69,
+      "prediction": "neutral",
+      "expected": "neutral",
+      "correct": true
+    }
+  ]
+}

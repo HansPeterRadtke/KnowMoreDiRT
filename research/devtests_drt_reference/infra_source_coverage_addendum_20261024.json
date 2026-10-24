@@ -1,0 +1,149 @@
+{
+  "type": "additive_source_coverage_review_not_full_repo_completion",
+  "prior_ledger_sha256": "b5aec6f67866b9d479dbe14265fe1d98b45b95352287fc3c49cc5f242a3b99b9",
+  "prior_tracked_file_count": 827,
+  "updated_status_counts": {
+    "inventory_only": 764,
+    "semantic_read_complete": 22,
+    "semantic_read_partial": 4,
+    "lexical_screen_only": 37
+  },
+  "added_semantic_reviews": [
+    {
+      "path": "docs/guidlines/programming/README.md",
+      "previous_status": "semantic_read_partial",
+      "new_status": "semantic_read_complete",
+      "semantic_scope": "All 144 lines in bounded ranges: purpose, correct before fast, state/concurrency, branch assumptions, search and task-visible failure, reusable helpers",
+      "reviewed_character_windows": "entire source",
+      "source_size_bytes": 24960,
+      "source_sha256": "48b0173163d91ec1bf139949ceb73f3f963000f7dcc77d81f123adcc4a75db64"
+    },
+    {
+      "path": "docs/guidlines/testing.md",
+      "previous_status": "semantic_read_partial",
+      "new_status": "semantic_read_complete",
+      "semantic_scope": "All 118 lines in bounded ranges: independent oracle, heldout selection, nested optimization leakage, real/failed environment checks and KMD scope validation",
+      "reviewed_character_windows": "entire source",
+      "source_size_bytes": 20320,
+      "source_sha256": "3fe6c3f86c138adf9ec073fd9d63a1b1f98f5f9aa7b87a2f9f255f15880d0d16"
+    },
+    {
+      "path": "docs/guidlines/agents/context_quality_and_relevance.md",
+      "previous_status": "semantic_read_partial",
+      "new_status": "semantic_read_complete",
+      "semantic_scope": "All 37 lines: three relevance purposes, task context, structured model calls, measured numeric/enums, uncertain reviewer agreement",
+      "reviewed_character_windows": "entire source",
+      "source_size_bytes": 7967,
+      "source_sha256": "05656cfcc9239c23a0ef7e1cc9c929a7d213a52e3b20168f4df26fe7f2555a1d"
+    },
+    {
+      "path": "docs/guidlines/agents/large_sources.md",
+      "previous_status": "semantic_read_partial",
+      "new_status": "semantic_read_complete",
+      "semantic_scope": "All 28 lines: read means task-dependent semantic coverage; preserve original and exact source links; inventory is not semantic review",
+      "reviewed_character_windows": "entire source",
+      "source_size_bytes": 3216,
+      "source_sha256": "a40536c8db64c81311d202609601042785d7f5295855890cbfbef5fd261218f4"
+    },
+    {
+      "path": "docs/guidlines/appendix/recording-integration-2026-10-24.md",
+      "previous_status": "semantic_read_partial",
+      "new_status": "semantic_read_complete",
+      "semantic_scope": "All source-to-guideline routing and ten source distinctions: research questions vs answer evidence, model experiments pending, preserved originals",
+      "reviewed_character_windows": "entire source",
+      "source_size_bytes": 9329,
+      "source_sha256": "168482d40a7f902d38d426aabeb350ef886c7f1751f3a664c61cc93320de9749"
+    },
+    {
+      "path": "docs/guidlines/original-recordings/agents/Recording 2026-10-20 11-48-38-894.txt",
+      "previous_status": "semantic_read_partial",
+      "new_status": "semantic_read_complete",
+      "semantic_scope": "All 13,179 characters in ranges 0\u20136,000 and 6,000\u2013end: one fast model step, complete structured history, event ordering, external payloads, scoped deletion",
+      "reviewed_character_windows": "entire source",
+      "source_size_bytes": 13179,
+      "source_sha256": "0ac96a1c8f1ac34a044519ed96798dd01a81b6a353309e658f3d6f4a0f5ccd17"
+    },
+    {
+      "path": "docs/guidlines/original-recordings/agents/Recording 2026-08-05 12-00-31.txt",
+      "previous_status": "lexical_screen_only",
+      "new_status": "semantic_read_complete",
+      "semantic_scope": "All 2,801 characters: context-size versus complete agent history, manuals/tools read as needed, DRT plus file database as possible knowledge layer",
+      "reviewed_character_windows": "entire source",
+      "source_size_bytes": 2801,
+      "source_sha256": "2eeb67569a639d59f756b672dff361a089ff2238f8526702caa912d1a00c805a"
+    },
+    {
+      "path": "docs/guidlines/original-recordings/agents/Recording 2026-09-17 11-49-21-406.txt",
+      "previous_status": "lexical_screen_only",
+      "new_status": "semantic_read_partial",
+      "semantic_scope": "Selected four bounded windows of 19,980 characters: agent-owned generic Python and file/db workspace, optional KMD vs SQLite, topic documents to DRT",
+      "reviewed_character_windows": [
+        [
+          0,
+          591
+        ],
+        [
+          9296,
+          11149
+        ],
+        [
+          13126,
+          14145
+        ],
+        [
+          18751,
+          19724
+        ]
+      ],
+      "source_size_bytes": 19980,
+      "source_sha256": "55258e6dc2c152bf6c59e895f21f6ca5feda1b5b8370967f6d2fb52f2011dd0b"
+    },
+    {
+      "path": "docs/guidlines/original-recordings/agents/Recording 2026-08-29 16-51-40-798.txt",
+      "previous_status": "lexical_screen_only",
+      "new_status": "semantic_read_partial",
+      "semantic_scope": "Nine searched source windows of 122,466 characters: alternative text transformations, embedding/DRT, summarize versus preserve, cost, semantic research; rest is not claimed semantically read",
+      "reviewed_character_windows": [
+        [
+          89520,
+          90727
+        ],
+        [
+          91566,
+          92539
+        ],
+        [
+          94431,
+          95404
+        ],
+        [
+          101654,
+          102627
+        ],
+        [
+          105400,
+          106440
+        ],
+        [
+          110892,
+          111871
+        ],
+        [
+          116176,
+          117155
+        ],
+        [
+          119382,
+          121498
+        ],
+        [
+          121896,
+          122466
+        ]
+      ],
+      "source_size_bytes": 122466,
+      "source_sha256": "27f0ca5476e2a9aaf6c8329c119a56233de358b738219e8847e202a359a186b2"
+    }
+  ],
+  "remaining_limitation": "Other tracked human-readable Infra sources are inventoried or keyword screened only. Neither hashes nor broad inventory establish complete semantic coverage. All original text remains in Infra; none is edited."
+}

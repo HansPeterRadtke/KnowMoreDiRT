@@ -1,0 +1,7792 @@
+{
+  "name": "previously_consumed",
+  "seed": null,
+  "total": 512,
+  "correct": 512,
+  "errors": [],
+  "old_forward_only_correct": 509,
+  "all_results": [
+    {
+      "id": "scoped-seed-000",
+      "source_facts": [
+        "+c@dream",
+        "+a@real:2025"
+      ],
+      "asked_atom": "a",
+      "expected_independent_sympy": "unknown",
+      "candidate": "unknown",
+      "old_forward_only": "unknown",
+      "correct": true,
+      "premise_trace": {}
+    },
+    {
+      "id": "scoped-seed-001",
+      "source_facts": [
+        "a>d@real:2026"
+      ],
+      "asked_atom": "c",
+      "expected_independent_sympy": "unknown",
+      "candidate": "unknown",
+      "old_forward_only": "unknown",
+      "correct": true,
+      "premise_trace": {}
+    },
+    {
+      "id": "scoped-seed-002",
+      "source_facts": [
+        "c>d@real:2025",
+        "-b@quote",
+        "b>d@quote",
+        "d>b@dream",
+        "a>b@dream",
+        "a>d@dream"
+      ],
+      "asked_atom": "a",
+      "expected_independent_sympy": "unknown",
+      "candidate": "unknown",
+      "old_forward_only": "unknown",
+      "correct": true,
+      "premise_trace": {}
+    },
+    {
+      "id": "scoped-seed-003",
+      "source_facts": [],
+      "asked_atom": "d",
+      "expected_independent_sympy": "unknown",
+      "candidate": "unknown",
+      "old_forward_only": "unknown",
+      "correct": true,
+      "premise_trace": {}
+    },
+    {
+      "id": "scoped-seed-004",
+      "source_facts": [],
+      "asked_atom": "b",
+      "expected_independent_sympy": "unknown",
+      "candidate": "unknown",
+      "old_forward_only": "unknown",
+      "correct": true,
+      "premise_trace": {}
+    },
+    {
+      "id": "scoped-seed-005",
+      "source_facts": [
+        "c>d@real:2025",
+        "-a@dream",
+        "+c@dream",
+        "-d@real:2026"
+      ],
+      "asked_atom": "a",
+      "expected_independent_sympy": "unknown",
+      "candidate": "unknown",
+      "old_forward_only": "unknown",
+      "correct": true,
+      "premise_trace": {}
+    },
+    {
+      "id": "scoped-seed-006",
+      "source_facts": [
+        "a>d@quote",
+        "+b",
+        "b>c@real:2025",
+        "+c@quote"
+      ],
+      "asked_atom": "d",
+      "expected_independent_sympy": "unknown",
+      "candidate": "unknown",
+      "old_forward_only": "unknown",
+      "correct": true,
+      "premise_trace": {}
+    },
+    {
+      "id": "scoped-seed-007",
+      "source_facts": [
+        "d>a"
+      ],
+      "asked_atom": "d",
+      "expected_independent_sympy": "unknown",
+      "candidate": "unknown",
+      "old_forward_only": "unknown",
+      "correct": true,
+      "premise_trace": {}
+    },
+    {
+      "id": "scoped-seed-008",
+      "source_facts": [
+        "b>a@real:2025",
+        "+a"
+      ],
+      "asked_atom": "a",
+      "expected_independent_sympy": "entailed",
+      "candidate": "entailed",
+      "old_forward_only": "entailed",
+      "correct": true,
+      "premise_trace": {
+        "positive_sources": [
+          "source:1"
+        ]
+      }
+    },
+    {
+      "id": "scoped-seed-009",
+      "source_facts": [
+        "+c@dream",
+        "c>d@real:2025",
+        "-b",
+        "c>a@real:2026",
+        "-b@real:2026",
+        "a>b@quote"
+      ],
+      "asked_atom": "a",
+      "expected_independent_sympy": "unknown",
+      "candidate": "unknown",
+      "old_forward_only": "unknown",
+      "correct": true,
+      "premise_trace": {}
+    },
+    {
+      "id": "scoped-seed-010",
+      "source_facts": [
+        "a>c@real:2025",
+        "-d",
+        "d>a@real:2026"
+      ],
+      "asked_atom": "b",
+      "expected_independent_sympy": "unknown",
+      "candidate": "unknown",
+      "old_forward_only": "unknown",
+      "correct": true,
+      "premise_trace": {}
+    },
+    {
+      "id": "scoped-seed-011",
+      "source_facts": [
+        "b>d@real:2026",
+        "d>c@dream",
+        "a>c@real:2025",
+        "-c@real:2025",
+        "c>d@real:2026",
+        "d>a@quote",
+        "+c@real:2025"
+      ],
+      "asked_atom": "d",
+      "expected_independent_sympy": "unknown",
+      "candidate": "unknown",
+      "old_forward_only": "unknown",
+      "correct": true,
+      "premise_trace": {}
+    },
+    {
+      "id": "scoped-seed-012",
+      "source_facts": [
+        "b>c@dream",
+        "c>d@quote",
+        "b>c@real:2025"
+      ],
+      "asked_atom": "c",
+      "expected_independent_sympy": "unknown",
+      "candidate": "unknown",
+      "old_forward_only": "unknown",
+      "correct": true,
+      "premise_trace": {}
+    },
+    {
+      "id": "scoped-seed-013",
+      "source_facts": [
+        "b>c@dream",
+        "b>a@dream",
+        "d>a@dream",
+        "a>c"
+      ],
+      "asked_atom": "b",
+      "expected_independent_sympy": "unknown",
+      "candidate": "unknown",
+      "old_forward_only": "unknown",
+      "correct": true,
+      "premise_trace": {}
+    },
+    {
+      "id": "scoped-seed-014",
+      "source_facts": [
+        "c>d@real:2026",
+        "+a",
+        "-c@quote"
+      ],
+      "asked_atom": "d",
+      "expected_independent_sympy": "unknown",
+      "candidate": "unknown",
+      "old_forward_only": "unknown",
+      "correct": true,
+      "premise_trace": {}
+    },
+    {
+      "id": "scoped-seed-015",
+      "source_facts": [],
+      "asked_atom": "a",
+      "expected_independent_sympy": "unknown",
+      "candidate": "unknown",
+      "old_forward_only": "unknown",
+      "correct": true,
+      "premise_trace": {}
+    },
+    {
+      "id": "scoped-seed-016",
+      "source_facts": [
+        "+c@real:2025",
+        "c>a",
+        "a>c@quote",
+        "+d@dream",
+        "a>b",
+        "+d@real:2025",
+        "c>a"
+      ],
+      "asked_atom": "b",
+      "expected_independent_sympy": "unknown",
+      "candidate": "unknown",
+      "old_forward_only": "unknown",
+      "correct": true,
+      "premise_trace": {}
+    },
+    {
+      "id": "scoped-seed-017",
+      "source_facts": [],
+      "asked_atom": "a",
+      "expected_independent_sympy": "unknown",
+      "candidate": "unknown",
+      "old_forward_only": "unknown",
+      "correct": true,
+      "premise_trace": {}
+    },
+    {
+      "id": "scoped-seed-018",
+      "source_facts": [],
+      "asked_atom": "d",
+      "expected_independent_sympy": "unknown",
+      "candidate": "unknown",
+      "old_forward_only": "unknown",
+      "correct": true,
+      "premise_trace": {}
+    },
+    {
+      "id": "scoped-seed-019",
+      "source_facts": [
+        "b>c@quote",
+        "d>a@dream",
+        "c>d@quote",
+        "b>a@real:2026",
+        "b>d@real:2025",
+        "b>a@dream",
+        "-d@dream"
+      ],
+      "asked_atom": "a",
+      "expected_independent_sympy": "unknown",
+      "candidate": "unknown",
+      "old_forward_only": "unknown",
+      "correct": true,
+      "premise_trace": {}
+    },
+    {
+      "id": "scoped-seed-020",
+      "source_facts": [
+        "b>a@quote",
+        "d>c@real:2025",
+        "a>b@quote",
+        "+a@real:2026",
+        "b>c@dream",
+        "-b@real:2026"
+      ],
+      "asked_atom": "d",
+      "expected_independent_sympy": "unknown",
+      "candidate": "unknown",
+      "old_forward_only": "unknown",
+      "correct": true,
+      "premise_trace": {}
+    },
+    {
+      "id": "scoped-seed-021",
+      "source_facts": [
+        "+c",
+        "-b",
+        "+d"
+      ],
+      "asked_atom": "c",
+      "expected_independent_sympy": "entailed",
+      "candidate": "entailed",
+      "old_forward_only": "entailed",
+      "correct": true,
+      "premise_trace": {
+        "positive_sources": [
+          "source:0"
+        ]
+      }
+    },
+    {
+      "id": "scoped-seed-022",
+      "source_facts": [
+        "a>b@real:2025",
+        "a>d",
+        "-d@real:2026"
+      ],
+      "asked_atom": "d",
+      "expected_independent_sympy": "refuted",
+      "candidate": "refuted",
+      "old_forward_only": "refuted",
+      "correct": true,
+      "premise_trace": {
+        "negative_sources": [
+          "source:2"
+        ]
+      }
+    },
+    {
+      "id": "scoped-seed-023",
+      "source_facts": [
+        "a>c@real:2025",
+        "a>d@real:2025",
+        "+a@real:2026",
+        "b>a@dream"
+      ],
+      "asked_atom": "a",
+      "expected_independent_sympy": "entailed",
+      "candidate": "entailed",
+      "old_forward_only": "entailed",
+      "correct": true,
+      "premise_trace": {
+        "positive_sources": [
+          "source:2"
+        ]
+      }
+    },
+    {
+      "id": "scoped-seed-024",
+      "source_facts": [
+        "a>b@quote",
+        "+b@real:2026"
+      ],
+      "asked_atom": "a",
+      "expected_independent_sympy": "unknown",
+      "candidate": "unknown",
+      "old_forward_only": "unknown",
+      "correct": true,
+      "premise_trace": {}
+    },
+    {
+      "id": "scoped-seed-025",
+      "source_facts": [
+        "-c"
+      ],
+      "asked_atom": "b",
+      "expected_independent_sympy": "unknown",
+      "candidate": "unknown",
+      "old_forward_only": "unknown",
+      "correct": true,
+      "premise_trace": {}
+    },
+    {
+      "id": "scoped-seed-026",
+      "source_facts": [
+        "+b@dream"
+      ],
+      "asked_atom": "b",
+      "expected_independent_sympy": "unknown",
+      "candidate": "unknown",
+      "old_forward_only": "unknown",
+      "correct": true,
+      "premise_trace": {}
+    },
+    {
+      "id": "scoped-seed-027",
+      "source_facts": [
+        "a>d@real:2026",
+        "d>b@real:2026"
+      ],
+      "asked_atom": "c",
+      "expected_independent_sympy": "unknown",
+      "candidate": "unknown",
+      "old_forward_only": "unknown",
+      "correct": true,
+      "premise_trace": {}
+    },
+    {
+      "id": "scoped-seed-028",
+      "source_facts": [
+        "+d",
+        "+b@real:2025",
+        "a>c@real:2026",
+        "a>d@dream",
+        "-b@real:2025"
+      ],
+      "asked_atom": "c",
+      "expected_independent_sympy": "unknown",
+      "candidate": "unknown",
+      "old_forward_only": "unknown",
+      "correct": true,
+      "premise_trace": {}
+    },
+    {
+      "id": "scoped-seed-029",
+      "source_facts": [
+        "c>b@quote",
+        "b>d",
+        "+b@real:2026"
+      ],
+      "asked_atom": "b",
+      "expected_independent_sympy": "entailed",
+      "candidate": "entailed",
+      "old_forward_only": "entailed",
+      "correct": true,
+      "premise_trace": {
+        "positive_sources": [
+          "source:2"
+        ]
+      }
+    },
+    {
+      "id": "scoped-seed-030",
+      "source_facts": [
+        "d>b@real:2025"
+      ],
+      "asked_atom": "c",
+      "expected_independent_sympy": "unknown",
+      "candidate": "unknown",
+      "old_forward_only": "unknown",
+      "correct": true,
+      "premise_trace": {}
+    },
+    {
+      "id": "scoped-seed-031",
+      "source_facts": [
+        "a>d@dream",
+        "-d@real:2025",
+        "-c@real:2026",
+        "c>d@dream",
+        "a>b@real:2026"
+      ],
+      "asked_atom": "d",
+      "expected_independent_sympy": "unknown",
+      "candidate": "unknown",
+      "old_forward_only": "unknown",
+      "correct": true,
+      "premise_trace": {}
+    },
+    {
+      "id": "scoped-seed-032",
+      "source_facts": [
+        "+b@real:2025",
+        "+d@dream",
+        "+d@dream",
+        "-a@real:2026"
+      ],
+      "asked_atom": "c",
+      "expected_independent_sympy": "unknown",
+      "candidate": "unknown",
+      "old_forward_only": "unknown",
+      "correct": true,
+      "premise_trace": {}
+    },
+    {
+      "id": "scoped-seed-033",
+      "source_facts": [
+        "-a@dream",
+        "a>d@real:2026",
+        "a>b"
+      ],
+      "asked_atom": "c",
+      "expected_independent_sympy": "unknown",
+      "candidate": "unknown",
+      "old_forward_only": "unknown",
+      "correct": true,
+      "premise_trace": {}
+    },
+    {
+      "id": "scoped-seed-034",
+      "source_facts": [
+        "a>d@real:2026",
+        "c>a@quote",
+        "d>c",
+        "d>a"
+      ],
+      "asked_atom": "c",
+      "expected_independent_sympy": "unknown",
+      "candidate": "unknown",
+      "old_forward_only": "unknown",
+      "correct": true,
+      "premise_trace": {}
+    },
+    {
+      "id": "scoped-seed-035",
+      "source_facts": [
+        "-c@real:2025",
+        "-d@real:2025",
+        "c>a@dream",
+        "c>a@quote",
+        "b>d@real:2026",
+        "-a@dream"
+      ],
+      "asked_atom": "d",
+      "expected_independent_sympy": "unknown",
+      "candidate": "unknown",
+      "old_forward_only": "unknown",
+      "correct": true,
+      "premise_trace": {}
+    },
+    {
+      "id": "scoped-seed-036",
+      "source_facts": [
+        "d>b@real:2025",
+        "a>c@real:2026",
+        "c>a",
+        "-c@real:2025",
+        "b>a",
+        "-d",
+        "d>b@dream"
+      ],
+      "asked_atom": "c",
+      "expected_independent_sympy": "unknown",
+      "candidate": "unknown",
+      "old_forward_only": "unknown",
+      "correct": true,
+      "premise_trace": {}
+    },
+    {
+      "id": "scoped-seed-037",
+      "source_facts": [
+        "c>b@quote",
+        "a>d",
+        "b>d@real:2025",
+        "-d@real:2025",
+        "a>b@dream"
+      ],
+      "asked_atom": "d",
+      "expected_independent_sympy": "unknown",
+      "candidate": "unknown",
+      "old_forward_only": "unknown",
+      "correct": true,
+      "premise_trace": {}
+    },
+    {
+      "id": "scoped-seed-038",
+      "source_facts": [
+        "a>c@real:2025",
+        "d>c@dream"
+      ],
+      "asked_atom": "c",
+      "expected_independent_sympy": "unknown",
+      "candidate": "unknown",
+      "old_forward_only": "unknown",
+      "correct": true,
+      "premise_trace": {}
+    },
+    {
+      "id": "scoped-seed-039",
+      "source_facts": [
+        "c>a@quote"
+      ],
+      "asked_atom": "a",
+      "expected_independent_sympy": "unknown",
+      "candidate": "unknown",
+      "old_forward_only": "unknown",
+      "correct": true,
+      "premise_trace": {}
+    },
+    {
+      "id": "scoped-seed-040",
+      "source_facts": [
+        "-d@dream",
+        "c>a@real:2025"
+      ],
+      "asked_atom": "d",
+      "expected_independent_sympy": "unknown",
+      "candidate": "unknown",
+      "old_forward_only": "unknown",
+      "correct": true,
+      "premise_trace": {}
+    },
+    {
+      "id": "scoped-seed-041",
+      "source_facts": [],
+      "asked_atom": "d",
+      "expected_independent_sympy": "unknown",
+      "candidate": "unknown",
+      "old_forward_only": "unknown",
+      "correct": true,
+      "premise_trace": {}
+    },
+    {
+      "id": "scoped-seed-042",
+      "source_facts": [
+        "c>a@real:2026",
+        "+a@real:2025",
+        "a>d@real:2026"
+      ],
+      "asked_atom": "a",
+      "expected_independent_sympy": "unknown",
+      "candidate": "unknown",
+      "old_forward_only": "unknown",
+      "correct": true,
+      "premise_trace": {}
+    },
+    {
+      "id": "scoped-seed-043",
+      "source_facts": [
+        "-b@dream",
+        "-b@real:2026"
+      ],
+      "asked_atom": "c",
+      "expected_independent_sympy": "unknown",
+      "candidate": "unknown",
+      "old_forward_only": "unknown",
+      "correct": true,
+      "premise_trace": {}
+    },
+    {
+      "id": "scoped-seed-044",
+      "source_facts": [
+        "a>c",
+        "a>c",
+        "c>a@real:2025",
+        "a>b",
+        "-d",
+        "-b@real:2025"
+      ],
+      "asked_atom": "d",
+      "expected_independent_sympy": "refuted",
+      "candidate": "refuted",
+      "old_forward_only": "refuted",
+      "correct": true,
+      "premise_trace": {
+        "negative_sources": [
+          "source:4"
+        ]
+      }
+    },
+    {
+      "id": "scoped-seed-045",
+      "source_facts": [
+        "a>c",
+        "c>a@real:2026"
+      ],
+      "asked_atom": "d",
+      "expected_independent_sympy": "unknown",
+      "candidate": "unknown",
+      "old_forward_only": "unknown",
+      "correct": true,
+      "premise_trace": {}
+    },
+    {
+      "id": "scoped-seed-046",
+      "source_facts": [
+        "d>a@real:2025",
+        "+b@quote",
+        "c>d@dream"
+      ],
+      "asked_atom": "a",
+      "expected_independent_sympy": "unknown",
+      "candidate": "unknown",
+      "old_forward_only": "unknown",
+      "correct": true,
+      "premise_trace": {}
+    },
+    {
+      "id": "scoped-seed-047",
+      "source_facts": [
+        "c>d",
+        "-a@dream",
+        "a>c@quote",
+        "a>d",
+        "+a@real:2025",
+        "c>b",
+        "b>d@real:2026"
+      ],
+      "asked_atom": "d",
+      "expected_independent_sympy": "unknown",
+      "candidate": "unknown",
+      "old_forward_only": "unknown",
+      "correct": true,
+      "premise_trace": {}
+    },
+    {
+      "id": "scoped-seed-048",
+      "source_facts": [
+        "+c"
+      ],
+      "asked_atom": "b",
+      "expected_independent_sympy": "unknown",
+      "candidate": "unknown",
+      "old_forward_only": "unknown",
+      "correct": true,
+      "premise_trace": {}
+    },
+    {
+      "id": "scoped-seed-049",
+      "source_facts": [
+        "+c@dream",
+        "-b@real:2026",
+        "+b@real:2026",
+        "a>b@real:2025",
+        "c>a@dream",
+        "c>d@dream"
+      ],
+      "asked_atom": "c",
+      "expected_independent_sympy": "contradictory",
+      "candidate": "contradictory",
+      "old_forward_only": "contradictory",
+      "correct": true,
+      "premise_trace": {
+        "atom": "b",
+        "positive_sources": [
+          "source:2"
+        ],
+        "negative_sources": [
+          "source:1"
+        ]
+      }
+    },
+    {
+      "id": "scoped-seed-050",
+      "source_facts": [],
+      "asked_atom": "c",
+      "expected_independent_sympy": "unknown",
+      "candidate": "unknown",
+      "old_forward_only": "unknown",
+      "correct": true,
+      "premise_trace": {}
+    },
+    {
+      "id": "scoped-seed-051",
+      "source_facts": [
+        "c>a@quote",
+        "-d@real:2026",
+        "a>b@real:2026"
+      ],
+      "asked_atom": "d",
+      "expected_independent_sympy": "refuted",
+      "candidate": "refuted",
+      "old_forward_only": "refuted",
+      "correct": true,
+      "premise_trace": {
+        "negative_sources": [
+          "source:1"
+        ]
+      }
+    },
+    {
+      "id": "scoped-seed-052",
+      "source_facts": [
+        "-d",
+        "a>c@real:2025",
+        "a>c@dream",
+        "+b@quote",
+        "-d@quote",
+        "a>c@dream",
+        "d>c@real:2025"
+      ],
+      "asked_atom": "b",
+      "expected_independent_sympy": "unknown",
+      "candidate": "unknown",
+      "old_forward_only": "unknown",
+      "correct": true,
+      "premise_trace": {}
+    },
+    {
+      "id": "scoped-seed-053",
+      "source_facts": [
+        "-d@quote",
+        "b>a@quote",
+        "a>c@real:2025",
+        "+d@real:2025",
+        "d>c@quote",
+        "a>b@real:2025",
+        "d>b@real:2026"
+      ],
+      "asked_atom": "c",
+      "expected_independent_sympy": "unknown",
+      "candidate": "unknown",
+      "old_forward_only": "unknown",
+      "correct": true,
+      "premise_trace": {}
+    },
+    {
+      "id": "scoped-seed-054",
+      "source_facts": [
+        "a>d@dream",
+        "c>d@real:2025",
+        "b>d@real:2025",
+        "d>a@quote",
+        "d>a@dream",
+        "-c@real:2026"
+      ],
+      "asked_atom": "b",
+      "expected_independent_sympy": "unknown",
+      "candidate": "unknown",
+      "old_forward_only": "unknown",
+      "correct": true,
+      "premise_trace": {}
+    },
+    {
+      "id": "scoped-seed-055",
+      "source_facts": [
+        "b>d@quote"
+      ],
+      "asked_atom": "d",
+      "expected_independent_sympy": "unknown",
+      "candidate": "unknown",
+      "old_forward_only": "unknown",
+      "correct": true,
+      "premise_trace": {}
+    },
+    {
+      "id": "scoped-seed-056",
+      "source_facts": [],
+      "asked_atom": "d",
+      "expected_independent_sympy": "unknown",
+      "candidate": "unknown",
+      "old_forward_only": "unknown",
+      "correct": true,
+      "premise_trace": {}
+    },
+    {
+      "id": "scoped-seed-057",
+      "source_facts": [
+        "-a@dream",
+        "+c@dream",
+        "+b@real:2025",
+        "+c@real:2025",
+        "a>d@quote",
+        "a>c@real:2025",
+        "a>b"
+      ],
+      "asked_atom": "d",
+      "expected_independent_sympy": "unknown",
+      "candidate": "unknown",
+      "old_forward_only": "unknown",
+      "correct": true,
+      "premise_trace": {}
+    },
+    {
+      "id": "scoped-seed-058",
+      "source_facts": [
+        "c>a@real:2025",
+        "c>b@real:2025",
+        "c>d@quote",
+        "a>b",
+        "a>b@dream",
+        "d>a",
+        "d>c@real:2025"
+      ],
+      "asked_atom": "b",
+      "expected_independent_sympy": "unknown",
+      "candidate": "unknown",
+      "old_forward_only": "unknown",
+      "correct": true,
+      "premise_trace": {}
+    },
+    {
+      "id": "scoped-seed-059",
+      "source_facts": [
+        "+b",
+        "-a@quote",
+        "a>c@real:2025",
+        "c>a@dream",
+        "d>b@quote",
+        "d>c@real:2025",
+        "b>a@quote"
+      ],
+      "asked_atom": "c",
+      "expected_independent_sympy": "unknown",
+      "candidate": "unknown",
+      "old_forward_only": "unknown",
+      "correct": true,
+      "premise_trace": {}
+    },
+    {
+      "id": "scoped-seed-060",
+      "source_facts": [
+        "d>a",
+        "b>a@real:2026",
+        "d>a",
+        "+c@real:2025",
+        "+a@quote",
+        "-b@real:2026"
+      ],
+      "asked_atom": "c",
+      "expected_independent_sympy": "unknown",
+      "candidate": "unknown",
+      "old_forward_only": "unknown",
+      "correct": true,
+      "premise_trace": {}
+    },
+    {
+      "id": "scoped-seed-061",
+      "source_facts": [
+        "c>a@quote",
+        "c>d@real:2025",
+        "d>c@real:2025",
+        "c>a"
+      ],
+      "asked_atom": "c",
+      "expected_independent_sympy": "unknown",
+      "candidate": "unknown",
+      "old_forward_only": "unknown",
+      "correct": true,
+      "premise_trace": {}
+    },
+    {
+      "id": "scoped-seed-062",
+      "source_facts": [
+        "-d@quote",
+        "a>c@real:2025",
+        "c>b@dream",
+        "d>b@real:2026",
+        "b>d@quote",
+        "b>a@dream"
+      ],
+      "asked_atom": "c",
+      "expected_independent_sympy": "unknown",
+      "candidate": "unknown",
+      "old_forward_only": "unknown",
+      "correct": true,
+      "premise_trace": {}
+    },
+    {
+      "id": "scoped-seed-063",
+      "source_facts": [
+        "+c@real:2026",
+        "c>a@real:2026",
+        "d>b@dream",
+        "a>d",
+        "c>b@quote",
+        "+d@real:2026"
+      ],
+      "asked_atom": "d",
+      "expected_independent_sympy": "entailed",
+      "candidate": "entailed",
+      "old_forward_only": "entailed",
+      "correct": true,
+      "premise_trace": {
+        "positive_sources": [
+          "source:5"
+        ]
+      }
+    },
+    {
+      "id": "scoped-seed-064",
+      "source_facts": [
+        "d>c",
+        "-a@dream",
+        "d>c@real:2025",
+        "+d@real:2026",
+        "d>c@quote"
+      ],
+      "asked_atom": "d",
+      "expected_independent_sympy": "entailed",
+      "candidate": "entailed",
+      "old_forward_only": "entailed",
+      "correct": true,
+      "premise_trace": {
+        "positive_sources": [
+          "source:3"
+        ]
+      }
+    },
+    {
+      "id": "scoped-seed-065",
+      "source_facts": [
+        "+b",
+        "+d",
+        "-c@real:2025",
+        "d>a@quote"
+      ],
+      "asked_atom": "a",
+      "expected_independent_sympy": "unknown",
+      "candidate": "unknown",
+      "old_forward_only": "unknown",
+      "correct": true,
+      "premise_trace": {}
+    },
+    {
+      "id": "scoped-seed-066",
+      "source_facts": [
+        "-d@quote",
+        "-b",
+        "-d@real:2026",
+        "b>c@dream",
+        "d>a@quote",
+        "d>c@real:2026"
+      ],
+      "asked_atom": "b",
+      "expected_independent_sympy": "refuted",
+      "candidate": "refuted",
+      "old_forward_only": "refuted",
+      "correct": true,
+      "premise_trace": {
+        "negative_sources": [
+          "source:1"
+        ]
+      }
+    },
+    {
+      "id": "scoped-seed-067",
+      "source_facts": [
+        "-d@real:2026",
+        "b>d",
+        "b>c@real:2026",
+        "c>b@real:2025",
+        "c>d@real:2026"
+      ],
+      "asked_atom": "c",
+      "expected_independent_sympy": "refuted",
+      "candidate": "refuted",
+      "old_forward_only": "unknown",
+      "correct": true,
+      "premise_trace": {
+        "negative_sources": [
+          "source:0",
+          "source:4"
+        ]
+      }
+    },
+    {
+      "id": "scoped-seed-068",
+      "source_facts": [
+        "c>d@dream",
+        "a>b@real:2026",
+        "b>a@real:2026",
+        "+a@real:2026",
+        "+c",
+        "+b@quote",
+        "-a@dream"
+      ],
+      "asked_atom": "c",
+      "expected_independent_sympy": "entailed",
+      "candidate": "entailed",
+      "old_forward_only": "entailed",
+      "correct": true,
+      "premise_trace": {
+        "positive_sources": [
+          "source:4"
+        ]
+      }
+    },
+    {
+      "id": "scoped-seed-069",
+      "source_facts": [
+        "a>d@quote"
+      ],
+      "asked_atom": "b",
+      "expected_independent_sympy": "unknown",
+      "candidate": "unknown",
+      "old_forward_only": "unknown",
+      "correct": true,
+      "premise_trace": {}
+    },
+    {
+      "id": "scoped-seed-070",
+      "source_facts": [
+        "b>d",
+        "+b@quote"
+      ],
+      "asked_atom": "a",
+      "expected_independent_sympy": "unknown",
+      "candidate": "unknown",
+      "old_forward_only": "unknown",
+      "correct": true,
+      "premise_trace": {}
+    },
+    {
+      "id": "scoped-seed-071",
+      "source_facts": [
+        "a>c@dream",
+        "-b@quote"
+      ],
+      "asked_atom": "c",
+      "expected_independent_sympy": "unknown",
+      "candidate": "unknown",
+      "old_forward_only": "unknown",
+      "correct": true,
+      "premise_trace": {}
+    },
+    {
+      "id": "scoped-seed-072",
+      "source_facts": [],
+      "asked_atom": "c",
+      "expected_independent_sympy": "unknown",
+      "candidate": "unknown",
+      "old_forward_only": "unknown",
+      "correct": true,
+      "premise_trace": {}
+    },
+    {
+      "id": "scoped-seed-073",
+      "source_facts": [
+        "+b@dream",
+        "b>a@dream",
+        "-d@real:2026",
+        "a>d@quote",
+        "c>d@real:2026",
+        "-a@real:2026",
+        "a>c@real:2025"
+      ],
+      "asked_atom": "b",
+      "expected_independent_sympy": "unknown",
+      "candidate": "unknown",
+      "old_forward_only": "unknown",
+      "correct": true,
+      "premise_trace": {}
+    },
+    {
+      "id": "scoped-seed-074",
+      "source_facts": [
+        "d>a@real:2025"
+      ],
+      "asked_atom": "a",
+      "expected_independent_sympy": "unknown",
+      "candidate": "unknown",
+      "old_forward_only": "unknown",
+      "correct": true,
+      "premise_trace": {}
+    },
+    {
+      "id": "scoped-seed-075",
+      "source_facts": [
+        "+d"
+      ],
+      "asked_atom": "d",
+      "expected_independent_sympy": "entailed",
+      "candidate": "entailed",
+      "old_forward_only": "entailed",
+      "correct": true,
+      "premise_trace": {
+        "positive_sources": [
+          "source:0"
+        ]
+      }
+    },
+    {
+      "id": "scoped-seed-076",
+      "source_facts": [
+        "-a@real:2025",
+        "a>d@quote",
+        "+a@dream",
+        "d>c@quote",
+        "c>a@dream",
+        "c>d@real:2026"
+      ],
+      "asked_atom": "d",
+      "expected_independent_sympy": "unknown",
+      "candidate": "unknown",
+      "old_forward_only": "unknown",
+      "correct": true,
+      "premise_trace": {}
+    },
+    {
+      "id": "scoped-seed-077",
+      "source_facts": [
+        "b>c@dream",
+        "c>a@quote",
+        "+a@quote"
+      ],
+      "asked_atom": "c",
+      "expected_independent_sympy": "unknown",
+      "candidate": "unknown",
+      "old_forward_only": "unknown",
+      "correct": true,
+      "premise_trace": {}
+    },
+    {
+      "id": "scoped-seed-078",
+      "source_facts": [
+        "c>b@quote",
+        "+c@real:2025",
+        "c>a",
+        "c>d@dream",
+        "c>b@dream",
+        "-b@real:2025",
+        "b>c@real:2025"
+      ],
+      "asked_atom": "b",
+      "expected_independent_sympy": "unknown",
+      "candidate": "unknown",
+      "old_forward_only": "unknown",
+      "correct": true,
+      "premise_trace": {}
+    },
+    {
+      "id": "scoped-seed-079",
+      "source_facts": [
+        "-a@quote",
+        "a>d@dream",
+        "+d@real:2025"
+      ],
+      "asked_atom": "b",
+      "expected_independent_sympy": "unknown",
+      "candidate": "unknown",
+      "old_forward_only": "unknown",
+      "correct": true,
+      "premise_trace": {}
+    },
+    {
+      "id": "scoped-seed-080",
+      "source_facts": [],
+      "asked_atom": "d",
+      "expected_independent_sympy": "unknown",
+      "candidate": "unknown",
+      "old_forward_only": "unknown",
+      "correct": true,
+      "premise_trace": {}
+    },
+    {
+      "id": "scoped-seed-081",
+      "source_facts": [
+        "b>d@real:2025",
+        "a>c@quote",
+        "d>b@quote",
+        "b>d@dream",
+        "d>b@real:2025"
+      ],
+      "asked_atom": "b",
+      "expected_independent_sympy": "unknown",
+      "candidate": "unknown",
+      "old_forward_only": "unknown",
+      "correct": true,
+      "premise_trace": {}
+    },
+    {
+      "id": "scoped-seed-082",
+      "source_facts": [
+        "c>a@quote",
+        "-d",
+        "-d@real:2025",
+        "c>b@real:2026",
+        "-c",
+        "-d@quote",
+        "+c@real:2025"
+      ],
+      "asked_atom": "d",
+      "expected_independent_sympy": "refuted",
+      "candidate": "refuted",
+      "old_forward_only": "refuted",
+      "correct": true,
+      "premise_trace": {
+        "negative_sources": [
+          "source:1"
+        ]
+      }
+    },
+    {
+      "id": "scoped-seed-083",
+      "source_facts": [
+        "b>c",
+        "a>d@real:2025",
+        "-d@quote",
+        "a>d@quote",
+        "d>a@dream",
+        "c>a@real:2025",
+        "c>d@real:2026"
+      ],
+      "asked_atom": "a",
+      "expected_independent_sympy": "unknown",
+      "candidate": "unknown",
+      "old_forward_only": "unknown",
+      "correct": true,
+      "premise_trace": {}
+    },
+    {
+      "id": "scoped-seed-084",
+      "source_facts": [
+        "+c@dream",
+        "+d@dream",
+        "-d@quote",
+        "-a@real:2025",
+        "b>c@quote",
+        "b>d@real:2026"
+      ],
+      "asked_atom": "b",
+      "expected_independent_sympy": "unknown",
+      "candidate": "unknown",
+      "old_forward_only": "unknown",
+      "correct": true,
+      "premise_trace": {}
+    },
+    {
+      "id": "scoped-seed-085",
+      "source_facts": [
+        "c>a@real:2026",
+        "+a@real:2025",
+        "a>c",
+        "-b",
+        "c>a@real:2026",
+        "a>b"
+      ],
+      "asked_atom": "b",
+      "expected_independent_sympy": "refuted",
+      "candidate": "refuted",
+      "old_forward_only": "refuted",
+      "correct": true,
+      "premise_trace": {
+        "negative_sources": [
+          "source:3"
+        ]
+      }
+    },
+    {
+      "id": "scoped-seed-086",
+      "source_facts": [],
+      "asked_atom": "b",
+      "expected_independent_sympy": "unknown",
+      "candidate": "unknown",
+      "old_forward_only": "unknown",
+      "correct": true,
+      "premise_trace": {}
+    },
+    {
+      "id": "scoped-seed-087",
+      "source_facts": [
+        "+c@real:2025",
+        "d>c@real:2026",
+        "a>b",
+        "d>c"
+      ],
+      "asked_atom": "b",
+      "expected_independent_sympy": "unknown",
+      "candidate": "unknown",
+      "old_forward_only": "unknown",
+      "correct": true,
+      "premise_trace": {}
+    },
+    {
+      "id": "scoped-seed-088",
+      "source_facts": [
+        "d>c@real:2026",
+        "a>c@real:2025"
+      ],
+      "asked_atom": "c",
+      "expected_independent_sympy": "unknown",
+      "candidate": "unknown",
+      "old_forward_only": "unknown",
+      "correct": true,
+      "premise_trace": {}
+    },
+    {
+      "id": "scoped-seed-089",
+      "source_facts": [
+        "c>b@real:2025"
+      ],
+      "asked_atom": "d",
+      "expected_independent_sympy": "unknown",
+      "candidate": "unknown",
+      "old_forward_only": "unknown",
+      "correct": true,
+      "premise_trace": {}
+    },
+    {
+      "id": "scoped-seed-090",
+      "source_facts": [
+        "d>a@real:2025",
+        "b>a@real:2026",
+        "c>a@real:2026"
+      ],
+      "asked_atom": "b",
+      "expected_independent_sympy": "unknown",
+      "candidate": "unknown",
+      "old_forward_only": "unknown",
+      "correct": true,
+      "premise_trace": {}
+    },
+    {
+      "id": "scoped-seed-091",
+      "source_facts": [
+        "-b@dream",
+        "d>b@real:2026",
+        "-a@dream",
+        "c>d@dream"
+      ],
+      "asked_atom": "b",
+      "expected_independent_sympy": "unknown",
+      "candidate": "unknown",
+      "old_forward_only": "unknown",
+      "correct": true,
+      "premise_trace": {}
+    },
+    {
+      "id": "scoped-seed-092",
+      "source_facts": [
+        "c>d@quote",
+        "d>a",
+        "b>d@quote",
+        "+b@quote",
+        "+b@quote",
+        "b>d@real:2025"
+      ],
+      "asked_atom": "b",
+      "expected_independent_sympy": "unknown",
+      "candidate": "unknown",
+      "old_forward_only": "unknown",
+      "correct": true,
+      "premise_trace": {}
+    },
+    {
+      "id": "scoped-seed-093",
+      "source_facts": [
+        "-b@real:2026",
+        "+d@real:2025"
+      ],
+      "asked_atom": "b",
+      "expected_independent_sympy": "refuted",
+      "candidate": "refuted",
+      "old_forward_only": "refuted",
+      "correct": true,
+      "premise_trace": {
+        "negative_sources": [
+          "source:0"
+        ]
+      }
+    },
+    {
+      "id": "scoped-seed-094",
+      "source_facts": [
+        "a>c@quote",
+        "a>c@real:2025"
+      ],
+      "asked_atom": "d",
+      "expected_independent_sympy": "unknown",
+      "candidate": "unknown",
+      "old_forward_only": "unknown",
+      "correct": true,
+      "premise_trace": {}
+    },
+    {
+      "id": "scoped-seed-095",
+      "source_facts": [
+        "a>c",
+        "a>d@quote"
+      ],
+      "asked_atom": "d",
+      "expected_independent_sympy": "unknown",
+      "candidate": "unknown",
+      "old_forward_only": "unknown",
+      "correct": true,
+      "premise_trace": {}
+    },
+    {
+      "id": "scoped-seed-096",
+      "source_facts": [
+        "-c@dream",
+        "+a",
+        "c>a@dream",
+        "d>b@dream",
+        "b>d@dream"
+      ],
+      "asked_atom": "a",
+      "expected_independent_sympy": "entailed",
+      "candidate": "entailed",
+      "old_forward_only": "entailed",
+      "correct": true,
+      "premise_trace": {
+        "positive_sources": [
+          "source:1"
+        ]
+      }
+    },
+    {
+      "id": "scoped-seed-097",
+      "source_facts": [
+        "b>d",
+        "-a@dream",
+        "c>a@quote",
+        "-a"
+      ],
+      "asked_atom": "b",
+      "expected_independent_sympy": "unknown",
+      "candidate": "unknown",
+      "old_forward_only": "unknown",
+      "correct": true,
+      "premise_trace": {}
+    },
+    {
+      "id": "scoped-seed-098",
+      "source_facts": [
+        "-c@real:2026",
+        "-a@quote",
+        "d>b@real:2026",
+        "c>d@real:2026",
+        "a>d@real:2025"
+      ],
+      "asked_atom": "d",
+      "expected_independent_sympy": "unknown",
+      "candidate": "unknown",
+      "old_forward_only": "unknown",
+      "correct": true,
+      "premise_trace": {}
+    },
+    {
+      "id": "scoped-seed-099",
+      "source_facts": [
+        "c>b@real:2026",
+        "+b",
+        "b>c",
+        "c>d@real:2025",
+        "a>c",
+        "-c@dream"
+      ],
+      "asked_atom": "a",
+      "expected_independent_sympy": "unknown",
+      "candidate": "unknown",
+      "old_forward_only": "unknown",
+      "correct": true,
+      "premise_trace": {}
+    },
+    {
+      "id": "scoped-seed-100",
+      "source_facts": [
+        "-a@quote",
+        "b>d@real:2026"
+      ],
+      "asked_atom": "a",
+      "expected_independent_sympy": "unknown",
+      "candidate": "unknown",
+      "old_forward_only": "unknown",
+      "correct": true,
+      "premise_trace": {}
+    },
+    {
+      "id": "scoped-seed-101",
+      "source_facts": [
+        "+a@quote",
+        "d>a@real:2026",
+        "a>b@real:2025",
+        "a>b"
+      ],
+      "asked_atom": "a",
+      "expected_independent_sympy": "unknown",
+      "candidate": "unknown",
+      "old_forward_only": "unknown",
+      "correct": true,
+      "premise_trace": {}
+    },
+    {
+      "id": "scoped-seed-102",
+      "source_facts": [
+        "+d@real:2026",
+        "-c@real:2026",
+        "+c@quote",
+        "c>b@real:2026",
+        "+b@dream",
+        "+c",
+        "-a@real:2025"
+      ],
+      "asked_atom": "d",
+      "expected_independent_sympy": "contradictory",
+      "candidate": "contradictory",
+      "old_forward_only": "contradictory",
+      "correct": true,
+      "premise_trace": {
+        "atom": "c",
+        "positive_sources": [
+          "source:5"
+        ],
+        "negative_sources": [
+          "source:1"
+        ]
+      }
+    },
+    {
+      "id": "scoped-seed-103",
+      "source_facts": [
+        "b>c@quote",
+        "b>c",
+        "b>a"
+      ],
+      "asked_atom": "a",
+      "expected_independent_sympy": "unknown",
+      "candidate": "unknown",
+      "old_forward_only": "unknown",
+      "correct": true,
+      "premise_trace": {}
+    },
+    {
+      "id": "scoped-seed-104",
+      "source_facts": [
+        "c>d@real:2025",
+        "+c@quote",
+        "c>b"
+      ],
+      "asked_atom": "c",
+      "expected_independent_sympy": "unknown",
+      "candidate": "unknown",
+      "old_forward_only": "unknown",
+      "correct": true,
+      "premise_trace": {}
+    },
+    {
+      "id": "scoped-seed-105",
+      "source_facts": [
+        "-a@real:2025",
+        "-d",
+        "c>a"
+      ],
+      "asked_atom": "d",
+      "expected_independent_sympy": "refuted",
+      "candidate": "refuted",
+      "old_forward_only": "refuted",
+      "correct": true,
+      "premise_trace": {
+        "negative_sources": [
+          "source:1"
+        ]
+      }
+    },
+    {
+      "id": "scoped-seed-106",
+      "source_facts": [
+        "-d@dream",
+        "-c@real:2026",
+        "b>c",
+        "+c@dream",
+        "-d"
+      ],
+      "asked_atom": "a",
+      "expected_independent_sympy": "unknown",
+      "candidate": "unknown",
+      "old_forward_only": "unknown",
+      "correct": true,
+      "premise_trace": {}
+    },
+    {
+      "id": "scoped-seed-107",
+      "source_facts": [
+        "b>d@dream",
+        "c>a@dream",
+        "a>b@dream",
+        "a>c@real:2025",
+        "a>b"
+      ],
+      "asked_atom": "a",
+      "expected_independent_sympy": "unknown",
+      "candidate": "unknown",
+      "old_forward_only": "unknown",
+      "correct": true,
+      "premise_trace": {}
+    },
+    {
+      "id": "scoped-seed-108",
+      "source_facts": [
+        "+a",
+        "d>a"
+      ],
+      "asked_atom": "b",
+      "expected_independent_sympy": "unknown",
+      "candidate": "unknown",
+      "old_forward_only": "unknown",
+      "correct": true,
+      "premise_trace": {}
+    },
+    {
+      "id": "scoped-seed-109",
+      "source_facts": [
+        "-d@dream",
+        "c>a@dream",
+        "-d",
+        "+a@real:2026",
+        "+c@real:2026",
+        "-d",
+        "d>b@real:2025"
+      ],
+      "asked_atom": "a",
+      "expected_independent_sympy": "entailed",
+      "candidate": "entailed",
+      "old_forward_only": "entailed",
+      "correct": true,
+      "premise_trace": {
+        "positive_sources": [
+          "source:3"
+        ]
+      }
+    },
+    {
+      "id": "scoped-seed-110",
+      "source_facts": [],
+      "asked_atom": "c",
+      "expected_independent_sympy": "unknown",
+      "candidate": "unknown",
+      "old_forward_only": "unknown",
+      "correct": true,
+      "premise_trace": {}
+    },
+    {
+      "id": "scoped-seed-111",
+      "source_facts": [
+        "+a",
+        "a>c",
+        "c>d@quote",
+        "c>d@real:2026",
+        "+a"
+      ],
+      "asked_atom": "c",
+      "expected_independent_sympy": "entailed",
+      "candidate": "entailed",
+      "old_forward_only": "entailed",
+      "correct": true,
+      "premise_trace": {
+        "positive_sources": [
+          "source:0",
+          "source:1"
+        ]
+      }
+    },
+    {
+      "id": "scoped-seed-112",
+      "source_facts": [
+        "c>b@real:2026",
+        "b>d@real:2025",
+        "+c@quote",
+        "d>a@dream"
+      ],
+      "asked_atom": "b",
+      "expected_independent_sympy": "unknown",
+      "candidate": "unknown",
+      "old_forward_only": "unknown",
+      "correct": true,
+      "premise_trace": {}
+    },
+    {
+      "id": "scoped-seed-113",
+      "source_facts": [
+        "+b",
+        "-d@quote",
+        "-b@dream",
+        "d>a@real:2025"
+      ],
+      "asked_atom": "d",
+      "expected_independent_sympy": "unknown",
+      "candidate": "unknown",
+      "old_forward_only": "unknown",
+      "correct": true,
+      "premise_trace": {}
+    },
+    {
+      "id": "scoped-seed-114",
+      "source_facts": [
+        "d>a",
+        "-b@quote",
+        "+a@real:2026",
+        "a>d@dream",
+        "-a@quote",
+        "+c@quote",
+        "c>d@real:2025"
+      ],
+      "asked_atom": "b",
+      "expected_independent_sympy": "unknown",
+      "candidate": "unknown",
+      "old_forward_only": "unknown",
+      "correct": true,
+      "premise_trace": {}
+    },
+    {
+      "id": "scoped-seed-115",
+      "source_facts": [
+        "a>b@quote",
+        "c>a@dream"
+      ],
+      "asked_atom": "b",
+      "expected_independent_sympy": "unknown",
+      "candidate": "unknown",
+      "old_forward_only": "unknown",
+      "correct": true,
+      "premise_trace": {}
+    },
+    {
+      "id": "scoped-seed-116",
+      "source_facts": [
+        "a>c@real:2026",
+        "+c@real:2026",
+        "d>c@real:2026"
+      ],
+      "asked_atom": "a",
+      "expected_independent_sympy": "unknown",
+      "candidate": "unknown",
+      "old_forward_only": "unknown",
+      "correct": true,
+      "premise_trace": {}
+    },
+    {
+      "id": "scoped-seed-117",
+      "source_facts": [],
+      "asked_atom": "d",
+      "expected_independent_sympy": "unknown",
+      "candidate": "unknown",
+      "old_forward_only": "unknown",
+      "correct": true,
+      "premise_trace": {}
+    },
+    {
+      "id": "scoped-seed-118",
+      "source_facts": [
+        "-c",
+        "d>a@quote",
+        "a>b@real:2025"
+      ],
+      "asked_atom": "d",
+      "expected_independent_sympy": "unknown",
+      "candidate": "unknown",
+      "old_forward_only": "unknown",
+      "correct": true,
+      "premise_trace": {}
+    },
+    {
+      "id": "scoped-seed-119",
+      "source_facts": [
+        "a>d@real:2025",
+        "c>d",
+        "-b@quote",
+        "a>c@quote",
+        "b>d"
+      ],
+      "asked_atom": "c",
+      "expected_independent_sympy": "unknown",
+      "candidate": "unknown",
+      "old_forward_only": "unknown",
+      "correct": true,
+      "premise_trace": {}
+    },
+    {
+      "id": "scoped-seed-120",
+      "source_facts": [
+        "+c@real:2026",
+        "a>b@real:2025",
+        "c>a@real:2026",
+        "b>c@quote"
+      ],
+      "asked_atom": "c",
+      "expected_independent_sympy": "entailed",
+      "candidate": "entailed",
+      "old_forward_only": "entailed",
+      "correct": true,
+      "premise_trace": {
+        "positive_sources": [
+          "source:0"
+        ]
+      }
+    },
+    {
+      "id": "scoped-seed-121",
+      "source_facts": [],
+      "asked_atom": "b",
+      "expected_independent_sympy": "unknown",
+      "candidate": "unknown",
+      "old_forward_only": "unknown",
+      "correct": true,
+      "premise_trace": {}
+    },
+    {
+      "id": "scoped-seed-122",
+      "source_facts": [
+        "-c@dream",
+        "+a@real:2025",
+        "b>c@real:2026",
+        "c>a@quote"
+      ],
+      "asked_atom": "b",
+      "expected_independent_sympy": "unknown",
+      "candidate": "unknown",
+      "old_forward_only": "unknown",
+      "correct": true,
+      "premise_trace": {}
+    },
+    {
+      "id": "scoped-seed-123",
+      "source_facts": [
+        "a>c@real:2026",
+        "a>b@quote"
+      ],
+      "asked_atom": "d",
+      "expected_independent_sympy": "unknown",
+      "candidate": "unknown",
+      "old_forward_only": "unknown",
+      "correct": true,
+      "premise_trace": {}
+    },
+    {
+      "id": "scoped-seed-124",
+      "source_facts": [
+        "a>d@dream",
+        "d>c@real:2025"
+      ],
+      "asked_atom": "b",
+      "expected_independent_sympy": "unknown",
+      "candidate": "unknown",
+      "old_forward_only": "unknown",
+      "correct": true,
+      "premise_trace": {}
+    },
+    {
+      "id": "scoped-seed-125",
+      "source_facts": [
+        "-d@quote",
+        "c>b@real:2025"
+      ],
+      "asked_atom": "c",
+      "expected_independent_sympy": "unknown",
+      "candidate": "unknown",
+      "old_forward_only": "unknown",
+      "correct": true,
+      "premise_trace": {}
+    },
+    {
+      "id": "scoped-seed-126",
+      "source_facts": [
+        "b>d@real:2026",
+        "-c@real:2026",
+        "+a@real:2025"
+      ],
+      "asked_atom": "a",
+      "expected_independent_sympy": "unknown",
+      "candidate": "unknown",
+      "old_forward_only": "unknown",
+      "correct": true,
+      "premise_trace": {}
+    },
+    {
+      "id": "scoped-seed-127",
+      "source_facts": [
+        "a>c@dream",
+        "c>b@real:2026",
+        "d>a@real:2026",
+        "c>d"
+      ],
+      "asked_atom": "d",
+      "expected_independent_sympy": "unknown",
+      "candidate": "unknown",
+      "old_forward_only": "unknown",
+      "correct": true,
+      "premise_trace": {}
+    },
+    {
+      "id": "scoped-seed-128",
+      "source_facts": [
+        "-d@quote",
+        "b>c",
+        "+c@real:2026",
+        "a>b",
+        "-d@real:2025"
+      ],
+      "asked_atom": "b",
+      "expected_independent_sympy": "unknown",
+      "candidate": "unknown",
+      "old_forward_only": "unknown",
+      "correct": true,
+      "premise_trace": {}
+    },
+    {
+      "id": "scoped-seed-129",
+      "source_facts": [
+        "b>d",
+        "-b@real:2025",
+        "-b",
+        "c>b",
+        "c>b@dream"
+      ],
+      "asked_atom": "a",
+      "expected_independent_sympy": "unknown",
+      "candidate": "unknown",
+      "old_forward_only": "unknown",
+      "correct": true,
+      "premise_trace": {}
+    },
+    {
+      "id": "scoped-seed-130",
+      "source_facts": [
+        "-b@quote",
+        "+a@quote"
+      ],
+      "asked_atom": "d",
+      "expected_independent_sympy": "unknown",
+      "candidate": "unknown",
+      "old_forward_only": "unknown",
+      "correct": true,
+      "premise_trace": {}
+    },
+    {
+      "id": "scoped-seed-131",
+      "source_facts": [
+        "-a",
+        "c>a"
+      ],
+      "asked_atom": "c",
+      "expected_independent_sympy": "refuted",
+      "candidate": "refuted",
+      "old_forward_only": "unknown",
+      "correct": true,
+      "premise_trace": {
+        "negative_sources": [
+          "source:0",
+          "source:1"
+        ]
+      }
+    },
+    {
+      "id": "scoped-seed-132",
+      "source_facts": [
+        "c>a@real:2025",
+        "a>b@real:2026",
+        "+d",
+        "d>c@real:2026"
+      ],
+      "asked_atom": "a",
+      "expected_independent_sympy": "unknown",
+      "candidate": "unknown",
+      "old_forward_only": "unknown",
+      "correct": true,
+      "premise_trace": {}
+    },
+    {
+      "id": "scoped-seed-133",
+      "source_facts": [
+        "c>d@quote",
+        "+a@real:2026"
+      ],
+      "asked_atom": "b",
+      "expected_independent_sympy": "unknown",
+      "candidate": "unknown",
+      "old_forward_only": "unknown",
+      "correct": true,
+      "premise_trace": {}
+    },
+    {
+      "id": "scoped-seed-134",
+      "source_facts": [
+        "c>a",
+        "c>a@quote",
+        "c>a@real:2026",
+        "d>c@dream",
+        "d>c",
+        "b>a@dream"
+      ],
+      "asked_atom": "a",
+      "expected_independent_sympy": "unknown",
+      "candidate": "unknown",
+      "old_forward_only": "unknown",
+      "correct": true,
+      "premise_trace": {}
+    },
+    {
+      "id": "scoped-seed-135",
+      "source_facts": [
+        "+d",
+        "-b@real:2025",
+        "b>a@dream",
+        "+b@quote",
+        "-b",
+        "a>c@real:2026",
+        "+a@real:2025"
+      ],
+      "asked_atom": "a",
+      "expected_independent_sympy": "unknown",
+      "candidate": "unknown",
+      "old_forward_only": "unknown",
+      "correct": true,
+      "premise_trace": {}
+    },
+    {
+      "id": "scoped-seed-136",
+      "source_facts": [
+        "d>b@real:2026",
+        "b>d@quote",
+        "c>a@real:2026"
+      ],
+      "asked_atom": "b",
+      "expected_independent_sympy": "unknown",
+      "candidate": "unknown",
+      "old_forward_only": "unknown",
+      "correct": true,
+      "premise_trace": {}
+    },
+    {
+      "id": "scoped-seed-137",
+      "source_facts": [],
+      "asked_atom": "b",
+      "expected_independent_sympy": "unknown",
+      "candidate": "unknown",
+      "old_forward_only": "unknown",
+      "correct": true,
+      "premise_trace": {}
+    },
+    {
+      "id": "scoped-seed-138",
+      "source_facts": [
+        "d>b@real:2025"
+      ],
+      "asked_atom": "c",
+      "expected_independent_sympy": "unknown",
+      "candidate": "unknown",
+      "old_forward_only": "unknown",
+      "correct": true,
+      "premise_trace": {}
+    },
+    {
+      "id": "scoped-seed-139",
+      "source_facts": [
+        "d>b@real:2026"
+      ],
+      "asked_atom": "b",
+      "expected_independent_sympy": "unknown",
+      "candidate": "unknown",
+      "old_forward_only": "unknown",
+      "correct": true,
+      "premise_trace": {}
+    },
+    {
+      "id": "scoped-seed-140",
+      "source_facts": [
+        "b>c@quote",
+        "+b@quote",
+        "d>c@quote"
+      ],
+      "asked_atom": "b",
+      "expected_independent_sympy": "unknown",
+      "candidate": "unknown",
+      "old_forward_only": "unknown",
+      "correct": true,
+      "premise_trace": {}
+    },
+    {
+      "id": "scoped-seed-141",
+      "source_facts": [
+        "c>a"
+      ],
+      "asked_atom": "d",
+      "expected_independent_sympy": "unknown",
+      "candidate": "unknown",
+      "old_forward_only": "unknown",
+      "correct": true,
+      "premise_trace": {}
+    },
+    {
+      "id": "scoped-seed-142",
+      "source_facts": [
+        "a>b@dream",
+        "+d@dream",
+        "-c",
+        "-a@real:2025",
+        "+d@quote",
+        "b>c",
+        "b>d@quote"
+      ],
+      "asked_atom": "a",
+      "expected_independent_sympy": "unknown",
+      "candidate": "unknown",
+      "old_forward_only": "unknown",
+      "correct": true,
+      "premise_trace": {}
+    },
+    {
+      "id": "scoped-seed-143",
+      "source_facts": [
+        "c>d@dream"
+      ],
+      "asked_atom": "c",
+      "expected_independent_sympy": "unknown",
+      "candidate": "unknown",
+      "old_forward_only": "unknown",
+      "correct": true,
+      "premise_trace": {}
+    },
+    {
+      "id": "scoped-seed-144",
+      "source_facts": [
+        "b>d@dream"
+      ],
+      "asked_atom": "d",
+      "expected_independent_sympy": "unknown",
+      "candidate": "unknown",
+      "old_forward_only": "unknown",
+      "correct": true,
+      "premise_trace": {}
+    },
+    {
+      "id": "scoped-seed-145",
+      "source_facts": [
+        "c>a@real:2026",
+        "a>c",
+        "b>d@real:2025"
+      ],
+      "asked_atom": "c",
+      "expected_independent_sympy": "unknown",
+      "candidate": "unknown",
+      "old_forward_only": "unknown",
+      "correct": true,
+      "premise_trace": {}
+    },
+    {
+      "id": "scoped-seed-146",
+      "source_facts": [
+        "+b@real:2026",
+        "d>b@real:2025",
+        "+b@real:2026",
+        "b>d@real:2026",
+        "+b@quote",
+        "c>b@real:2026",
+        "d>c@quote"
+      ],
+      "asked_atom": "a",
+      "expected_independent_sympy": "unknown",
+      "candidate": "unknown",
+      "old_forward_only": "unknown",
+      "correct": true,
+      "premise_trace": {}
+    },
+    {
+      "id": "scoped-seed-147",
+      "source_facts": [
+        "-a@real:2026",
+        "d>c",
+        "c>d",
+        "-c",
+        "-a@real:2026",
+        "-b@real:2025",
+        "+b@dream"
+      ],
+      "asked_atom": "c",
+      "expected_independent_sympy": "refuted",
+      "candidate": "refuted",
+      "old_forward_only": "refuted",
+      "correct": true,
+      "premise_trace": {
+        "negative_sources": [
+          "source:3"
+        ]
+      }
+    },
+    {
+      "id": "scoped-seed-148",
+      "source_facts": [
+        "d>c@quote",
+        "d>a",
+        "d>c@real:2026",
+        "-b@real:2026",
+        "-b@real:2025",
+        "+b@quote",
+        "c>d@dream"
+      ],
+      "asked_atom": "c",
+      "expected_independent_sympy": "unknown",
+      "candidate": "unknown",
+      "old_forward_only": "unknown",
+      "correct": true,
+      "premise_trace": {}
+    },
+    {
+      "id": "scoped-seed-149",
+      "source_facts": [],
+      "asked_atom": "a",
+      "expected_independent_sympy": "unknown",
+      "candidate": "unknown",
+      "old_forward_only": "unknown",
+      "correct": true,
+      "premise_trace": {}
+    },
+    {
+      "id": "scoped-seed-150",
+      "source_facts": [
+        "b>a@dream",
+        "d>a@quote",
+        "c>d@dream",
+        "a>d@quote",
+        "+d@real:2025",
+        "a>d@real:2025",
+        "d>a@real:2025"
+      ],
+      "asked_atom": "d",
+      "expected_independent_sympy": "unknown",
+      "candidate": "unknown",
+      "old_forward_only": "unknown",
+      "correct": true,
+      "premise_trace": {}
+    },
+    {
+      "id": "scoped-seed-151",
+      "source_facts": [],
+      "asked_atom": "b",
+      "expected_independent_sympy": "unknown",
+      "candidate": "unknown",
+      "old_forward_only": "unknown",
+      "correct": true,
+      "premise_trace": {}
+    },
+    {
+      "id": "scoped-seed-152",
+      "source_facts": [],
+      "asked_atom": "c",
+      "expected_independent_sympy": "unknown",
+      "candidate": "unknown",
+      "old_forward_only": "unknown",
+      "correct": true,
+      "premise_trace": {}
+    },
+    {
+      "id": "scoped-seed-153",
+      "source_facts": [],
+      "asked_atom": "b",
+      "expected_independent_sympy": "unknown",
+      "candidate": "unknown",
+      "old_forward_only": "unknown",
+      "correct": true,
+      "premise_trace": {}
+    },
+    {
+      "id": "scoped-seed-154",
+      "source_facts": [
+        "b>a@real:2025"
+      ],
+      "asked_atom": "b",
+      "expected_independent_sympy": "unknown",
+      "candidate": "unknown",
+      "old_forward_only": "unknown",
+      "correct": true,
+      "premise_trace": {}
+    },
+    {
+      "id": "scoped-seed-155",
+      "source_facts": [
+        "-a@quote"
+      ],
+      "asked_atom": "d",
+      "expected_independent_sympy": "unknown",
+      "candidate": "unknown",
+      "old_forward_only": "unknown",
+      "correct": true,
+      "premise_trace": {}
+    },
+    {
+      "id": "scoped-seed-156",
+      "source_facts": [
+        "d>b@real:2026",
+        "a>c@real:2026",
+        "c>b@real:2025"
+      ],
+      "asked_atom": "d",
+      "expected_independent_sympy": "unknown",
+      "candidate": "unknown",
+      "old_forward_only": "unknown",
+      "correct": true,
+      "premise_trace": {}
+    },
+    {
+      "id": "scoped-seed-157",
+      "source_facts": [
+        "d>a@real:2026",
+        "-b@quote",
+        "c>b@real:2026",
+        "+c",
+        "-a@dream",
+        "b>d"
+      ],
+      "asked_atom": "a",
+      "expected_independent_sympy": "entailed",
+      "candidate": "entailed",
+      "old_forward_only": "entailed",
+      "correct": true,
+      "premise_trace": {
+        "positive_sources": [
+          "source:3",
+          "source:2",
+          "source:5",
+          "source:0"
+        ]
+      }
+    },
+    {
+      "id": "scoped-seed-158",
+      "source_facts": [
+        "b>a@real:2026",
+        "+d@real:2025"
+      ],
+      "asked_atom": "a",
+      "expected_independent_sympy": "unknown",
+      "candidate": "unknown",
+      "old_forward_only": "unknown",
+      "correct": true,
+      "premise_trace": {}
+    },
+    {
+      "id": "scoped-seed-159",
+      "source_facts": [
+        "a>c"
+      ],
+      "asked_atom": "a",
+      "expected_independent_sympy": "unknown",
+      "candidate": "unknown",
+      "old_forward_only": "unknown",
+      "correct": true,
+      "premise_trace": {}
+    },
+    {
+      "id": "scoped-seed-160",
+      "source_facts": [
+        "d>b@real:2025",
+        "b>a@real:2025",
+        "+d@real:2026",
+        "c>b@dream",
+        "+c@real:2026",
+        "c>d@quote",
+        "b>d@quote"
+      ],
+      "asked_atom": "c",
+      "expected_independent_sympy": "entailed",
+      "candidate": "entailed",
+      "old_forward_only": "entailed",
+      "correct": true,
+      "premise_trace": {
+        "positive_sources": [
+          "source:4"
+        ]
+      }
+    },
+    {
+      "id": "scoped-seed-161",
+      "source_facts": [
+        "+d@dream",
+        "c>d@dream",
+        "+a"
+      ],
+      "asked_atom": "a",
+      "expected_independent_sympy": "entailed",
+      "candidate": "entailed",
+      "old_forward_only": "entailed",
+      "correct": true,
+      "premise_trace": {
+        "positive_sources": [
+          "source:2"
+        ]
+      }
+    },
+    {
+      "id": "scoped-seed-162",
+      "source_facts": [
+        "b>d",
+        "+d@real:2026",
+        "+b@real:2025",
+        "-d@real:2025"
+      ],
+      "asked_atom": "a",
+      "expected_independent_sympy": "unknown",
+      "candidate": "unknown",
+      "old_forward_only": "unknown",
+      "correct": true,
+      "premise_trace": {}
+    },
+    {
+      "id": "scoped-seed-163",
+      "source_facts": [
+        "a>d@real:2025",
+        "a>c@dream",
+        "c>a@real:2025",
+        "+b@real:2025"
+      ],
+      "asked_atom": "c",
+      "expected_independent_sympy": "unknown",
+      "candidate": "unknown",
+      "old_forward_only": "unknown",
+      "correct": true,
+      "premise_trace": {}
+    },
+    {
+      "id": "scoped-seed-164",
+      "source_facts": [
+        "c>b",
+        "+d@quote",
+        "b>c@real:2025",
+        "b>d"
+      ],
+      "asked_atom": "d",
+      "expected_independent_sympy": "unknown",
+      "candidate": "unknown",
+      "old_forward_only": "unknown",
+      "correct": true,
+      "premise_trace": {}
+    },
+    {
+      "id": "scoped-seed-165",
+      "source_facts": [
+        "+b",
+        "-c",
+        "a>d@dream",
+        "b>a@quote",
+        "a>b@real:2025"
+      ],
+      "asked_atom": "c",
+      "expected_independent_sympy": "refuted",
+      "candidate": "refuted",
+      "old_forward_only": "refuted",
+      "correct": true,
+      "premise_trace": {
+        "negative_sources": [
+          "source:1"
+        ]
+      }
+    },
+    {
+      "id": "scoped-seed-166",
+      "source_facts": [
+        "-d@dream",
+        "b>c@dream",
+        "a>d@real:2025",
+        "c>a@quote",
+        "+c@real:2026"
+      ],
+      "asked_atom": "c",
+      "expected_independent_sympy": "entailed",
+      "candidate": "entailed",
+      "old_forward_only": "entailed",
+      "correct": true,
+      "premise_trace": {
+        "positive_sources": [
+          "source:4"
+        ]
+      }
+    },
+    {
+      "id": "scoped-seed-167",
+      "source_facts": [
+        "b>a@real:2025",
+        "a>c@quote",
+        "c>d@quote"
+      ],
+      "asked_atom": "a",
+      "expected_independent_sympy": "unknown",
+      "candidate": "unknown",
+      "old_forward_only": "unknown",
+      "correct": true,
+      "premise_trace": {}
+    },
+    {
+      "id": "scoped-seed-168",
+      "source_facts": [
+        "a>d@quote",
+        "c>d",
+        "b>a",
+        "+d@quote",
+        "+a@real:2025",
+        "c>d@real:2026",
+        "d>c@real:2025"
+      ],
+      "asked_atom": "a",
+      "expected_independent_sympy": "unknown",
+      "candidate": "unknown",
+      "old_forward_only": "unknown",
+      "correct": true,
+      "premise_trace": {}
+    },
+    {
+      "id": "scoped-seed-169",
+      "source_facts": [
+        "+c@real:2026",
+        "a>d",
+        "d>b@real:2025",
+        "c>a",
+        "-a",
+        "+b@real:2025"
+      ],
+      "asked_atom": "b",
+      "expected_independent_sympy": "contradictory",
+      "candidate": "contradictory",
+      "old_forward_only": "contradictory",
+      "correct": true,
+      "premise_trace": {
+        "atom": "a",
+        "positive_sources": [
+          "source:0",
+          "source:3"
+        ],
+        "negative_sources": [
+          "source:4"
+        ]
+      }
+    },
+    {
+      "id": "scoped-seed-170",
+      "source_facts": [],
+      "asked_atom": "d",
+      "expected_independent_sympy": "unknown",
+      "candidate": "unknown",
+      "old_forward_only": "unknown",
+      "correct": true,
+      "premise_trace": {}
+    },
+    {
+      "id": "scoped-seed-171",
+      "source_facts": [
+        "c>a@real:2026",
+        "d>c@real:2026",
+        "d>c@quote",
+        "d>b@quote",
+        "d>c",
+        "+b@dream"
+      ],
+      "asked_atom": "a",
+      "expected_independent_sympy": "unknown",
+      "candidate": "unknown",
+      "old_forward_only": "unknown",
+      "correct": true,
+      "premise_trace": {}
+    },
+    {
+      "id": "scoped-seed-172",
+      "source_facts": [
+        "-d@dream"
+      ],
+      "asked_atom": "a",
+      "expected_independent_sympy": "unknown",
+      "candidate": "unknown",
+      "old_forward_only": "unknown",
+      "correct": true,
+      "premise_trace": {}
+    },
+    {
+      "id": "scoped-seed-173",
+      "source_facts": [
+        "-b@real:2025",
+        "b>c@quote",
+        "a>b@real:2026"
+      ],
+      "asked_atom": "c",
+      "expected_independent_sympy": "unknown",
+      "candidate": "unknown",
+      "old_forward_only": "unknown",
+      "correct": true,
+      "premise_trace": {}
+    },
+    {
+      "id": "scoped-seed-174",
+      "source_facts": [
+        "+d",
+        "a>c"
+      ],
+      "asked_atom": "c",
+      "expected_independent_sympy": "unknown",
+      "candidate": "unknown",
+      "old_forward_only": "unknown",
+      "correct": true,
+      "premise_trace": {}
+    },
+    {
+      "id": "scoped-seed-175",
+      "source_facts": [
+        "a>b",
+        "+c@quote",
+        "+a@quote",
+        "d>b",
+        "+b@real:2025",
+        "b>d@dream",
+        "a>b@real:2026"
+      ],
+      "asked_atom": "c",
+      "expected_independent_sympy": "unknown",
+      "candidate": "unknown",
+      "old_forward_only": "unknown",
+      "correct": true,
+      "premise_trace": {}
+    },
+    {
+      "id": "scoped-seed-176",
+      "source_facts": [
+        "-a@real:2026",
+        "+a@real:2025",
+        "-a@dream",
+        "-d@real:2025",
+        "b>d@real:2026",
+        "-d@dream",
+        "-c@real:2026"
+      ],
+      "asked_atom": "a",
+      "expected_independent_sympy": "refuted",
+      "candidate": "refuted",
+      "old_forward_only": "refuted",
+      "correct": true,
+      "premise_trace": {
+        "negative_sources": [
+          "source:0"
+        ]
+      }
+    },
+    {
+      "id": "scoped-seed-177",
+      "source_facts": [
+        "d>c@real:2026"
+      ],
+      "asked_atom": "a",
+      "expected_independent_sympy": "unknown",
+      "candidate": "unknown",
+      "old_forward_only": "unknown",
+      "correct": true,
+      "premise_trace": {}
+    },
+    {
+      "id": "scoped-seed-178",
+      "source_facts": [
+        "-d@quote",
+        "d>a@real:2025",
+        "+c@real:2025",
+        "c>b@dream"
+      ],
+      "asked_atom": "c",
+      "expected_independent_sympy": "unknown",
+      "candidate": "unknown",
+      "old_forward_only": "unknown",
+      "correct": true,
+      "premise_trace": {}
+    },
+    {
+      "id": "scoped-seed-179",
+      "source_facts": [
+        "-d",
+        "+b@quote",
+        "-b@real:2025",
+        "c>b@quote",
+        "b>c@dream",
+        "d>c@real:2025"
+      ],
+      "asked_atom": "b",
+      "expected_independent_sympy": "unknown",
+      "candidate": "unknown",
+      "old_forward_only": "unknown",
+      "correct": true,
+      "premise_trace": {}
+    },
+    {
+      "id": "scoped-seed-180",
+      "source_facts": [
+        "+b",
+        "-a@real:2026",
+        "c>a@real:2025",
+        "a>d@dream",
+        "b>a",
+        "d>a@quote",
+        "b>d@dream"
+      ],
+      "asked_atom": "b",
+      "expected_independent_sympy": "contradictory",
+      "candidate": "contradictory",
+      "old_forward_only": "contradictory",
+      "correct": true,
+      "premise_trace": {
+        "atom": "a",
+        "positive_sources": [
+          "source:0",
+          "source:4"
+        ],
+        "negative_sources": [
+          "source:1"
+        ]
+      }
+    },
+    {
+      "id": "scoped-seed-181",
+      "source_facts": [
+        "d>a@real:2026",
+        "-a@real:2026",
+        "+a@quote",
+        "-d",
+        "d>b@dream"
+      ],
+      "asked_atom": "c",
+      "expected_independent_sympy": "unknown",
+      "candidate": "unknown",
+      "old_forward_only": "unknown",
+      "correct": true,
+      "premise_trace": {}
+    },
+    {
+      "id": "scoped-seed-182",
+      "source_facts": [
+        "d>b@real:2026",
+        "c>d",
+        "c>a@quote",
+        "+c@dream",
+        "-c"
+      ],
+      "asked_atom": "a",
+      "expected_independent_sympy": "unknown",
+      "candidate": "unknown",
+      "old_forward_only": "unknown",
+      "correct": true,
+      "premise_trace": {}
+    },
+    {
+      "id": "scoped-seed-183",
+      "source_facts": [
+        "+c@real:2025"
+      ],
+      "asked_atom": "a",
+      "expected_independent_sympy": "unknown",
+      "candidate": "unknown",
+      "old_forward_only": "unknown",
+      "correct": true,
+      "premise_trace": {}
+    },
+    {
+      "id": "scoped-seed-184",
+      "source_facts": [],
+      "asked_atom": "a",
+      "expected_independent_sympy": "unknown",
+      "candidate": "unknown",
+      "old_forward_only": "unknown",
+      "correct": true,
+      "premise_trace": {}
+    },
+    {
+      "id": "scoped-seed-185",
+      "source_facts": [
+        "c>b@real:2026",
+        "b>a@real:2026",
+        "d>b",
+        "c>b@dream",
+        "a>b@quote"
+      ],
+      "asked_atom": "a",
+      "expected_independent_sympy": "unknown",
+      "candidate": "unknown",
+      "old_forward_only": "unknown",
+      "correct": true,
+      "premise_trace": {}
+    },
+    {
+      "id": "scoped-seed-186",
+      "source_facts": [
+        "a>d",
+        "-a",
+        "a>b@dream",
+        "b>c@quote",
+        "d>a@real:2025",
+        "b>c",
+        "c>d@quote"
+      ],
+      "asked_atom": "c",
+      "expected_independent_sympy": "unknown",
+      "candidate": "unknown",
+      "old_forward_only": "unknown",
+      "correct": true,
+      "premise_trace": {}
+    },
+    {
+      "id": "scoped-seed-187",
+      "source_facts": [
+        "c>d@quote",
+        "c>a@quote",
+        "-c@quote",
+        "a>d",
+        "b>d@real:2025",
+        "+c@dream",
+        "-c@quote"
+      ],
+      "asked_atom": "d",
+      "expected_independent_sympy": "unknown",
+      "candidate": "unknown",
+      "old_forward_only": "unknown",
+      "correct": true,
+      "premise_trace": {}
+    },
+    {
+      "id": "scoped-seed-188",
+      "source_facts": [
+        "d>b@dream"
+      ],
+      "asked_atom": "d",
+      "expected_independent_sympy": "unknown",
+      "candidate": "unknown",
+      "old_forward_only": "unknown",
+      "correct": true,
+      "premise_trace": {}
+    },
+    {
+      "id": "scoped-seed-189",
+      "source_facts": [
+        "-a@dream",
+        "+c@quote",
+        "c>a@real:2025",
+        "d>c@dream",
+        "+d@quote",
+        "-c@dream"
+      ],
+      "asked_atom": "b",
+      "expected_independent_sympy": "unknown",
+      "candidate": "unknown",
+      "old_forward_only": "unknown",
+      "correct": true,
+      "premise_trace": {}
+    },
+    {
+      "id": "scoped-seed-190",
+      "source_facts": [
+        "c>b@quote",
+        "c>b@quote",
+        "+b@real:2026",
+        "b>a@real:2026",
+        "a>d"
+      ],
+      "asked_atom": "d",
+      "expected_independent_sympy": "entailed",
+      "candidate": "entailed",
+      "old_forward_only": "entailed",
+      "correct": true,
+      "premise_trace": {
+        "positive_sources": [
+          "source:2",
+          "source:3",
+          "source:4"
+        ]
+      }
+    },
+    {
+      "id": "scoped-seed-191",
+      "source_facts": [],
+      "asked_atom": "c",
+      "expected_independent_sympy": "unknown",
+      "candidate": "unknown",
+      "old_forward_only": "unknown",
+      "correct": true,
+      "premise_trace": {}
+    },
+    {
+      "id": "scoped-seed-192",
+      "source_facts": [
+        "b>c@real:2026",
+        "-b@dream",
+        "-c@dream",
+        "d>a@quote",
+        "b>d@real:2025",
+        "b>a@dream",
+        "-c@real:2025"
+      ],
+      "asked_atom": "b",
+      "expected_independent_sympy": "unknown",
+      "candidate": "unknown",
+      "old_forward_only": "unknown",
+      "correct": true,
+      "premise_trace": {}
+    },
+    {
+      "id": "scoped-seed-193",
+      "source_facts": [
+        "d>c@dream",
+        "d>b@real:2026",
+        "d>b@quote",
+        "a>d@quote",
+        "d>a@dream",
+        "a>d@real:2026"
+      ],
+      "asked_atom": "d",
+      "expected_independent_sympy": "unknown",
+      "candidate": "unknown",
+      "old_forward_only": "unknown",
+      "correct": true,
+      "premise_trace": {}
+    },
+    {
+      "id": "scoped-seed-194",
+      "source_facts": [
+        "a>d",
+        "+b@real:2026"
+      ],
+      "asked_atom": "c",
+      "expected_independent_sympy": "unknown",
+      "candidate": "unknown",
+      "old_forward_only": "unknown",
+      "correct": true,
+      "premise_trace": {}
+    },
+    {
+      "id": "scoped-seed-195",
+      "source_facts": [
+        "c>a@quote",
+        "+d@real:2025"
+      ],
+      "asked_atom": "b",
+      "expected_independent_sympy": "unknown",
+      "candidate": "unknown",
+      "old_forward_only": "unknown",
+      "correct": true,
+      "premise_trace": {}
+    },
+    {
+      "id": "scoped-seed-196",
+      "source_facts": [
+        "b>d@real:2026",
+        "d>a@quote",
+        "c>a@quote",
+        "-c@dream",
+        "b>c@quote"
+      ],
+      "asked_atom": "b",
+      "expected_independent_sympy": "unknown",
+      "candidate": "unknown",
+      "old_forward_only": "unknown",
+      "correct": true,
+      "premise_trace": {}
+    },
+    {
+      "id": "scoped-seed-197",
+      "source_facts": [
+        "a>d@real:2026",
+        "b>c@real:2026",
+        "d>b",
+        "+d",
+        "b>c@real:2026"
+      ],
+      "asked_atom": "d",
+      "expected_independent_sympy": "entailed",
+      "candidate": "entailed",
+      "old_forward_only": "entailed",
+      "correct": true,
+      "premise_trace": {
+        "positive_sources": [
+          "source:3"
+        ]
+      }
+    },
+    {
+      "id": "scoped-seed-198",
+      "source_facts": [
+        "b>c@real:2025",
+        "+b",
+        "+a",
+        "-c@quote",
+        "+b@quote",
+        "b>a@quote"
+      ],
+      "asked_atom": "d",
+      "expected_independent_sympy": "unknown",
+      "candidate": "unknown",
+      "old_forward_only": "unknown",
+      "correct": true,
+      "premise_trace": {}
+    },
+    {
+      "id": "scoped-seed-199",
+      "source_facts": [
+        "d>c@quote",
+        "-c@real:2026",
+        "d>a@real:2026",
+        "c>d@real:2025",
+        "-c"
+      ],
+      "asked_atom": "d",
+      "expected_independent_sympy": "unknown",
+      "candidate": "unknown",
+      "old_forward_only": "unknown",
+      "correct": true,
+      "premise_trace": {}
+    },
+    {
+      "id": "scoped-seed-200",
+      "source_facts": [
+        "b>c@real:2025",
+        "-a@real:2026",
+        "+c@dream",
+        "b>c"
+      ],
+      "asked_atom": "b",
+      "expected_independent_sympy": "unknown",
+      "candidate": "unknown",
+      "old_forward_only": "unknown",
+      "correct": true,
+      "premise_trace": {}
+    },
+    {
+      "id": "scoped-seed-201",
+      "source_facts": [
+        "+c@quote",
+        "d>a@quote"
+      ],
+      "asked_atom": "b",
+      "expected_independent_sympy": "unknown",
+      "candidate": "unknown",
+      "old_forward_only": "unknown",
+      "correct": true,
+      "premise_trace": {}
+    },
+    {
+      "id": "scoped-seed-202",
+      "source_facts": [
+        "a>c",
+        "b>a@quote",
+        "+c@quote",
+        "-d",
+        "b>c",
+        "+d",
+        "+a@quote"
+      ],
+      "asked_atom": "c",
+      "expected_independent_sympy": "contradictory",
+      "candidate": "contradictory",
+      "old_forward_only": "contradictory",
+      "correct": true,
+      "premise_trace": {
+        "atom": "d",
+        "positive_sources": [
+          "source:5"
+        ],
+        "negative_sources": [
+          "source:3"
+        ]
+      }
+    },
+    {
+      "id": "scoped-seed-203",
+      "source_facts": [],
+      "asked_atom": "b",
+      "expected_independent_sympy": "unknown",
+      "candidate": "unknown",
+      "old_forward_only": "unknown",
+      "correct": true,
+      "premise_trace": {}
+    },
+    {
+      "id": "scoped-seed-204",
+      "source_facts": [
+        "+b@dream",
+        "a>d@dream",
+        "-c",
+        "+d@quote",
+        "b>d@real:2026",
+        "-a@quote",
+        "d>a@dream"
+      ],
+      "asked_atom": "c",
+      "expected_independent_sympy": "refuted",
+      "candidate": "refuted",
+      "old_forward_only": "refuted",
+      "correct": true,
+      "premise_trace": {
+        "negative_sources": [
+          "source:2"
+        ]
+      }
+    },
+    {
+      "id": "scoped-seed-205",
+      "source_facts": [
+        "-a@dream",
+        "d>c@real:2026",
+        "-d",
+        "c>b@quote",
+        "b>a@quote"
+      ],
+      "asked_atom": "d",
+      "expected_independent_sympy": "refuted",
+      "candidate": "refuted",
+      "old_forward_only": "refuted",
+      "correct": true,
+      "premise_trace": {
+        "negative_sources": [
+          "source:2"
+        ]
+      }
+    },
+    {
+      "id": "scoped-seed-206",
+      "source_facts": [
+        "b>a@real:2026"
+      ],
+      "asked_atom": "c",
+      "expected_independent_sympy": "unknown",
+      "candidate": "unknown",
+      "old_forward_only": "unknown",
+      "correct": true,
+      "premise_trace": {}
+    },
+    {
+      "id": "scoped-seed-207",
+      "source_facts": [
+        "d>c@real:2025"
+      ],
+      "asked_atom": "a",
+      "expected_independent_sympy": "unknown",
+      "candidate": "unknown",
+      "old_forward_only": "unknown",
+      "correct": true,
+      "premise_trace": {}
+    },
+    {
+      "id": "scoped-seed-208",
+      "source_facts": [
+        "b>a",
+        "-b@real:2025"
+      ],
+      "asked_atom": "a",
+      "expected_independent_sympy": "unknown",
+      "candidate": "unknown",
+      "old_forward_only": "unknown",
+      "correct": true,
+      "premise_trace": {}
+    },
+    {
+      "id": "scoped-seed-209",
+      "source_facts": [
+        "b>d",
+        "+a",
+        "+a@real:2025"
+      ],
+      "asked_atom": "b",
+      "expected_independent_sympy": "unknown",
+      "candidate": "unknown",
+      "old_forward_only": "unknown",
+      "correct": true,
+      "premise_trace": {}
+    },
+    {
+      "id": "scoped-seed-210",
+      "source_facts": [
+        "d>c"
+      ],
+      "asked_atom": "a",
+      "expected_independent_sympy": "unknown",
+      "candidate": "unknown",
+      "old_forward_only": "unknown",
+      "correct": true,
+      "premise_trace": {}
+    },
+    {
+      "id": "scoped-seed-211",
+      "source_facts": [
+        "+b@dream",
+        "d>b@real:2026"
+      ],
+      "asked_atom": "b",
+      "expected_independent_sympy": "unknown",
+      "candidate": "unknown",
+      "old_forward_only": "unknown",
+      "correct": true,
+      "premise_trace": {}
+    },
+    {
+      "id": "scoped-seed-212",
+      "source_facts": [
+        "b>d@real:2025",
+        "d>a",
+        "-d",
+        "+d",
+        "a>d@real:2025",
+        "d>a@real:2026",
+        "+d@quote"
+      ],
+      "asked_atom": "b",
+      "expected_independent_sympy": "contradictory",
+      "candidate": "contradictory",
+      "old_forward_only": "contradictory",
+      "correct": true,
+      "premise_trace": {
+        "atom": "d",
+        "positive_sources": [
+          "source:3"
+        ],
+        "negative_sources": [
+          "source:2"
+        ]
+      }
+    },
+    {
+      "id": "scoped-seed-213",
+      "source_facts": [
+        "a>b",
+        "a>c@quote",
+        "d>a@real:2025",
+        "+a@quote"
+      ],
+      "asked_atom": "b",
+      "expected_independent_sympy": "unknown",
+      "candidate": "unknown",
+      "old_forward_only": "unknown",
+      "correct": true,
+      "premise_trace": {}
+    },
+    {
+      "id": "scoped-seed-214",
+      "source_facts": [
+        "b>d@real:2025",
+        "+a@real:2025"
+      ],
+      "asked_atom": "b",
+      "expected_independent_sympy": "unknown",
+      "candidate": "unknown",
+      "old_forward_only": "unknown",
+      "correct": true,
+      "premise_trace": {}
+    },
+    {
+      "id": "scoped-seed-215",
+      "source_facts": [
+        "d>a@quote",
+        "+d"
+      ],
+      "asked_atom": "d",
+      "expected_independent_sympy": "entailed",
+      "candidate": "entailed",
+      "old_forward_only": "entailed",
+      "correct": true,
+      "premise_trace": {
+        "positive_sources": [
+          "source:1"
+        ]
+      }
+    },
+    {
+      "id": "scoped-seed-216",
+      "source_facts": [
+        "b>d",
+        "d>c@dream",
+        "+a@real:2026",
+        "a>b@dream",
+        "-a"
+      ],
+      "asked_atom": "b",
+      "expected_independent_sympy": "contradictory",
+      "candidate": "contradictory",
+      "old_forward_only": "contradictory",
+      "correct": true,
+      "premise_trace": {
+        "atom": "a",
+        "positive_sources": [
+          "source:2"
+        ],
+        "negative_sources": [
+          "source:4"
+        ]
+      }
+    },
+    {
+      "id": "scoped-seed-217",
+      "source_facts": [],
+      "asked_atom": "d",
+      "expected_independent_sympy": "unknown",
+      "candidate": "unknown",
+      "old_forward_only": "unknown",
+      "correct": true,
+      "premise_trace": {}
+    },
+    {
+      "id": "scoped-seed-218",
+      "source_facts": [
+        "c>b@real:2026",
+        "d>c@quote",
+        "a>d@dream",
+        "d>a"
+      ],
+      "asked_atom": "b",
+      "expected_independent_sympy": "unknown",
+      "candidate": "unknown",
+      "old_forward_only": "unknown",
+      "correct": true,
+      "premise_trace": {}
+    },
+    {
+      "id": "scoped-seed-219",
+      "source_facts": [
+        "+d@quote",
+        "d>a@real:2025",
+        "+d@dream"
+      ],
+      "asked_atom": "b",
+      "expected_independent_sympy": "unknown",
+      "candidate": "unknown",
+      "old_forward_only": "unknown",
+      "correct": true,
+      "premise_trace": {}
+    },
+    {
+      "id": "scoped-seed-220",
+      "source_facts": [
+        "a>c@real:2025"
+      ],
+      "asked_atom": "a",
+      "expected_independent_sympy": "unknown",
+      "candidate": "unknown",
+      "old_forward_only": "unknown",
+      "correct": true,
+      "premise_trace": {}
+    },
+    {
+      "id": "scoped-seed-221",
+      "source_facts": [
+        "c>a",
+        "b>a@real:2026",
+        "-d@quote",
+        "-b",
+        "c>d",
+        "c>d@real:2026",
+        "+a"
+      ],
+      "asked_atom": "a",
+      "expected_independent_sympy": "entailed",
+      "candidate": "entailed",
+      "old_forward_only": "entailed",
+      "correct": true,
+      "premise_trace": {
+        "positive_sources": [
+          "source:6"
+        ]
+      }
+    },
+    {
+      "id": "scoped-seed-222",
+      "source_facts": [
+        "+a"
+      ],
+      "asked_atom": "b",
+      "expected_independent_sympy": "unknown",
+      "candidate": "unknown",
+      "old_forward_only": "unknown",
+      "correct": true,
+      "premise_trace": {}
+    },
+    {
+      "id": "scoped-seed-223",
+      "source_facts": [],
+      "asked_atom": "a",
+      "expected_independent_sympy": "unknown",
+      "candidate": "unknown",
+      "old_forward_only": "unknown",
+      "correct": true,
+      "premise_trace": {}
+    },
+    {
+      "id": "scoped-seed-224",
+      "source_facts": [
+        "-a@quote",
+        "a>c",
+        "-b@real:2026",
+        "b>d"
+      ],
+      "asked_atom": "b",
+      "expected_independent_sympy": "refuted",
+      "candidate": "refuted",
+      "old_forward_only": "refuted",
+      "correct": true,
+      "premise_trace": {
+        "negative_sources": [
+          "source:2"
+        ]
+      }
+    },
+    {
+      "id": "scoped-seed-225",
+      "source_facts": [],
+      "asked_atom": "a",
+      "expected_independent_sympy": "unknown",
+      "candidate": "unknown",
+      "old_forward_only": "unknown",
+      "correct": true,
+      "premise_trace": {}
+    },
+    {
+      "id": "scoped-seed-226",
+      "source_facts": [
+        "+b"
+      ],
+      "asked_atom": "c",
+      "expected_independent_sympy": "unknown",
+      "candidate": "unknown",
+      "old_forward_only": "unknown",
+      "correct": true,
+      "premise_trace": {}
+    },
+    {
+      "id": "scoped-seed-227",
+      "source_facts": [],
+      "asked_atom": "d",
+      "expected_independent_sympy": "unknown",
+      "candidate": "unknown",
+      "old_forward_only": "unknown",
+      "correct": true,
+      "premise_trace": {}
+    },
+    {
+      "id": "scoped-seed-228",
+      "source_facts": [
+        "d>b@dream"
+      ],
+      "asked_atom": "b",
+      "expected_independent_sympy": "unknown",
+      "candidate": "unknown",
+      "old_forward_only": "unknown",
+      "correct": true,
+      "premise_trace": {}
+    },
+    {
+      "id": "scoped-seed-229",
+      "source_facts": [
+        "b>a@real:2026"
+      ],
+      "asked_atom": "c",
+      "expected_independent_sympy": "unknown",
+      "candidate": "unknown",
+      "old_forward_only": "unknown",
+      "correct": true,
+      "premise_trace": {}
+    },
+    {
+      "id": "scoped-seed-230",
+      "source_facts": [
+        "+c@real:2025",
+        "+b@real:2025",
+        "c>b",
+        "b>a@real:2025",
+        "d>b@dream",
+        "d>b@real:2025"
+      ],
+      "asked_atom": "b",
+      "expected_independent_sympy": "unknown",
+      "candidate": "unknown",
+      "old_forward_only": "unknown",
+      "correct": true,
+      "premise_trace": {}
+    },
+    {
+      "id": "scoped-seed-231",
+      "source_facts": [
+        "+c@quote",
+        "b>d@dream",
+        "-d@quote",
+        "c>a@dream",
+        "-a@dream",
+        "+c@real:2025"
+      ],
+      "asked_atom": "d",
+      "expected_independent_sympy": "unknown",
+      "candidate": "unknown",
+      "old_forward_only": "unknown",
+      "correct": true,
+      "premise_trace": {}
+    },
+    {
+      "id": "scoped-seed-232",
+      "source_facts": [
+        "+c",
+        "+d@real:2026",
+        "a>d",
+        "c>a@dream"
+      ],
+      "asked_atom": "d",
+      "expected_independent_sympy": "entailed",
+      "candidate": "entailed",
+      "old_forward_only": "entailed",
+      "correct": true,
+      "premise_trace": {
+        "positive_sources": [
+          "source:1"
+        ]
+      }
+    },
+    {
+      "id": "scoped-seed-233",
+      "source_facts": [
+        "a>b@quote"
+      ],
+      "asked_atom": "d",
+      "expected_independent_sympy": "unknown",
+      "candidate": "unknown",
+      "old_forward_only": "unknown",
+      "correct": true,
+      "premise_trace": {}
+    },
+    {
+      "id": "scoped-seed-234",
+      "source_facts": [
+        "b>d@real:2025",
+        "+c@quote",
+        "c>d@dream",
+        "-c@real:2026"
+      ],
+      "asked_atom": "a",
+      "expected_independent_sympy": "unknown",
+      "candidate": "unknown",
+      "old_forward_only": "unknown",
+      "correct": true,
+      "premise_trace": {}
+    },
+    {
+      "id": "scoped-seed-235",
+      "source_facts": [
+        "c>b@real:2025",
+        "c>b@quote",
+        "c>b@quote",
+        "+a"
+      ],
+      "asked_atom": "b",
+      "expected_independent_sympy": "unknown",
+      "candidate": "unknown",
+      "old_forward_only": "unknown",
+      "correct": true,
+      "premise_trace": {}
+    },
+    {
+      "id": "scoped-seed-236",
+      "source_facts": [
+        "+b@real:2026",
+        "-c@real:2026",
+        "c>d@real:2026",
+        "b>c@quote",
+        "-a@real:2026",
+        "+d@quote",
+        "+c@real:2026"
+      ],
+      "asked_atom": "c",
+      "expected_independent_sympy": "contradictory",
+      "candidate": "contradictory",
+      "old_forward_only": "contradictory",
+      "correct": true,
+      "premise_trace": {
+        "atom": "c",
+        "positive_sources": [
+          "source:6"
+        ],
+        "negative_sources": [
+          "source:1"
+        ]
+      }
+    },
+    {
+      "id": "scoped-seed-237",
+      "source_facts": [
+        "d>b@dream",
+        "-c@real:2026",
+        "+d@dream",
+        "a>c"
+      ],
+      "asked_atom": "b",
+      "expected_independent_sympy": "unknown",
+      "candidate": "unknown",
+      "old_forward_only": "unknown",
+      "correct": true,
+      "premise_trace": {}
+    },
+    {
+      "id": "scoped-seed-238",
+      "source_facts": [],
+      "asked_atom": "b",
+      "expected_independent_sympy": "unknown",
+      "candidate": "unknown",
+      "old_forward_only": "unknown",
+      "correct": true,
+      "premise_trace": {}
+    },
+    {
+      "id": "scoped-seed-239",
+      "source_facts": [
+        "+a@real:2026",
+        "+d@dream",
+        "-a",
+        "a>d@real:2025"
+      ],
+      "asked_atom": "b",
+      "expected_independent_sympy": "contradictory",
+      "candidate": "contradictory",
+      "old_forward_only": "contradictory",
+      "correct": true,
+      "premise_trace": {
+        "atom": "a",
+        "positive_sources": [
+          "source:0"
+        ],
+        "negative_sources": [
+          "source:2"
+        ]
+      }
+    },
+    {
+      "id": "scoped-seed-240",
+      "source_facts": [
+        "+c",
+        "d>a@real:2026"
+      ],
+      "asked_atom": "a",
+      "expected_independent_sympy": "unknown",
+      "candidate": "unknown",
+      "old_forward_only": "unknown",
+      "correct": true,
+      "premise_trace": {}
+    },
+    {
+      "id": "scoped-seed-241",
+      "source_facts": [
+        "c>a@quote"
+      ],
+      "asked_atom": "b",
+      "expected_independent_sympy": "unknown",
+      "candidate": "unknown",
+      "old_forward_only": "unknown",
+      "correct": true,
+      "premise_trace": {}
+    },
+    {
+      "id": "scoped-seed-242",
+      "source_facts": [
+        "+c@quote",
+        "c>a@real:2025",
+        "c>a@dream",
+        "c>b@real:2026",
+        "b>a@real:2026",
+        "b>c@real:2026"
+      ],
+      "asked_atom": "a",
+      "expected_independent_sympy": "unknown",
+      "candidate": "unknown",
+      "old_forward_only": "unknown",
+      "correct": true,
+      "premise_trace": {}
+    },
+    {
+      "id": "scoped-seed-243",
+      "source_facts": [
+        "c>a@real:2026",
+        "+c"
+      ],
+      "asked_atom": "a",
+      "expected_independent_sympy": "entailed",
+      "candidate": "entailed",
+      "old_forward_only": "entailed",
+      "correct": true,
+      "premise_trace": {
+        "positive_sources": [
+          "source:1",
+          "source:0"
+        ]
+      }
+    },
+    {
+      "id": "scoped-seed-244",
+      "source_facts": [],
+      "asked_atom": "d",
+      "expected_independent_sympy": "unknown",
+      "candidate": "unknown",
+      "old_forward_only": "unknown",
+      "correct": true,
+      "premise_trace": {}
+    },
+    {
+      "id": "scoped-seed-245",
+      "source_facts": [
+        "-b@quote",
+        "b>c"
+      ],
+      "asked_atom": "d",
+      "expected_independent_sympy": "unknown",
+      "candidate": "unknown",
+      "old_forward_only": "unknown",
+      "correct": true,
+      "premise_trace": {}
+    },
+    {
+      "id": "scoped-seed-246",
+      "source_facts": [
+        "+d@real:2026",
+        "+c@real:2026",
+        "+c",
+        "-c@quote"
+      ],
+      "asked_atom": "a",
+      "expected_independent_sympy": "unknown",
+      "candidate": "unknown",
+      "old_forward_only": "unknown",
+      "correct": true,
+      "premise_trace": {}
+    },
+    {
+      "id": "scoped-seed-247",
+      "source_facts": [
+        "d>a@real:2026"
+      ],
+      "asked_atom": "d",
+      "expected_independent_sympy": "unknown",
+      "candidate": "unknown",
+      "old_forward_only": "unknown",
+      "correct": true,
+      "premise_trace": {}
+    },
+    {
+      "id": "scoped-seed-248",
+      "source_facts": [
+        "c>d@dream",
+        "d>c",
+        "c>b@real:2026",
+        "a>d@real:2026"
+      ],
+      "asked_atom": "d",
+      "expected_independent_sympy": "unknown",
+      "candidate": "unknown",
+      "old_forward_only": "unknown",
+      "correct": true,
+      "premise_trace": {}
+    },
+    {
+      "id": "scoped-seed-249",
+      "source_facts": [
+        "b>c@real:2025",
+        "b>c@real:2025",
+        "-a@dream",
+        "b>c@real:2025",
+        "c>d@dream",
+        "a>c@real:2025",
+        "d>c@dream"
+      ],
+      "asked_atom": "b",
+      "expected_independent_sympy": "unknown",
+      "candidate": "unknown",
+      "old_forward_only": "unknown",
+      "correct": true,
+      "premise_trace": {}
+    },
+    {
+      "id": "scoped-seed-250",
+      "source_facts": [
+        "a>b@quote",
+        "d>a@real:2025",
+        "-b@real:2025",
+        "a>b",
+        "d>b@real:2026",
+        "d>a"
+      ],
+      "asked_atom": "b",
+      "expected_independent_sympy": "unknown",
+      "candidate": "unknown",
+      "old_forward_only": "unknown",
+      "correct": true,
+      "premise_trace": {}
+    },
+    {
+      "id": "scoped-seed-251",
+      "source_facts": [
+        "b>d@real:2026",
+        "c>b@dream",
+        "+d@real:2026",
+        "b>a@quote",
+        "c>a@quote"
+      ],
+      "asked_atom": "a",
+      "expected_independent_sympy": "unknown",
+      "candidate": "unknown",
+      "old_forward_only": "unknown",
+      "correct": true,
+      "premise_trace": {}
+    },
+    {
+      "id": "scoped-seed-252",
+      "source_facts": [
+        "a>d",
+        "d>a@quote",
+        "a>d@real:2025",
+        "c>a@dream",
+        "b>c@real:2025"
+      ],
+      "asked_atom": "b",
+      "expected_independent_sympy": "unknown",
+      "candidate": "unknown",
+      "old_forward_only": "unknown",
+      "correct": true,
+      "premise_trace": {}
+    },
+    {
+      "id": "scoped-seed-253",
+      "source_facts": [
+        "-b@real:2026",
+        "-b@dream",
+        "+b@quote",
+        "d>c@real:2026",
+        "c>a@quote",
+        "c>a@real:2026",
+        "d>a@dream"
+      ],
+      "asked_atom": "b",
+      "expected_independent_sympy": "refuted",
+      "candidate": "refuted",
+      "old_forward_only": "refuted",
+      "correct": true,
+      "premise_trace": {
+        "negative_sources": [
+          "source:0"
+        ]
+      }
+    },
+    {
+      "id": "scoped-seed-254",
+      "source_facts": [
+        "+b@dream",
+        "d>b@real:2026"
+      ],
+      "asked_atom": "c",
+      "expected_independent_sympy": "unknown",
+      "candidate": "unknown",
+      "old_forward_only": "unknown",
+      "correct": true,
+      "premise_trace": {}
+    },
+    {
+      "id": "scoped-seed-255",
+      "source_facts": [],
+      "asked_atom": "d",
+      "expected_independent_sympy": "unknown",
+      "candidate": "unknown",
+      "old_forward_only": "unknown",
+      "correct": true,
+      "premise_trace": {}
+    },
+    {
+      "id": "scoped-seed-256",
+      "source_facts": [
+        "+a@real:2026",
+        "b>c"
+      ],
+      "asked_atom": "c",
+      "expected_independent_sympy": "unknown",
+      "candidate": "unknown",
+      "old_forward_only": "unknown",
+      "correct": true,
+      "premise_trace": {}
+    },
+    {
+      "id": "scoped-seed-257",
+      "source_facts": [
+        "-a@real:2025",
+        "a>c",
+        "+b@real:2025",
+        "a>c@real:2026",
+        "a>c@real:2026",
+        "-d@real:2026"
+      ],
+      "asked_atom": "c",
+      "expected_independent_sympy": "unknown",
+      "candidate": "unknown",
+      "old_forward_only": "unknown",
+      "correct": true,
+      "premise_trace": {}
+    },
+    {
+      "id": "scoped-seed-258",
+      "source_facts": [
+        "-c@real:2026",
+        "c>b@dream",
+        "b>d",
+        "-c@real:2025"
+      ],
+      "asked_atom": "d",
+      "expected_independent_sympy": "unknown",
+      "candidate": "unknown",
+      "old_forward_only": "unknown",
+      "correct": true,
+      "premise_trace": {}
+    },
+    {
+      "id": "scoped-seed-259",
+      "source_facts": [
+        "d>c@dream",
+        "b>a@quote",
+        "b>c@dream",
+        "-d",
+        "-a@dream"
+      ],
+      "asked_atom": "c",
+      "expected_independent_sympy": "unknown",
+      "candidate": "unknown",
+      "old_forward_only": "unknown",
+      "correct": true,
+      "premise_trace": {}
+    },
+    {
+      "id": "scoped-seed-260",
+      "source_facts": [
+        "a>c@quote",
+        "b>c@quote"
+      ],
+      "asked_atom": "b",
+      "expected_independent_sympy": "unknown",
+      "candidate": "unknown",
+      "old_forward_only": "unknown",
+      "correct": true,
+      "premise_trace": {}
+    },
+    {
+      "id": "scoped-seed-261",
+      "source_facts": [],
+      "asked_atom": "a",
+      "expected_independent_sympy": "unknown",
+      "candidate": "unknown",
+      "old_forward_only": "unknown",
+      "correct": true,
+      "premise_trace": {}
+    },
+    {
+      "id": "scoped-seed-262",
+      "source_facts": [
+        "b>c@quote",
+        "-a@dream",
+        "d>c@real:2025",
+        "-a@real:2026"
+      ],
+      "asked_atom": "a",
+      "expected_independent_sympy": "refuted",
+      "candidate": "refuted",
+      "old_forward_only": "refuted",
+      "correct": true,
+      "premise_trace": {
+        "negative_sources": [
+          "source:3"
+        ]
+      }
+    },
+    {
+      "id": "scoped-seed-263",
+      "source_facts": [
+        "a>c@quote"
+      ],
+      "asked_atom": "a",
+      "expected_independent_sympy": "unknown",
+      "candidate": "unknown",
+      "old_forward_only": "unknown",
+      "correct": true,
+      "premise_trace": {}
+    },
+    {
+      "id": "scoped-seed-264",
+      "source_facts": [
+        "+d",
+        "a>c@real:2026"
+      ],
+      "asked_atom": "a",
+      "expected_independent_sympy": "unknown",
+      "candidate": "unknown",
+      "old_forward_only": "unknown",
+      "correct": true,
+      "premise_trace": {}
+    },
+    {
+      "id": "scoped-seed-265",
+      "source_facts": [],
+      "asked_atom": "c",
+      "expected_independent_sympy": "unknown",
+      "candidate": "unknown",
+      "old_forward_only": "unknown",
+      "correct": true,
+      "premise_trace": {}
+    },
+    {
+      "id": "scoped-seed-266",
+      "source_facts": [
+        "a>c",
+        "+c@real:2026",
+        "b>d@quote",
+        "c>b@real:2025"
+      ],
+      "asked_atom": "d",
+      "expected_independent_sympy": "unknown",
+      "candidate": "unknown",
+      "old_forward_only": "unknown",
+      "correct": true,
+      "premise_trace": {}
+    },
+    {
+      "id": "scoped-seed-267",
+      "source_facts": [
+        "c>b@real:2025",
+        "-b@real:2025",
+        "d>b@quote",
+        "a>d@dream",
+        "+c@real:2025",
+        "a>d@real:2025"
+      ],
+      "asked_atom": "a",
+      "expected_independent_sympy": "unknown",
+      "candidate": "unknown",
+      "old_forward_only": "unknown",
+      "correct": true,
+      "premise_trace": {}
+    },
+    {
+      "id": "scoped-seed-268",
+      "source_facts": [
+        "-a@real:2026",
+        "b>d@quote",
+        "b>d",
+        "d>c@real:2025",
+        "a>c",
+        "c>d@real:2025",
+        "d>a@quote"
+      ],
+      "asked_atom": "d",
+      "expected_independent_sympy": "unknown",
+      "candidate": "unknown",
+      "old_forward_only": "unknown",
+      "correct": true,
+      "premise_trace": {}
+    },
+    {
+      "id": "scoped-seed-269",
+      "source_facts": [],
+      "asked_atom": "b",
+      "expected_independent_sympy": "unknown",
+      "candidate": "unknown",
+      "old_forward_only": "unknown",
+      "correct": true,
+      "premise_trace": {}
+    },
+    {
+      "id": "scoped-seed-270",
+      "source_facts": [
+        "c>a@dream",
+        "c>b@real:2026"
+      ],
+      "asked_atom": "a",
+      "expected_independent_sympy": "unknown",
+      "candidate": "unknown",
+      "old_forward_only": "unknown",
+      "correct": true,
+      "premise_trace": {}
+    },
+    {
+      "id": "scoped-seed-271",
+      "source_facts": [
+        "c>a@real:2025",
+        "-d",
+        "a>c@real:2025",
+        "+b@dream",
+        "a>d@quote",
+        "+c@real:2025"
+      ],
+      "asked_atom": "c",
+      "expected_independent_sympy": "unknown",
+      "candidate": "unknown",
+      "old_forward_only": "unknown",
+      "correct": true,
+      "premise_trace": {}
+    },
+    {
+      "id": "scoped-seed-272",
+      "source_facts": [
+        "c>d",
+        "d>c",
+        "+a"
+      ],
+      "asked_atom": "c",
+      "expected_independent_sympy": "unknown",
+      "candidate": "unknown",
+      "old_forward_only": "unknown",
+      "correct": true,
+      "premise_trace": {}
+    },
+    {
+      "id": "scoped-seed-273",
+      "source_facts": [],
+      "asked_atom": "d",
+      "expected_independent_sympy": "unknown",
+      "candidate": "unknown",
+      "old_forward_only": "unknown",
+      "correct": true,
+      "premise_trace": {}
+    },
+    {
+      "id": "scoped-seed-274",
+      "source_facts": [],
+      "asked_atom": "d",
+      "expected_independent_sympy": "unknown",
+      "candidate": "unknown",
+      "old_forward_only": "unknown",
+      "correct": true,
+      "premise_trace": {}
+    },
+    {
+      "id": "scoped-seed-275",
+      "source_facts": [
+        "b>c@quote",
+        "a>c@real:2025",
+        "b>c@real:2025",
+        "c>d@quote",
+        "+b@real:2025"
+      ],
+      "asked_atom": "b",
+      "expected_independent_sympy": "unknown",
+      "candidate": "unknown",
+      "old_forward_only": "unknown",
+      "correct": true,
+      "premise_trace": {}
+    },
+    {
+      "id": "scoped-seed-276",
+      "source_facts": [
+        "d>c@real:2025",
+        "d>c@real:2026"
+      ],
+      "asked_atom": "a",
+      "expected_independent_sympy": "unknown",
+      "candidate": "unknown",
+      "old_forward_only": "unknown",
+      "correct": true,
+      "premise_trace": {}
+    },
+    {
+      "id": "scoped-seed-277",
+      "source_facts": [
+        "d>a",
+        "a>c@real:2026",
+        "b>c@real:2026",
+        "-b",
+        "+a@dream"
+      ],
+      "asked_atom": "b",
+      "expected_independent_sympy": "refuted",
+      "candidate": "refuted",
+      "old_forward_only": "refuted",
+      "correct": true,
+      "premise_trace": {
+        "negative_sources": [
+          "source:3"
+        ]
+      }
+    },
+    {
+      "id": "scoped-seed-278",
+      "source_facts": [
+        "+a@real:2025"
+      ],
+      "asked_atom": "c",
+      "expected_independent_sympy": "unknown",
+      "candidate": "unknown",
+      "old_forward_only": "unknown",
+      "correct": true,
+      "premise_trace": {}
+    },
+    {
+      "id": "scoped-seed-279",
+      "source_facts": [
+        "c>d@real:2025",
+        "+d@real:2025",
+        "-b@dream",
+        "d>c"
+      ],
+      "asked_atom": "c",
+      "expected_independent_sympy": "unknown",
+      "candidate": "unknown",
+      "old_forward_only": "unknown",
+      "correct": true,
+      "premise_trace": {}
+    },
+    {
+      "id": "scoped-seed-280",
+      "source_facts": [
+        "a>b",
+        "+a@real:2026",
+        "b>d",
+        "-c@quote",
+        "d>c@quote"
+      ],
+      "asked_atom": "d",
+      "expected_independent_sympy": "entailed",
+      "candidate": "entailed",
+      "old_forward_only": "entailed",
+      "correct": true,
+      "premise_trace": {
+        "positive_sources": [
+          "source:1",
+          "source:0",
+          "source:2"
+        ]
+      }
+    },
+    {
+      "id": "scoped-seed-281",
+      "source_facts": [
+        "a>d@dream",
+        "b>c@dream"
+      ],
+      "asked_atom": "a",
+      "expected_independent_sympy": "unknown",
+      "candidate": "unknown",
+      "old_forward_only": "unknown",
+      "correct": true,
+      "premise_trace": {}
+    },
+    {
+      "id": "scoped-seed-282",
+      "source_facts": [],
+      "asked_atom": "b",
+      "expected_independent_sympy": "unknown",
+      "candidate": "unknown",
+      "old_forward_only": "unknown",
+      "correct": true,
+      "premise_trace": {}
+    },
+    {
+      "id": "scoped-seed-283",
+      "source_facts": [
+        "b>c",
+        "c>a",
+        "c>a@quote",
+        "-c@real:2026",
+        "c>b@dream",
+        "b>a@dream"
+      ],
+      "asked_atom": "c",
+      "expected_independent_sympy": "refuted",
+      "candidate": "refuted",
+      "old_forward_only": "refuted",
+      "correct": true,
+      "premise_trace": {
+        "negative_sources": [
+          "source:3"
+        ]
+      }
+    },
+    {
+      "id": "scoped-seed-284",
+      "source_facts": [
+        "+d@real:2025",
+        "d>b@quote",
+        "a>c@quote",
+        "+d@quote",
+        "-c"
+      ],
+      "asked_atom": "b",
+      "expected_independent_sympy": "unknown",
+      "candidate": "unknown",
+      "old_forward_only": "unknown",
+      "correct": true,
+      "premise_trace": {}
+    },
+    {
+      "id": "scoped-seed-285",
+      "source_facts": [
+        "+a@quote"
+      ],
+      "asked_atom": "a",
+      "expected_independent_sympy": "unknown",
+      "candidate": "unknown",
+      "old_forward_only": "unknown",
+      "correct": true,
+      "premise_trace": {}
+    },
+    {
+      "id": "scoped-seed-286",
+      "source_facts": [
+        "+c@dream",
+        "a>b",
+        "d>b@real:2026",
+        "+c@dream"
+      ],
+      "asked_atom": "a",
+      "expected_independent_sympy": "unknown",
+      "candidate": "unknown",
+      "old_forward_only": "unknown",
+      "correct": true,
+      "premise_trace": {}
+    },
+    {
+      "id": "scoped-seed-287",
+      "source_facts": [
+        "c>b@real:2026"
+      ],
+      "asked_atom": "a",
+      "expected_independent_sympy": "unknown",
+      "candidate": "unknown",
+      "old_forward_only": "unknown",
+      "correct": true,
+      "premise_trace": {}
+    },
+    {
+      "id": "scoped-seed-288",
+      "source_facts": [
+        "c>d@dream",
+        "a>c@dream",
+        "b>c@real:2025",
+        "+c"
+      ],
+      "asked_atom": "b",
+      "expected_independent_sympy": "unknown",
+      "candidate": "unknown",
+      "old_forward_only": "unknown",
+      "correct": true,
+      "premise_trace": {}
+    },
+    {
+      "id": "scoped-seed-289",
+      "source_facts": [
+        "c>b@quote",
+        "b>d",
+        "b>d@real:2026",
+        "-c@dream",
+        "d>b@dream",
+        "b>a",
+        "a>b@real:2025"
+      ],
+      "asked_atom": "d",
+      "expected_independent_sympy": "unknown",
+      "candidate": "unknown",
+      "old_forward_only": "unknown",
+      "correct": true,
+      "premise_trace": {}
+    },
+    {
+      "id": "scoped-seed-290",
+      "source_facts": [
+        "+b@dream",
+        "a>d@dream",
+        "a>d@dream",
+        "c>a@dream"
+      ],
+      "asked_atom": "c",
+      "expected_independent_sympy": "unknown",
+      "candidate": "unknown",
+      "old_forward_only": "unknown",
+      "correct": true,
+      "premise_trace": {}
+    },
+    {
+      "id": "scoped-seed-291",
+      "source_facts": [
+        "+c@real:2026",
+        "c>b@real:2026"
+      ],
+      "asked_atom": "a",
+      "expected_independent_sympy": "unknown",
+      "candidate": "unknown",
+      "old_forward_only": "unknown",
+      "correct": true,
+      "premise_trace": {}
+    },
+    {
+      "id": "scoped-seed-292",
+      "source_facts": [
+        "d>b",
+        "b>d@dream",
+        "-a@real:2026"
+      ],
+      "asked_atom": "c",
+      "expected_independent_sympy": "unknown",
+      "candidate": "unknown",
+      "old_forward_only": "unknown",
+      "correct": true,
+      "premise_trace": {}
+    },
+    {
+      "id": "scoped-seed-293",
+      "source_facts": [
+        "+a@real:2026",
+        "-a@real:2025",
+        "d>a",
+        "-c@real:2025",
+        "a>b@real:2025"
+      ],
+      "asked_atom": "b",
+      "expected_independent_sympy": "unknown",
+      "candidate": "unknown",
+      "old_forward_only": "unknown",
+      "correct": true,
+      "premise_trace": {}
+    },
+    {
+      "id": "scoped-seed-294",
+      "source_facts": [
+        "a>d@real:2025",
+        "b>a@dream",
+        "d>c@real:2025",
+        "a>c",
+        "+b@real:2025",
+        "a>c@quote",
+        "c>d@real:2026"
+      ],
+      "asked_atom": "a",
+      "expected_independent_sympy": "unknown",
+      "candidate": "unknown",
+      "old_forward_only": "unknown",
+      "correct": true,
+      "premise_trace": {}
+    },
+    {
+      "id": "scoped-seed-295",
+      "source_facts": [
+        "+d@dream"
+      ],
+      "asked_atom": "b",
+      "expected_independent_sympy": "unknown",
+      "candidate": "unknown",
+      "old_forward_only": "unknown",
+      "correct": true,
+      "premise_trace": {}
+    },
+    {
+      "id": "scoped-seed-296",
+      "source_facts": [
+        "+c@dream",
+        "d>c@real:2026"
+      ],
+      "asked_atom": "a",
+      "expected_independent_sympy": "unknown",
+      "candidate": "unknown",
+      "old_forward_only": "unknown",
+      "correct": true,
+      "premise_trace": {}
+    },
+    {
+      "id": "scoped-seed-297",
+      "source_facts": [
+        "d>b@quote",
+        "c>a@quote",
+        "a>d@real:2026",
+        "-d@dream",
+        "-a@real:2025",
+        "d>c"
+      ],
+      "asked_atom": "c",
+      "expected_independent_sympy": "unknown",
+      "candidate": "unknown",
+      "old_forward_only": "unknown",
+      "correct": true,
+      "premise_trace": {}
+    },
+    {
+      "id": "scoped-seed-298",
+      "source_facts": [
+        "+d"
+      ],
+      "asked_atom": "b",
+      "expected_independent_sympy": "unknown",
+      "candidate": "unknown",
+      "old_forward_only": "unknown",
+      "correct": true,
+      "premise_trace": {}
+    },
+    {
+      "id": "scoped-seed-299",
+      "source_facts": [
+        "c>d@dream",
+        "b>a@quote",
+        "b>a@quote",
+        "-c@real:2026",
+        "-b@real:2025",
+        "d>b@real:2026",
+        "a>c@real:2026"
+      ],
+      "asked_atom": "d",
+      "expected_independent_sympy": "unknown",
+      "candidate": "unknown",
+      "old_forward_only": "unknown",
+      "correct": true,
+      "premise_trace": {}
+    },
+    {
+      "id": "scoped-seed-300",
+      "source_facts": [],
+      "asked_atom": "c",
+      "expected_independent_sympy": "unknown",
+      "candidate": "unknown",
+      "old_forward_only": "unknown",
+      "correct": true,
+      "premise_trace": {}
+    },
+    {
+      "id": "scoped-seed-301",
+      "source_facts": [],
+      "asked_atom": "b",
+      "expected_independent_sympy": "unknown",
+      "candidate": "unknown",
+      "old_forward_only": "unknown",
+      "correct": true,
+      "premise_trace": {}
+    },
+    {
+      "id": "scoped-seed-302",
+      "source_facts": [],
+      "asked_atom": "d",
+      "expected_independent_sympy": "unknown",
+      "candidate": "unknown",
+      "old_forward_only": "unknown",
+      "correct": true,
+      "premise_trace": {}
+    },
+    {
+      "id": "scoped-seed-303",
+      "source_facts": [
+        "c>a@quote"
+      ],
+      "asked_atom": "d",
+      "expected_independent_sympy": "unknown",
+      "candidate": "unknown",
+      "old_forward_only": "unknown",
+      "correct": true,
+      "premise_trace": {}
+    },
+    {
+      "id": "scoped-seed-304",
+      "source_facts": [
+        "c>b@dream",
+        "a>d@quote"
+      ],
+      "asked_atom": "a",
+      "expected_independent_sympy": "unknown",
+      "candidate": "unknown",
+      "old_forward_only": "unknown",
+      "correct": true,
+      "premise_trace": {}
+    },
+    {
+      "id": "scoped-seed-305",
+      "source_facts": [
+        "-d"
+      ],
+      "asked_atom": "a",
+      "expected_independent_sympy": "unknown",
+      "candidate": "unknown",
+      "old_forward_only": "unknown",
+      "correct": true,
+      "premise_trace": {}
+    },
+    {
+      "id": "scoped-seed-306",
+      "source_facts": [
+        "+d@dream",
+        "-c",
+        "-d@real:2025",
+        "d>c@dream",
+        "c>d@real:2025",
+        "+c@real:2025",
+        "a>d"
+      ],
+      "asked_atom": "b",
+      "expected_independent_sympy": "unknown",
+      "candidate": "unknown",
+      "old_forward_only": "unknown",
+      "correct": true,
+      "premise_trace": {}
+    },
+    {
+      "id": "scoped-seed-307",
+      "source_facts": [
+        "c>b@real:2026",
+        "-a@dream",
+        "+a@quote",
+        "-c",
+        "a>b@real:2025"
+      ],
+      "asked_atom": "a",
+      "expected_independent_sympy": "unknown",
+      "candidate": "unknown",
+      "old_forward_only": "unknown",
+      "correct": true,
+      "premise_trace": {}
+    },
+    {
+      "id": "scoped-seed-308",
+      "source_facts": [
+        "-d@dream",
+        "c>a@real:2025",
+        "+c"
+      ],
+      "asked_atom": "c",
+      "expected_independent_sympy": "entailed",
+      "candidate": "entailed",
+      "old_forward_only": "entailed",
+      "correct": true,
+      "premise_trace": {
+        "positive_sources": [
+          "source:2"
+        ]
+      }
+    },
+    {
+      "id": "scoped-seed-309",
+      "source_facts": [],
+      "asked_atom": "a",
+      "expected_independent_sympy": "unknown",
+      "candidate": "unknown",
+      "old_forward_only": "unknown",
+      "correct": true,
+      "premise_trace": {}
+    },
+    {
+      "id": "scoped-seed-310",
+      "source_facts": [
+        "d>b@real:2026"
+      ],
+      "asked_atom": "b",
+      "expected_independent_sympy": "unknown",
+      "candidate": "unknown",
+      "old_forward_only": "unknown",
+      "correct": true,
+      "premise_trace": {}
+    },
+    {
+      "id": "scoped-seed-311",
+      "source_facts": [
+        "d>b@quote",
+        "d>c@dream",
+        "d>b@dream"
+      ],
+      "asked_atom": "a",
+      "expected_independent_sympy": "unknown",
+      "candidate": "unknown",
+      "old_forward_only": "unknown",
+      "correct": true,
+      "premise_trace": {}
+    },
+    {
+      "id": "scoped-seed-312",
+      "source_facts": [
+        "+a",
+        "-d@real:2026",
+        "d>a@real:2026",
+        "-b@quote"
+      ],
+      "asked_atom": "c",
+      "expected_independent_sympy": "unknown",
+      "candidate": "unknown",
+      "old_forward_only": "unknown",
+      "correct": true,
+      "premise_trace": {}
+    },
+    {
+      "id": "scoped-seed-313",
+      "source_facts": [
+        "+a@quote",
+        "c>a@quote",
+        "-c@quote",
+        "+a@real:2025",
+        "+b",
+        "c>a@real:2025"
+      ],
+      "asked_atom": "b",
+      "expected_independent_sympy": "entailed",
+      "candidate": "entailed",
+      "old_forward_only": "entailed",
+      "correct": true,
+      "premise_trace": {
+        "positive_sources": [
+          "source:4"
+        ]
+      }
+    },
+    {
+      "id": "scoped-seed-314",
+      "source_facts": [
+        "+d@real:2026",
+        "-c",
+        "a>d@real:2026"
+      ],
+      "asked_atom": "b",
+      "expected_independent_sympy": "unknown",
+      "candidate": "unknown",
+      "old_forward_only": "unknown",
+      "correct": true,
+      "premise_trace": {}
+    },
+    {
+      "id": "scoped-seed-315",
+      "source_facts": [
+        "+a",
+        "d>b@real:2026"
+      ],
+      "asked_atom": "c",
+      "expected_independent_sympy": "unknown",
+      "candidate": "unknown",
+      "old_forward_only": "unknown",
+      "correct": true,
+      "premise_trace": {}
+    },
+    {
+      "id": "scoped-seed-316",
+      "source_facts": [
+        "-d@quote",
+        "b>a@real:2025",
+        "+b",
+        "+b@quote",
+        "+b@quote",
+        "c>d@quote",
+        "-b@real:2025"
+      ],
+      "asked_atom": "d",
+      "expected_independent_sympy": "unknown",
+      "candidate": "unknown",
+      "old_forward_only": "unknown",
+      "correct": true,
+      "premise_trace": {}
+    },
+    {
+      "id": "scoped-seed-317",
+      "source_facts": [
+        "+d@real:2025",
+        "-a@real:2026",
+        "+d@quote",
+        "+c@real:2026",
+        "d>b@real:2026",
+        "-c@dream"
+      ],
+      "asked_atom": "c",
+      "expected_independent_sympy": "entailed",
+      "candidate": "entailed",
+      "old_forward_only": "entailed",
+      "correct": true,
+      "premise_trace": {
+        "positive_sources": [
+          "source:3"
+        ]
+      }
+    },
+    {
+      "id": "scoped-seed-318",
+      "source_facts": [
+        "d>c"
+      ],
+      "asked_atom": "a",
+      "expected_independent_sympy": "unknown",
+      "candidate": "unknown",
+      "old_forward_only": "unknown",
+      "correct": true,
+      "premise_trace": {}
+    },
+    {
+      "id": "scoped-seed-319",
+      "source_facts": [
+        "-a@real:2025",
+        "-b@dream",
+        "c>d@real:2026",
+        "-a@quote"
+      ],
+      "asked_atom": "c",
+      "expected_independent_sympy": "unknown",
+      "candidate": "unknown",
+      "old_forward_only": "unknown",
+      "correct": true,
+      "premise_trace": {}
+    },
+    {
+      "id": "scoped-seed-320",
+      "source_facts": [
+        "b>d@real:2025",
+        "a>c"
+      ],
+      "asked_atom": "b",
+      "expected_independent_sympy": "unknown",
+      "candidate": "unknown",
+      "old_forward_only": "unknown",
+      "correct": true,
+      "premise_trace": {}
+    },
+    {
+      "id": "scoped-seed-321",
+      "source_facts": [
+        "a>b",
+        "b>d@dream",
+        "-b@real:2026",
+        "-b",
+        "b>c",
+        "+d@real:2026"
+      ],
+      "asked_atom": "d",
+      "expected_independent_sympy": "entailed",
+      "candidate": "entailed",
+      "old_forward_only": "entailed",
+      "correct": true,
+      "premise_trace": {
+        "positive_sources": [
+          "source:5"
+        ]
+      }
+    },
+    {
+      "id": "scoped-seed-322",
+      "source_facts": [
+        "+d@real:2026",
+        "c>a@quote",
+        "a>b@quote"
+      ],
+      "asked_atom": "a",
+      "expected_independent_sympy": "unknown",
+      "candidate": "unknown",
+      "old_forward_only": "unknown",
+      "correct": true,
+      "premise_trace": {}
+    },
+    {
+      "id": "scoped-seed-323",
+      "source_facts": [
+        "-c"
+      ],
+      "asked_atom": "c",
+      "expected_independent_sympy": "refuted",
+      "candidate": "refuted",
+      "old_forward_only": "refuted",
+      "correct": true,
+      "premise_trace": {
+        "negative_sources": [
+          "source:0"
+        ]
+      }
+    },
+    {
+      "id": "scoped-seed-324",
+      "source_facts": [
+        "+d",
+        "c>b"
+      ],
+      "asked_atom": "b",
+      "expected_independent_sympy": "unknown",
+      "candidate": "unknown",
+      "old_forward_only": "unknown",
+      "correct": true,
+      "premise_trace": {}
+    },
+    {
+      "id": "scoped-seed-325",
+      "source_facts": [
+        "c>a@quote",
+        "b>d",
+        "+a@dream",
+        "b>c@quote",
+        "+b@quote",
+        "c>d@real:2026"
+      ],
+      "asked_atom": "a",
+      "expected_independent_sympy": "unknown",
+      "candidate": "unknown",
+      "old_forward_only": "unknown",
+      "correct": true,
+      "premise_trace": {}
+    },
+    {
+      "id": "scoped-seed-326",
+      "source_facts": [
+        "+d@quote",
+        "+b",
+        "d>a@real:2026",
+        "+a@dream"
+      ],
+      "asked_atom": "d",
+      "expected_independent_sympy": "unknown",
+      "candidate": "unknown",
+      "old_forward_only": "unknown",
+      "correct": true,
+      "premise_trace": {}
+    },
+    {
+      "id": "scoped-seed-327",
+      "source_facts": [],
+      "asked_atom": "a",
+      "expected_independent_sympy": "unknown",
+      "candidate": "unknown",
+      "old_forward_only": "unknown",
+      "correct": true,
+      "premise_trace": {}
+    },
+    {
+      "id": "scoped-seed-328",
+      "source_facts": [
+        "-d@dream",
+        "c>d@real:2026",
+        "-a@dream",
+        "+a",
+        "d>b@quote"
+      ],
+      "asked_atom": "d",
+      "expected_independent_sympy": "unknown",
+      "candidate": "unknown",
+      "old_forward_only": "unknown",
+      "correct": true,
+      "premise_trace": {}
+    },
+    {
+      "id": "scoped-seed-329",
+      "source_facts": [
+        "a>b@real:2026"
+      ],
+      "asked_atom": "d",
+      "expected_independent_sympy": "unknown",
+      "candidate": "unknown",
+      "old_forward_only": "unknown",
+      "correct": true,
+      "premise_trace": {}
+    },
+    {
+      "id": "scoped-seed-330",
+      "source_facts": [
+        "b>a@quote"
+      ],
+      "asked_atom": "c",
+      "expected_independent_sympy": "unknown",
+      "candidate": "unknown",
+      "old_forward_only": "unknown",
+      "correct": true,
+      "premise_trace": {}
+    },
+    {
+      "id": "scoped-seed-331",
+      "source_facts": [
+        "-c@real:2026",
+        "c>b@real:2026",
+        "d>c",
+        "b>c@dream",
+        "d>c@real:2025",
+        "-b@quote",
+        "-c@real:2026"
+      ],
+      "asked_atom": "c",
+      "expected_independent_sympy": "refuted",
+      "candidate": "refuted",
+      "old_forward_only": "refuted",
+      "correct": true,
+      "premise_trace": {
+        "negative_sources": [
+          "source:0"
+        ]
+      }
+    },
+    {
+      "id": "scoped-seed-332",
+      "source_facts": [
+        "-b@real:2025",
+        "d>a@real:2026",
+        "d>b@real:2025",
+        "-d@real:2026",
+        "b>a@dream",
+        "b>d@quote"
+      ],
+      "asked_atom": "b",
+      "expected_independent_sympy": "unknown",
+      "candidate": "unknown",
+      "old_forward_only": "unknown",
+      "correct": true,
+      "premise_trace": {}
+    },
+    {
+      "id": "scoped-seed-333",
+      "source_facts": [
+        "a>c",
+        "+d@quote",
+        "b>d@dream",
+        "-b@dream",
+        "+c@quote",
+        "-d@real:2025",
+        "d>c@real:2025"
+      ],
+      "asked_atom": "b",
+      "expected_independent_sympy": "unknown",
+      "candidate": "unknown",
+      "old_forward_only": "unknown",
+      "correct": true,
+      "premise_trace": {}
+    },
+    {
+      "id": "scoped-seed-334",
+      "source_facts": [
+        "-a@dream",
+        "d>c@dream"
+      ],
+      "asked_atom": "a",
+      "expected_independent_sympy": "unknown",
+      "candidate": "unknown",
+      "old_forward_only": "unknown",
+      "correct": true,
+      "premise_trace": {}
+    },
+    {
+      "id": "scoped-seed-335",
+      "source_facts": [
+        "d>a@dream",
+        "c>a@real:2025",
+        "-d",
+        "-c@real:2025",
+        "d>a@real:2026",
+        "a>b@real:2026",
+        "c>b@quote"
+      ],
+      "asked_atom": "c",
+      "expected_independent_sympy": "unknown",
+      "candidate": "unknown",
+      "old_forward_only": "unknown",
+      "correct": true,
+      "premise_trace": {}
+    },
+    {
+      "id": "scoped-seed-336",
+      "source_facts": [
+        "+b",
+        "+d@real:2026",
+        "d>a"
+      ],
+      "asked_atom": "b",
+      "expected_independent_sympy": "entailed",
+      "candidate": "entailed",
+      "old_forward_only": "entailed",
+      "correct": true,
+      "premise_trace": {
+        "positive_sources": [
+          "source:0"
+        ]
+      }
+    },
+    {
+      "id": "scoped-seed-337",
+      "source_facts": [
+        "b>d@dream",
+        "-c@real:2025",
+        "a>d@real:2025",
+        "-d@real:2026",
+        "c>b",
+        "c>b@real:2026",
+        "+c@quote"
+      ],
+      "asked_atom": "d",
+      "expected_independent_sympy": "refuted",
+      "candidate": "refuted",
+      "old_forward_only": "refuted",
+      "correct": true,
+      "premise_trace": {
+        "negative_sources": [
+          "source:3"
+        ]
+      }
+    },
+    {
+      "id": "scoped-seed-338",
+      "source_facts": [
+        "b>a@real:2026",
+        "c>b@real:2026",
+        "d>c@real:2026"
+      ],
+      "asked_atom": "d",
+      "expected_independent_sympy": "unknown",
+      "candidate": "unknown",
+      "old_forward_only": "unknown",
+      "correct": true,
+      "premise_trace": {}
+    },
+    {
+      "id": "scoped-seed-339",
+      "source_facts": [
+        "c>a",
+        "d>c@dream",
+        "c>b@real:2026",
+        "+a@dream",
+        "c>a@quote",
+        "d>a"
+      ],
+      "asked_atom": "c",
+      "expected_independent_sympy": "unknown",
+      "candidate": "unknown",
+      "old_forward_only": "unknown",
+      "correct": true,
+      "premise_trace": {}
+    },
+    {
+      "id": "scoped-seed-340",
+      "source_facts": [
+        "+b@real:2025",
+        "a>d@dream",
+        "+c@real:2025",
+        "a>c@dream",
+        "+c",
+        "c>d@real:2025",
+        "a>d@real:2026"
+      ],
+      "asked_atom": "b",
+      "expected_independent_sympy": "unknown",
+      "candidate": "unknown",
+      "old_forward_only": "unknown",
+      "correct": true,
+      "premise_trace": {}
+    },
+    {
+      "id": "scoped-seed-341",
+      "source_facts": [],
+      "asked_atom": "c",
+      "expected_independent_sympy": "unknown",
+      "candidate": "unknown",
+      "old_forward_only": "unknown",
+      "correct": true,
+      "premise_trace": {}
+    },
+    {
+      "id": "scoped-seed-342",
+      "source_facts": [
+        "-a@real:2026",
+        "a>c@real:2025",
+        "b>c@quote"
+      ],
+      "asked_atom": "b",
+      "expected_independent_sympy": "unknown",
+      "candidate": "unknown",
+      "old_forward_only": "unknown",
+      "correct": true,
+      "premise_trace": {}
+    },
+    {
+      "id": "scoped-seed-343",
+      "source_facts": [
+        "d>c@real:2026",
+        "b>a",
+        "d>c",
+        "+a@real:2025",
+        "b>c@real:2025"
+      ],
+      "asked_atom": "c",
+      "expected_independent_sympy": "unknown",
+      "candidate": "unknown",
+      "old_forward_only": "unknown",
+      "correct": true,
+      "premise_trace": {}
+    },
+    {
+      "id": "scoped-seed-344",
+      "source_facts": [
+        "-d@real:2025",
+        "b>a@real:2025",
+        "d>a@real:2026",
+        "+a@real:2026",
+        "d>c@quote",
+        "-d@dream",
+        "b>a@quote"
+      ],
+      "asked_atom": "c",
+      "expected_independent_sympy": "unknown",
+      "candidate": "unknown",
+      "old_forward_only": "unknown",
+      "correct": true,
+      "premise_trace": {}
+    },
+    {
+      "id": "scoped-seed-345",
+      "source_facts": [
+        "d>a",
+        "c>b@real:2026"
+      ],
+      "asked_atom": "d",
+      "expected_independent_sympy": "unknown",
+      "candidate": "unknown",
+      "old_forward_only": "unknown",
+      "correct": true,
+      "premise_trace": {}
+    },
+    {
+      "id": "scoped-seed-346",
+      "source_facts": [
+        "a>c",
+        "a>b@real:2025",
+        "c>d@dream"
+      ],
+      "asked_atom": "b",
+      "expected_independent_sympy": "unknown",
+      "candidate": "unknown",
+      "old_forward_only": "unknown",
+      "correct": true,
+      "premise_trace": {}
+    },
+    {
+      "id": "scoped-seed-347",
+      "source_facts": [
+        "c>d@real:2025"
+      ],
+      "asked_atom": "d",
+      "expected_independent_sympy": "unknown",
+      "candidate": "unknown",
+      "old_forward_only": "unknown",
+      "correct": true,
+      "premise_trace": {}
+    },
+    {
+      "id": "scoped-seed-348",
+      "source_facts": [
+        "d>c"
+      ],
+      "asked_atom": "a",
+      "expected_independent_sympy": "unknown",
+      "candidate": "unknown",
+      "old_forward_only": "unknown",
+      "correct": true,
+      "premise_trace": {}
+    },
+    {
+      "id": "scoped-seed-349",
+      "source_facts": [
+        "-c@dream",
+        "d>a@real:2026"
+      ],
+      "asked_atom": "c",
+      "expected_independent_sympy": "unknown",
+      "candidate": "unknown",
+      "old_forward_only": "unknown",
+      "correct": true,
+      "premise_trace": {}
+    },
+    {
+      "id": "scoped-seed-350",
+      "source_facts": [
+        "c>d@real:2025",
+        "d>c@real:2026",
+        "d>c@real:2026",
+        "+c@dream",
+        "-b@real:2026"
+      ],
+      "asked_atom": "b",
+      "expected_independent_sympy": "refuted",
+      "candidate": "refuted",
+      "old_forward_only": "refuted",
+      "correct": true,
+      "premise_trace": {
+        "negative_sources": [
+          "source:4"
+        ]
+      }
+    },
+    {
+      "id": "scoped-seed-351",
+      "source_facts": [
+        "-c",
+        "b>c",
+        "c>a",
+        "b>d",
+        "a>c@real:2025",
+        "+a"
+      ],
+      "asked_atom": "c",
+      "expected_independent_sympy": "refuted",
+      "candidate": "refuted",
+      "old_forward_only": "refuted",
+      "correct": true,
+      "premise_trace": {
+        "negative_sources": [
+          "source:0"
+        ]
+      }
+    },
+    {
+      "id": "scoped-seed-352",
+      "source_facts": [
+        "+a@real:2025",
+        "+a@quote",
+        "-c@real:2026",
+        "b>c@real:2025",
+        "d>a@quote",
+        "d>b@real:2025",
+        "b>a@real:2025"
+      ],
+      "asked_atom": "b",
+      "expected_independent_sympy": "unknown",
+      "candidate": "unknown",
+      "old_forward_only": "unknown",
+      "correct": true,
+      "premise_trace": {}
+    },
+    {
+      "id": "scoped-seed-353",
+      "source_facts": [
+        "b>d"
+      ],
+      "asked_atom": "d",
+      "expected_independent_sympy": "unknown",
+      "candidate": "unknown",
+      "old_forward_only": "unknown",
+      "correct": true,
+      "premise_trace": {}
+    },
+    {
+      "id": "scoped-seed-354",
+      "source_facts": [
+        "b>a@real:2025",
+        "+d@quote",
+        "c>d@quote"
+      ],
+      "asked_atom": "c",
+      "expected_independent_sympy": "unknown",
+      "candidate": "unknown",
+      "old_forward_only": "unknown",
+      "correct": true,
+      "premise_trace": {}
+    },
+    {
+      "id": "scoped-seed-355",
+      "source_facts": [
+        "+a@quote",
+        "+c@real:2025",
+        "-b",
+        "b>a@quote"
+      ],
+      "asked_atom": "c",
+      "expected_independent_sympy": "unknown",
+      "candidate": "unknown",
+      "old_forward_only": "unknown",
+      "correct": true,
+      "premise_trace": {}
+    },
+    {
+      "id": "scoped-seed-356",
+      "source_facts": [
+        "a>b@real:2025",
+        "+d",
+        "c>a@real:2026",
+        "+b@real:2025"
+      ],
+      "asked_atom": "b",
+      "expected_independent_sympy": "unknown",
+      "candidate": "unknown",
+      "old_forward_only": "unknown",
+      "correct": true,
+      "premise_trace": {}
+    },
+    {
+      "id": "scoped-seed-357",
+      "source_facts": [],
+      "asked_atom": "d",
+      "expected_independent_sympy": "unknown",
+      "candidate": "unknown",
+      "old_forward_only": "unknown",
+      "correct": true,
+      "premise_trace": {}
+    },
+    {
+      "id": "scoped-seed-358",
+      "source_facts": [
+        "b>c@real:2026"
+      ],
+      "asked_atom": "a",
+      "expected_independent_sympy": "unknown",
+      "candidate": "unknown",
+      "old_forward_only": "unknown",
+      "correct": true,
+      "premise_trace": {}
+    },
+    {
+      "id": "scoped-seed-359",
+      "source_facts": [
+        "-a@real:2026",
+        "c>d@real:2025"
+      ],
+      "asked_atom": "a",
+      "expected_independent_sympy": "refuted",
+      "candidate": "refuted",
+      "old_forward_only": "refuted",
+      "correct": true,
+      "premise_trace": {
+        "negative_sources": [
+          "source:0"
+        ]
+      }
+    },
+    {
+      "id": "scoped-seed-360",
+      "source_facts": [
+        "a>d@real:2026",
+        "b>c",
+        "a>d@dream",
+        "c>a@dream"
+      ],
+      "asked_atom": "c",
+      "expected_independent_sympy": "unknown",
+      "candidate": "unknown",
+      "old_forward_only": "unknown",
+      "correct": true,
+      "premise_trace": {}
+    },
+    {
+      "id": "scoped-seed-361",
+      "source_facts": [
+        "+b",
+        "-a@quote",
+        "b>a@quote",
+        "+a@dream",
+        "-d@real:2026"
+      ],
+      "asked_atom": "a",
+      "expected_independent_sympy": "unknown",
+      "candidate": "unknown",
+      "old_forward_only": "unknown",
+      "correct": true,
+      "premise_trace": {}
+    },
+    {
+      "id": "scoped-seed-362",
+      "source_facts": [
+        "+c@real:2026",
+        "c>b@dream",
+        "b>c@quote",
+        "a>c",
+        "a>d@real:2026"
+      ],
+      "asked_atom": "a",
+      "expected_independent_sympy": "unknown",
+      "candidate": "unknown",
+      "old_forward_only": "unknown",
+      "correct": true,
+      "premise_trace": {}
+    },
+    {
+      "id": "scoped-seed-363",
+      "source_facts": [
+        "b>d@dream",
+        "+c@dream",
+        "-b@dream",
+        "+c@quote",
+        "c>b"
+      ],
+      "asked_atom": "d",
+      "expected_independent_sympy": "unknown",
+      "candidate": "unknown",
+      "old_forward_only": "unknown",
+      "correct": true,
+      "premise_trace": {}
+    },
+    {
+      "id": "scoped-seed-364",
+      "source_facts": [
+        "d>b@quote"
+      ],
+      "asked_atom": "d",
+      "expected_independent_sympy": "unknown",
+      "candidate": "unknown",
+      "old_forward_only": "unknown",
+      "correct": true,
+      "premise_trace": {}
+    },
+    {
+      "id": "scoped-seed-365",
+      "source_facts": [
+        "+d@dream",
+        "c>b@quote",
+        "c>d@quote",
+        "-c",
+        "c>d",
+        "+c@dream",
+        "d>a"
+      ],
+      "asked_atom": "a",
+      "expected_independent_sympy": "unknown",
+      "candidate": "unknown",
+      "old_forward_only": "unknown",
+      "correct": true,
+      "premise_trace": {}
+    },
+    {
+      "id": "scoped-seed-366",
+      "source_facts": [],
+      "asked_atom": "c",
+      "expected_independent_sympy": "unknown",
+      "candidate": "unknown",
+      "old_forward_only": "unknown",
+      "correct": true,
+      "premise_trace": {}
+    },
+    {
+      "id": "scoped-seed-367",
+      "source_facts": [
+        "b>d@dream",
+        "d>c"
+      ],
+      "asked_atom": "d",
+      "expected_independent_sympy": "unknown",
+      "candidate": "unknown",
+      "old_forward_only": "unknown",
+      "correct": true,
+      "premise_trace": {}
+    },
+    {
+      "id": "scoped-seed-368",
+      "source_facts": [],
+      "asked_atom": "d",
+      "expected_independent_sympy": "unknown",
+      "candidate": "unknown",
+      "old_forward_only": "unknown",
+      "correct": true,
+      "premise_trace": {}
+    },
+    {
+      "id": "scoped-seed-369",
+      "source_facts": [
+        "a>b@real:2026",
+        "a>d@dream"
+      ],
+      "asked_atom": "d",
+      "expected_independent_sympy": "unknown",
+      "candidate": "unknown",
+      "old_forward_only": "unknown",
+      "correct": true,
+      "premise_trace": {}
+    },
+    {
+      "id": "scoped-seed-370",
+      "source_facts": [
+        "a>b@real:2026",
+        "b>d@dream",
+        "-a@real:2025",
+        "b>a@real:2026",
+        "c>d@quote",
+        "+b@dream"
+      ],
+      "asked_atom": "d",
+      "expected_independent_sympy": "unknown",
+      "candidate": "unknown",
+      "old_forward_only": "unknown",
+      "correct": true,
+      "premise_trace": {}
+    },
+    {
+      "id": "scoped-seed-371",
+      "source_facts": [
+        "b>d@real:2025",
+        "-d@real:2025"
+      ],
+      "asked_atom": "c",
+      "expected_independent_sympy": "unknown",
+      "candidate": "unknown",
+      "old_forward_only": "unknown",
+      "correct": true,
+      "premise_trace": {}
+    },
+    {
+      "id": "scoped-seed-372",
+      "source_facts": [
+        "+a@quote",
+        "b>a",
+        "d>c@dream",
+        "a>c",
+        "a>c@quote"
+      ],
+      "asked_atom": "a",
+      "expected_independent_sympy": "unknown",
+      "candidate": "unknown",
+      "old_forward_only": "unknown",
+      "correct": true,
+      "premise_trace": {}
+    },
+    {
+      "id": "scoped-seed-373",
+      "source_facts": [
+        "b>d@quote",
+        "c>d@dream",
+        "c>a@real:2025"
+      ],
+      "asked_atom": "a",
+      "expected_independent_sympy": "unknown",
+      "candidate": "unknown",
+      "old_forward_only": "unknown",
+      "correct": true,
+      "premise_trace": {}
+    },
+    {
+      "id": "scoped-seed-374",
+      "source_facts": [
+        "a>c@dream",
+        "c>a@dream",
+        "a>d@dream",
+        "b>c@dream",
+        "c>b@real:2026",
+        "+d@real:2026"
+      ],
+      "asked_atom": "a",
+      "expected_independent_sympy": "unknown",
+      "candidate": "unknown",
+      "old_forward_only": "unknown",
+      "correct": true,
+      "premise_trace": {}
+    },
+    {
+      "id": "scoped-seed-375",
+      "source_facts": [
+        "d>b@dream",
+        "b>c@dream",
+        "+c",
+        "-c@dream",
+        "b>d",
+        "-b@real:2026",
+        "+d@real:2025"
+      ],
+      "asked_atom": "d",
+      "expected_independent_sympy": "unknown",
+      "candidate": "unknown",
+      "old_forward_only": "unknown",
+      "correct": true,
+      "premise_trace": {}
+    },
+    {
+      "id": "scoped-seed-376",
+      "source_facts": [
+        "+a",
+        "-c",
+        "+a@real:2025",
+        "c>a@real:2026",
+        "-b@dream"
+      ],
+      "asked_atom": "d",
+      "expected_independent_sympy": "unknown",
+      "candidate": "unknown",
+      "old_forward_only": "unknown",
+      "correct": true,
+      "premise_trace": {}
+    },
+    {
+      "id": "scoped-seed-377",
+      "source_facts": [
+        "+b@real:2025",
+        "c>d",
+        "d>c@quote",
+        "a>d@quote",
+        "b>a@dream"
+      ],
+      "asked_atom": "c",
+      "expected_independent_sympy": "unknown",
+      "candidate": "unknown",
+      "old_forward_only": "unknown",
+      "correct": true,
+      "premise_trace": {}
+    },
+    {
+      "id": "scoped-seed-378",
+      "source_facts": [
+        "b>a",
+        "-b@real:2025",
+        "+b@dream",
+        "-d"
+      ],
+      "asked_atom": "d",
+      "expected_independent_sympy": "refuted",
+      "candidate": "refuted",
+      "old_forward_only": "refuted",
+      "correct": true,
+      "premise_trace": {
+        "negative_sources": [
+          "source:3"
+        ]
+      }
+    },
+    {
+      "id": "scoped-seed-379",
+      "source_facts": [],
+      "asked_atom": "b",
+      "expected_independent_sympy": "unknown",
+      "candidate": "unknown",
+      "old_forward_only": "unknown",
+      "correct": true,
+      "premise_trace": {}
+    },
+    {
+      "id": "scoped-seed-380",
+      "source_facts": [
+        "+b",
+        "-b",
+        "+d@quote",
+        "d>b@dream"
+      ],
+      "asked_atom": "a",
+      "expected_independent_sympy": "contradictory",
+      "candidate": "contradictory",
+      "old_forward_only": "contradictory",
+      "correct": true,
+      "premise_trace": {
+        "atom": "b",
+        "positive_sources": [
+          "source:0"
+        ],
+        "negative_sources": [
+          "source:1"
+        ]
+      }
+    },
+    {
+      "id": "scoped-seed-381",
+      "source_facts": [
+        "c>b@real:2026",
+        "c>b@quote"
+      ],
+      "asked_atom": "c",
+      "expected_independent_sympy": "unknown",
+      "candidate": "unknown",
+      "old_forward_only": "unknown",
+      "correct": true,
+      "premise_trace": {}
+    },
+    {
+      "id": "scoped-seed-382",
+      "source_facts": [
+        "d>c",
+        "d>a",
+        "-b@quote",
+        "d>b@real:2025",
+        "b>a@real:2025",
+        "b>a@quote",
+        "a>c@real:2026"
+      ],
+      "asked_atom": "c",
+      "expected_independent_sympy": "unknown",
+      "candidate": "unknown",
+      "old_forward_only": "unknown",
+      "correct": true,
+      "premise_trace": {}
+    },
+    {
+      "id": "scoped-seed-383",
+      "source_facts": [
+        "a>b@quote",
+        "+d",
+        "b>d@quote",
+        "a>d@dream",
+        "a>b@quote"
+      ],
+      "asked_atom": "c",
+      "expected_independent_sympy": "unknown",
+      "candidate": "unknown",
+      "old_forward_only": "unknown",
+      "correct": true,
+      "premise_trace": {}
+    },
+    {
+      "id": "scoped-seed-384",
+      "source_facts": [
+        "a>c@quote",
+        "-d@dream",
+        "c>d",
+        "c>a@dream",
+        "a>b@real:2026"
+      ],
+      "asked_atom": "b",
+      "expected_independent_sympy": "unknown",
+      "candidate": "unknown",
+      "old_forward_only": "unknown",
+      "correct": true,
+      "premise_trace": {}
+    },
+    {
+      "id": "scoped-seed-385",
+      "source_facts": [
+        "-d@dream",
+        "c>a@quote",
+        "b>c",
+        "+c@dream",
+        "b>c@quote",
+        "b>d@quote",
+        "b>c@real:2026"
+      ],
+      "asked_atom": "c",
+      "expected_independent_sympy": "unknown",
+      "candidate": "unknown",
+      "old_forward_only": "unknown",
+      "correct": true,
+      "premise_trace": {}
+    },
+    {
+      "id": "scoped-seed-386",
+      "source_facts": [
+        "a>d@quote",
+        "-a@dream",
+        "-b@quote",
+        "+d@real:2026",
+        "a>d@quote",
+        "+a@real:2025",
+        "b>d"
+      ],
+      "asked_atom": "b",
+      "expected_independent_sympy": "unknown",
+      "candidate": "unknown",
+      "old_forward_only": "unknown",
+      "correct": true,
+      "premise_trace": {}
+    },
+    {
+      "id": "scoped-seed-387",
+      "source_facts": [
+        "c>a",
+        "+a@real:2026",
+        "-b@quote",
+        "c>b@dream",
+        "-b@dream",
+        "a>b@dream",
+        "a>c@real:2026"
+      ],
+      "asked_atom": "d",
+      "expected_independent_sympy": "unknown",
+      "candidate": "unknown",
+      "old_forward_only": "unknown",
+      "correct": true,
+      "premise_trace": {}
+    },
+    {
+      "id": "scoped-seed-388",
+      "source_facts": [
+        "b>d@dream",
+        "b>d@quote",
+        "c>a@real:2026",
+        "+d@dream",
+        "-a@quote",
+        "c>a",
+        "d>c@real:2025"
+      ],
+      "asked_atom": "c",
+      "expected_independent_sympy": "unknown",
+      "candidate": "unknown",
+      "old_forward_only": "unknown",
+      "correct": true,
+      "premise_trace": {}
+    },
+    {
+      "id": "scoped-seed-389",
+      "source_facts": [
+        "b>c@real:2026",
+        "+a",
+        "d>b@real:2025",
+        "-d@real:2025"
+      ],
+      "asked_atom": "a",
+      "expected_independent_sympy": "entailed",
+      "candidate": "entailed",
+      "old_forward_only": "entailed",
+      "correct": true,
+      "premise_trace": {
+        "positive_sources": [
+          "source:1"
+        ]
+      }
+    },
+    {
+      "id": "scoped-seed-390",
+      "source_facts": [
+        "+d@dream"
+      ],
+      "asked_atom": "d",
+      "expected_independent_sympy": "unknown",
+      "candidate": "unknown",
+      "old_forward_only": "unknown",
+      "correct": true,
+      "premise_trace": {}
+    },
+    {
+      "id": "scoped-seed-391",
+      "source_facts": [
+        "+a",
+        "c>b@quote",
+        "+a@dream"
+      ],
+      "asked_atom": "d",
+      "expected_independent_sympy": "unknown",
+      "candidate": "unknown",
+      "old_forward_only": "unknown",
+      "correct": true,
+      "premise_trace": {}
+    },
+    {
+      "id": "scoped-seed-392",
+      "source_facts": [
+        "b>a",
+        "c>a@dream",
+        "d>a@dream",
+        "b>c",
+        "-b@real:2025",
+        "+a@quote",
+        "c>a@dream"
+      ],
+      "asked_atom": "a",
+      "expected_independent_sympy": "unknown",
+      "candidate": "unknown",
+      "old_forward_only": "unknown",
+      "correct": true,
+      "premise_trace": {}
+    },
+    {
+      "id": "scoped-seed-393",
+      "source_facts": [
+        "+a@dream",
+        "+a@real:2026",
+        "d>a@dream",
+        "b>d@real:2026",
+        "d>b@dream"
+      ],
+      "asked_atom": "c",
+      "expected_independent_sympy": "unknown",
+      "candidate": "unknown",
+      "old_forward_only": "unknown",
+      "correct": true,
+      "premise_trace": {}
+    },
+    {
+      "id": "scoped-seed-394",
+      "source_facts": [
+        "b>d@quote",
+        "-a@real:2025",
+        "c>a@real:2025",
+        "b>c"
+      ],
+      "asked_atom": "c",
+      "expected_independent_sympy": "unknown",
+      "candidate": "unknown",
+      "old_forward_only": "unknown",
+      "correct": true,
+      "premise_trace": {}
+    },
+    {
+      "id": "scoped-seed-395",
+      "source_facts": [],
+      "asked_atom": "c",
+      "expected_independent_sympy": "unknown",
+      "candidate": "unknown",
+      "old_forward_only": "unknown",
+      "correct": true,
+      "premise_trace": {}
+    },
+    {
+      "id": "scoped-seed-396",
+      "source_facts": [
+        "d>a@real:2026",
+        "+d@real:2025",
+        "a>c"
+      ],
+      "asked_atom": "c",
+      "expected_independent_sympy": "unknown",
+      "candidate": "unknown",
+      "old_forward_only": "unknown",
+      "correct": true,
+      "premise_trace": {}
+    },
+    {
+      "id": "scoped-seed-397",
+      "source_facts": [
+        "-b@quote",
+        "a>d@real:2025"
+      ],
+      "asked_atom": "d",
+      "expected_independent_sympy": "unknown",
+      "candidate": "unknown",
+      "old_forward_only": "unknown",
+      "correct": true,
+      "premise_trace": {}
+    },
+    {
+      "id": "scoped-seed-398",
+      "source_facts": [
+        "-b@real:2026",
+        "a>d@quote",
+        "+b@dream",
+        "a>b",
+        "a>d@real:2025",
+        "-c@real:2026",
+        "d>b@quote"
+      ],
+      "asked_atom": "c",
+      "expected_independent_sympy": "refuted",
+      "candidate": "refuted",
+      "old_forward_only": "refuted",
+      "correct": true,
+      "premise_trace": {
+        "negative_sources": [
+          "source:5"
+        ]
+      }
+    },
+    {
+      "id": "scoped-seed-399",
+      "source_facts": [
+        "c>a@real:2026"
+      ],
+      "asked_atom": "b",
+      "expected_independent_sympy": "unknown",
+      "candidate": "unknown",
+      "old_forward_only": "unknown",
+      "correct": true,
+      "premise_trace": {}
+    },
+    {
+      "id": "scoped-seed-400",
+      "source_facts": [
+        "-d@real:2026",
+        "a>b@real:2026",
+        "b>c@real:2025",
+        "a>c@quote",
+        "b>c@real:2026",
+        "a>b@dream"
+      ],
+      "asked_atom": "d",
+      "expected_independent_sympy": "refuted",
+      "candidate": "refuted",
+      "old_forward_only": "refuted",
+      "correct": true,
+      "premise_trace": {
+        "negative_sources": [
+          "source:0"
+        ]
+      }
+    },
+    {
+      "id": "scoped-seed-401",
+      "source_facts": [
+        "+a@real:2026",
+        "d>c@real:2025",
+        "b>c@real:2026",
+        "d>b@real:2025",
+        "-a@quote",
+        "b>c@dream",
+        "b>c@quote"
+      ],
+      "asked_atom": "d",
+      "expected_independent_sympy": "unknown",
+      "candidate": "unknown",
+      "old_forward_only": "unknown",
+      "correct": true,
+      "premise_trace": {}
+    },
+    {
+      "id": "scoped-seed-402",
+      "source_facts": [
+        "+a@quote"
+      ],
+      "asked_atom": "d",
+      "expected_independent_sympy": "unknown",
+      "candidate": "unknown",
+      "old_forward_only": "unknown",
+      "correct": true,
+      "premise_trace": {}
+    },
+    {
+      "id": "scoped-seed-403",
+      "source_facts": [
+        "c>d",
+        "-b@dream",
+        "b>a@real:2025",
+        "c>b@dream",
+        "-a@quote",
+        "+c@real:2026",
+        "-c@dream"
+      ],
+      "asked_atom": "b",
+      "expected_independent_sympy": "unknown",
+      "candidate": "unknown",
+      "old_forward_only": "unknown",
+      "correct": true,
+      "premise_trace": {}
+    },
+    {
+      "id": "scoped-seed-404",
+      "source_facts": [
+        "+c@quote",
+        "+d",
+        "b>c@real:2026",
+        "-d@dream",
+        "c>b@real:2025"
+      ],
+      "asked_atom": "d",
+      "expected_independent_sympy": "entailed",
+      "candidate": "entailed",
+      "old_forward_only": "entailed",
+      "correct": true,
+      "premise_trace": {
+        "positive_sources": [
+          "source:1"
+        ]
+      }
+    },
+    {
+      "id": "scoped-seed-405",
+      "source_facts": [
+        "-d@quote",
+        "d>c@quote",
+        "-b@real:2025",
+        "d>a@real:2025",
+        "+c@dream",
+        "a>c",
+        "+d@real:2025"
+      ],
+      "asked_atom": "a",
+      "expected_independent_sympy": "unknown",
+      "candidate": "unknown",
+      "old_forward_only": "unknown",
+      "correct": true,
+      "premise_trace": {}
+    },
+    {
+      "id": "scoped-seed-406",
+      "source_facts": [],
+      "asked_atom": "c",
+      "expected_independent_sympy": "unknown",
+      "candidate": "unknown",
+      "old_forward_only": "unknown",
+      "correct": true,
+      "premise_trace": {}
+    },
+    {
+      "id": "scoped-seed-407",
+      "source_facts": [
+        "+a@real:2026",
+        "c>b@real:2026",
+        "-d@real:2025"
+      ],
+      "asked_atom": "b",
+      "expected_independent_sympy": "unknown",
+      "candidate": "unknown",
+      "old_forward_only": "unknown",
+      "correct": true,
+      "premise_trace": {}
+    },
+    {
+      "id": "scoped-seed-408",
+      "source_facts": [
+        "b>d@dream",
+        "-c@real:2026",
+        "b>a",
+        "d>a@quote",
+        "-c@dream"
+      ],
+      "asked_atom": "a",
+      "expected_independent_sympy": "unknown",
+      "candidate": "unknown",
+      "old_forward_only": "unknown",
+      "correct": true,
+      "premise_trace": {}
+    },
+    {
+      "id": "scoped-seed-409",
+      "source_facts": [
+        "-a@real:2025",
+        "c>b@quote"
+      ],
+      "asked_atom": "c",
+      "expected_independent_sympy": "unknown",
+      "candidate": "unknown",
+      "old_forward_only": "unknown",
+      "correct": true,
+      "premise_trace": {}
+    },
+    {
+      "id": "scoped-seed-410",
+      "source_facts": [
+        "c>b@real:2026",
+        "a>d@dream",
+        "d>a",
+        "+a",
+        "-d@real:2025"
+      ],
+      "asked_atom": "b",
+      "expected_independent_sympy": "unknown",
+      "candidate": "unknown",
+      "old_forward_only": "unknown",
+      "correct": true,
+      "premise_trace": {}
+    },
+    {
+      "id": "scoped-seed-411",
+      "source_facts": [
+        "c>d@quote",
+        "d>c@real:2026",
+        "+c@real:2025",
+        "+a",
+        "c>d@dream",
+        "c>a",
+        "-c"
+      ],
+      "asked_atom": "c",
+      "expected_independent_sympy": "refuted",
+      "candidate": "refuted",
+      "old_forward_only": "refuted",
+      "correct": true,
+      "premise_trace": {
+        "negative_sources": [
+          "source:6"
+        ]
+      }
+    },
+    {
+      "id": "scoped-seed-412",
+      "source_facts": [
+        "+c@real:2026",
+        "+b@quote",
+        "b>a@dream",
+        "-d@quote",
+        "a>b"
+      ],
+      "asked_atom": "c",
+      "expected_independent_sympy": "entailed",
+      "candidate": "entailed",
+      "old_forward_only": "entailed",
+      "correct": true,
+      "premise_trace": {
+        "positive_sources": [
+          "source:0"
+        ]
+      }
+    },
+    {
+      "id": "scoped-seed-413",
+      "source_facts": [
+        "d>a@dream",
+        "-c",
+        "c>b@real:2025",
+        "b>d@quote",
+        "-c@real:2026"
+      ],
+      "asked_atom": "a",
+      "expected_independent_sympy": "unknown",
+      "candidate": "unknown",
+      "old_forward_only": "unknown",
+      "correct": true,
+      "premise_trace": {}
+    },
+    {
+      "id": "scoped-seed-414",
+      "source_facts": [],
+      "asked_atom": "a",
+      "expected_independent_sympy": "unknown",
+      "candidate": "unknown",
+      "old_forward_only": "unknown",
+      "correct": true,
+      "premise_trace": {}
+    },
+    {
+      "id": "scoped-seed-415",
+      "source_facts": [
+        "+a@dream"
+      ],
+      "asked_atom": "a",
+      "expected_independent_sympy": "unknown",
+      "candidate": "unknown",
+      "old_forward_only": "unknown",
+      "correct": true,
+      "premise_trace": {}
+    },
+    {
+      "id": "scoped-seed-416",
+      "source_facts": [
+        "+c@dream",
+        "+c@real:2025",
+        "d>c"
+      ],
+      "asked_atom": "a",
+      "expected_independent_sympy": "unknown",
+      "candidate": "unknown",
+      "old_forward_only": "unknown",
+      "correct": true,
+      "premise_trace": {}
+    },
+    {
+      "id": "scoped-seed-417",
+      "source_facts": [
+        "d>c@dream",
+        "+a",
+        "b>d@real:2025"
+      ],
+      "asked_atom": "b",
+      "expected_independent_sympy": "unknown",
+      "candidate": "unknown",
+      "old_forward_only": "unknown",
+      "correct": true,
+      "premise_trace": {}
+    },
+    {
+      "id": "scoped-seed-418",
+      "source_facts": [
+        "+d@real:2026"
+      ],
+      "asked_atom": "d",
+      "expected_independent_sympy": "entailed",
+      "candidate": "entailed",
+      "old_forward_only": "entailed",
+      "correct": true,
+      "premise_trace": {
+        "positive_sources": [
+          "source:0"
+        ]
+      }
+    },
+    {
+      "id": "scoped-seed-419",
+      "source_facts": [
+        "-a@real:2025",
+        "+b@real:2025",
+        "a>b"
+      ],
+      "asked_atom": "d",
+      "expected_independent_sympy": "unknown",
+      "candidate": "unknown",
+      "old_forward_only": "unknown",
+      "correct": true,
+      "premise_trace": {}
+    },
+    {
+      "id": "scoped-seed-420",
+      "source_facts": [
+        "c>a",
+        "+b@real:2025"
+      ],
+      "asked_atom": "a",
+      "expected_independent_sympy": "unknown",
+      "candidate": "unknown",
+      "old_forward_only": "unknown",
+      "correct": true,
+      "premise_trace": {}
+    },
+    {
+      "id": "scoped-seed-421",
+      "source_facts": [
+        "b>a@quote"
+      ],
+      "asked_atom": "a",
+      "expected_independent_sympy": "unknown",
+      "candidate": "unknown",
+      "old_forward_only": "unknown",
+      "correct": true,
+      "premise_trace": {}
+    },
+    {
+      "id": "scoped-seed-422",
+      "source_facts": [
+        "-b@real:2026",
+        "c>a@real:2025",
+        "-a@quote",
+        "+d@dream"
+      ],
+      "asked_atom": "c",
+      "expected_independent_sympy": "unknown",
+      "candidate": "unknown",
+      "old_forward_only": "unknown",
+      "correct": true,
+      "premise_trace": {}
+    },
+    {
+      "id": "scoped-seed-423",
+      "source_facts": [
+        "a>c@real:2025",
+        "a>b@real:2026",
+        "+b@quote",
+        "a>d@dream",
+        "a>d@dream"
+      ],
+      "asked_atom": "d",
+      "expected_independent_sympy": "unknown",
+      "candidate": "unknown",
+      "old_forward_only": "unknown",
+      "correct": true,
+      "premise_trace": {}
+    },
+    {
+      "id": "scoped-seed-424",
+      "source_facts": [
+        "d>b@real:2026",
+        "d>b@quote",
+        "d>c",
+        "a>d@real:2025",
+        "b>c@dream",
+        "d>a@real:2025",
+        "c>d@dream"
+      ],
+      "asked_atom": "a",
+      "expected_independent_sympy": "unknown",
+      "candidate": "unknown",
+      "old_forward_only": "unknown",
+      "correct": true,
+      "premise_trace": {}
+    },
+    {
+      "id": "scoped-seed-425",
+      "source_facts": [
+        "c>d",
+        "a>b@quote"
+      ],
+      "asked_atom": "d",
+      "expected_independent_sympy": "unknown",
+      "candidate": "unknown",
+      "old_forward_only": "unknown",
+      "correct": true,
+      "premise_trace": {}
+    },
+    {
+      "id": "scoped-seed-426",
+      "source_facts": [
+        "a>d@real:2025",
+        "c>d",
+        "+d@real:2026",
+        "d>c@quote",
+        "c>d",
+        "b>d@dream"
+      ],
+      "asked_atom": "c",
+      "expected_independent_sympy": "unknown",
+      "candidate": "unknown",
+      "old_forward_only": "unknown",
+      "correct": true,
+      "premise_trace": {}
+    },
+    {
+      "id": "scoped-seed-427",
+      "source_facts": [
+        "-c@quote",
+        "c>b@real:2025",
+        "d>b@dream",
+        "-c@dream",
+        "d>b",
+        "-c@real:2026"
+      ],
+      "asked_atom": "a",
+      "expected_independent_sympy": "unknown",
+      "candidate": "unknown",
+      "old_forward_only": "unknown",
+      "correct": true,
+      "premise_trace": {}
+    },
+    {
+      "id": "scoped-seed-428",
+      "source_facts": [
+        "+a@real:2026",
+        "-d"
+      ],
+      "asked_atom": "b",
+      "expected_independent_sympy": "unknown",
+      "candidate": "unknown",
+      "old_forward_only": "unknown",
+      "correct": true,
+      "premise_trace": {}
+    },
+    {
+      "id": "scoped-seed-429",
+      "source_facts": [
+        "c>a@dream",
+        "c>a@real:2026",
+        "d>b@quote",
+        "d>c",
+        "c>b@real:2025"
+      ],
+      "asked_atom": "a",
+      "expected_independent_sympy": "unknown",
+      "candidate": "unknown",
+      "old_forward_only": "unknown",
+      "correct": true,
+      "premise_trace": {}
+    },
+    {
+      "id": "scoped-seed-430",
+      "source_facts": [
+        "a>c@real:2025",
+        "c>a@real:2025",
+        "-a@real:2026",
+        "+c@real:2026",
+        "d>b@real:2026",
+        "-a"
+      ],
+      "asked_atom": "c",
+      "expected_independent_sympy": "entailed",
+      "candidate": "entailed",
+      "old_forward_only": "entailed",
+      "correct": true,
+      "premise_trace": {
+        "positive_sources": [
+          "source:3"
+        ]
+      }
+    },
+    {
+      "id": "scoped-seed-431",
+      "source_facts": [
+        "-a@real:2025",
+        "+c",
+        "a>b@dream",
+        "+b@dream",
+        "a>b@real:2026",
+        "d>b@dream",
+        "c>d"
+      ],
+      "asked_atom": "c",
+      "expected_independent_sympy": "entailed",
+      "candidate": "entailed",
+      "old_forward_only": "entailed",
+      "correct": true,
+      "premise_trace": {
+        "positive_sources": [
+          "source:1"
+        ]
+      }
+    },
+    {
+      "id": "scoped-seed-432",
+      "source_facts": [
+        "a>c@real:2025",
+        "-c@quote",
+        "d>a@quote",
+        "+b@dream",
+        "c>b@real:2025"
+      ],
+      "asked_atom": "b",
+      "expected_independent_sympy": "unknown",
+      "candidate": "unknown",
+      "old_forward_only": "unknown",
+      "correct": true,
+      "premise_trace": {}
+    },
+    {
+      "id": "scoped-seed-433",
+      "source_facts": [
+        "a>d@quote"
+      ],
+      "asked_atom": "c",
+      "expected_independent_sympy": "unknown",
+      "candidate": "unknown",
+      "old_forward_only": "unknown",
+      "correct": true,
+      "premise_trace": {}
+    },
+    {
+      "id": "scoped-seed-434",
+      "source_facts": [
+        "a>c@real:2026",
+        "b>a@real:2026",
+        "a>c",
+        "d>c@real:2025",
+        "-b@quote"
+      ],
+      "asked_atom": "a",
+      "expected_independent_sympy": "unknown",
+      "candidate": "unknown",
+      "old_forward_only": "unknown",
+      "correct": true,
+      "premise_trace": {}
+    },
+    {
+      "id": "scoped-seed-435",
+      "source_facts": [],
+      "asked_atom": "c",
+      "expected_independent_sympy": "unknown",
+      "candidate": "unknown",
+      "old_forward_only": "unknown",
+      "correct": true,
+      "premise_trace": {}
+    },
+    {
+      "id": "scoped-seed-436",
+      "source_facts": [
+        "-a@dream",
+        "+a@real:2025",
+        "+c@quote",
+        "d>b",
+        "-b@real:2025"
+      ],
+      "asked_atom": "a",
+      "expected_independent_sympy": "unknown",
+      "candidate": "unknown",
+      "old_forward_only": "unknown",
+      "correct": true,
+      "premise_trace": {}
+    },
+    {
+      "id": "scoped-seed-437",
+      "source_facts": [
+        "+d",
+        "a>b@quote",
+        "c>b@real:2026",
+        "-c@real:2025",
+        "c>b@dream"
+      ],
+      "asked_atom": "c",
+      "expected_independent_sympy": "unknown",
+      "candidate": "unknown",
+      "old_forward_only": "unknown",
+      "correct": true,
+      "premise_trace": {}
+    },
+    {
+      "id": "scoped-seed-438",
+      "source_facts": [
+        "a>b"
+      ],
+      "asked_atom": "a",
+      "expected_independent_sympy": "unknown",
+      "candidate": "unknown",
+      "old_forward_only": "unknown",
+      "correct": true,
+      "premise_trace": {}
+    },
+    {
+      "id": "scoped-seed-439",
+      "source_facts": [
+        "c>d@real:2026",
+        "d>c@real:2026",
+        "c>a@real:2026"
+      ],
+      "asked_atom": "a",
+      "expected_independent_sympy": "unknown",
+      "candidate": "unknown",
+      "old_forward_only": "unknown",
+      "correct": true,
+      "premise_trace": {}
+    },
+    {
+      "id": "scoped-seed-440",
+      "source_facts": [],
+      "asked_atom": "b",
+      "expected_independent_sympy": "unknown",
+      "candidate": "unknown",
+      "old_forward_only": "unknown",
+      "correct": true,
+      "premise_trace": {}
+    },
+    {
+      "id": "scoped-seed-441",
+      "source_facts": [],
+      "asked_atom": "d",
+      "expected_independent_sympy": "unknown",
+      "candidate": "unknown",
+      "old_forward_only": "unknown",
+      "correct": true,
+      "premise_trace": {}
+    },
+    {
+      "id": "scoped-seed-442",
+      "source_facts": [
+        "-c@quote"
+      ],
+      "asked_atom": "a",
+      "expected_independent_sympy": "unknown",
+      "candidate": "unknown",
+      "old_forward_only": "unknown",
+      "correct": true,
+      "premise_trace": {}
+    },
+    {
+      "id": "scoped-seed-443",
+      "source_facts": [
+        "-b",
+        "-c@real:2026",
+        "b>a@real:2025",
+        "a>c@real:2025",
+        "c>d@dream",
+        "-a",
+        "+a@dream"
+      ],
+      "asked_atom": "d",
+      "expected_independent_sympy": "unknown",
+      "candidate": "unknown",
+      "old_forward_only": "unknown",
+      "correct": true,
+      "premise_trace": {}
+    },
+    {
+      "id": "scoped-seed-444",
+      "source_facts": [
+        "c>b@dream",
+        "a>d@dream",
+        "d>c@real:2026"
+      ],
+      "asked_atom": "a",
+      "expected_independent_sympy": "unknown",
+      "candidate": "unknown",
+      "old_forward_only": "unknown",
+      "correct": true,
+      "premise_trace": {}
+    },
+    {
+      "id": "scoped-seed-445",
+      "source_facts": [
+        "-a@quote",
+        "c>b",
+        "+d@quote",
+        "c>b@dream",
+        "b>a",
+        "d>c@quote",
+        "c>a@quote"
+      ],
+      "asked_atom": "a",
+      "expected_independent_sympy": "unknown",
+      "candidate": "unknown",
+      "old_forward_only": "unknown",
+      "correct": true,
+      "premise_trace": {}
+    },
+    {
+      "id": "scoped-seed-446",
+      "source_facts": [
+        "-b@dream",
+        "a>c",
+        "-a@real:2026",
+        "+d",
+        "c>a@dream"
+      ],
+      "asked_atom": "c",
+      "expected_independent_sympy": "unknown",
+      "candidate": "unknown",
+      "old_forward_only": "unknown",
+      "correct": true,
+      "premise_trace": {}
+    },
+    {
+      "id": "scoped-seed-447",
+      "source_facts": [],
+      "asked_atom": "d",
+      "expected_independent_sympy": "unknown",
+      "candidate": "unknown",
+      "old_forward_only": "unknown",
+      "correct": true,
+      "premise_trace": {}
+    },
+    {
+      "id": "scoped-seed-448",
+      "source_facts": [
+        "b>c@dream",
+        "a>d",
+        "c>a@real:2026",
+        "c>b@real:2026",
+        "+a@quote"
+      ],
+      "asked_atom": "b",
+      "expected_independent_sympy": "unknown",
+      "candidate": "unknown",
+      "old_forward_only": "unknown",
+      "correct": true,
+      "premise_trace": {}
+    },
+    {
+      "id": "scoped-seed-449",
+      "source_facts": [
+        "c>a@dream"
+      ],
+      "asked_atom": "c",
+      "expected_independent_sympy": "unknown",
+      "candidate": "unknown",
+      "old_forward_only": "unknown",
+      "correct": true,
+      "premise_trace": {}
+    },
+    {
+      "id": "scoped-seed-450",
+      "source_facts": [
+        "d>b@real:2025",
+        "+d@real:2025"
+      ],
+      "asked_atom": "a",
+      "expected_independent_sympy": "unknown",
+      "candidate": "unknown",
+      "old_forward_only": "unknown",
+      "correct": true,
+      "premise_trace": {}
+    },
+    {
+      "id": "scoped-seed-451",
+      "source_facts": [
+        "-d@dream"
+      ],
+      "asked_atom": "b",
+      "expected_independent_sympy": "unknown",
+      "candidate": "unknown",
+      "old_forward_only": "unknown",
+      "correct": true,
+      "premise_trace": {}
+    },
+    {
+      "id": "scoped-seed-452",
+      "source_facts": [
+        "c>a@dream",
+        "d>a@dream"
+      ],
+      "asked_atom": "c",
+      "expected_independent_sympy": "unknown",
+      "candidate": "unknown",
+      "old_forward_only": "unknown",
+      "correct": true,
+      "premise_trace": {}
+    },
+    {
+      "id": "scoped-seed-453",
+      "source_facts": [
+        "a>b@real:2026",
+        "a>d",
+        "+b",
+        "d>c@real:2026",
+        "d>b@quote"
+      ],
+      "asked_atom": "d",
+      "expected_independent_sympy": "unknown",
+      "candidate": "unknown",
+      "old_forward_only": "unknown",
+      "correct": true,
+      "premise_trace": {}
+    },
+    {
+      "id": "scoped-seed-454",
+      "source_facts": [
+        "+d@real:2025",
+        "b>c",
+        "b>a@real:2026",
+        "c>d@dream"
+      ],
+      "asked_atom": "b",
+      "expected_independent_sympy": "unknown",
+      "candidate": "unknown",
+      "old_forward_only": "unknown",
+      "correct": true,
+      "premise_trace": {}
+    },
+    {
+      "id": "scoped-seed-455",
+      "source_facts": [
+        "d>b@real:2025",
+        "-a@real:2025",
+        "c>b@real:2026",
+        "a>c@real:2026",
+        "d>a@real:2025",
+        "-a@dream"
+      ],
+      "asked_atom": "c",
+      "expected_independent_sympy": "unknown",
+      "candidate": "unknown",
+      "old_forward_only": "unknown",
+      "correct": true,
+      "premise_trace": {}
+    },
+    {
+      "id": "scoped-seed-456",
+      "source_facts": [
+        "c>d",
+        "b>c@real:2025",
+        "-a@real:2026",
+        "b>d@real:2026",
+        "+d@real:2026"
+      ],
+      "asked_atom": "d",
+      "expected_independent_sympy": "entailed",
+      "candidate": "entailed",
+      "old_forward_only": "entailed",
+      "correct": true,
+      "premise_trace": {
+        "positive_sources": [
+          "source:4"
+        ]
+      }
+    },
+    {
+      "id": "scoped-seed-457",
+      "source_facts": [
+        "-b@dream",
+        "d>b@real:2025",
+        "d>a@real:2025"
+      ],
+      "asked_atom": "d",
+      "expected_independent_sympy": "unknown",
+      "candidate": "unknown",
+      "old_forward_only": "unknown",
+      "correct": true,
+      "premise_trace": {}
+    },
+    {
+      "id": "scoped-seed-458",
+      "source_facts": [
+        "+a@quote",
+        "d>a@quote",
+        "b>c"
+      ],
+      "asked_atom": "b",
+      "expected_independent_sympy": "unknown",
+      "candidate": "unknown",
+      "old_forward_only": "unknown",
+      "correct": true,
+      "premise_trace": {}
+    },
+    {
+      "id": "scoped-seed-459",
+      "source_facts": [
+        "-a@real:2025",
+        "c>d@real:2026",
+        "d>c@quote",
+        "-c@real:2025",
+        "-d@dream",
+        "-d",
+        "+a@quote"
+      ],
+      "asked_atom": "d",
+      "expected_independent_sympy": "refuted",
+      "candidate": "refuted",
+      "old_forward_only": "refuted",
+      "correct": true,
+      "premise_trace": {
+        "negative_sources": [
+          "source:5"
+        ]
+      }
+    },
+    {
+      "id": "scoped-seed-460",
+      "source_facts": [
+        "-c@dream",
+        "b>d@quote",
+        "a>b@dream"
+      ],
+      "asked_atom": "b",
+      "expected_independent_sympy": "unknown",
+      "candidate": "unknown",
+      "old_forward_only": "unknown",
+      "correct": true,
+      "premise_trace": {}
+    },
+    {
+      "id": "scoped-seed-461",
+      "source_facts": [
+        "b>c@real:2026"
+      ],
+      "asked_atom": "b",
+      "expected_independent_sympy": "unknown",
+      "candidate": "unknown",
+      "old_forward_only": "unknown",
+      "correct": true,
+      "premise_trace": {}
+    },
+    {
+      "id": "scoped-seed-462",
+      "source_facts": [],
+      "asked_atom": "d",
+      "expected_independent_sympy": "unknown",
+      "candidate": "unknown",
+      "old_forward_only": "unknown",
+      "correct": true,
+      "premise_trace": {}
+    },
+    {
+      "id": "scoped-seed-463",
+      "source_facts": [
+        "b>a@dream"
+      ],
+      "asked_atom": "b",
+      "expected_independent_sympy": "unknown",
+      "candidate": "unknown",
+      "old_forward_only": "unknown",
+      "correct": true,
+      "premise_trace": {}
+    },
+    {
+      "id": "scoped-seed-464",
+      "source_facts": [
+        "b>a",
+        "c>b@quote",
+        "a>c@quote",
+        "d>c@quote",
+        "-b@real:2025"
+      ],
+      "asked_atom": "c",
+      "expected_independent_sympy": "unknown",
+      "candidate": "unknown",
+      "old_forward_only": "unknown",
+      "correct": true,
+      "premise_trace": {}
+    },
+    {
+      "id": "scoped-seed-465",
+      "source_facts": [
+        "d>a",
+        "d>b@quote",
+        "-c@quote",
+        "b>a@dream",
+        "b>c@quote",
+        "-d@quote"
+      ],
+      "asked_atom": "c",
+      "expected_independent_sympy": "unknown",
+      "candidate": "unknown",
+      "old_forward_only": "unknown",
+      "correct": true,
+      "premise_trace": {}
+    },
+    {
+      "id": "scoped-seed-466",
+      "source_facts": [
+        "-b@dream",
+        "a>c@dream"
+      ],
+      "asked_atom": "c",
+      "expected_independent_sympy": "unknown",
+      "candidate": "unknown",
+      "old_forward_only": "unknown",
+      "correct": true,
+      "premise_trace": {}
+    },
+    {
+      "id": "scoped-seed-467",
+      "source_facts": [
+        "a>c@real:2025",
+        "+d",
+        "a>b@dream",
+        "c>a@real:2026"
+      ],
+      "asked_atom": "c",
+      "expected_independent_sympy": "unknown",
+      "candidate": "unknown",
+      "old_forward_only": "unknown",
+      "correct": true,
+      "premise_trace": {}
+    },
+    {
+      "id": "scoped-seed-468",
+      "source_facts": [
+        "+c@real:2026",
+        "-d@dream",
+        "d>a@dream",
+        "-a@real:2026",
+        "+a"
+      ],
+      "asked_atom": "c",
+      "expected_independent_sympy": "contradictory",
+      "candidate": "contradictory",
+      "old_forward_only": "contradictory",
+      "correct": true,
+      "premise_trace": {
+        "atom": "a",
+        "positive_sources": [
+          "source:4"
+        ],
+        "negative_sources": [
+          "source:3"
+        ]
+      }
+    },
+    {
+      "id": "scoped-seed-469",
+      "source_facts": [],
+      "asked_atom": "d",
+      "expected_independent_sympy": "unknown",
+      "candidate": "unknown",
+      "old_forward_only": "unknown",
+      "correct": true,
+      "premise_trace": {}
+    },
+    {
+      "id": "scoped-seed-470",
+      "source_facts": [
+        "b>d@real:2026",
+        "c>a@real:2025"
+      ],
+      "asked_atom": "c",
+      "expected_independent_sympy": "unknown",
+      "candidate": "unknown",
+      "old_forward_only": "unknown",
+      "correct": true,
+      "premise_trace": {}
+    },
+    {
+      "id": "scoped-seed-471",
+      "source_facts": [
+        "d>c@dream",
+        "d>c",
+        "d>c",
+        "a>c@real:2026",
+        "-a",
+        "-d"
+      ],
+      "asked_atom": "d",
+      "expected_independent_sympy": "refuted",
+      "candidate": "refuted",
+      "old_forward_only": "refuted",
+      "correct": true,
+      "premise_trace": {
+        "negative_sources": [
+          "source:5"
+        ]
+      }
+    },
+    {
+      "id": "scoped-seed-472",
+      "source_facts": [
+        "b>d@real:2025"
+      ],
+      "asked_atom": "d",
+      "expected_independent_sympy": "unknown",
+      "candidate": "unknown",
+      "old_forward_only": "unknown",
+      "correct": true,
+      "premise_trace": {}
+    },
+    {
+      "id": "scoped-seed-473",
+      "source_facts": [
+        "-b@quote",
+        "a>b@real:2026",
+        "d>a",
+        "+a@quote"
+      ],
+      "asked_atom": "a",
+      "expected_independent_sympy": "unknown",
+      "candidate": "unknown",
+      "old_forward_only": "unknown",
+      "correct": true,
+      "premise_trace": {}
+    },
+    {
+      "id": "scoped-seed-474",
+      "source_facts": [
+        "b>d@quote",
+        "a>b@real:2025",
+        "d>c@real:2026",
+        "b>d@real:2026",
+        "b>c@real:2026",
+        "c>b"
+      ],
+      "asked_atom": "d",
+      "expected_independent_sympy": "unknown",
+      "candidate": "unknown",
+      "old_forward_only": "unknown",
+      "correct": true,
+      "premise_trace": {}
+    },
+    {
+      "id": "scoped-seed-475",
+      "source_facts": [
+        "+b",
+        "a>c@real:2025"
+      ],
+      "asked_atom": "a",
+      "expected_independent_sympy": "unknown",
+      "candidate": "unknown",
+      "old_forward_only": "unknown",
+      "correct": true,
+      "premise_trace": {}
+    },
+    {
+      "id": "scoped-seed-476",
+      "source_facts": [
+        "b>a@quote",
+        "+b@quote",
+        "+b@dream",
+        "a>d@real:2026"
+      ],
+      "asked_atom": "d",
+      "expected_independent_sympy": "unknown",
+      "candidate": "unknown",
+      "old_forward_only": "unknown",
+      "correct": true,
+      "premise_trace": {}
+    },
+    {
+      "id": "scoped-seed-477",
+      "source_facts": [
+        "d>b@dream"
+      ],
+      "asked_atom": "d",
+      "expected_independent_sympy": "unknown",
+      "candidate": "unknown",
+      "old_forward_only": "unknown",
+      "correct": true,
+      "premise_trace": {}
+    },
+    {
+      "id": "scoped-seed-478",
+      "source_facts": [
+        "-a@quote",
+        "-d",
+        "d>c@dream",
+        "c>b@real:2026",
+        "+b",
+        "a>b@quote",
+        "+c@quote"
+      ],
+      "asked_atom": "a",
+      "expected_independent_sympy": "unknown",
+      "candidate": "unknown",
+      "old_forward_only": "unknown",
+      "correct": true,
+      "premise_trace": {}
+    },
+    {
+      "id": "scoped-seed-479",
+      "source_facts": [
+        "-a@quote",
+        "+b@real:2025",
+        "d>b",
+        "b>a@real:2025",
+        "a>d@real:2025",
+        "d>b"
+      ],
+      "asked_atom": "a",
+      "expected_independent_sympy": "unknown",
+      "candidate": "unknown",
+      "old_forward_only": "unknown",
+      "correct": true,
+      "premise_trace": {}
+    },
+    {
+      "id": "scoped-seed-480",
+      "source_facts": [
+        "+c@dream"
+      ],
+      "asked_atom": "a",
+      "expected_independent_sympy": "unknown",
+      "candidate": "unknown",
+      "old_forward_only": "unknown",
+      "correct": true,
+      "premise_trace": {}
+    },
+    {
+      "id": "scoped-seed-481",
+      "source_facts": [
+        "+d@real:2026",
+        "b>c@dream",
+        "d>a@dream"
+      ],
+      "asked_atom": "d",
+      "expected_independent_sympy": "entailed",
+      "candidate": "entailed",
+      "old_forward_only": "entailed",
+      "correct": true,
+      "premise_trace": {
+        "positive_sources": [
+          "source:0"
+        ]
+      }
+    },
+    {
+      "id": "scoped-seed-482",
+      "source_facts": [
+        "+c@quote"
+      ],
+      "asked_atom": "c",
+      "expected_independent_sympy": "unknown",
+      "candidate": "unknown",
+      "old_forward_only": "unknown",
+      "correct": true,
+      "premise_trace": {}
+    },
+    {
+      "id": "scoped-seed-483",
+      "source_facts": [
+        "+b@real:2025",
+        "+b@quote",
+        "d>b@quote",
+        "a>d"
+      ],
+      "asked_atom": "a",
+      "expected_independent_sympy": "unknown",
+      "candidate": "unknown",
+      "old_forward_only": "unknown",
+      "correct": true,
+      "premise_trace": {}
+    },
+    {
+      "id": "scoped-seed-484",
+      "source_facts": [
+        "b>a@dream",
+        "-d@quote",
+        "c>a@real:2026",
+        "a>d@real:2025",
+        "b>a@dream",
+        "a>c@real:2025",
+        "-c@real:2025"
+      ],
+      "asked_atom": "b",
+      "expected_independent_sympy": "unknown",
+      "candidate": "unknown",
+      "old_forward_only": "unknown",
+      "correct": true,
+      "premise_trace": {}
+    },
+    {
+      "id": "scoped-seed-485",
+      "source_facts": [
+        "d>b@quote",
+        "d>c@dream",
+        "-c@dream",
+        "a>b@quote",
+        "b>d@quote",
+        "b>a@real:2026",
+        "c>d@dream"
+      ],
+      "asked_atom": "a",
+      "expected_independent_sympy": "unknown",
+      "candidate": "unknown",
+      "old_forward_only": "unknown",
+      "correct": true,
+      "premise_trace": {}
+    },
+    {
+      "id": "scoped-seed-486",
+      "source_facts": [
+        "-b@dream"
+      ],
+      "asked_atom": "d",
+      "expected_independent_sympy": "unknown",
+      "candidate": "unknown",
+      "old_forward_only": "unknown",
+      "correct": true,
+      "premise_trace": {}
+    },
+    {
+      "id": "scoped-seed-487",
+      "source_facts": [
+        "-c@quote",
+        "-d@real:2026",
+        "d>a@dream",
+        "d>a@real:2025",
+        "d>c@real:2026"
+      ],
+      "asked_atom": "a",
+      "expected_independent_sympy": "unknown",
+      "candidate": "unknown",
+      "old_forward_only": "unknown",
+      "correct": true,
+      "premise_trace": {}
+    },
+    {
+      "id": "scoped-seed-488",
+      "source_facts": [
+        "c>d@quote",
+        "b>c@dream"
+      ],
+      "asked_atom": "b",
+      "expected_independent_sympy": "unknown",
+      "candidate": "unknown",
+      "old_forward_only": "unknown",
+      "correct": true,
+      "premise_trace": {}
+    },
+    {
+      "id": "scoped-seed-489",
+      "source_facts": [
+        "b>d@dream"
+      ],
+      "asked_atom": "a",
+      "expected_independent_sympy": "unknown",
+      "candidate": "unknown",
+      "old_forward_only": "unknown",
+      "correct": true,
+      "premise_trace": {}
+    },
+    {
+      "id": "scoped-seed-490",
+      "source_facts": [],
+      "asked_atom": "c",
+      "expected_independent_sympy": "unknown",
+      "candidate": "unknown",
+      "old_forward_only": "unknown",
+      "correct": true,
+      "premise_trace": {}
+    },
+    {
+      "id": "scoped-seed-491",
+      "source_facts": [
+        "d>b@quote"
+      ],
+      "asked_atom": "d",
+      "expected_independent_sympy": "unknown",
+      "candidate": "unknown",
+      "old_forward_only": "unknown",
+      "correct": true,
+      "premise_trace": {}
+    },
+    {
+      "id": "scoped-seed-492",
+      "source_facts": [
+        "b>a",
+        "c>b@dream",
+        "-d",
+        "+d",
+        "a>c"
+      ],
+      "asked_atom": "c",
+      "expected_independent_sympy": "contradictory",
+      "candidate": "contradictory",
+      "old_forward_only": "contradictory",
+      "correct": true,
+      "premise_trace": {
+        "atom": "d",
+        "positive_sources": [
+          "source:3"
+        ],
+        "negative_sources": [
+          "source:2"
+        ]
+      }
+    },
+    {
+      "id": "scoped-seed-493",
+      "source_facts": [
+        "c>d@real:2026",
+        "-d@real:2026",
+        "+d@dream",
+        "a>c@real:2025"
+      ],
+      "asked_atom": "b",
+      "expected_independent_sympy": "unknown",
+      "candidate": "unknown",
+      "old_forward_only": "unknown",
+      "correct": true,
+      "premise_trace": {}
+    },
+    {
+      "id": "scoped-seed-494",
+      "source_facts": [
+        "-d",
+        "a>d@real:2025",
+        "a>b@real:2025",
+        "b>c@real:2026"
+      ],
+      "asked_atom": "a",
+      "expected_independent_sympy": "unknown",
+      "candidate": "unknown",
+      "old_forward_only": "unknown",
+      "correct": true,
+      "premise_trace": {}
+    },
+    {
+      "id": "scoped-seed-495",
+      "source_facts": [
+        "-d@quote",
+        "+a@quote",
+        "c>d@dream",
+        "+b@real:2025",
+        "+b@dream",
+        "-d@real:2026"
+      ],
+      "asked_atom": "b",
+      "expected_independent_sympy": "unknown",
+      "candidate": "unknown",
+      "old_forward_only": "unknown",
+      "correct": true,
+      "premise_trace": {}
+    },
+    {
+      "id": "scoped-seed-496",
+      "source_facts": [
+        "-a@quote",
+        "-c@real:2026",
+        "c>d@real:2026",
+        "d>a@real:2025",
+        "b>d@real:2025"
+      ],
+      "asked_atom": "d",
+      "expected_independent_sympy": "unknown",
+      "candidate": "unknown",
+      "old_forward_only": "unknown",
+      "correct": true,
+      "premise_trace": {}
+    },
+    {
+      "id": "scoped-seed-497",
+      "source_facts": [
+        "d>c@dream",
+        "+c@real:2025",
+        "+b@real:2025"
+      ],
+      "asked_atom": "d",
+      "expected_independent_sympy": "unknown",
+      "candidate": "unknown",
+      "old_forward_only": "unknown",
+      "correct": true,
+      "premise_trace": {}
+    },
+    {
+      "id": "scoped-seed-498",
+      "source_facts": [
+        "-a@real:2026",
+        "-d@dream",
+        "-c@quote"
+      ],
+      "asked_atom": "a",
+      "expected_independent_sympy": "refuted",
+      "candidate": "refuted",
+      "old_forward_only": "refuted",
+      "correct": true,
+      "premise_trace": {
+        "negative_sources": [
+          "source:0"
+        ]
+      }
+    },
+    {
+      "id": "scoped-seed-499",
+      "source_facts": [
+        "d>a@real:2026",
+        "-b@real:2026",
+        "-a",
+        "-a",
+        "+d@quote"
+      ],
+      "asked_atom": "c",
+      "expected_independent_sympy": "unknown",
+      "candidate": "unknown",
+      "old_forward_only": "unknown",
+      "correct": true,
+      "premise_trace": {}
+    },
+    {
+      "id": "scoped-seed-500",
+      "source_facts": [
+        "c>b@quote",
+        "d>a@real:2026"
+      ],
+      "asked_atom": "d",
+      "expected_independent_sympy": "unknown",
+      "candidate": "unknown",
+      "old_forward_only": "unknown",
+      "correct": true,
+      "premise_trace": {}
+    },
+    {
+      "id": "scoped-seed-501",
+      "source_facts": [
+        "+b"
+      ],
+      "asked_atom": "d",
+      "expected_independent_sympy": "unknown",
+      "candidate": "unknown",
+      "old_forward_only": "unknown",
+      "correct": true,
+      "premise_trace": {}
+    },
+    {
+      "id": "scoped-seed-502",
+      "source_facts": [],
+      "asked_atom": "b",
+      "expected_independent_sympy": "unknown",
+      "candidate": "unknown",
+      "old_forward_only": "unknown",
+      "correct": true,
+      "premise_trace": {}
+    },
+    {
+      "id": "scoped-seed-503",
+      "source_facts": [
+        "a>d@quote",
+        "-a@real:2025",
+        "a>b@real:2026",
+        "+b@quote",
+        "-b",
+        "+a@real:2026"
+      ],
+      "asked_atom": "b",
+      "expected_independent_sympy": "contradictory",
+      "candidate": "contradictory",
+      "old_forward_only": "contradictory",
+      "correct": true,
+      "premise_trace": {
+        "atom": "a",
+        "positive_sources": [
+          "source:5"
+        ],
+        "negative_sources": [
+          "source:4",
+          "source:2"
+        ]
+      }
+    },
+    {
+      "id": "scoped-seed-504",
+      "source_facts": [
+        "-b@real:2025",
+        "b>c@quote",
+        "c>d@real:2026",
+        "-d@dream",
+        "b>a@dream"
+      ],
+      "asked_atom": "c",
+      "expected_independent_sympy": "unknown",
+      "candidate": "unknown",
+      "old_forward_only": "unknown",
+      "correct": true,
+      "premise_trace": {}
+    },
+    {
+      "id": "scoped-seed-505",
+      "source_facts": [],
+      "asked_atom": "a",
+      "expected_independent_sympy": "unknown",
+      "candidate": "unknown",
+      "old_forward_only": "unknown",
+      "correct": true,
+      "premise_trace": {}
+    },
+    {
+      "id": "scoped-seed-506",
+      "source_facts": [
+        "b>c@dream",
+        "d>b@real:2025",
+        "+d@real:2025",
+        "d>c@quote"
+      ],
+      "asked_atom": "a",
+      "expected_independent_sympy": "unknown",
+      "candidate": "unknown",
+      "old_forward_only": "unknown",
+      "correct": true,
+      "premise_trace": {}
+    },
+    {
+      "id": "scoped-seed-507",
+      "source_facts": [
+        "c>d@real:2026",
+        "-c"
+      ],
+      "asked_atom": "b",
+      "expected_independent_sympy": "unknown",
+      "candidate": "unknown",
+      "old_forward_only": "unknown",
+      "correct": true,
+      "premise_trace": {}
+    },
+    {
+      "id": "scoped-seed-508",
+      "source_facts": [
+        "-a@real:2025",
+        "-a",
+        "c>a@quote",
+        "+d@real:2026",
+        "c>d@dream",
+        "d>b@dream"
+      ],
+      "asked_atom": "c",
+      "expected_independent_sympy": "unknown",
+      "candidate": "unknown",
+      "old_forward_only": "unknown",
+      "correct": true,
+      "premise_trace": {}
+    },
+    {
+      "id": "scoped-seed-509",
+      "source_facts": [
+        "+b@real:2025",
+        "-c@dream",
+        "-c@quote"
+      ],
+      "asked_atom": "b",
+      "expected_independent_sympy": "unknown",
+      "candidate": "unknown",
+      "old_forward_only": "unknown",
+      "correct": true,
+      "premise_trace": {}
+    },
+    {
+      "id": "scoped-seed-510",
+      "source_facts": [
+        "-d@real:2026",
+        "+b@dream",
+        "b>a@dream",
+        "b>d@real:2026",
+        "d>a@real:2026"
+      ],
+      "asked_atom": "b",
+      "expected_independent_sympy": "refuted",
+      "candidate": "refuted",
+      "old_forward_only": "unknown",
+      "correct": true,
+      "premise_trace": {
+        "negative_sources": [
+          "source:0",
+          "source:3"
+        ]
+      }
+    },
+    {
+      "id": "scoped-seed-511",
+      "source_facts": [
+        "a>c@dream",
+        "c>b@real:2025",
+        "+a@real:2026",
+        "b>d@real:2025",
+        "-c",
+        "-b"
+      ],
+      "asked_atom": "a",
+      "expected_independent_sympy": "entailed",
+      "candidate": "entailed",
+      "old_forward_only": "entailed",
+      "correct": true,
+      "premise_trace": {
+        "positive_sources": [
+          "source:2"
+        ]
+      }
+    }
+  ],
+  "limitations": [
+    "Quantifier-free Horn implication fragment over four atoms only",
+    "Premises are stipulated and real-world truth is not validated",
+    "Source links are synthetic proposition indices, not original text offsets",
+    "Results do not establish production KMD inference or science discovery"
+  ]
+}

@@ -1,0 +1,4830 @@
+{
+  "cases": [
+    {
+      "ask": "a",
+      "facts": [
+        "+c@dream",
+        "+a@real:2025"
+      ],
+      "id": "scoped-seed-000"
+    },
+    {
+      "ask": "c",
+      "facts": [
+        "a>d@real:2026"
+      ],
+      "id": "scoped-seed-001"
+    },
+    {
+      "ask": "a",
+      "facts": [
+        "c>d@real:2025",
+        "-b@quote",
+        "b>d@quote",
+        "d>b@dream",
+        "a>b@dream",
+        "a>d@dream"
+      ],
+      "id": "scoped-seed-002"
+    },
+    {
+      "ask": "d",
+      "facts": [],
+      "id": "scoped-seed-003"
+    },
+    {
+      "ask": "b",
+      "facts": [],
+      "id": "scoped-seed-004"
+    },
+    {
+      "ask": "a",
+      "facts": [
+        "c>d@real:2025",
+        "-a@dream",
+        "+c@dream",
+        "-d@real:2026"
+      ],
+      "id": "scoped-seed-005"
+    },
+    {
+      "ask": "d",
+      "facts": [
+        "a>d@quote",
+        "+b",
+        "b>c@real:2025",
+        "+c@quote"
+      ],
+      "id": "scoped-seed-006"
+    },
+    {
+      "ask": "d",
+      "facts": [
+        "d>a"
+      ],
+      "id": "scoped-seed-007"
+    },
+    {
+      "ask": "a",
+      "facts": [
+        "b>a@real:2025",
+        "+a"
+      ],
+      "id": "scoped-seed-008"
+    },
+    {
+      "ask": "a",
+      "facts": [
+        "+c@dream",
+        "c>d@real:2025",
+        "-b",
+        "c>a@real:2026",
+        "-b@real:2026",
+        "a>b@quote"
+      ],
+      "id": "scoped-seed-009"
+    },
+    {
+      "ask": "b",
+      "facts": [
+        "a>c@real:2025",
+        "-d",
+        "d>a@real:2026"
+      ],
+      "id": "scoped-seed-010"
+    },
+    {
+      "ask": "d",
+      "facts": [
+        "b>d@real:2026",
+        "d>c@dream",
+        "a>c@real:2025",
+        "-c@real:2025",
+        "c>d@real:2026",
+        "d>a@quote",
+        "+c@real:2025"
+      ],
+      "id": "scoped-seed-011"
+    },
+    {
+      "ask": "c",
+      "facts": [
+        "b>c@dream",
+        "c>d@quote",
+        "b>c@real:2025"
+      ],
+      "id": "scoped-seed-012"
+    },
+    {
+      "ask": "b",
+      "facts": [
+        "b>c@dream",
+        "b>a@dream",
+        "d>a@dream",
+        "a>c"
+      ],
+      "id": "scoped-seed-013"
+    },
+    {
+      "ask": "d",
+      "facts": [
+        "c>d@real:2026",
+        "+a",
+        "-c@quote"
+      ],
+      "id": "scoped-seed-014"
+    },
+    {
+      "ask": "a",
+      "facts": [],
+      "id": "scoped-seed-015"
+    },
+    {
+      "ask": "b",
+      "facts": [
+        "+c@real:2025",
+        "c>a",
+        "a>c@quote",
+        "+d@dream",
+        "a>b",
+        "+d@real:2025",
+        "c>a"
+      ],
+      "id": "scoped-seed-016"
+    },
+    {
+      "ask": "a",
+      "facts": [],
+      "id": "scoped-seed-017"
+    },
+    {
+      "ask": "d",
+      "facts": [],
+      "id": "scoped-seed-018"
+    },
+    {
+      "ask": "a",
+      "facts": [
+        "b>c@quote",
+        "d>a@dream",
+        "c>d@quote",
+        "b>a@real:2026",
+        "b>d@real:2025",
+        "b>a@dream",
+        "-d@dream"
+      ],
+      "id": "scoped-seed-019"
+    },
+    {
+      "ask": "d",
+      "facts": [
+        "b>a@quote",
+        "d>c@real:2025",
+        "a>b@quote",
+        "+a@real:2026",
+        "b>c@dream",
+        "-b@real:2026"
+      ],
+      "id": "scoped-seed-020"
+    },
+    {
+      "ask": "c",
+      "facts": [
+        "+c",
+        "-b",
+        "+d"
+      ],
+      "id": "scoped-seed-021"
+    },
+    {
+      "ask": "d",
+      "facts": [
+        "a>b@real:2025",
+        "a>d",
+        "-d@real:2026"
+      ],
+      "id": "scoped-seed-022"
+    },
+    {
+      "ask": "a",
+      "facts": [
+        "a>c@real:2025",
+        "a>d@real:2025",
+        "+a@real:2026",
+        "b>a@dream"
+      ],
+      "id": "scoped-seed-023"
+    },
+    {
+      "ask": "a",
+      "facts": [
+        "a>b@quote",
+        "+b@real:2026"
+      ],
+      "id": "scoped-seed-024"
+    },
+    {
+      "ask": "b",
+      "facts": [
+        "-c"
+      ],
+      "id": "scoped-seed-025"
+    },
+    {
+      "ask": "b",
+      "facts": [
+        "+b@dream"
+      ],
+      "id": "scoped-seed-026"
+    },
+    {
+      "ask": "c",
+      "facts": [
+        "a>d@real:2026",
+        "d>b@real:2026"
+      ],
+      "id": "scoped-seed-027"
+    },
+    {
+      "ask": "c",
+      "facts": [
+        "+d",
+        "+b@real:2025",
+        "a>c@real:2026",
+        "a>d@dream",
+        "-b@real:2025"
+      ],
+      "id": "scoped-seed-028"
+    },
+    {
+      "ask": "b",
+      "facts": [
+        "c>b@quote",
+        "b>d",
+        "+b@real:2026"
+      ],
+      "id": "scoped-seed-029"
+    },
+    {
+      "ask": "c",
+      "facts": [
+        "d>b@real:2025"
+      ],
+      "id": "scoped-seed-030"
+    },
+    {
+      "ask": "d",
+      "facts": [
+        "a>d@dream",
+        "-d@real:2025",
+        "-c@real:2026",
+        "c>d@dream",
+        "a>b@real:2026"
+      ],
+      "id": "scoped-seed-031"
+    },
+    {
+      "ask": "c",
+      "facts": [
+        "+b@real:2025",
+        "+d@dream",
+        "+d@dream",
+        "-a@real:2026"
+      ],
+      "id": "scoped-seed-032"
+    },
+    {
+      "ask": "c",
+      "facts": [
+        "-a@dream",
+        "a>d@real:2026",
+        "a>b"
+      ],
+      "id": "scoped-seed-033"
+    },
+    {
+      "ask": "c",
+      "facts": [
+        "a>d@real:2026",
+        "c>a@quote",
+        "d>c",
+        "d>a"
+      ],
+      "id": "scoped-seed-034"
+    },
+    {
+      "ask": "d",
+      "facts": [
+        "-c@real:2025",
+        "-d@real:2025",
+        "c>a@dream",
+        "c>a@quote",
+        "b>d@real:2026",
+        "-a@dream"
+      ],
+      "id": "scoped-seed-035"
+    },
+    {
+      "ask": "c",
+      "facts": [
+        "d>b@real:2025",
+        "a>c@real:2026",
+        "c>a",
+        "-c@real:2025",
+        "b>a",
+        "-d",
+        "d>b@dream"
+      ],
+      "id": "scoped-seed-036"
+    },
+    {
+      "ask": "d",
+      "facts": [
+        "c>b@quote",
+        "a>d",
+        "b>d@real:2025",
+        "-d@real:2025",
+        "a>b@dream"
+      ],
+      "id": "scoped-seed-037"
+    },
+    {
+      "ask": "c",
+      "facts": [
+        "a>c@real:2025",
+        "d>c@dream"
+      ],
+      "id": "scoped-seed-038"
+    },
+    {
+      "ask": "a",
+      "facts": [
+        "c>a@quote"
+      ],
+      "id": "scoped-seed-039"
+    },
+    {
+      "ask": "d",
+      "facts": [
+        "-d@dream",
+        "c>a@real:2025"
+      ],
+      "id": "scoped-seed-040"
+    },
+    {
+      "ask": "d",
+      "facts": [],
+      "id": "scoped-seed-041"
+    },
+    {
+      "ask": "a",
+      "facts": [
+        "c>a@real:2026",
+        "+a@real:2025",
+        "a>d@real:2026"
+      ],
+      "id": "scoped-seed-042"
+    },
+    {
+      "ask": "c",
+      "facts": [
+        "-b@dream",
+        "-b@real:2026"
+      ],
+      "id": "scoped-seed-043"
+    },
+    {
+      "ask": "d",
+      "facts": [
+        "a>c",
+        "a>c",
+        "c>a@real:2025",
+        "a>b",
+        "-d",
+        "-b@real:2025"
+      ],
+      "id": "scoped-seed-044"
+    },
+    {
+      "ask": "d",
+      "facts": [
+        "a>c",
+        "c>a@real:2026"
+      ],
+      "id": "scoped-seed-045"
+    },
+    {
+      "ask": "a",
+      "facts": [
+        "d>a@real:2025",
+        "+b@quote",
+        "c>d@dream"
+      ],
+      "id": "scoped-seed-046"
+    },
+    {
+      "ask": "d",
+      "facts": [
+        "c>d",
+        "-a@dream",
+        "a>c@quote",
+        "a>d",
+        "+a@real:2025",
+        "c>b",
+        "b>d@real:2026"
+      ],
+      "id": "scoped-seed-047"
+    },
+    {
+      "ask": "b",
+      "facts": [
+        "+c"
+      ],
+      "id": "scoped-seed-048"
+    },
+    {
+      "ask": "c",
+      "facts": [
+        "+c@dream",
+        "-b@real:2026",
+        "+b@real:2026",
+        "a>b@real:2025",
+        "c>a@dream",
+        "c>d@dream"
+      ],
+      "id": "scoped-seed-049"
+    },
+    {
+      "ask": "c",
+      "facts": [],
+      "id": "scoped-seed-050"
+    },
+    {
+      "ask": "d",
+      "facts": [
+        "c>a@quote",
+        "-d@real:2026",
+        "a>b@real:2026"
+      ],
+      "id": "scoped-seed-051"
+    },
+    {
+      "ask": "b",
+      "facts": [
+        "-d",
+        "a>c@real:2025",
+        "a>c@dream",
+        "+b@quote",
+        "-d@quote",
+        "a>c@dream",
+        "d>c@real:2025"
+      ],
+      "id": "scoped-seed-052"
+    },
+    {
+      "ask": "c",
+      "facts": [
+        "-d@quote",
+        "b>a@quote",
+        "a>c@real:2025",
+        "+d@real:2025",
+        "d>c@quote",
+        "a>b@real:2025",
+        "d>b@real:2026"
+      ],
+      "id": "scoped-seed-053"
+    },
+    {
+      "ask": "b",
+      "facts": [
+        "a>d@dream",
+        "c>d@real:2025",
+        "b>d@real:2025",
+        "d>a@quote",
+        "d>a@dream",
+        "-c@real:2026"
+      ],
+      "id": "scoped-seed-054"
+    },
+    {
+      "ask": "d",
+      "facts": [
+        "b>d@quote"
+      ],
+      "id": "scoped-seed-055"
+    },
+    {
+      "ask": "d",
+      "facts": [],
+      "id": "scoped-seed-056"
+    },
+    {
+      "ask": "d",
+      "facts": [
+        "-a@dream",
+        "+c@dream",
+        "+b@real:2025",
+        "+c@real:2025",
+        "a>d@quote",
+        "a>c@real:2025",
+        "a>b"
+      ],
+      "id": "scoped-seed-057"
+    },
+    {
+      "ask": "b",
+      "facts": [
+        "c>a@real:2025",
+        "c>b@real:2025",
+        "c>d@quote",
+        "a>b",
+        "a>b@dream",
+        "d>a",
+        "d>c@real:2025"
+      ],
+      "id": "scoped-seed-058"
+    },
+    {
+      "ask": "c",
+      "facts": [
+        "+b",
+        "-a@quote",
+        "a>c@real:2025",
+        "c>a@dream",
+        "d>b@quote",
+        "d>c@real:2025",
+        "b>a@quote"
+      ],
+      "id": "scoped-seed-059"
+    },
+    {
+      "ask": "c",
+      "facts": [
+        "d>a",
+        "b>a@real:2026",
+        "d>a",
+        "+c@real:2025",
+        "+a@quote",
+        "-b@real:2026"
+      ],
+      "id": "scoped-seed-060"
+    },
+    {
+      "ask": "c",
+      "facts": [
+        "c>a@quote",
+        "c>d@real:2025",
+        "d>c@real:2025",
+        "c>a"
+      ],
+      "id": "scoped-seed-061"
+    },
+    {
+      "ask": "c",
+      "facts": [
+        "-d@quote",
+        "a>c@real:2025",
+        "c>b@dream",
+        "d>b@real:2026",
+        "b>d@quote",
+        "b>a@dream"
+      ],
+      "id": "scoped-seed-062"
+    },
+    {
+      "ask": "d",
+      "facts": [
+        "+c@real:2026",
+        "c>a@real:2026",
+        "d>b@dream",
+        "a>d",
+        "c>b@quote",
+        "+d@real:2026"
+      ],
+      "id": "scoped-seed-063"
+    },
+    {
+      "ask": "d",
+      "facts": [
+        "d>c",
+        "-a@dream",
+        "d>c@real:2025",
+        "+d@real:2026",
+        "d>c@quote"
+      ],
+      "id": "scoped-seed-064"
+    },
+    {
+      "ask": "a",
+      "facts": [
+        "+b",
+        "+d",
+        "-c@real:2025",
+        "d>a@quote"
+      ],
+      "id": "scoped-seed-065"
+    },
+    {
+      "ask": "b",
+      "facts": [
+        "-d@quote",
+        "-b",
+        "-d@real:2026",
+        "b>c@dream",
+        "d>a@quote",
+        "d>c@real:2026"
+      ],
+      "id": "scoped-seed-066"
+    },
+    {
+      "ask": "c",
+      "facts": [
+        "-d@real:2026",
+        "b>d",
+        "b>c@real:2026",
+        "c>b@real:2025",
+        "c>d@real:2026"
+      ],
+      "id": "scoped-seed-067"
+    },
+    {
+      "ask": "c",
+      "facts": [
+        "c>d@dream",
+        "a>b@real:2026",
+        "b>a@real:2026",
+        "+a@real:2026",
+        "+c",
+        "+b@quote",
+        "-a@dream"
+      ],
+      "id": "scoped-seed-068"
+    },
+    {
+      "ask": "b",
+      "facts": [
+        "a>d@quote"
+      ],
+      "id": "scoped-seed-069"
+    },
+    {
+      "ask": "a",
+      "facts": [
+        "b>d",
+        "+b@quote"
+      ],
+      "id": "scoped-seed-070"
+    },
+    {
+      "ask": "c",
+      "facts": [
+        "a>c@dream",
+        "-b@quote"
+      ],
+      "id": "scoped-seed-071"
+    },
+    {
+      "ask": "c",
+      "facts": [],
+      "id": "scoped-seed-072"
+    },
+    {
+      "ask": "b",
+      "facts": [
+        "+b@dream",
+        "b>a@dream",
+        "-d@real:2026",
+        "a>d@quote",
+        "c>d@real:2026",
+        "-a@real:2026",
+        "a>c@real:2025"
+      ],
+      "id": "scoped-seed-073"
+    },
+    {
+      "ask": "a",
+      "facts": [
+        "d>a@real:2025"
+      ],
+      "id": "scoped-seed-074"
+    },
+    {
+      "ask": "d",
+      "facts": [
+        "+d"
+      ],
+      "id": "scoped-seed-075"
+    },
+    {
+      "ask": "d",
+      "facts": [
+        "-a@real:2025",
+        "a>d@quote",
+        "+a@dream",
+        "d>c@quote",
+        "c>a@dream",
+        "c>d@real:2026"
+      ],
+      "id": "scoped-seed-076"
+    },
+    {
+      "ask": "c",
+      "facts": [
+        "b>c@dream",
+        "c>a@quote",
+        "+a@quote"
+      ],
+      "id": "scoped-seed-077"
+    },
+    {
+      "ask": "b",
+      "facts": [
+        "c>b@quote",
+        "+c@real:2025",
+        "c>a",
+        "c>d@dream",
+        "c>b@dream",
+        "-b@real:2025",
+        "b>c@real:2025"
+      ],
+      "id": "scoped-seed-078"
+    },
+    {
+      "ask": "b",
+      "facts": [
+        "-a@quote",
+        "a>d@dream",
+        "+d@real:2025"
+      ],
+      "id": "scoped-seed-079"
+    },
+    {
+      "ask": "d",
+      "facts": [],
+      "id": "scoped-seed-080"
+    },
+    {
+      "ask": "b",
+      "facts": [
+        "b>d@real:2025",
+        "a>c@quote",
+        "d>b@quote",
+        "b>d@dream",
+        "d>b@real:2025"
+      ],
+      "id": "scoped-seed-081"
+    },
+    {
+      "ask": "d",
+      "facts": [
+        "c>a@quote",
+        "-d",
+        "-d@real:2025",
+        "c>b@real:2026",
+        "-c",
+        "-d@quote",
+        "+c@real:2025"
+      ],
+      "id": "scoped-seed-082"
+    },
+    {
+      "ask": "a",
+      "facts": [
+        "b>c",
+        "a>d@real:2025",
+        "-d@quote",
+        "a>d@quote",
+        "d>a@dream",
+        "c>a@real:2025",
+        "c>d@real:2026"
+      ],
+      "id": "scoped-seed-083"
+    },
+    {
+      "ask": "b",
+      "facts": [
+        "+c@dream",
+        "+d@dream",
+        "-d@quote",
+        "-a@real:2025",
+        "b>c@quote",
+        "b>d@real:2026"
+      ],
+      "id": "scoped-seed-084"
+    },
+    {
+      "ask": "b",
+      "facts": [
+        "c>a@real:2026",
+        "+a@real:2025",
+        "a>c",
+        "-b",
+        "c>a@real:2026",
+        "a>b"
+      ],
+      "id": "scoped-seed-085"
+    },
+    {
+      "ask": "b",
+      "facts": [],
+      "id": "scoped-seed-086"
+    },
+    {
+      "ask": "b",
+      "facts": [
+        "+c@real:2025",
+        "d>c@real:2026",
+        "a>b",
+        "d>c"
+      ],
+      "id": "scoped-seed-087"
+    },
+    {
+      "ask": "c",
+      "facts": [
+        "d>c@real:2026",
+        "a>c@real:2025"
+      ],
+      "id": "scoped-seed-088"
+    },
+    {
+      "ask": "d",
+      "facts": [
+        "c>b@real:2025"
+      ],
+      "id": "scoped-seed-089"
+    },
+    {
+      "ask": "b",
+      "facts": [
+        "d>a@real:2025",
+        "b>a@real:2026",
+        "c>a@real:2026"
+      ],
+      "id": "scoped-seed-090"
+    },
+    {
+      "ask": "b",
+      "facts": [
+        "-b@dream",
+        "d>b@real:2026",
+        "-a@dream",
+        "c>d@dream"
+      ],
+      "id": "scoped-seed-091"
+    },
+    {
+      "ask": "b",
+      "facts": [
+        "c>d@quote",
+        "d>a",
+        "b>d@quote",
+        "+b@quote",
+        "+b@quote",
+        "b>d@real:2025"
+      ],
+      "id": "scoped-seed-092"
+    },
+    {
+      "ask": "b",
+      "facts": [
+        "-b@real:2026",
+        "+d@real:2025"
+      ],
+      "id": "scoped-seed-093"
+    },
+    {
+      "ask": "d",
+      "facts": [
+        "a>c@quote",
+        "a>c@real:2025"
+      ],
+      "id": "scoped-seed-094"
+    },
+    {
+      "ask": "d",
+      "facts": [
+        "a>c",
+        "a>d@quote"
+      ],
+      "id": "scoped-seed-095"
+    },
+    {
+      "ask": "a",
+      "facts": [
+        "-c@dream",
+        "+a",
+        "c>a@dream",
+        "d>b@dream",
+        "b>d@dream"
+      ],
+      "id": "scoped-seed-096"
+    },
+    {
+      "ask": "b",
+      "facts": [
+        "b>d",
+        "-a@dream",
+        "c>a@quote",
+        "-a"
+      ],
+      "id": "scoped-seed-097"
+    },
+    {
+      "ask": "d",
+      "facts": [
+        "-c@real:2026",
+        "-a@quote",
+        "d>b@real:2026",
+        "c>d@real:2026",
+        "a>d@real:2025"
+      ],
+      "id": "scoped-seed-098"
+    },
+    {
+      "ask": "a",
+      "facts": [
+        "c>b@real:2026",
+        "+b",
+        "b>c",
+        "c>d@real:2025",
+        "a>c",
+        "-c@dream"
+      ],
+      "id": "scoped-seed-099"
+    },
+    {
+      "ask": "a",
+      "facts": [
+        "-a@quote",
+        "b>d@real:2026"
+      ],
+      "id": "scoped-seed-100"
+    },
+    {
+      "ask": "a",
+      "facts": [
+        "+a@quote",
+        "d>a@real:2026",
+        "a>b@real:2025",
+        "a>b"
+      ],
+      "id": "scoped-seed-101"
+    },
+    {
+      "ask": "d",
+      "facts": [
+        "+d@real:2026",
+        "-c@real:2026",
+        "+c@quote",
+        "c>b@real:2026",
+        "+b@dream",
+        "+c",
+        "-a@real:2025"
+      ],
+      "id": "scoped-seed-102"
+    },
+    {
+      "ask": "a",
+      "facts": [
+        "b>c@quote",
+        "b>c",
+        "b>a"
+      ],
+      "id": "scoped-seed-103"
+    },
+    {
+      "ask": "c",
+      "facts": [
+        "c>d@real:2025",
+        "+c@quote",
+        "c>b"
+      ],
+      "id": "scoped-seed-104"
+    },
+    {
+      "ask": "d",
+      "facts": [
+        "-a@real:2025",
+        "-d",
+        "c>a"
+      ],
+      "id": "scoped-seed-105"
+    },
+    {
+      "ask": "a",
+      "facts": [
+        "-d@dream",
+        "-c@real:2026",
+        "b>c",
+        "+c@dream",
+        "-d"
+      ],
+      "id": "scoped-seed-106"
+    },
+    {
+      "ask": "a",
+      "facts": [
+        "b>d@dream",
+        "c>a@dream",
+        "a>b@dream",
+        "a>c@real:2025",
+        "a>b"
+      ],
+      "id": "scoped-seed-107"
+    },
+    {
+      "ask": "b",
+      "facts": [
+        "+a",
+        "d>a"
+      ],
+      "id": "scoped-seed-108"
+    },
+    {
+      "ask": "a",
+      "facts": [
+        "-d@dream",
+        "c>a@dream",
+        "-d",
+        "+a@real:2026",
+        "+c@real:2026",
+        "-d",
+        "d>b@real:2025"
+      ],
+      "id": "scoped-seed-109"
+    },
+    {
+      "ask": "c",
+      "facts": [],
+      "id": "scoped-seed-110"
+    },
+    {
+      "ask": "c",
+      "facts": [
+        "+a",
+        "a>c",
+        "c>d@quote",
+        "c>d@real:2026",
+        "+a"
+      ],
+      "id": "scoped-seed-111"
+    },
+    {
+      "ask": "b",
+      "facts": [
+        "c>b@real:2026",
+        "b>d@real:2025",
+        "+c@quote",
+        "d>a@dream"
+      ],
+      "id": "scoped-seed-112"
+    },
+    {
+      "ask": "d",
+      "facts": [
+        "+b",
+        "-d@quote",
+        "-b@dream",
+        "d>a@real:2025"
+      ],
+      "id": "scoped-seed-113"
+    },
+    {
+      "ask": "b",
+      "facts": [
+        "d>a",
+        "-b@quote",
+        "+a@real:2026",
+        "a>d@dream",
+        "-a@quote",
+        "+c@quote",
+        "c>d@real:2025"
+      ],
+      "id": "scoped-seed-114"
+    },
+    {
+      "ask": "b",
+      "facts": [
+        "a>b@quote",
+        "c>a@dream"
+      ],
+      "id": "scoped-seed-115"
+    },
+    {
+      "ask": "a",
+      "facts": [
+        "a>c@real:2026",
+        "+c@real:2026",
+        "d>c@real:2026"
+      ],
+      "id": "scoped-seed-116"
+    },
+    {
+      "ask": "d",
+      "facts": [],
+      "id": "scoped-seed-117"
+    },
+    {
+      "ask": "d",
+      "facts": [
+        "-c",
+        "d>a@quote",
+        "a>b@real:2025"
+      ],
+      "id": "scoped-seed-118"
+    },
+    {
+      "ask": "c",
+      "facts": [
+        "a>d@real:2025",
+        "c>d",
+        "-b@quote",
+        "a>c@quote",
+        "b>d"
+      ],
+      "id": "scoped-seed-119"
+    },
+    {
+      "ask": "c",
+      "facts": [
+        "+c@real:2026",
+        "a>b@real:2025",
+        "c>a@real:2026",
+        "b>c@quote"
+      ],
+      "id": "scoped-seed-120"
+    },
+    {
+      "ask": "b",
+      "facts": [],
+      "id": "scoped-seed-121"
+    },
+    {
+      "ask": "b",
+      "facts": [
+        "-c@dream",
+        "+a@real:2025",
+        "b>c@real:2026",
+        "c>a@quote"
+      ],
+      "id": "scoped-seed-122"
+    },
+    {
+      "ask": "d",
+      "facts": [
+        "a>c@real:2026",
+        "a>b@quote"
+      ],
+      "id": "scoped-seed-123"
+    },
+    {
+      "ask": "b",
+      "facts": [
+        "a>d@dream",
+        "d>c@real:2025"
+      ],
+      "id": "scoped-seed-124"
+    },
+    {
+      "ask": "c",
+      "facts": [
+        "-d@quote",
+        "c>b@real:2025"
+      ],
+      "id": "scoped-seed-125"
+    },
+    {
+      "ask": "a",
+      "facts": [
+        "b>d@real:2026",
+        "-c@real:2026",
+        "+a@real:2025"
+      ],
+      "id": "scoped-seed-126"
+    },
+    {
+      "ask": "d",
+      "facts": [
+        "a>c@dream",
+        "c>b@real:2026",
+        "d>a@real:2026",
+        "c>d"
+      ],
+      "id": "scoped-seed-127"
+    },
+    {
+      "ask": "b",
+      "facts": [
+        "-d@quote",
+        "b>c",
+        "+c@real:2026",
+        "a>b",
+        "-d@real:2025"
+      ],
+      "id": "scoped-seed-128"
+    },
+    {
+      "ask": "a",
+      "facts": [
+        "b>d",
+        "-b@real:2025",
+        "-b",
+        "c>b",
+        "c>b@dream"
+      ],
+      "id": "scoped-seed-129"
+    },
+    {
+      "ask": "d",
+      "facts": [
+        "-b@quote",
+        "+a@quote"
+      ],
+      "id": "scoped-seed-130"
+    },
+    {
+      "ask": "c",
+      "facts": [
+        "-a",
+        "c>a"
+      ],
+      "id": "scoped-seed-131"
+    },
+    {
+      "ask": "a",
+      "facts": [
+        "c>a@real:2025",
+        "a>b@real:2026",
+        "+d",
+        "d>c@real:2026"
+      ],
+      "id": "scoped-seed-132"
+    },
+    {
+      "ask": "b",
+      "facts": [
+        "c>d@quote",
+        "+a@real:2026"
+      ],
+      "id": "scoped-seed-133"
+    },
+    {
+      "ask": "a",
+      "facts": [
+        "c>a",
+        "c>a@quote",
+        "c>a@real:2026",
+        "d>c@dream",
+        "d>c",
+        "b>a@dream"
+      ],
+      "id": "scoped-seed-134"
+    },
+    {
+      "ask": "a",
+      "facts": [
+        "+d",
+        "-b@real:2025",
+        "b>a@dream",
+        "+b@quote",
+        "-b",
+        "a>c@real:2026",
+        "+a@real:2025"
+      ],
+      "id": "scoped-seed-135"
+    },
+    {
+      "ask": "b",
+      "facts": [
+        "d>b@real:2026",
+        "b>d@quote",
+        "c>a@real:2026"
+      ],
+      "id": "scoped-seed-136"
+    },
+    {
+      "ask": "b",
+      "facts": [],
+      "id": "scoped-seed-137"
+    },
+    {
+      "ask": "c",
+      "facts": [
+        "d>b@real:2025"
+      ],
+      "id": "scoped-seed-138"
+    },
+    {
+      "ask": "b",
+      "facts": [
+        "d>b@real:2026"
+      ],
+      "id": "scoped-seed-139"
+    },
+    {
+      "ask": "b",
+      "facts": [
+        "b>c@quote",
+        "+b@quote",
+        "d>c@quote"
+      ],
+      "id": "scoped-seed-140"
+    },
+    {
+      "ask": "d",
+      "facts": [
+        "c>a"
+      ],
+      "id": "scoped-seed-141"
+    },
+    {
+      "ask": "a",
+      "facts": [
+        "a>b@dream",
+        "+d@dream",
+        "-c",
+        "-a@real:2025",
+        "+d@quote",
+        "b>c",
+        "b>d@quote"
+      ],
+      "id": "scoped-seed-142"
+    },
+    {
+      "ask": "c",
+      "facts": [
+        "c>d@dream"
+      ],
+      "id": "scoped-seed-143"
+    },
+    {
+      "ask": "d",
+      "facts": [
+        "b>d@dream"
+      ],
+      "id": "scoped-seed-144"
+    },
+    {
+      "ask": "c",
+      "facts": [
+        "c>a@real:2026",
+        "a>c",
+        "b>d@real:2025"
+      ],
+      "id": "scoped-seed-145"
+    },
+    {
+      "ask": "a",
+      "facts": [
+        "+b@real:2026",
+        "d>b@real:2025",
+        "+b@real:2026",
+        "b>d@real:2026",
+        "+b@quote",
+        "c>b@real:2026",
+        "d>c@quote"
+      ],
+      "id": "scoped-seed-146"
+    },
+    {
+      "ask": "c",
+      "facts": [
+        "-a@real:2026",
+        "d>c",
+        "c>d",
+        "-c",
+        "-a@real:2026",
+        "-b@real:2025",
+        "+b@dream"
+      ],
+      "id": "scoped-seed-147"
+    },
+    {
+      "ask": "c",
+      "facts": [
+        "d>c@quote",
+        "d>a",
+        "d>c@real:2026",
+        "-b@real:2026",
+        "-b@real:2025",
+        "+b@quote",
+        "c>d@dream"
+      ],
+      "id": "scoped-seed-148"
+    },
+    {
+      "ask": "a",
+      "facts": [],
+      "id": "scoped-seed-149"
+    },
+    {
+      "ask": "d",
+      "facts": [
+        "b>a@dream",
+        "d>a@quote",
+        "c>d@dream",
+        "a>d@quote",
+        "+d@real:2025",
+        "a>d@real:2025",
+        "d>a@real:2025"
+      ],
+      "id": "scoped-seed-150"
+    },
+    {
+      "ask": "b",
+      "facts": [],
+      "id": "scoped-seed-151"
+    },
+    {
+      "ask": "c",
+      "facts": [],
+      "id": "scoped-seed-152"
+    },
+    {
+      "ask": "b",
+      "facts": [],
+      "id": "scoped-seed-153"
+    },
+    {
+      "ask": "b",
+      "facts": [
+        "b>a@real:2025"
+      ],
+      "id": "scoped-seed-154"
+    },
+    {
+      "ask": "d",
+      "facts": [
+        "-a@quote"
+      ],
+      "id": "scoped-seed-155"
+    },
+    {
+      "ask": "d",
+      "facts": [
+        "d>b@real:2026",
+        "a>c@real:2026",
+        "c>b@real:2025"
+      ],
+      "id": "scoped-seed-156"
+    },
+    {
+      "ask": "a",
+      "facts": [
+        "d>a@real:2026",
+        "-b@quote",
+        "c>b@real:2026",
+        "+c",
+        "-a@dream",
+        "b>d"
+      ],
+      "id": "scoped-seed-157"
+    },
+    {
+      "ask": "a",
+      "facts": [
+        "b>a@real:2026",
+        "+d@real:2025"
+      ],
+      "id": "scoped-seed-158"
+    },
+    {
+      "ask": "a",
+      "facts": [
+        "a>c"
+      ],
+      "id": "scoped-seed-159"
+    },
+    {
+      "ask": "c",
+      "facts": [
+        "d>b@real:2025",
+        "b>a@real:2025",
+        "+d@real:2026",
+        "c>b@dream",
+        "+c@real:2026",
+        "c>d@quote",
+        "b>d@quote"
+      ],
+      "id": "scoped-seed-160"
+    },
+    {
+      "ask": "a",
+      "facts": [
+        "+d@dream",
+        "c>d@dream",
+        "+a"
+      ],
+      "id": "scoped-seed-161"
+    },
+    {
+      "ask": "a",
+      "facts": [
+        "b>d",
+        "+d@real:2026",
+        "+b@real:2025",
+        "-d@real:2025"
+      ],
+      "id": "scoped-seed-162"
+    },
+    {
+      "ask": "c",
+      "facts": [
+        "a>d@real:2025",
+        "a>c@dream",
+        "c>a@real:2025",
+        "+b@real:2025"
+      ],
+      "id": "scoped-seed-163"
+    },
+    {
+      "ask": "d",
+      "facts": [
+        "c>b",
+        "+d@quote",
+        "b>c@real:2025",
+        "b>d"
+      ],
+      "id": "scoped-seed-164"
+    },
+    {
+      "ask": "c",
+      "facts": [
+        "+b",
+        "-c",
+        "a>d@dream",
+        "b>a@quote",
+        "a>b@real:2025"
+      ],
+      "id": "scoped-seed-165"
+    },
+    {
+      "ask": "c",
+      "facts": [
+        "-d@dream",
+        "b>c@dream",
+        "a>d@real:2025",
+        "c>a@quote",
+        "+c@real:2026"
+      ],
+      "id": "scoped-seed-166"
+    },
+    {
+      "ask": "a",
+      "facts": [
+        "b>a@real:2025",
+        "a>c@quote",
+        "c>d@quote"
+      ],
+      "id": "scoped-seed-167"
+    },
+    {
+      "ask": "a",
+      "facts": [
+        "a>d@quote",
+        "c>d",
+        "b>a",
+        "+d@quote",
+        "+a@real:2025",
+        "c>d@real:2026",
+        "d>c@real:2025"
+      ],
+      "id": "scoped-seed-168"
+    },
+    {
+      "ask": "b",
+      "facts": [
+        "+c@real:2026",
+        "a>d",
+        "d>b@real:2025",
+        "c>a",
+        "-a",
+        "+b@real:2025"
+      ],
+      "id": "scoped-seed-169"
+    },
+    {
+      "ask": "d",
+      "facts": [],
+      "id": "scoped-seed-170"
+    },
+    {
+      "ask": "a",
+      "facts": [
+        "c>a@real:2026",
+        "d>c@real:2026",
+        "d>c@quote",
+        "d>b@quote",
+        "d>c",
+        "+b@dream"
+      ],
+      "id": "scoped-seed-171"
+    },
+    {
+      "ask": "a",
+      "facts": [
+        "-d@dream"
+      ],
+      "id": "scoped-seed-172"
+    },
+    {
+      "ask": "c",
+      "facts": [
+        "-b@real:2025",
+        "b>c@quote",
+        "a>b@real:2026"
+      ],
+      "id": "scoped-seed-173"
+    },
+    {
+      "ask": "c",
+      "facts": [
+        "+d",
+        "a>c"
+      ],
+      "id": "scoped-seed-174"
+    },
+    {
+      "ask": "c",
+      "facts": [
+        "a>b",
+        "+c@quote",
+        "+a@quote",
+        "d>b",
+        "+b@real:2025",
+        "b>d@dream",
+        "a>b@real:2026"
+      ],
+      "id": "scoped-seed-175"
+    },
+    {
+      "ask": "a",
+      "facts": [
+        "-a@real:2026",
+        "+a@real:2025",
+        "-a@dream",
+        "-d@real:2025",
+        "b>d@real:2026",
+        "-d@dream",
+        "-c@real:2026"
+      ],
+      "id": "scoped-seed-176"
+    },
+    {
+      "ask": "a",
+      "facts": [
+        "d>c@real:2026"
+      ],
+      "id": "scoped-seed-177"
+    },
+    {
+      "ask": "c",
+      "facts": [
+        "-d@quote",
+        "d>a@real:2025",
+        "+c@real:2025",
+        "c>b@dream"
+      ],
+      "id": "scoped-seed-178"
+    },
+    {
+      "ask": "b",
+      "facts": [
+        "-d",
+        "+b@quote",
+        "-b@real:2025",
+        "c>b@quote",
+        "b>c@dream",
+        "d>c@real:2025"
+      ],
+      "id": "scoped-seed-179"
+    },
+    {
+      "ask": "b",
+      "facts": [
+        "+b",
+        "-a@real:2026",
+        "c>a@real:2025",
+        "a>d@dream",
+        "b>a",
+        "d>a@quote",
+        "b>d@dream"
+      ],
+      "id": "scoped-seed-180"
+    },
+    {
+      "ask": "c",
+      "facts": [
+        "d>a@real:2026",
+        "-a@real:2026",
+        "+a@quote",
+        "-d",
+        "d>b@dream"
+      ],
+      "id": "scoped-seed-181"
+    },
+    {
+      "ask": "a",
+      "facts": [
+        "d>b@real:2026",
+        "c>d",
+        "c>a@quote",
+        "+c@dream",
+        "-c"
+      ],
+      "id": "scoped-seed-182"
+    },
+    {
+      "ask": "a",
+      "facts": [
+        "+c@real:2025"
+      ],
+      "id": "scoped-seed-183"
+    },
+    {
+      "ask": "a",
+      "facts": [],
+      "id": "scoped-seed-184"
+    },
+    {
+      "ask": "a",
+      "facts": [
+        "c>b@real:2026",
+        "b>a@real:2026",
+        "d>b",
+        "c>b@dream",
+        "a>b@quote"
+      ],
+      "id": "scoped-seed-185"
+    },
+    {
+      "ask": "c",
+      "facts": [
+        "a>d",
+        "-a",
+        "a>b@dream",
+        "b>c@quote",
+        "d>a@real:2025",
+        "b>c",
+        "c>d@quote"
+      ],
+      "id": "scoped-seed-186"
+    },
+    {
+      "ask": "d",
+      "facts": [
+        "c>d@quote",
+        "c>a@quote",
+        "-c@quote",
+        "a>d",
+        "b>d@real:2025",
+        "+c@dream",
+        "-c@quote"
+      ],
+      "id": "scoped-seed-187"
+    },
+    {
+      "ask": "d",
+      "facts": [
+        "d>b@dream"
+      ],
+      "id": "scoped-seed-188"
+    },
+    {
+      "ask": "b",
+      "facts": [
+        "-a@dream",
+        "+c@quote",
+        "c>a@real:2025",
+        "d>c@dream",
+        "+d@quote",
+        "-c@dream"
+      ],
+      "id": "scoped-seed-189"
+    },
+    {
+      "ask": "d",
+      "facts": [
+        "c>b@quote",
+        "c>b@quote",
+        "+b@real:2026",
+        "b>a@real:2026",
+        "a>d"
+      ],
+      "id": "scoped-seed-190"
+    },
+    {
+      "ask": "c",
+      "facts": [],
+      "id": "scoped-seed-191"
+    },
+    {
+      "ask": "b",
+      "facts": [
+        "b>c@real:2026",
+        "-b@dream",
+        "-c@dream",
+        "d>a@quote",
+        "b>d@real:2025",
+        "b>a@dream",
+        "-c@real:2025"
+      ],
+      "id": "scoped-seed-192"
+    },
+    {
+      "ask": "d",
+      "facts": [
+        "d>c@dream",
+        "d>b@real:2026",
+        "d>b@quote",
+        "a>d@quote",
+        "d>a@dream",
+        "a>d@real:2026"
+      ],
+      "id": "scoped-seed-193"
+    },
+    {
+      "ask": "c",
+      "facts": [
+        "a>d",
+        "+b@real:2026"
+      ],
+      "id": "scoped-seed-194"
+    },
+    {
+      "ask": "b",
+      "facts": [
+        "c>a@quote",
+        "+d@real:2025"
+      ],
+      "id": "scoped-seed-195"
+    },
+    {
+      "ask": "b",
+      "facts": [
+        "b>d@real:2026",
+        "d>a@quote",
+        "c>a@quote",
+        "-c@dream",
+        "b>c@quote"
+      ],
+      "id": "scoped-seed-196"
+    },
+    {
+      "ask": "d",
+      "facts": [
+        "a>d@real:2026",
+        "b>c@real:2026",
+        "d>b",
+        "+d",
+        "b>c@real:2026"
+      ],
+      "id": "scoped-seed-197"
+    },
+    {
+      "ask": "d",
+      "facts": [
+        "b>c@real:2025",
+        "+b",
+        "+a",
+        "-c@quote",
+        "+b@quote",
+        "b>a@quote"
+      ],
+      "id": "scoped-seed-198"
+    },
+    {
+      "ask": "d",
+      "facts": [
+        "d>c@quote",
+        "-c@real:2026",
+        "d>a@real:2026",
+        "c>d@real:2025",
+        "-c"
+      ],
+      "id": "scoped-seed-199"
+    },
+    {
+      "ask": "b",
+      "facts": [
+        "b>c@real:2025",
+        "-a@real:2026",
+        "+c@dream",
+        "b>c"
+      ],
+      "id": "scoped-seed-200"
+    },
+    {
+      "ask": "b",
+      "facts": [
+        "+c@quote",
+        "d>a@quote"
+      ],
+      "id": "scoped-seed-201"
+    },
+    {
+      "ask": "c",
+      "facts": [
+        "a>c",
+        "b>a@quote",
+        "+c@quote",
+        "-d",
+        "b>c",
+        "+d",
+        "+a@quote"
+      ],
+      "id": "scoped-seed-202"
+    },
+    {
+      "ask": "b",
+      "facts": [],
+      "id": "scoped-seed-203"
+    },
+    {
+      "ask": "c",
+      "facts": [
+        "+b@dream",
+        "a>d@dream",
+        "-c",
+        "+d@quote",
+        "b>d@real:2026",
+        "-a@quote",
+        "d>a@dream"
+      ],
+      "id": "scoped-seed-204"
+    },
+    {
+      "ask": "d",
+      "facts": [
+        "-a@dream",
+        "d>c@real:2026",
+        "-d",
+        "c>b@quote",
+        "b>a@quote"
+      ],
+      "id": "scoped-seed-205"
+    },
+    {
+      "ask": "c",
+      "facts": [
+        "b>a@real:2026"
+      ],
+      "id": "scoped-seed-206"
+    },
+    {
+      "ask": "a",
+      "facts": [
+        "d>c@real:2025"
+      ],
+      "id": "scoped-seed-207"
+    },
+    {
+      "ask": "a",
+      "facts": [
+        "b>a",
+        "-b@real:2025"
+      ],
+      "id": "scoped-seed-208"
+    },
+    {
+      "ask": "b",
+      "facts": [
+        "b>d",
+        "+a",
+        "+a@real:2025"
+      ],
+      "id": "scoped-seed-209"
+    },
+    {
+      "ask": "a",
+      "facts": [
+        "d>c"
+      ],
+      "id": "scoped-seed-210"
+    },
+    {
+      "ask": "b",
+      "facts": [
+        "+b@dream",
+        "d>b@real:2026"
+      ],
+      "id": "scoped-seed-211"
+    },
+    {
+      "ask": "b",
+      "facts": [
+        "b>d@real:2025",
+        "d>a",
+        "-d",
+        "+d",
+        "a>d@real:2025",
+        "d>a@real:2026",
+        "+d@quote"
+      ],
+      "id": "scoped-seed-212"
+    },
+    {
+      "ask": "b",
+      "facts": [
+        "a>b",
+        "a>c@quote",
+        "d>a@real:2025",
+        "+a@quote"
+      ],
+      "id": "scoped-seed-213"
+    },
+    {
+      "ask": "b",
+      "facts": [
+        "b>d@real:2025",
+        "+a@real:2025"
+      ],
+      "id": "scoped-seed-214"
+    },
+    {
+      "ask": "d",
+      "facts": [
+        "d>a@quote",
+        "+d"
+      ],
+      "id": "scoped-seed-215"
+    },
+    {
+      "ask": "b",
+      "facts": [
+        "b>d",
+        "d>c@dream",
+        "+a@real:2026",
+        "a>b@dream",
+        "-a"
+      ],
+      "id": "scoped-seed-216"
+    },
+    {
+      "ask": "d",
+      "facts": [],
+      "id": "scoped-seed-217"
+    },
+    {
+      "ask": "b",
+      "facts": [
+        "c>b@real:2026",
+        "d>c@quote",
+        "a>d@dream",
+        "d>a"
+      ],
+      "id": "scoped-seed-218"
+    },
+    {
+      "ask": "b",
+      "facts": [
+        "+d@quote",
+        "d>a@real:2025",
+        "+d@dream"
+      ],
+      "id": "scoped-seed-219"
+    },
+    {
+      "ask": "a",
+      "facts": [
+        "a>c@real:2025"
+      ],
+      "id": "scoped-seed-220"
+    },
+    {
+      "ask": "a",
+      "facts": [
+        "c>a",
+        "b>a@real:2026",
+        "-d@quote",
+        "-b",
+        "c>d",
+        "c>d@real:2026",
+        "+a"
+      ],
+      "id": "scoped-seed-221"
+    },
+    {
+      "ask": "b",
+      "facts": [
+        "+a"
+      ],
+      "id": "scoped-seed-222"
+    },
+    {
+      "ask": "a",
+      "facts": [],
+      "id": "scoped-seed-223"
+    },
+    {
+      "ask": "b",
+      "facts": [
+        "-a@quote",
+        "a>c",
+        "-b@real:2026",
+        "b>d"
+      ],
+      "id": "scoped-seed-224"
+    },
+    {
+      "ask": "a",
+      "facts": [],
+      "id": "scoped-seed-225"
+    },
+    {
+      "ask": "c",
+      "facts": [
+        "+b"
+      ],
+      "id": "scoped-seed-226"
+    },
+    {
+      "ask": "d",
+      "facts": [],
+      "id": "scoped-seed-227"
+    },
+    {
+      "ask": "b",
+      "facts": [
+        "d>b@dream"
+      ],
+      "id": "scoped-seed-228"
+    },
+    {
+      "ask": "c",
+      "facts": [
+        "b>a@real:2026"
+      ],
+      "id": "scoped-seed-229"
+    },
+    {
+      "ask": "b",
+      "facts": [
+        "+c@real:2025",
+        "+b@real:2025",
+        "c>b",
+        "b>a@real:2025",
+        "d>b@dream",
+        "d>b@real:2025"
+      ],
+      "id": "scoped-seed-230"
+    },
+    {
+      "ask": "d",
+      "facts": [
+        "+c@quote",
+        "b>d@dream",
+        "-d@quote",
+        "c>a@dream",
+        "-a@dream",
+        "+c@real:2025"
+      ],
+      "id": "scoped-seed-231"
+    },
+    {
+      "ask": "d",
+      "facts": [
+        "+c",
+        "+d@real:2026",
+        "a>d",
+        "c>a@dream"
+      ],
+      "id": "scoped-seed-232"
+    },
+    {
+      "ask": "d",
+      "facts": [
+        "a>b@quote"
+      ],
+      "id": "scoped-seed-233"
+    },
+    {
+      "ask": "a",
+      "facts": [
+        "b>d@real:2025",
+        "+c@quote",
+        "c>d@dream",
+        "-c@real:2026"
+      ],
+      "id": "scoped-seed-234"
+    },
+    {
+      "ask": "b",
+      "facts": [
+        "c>b@real:2025",
+        "c>b@quote",
+        "c>b@quote",
+        "+a"
+      ],
+      "id": "scoped-seed-235"
+    },
+    {
+      "ask": "c",
+      "facts": [
+        "+b@real:2026",
+        "-c@real:2026",
+        "c>d@real:2026",
+        "b>c@quote",
+        "-a@real:2026",
+        "+d@quote",
+        "+c@real:2026"
+      ],
+      "id": "scoped-seed-236"
+    },
+    {
+      "ask": "b",
+      "facts": [
+        "d>b@dream",
+        "-c@real:2026",
+        "+d@dream",
+        "a>c"
+      ],
+      "id": "scoped-seed-237"
+    },
+    {
+      "ask": "b",
+      "facts": [],
+      "id": "scoped-seed-238"
+    },
+    {
+      "ask": "b",
+      "facts": [
+        "+a@real:2026",
+        "+d@dream",
+        "-a",
+        "a>d@real:2025"
+      ],
+      "id": "scoped-seed-239"
+    },
+    {
+      "ask": "a",
+      "facts": [
+        "+c",
+        "d>a@real:2026"
+      ],
+      "id": "scoped-seed-240"
+    },
+    {
+      "ask": "b",
+      "facts": [
+        "c>a@quote"
+      ],
+      "id": "scoped-seed-241"
+    },
+    {
+      "ask": "a",
+      "facts": [
+        "+c@quote",
+        "c>a@real:2025",
+        "c>a@dream",
+        "c>b@real:2026",
+        "b>a@real:2026",
+        "b>c@real:2026"
+      ],
+      "id": "scoped-seed-242"
+    },
+    {
+      "ask": "a",
+      "facts": [
+        "c>a@real:2026",
+        "+c"
+      ],
+      "id": "scoped-seed-243"
+    },
+    {
+      "ask": "d",
+      "facts": [],
+      "id": "scoped-seed-244"
+    },
+    {
+      "ask": "d",
+      "facts": [
+        "-b@quote",
+        "b>c"
+      ],
+      "id": "scoped-seed-245"
+    },
+    {
+      "ask": "a",
+      "facts": [
+        "+d@real:2026",
+        "+c@real:2026",
+        "+c",
+        "-c@quote"
+      ],
+      "id": "scoped-seed-246"
+    },
+    {
+      "ask": "d",
+      "facts": [
+        "d>a@real:2026"
+      ],
+      "id": "scoped-seed-247"
+    },
+    {
+      "ask": "d",
+      "facts": [
+        "c>d@dream",
+        "d>c",
+        "c>b@real:2026",
+        "a>d@real:2026"
+      ],
+      "id": "scoped-seed-248"
+    },
+    {
+      "ask": "b",
+      "facts": [
+        "b>c@real:2025",
+        "b>c@real:2025",
+        "-a@dream",
+        "b>c@real:2025",
+        "c>d@dream",
+        "a>c@real:2025",
+        "d>c@dream"
+      ],
+      "id": "scoped-seed-249"
+    },
+    {
+      "ask": "b",
+      "facts": [
+        "a>b@quote",
+        "d>a@real:2025",
+        "-b@real:2025",
+        "a>b",
+        "d>b@real:2026",
+        "d>a"
+      ],
+      "id": "scoped-seed-250"
+    },
+    {
+      "ask": "a",
+      "facts": [
+        "b>d@real:2026",
+        "c>b@dream",
+        "+d@real:2026",
+        "b>a@quote",
+        "c>a@quote"
+      ],
+      "id": "scoped-seed-251"
+    },
+    {
+      "ask": "b",
+      "facts": [
+        "a>d",
+        "d>a@quote",
+        "a>d@real:2025",
+        "c>a@dream",
+        "b>c@real:2025"
+      ],
+      "id": "scoped-seed-252"
+    },
+    {
+      "ask": "b",
+      "facts": [
+        "-b@real:2026",
+        "-b@dream",
+        "+b@quote",
+        "d>c@real:2026",
+        "c>a@quote",
+        "c>a@real:2026",
+        "d>a@dream"
+      ],
+      "id": "scoped-seed-253"
+    },
+    {
+      "ask": "c",
+      "facts": [
+        "+b@dream",
+        "d>b@real:2026"
+      ],
+      "id": "scoped-seed-254"
+    },
+    {
+      "ask": "d",
+      "facts": [],
+      "id": "scoped-seed-255"
+    },
+    {
+      "ask": "c",
+      "facts": [
+        "+a@real:2026",
+        "b>c"
+      ],
+      "id": "scoped-seed-256"
+    },
+    {
+      "ask": "c",
+      "facts": [
+        "-a@real:2025",
+        "a>c",
+        "+b@real:2025",
+        "a>c@real:2026",
+        "a>c@real:2026",
+        "-d@real:2026"
+      ],
+      "id": "scoped-seed-257"
+    },
+    {
+      "ask": "d",
+      "facts": [
+        "-c@real:2026",
+        "c>b@dream",
+        "b>d",
+        "-c@real:2025"
+      ],
+      "id": "scoped-seed-258"
+    },
+    {
+      "ask": "c",
+      "facts": [
+        "d>c@dream",
+        "b>a@quote",
+        "b>c@dream",
+        "-d",
+        "-a@dream"
+      ],
+      "id": "scoped-seed-259"
+    },
+    {
+      "ask": "b",
+      "facts": [
+        "a>c@quote",
+        "b>c@quote"
+      ],
+      "id": "scoped-seed-260"
+    },
+    {
+      "ask": "a",
+      "facts": [],
+      "id": "scoped-seed-261"
+    },
+    {
+      "ask": "a",
+      "facts": [
+        "b>c@quote",
+        "-a@dream",
+        "d>c@real:2025",
+        "-a@real:2026"
+      ],
+      "id": "scoped-seed-262"
+    },
+    {
+      "ask": "a",
+      "facts": [
+        "a>c@quote"
+      ],
+      "id": "scoped-seed-263"
+    },
+    {
+      "ask": "a",
+      "facts": [
+        "+d",
+        "a>c@real:2026"
+      ],
+      "id": "scoped-seed-264"
+    },
+    {
+      "ask": "c",
+      "facts": [],
+      "id": "scoped-seed-265"
+    },
+    {
+      "ask": "d",
+      "facts": [
+        "a>c",
+        "+c@real:2026",
+        "b>d@quote",
+        "c>b@real:2025"
+      ],
+      "id": "scoped-seed-266"
+    },
+    {
+      "ask": "a",
+      "facts": [
+        "c>b@real:2025",
+        "-b@real:2025",
+        "d>b@quote",
+        "a>d@dream",
+        "+c@real:2025",
+        "a>d@real:2025"
+      ],
+      "id": "scoped-seed-267"
+    },
+    {
+      "ask": "d",
+      "facts": [
+        "-a@real:2026",
+        "b>d@quote",
+        "b>d",
+        "d>c@real:2025",
+        "a>c",
+        "c>d@real:2025",
+        "d>a@quote"
+      ],
+      "id": "scoped-seed-268"
+    },
+    {
+      "ask": "b",
+      "facts": [],
+      "id": "scoped-seed-269"
+    },
+    {
+      "ask": "a",
+      "facts": [
+        "c>a@dream",
+        "c>b@real:2026"
+      ],
+      "id": "scoped-seed-270"
+    },
+    {
+      "ask": "c",
+      "facts": [
+        "c>a@real:2025",
+        "-d",
+        "a>c@real:2025",
+        "+b@dream",
+        "a>d@quote",
+        "+c@real:2025"
+      ],
+      "id": "scoped-seed-271"
+    },
+    {
+      "ask": "c",
+      "facts": [
+        "c>d",
+        "d>c",
+        "+a"
+      ],
+      "id": "scoped-seed-272"
+    },
+    {
+      "ask": "d",
+      "facts": [],
+      "id": "scoped-seed-273"
+    },
+    {
+      "ask": "d",
+      "facts": [],
+      "id": "scoped-seed-274"
+    },
+    {
+      "ask": "b",
+      "facts": [
+        "b>c@quote",
+        "a>c@real:2025",
+        "b>c@real:2025",
+        "c>d@quote",
+        "+b@real:2025"
+      ],
+      "id": "scoped-seed-275"
+    },
+    {
+      "ask": "a",
+      "facts": [
+        "d>c@real:2025",
+        "d>c@real:2026"
+      ],
+      "id": "scoped-seed-276"
+    },
+    {
+      "ask": "b",
+      "facts": [
+        "d>a",
+        "a>c@real:2026",
+        "b>c@real:2026",
+        "-b",
+        "+a@dream"
+      ],
+      "id": "scoped-seed-277"
+    },
+    {
+      "ask": "c",
+      "facts": [
+        "+a@real:2025"
+      ],
+      "id": "scoped-seed-278"
+    },
+    {
+      "ask": "c",
+      "facts": [
+        "c>d@real:2025",
+        "+d@real:2025",
+        "-b@dream",
+        "d>c"
+      ],
+      "id": "scoped-seed-279"
+    },
+    {
+      "ask": "d",
+      "facts": [
+        "a>b",
+        "+a@real:2026",
+        "b>d",
+        "-c@quote",
+        "d>c@quote"
+      ],
+      "id": "scoped-seed-280"
+    },
+    {
+      "ask": "a",
+      "facts": [
+        "a>d@dream",
+        "b>c@dream"
+      ],
+      "id": "scoped-seed-281"
+    },
+    {
+      "ask": "b",
+      "facts": [],
+      "id": "scoped-seed-282"
+    },
+    {
+      "ask": "c",
+      "facts": [
+        "b>c",
+        "c>a",
+        "c>a@quote",
+        "-c@real:2026",
+        "c>b@dream",
+        "b>a@dream"
+      ],
+      "id": "scoped-seed-283"
+    },
+    {
+      "ask": "b",
+      "facts": [
+        "+d@real:2025",
+        "d>b@quote",
+        "a>c@quote",
+        "+d@quote",
+        "-c"
+      ],
+      "id": "scoped-seed-284"
+    },
+    {
+      "ask": "a",
+      "facts": [
+        "+a@quote"
+      ],
+      "id": "scoped-seed-285"
+    },
+    {
+      "ask": "a",
+      "facts": [
+        "+c@dream",
+        "a>b",
+        "d>b@real:2026",
+        "+c@dream"
+      ],
+      "id": "scoped-seed-286"
+    },
+    {
+      "ask": "a",
+      "facts": [
+        "c>b@real:2026"
+      ],
+      "id": "scoped-seed-287"
+    },
+    {
+      "ask": "b",
+      "facts": [
+        "c>d@dream",
+        "a>c@dream",
+        "b>c@real:2025",
+        "+c"
+      ],
+      "id": "scoped-seed-288"
+    },
+    {
+      "ask": "d",
+      "facts": [
+        "c>b@quote",
+        "b>d",
+        "b>d@real:2026",
+        "-c@dream",
+        "d>b@dream",
+        "b>a",
+        "a>b@real:2025"
+      ],
+      "id": "scoped-seed-289"
+    },
+    {
+      "ask": "c",
+      "facts": [
+        "+b@dream",
+        "a>d@dream",
+        "a>d@dream",
+        "c>a@dream"
+      ],
+      "id": "scoped-seed-290"
+    },
+    {
+      "ask": "a",
+      "facts": [
+        "+c@real:2026",
+        "c>b@real:2026"
+      ],
+      "id": "scoped-seed-291"
+    },
+    {
+      "ask": "c",
+      "facts": [
+        "d>b",
+        "b>d@dream",
+        "-a@real:2026"
+      ],
+      "id": "scoped-seed-292"
+    },
+    {
+      "ask": "b",
+      "facts": [
+        "+a@real:2026",
+        "-a@real:2025",
+        "d>a",
+        "-c@real:2025",
+        "a>b@real:2025"
+      ],
+      "id": "scoped-seed-293"
+    },
+    {
+      "ask": "a",
+      "facts": [
+        "a>d@real:2025",
+        "b>a@dream",
+        "d>c@real:2025",
+        "a>c",
+        "+b@real:2025",
+        "a>c@quote",
+        "c>d@real:2026"
+      ],
+      "id": "scoped-seed-294"
+    },
+    {
+      "ask": "b",
+      "facts": [
+        "+d@dream"
+      ],
+      "id": "scoped-seed-295"
+    },
+    {
+      "ask": "a",
+      "facts": [
+        "+c@dream",
+        "d>c@real:2026"
+      ],
+      "id": "scoped-seed-296"
+    },
+    {
+      "ask": "c",
+      "facts": [
+        "d>b@quote",
+        "c>a@quote",
+        "a>d@real:2026",
+        "-d@dream",
+        "-a@real:2025",
+        "d>c"
+      ],
+      "id": "scoped-seed-297"
+    },
+    {
+      "ask": "b",
+      "facts": [
+        "+d"
+      ],
+      "id": "scoped-seed-298"
+    },
+    {
+      "ask": "d",
+      "facts": [
+        "c>d@dream",
+        "b>a@quote",
+        "b>a@quote",
+        "-c@real:2026",
+        "-b@real:2025",
+        "d>b@real:2026",
+        "a>c@real:2026"
+      ],
+      "id": "scoped-seed-299"
+    },
+    {
+      "ask": "c",
+      "facts": [],
+      "id": "scoped-seed-300"
+    },
+    {
+      "ask": "b",
+      "facts": [],
+      "id": "scoped-seed-301"
+    },
+    {
+      "ask": "d",
+      "facts": [],
+      "id": "scoped-seed-302"
+    },
+    {
+      "ask": "d",
+      "facts": [
+        "c>a@quote"
+      ],
+      "id": "scoped-seed-303"
+    },
+    {
+      "ask": "a",
+      "facts": [
+        "c>b@dream",
+        "a>d@quote"
+      ],
+      "id": "scoped-seed-304"
+    },
+    {
+      "ask": "a",
+      "facts": [
+        "-d"
+      ],
+      "id": "scoped-seed-305"
+    },
+    {
+      "ask": "b",
+      "facts": [
+        "+d@dream",
+        "-c",
+        "-d@real:2025",
+        "d>c@dream",
+        "c>d@real:2025",
+        "+c@real:2025",
+        "a>d"
+      ],
+      "id": "scoped-seed-306"
+    },
+    {
+      "ask": "a",
+      "facts": [
+        "c>b@real:2026",
+        "-a@dream",
+        "+a@quote",
+        "-c",
+        "a>b@real:2025"
+      ],
+      "id": "scoped-seed-307"
+    },
+    {
+      "ask": "c",
+      "facts": [
+        "-d@dream",
+        "c>a@real:2025",
+        "+c"
+      ],
+      "id": "scoped-seed-308"
+    },
+    {
+      "ask": "a",
+      "facts": [],
+      "id": "scoped-seed-309"
+    },
+    {
+      "ask": "b",
+      "facts": [
+        "d>b@real:2026"
+      ],
+      "id": "scoped-seed-310"
+    },
+    {
+      "ask": "a",
+      "facts": [
+        "d>b@quote",
+        "d>c@dream",
+        "d>b@dream"
+      ],
+      "id": "scoped-seed-311"
+    },
+    {
+      "ask": "c",
+      "facts": [
+        "+a",
+        "-d@real:2026",
+        "d>a@real:2026",
+        "-b@quote"
+      ],
+      "id": "scoped-seed-312"
+    },
+    {
+      "ask": "b",
+      "facts": [
+        "+a@quote",
+        "c>a@quote",
+        "-c@quote",
+        "+a@real:2025",
+        "+b",
+        "c>a@real:2025"
+      ],
+      "id": "scoped-seed-313"
+    },
+    {
+      "ask": "b",
+      "facts": [
+        "+d@real:2026",
+        "-c",
+        "a>d@real:2026"
+      ],
+      "id": "scoped-seed-314"
+    },
+    {
+      "ask": "c",
+      "facts": [
+        "+a",
+        "d>b@real:2026"
+      ],
+      "id": "scoped-seed-315"
+    },
+    {
+      "ask": "d",
+      "facts": [
+        "-d@quote",
+        "b>a@real:2025",
+        "+b",
+        "+b@quote",
+        "+b@quote",
+        "c>d@quote",
+        "-b@real:2025"
+      ],
+      "id": "scoped-seed-316"
+    },
+    {
+      "ask": "c",
+      "facts": [
+        "+d@real:2025",
+        "-a@real:2026",
+        "+d@quote",
+        "+c@real:2026",
+        "d>b@real:2026",
+        "-c@dream"
+      ],
+      "id": "scoped-seed-317"
+    },
+    {
+      "ask": "a",
+      "facts": [
+        "d>c"
+      ],
+      "id": "scoped-seed-318"
+    },
+    {
+      "ask": "c",
+      "facts": [
+        "-a@real:2025",
+        "-b@dream",
+        "c>d@real:2026",
+        "-a@quote"
+      ],
+      "id": "scoped-seed-319"
+    },
+    {
+      "ask": "b",
+      "facts": [
+        "b>d@real:2025",
+        "a>c"
+      ],
+      "id": "scoped-seed-320"
+    },
+    {
+      "ask": "d",
+      "facts": [
+        "a>b",
+        "b>d@dream",
+        "-b@real:2026",
+        "-b",
+        "b>c",
+        "+d@real:2026"
+      ],
+      "id": "scoped-seed-321"
+    },
+    {
+      "ask": "a",
+      "facts": [
+        "+d@real:2026",
+        "c>a@quote",
+        "a>b@quote"
+      ],
+      "id": "scoped-seed-322"
+    },
+    {
+      "ask": "c",
+      "facts": [
+        "-c"
+      ],
+      "id": "scoped-seed-323"
+    },
+    {
+      "ask": "b",
+      "facts": [
+        "+d",
+        "c>b"
+      ],
+      "id": "scoped-seed-324"
+    },
+    {
+      "ask": "a",
+      "facts": [
+        "c>a@quote",
+        "b>d",
+        "+a@dream",
+        "b>c@quote",
+        "+b@quote",
+        "c>d@real:2026"
+      ],
+      "id": "scoped-seed-325"
+    },
+    {
+      "ask": "d",
+      "facts": [
+        "+d@quote",
+        "+b",
+        "d>a@real:2026",
+        "+a@dream"
+      ],
+      "id": "scoped-seed-326"
+    },
+    {
+      "ask": "a",
+      "facts": [],
+      "id": "scoped-seed-327"
+    },
+    {
+      "ask": "d",
+      "facts": [
+        "-d@dream",
+        "c>d@real:2026",
+        "-a@dream",
+        "+a",
+        "d>b@quote"
+      ],
+      "id": "scoped-seed-328"
+    },
+    {
+      "ask": "d",
+      "facts": [
+        "a>b@real:2026"
+      ],
+      "id": "scoped-seed-329"
+    },
+    {
+      "ask": "c",
+      "facts": [
+        "b>a@quote"
+      ],
+      "id": "scoped-seed-330"
+    },
+    {
+      "ask": "c",
+      "facts": [
+        "-c@real:2026",
+        "c>b@real:2026",
+        "d>c",
+        "b>c@dream",
+        "d>c@real:2025",
+        "-b@quote",
+        "-c@real:2026"
+      ],
+      "id": "scoped-seed-331"
+    },
+    {
+      "ask": "b",
+      "facts": [
+        "-b@real:2025",
+        "d>a@real:2026",
+        "d>b@real:2025",
+        "-d@real:2026",
+        "b>a@dream",
+        "b>d@quote"
+      ],
+      "id": "scoped-seed-332"
+    },
+    {
+      "ask": "b",
+      "facts": [
+        "a>c",
+        "+d@quote",
+        "b>d@dream",
+        "-b@dream",
+        "+c@quote",
+        "-d@real:2025",
+        "d>c@real:2025"
+      ],
+      "id": "scoped-seed-333"
+    },
+    {
+      "ask": "a",
+      "facts": [
+        "-a@dream",
+        "d>c@dream"
+      ],
+      "id": "scoped-seed-334"
+    },
+    {
+      "ask": "c",
+      "facts": [
+        "d>a@dream",
+        "c>a@real:2025",
+        "-d",
+        "-c@real:2025",
+        "d>a@real:2026",
+        "a>b@real:2026",
+        "c>b@quote"
+      ],
+      "id": "scoped-seed-335"
+    },
+    {
+      "ask": "b",
+      "facts": [
+        "+b",
+        "+d@real:2026",
+        "d>a"
+      ],
+      "id": "scoped-seed-336"
+    },
+    {
+      "ask": "d",
+      "facts": [
+        "b>d@dream",
+        "-c@real:2025",
+        "a>d@real:2025",
+        "-d@real:2026",
+        "c>b",
+        "c>b@real:2026",
+        "+c@quote"
+      ],
+      "id": "scoped-seed-337"
+    },
+    {
+      "ask": "d",
+      "facts": [
+        "b>a@real:2026",
+        "c>b@real:2026",
+        "d>c@real:2026"
+      ],
+      "id": "scoped-seed-338"
+    },
+    {
+      "ask": "c",
+      "facts": [
+        "c>a",
+        "d>c@dream",
+        "c>b@real:2026",
+        "+a@dream",
+        "c>a@quote",
+        "d>a"
+      ],
+      "id": "scoped-seed-339"
+    },
+    {
+      "ask": "b",
+      "facts": [
+        "+b@real:2025",
+        "a>d@dream",
+        "+c@real:2025",
+        "a>c@dream",
+        "+c",
+        "c>d@real:2025",
+        "a>d@real:2026"
+      ],
+      "id": "scoped-seed-340"
+    },
+    {
+      "ask": "c",
+      "facts": [],
+      "id": "scoped-seed-341"
+    },
+    {
+      "ask": "b",
+      "facts": [
+        "-a@real:2026",
+        "a>c@real:2025",
+        "b>c@quote"
+      ],
+      "id": "scoped-seed-342"
+    },
+    {
+      "ask": "c",
+      "facts": [
+        "d>c@real:2026",
+        "b>a",
+        "d>c",
+        "+a@real:2025",
+        "b>c@real:2025"
+      ],
+      "id": "scoped-seed-343"
+    },
+    {
+      "ask": "c",
+      "facts": [
+        "-d@real:2025",
+        "b>a@real:2025",
+        "d>a@real:2026",
+        "+a@real:2026",
+        "d>c@quote",
+        "-d@dream",
+        "b>a@quote"
+      ],
+      "id": "scoped-seed-344"
+    },
+    {
+      "ask": "d",
+      "facts": [
+        "d>a",
+        "c>b@real:2026"
+      ],
+      "id": "scoped-seed-345"
+    },
+    {
+      "ask": "b",
+      "facts": [
+        "a>c",
+        "a>b@real:2025",
+        "c>d@dream"
+      ],
+      "id": "scoped-seed-346"
+    },
+    {
+      "ask": "d",
+      "facts": [
+        "c>d@real:2025"
+      ],
+      "id": "scoped-seed-347"
+    },
+    {
+      "ask": "a",
+      "facts": [
+        "d>c"
+      ],
+      "id": "scoped-seed-348"
+    },
+    {
+      "ask": "c",
+      "facts": [
+        "-c@dream",
+        "d>a@real:2026"
+      ],
+      "id": "scoped-seed-349"
+    },
+    {
+      "ask": "b",
+      "facts": [
+        "c>d@real:2025",
+        "d>c@real:2026",
+        "d>c@real:2026",
+        "+c@dream",
+        "-b@real:2026"
+      ],
+      "id": "scoped-seed-350"
+    },
+    {
+      "ask": "c",
+      "facts": [
+        "-c",
+        "b>c",
+        "c>a",
+        "b>d",
+        "a>c@real:2025",
+        "+a"
+      ],
+      "id": "scoped-seed-351"
+    },
+    {
+      "ask": "b",
+      "facts": [
+        "+a@real:2025",
+        "+a@quote",
+        "-c@real:2026",
+        "b>c@real:2025",
+        "d>a@quote",
+        "d>b@real:2025",
+        "b>a@real:2025"
+      ],
+      "id": "scoped-seed-352"
+    },
+    {
+      "ask": "d",
+      "facts": [
+        "b>d"
+      ],
+      "id": "scoped-seed-353"
+    },
+    {
+      "ask": "c",
+      "facts": [
+        "b>a@real:2025",
+        "+d@quote",
+        "c>d@quote"
+      ],
+      "id": "scoped-seed-354"
+    },
+    {
+      "ask": "c",
+      "facts": [
+        "+a@quote",
+        "+c@real:2025",
+        "-b",
+        "b>a@quote"
+      ],
+      "id": "scoped-seed-355"
+    },
+    {
+      "ask": "b",
+      "facts": [
+        "a>b@real:2025",
+        "+d",
+        "c>a@real:2026",
+        "+b@real:2025"
+      ],
+      "id": "scoped-seed-356"
+    },
+    {
+      "ask": "d",
+      "facts": [],
+      "id": "scoped-seed-357"
+    },
+    {
+      "ask": "a",
+      "facts": [
+        "b>c@real:2026"
+      ],
+      "id": "scoped-seed-358"
+    },
+    {
+      "ask": "a",
+      "facts": [
+        "-a@real:2026",
+        "c>d@real:2025"
+      ],
+      "id": "scoped-seed-359"
+    },
+    {
+      "ask": "c",
+      "facts": [
+        "a>d@real:2026",
+        "b>c",
+        "a>d@dream",
+        "c>a@dream"
+      ],
+      "id": "scoped-seed-360"
+    },
+    {
+      "ask": "a",
+      "facts": [
+        "+b",
+        "-a@quote",
+        "b>a@quote",
+        "+a@dream",
+        "-d@real:2026"
+      ],
+      "id": "scoped-seed-361"
+    },
+    {
+      "ask": "a",
+      "facts": [
+        "+c@real:2026",
+        "c>b@dream",
+        "b>c@quote",
+        "a>c",
+        "a>d@real:2026"
+      ],
+      "id": "scoped-seed-362"
+    },
+    {
+      "ask": "d",
+      "facts": [
+        "b>d@dream",
+        "+c@dream",
+        "-b@dream",
+        "+c@quote",
+        "c>b"
+      ],
+      "id": "scoped-seed-363"
+    },
+    {
+      "ask": "d",
+      "facts": [
+        "d>b@quote"
+      ],
+      "id": "scoped-seed-364"
+    },
+    {
+      "ask": "a",
+      "facts": [
+        "+d@dream",
+        "c>b@quote",
+        "c>d@quote",
+        "-c",
+        "c>d",
+        "+c@dream",
+        "d>a"
+      ],
+      "id": "scoped-seed-365"
+    },
+    {
+      "ask": "c",
+      "facts": [],
+      "id": "scoped-seed-366"
+    },
+    {
+      "ask": "d",
+      "facts": [
+        "b>d@dream",
+        "d>c"
+      ],
+      "id": "scoped-seed-367"
+    },
+    {
+      "ask": "d",
+      "facts": [],
+      "id": "scoped-seed-368"
+    },
+    {
+      "ask": "d",
+      "facts": [
+        "a>b@real:2026",
+        "a>d@dream"
+      ],
+      "id": "scoped-seed-369"
+    },
+    {
+      "ask": "d",
+      "facts": [
+        "a>b@real:2026",
+        "b>d@dream",
+        "-a@real:2025",
+        "b>a@real:2026",
+        "c>d@quote",
+        "+b@dream"
+      ],
+      "id": "scoped-seed-370"
+    },
+    {
+      "ask": "c",
+      "facts": [
+        "b>d@real:2025",
+        "-d@real:2025"
+      ],
+      "id": "scoped-seed-371"
+    },
+    {
+      "ask": "a",
+      "facts": [
+        "+a@quote",
+        "b>a",
+        "d>c@dream",
+        "a>c",
+        "a>c@quote"
+      ],
+      "id": "scoped-seed-372"
+    },
+    {
+      "ask": "a",
+      "facts": [
+        "b>d@quote",
+        "c>d@dream",
+        "c>a@real:2025"
+      ],
+      "id": "scoped-seed-373"
+    },
+    {
+      "ask": "a",
+      "facts": [
+        "a>c@dream",
+        "c>a@dream",
+        "a>d@dream",
+        "b>c@dream",
+        "c>b@real:2026",
+        "+d@real:2026"
+      ],
+      "id": "scoped-seed-374"
+    },
+    {
+      "ask": "d",
+      "facts": [
+        "d>b@dream",
+        "b>c@dream",
+        "+c",
+        "-c@dream",
+        "b>d",
+        "-b@real:2026",
+        "+d@real:2025"
+      ],
+      "id": "scoped-seed-375"
+    },
+    {
+      "ask": "d",
+      "facts": [
+        "+a",
+        "-c",
+        "+a@real:2025",
+        "c>a@real:2026",
+        "-b@dream"
+      ],
+      "id": "scoped-seed-376"
+    },
+    {
+      "ask": "c",
+      "facts": [
+        "+b@real:2025",
+        "c>d",
+        "d>c@quote",
+        "a>d@quote",
+        "b>a@dream"
+      ],
+      "id": "scoped-seed-377"
+    },
+    {
+      "ask": "d",
+      "facts": [
+        "b>a",
+        "-b@real:2025",
+        "+b@dream",
+        "-d"
+      ],
+      "id": "scoped-seed-378"
+    },
+    {
+      "ask": "b",
+      "facts": [],
+      "id": "scoped-seed-379"
+    },
+    {
+      "ask": "a",
+      "facts": [
+        "+b",
+        "-b",
+        "+d@quote",
+        "d>b@dream"
+      ],
+      "id": "scoped-seed-380"
+    },
+    {
+      "ask": "c",
+      "facts": [
+        "c>b@real:2026",
+        "c>b@quote"
+      ],
+      "id": "scoped-seed-381"
+    },
+    {
+      "ask": "c",
+      "facts": [
+        "d>c",
+        "d>a",
+        "-b@quote",
+        "d>b@real:2025",
+        "b>a@real:2025",
+        "b>a@quote",
+        "a>c@real:2026"
+      ],
+      "id": "scoped-seed-382"
+    },
+    {
+      "ask": "c",
+      "facts": [
+        "a>b@quote",
+        "+d",
+        "b>d@quote",
+        "a>d@dream",
+        "a>b@quote"
+      ],
+      "id": "scoped-seed-383"
+    },
+    {
+      "ask": "b",
+      "facts": [
+        "a>c@quote",
+        "-d@dream",
+        "c>d",
+        "c>a@dream",
+        "a>b@real:2026"
+      ],
+      "id": "scoped-seed-384"
+    },
+    {
+      "ask": "c",
+      "facts": [
+        "-d@dream",
+        "c>a@quote",
+        "b>c",
+        "+c@dream",
+        "b>c@quote",
+        "b>d@quote",
+        "b>c@real:2026"
+      ],
+      "id": "scoped-seed-385"
+    },
+    {
+      "ask": "b",
+      "facts": [
+        "a>d@quote",
+        "-a@dream",
+        "-b@quote",
+        "+d@real:2026",
+        "a>d@quote",
+        "+a@real:2025",
+        "b>d"
+      ],
+      "id": "scoped-seed-386"
+    },
+    {
+      "ask": "d",
+      "facts": [
+        "c>a",
+        "+a@real:2026",
+        "-b@quote",
+        "c>b@dream",
+        "-b@dream",
+        "a>b@dream",
+        "a>c@real:2026"
+      ],
+      "id": "scoped-seed-387"
+    },
+    {
+      "ask": "c",
+      "facts": [
+        "b>d@dream",
+        "b>d@quote",
+        "c>a@real:2026",
+        "+d@dream",
+        "-a@quote",
+        "c>a",
+        "d>c@real:2025"
+      ],
+      "id": "scoped-seed-388"
+    },
+    {
+      "ask": "a",
+      "facts": [
+        "b>c@real:2026",
+        "+a",
+        "d>b@real:2025",
+        "-d@real:2025"
+      ],
+      "id": "scoped-seed-389"
+    },
+    {
+      "ask": "d",
+      "facts": [
+        "+d@dream"
+      ],
+      "id": "scoped-seed-390"
+    },
+    {
+      "ask": "d",
+      "facts": [
+        "+a",
+        "c>b@quote",
+        "+a@dream"
+      ],
+      "id": "scoped-seed-391"
+    },
+    {
+      "ask": "a",
+      "facts": [
+        "b>a",
+        "c>a@dream",
+        "d>a@dream",
+        "b>c",
+        "-b@real:2025",
+        "+a@quote",
+        "c>a@dream"
+      ],
+      "id": "scoped-seed-392"
+    },
+    {
+      "ask": "c",
+      "facts": [
+        "+a@dream",
+        "+a@real:2026",
+        "d>a@dream",
+        "b>d@real:2026",
+        "d>b@dream"
+      ],
+      "id": "scoped-seed-393"
+    },
+    {
+      "ask": "c",
+      "facts": [
+        "b>d@quote",
+        "-a@real:2025",
+        "c>a@real:2025",
+        "b>c"
+      ],
+      "id": "scoped-seed-394"
+    },
+    {
+      "ask": "c",
+      "facts": [],
+      "id": "scoped-seed-395"
+    },
+    {
+      "ask": "c",
+      "facts": [
+        "d>a@real:2026",
+        "+d@real:2025",
+        "a>c"
+      ],
+      "id": "scoped-seed-396"
+    },
+    {
+      "ask": "d",
+      "facts": [
+        "-b@quote",
+        "a>d@real:2025"
+      ],
+      "id": "scoped-seed-397"
+    },
+    {
+      "ask": "c",
+      "facts": [
+        "-b@real:2026",
+        "a>d@quote",
+        "+b@dream",
+        "a>b",
+        "a>d@real:2025",
+        "-c@real:2026",
+        "d>b@quote"
+      ],
+      "id": "scoped-seed-398"
+    },
+    {
+      "ask": "b",
+      "facts": [
+        "c>a@real:2026"
+      ],
+      "id": "scoped-seed-399"
+    },
+    {
+      "ask": "d",
+      "facts": [
+        "-d@real:2026",
+        "a>b@real:2026",
+        "b>c@real:2025",
+        "a>c@quote",
+        "b>c@real:2026",
+        "a>b@dream"
+      ],
+      "id": "scoped-seed-400"
+    },
+    {
+      "ask": "d",
+      "facts": [
+        "+a@real:2026",
+        "d>c@real:2025",
+        "b>c@real:2026",
+        "d>b@real:2025",
+        "-a@quote",
+        "b>c@dream",
+        "b>c@quote"
+      ],
+      "id": "scoped-seed-401"
+    },
+    {
+      "ask": "d",
+      "facts": [
+        "+a@quote"
+      ],
+      "id": "scoped-seed-402"
+    },
+    {
+      "ask": "b",
+      "facts": [
+        "c>d",
+        "-b@dream",
+        "b>a@real:2025",
+        "c>b@dream",
+        "-a@quote",
+        "+c@real:2026",
+        "-c@dream"
+      ],
+      "id": "scoped-seed-403"
+    },
+    {
+      "ask": "d",
+      "facts": [
+        "+c@quote",
+        "+d",
+        "b>c@real:2026",
+        "-d@dream",
+        "c>b@real:2025"
+      ],
+      "id": "scoped-seed-404"
+    },
+    {
+      "ask": "a",
+      "facts": [
+        "-d@quote",
+        "d>c@quote",
+        "-b@real:2025",
+        "d>a@real:2025",
+        "+c@dream",
+        "a>c",
+        "+d@real:2025"
+      ],
+      "id": "scoped-seed-405"
+    },
+    {
+      "ask": "c",
+      "facts": [],
+      "id": "scoped-seed-406"
+    },
+    {
+      "ask": "b",
+      "facts": [
+        "+a@real:2026",
+        "c>b@real:2026",
+        "-d@real:2025"
+      ],
+      "id": "scoped-seed-407"
+    },
+    {
+      "ask": "a",
+      "facts": [
+        "b>d@dream",
+        "-c@real:2026",
+        "b>a",
+        "d>a@quote",
+        "-c@dream"
+      ],
+      "id": "scoped-seed-408"
+    },
+    {
+      "ask": "c",
+      "facts": [
+        "-a@real:2025",
+        "c>b@quote"
+      ],
+      "id": "scoped-seed-409"
+    },
+    {
+      "ask": "b",
+      "facts": [
+        "c>b@real:2026",
+        "a>d@dream",
+        "d>a",
+        "+a",
+        "-d@real:2025"
+      ],
+      "id": "scoped-seed-410"
+    },
+    {
+      "ask": "c",
+      "facts": [
+        "c>d@quote",
+        "d>c@real:2026",
+        "+c@real:2025",
+        "+a",
+        "c>d@dream",
+        "c>a",
+        "-c"
+      ],
+      "id": "scoped-seed-411"
+    },
+    {
+      "ask": "c",
+      "facts": [
+        "+c@real:2026",
+        "+b@quote",
+        "b>a@dream",
+        "-d@quote",
+        "a>b"
+      ],
+      "id": "scoped-seed-412"
+    },
+    {
+      "ask": "a",
+      "facts": [
+        "d>a@dream",
+        "-c",
+        "c>b@real:2025",
+        "b>d@quote",
+        "-c@real:2026"
+      ],
+      "id": "scoped-seed-413"
+    },
+    {
+      "ask": "a",
+      "facts": [],
+      "id": "scoped-seed-414"
+    },
+    {
+      "ask": "a",
+      "facts": [
+        "+a@dream"
+      ],
+      "id": "scoped-seed-415"
+    },
+    {
+      "ask": "a",
+      "facts": [
+        "+c@dream",
+        "+c@real:2025",
+        "d>c"
+      ],
+      "id": "scoped-seed-416"
+    },
+    {
+      "ask": "b",
+      "facts": [
+        "d>c@dream",
+        "+a",
+        "b>d@real:2025"
+      ],
+      "id": "scoped-seed-417"
+    },
+    {
+      "ask": "d",
+      "facts": [
+        "+d@real:2026"
+      ],
+      "id": "scoped-seed-418"
+    },
+    {
+      "ask": "d",
+      "facts": [
+        "-a@real:2025",
+        "+b@real:2025",
+        "a>b"
+      ],
+      "id": "scoped-seed-419"
+    },
+    {
+      "ask": "a",
+      "facts": [
+        "c>a",
+        "+b@real:2025"
+      ],
+      "id": "scoped-seed-420"
+    },
+    {
+      "ask": "a",
+      "facts": [
+        "b>a@quote"
+      ],
+      "id": "scoped-seed-421"
+    },
+    {
+      "ask": "c",
+      "facts": [
+        "-b@real:2026",
+        "c>a@real:2025",
+        "-a@quote",
+        "+d@dream"
+      ],
+      "id": "scoped-seed-422"
+    },
+    {
+      "ask": "d",
+      "facts": [
+        "a>c@real:2025",
+        "a>b@real:2026",
+        "+b@quote",
+        "a>d@dream",
+        "a>d@dream"
+      ],
+      "id": "scoped-seed-423"
+    },
+    {
+      "ask": "a",
+      "facts": [
+        "d>b@real:2026",
+        "d>b@quote",
+        "d>c",
+        "a>d@real:2025",
+        "b>c@dream",
+        "d>a@real:2025",
+        "c>d@dream"
+      ],
+      "id": "scoped-seed-424"
+    },
+    {
+      "ask": "d",
+      "facts": [
+        "c>d",
+        "a>b@quote"
+      ],
+      "id": "scoped-seed-425"
+    },
+    {
+      "ask": "c",
+      "facts": [
+        "a>d@real:2025",
+        "c>d",
+        "+d@real:2026",
+        "d>c@quote",
+        "c>d",
+        "b>d@dream"
+      ],
+      "id": "scoped-seed-426"
+    },
+    {
+      "ask": "a",
+      "facts": [
+        "-c@quote",
+        "c>b@real:2025",
+        "d>b@dream",
+        "-c@dream",
+        "d>b",
+        "-c@real:2026"
+      ],
+      "id": "scoped-seed-427"
+    },
+    {
+      "ask": "b",
+      "facts": [
+        "+a@real:2026",
+        "-d"
+      ],
+      "id": "scoped-seed-428"
+    },
+    {
+      "ask": "a",
+      "facts": [
+        "c>a@dream",
+        "c>a@real:2026",
+        "d>b@quote",
+        "d>c",
+        "c>b@real:2025"
+      ],
+      "id": "scoped-seed-429"
+    },
+    {
+      "ask": "c",
+      "facts": [
+        "a>c@real:2025",
+        "c>a@real:2025",
+        "-a@real:2026",
+        "+c@real:2026",
+        "d>b@real:2026",
+        "-a"
+      ],
+      "id": "scoped-seed-430"
+    },
+    {
+      "ask": "c",
+      "facts": [
+        "-a@real:2025",
+        "+c",
+        "a>b@dream",
+        "+b@dream",
+        "a>b@real:2026",
+        "d>b@dream",
+        "c>d"
+      ],
+      "id": "scoped-seed-431"
+    },
+    {
+      "ask": "b",
+      "facts": [
+        "a>c@real:2025",
+        "-c@quote",
+        "d>a@quote",
+        "+b@dream",
+        "c>b@real:2025"
+      ],
+      "id": "scoped-seed-432"
+    },
+    {
+      "ask": "c",
+      "facts": [
+        "a>d@quote"
+      ],
+      "id": "scoped-seed-433"
+    },
+    {
+      "ask": "a",
+      "facts": [
+        "a>c@real:2026",
+        "b>a@real:2026",
+        "a>c",
+        "d>c@real:2025",
+        "-b@quote"
+      ],
+      "id": "scoped-seed-434"
+    },
+    {
+      "ask": "c",
+      "facts": [],
+      "id": "scoped-seed-435"
+    },
+    {
+      "ask": "a",
+      "facts": [
+        "-a@dream",
+        "+a@real:2025",
+        "+c@quote",
+        "d>b",
+        "-b@real:2025"
+      ],
+      "id": "scoped-seed-436"
+    },
+    {
+      "ask": "c",
+      "facts": [
+        "+d",
+        "a>b@quote",
+        "c>b@real:2026",
+        "-c@real:2025",
+        "c>b@dream"
+      ],
+      "id": "scoped-seed-437"
+    },
+    {
+      "ask": "a",
+      "facts": [
+        "a>b"
+      ],
+      "id": "scoped-seed-438"
+    },
+    {
+      "ask": "a",
+      "facts": [
+        "c>d@real:2026",
+        "d>c@real:2026",
+        "c>a@real:2026"
+      ],
+      "id": "scoped-seed-439"
+    },
+    {
+      "ask": "b",
+      "facts": [],
+      "id": "scoped-seed-440"
+    },
+    {
+      "ask": "d",
+      "facts": [],
+      "id": "scoped-seed-441"
+    },
+    {
+      "ask": "a",
+      "facts": [
+        "-c@quote"
+      ],
+      "id": "scoped-seed-442"
+    },
+    {
+      "ask": "d",
+      "facts": [
+        "-b",
+        "-c@real:2026",
+        "b>a@real:2025",
+        "a>c@real:2025",
+        "c>d@dream",
+        "-a",
+        "+a@dream"
+      ],
+      "id": "scoped-seed-443"
+    },
+    {
+      "ask": "a",
+      "facts": [
+        "c>b@dream",
+        "a>d@dream",
+        "d>c@real:2026"
+      ],
+      "id": "scoped-seed-444"
+    },
+    {
+      "ask": "a",
+      "facts": [
+        "-a@quote",
+        "c>b",
+        "+d@quote",
+        "c>b@dream",
+        "b>a",
+        "d>c@quote",
+        "c>a@quote"
+      ],
+      "id": "scoped-seed-445"
+    },
+    {
+      "ask": "c",
+      "facts": [
+        "-b@dream",
+        "a>c",
+        "-a@real:2026",
+        "+d",
+        "c>a@dream"
+      ],
+      "id": "scoped-seed-446"
+    },
+    {
+      "ask": "d",
+      "facts": [],
+      "id": "scoped-seed-447"
+    },
+    {
+      "ask": "b",
+      "facts": [
+        "b>c@dream",
+        "a>d",
+        "c>a@real:2026",
+        "c>b@real:2026",
+        "+a@quote"
+      ],
+      "id": "scoped-seed-448"
+    },
+    {
+      "ask": "c",
+      "facts": [
+        "c>a@dream"
+      ],
+      "id": "scoped-seed-449"
+    },
+    {
+      "ask": "a",
+      "facts": [
+        "d>b@real:2025",
+        "+d@real:2025"
+      ],
+      "id": "scoped-seed-450"
+    },
+    {
+      "ask": "b",
+      "facts": [
+        "-d@dream"
+      ],
+      "id": "scoped-seed-451"
+    },
+    {
+      "ask": "c",
+      "facts": [
+        "c>a@dream",
+        "d>a@dream"
+      ],
+      "id": "scoped-seed-452"
+    },
+    {
+      "ask": "d",
+      "facts": [
+        "a>b@real:2026",
+        "a>d",
+        "+b",
+        "d>c@real:2026",
+        "d>b@quote"
+      ],
+      "id": "scoped-seed-453"
+    },
+    {
+      "ask": "b",
+      "facts": [
+        "+d@real:2025",
+        "b>c",
+        "b>a@real:2026",
+        "c>d@dream"
+      ],
+      "id": "scoped-seed-454"
+    },
+    {
+      "ask": "c",
+      "facts": [
+        "d>b@real:2025",
+        "-a@real:2025",
+        "c>b@real:2026",
+        "a>c@real:2026",
+        "d>a@real:2025",
+        "-a@dream"
+      ],
+      "id": "scoped-seed-455"
+    },
+    {
+      "ask": "d",
+      "facts": [
+        "c>d",
+        "b>c@real:2025",
+        "-a@real:2026",
+        "b>d@real:2026",
+        "+d@real:2026"
+      ],
+      "id": "scoped-seed-456"
+    },
+    {
+      "ask": "d",
+      "facts": [
+        "-b@dream",
+        "d>b@real:2025",
+        "d>a@real:2025"
+      ],
+      "id": "scoped-seed-457"
+    },
+    {
+      "ask": "b",
+      "facts": [
+        "+a@quote",
+        "d>a@quote",
+        "b>c"
+      ],
+      "id": "scoped-seed-458"
+    },
+    {
+      "ask": "d",
+      "facts": [
+        "-a@real:2025",
+        "c>d@real:2026",
+        "d>c@quote",
+        "-c@real:2025",
+        "-d@dream",
+        "-d",
+        "+a@quote"
+      ],
+      "id": "scoped-seed-459"
+    },
+    {
+      "ask": "b",
+      "facts": [
+        "-c@dream",
+        "b>d@quote",
+        "a>b@dream"
+      ],
+      "id": "scoped-seed-460"
+    },
+    {
+      "ask": "b",
+      "facts": [
+        "b>c@real:2026"
+      ],
+      "id": "scoped-seed-461"
+    },
+    {
+      "ask": "d",
+      "facts": [],
+      "id": "scoped-seed-462"
+    },
+    {
+      "ask": "b",
+      "facts": [
+        "b>a@dream"
+      ],
+      "id": "scoped-seed-463"
+    },
+    {
+      "ask": "c",
+      "facts": [
+        "b>a",
+        "c>b@quote",
+        "a>c@quote",
+        "d>c@quote",
+        "-b@real:2025"
+      ],
+      "id": "scoped-seed-464"
+    },
+    {
+      "ask": "c",
+      "facts": [
+        "d>a",
+        "d>b@quote",
+        "-c@quote",
+        "b>a@dream",
+        "b>c@quote",
+        "-d@quote"
+      ],
+      "id": "scoped-seed-465"
+    },
+    {
+      "ask": "c",
+      "facts": [
+        "-b@dream",
+        "a>c@dream"
+      ],
+      "id": "scoped-seed-466"
+    },
+    {
+      "ask": "c",
+      "facts": [
+        "a>c@real:2025",
+        "+d",
+        "a>b@dream",
+        "c>a@real:2026"
+      ],
+      "id": "scoped-seed-467"
+    },
+    {
+      "ask": "c",
+      "facts": [
+        "+c@real:2026",
+        "-d@dream",
+        "d>a@dream",
+        "-a@real:2026",
+        "+a"
+      ],
+      "id": "scoped-seed-468"
+    },
+    {
+      "ask": "d",
+      "facts": [],
+      "id": "scoped-seed-469"
+    },
+    {
+      "ask": "c",
+      "facts": [
+        "b>d@real:2026",
+        "c>a@real:2025"
+      ],
+      "id": "scoped-seed-470"
+    },
+    {
+      "ask": "d",
+      "facts": [
+        "d>c@dream",
+        "d>c",
+        "d>c",
+        "a>c@real:2026",
+        "-a",
+        "-d"
+      ],
+      "id": "scoped-seed-471"
+    },
+    {
+      "ask": "d",
+      "facts": [
+        "b>d@real:2025"
+      ],
+      "id": "scoped-seed-472"
+    },
+    {
+      "ask": "a",
+      "facts": [
+        "-b@quote",
+        "a>b@real:2026",
+        "d>a",
+        "+a@quote"
+      ],
+      "id": "scoped-seed-473"
+    },
+    {
+      "ask": "d",
+      "facts": [
+        "b>d@quote",
+        "a>b@real:2025",
+        "d>c@real:2026",
+        "b>d@real:2026",
+        "b>c@real:2026",
+        "c>b"
+      ],
+      "id": "scoped-seed-474"
+    },
+    {
+      "ask": "a",
+      "facts": [
+        "+b",
+        "a>c@real:2025"
+      ],
+      "id": "scoped-seed-475"
+    },
+    {
+      "ask": "d",
+      "facts": [
+        "b>a@quote",
+        "+b@quote",
+        "+b@dream",
+        "a>d@real:2026"
+      ],
+      "id": "scoped-seed-476"
+    },
+    {
+      "ask": "d",
+      "facts": [
+        "d>b@dream"
+      ],
+      "id": "scoped-seed-477"
+    },
+    {
+      "ask": "a",
+      "facts": [
+        "-a@quote",
+        "-d",
+        "d>c@dream",
+        "c>b@real:2026",
+        "+b",
+        "a>b@quote",
+        "+c@quote"
+      ],
+      "id": "scoped-seed-478"
+    },
+    {
+      "ask": "a",
+      "facts": [
+        "-a@quote",
+        "+b@real:2025",
+        "d>b",
+        "b>a@real:2025",
+        "a>d@real:2025",
+        "d>b"
+      ],
+      "id": "scoped-seed-479"
+    },
+    {
+      "ask": "a",
+      "facts": [
+        "+c@dream"
+      ],
+      "id": "scoped-seed-480"
+    },
+    {
+      "ask": "d",
+      "facts": [
+        "+d@real:2026",
+        "b>c@dream",
+        "d>a@dream"
+      ],
+      "id": "scoped-seed-481"
+    },
+    {
+      "ask": "c",
+      "facts": [
+        "+c@quote"
+      ],
+      "id": "scoped-seed-482"
+    },
+    {
+      "ask": "a",
+      "facts": [
+        "+b@real:2025",
+        "+b@quote",
+        "d>b@quote",
+        "a>d"
+      ],
+      "id": "scoped-seed-483"
+    },
+    {
+      "ask": "b",
+      "facts": [
+        "b>a@dream",
+        "-d@quote",
+        "c>a@real:2026",
+        "a>d@real:2025",
+        "b>a@dream",
+        "a>c@real:2025",
+        "-c@real:2025"
+      ],
+      "id": "scoped-seed-484"
+    },
+    {
+      "ask": "a",
+      "facts": [
+        "d>b@quote",
+        "d>c@dream",
+        "-c@dream",
+        "a>b@quote",
+        "b>d@quote",
+        "b>a@real:2026",
+        "c>d@dream"
+      ],
+      "id": "scoped-seed-485"
+    },
+    {
+      "ask": "d",
+      "facts": [
+        "-b@dream"
+      ],
+      "id": "scoped-seed-486"
+    },
+    {
+      "ask": "a",
+      "facts": [
+        "-c@quote",
+        "-d@real:2026",
+        "d>a@dream",
+        "d>a@real:2025",
+        "d>c@real:2026"
+      ],
+      "id": "scoped-seed-487"
+    },
+    {
+      "ask": "b",
+      "facts": [
+        "c>d@quote",
+        "b>c@dream"
+      ],
+      "id": "scoped-seed-488"
+    },
+    {
+      "ask": "a",
+      "facts": [
+        "b>d@dream"
+      ],
+      "id": "scoped-seed-489"
+    },
+    {
+      "ask": "c",
+      "facts": [],
+      "id": "scoped-seed-490"
+    },
+    {
+      "ask": "d",
+      "facts": [
+        "d>b@quote"
+      ],
+      "id": "scoped-seed-491"
+    },
+    {
+      "ask": "c",
+      "facts": [
+        "b>a",
+        "c>b@dream",
+        "-d",
+        "+d",
+        "a>c"
+      ],
+      "id": "scoped-seed-492"
+    },
+    {
+      "ask": "b",
+      "facts": [
+        "c>d@real:2026",
+        "-d@real:2026",
+        "+d@dream",
+        "a>c@real:2025"
+      ],
+      "id": "scoped-seed-493"
+    },
+    {
+      "ask": "a",
+      "facts": [
+        "-d",
+        "a>d@real:2025",
+        "a>b@real:2025",
+        "b>c@real:2026"
+      ],
+      "id": "scoped-seed-494"
+    },
+    {
+      "ask": "b",
+      "facts": [
+        "-d@quote",
+        "+a@quote",
+        "c>d@dream",
+        "+b@real:2025",
+        "+b@dream",
+        "-d@real:2026"
+      ],
+      "id": "scoped-seed-495"
+    },
+    {
+      "ask": "d",
+      "facts": [
+        "-a@quote",
+        "-c@real:2026",
+        "c>d@real:2026",
+        "d>a@real:2025",
+        "b>d@real:2025"
+      ],
+      "id": "scoped-seed-496"
+    },
+    {
+      "ask": "d",
+      "facts": [
+        "d>c@dream",
+        "+c@real:2025",
+        "+b@real:2025"
+      ],
+      "id": "scoped-seed-497"
+    },
+    {
+      "ask": "a",
+      "facts": [
+        "-a@real:2026",
+        "-d@dream",
+        "-c@quote"
+      ],
+      "id": "scoped-seed-498"
+    },
+    {
+      "ask": "c",
+      "facts": [
+        "d>a@real:2026",
+        "-b@real:2026",
+        "-a",
+        "-a",
+        "+d@quote"
+      ],
+      "id": "scoped-seed-499"
+    },
+    {
+      "ask": "d",
+      "facts": [
+        "c>b@quote",
+        "d>a@real:2026"
+      ],
+      "id": "scoped-seed-500"
+    },
+    {
+      "ask": "d",
+      "facts": [
+        "+b"
+      ],
+      "id": "scoped-seed-501"
+    },
+    {
+      "ask": "b",
+      "facts": [],
+      "id": "scoped-seed-502"
+    },
+    {
+      "ask": "b",
+      "facts": [
+        "a>d@quote",
+        "-a@real:2025",
+        "a>b@real:2026",
+        "+b@quote",
+        "-b",
+        "+a@real:2026"
+      ],
+      "id": "scoped-seed-503"
+    },
+    {
+      "ask": "c",
+      "facts": [
+        "-b@real:2025",
+        "b>c@quote",
+        "c>d@real:2026",
+        "-d@dream",
+        "b>a@dream"
+      ],
+      "id": "scoped-seed-504"
+    },
+    {
+      "ask": "a",
+      "facts": [],
+      "id": "scoped-seed-505"
+    },
+    {
+      "ask": "a",
+      "facts": [
+        "b>c@dream",
+        "d>b@real:2025",
+        "+d@real:2025",
+        "d>c@quote"
+      ],
+      "id": "scoped-seed-506"
+    },
+    {
+      "ask": "b",
+      "facts": [
+        "c>d@real:2026",
+        "-c"
+      ],
+      "id": "scoped-seed-507"
+    },
+    {
+      "ask": "c",
+      "facts": [
+        "-a@real:2025",
+        "-a",
+        "c>a@quote",
+        "+d@real:2026",
+        "c>d@dream",
+        "d>b@dream"
+      ],
+      "id": "scoped-seed-508"
+    },
+    {
+      "ask": "b",
+      "facts": [
+        "+b@real:2025",
+        "-c@dream",
+        "-c@quote"
+      ],
+      "id": "scoped-seed-509"
+    },
+    {
+      "ask": "b",
+      "facts": [
+        "-d@real:2026",
+        "+b@dream",
+        "b>a@dream",
+        "b>d@real:2026",
+        "d>a@real:2026"
+      ],
+      "id": "scoped-seed-510"
+    },
+    {
+      "ask": "a",
+      "facts": [
+        "a>c@dream",
+        "c>b@real:2025",
+        "+a@real:2026",
+        "b>d@real:2025",
+        "-c",
+        "-b"
+      ],
+      "id": "scoped-seed-511"
+    }
+  ],
+  "grammar": {
+    "atoms": "abcd",
+    "claim_count": 20,
+    "n": 512,
+    "scopes": [
+      "",
+      "@real:2025",
+      "@dream",
+      "@quote",
+      "@real:2026"
+    ]
+  },
+  "seed": 20261024
+}
