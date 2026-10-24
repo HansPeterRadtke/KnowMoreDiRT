@@ -1,0 +1,139 @@
+{
+  "dataset_sha256": "a0befa92cdfeee59cea154dba576f28327b871aa0b4316e2050190e529df9c3a",
+  "input_count": 10,
+  "model": "/data/models/tinyllama-1.1b-1t-openorca.Q4_0.gguf",
+  "model_sampling": "temperature=0,max_tokens=56,n_ctx=1024,2 CPU threads",
+  "seconds": 35.11906972806901,
+  "maxrss_kib": 1255136,
+  "baseline_correct": 6,
+  "model_correct": 1,
+  "model_invalid": 4,
+  "cases": [
+    {
+      "id": "original-recording-00",
+      "gold": "asserted",
+      "baseline": "hypothetical",
+      "baseline_correct": false,
+      "model_extracted_scope": "dream",
+      "model_correct": false,
+      "model_raw": "{\n  \"world\": \"dream\",\n  \"modality\": \"conditional\",\n  \"polarity\": \"asserted\"\n}",
+      "source": "kmd/Recording 2026-08-05 17-22-26-192.txt",
+      "source_char_start": 8586,
+      "source_char_end": 8936
+    },
+    {
+      "id": "original-recording-01",
+      "gold": "hypothetical",
+      "baseline": "hypothetical",
+      "baseline_correct": true,
+      "model_extracted_scope": "invalid",
+      "model_correct": false,
+      "model_raw": "{\n  \"world\": \"DRT\",\n  \"modality\": \"conditional\",\n  \"polarity\": \"asserted\",\n  \"agent_suggestion\": \"date a law can be changed\",\n  \"modality_pro",
+      "source": "kmd/Recording 2026-08-05 17-22-26-192.txt",
+      "source_char_start": 8676,
+      "source_char_end": 9021
+    },
+    {
+      "id": "original-recording-02",
+      "gold": "asserted",
+      "baseline": "asserted",
+      "baseline_correct": true,
+      "model_extracted_scope": "invalid",
+      "model_correct": false,
+      "model_raw": "{\n  \"world\": \"dream\",\n  \"modality\": \"asserted\",\n  \"polarity\": \"conditional\",\n  \"agent_suggestion\": \"modality proposal\",\n  \"agent_suggestion_type",
+      "source": "kmd/Recording 2026-08-05 17-22-26-192.txt",
+      "source_char_start": 227,
+      "source_char_end": 625
+    },
+    {
+      "id": "original-recording-03",
+      "gold": "dream",
+      "baseline": "dream",
+      "baseline_correct": true,
+      "model_extracted_scope": "dream",
+      "model_correct": true,
+      "model_raw": "{\n  \"world\": \"dream\",\n  \"modality\": \"conditional\",\n  \"polarity\": \"asserted\"\n}",
+      "source": "kmd/Recording 2026-08-06 12-09-51-499.txt",
+      "source_char_start": 155,
+      "source_char_end": 504
+    },
+    {
+      "id": "original-recording-04",
+      "gold": "conditional",
+      "baseline": "dream",
+      "baseline_correct": false,
+      "model_extracted_scope": "dream",
+      "model_correct": false,
+      "model_raw": "{\n  \"world\": \"dream\",\n  \"modality\": \"conditional\",\n  \"polarity\": \"asserted\"\n}",
+      "source": "kmd/Recording 2026-08-06 12-09-51-499.txt",
+      "source_char_start": 2105,
+      "source_char_end": 2442
+    },
+    {
+      "id": "original-recording-05",
+      "gold": "proposal",
+      "baseline": "proposal",
+      "baseline_correct": true,
+      "model_extracted_scope": "dream",
+      "model_correct": false,
+      "model_raw": "{\n  \"world\": \"dream\",\n  \"modality\": \"conditional\",\n  \"polarity\": \"asserted\"\n}",
+      "source": "kmd/Recording 2026-08-06 17-30-53-705.txt",
+      "source_char_start": 3555,
+      "source_char_end": 3894
+    },
+    {
+      "id": "original-recording-06",
+      "gold": "proposal",
+      "baseline": "asserted",
+      "baseline_correct": false,
+      "model_extracted_scope": "dream",
+      "model_correct": false,
+      "model_raw": "{\n  \"world\": \"dream\",\n  \"modality\": \"conditional\",\n  \"polarity\": \"asserted\"\n}",
+      "source": "agents/Recording 2026-10-17 23-00-29-387.txt",
+      "source_char_start": 12117,
+      "source_char_end": 12494
+    },
+    {
+      "id": "original-recording-07",
+      "gold": "speculative",
+      "baseline": "speculative",
+      "baseline_correct": true,
+      "model_extracted_scope": "invalid",
+      "model_correct": false,
+      "model_raw": "{\n  \"world\": \"dream\",\n  \"modality\": \"asserted\",\n  \"polarity\": \"basic truths\",\n  \"agent_suggestion\": \"tremely basic truths\",\n  \"philosoph",
+      "source": "agents/Recording 2026-10-18 18-38-21-960.txt",
+      "source_char_start": 5340,
+      "source_char_end": 5674
+    },
+    {
+      "id": "original-recording-08",
+      "gold": "asserted",
+      "baseline": "proposal",
+      "baseline_correct": false,
+      "model_extracted_scope": "dream",
+      "model_correct": false,
+      "model_raw": "{\n  \"world\": \"dream\",\n  \"modality\": \"conditional\",\n  \"polarity\": \"asserted\"\n}",
+      "source": "agents/Recording 2026-10-18 18-38-21-960.txt",
+      "source_char_start": 8792,
+      "source_char_end": 9138
+    },
+    {
+      "id": "original-recording-09",
+      "gold": "conditional",
+      "baseline": "conditional",
+      "baseline_correct": true,
+      "model_extracted_scope": "invalid",
+      "model_correct": false,
+      "model_raw": "{\n  \"world\": \"lumen\",\n  \"modality\": \"threshold\",\n  \"polarity\": \"exactly\"\n}",
+      "source": "agents/Recording 2026-10-18 18-38-21-960.txt",
+      "source_char_start": 9647,
+      "source_char_end": 10000
+    }
+  ],
+  "limitations": [
+    "Manually scoped natural recordings, not independent double annotations",
+    "Heuristic baseline is not strongest retriever",
+    "TinyLlama direct DRS-like JSON is not deployed KMD schema or pipeline",
+    "No real-world truth inference assessed"
+  ]
+}

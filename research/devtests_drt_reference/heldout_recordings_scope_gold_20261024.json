@@ -1,0 +1,115 @@
+{
+  "protocol": "Gold frozen before inference; exact original character spans, manually categorized in context. Held out from KMD fixtures and tuned classifiers; not independent dual-human annotation.",
+  "rows": [
+    {
+      "id": "original-recording-00",
+      "source": "kmd/Recording 2026-08-05 17-22-26-192.txt",
+      "source_sha256": "3e4f732fb9b6cfbe27ef3c4ce2ea5b1be70ccaf9a1647f0a0116865359b3a58a",
+      "source_char_start": 8586,
+      "source_char_end": 8936,
+      "anchor": "everything is called condition",
+      "anchor_start_in_excerpt": 110,
+      "excerpt": "y true under specific circumstances which can be called context or condition yeah in the literal sense in DRT everything is called condition but you simply have specific circumstances for example the date a law can be changed over time meaning you can have an old law and a new law and the text is mostly exactly identical but some minor differences ",
+      "gold_scope": "asserted"
+    },
+    {
+      "id": "original-recording-01",
+      "source": "kmd/Recording 2026-08-05 17-22-26-192.txt",
+      "source_sha256": "3e4f732fb9b6cfbe27ef3c4ce2ea5b1be70ccaf9a1647f0a0116865359b3a58a",
+      "source_char_start": 8676,
+      "source_char_end": 9021,
+      "anchor": "date a law can be changed",
+      "anchor_start_in_excerpt": 110,
+      "excerpt": "iteral sense in DRT everything is called condition but you simply have specific circumstances for example the date a law can be changed over time meaning you can have an old law and a new law and the text is mostly exactly identical but some minor differences can be extremely irrelevant this is a good example where the date is only one number ",
+      "gold_scope": "hypothetical"
+    },
+    {
+      "id": "original-recording-02",
+      "source": "kmd/Recording 2026-08-05 17-22-26-192.txt",
+      "source_sha256": "3e4f732fb9b6cfbe27ef3c4ce2ea5b1be70ccaf9a1647f0a0116865359b3a58a",
+      "source_char_start": 227,
+      "source_char_end": 625,
+      "anchor": "I definitely have to fucking create a whole fucking file system database first",
+      "anchor_start_in_excerpt": 110,
+      "excerpt": "t only. So I started out with the whole DRT theory and tried to make a system only using DRT. But I found out I definitely have to fucking create a whole fucking file system database first. Then I did some tests. um the file system database is basically a database containing every single information you can get about a file from the outside of course stuff like the folder the file name and so on",
+      "gold_scope": "asserted"
+    },
+    {
+      "id": "original-recording-03",
+      "source": "kmd/Recording 2026-08-06 12-09-51-499.txt",
+      "source_sha256": "a366bf89c5caa2748a8a8562fd42a175b1f1cb43f21bb272ba11e5f444ea7f72",
+      "source_char_start": 155,
+      "source_char_end": 504,
+      "anchor": "Timmy writing about his dream",
+      "anchor_start_in_excerpt": 110,
+      "excerpt": "rmation, something being only true under specific conditions, under specific circumstances. Yeah, like little Timmy writing about his dream where someone explains a law. You only see the chunk where the law is described, and you might actually confuse this for an official law description, something that can have terrible consequences. That's why s",
+      "gold_scope": "dream"
+    },
+    {
+      "id": "original-recording-04",
+      "source": "kmd/Recording 2026-08-06 12-09-51-499.txt",
+      "source_sha256": "a366bf89c5caa2748a8a8562fd42a175b1f1cb43f21bb272ba11e5f444ea7f72",
+      "source_char_start": 2105,
+      "source_char_end": 2442,
+      "anchor": "official evidence",
+      "anchor_start_in_excerpt": 110,
+      "excerpt": "t in the correct circumstances. So, actually, if the question is, may bicycles drive faster than cars and the official evidence is not there, so there is no real law text anywhere, then the system has to say that... I did not find any official law text in the whole database, but in this file here, I found Timmy dreaming of somebody des",
+      "gold_scope": "conditional"
+    },
+    {
+      "id": "original-recording-05",
+      "source": "kmd/Recording 2026-08-06 17-30-53-705.txt",
+      "source_sha256": "6ca1dc9acd31a77fd0cfcd6db9cbcd8cb3255866375bb9f2ab9be8d4c5792752",
+      "source_char_start": 3555,
+      "source_char_end": 3894,
+      "anchor": "ten previous chunks",
+      "anchor_start_in_excerpt": 110,
+      "excerpt": "e word cat or traffic law or whatever in a specific chunk, then we maybe need the previous chunk or maybe the ten previous chunks. Before we can decide whether to treat this under a specific condition. So, for example, to recognize a dream or something. Or if we would have to, or if we can take it for face value. That's a major question.",
+      "gold_scope": "proposal"
+    },
+    {
+      "id": "original-recording-06",
+      "source": "agents/Recording 2026-10-17 23-00-29-387.txt",
+      "source_sha256": "8f11584b194ec6fe5cad93c1b9093324824656be08f4642f6e9c305ffc2bc28d",
+      "source_char_start": 12117,
+      "source_char_end": 12494,
+      "anchor": "what questions about this topic does this text not answer",
+      "anchor_start_in_excerpt": 110,
+      "excerpt": "e can ask the LLM with something like, for example, And what questions could you ask after reading this text? What questions about this topic does this text not answer? Or stuff like, is there any contradiction inside this text? Or maybe we have two texts. Do they fully agree? And so on. and yeah other other questions can be simply made up and created and yeah then we can wo",
+      "gold_scope": "proposal"
+    },
+    {
+      "id": "original-recording-07",
+      "source": "agents/Recording 2026-10-18 18-38-21-960.txt",
+      "source_sha256": "107223d43cf20d14673b98bd7242e1723cd89a4e6028180a6b2d1a125db20eb5",
+      "source_char_start": 5340,
+      "source_char_end": 5674,
+      "anchor": "there is truth",
+      "anchor_start_in_excerpt": 110,
+      "excerpt": "tremely basic truths that can be found very, very easy. At least if you start thinking about them. Stuff like there is truth. That has to be true. Otherwise, everything would be completely ridiculous, but that, for example, could be considered an action. But we have to go further. Language is extremely difficult. That's why there ar",
+      "gold_scope": "speculative"
+    },
+    {
+      "id": "original-recording-08",
+      "source": "agents/Recording 2026-10-18 18-38-21-960.txt",
+      "source_sha256": "107223d43cf20d14673b98bd7242e1723cd89a4e6028180a6b2d1a125db20eb5",
+      "source_char_start": 8792,
+      "source_char_end": 9138,
+      "anchor": "a statement not being true",
+      "anchor_start_in_excerpt": 110,
+      "excerpt": "is not true, we might also consider the inverted conclusion. So of course you have to look into logic itself. A statement not being true does not at all mean that the opposite is true. But it can. Some statements are Boolean exclusive, meaning if a statement is wrong, then the opposite is true. For some things, that is the case. For example, th",
+      "gold_scope": "asserted"
+    },
+    {
+      "id": "original-recording-09",
+      "source": "agents/Recording 2026-10-18 18-38-21-960.txt",
+      "source_sha256": "107223d43cf20d14673b98bd7242e1723cd89a4e6028180a6b2d1a125db20eb5",
+      "source_char_start": 9647,
+      "source_char_end": 10000,
+      "anchor": "threshold that defines on and off",
+      "anchor_start_in_excerpt": 110,
+      "excerpt": "nary, maybe only on a quantum level or something. But what you can say is, when you have a lumen or millivolt threshold that defines on and off, Then you can say under this condition there are only two states on and off. But you cannot generalize it. Those are all just some examples for how extremely difficult truth finding is and that we must never e",
+      "gold_scope": "conditional"
+    }
+  ]
+}

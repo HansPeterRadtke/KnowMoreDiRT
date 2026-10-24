@@ -1,0 +1,123 @@
+{
+  "gold_sha256": "a0befa92cdfeee59cea154dba576f28327b871aa0b4316e2050190e529df9c3a",
+  "chunk_chars": 80,
+  "neighbor_window": 2,
+  "method": "Lexical query-anchor retrieval over only the case excerpt (oracle document); not corpus-scale",
+  "posthoc_exploratory": true,
+  "total": 10,
+  "anchor_recall": 10,
+  "chunk_only_correct": 5,
+  "neighbor_expanded_correct": 6,
+  "rows": [
+    {
+      "id": "original-recording-00",
+      "gold": "asserted",
+      "best_chunk_char_start": 80,
+      "best_chunk_token_overlap": 4,
+      "anchor_recovered_after_expansion": true,
+      "chunk_only_prediction": "asserted",
+      "expanded_prediction": "hypothetical",
+      "chunk_only_correct": true,
+      "expanded_correct": false
+    },
+    {
+      "id": "original-recording-01",
+      "gold": "hypothetical",
+      "best_chunk_char_start": 80,
+      "best_chunk_token_overlap": 5,
+      "anchor_recovered_after_expansion": true,
+      "chunk_only_prediction": "hypothetical",
+      "expanded_prediction": "hypothetical",
+      "chunk_only_correct": true,
+      "expanded_correct": true
+    },
+    {
+      "id": "original-recording-02",
+      "gold": "asserted",
+      "best_chunk_char_start": 80,
+      "best_chunk_token_overlap": 6,
+      "anchor_recovered_after_expansion": true,
+      "chunk_only_prediction": "asserted",
+      "expanded_prediction": "asserted",
+      "chunk_only_correct": true,
+      "expanded_correct": true
+    },
+    {
+      "id": "original-recording-03",
+      "gold": "dream",
+      "best_chunk_char_start": 80,
+      "best_chunk_token_overlap": 5,
+      "anchor_recovered_after_expansion": true,
+      "chunk_only_prediction": "dream",
+      "expanded_prediction": "dream",
+      "chunk_only_correct": true,
+      "expanded_correct": true
+    },
+    {
+      "id": "original-recording-04",
+      "gold": "conditional",
+      "best_chunk_char_start": 80,
+      "best_chunk_token_overlap": 2,
+      "anchor_recovered_after_expansion": true,
+      "chunk_only_prediction": "asserted",
+      "expanded_prediction": "dream",
+      "chunk_only_correct": false,
+      "expanded_correct": false
+    },
+    {
+      "id": "original-recording-05",
+      "gold": "proposal",
+      "best_chunk_char_start": 80,
+      "best_chunk_token_overlap": 3,
+      "anchor_recovered_after_expansion": true,
+      "chunk_only_prediction": "asserted",
+      "expanded_prediction": "proposal",
+      "chunk_only_correct": false,
+      "expanded_correct": true
+    },
+    {
+      "id": "original-recording-06",
+      "gold": "proposal",
+      "best_chunk_char_start": 80,
+      "best_chunk_token_overlap": 8,
+      "anchor_recovered_after_expansion": true,
+      "chunk_only_prediction": "asserted",
+      "expanded_prediction": "asserted",
+      "chunk_only_correct": false,
+      "expanded_correct": false
+    },
+    {
+      "id": "original-recording-07",
+      "gold": "speculative",
+      "best_chunk_char_start": 80,
+      "best_chunk_token_overlap": 3,
+      "anchor_recovered_after_expansion": true,
+      "chunk_only_prediction": "asserted",
+      "expanded_prediction": "speculative",
+      "chunk_only_correct": false,
+      "expanded_correct": true
+    },
+    {
+      "id": "original-recording-08",
+      "gold": "asserted",
+      "best_chunk_char_start": 80,
+      "best_chunk_token_overlap": 4,
+      "anchor_recovered_after_expansion": true,
+      "chunk_only_prediction": "asserted",
+      "expanded_prediction": "proposal",
+      "chunk_only_correct": true,
+      "expanded_correct": false
+    },
+    {
+      "id": "original-recording-09",
+      "gold": "conditional",
+      "best_chunk_char_start": 80,
+      "best_chunk_token_overlap": 6,
+      "anchor_recovered_after_expansion": true,
+      "chunk_only_prediction": "asserted",
+      "expanded_prediction": "conditional",
+      "chunk_only_correct": false,
+      "expanded_correct": true
+    }
+  ]
+}

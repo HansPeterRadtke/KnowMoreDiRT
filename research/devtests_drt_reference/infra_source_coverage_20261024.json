@@ -1,0 +1,4150 @@
+{
+  "snapshot_host": "raspi",
+  "repo_path": "/data/infra",
+  "snapshot_head": "41103528a9844fcb8deb5f8009ac3099edb3de46",
+  "tracked_file_count": 827,
+  "counts_by_status": {
+    "inventory_only": 764,
+    "semantic_read_complete": 15,
+    "semantic_read_partial": 8,
+    "lexical_screen_only": 40
+  },
+  "method": "git ls-files path inventory. Detailed semantic source readings belong only to status semantic_read_complete. Other statuses are not proof of coverage. No raw credentials or source file contents are stored here. Prior Nitro status and snapshot can differ.",
+  "entries": [
+    {
+      "path": ".gitignore",
+      "status": "inventory_only",
+      "semantic_scope": "Metadata path listed; no substantive content review claimed"
+    },
+    {
+      "path": "AGENTS.md",
+      "status": "semantic_read_complete",
+      "semantic_scope": "Repo ownership, permission and Git-concurrency rule"
+    },
+    {
+      "path": "README.md",
+      "status": "inventory_only",
+      "semantic_scope": "Metadata path listed; no substantive content review claimed"
+    },
+    {
+      "path": "bin/3d-model-download-status",
+      "status": "inventory_only",
+      "semantic_scope": "Metadata path listed; no substantive content review claimed"
+    },
+    {
+      "path": "bin/aubro",
+      "status": "inventory_only",
+      "semantic_scope": "Metadata path listed; no substantive content review claimed"
+    },
+    {
+      "path": "bin/calendar-automation",
+      "status": "inventory_only",
+      "semantic_scope": "Metadata path listed; no substantive content review claimed"
+    },
+    {
+      "path": "bin/calendar-mobile-pair",
+      "status": "inventory_only",
+      "semantic_scope": "Metadata path listed; no substantive content review claimed"
+    },
+    {
+      "path": "bin/call_goose.sh",
+      "status": "inventory_only",
+      "semantic_scope": "Metadata path listed; no substantive content review claimed"
+    },
+    {
+      "path": "bin/call_llama.sh",
+      "status": "inventory_only",
+      "semantic_scope": "Metadata path listed; no substantive content review claimed"
+    },
+    {
+      "path": "bin/chatgpt-chat",
+      "status": "inventory_only",
+      "semantic_scope": "Metadata path listed; no substantive content review claimed"
+    },
+    {
+      "path": "bin/check_gpu.sh",
+      "status": "inventory_only",
+      "semantic_scope": "Metadata path listed; no substantive content review claimed"
+    },
+    {
+      "path": "bin/chromium-full-power",
+      "status": "inventory_only",
+      "semantic_scope": "Metadata path listed; no substantive content review claimed"
+    },
+    {
+      "path": "bin/convert_swebench_preds.sh",
+      "status": "inventory_only",
+      "semantic_scope": "Metadata path listed; no substantive content review claimed"
+    },
+    {
+      "path": "bin/download.sh",
+      "status": "inventory_only",
+      "semantic_scope": "Metadata path listed; no substantive content review claimed"
+    },
+    {
+      "path": "bin/ez_vc.sh",
+      "status": "inventory_only",
+      "semantic_scope": "Metadata path listed; no substantive content review claimed"
+    },
+    {
+      "path": "bin/focus_notice.sh",
+      "status": "inventory_only",
+      "semantic_scope": "Metadata path listed; no substantive content review claimed"
+    },
+    {
+      "path": "bin/follow_llama.sh",
+      "status": "inventory_only",
+      "semantic_scope": "Metadata path listed; no substantive content review claimed"
+    },
+    {
+      "path": "bin/follow_system_server.sh",
+      "status": "inventory_only",
+      "semantic_scope": "Metadata path listed; no substantive content review claimed"
+    },
+    {
+      "path": "bin/git_cred_helper_github.sh",
+      "status": "inventory_only",
+      "semantic_scope": "Metadata path listed; no substantive content review claimed"
+    },
+    {
+      "path": "bin/goose.sh",
+      "status": "inventory_only",
+      "semantic_scope": "Metadata path listed; no substantive content review claimed"
+    },
+    {
+      "path": "bin/goose_agent.sh",
+      "status": "inventory_only",
+      "semantic_scope": "Metadata path listed; no substantive content review claimed"
+    },
+    {
+      "path": "bin/goose_swebench_lite_runner.sh",
+      "status": "inventory_only",
+      "semantic_scope": "Metadata path listed; no substantive content review claimed"
+    },
+    {
+      "path": "bin/install_calendar_automation.sh",
+      "status": "inventory_only",
+      "semantic_scope": "Metadata path listed; no substantive content review claimed"
+    },
+    {
+      "path": "bin/install_calendar_mobile_api.sh",
+      "status": "inventory_only",
+      "semantic_scope": "Metadata path listed; no substantive content review claimed"
+    },
+    {
+      "path": "bin/install_data01_mount.sh",
+      "status": "inventory_only",
+      "semantic_scope": "Metadata path listed; no substantive content review claimed"
+    },
+    {
+      "path": "bin/install_swaag_sandbox_prereqs.sh",
+      "status": "inventory_only",
+      "semantic_scope": "Metadata path listed; no substantive content review claimed"
+    },
+    {
+      "path": "bin/install_system_server_mcp_task.ps1",
+      "status": "inventory_only",
+      "semantic_scope": "Metadata path listed; no substantive content review claimed"
+    },
+    {
+      "path": "bin/install_system_server_task.ps1",
+      "status": "inventory_only",
+      "semantic_scope": "Metadata path listed; no substantive content review claimed"
+    },
+    {
+      "path": "bin/install_uuid_mount.sh",
+      "status": "inventory_only",
+      "semantic_scope": "Metadata path listed; no substantive content review claimed"
+    },
+    {
+      "path": "bin/install_video_library.sh",
+      "status": "inventory_only",
+      "semantic_scope": "Metadata path listed; no substantive content review claimed"
+    },
+    {
+      "path": "bin/install_web_interfaces.sh",
+      "status": "inventory_only",
+      "semantic_scope": "Metadata path listed; no substantive content review claimed"
+    },
+    {
+      "path": "bin/install_web_portal.ps1",
+      "status": "inventory_only",
+      "semantic_scope": "Metadata path listed; no substantive content review claimed"
+    },
+    {
+      "path": "bin/install_web_portal.sh",
+      "status": "inventory_only",
+      "semantic_scope": "Metadata path listed; no substantive content review claimed"
+    },
+    {
+      "path": "bin/llama-bench",
+      "status": "inventory_only",
+      "semantic_scope": "Metadata path listed; no substantive content review claimed"
+    },
+    {
+      "path": "bin/llama-cli",
+      "status": "inventory_only",
+      "semantic_scope": "Metadata path listed; no substantive content review claimed"
+    },
+    {
+      "path": "bin/llama-server",
+      "status": "inventory_only",
+      "semantic_scope": "Metadata path listed; no substantive content review claimed"
+    },
+    {
+      "path": "bin/llama.sh",
+      "status": "inventory_only",
+      "semantic_scope": "Metadata path listed; no substantive content review claimed"
+    },
+    {
+      "path": "bin/mini_swe.sh",
+      "status": "inventory_only",
+      "semantic_scope": "Metadata path listed; no substantive content review claimed"
+    },
+    {
+      "path": "bin/mini_swebench_local_runner.sh",
+      "status": "inventory_only",
+      "semantic_scope": "Metadata path listed; no substantive content review claimed"
+    },
+    {
+      "path": "bin/openhands.sh",
+      "status": "inventory_only",
+      "semantic_scope": "Metadata path listed; no substantive content review claimed"
+    },
+    {
+      "path": "bin/openhands_swebench_lite_runner.sh",
+      "status": "inventory_only",
+      "semantic_scope": "Metadata path listed; no substantive content review claimed"
+    },
+    {
+      "path": "bin/password-generator",
+      "status": "inventory_only",
+      "semantic_scope": "Metadata path listed; no substantive content review claimed"
+    },
+    {
+      "path": "bin/password-generator.ps1",
+      "status": "inventory_only",
+      "semantic_scope": "Metadata path listed; no substantive content review claimed"
+    },
+    {
+      "path": "bin/ppt-master",
+      "status": "inventory_only",
+      "semantic_scope": "Metadata path listed; no substantive content review claimed"
+    },
+    {
+      "path": "bin/ram_overview.sh",
+      "status": "inventory_only",
+      "semantic_scope": "Metadata path listed; no substantive content review claimed"
+    },
+    {
+      "path": "bin/run_official_swebench_eval.sh",
+      "status": "inventory_only",
+      "semantic_scope": "Metadata path listed; no substantive content review claimed"
+    },
+    {
+      "path": "bin/safe-restart-system-server",
+      "status": "inventory_only",
+      "semantic_scope": "Metadata path listed; no substantive content review claimed"
+    },
+    {
+      "path": "bin/seed_vc.sh",
+      "status": "inventory_only",
+      "semantic_scope": "Metadata path listed; no substantive content review claimed"
+    },
+    {
+      "path": "bin/set_web_portal_password.ps1",
+      "status": "inventory_only",
+      "semantic_scope": "Metadata path listed; no substantive content review claimed"
+    },
+    {
+      "path": "bin/set_web_portal_password.sh",
+      "status": "inventory_only",
+      "semantic_scope": "Metadata path listed; no substantive content review claimed"
+    },
+    {
+      "path": "bin/split_zips.sh",
+      "status": "inventory_only",
+      "semantic_scope": "Metadata path listed; no substantive content review claimed"
+    },
+    {
+      "path": "bin/start-model-service",
+      "status": "inventory_only",
+      "semantic_scope": "Metadata path listed; no substantive content review claimed"
+    },
+    {
+      "path": "bin/stop_goose.sh",
+      "status": "inventory_only",
+      "semantic_scope": "Metadata path listed; no substantive content review claimed"
+    },
+    {
+      "path": "bin/stop_llama.sh",
+      "status": "inventory_only",
+      "semantic_scope": "Metadata path listed; no substantive content review claimed"
+    },
+    {
+      "path": "bin/stop_openhands.sh",
+      "status": "inventory_only",
+      "semantic_scope": "Metadata path listed; no substantive content review claimed"
+    },
+    {
+      "path": "bin/storage-audit",
+      "status": "inventory_only",
+      "semantic_scope": "Metadata path listed; no substantive content review claimed"
+    },
+    {
+      "path": "bin/stt.sh",
+      "status": "inventory_only",
+      "semantic_scope": "Metadata path listed; no substantive content review claimed"
+    },
+    {
+      "path": "bin/swaag",
+      "status": "inventory_only",
+      "semantic_scope": "Metadata path listed; no substantive content review claimed"
+    },
+    {
+      "path": "bin/swe_agent.sh",
+      "status": "inventory_only",
+      "semantic_scope": "Metadata path listed; no substantive content review claimed"
+    },
+    {
+      "path": "bin/sweagent_swebench_local_runner.sh",
+      "status": "inventory_only",
+      "semantic_scope": "Metadata path listed; no substantive content review claimed"
+    },
+    {
+      "path": "bin/sync_host_identity.sh",
+      "status": "inventory_only",
+      "semantic_scope": "Metadata path listed; no substantive content review claimed"
+    },
+    {
+      "path": "bin/system_server.ps1",
+      "status": "inventory_only",
+      "semantic_scope": "Metadata path listed; no substantive content review claimed"
+    },
+    {
+      "path": "bin/system_server.sh",
+      "status": "inventory_only",
+      "semantic_scope": "Metadata path listed; no substantive content review claimed"
+    },
+    {
+      "path": "bin/system_server_mcp.ps1",
+      "status": "inventory_only",
+      "semantic_scope": "Metadata path listed; no substantive content review claimed"
+    },
+    {
+      "path": "bin/tilix_grid_8.sh",
+      "status": "inventory_only",
+      "semantic_scope": "Metadata path listed; no substantive content review claimed"
+    },
+    {
+      "path": "bin/tmux.real",
+      "status": "inventory_only",
+      "semantic_scope": "Metadata path listed; no substantive content review claimed"
+    },
+    {
+      "path": "bin/tts.sh",
+      "status": "inventory_only",
+      "semantic_scope": "Metadata path listed; no substantive content review claimed"
+    },
+    {
+      "path": "bin/unity-editor",
+      "status": "inventory_only",
+      "semantic_scope": "Metadata path listed; no substantive content review claimed"
+    },
+    {
+      "path": "bin/voice_changer_cli.sh",
+      "status": "inventory_only",
+      "semantic_scope": "Metadata path listed; no substantive content review claimed"
+    },
+    {
+      "path": "bin/voice_changer_gui.sh",
+      "status": "inventory_only",
+      "semantic_scope": "Metadata path listed; no substantive content review claimed"
+    },
+    {
+      "path": "bin/window_layout.sh",
+      "status": "inventory_only",
+      "semantic_scope": "Metadata path listed; no substantive content review claimed"
+    },
+    {
+      "path": "bin/workload-safety-status",
+      "status": "inventory_only",
+      "semantic_scope": "Metadata path listed; no substantive content review claimed"
+    },
+    {
+      "path": "bin/zip.sh",
+      "status": "inventory_only",
+      "semantic_scope": "Metadata path listed; no substantive content review claimed"
+    },
+    {
+      "path": "bootstrap.py",
+      "status": "inventory_only",
+      "semantic_scope": "Metadata path listed; no substantive content review claimed"
+    },
+    {
+      "path": "docs/README.md",
+      "status": "inventory_only",
+      "semantic_scope": "Metadata path listed; no substantive content review claimed"
+    },
+    {
+      "path": "docs/aubro.md",
+      "status": "inventory_only",
+      "semantic_scope": "Metadata path listed; no substantive content review claimed"
+    },
+    {
+      "path": "docs/calendar-automation.md",
+      "status": "inventory_only",
+      "semantic_scope": "Metadata path listed; no substantive content review claimed"
+    },
+    {
+      "path": "docs/calendar-mobile.md",
+      "status": "inventory_only",
+      "semantic_scope": "Metadata path listed; no substantive content review claimed"
+    },
+    {
+      "path": "docs/gallery-viewport-contract.md",
+      "status": "inventory_only",
+      "semantic_scope": "Metadata path listed; no substantive content review claimed"
+    },
+    {
+      "path": "docs/google-mail-calendar-chatgpt-handover.md",
+      "status": "inventory_only",
+      "semantic_scope": "Metadata path listed; no substantive content review claimed"
+    },
+    {
+      "path": "docs/google-operations.md",
+      "status": "inventory_only",
+      "semantic_scope": "Metadata path listed; no substantive content review claimed"
+    },
+    {
+      "path": "docs/guidlines/OPEN_QUESTIONS_AUDIT_2026-10-09.md",
+      "status": "inventory_only",
+      "semantic_scope": "Metadata path listed; no substantive content review claimed"
+    },
+    {
+      "path": "docs/guidlines/README.md",
+      "status": "semantic_read_complete",
+      "semantic_scope": "Recording authority, semantics, user priority and audio-style instructions"
+    },
+    {
+      "path": "docs/guidlines/RESEARCH_2026-08-30.md",
+      "status": "inventory_only",
+      "semantic_scope": "Metadata path listed; no substantive content review claimed"
+    },
+    {
+      "path": "docs/guidlines/RESEARCH_AUDIT.md",
+      "status": "inventory_only",
+      "semantic_scope": "Metadata path listed; no substantive content review claimed"
+    },
+    {
+      "path": "docs/guidlines/agents.md",
+      "status": "inventory_only",
+      "semantic_scope": "Metadata path listed; no substantive content review claimed"
+    },
+    {
+      "path": "docs/guidlines/agents/architecture.md",
+      "status": "semantic_read_partial",
+      "semantic_scope": "Selected orchestration/resource sections and lines reviewed"
+    },
+    {
+      "path": "docs/guidlines/agents/context_quality_and_relevance.md",
+      "status": "semantic_read_partial",
+      "semantic_scope": "Section keyword/line excerpts reviewed; not full text"
+    },
+    {
+      "path": "docs/guidlines/agents/fast_user_facing_dispatch_and_preemption.md",
+      "status": "inventory_only",
+      "semantic_scope": "Metadata path listed; no substantive content review claimed"
+    },
+    {
+      "path": "docs/guidlines/agents/history_storage_and_deletion.md",
+      "status": "semantic_read_complete",
+      "semantic_scope": "History retention and explicit user deletion across all derivatives"
+    },
+    {
+      "path": "docs/guidlines/agents/large_sources.md",
+      "status": "semantic_read_partial",
+      "semantic_scope": "Selected complete substantive lines and source-handling principles reviewed"
+    },
+    {
+      "path": "docs/guidlines/agents/research_and_evidence.md",
+      "status": "semantic_read_complete",
+      "semantic_scope": "Premise and fact separation, conditional derivation, open world, model agreement not proof"
+    },
+    {
+      "path": "docs/guidlines/agents/reusable_workspace_and_tool_forge.md",
+      "status": "inventory_only",
+      "semantic_scope": "Metadata path listed; no substantive content review claimed"
+    },
+    {
+      "path": "docs/guidlines/agents/user_goals_and_answer_first_communication.md",
+      "status": "inventory_only",
+      "semantic_scope": "Metadata path listed; no substantive content review claimed"
+    },
+    {
+      "path": "docs/guidlines/agents/voice_turn_taking_and_priority.md",
+      "status": "inventory_only",
+      "semantic_scope": "Metadata path listed; no substantive content review claimed"
+    },
+    {
+      "path": "docs/guidlines/appendix/recording-coverage.md",
+      "status": "semantic_read_partial",
+      "semantic_scope": "Recording routing/ledger lines, not semantic completeness"
+    },
+    {
+      "path": "docs/guidlines/appendix/recording-integration-2026-10-24.md",
+      "status": "semantic_read_partial",
+      "semantic_scope": "File inventory and selected references, not full text"
+    },
+    {
+      "path": "docs/guidlines/appendix/recording-research-2026-10-24.md",
+      "status": "semantic_read_complete",
+      "semantic_scope": "DRS and OWL/PROV-O/solver alternatives, local validation caveats"
+    },
+    {
+      "path": "docs/guidlines/appendix/research-and-alternatives.md",
+      "status": "inventory_only",
+      "semantic_scope": "Metadata path listed; no substantive content review claimed"
+    },
+    {
+      "path": "docs/guidlines/appendix/source-preservation.md",
+      "status": "inventory_only",
+      "semantic_scope": "Metadata path listed; no substantive content review claimed"
+    },
+    {
+      "path": "docs/guidlines/configuration.md",
+      "status": "inventory_only",
+      "semantic_scope": "Metadata path listed; no substantive content review claimed"
+    },
+    {
+      "path": "docs/guidlines/constraint_decoding.txt",
+      "status": "inventory_only",
+      "semantic_scope": "Metadata path listed; no substantive content review claimed"
+    },
+    {
+      "path": "docs/guidlines/doc/audio_style.md",
+      "status": "semantic_read_complete",
+      "semantic_scope": "Natural spoken reporting and output formatting"
+    },
+    {
+      "path": "docs/guidlines/games/core_and_modalities.md",
+      "status": "inventory_only",
+      "semantic_scope": "Metadata path listed; no substantive content review claimed"
+    },
+    {
+      "path": "docs/guidlines/games/early_game_engagement_and_onboarding.md",
+      "status": "inventory_only",
+      "semantic_scope": "Metadata path listed; no substantive content review claimed"
+    },
+    {
+      "path": "docs/guidlines/games/hidden_systems_and_player_research.md",
+      "status": "inventory_only",
+      "semantic_scope": "Metadata path listed; no substantive content review claimed"
+    },
+    {
+      "path": "docs/guidlines/games/learned_habits_and_automation.md",
+      "status": "inventory_only",
+      "semantic_scope": "Metadata path listed; no substantive content review claimed"
+    },
+    {
+      "path": "docs/guidlines/games/physical_character_model.md",
+      "status": "inventory_only",
+      "semantic_scope": "Metadata path listed; no substantive content review claimed"
+    },
+    {
+      "path": "docs/guidlines/games/playability_realism_and_saving.md",
+      "status": "inventory_only",
+      "semantic_scope": "Metadata path listed; no substantive content review claimed"
+    },
+    {
+      "path": "docs/guidlines/games/semantic_physics_text_loop.md",
+      "status": "inventory_only",
+      "semantic_scope": "Metadata path listed; no substantive content review claimed"
+    },
+    {
+      "path": "docs/guidlines/games/standard_game_foundation.md",
+      "status": "inventory_only",
+      "semantic_scope": "Metadata path listed; no substantive content review claimed"
+    },
+    {
+      "path": "docs/guidlines/games/world_and_generation.md",
+      "status": "inventory_only",
+      "semantic_scope": "Metadata path listed; no substantive content review claimed"
+    },
+    {
+      "path": "docs/guidlines/gui/INDEX_FOR_BOTS.md",
+      "status": "inventory_only",
+      "semantic_scope": "Metadata path listed; no substantive content review claimed"
+    },
+    {
+      "path": "docs/guidlines/gui/README.md",
+      "status": "inventory_only",
+      "semantic_scope": "Metadata path listed; no substantive content review claimed"
+    },
+    {
+      "path": "docs/guidlines/gui/REFERENCES.md",
+      "status": "inventory_only",
+      "semantic_scope": "Metadata path listed; no substantive content review claimed"
+    },
+    {
+      "path": "docs/guidlines/gui/bidirectional_ai_ui_and_live_design.md",
+      "status": "inventory_only",
+      "semantic_scope": "Metadata path listed; no substantive content review claimed"
+    },
+    {
+      "path": "docs/guidlines/gui/core/01_question_first_design.md",
+      "status": "inventory_only",
+      "semantic_scope": "Metadata path listed; no substantive content review claimed"
+    },
+    {
+      "path": "docs/guidlines/gui/core/02_screen_question_contract.md",
+      "status": "inventory_only",
+      "semantic_scope": "Metadata path listed; no substantive content review claimed"
+    },
+    {
+      "path": "docs/guidlines/gui/core/03_module_purpose_contract.md",
+      "status": "inventory_only",
+      "semantic_scope": "Metadata path listed; no substantive content review claimed"
+    },
+    {
+      "path": "docs/guidlines/gui/core/04_visibility_priority_model.md",
+      "status": "inventory_only",
+      "semantic_scope": "Metadata path listed; no substantive content review claimed"
+    },
+    {
+      "path": "docs/guidlines/gui/core/05_rejection_gates.md",
+      "status": "inventory_only",
+      "semantic_scope": "Metadata path listed; no substantive content review claimed"
+    },
+    {
+      "path": "docs/guidlines/gui/core/06_action_acknowledgement_and_progress.md",
+      "status": "inventory_only",
+      "semantic_scope": "Metadata path listed; no substantive content review claimed"
+    },
+    {
+      "path": "docs/guidlines/gui/core/color.md",
+      "status": "inventory_only",
+      "semantic_scope": "Metadata path listed; no substantive content review claimed"
+    },
+    {
+      "path": "docs/guidlines/gui/core/status_visibility.md",
+      "status": "inventory_only",
+      "semantic_scope": "Metadata path listed; no substantive content review claimed"
+    },
+    {
+      "path": "docs/guidlines/gui/domains/backtest_results.md",
+      "status": "inventory_only",
+      "semantic_scope": "Metadata path listed; no substantive content review claimed"
+    },
+    {
+      "path": "docs/guidlines/gui/domains/backtest_running.md",
+      "status": "inventory_only",
+      "semantic_scope": "Metadata path listed; no substantive content review claimed"
+    },
+    {
+      "path": "docs/guidlines/gui/domains/etf_combo_search.md",
+      "status": "inventory_only",
+      "semantic_scope": "Metadata path listed; no substantive content review claimed"
+    },
+    {
+      "path": "docs/guidlines/gui/domains/live_trading.md",
+      "status": "inventory_only",
+      "semantic_scope": "Metadata path listed; no substantive content review claimed"
+    },
+    {
+      "path": "docs/guidlines/gui/domains/optimization.md",
+      "status": "inventory_only",
+      "semantic_scope": "Metadata path listed; no substantive content review claimed"
+    },
+    {
+      "path": "docs/guidlines/gui/domains/options_search.md",
+      "status": "inventory_only",
+      "semantic_scope": "Metadata path listed; no substantive content review claimed"
+    },
+    {
+      "path": "docs/guidlines/gui/domains/portfolio_overview.md",
+      "status": "inventory_only",
+      "semantic_scope": "Metadata path listed; no substantive content review claimed"
+    },
+    {
+      "path": "docs/guidlines/gui/platforms/android.md",
+      "status": "inventory_only",
+      "semantic_scope": "Metadata path listed; no substantive content review claimed"
+    },
+    {
+      "path": "docs/guidlines/gui/platforms/desktop_general.md",
+      "status": "inventory_only",
+      "semantic_scope": "Metadata path listed; no substantive content review claimed"
+    },
+    {
+      "path": "docs/guidlines/gui/platforms/qt_desktop.md",
+      "status": "inventory_only",
+      "semantic_scope": "Metadata path listed; no substantive content review claimed"
+    },
+    {
+      "path": "docs/guidlines/gui/platforms/tablet_large_screen.md",
+      "status": "inventory_only",
+      "semantic_scope": "Metadata path listed; no substantive content review claimed"
+    },
+    {
+      "path": "docs/guidlines/gui/platforms/web.md",
+      "status": "inventory_only",
+      "semantic_scope": "Metadata path listed; no substantive content review claimed"
+    },
+    {
+      "path": "docs/guidlines/gui/recipes/bad_good_examples.md",
+      "status": "inventory_only",
+      "semantic_scope": "Metadata path listed; no substantive content review claimed"
+    },
+    {
+      "path": "docs/guidlines/gui/recipes/charts.md",
+      "status": "inventory_only",
+      "semantic_scope": "Metadata path listed; no substantive content review claimed"
+    },
+    {
+      "path": "docs/guidlines/gui/recipes/loading_and_health.md",
+      "status": "inventory_only",
+      "semantic_scope": "Metadata path listed; no substantive content review claimed"
+    },
+    {
+      "path": "docs/guidlines/gui/recipes/metric_dictionary.md",
+      "status": "inventory_only",
+      "semantic_scope": "Metadata path listed; no substantive content review claimed"
+    },
+    {
+      "path": "docs/guidlines/gui/recipes/tables_text_numbers.md",
+      "status": "inventory_only",
+      "semantic_scope": "Metadata path listed; no substantive content review claimed"
+    },
+    {
+      "path": "docs/guidlines/gui/recipes/tests_and_verification.md",
+      "status": "inventory_only",
+      "semantic_scope": "Metadata path listed; no substantive content review claimed"
+    },
+    {
+      "path": "docs/guidlines/gui/templates/module_purpose_contract_template.md",
+      "status": "inventory_only",
+      "semantic_scope": "Metadata path listed; no substantive content review claimed"
+    },
+    {
+      "path": "docs/guidlines/gui/templates/screen_contract_template.md",
+      "status": "inventory_only",
+      "semantic_scope": "Metadata path listed; no substantive content review claimed"
+    },
+    {
+      "path": "docs/guidlines/gui/templates/task_prompt_template.md",
+      "status": "inventory_only",
+      "semantic_scope": "Metadata path listed; no substantive content review claimed"
+    },
+    {
+      "path": "docs/guidlines/gui/voice_interfaces.md",
+      "status": "inventory_only",
+      "semantic_scope": "Metadata path listed; no substantive content review claimed"
+    },
+    {
+      "path": "docs/guidlines/kmd/knowledge_and_memory_design.md",
+      "status": "semantic_read_complete",
+      "semantic_scope": "KMD file metadata, chunk spans, vectors and DRS scope; name source"
+    },
+    {
+      "path": "docs/guidlines/knowledge_retrieval.md",
+      "status": "semantic_read_complete",
+      "semantic_scope": "Dream/world/time/default factual scope, neighbor/DRS alternatives and corpus-only answering"
+    },
+    {
+      "path": "docs/guidlines/logging.md",
+      "status": "inventory_only",
+      "semantic_scope": "Metadata path listed; no substantive content review claimed"
+    },
+    {
+      "path": "docs/guidlines/mediaediting/README.md",
+      "status": "inventory_only",
+      "semantic_scope": "Metadata path listed; no substantive content review claimed"
+    },
+    {
+      "path": "docs/guidlines/network_transport_and_testing.md",
+      "status": "inventory_only",
+      "semantic_scope": "Metadata path listed; no substantive content review claimed"
+    },
+    {
+      "path": "docs/guidlines/networking.md",
+      "status": "inventory_only",
+      "semantic_scope": "Metadata path listed; no substantive content review claimed"
+    },
+    {
+      "path": "docs/guidlines/original-recordings/Default/Recording 2026-08-04 09-50-01.txt",
+      "status": "inventory_only",
+      "semantic_scope": "Metadata path listed; no substantive content review claimed"
+    },
+    {
+      "path": "docs/guidlines/original-recordings/Default/Recording 2026-08-04 09-52-49.txt",
+      "status": "inventory_only",
+      "semantic_scope": "Metadata path listed; no substantive content review claimed"
+    },
+    {
+      "path": "docs/guidlines/original-recordings/Default/Recording 2026-08-04 13-51-42.txt",
+      "status": "inventory_only",
+      "semantic_scope": "Metadata path listed; no substantive content review claimed"
+    },
+    {
+      "path": "docs/guidlines/original-recordings/Default/Voicebutton E2E smoke test (10).txt",
+      "status": "inventory_only",
+      "semantic_scope": "Metadata path listed; no substantive content review claimed"
+    },
+    {
+      "path": "docs/guidlines/original-recordings/Default/Voicebutton E2E smoke test (11).txt",
+      "status": "inventory_only",
+      "semantic_scope": "Metadata path listed; no substantive content review claimed"
+    },
+    {
+      "path": "docs/guidlines/original-recordings/Default/Voicebutton E2E smoke test (12).txt",
+      "status": "inventory_only",
+      "semantic_scope": "Metadata path listed; no substantive content review claimed"
+    },
+    {
+      "path": "docs/guidlines/original-recordings/Default/Voicebutton E2E smoke test (13).txt",
+      "status": "inventory_only",
+      "semantic_scope": "Metadata path listed; no substantive content review claimed"
+    },
+    {
+      "path": "docs/guidlines/original-recordings/Default/Voicebutton E2E smoke test (2).txt",
+      "status": "inventory_only",
+      "semantic_scope": "Metadata path listed; no substantive content review claimed"
+    },
+    {
+      "path": "docs/guidlines/original-recordings/Default/Voicebutton E2E smoke test (3).txt",
+      "status": "inventory_only",
+      "semantic_scope": "Metadata path listed; no substantive content review claimed"
+    },
+    {
+      "path": "docs/guidlines/original-recordings/Default/Voicebutton E2E smoke test (5).txt",
+      "status": "inventory_only",
+      "semantic_scope": "Metadata path listed; no substantive content review claimed"
+    },
+    {
+      "path": "docs/guidlines/original-recordings/Default/Voicebutton E2E smoke test (6).txt",
+      "status": "inventory_only",
+      "semantic_scope": "Metadata path listed; no substantive content review claimed"
+    },
+    {
+      "path": "docs/guidlines/original-recordings/Default/Voicebutton E2E smoke test (7).txt",
+      "status": "inventory_only",
+      "semantic_scope": "Metadata path listed; no substantive content review claimed"
+    },
+    {
+      "path": "docs/guidlines/original-recordings/Default/Voicebutton E2E smoke test (8).txt",
+      "status": "inventory_only",
+      "semantic_scope": "Metadata path listed; no substantive content review claimed"
+    },
+    {
+      "path": "docs/guidlines/original-recordings/Default/Voicebutton E2E smoke test (9).txt",
+      "status": "inventory_only",
+      "semantic_scope": "Metadata path listed; no substantive content review claimed"
+    },
+    {
+      "path": "docs/guidlines/original-recordings/Default/Voicebutton E2E smoke test.txt",
+      "status": "inventory_only",
+      "semantic_scope": "Metadata path listed; no substantive content review claimed"
+    },
+    {
+      "path": "docs/guidlines/original-recordings/agents/Recording 2026-08-04 10-27-01.txt",
+      "status": "lexical_screen_only",
+      "semantic_scope": "Searched for KMD, DRT, DRS, inference/knowledge/contradiction terms; not read completely"
+    },
+    {
+      "path": "docs/guidlines/original-recordings/agents/Recording 2026-08-04 10-27-24.txt",
+      "status": "lexical_screen_only",
+      "semantic_scope": "Searched for KMD, DRT, DRS, inference/knowledge/contradiction terms; not read completely"
+    },
+    {
+      "path": "docs/guidlines/original-recordings/agents/Recording 2026-08-04 10-36-47.txt",
+      "status": "lexical_screen_only",
+      "semantic_scope": "Searched for KMD, DRT, DRS, inference/knowledge/contradiction terms; not read completely"
+    },
+    {
+      "path": "docs/guidlines/original-recordings/agents/Recording 2026-08-04 19-21-08.txt",
+      "status": "lexical_screen_only",
+      "semantic_scope": "Searched for KMD, DRT, DRS, inference/knowledge/contradiction terms; not read completely"
+    },
+    {
+      "path": "docs/guidlines/original-recordings/agents/Recording 2026-08-05 11-39-16.txt",
+      "status": "lexical_screen_only",
+      "semantic_scope": "Searched for KMD, DRT, DRS, inference/knowledge/contradiction terms; not read completely"
+    },
+    {
+      "path": "docs/guidlines/original-recordings/agents/Recording 2026-08-05 12-00-31.txt",
+      "status": "lexical_screen_only",
+      "semantic_scope": "Searched for KMD, DRT, DRS, inference/knowledge/contradiction terms; not read completely"
+    },
+    {
+      "path": "docs/guidlines/original-recordings/agents/Recording 2026-08-06 17-47-36-666.txt",
+      "status": "lexical_screen_only",
+      "semantic_scope": "Searched for KMD, DRT, DRS, inference/knowledge/contradiction terms; not read completely"
+    },
+    {
+      "path": "docs/guidlines/original-recordings/agents/Recording 2026-08-07 12-43-50-515.txt",
+      "status": "lexical_screen_only",
+      "semantic_scope": "Searched for KMD, DRT, DRS, inference/knowledge/contradiction terms; not read completely"
+    },
+    {
+      "path": "docs/guidlines/original-recordings/agents/Recording 2026-08-09 13-35-10-245.txt",
+      "status": "lexical_screen_only",
+      "semantic_scope": "Searched for KMD, DRT, DRS, inference/knowledge/contradiction terms; not read completely"
+    },
+    {
+      "path": "docs/guidlines/original-recordings/agents/Recording 2026-08-10 12-20-47-854.txt",
+      "status": "lexical_screen_only",
+      "semantic_scope": "Searched for KMD, DRT, DRS, inference/knowledge/contradiction terms; not read completely"
+    },
+    {
+      "path": "docs/guidlines/original-recordings/agents/Recording 2026-08-11 11-49-55-272.txt",
+      "status": "lexical_screen_only",
+      "semantic_scope": "Searched for KMD, DRT, DRS, inference/knowledge/contradiction terms; not read completely"
+    },
+    {
+      "path": "docs/guidlines/original-recordings/agents/Recording 2026-08-11 12-06-27-811.txt",
+      "status": "lexical_screen_only",
+      "semantic_scope": "Searched for KMD, DRT, DRS, inference/knowledge/contradiction terms; not read completely"
+    },
+    {
+      "path": "docs/guidlines/original-recordings/agents/Recording 2026-08-18 18-49-23-836.txt",
+      "status": "lexical_screen_only",
+      "semantic_scope": "Searched for KMD, DRT, DRS, inference/knowledge/contradiction terms; not read completely"
+    },
+    {
+      "path": "docs/guidlines/original-recordings/agents/Recording 2026-08-19 18-37-20-756.txt",
+      "status": "lexical_screen_only",
+      "semantic_scope": "Searched for KMD, DRT, DRS, inference/knowledge/contradiction terms; not read completely"
+    },
+    {
+      "path": "docs/guidlines/original-recordings/agents/Recording 2026-08-20 18-28-49-000.txt",
+      "status": "lexical_screen_only",
+      "semantic_scope": "Searched for KMD, DRT, DRS, inference/knowledge/contradiction terms; not read completely"
+    },
+    {
+      "path": "docs/guidlines/original-recordings/agents/Recording 2026-08-21 20-48-36-202.txt",
+      "status": "lexical_screen_only",
+      "semantic_scope": "Searched for KMD, DRT, DRS, inference/knowledge/contradiction terms; not read completely"
+    },
+    {
+      "path": "docs/guidlines/original-recordings/agents/Recording 2026-08-24 12-54-18-186.txt",
+      "status": "lexical_screen_only",
+      "semantic_scope": "Searched for KMD, DRT, DRS, inference/knowledge/contradiction terms; not read completely"
+    },
+    {
+      "path": "docs/guidlines/original-recordings/agents/Recording 2026-08-24 17-37-48-367.txt",
+      "status": "lexical_screen_only",
+      "semantic_scope": "Searched for KMD, DRT, DRS, inference/knowledge/contradiction terms; not read completely"
+    },
+    {
+      "path": "docs/guidlines/original-recordings/agents/Recording 2026-08-24 19-26-50-252.txt",
+      "status": "lexical_screen_only",
+      "semantic_scope": "Searched for KMD, DRT, DRS, inference/knowledge/contradiction terms; not read completely"
+    },
+    {
+      "path": "docs/guidlines/original-recordings/agents/Recording 2026-08-25 11-38-51-829.txt",
+      "status": "lexical_screen_only",
+      "semantic_scope": "Searched for KMD, DRT, DRS, inference/knowledge/contradiction terms; not read completely"
+    },
+    {
+      "path": "docs/guidlines/original-recordings/agents/Recording 2026-08-26 06-30-01-466.txt",
+      "status": "lexical_screen_only",
+      "semantic_scope": "Searched for KMD, DRT, DRS, inference/knowledge/contradiction terms; not read completely"
+    },
+    {
+      "path": "docs/guidlines/original-recordings/agents/Recording 2026-08-27 07-44-58-232.txt",
+      "status": "lexical_screen_only",
+      "semantic_scope": "Searched for KMD, DRT, DRS, inference/knowledge/contradiction terms; not read completely"
+    },
+    {
+      "path": "docs/guidlines/original-recordings/agents/Recording 2026-08-29 16-51-40-798.txt",
+      "status": "lexical_screen_only",
+      "semantic_scope": "Searched for KMD, DRT, DRS, inference/knowledge/contradiction terms; not read completely"
+    },
+    {
+      "path": "docs/guidlines/original-recordings/agents/Recording 2026-08-30 16-37-33-908.txt",
+      "status": "lexical_screen_only",
+      "semantic_scope": "Searched for KMD, DRT, DRS, inference/knowledge/contradiction terms; not read completely"
+    },
+    {
+      "path": "docs/guidlines/original-recordings/agents/Recording 2026-08-30 20-48-42-423.txt",
+      "status": "lexical_screen_only",
+      "semantic_scope": "Searched for KMD, DRT, DRS, inference/knowledge/contradiction terms; not read completely"
+    },
+    {
+      "path": "docs/guidlines/original-recordings/agents/Recording 2026-09-02 06-20-58-642.txt",
+      "status": "lexical_screen_only",
+      "semantic_scope": "Searched for KMD, DRT, DRS, inference/knowledge/contradiction terms; not read completely"
+    },
+    {
+      "path": "docs/guidlines/original-recordings/agents/Recording 2026-09-02 12-25-33-881.txt",
+      "status": "lexical_screen_only",
+      "semantic_scope": "Searched for KMD, DRT, DRS, inference/knowledge/contradiction terms; not read completely"
+    },
+    {
+      "path": "docs/guidlines/original-recordings/agents/Recording 2026-09-03 19-37-36-767.txt",
+      "status": "lexical_screen_only",
+      "semantic_scope": "Searched for KMD, DRT, DRS, inference/knowledge/contradiction terms; not read completely"
+    },
+    {
+      "path": "docs/guidlines/original-recordings/agents/Recording 2026-09-06 10-59-50-580.txt",
+      "status": "lexical_screen_only",
+      "semantic_scope": "Searched for KMD, DRT, DRS, inference/knowledge/contradiction terms; not read completely"
+    },
+    {
+      "path": "docs/guidlines/original-recordings/agents/Recording 2026-09-10 12-42-34-972.txt",
+      "status": "lexical_screen_only",
+      "semantic_scope": "Searched for KMD, DRT, DRS, inference/knowledge/contradiction terms; not read completely"
+    },
+    {
+      "path": "docs/guidlines/original-recordings/agents/Recording 2026-09-14 12-13-21-828.txt",
+      "status": "lexical_screen_only",
+      "semantic_scope": "Searched for KMD, DRT, DRS, inference/knowledge/contradiction terms; not read completely"
+    },
+    {
+      "path": "docs/guidlines/original-recordings/agents/Recording 2026-09-16 22-57-59-230.txt",
+      "status": "lexical_screen_only",
+      "semantic_scope": "Searched for KMD, DRT, DRS, inference/knowledge/contradiction terms; not read completely"
+    },
+    {
+      "path": "docs/guidlines/original-recordings/agents/Recording 2026-09-17 11-49-21-406.txt",
+      "status": "lexical_screen_only",
+      "semantic_scope": "Searched for KMD, DRT, DRS, inference/knowledge/contradiction terms; not read completely"
+    },
+    {
+      "path": "docs/guidlines/original-recordings/agents/Recording 2026-10-03 15-13-24-878.txt",
+      "status": "lexical_screen_only",
+      "semantic_scope": "Searched for KMD, DRT, DRS, inference/knowledge/contradiction terms; not read completely"
+    },
+    {
+      "path": "docs/guidlines/original-recordings/agents/Recording 2026-10-04 10-18-01-427.txt",
+      "status": "lexical_screen_only",
+      "semantic_scope": "Searched for KMD, DRT, DRS, inference/knowledge/contradiction terms; not read completely"
+    },
+    {
+      "path": "docs/guidlines/original-recordings/agents/Recording 2026-10-12 17-15-15-205.txt",
+      "status": "lexical_screen_only",
+      "semantic_scope": "Searched for KMD, DRT, DRS, inference/knowledge/contradiction terms; not read completely"
+    },
+    {
+      "path": "docs/guidlines/original-recordings/agents/Recording 2026-10-14 12-41-21-326.txt",
+      "status": "lexical_screen_only",
+      "semantic_scope": "Searched for KMD, DRT, DRS, inference/knowledge/contradiction terms; not read completely"
+    },
+    {
+      "path": "docs/guidlines/original-recordings/agents/Recording 2026-10-15 17-41-19-190.txt",
+      "status": "lexical_screen_only",
+      "semantic_scope": "Searched for KMD, DRT, DRS, inference/knowledge/contradiction terms; not read completely"
+    },
+    {
+      "path": "docs/guidlines/original-recordings/agents/Recording 2026-10-17 13-00-28-020.txt",
+      "status": "lexical_screen_only",
+      "semantic_scope": "Searched for KMD, DRT, DRS, inference/knowledge/contradiction terms; not read completely"
+    },
+    {
+      "path": "docs/guidlines/original-recordings/agents/Recording 2026-10-17 23-00-29-387.txt",
+      "status": "semantic_read_complete",
+      "semantic_scope": "Research loops, dense material retained, open questions, comparing texts, formal logic/axiom caveats"
+    },
+    {
+      "path": "docs/guidlines/original-recordings/agents/Recording 2026-10-18 18-38-21-960.txt",
+      "status": "semantic_read_complete",
+      "semantic_scope": "Formal knowledge and provenance, hypotheses and falsification, conditional assumptions, model consensus calibration"
+    },
+    {
+      "path": "docs/guidlines/original-recordings/agents/Recording 2026-10-19 17-53-10-580.txt",
+      "status": "lexical_screen_only",
+      "semantic_scope": "Searched for KMD, DRT, DRS, inference/knowledge/contradiction terms; not read completely"
+    },
+    {
+      "path": "docs/guidlines/original-recordings/agents/Recording 2026-10-20 11-48-38-894.txt",
+      "status": "semantic_read_partial",
+      "semantic_scope": "First six thousand of about thirteen thousand characters read, history guideline read in full"
+    },
+    {
+      "path": "docs/guidlines/original-recordings/games/Recording 2026-08-13 17-37-45-601.txt",
+      "status": "inventory_only",
+      "semantic_scope": "Metadata path listed; no substantive content review claimed"
+    },
+    {
+      "path": "docs/guidlines/original-recordings/games/Recording 2026-08-13 18-11-36-235.txt",
+      "status": "inventory_only",
+      "semantic_scope": "Metadata path listed; no substantive content review claimed"
+    },
+    {
+      "path": "docs/guidlines/original-recordings/games/Recording 2026-08-14 13-01-57-849.txt",
+      "status": "inventory_only",
+      "semantic_scope": "Metadata path listed; no substantive content review claimed"
+    },
+    {
+      "path": "docs/guidlines/original-recordings/games/Recording 2026-08-14 16-27-52-325.txt",
+      "status": "inventory_only",
+      "semantic_scope": "Metadata path listed; no substantive content review claimed"
+    },
+    {
+      "path": "docs/guidlines/original-recordings/games/Recording 2026-08-14 17-01-32-916.txt",
+      "status": "inventory_only",
+      "semantic_scope": "Metadata path listed; no substantive content review claimed"
+    },
+    {
+      "path": "docs/guidlines/original-recordings/games/Recording 2026-08-14 17-49-02-029.txt",
+      "status": "inventory_only",
+      "semantic_scope": "Metadata path listed; no substantive content review claimed"
+    },
+    {
+      "path": "docs/guidlines/original-recordings/games/Recording 2026-09-22 16-21-16-561.txt",
+      "status": "inventory_only",
+      "semantic_scope": "Metadata path listed; no substantive content review claimed"
+    },
+    {
+      "path": "docs/guidlines/original-recordings/games/Recording 2026-09-22 19-29-45-708.txt",
+      "status": "inventory_only",
+      "semantic_scope": "Metadata path listed; no substantive content review claimed"
+    },
+    {
+      "path": "docs/guidlines/original-recordings/games/Recording 2026-09-23 07-45-59-368.txt",
+      "status": "inventory_only",
+      "semantic_scope": "Metadata path listed; no substantive content review claimed"
+    },
+    {
+      "path": "docs/guidlines/original-recordings/games/Recording 2026-09-23 12-43-37-539.txt",
+      "status": "inventory_only",
+      "semantic_scope": "Metadata path listed; no substantive content review claimed"
+    },
+    {
+      "path": "docs/guidlines/original-recordings/games/Recording 2026-09-23 18-07-16-763.txt",
+      "status": "inventory_only",
+      "semantic_scope": "Metadata path listed; no substantive content review claimed"
+    },
+    {
+      "path": "docs/guidlines/original-recordings/games/Recording 2026-09-24 11-11-22-318.txt",
+      "status": "inventory_only",
+      "semantic_scope": "Metadata path listed; no substantive content review claimed"
+    },
+    {
+      "path": "docs/guidlines/original-recordings/games/Recording 2026-09-24 14-06-13-020.txt",
+      "status": "inventory_only",
+      "semantic_scope": "Metadata path listed; no substantive content review claimed"
+    },
+    {
+      "path": "docs/guidlines/original-recordings/games/Recording 2026-09-24 19-08-31-060.txt",
+      "status": "inventory_only",
+      "semantic_scope": "Metadata path listed; no substantive content review claimed"
+    },
+    {
+      "path": "docs/guidlines/original-recordings/games/Recording 2026-09-24 20-20-06-214.txt",
+      "status": "inventory_only",
+      "semantic_scope": "Metadata path listed; no substantive content review claimed"
+    },
+    {
+      "path": "docs/guidlines/original-recordings/games/Recording 2026-09-25 18-40-43-161.txt",
+      "status": "inventory_only",
+      "semantic_scope": "Metadata path listed; no substantive content review claimed"
+    },
+    {
+      "path": "docs/guidlines/original-recordings/games/Recording 2026-09-25 21-49-14-988.txt",
+      "status": "inventory_only",
+      "semantic_scope": "Metadata path listed; no substantive content review claimed"
+    },
+    {
+      "path": "docs/guidlines/original-recordings/games/Recording 2026-09-25 21-49-53-432.txt",
+      "status": "inventory_only",
+      "semantic_scope": "Metadata path listed; no substantive content review claimed"
+    },
+    {
+      "path": "docs/guidlines/original-recordings/games/Recording 2026-10-09 12-16-12-908.txt",
+      "status": "inventory_only",
+      "semantic_scope": "Metadata path listed; no substantive content review claimed"
+    },
+    {
+      "path": "docs/guidlines/original-recordings/games/Recording 2026-10-09 18-04-17-301.txt",
+      "status": "inventory_only",
+      "semantic_scope": "Metadata path listed; no substantive content review claimed"
+    },
+    {
+      "path": "docs/guidlines/original-recordings/games/Recording 2026-10-10 18-14-53-924.txt",
+      "status": "inventory_only",
+      "semantic_scope": "Metadata path listed; no substantive content review claimed"
+    },
+    {
+      "path": "docs/guidlines/original-recordings/games/Recording 2026-10-10 18-42-09-059.txt",
+      "status": "inventory_only",
+      "semantic_scope": "Metadata path listed; no substantive content review claimed"
+    },
+    {
+      "path": "docs/guidlines/original-recordings/games/Recording 2026-10-14 18-33-46-960.txt",
+      "status": "inventory_only",
+      "semantic_scope": "Metadata path listed; no substantive content review claimed"
+    },
+    {
+      "path": "docs/guidlines/original-recordings/general/config/Recording 2026-08-10 17-25-49-264.txt",
+      "status": "inventory_only",
+      "semantic_scope": "Metadata path listed; no substantive content review claimed"
+    },
+    {
+      "path": "docs/guidlines/original-recordings/general/config/Recording 2026-08-21 06-46-58-804.txt",
+      "status": "inventory_only",
+      "semantic_scope": "Metadata path listed; no substantive content review claimed"
+    },
+    {
+      "path": "docs/guidlines/original-recordings/general/config/Recording 2026-08-31 12-31-37-822.txt",
+      "status": "inventory_only",
+      "semantic_scope": "Metadata path listed; no substantive content review claimed"
+    },
+    {
+      "path": "docs/guidlines/original-recordings/general/logging/Recording 2026-08-09 18-44-42-295.txt",
+      "status": "inventory_only",
+      "semantic_scope": "Metadata path listed; no substantive content review claimed"
+    },
+    {
+      "path": "docs/guidlines/original-recordings/general/logging/Recording 2026-08-09 18-45-04-576.txt",
+      "status": "inventory_only",
+      "semantic_scope": "Metadata path listed; no substantive content review claimed"
+    },
+    {
+      "path": "docs/guidlines/original-recordings/general/network/Recording 2026-08-07 12-59-34-262.txt",
+      "status": "inventory_only",
+      "semantic_scope": "Metadata path listed; no substantive content review claimed"
+    },
+    {
+      "path": "docs/guidlines/original-recordings/general/network/Recording 2026-08-07 17-53-06-299.txt",
+      "status": "inventory_only",
+      "semantic_scope": "Metadata path listed; no substantive content review claimed"
+    },
+    {
+      "path": "docs/guidlines/original-recordings/general/network/Recording 2026-08-20 13-05-36-584.txt",
+      "status": "inventory_only",
+      "semantic_scope": "Metadata path listed; no substantive content review claimed"
+    },
+    {
+      "path": "docs/guidlines/original-recordings/general/network/Recording 2026-10-06 11-24-06-508.txt",
+      "status": "inventory_only",
+      "semantic_scope": "Metadata path listed; no substantive content review claimed"
+    },
+    {
+      "path": "docs/guidlines/original-recordings/general/programming/Recording 2026-08-26 21-01-35-467.txt",
+      "status": "inventory_only",
+      "semantic_scope": "Metadata path listed; no substantive content review claimed"
+    },
+    {
+      "path": "docs/guidlines/original-recordings/general/programming/Recording 2026-08-27 13-07-44-756.txt",
+      "status": "inventory_only",
+      "semantic_scope": "Metadata path listed; no substantive content review claimed"
+    },
+    {
+      "path": "docs/guidlines/original-recordings/general/programming/Recording 2026-08-27 19-35-37-192.txt",
+      "status": "inventory_only",
+      "semantic_scope": "Metadata path listed; no substantive content review claimed"
+    },
+    {
+      "path": "docs/guidlines/original-recordings/general/programming/Recording 2026-08-28 07-36-32-915.txt",
+      "status": "inventory_only",
+      "semantic_scope": "Metadata path listed; no substantive content review claimed"
+    },
+    {
+      "path": "docs/guidlines/original-recordings/general/programming/Recording 2026-08-28 18-41-20-415.txt",
+      "status": "inventory_only",
+      "semantic_scope": "Metadata path listed; no substantive content review claimed"
+    },
+    {
+      "path": "docs/guidlines/original-recordings/general/programming/Recording 2026-08-28 18-41-45-580.txt",
+      "status": "inventory_only",
+      "semantic_scope": "Metadata path listed; no substantive content review claimed"
+    },
+    {
+      "path": "docs/guidlines/original-recordings/general/programming/Recording 2026-09-01 18-26-08-628.txt",
+      "status": "inventory_only",
+      "semantic_scope": "Metadata path listed; no substantive content review claimed"
+    },
+    {
+      "path": "docs/guidlines/original-recordings/general/programming/Recording 2026-09-07 12-13-37-378.txt",
+      "status": "inventory_only",
+      "semantic_scope": "Metadata path listed; no substantive content review claimed"
+    },
+    {
+      "path": "docs/guidlines/original-recordings/general/programming/Recording 2026-09-07 16-57-57-943.txt",
+      "status": "inventory_only",
+      "semantic_scope": "Metadata path listed; no substantive content review claimed"
+    },
+    {
+      "path": "docs/guidlines/original-recordings/general/programming/Recording 2026-09-09 17-53-23-726.txt",
+      "status": "inventory_only",
+      "semantic_scope": "Metadata path listed; no substantive content review claimed"
+    },
+    {
+      "path": "docs/guidlines/original-recordings/general/programming/Recording 2026-09-10 17-57-18-069.txt",
+      "status": "inventory_only",
+      "semantic_scope": "Metadata path listed; no substantive content review claimed"
+    },
+    {
+      "path": "docs/guidlines/original-recordings/general/programming/Recording 2026-09-17 07-42-28-553.txt",
+      "status": "inventory_only",
+      "semantic_scope": "Metadata path listed; no substantive content review claimed"
+    },
+    {
+      "path": "docs/guidlines/original-recordings/general/programming/Recording 2026-09-18 18-22-26-547.txt",
+      "status": "inventory_only",
+      "semantic_scope": "Metadata path listed; no substantive content review claimed"
+    },
+    {
+      "path": "docs/guidlines/original-recordings/general/programming/Recording 2026-09-19 09-03-14-084.txt",
+      "status": "inventory_only",
+      "semantic_scope": "Metadata path listed; no substantive content review claimed"
+    },
+    {
+      "path": "docs/guidlines/original-recordings/general/programming/Recording 2026-09-20 10-00-31-110.txt",
+      "status": "inventory_only",
+      "semantic_scope": "Metadata path listed; no substantive content review claimed"
+    },
+    {
+      "path": "docs/guidlines/original-recordings/general/programming/Recording 2026-09-26 09-29-14-271.txt",
+      "status": "inventory_only",
+      "semantic_scope": "Metadata path listed; no substantive content review claimed"
+    },
+    {
+      "path": "docs/guidlines/original-recordings/general/programming/Recording 2026-09-27 12-45-39-038.txt",
+      "status": "inventory_only",
+      "semantic_scope": "Metadata path listed; no substantive content review claimed"
+    },
+    {
+      "path": "docs/guidlines/original-recordings/general/programming/Recording 2026-09-27 19-44-45-736.txt",
+      "status": "inventory_only",
+      "semantic_scope": "Metadata path listed; no substantive content review claimed"
+    },
+    {
+      "path": "docs/guidlines/original-recordings/general/programming/Recording 2026-09-27 20-56-31-463.txt",
+      "status": "inventory_only",
+      "semantic_scope": "Metadata path listed; no substantive content review claimed"
+    },
+    {
+      "path": "docs/guidlines/original-recordings/general/programming/Recording 2026-10-07 18-02-02-878.txt",
+      "status": "inventory_only",
+      "semantic_scope": "Metadata path listed; no substantive content review claimed"
+    },
+    {
+      "path": "docs/guidlines/original-recordings/general/testing/Recording 2026-08-15 20-49-36-478.txt",
+      "status": "inventory_only",
+      "semantic_scope": "Metadata path listed; no substantive content review claimed"
+    },
+    {
+      "path": "docs/guidlines/original-recordings/general/testing/Recording 2026-08-16 15-18-25-301.txt",
+      "status": "inventory_only",
+      "semantic_scope": "Metadata path listed; no substantive content review claimed"
+    },
+    {
+      "path": "docs/guidlines/original-recordings/general/testing/Recording 2026-08-16 15-21-52-298.txt",
+      "status": "inventory_only",
+      "semantic_scope": "Metadata path listed; no substantive content review claimed"
+    },
+    {
+      "path": "docs/guidlines/original-recordings/general/testing/Recording 2026-08-20 17-24-02-965.txt",
+      "status": "inventory_only",
+      "semantic_scope": "Metadata path listed; no substantive content review claimed"
+    },
+    {
+      "path": "docs/guidlines/original-recordings/general/testing/Recording 2026-09-23 08-47-18-577.txt",
+      "status": "inventory_only",
+      "semantic_scope": "Metadata path listed; no substantive content review claimed"
+    },
+    {
+      "path": "docs/guidlines/original-recordings/gui/Recording 2026-08-02 09-05-03-221.txt",
+      "status": "inventory_only",
+      "semantic_scope": "Metadata path listed; no substantive content review claimed"
+    },
+    {
+      "path": "docs/guidlines/original-recordings/gui/Recording 2026-08-06 05-59-55-646.txt",
+      "status": "inventory_only",
+      "semantic_scope": "Metadata path listed; no substantive content review claimed"
+    },
+    {
+      "path": "docs/guidlines/original-recordings/gui/Recording 2026-08-11 16-21-19-567.txt",
+      "status": "inventory_only",
+      "semantic_scope": "Metadata path listed; no substantive content review claimed"
+    },
+    {
+      "path": "docs/guidlines/original-recordings/gui/Recording 2026-08-17 17-41-05-624.txt",
+      "status": "inventory_only",
+      "semantic_scope": "Metadata path listed; no substantive content review claimed"
+    },
+    {
+      "path": "docs/guidlines/original-recordings/gui/Recording 2026-08-20 06-28-29-010.txt",
+      "status": "inventory_only",
+      "semantic_scope": "Metadata path listed; no substantive content review claimed"
+    },
+    {
+      "path": "docs/guidlines/original-recordings/gui/Recording 2026-08-20 12-40-27-187.txt",
+      "status": "inventory_only",
+      "semantic_scope": "Metadata path listed; no substantive content review claimed"
+    },
+    {
+      "path": "docs/guidlines/original-recordings/gui/Recording 2026-08-21 13-20-26-329.txt",
+      "status": "inventory_only",
+      "semantic_scope": "Metadata path listed; no substantive content review claimed"
+    },
+    {
+      "path": "docs/guidlines/original-recordings/gui/Recording 2026-08-27 18-49-13-262.txt",
+      "status": "inventory_only",
+      "semantic_scope": "Metadata path listed; no substantive content review claimed"
+    },
+    {
+      "path": "docs/guidlines/original-recordings/gui/Recording 2026-09-03 18-57-52-081.txt",
+      "status": "inventory_only",
+      "semantic_scope": "Metadata path listed; no substantive content review claimed"
+    },
+    {
+      "path": "docs/guidlines/original-recordings/gui/Recording 2026-09-05 10-49-12-342.txt",
+      "status": "inventory_only",
+      "semantic_scope": "Metadata path listed; no substantive content review claimed"
+    },
+    {
+      "path": "docs/guidlines/original-recordings/gui/Recording 2026-09-16 11-18-49-098.txt",
+      "status": "inventory_only",
+      "semantic_scope": "Metadata path listed; no substantive content review claimed"
+    },
+    {
+      "path": "docs/guidlines/original-recordings/gui/Recording 2026-10-10 17-44-18-524.txt",
+      "status": "inventory_only",
+      "semantic_scope": "Metadata path listed; no substantive content review claimed"
+    },
+    {
+      "path": "docs/guidlines/original-recordings/gui/Recording 2026-10-16 12-21-39-986.txt",
+      "status": "inventory_only",
+      "semantic_scope": "Metadata path listed; no substantive content review claimed"
+    },
+    {
+      "path": "docs/guidlines/original-recordings/gui/Recovered recording e621bbf3.txt",
+      "status": "inventory_only",
+      "semantic_scope": "Metadata path listed; no substantive content review claimed"
+    },
+    {
+      "path": "docs/guidlines/original-recordings/kmd/Recording 2026-08-05 17-22-26-192.txt",
+      "status": "semantic_read_complete",
+      "semantic_scope": "Source file metadata, chunks/offsets, embeddings, iterative and cross-chunk DRS, dream-law and date scopes"
+    },
+    {
+      "path": "docs/guidlines/original-recordings/kmd/Recording 2026-08-06 12-09-51-499.txt",
+      "status": "semantic_read_complete",
+      "semantic_scope": "Timmy dream not an official law, real-world unknown, scoped related evidence, semantic evaluation"
+    },
+    {
+      "path": "docs/guidlines/original-recordings/kmd/Recording 2026-08-06 17-30-53-705.txt",
+      "status": "semantic_read_complete",
+      "semantic_scope": "Context budget, vectors/query expansion, earlier/later/distant scope, retroactive dream disclosure"
+    },
+    {
+      "path": "docs/guidlines/original-recordings/mediaediting/Recording 2026-10-23 11-36-58-668.txt",
+      "status": "inventory_only",
+      "semantic_scope": "Metadata path listed; no substantive content review claimed"
+    },
+    {
+      "path": "docs/guidlines/original-recordings/mediaediting/Recording 2026-10-23 17-14-05-661.txt",
+      "status": "inventory_only",
+      "semantic_scope": "Metadata path listed; no substantive content review claimed"
+    },
+    {
+      "path": "docs/guidlines/original-recordings/projects/Recording 2026-08-21 19-27-04-642.txt",
+      "status": "inventory_only",
+      "semantic_scope": "Metadata path listed; no substantive content review claimed"
+    },
+    {
+      "path": "docs/guidlines/original-recordings/projects/Recording 2026-08-21 19-31-23-759.txt",
+      "status": "inventory_only",
+      "semantic_scope": "Metadata path listed; no substantive content review claimed"
+    },
+    {
+      "path": "docs/guidlines/original-recordings/test1/Recording 2026-07-28 18-04-27-909.txt",
+      "status": "inventory_only",
+      "semantic_scope": "Metadata path listed; no substantive content review claimed"
+    },
+    {
+      "path": "docs/guidlines/original-recordings/test1/Recording 2026-08-02 08-18-36-831.txt",
+      "status": "inventory_only",
+      "semantic_scope": "Metadata path listed; no substantive content review claimed"
+    },
+    {
+      "path": "docs/guidlines/original-recordings/test1/Recording 2026-08-06 20-13-41-794.txt",
+      "status": "inventory_only",
+      "semantic_scope": "Metadata path listed; no substantive content review claimed"
+    },
+    {
+      "path": "docs/guidlines/original-recordings/test1/Recording 2026-08-06 20-55-54-374.txt",
+      "status": "inventory_only",
+      "semantic_scope": "Metadata path listed; no substantive content review claimed"
+    },
+    {
+      "path": "docs/guidlines/original-recordings/test1/Recording 2026-08-06 20-57-12-902.txt",
+      "status": "inventory_only",
+      "semantic_scope": "Metadata path listed; no substantive content review claimed"
+    },
+    {
+      "path": "docs/guidlines/original-recordings/test1/Recording 2026-08-06 22-17-25-669.txt",
+      "status": "inventory_only",
+      "semantic_scope": "Metadata path listed; no substantive content review claimed"
+    },
+    {
+      "path": "docs/guidlines/original-recordings/test1/Recording 2026-08-07 17-46-51-452.txt",
+      "status": "inventory_only",
+      "semantic_scope": "Metadata path listed; no substantive content review claimed"
+    },
+    {
+      "path": "docs/guidlines/original-recordings/test1/Recording 2026-08-07 17-48-23-700.txt",
+      "status": "inventory_only",
+      "semantic_scope": "Metadata path listed; no substantive content review claimed"
+    },
+    {
+      "path": "docs/guidlines/original-recordings/test1/Recording 2026-08-07 17-49-13-419.txt",
+      "status": "inventory_only",
+      "semantic_scope": "Metadata path listed; no substantive content review claimed"
+    },
+    {
+      "path": "docs/guidlines/original-recordings/test1/Recording 2026-08-07 17-50-05-286.txt",
+      "status": "inventory_only",
+      "semantic_scope": "Metadata path listed; no substantive content review claimed"
+    },
+    {
+      "path": "docs/guidlines/original-recordings/test1/Recording 2026-08-07 18-57-18-421.txt",
+      "status": "inventory_only",
+      "semantic_scope": "Metadata path listed; no substantive content review claimed"
+    },
+    {
+      "path": "docs/guidlines/original-recordings/test1/Recording 2026-08-07 20-22-53-272.txt",
+      "status": "inventory_only",
+      "semantic_scope": "Metadata path listed; no substantive content review claimed"
+    },
+    {
+      "path": "docs/guidlines/original-recordings/test1/Recording 2026-08-07 20-24-09-601.txt",
+      "status": "inventory_only",
+      "semantic_scope": "Metadata path listed; no substantive content review claimed"
+    },
+    {
+      "path": "docs/guidlines/original-recordings/test1/Recording 2026-08-07 22-08-48-917.txt",
+      "status": "inventory_only",
+      "semantic_scope": "Metadata path listed; no substantive content review claimed"
+    },
+    {
+      "path": "docs/guidlines/original-recordings/test1/Recording 2026-08-07 22-10-44-304.txt",
+      "status": "inventory_only",
+      "semantic_scope": "Metadata path listed; no substantive content review claimed"
+    },
+    {
+      "path": "docs/guidlines/original-recordings/test1/Recording 2026-08-07 22-13-49-080.txt",
+      "status": "inventory_only",
+      "semantic_scope": "Metadata path listed; no substantive content review claimed"
+    },
+    {
+      "path": "docs/guidlines/original-recordings/test1/Recording 2026-08-08 13-03-03-852.txt",
+      "status": "inventory_only",
+      "semantic_scope": "Metadata path listed; no substantive content review claimed"
+    },
+    {
+      "path": "docs/guidlines/original-recordings/test1/Recording 2026-08-09 13-32-17-557.txt",
+      "status": "inventory_only",
+      "semantic_scope": "Metadata path listed; no substantive content review claimed"
+    },
+    {
+      "path": "docs/guidlines/original-recordings/test1/Recording 2026-09-04 19-33-50-992.txt",
+      "status": "inventory_only",
+      "semantic_scope": "Metadata path listed; no substantive content review claimed"
+    },
+    {
+      "path": "docs/guidlines/original-recordings/test1/Recording 2026-09-04 19-36-39-273.txt",
+      "status": "inventory_only",
+      "semantic_scope": "Metadata path listed; no substantive content review claimed"
+    },
+    {
+      "path": "docs/guidlines/original-recordings/test1/Recording 2026-09-25 16-19-46-804.txt",
+      "status": "inventory_only",
+      "semantic_scope": "Metadata path listed; no substantive content review claimed"
+    },
+    {
+      "path": "docs/guidlines/original-recordings/test1/Recording 2026-09-26 15-06-39-010.txt",
+      "status": "inventory_only",
+      "semantic_scope": "Metadata path listed; no substantive content review claimed"
+    },
+    {
+      "path": "docs/guidlines/original-recordings/test1/Recording 2026-09-26 15-09-03-437.txt",
+      "status": "inventory_only",
+      "semantic_scope": "Metadata path listed; no substantive content review claimed"
+    },
+    {
+      "path": "docs/guidlines/original-recordings/test1/Recording 2026-09-27 10-46-02-973.txt",
+      "status": "inventory_only",
+      "semantic_scope": "Metadata path listed; no substantive content review claimed"
+    },
+    {
+      "path": "docs/guidlines/original-recordings/test1/Recording 2026-09-27 11-54-32-235.txt",
+      "status": "inventory_only",
+      "semantic_scope": "Metadata path listed; no substantive content review claimed"
+    },
+    {
+      "path": "docs/guidlines/original-recordings/test1/Recording 2026-09-27 18-18-28-087.txt",
+      "status": "inventory_only",
+      "semantic_scope": "Metadata path listed; no substantive content review claimed"
+    },
+    {
+      "path": "docs/guidlines/original-recordings/test1/Recording 2026-10-19 19-50-54-862.txt",
+      "status": "inventory_only",
+      "semantic_scope": "Metadata path listed; no substantive content review claimed"
+    },
+    {
+      "path": "docs/guidlines/original-recordings/test1/Recording 2026-10-19 19-51-15-837.txt",
+      "status": "inventory_only",
+      "semantic_scope": "Metadata path listed; no substantive content review claimed"
+    },
+    {
+      "path": "docs/guidlines/original-recordings/trading/Recording 2026-08-22 09-34-44-829.txt",
+      "status": "inventory_only",
+      "semantic_scope": "Metadata path listed; no substantive content review claimed"
+    },
+    {
+      "path": "docs/guidlines/original-recordings/trading/Recording 2026-08-22 10-17-28-752.txt",
+      "status": "inventory_only",
+      "semantic_scope": "Metadata path listed; no substantive content review claimed"
+    },
+    {
+      "path": "docs/guidlines/original-recordings/trading/Recording 2026-08-22 12-08-24-115.txt",
+      "status": "inventory_only",
+      "semantic_scope": "Metadata path listed; no substantive content review claimed"
+    },
+    {
+      "path": "docs/guidlines/original-recordings/trading/Recording 2026-08-22 12-08-48-969.txt",
+      "status": "inventory_only",
+      "semantic_scope": "Metadata path listed; no substantive content review claimed"
+    },
+    {
+      "path": "docs/guidlines/original-recordings/trading/Recording 2026-08-22 15-47-18-326.txt",
+      "status": "inventory_only",
+      "semantic_scope": "Metadata path listed; no substantive content review claimed"
+    },
+    {
+      "path": "docs/guidlines/original-recordings/trading/Recording 2026-08-26 18-23-52-726.txt",
+      "status": "inventory_only",
+      "semantic_scope": "Metadata path listed; no substantive content review claimed"
+    },
+    {
+      "path": "docs/guidlines/original-recordings/trading/Recording 2026-09-05 17-48-55-452.txt",
+      "status": "inventory_only",
+      "semantic_scope": "Metadata path listed; no substantive content review claimed"
+    },
+    {
+      "path": "docs/guidlines/original-recordings/trading/Recording 2026-09-16 07-25-43-993.txt",
+      "status": "inventory_only",
+      "semantic_scope": "Metadata path listed; no substantive content review claimed"
+    },
+    {
+      "path": "docs/guidlines/original-recordings/trading/Recording 2026-09-16 16-14-29-036.txt",
+      "status": "inventory_only",
+      "semantic_scope": "Metadata path listed; no substantive content review claimed"
+    },
+    {
+      "path": "docs/guidlines/original-recordings/trading/Recording 2026-09-16 19-24-32-674.txt",
+      "status": "inventory_only",
+      "semantic_scope": "Metadata path listed; no substantive content review claimed"
+    },
+    {
+      "path": "docs/guidlines/original-recordings/trading/Recording 2026-09-22 11-25-58-600.txt",
+      "status": "inventory_only",
+      "semantic_scope": "Metadata path listed; no substantive content review claimed"
+    },
+    {
+      "path": "docs/guidlines/original-recordings/trading/Recording 2026-09-25 11-48-16-135.txt",
+      "status": "inventory_only",
+      "semantic_scope": "Metadata path listed; no substantive content review claimed"
+    },
+    {
+      "path": "docs/guidlines/original-recordings/trading/Recording 2026-10-08 12-28-50-396.txt",
+      "status": "inventory_only",
+      "semantic_scope": "Metadata path listed; no substantive content review claimed"
+    },
+    {
+      "path": "docs/guidlines/original-recordings/trading/Recording 2026-10-23 18-56-44-662.txt",
+      "status": "inventory_only",
+      "semantic_scope": "Metadata path listed; no substantive content review claimed"
+    },
+    {
+      "path": "docs/guidlines/performance_reliability.md",
+      "status": "inventory_only",
+      "semantic_scope": "Metadata path listed; no substantive content review claimed"
+    },
+    {
+      "path": "docs/guidlines/programming/README.md",
+      "status": "semantic_read_partial",
+      "semantic_scope": "Programming/test/guideline material read only in a truncated combined output; full semantic coverage not confirmed"
+    },
+    {
+      "path": "docs/guidlines/projects/recording_to_guideline_conversion.md",
+      "status": "inventory_only",
+      "semantic_scope": "Metadata path listed; no substantive content review claimed"
+    },
+    {
+      "path": "docs/guidlines/robotics/algorithm_selection_and_learning.md",
+      "status": "inventory_only",
+      "semantic_scope": "Metadata path listed; no substantive content review claimed"
+    },
+    {
+      "path": "docs/guidlines/security_privacy.md",
+      "status": "semantic_read_complete",
+      "semantic_scope": "No credentials or unauthorised mutation, least privilege"
+    },
+    {
+      "path": "docs/guidlines/source_traceability.md",
+      "status": "semantic_read_complete",
+      "semantic_scope": "Proposition/source traceability and preserved negatives"
+    },
+    {
+      "path": "docs/guidlines/testing.md",
+      "status": "semantic_read_partial",
+      "semantic_scope": "Relevant testing requirements reviewed; full contiguous read not confirmed"
+    },
+    {
+      "path": "docs/guidlines/tests.txt",
+      "status": "inventory_only",
+      "semantic_scope": "Metadata path listed; no substantive content review claimed"
+    },
+    {
+      "path": "docs/guidlines/trading/data_and_backtesting.md",
+      "status": "inventory_only",
+      "semantic_scope": "Metadata path listed; no substantive content review claimed"
+    },
+    {
+      "path": "docs/guidlines/trading/data_provenance_database.md",
+      "status": "inventory_only",
+      "semantic_scope": "Metadata path listed; no substantive content review claimed"
+    },
+    {
+      "path": "docs/guidlines/trading/dcf_market_efficiency_research.md",
+      "status": "inventory_only",
+      "semantic_scope": "Metadata path listed; no substantive content review claimed"
+    },
+    {
+      "path": "docs/guidlines/trading/options.md",
+      "status": "inventory_only",
+      "semantic_scope": "Metadata path listed; no substantive content review claimed"
+    },
+    {
+      "path": "docs/guidlines/trading/public_network_hypotheses.md",
+      "status": "inventory_only",
+      "semantic_scope": "Metadata path listed; no substantive content review claimed"
+    },
+    {
+      "path": "docs/guidlines/trading/reporting_and_gui.md",
+      "status": "inventory_only",
+      "semantic_scope": "Metadata path listed; no substantive content review claimed"
+    },
+    {
+      "path": "docs/guidlines/trading/strategy_research.md",
+      "status": "inventory_only",
+      "semantic_scope": "Metadata path listed; no substantive content review claimed"
+    },
+    {
+      "path": "docs/infra-guideline-cross-project-status-2026-10-21.md",
+      "status": "inventory_only",
+      "semantic_scope": "Metadata path listed; no substantive content review claimed"
+    },
+    {
+      "path": "docs/knowmorenewsclips.md",
+      "status": "inventory_only",
+      "semantic_scope": "Metadata path listed; no substantive content review claimed"
+    },
+    {
+      "path": "docs/llms/README.md",
+      "status": "inventory_only",
+      "semantic_scope": "Metadata path listed; no substantive content review claimed"
+    },
+    {
+      "path": "docs/llms/benchmark-results.md",
+      "status": "inventory_only",
+      "semantic_scope": "Metadata path listed; no substantive content review claimed"
+    },
+    {
+      "path": "docs/llms/candidate-ram-ledger.md",
+      "status": "inventory_only",
+      "semantic_scope": "Metadata path listed; no substantive content review claimed"
+    },
+    {
+      "path": "docs/llms/current-summary.json",
+      "status": "inventory_only",
+      "semantic_scope": "Metadata path listed; no substantive content review claimed"
+    },
+    {
+      "path": "docs/llms/final-quality-results.md",
+      "status": "inventory_only",
+      "semantic_scope": "Metadata path listed; no substantive content review claimed"
+    },
+    {
+      "path": "docs/llms/jetson-thor-operations.md",
+      "status": "inventory_only",
+      "semantic_scope": "Metadata path listed; no substantive content review claimed"
+    },
+    {
+      "path": "docs/llms/measurements-by-phase.md",
+      "status": "inventory_only",
+      "semantic_scope": "Metadata path listed; no substantive content review claimed"
+    },
+    {
+      "path": "docs/llms/measurements.md",
+      "status": "inventory_only",
+      "semantic_scope": "Metadata path listed; no substantive content review claimed"
+    },
+    {
+      "path": "docs/llms/methodology.md",
+      "status": "inventory_only",
+      "semantic_scope": "Metadata path listed; no substantive content review claimed"
+    },
+    {
+      "path": "docs/llms/model-matrix.md",
+      "status": "inventory_only",
+      "semantic_scope": "Metadata path listed; no substantive content review claimed"
+    },
+    {
+      "path": "docs/llms/qwen3-coder-30b-full-context-2026-10-18.md",
+      "status": "inventory_only",
+      "semantic_scope": "Metadata path listed; no substantive content review claimed"
+    },
+    {
+      "path": "docs/llms/raw-data.md",
+      "status": "inventory_only",
+      "semantic_scope": "Metadata path listed; no substantive content review claimed"
+    },
+    {
+      "path": "docs/llms/swaag-memory-admission-2026-10-14.md",
+      "status": "inventory_only",
+      "semantic_scope": "Metadata path listed; no substantive content review claimed"
+    },
+    {
+      "path": "docs/llms/ternary-bonsai2-27b-results.md",
+      "status": "inventory_only",
+      "semantic_scope": "Metadata path listed; no substantive content review claimed"
+    },
+    {
+      "path": "docs/llms/test-ledger.md",
+      "status": "inventory_only",
+      "semantic_scope": "Metadata path listed; no substantive content review claimed"
+    },
+    {
+      "path": "docs/llms/thor-dual-full-context-coder-qwen38-q8-2026-10-18.md",
+      "status": "inventory_only",
+      "semantic_scope": "Metadata path listed; no substantive content review claimed"
+    },
+    {
+      "path": "docs/llms/thor-swaag-coder-foreground-qwen38-q8-workers-2026-10-18.md",
+      "status": "inventory_only",
+      "semantic_scope": "Metadata path listed; no substantive content review claimed"
+    },
+    {
+      "path": "docs/llms/update_from_runtime.py",
+      "status": "inventory_only",
+      "semantic_scope": "Metadata path listed; no substantive content review claimed"
+    },
+    {
+      "path": "docs/local-mail.md",
+      "status": "inventory_only",
+      "semantic_scope": "Metadata path listed; no substantive content review claimed"
+    },
+    {
+      "path": "docs/media-library.md",
+      "status": "inventory_only",
+      "semantic_scope": "Metadata path listed; no substantive content review claimed"
+    },
+    {
+      "path": "docs/model-start-admission.md",
+      "status": "inventory_only",
+      "semantic_scope": "Metadata path listed; no substantive content review claimed"
+    },
+    {
+      "path": "docs/password-generator.md",
+      "status": "inventory_only",
+      "semantic_scope": "Metadata path listed; no substantive content review claimed"
+    },
+    {
+      "path": "docs/presentations.md",
+      "status": "inventory_only",
+      "semantic_scope": "Metadata path listed; no substantive content review claimed"
+    },
+    {
+      "path": "docs/reports/3d-game-asset-generation-pipeline-report-2026-08.md",
+      "status": "inventory_only",
+      "semantic_scope": "Metadata path listed; no substantive content review claimed"
+    },
+    {
+      "path": "docs/reports/README.md",
+      "status": "inventory_only",
+      "semantic_scope": "Metadata path listed; no substantive content review claimed"
+    },
+    {
+      "path": "docs/reports/speech-model-benchmarks.yaml",
+      "status": "inventory_only",
+      "semantic_scope": "Metadata path listed; no substantive content review claimed"
+    },
+    {
+      "path": "docs/speech-player.md",
+      "status": "inventory_only",
+      "semantic_scope": "Metadata path listed; no substantive content review claimed"
+    },
+    {
+      "path": "docs/speech.md",
+      "status": "inventory_only",
+      "semantic_scope": "Metadata path listed; no substantive content review claimed"
+    },
+    {
+      "path": "docs/swaag-launch.md",
+      "status": "inventory_only",
+      "semantic_scope": "Metadata path listed; no substantive content review claimed"
+    },
+    {
+      "path": "docs/swaag-workspace-tools-20261021.md",
+      "status": "inventory_only",
+      "semantic_scope": "Metadata path listed; no substantive content review claimed"
+    },
+    {
+      "path": "docs/system-description.md",
+      "status": "inventory_only",
+      "semantic_scope": "Metadata path listed; no substantive content review claimed"
+    },
+    {
+      "path": "docs/system-server-mcp.md",
+      "status": "inventory_only",
+      "semantic_scope": "Metadata path listed; no substantive content review claimed"
+    },
+    {
+      "path": "docs/takeovers/google-mail-calendar-chatgpt-2026-10-23.md",
+      "status": "inventory_only",
+      "semantic_scope": "Metadata path listed; no substantive content review claimed"
+    },
+    {
+      "path": "docs/takeovers/google-mail-calendar-chatgpt.md",
+      "status": "inventory_only",
+      "semantic_scope": "Metadata path listed; no substantive content review claimed"
+    },
+    {
+      "path": "docs/thor-agent-space-reserve-2026-10-21.md",
+      "status": "inventory_only",
+      "semantic_scope": "Metadata path listed; no substantive content review claimed"
+    },
+    {
+      "path": "docs/video-library.md",
+      "status": "inventory_only",
+      "semantic_scope": "Metadata path listed; no substantive content review claimed"
+    },
+    {
+      "path": "docs/voice-agent-audio.md",
+      "status": "inventory_only",
+      "semantic_scope": "Metadata path listed; no substantive content review claimed"
+    },
+    {
+      "path": "docs/voice-agent-live.md",
+      "status": "inventory_only",
+      "semantic_scope": "Metadata path listed; no substantive content review claimed"
+    },
+    {
+      "path": "docs/vps-openvpn-auth-recovery-2026-10-24.md",
+      "status": "inventory_only",
+      "semantic_scope": "Metadata path listed; no substantive content review claimed"
+    },
+    {
+      "path": "docs/weather-observations.md",
+      "status": "inventory_only",
+      "semantic_scope": "Metadata path listed; no substantive content review claimed"
+    },
+    {
+      "path": "docs/web-interfaces.md",
+      "status": "inventory_only",
+      "semantic_scope": "Metadata path listed; no substantive content review claimed"
+    },
+    {
+      "path": "docs/web-portal-screen-contract.md",
+      "status": "inventory_only",
+      "semantic_scope": "Metadata path listed; no substantive content review claimed"
+    },
+    {
+      "path": "docs/web-portal.md",
+      "status": "inventory_only",
+      "semantic_scope": "Metadata path listed; no substantive content review claimed"
+    },
+    {
+      "path": "etc/NetworkManager/dispatcher.d/90-infra-openvpn-reconnect",
+      "status": "inventory_only",
+      "semantic_scope": "Metadata path listed; no substantive content review claimed"
+    },
+    {
+      "path": "etc/apache2/conf-available/infra-remote-desktop-vhost.inc.in",
+      "status": "inventory_only",
+      "semantic_scope": "Metadata path listed; no substantive content review claimed"
+    },
+    {
+      "path": "etc/apache2/conf-available/infra-video-library.conf",
+      "status": "inventory_only",
+      "semantic_scope": "Metadata path listed; no substantive content review claimed"
+    },
+    {
+      "path": "etc/apache2/conf-available/infra-web-portal-vhost.inc.in",
+      "status": "inventory_only",
+      "semantic_scope": "Metadata path listed; no substantive content review claimed"
+    },
+    {
+      "path": "etc/apache2/conf-available/infra-web-terminal-vhost.inc.in",
+      "status": "inventory_only",
+      "semantic_scope": "Metadata path listed; no substantive content review claimed"
+    },
+    {
+      "path": "etc/calendar-automation.json",
+      "status": "inventory_only",
+      "semantic_scope": "Metadata path listed; no substantive content review claimed"
+    },
+    {
+      "path": "etc/calendar-chatgpt-prompt.txt",
+      "status": "inventory_only",
+      "semantic_scope": "Metadata path listed; no substantive content review claimed"
+    },
+    {
+      "path": "etc/calendar-swaag-prompt.txt",
+      "status": "inventory_only",
+      "semantic_scope": "Metadata path listed; no substantive content review claimed"
+    },
+    {
+      "path": "etc/chatgpt-browser.json",
+      "status": "inventory_only",
+      "semantic_scope": "Metadata path listed; no substantive content review claimed"
+    },
+    {
+      "path": "etc/hosts/default.json",
+      "status": "inventory_only",
+      "semantic_scope": "Metadata path listed; no substantive content review claimed"
+    },
+    {
+      "path": "etc/hosts/jetson.json",
+      "status": "inventory_only",
+      "semantic_scope": "Metadata path listed; no substantive content review claimed"
+    },
+    {
+      "path": "etc/hosts/nitro.json",
+      "status": "inventory_only",
+      "semantic_scope": "Metadata path listed; no substantive content review claimed"
+    },
+    {
+      "path": "etc/hosts/raspi.json",
+      "status": "inventory_only",
+      "semantic_scope": "Metadata path listed; no substantive content review claimed"
+    },
+    {
+      "path": "etc/hosts/thor.json",
+      "status": "inventory_only",
+      "semantic_scope": "Metadata path listed; no substantive content review claimed"
+    },
+    {
+      "path": "etc/ports.json",
+      "status": "inventory_only",
+      "semantic_scope": "Metadata path listed; no substantive content review claimed"
+    },
+    {
+      "path": "etc/system-server-chatgpt-plugins.json",
+      "status": "inventory_only",
+      "semantic_scope": "Metadata path listed; no substantive content review claimed"
+    },
+    {
+      "path": "etc/systemd/system/calendar-automation.service",
+      "status": "inventory_only",
+      "semantic_scope": "Metadata path listed; no substantive content review claimed"
+    },
+    {
+      "path": "etc/systemd/system/calendar-automation.timer",
+      "status": "inventory_only",
+      "semantic_scope": "Metadata path listed; no substantive content review claimed"
+    },
+    {
+      "path": "etc/systemd/system/calendar-mobile-api.service",
+      "status": "inventory_only",
+      "semantic_scope": "Metadata path listed; no substantive content review claimed"
+    },
+    {
+      "path": "etc/systemd/system/chatgpt-browser-keepalive.service",
+      "status": "inventory_only",
+      "semantic_scope": "Metadata path listed; no substantive content review claimed"
+    },
+    {
+      "path": "etc/systemd/system/chatgpt-browser-keepalive.timer",
+      "status": "inventory_only",
+      "semantic_scope": "Metadata path listed; no substantive content review claimed"
+    },
+    {
+      "path": "etc/systemd/system/chatgpt-tool-enable-watch.service",
+      "status": "inventory_only",
+      "semantic_scope": "Metadata path listed; no substantive content review claimed"
+    },
+    {
+      "path": "etc/systemd/system/chromium-full-power-booster.service",
+      "status": "inventory_only",
+      "semantic_scope": "Metadata path listed; no substantive content review claimed"
+    },
+    {
+      "path": "etc/systemd/system/chromium-full-power.slice",
+      "status": "inventory_only",
+      "semantic_scope": "Metadata path listed; no substantive content review claimed"
+    },
+    {
+      "path": "etc/systemd/system/cloudflared.service",
+      "status": "inventory_only",
+      "semantic_scope": "Metadata path listed; no substantive content review claimed"
+    },
+    {
+      "path": "etc/systemd/system/critical-services.slice",
+      "status": "inventory_only",
+      "semantic_scope": "Metadata path listed; no substantive content review claimed"
+    },
+    {
+      "path": "etc/systemd/system/cuda-mps-hans.service",
+      "status": "inventory_only",
+      "semantic_scope": "Metadata path listed; no substantive content review claimed"
+    },
+    {
+      "path": "etc/systemd/system/document-tools.service",
+      "status": "inventory_only",
+      "semantic_scope": "Metadata path listed; no substantive content review claimed"
+    },
+    {
+      "path": "etc/systemd/system/financial-database-refresh.service",
+      "status": "inventory_only",
+      "semantic_scope": "Metadata path listed; no substantive content review claimed"
+    },
+    {
+      "path": "etc/systemd/system/financial-database-refresh.timer",
+      "status": "inventory_only",
+      "semantic_scope": "Metadata path listed; no substantive content review claimed"
+    },
+    {
+      "path": "etc/systemd/system/infra-remote-desktop.service",
+      "status": "inventory_only",
+      "semantic_scope": "Metadata path listed; no substantive content review claimed"
+    },
+    {
+      "path": "etc/systemd/system/infra-safety-guard.service",
+      "status": "inventory_only",
+      "semantic_scope": "Metadata path listed; no substantive content review claimed"
+    },
+    {
+      "path": "etc/systemd/system/infra-video-library-sync.path",
+      "status": "inventory_only",
+      "semantic_scope": "Metadata path listed; no substantive content review claimed"
+    },
+    {
+      "path": "etc/systemd/system/infra-video-library-sync.service",
+      "status": "inventory_only",
+      "semantic_scope": "Metadata path listed; no substantive content review claimed"
+    },
+    {
+      "path": "etc/systemd/system/infra-video-library.service",
+      "status": "inventory_only",
+      "semantic_scope": "Metadata path listed; no substantive content review claimed"
+    },
+    {
+      "path": "etc/systemd/system/infra-web-portal.service",
+      "status": "inventory_only",
+      "semantic_scope": "Metadata path listed; no substantive content review claimed"
+    },
+    {
+      "path": "etc/systemd/system/infra-web-terminal.service",
+      "status": "inventory_only",
+      "semantic_scope": "Metadata path listed; no substantive content review claimed"
+    },
+    {
+      "path": "etc/systemd/system/jetson-luxtts-tunnel.service",
+      "status": "inventory_only",
+      "semantic_scope": "Metadata path listed; no substantive content review claimed"
+    },
+    {
+      "path": "etc/systemd/system/jetson-piper-tts.service",
+      "status": "inventory_only",
+      "semantic_scope": "Metadata path listed; no substantive content review claimed"
+    },
+    {
+      "path": "etc/systemd/system/jetson-voice-audio-store.service",
+      "status": "inventory_only",
+      "semantic_scope": "Metadata path listed; no substantive content review claimed"
+    },
+    {
+      "path": "etc/systemd/system/jetson-voice-ws.service",
+      "status": "inventory_only",
+      "semantic_scope": "Metadata path listed; no substantive content review claimed"
+    },
+    {
+      "path": "etc/systemd/system/jetson-whisper-base-verifier.service",
+      "status": "inventory_only",
+      "semantic_scope": "Metadata path listed; no substantive content review claimed"
+    },
+    {
+      "path": "etc/systemd/system/jetson-whisper-verifier.service",
+      "status": "inventory_only",
+      "semantic_scope": "Metadata path listed; no substantive content review claimed"
+    },
+    {
+      "path": "etc/systemd/system/litellm-proxy.service",
+      "status": "inventory_only",
+      "semantic_scope": "Metadata path listed; no substantive content review claimed"
+    },
+    {
+      "path": "etc/systemd/system/llama-cpp-jetson.service",
+      "status": "inventory_only",
+      "semantic_scope": "Metadata path listed; no substantive content review claimed"
+    },
+    {
+      "path": "etc/systemd/system/llama-cpp-qwen3-5-9b.service",
+      "status": "inventory_only",
+      "semantic_scope": "Metadata path listed; no substantive content review claimed"
+    },
+    {
+      "path": "etc/systemd/system/llama-cpp-qwen3-coder-30b-a3b.service",
+      "status": "inventory_only",
+      "semantic_scope": "Metadata path listed; no substantive content review claimed"
+    },
+    {
+      "path": "etc/systemd/system/llama-cpp-thor-voice.service",
+      "status": "inventory_only",
+      "semantic_scope": "Metadata path listed; no substantive content review claimed"
+    },
+    {
+      "path": "etc/systemd/system/llama-cpp-thor.service",
+      "status": "inventory_only",
+      "semantic_scope": "Metadata path listed; no substantive content review claimed"
+    },
+    {
+      "path": "etc/systemd/system/llm-thor-best.service",
+      "status": "inventory_only",
+      "semantic_scope": "Metadata path listed; no substantive content review claimed"
+    },
+    {
+      "path": "etc/systemd/system/llm-thor-coder-full.service",
+      "status": "inventory_only",
+      "semantic_scope": "Metadata path listed; no substantive content review claimed"
+    },
+    {
+      "path": "etc/systemd/system/llm-thor-default.service",
+      "status": "inventory_only",
+      "semantic_scope": "Metadata path listed; no substantive content review claimed"
+    },
+    {
+      "path": "etc/systemd/system/llm-thor-qwen38-q8-full.service",
+      "status": "inventory_only",
+      "semantic_scope": "Metadata path listed; no substantive content review claimed"
+    },
+    {
+      "path": "etc/systemd/system/localai-speech.service",
+      "status": "inventory_only",
+      "semantic_scope": "Metadata path listed; no substantive content review claimed"
+    },
+    {
+      "path": "etc/systemd/system/mcp-system-server.service",
+      "status": "inventory_only",
+      "semantic_scope": "Metadata path listed; no substantive content review claimed"
+    },
+    {
+      "path": "etc/systemd/system/network-diagnostics-netwatch.service",
+      "status": "inventory_only",
+      "semantic_scope": "Metadata path listed; no substantive content review claimed"
+    },
+    {
+      "path": "etc/systemd/system/nitro-3d-processor.service",
+      "status": "inventory_only",
+      "semantic_scope": "Metadata path listed; no substantive content review claimed"
+    },
+    {
+      "path": "etc/systemd/system/nitro-basic-humanoid-pipeline.service",
+      "status": "inventory_only",
+      "semantic_scope": "Metadata path listed; no substantive content review claimed"
+    },
+    {
+      "path": "etc/systemd/system/nitro-jetson-generator-models.service",
+      "status": "inventory_only",
+      "semantic_scope": "Metadata path listed; no substantive content review claimed"
+    },
+    {
+      "path": "etc/systemd/system/nitro-jetson-pipeline.service",
+      "status": "inventory_only",
+      "semantic_scope": "Metadata path listed; no substantive content review claimed"
+    },
+    {
+      "path": "etc/systemd/system/nitro-jetson-viewer.service",
+      "status": "inventory_only",
+      "semantic_scope": "Metadata path listed; no substantive content review claimed"
+    },
+    {
+      "path": "etc/systemd/system/nitro-luxtts-voice.service",
+      "status": "inventory_only",
+      "semantic_scope": "Metadata path listed; no substantive content review claimed"
+    },
+    {
+      "path": "etc/systemd/system/open-webui.service",
+      "status": "inventory_only",
+      "semantic_scope": "Metadata path listed; no substantive content review claimed"
+    },
+    {
+      "path": "etc/systemd/system/qwen38-27b-q4-jetson.service",
+      "status": "inventory_only",
+      "semantic_scope": "Metadata path listed; no substantive content review claimed"
+    },
+    {
+      "path": "etc/systemd/system/sp500-rank-holdout-evaluator.service",
+      "status": "inventory_only",
+      "semantic_scope": "Metadata path listed; no substantive content review claimed"
+    },
+    {
+      "path": "etc/systemd/system/sp500-rank-optimizer-v2.service",
+      "status": "inventory_only",
+      "semantic_scope": "Metadata path listed; no substantive content review claimed"
+    },
+    {
+      "path": "etc/systemd/system/speech-mobile-player.service",
+      "status": "inventory_only",
+      "semantic_scope": "Metadata path listed; no substantive content review claimed"
+    },
+    {
+      "path": "etc/systemd/system/swaag-communication.service",
+      "status": "inventory_only",
+      "semantic_scope": "Metadata path listed; no substantive content review claimed"
+    },
+    {
+      "path": "etc/systemd/system/swaag-fast-activate.service",
+      "status": "inventory_only",
+      "semantic_scope": "Metadata path listed; no substantive content review claimed"
+    },
+    {
+      "path": "etc/systemd/system/swaag-fast-activate.timer",
+      "status": "inventory_only",
+      "semantic_scope": "Metadata path listed; no substantive content review claimed"
+    },
+    {
+      "path": "etc/systemd/system/swaag-otel-collector.service",
+      "status": "inventory_only",
+      "semantic_scope": "Metadata path listed; no substantive content review claimed"
+    },
+    {
+      "path": "etc/systemd/system/system-server-workloads.slice",
+      "status": "inventory_only",
+      "semantic_scope": "Metadata path listed; no substantive content review claimed"
+    },
+    {
+      "path": "etc/systemd/system/system-server.service",
+      "status": "inventory_only",
+      "semantic_scope": "Metadata path listed; no substantive content review claimed"
+    },
+    {
+      "path": "etc/systemd/system/thor-ai-portal-api.service",
+      "status": "inventory_only",
+      "semantic_scope": "Metadata path listed; no substantive content review claimed"
+    },
+    {
+      "path": "etc/systemd/system/thor-orpheuscpp-tts.service",
+      "status": "inventory_only",
+      "semantic_scope": "Metadata path listed; no substantive content review claimed"
+    },
+    {
+      "path": "etc/systemd/system/thor-swaag-communication.service",
+      "status": "inventory_only",
+      "semantic_scope": "Metadata path listed; no substantive content review claimed"
+    },
+    {
+      "path": "etc/systemd/system/thor-voice-agent-gateway.service",
+      "status": "inventory_only",
+      "semantic_scope": "Metadata path listed; no substantive content review claimed"
+    },
+    {
+      "path": "etc/systemd/system/thor-voice-resident-asr.service",
+      "status": "inventory_only",
+      "semantic_scope": "Metadata path listed; no substantive content review claimed"
+    },
+    {
+      "path": "etc/systemd/system/three-d-model-downloads.service",
+      "status": "inventory_only",
+      "semantic_scope": "Metadata path listed; no substantive content review claimed"
+    },
+    {
+      "path": "etc/systemd/system/tradier-live.service",
+      "status": "inventory_only",
+      "semantic_scope": "Metadata path listed; no substantive content review claimed"
+    },
+    {
+      "path": "etc/systemd/system/trading-backtests.slice",
+      "status": "inventory_only",
+      "semantic_scope": "Metadata path listed; no substantive content review claimed"
+    },
+    {
+      "path": "etc/systemd/system/trading-etf-backtest.service",
+      "status": "inventory_only",
+      "semantic_scope": "Metadata path listed; no substantive content review claimed"
+    },
+    {
+      "path": "etc/systemd/system/trading-options-backtest.service",
+      "status": "inventory_only",
+      "semantic_scope": "Metadata path listed; no substantive content review claimed"
+    },
+    {
+      "path": "etc/systemd/system/voice-final-stt.service",
+      "status": "inventory_only",
+      "semantic_scope": "Metadata path listed; no substantive content review claimed"
+    },
+    {
+      "path": "etc/systemd/system/weather-forecast-backfill.service",
+      "status": "inventory_only",
+      "semantic_scope": "Metadata path listed; no substantive content review claimed"
+    },
+    {
+      "path": "etc/systemd/system/weather-forecast-backfill.timer",
+      "status": "inventory_only",
+      "semantic_scope": "Metadata path listed; no substantive content review claimed"
+    },
+    {
+      "path": "etc/systemd/system/weather-forecast-capture.service",
+      "status": "inventory_only",
+      "semantic_scope": "Metadata path listed; no substantive content review claimed"
+    },
+    {
+      "path": "etc/systemd/system/weather-forecast-capture.timer",
+      "status": "inventory_only",
+      "semantic_scope": "Metadata path listed; no substantive content review claimed"
+    },
+    {
+      "path": "etc/systemd/system/weather-forecast-evaluate.service",
+      "status": "inventory_only",
+      "semantic_scope": "Metadata path listed; no substantive content review claimed"
+    },
+    {
+      "path": "etc/systemd/system/weather-forecast-evaluate.timer",
+      "status": "inventory_only",
+      "semantic_scope": "Metadata path listed; no substantive content review claimed"
+    },
+    {
+      "path": "etc/systemd/system/weather-forecast-stage.service",
+      "status": "inventory_only",
+      "semantic_scope": "Metadata path listed; no substantive content review claimed"
+    },
+    {
+      "path": "etc/systemd/system/weather-forecast-stage.timer",
+      "status": "inventory_only",
+      "semantic_scope": "Metadata path listed; no substantive content review claimed"
+    },
+    {
+      "path": "etc/systemd/system/weather-nearby.service",
+      "status": "inventory_only",
+      "semantic_scope": "Metadata path listed; no substantive content review claimed"
+    },
+    {
+      "path": "etc/systemd/system/weather-nearby.timer",
+      "status": "inventory_only",
+      "semantic_scope": "Metadata path listed; no substantive content review claimed"
+    },
+    {
+      "path": "etc/systemd/system/weather-observations.service",
+      "status": "inventory_only",
+      "semantic_scope": "Metadata path listed; no substantive content review claimed"
+    },
+    {
+      "path": "etc/systemd/system/weather-observations.timer",
+      "status": "inventory_only",
+      "semantic_scope": "Metadata path listed; no substantive content review claimed"
+    },
+    {
+      "path": "etc/systemd/user/trading-options-capital-guard.service",
+      "status": "inventory_only",
+      "semantic_scope": "Metadata path listed; no substantive content review claimed"
+    },
+    {
+      "path": "etc/systemd/user/trading-options-capital-guard.timer",
+      "status": "inventory_only",
+      "semantic_scope": "Metadata path listed; no substantive content review claimed"
+    },
+    {
+      "path": "etc/systemd/user/trading-options-capital-sweep.service",
+      "status": "inventory_only",
+      "semantic_scope": "Metadata path listed; no substantive content review claimed"
+    },
+    {
+      "path": "etc/systemd/user/trading-options-main-managed.service",
+      "status": "inventory_only",
+      "semantic_scope": "Metadata path listed; no substantive content review claimed"
+    },
+    {
+      "path": "etc/systemd/user/trading-options-retest-managed.service",
+      "status": "inventory_only",
+      "semantic_scope": "Metadata path listed; no substantive content review claimed"
+    },
+    {
+      "path": "etc/systemd/user/trading-options-supervisor.service",
+      "status": "inventory_only",
+      "semantic_scope": "Metadata path listed; no substantive content review claimed"
+    },
+    {
+      "path": "etc/systemd/user/trading-options-supervisor.timer",
+      "status": "inventory_only",
+      "semantic_scope": "Metadata path listed; no substantive content review claimed"
+    },
+    {
+      "path": "etc/workload-policy.json",
+      "status": "inventory_only",
+      "semantic_scope": "Metadata path listed; no substantive content review claimed"
+    },
+    {
+      "path": "hosts/default/bin-impl/aubro",
+      "status": "inventory_only",
+      "semantic_scope": "Metadata path listed; no substantive content review claimed"
+    },
+    {
+      "path": "hosts/default/bin-impl/calendar-automation",
+      "status": "inventory_only",
+      "semantic_scope": "Metadata path listed; no substantive content review claimed"
+    },
+    {
+      "path": "hosts/default/bin-impl/calendar-mobile-pair",
+      "status": "inventory_only",
+      "semantic_scope": "Metadata path listed; no substantive content review claimed"
+    },
+    {
+      "path": "hosts/default/bin-impl/call_goose.sh",
+      "status": "inventory_only",
+      "semantic_scope": "Metadata path listed; no substantive content review claimed"
+    },
+    {
+      "path": "hosts/default/bin-impl/call_llama.sh",
+      "status": "inventory_only",
+      "semantic_scope": "Metadata path listed; no substantive content review claimed"
+    },
+    {
+      "path": "hosts/default/bin-impl/call_tts.sh",
+      "status": "inventory_only",
+      "semantic_scope": "Metadata path listed; no substantive content review claimed"
+    },
+    {
+      "path": "hosts/default/bin-impl/call_xtts.sh",
+      "status": "inventory_only",
+      "semantic_scope": "Metadata path listed; no substantive content review claimed"
+    },
+    {
+      "path": "hosts/default/bin-impl/chatgpt-chat",
+      "status": "inventory_only",
+      "semantic_scope": "Metadata path listed; no substantive content review claimed"
+    },
+    {
+      "path": "hosts/default/bin-impl/check_gpu.sh",
+      "status": "inventory_only",
+      "semantic_scope": "Metadata path listed; no substantive content review claimed"
+    },
+    {
+      "path": "hosts/default/bin-impl/convert_swebench_preds.sh",
+      "status": "inventory_only",
+      "semantic_scope": "Metadata path listed; no substantive content review claimed"
+    },
+    {
+      "path": "hosts/default/bin-impl/download.sh",
+      "status": "inventory_only",
+      "semantic_scope": "Metadata path listed; no substantive content review claimed"
+    },
+    {
+      "path": "hosts/default/bin-impl/ez_vc.sh",
+      "status": "inventory_only",
+      "semantic_scope": "Metadata path listed; no substantive content review claimed"
+    },
+    {
+      "path": "hosts/default/bin-impl/focus_notice.sh",
+      "status": "inventory_only",
+      "semantic_scope": "Metadata path listed; no substantive content review claimed"
+    },
+    {
+      "path": "hosts/default/bin-impl/follow_llama.sh",
+      "status": "inventory_only",
+      "semantic_scope": "Metadata path listed; no substantive content review claimed"
+    },
+    {
+      "path": "hosts/default/bin-impl/follow_system_server.sh",
+      "status": "inventory_only",
+      "semantic_scope": "Metadata path listed; no substantive content review claimed"
+    },
+    {
+      "path": "hosts/default/bin-impl/follow_tts.sh",
+      "status": "inventory_only",
+      "semantic_scope": "Metadata path listed; no substantive content review claimed"
+    },
+    {
+      "path": "hosts/default/bin-impl/git_cred_helper_github.sh",
+      "status": "inventory_only",
+      "semantic_scope": "Metadata path listed; no substantive content review claimed"
+    },
+    {
+      "path": "hosts/default/bin-impl/goose.sh",
+      "status": "inventory_only",
+      "semantic_scope": "Metadata path listed; no substantive content review claimed"
+    },
+    {
+      "path": "hosts/default/bin-impl/goose_agent.sh",
+      "status": "inventory_only",
+      "semantic_scope": "Metadata path listed; no substantive content review claimed"
+    },
+    {
+      "path": "hosts/default/bin-impl/goose_swebench_lite_runner.sh",
+      "status": "inventory_only",
+      "semantic_scope": "Metadata path listed; no substantive content review claimed"
+    },
+    {
+      "path": "hosts/default/bin-impl/install_data01_mount.sh",
+      "status": "inventory_only",
+      "semantic_scope": "Metadata path listed; no substantive content review claimed"
+    },
+    {
+      "path": "hosts/default/bin-impl/install_swaag_sandbox_prereqs.sh",
+      "status": "inventory_only",
+      "semantic_scope": "Metadata path listed; no substantive content review claimed"
+    },
+    {
+      "path": "hosts/default/bin-impl/install_uuid_mount.sh",
+      "status": "inventory_only",
+      "semantic_scope": "Metadata path listed; no substantive content review claimed"
+    },
+    {
+      "path": "hosts/default/bin-impl/install_video_library.sh",
+      "status": "inventory_only",
+      "semantic_scope": "Metadata path listed; no substantive content review claimed"
+    },
+    {
+      "path": "hosts/default/bin-impl/install_web_interfaces.sh",
+      "status": "inventory_only",
+      "semantic_scope": "Metadata path listed; no substantive content review claimed"
+    },
+    {
+      "path": "hosts/default/bin-impl/install_web_portal.sh",
+      "status": "inventory_only",
+      "semantic_scope": "Metadata path listed; no substantive content review claimed"
+    },
+    {
+      "path": "hosts/default/bin-impl/llama-bench",
+      "status": "inventory_only",
+      "semantic_scope": "Metadata path listed; no substantive content review claimed"
+    },
+    {
+      "path": "hosts/default/bin-impl/llama-cli",
+      "status": "inventory_only",
+      "semantic_scope": "Metadata path listed; no substantive content review claimed"
+    },
+    {
+      "path": "hosts/default/bin-impl/llama-server",
+      "status": "inventory_only",
+      "semantic_scope": "Metadata path listed; no substantive content review claimed"
+    },
+    {
+      "path": "hosts/default/bin-impl/llama.sh",
+      "status": "inventory_only",
+      "semantic_scope": "Metadata path listed; no substantive content review claimed"
+    },
+    {
+      "path": "hosts/default/bin-impl/mini_swe.sh",
+      "status": "inventory_only",
+      "semantic_scope": "Metadata path listed; no substantive content review claimed"
+    },
+    {
+      "path": "hosts/default/bin-impl/mini_swebench_local_runner.sh",
+      "status": "inventory_only",
+      "semantic_scope": "Metadata path listed; no substantive content review claimed"
+    },
+    {
+      "path": "hosts/default/bin-impl/openhands.sh",
+      "status": "inventory_only",
+      "semantic_scope": "Metadata path listed; no substantive content review claimed"
+    },
+    {
+      "path": "hosts/default/bin-impl/openhands_swebench_lite_runner.sh",
+      "status": "inventory_only",
+      "semantic_scope": "Metadata path listed; no substantive content review claimed"
+    },
+    {
+      "path": "hosts/default/bin-impl/ppt-master",
+      "status": "inventory_only",
+      "semantic_scope": "Metadata path listed; no substantive content review claimed"
+    },
+    {
+      "path": "hosts/default/bin-impl/ram_overview.sh",
+      "status": "inventory_only",
+      "semantic_scope": "Metadata path listed; no substantive content review claimed"
+    },
+    {
+      "path": "hosts/default/bin-impl/run_official_swebench_eval.sh",
+      "status": "inventory_only",
+      "semantic_scope": "Metadata path listed; no substantive content review claimed"
+    },
+    {
+      "path": "hosts/default/bin-impl/seed_vc.sh",
+      "status": "inventory_only",
+      "semantic_scope": "Metadata path listed; no substantive content review claimed"
+    },
+    {
+      "path": "hosts/default/bin-impl/set_web_portal_password.sh",
+      "status": "inventory_only",
+      "semantic_scope": "Metadata path listed; no substantive content review claimed"
+    },
+    {
+      "path": "hosts/default/bin-impl/speak_tts.sh",
+      "status": "inventory_only",
+      "semantic_scope": "Metadata path listed; no substantive content review claimed"
+    },
+    {
+      "path": "hosts/default/bin-impl/split_zips.sh",
+      "status": "inventory_only",
+      "semantic_scope": "Metadata path listed; no substantive content review claimed"
+    },
+    {
+      "path": "hosts/default/bin-impl/stop_goose.sh",
+      "status": "inventory_only",
+      "semantic_scope": "Metadata path listed; no substantive content review claimed"
+    },
+    {
+      "path": "hosts/default/bin-impl/stop_llama.sh",
+      "status": "inventory_only",
+      "semantic_scope": "Metadata path listed; no substantive content review claimed"
+    },
+    {
+      "path": "hosts/default/bin-impl/stop_openhands.sh",
+      "status": "inventory_only",
+      "semantic_scope": "Metadata path listed; no substantive content review claimed"
+    },
+    {
+      "path": "hosts/default/bin-impl/stop_tts.sh",
+      "status": "inventory_only",
+      "semantic_scope": "Metadata path listed; no substantive content review claimed"
+    },
+    {
+      "path": "hosts/default/bin-impl/swaag",
+      "status": "inventory_only",
+      "semantic_scope": "Metadata path listed; no substantive content review claimed"
+    },
+    {
+      "path": "hosts/default/bin-impl/swe_agent.sh",
+      "status": "inventory_only",
+      "semantic_scope": "Metadata path listed; no substantive content review claimed"
+    },
+    {
+      "path": "hosts/default/bin-impl/sweagent_swebench_local_runner.sh",
+      "status": "inventory_only",
+      "semantic_scope": "Metadata path listed; no substantive content review claimed"
+    },
+    {
+      "path": "hosts/default/bin-impl/sync_host_identity.sh",
+      "status": "inventory_only",
+      "semantic_scope": "Metadata path listed; no substantive content review claimed"
+    },
+    {
+      "path": "hosts/default/bin-impl/system_server.sh",
+      "status": "inventory_only",
+      "semantic_scope": "Metadata path listed; no substantive content review claimed"
+    },
+    {
+      "path": "hosts/default/bin-impl/text_chunker.py",
+      "status": "inventory_only",
+      "semantic_scope": "Metadata path listed; no substantive content review claimed"
+    },
+    {
+      "path": "hosts/default/bin-impl/textsource_to_wav.sh",
+      "status": "inventory_only",
+      "semantic_scope": "Metadata path listed; no substantive content review claimed"
+    },
+    {
+      "path": "hosts/default/bin-impl/tilix_grid_8.sh",
+      "status": "inventory_only",
+      "semantic_scope": "Metadata path listed; no substantive content review claimed"
+    },
+    {
+      "path": "hosts/default/bin-impl/tts.sh",
+      "status": "inventory_only",
+      "semantic_scope": "Metadata path listed; no substantive content review claimed"
+    },
+    {
+      "path": "hosts/default/bin-impl/tts_gui.sh",
+      "status": "inventory_only",
+      "semantic_scope": "Metadata path listed; no substantive content review claimed"
+    },
+    {
+      "path": "hosts/default/bin-impl/tts_once.sh",
+      "status": "inventory_only",
+      "semantic_scope": "Metadata path listed; no substantive content review claimed"
+    },
+    {
+      "path": "hosts/default/bin-impl/tts_server.py",
+      "status": "inventory_only",
+      "semantic_scope": "Metadata path listed; no substantive content review claimed"
+    },
+    {
+      "path": "hosts/default/bin-impl/unity-editor",
+      "status": "inventory_only",
+      "semantic_scope": "Metadata path listed; no substantive content review claimed"
+    },
+    {
+      "path": "hosts/default/bin-impl/voice_changer_cli.sh",
+      "status": "inventory_only",
+      "semantic_scope": "Metadata path listed; no substantive content review claimed"
+    },
+    {
+      "path": "hosts/default/bin-impl/voice_changer_gui.sh",
+      "status": "inventory_only",
+      "semantic_scope": "Metadata path listed; no substantive content review claimed"
+    },
+    {
+      "path": "hosts/default/bin-impl/wav_concat.py",
+      "status": "inventory_only",
+      "semantic_scope": "Metadata path listed; no substantive content review claimed"
+    },
+    {
+      "path": "hosts/default/bin-impl/window_layout.sh",
+      "status": "inventory_only",
+      "semantic_scope": "Metadata path listed; no substantive content review claimed"
+    },
+    {
+      "path": "hosts/default/bin-impl/zip.sh",
+      "status": "inventory_only",
+      "semantic_scope": "Metadata path listed; no substantive content review claimed"
+    },
+    {
+      "path": "hosts/default/config.json",
+      "status": "inventory_only",
+      "semantic_scope": "Metadata path listed; no substantive content review claimed"
+    },
+    {
+      "path": "hosts/g3/bin-impl/install_system_server_mcp_task.ps1",
+      "status": "inventory_only",
+      "semantic_scope": "Metadata path listed; no substantive content review claimed"
+    },
+    {
+      "path": "hosts/g3/bin-impl/install_system_server_task.ps1",
+      "status": "inventory_only",
+      "semantic_scope": "Metadata path listed; no substantive content review claimed"
+    },
+    {
+      "path": "hosts/g3/bin-impl/install_web_portal.ps1",
+      "status": "inventory_only",
+      "semantic_scope": "Metadata path listed; no substantive content review claimed"
+    },
+    {
+      "path": "hosts/g3/bin-impl/set_web_portal_password.ps1",
+      "status": "inventory_only",
+      "semantic_scope": "Metadata path listed; no substantive content review claimed"
+    },
+    {
+      "path": "hosts/g3/bin-impl/system_server.ps1",
+      "status": "inventory_only",
+      "semantic_scope": "Metadata path listed; no substantive content review claimed"
+    },
+    {
+      "path": "hosts/g3/bin-impl/system_server_mcp.ps1",
+      "status": "inventory_only",
+      "semantic_scope": "Metadata path listed; no substantive content review claimed"
+    },
+    {
+      "path": "hosts/g3/config.json",
+      "status": "inventory_only",
+      "semantic_scope": "Metadata path listed; no substantive content review claimed"
+    },
+    {
+      "path": "hosts/g3/etc/system-server-mcp.json",
+      "status": "inventory_only",
+      "semantic_scope": "Metadata path listed; no substantive content review claimed"
+    },
+    {
+      "path": "hosts/jetson/bin-impl/check_gpu.sh",
+      "status": "inventory_only",
+      "semantic_scope": "Metadata path listed; no substantive content review claimed"
+    },
+    {
+      "path": "hosts/jetson/config.json",
+      "status": "inventory_only",
+      "semantic_scope": "Metadata path listed; no substantive content review claimed"
+    },
+    {
+      "path": "hosts/jetson/etc/apache2/conf-available/jetson-llm-vhost.inc",
+      "status": "inventory_only",
+      "semantic_scope": "Metadata path listed; no substantive content review claimed"
+    },
+    {
+      "path": "hosts/jetson/etc/cloudflared/config.yml",
+      "status": "inventory_only",
+      "semantic_scope": "Metadata path listed; no substantive content review claimed"
+    },
+    {
+      "path": "hosts/jetson/etc/ssh/known_hosts_luxtts",
+      "status": "inventory_only",
+      "semantic_scope": "Metadata path listed; no substantive content review claimed"
+    },
+    {
+      "path": "hosts/jetson/etc/swaag/runtime.toml",
+      "status": "inventory_only",
+      "semantic_scope": "Metadata path listed; no substantive content review claimed"
+    },
+    {
+      "path": "hosts/jetson/etc/system-server-mcp.json",
+      "status": "inventory_only",
+      "semantic_scope": "Metadata path listed; no substantive content review claimed"
+    },
+    {
+      "path": "hosts/jetson/etc/systemd/system/mcp-system-server.service.d/30-deployment.conf",
+      "status": "inventory_only",
+      "semantic_scope": "Metadata path listed; no substantive content review claimed"
+    },
+    {
+      "path": "hosts/jetson/etc/systemd/system/qwen38-27b-q4-jetson.service.d/20-memory-admission.conf",
+      "status": "inventory_only",
+      "semantic_scope": "Metadata path listed; no substantive content review claimed"
+    },
+    {
+      "path": "hosts/jetson/etc/voice-agent/ws.json",
+      "status": "inventory_only",
+      "semantic_scope": "Metadata path listed; no substantive content review claimed"
+    },
+    {
+      "path": "hosts/nitro/bin-impl/chromium-full-power",
+      "status": "inventory_only",
+      "semantic_scope": "Metadata path listed; no substantive content review claimed"
+    },
+    {
+      "path": "hosts/nitro/bin-impl/install_data01_mount.sh",
+      "status": "inventory_only",
+      "semantic_scope": "Metadata path listed; no substantive content review claimed"
+    },
+    {
+      "path": "hosts/nitro/bin-impl/unity-editor",
+      "status": "inventory_only",
+      "semantic_scope": "Metadata path listed; no substantive content review claimed"
+    },
+    {
+      "path": "hosts/nitro/config.json",
+      "status": "inventory_only",
+      "semantic_scope": "Metadata path listed; no substantive content review claimed"
+    },
+    {
+      "path": "hosts/nitro/etc/NETPLAN_GENERATOR_MASK.md",
+      "status": "inventory_only",
+      "semantic_scope": "Metadata path listed; no substantive content review claimed"
+    },
+    {
+      "path": "hosts/nitro/etc/sudoers.d/chromium-full-power",
+      "status": "inventory_only",
+      "semantic_scope": "Metadata path listed; no substantive content review claimed"
+    },
+    {
+      "path": "hosts/nitro/etc/system-server-mcp.json",
+      "status": "inventory_only",
+      "semantic_scope": "Metadata path listed; no substantive content review claimed"
+    },
+    {
+      "path": "hosts/nitro/etc/system76-scheduler/process-scheduler/infra-realtime.kdl",
+      "status": "inventory_only",
+      "semantic_scope": "Metadata path listed; no substantive content review claimed"
+    },
+    {
+      "path": "hosts/nitro/etc/systemd/system-generators/netplan",
+      "status": "inventory_only",
+      "semantic_scope": "Metadata path listed; no substantive content review claimed"
+    },
+    {
+      "path": "hosts/nitro/etc/systemd/system/mcp-system-server.service.d/30-deployment.conf",
+      "status": "inventory_only",
+      "semantic_scope": "Metadata path listed; no substantive content review claimed"
+    },
+    {
+      "path": "hosts/nitro/etc/systemd/system/mcp-system-server.service.d/v2.conf",
+      "status": "inventory_only",
+      "semantic_scope": "Metadata path listed; no substantive content review claimed"
+    },
+    {
+      "path": "hosts/nitro/etc/udev/rules.d/99-data01-auto-mount.rules",
+      "status": "inventory_only",
+      "semantic_scope": "Metadata path listed; no substantive content review claimed"
+    },
+    {
+      "path": "hosts/raspi/config.json",
+      "status": "inventory_only",
+      "semantic_scope": "Metadata path listed; no substantive content review claimed"
+    },
+    {
+      "path": "hosts/raspi/etc/system-server-mcp.json",
+      "status": "inventory_only",
+      "semantic_scope": "Metadata path listed; no substantive content review claimed"
+    },
+    {
+      "path": "hosts/raspi/etc/systemd/system/mcp-system-server.service.d/30-deployment.conf",
+      "status": "inventory_only",
+      "semantic_scope": "Metadata path listed; no substantive content review claimed"
+    },
+    {
+      "path": "hosts/raspi/etc/systemd/system/shellinabox-custom.service",
+      "status": "inventory_only",
+      "semantic_scope": "Metadata path listed; no substantive content review claimed"
+    },
+    {
+      "path": "hosts/thor/bin-impl/3d-model-download-status",
+      "status": "inventory_only",
+      "semantic_scope": "Metadata path listed; no substantive content review claimed"
+    },
+    {
+      "path": "hosts/thor/config.json",
+      "status": "inventory_only",
+      "semantic_scope": "Metadata path listed; no substantive content review claimed"
+    },
+    {
+      "path": "hosts/thor/etc/ai-stack/apache.conf",
+      "status": "inventory_only",
+      "semantic_scope": "Metadata path listed; no substantive content review claimed"
+    },
+    {
+      "path": "hosts/thor/etc/ai-stack/litellm.yaml",
+      "status": "inventory_only",
+      "semantic_scope": "Metadata path listed; no substantive content review claimed"
+    },
+    {
+      "path": "hosts/thor/etc/apparmor.d/bwrap",
+      "status": "inventory_only",
+      "semantic_scope": "Metadata path listed; no substantive content review claimed"
+    },
+    {
+      "path": "hosts/thor/etc/swaag/runtime.toml",
+      "status": "inventory_only",
+      "semantic_scope": "Metadata path listed; no substantive content review claimed"
+    },
+    {
+      "path": "hosts/thor/etc/swaag/voice-agent.toml",
+      "status": "inventory_only",
+      "semantic_scope": "Metadata path listed; no substantive content review claimed"
+    },
+    {
+      "path": "hosts/thor/etc/swaag/voice-gateway.toml",
+      "status": "inventory_only",
+      "semantic_scope": "Metadata path listed; no substantive content review claimed"
+    },
+    {
+      "path": "hosts/thor/etc/system-server-mcp.json",
+      "status": "inventory_only",
+      "semantic_scope": "Metadata path listed; no substantive content review claimed"
+    },
+    {
+      "path": "hosts/thor/etc/systemd/system/llama-cpp-qwen3-5-9b.service.d/20-memory-admission.conf",
+      "status": "inventory_only",
+      "semantic_scope": "Metadata path listed; no substantive content review claimed"
+    },
+    {
+      "path": "hosts/thor/etc/systemd/system/llama-cpp-qwen3-coder-30b-a3b.service.d/20-memory-admission.conf",
+      "status": "inventory_only",
+      "semantic_scope": "Metadata path listed; no substantive content review claimed"
+    },
+    {
+      "path": "hosts/thor/etc/systemd/system/llama-cpp-thor-voice.service.d/20-memory-admission.conf",
+      "status": "inventory_only",
+      "semantic_scope": "Metadata path listed; no substantive content review claimed"
+    },
+    {
+      "path": "hosts/thor/etc/systemd/system/llm-game-world-small.service.d/20-memory-admission.conf",
+      "status": "inventory_only",
+      "semantic_scope": "Metadata path listed; no substantive content review claimed"
+    },
+    {
+      "path": "hosts/thor/etc/systemd/system/llm-thor-best.service.d/20-memory-admission.conf",
+      "status": "inventory_only",
+      "semantic_scope": "Metadata path listed; no substantive content review claimed"
+    },
+    {
+      "path": "hosts/thor/etc/systemd/system/llm-thor-coder-full.service.d/20-memory-admission.conf",
+      "status": "inventory_only",
+      "semantic_scope": "Metadata path listed; no substantive content review claimed"
+    },
+    {
+      "path": "hosts/thor/etc/systemd/system/llm-thor-default.service.d/20-memory-admission.conf",
+      "status": "inventory_only",
+      "semantic_scope": "Metadata path listed; no substantive content review claimed"
+    },
+    {
+      "path": "hosts/thor/etc/systemd/system/llm-thor-qwen38-q8-full.service.d/20-memory-admission.conf",
+      "status": "inventory_only",
+      "semantic_scope": "Metadata path listed; no substantive content review claimed"
+    },
+    {
+      "path": "hosts/thor/etc/systemd/system/mcp-system-server.service.d/30-deployment.conf",
+      "status": "inventory_only",
+      "semantic_scope": "Metadata path listed; no substantive content review claimed"
+    },
+    {
+      "path": "hosts/thor/etc/systemd/system/swaag-bench-qwen35-9b.service",
+      "status": "inventory_only",
+      "semantic_scope": "Metadata path listed; no substantive content review claimed"
+    },
+    {
+      "path": "hosts/thor/etc/systemd/system/swaag-sandbox-prereqs.service",
+      "status": "inventory_only",
+      "semantic_scope": "Metadata path listed; no substantive content review claimed"
+    },
+    {
+      "path": "hosts/thor/etc/systemd/system/thor-swaag-communication.service.d/10-sandbox-prereqs.conf",
+      "status": "inventory_only",
+      "semantic_scope": "Metadata path listed; no substantive content review claimed"
+    },
+    {
+      "path": "hosts/thor/etc/systemd/system/thor-swaag-communication.service.d/70-dual-role-delivery.conf",
+      "status": "inventory_only",
+      "semantic_scope": "Metadata path listed; no substantive content review claimed"
+    },
+    {
+      "path": "hosts/thor/etc/systemd/system/thor-swaag-communication.service.d/90-grounded-identity.conf",
+      "status": "inventory_only",
+      "semantic_scope": "Metadata path listed; no substantive content review claimed"
+    },
+    {
+      "path": "hosts/thor/etc/systemd/system/thor-swaag-communication.service.d/99-foreground-world.conf",
+      "status": "inventory_only",
+      "semantic_scope": "Metadata path listed; no substantive content review claimed"
+    },
+    {
+      "path": "hosts/thor/etc/systemd/system/thor-swaag-communication.service.d/99-z-worker-inference-deadline.conf",
+      "status": "inventory_only",
+      "semantic_scope": "Metadata path listed; no substantive content review claimed"
+    },
+    {
+      "path": "libexec/analyze_netwatch.py",
+      "status": "inventory_only",
+      "semantic_scope": "Metadata path listed; no substantive content review claimed"
+    },
+    {
+      "path": "libexec/as_hans.sh",
+      "status": "inventory_only",
+      "semantic_scope": "Metadata path listed; no substantive content review claimed"
+    },
+    {
+      "path": "libexec/as_hans_audio.sh",
+      "status": "inventory_only",
+      "semantic_scope": "Metadata path listed; no substantive content review claimed"
+    },
+    {
+      "path": "libexec/as_hans_gui.sh",
+      "status": "inventory_only",
+      "semantic_scope": "Metadata path listed; no substantive content review claimed"
+    },
+    {
+      "path": "libexec/calendar_automation.py",
+      "status": "inventory_only",
+      "semantic_scope": "Metadata path listed; no substantive content review claimed"
+    },
+    {
+      "path": "libexec/calendar_chat_policy.py",
+      "status": "inventory_only",
+      "semantic_scope": "Metadata path listed; no substantive content review claimed"
+    },
+    {
+      "path": "libexec/calendar_chat_recovery.py",
+      "status": "inventory_only",
+      "semantic_scope": "Metadata path listed; no substantive content review claimed"
+    },
+    {
+      "path": "libexec/calendar_mobile_api.py",
+      "status": "inventory_only",
+      "semantic_scope": "Metadata path listed; no substantive content review claimed"
+    },
+    {
+      "path": "libexec/chatgpt_chat.py",
+      "status": "inventory_only",
+      "semantic_scope": "Metadata path listed; no substantive content review claimed"
+    },
+    {
+      "path": "libexec/chatgpt_chat_inspect.py",
+      "status": "inventory_only",
+      "semantic_scope": "Metadata path listed; no substantive content review claimed"
+    },
+    {
+      "path": "libexec/chatgpt_composer_draft.py",
+      "status": "inventory_only",
+      "semantic_scope": "Metadata path listed; no substantive content review claimed"
+    },
+    {
+      "path": "libexec/chatgpt_file_materialization.py",
+      "status": "inventory_only",
+      "semantic_scope": "Metadata path listed; no substantive content review claimed"
+    },
+    {
+      "path": "libexec/chatgpt_tab_lifecycle.py",
+      "status": "inventory_only",
+      "semantic_scope": "Metadata path listed; no substantive content review claimed"
+    },
+    {
+      "path": "libexec/chatgpt_tab_ownership.py",
+      "status": "inventory_only",
+      "semantic_scope": "Metadata path listed; no substantive content review claimed"
+    },
+    {
+      "path": "libexec/chatgpt_tool_enablement_watch.py",
+      "status": "inventory_only",
+      "semantic_scope": "Metadata path listed; no substantive content review claimed"
+    },
+    {
+      "path": "libexec/chromium-full-power-booster",
+      "status": "inventory_only",
+      "semantic_scope": "Metadata path listed; no substantive content review claimed"
+    },
+    {
+      "path": "libexec/chromium-full-power-system-runner",
+      "status": "inventory_only",
+      "semantic_scope": "Metadata path listed; no substantive content review claimed"
+    },
+    {
+      "path": "libexec/config_value.py",
+      "status": "inventory_only",
+      "semantic_scope": "Metadata path listed; no substantive content review claimed"
+    },
+    {
+      "path": "libexec/download_manager.py",
+      "status": "inventory_only",
+      "semantic_scope": "Metadata path listed; no substantive content review claimed"
+    },
+    {
+      "path": "libexec/exec_host_impl.sh",
+      "status": "inventory_only",
+      "semantic_scope": "Metadata path listed; no substantive content review claimed"
+    },
+    {
+      "path": "libexec/gguf_memory.py",
+      "status": "inventory_only",
+      "semantic_scope": "Metadata path listed; no substantive content review claimed"
+    },
+    {
+      "path": "libexec/host_config.py",
+      "status": "inventory_only",
+      "semantic_scope": "Metadata path listed; no substantive content review claimed"
+    },
+    {
+      "path": "libexec/host_unavailable.sh",
+      "status": "inventory_only",
+      "semantic_scope": "Metadata path listed; no substantive content review claimed"
+    },
+    {
+      "path": "libexec/host_user.sh",
+      "status": "inventory_only",
+      "semantic_scope": "Metadata path listed; no substantive content review claimed"
+    },
+    {
+      "path": "libexec/infra_safety_guard.py",
+      "status": "inventory_only",
+      "semantic_scope": "Metadata path listed; no substantive content review claimed"
+    },
+    {
+      "path": "libexec/install_uuid_mount.sh",
+      "status": "inventory_only",
+      "semantic_scope": "Metadata path listed; no substantive content review claimed"
+    },
+    {
+      "path": "libexec/llm_memory_admission.py",
+      "status": "inventory_only",
+      "semantic_scope": "Metadata path listed; no substantive content review claimed"
+    },
+    {
+      "path": "libexec/netwatch.py",
+      "status": "inventory_only",
+      "semantic_scope": "Metadata path listed; no substantive content review claimed"
+    },
+    {
+      "path": "libexec/openvpn_update_systemd_resolved_home_arpa.sh",
+      "status": "inventory_only",
+      "semantic_scope": "Metadata path listed; no substantive content review claimed"
+    },
+    {
+      "path": "libexec/password_generator.py",
+      "status": "inventory_only",
+      "semantic_scope": "Metadata path listed; no substantive content review claimed"
+    },
+    {
+      "path": "libexec/ram_overview.py",
+      "status": "inventory_only",
+      "semantic_scope": "Metadata path listed; no substantive content review claimed"
+    },
+    {
+      "path": "libexec/recording_coverage_check.py",
+      "status": "inventory_only",
+      "semantic_scope": "Metadata path listed; no substantive content review claimed"
+    },
+    {
+      "path": "libexec/run_web_interface.py",
+      "status": "inventory_only",
+      "semantic_scope": "Metadata path listed; no substantive content review claimed"
+    },
+    {
+      "path": "libexec/safe_restart_system_server.py",
+      "status": "inventory_only",
+      "semantic_scope": "Metadata path listed; no substantive content review claimed"
+    },
+    {
+      "path": "libexec/speech_cli.py",
+      "status": "inventory_only",
+      "semantic_scope": "Metadata path listed; no substantive content review claimed"
+    },
+    {
+      "path": "libexec/speech_mobile_player.py",
+      "status": "inventory_only",
+      "semantic_scope": "Metadata path listed; no substantive content review claimed"
+    },
+    {
+      "path": "libexec/storage_audit.py",
+      "status": "inventory_only",
+      "semantic_scope": "Metadata path listed; no substantive content review claimed"
+    },
+    {
+      "path": "libexec/swaag_calendar_submit.py",
+      "status": "inventory_only",
+      "semantic_scope": "Metadata path listed; no substantive content review claimed"
+    },
+    {
+      "path": "libexec/swaag_fast_activate.py",
+      "status": "inventory_only",
+      "semantic_scope": "Metadata path listed; no substantive content review claimed"
+    },
+    {
+      "path": "libexec/swaag_role_evidence.py",
+      "status": "inventory_only",
+      "semantic_scope": "Metadata path listed; no substantive content review claimed"
+    },
+    {
+      "path": "libexec/sync_host_identity.py",
+      "status": "inventory_only",
+      "semantic_scope": "Metadata path listed; no substantive content review claimed"
+    },
+    {
+      "path": "libexec/web_portal.py",
+      "status": "inventory_only",
+      "semantic_scope": "Metadata path listed; no substantive content review claimed"
+    },
+    {
+      "path": "libexec/web_portal_runtime.py",
+      "status": "inventory_only",
+      "semantic_scope": "Metadata path listed; no substantive content review claimed"
+    },
+    {
+      "path": "secrets/cgtrader.txt",
+      "status": "inventory_only",
+      "semantic_scope": "Metadata path listed; no substantive content review claimed"
+    },
+    {
+      "path": "secrets/google.txt",
+      "status": "inventory_only",
+      "semantic_scope": "Metadata path listed; no substantive content review claimed"
+    },
+    {
+      "path": "secrets/open_router_models_all.json",
+      "status": "inventory_only",
+      "semantic_scope": "Metadata path listed; no substantive content review claimed"
+    },
+    {
+      "path": "secrets/open_router_models_free.txt",
+      "status": "inventory_only",
+      "semantic_scope": "Metadata path listed; no substantive content review claimed"
+    },
+    {
+      "path": "secrets/personal.txt",
+      "status": "inventory_only",
+      "semantic_scope": "Metadata path listed; no substantive content review claimed"
+    },
+    {
+      "path": "secrets/token_fmp.txt",
+      "status": "inventory_only",
+      "semantic_scope": "Metadata path listed; no substantive content review claimed"
+    },
+    {
+      "path": "secrets/token_github.txt",
+      "status": "inventory_only",
+      "semantic_scope": "Metadata path listed; no substantive content review claimed"
+    },
+    {
+      "path": "secrets/token_github_admin.txt",
+      "status": "inventory_only",
+      "semantic_scope": "Metadata path listed; no substantive content review claimed"
+    },
+    {
+      "path": "secrets/token_n8n.txt",
+      "status": "inventory_only",
+      "semantic_scope": "Metadata path listed; no substantive content review claimed"
+    },
+    {
+      "path": "secrets/token_open_router.txt",
+      "status": "inventory_only",
+      "semantic_scope": "Metadata path listed; no substantive content review claimed"
+    },
+    {
+      "path": "secrets/token_pip.txt",
+      "status": "inventory_only",
+      "semantic_scope": "Metadata path listed; no substantive content review claimed"
+    },
+    {
+      "path": "secrets/token_playcanva.txt",
+      "status": "inventory_only",
+      "semantic_scope": "Metadata path listed; no substantive content review claimed"
+    },
+    {
+      "path": "secrets/token_trading212.txt",
+      "status": "inventory_only",
+      "semantic_scope": "Metadata path listed; no substantive content review claimed"
+    },
+    {
+      "path": "secrets/token_wix.txt",
+      "status": "inventory_only",
+      "semantic_scope": "Metadata path listed; no substantive content review claimed"
+    },
+    {
+      "path": "secrets/unity3d.txt",
+      "status": "inventory_only",
+      "semantic_scope": "Metadata path listed; no substantive content review claimed"
+    },
+    {
+      "path": "secrets/wix.txt",
+      "status": "inventory_only",
+      "semantic_scope": "Metadata path listed; no substantive content review claimed"
+    },
+    {
+      "path": "services/README.md",
+      "status": "inventory_only",
+      "semantic_scope": "Metadata path listed; no substantive content review claimed"
+    },
+    {
+      "path": "services/THIRD_PARTY.md",
+      "status": "inventory_only",
+      "semantic_scope": "Metadata path listed; no substantive content review claimed"
+    },
+    {
+      "path": "services/audio_library/library.py",
+      "status": "inventory_only",
+      "semantic_scope": "Metadata path listed; no substantive content review claimed"
+    },
+    {
+      "path": "services/common/portal_session.py",
+      "status": "inventory_only",
+      "semantic_scope": "Metadata path listed; no substantive content review claimed"
+    },
+    {
+      "path": "services/media_library/download_worker.py",
+      "status": "inventory_only",
+      "semantic_scope": "Metadata path listed; no substantive content review claimed"
+    },
+    {
+      "path": "services/media_library/install_downloader.sh",
+      "status": "inventory_only",
+      "semantic_scope": "Metadata path listed; no substantive content review claimed"
+    },
+    {
+      "path": "services/media_library/library.py",
+      "status": "inventory_only",
+      "semantic_scope": "Metadata path listed; no substantive content review claimed"
+    },
+    {
+      "path": "services/media_library/portal.py",
+      "status": "inventory_only",
+      "semantic_scope": "Metadata path listed; no substantive content review claimed"
+    },
+    {
+      "path": "services/public_pages/multiverse-services/index.html",
+      "status": "inventory_only",
+      "semantic_scope": "Metadata path listed; no substantive content review claimed"
+    },
+    {
+      "path": "services/public_pages/multiverse-services/privacy/index.html",
+      "status": "inventory_only",
+      "semantic_scope": "Metadata path listed; no substantive content review claimed"
+    },
+    {
+      "path": "services/public_pages/multiverse-services/terms/index.html",
+      "status": "inventory_only",
+      "semantic_scope": "Metadata path listed; no substantive content review claimed"
+    },
+    {
+      "path": "services/remote_desktop/README.md",
+      "status": "inventory_only",
+      "semantic_scope": "Metadata path listed; no substantive content review claimed"
+    },
+    {
+      "path": "services/remote_desktop/backends/jetson/README.md",
+      "status": "inventory_only",
+      "semantic_scope": "Metadata path listed; no substantive content review claimed"
+    },
+    {
+      "path": "services/remote_desktop/backends/jetson/app.py",
+      "status": "inventory_only",
+      "semantic_scope": "Metadata path listed; no substantive content review claimed"
+    },
+    {
+      "path": "services/remote_desktop/backends/jetson/requirements.txt",
+      "status": "inventory_only",
+      "semantic_scope": "Metadata path listed; no substantive content review claimed"
+    },
+    {
+      "path": "services/remote_desktop/backends/jetson/scripts/run_dev.sh",
+      "status": "inventory_only",
+      "semantic_scope": "Metadata path listed; no substantive content review claimed"
+    },
+    {
+      "path": "services/remote_desktop/backends/jetson/scripts/run_virtual_desktop.sh",
+      "status": "inventory_only",
+      "semantic_scope": "Metadata path listed; no substantive content review claimed"
+    },
+    {
+      "path": "services/remote_desktop/backends/jetson/scripts/set_real_desktop_resolution.sh",
+      "status": "inventory_only",
+      "semantic_scope": "Metadata path listed; no substantive content review claimed"
+    },
+    {
+      "path": "services/remote_desktop/backends/jetson/scripts/smoke_test.sh",
+      "status": "inventory_only",
+      "semantic_scope": "Metadata path listed; no substantive content review claimed"
+    },
+    {
+      "path": "services/remote_desktop/backends/jetson/static/client.js",
+      "status": "inventory_only",
+      "semantic_scope": "Metadata path listed; no substantive content review claimed"
+    },
+    {
+      "path": "services/remote_desktop/backends/jetson/static/vendor/mpegts/mpegts.js",
+      "status": "inventory_only",
+      "semantic_scope": "Metadata path listed; no substantive content review claimed"
+    },
+    {
+      "path": "services/remote_desktop/backends/nitro/app.py",
+      "status": "inventory_only",
+      "semantic_scope": "Metadata path listed; no substantive content review claimed"
+    },
+    {
+      "path": "services/remote_desktop/backends/nitro/static/client.js",
+      "status": "inventory_only",
+      "semantic_scope": "Metadata path listed; no substantive content review claimed"
+    },
+    {
+      "path": "services/remote_desktop/backends/nitro/static/vendor/jsmpeg/jsmpeg.js",
+      "status": "inventory_only",
+      "semantic_scope": "Metadata path listed; no substantive content review claimed"
+    },
+    {
+      "path": "services/remote_desktop/backends/nitro/static/vendor/mpegts/mpegts.js",
+      "status": "inventory_only",
+      "semantic_scope": "Metadata path listed; no substantive content review claimed"
+    },
+    {
+      "path": "services/remote_desktop/backends/raspi/app.py",
+      "status": "inventory_only",
+      "semantic_scope": "Metadata path listed; no substantive content review claimed"
+    },
+    {
+      "path": "services/remote_desktop/backends/raspi/scripts/run_virtual_desktop.sh",
+      "status": "inventory_only",
+      "semantic_scope": "Metadata path listed; no substantive content review claimed"
+    },
+    {
+      "path": "services/remote_desktop/backends/raspi/start_virtual_display.py",
+      "status": "inventory_only",
+      "semantic_scope": "Metadata path listed; no substantive content review claimed"
+    },
+    {
+      "path": "services/remote_desktop/backends/raspi/static/client.js",
+      "status": "inventory_only",
+      "semantic_scope": "Metadata path listed; no substantive content review claimed"
+    },
+    {
+      "path": "services/remote_desktop/backends/thor/app.py",
+      "status": "inventory_only",
+      "semantic_scope": "Metadata path listed; no substantive content review claimed"
+    },
+    {
+      "path": "services/remote_desktop/backends/thor/static/client.js",
+      "status": "inventory_only",
+      "semantic_scope": "Metadata path listed; no substantive content review claimed"
+    },
+    {
+      "path": "services/remote_desktop/common/desktop_page.py",
+      "status": "inventory_only",
+      "semantic_scope": "Metadata path listed; no substantive content review claimed"
+    },
+    {
+      "path": "services/remote_desktop/common/ui.css",
+      "status": "inventory_only",
+      "semantic_scope": "Metadata path listed; no substantive content review claimed"
+    },
+    {
+      "path": "services/remote_desktop/common/ui_keys.js",
+      "status": "inventory_only",
+      "semantic_scope": "Metadata path listed; no substantive content review claimed"
+    },
+    {
+      "path": "services/remote_desktop/common/ui_shell.html",
+      "status": "inventory_only",
+      "semantic_scope": "Metadata path listed; no substantive content review claimed"
+    },
+    {
+      "path": "services/video_library/README.md",
+      "status": "inventory_only",
+      "semantic_scope": "Metadata path listed; no substantive content review claimed"
+    },
+    {
+      "path": "services/video_library/SCREEN_CONTRACT.md",
+      "status": "inventory_only",
+      "semantic_scope": "Metadata path listed; no substantive content review claimed"
+    },
+    {
+      "path": "services/video_library/news_archive_review.py",
+      "status": "inventory_only",
+      "semantic_scope": "Metadata path listed; no substantive content review claimed"
+    },
+    {
+      "path": "services/video_library/static/app.css",
+      "status": "inventory_only",
+      "semantic_scope": "Metadata path listed; no substantive content review claimed"
+    },
+    {
+      "path": "services/video_library/static/app.js",
+      "status": "inventory_only",
+      "semantic_scope": "Metadata path listed; no substantive content review claimed"
+    },
+    {
+      "path": "services/video_library/static/index.html",
+      "status": "inventory_only",
+      "semantic_scope": "Metadata path listed; no substantive content review claimed"
+    },
+    {
+      "path": "services/video_library/static/vendor/README.md",
+      "status": "inventory_only",
+      "semantic_scope": "Metadata path listed; no substantive content review claimed"
+    },
+    {
+      "path": "services/video_library/static/vendor/hls.min.js",
+      "status": "inventory_only",
+      "semantic_scope": "Metadata path listed; no substantive content review claimed"
+    },
+    {
+      "path": "services/video_library/static/vendor/video-js.min.css",
+      "status": "inventory_only",
+      "semantic_scope": "Metadata path listed; no substantive content review claimed"
+    },
+    {
+      "path": "services/video_library/static/vendor/video.min.js",
+      "status": "inventory_only",
+      "semantic_scope": "Metadata path listed; no substantive content review claimed"
+    },
+    {
+      "path": "services/video_library/sync_library.py",
+      "status": "inventory_only",
+      "semantic_scope": "Metadata path listed; no substantive content review claimed"
+    },
+    {
+      "path": "services/video_library/test_news_archive_review.py",
+      "status": "inventory_only",
+      "semantic_scope": "Metadata path listed; no substantive content review claimed"
+    },
+    {
+      "path": "services/video_library/test_review_curation.py",
+      "status": "inventory_only",
+      "semantic_scope": "Metadata path listed; no substantive content review claimed"
+    },
+    {
+      "path": "services/video_library/test_video_library.py",
+      "status": "inventory_only",
+      "semantic_scope": "Metadata path listed; no substantive content review claimed"
+    },
+    {
+      "path": "services/video_library/video_library.py",
+      "status": "inventory_only",
+      "semantic_scope": "Metadata path listed; no substantive content review claimed"
+    },
+    {
+      "path": "services/web_terminal/app.py",
+      "status": "inventory_only",
+      "semantic_scope": "Metadata path listed; no substantive content review claimed"
+    },
+    {
+      "path": "services/web_terminal/static/index.html",
+      "status": "inventory_only",
+      "semantic_scope": "Metadata path listed; no substantive content review claimed"
+    },
+    {
+      "path": "services/web_terminal/static/vendor/xterm/addon-fit.js",
+      "status": "inventory_only",
+      "semantic_scope": "Metadata path listed; no substantive content review claimed"
+    },
+    {
+      "path": "services/web_terminal/static/vendor/xterm/xterm.css",
+      "status": "inventory_only",
+      "semantic_scope": "Metadata path listed; no substantive content review claimed"
+    },
+    {
+      "path": "services/web_terminal/static/vendor/xterm/xterm.js",
+      "status": "inventory_only",
+      "semantic_scope": "Metadata path listed; no substantive content review claimed"
+    },
+    {
+      "path": "share/chromium-full-power-visible-tabs/manifest.json",
+      "status": "inventory_only",
+      "semantic_scope": "Metadata path listed; no substantive content review claimed"
+    },
+    {
+      "path": "share/chromium-full-power-visible-tabs/visible-tabs-main.js",
+      "status": "inventory_only",
+      "semantic_scope": "Metadata path listed; no substantive content review claimed"
+    },
+    {
+      "path": "share/swaag/communication-main-source.conf",
+      "status": "inventory_only",
+      "semantic_scope": "Metadata path listed; no substantive content review claimed"
+    },
+    {
+      "path": "share/web_portal/assets/audio-library.css",
+      "status": "inventory_only",
+      "semantic_scope": "Metadata path listed; no substantive content review claimed"
+    },
+    {
+      "path": "share/web_portal/assets/audio-library.js",
+      "status": "inventory_only",
+      "semantic_scope": "Metadata path listed; no substantive content review claimed"
+    },
+    {
+      "path": "share/web_portal/assets/dashboard.js",
+      "status": "inventory_only",
+      "semantic_scope": "Metadata path listed; no substantive content review claimed"
+    },
+    {
+      "path": "share/web_portal/assets/explorer.js",
+      "status": "inventory_only",
+      "semantic_scope": "Metadata path listed; no substantive content review claimed"
+    },
+    {
+      "path": "share/web_portal/assets/gallery-editor.js",
+      "status": "inventory_only",
+      "semantic_scope": "Metadata path listed; no substantive content review claimed"
+    },
+    {
+      "path": "share/web_portal/assets/gallery-viewer.js",
+      "status": "inventory_only",
+      "semantic_scope": "Metadata path listed; no substantive content review claimed"
+    },
+    {
+      "path": "share/web_portal/assets/gallery-viewport.css",
+      "status": "inventory_only",
+      "semantic_scope": "Metadata path listed; no substantive content review claimed"
+    },
+    {
+      "path": "share/web_portal/assets/gallery-viewport.js",
+      "status": "inventory_only",
+      "semantic_scope": "Metadata path listed; no substantive content review claimed"
+    },
+    {
+      "path": "share/web_portal/assets/gallery-zoom.js",
+      "status": "inventory_only",
+      "semantic_scope": "Metadata path listed; no substantive content review claimed"
+    },
+    {
+      "path": "share/web_portal/assets/media-canvas.js",
+      "status": "inventory_only",
+      "semantic_scope": "Metadata path listed; no substantive content review claimed"
+    },
+    {
+      "path": "share/web_portal/assets/media-download.js",
+      "status": "inventory_only",
+      "semantic_scope": "Metadata path listed; no substantive content review claimed"
+    },
+    {
+      "path": "share/web_portal/assets/media.css",
+      "status": "inventory_only",
+      "semantic_scope": "Metadata path listed; no substantive content review claimed"
+    },
+    {
+      "path": "share/web_portal/assets/portal.css",
+      "status": "inventory_only",
+      "semantic_scope": "Metadata path listed; no substantive content review claimed"
+    },
+    {
+      "path": "share/web_portal/assets/ram.js",
+      "status": "inventory_only",
+      "semantic_scope": "Metadata path listed; no substantive content review claimed"
+    },
+    {
+      "path": "share/web_portal/assets/speech-icon-192.png",
+      "status": "inventory_only",
+      "semantic_scope": "Metadata path listed; no substantive content review claimed"
+    },
+    {
+      "path": "share/web_portal/assets/speech-icon-512.png",
+      "status": "inventory_only",
+      "semantic_scope": "Metadata path listed; no substantive content review claimed"
+    },
+    {
+      "path": "share/web_portal/assets/speech-player.js",
+      "status": "inventory_only",
+      "semantic_scope": "Metadata path listed; no substantive content review claimed"
+    },
+    {
+      "path": "share/web_portal/assets/speech-sw.js",
+      "status": "inventory_only",
+      "semantic_scope": "Metadata path listed; no substantive content review claimed"
+    },
+    {
+      "path": "share/web_portal/assets/speech.js",
+      "status": "inventory_only",
+      "semantic_scope": "Metadata path listed; no substantive content review claimed"
+    },
+    {
+      "path": "share/web_portal/assets/speech.webmanifest",
+      "status": "inventory_only",
+      "semantic_scope": "Metadata path listed; no substantive content review claimed"
+    },
+    {
+      "path": "src/google_service/QUICKSTART.md",
+      "status": "inventory_only",
+      "semantic_scope": "Metadata path listed; no substantive content review claimed"
+    },
+    {
+      "path": "src/google_service/README.md",
+      "status": "inventory_only",
+      "semantic_scope": "Metadata path listed; no substantive content review claimed"
+    },
+    {
+      "path": "src/google_service/cloud_setup_wait.py",
+      "status": "inventory_only",
+      "semantic_scope": "Metadata path listed; no substantive content review claimed"
+    },
+    {
+      "path": "src/google_service/event_bus.py",
+      "status": "inventory_only",
+      "semantic_scope": "Metadata path listed; no substantive content review claimed"
+    },
+    {
+      "path": "src/google_service/gmail_smtp_bridge.py",
+      "status": "inventory_only",
+      "semantic_scope": "Metadata path listed; no substantive content review claimed"
+    },
+    {
+      "path": "src/google_service/google_service.py",
+      "status": "inventory_only",
+      "semantic_scope": "Metadata path listed; no substantive content review claimed"
+    },
+    {
+      "path": "src/google_service/googlectl",
+      "status": "inventory_only",
+      "semantic_scope": "Metadata path listed; no substantive content review claimed"
+    },
+    {
+      "path": "src/google_service/install_jobs.py",
+      "status": "inventory_only",
+      "semantic_scope": "Metadata path listed; no substantive content review claimed"
+    },
+    {
+      "path": "src/google_service/mail_send.py",
+      "status": "inventory_only",
+      "semantic_scope": "Metadata path listed; no substantive content review claimed"
+    },
+    {
+      "path": "src/google_service/oauth_bootstrap.py",
+      "status": "inventory_only",
+      "semantic_scope": "Metadata path listed; no substantive content review claimed"
+    },
+    {
+      "path": "src/google_service/self_test.py",
+      "status": "inventory_only",
+      "semantic_scope": "Metadata path listed; no substantive content review claimed"
+    },
+    {
+      "path": "src/google_service/spam_rescue.py",
+      "status": "inventory_only",
+      "semantic_scope": "Metadata path listed; no substantive content review claimed"
+    },
+    {
+      "path": "src/google_service/webhook_gateway.py",
+      "status": "inventory_only",
+      "semantic_scope": "Metadata path listed; no substantive content review claimed"
+    },
+    {
+      "path": "src/google_service/youtube.py",
+      "status": "inventory_only",
+      "semantic_scope": "Metadata path listed; no substantive content review claimed"
+    },
+    {
+      "path": "src/mail_service/README.md",
+      "status": "inventory_only",
+      "semantic_scope": "Metadata path listed; no substantive content review claimed"
+    },
+    {
+      "path": "src/mail_service/__init__.py",
+      "status": "inventory_only",
+      "semantic_scope": "Metadata path listed; no substantive content review claimed"
+    },
+    {
+      "path": "src/mail_service/install.py",
+      "status": "inventory_only",
+      "semantic_scope": "Metadata path listed; no substantive content review claimed"
+    },
+    {
+      "path": "src/mail_service/mail_service.py",
+      "status": "inventory_only",
+      "semantic_scope": "Metadata path listed; no substantive content review claimed"
+    },
+    {
+      "path": "src/mail_service/portal_mail.php",
+      "status": "inventory_only",
+      "semantic_scope": "Metadata path listed; no substantive content review claimed"
+    },
+    {
+      "path": "src/mail_service/roundcube.inc.php",
+      "status": "inventory_only",
+      "semantic_scope": "Metadata path listed; no substantive content review claimed"
+    },
+    {
+      "path": "src/mail_service/test_local.py",
+      "status": "inventory_only",
+      "semantic_scope": "Metadata path listed; no substantive content review claimed"
+    },
+    {
+      "path": "src/mail_service/verify_live.py",
+      "status": "inventory_only",
+      "semantic_scope": "Metadata path listed; no substantive content review claimed"
+    },
+    {
+      "path": "src/mail_service/verify_live_recovery.py",
+      "status": "inventory_only",
+      "semantic_scope": "Metadata path listed; no substantive content review claimed"
+    },
+    {
+      "path": "src/mail_service/verify_restore.py",
+      "status": "inventory_only",
+      "semantic_scope": "Metadata path listed; no substantive content review claimed"
+    },
+    {
+      "path": "src/mail_service/verify_webmail.py",
+      "status": "inventory_only",
+      "semantic_scope": "Metadata path listed; no substantive content review claimed"
+    },
+    {
+      "path": "tests/test_calendar_automation.py",
+      "status": "inventory_only",
+      "semantic_scope": "Metadata path listed; no substantive content review claimed"
+    },
+    {
+      "path": "tests/test_calendar_chat_group.py",
+      "status": "inventory_only",
+      "semantic_scope": "Metadata path listed; no substantive content review claimed"
+    },
+    {
+      "path": "tests/test_calendar_chat_recovery.py",
+      "status": "inventory_only",
+      "semantic_scope": "Metadata path listed; no substantive content review claimed"
+    },
+    {
+      "path": "tests/test_calendar_local_swaag.py",
+      "status": "inventory_only",
+      "semantic_scope": "Metadata path listed; no substantive content review claimed"
+    },
+    {
+      "path": "tests/test_calendar_mobile_api.py",
+      "status": "inventory_only",
+      "semantic_scope": "Metadata path listed; no substantive content review claimed"
+    },
+    {
+      "path": "tests/test_calendar_task_objectives.py",
+      "status": "inventory_only",
+      "semantic_scope": "Metadata path listed; no substantive content review claimed"
+    },
+    {
+      "path": "tests/test_chatgpt_browser_keepalive.py",
+      "status": "inventory_only",
+      "semantic_scope": "Metadata path listed; no substantive content review claimed"
+    },
+    {
+      "path": "tests/test_chatgpt_chat_inspect.py",
+      "status": "inventory_only",
+      "semantic_scope": "Metadata path listed; no substantive content review claimed"
+    },
+    {
+      "path": "tests/test_chatgpt_chat_routing.py",
+      "status": "inventory_only",
+      "semantic_scope": "Metadata path listed; no substantive content review claimed"
+    },
+    {
+      "path": "tests/test_chatgpt_composer_draft.py",
+      "status": "inventory_only",
+      "semantic_scope": "Metadata path listed; no substantive content review claimed"
+    },
+    {
+      "path": "tests/test_chatgpt_file_materialization.py",
+      "status": "inventory_only",
+      "semantic_scope": "Metadata path listed; no substantive content review claimed"
+    },
+    {
+      "path": "tests/test_chatgpt_owned_machine_always_allow.py",
+      "status": "inventory_only",
+      "semantic_scope": "Metadata path listed; no substantive content review claimed"
+    },
+    {
+      "path": "tests/test_chatgpt_owned_machine_click_observation.py",
+      "status": "inventory_only",
+      "semantic_scope": "Metadata path listed; no substantive content review claimed"
+    },
+    {
+      "path": "tests/test_chatgpt_preemption.py",
+      "status": "inventory_only",
+      "semantic_scope": "Metadata path listed; no substantive content review claimed"
+    },
+    {
+      "path": "tests/test_chatgpt_stop_dom.py",
+      "status": "inventory_only",
+      "semantic_scope": "Metadata path listed; no substantive content review claimed"
+    },
+    {
+      "path": "tests/test_chatgpt_tab_lifecycle.py",
+      "status": "inventory_only",
+      "semantic_scope": "Metadata path listed; no substantive content review claimed"
+    },
+    {
+      "path": "tests/test_chatgpt_tab_ownership.py",
+      "status": "inventory_only",
+      "semantic_scope": "Metadata path listed; no substantive content review claimed"
+    },
+    {
+      "path": "tests/test_chatgpt_tool_enablement_watch.py",
+      "status": "inventory_only",
+      "semantic_scope": "Metadata path listed; no substantive content review claimed"
+    },
+    {
+      "path": "tests/test_chatgpt_watcher_timeout.py",
+      "status": "inventory_only",
+      "semantic_scope": "Metadata path listed; no substantive content review claimed"
+    },
+    {
+      "path": "tests/test_gallery_public_viewport.py",
+      "status": "inventory_only",
+      "semantic_scope": "Metadata path listed; no substantive content review claimed"
+    },
+    {
+      "path": "tests/test_gallery_shortcuts_browser.py",
+      "status": "inventory_only",
+      "semantic_scope": "Metadata path listed; no substantive content review claimed"
+    },
+    {
+      "path": "tests/test_gallery_upload_nitro.py",
+      "status": "inventory_only",
+      "semantic_scope": "Metadata path listed; no substantive content review claimed"
+    },
+    {
+      "path": "tests/test_gallery_viewport.py",
+      "status": "inventory_only",
+      "semantic_scope": "Metadata path listed; no substantive content review claimed"
+    },
+    {
+      "path": "tests/test_gallery_zoom_browser.py",
+      "status": "inventory_only",
+      "semantic_scope": "Metadata path listed; no substantive content review claimed"
+    },
+    {
+      "path": "tests/test_google_calendar_watch.py",
+      "status": "inventory_only",
+      "semantic_scope": "Metadata path listed; no substantive content review claimed"
+    },
+    {
+      "path": "tests/test_google_drive_watch.py",
+      "status": "inventory_only",
+      "semantic_scope": "Metadata path listed; no substantive content review claimed"
+    },
+    {
+      "path": "tests/test_google_gmail_sync_serialization.py",
+      "status": "inventory_only",
+      "semantic_scope": "Metadata path listed; no substantive content review claimed"
+    },
+    {
+      "path": "tests/test_google_mail_calendar_chatgpt_handover.py",
+      "status": "inventory_only",
+      "semantic_scope": "Metadata path listed; no substantive content review claimed"
+    },
+    {
+      "path": "tests/test_google_operations_docs.py",
+      "status": "inventory_only",
+      "semantic_scope": "Metadata path listed; no substantive content review claimed"
+    },
+    {
+      "path": "tests/test_google_self_test_paths.py",
+      "status": "inventory_only",
+      "semantic_scope": "Metadata path listed; no substantive content review claimed"
+    },
+    {
+      "path": "tests/test_google_spam_rescue.py",
+      "status": "inventory_only",
+      "semantic_scope": "Metadata path listed; no substantive content review claimed"
+    },
+    {
+      "path": "tests/test_media_browser.py",
+      "status": "inventory_only",
+      "semantic_scope": "Metadata path listed; no substantive content review claimed"
+    },
+    {
+      "path": "tests/test_media_downloader.py",
+      "status": "inventory_only",
+      "semantic_scope": "Metadata path listed; no substantive content review claimed"
+    },
+    {
+      "path": "tests/test_media_explorer_unified.py",
+      "status": "inventory_only",
+      "semantic_scope": "Metadata path listed; no substantive content review claimed"
+    },
+    {
+      "path": "tests/test_media_portal.py",
+      "status": "inventory_only",
+      "semantic_scope": "Metadata path listed; no substantive content review claimed"
+    },
+    {
+      "path": "tests/test_media_public_routing.py",
+      "status": "inventory_only",
+      "semantic_scope": "Metadata path listed; no substantive content review claimed"
+    },
+    {
+      "path": "tests/test_model_start_safety.py",
+      "status": "inventory_only",
+      "semantic_scope": "Metadata path listed; no substantive content review claimed"
+    },
+    {
+      "path": "tests/test_password_generator.py",
+      "status": "inventory_only",
+      "semantic_scope": "Metadata path listed; no substantive content review claimed"
+    },
+    {
+      "path": "tests/test_ram_overview_paths.py",
+      "status": "inventory_only",
+      "semantic_scope": "Metadata path listed; no substantive content review claimed"
+    },
+    {
+      "path": "tests/test_remote_desktop_shared_ui.py",
+      "status": "inventory_only",
+      "semantic_scope": "Metadata path listed; no substantive content review claimed"
+    },
+    {
+      "path": "tests/test_swaag_calendar_submit.py",
+      "status": "inventory_only",
+      "semantic_scope": "Metadata path listed; no substantive content review claimed"
+    },
+    {
+      "path": "tests/test_swaag_fast_activation.py",
+      "status": "inventory_only",
+      "semantic_scope": "Metadata path listed; no substantive content review claimed"
+    },
+    {
+      "path": "tests/test_swaag_role_evidence.py",
+      "status": "inventory_only",
+      "semantic_scope": "Metadata path listed; no substantive content review claimed"
+    },
+    {
+      "path": "tests/test_sync_host_identity_ssh.py",
+      "status": "inventory_only",
+      "semantic_scope": "Metadata path listed; no substantive content review claimed"
+    },
+    {
+      "path": "tests/test_thor_local_autonomous_work.py",
+      "status": "inventory_only",
+      "semantic_scope": "Metadata path listed; no substantive content review claimed"
+    },
+    {
+      "path": "tests/test_thor_swaag_voice_model_routing.py",
+      "status": "inventory_only",
+      "semantic_scope": "Metadata path listed; no substantive content review claimed"
+    },
+    {
+      "path": "tests/test_warehouse_safe_voice_activation.py",
+      "status": "inventory_only",
+      "semantic_scope": "Metadata path listed; no substantive content review claimed"
+    },
+    {
+      "path": "tests/test_web_portal_login.py",
+      "status": "inventory_only",
+      "semantic_scope": "Metadata path listed; no substantive content review claimed"
+    }
+  ]
+}

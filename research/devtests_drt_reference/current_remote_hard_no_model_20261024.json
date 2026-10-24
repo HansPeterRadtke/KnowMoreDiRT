@@ -1,0 +1,52 @@
+{
+  "reference": "remote master 321cc01 based no-model evaluation 2026-10-24, no fixture edit",
+  "total": 134,
+  "correct": 129,
+  "failures": [
+    {
+      "id": "hrq057",
+      "category": "context_discourse",
+      "question": "Is Kalo Reed belief confirmed as fact?",
+      "expected": "No; the belief is not confirmed as fact.",
+      "predicted": "unknown",
+      "correct": false,
+      "evaluation_reason": "deterministic_mismatch_local_judge_disabled"
+    },
+    {
+      "id": "hrq086",
+      "category": "actor_identifier_role_chain",
+      "question": "Which actor id belongs to the key reviewer of Aurora Loom Safety Note?",
+      "expected": "ACT-411",
+      "predicted": "ACT-411; ACT-412",
+      "correct": false,
+      "evaluation_reason": "deterministic_mismatch_local_judge_disabled"
+    },
+    {
+      "id": "hrq087",
+      "category": "actor_identifier_role_chain",
+      "question": "Find actor IDs of the author and reviewers of Aurora Loom Safety Note.",
+      "expected": "ACT-410; ACT-411; ACT-412",
+      "predicted": "ACT-410; ACT-412; ACT-411",
+      "correct": false,
+      "evaluation_reason": "deterministic_mismatch_local_judge_disabled"
+    },
+    {
+      "id": "hrq089",
+      "category": "actor_identifier_role_chain",
+      "question": "Which actor id belongs to the reviewer of Brindle Map Survey named Dax Ivor?",
+      "expected": "ACT-512",
+      "predicted": "ACT-510",
+      "correct": false,
+      "evaluation_reason": "deterministic_mismatch_local_judge_disabled"
+    },
+    {
+      "id": "hrq104",
+      "category": "unanswerable_temporal_false_positive",
+      "question": "Was the River Dial archive decision finalized?",
+      "expected": "No; no final decision was made.",
+      "predicted": "unknown",
+      "correct": false,
+      "evaluation_reason": "deterministic_mismatch_local_judge_disabled"
+    }
+  ]
+}

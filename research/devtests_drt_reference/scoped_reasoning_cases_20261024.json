@@ -1,0 +1,27 @@
+{
+  "protocol": "Cases specified before predictor execution. Literal atoms a,b,c; + positive, - explicit negative, rule a>b. Source spans are mock document locations; all claims stipulated as premises, not empirically validated.",
+  "cases": [
+    {"id":"mp","facts":["+a","a>b"],"ask":"b","want":"entailed"},
+    {"id":"chain","facts":["+a","a>b","b>c"],"ask":"c","want":"entailed"},
+    {"id":"missing_premise","facts":["a>b"],"ask":"b","want":"unknown"},
+    {"id":"false_premise","facts":["-a","a>b"],"ask":"b","want":"unknown"},
+    {"id":"negative_fact","facts":["-a"],"ask":"a","want":"refuted"},
+    {"id":"both_polarities","facts":["+a","-a"],"ask":"a","want":"contradictory"},
+    {"id":"reported_dream","facts":["+a@dream","-a@real"],"ask":"a","want":"refuted"},
+    {"id":"quoted_not_asserted","facts":["+a@quote","-a@real"],"ask":"a","want":"refuted"},
+    {"id":"time_change","facts":["+a@real:2025","-a@real:2026"],"ask":"a","want":"refuted"},
+    {"id":"cross_world_no_mp","facts":["+a@dream","a>b@real"],"ask":"b","want":"unknown"},
+    {"id":"multi_source_same_scope","facts":["+a@real:2026","-a@real:2026"],"ask":"a","want":"contradictory"},
+    {"id":"premise_scope","facts":["+a@real:2026","a>b@real:2025"],"ask":"b","want":"unknown"},
+    {"id":"unknown_is_not_false","facts":["+b"],"ask":"a","want":"unknown"}
+  ],
+  "hypotheses": [
+    {"id":"actual_counterexample","observations":["+a","-b"],"rule":"a>b","want":"falsified"},
+    {"id":"no_measurement","observations":["+a"],"rule":"a>b","want":"unresolved"},
+    {"id":"vacuous","observations":["-a","-b"],"rule":"a>b","want":"unresolved"},
+    {"id":"positive_instance","observations":["+a","+b"],"rule":"a>b","want":"not_falsified_by_this_case"},
+    {"id":"dream_counterevidence","observations":["+a@dream","-b@real"],"rule":"a>b","want":"unresolved"},
+    {"id":"past_counterevidence","observations":["+a@real:2025","-b@real:2026"],"rule":"a>b","want":"unresolved"},
+    {"id":"positive_and_negative_b","observations":["+a","+b","-b"],"rule":"a>b","want":"inconsistent_observations"}
+  ]
+}

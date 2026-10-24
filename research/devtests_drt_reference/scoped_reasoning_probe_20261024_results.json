@@ -1,0 +1,168 @@
+{
+  "kind": "finite stipulated source-scope logic, not natural language truth",
+  "cases": [
+    {
+      "id": "mp",
+      "preset_expected": "entailed",
+      "independent_truth_table": "entailed",
+      "observed": "entailed",
+      "proof": {
+        "premise_sources": [
+          "source:0",
+          "source:1"
+        ]
+      },
+      "correct": true
+    },
+    {
+      "id": "chain",
+      "preset_expected": "entailed",
+      "independent_truth_table": "entailed",
+      "observed": "entailed",
+      "proof": {
+        "premise_sources": [
+          "source:0",
+          "source:1",
+          "source:2"
+        ]
+      },
+      "correct": true
+    },
+    {
+      "id": "missing_premise",
+      "preset_expected": "unknown",
+      "independent_truth_table": "unknown",
+      "observed": "unknown",
+      "proof": {},
+      "correct": true
+    },
+    {
+      "id": "false_premise",
+      "preset_expected": "unknown",
+      "independent_truth_table": "unknown",
+      "observed": "unknown",
+      "proof": {},
+      "correct": true
+    },
+    {
+      "id": "negative_fact",
+      "preset_expected": "refuted",
+      "independent_truth_table": "refuted",
+      "observed": "refuted",
+      "proof": {},
+      "correct": true
+    },
+    {
+      "id": "both_polarities",
+      "preset_expected": "contradictory",
+      "independent_truth_table": "contradictory",
+      "observed": "contradictory",
+      "proof": {},
+      "correct": true
+    },
+    {
+      "id": "reported_dream",
+      "preset_expected": "refuted",
+      "independent_truth_table": "refuted",
+      "observed": "refuted",
+      "proof": {},
+      "correct": true
+    },
+    {
+      "id": "quoted_not_asserted",
+      "preset_expected": "refuted",
+      "independent_truth_table": "refuted",
+      "observed": "refuted",
+      "proof": {},
+      "correct": true
+    },
+    {
+      "id": "time_change",
+      "preset_expected": "refuted",
+      "independent_truth_table": "refuted",
+      "observed": "refuted",
+      "proof": {},
+      "correct": true
+    },
+    {
+      "id": "cross_world_no_mp",
+      "preset_expected": "unknown",
+      "independent_truth_table": "unknown",
+      "observed": "unknown",
+      "proof": {},
+      "correct": true
+    },
+    {
+      "id": "multi_source_same_scope",
+      "preset_expected": "contradictory",
+      "independent_truth_table": "contradictory",
+      "observed": "contradictory",
+      "proof": {},
+      "correct": true
+    },
+    {
+      "id": "premise_scope",
+      "preset_expected": "unknown",
+      "independent_truth_table": "unknown",
+      "observed": "unknown",
+      "proof": {},
+      "correct": true
+    },
+    {
+      "id": "unknown_is_not_false",
+      "preset_expected": "unknown",
+      "independent_truth_table": "unknown",
+      "observed": "unknown",
+      "proof": {},
+      "correct": true
+    }
+  ],
+  "hypothesis_cases": [
+    {
+      "id": "actual_counterexample",
+      "preset_expected": "falsified",
+      "observed": "falsified",
+      "correct": true
+    },
+    {
+      "id": "no_measurement",
+      "preset_expected": "unresolved",
+      "observed": "unresolved",
+      "correct": true
+    },
+    {
+      "id": "vacuous",
+      "preset_expected": "unresolved",
+      "observed": "unresolved",
+      "correct": true
+    },
+    {
+      "id": "positive_instance",
+      "preset_expected": "not_falsified_by_this_case",
+      "observed": "not_falsified_by_this_case",
+      "correct": true
+    },
+    {
+      "id": "dream_counterevidence",
+      "preset_expected": "unresolved",
+      "observed": "unresolved",
+      "correct": true
+    },
+    {
+      "id": "past_counterevidence",
+      "preset_expected": "unresolved",
+      "observed": "unresolved",
+      "correct": true
+    },
+    {
+      "id": "positive_and_negative_b",
+      "preset_expected": "inconsistent_observations",
+      "observed": "inconsistent_observations",
+      "correct": true
+    }
+  ],
+  "proof_tests_correct": 13,
+  "proof_tests_total": 13,
+  "falsification_tests_correct": 7,
+  "falsification_tests_total": 7
+}
