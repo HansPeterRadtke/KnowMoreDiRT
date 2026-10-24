@@ -1,0 +1,163 @@
+{
+  "original_test_sha256": "460267b56052a2dc5aead98eb35eadef9e6734d5723d37b4a9790e410f812387",
+  "source_project": "Stanford/Hitachi ContractNLI, CC BY 4.0 original human-annotated test dataset, https://stanfordnlp.github.io/contract-nli/",
+  "hypothesis_id": "nda-20",
+  "hypothesis": "Receiving Party may retain some Confidential Information even after the return or destruction of Confidential Information.",
+  "selection": "same fixed NDA-20 hypothesis across six distinct public contracts; two of each human gold class selected by predeclared sha256(document id), no human evidence spans in model retrieval; labels hidden in model prompts and separate scoring",
+  "source_retrieval": "top3 automatic hypothesis-to-document sentence span Jaccard + local span neighbors; excerpt capped 2300 chars, original source and full gold retained in tmp",
+  "cases": [
+    {
+      "id": 523,
+      "file_name": "814457_0000950137-04-009790_c89545exv99wxdyx6y.htm",
+      "source_url": "https://www.sec.gov/Archives/edgar/data/0000814457/000095013704009790/c89545exv99wxdyx6y.htm",
+      "doc_text_sha256": "73272178649abc38fb45c97f34b1ec7402095d58a8262092869abd9c7cf27857",
+      "source_excerpt_sha256": "601d58253d9338ee5753a735a7483bc94caf049d5fbabef9be669d0d2b88ee56",
+      "source_excerpt": "Span 27: (i) such information may only be disclosed to those of your directors, officers, employees, affiliates, agents, representatives (including attorneys, accountants and financial advisors), and lenders (collectively, “your representatives”) who need to know such information for the purpose of evaluating a Possible Transaction between you and the Company (it being understood that your representatives shall be informed by you of the confidential nature of such information and shall be directed by you, and shall each expressly agree (in writing, if requested by the Company or its advisors), to treat such information confidential in accordance with the agreement) and\nSpan 28: (ii) any other disclosure of such information may only be made if the Company consents in writing prior to any such disclosure.\nSpan 29: Without limiting the generality of the foregoing, in the event that a Possible Transaction is not consummated, neither you nor your representatives shall use any of the Evaluation Materials for any purpose.\nSpan 47: Accordingly, you acknowledge that you and your representatives understand that the securities laws of the United States prohibit any person who has material, non-public information concerning the Company or a Possible Transaction from purchasing or selling securities in reliance upon such information or from communicating such information to any other person under circumstances in which it is reasonably foreseeable that such person is likely to purchase or sell such securities in reliance upon such information.\nSpan 48: Return of Documents\nSpan 49: Upon the Company’s request, you shall promptly deliver to the Company or destroy all written Evaluation Materials and any other written materials without retaining, in whole or in part, any copies, extracts or other reproductions (whatever the form or storage medium) of such materials, and shall certify the destruction of such materials in writing to the Company.\nSpan 56: You agree that until two years from the date of this agreement, without the prior approval of the Board of Directors of the Company, neither you nor any of your representatives will\nSpan 57: (i) acquire or make any proposal to acquire any securities or property of the Company,\nSpan 58: (ii) propose to enter into any merger or bu",
+      "source_span_indices": [
+        27,
+        28,
+        29,
+        47,
+        48,
+        49,
+        56,
+        57,
+        58
+      ],
+      "source_top3_indices": [
+        28,
+        57,
+        48
+      ],
+      "sort_hash": "034fe42b95411957e4f251000c0912ded470210add24be4c3677d52f1618730b"
+    },
+    {
+      "id": 5,
+      "file_name": "12032018_NDA_The%20Munt_EN.pdf",
+      "source_url": "https://www2.deloitte.com/content/dam/Deloitte/be/Documents/realestate/Sale_of_the_Munt/12032018_NDA_The%20Munt_EN.pdf",
+      "doc_text_sha256": "4a7b721fbe26c187b45a136f743905fc88cd090e88ecad8f2e692d5ac1cd0ec1",
+      "source_excerpt_sha256": "875c117ac7ef39a36852fa40a38031bfe12a49027f378b766ee34ad690879150",
+      "source_excerpt": "Span 4: The Disclosee acknowledges that the Confidential Information, in as far as it relates to bpost SA/NV, could be price sensitive information and ensures compliance with the relevant legal and other provisions in this respect (including, without being limited to, the provisions of the Belgian Law of 2 August 2002 on the supervision of the financial sector and on the financial services in relation to insider dealing and market manipulation).\nSpan 5: Confidential Information shall mean the following:\nSpan 6: a) all such information, of any kind whatsoever (whether in oral, written or electronic form, and including, but not limited to, technical, commercial, financial, accounting, legal and administrative information) pertaining to the Sale of the Munt and the Sellers as may be provided to the Disclosee and their responsible managers, officers, employees, shareholders, members of the Board of Directors and advisors (including financial, legal and tax advisors and auditors) (“Representatives”), by the Sellers, their advisors or their representatives;\nSpan 14: The Disclosee further undertakes and acknowledges, that neither the representatives of the Sellers nor their Advisors give any warranty or make any representation as to the accuracy or completeness of any of the Confidential Information or as to the reasonableness of any assumptions on which the information is based.\nSpan 15: The Disclosee agrees that the Sellers or Advisors shall not have any liability to the Disclosee or to any of their directors, employees, advisors or agents resulting from the use of Confidential Information.\nSpan 16: This Agreement shall in no way constitute a commitment by any person to supply any Confidential Information or enter into any contract in connection with the Sellers.\nSpan 17: The obligations of the Disclosee under this Agreement shall expire the earlier of\nSpan 18: (a) three years after the date of this Agreement, or\nSpan 19: (b) the date the Sale between the Candidate and the Sellers is completed.",
+      "source_span_indices": [
+        4,
+        5,
+        6,
+        14,
+        15,
+        16,
+        17,
+        18,
+        19
+      ],
+      "source_top3_indices": [
+        18,
+        5,
+        15
+      ],
+      "sort_hash": "058bbac357c7302b0519ba1c0ecf96c02373f3512932c80fbf3189f2b634833c"
+    },
+    {
+      "id": 66,
+      "file_name": "Clause-de-non-divulgation.pdf",
+      "source_url": "http://defta.eu/wp-content/uploads/2015/05/Clause-de-non-divulgation.pdf",
+      "doc_text_sha256": "15dceac80dc059052669b60edc0f031c7ac410506f5bc723f96f982c07808c6e",
+      "source_excerpt_sha256": "194f4404be1024d3c6aa6fb688fcf330f2aa8cda3d985700c3294ba9435ac685",
+      "source_excerpt": "Span 28: The Parties hereby represent that the disclosure of Proprietary Information by and between themselves is not contrary to the laws and regulations of their respective countries.\nSpan 29: 4. The receiving Party hereby covenants that, during the validity period of this Agreement and for a period of five (5) years after its end or its termination, the Proprietary Information received from the disclosing Party shall:\nSpan 30: (a) be protected and kept in strict confidence by the receiving Party which must use the same degree of precaution and safeguards as it uses to protect its own proprietary information of like importance, but in no case any less than reasonable care,\nSpan 39: 6. Except as aforementioned, the receiving Party shall have no obligations or restrictions with respect to any Proprietary Information which that receiving Party can prove:\nSpan 40: (a) has come into the public domain prior to, or after the disclosure thereof and in such case through no wrongful act of that receiving Party, or\nSpan 41: (b) is already known to the receiving Party, as evidenced by written documentation in the files of the receiving Party, or\nSpan 42: (c) has been lawfully received from a third party without restrictions or breach of this Agreement, or",
+      "source_span_indices": [
+        28,
+        29,
+        30,
+        39,
+        40,
+        41,
+        42
+      ],
+      "source_top3_indices": [
+        29,
+        41,
+        40
+      ],
+      "sort_hash": "08b7fd2c9e5f755235ed2fe6726e5c36f7b38a2d643f987e36566b9debbd30bf"
+    },
+    {
+      "id": 606,
+      "file_name": "1402305_0001193125-11-343865_d268167dex99d2.htm",
+      "source_url": "https://www.sec.gov/Archives/edgar/data/0001402305/000119312511343865/d268167dex99d2.htm",
+      "doc_text_sha256": "aa76609b11f96c7c1ed149a67e0bcc00a024500af61690a16294ddc96e5ba5af",
+      "source_excerpt_sha256": "eddecc83064220a8bacce479893549c6d93131c8eb8bcd5a4a960a811fc9596e",
+      "source_excerpt": "Span 6: 2. As used herein, “Confidential Information” shall mean all information furnished by the Disclosing Party or its Representatives (defined below) to the Receiving Party or its Representatives, whether orally, in writing, electronically or in other tangible form, and identified as confidential or proprietary at the time of disclosure by the Disclosing Party or otherwise disclosed in a manner such that a reasonable person would understand its confidential nature, including but not limited to, information that is related to:\nSpan 7: (a) the business plans or operations of the Disclosing Party;\nSpan 8: (b) the research and development or investigations of the Disclosing Party;\nSpan 32: 4. The above restrictions on the use or disclosure of the Confidential Information shall not apply to any Confidential Information that:\nSpan 33: (a) is independently developed by Receiving Party without reference to the Confidential Information, or is lawfully received free of restriction from a third party having the right to furnish such Confidential Information;\nSpan 34: (b) has become generally available to the public without breach of this Agreement by Receiving Party;\nSpan 42: 6. Nothing in this Agreement shall prohibit or restrict either party’s right to develop, make, use, market, license or distribute products or services similar to or competitive with those of the other party disclosed in the Confidential Information as long as it shall not thereby breach this Agreement.\nSpan 43: Each party acknowledges that the other may already possess or have developed products or services similar to or competitive with those of the other party disclosed in the Confidential Information.\nSpan 44: Further, either party shall be free to use for any purpose the residuals (defined below) resulting from access to or work with Confidential Information disclosed hereunder.",
+      "source_span_indices": [
+        6,
+        7,
+        8,
+        32,
+        33,
+        34,
+        42,
+        43,
+        44
+      ],
+      "source_top3_indices": [
+        33,
+        43,
+        7
+      ],
+      "sort_hash": "09813a9bbf4302cee9934aa0d19d5e3de76a26271d1fa23ca596087bf00d461f"
+    },
+    {
+      "id": 611,
+      "file_name": "1457829_0000898822-13-000086_exhibit-ndaexecutionversion.htm",
+      "source_url": "https://www.sec.gov/Archives/edgar/data/0001457829/000089882213000086/exhibit-ndaexecutionversion.htm",
+      "doc_text_sha256": "02d22858c57aae5f19e0950e350ddbd597c8ddab58747a58d5ebd8d8e9b2c664",
+      "source_excerpt_sha256": "9702591757ecb0632eb29393cadc387ba8a577cd009bdcdb3afb85229c623458",
+      "source_excerpt": "Span 12: NOW THEREFORE, in consideration for receiving certain confidential information and other good and valuable consideration, the receipt and sufficiency of which are hereby acknowledged, the parties hereto agree as follows:\nSpan 13: 1. Scope of Confidential Information.\nSpan 14: 1.1 Subject to Section 1.2 below, “Confidential Information” means confidential, secret, proprietary or other non-public information pertaining to the business, operations, brands, marketing plans, financial matters, legal matters, products, projects, business plans or practices, research and development, product development, intellectual property, financial models, trademarks, trade secrets, accounting and financing data, and methods of production, distribution or procurement, suppliers, distributors, consultants, advisors or employees, directors or officers of CEDC or any of its Subsidiaries (defined below) (together, the “CEDC Group”) that is disclosed or otherwise made available, either orally or in writing, by any member of the CEDC Group to the Recipient or its affiliates, agents, or advisors (including, without limitation, financial advisors, attorneys, banks and other sources of equity and debt financing and accountants) (collectively, “Representatives”).\nSpan 23: For purposes of this Section 1.3, “Control” means the possession, directly or indirectly, of the power to direct or cause the direction of the management and policies of an individual, corporation, partnership, limited partnership or limited liability company, whether through the ownership of voting securities, by contract or otherwise.\nSpan 24: 2. Use and Disclosure of Confidential Information.\nSpan 25: 2.1\nSpan 50: The Recipient agrees that, upon written request by CEDC, all Confidential Information (and all copies, summaries and notes of the contents or parts thereof) and all Company property received by the Recipient shall, as soon as reasonably practicable, be either returned to CEDC or, to the extent technically practicable, destroyed (at the Recipient’s or its Representatives’ option), except that Recipient and its Representatives may retain copies of Confidential Information as is required to comply with applicable law or regulation or professional standards or internal compliance requirements.\nSpan 51: ",
+      "source_span_indices": [
+        12,
+        13,
+        14,
+        23,
+        24,
+        25,
+        50,
+        51,
+        52
+      ],
+      "source_top3_indices": [
+        13,
+        51,
+        24
+      ],
+      "sort_hash": "0d23354d2bcfb6c909dd6fef6edfcb9fe642a616ec7070513e1d397e2f2766fc"
+    },
+    {
+      "id": 78,
+      "file_name": "Confidentiality_Non-Disclosure_Agreement.pdf",
+      "source_url": "https://www.kittyhavenutah.org/assets/files/Confidentiality_Non-Disclosure_Agreement.pdf",
+      "doc_text_sha256": "908d1e8db0a15b07638c57677f6e255ed1ad64236da8009676b5847081dcf002",
+      "source_excerpt_sha256": "9953e178900ba161ee1c3efbc2666dd19eb1d02b4864f9ddec23476c1c0fe1d1",
+      "source_excerpt": "Span 9: (i) publicly available without breach by the receiving Party of its obligations to the disclosing Party under this Agreement;\nSpan 10: (ii) known to the receiving Party prior to the disclosing Party's disclosure of such information to the receiving Party;\nSpan 11: (iii) known to the receiving Party other than by the breach of an obligation of confidentiality owed to the disclosing Party under this Agreement from a source other than the disclosing Party;\nSpan 18: The disclosing Party shall retain all right, title and interest in and to the Confidential Information, including all intellectual property represented thereby or associated therewith, and no license or assignment, by implication, estoppel or otherwise, is granted by the disclosing Party to the receiving Party to make, have made, use, or sell any product using the Confidential Information, or a license under any patent, patent application, utility model, copyright, trade secret, trademark, service mark or any other similar industrial or intellectual property right.\nSpan 19: At no time and under no circumstances shall the receiving Party reverse-engineer, decompile or disassemble any part of the Confidential Information .\nSpan 20: 4. Responsibility for Breach.\nSpan 27: All documents, memoranda, notes and other writings whatsoever prepared by each Party, or respective representatives, based on the information included in the Confidential Information shall be promptly destroyed, and such destruction shall be ce1tified in writing by an authorized officer supervising such destruction.\nSpan 28: Notwithstanding the return or destruction of any Confidential Information, each Party shall continue to be bound by its obligations o f confidentiality and other obligations hereunder.\nSpan 29: 6. Form of Relief.",
+      "source_span_indices": [
+        9,
+        10,
+        11,
+        18,
+        19,
+        20,
+        27,
+        28,
+        29
+      ],
+      "source_top3_indices": [
+        28,
+        19,
+        10
+      ],
+      "sort_hash": "0e578f1a9b7134e0ed876271961bfb51d8cfbd1702857b7b4bded3fb9f18908a"
+    }
+  ],
+  "limitations": [
+    "Real legal documents and independent human labels, but single fixed proposition; NOT cross-paper chaining or dream semantics",
+    "Linguistic scope differs by contract author, exceptions and obligations; no direct evaluation of full KMD DRS",
+    "External test can have pretraining exposure to released corpus, not verified unseen to Qwen"
+  ]
+}

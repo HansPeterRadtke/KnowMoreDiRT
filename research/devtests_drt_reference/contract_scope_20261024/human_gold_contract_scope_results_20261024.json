@@ -1,0 +1,242 @@
+{
+  "original_dataset": "ContractNLI authors Koreeda and Manning 2021, CC BY 4.0, Stanford/Hitachi",
+  "original_sha256": "460267b56052a2dc5aead98eb35eadef9e6734d5723d37b4a9790e410f812387",
+  "preselected_frozen_sha256": "0f7aa329b52413a21d0362a211856edf96297133f9c72001ad45ff14c2cd4d90",
+  "verbatim_model_jsonl_sha256": "d2b80b43d04575117415684791d886f771ed7e1f3588d74432a0c03eff0036a6",
+  "comparison_methods": "Direct source-aware Qwen verdict vs source-only compact attributed rule plus Qwen verdict, same retrieved evidence but unequal output/call budgets",
+  "methods_limitations": [
+    "N=6 one fixed hypothesis NDA-20 across 6 real public NDA documents and 3 independent human classes; labels stratify selection but never passed to Qwen",
+    "Source excerpts selected by lexical overlap and local context, not human evidence; missing gold evidence makes factual accuracy impossible to attribute solely to model",
+    "Compact attribution frame is not actual full KMD DRS, not cross-document multi-hop deduction, nor dream or fictional world inference",
+    "Two-stage route has more model calls than direct route, so these scores are a bounded exploratory comparison not fair matched-budget superiority",
+    "External legal source judgments do not establish scientific truth or new facts",
+    "Qwen may have training exposure to original dataset; not demonstrably held out of pretraining"
+  ],
+  "metrics": {
+    "n": 6,
+    "gold_counts": {
+      "Contradiction": 2,
+      "NotMentioned": 2,
+      "Entailment": 2
+    },
+    "direct_correct": 3,
+    "structured_correct": 2,
+    "direct_confusion": {
+      "Contradiction=>INVALID": 1,
+      "NotMentioned=>NotMentioned": 2,
+      "Entailment=>NotMentioned": 2,
+      "Contradiction=>Contradiction": 1
+    },
+    "structured_confusion": {
+      "Contradiction=>Contradiction": 1,
+      "NotMentioned=>Contradiction": 1,
+      "NotMentioned=>NotMentioned": 1,
+      "Entailment=>NotMentioned": 2,
+      "Contradiction=>NotMentioned": 1
+    },
+    "full_gold_spans_in_context": 3,
+    "source_quote_grounded": 2,
+    "valid_frames": 4,
+    "total_direct_seconds": 169.33,
+    "total_structured_seconds": 281.35
+  },
+  "rows": [
+    {
+      "doc_id": 523,
+      "label_human": "Contradiction",
+      "direct_prediction": "INVALID",
+      "structured_prediction": "Contradiction",
+      "direct_correct": false,
+      "structured_correct": true,
+      "human_gold_spans": [
+        49
+      ],
+      "human_gold_spans_in_exact_source_excerpt": [
+        49
+      ],
+      "original_annotated_evidence_found_in_excerpt": true,
+      "retrieved_source_span_indices": [
+        27,
+        28,
+        29,
+        47,
+        48,
+        49,
+        56,
+        57,
+        58
+      ],
+      "direct_quote_exact_source": false,
+      "frame_valid": true,
+      "frame_reason": "valid_structured_source_extraction",
+      "direct_seconds": 32.99,
+      "structured_seconds": 53.3,
+      "raw_output_key": "raw_model_comparison_20261024.jsonl",
+      "source_url": "https://www.sec.gov/Archives/edgar/data/0000814457/000095013704009790/c89545exv99wxdyx6y.htm",
+      "source_doc_sha256": "73272178649abc38fb45c97f34b1ec7402095d58a8262092869abd9c7cf27857"
+    },
+    {
+      "doc_id": 5,
+      "label_human": "NotMentioned",
+      "direct_prediction": "NotMentioned",
+      "structured_prediction": "Contradiction",
+      "direct_correct": true,
+      "structured_correct": false,
+      "human_gold_spans": [],
+      "human_gold_spans_in_exact_source_excerpt": [],
+      "original_annotated_evidence_found_in_excerpt": false,
+      "retrieved_source_span_indices": [
+        4,
+        5,
+        6,
+        14,
+        15,
+        16,
+        17,
+        18,
+        19
+      ],
+      "direct_quote_exact_source": false,
+      "frame_valid": true,
+      "frame_reason": "valid_structured_source_extraction",
+      "direct_seconds": 24.49,
+      "structured_seconds": 52.26,
+      "raw_output_key": "raw_model_comparison_20261024.jsonl",
+      "source_url": "https://www2.deloitte.com/content/dam/Deloitte/be/Documents/realestate/Sale_of_the_Munt/12032018_NDA_The%20Munt_EN.pdf",
+      "source_doc_sha256": "4a7b721fbe26c187b45a136f743905fc88cd090e88ecad8f2e692d5ac1cd0ec1"
+    },
+    {
+      "doc_id": 66,
+      "label_human": "NotMentioned",
+      "direct_prediction": "NotMentioned",
+      "structured_prediction": "NotMentioned",
+      "direct_correct": true,
+      "structured_correct": true,
+      "human_gold_spans": [],
+      "human_gold_spans_in_exact_source_excerpt": [],
+      "original_annotated_evidence_found_in_excerpt": false,
+      "retrieved_source_span_indices": [
+        28,
+        29,
+        30,
+        39,
+        40,
+        41,
+        42
+      ],
+      "direct_quote_exact_source": true,
+      "frame_valid": true,
+      "frame_reason": "valid_structured_source_extraction",
+      "direct_seconds": 26.02,
+      "structured_seconds": 42.7,
+      "raw_output_key": "raw_model_comparison_20261024.jsonl",
+      "source_url": "http://defta.eu/wp-content/uploads/2015/05/Clause-de-non-divulgation.pdf",
+      "source_doc_sha256": "15dceac80dc059052669b60edc0f031c7ac410506f5bc723f96f982c07808c6e"
+    },
+    {
+      "doc_id": 606,
+      "label_human": "Entailment",
+      "direct_prediction": "NotMentioned",
+      "structured_prediction": "NotMentioned",
+      "direct_correct": false,
+      "structured_correct": false,
+      "human_gold_spans": [
+        56,
+        57,
+        58,
+        59
+      ],
+      "human_gold_spans_in_exact_source_excerpt": [],
+      "original_annotated_evidence_found_in_excerpt": false,
+      "retrieved_source_span_indices": [
+        6,
+        7,
+        8,
+        32,
+        33,
+        34,
+        42,
+        43,
+        44
+      ],
+      "direct_quote_exact_source": true,
+      "frame_valid": true,
+      "frame_reason": "valid_structured_source_extraction",
+      "direct_seconds": 31.48,
+      "structured_seconds": 49.849999999999994,
+      "raw_output_key": "raw_model_comparison_20261024.jsonl",
+      "source_url": "https://www.sec.gov/Archives/edgar/data/0001402305/000119312511343865/d268167dex99d2.htm",
+      "source_doc_sha256": "aa76609b11f96c7c1ed149a67e0bcc00a024500af61690a16294ddc96e5ba5af"
+    },
+    {
+      "doc_id": 611,
+      "label_human": "Entailment",
+      "direct_prediction": "NotMentioned",
+      "structured_prediction": "NotMentioned",
+      "direct_correct": false,
+      "structured_correct": false,
+      "human_gold_spans": [
+        50,
+        52
+      ],
+      "human_gold_spans_in_exact_source_excerpt": [
+        50
+      ],
+      "original_annotated_evidence_found_in_excerpt": true,
+      "retrieved_source_span_indices": [
+        12,
+        13,
+        14,
+        23,
+        24,
+        25,
+        50,
+        51,
+        52
+      ],
+      "direct_quote_exact_source": false,
+      "frame_valid": false,
+      "frame_reason": "invalid_json",
+      "direct_seconds": 27.42,
+      "structured_seconds": 47.74,
+      "raw_output_key": "raw_model_comparison_20261024.jsonl",
+      "source_url": "https://www.sec.gov/Archives/edgar/data/0001457829/000089882213000086/exhibit-ndaexecutionversion.htm",
+      "source_doc_sha256": "02d22858c57aae5f19e0950e350ddbd597c8ddab58747a58d5ebd8d8e9b2c664"
+    },
+    {
+      "doc_id": 78,
+      "label_human": "Contradiction",
+      "direct_prediction": "Contradiction",
+      "structured_prediction": "NotMentioned",
+      "direct_correct": true,
+      "structured_correct": false,
+      "human_gold_spans": [
+        26,
+        27
+      ],
+      "human_gold_spans_in_exact_source_excerpt": [
+        27
+      ],
+      "original_annotated_evidence_found_in_excerpt": true,
+      "retrieved_source_span_indices": [
+        9,
+        10,
+        11,
+        18,
+        19,
+        20,
+        27,
+        28,
+        29
+      ],
+      "direct_quote_exact_source": false,
+      "frame_valid": false,
+      "frame_reason": "quote_not_grounded",
+      "direct_seconds": 26.93,
+      "structured_seconds": 35.5,
+      "raw_output_key": "raw_model_comparison_20261024.jsonl",
+      "source_url": "https://www.kittyhavenutah.org/assets/files/Confidentiality_Non-Disclosure_Agreement.pdf",
+      "source_doc_sha256": "908d1e8db0a15b07638c57677f6e255ed1ad64236da8009676b5847081dcf002"
+    }
+  ]
+}
