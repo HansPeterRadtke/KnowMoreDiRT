@@ -1,0 +1,219 @@
+{
+  "dataset_type": "real separately published scientific observations plus dated institutional announcements",
+  "sources": {
+    "cern": {
+      "url": "https://home.cern/opera-experiment-reports-anomaly-in-flight-time-of-neutrinos-from-cern-to-gran-sasso/",
+      "sha256": "b05c859f657a6daa0fbf39cdbf5d7152d41d40a0eef4b85da2489e1e546a758a"
+    },
+    "opera_2012": {
+      "url": "https://arxiv.org/abs/1212.1276",
+      "sha256": "83e4b30b63f3829985cf1b0175eb9eb9be3a46a15f6527a6801e2d3f789fac61"
+    },
+    "icarus_2012": {
+      "url": "https://arxiv.org/abs/1208.2629",
+      "sha256": "3ce12182de2d3a96db96dedf0bdd5f29d29738ec62141e3cb96184a4c34dfb17"
+    }
+  },
+  "cern_claims": [
+    {
+      "claim_type": "four_luminal_measurements",
+      "date": "2012-06-08",
+      "section": "update_2012-06-08",
+      "source": "cern",
+      "source_url": "https://home.cern/opera-experiment-reports-anomaly-in-flight-time-of-neutrinos-from-cern-to-gran-sasso/",
+      "publisher": "CERN",
+      "source_paragraph_sha256": "6237e07cfe75b2ce3e31fd43aaa043589d2cfc27d61aebe68dc076d1657d2db4",
+      "trigger_text": "all measure a neutrino time of flight consistent with the speed of light",
+      "trigger_char_offsets": [
+        324,
+        396
+      ],
+      "source_context_snippet": "e INFN Gran Sasso Laboratory on behalf of four experiments situated at Gran Sasso. The four, Borexino, ICARUS, LVD and OPERA all measure a neutrino time of flight consistent with the speed of light. This is at odds with a measurement that the OPERA collaboration put up for scrutiny last September, indicating that the original OPERA measurement can be attribute",
+      "is_quote_or_conditional": false,
+      "cannot_promote_to_universal_truth": true
+    },
+    {
+      "claim_type": "icarus_independent_measurement",
+      "date": "2012-03-16",
+      "section": "update_2012-03-16",
+      "source": "cern",
+      "source_url": "https://home.cern/opera-experiment-reports-anomaly-in-flight-time-of-neutrinos-from-cern-to-gran-sasso/",
+      "publisher": "CERN",
+      "source_paragraph_sha256": "eedefdd795b210db89d265f58c4898e91d15cbc5472ef0d556d40963885e385a",
+      "trigger_text": "ICARUS experiment has independent timing from OPERA",
+      "trigger_char_offsets": [
+        4,
+        55
+      ],
+      "source_context_snippet": "The ICARUS experiment has independent timing from OPERA and measured seven neutrinos in the beam from CERN last year. These all arrived in a time consistent with the speed of light.",
+      "is_quote_or_conditional": false,
+      "cannot_promote_to_universal_truth": true
+    },
+    {
+      "claim_type": "possible_fault",
+      "date": "2012-02-23",
+      "section": "update_2012-02-23",
+      "source": "cern",
+      "source_url": "https://home.cern/opera-experiment-reports-anomaly-in-flight-time-of-neutrinos-from-cern-to-gran-sasso/",
+      "publisher": "CERN",
+      "source_paragraph_sha256": "ca0050f1c6f5ee47c655f87447bbe6f2aab62f76695dd3fc06e84472b6a59f81",
+      "trigger_text": "possible effects that could have an influence",
+      "trigger_char_offsets": [
+        107,
+        152
+      ],
+      "source_context_snippet": "The OPERA collaboration has informed its funding agencies and host laboratories that it has identified two possible effects that could have an influence on its neutrino timing measurement. These both require further tests with a short pulsed beam. If confirmed, one would increase the size of the measured effect, the",
+      "is_quote_or_conditional": true,
+      "cannot_promote_to_universal_truth": true
+    },
+    {
+      "claim_type": "initial_early_arrival",
+      "date": "2011-09-23",
+      "section": "original_press_2011",
+      "source": "cern",
+      "source_url": "https://home.cern/opera-experiment-reports-anomaly-in-flight-time-of-neutrinos-from-cern-to-gran-sasso/",
+      "publisher": "CERN",
+      "source_paragraph_sha256": "10b01f75e61b2e6fd3f5d30bed054e61d0af2cb0555914d07137cba18517d1a4",
+      "trigger_text": "20 parts per million above the speed of light",
+      "trigger_char_offsets": [
+        163,
+        208
+      ],
+      "source_context_snippet": "vation of over 15000 neutrino events measured at Gran Sasso, and appears to indicate that the neutrinos travel at a velocity 20 parts per million above the speed of light, nature’s cosmic speed limit. Given the potential far-reaching consequences of such a result, independent measurements are needed before the effect can either be re",
+      "is_quote_or_conditional": false,
+      "cannot_promote_to_universal_truth": true
+    },
+    {
+      "claim_type": "hypothetical_future",
+      "date": "2011-09-23",
+      "section": "original_press_2011",
+      "source": "cern",
+      "source_url": "https://home.cern/opera-experiment-reports-anomaly-in-flight-time-of-neutrinos-from-cern-to-gran-sasso/",
+      "publisher": "CERN",
+      "source_paragraph_sha256": "37a15260e8a2700a2c0737a387cb7b90e4c8ad445cef797931629defb12b1506",
+      "trigger_text": "If this measurement is confirmed",
+      "trigger_char_offsets": [
+        312,
+        344
+      ],
+      "source_context_snippet": "actly what the OPERA collaboration is doing, it’s good scientific practice,” said CERN Research Director Sergio Bertolucci. “If this measurement is confirmed, it might change our view of physics, but we need to be sure that there are no other, more mundane, explanations. That will require independent measurements.”",
+      "is_quote_or_conditional": true,
+      "cannot_promote_to_universal_truth": true
+    }
+  ],
+  "measurements": {
+    "opera_2012": {
+      "source": "opera_2012",
+      "url": "https://arxiv.org/abs/1212.1276",
+      "document_title": "High Energy Physics - Experiment",
+      "paper_reference": "arxiv:1212.1276",
+      "source_sha256": "83e4b30b63f3829985cf1b0175eb9eb9be3a46a15f6527a6801e2d3f789fac61",
+      "abstract_sha256": "c2fa8b53378b4d82826f13c8d16771d4c079226f079e827606b9efbba0ffc1c4",
+      "year_of_measurement": 2012,
+      "measured_experiment": "ICARUS",
+      "value_ns": 0.6,
+      "statistical_ns": 0.4,
+      "systematic_ns": 3.0,
+      "combined_ns_assuming_independent_errors": 3.026549,
+      "evidence_extract": "ed assuming the speed of light in vacuum is found to be $\\delta t_\\nu \\equiv TOF_c - TOF_\\nu= (0.6 \\pm 0.4\\ (stat.) \\pm 3.0\\ (syst.))$ ns and $\\delta t_{\\bar{\\nu}} \\equiv TOF_c - TOF_{\\bar{\\nu}} = (1.7 \\pm 1.4\\",
+      "offset_in_source": 854
+    },
+    "icarus_2012": {
+      "source": "icarus_2012",
+      "url": "https://arxiv.org/abs/1208.2629",
+      "document_title": "High Energy Physics - Experiment",
+      "paper_reference": "arxiv:1208.2629",
+      "source_sha256": "3ce12182de2d3a96db96dedf0bdd5f29d29738ec62141e3cb96184a4c34dfb17",
+      "abstract_sha256": "b581f76871c016b52eaceb6947b2bf74421cbe0be57107244419126043e595ff",
+      "year_of_measurement": 2012,
+      "measured_experiment": "ICARUS",
+      "value_ns": 0.1,
+      "statistical_ns": 0.67,
+      "systematic_ns": 2.39,
+      "combined_ns_assuming_independent_errors": 2.482136,
+      "evidence_extract": "een the expected value based on the speed of light and the measured value is tof_c - tof_nu = (0.10 \\pm 0.67stat. \\pm 2.39syst.) ns. This result is in agreement with the value previously reported by the ICARUS ",
+      "offset_in_source": 1048
+    }
+  },
+  "derived_hypothesis_check": {
+    "hypothesis": "Twenty parts per million speed excess over c, on a 730 km path, if it had been a real propagation speed effect",
+    "derived_expected_early_arrival_ns": 48.6994,
+    "arithmetic_assumptions": [
+      "2011 CERN headline approximates measurement as 20 ppm",
+      "Same fixed baseline of 730 km",
+      "Speed is constant on the baseline",
+      "Emission and detection timings calibrated correctly"
+    ],
+    "measurements": [
+      {
+        "source": "opera_2012",
+        "url": "https://arxiv.org/abs/1212.1276",
+        "document_title": "High Energy Physics - Experiment",
+        "paper_reference": "arxiv:1212.1276",
+        "source_sha256": "83e4b30b63f3829985cf1b0175eb9eb9be3a46a15f6527a6801e2d3f789fac61",
+        "abstract_sha256": "c2fa8b53378b4d82826f13c8d16771d4c079226f079e827606b9efbba0ffc1c4",
+        "year_of_measurement": 2012,
+        "measured_experiment": "ICARUS",
+        "value_ns": 0.6,
+        "statistical_ns": 0.4,
+        "systematic_ns": 3.0,
+        "combined_ns_assuming_independent_errors": 3.026549,
+        "evidence_extract": "ed assuming the speed of light in vacuum is found to be $\\delta t_\\nu \\equiv TOF_c - TOF_\\nu= (0.6 \\pm 0.4\\ (stat.) \\pm 3.0\\ (syst.))$ ns and $\\delta t_{\\bar{\\nu}} \\equiv TOF_c - TOF_{\\bar{\\nu}} = (1.7 \\pm 1.4\\",
+        "offset_in_source": 854
+      },
+      {
+        "source": "icarus_2012",
+        "url": "https://arxiv.org/abs/1208.2629",
+        "document_title": "High Energy Physics - Experiment",
+        "paper_reference": "arxiv:1208.2629",
+        "source_sha256": "3ce12182de2d3a96db96dedf0bdd5f29d29738ec62141e3cb96184a4c34dfb17",
+        "abstract_sha256": "b581f76871c016b52eaceb6947b2bf74421cbe0be57107244419126043e595ff",
+        "year_of_measurement": 2012,
+        "measured_experiment": "ICARUS",
+        "value_ns": 0.1,
+        "statistical_ns": 0.67,
+        "systematic_ns": 2.39,
+        "combined_ns_assuming_independent_errors": 2.482136,
+        "evidence_extract": "een the expected value based on the speed of light and the measured value is tof_c - tof_nu = (0.10 \\pm 0.67stat. \\pm 2.39syst.) ns. This result is in agreement with the value previously reported by the ICARUS ",
+        "offset_in_source": 1048
+      }
+    ],
+    "difference_icarus_minus_opera_ns": -0.5,
+    "combined_2012_independent_error_ns": 3.9142,
+    "not_scientific_truth_inferred": "A contradictory measurement is a challenge to the early claim, not a proof about universal velocities or all neutrinos; shared systematic correlations and model assumptions need scrutiny",
+    "counterfactuals": [
+      {
+        "intervention": "Swap 2011 OPERA source date with 2012 ICARUS date",
+        "invalidates": "historical attribution and knowledge availability; cannot report independent ICARUS finding as already known in 2011"
+      },
+      {
+        "intervention": "Wrap early OPERA result in a dream or fictional quotation",
+        "invalidates": "real-world observation evidence; quoting/dreaming does not validate measurement"
+      },
+      {
+        "intervention": "Replace 730 km baseline with a different distance",
+        "invalidates": "computed nanosecond prediction without recalculating distance"
+      },
+      {
+        "intervention": "Replace neutrino measurement with anti-neutrino value",
+        "invalidates": "experiment/predicate identity match"
+      },
+      {
+        "intervention": "Interpret the 2012 conditional faulty-connector hypothesis as a proven explanation in February",
+        "invalidates": "hypothesis/confirmed scope; subsequent tests required"
+      }
+    ]
+  },
+  "source_separation_checks": {
+    "preliminary_2011_is_not_june2012_confirmation": true,
+    "different_2012_experiment_authors": false
+  },
+  "scope_warnings": [
+    "Source articles contain statements/reporting, not universal axioms",
+    "CERN historical page includes both 2011 and 2012 sections; treating page publication as one time is false",
+    "Quoted conditional statements are not independently measured facts",
+    "The uncertainty quadrature assumes independent errors; shared clock systematics may correlate",
+    "Counterfactual interventions are prespecified conceptual controls, not external expert-labeled gold",
+    "This experiment extracts headline numerics with a narrow parser, not arbitrary scientific prose or full DRT"
+  ]
+}

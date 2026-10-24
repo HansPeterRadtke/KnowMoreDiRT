@@ -1,0 +1,4152 @@
+{
+  "model_repo_revision": "b95119ce93d3e065de6214e38cd4a97b0f2f2c6d",
+  "cpu_model_onnx_sha256": "449024a8711a3e655cad410cb2192158f9897fc2a32b65dbb817922351150db7",
+  "provenance": {
+    "protocol": "fixed first 96 hash-sorted claim-document source pairs with ≥1 expert evidence annotation, all labels excluded from sorting",
+    "sha256_train": "f4c8fa82d8bd0653a9cc8d61a6ea48c25eacea64e90af5dbf390ebb1b74372f0",
+    "sha256_corpus": "b8d6c89624cb2ed74dee8938effc4f5d8bd2086887880af8110d64be4ceade62",
+    "pair_keys": [
+      [
+        632,
+        "5172048"
+      ],
+      [
+        515,
+        "29564505"
+      ],
+      [
+        430,
+        "28937856"
+      ],
+      [
+        669,
+        "25148216"
+      ],
+      [
+        524,
+        "14803797"
+      ],
+      [
+        928,
+        "18174210"
+      ],
+      [
+        825,
+        "15319019"
+      ],
+      [
+        426,
+        "16728949"
+      ],
+      [
+        222,
+        "19205437"
+      ],
+      [
+        1366,
+        "4406819"
+      ],
+      [
+        1288,
+        "4687948"
+      ],
+      [
+        919,
+        "16422880"
+      ],
+      [
+        381,
+        "18340282"
+      ],
+      [
+        61,
+        "13899137"
+      ],
+      [
+        394,
+        "11360768"
+      ],
+      [
+        278,
+        "14376683"
+      ],
+      [
+        682,
+        "9315213"
+      ],
+      [
+        901,
+        "6540064"
+      ],
+      [
+        1035,
+        "4547102"
+      ],
+      [
+        88,
+        "7521113"
+      ],
+      [
+        32,
+        "12428497"
+      ],
+      [
+        1268,
+        "52072815"
+      ],
+      [
+        266,
+        "22405338"
+      ],
+      [
+        1141,
+        "12009265"
+      ],
+      [
+        1127,
+        "27466734"
+      ],
+      [
+        39,
+        "13497630"
+      ],
+      [
+        305,
+        "14797520"
+      ],
+      [
+        2,
+        "13734012"
+      ],
+      [
+        736,
+        "5389095"
+      ],
+      [
+        227,
+        "26973393"
+      ],
+      [
+        749,
+        "13868795"
+      ],
+      [
+        529,
+        "10546779"
+      ],
+      [
+        884,
+        "14803797"
+      ],
+      [
+        235,
+        "4388470"
+      ],
+      [
+        123,
+        "4883040"
+      ],
+      [
+        414,
+        "6309659"
+      ],
+      [
+        951,
+        "21414718"
+      ],
+      [
+        1087,
+        "39281140"
+      ],
+      [
+        565,
+        "16120395"
+      ],
+      [
+        1097,
+        "26851674"
+      ],
+      [
+        662,
+        "37204802"
+      ],
+      [
+        1030,
+        "6441369"
+      ],
+      [
+        1228,
+        "25641414"
+      ],
+      [
+        172,
+        "12670680"
+      ],
+      [
+        595,
+        "4824840"
+      ],
+      [
+        1157,
+        "12584053"
+      ],
+      [
+        1297,
+        "9167230"
+      ],
+      [
+        505,
+        "22703082"
+      ],
+      [
+        157,
+        "13439128"
+      ],
+      [
+        1102,
+        "3874000"
+      ],
+      [
+        1234,
+        "13905670"
+      ],
+      [
+        1135,
+        "33370"
+      ],
+      [
+        1391,
+        "6766459"
+      ],
+      [
+        1327,
+        "24241932"
+      ],
+      [
+        752,
+        "19800147"
+      ],
+      [
+        1011,
+        "9745001"
+      ],
+      [
+        779,
+        "13001323"
+      ],
+      [
+        571,
+        "20333864"
+      ],
+      [
+        461,
+        "40096222"
+      ],
+      [
+        258,
+        "22080671"
+      ],
+      [
+        927,
+        "16390264"
+      ],
+      [
+        972,
+        "28617573"
+      ],
+      [
+        994,
+        "16472469"
+      ],
+      [
+        121,
+        "31460499"
+      ],
+      [
+        40,
+        "13497630"
+      ],
+      [
+        972,
+        "46695481"
+      ],
+      [
+        1048,
+        "12486491"
+      ],
+      [
+        106,
+        "5151024"
+      ],
+      [
+        886,
+        "6477536"
+      ],
+      [
+        116,
+        "33872649"
+      ],
+      [
+        1249,
+        "7209559"
+      ],
+      [
+        855,
+        "8190282"
+      ],
+      [
+        531,
+        "25413327"
+      ],
+      [
+        1181,
+        "301838"
+      ],
+      [
+        1139,
+        "12009265"
+      ],
+      [
+        846,
+        "22696649"
+      ],
+      [
+        635,
+        "1686997"
+      ],
+      [
+        277,
+        "14376683"
+      ],
+      [
+        653,
+        "24384587"
+      ],
+      [
+        1373,
+        "21003930"
+      ],
+      [
+        751,
+        "19800147"
+      ],
+      [
+        108,
+        "22995579"
+      ],
+      [
+        149,
+        "6227220"
+      ],
+      [
+        883,
+        "14803797"
+      ],
+      [
+        529,
+        "25413327"
+      ],
+      [
+        1162,
+        "15305881"
+      ],
+      [
+        681,
+        "9315213"
+      ],
+      [
+        738,
+        "6609935"
+      ],
+      [
+        1351,
+        "28369117"
+      ],
+      [
+        1239,
+        "4427392"
+      ],
+      [
+        1295,
+        "21239672"
+      ],
+      [
+        347,
+        "11902109"
+      ],
+      [
+        647,
+        "15041758"
+      ],
+      [
+        155,
+        "37549932"
+      ],
+      [
+        379,
+        "19005293"
+      ],
+      [
+        138,
+        "26016929"
+      ]
+    ],
+    "model": "cross-encoder/nli-MiniLM2-L6-H768 revision b95119ce93d3e065de6214e38cd4a97b0f2f2c6d",
+    "maximum_context_tokens": 192,
+    "top_source_sentences": 2,
+    "decision": "max nonneutral minus neutral margin across top2, require positive margin"
+  },
+  "total_fixed_pairs": 96,
+  "evaluable_unambiguous_gold_pairs": 96,
+  "correct": 39,
+  "neutral_count": 43,
+  "gold_counts": {
+    "CONTRADICT": 37,
+    "SUPPORT": 59
+  },
+  "prediction_counts": {
+    "NEUTRAL": 43,
+    "CONTRADICT": 31,
+    "SUPPORT": 22
+  },
+  "confusion": [
+    {
+      "gold": "CONTRADICT",
+      "predicted": "CONTRADICT",
+      "count": 20
+    },
+    {
+      "gold": "CONTRADICT",
+      "predicted": "NEUTRAL",
+      "count": 14
+    },
+    {
+      "gold": "CONTRADICT",
+      "predicted": "SUPPORT",
+      "count": 3
+    },
+    {
+      "gold": "SUPPORT",
+      "predicted": "CONTRADICT",
+      "count": 11
+    },
+    {
+      "gold": "SUPPORT",
+      "predicted": "NEUTRAL",
+      "count": 29
+    },
+    {
+      "gold": "SUPPORT",
+      "predicted": "SUPPORT",
+      "count": 19
+    }
+  ],
+  "source_claim_count": 94,
+  "elapsed_seconds": 18.31,
+  "source_tokens_extracted": 192,
+  "results": [
+    {
+      "claim_id": 632,
+      "doc_id": "5172048",
+      "label_predicted": "NEUTRAL",
+      "human_annotated_label": "CONTRADICT",
+      "correct": false,
+      "source_sentence_predictions": [
+        {
+          "sentence_idx": 1,
+          "probabilities": [
+            0.054729,
+            0.003163,
+            0.942108
+          ],
+          "predicted_sentence": "NEUTRAL",
+          "nonneutral_margin": -0.887379
+        },
+        {
+          "sentence_idx": 6,
+          "probabilities": [
+            0.400827,
+            0.035302,
+            0.563871
+          ],
+          "predicted_sentence": "NEUTRAL",
+          "nonneutral_margin": -0.163044
+        }
+      ],
+      "annotated_evidence_sentence_ids": [
+        [
+          3
+        ],
+        [
+          5
+        ],
+        [
+          6
+        ],
+        [
+          7
+        ]
+      ],
+      "claim_sha256": "7bbd214cd48611a4fdb13597ac93fda0e53e6282493a3c89ae03c536d4c5a54e",
+      "article_title_sha256": "c2eca5547a5bae30a109c7fbd2dad5954c370971fb70aab00bd4f0b7b2f0c742"
+    },
+    {
+      "claim_id": 515,
+      "doc_id": "29564505",
+      "label_predicted": "NEUTRAL",
+      "human_annotated_label": "SUPPORT",
+      "correct": false,
+      "source_sentence_predictions": [
+        {
+          "sentence_idx": 0,
+          "probabilities": [
+            0.003932,
+            0.010247,
+            0.98582
+          ],
+          "predicted_sentence": "NEUTRAL",
+          "nonneutral_margin": -0.975573
+        },
+        {
+          "sentence_idx": 1,
+          "probabilities": [
+            0.014111,
+            0.23142,
+            0.754469
+          ],
+          "predicted_sentence": "NEUTRAL",
+          "nonneutral_margin": -0.523049
+        }
+      ],
+      "annotated_evidence_sentence_ids": [
+        [
+          8
+        ],
+        [
+          13
+        ]
+      ],
+      "claim_sha256": "cb7cc4a3e2b94ffa5dbc8d59be8f4a0e063cb704383dc8f2d146e323323316c7",
+      "article_title_sha256": "78f63d3523983f0ffefb56ba0a4bd7549da3108174c5f3777220ec10d5cf82f4"
+    },
+    {
+      "claim_id": 430,
+      "doc_id": "28937856",
+      "label_predicted": "CONTRADICT",
+      "human_annotated_label": "CONTRADICT",
+      "correct": true,
+      "source_sentence_predictions": [
+        {
+          "sentence_idx": 0,
+          "probabilities": [
+            0.552327,
+            0.013565,
+            0.434108
+          ],
+          "predicted_sentence": "CONTRADICT",
+          "nonneutral_margin": 0.118219
+        },
+        {
+          "sentence_idx": 5,
+          "probabilities": [
+            0.153049,
+            0.009985,
+            0.836966
+          ],
+          "predicted_sentence": "NEUTRAL",
+          "nonneutral_margin": -0.683917
+        }
+      ],
+      "annotated_evidence_sentence_ids": [
+        [
+          5
+        ]
+      ],
+      "claim_sha256": "673fea03f9e97eb032607597103da3db8126fec9938553b96242110633a966f6",
+      "article_title_sha256": "2fd84a26bbd1f8f04d3b2573658cf4decb057e98520708a49c628f6057ba3dad"
+    },
+    {
+      "claim_id": 669,
+      "doc_id": "25148216",
+      "label_predicted": "CONTRADICT",
+      "human_annotated_label": "CONTRADICT",
+      "correct": true,
+      "source_sentence_predictions": [
+        {
+          "sentence_idx": 4,
+          "probabilities": [
+            0.987067,
+            0.000466,
+            0.012467
+          ],
+          "predicted_sentence": "CONTRADICT",
+          "nonneutral_margin": 0.9746
+        },
+        {
+          "sentence_idx": 5,
+          "probabilities": [
+            0.988487,
+            0.001473,
+            0.01004
+          ],
+          "predicted_sentence": "CONTRADICT",
+          "nonneutral_margin": 0.978447
+        }
+      ],
+      "annotated_evidence_sentence_ids": [
+        [
+          0
+        ],
+        [
+          4
+        ],
+        [
+          5
+        ],
+        [
+          6
+        ]
+      ],
+      "claim_sha256": "53f1c104d87217e1ff0675db9176ec07085376a376a159a8b99948aa43a3917d",
+      "article_title_sha256": "5216b3ea6aab55b57752784eefa8cf2dc7306f63766395dbde2acbc3a034c415"
+    },
+    {
+      "claim_id": 524,
+      "doc_id": "14803797",
+      "label_predicted": "NEUTRAL",
+      "human_annotated_label": "SUPPORT",
+      "correct": false,
+      "source_sentence_predictions": [
+        {
+          "sentence_idx": 3,
+          "probabilities": [
+            0.027806,
+            0.005629,
+            0.966565
+          ],
+          "predicted_sentence": "NEUTRAL",
+          "nonneutral_margin": -0.938759
+        },
+        {
+          "sentence_idx": 4,
+          "probabilities": [
+            0.008633,
+            0.004972,
+            0.986395
+          ],
+          "predicted_sentence": "NEUTRAL",
+          "nonneutral_margin": -0.977762
+        }
+      ],
+      "annotated_evidence_sentence_ids": [
+        [
+          1
+        ],
+        [
+          5
+        ]
+      ],
+      "claim_sha256": "d3e0dd821f78c6c7ae69ca071db45c771842a0943f7d8440e7d3821c77256115",
+      "article_title_sha256": "505132b546568b16e74a669301569d02124f9b5d1a0670888050c7257a26f310"
+    },
+    {
+      "claim_id": 928,
+      "doc_id": "18174210",
+      "label_predicted": "NEUTRAL",
+      "human_annotated_label": "CONTRADICT",
+      "correct": false,
+      "source_sentence_predictions": [
+        {
+          "sentence_idx": 1,
+          "probabilities": [
+            0.003361,
+            0.002506,
+            0.994133
+          ],
+          "predicted_sentence": "NEUTRAL",
+          "nonneutral_margin": -0.990772
+        },
+        {
+          "sentence_idx": 10,
+          "probabilities": [
+            0.02083,
+            0.003295,
+            0.975875
+          ],
+          "predicted_sentence": "NEUTRAL",
+          "nonneutral_margin": -0.955045
+        }
+      ],
+      "annotated_evidence_sentence_ids": [
+        [
+          2
+        ],
+        [
+          9
+        ],
+        [
+          10
+        ]
+      ],
+      "claim_sha256": "d7cda1f104aaec0308d95f014069c2a8f3a97b93ef4b9e1e32de9a675db7215b",
+      "article_title_sha256": "106021d89da4f59ab3f5cc286a30207eec754866ce17d2352add28a7ab4b195b"
+    },
+    {
+      "claim_id": 825,
+      "doc_id": "15319019",
+      "label_predicted": "NEUTRAL",
+      "human_annotated_label": "CONTRADICT",
+      "correct": false,
+      "source_sentence_predictions": [
+        {
+          "sentence_idx": 13,
+          "probabilities": [
+            0.006184,
+            0.387856,
+            0.60596
+          ],
+          "predicted_sentence": "NEUTRAL",
+          "nonneutral_margin": -0.218104
+        },
+        {
+          "sentence_idx": 1,
+          "probabilities": [
+            0.379397,
+            0.01474,
+            0.605862
+          ],
+          "predicted_sentence": "NEUTRAL",
+          "nonneutral_margin": -0.226465
+        }
+      ],
+      "annotated_evidence_sentence_ids": [
+        [
+          13
+        ]
+      ],
+      "claim_sha256": "c501d9132a4ccf8594a0919ad225bfc3b248676b3c8c2834664fcbed7d25633d",
+      "article_title_sha256": "3d487a3144ea0c0f2d3caa35878280880aee1fa3585ddf80646f6493cad3492b"
+    },
+    {
+      "claim_id": 426,
+      "doc_id": "16728949",
+      "label_predicted": "CONTRADICT",
+      "human_annotated_label": "SUPPORT",
+      "correct": false,
+      "source_sentence_predictions": [
+        {
+          "sentence_idx": 0,
+          "probabilities": [
+            0.989551,
+            0.001175,
+            0.009274
+          ],
+          "predicted_sentence": "CONTRADICT",
+          "nonneutral_margin": 0.980277
+        },
+        {
+          "sentence_idx": 2,
+          "probabilities": [
+            0.781972,
+            0.001897,
+            0.216132
+          ],
+          "predicted_sentence": "CONTRADICT",
+          "nonneutral_margin": 0.56584
+        }
+      ],
+      "annotated_evidence_sentence_ids": [
+        [
+          0
+        ]
+      ],
+      "claim_sha256": "7137c1299f002ad84afdbae143af042d4b6699172b7881d91ec2adc9204e8235",
+      "article_title_sha256": "f9af6eaff2a80e02a68ebd0df088b43548522ff566f216f47670d7997ba6c261"
+    },
+    {
+      "claim_id": 222,
+      "doc_id": "19205437",
+      "label_predicted": "SUPPORT",
+      "human_annotated_label": "SUPPORT",
+      "correct": true,
+      "source_sentence_predictions": [
+        {
+          "sentence_idx": 1,
+          "probabilities": [
+            0.027406,
+            0.962628,
+            0.009966
+          ],
+          "predicted_sentence": "SUPPORT",
+          "nonneutral_margin": 0.952662
+        },
+        {
+          "sentence_idx": 5,
+          "probabilities": [
+            0.253689,
+            0.054547,
+            0.691765
+          ],
+          "predicted_sentence": "NEUTRAL",
+          "nonneutral_margin": -0.438076
+        }
+      ],
+      "annotated_evidence_sentence_ids": [
+        [
+          1
+        ],
+        [
+          3
+        ]
+      ],
+      "claim_sha256": "6d316e32dee494cfb2430e8894c76163ed94f7e7fc6eca425dd874df9a437d4b",
+      "article_title_sha256": "30f60e4dcc05a83fcdacdfe6a37ed82523038f509e35855caf80b3d08fa52110"
+    },
+    {
+      "claim_id": 1366,
+      "doc_id": "4406819",
+      "label_predicted": "NEUTRAL",
+      "human_annotated_label": "SUPPORT",
+      "correct": false,
+      "source_sentence_predictions": [
+        {
+          "sentence_idx": 2,
+          "probabilities": [
+            0.045012,
+            0.039471,
+            0.915518
+          ],
+          "predicted_sentence": "NEUTRAL",
+          "nonneutral_margin": -0.870506
+        },
+        {
+          "sentence_idx": 5,
+          "probabilities": [
+            0.077885,
+            0.058137,
+            0.863978
+          ],
+          "predicted_sentence": "NEUTRAL",
+          "nonneutral_margin": -0.786093
+        }
+      ],
+      "annotated_evidence_sentence_ids": [
+        [
+          2,
+          4
+        ]
+      ],
+      "claim_sha256": "edda5cf5fb76aa298f9ffba111d8c7976557227d0bb8987f6ad185f733811471",
+      "article_title_sha256": "9f0254d596941cef4a31e3009f486a0ba8b7adecb6683bda78bf86a1f8fa1bac"
+    },
+    {
+      "claim_id": 1288,
+      "doc_id": "4687948",
+      "label_predicted": "SUPPORT",
+      "human_annotated_label": "CONTRADICT",
+      "correct": false,
+      "source_sentence_predictions": [
+        {
+          "sentence_idx": 13,
+          "probabilities": [
+            0.006914,
+            0.93223,
+            0.060856
+          ],
+          "predicted_sentence": "SUPPORT",
+          "nonneutral_margin": 0.871374
+        },
+        {
+          "sentence_idx": 9,
+          "probabilities": [
+            0.142265,
+            0.74853,
+            0.109205
+          ],
+          "predicted_sentence": "SUPPORT",
+          "nonneutral_margin": 0.639325
+        }
+      ],
+      "annotated_evidence_sentence_ids": [
+        [
+          7
+        ],
+        [
+          9
+        ],
+        [
+          10
+        ],
+        [
+          13
+        ]
+      ],
+      "claim_sha256": "5f39b60f1f35190fc6650b2f58abd46bcb6752a2dcef10ede43d003187063794",
+      "article_title_sha256": "3aef9a6542122ba69ff0595bb14ffc64118b4f52bdfacdcfdf39434f7d2393d6"
+    },
+    {
+      "claim_id": 919,
+      "doc_id": "16422880",
+      "label_predicted": "SUPPORT",
+      "human_annotated_label": "SUPPORT",
+      "correct": true,
+      "source_sentence_predictions": [
+        {
+          "sentence_idx": 12,
+          "probabilities": [
+            0.027517,
+            0.877746,
+            0.094737
+          ],
+          "predicted_sentence": "SUPPORT",
+          "nonneutral_margin": 0.783009
+        },
+        {
+          "sentence_idx": 3,
+          "probabilities": [
+            0.012399,
+            0.001568,
+            0.986032
+          ],
+          "predicted_sentence": "NEUTRAL",
+          "nonneutral_margin": -0.973633
+        }
+      ],
+      "annotated_evidence_sentence_ids": [
+        [
+          11
+        ]
+      ],
+      "claim_sha256": "24729bd4ccedfc24b324389e19a04aa68a255e2ab54a232df23cd07b6648cbdf",
+      "article_title_sha256": "eff841bc1762b90c4e0f381fd19b0ddc5de4bbdfa8ec54ac878a906ebc208a5a"
+    },
+    {
+      "claim_id": 381,
+      "doc_id": "18340282",
+      "label_predicted": "SUPPORT",
+      "human_annotated_label": "SUPPORT",
+      "correct": true,
+      "source_sentence_predictions": [
+        {
+          "sentence_idx": 0,
+          "probabilities": [
+            0.002314,
+            0.895155,
+            0.10253
+          ],
+          "predicted_sentence": "SUPPORT",
+          "nonneutral_margin": 0.792625
+        },
+        {
+          "sentence_idx": 6,
+          "probabilities": [
+            0.006668,
+            0.715107,
+            0.278225
+          ],
+          "predicted_sentence": "SUPPORT",
+          "nonneutral_margin": 0.436882
+        }
+      ],
+      "annotated_evidence_sentence_ids": [
+        [
+          2
+        ],
+        [
+          6
+        ]
+      ],
+      "claim_sha256": "4cba2eb90ab5f77fa6dad98088710aafc12d3a6cde5d91513b22e5cde21897c9",
+      "article_title_sha256": "ffad6db5829a95006931be07d8f94a6aa4d6643b475247346eec05f3e04dfacc"
+    },
+    {
+      "claim_id": 61,
+      "doc_id": "13899137",
+      "label_predicted": "SUPPORT",
+      "human_annotated_label": "SUPPORT",
+      "correct": true,
+      "source_sentence_predictions": [
+        {
+          "sentence_idx": 0,
+          "probabilities": [
+            0.014659,
+            0.003589,
+            0.981752
+          ],
+          "predicted_sentence": "NEUTRAL",
+          "nonneutral_margin": -0.967093
+        },
+        {
+          "sentence_idx": 11,
+          "probabilities": [
+            0.005971,
+            0.716651,
+            0.277377
+          ],
+          "predicted_sentence": "SUPPORT",
+          "nonneutral_margin": 0.439274
+        }
+      ],
+      "annotated_evidence_sentence_ids": [
+        [
+          5
+        ],
+        [
+          9
+        ],
+        [
+          11
+        ]
+      ],
+      "claim_sha256": "ac9c8b01daa379805bac1eb6de0c9f4eddf55b23637704c8178228895ab090d3",
+      "article_title_sha256": "87779b2d0339c3621a470ba11cc9df2f36dd6cf36bbe323342bda6bf129ffcf2"
+    },
+    {
+      "claim_id": 394,
+      "doc_id": "11360768",
+      "label_predicted": "NEUTRAL",
+      "human_annotated_label": "SUPPORT",
+      "correct": false,
+      "source_sentence_predictions": [
+        {
+          "sentence_idx": 12,
+          "probabilities": [
+            0.020154,
+            0.006014,
+            0.973832
+          ],
+          "predicted_sentence": "NEUTRAL",
+          "nonneutral_margin": -0.953678
+        },
+        {
+          "sentence_idx": 9,
+          "probabilities": [
+            0.075135,
+            0.01288,
+            0.911985
+          ],
+          "predicted_sentence": "NEUTRAL",
+          "nonneutral_margin": -0.83685
+        }
+      ],
+      "annotated_evidence_sentence_ids": [
+        [
+          8
+        ],
+        [
+          11
+        ],
+        [
+          12
+        ]
+      ],
+      "claim_sha256": "fe8f78adf1d4a2793cafbafae06651c7e18f8a2583efed800f23e68d13e071ee",
+      "article_title_sha256": "0b457a2e3045b65fb1f074423bb4e2454503eaa8f78d47688d48c9374ef15849"
+    },
+    {
+      "claim_id": 278,
+      "doc_id": "14376683",
+      "label_predicted": "NEUTRAL",
+      "human_annotated_label": "CONTRADICT",
+      "correct": false,
+      "source_sentence_predictions": [
+        {
+          "sentence_idx": 1,
+          "probabilities": [
+            0.119522,
+            0.003201,
+            0.877277
+          ],
+          "predicted_sentence": "NEUTRAL",
+          "nonneutral_margin": -0.757755
+        },
+        {
+          "sentence_idx": 2,
+          "probabilities": [
+            0.272462,
+            0.004021,
+            0.723517
+          ],
+          "predicted_sentence": "NEUTRAL",
+          "nonneutral_margin": -0.451055
+        }
+      ],
+      "annotated_evidence_sentence_ids": [
+        [
+          4
+        ]
+      ],
+      "claim_sha256": "7e9685ca3a40392f354d5eda01ee3c1d72dd1854869951f14ad0ff0f5eb10c47",
+      "article_title_sha256": "3df785c1b887f5c9d40df02d590e1d40177a1ccf49295e10871c9628d54c510a"
+    },
+    {
+      "claim_id": 682,
+      "doc_id": "9315213",
+      "label_predicted": "NEUTRAL",
+      "human_annotated_label": "SUPPORT",
+      "correct": false,
+      "source_sentence_predictions": [
+        {
+          "sentence_idx": 2,
+          "probabilities": [
+            0.01172,
+            0.00182,
+            0.98646
+          ],
+          "predicted_sentence": "NEUTRAL",
+          "nonneutral_margin": -0.97474
+        },
+        {
+          "sentence_idx": 3,
+          "probabilities": [
+            0.014768,
+            0.005306,
+            0.979926
+          ],
+          "predicted_sentence": "NEUTRAL",
+          "nonneutral_margin": -0.965158
+        }
+      ],
+      "annotated_evidence_sentence_ids": [
+        [
+          4
+        ]
+      ],
+      "claim_sha256": "bcb664a662f3de8840d9899950711226d1ee66d8c8ed36ecf8e29d0185a7737c",
+      "article_title_sha256": "811105c5e2e9f26b8dd55fe5ee168cee20b115b97b4bbcb0d632fd80f4e10c2e"
+    },
+    {
+      "claim_id": 901,
+      "doc_id": "6540064",
+      "label_predicted": "SUPPORT",
+      "human_annotated_label": "SUPPORT",
+      "correct": true,
+      "source_sentence_predictions": [
+        {
+          "sentence_idx": 3,
+          "probabilities": [
+            0.015087,
+            0.971856,
+            0.013057
+          ],
+          "predicted_sentence": "SUPPORT",
+          "nonneutral_margin": 0.958799
+        },
+        {
+          "sentence_idx": 9,
+          "probabilities": [
+            0.201905,
+            0.411215,
+            0.38688
+          ],
+          "predicted_sentence": "SUPPORT",
+          "nonneutral_margin": 0.024335
+        }
+      ],
+      "annotated_evidence_sentence_ids": [
+        [
+          3
+        ],
+        [
+          16
+        ]
+      ],
+      "claim_sha256": "3110017ec40c05860bccd39537634323a2b328f1a67b66dbde93a0e5b0a84c3a",
+      "article_title_sha256": "a535d8920b07353324a8408b5619c89a6bb5cb4ab6366c3db38f66b04bddbd43"
+    },
+    {
+      "claim_id": 1035,
+      "doc_id": "4547102",
+      "label_predicted": "NEUTRAL",
+      "human_annotated_label": "SUPPORT",
+      "correct": false,
+      "source_sentence_predictions": [
+        {
+          "sentence_idx": 3,
+          "probabilities": [
+            0.206226,
+            0.021578,
+            0.772196
+          ],
+          "predicted_sentence": "NEUTRAL",
+          "nonneutral_margin": -0.56597
+        },
+        {
+          "sentence_idx": 4,
+          "probabilities": [
+            0.41823,
+            0.005108,
+            0.576662
+          ],
+          "predicted_sentence": "NEUTRAL",
+          "nonneutral_margin": -0.158432
+        }
+      ],
+      "annotated_evidence_sentence_ids": [
+        [
+          3
+        ]
+      ],
+      "claim_sha256": "7cf081dbe14b43120221b8acfe9d1737fad58f956d03cc629a22f73573e9312e",
+      "article_title_sha256": "3e25a5be99e01c989c76b905dbf933d4333bd2597a4bee0ab3579686f946c569"
+    },
+    {
+      "claim_id": 88,
+      "doc_id": "7521113",
+      "label_predicted": "SUPPORT",
+      "human_annotated_label": "SUPPORT",
+      "correct": true,
+      "source_sentence_predictions": [
+        {
+          "sentence_idx": 0,
+          "probabilities": [
+            0.010021,
+            0.069168,
+            0.920812
+          ],
+          "predicted_sentence": "NEUTRAL",
+          "nonneutral_margin": -0.851644
+        },
+        {
+          "sentence_idx": 4,
+          "probabilities": [
+            0.017919,
+            0.892455,
+            0.089626
+          ],
+          "predicted_sentence": "SUPPORT",
+          "nonneutral_margin": 0.802829
+        }
+      ],
+      "annotated_evidence_sentence_ids": [
+        [
+          4
+        ]
+      ],
+      "claim_sha256": "97fbb2a864740a35cc3fbf511eee513f6dabb3689812eb4ba09db2317e4d7c46",
+      "article_title_sha256": "6d26ece006b2a07d371703c6bd7a3e53b3f919bc0c05e455bf439dbdc79a2409"
+    },
+    {
+      "claim_id": 32,
+      "doc_id": "12428497",
+      "label_predicted": "CONTRADICT",
+      "human_annotated_label": "CONTRADICT",
+      "correct": true,
+      "source_sentence_predictions": [
+        {
+          "sentence_idx": 8,
+          "probabilities": [
+            0.950649,
+            0.003079,
+            0.046273
+          ],
+          "predicted_sentence": "CONTRADICT",
+          "nonneutral_margin": 0.904376
+        },
+        {
+          "sentence_idx": 2,
+          "probabilities": [
+            0.87583,
+            0.004346,
+            0.119824
+          ],
+          "predicted_sentence": "CONTRADICT",
+          "nonneutral_margin": 0.756006
+        }
+      ],
+      "annotated_evidence_sentence_ids": [
+        [
+          8
+        ]
+      ],
+      "claim_sha256": "ce2890aec240b95068d5d7133b5263d30268ba061a5912297ae6aeeea64f2234",
+      "article_title_sha256": "9493942dd6c91630cc1b3908ef6703eacceec1e97af2b7067d770cb545676b34"
+    },
+    {
+      "claim_id": 1268,
+      "doc_id": "52072815",
+      "label_predicted": "NEUTRAL",
+      "human_annotated_label": "SUPPORT",
+      "correct": false,
+      "source_sentence_predictions": [
+        {
+          "sentence_idx": 11,
+          "probabilities": [
+            0.00447,
+            0.004856,
+            0.990674
+          ],
+          "predicted_sentence": "NEUTRAL",
+          "nonneutral_margin": -0.985818
+        },
+        {
+          "sentence_idx": 9,
+          "probabilities": [
+            0.041115,
+            0.00274,
+            0.956145
+          ],
+          "predicted_sentence": "NEUTRAL",
+          "nonneutral_margin": -0.91503
+        }
+      ],
+      "annotated_evidence_sentence_ids": [
+        [
+          8
+        ],
+        [
+          11
+        ]
+      ],
+      "claim_sha256": "87fc5af3e0460856c8506bdcc8296313eb71edfe2b64e27a2aadc91bd66b950a",
+      "article_title_sha256": "aa2e0c47361a8d5c292efd346d715bb743b16df6e41934264da79c533ba4ad0e"
+    },
+    {
+      "claim_id": 266,
+      "doc_id": "22405338",
+      "label_predicted": "NEUTRAL",
+      "human_annotated_label": "SUPPORT",
+      "correct": false,
+      "source_sentence_predictions": [
+        {
+          "sentence_idx": 3,
+          "probabilities": [
+            0.038903,
+            0.187411,
+            0.773686
+          ],
+          "predicted_sentence": "NEUTRAL",
+          "nonneutral_margin": -0.586275
+        },
+        {
+          "sentence_idx": 5,
+          "probabilities": [
+            0.252207,
+            0.10991,
+            0.637883
+          ],
+          "predicted_sentence": "NEUTRAL",
+          "nonneutral_margin": -0.385676
+        }
+      ],
+      "annotated_evidence_sentence_ids": [
+        [
+          5
+        ],
+        [
+          6
+        ]
+      ],
+      "claim_sha256": "4e47c1644a58232a641b5b5234fcecec6406b9a5ba0a63682d61be6438205178",
+      "article_title_sha256": "0832c5541d85312fac8ad880e155eb326b8d20f4ffcb5d530d122dbc882b0ba7"
+    },
+    {
+      "claim_id": 1141,
+      "doc_id": "12009265",
+      "label_predicted": "CONTRADICT",
+      "human_annotated_label": "CONTRADICT",
+      "correct": true,
+      "source_sentence_predictions": [
+        {
+          "sentence_idx": 2,
+          "probabilities": [
+            0.039776,
+            0.001377,
+            0.958847
+          ],
+          "predicted_sentence": "NEUTRAL",
+          "nonneutral_margin": -0.919071
+        },
+        {
+          "sentence_idx": 14,
+          "probabilities": [
+            0.76211,
+            0.000971,
+            0.236919
+          ],
+          "predicted_sentence": "CONTRADICT",
+          "nonneutral_margin": 0.525191
+        }
+      ],
+      "annotated_evidence_sentence_ids": [
+        [
+          9,
+          10
+        ],
+        [
+          14
+        ]
+      ],
+      "claim_sha256": "73777135fbadcb0ccca2bae5ba76af65bc38add8b1c1ca00839bf7ca4ea9a242",
+      "article_title_sha256": "cd3d5288bc153536c78f7ac54dda54affb41bab399645c7000e13d1d6f3c36e9"
+    },
+    {
+      "claim_id": 1127,
+      "doc_id": "27466734",
+      "label_predicted": "NEUTRAL",
+      "human_annotated_label": "SUPPORT",
+      "correct": false,
+      "source_sentence_predictions": [
+        {
+          "sentence_idx": 0,
+          "probabilities": [
+            0.025077,
+            0.016822,
+            0.9581
+          ],
+          "predicted_sentence": "NEUTRAL",
+          "nonneutral_margin": -0.933023
+        },
+        {
+          "sentence_idx": 5,
+          "probabilities": [
+            0.157617,
+            0.129762,
+            0.712622
+          ],
+          "predicted_sentence": "NEUTRAL",
+          "nonneutral_margin": -0.555005
+        }
+      ],
+      "annotated_evidence_sentence_ids": [
+        [
+          7
+        ]
+      ],
+      "claim_sha256": "acec823b177819005d3c94c7e396c3685fb86ed81becf8a3053fd7b27d5353dc",
+      "article_title_sha256": "2c9db3d07c00a4e28c1e0077b7ca7daeeaf1b59ed5e6d34444e4604a0bcd9dea"
+    },
+    {
+      "claim_id": 39,
+      "doc_id": "13497630",
+      "label_predicted": "SUPPORT",
+      "human_annotated_label": "SUPPORT",
+      "correct": true,
+      "source_sentence_predictions": [
+        {
+          "sentence_idx": 11,
+          "probabilities": [
+            0.016916,
+            0.815447,
+            0.167638
+          ],
+          "predicted_sentence": "SUPPORT",
+          "nonneutral_margin": 0.647809
+        },
+        {
+          "sentence_idx": 0,
+          "probabilities": [
+            0.009308,
+            0.05481,
+            0.935882
+          ],
+          "predicted_sentence": "NEUTRAL",
+          "nonneutral_margin": -0.881072
+        }
+      ],
+      "annotated_evidence_sentence_ids": [
+        [
+          7
+        ],
+        [
+          8
+        ],
+        [
+          9
+        ],
+        [
+          10
+        ],
+        [
+          11
+        ]
+      ],
+      "claim_sha256": "5eecde3993cd5e53959a99b53ffcc3ddbb337d4248ad1711bf0b5e7888eca951",
+      "article_title_sha256": "a78c4ecda4df3a46a524f6ae147e6c0fd766910d5eac568841d8d5f6e44370e2"
+    },
+    {
+      "claim_id": 305,
+      "doc_id": "14797520",
+      "label_predicted": "NEUTRAL",
+      "human_annotated_label": "SUPPORT",
+      "correct": false,
+      "source_sentence_predictions": [
+        {
+          "sentence_idx": 3,
+          "probabilities": [
+            0.018179,
+            0.255159,
+            0.726662
+          ],
+          "predicted_sentence": "NEUTRAL",
+          "nonneutral_margin": -0.471503
+        },
+        {
+          "sentence_idx": 5,
+          "probabilities": [
+            0.021653,
+            0.012145,
+            0.966202
+          ],
+          "predicted_sentence": "NEUTRAL",
+          "nonneutral_margin": -0.944549
+        }
+      ],
+      "annotated_evidence_sentence_ids": [
+        [
+          3
+        ]
+      ],
+      "claim_sha256": "f2e7d339e240db15eacdf1e1c8ef1a8b6a8c80801f61ee1632dce0d24b8576c7",
+      "article_title_sha256": "eec2ba3a6affc0934e1205cbc9c9c6be83f23655c093f99b86769e9f05b0d1b0"
+    },
+    {
+      "claim_id": 2,
+      "doc_id": "13734012",
+      "label_predicted": "NEUTRAL",
+      "human_annotated_label": "CONTRADICT",
+      "correct": false,
+      "source_sentence_predictions": [
+        {
+          "sentence_idx": 3,
+          "probabilities": [
+            0.005431,
+            0.001563,
+            0.993006
+          ],
+          "predicted_sentence": "NEUTRAL",
+          "nonneutral_margin": -0.987575
+        },
+        {
+          "sentence_idx": 4,
+          "probabilities": [
+            0.227205,
+            0.16099,
+            0.611805
+          ],
+          "predicted_sentence": "NEUTRAL",
+          "nonneutral_margin": -0.3846
+        }
+      ],
+      "annotated_evidence_sentence_ids": [
+        [
+          4
+        ]
+      ],
+      "claim_sha256": "f9243e1645cf1a966a3047a1dc311fcfda6347c9c3bdc7e19e04d3a62a93aa9d",
+      "article_title_sha256": "8ca5627a5e145c76bf021acf3907317bcc782603feb3ab8f5c933ddd2a298463"
+    },
+    {
+      "claim_id": 736,
+      "doc_id": "5389095",
+      "label_predicted": "NEUTRAL",
+      "human_annotated_label": "SUPPORT",
+      "correct": false,
+      "source_sentence_predictions": [
+        {
+          "sentence_idx": 2,
+          "probabilities": [
+            0.059934,
+            0.013254,
+            0.926812
+          ],
+          "predicted_sentence": "NEUTRAL",
+          "nonneutral_margin": -0.866878
+        },
+        {
+          "sentence_idx": 5,
+          "probabilities": [
+            0.005875,
+            0.003822,
+            0.990304
+          ],
+          "predicted_sentence": "NEUTRAL",
+          "nonneutral_margin": -0.984429
+        }
+      ],
+      "annotated_evidence_sentence_ids": [
+        [
+          4
+        ]
+      ],
+      "claim_sha256": "b9791468353f0fcd00d4f111ba5cde0a6420349e86dbeada18259fd7fa4d6769",
+      "article_title_sha256": "b28b0620d80ef186f9ad5d9dfc5dd6c3c63b15d71720731de1419dbfe0c9ad65"
+    },
+    {
+      "claim_id": 227,
+      "doc_id": "26973393",
+      "label_predicted": "NEUTRAL",
+      "human_annotated_label": "SUPPORT",
+      "correct": false,
+      "source_sentence_predictions": [
+        {
+          "sentence_idx": 0,
+          "probabilities": [
+            0.001894,
+            0.185018,
+            0.813088
+          ],
+          "predicted_sentence": "NEUTRAL",
+          "nonneutral_margin": -0.62807
+        },
+        {
+          "sentence_idx": 3,
+          "probabilities": [
+            0.003451,
+            0.121178,
+            0.875371
+          ],
+          "predicted_sentence": "NEUTRAL",
+          "nonneutral_margin": -0.754193
+        }
+      ],
+      "annotated_evidence_sentence_ids": [
+        [
+          0
+        ]
+      ],
+      "claim_sha256": "e0badbb73a167cc4f6ba076217029dc359dc8bd2080106c51ab25a9cec785b77",
+      "article_title_sha256": "82fa93d56e18e6862b65636a36b73b7ed8c5bb02ac4021049cdecd53c876e91d"
+    },
+    {
+      "claim_id": 749,
+      "doc_id": "13868795",
+      "label_predicted": "NEUTRAL",
+      "human_annotated_label": "SUPPORT",
+      "correct": false,
+      "source_sentence_predictions": [
+        {
+          "sentence_idx": 0,
+          "probabilities": [
+            0.033378,
+            0.068681,
+            0.897941
+          ],
+          "predicted_sentence": "NEUTRAL",
+          "nonneutral_margin": -0.82926
+        },
+        {
+          "sentence_idx": 5,
+          "probabilities": [
+            0.007778,
+            0.018454,
+            0.973768
+          ],
+          "predicted_sentence": "NEUTRAL",
+          "nonneutral_margin": -0.955314
+        }
+      ],
+      "annotated_evidence_sentence_ids": [
+        [
+          0
+        ]
+      ],
+      "claim_sha256": "2e2e8688b8cc0ac665f6514e8e2fcab6ade8f262a75c764c520a1faa9a5bcef1",
+      "article_title_sha256": "411e6c6cc66e51f4f153ce3143b31380d58a65d0b539b7b68daefad97a896dfd"
+    },
+    {
+      "claim_id": 529,
+      "doc_id": "10546779",
+      "label_predicted": "SUPPORT",
+      "human_annotated_label": "SUPPORT",
+      "correct": true,
+      "source_sentence_predictions": [
+        {
+          "sentence_idx": 2,
+          "probabilities": [
+            0.035509,
+            0.83037,
+            0.134121
+          ],
+          "predicted_sentence": "SUPPORT",
+          "nonneutral_margin": 0.696249
+        },
+        {
+          "sentence_idx": 1,
+          "probabilities": [
+            0.085879,
+            0.013604,
+            0.900517
+          ],
+          "predicted_sentence": "NEUTRAL",
+          "nonneutral_margin": -0.814638
+        }
+      ],
+      "annotated_evidence_sentence_ids": [
+        [
+          2
+        ]
+      ],
+      "claim_sha256": "425b72006195b8471e8165af91255842288a5cf11e11e1ad59d369124e73b07a",
+      "article_title_sha256": "6cc3a36f8713f93cba63e9d08b9481c81f42fa8462d0f22294717425aaadad1d"
+    },
+    {
+      "claim_id": 884,
+      "doc_id": "14803797",
+      "label_predicted": "SUPPORT",
+      "human_annotated_label": "SUPPORT",
+      "correct": true,
+      "source_sentence_predictions": [
+        {
+          "sentence_idx": 2,
+          "probabilities": [
+            0.178812,
+            0.688883,
+            0.132306
+          ],
+          "predicted_sentence": "SUPPORT",
+          "nonneutral_margin": 0.556577
+        },
+        {
+          "sentence_idx": 1,
+          "probabilities": [
+            0.045276,
+            0.008115,
+            0.946609
+          ],
+          "predicted_sentence": "NEUTRAL",
+          "nonneutral_margin": -0.901333
+        }
+      ],
+      "annotated_evidence_sentence_ids": [
+        [
+          2
+        ]
+      ],
+      "claim_sha256": "d4f8729454dcc78353f58c4bb719dadccab385750beec9b68b0699f2fb26958a",
+      "article_title_sha256": "505132b546568b16e74a669301569d02124f9b5d1a0670888050c7257a26f310"
+    },
+    {
+      "claim_id": 235,
+      "doc_id": "4388470",
+      "label_predicted": "CONTRADICT",
+      "human_annotated_label": "SUPPORT",
+      "correct": false,
+      "source_sentence_predictions": [
+        {
+          "sentence_idx": 7,
+          "probabilities": [
+            0.223761,
+            0.034829,
+            0.74141
+          ],
+          "predicted_sentence": "NEUTRAL",
+          "nonneutral_margin": -0.517649
+        },
+        {
+          "sentence_idx": 5,
+          "probabilities": [
+            0.764009,
+            0.049026,
+            0.186965
+          ],
+          "predicted_sentence": "CONTRADICT",
+          "nonneutral_margin": 0.577044
+        }
+      ],
+      "annotated_evidence_sentence_ids": [
+        [
+          3
+        ],
+        [
+          6
+        ],
+        [
+          7
+        ]
+      ],
+      "claim_sha256": "b9d44108cec55c53d12a736a346918a87c3364345243a0cd84afc395615f9096",
+      "article_title_sha256": "e511027fa63a76993077300491ed05c14365e8a9ae00d936f7b6b298c4311748"
+    },
+    {
+      "claim_id": 123,
+      "doc_id": "4883040",
+      "label_predicted": "CONTRADICT",
+      "human_annotated_label": "CONTRADICT",
+      "correct": true,
+      "source_sentence_predictions": [
+        {
+          "sentence_idx": 10,
+          "probabilities": [
+            0.990072,
+            0.004671,
+            0.005258
+          ],
+          "predicted_sentence": "CONTRADICT",
+          "nonneutral_margin": 0.984814
+        },
+        {
+          "sentence_idx": 2,
+          "probabilities": [
+            0.931132,
+            0.001286,
+            0.067582
+          ],
+          "predicted_sentence": "CONTRADICT",
+          "nonneutral_margin": 0.86355
+        }
+      ],
+      "annotated_evidence_sentence_ids": [
+        [
+          8
+        ],
+        [
+          10
+        ]
+      ],
+      "claim_sha256": "972a4078011da6c87a27df80200d3f4720e82925734e01de13b3f4cb1f7f9047",
+      "article_title_sha256": "ab0212262894fb22c9970aa68b5d09d765580a4312fd97f03319ca0d469ecc06"
+    },
+    {
+      "claim_id": 414,
+      "doc_id": "6309659",
+      "label_predicted": "CONTRADICT",
+      "human_annotated_label": "SUPPORT",
+      "correct": false,
+      "source_sentence_predictions": [
+        {
+          "sentence_idx": 11,
+          "probabilities": [
+            0.018007,
+            0.002865,
+            0.979128
+          ],
+          "predicted_sentence": "NEUTRAL",
+          "nonneutral_margin": -0.961121
+        },
+        {
+          "sentence_idx": 2,
+          "probabilities": [
+            0.765292,
+            0.008456,
+            0.226253
+          ],
+          "predicted_sentence": "CONTRADICT",
+          "nonneutral_margin": 0.539039
+        }
+      ],
+      "annotated_evidence_sentence_ids": [
+        [
+          12
+        ]
+      ],
+      "claim_sha256": "1a72b176ea836a66420a673277888da75a66c5ac22724d9f10dd08ecafeefaab",
+      "article_title_sha256": "c97de41f383e6d5d9a3dddda15a7010bd8628cae3e64735910bebd4fa8b5e4b9"
+    },
+    {
+      "claim_id": 951,
+      "doc_id": "21414718",
+      "label_predicted": "NEUTRAL",
+      "human_annotated_label": "SUPPORT",
+      "correct": false,
+      "source_sentence_predictions": [
+        {
+          "sentence_idx": 5,
+          "probabilities": [
+            0.03704,
+            0.005975,
+            0.956985
+          ],
+          "predicted_sentence": "NEUTRAL",
+          "nonneutral_margin": -0.919945
+        },
+        {
+          "sentence_idx": 10,
+          "probabilities": [
+            0.041443,
+            0.008856,
+            0.949701
+          ],
+          "predicted_sentence": "NEUTRAL",
+          "nonneutral_margin": -0.908258
+        }
+      ],
+      "annotated_evidence_sentence_ids": [
+        [
+          3
+        ],
+        [
+          7
+        ],
+        [
+          8
+        ],
+        [
+          11
+        ]
+      ],
+      "claim_sha256": "7370f8d3a03c9f49b34b4cd618208e241edbd9a6729cd22e8a31996a996e12d9",
+      "article_title_sha256": "392de8ba3bb7d1a493c77ed010dc8bc6edd06c4925ccba518d0895f2771b063d"
+    },
+    {
+      "claim_id": 1087,
+      "doc_id": "39281140",
+      "label_predicted": "CONTRADICT",
+      "human_annotated_label": "CONTRADICT",
+      "correct": true,
+      "source_sentence_predictions": [
+        {
+          "sentence_idx": 9,
+          "probabilities": [
+            0.995122,
+            0.001737,
+            0.003141
+          ],
+          "predicted_sentence": "CONTRADICT",
+          "nonneutral_margin": 0.991981
+        },
+        {
+          "sentence_idx": 1,
+          "probabilities": [
+            0.020269,
+            0.005468,
+            0.974263
+          ],
+          "predicted_sentence": "NEUTRAL",
+          "nonneutral_margin": -0.953994
+        }
+      ],
+      "annotated_evidence_sentence_ids": [
+        [
+          7
+        ],
+        [
+          9
+        ]
+      ],
+      "claim_sha256": "ba97a83d20da82fc21ba83f80eac59faae538280447d78f94d5fba7431fe801c",
+      "article_title_sha256": "dab200a8c9abdbad51de353a62d19d0c7928ab5e32d29d3d610002d6e56d6cea"
+    },
+    {
+      "claim_id": 565,
+      "doc_id": "16120395",
+      "label_predicted": "NEUTRAL",
+      "human_annotated_label": "SUPPORT",
+      "correct": false,
+      "source_sentence_predictions": [
+        {
+          "sentence_idx": 4,
+          "probabilities": [
+            0.242777,
+            0.00482,
+            0.752403
+          ],
+          "predicted_sentence": "NEUTRAL",
+          "nonneutral_margin": -0.509626
+        },
+        {
+          "sentence_idx": 2,
+          "probabilities": [
+            0.048324,
+            0.001197,
+            0.950479
+          ],
+          "predicted_sentence": "NEUTRAL",
+          "nonneutral_margin": -0.902155
+        }
+      ],
+      "annotated_evidence_sentence_ids": [
+        [
+          1,
+          2
+        ],
+        [
+          3
+        ],
+        [
+          4
+        ]
+      ],
+      "claim_sha256": "67fe598e03c10b1c2454b65ccfb6a7f5bbad075179c2fd667be5a25eb862d591",
+      "article_title_sha256": "c06354b09037156f3a633ca8b391883ee21a15e18e26e7f6c28039c4f8d47776"
+    },
+    {
+      "claim_id": 1097,
+      "doc_id": "26851674",
+      "label_predicted": "NEUTRAL",
+      "human_annotated_label": "SUPPORT",
+      "correct": false,
+      "source_sentence_predictions": [
+        {
+          "sentence_idx": 0,
+          "probabilities": [
+            0.358973,
+            0.106142,
+            0.534885
+          ],
+          "predicted_sentence": "NEUTRAL",
+          "nonneutral_margin": -0.175912
+        },
+        {
+          "sentence_idx": 2,
+          "probabilities": [
+            0.28244,
+            0.061578,
+            0.655982
+          ],
+          "predicted_sentence": "NEUTRAL",
+          "nonneutral_margin": -0.373542
+        }
+      ],
+      "annotated_evidence_sentence_ids": [
+        [
+          1
+        ]
+      ],
+      "claim_sha256": "68be44476ae2da9f3bcb14b3c8b6d2f43724ccb0495cb4c7bfc107b7900bb8f4",
+      "article_title_sha256": "84cdf4838c87dba08df6bb8caa23b32888bf7ed1be02574a615306fa22d558b4"
+    },
+    {
+      "claim_id": 662,
+      "doc_id": "37204802",
+      "label_predicted": "NEUTRAL",
+      "human_annotated_label": "CONTRADICT",
+      "correct": false,
+      "source_sentence_predictions": [
+        {
+          "sentence_idx": 0,
+          "probabilities": [
+            0.01072,
+            0.003568,
+            0.985712
+          ],
+          "predicted_sentence": "NEUTRAL",
+          "nonneutral_margin": -0.974992
+        },
+        {
+          "sentence_idx": 4,
+          "probabilities": [
+            0.247806,
+            0.014354,
+            0.73784
+          ],
+          "predicted_sentence": "NEUTRAL",
+          "nonneutral_margin": -0.490034
+        }
+      ],
+      "annotated_evidence_sentence_ids": [
+        [
+          3,
+          4,
+          6
+        ]
+      ],
+      "claim_sha256": "203910327941efe081c0be5cd98d6514bab564ad2c384f840d5188268ef26774",
+      "article_title_sha256": "e3a984a6903ec68b6db9a4c65088640656c9f6e9a04ddddcb0aa6aeb19472be7"
+    },
+    {
+      "claim_id": 1030,
+      "doc_id": "6441369",
+      "label_predicted": "NEUTRAL",
+      "human_annotated_label": "SUPPORT",
+      "correct": false,
+      "source_sentence_predictions": [
+        {
+          "sentence_idx": 2,
+          "probabilities": [
+            0.117136,
+            0.14462,
+            0.738243
+          ],
+          "predicted_sentence": "NEUTRAL",
+          "nonneutral_margin": -0.593623
+        },
+        {
+          "sentence_idx": 6,
+          "probabilities": [
+            0.017748,
+            0.010002,
+            0.97225
+          ],
+          "predicted_sentence": "NEUTRAL",
+          "nonneutral_margin": -0.954502
+        }
+      ],
+      "annotated_evidence_sentence_ids": [
+        [
+          2
+        ]
+      ],
+      "claim_sha256": "0767fb103d36d6dfa1626a4e43bf647a971890c5939b15d9ca13dfe204ff35cc",
+      "article_title_sha256": "a157827772aa44d47f564de3447c1effbb4d5731750838f9e51c9f23076ae5dd"
+    },
+    {
+      "claim_id": 1228,
+      "doc_id": "25641414",
+      "label_predicted": "NEUTRAL",
+      "human_annotated_label": "CONTRADICT",
+      "correct": false,
+      "source_sentence_predictions": [
+        {
+          "sentence_idx": 7,
+          "probabilities": [
+            0.009995,
+            0.023887,
+            0.966118
+          ],
+          "predicted_sentence": "NEUTRAL",
+          "nonneutral_margin": -0.942231
+        },
+        {
+          "sentence_idx": 6,
+          "probabilities": [
+            0.00647,
+            0.003048,
+            0.990482
+          ],
+          "predicted_sentence": "NEUTRAL",
+          "nonneutral_margin": -0.984012
+        }
+      ],
+      "annotated_evidence_sentence_ids": [
+        [
+          7
+        ]
+      ],
+      "claim_sha256": "7072e3b6e5901729ca963f1c0b60d2d852b2e5584b0accb5669f72b5d9f2c280",
+      "article_title_sha256": "0cecb32bf92f5db08b6cfe1785f22f5c1a663061beb086ae28f38754be21c0cc"
+    },
+    {
+      "claim_id": 172,
+      "doc_id": "12670680",
+      "label_predicted": "NEUTRAL",
+      "human_annotated_label": "SUPPORT",
+      "correct": false,
+      "source_sentence_predictions": [
+        {
+          "sentence_idx": 4,
+          "probabilities": [
+            0.036111,
+            0.134097,
+            0.829792
+          ],
+          "predicted_sentence": "NEUTRAL",
+          "nonneutral_margin": -0.695695
+        },
+        {
+          "sentence_idx": 0,
+          "probabilities": [
+            0.212551,
+            0.331427,
+            0.456022
+          ],
+          "predicted_sentence": "NEUTRAL",
+          "nonneutral_margin": -0.124595
+        }
+      ],
+      "annotated_evidence_sentence_ids": [
+        [
+          1
+        ],
+        [
+          2
+        ],
+        [
+          4
+        ]
+      ],
+      "claim_sha256": "6073d5061a2847426836518342be2d74663922c612a2b90f7b51eacc084b9661",
+      "article_title_sha256": "44d09b77e7b7304bf770f7b30801557e7de97641233ec3d631b90142304b8edf"
+    },
+    {
+      "claim_id": 595,
+      "doc_id": "4824840",
+      "label_predicted": "CONTRADICT",
+      "human_annotated_label": "CONTRADICT",
+      "correct": true,
+      "source_sentence_predictions": [
+        {
+          "sentence_idx": 9,
+          "probabilities": [
+            0.570058,
+            0.418723,
+            0.011219
+          ],
+          "predicted_sentence": "CONTRADICT",
+          "nonneutral_margin": 0.558839
+        },
+        {
+          "sentence_idx": 3,
+          "probabilities": [
+            0.004535,
+            0.001988,
+            0.993477
+          ],
+          "predicted_sentence": "NEUTRAL",
+          "nonneutral_margin": -0.988942
+        }
+      ],
+      "annotated_evidence_sentence_ids": [
+        [
+          9
+        ],
+        [
+          13
+        ]
+      ],
+      "claim_sha256": "ae5338a0555227c0e996cca759beab5de2a5325b3d524fde23dc64e67c7339f1",
+      "article_title_sha256": "ab8133defc1e410b1e2396de9754dd438cc2bec1d31ccf04d38360800d9fbcbe"
+    },
+    {
+      "claim_id": 1157,
+      "doc_id": "12584053",
+      "label_predicted": "CONTRADICT",
+      "human_annotated_label": "SUPPORT",
+      "correct": false,
+      "source_sentence_predictions": [
+        {
+          "sentence_idx": 10,
+          "probabilities": [
+            0.024583,
+            0.009943,
+            0.965473
+          ],
+          "predicted_sentence": "NEUTRAL",
+          "nonneutral_margin": -0.94089
+        },
+        {
+          "sentence_idx": 7,
+          "probabilities": [
+            0.983619,
+            0.001073,
+            0.015308
+          ],
+          "predicted_sentence": "CONTRADICT",
+          "nonneutral_margin": 0.968311
+        }
+      ],
+      "annotated_evidence_sentence_ids": [
+        [
+          9
+        ],
+        [
+          10
+        ],
+        [
+          13
+        ]
+      ],
+      "claim_sha256": "6a1c6e4820c12f180f814f60b6176fd3dd03c0d4fe409e7d19e29fe5dac8302d",
+      "article_title_sha256": "f00c9e18fcc4cef748ccbfa3c1d1146f24bd8fcfe3f68609d022f6cc163759e6"
+    },
+    {
+      "claim_id": 1297,
+      "doc_id": "9167230",
+      "label_predicted": "NEUTRAL",
+      "human_annotated_label": "SUPPORT",
+      "correct": false,
+      "source_sentence_predictions": [
+        {
+          "sentence_idx": 5,
+          "probabilities": [
+            0.203472,
+            0.013915,
+            0.782613
+          ],
+          "predicted_sentence": "NEUTRAL",
+          "nonneutral_margin": -0.579141
+        },
+        {
+          "sentence_idx": 9,
+          "probabilities": [
+            0.005029,
+            0.001508,
+            0.993463
+          ],
+          "predicted_sentence": "NEUTRAL",
+          "nonneutral_margin": -0.988434
+        }
+      ],
+      "annotated_evidence_sentence_ids": [
+        [
+          5
+        ]
+      ],
+      "claim_sha256": "eb98b8ccf46c3385cade3ea90f40b187de5ebeb6ec0e0bbe102dc6cc80c5c3c2",
+      "article_title_sha256": "8f44d04d741a9586a67de6ef383bb059deaf9d9281cd2255edad09133d482bcd"
+    },
+    {
+      "claim_id": 505,
+      "doc_id": "22703082",
+      "label_predicted": "NEUTRAL",
+      "human_annotated_label": "SUPPORT",
+      "correct": false,
+      "source_sentence_predictions": [
+        {
+          "sentence_idx": 1,
+          "probabilities": [
+            0.128435,
+            0.006575,
+            0.864989
+          ],
+          "predicted_sentence": "NEUTRAL",
+          "nonneutral_margin": -0.736554
+        },
+        {
+          "sentence_idx": 0,
+          "probabilities": [
+            0.020405,
+            0.001931,
+            0.977664
+          ],
+          "predicted_sentence": "NEUTRAL",
+          "nonneutral_margin": -0.957259
+        }
+      ],
+      "annotated_evidence_sentence_ids": [
+        [
+          1
+        ],
+        [
+          3
+        ]
+      ],
+      "claim_sha256": "2f90656fa82a600de92315c7963d09426c5b8e2f34d111f58b6287b6455bf9cc",
+      "article_title_sha256": "d457c187061b72453bfde1590395f5ced4c0a1057a614dac7309f719a5bf019e"
+    },
+    {
+      "claim_id": 157,
+      "doc_id": "13439128",
+      "label_predicted": "SUPPORT",
+      "human_annotated_label": "SUPPORT",
+      "correct": true,
+      "source_sentence_predictions": [
+        {
+          "sentence_idx": 3,
+          "probabilities": [
+            0.422904,
+            0.486477,
+            0.090619
+          ],
+          "predicted_sentence": "SUPPORT",
+          "nonneutral_margin": 0.395858
+        },
+        {
+          "sentence_idx": 0,
+          "probabilities": [
+            0.452466,
+            0.00871,
+            0.538824
+          ],
+          "predicted_sentence": "NEUTRAL",
+          "nonneutral_margin": -0.086358
+        }
+      ],
+      "annotated_evidence_sentence_ids": [
+        [
+          3
+        ]
+      ],
+      "claim_sha256": "e86db0a3ec4399d7776cb0398909daa20b2b62513fd68badd6eb71caec289001",
+      "article_title_sha256": "1c27cca4dd2db52ac1ec284aaa23480727a60ec9e0a62939e62fea052aa4b4b2"
+    },
+    {
+      "claim_id": 1102,
+      "doc_id": "3874000",
+      "label_predicted": "CONTRADICT",
+      "human_annotated_label": "SUPPORT",
+      "correct": false,
+      "source_sentence_predictions": [
+        {
+          "sentence_idx": 5,
+          "probabilities": [
+            0.044617,
+            0.666808,
+            0.288575
+          ],
+          "predicted_sentence": "SUPPORT",
+          "nonneutral_margin": 0.378233
+        },
+        {
+          "sentence_idx": 3,
+          "probabilities": [
+            0.98455,
+            0.001953,
+            0.013496
+          ],
+          "predicted_sentence": "CONTRADICT",
+          "nonneutral_margin": 0.971054
+        }
+      ],
+      "annotated_evidence_sentence_ids": [
+        [
+          5
+        ]
+      ],
+      "claim_sha256": "808c6b1106cbcb1769cf5984e751ca1ae0e43a56781cfdd5b1b9aa378bc4c549",
+      "article_title_sha256": "cdf86a41fec2ac61344d523131a900b9bed8643ac52619773dbf102886c6a896"
+    },
+    {
+      "claim_id": 1234,
+      "doc_id": "13905670",
+      "label_predicted": "CONTRADICT",
+      "human_annotated_label": "SUPPORT",
+      "correct": false,
+      "source_sentence_predictions": [
+        {
+          "sentence_idx": 4,
+          "probabilities": [
+            0.856777,
+            0.047,
+            0.096223
+          ],
+          "predicted_sentence": "CONTRADICT",
+          "nonneutral_margin": 0.760554
+        },
+        {
+          "sentence_idx": 3,
+          "probabilities": [
+            0.065191,
+            0.004525,
+            0.930284
+          ],
+          "predicted_sentence": "NEUTRAL",
+          "nonneutral_margin": -0.865093
+        }
+      ],
+      "annotated_evidence_sentence_ids": [
+        [
+          4
+        ]
+      ],
+      "claim_sha256": "3db2ae7f82e471001131fea75a0fa270c06db5861383e7e3b4ea86edf0390c08",
+      "article_title_sha256": "e3318e9eb1cf1d639d8c8ccbd5a20b7cc39d3ca28358842ea2d29942534f02fb"
+    },
+    {
+      "claim_id": 1135,
+      "doc_id": "33370",
+      "label_predicted": "CONTRADICT",
+      "human_annotated_label": "CONTRADICT",
+      "correct": true,
+      "source_sentence_predictions": [
+        {
+          "sentence_idx": 2,
+          "probabilities": [
+            0.641081,
+            0.112514,
+            0.246405
+          ],
+          "predicted_sentence": "CONTRADICT",
+          "nonneutral_margin": 0.394676
+        },
+        {
+          "sentence_idx": 9,
+          "probabilities": [
+            0.321616,
+            0.019298,
+            0.659086
+          ],
+          "predicted_sentence": "NEUTRAL",
+          "nonneutral_margin": -0.33747
+        }
+      ],
+      "annotated_evidence_sentence_ids": [
+        [
+          4
+        ],
+        [
+          9
+        ]
+      ],
+      "claim_sha256": "7fff315d573457616777c4a17333f988ef1f5dc5bee4f0220bd07360ee567288",
+      "article_title_sha256": "aad2a528ca55197e35cf0e20d4a988966f118b316d0341af37c5a3826238a2d3"
+    },
+    {
+      "claim_id": 1391,
+      "doc_id": "6766459",
+      "label_predicted": "CONTRADICT",
+      "human_annotated_label": "SUPPORT",
+      "correct": false,
+      "source_sentence_predictions": [
+        {
+          "sentence_idx": 1,
+          "probabilities": [
+            0.540336,
+            0.013139,
+            0.446525
+          ],
+          "predicted_sentence": "CONTRADICT",
+          "nonneutral_margin": 0.093811
+        },
+        {
+          "sentence_idx": 7,
+          "probabilities": [
+            0.417504,
+            0.118716,
+            0.46378
+          ],
+          "predicted_sentence": "NEUTRAL",
+          "nonneutral_margin": -0.046276
+        }
+      ],
+      "annotated_evidence_sentence_ids": [
+        [
+          5
+        ]
+      ],
+      "claim_sha256": "de1851a75e1116d4007056234edf1af32d9618455a9399cc57d99ec6e3cb9cd4",
+      "article_title_sha256": "1511302eb4e3041a0a05fe8a6eda127e35763e4304a3dbf57db9a8f1015f9ae2"
+    },
+    {
+      "claim_id": 1327,
+      "doc_id": "24241932",
+      "label_predicted": "NEUTRAL",
+      "human_annotated_label": "CONTRADICT",
+      "correct": false,
+      "source_sentence_predictions": [
+        {
+          "sentence_idx": 1,
+          "probabilities": [
+            0.010736,
+            0.002528,
+            0.986736
+          ],
+          "predicted_sentence": "NEUTRAL",
+          "nonneutral_margin": -0.976
+        },
+        {
+          "sentence_idx": 7,
+          "probabilities": [
+            0.026985,
+            0.002546,
+            0.970469
+          ],
+          "predicted_sentence": "NEUTRAL",
+          "nonneutral_margin": -0.943484
+        }
+      ],
+      "annotated_evidence_sentence_ids": [
+        [
+          6
+        ],
+        [
+          7
+        ]
+      ],
+      "claim_sha256": "3bbbd0f958337b9f5203f4ec5047e11da18625fbfe82a81b1824386317711e16",
+      "article_title_sha256": "277bbf30042e3987152cd5b458d42d6dc5d4217e741b1d98fee511de5ecfffe5"
+    },
+    {
+      "claim_id": 752,
+      "doc_id": "19800147",
+      "label_predicted": "NEUTRAL",
+      "human_annotated_label": "SUPPORT",
+      "correct": false,
+      "source_sentence_predictions": [
+        {
+          "sentence_idx": 3,
+          "probabilities": [
+            0.02728,
+            0.003625,
+            0.969094
+          ],
+          "predicted_sentence": "NEUTRAL",
+          "nonneutral_margin": -0.941814
+        },
+        {
+          "sentence_idx": 6,
+          "probabilities": [
+            0.078588,
+            0.015207,
+            0.906205
+          ],
+          "predicted_sentence": "NEUTRAL",
+          "nonneutral_margin": -0.827617
+        }
+      ],
+      "annotated_evidence_sentence_ids": [
+        [
+          4
+        ]
+      ],
+      "claim_sha256": "4ec42787108e931baaa330dbca7cabec984af1ad1a792e5162b2a4d64d83b049",
+      "article_title_sha256": "acef209a3dd885a3e02991ee0235f8f49ebf4f99d71ee9875f01bad315779422"
+    },
+    {
+      "claim_id": 1011,
+      "doc_id": "9745001",
+      "label_predicted": "CONTRADICT",
+      "human_annotated_label": "CONTRADICT",
+      "correct": true,
+      "source_sentence_predictions": [
+        {
+          "sentence_idx": 0,
+          "probabilities": [
+            0.131919,
+            0.383474,
+            0.484607
+          ],
+          "predicted_sentence": "NEUTRAL",
+          "nonneutral_margin": -0.101133
+        },
+        {
+          "sentence_idx": 12,
+          "probabilities": [
+            0.956192,
+            0.020922,
+            0.022886
+          ],
+          "predicted_sentence": "CONTRADICT",
+          "nonneutral_margin": 0.933306
+        }
+      ],
+      "annotated_evidence_sentence_ids": [
+        [
+          6
+        ],
+        [
+          12
+        ]
+      ],
+      "claim_sha256": "5bc1c4472ad4642c635eac89f5c5f6a6677d32be85b565cccce0911469927272",
+      "article_title_sha256": "d558853c9700874ad4425d0d04d463aa92e3fd085a9ea067bfc327da54136555"
+    },
+    {
+      "claim_id": 779,
+      "doc_id": "13001323",
+      "label_predicted": "CONTRADICT",
+      "human_annotated_label": "SUPPORT",
+      "correct": false,
+      "source_sentence_predictions": [
+        {
+          "sentence_idx": 5,
+          "probabilities": [
+            0.62695,
+            0.284374,
+            0.088676
+          ],
+          "predicted_sentence": "CONTRADICT",
+          "nonneutral_margin": 0.538274
+        },
+        {
+          "sentence_idx": 3,
+          "probabilities": [
+            0.0425,
+            0.145649,
+            0.811851
+          ],
+          "predicted_sentence": "NEUTRAL",
+          "nonneutral_margin": -0.666202
+        }
+      ],
+      "annotated_evidence_sentence_ids": [
+        [
+          2,
+          3
+        ],
+        [
+          5
+        ]
+      ],
+      "claim_sha256": "ed937ee87ef0b11df658d5c8d404c8d6b8d6d7d2b03a8a9c9c0819f1fa2f5f47",
+      "article_title_sha256": "ab0e63246a9288b01069e9b4efe957dfa38911b599e3980521c6c7606e8c0df3"
+    },
+    {
+      "claim_id": 571,
+      "doc_id": "20333864",
+      "label_predicted": "CONTRADICT",
+      "human_annotated_label": "CONTRADICT",
+      "correct": true,
+      "source_sentence_predictions": [
+        {
+          "sentence_idx": 0,
+          "probabilities": [
+            0.235081,
+            0.003403,
+            0.761515
+          ],
+          "predicted_sentence": "NEUTRAL",
+          "nonneutral_margin": -0.526434
+        },
+        {
+          "sentence_idx": 1,
+          "probabilities": [
+            0.750494,
+            0.007469,
+            0.242037
+          ],
+          "predicted_sentence": "CONTRADICT",
+          "nonneutral_margin": 0.508457
+        }
+      ],
+      "annotated_evidence_sentence_ids": [
+        [
+          2
+        ],
+        [
+          3
+        ]
+      ],
+      "claim_sha256": "a44821aaf48be4ff77f34c38eeb1aaf96304e0175a2721daafd480f0c3a2173c",
+      "article_title_sha256": "940145a6e8de7b070603438ddba0941f7f915a06661df75b1c0060e9eaa4f6ae"
+    },
+    {
+      "claim_id": 461,
+      "doc_id": "40096222",
+      "label_predicted": "NEUTRAL",
+      "human_annotated_label": "SUPPORT",
+      "correct": false,
+      "source_sentence_predictions": [
+        {
+          "sentence_idx": 4,
+          "probabilities": [
+            0.114054,
+            0.120984,
+            0.764962
+          ],
+          "predicted_sentence": "NEUTRAL",
+          "nonneutral_margin": -0.643978
+        },
+        {
+          "sentence_idx": 1,
+          "probabilities": [
+            0.182405,
+            0.013168,
+            0.804427
+          ],
+          "predicted_sentence": "NEUTRAL",
+          "nonneutral_margin": -0.622022
+        }
+      ],
+      "annotated_evidence_sentence_ids": [
+        [
+          0
+        ]
+      ],
+      "claim_sha256": "a006624aa497bd448cdc0d40d6db128d617c76fb6de5dd8c1f77738c64405450",
+      "article_title_sha256": "d154ba158662b5999f63aea9ac7d7dda35c0ed8a38963711c73c99814e03e5b5"
+    },
+    {
+      "claim_id": 258,
+      "doc_id": "22080671",
+      "label_predicted": "NEUTRAL",
+      "human_annotated_label": "SUPPORT",
+      "correct": false,
+      "source_sentence_predictions": [
+        {
+          "sentence_idx": 4,
+          "probabilities": [
+            0.02917,
+            0.073504,
+            0.897327
+          ],
+          "predicted_sentence": "NEUTRAL",
+          "nonneutral_margin": -0.823823
+        },
+        {
+          "sentence_idx": 5,
+          "probabilities": [
+            0.009839,
+            0.004699,
+            0.985462
+          ],
+          "predicted_sentence": "NEUTRAL",
+          "nonneutral_margin": -0.975623
+        }
+      ],
+      "annotated_evidence_sentence_ids": [
+        [
+          4,
+          5
+        ]
+      ],
+      "claim_sha256": "54b43b6a434006e16ea9c9b943dd64c0f593e92d5b78d99cba49a6accdef675e",
+      "article_title_sha256": "924f33e915c666ed2c6eda085fafab0acbfbb853921795352080349bbf3df94f"
+    },
+    {
+      "claim_id": 927,
+      "doc_id": "16390264",
+      "label_predicted": "NEUTRAL",
+      "human_annotated_label": "CONTRADICT",
+      "correct": false,
+      "source_sentence_predictions": [
+        {
+          "sentence_idx": 5,
+          "probabilities": [
+            0.060593,
+            0.004308,
+            0.935099
+          ],
+          "predicted_sentence": "NEUTRAL",
+          "nonneutral_margin": -0.874506
+        },
+        {
+          "sentence_idx": 8,
+          "probabilities": [
+            0.007466,
+            0.238759,
+            0.753774
+          ],
+          "predicted_sentence": "NEUTRAL",
+          "nonneutral_margin": -0.515015
+        }
+      ],
+      "annotated_evidence_sentence_ids": [
+        [
+          6,
+          7
+        ],
+        [
+          10
+        ]
+      ],
+      "claim_sha256": "babd896f14c158c6c2ce6c24da3f153ebd9537cf5b6744cd151033ceb4ea15cf",
+      "article_title_sha256": "c9c02ee01b590c9966e834ca27fcf6bab49c4e3da67da79d9f70ecbb139cc982"
+    },
+    {
+      "claim_id": 972,
+      "doc_id": "28617573",
+      "label_predicted": "NEUTRAL",
+      "human_annotated_label": "CONTRADICT",
+      "correct": false,
+      "source_sentence_predictions": [
+        {
+          "sentence_idx": 7,
+          "probabilities": [
+            0.393071,
+            0.008178,
+            0.598751
+          ],
+          "predicted_sentence": "NEUTRAL",
+          "nonneutral_margin": -0.20568
+        },
+        {
+          "sentence_idx": 1,
+          "probabilities": [
+            0.007004,
+            0.006657,
+            0.986339
+          ],
+          "predicted_sentence": "NEUTRAL",
+          "nonneutral_margin": -0.979335
+        }
+      ],
+      "annotated_evidence_sentence_ids": [
+        [
+          8
+        ]
+      ],
+      "claim_sha256": "804928010e38f9c3aec61d67f05a932f00649872a48d7ee80bc48e4645d04816",
+      "article_title_sha256": "4bd8b6e22b9ac19e5015090b441f0eff9f6f662ac0d13ec517e9f25572ad8b2b"
+    },
+    {
+      "claim_id": 994,
+      "doc_id": "16472469",
+      "label_predicted": "CONTRADICT",
+      "human_annotated_label": "CONTRADICT",
+      "correct": true,
+      "source_sentence_predictions": [
+        {
+          "sentence_idx": 5,
+          "probabilities": [
+            0.978302,
+            0.002669,
+            0.019029
+          ],
+          "predicted_sentence": "CONTRADICT",
+          "nonneutral_margin": 0.959273
+        },
+        {
+          "sentence_idx": 6,
+          "probabilities": [
+            0.563782,
+            0.006957,
+            0.42926
+          ],
+          "predicted_sentence": "CONTRADICT",
+          "nonneutral_margin": 0.134522
+        }
+      ],
+      "annotated_evidence_sentence_ids": [
+        [
+          5
+        ]
+      ],
+      "claim_sha256": "8970ea23302445fc78106368796ac535b216ac9667c36f3d0f006ae10393f74b",
+      "article_title_sha256": "abd86d64d22fd74578024a46e7ee5a3589db552c2263125b5b163e1869fadcc9"
+    },
+    {
+      "claim_id": 121,
+      "doc_id": "31460499",
+      "label_predicted": "NEUTRAL",
+      "human_annotated_label": "SUPPORT",
+      "correct": false,
+      "source_sentence_predictions": [
+        {
+          "sentence_idx": 3,
+          "probabilities": [
+            0.018848,
+            0.006199,
+            0.974953
+          ],
+          "predicted_sentence": "NEUTRAL",
+          "nonneutral_margin": -0.956105
+        },
+        {
+          "sentence_idx": 0,
+          "probabilities": [
+            0.01678,
+            0.158459,
+            0.824761
+          ],
+          "predicted_sentence": "NEUTRAL",
+          "nonneutral_margin": -0.666302
+        }
+      ],
+      "annotated_evidence_sentence_ids": [
+        [
+          0
+        ]
+      ],
+      "claim_sha256": "ef7502694c9bbc16e77ab9c7b3df6d0f4138ed15c471e1a440bb321b3db83297",
+      "article_title_sha256": "70c28d335562bc24bc5a6e05af60027371c7da3e6905ac16736de6da0f3154ab"
+    },
+    {
+      "claim_id": 40,
+      "doc_id": "13497630",
+      "label_predicted": "CONTRADICT",
+      "human_annotated_label": "CONTRADICT",
+      "correct": true,
+      "source_sentence_predictions": [
+        {
+          "sentence_idx": 11,
+          "probabilities": [
+            0.91063,
+            0.005469,
+            0.083901
+          ],
+          "predicted_sentence": "CONTRADICT",
+          "nonneutral_margin": 0.826729
+        },
+        {
+          "sentence_idx": 0,
+          "probabilities": [
+            0.627714,
+            0.004107,
+            0.368179
+          ],
+          "predicted_sentence": "CONTRADICT",
+          "nonneutral_margin": 0.259535
+        }
+      ],
+      "annotated_evidence_sentence_ids": [
+        [
+          7
+        ],
+        [
+          8
+        ],
+        [
+          9
+        ],
+        [
+          10
+        ],
+        [
+          11
+        ]
+      ],
+      "claim_sha256": "1754ffc8a1edef9a14517b3aba45581df31579ff3c039526b950fd355c10a3fa",
+      "article_title_sha256": "a78c4ecda4df3a46a524f6ae147e6c0fd766910d5eac568841d8d5f6e44370e2"
+    },
+    {
+      "claim_id": 972,
+      "doc_id": "46695481",
+      "label_predicted": "CONTRADICT",
+      "human_annotated_label": "CONTRADICT",
+      "correct": true,
+      "source_sentence_predictions": [
+        {
+          "sentence_idx": 0,
+          "probabilities": [
+            0.520976,
+            0.025112,
+            0.453912
+          ],
+          "predicted_sentence": "CONTRADICT",
+          "nonneutral_margin": 0.067064
+        },
+        {
+          "sentence_idx": 9,
+          "probabilities": [
+            0.011076,
+            0.37382,
+            0.615104
+          ],
+          "predicted_sentence": "NEUTRAL",
+          "nonneutral_margin": -0.241284
+        }
+      ],
+      "annotated_evidence_sentence_ids": [
+        [
+          0
+        ],
+        [
+          9
+        ]
+      ],
+      "claim_sha256": "804928010e38f9c3aec61d67f05a932f00649872a48d7ee80bc48e4645d04816",
+      "article_title_sha256": "5a7e5d76723fd9c18943d22bf31b863478c6e45499a3e9fc1bca9519dcea5dfc"
+    },
+    {
+      "claim_id": 1048,
+      "doc_id": "12486491",
+      "label_predicted": "NEUTRAL",
+      "human_annotated_label": "SUPPORT",
+      "correct": false,
+      "source_sentence_predictions": [
+        {
+          "sentence_idx": 1,
+          "probabilities": [
+            0.034881,
+            0.153064,
+            0.812054
+          ],
+          "predicted_sentence": "NEUTRAL",
+          "nonneutral_margin": -0.65899
+        },
+        {
+          "sentence_idx": 3,
+          "probabilities": [
+            0.011818,
+            0.015294,
+            0.972888
+          ],
+          "predicted_sentence": "NEUTRAL",
+          "nonneutral_margin": -0.957594
+        }
+      ],
+      "annotated_evidence_sentence_ids": [
+        [
+          5,
+          6
+        ]
+      ],
+      "claim_sha256": "6d9b71e1b87c85e345dc5a39b460ac22c8cc74e724b582906406c5d1606592f2",
+      "article_title_sha256": "3baf744e3e8e2c0c96ff1ff53e8b3eefe157c76f104a9c654a15524360a2d388"
+    },
+    {
+      "claim_id": 106,
+      "doc_id": "5151024",
+      "label_predicted": "CONTRADICT",
+      "human_annotated_label": "CONTRADICT",
+      "correct": true,
+      "source_sentence_predictions": [
+        {
+          "sentence_idx": 0,
+          "probabilities": [
+            0.802103,
+            0.060402,
+            0.137494
+          ],
+          "predicted_sentence": "CONTRADICT",
+          "nonneutral_margin": 0.664609
+        },
+        {
+          "sentence_idx": 10,
+          "probabilities": [
+            0.661575,
+            0.002593,
+            0.335832
+          ],
+          "predicted_sentence": "CONTRADICT",
+          "nonneutral_margin": 0.325743
+        }
+      ],
+      "annotated_evidence_sentence_ids": [
+        [
+          0
+        ],
+        [
+          8
+        ]
+      ],
+      "claim_sha256": "67e2b8b1ba4161d13b605784e37d45a0f110d1863b5e1320d9927ddf187c72bf",
+      "article_title_sha256": "e6eaa9d4e2c05cfe5d4449791d2b3171be2d4a2a5348ce29a89f4b5a8ab83de8"
+    },
+    {
+      "claim_id": 886,
+      "doc_id": "6477536",
+      "label_predicted": "CONTRADICT",
+      "human_annotated_label": "CONTRADICT",
+      "correct": true,
+      "source_sentence_predictions": [
+        {
+          "sentence_idx": 17,
+          "probabilities": [
+            0.962961,
+            0.024826,
+            0.012212
+          ],
+          "predicted_sentence": "CONTRADICT",
+          "nonneutral_margin": 0.950749
+        },
+        {
+          "sentence_idx": 2,
+          "probabilities": [
+            0.088056,
+            0.002516,
+            0.909429
+          ],
+          "predicted_sentence": "NEUTRAL",
+          "nonneutral_margin": -0.821373
+        }
+      ],
+      "annotated_evidence_sentence_ids": [
+        [
+          10
+        ],
+        [
+          17
+        ]
+      ],
+      "claim_sha256": "95a6cb69417acfaf8638c3b4b3f27bda0033d23301acf82723d9308f454e894e",
+      "article_title_sha256": "a7f1dd86c087badc47f9179988b5f8b44e0ebbd136ee2a34e55931c7d8c14e3a"
+    },
+    {
+      "claim_id": 116,
+      "doc_id": "33872649",
+      "label_predicted": "NEUTRAL",
+      "human_annotated_label": "SUPPORT",
+      "correct": false,
+      "source_sentence_predictions": [
+        {
+          "sentence_idx": 1,
+          "probabilities": [
+            0.043138,
+            0.002208,
+            0.954654
+          ],
+          "predicted_sentence": "NEUTRAL",
+          "nonneutral_margin": -0.911516
+        },
+        {
+          "sentence_idx": 4,
+          "probabilities": [
+            0.337778,
+            0.00345,
+            0.658772
+          ],
+          "predicted_sentence": "NEUTRAL",
+          "nonneutral_margin": -0.320994
+        }
+      ],
+      "annotated_evidence_sentence_ids": [
+        [
+          6
+        ]
+      ],
+      "claim_sha256": "85a506084c42968ce9e313f6848e378e09db0de65aab9c997133b210425a6bad",
+      "article_title_sha256": "87909c84866139209efbc2c16a777a0fd353b266ac88d0ff3624efc53ea2209e"
+    },
+    {
+      "claim_id": 1249,
+      "doc_id": "7209559",
+      "label_predicted": "NEUTRAL",
+      "human_annotated_label": "CONTRADICT",
+      "correct": false,
+      "source_sentence_predictions": [
+        {
+          "sentence_idx": 4,
+          "probabilities": [
+            0.031791,
+            0.001709,
+            0.9665
+          ],
+          "predicted_sentence": "NEUTRAL",
+          "nonneutral_margin": -0.934709
+        },
+        {
+          "sentence_idx": 2,
+          "probabilities": [
+            0.012958,
+            0.001597,
+            0.985445
+          ],
+          "predicted_sentence": "NEUTRAL",
+          "nonneutral_margin": -0.972487
+        }
+      ],
+      "annotated_evidence_sentence_ids": [
+        [
+          0
+        ]
+      ],
+      "claim_sha256": "2a8fb39a567bf745d47abb2809f429228efa3565e9a30de649eacc7e4eeb3cae",
+      "article_title_sha256": "f17edd4475dfc7cd83e72bf0a3ba716c73905dcf25cfae656377d9f1004daf39"
+    },
+    {
+      "claim_id": 855,
+      "doc_id": "8190282",
+      "label_predicted": "CONTRADICT",
+      "human_annotated_label": "CONTRADICT",
+      "correct": true,
+      "source_sentence_predictions": [
+        {
+          "sentence_idx": 3,
+          "probabilities": [
+            0.087215,
+            0.036206,
+            0.876579
+          ],
+          "predicted_sentence": "NEUTRAL",
+          "nonneutral_margin": -0.789364
+        },
+        {
+          "sentence_idx": 1,
+          "probabilities": [
+            0.953323,
+            0.005832,
+            0.040845
+          ],
+          "predicted_sentence": "CONTRADICT",
+          "nonneutral_margin": 0.912478
+        }
+      ],
+      "annotated_evidence_sentence_ids": [
+        [
+          8
+        ],
+        [
+          9
+        ],
+        [
+          10
+        ],
+        [
+          12
+        ]
+      ],
+      "claim_sha256": "fd90aab9771116fdba5881c0697cf67cd1920c1f688277abfd5befcf9e2f38ed",
+      "article_title_sha256": "91b1ca9db3d6829a6845fc49d86fb9d490b87f6ccf545fb04de4ca79e22ea476"
+    },
+    {
+      "claim_id": 531,
+      "doc_id": "25413327",
+      "label_predicted": "SUPPORT",
+      "human_annotated_label": "SUPPORT",
+      "correct": true,
+      "source_sentence_predictions": [
+        {
+          "sentence_idx": 0,
+          "probabilities": [
+            0.002045,
+            0.910451,
+            0.087504
+          ],
+          "predicted_sentence": "SUPPORT",
+          "nonneutral_margin": 0.822947
+        },
+        {
+          "sentence_idx": 5,
+          "probabilities": [
+            0.004104,
+            0.940936,
+            0.05496
+          ],
+          "predicted_sentence": "SUPPORT",
+          "nonneutral_margin": 0.885976
+        }
+      ],
+      "annotated_evidence_sentence_ids": [
+        [
+          0
+        ]
+      ],
+      "claim_sha256": "92113f8f479bc73f9d8c039e34c4a0e0c9813e938105b7037e515a34e12be63d",
+      "article_title_sha256": "ef675d5d21b563681d6dfd9cd747ecbece78de5e2a53ef34a711c8d048822aef"
+    },
+    {
+      "claim_id": 1181,
+      "doc_id": "301838",
+      "label_predicted": "SUPPORT",
+      "human_annotated_label": "SUPPORT",
+      "correct": true,
+      "source_sentence_predictions": [
+        {
+          "sentence_idx": 0,
+          "probabilities": [
+            0.0446,
+            0.74535,
+            0.21005
+          ],
+          "predicted_sentence": "SUPPORT",
+          "nonneutral_margin": 0.5353
+        },
+        {
+          "sentence_idx": 2,
+          "probabilities": [
+            0.090098,
+            0.197765,
+            0.712137
+          ],
+          "predicted_sentence": "NEUTRAL",
+          "nonneutral_margin": -0.514372
+        }
+      ],
+      "annotated_evidence_sentence_ids": [
+        [
+          1
+        ],
+        [
+          3
+        ]
+      ],
+      "claim_sha256": "09d962b57fed19b8ff895972a67eb81d6a3d323eb956938f4bb4fa4f3dd66854",
+      "article_title_sha256": "37fb0cc941b3dead1faf7c4ea36337557ff5fd8f0deffcf413e9d103f2554559"
+    },
+    {
+      "claim_id": 1139,
+      "doc_id": "12009265",
+      "label_predicted": "CONTRADICT",
+      "human_annotated_label": "SUPPORT",
+      "correct": false,
+      "source_sentence_predictions": [
+        {
+          "sentence_idx": 7,
+          "probabilities": [
+            0.506166,
+            0.002013,
+            0.49182
+          ],
+          "predicted_sentence": "CONTRADICT",
+          "nonneutral_margin": 0.014346
+        },
+        {
+          "sentence_idx": 3,
+          "probabilities": [
+            0.167182,
+            0.003203,
+            0.829615
+          ],
+          "predicted_sentence": "NEUTRAL",
+          "nonneutral_margin": -0.662433
+        }
+      ],
+      "annotated_evidence_sentence_ids": [
+        [
+          9
+        ],
+        [
+          14
+        ]
+      ],
+      "claim_sha256": "f5cae5cefd937c25b145c8b168795c59dbcc6e6f397e3fccb7b3b2ba529e647a",
+      "article_title_sha256": "cd3d5288bc153536c78f7ac54dda54affb41bab399645c7000e13d1d6f3c36e9"
+    },
+    {
+      "claim_id": 846,
+      "doc_id": "22696649",
+      "label_predicted": "SUPPORT",
+      "human_annotated_label": "SUPPORT",
+      "correct": true,
+      "source_sentence_predictions": [
+        {
+          "sentence_idx": 4,
+          "probabilities": [
+            0.022904,
+            0.658899,
+            0.318197
+          ],
+          "predicted_sentence": "SUPPORT",
+          "nonneutral_margin": 0.340702
+        },
+        {
+          "sentence_idx": 2,
+          "probabilities": [
+            0.065724,
+            0.769707,
+            0.16457
+          ],
+          "predicted_sentence": "SUPPORT",
+          "nonneutral_margin": 0.605137
+        }
+      ],
+      "annotated_evidence_sentence_ids": [
+        [
+          4
+        ]
+      ],
+      "claim_sha256": "78629c08fbdb748b6857d3ab9de72095e7e97331b7f9959aed034fe79e16828e",
+      "article_title_sha256": "72ad72f035e3f351c8a849454a2677196399c89c9eb66f22ff9cfc5fecf1190f"
+    },
+    {
+      "claim_id": 635,
+      "doc_id": "1686997",
+      "label_predicted": "CONTRADICT",
+      "human_annotated_label": "CONTRADICT",
+      "correct": true,
+      "source_sentence_predictions": [
+        {
+          "sentence_idx": 2,
+          "probabilities": [
+            0.503828,
+            0.457386,
+            0.038786
+          ],
+          "predicted_sentence": "CONTRADICT",
+          "nonneutral_margin": 0.465042
+        },
+        {
+          "sentence_idx": 3,
+          "probabilities": [
+            0.031022,
+            0.007438,
+            0.96154
+          ],
+          "predicted_sentence": "NEUTRAL",
+          "nonneutral_margin": -0.930518
+        }
+      ],
+      "annotated_evidence_sentence_ids": [
+        [
+          1,
+          2
+        ]
+      ],
+      "claim_sha256": "02a1a577b60eaa9060ace93d7ed8d61df0caa2465691efcd6ffda90ea9d8716f",
+      "article_title_sha256": "a80434dce4e382e33f0f00a003162039c4a052ef34d49ab4394a42a085cf90b7"
+    },
+    {
+      "claim_id": 277,
+      "doc_id": "14376683",
+      "label_predicted": "NEUTRAL",
+      "human_annotated_label": "SUPPORT",
+      "correct": false,
+      "source_sentence_predictions": [
+        {
+          "sentence_idx": 4,
+          "probabilities": [
+            0.022908,
+            0.019378,
+            0.957714
+          ],
+          "predicted_sentence": "NEUTRAL",
+          "nonneutral_margin": -0.934806
+        },
+        {
+          "sentence_idx": 5,
+          "probabilities": [
+            0.169148,
+            0.00339,
+            0.827462
+          ],
+          "predicted_sentence": "NEUTRAL",
+          "nonneutral_margin": -0.658314
+        }
+      ],
+      "annotated_evidence_sentence_ids": [
+        [
+          4
+        ]
+      ],
+      "claim_sha256": "3eb84f00eade71036c87332c495c8cd0985e0cb1d8e630bd478d63085bb94b45",
+      "article_title_sha256": "3df785c1b887f5c9d40df02d590e1d40177a1ccf49295e10871c9628d54c510a"
+    },
+    {
+      "claim_id": 653,
+      "doc_id": "24384587",
+      "label_predicted": "SUPPORT",
+      "human_annotated_label": "SUPPORT",
+      "correct": true,
+      "source_sentence_predictions": [
+        {
+          "sentence_idx": 1,
+          "probabilities": [
+            0.028046,
+            0.0853,
+            0.886653
+          ],
+          "predicted_sentence": "NEUTRAL",
+          "nonneutral_margin": -0.801353
+        },
+        {
+          "sentence_idx": 0,
+          "probabilities": [
+            0.00325,
+            0.612622,
+            0.384128
+          ],
+          "predicted_sentence": "SUPPORT",
+          "nonneutral_margin": 0.228494
+        }
+      ],
+      "annotated_evidence_sentence_ids": [
+        [
+          0
+        ],
+        [
+          1
+        ],
+        [
+          5
+        ]
+      ],
+      "claim_sha256": "835a757d7deafe382fe096d7b287a72f11855792fc26b447b74d33df37ff0cbd",
+      "article_title_sha256": "539765a3e252c87e299da4cf444cd4198809486e272b68761ab00a5575424ae6"
+    },
+    {
+      "claim_id": 1373,
+      "doc_id": "21003930",
+      "label_predicted": "NEUTRAL",
+      "human_annotated_label": "CONTRADICT",
+      "correct": false,
+      "source_sentence_predictions": [
+        {
+          "sentence_idx": 1,
+          "probabilities": [
+            0.137931,
+            0.007156,
+            0.854913
+          ],
+          "predicted_sentence": "NEUTRAL",
+          "nonneutral_margin": -0.716982
+        },
+        {
+          "sentence_idx": 11,
+          "probabilities": [
+            0.010242,
+            0.006362,
+            0.983396
+          ],
+          "predicted_sentence": "NEUTRAL",
+          "nonneutral_margin": -0.973154
+        }
+      ],
+      "annotated_evidence_sentence_ids": [
+        [
+          10
+        ],
+        [
+          11,
+          12
+        ],
+        [
+          15
+        ]
+      ],
+      "claim_sha256": "ccfad0c2901dd0ec986d215b5dad4b6ab6d039285870787fdc58269502c1b51a",
+      "article_title_sha256": "94e9ad799c9afabce2fae581d8e42c127903d26a5ca9b6b9c3383371bf897ffe"
+    },
+    {
+      "claim_id": 751,
+      "doc_id": "19800147",
+      "label_predicted": "CONTRADICT",
+      "human_annotated_label": "SUPPORT",
+      "correct": false,
+      "source_sentence_predictions": [
+        {
+          "sentence_idx": 3,
+          "probabilities": [
+            0.011137,
+            0.002211,
+            0.986652
+          ],
+          "predicted_sentence": "NEUTRAL",
+          "nonneutral_margin": -0.975515
+        },
+        {
+          "sentence_idx": 4,
+          "probabilities": [
+            0.558692,
+            0.032528,
+            0.408781
+          ],
+          "predicted_sentence": "CONTRADICT",
+          "nonneutral_margin": 0.149911
+        }
+      ],
+      "annotated_evidence_sentence_ids": [
+        [
+          4
+        ],
+        [
+          7
+        ]
+      ],
+      "claim_sha256": "3d9cc3197f3f5f25483b1e56a9dc4f855bd4f7b6580b8fe0e2225cea73fa88a5",
+      "article_title_sha256": "acef209a3dd885a3e02991ee0235f8f49ebf4f99d71ee9875f01bad315779422"
+    },
+    {
+      "claim_id": 108,
+      "doc_id": "22995579",
+      "label_predicted": "SUPPORT",
+      "human_annotated_label": "SUPPORT",
+      "correct": true,
+      "source_sentence_predictions": [
+        {
+          "sentence_idx": 0,
+          "probabilities": [
+            0.002491,
+            0.989904,
+            0.007605
+          ],
+          "predicted_sentence": "SUPPORT",
+          "nonneutral_margin": 0.982299
+        },
+        {
+          "sentence_idx": 2,
+          "probabilities": [
+            0.022869,
+            0.656692,
+            0.320439
+          ],
+          "predicted_sentence": "SUPPORT",
+          "nonneutral_margin": 0.336253
+        }
+      ],
+      "annotated_evidence_sentence_ids": [
+        [
+          0
+        ],
+        [
+          3
+        ]
+      ],
+      "claim_sha256": "d019b87bac478e027f97896d8efd37d4e31f5f88ebc6f25fc21df2be1aaf126e",
+      "article_title_sha256": "61c1aaca96cf5f93f250ca957870b720ff6e39fa0fb3c8f3ac22f548378a2f9b"
+    },
+    {
+      "claim_id": 149,
+      "doc_id": "6227220",
+      "label_predicted": "SUPPORT",
+      "human_annotated_label": "CONTRADICT",
+      "correct": false,
+      "source_sentence_predictions": [
+        {
+          "sentence_idx": 5,
+          "probabilities": [
+            0.109562,
+            0.505129,
+            0.385309
+          ],
+          "predicted_sentence": "SUPPORT",
+          "nonneutral_margin": 0.11982
+        },
+        {
+          "sentence_idx": 0,
+          "probabilities": [
+            0.032115,
+            0.002077,
+            0.965808
+          ],
+          "predicted_sentence": "NEUTRAL",
+          "nonneutral_margin": -0.933693
+        }
+      ],
+      "annotated_evidence_sentence_ids": [
+        [
+          2
+        ],
+        [
+          5
+        ],
+        [
+          6
+        ]
+      ],
+      "claim_sha256": "5b0d2deebe0c556cdd258553b4f31e329f7b3644017a8baf7eafe8c6624df380",
+      "article_title_sha256": "063309af643a164df68d161c8bdcc16f0d968b695c979cf6792f26de3e8cc316"
+    },
+    {
+      "claim_id": 883,
+      "doc_id": "14803797",
+      "label_predicted": "SUPPORT",
+      "human_annotated_label": "SUPPORT",
+      "correct": true,
+      "source_sentence_predictions": [
+        {
+          "sentence_idx": 2,
+          "probabilities": [
+            0.157499,
+            0.630334,
+            0.212167
+          ],
+          "predicted_sentence": "SUPPORT",
+          "nonneutral_margin": 0.418167
+        },
+        {
+          "sentence_idx": 1,
+          "probabilities": [
+            0.054798,
+            0.007264,
+            0.937939
+          ],
+          "predicted_sentence": "NEUTRAL",
+          "nonneutral_margin": -0.883141
+        }
+      ],
+      "annotated_evidence_sentence_ids": [
+        [
+          2
+        ]
+      ],
+      "claim_sha256": "c997764b066d43e370f83a23a96c611ac84d2ec9ecb2f79eb74b5e03ea17f2f6",
+      "article_title_sha256": "505132b546568b16e74a669301569d02124f9b5d1a0670888050c7257a26f310"
+    },
+    {
+      "claim_id": 529,
+      "doc_id": "25413327",
+      "label_predicted": "SUPPORT",
+      "human_annotated_label": "SUPPORT",
+      "correct": true,
+      "source_sentence_predictions": [
+        {
+          "sentence_idx": 0,
+          "probabilities": [
+            0.006988,
+            0.974848,
+            0.018163
+          ],
+          "predicted_sentence": "SUPPORT",
+          "nonneutral_margin": 0.956685
+        },
+        {
+          "sentence_idx": 5,
+          "probabilities": [
+            0.014765,
+            0.899893,
+            0.085341
+          ],
+          "predicted_sentence": "SUPPORT",
+          "nonneutral_margin": 0.814552
+        }
+      ],
+      "annotated_evidence_sentence_ids": [
+        [
+          0
+        ],
+        [
+          5
+        ]
+      ],
+      "claim_sha256": "425b72006195b8471e8165af91255842288a5cf11e11e1ad59d369124e73b07a",
+      "article_title_sha256": "ef675d5d21b563681d6dfd9cd747ecbece78de5e2a53ef34a711c8d048822aef"
+    },
+    {
+      "claim_id": 1162,
+      "doc_id": "15305881",
+      "label_predicted": "CONTRADICT",
+      "human_annotated_label": "SUPPORT",
+      "correct": false,
+      "source_sentence_predictions": [
+        {
+          "sentence_idx": 2,
+          "probabilities": [
+            0.785006,
+            0.013113,
+            0.20188
+          ],
+          "predicted_sentence": "CONTRADICT",
+          "nonneutral_margin": 0.583126
+        },
+        {
+          "sentence_idx": 0,
+          "probabilities": [
+            0.323574,
+            0.025158,
+            0.651267
+          ],
+          "predicted_sentence": "NEUTRAL",
+          "nonneutral_margin": -0.327693
+        }
+      ],
+      "annotated_evidence_sentence_ids": [
+        [
+          4
+        ]
+      ],
+      "claim_sha256": "234871b78e26fd33f95ac211ddaa874a0f39e64d757de45289a2ca03c8ace13b",
+      "article_title_sha256": "e5586c57b1083b579dd0ef3c2e84f0e74bba0f05515ece71319f250c24ef6691"
+    },
+    {
+      "claim_id": 681,
+      "doc_id": "9315213",
+      "label_predicted": "SUPPORT",
+      "human_annotated_label": "SUPPORT",
+      "correct": true,
+      "source_sentence_predictions": [
+        {
+          "sentence_idx": 4,
+          "probabilities": [
+            0.006808,
+            0.963308,
+            0.029884
+          ],
+          "predicted_sentence": "SUPPORT",
+          "nonneutral_margin": 0.933424
+        },
+        {
+          "sentence_idx": 2,
+          "probabilities": [
+            0.007212,
+            0.001795,
+            0.990993
+          ],
+          "predicted_sentence": "NEUTRAL",
+          "nonneutral_margin": -0.983781
+        }
+      ],
+      "annotated_evidence_sentence_ids": [
+        [
+          4
+        ],
+        [
+          5
+        ],
+        [
+          8
+        ]
+      ],
+      "claim_sha256": "a14ab89123d7c6d82191025279bc1c4a9792a23374b0fa6adbc0040fcd0da598",
+      "article_title_sha256": "811105c5e2e9f26b8dd55fe5ee168cee20b115b97b4bbcb0d632fd80f4e10c2e"
+    },
+    {
+      "claim_id": 738,
+      "doc_id": "6609935",
+      "label_predicted": "SUPPORT",
+      "human_annotated_label": "SUPPORT",
+      "correct": true,
+      "source_sentence_predictions": [
+        {
+          "sentence_idx": 4,
+          "probabilities": [
+            0.069263,
+            0.617662,
+            0.313075
+          ],
+          "predicted_sentence": "SUPPORT",
+          "nonneutral_margin": 0.304587
+        },
+        {
+          "sentence_idx": 3,
+          "probabilities": [
+            0.041319,
+            0.1045,
+            0.854181
+          ],
+          "predicted_sentence": "NEUTRAL",
+          "nonneutral_margin": -0.749681
+        }
+      ],
+      "annotated_evidence_sentence_ids": [
+        [
+          3
+        ],
+        [
+          4
+        ],
+        [
+          6
+        ]
+      ],
+      "claim_sha256": "183b7402f61e4d3d20b8629c4335321407f43fb46c16ebb0748a318235843697",
+      "article_title_sha256": "eb3ffedd093ef4dfa668556d0347efdd5ff61c713959f1b9c90ffdf431bca4e7"
+    },
+    {
+      "claim_id": 1351,
+      "doc_id": "28369117",
+      "label_predicted": "NEUTRAL",
+      "human_annotated_label": "CONTRADICT",
+      "correct": false,
+      "source_sentence_predictions": [
+        {
+          "sentence_idx": 1,
+          "probabilities": [
+            0.019833,
+            0.006013,
+            0.974153
+          ],
+          "predicted_sentence": "NEUTRAL",
+          "nonneutral_margin": -0.95432
+        },
+        {
+          "sentence_idx": 2,
+          "probabilities": [
+            0.064411,
+            0.002774,
+            0.932815
+          ],
+          "predicted_sentence": "NEUTRAL",
+          "nonneutral_margin": -0.868404
+        }
+      ],
+      "annotated_evidence_sentence_ids": [
+        [
+          4
+        ]
+      ],
+      "claim_sha256": "9d8ca75e4f05373c9f4b277e088af152e67cdbf2a1b683a754d51146ce63c179",
+      "article_title_sha256": "c793330c351f77a148a15ec7c93b4ec109ae62ca0011899bd5eb460281b4f22b"
+    },
+    {
+      "claim_id": 1239,
+      "doc_id": "4427392",
+      "label_predicted": "NEUTRAL",
+      "human_annotated_label": "CONTRADICT",
+      "correct": false,
+      "source_sentence_predictions": [
+        {
+          "sentence_idx": 7,
+          "probabilities": [
+            0.214546,
+            0.006698,
+            0.778756
+          ],
+          "predicted_sentence": "NEUTRAL",
+          "nonneutral_margin": -0.56421
+        },
+        {
+          "sentence_idx": 2,
+          "probabilities": [
+            0.075544,
+            0.004279,
+            0.920177
+          ],
+          "predicted_sentence": "NEUTRAL",
+          "nonneutral_margin": -0.844633
+        }
+      ],
+      "annotated_evidence_sentence_ids": [
+        [
+          1
+        ]
+      ],
+      "claim_sha256": "ff54f4fdf42254caa3e6d847b769d113dcb341a8b80f348099af71d421e10559",
+      "article_title_sha256": "8cfcfc0fa96cf4409ab34e90a575d8f4cafc28cef01153fec678dbbfc84e5997"
+    },
+    {
+      "claim_id": 1295,
+      "doc_id": "21239672",
+      "label_predicted": "CONTRADICT",
+      "human_annotated_label": "CONTRADICT",
+      "correct": true,
+      "source_sentence_predictions": [
+        {
+          "sentence_idx": 0,
+          "probabilities": [
+            0.980162,
+            0.001152,
+            0.018686
+          ],
+          "predicted_sentence": "CONTRADICT",
+          "nonneutral_margin": 0.961476
+        },
+        {
+          "sentence_idx": 4,
+          "probabilities": [
+            0.991689,
+            0.000343,
+            0.007967
+          ],
+          "predicted_sentence": "CONTRADICT",
+          "nonneutral_margin": 0.983722
+        }
+      ],
+      "annotated_evidence_sentence_ids": [
+        [
+          9
+        ],
+        [
+          10
+        ]
+      ],
+      "claim_sha256": "0e827025bbd692f1a2d737538b29c633ca62109c8ff2c794b32b226aca8612ea",
+      "article_title_sha256": "970060416002137cce8666d422a0361963967981cb49af39372abf1f76749c44"
+    },
+    {
+      "claim_id": 347,
+      "doc_id": "11902109",
+      "label_predicted": "NEUTRAL",
+      "human_annotated_label": "SUPPORT",
+      "correct": false,
+      "source_sentence_predictions": [
+        {
+          "sentence_idx": 0,
+          "probabilities": [
+            0.011451,
+            0.001542,
+            0.987007
+          ],
+          "predicted_sentence": "NEUTRAL",
+          "nonneutral_margin": -0.975556
+        },
+        {
+          "sentence_idx": 2,
+          "probabilities": [
+            0.063995,
+            0.006614,
+            0.929391
+          ],
+          "predicted_sentence": "NEUTRAL",
+          "nonneutral_margin": -0.865396
+        }
+      ],
+      "annotated_evidence_sentence_ids": [
+        [
+          5
+        ]
+      ],
+      "claim_sha256": "b8ba2d9352335ec3ff7133e712eb31cc843531b0440f16e3b7f20041f609d8a5",
+      "article_title_sha256": "c9fd2731006936f3b97695d3fbe56b55bf12a02c47e7c417652bfcfe331a037e"
+    },
+    {
+      "claim_id": 647,
+      "doc_id": "15041758",
+      "label_predicted": "CONTRADICT",
+      "human_annotated_label": "CONTRADICT",
+      "correct": true,
+      "source_sentence_predictions": [
+        {
+          "sentence_idx": 0,
+          "probabilities": [
+            0.799742,
+            0.003072,
+            0.197187
+          ],
+          "predicted_sentence": "CONTRADICT",
+          "nonneutral_margin": 0.602555
+        },
+        {
+          "sentence_idx": 8,
+          "probabilities": [
+            0.961225,
+            0.000476,
+            0.038298
+          ],
+          "predicted_sentence": "CONTRADICT",
+          "nonneutral_margin": 0.922927
+        }
+      ],
+      "annotated_evidence_sentence_ids": [
+        [
+          6
+        ],
+        [
+          7
+        ],
+        [
+          8
+        ]
+      ],
+      "claim_sha256": "bb3efb36a2eb784b710277c262977d4d4be7883b8618650ccfd3980143383cdc",
+      "article_title_sha256": "fee0672506773f96f30d298f30556c3d44afe2969f7808083886cef78ba171e9"
+    },
+    {
+      "claim_id": 155,
+      "doc_id": "37549932",
+      "label_predicted": "NEUTRAL",
+      "human_annotated_label": "SUPPORT",
+      "correct": false,
+      "source_sentence_predictions": [
+        {
+          "sentence_idx": 2,
+          "probabilities": [
+            0.072072,
+            0.006304,
+            0.921624
+          ],
+          "predicted_sentence": "NEUTRAL",
+          "nonneutral_margin": -0.849552
+        },
+        {
+          "sentence_idx": 0,
+          "probabilities": [
+            0.007344,
+            0.002434,
+            0.990222
+          ],
+          "predicted_sentence": "NEUTRAL",
+          "nonneutral_margin": -0.982878
+        }
+      ],
+      "annotated_evidence_sentence_ids": [
+        [
+          3
+        ]
+      ],
+      "claim_sha256": "3d736b8cd032455f2f3bf7216041090bc8dd13504087d328fff078e89ca729d2",
+      "article_title_sha256": "3caa2823797fa31801748bfd3188ef8482b1d096479c8be5157133970f4c8e94"
+    },
+    {
+      "claim_id": 379,
+      "doc_id": "19005293",
+      "label_predicted": "CONTRADICT",
+      "human_annotated_label": "CONTRADICT",
+      "correct": true,
+      "source_sentence_predictions": [
+        {
+          "sentence_idx": 2,
+          "probabilities": [
+            0.452804,
+            0.242924,
+            0.304273
+          ],
+          "predicted_sentence": "CONTRADICT",
+          "nonneutral_margin": 0.148531
+        },
+        {
+          "sentence_idx": 1,
+          "probabilities": [
+            0.055479,
+            0.008056,
+            0.936465
+          ],
+          "predicted_sentence": "NEUTRAL",
+          "nonneutral_margin": -0.880986
+        }
+      ],
+      "annotated_evidence_sentence_ids": [
+        [
+          2
+        ]
+      ],
+      "claim_sha256": "5cd8866bf21c9b64207bbff03a0a9ff83650a9beae35b7f740cfc464126629f0",
+      "article_title_sha256": "1b8376ca1c44ddd58a29879dd4eed6c5f032175919c01a7eb3a5fc00bda23198"
+    },
+    {
+      "claim_id": 138,
+      "doc_id": "26016929",
+      "label_predicted": "SUPPORT",
+      "human_annotated_label": "CONTRADICT",
+      "correct": false,
+      "source_sentence_predictions": [
+        {
+          "sentence_idx": 0,
+          "probabilities": [
+            0.005293,
+            0.958438,
+            0.036268
+          ],
+          "predicted_sentence": "SUPPORT",
+          "nonneutral_margin": 0.92217
+        },
+        {
+          "sentence_idx": 10,
+          "probabilities": [
+            0.028744,
+            0.07494,
+            0.896316
+          ],
+          "predicted_sentence": "NEUTRAL",
+          "nonneutral_margin": -0.821376
+        }
+      ],
+      "annotated_evidence_sentence_ids": [
+        [
+          7,
+          9
+        ]
+      ],
+      "claim_sha256": "89e4c77aa79b5f54cb8d0fbcab65996b590cc6736169b976f7aa33d121a4d1db",
+      "article_title_sha256": "bfbb5b0ba75b69e5273cc159742c6900e7f8ac04b1c4ad6db12bc6db8ea26cf9"
+    }
+  ],
+  "limitations": [
+    "Published SciFact TRAIN subset is disjoint from earlier DEV retrieval/model attempt, labels generated by original external annotators",
+    "Source documents deliberately oracle-selected through published evidence links; not end-to-end retrieval",
+    "Science label correctness is annotated text-evidence consistency, not world truth",
+    "The model is generic natural language inference, not KMD DRS, and cannot prove scientific falsification",
+    "Selection uses only IDs and presence of annotated gold, not gold label; gold not used to tune prompt, sentence selection or thresholds"
+  ]
+}
