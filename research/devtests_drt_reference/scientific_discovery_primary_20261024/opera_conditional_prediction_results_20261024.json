@@ -1,0 +1,96 @@
+{
+  "source_analysis_sha256": "b173a3c2b1248bee0e76f8cbb847180e9bde6568a9d03f014c61b27604d3719b",
+  "historical_premise": {
+    "source_url": "https://home.cern/opera-experiment-reports-anomaly-in-flight-time-of-neutrinos-from-cern-to-gran-sasso/",
+    "publisher": "CERN",
+    "asserted_at": "2011-09-23",
+    "status_at_date": "tentative reported anomaly inviting independent scrutiny, not confirmed faster-than-light travel",
+    "text_trigger": "20 parts per million above the speed of light"
+  },
+  "conditional_speed_hypothesis": {
+    "relative_speed_excess": 2e-05,
+    "path_length_m": 730000.0,
+    "c_m_s": 299792458.0,
+    "assumption": "Same constant speed excess carries across the later beams and each laboratory",
+    "predicted_early_arrival_ns": 48.69938
+  },
+  "independent_later_observations": [
+    {
+      "experiment": "ICARUS",
+      "author": "Antonello, M.",
+      "paper_date": "2012/08/13",
+      "source_url": "https://arxiv.org/abs/1208.2629",
+      "measurement_delta_ns": 0.1,
+      "statistical_ns": 0.67,
+      "systematic_ns": 2.39,
+      "combined_uncertainty_ns_assuming_independent_gaussian_components": 2.48214,
+      "descriptive_95_percent_normal_approximation_ns": [
+        -4.765,
+        4.965
+      ],
+      "standardized_difference_from_h1": 19.5797,
+      "standardized_difference_from_h0": -0.0403,
+      "stress_checks": [
+        {
+          "hypothetical_additional_systematic_ns": 0,
+          "standardized_difference_from_constant_20ppm_hypothesis": 19.5797
+        },
+        {
+          "hypothetical_additional_systematic_ns": 10,
+          "standardized_difference_from_constant_20ppm_hypothesis": 4.7168
+        },
+        {
+          "hypothetical_additional_systematic_ns": 30,
+          "standardized_difference_from_constant_20ppm_hypothesis": 1.6145
+        }
+      ],
+      "source_document_sha256": "3ce12182de2d3a96db96dedf0bdd5f29d29738ec62141e3cb96184a4c34dfb17"
+    },
+    {
+      "experiment": "OPERA",
+      "author": "The OPERA Collaboration",
+      "paper_date": "2012/12/06",
+      "source_url": "https://arxiv.org/abs/1212.1276",
+      "measurement_delta_ns": 0.6,
+      "statistical_ns": 0.4,
+      "systematic_ns": 3.0,
+      "combined_uncertainty_ns_assuming_independent_gaussian_components": 3.02655,
+      "descriptive_95_percent_normal_approximation_ns": [
+        -5.332,
+        6.532
+      ],
+      "standardized_difference_from_h1": 15.8925,
+      "standardized_difference_from_h0": -0.1982,
+      "stress_checks": [
+        {
+          "hypothetical_additional_systematic_ns": 0,
+          "standardized_difference_from_constant_20ppm_hypothesis": 15.8925
+        },
+        {
+          "hypothetical_additional_systematic_ns": 10,
+          "standardized_difference_from_constant_20ppm_hypothesis": 4.6037
+        },
+        {
+          "hypothetical_additional_systematic_ns": 30,
+          "standardized_difference_from_constant_20ppm_hypothesis": 1.5952
+        }
+      ],
+      "source_document_sha256": "83e4b30b63f3829985cf1b0175eb9eb9be3a46a15f6527a6801e2d3f789fac61"
+    }
+  ],
+  "inference": "2012 measurements near zero instead of about 49 nanoseconds challenge this specific constant-speed-excess explanation, conditional on each instrument calibration, beam comparability and error assumptions; original 2011 excess should remain a dated observation/anomaly rather than universal truth",
+  "not_evidence_of_new_physical_discovery": true,
+  "confounders": [
+    "20ppm and 730km are rounded historical figures: this does not reproduce exact 2011 estimated 60ns early arrival",
+    "Systematic components within and between experiments are not demonstrated independent or exactly Gaussian",
+    "New 2012 measurements used upgraded apparatus and beam protocols",
+    "Energy/particle/measurement settings may constrain physical extrapolation: neutrino versus antineutrino must not be conflated",
+    "Post-hoc additional-error sensitivity is a stress test, not estimated real error",
+    "As-of-2011 availability cannot include March, June, August or December 2012 evidence"
+  ],
+  "scope_controls": [
+    "Dream/fiction or quotation of superluminal claim is not a positive propagation observation",
+    "2012 OPERA and ICARUS are distinct authors/experiments; no automatic name merging",
+    "February 2012 possible timing faults are not yet independently confirmed diagnoses as of that date"
+  ]
+}
