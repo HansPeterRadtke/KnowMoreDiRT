@@ -1,0 +1,145 @@
+{
+  "source_repository": "https://github.com/allenai/scifact",
+  "original_train_sha256": "f4c8fa82d8bd0653a9cc8d61a6ea48c25eacea64e90af5dbf390ebb1b74372f0",
+  "original_corpus_sha256": "b8d6c89624cb2ed74dee8938effc4f5d8bd2086887880af8110d64be4ceade62",
+  "protocol": "4 original annotator SUPPORT, 4 CONTRADICT, independently externally labeled. Excludes earlier 96 article pairs; class stratification before inference only, labels hidden in new model prompts. Exactly automatic Jaccard top two source sentences plus adjacent context.",
+  "cases": [
+    {
+      "uid": "sci-144-10582939",
+      "source_sha256": "dca835a39e4e6e4284560e685b1ea9b627ea5690647ce428294770efc96bf8de",
+      "source_doc_id": "10582939",
+      "source_title": "Induction therapy with autologous mesenchymal stem cells in living-related kidney transplants: a randomized controlled trial.",
+      "claim": "Autologous transplantation of mesenchymal stem cells has better graft function than induction therapy with anti-interleukin-2 receptor antibodies.",
+      "source_sentences": [
+        0,
+        1,
+        2,
+        11,
+        12,
+        13
+      ],
+      "source_evidence": "Sentence 0: CONTEXT Antibody-based induction therapy plus calcineurin inhibitors (CNIs) reduce acute rejection rates in kidney recipients; however, opportunistic infections and toxic CNI effects remain challenging.\nSentence 1: Reportedly, mesenchymal stem cells (MSCs) have successfully treated graft-vs-host disease.   \n\nSentence 2: OBJECTIVE To assess autologous MSCs as replacement of antibody induction for patients with end-stage renal disease who undergo ABO-compatible, cross-match-negative kidney transplants from a living-related donor.   \n\nSentence 11: Patients receiving standard-dose CNI had a mean difference of 6.2 mL/min per 1.73 m(2) (95% CI, 0.4-11.9; P=.04) and those in the low-dose CNI of 10.0 mL/min per 1.73 m(2) (95% CI, 3.8-16.2; P=.002).\nSentence 12: Also, during the 1-year follow-up, combined analysis of MSC-treated groups revealed significantly decreased risk of opportunistic infections than the control group (hazard ratio, 0.42; 95% CI, 0.20-0.85, P=.02)   CONCLUSION Among patients undergoing renal transplant, the use of autologous MSCs compared with anti-IL-2 receptor antibody induction therapy resulted in lower incidence of acute rejection, decreased risk of opportunistic infection, and better estimated renal function at 1 year.   \n\nSentence 13: TRIAL REGISTRATION clinicaltrials.gov Identifier: NCT00658073.",
+      "selection_sha256": "0028adf1210696cd5c5f0f888757f78cfd5859c721e1237bc74e871aac851332"
+    },
+    {
+      "uid": "sci-1404-38355793",
+      "source_sha256": "bb7dded9ba4e816ad14835253cea74a38f535577d90789f5f40de02423f095a6",
+      "source_doc_id": "38355793",
+      "source_title": "A20 is overexpressed in glioma cells and may serve as a potential therapeutic target.",
+      "claim": "siRNA knockdown of A20 slows tumor progression in an in vivo murine xenograft model.",
+      "source_sentences": [
+        3,
+        4,
+        5,
+        7,
+        8,
+        9
+      ],
+      "source_evidence": "Sentence 3: Glioma cells was tested by flow cytometry.\nSentence 4: A xenograft tumor model in mice was utilized to examine the knock-down effect of specific A20 siRNAs on tumorigenesis.   \n\nSentence 5: RESULTS A20 was overexpressed in clinical glioma tissue samples (63.9%) and correlated with clinical staging.\nSentence 7: Inhibiting A20 expression by siRNAs in vitro reduced the growth rates of glioma cells and resulted in G1/S arrest and increased apoptosis.\nSentence 8: In a mouse tumor model, local administration of siRNA significantly suppressed solid tumor growth.   \n\nSentence 9: CONCLUSIONS A20 was overexpressed both in human glioma tissues and cell lines, and inhibiting A20 expression greatly slowed tumor cell growth in culture and in mice.",
+      "selection_sha256": "009f1aec9e79856ea0deff1dacad0510dab68018b72e7bd403d27a67c896a733"
+    },
+    {
+      "uid": "sci-178-23557241",
+      "source_sha256": "c7664861da7f58b01d149ad4e8b59552141c16aee05002b71be876e458111d61",
+      "source_doc_id": "23557241",
+      "source_title": "Intrauterine factors and risk of breast cancer: a systematic review and meta-analysis of current evidence.",
+      "claim": "Birth-weight is negatively associated with breast cancer.",
+      "source_sentences": [
+        5,
+        6,
+        7,
+        8,
+        9,
+        10
+      ],
+      "source_evidence": "Sentence 5: FINDINGS We identified 57 studies published between Oct 1, 1980, and June 21, 2007.\nSentence 6: Increased risk of breast cancer was noted with increased birthweight (relative risk [RR] 1.15 [95% CI 1.09-1.21]), birth length (1.28 [1.11-1.48]), higher maternal age (1.13 [1.02-1.25]), and paternal age (1.12 [1.05-1.19]).\nSentence 7: Decreased risk of breast cancer was noted for maternal pre-eclampsia and eclampsia (0.48 [0.30-0.78]) and twin membership (0.93 [0.87-1.00]).\nSentence 8: No association was noted between risk of breast cancer and gestational age at birth (0.95 [0.71-1.26]) or maternal diethylstilbestrol treatment (1.40 [0.86-2.28]).   \n\nSentence 9: INTERPRETATION The intrauterine environment contributes to the predisposition of women to breast cancer in adulthood.\nSentence 10: The in-utero mechanisms responsible for such predisposition need to be elucidated.",
+      "selection_sha256": "0371e55377fe7e101c5cfd182dbd65eef2af90cbbf0a432e9035bdb8b35ca243"
+    },
+    {
+      "uid": "sci-1184-16737210",
+      "source_sha256": "7e21dd390a5b51dafaa27e5e788c0fd40c60a6c9a15d0ab2baa91331c4ed3493",
+      "source_doc_id": "16737210",
+      "source_title": "Kidney paired donation and optimizing the use of live donor organs.",
+      "claim": "The US health care system can save up to $5 billion if 7% of patients waiting for kidney transplants participate in the optimized national kidney paired donation program.",
+      "source_sentences": [
+        0,
+        1,
+        2,
+        9,
+        10,
+        11
+      ],
+      "source_evidence": "Sentence 0: CONTEXT Blood type and crossmatch incompatibility will exclude at least one third of patients in need from receiving a live donor kidney transplant.\nSentence 1: Kidney paired donation (KPD) offers incompatible donor/recipient pairs the opportunity to match for compatible transplants.\nSentence 2: Despite its increasing popularity, very few transplants have resulted from KPD.   \n\nSentence 9: Furthermore, highly sensitized patients would benefit 6-fold from a national optimized scheme (2.3% vs 14.1% successfully matched; P<.001).\nSentence 10: Even if only 7% of patients awaiting kidney transplantation participated in an optimized national KPD program, the health care system could save as much as $750 million.   \n\nSentence 11: CONCLUSIONS The combination of a national KPD program and a mathematically optimized matching algorithm yields more matches with lower HLA disparity.",
+      "selection_sha256": "038c888d7ce2a928287da8f7e9c8975489721fe1280c6e3ab5dd9ebd71f9d86d"
+    },
+    {
+      "uid": "sci-488-1780819",
+      "source_sha256": "6bb0831fb43fd62a0cbc96e16201e985b9f01ebcda75e1b49fef8d7d2071c67e",
+      "source_doc_id": "1780819",
+      "source_title": "Role of DNA Methylation and Epigenetic Silencing of HAND2 in Endometrial Cancer Development",
+      "claim": "HAND2 methylation is a key step in early endometrial carcinogenesis.",
+      "source_sentences": [
+        4,
+        5,
+        6,
+        10,
+        11,
+        12
+      ],
+      "source_evidence": "Sentence 4: METHODS AND FINDINGS Epigenome-wide methylation analysis of >27,000 CpG sites in endometrial cancer tissue samples (n = 64) and control samples (n = 23) revealed that HAND2 (a gene encoding a transcription factor expressed in the endometrial stroma) is one of the most commonly hypermethylated and silenced genes in endometrial cancer.\nSentence 5: A novel integrative epigenome-transcriptome-interactome analysis further revealed that HAND2 is the hub of the most highly ranked differential methylation hotspot in endometrial cancer.\nSentence 6: These findings were validated using candidate gene methylation analysis in multiple clinical sample sets of tissue samples from a total of 272 additional women.\nSentence 10: Finally, mice harbouring a Hand2 knock-out specifically in their endometrium were shown to develop precancerous endometrial lesions with increasing age, and these lesions also demonstrated a lack of PTEN expression.   \n\nSentence 11: CONCLUSIONS HAND2 methylation is a common and crucial molecular alteration in endometrial cancer that could potentially be employed as a biomarker for early detection of endometrial cancer and as a predictor of treatment response.\nSentence 12: The true clinical utility of HAND2 DNA methylation, however, requires further validation in prospective studies.",
+      "selection_sha256": "04bc90cd9314dae4ab7e6b6ee14f6c4b9f06b5e976d7547e68d42e55264dfc07"
+    },
+    {
+      "uid": "sci-980-20128547",
+      "source_sha256": "7c2c54020ae5b0500640c9d90659fda1b9e86d2d14c4533117b40f837acab3ba",
+      "source_doc_id": "20128547",
+      "source_title": "Recovery of supraspinal control of stepping via indirect propriospinal relay connections after spinal cord injury",
+      "claim": "Propriospinal interneurons that play a role in the plastic reorganization of spinal circuits are integral for recovery from spinal cord injury.",
+      "source_sentences": [
+        0,
+        1,
+        2
+      ],
+      "source_evidence": "Sentence 0: Spinal cord injuries (SCIs) in humans and experimental animals are often associated with varying degrees of spontaneous functional recovery during the first months after injury.\nSentence 1: Such recovery is widely attributed to axons spared from injury that descend from the brain and bypass incomplete lesions, but its mechanisms are uncertain.\nSentence 2: To investigate the neural basis of spontaneous recovery, we used kinematic, physiological and anatomical analyses to evaluate mice with various combinations of spatially and temporally separated lateral hemisections with or without the excitotoxic ablation of intrinsic spinal cord neurons.",
+      "selection_sha256": "04c38cf6aa311ee1fbd5472df80e37e29b7fe6ce92a00a571f2f02f479776ad1"
+    },
+    {
+      "uid": "sci-925-17077004",
+      "source_sha256": "3d96abc3e81096a7fcc319d6eba065795c28b19a5428a1835d37f9f4963019e2",
+      "source_doc_id": "17077004",
+      "source_title": "Stable partnership and progression to AIDS or death in HIV infected patients receiving highly active antiretroviral therapy: Swiss HIV cohort study.",
+      "claim": "Patients in stable partnerships progress from HIV to death at the same rate as patients not in partnerships.",
+      "source_sentences": [
+        0,
+        1,
+        8,
+        9
+      ],
+      "source_evidence": "Sentence 0: OBJECTIVES To explore the association between a stable partnership and clinical outcome in HIV infected patients receiving highly active antiretroviral therapy (HAART).   \n\nSentence 1: DESIGN Prospective cohort study of adults with HIV (Swiss HIV cohort study).   \n\nSentence 8: Adjusted hazards ratios for other endpoints were 0.59 (0.44 to 0.79) for progression to death, 1.15 (1.06 to 1.24) for an increase in CD4 cells of 100 counts/microl or more, and 1.06 (0.98 to 1.14) for optimal viral suppression.   \n\nSentence 9: CONCLUSIONS A stable partnership is associated with a slower rate of progression to AIDS or death in HIV infected patients receiving HAART.",
+      "selection_sha256": "04ece2d5163a330f864031544b0ee1cfd476430329cd65758cc3aaa8d9b2083b"
+    },
+    {
+      "uid": "sci-772-24922825",
+      "source_sha256": "504f90cb294cc07e57b8b63b6fbf2a632009399114e899e77fb73e02485620fd",
+      "source_doc_id": "24922825",
+      "source_title": "A chikungunya fever vaccine utilizing an insect-specific virus platform",
+      "claim": "Mice are incapable of producing neutralizing antibodies in reponse to the Chikungunya virus (CHIKV) produced in mosquitos.",
+      "source_sentences": [
+        3,
+        4,
+        5,
+        6,
+        7,
+        8
+      ],
+      "source_evidence": "Sentence 3: To overcome these tradeoffs, we developed the insect-specific alphavirus, Eilat virus (EILV), as a vaccine platform.\nSentence 4: To address the chikungunya fever (CHIKF) pandemic, we used an EILV cDNA clone to design a chimeric virus containing the chikungunya virus (CHIKV) structural proteins.\nSentence 5: The recombinant EILV/CHIKV was structurally identical at 10 Å to wild-type CHIKV, as determined by single-particle cryo-electron microscopy, and it mimicked the early stages of CHIKV replication in vertebrate cells from attachment and entry to viral RNA delivery.\nSentence 6: Yet the recombinant virus remained completely defective for productive replication, providing a high degree of safety.\nSentence 7: A single dose of EILV/CHIKV produced in mosquito cells elicited rapid (within 4 d) and long-lasting (>290 d) neutralizing antibodies that provided complete protection in two different mouse models.\nSentence 8: In nonhuman primates, EILV/CHIKV elicited rapid and robust immunity that protected against viremia and telemetrically monitored fever.",
+      "selection_sha256": "0586b7ef6a090e87a55eda54f1d60836d4ab923a690340c8dfa68d9fe5deecc7"
+    }
+  ],
+  "important_limits": [
+    "Selected from existing SciFact TRAIN source cases; training data possible exposure to pretrained Qwen and prior studies cannot be ruled out",
+    "Cases are not cross-paper or dream narratives; support/refute is human assessment of a source, not ultimate physical truth",
+    "Source spans are automatically selected, not gold rationales",
+    "No human labels passed to model or used to tune prompts"
+  ]
+}

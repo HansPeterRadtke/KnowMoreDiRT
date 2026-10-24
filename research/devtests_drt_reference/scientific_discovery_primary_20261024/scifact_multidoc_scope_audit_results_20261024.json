@@ -1,0 +1,744 @@
+{
+  "corpus_sha256": "b8d6c89624cb2ed74dee8938effc4f5d8bd2086887880af8110d64be4ceade62",
+  "dev_sha256": "86f0435d08fdb65d1aa41d1472684f57e6e71930626497bdf4d7a9ec1a632217",
+  "original_source": "https://github.com/allenai/scifact",
+  "multi_doc_claims": 10,
+  "support_only_claims": 7,
+  "contradict_only_claims": 3,
+  "cross_source_disagreeing_label_claims": 0,
+  "evidence_papers": 31,
+  "claim_ids_with_premenopausal_postmenopausal_source": [
+    179,
+    1379
+  ],
+  "claim_ids_with_mortality_or_incidence_source": [
+    597,
+    971
+  ],
+  "limitations": [
+    "Externally annotated multi-document evidence group is only ten claims, no demonstrated opposite-label paper disagreement in this subset",
+    "Same exact gold label across papers does not establish publisher independence, independent samples, independent intervention or ultimate truth",
+    "Sentence-level lexical qualifier extraction is automatic and fallible, not full discourse scope parsing",
+    "More than one paper may synthesize overlapping underlying clinical trials; deduplicate evidence families before Bayesian combination",
+    "The labels describe text-grounded support/refute for an authored claim, not outcomes of independent new experiments"
+  ],
+  "results": [
+    {
+      "claim_id": 70,
+      "claim": "Activation of PPM1D suppresses p53 function.",
+      "external_gold_label_types": [
+        "SUPPORT"
+      ],
+      "cross_source_label_disagreement": false,
+      "distinct_evidence_papers": 2,
+      "papers": [
+        {
+          "doc_id": "5956380",
+          "title": "Exome sequencing identifies somatic gain-of-function PPM1D mutations in brainstem gliomas",
+          "annotated_labels": [
+            "SUPPORT"
+          ],
+          "detected_scope_cues": [],
+          "source_spans": [
+            {
+              "sentence_index": 5,
+              "excerpt_sha256": "6b24238c53ab6da95d71cff8b0174407d2544629283b791d72b26c093720b251",
+              "short_evidence": "PPM1D mutations were mutually exclusive with TP53 mutations in BSG and attenuated p53 activation in vitro."
+            },
+            {
+              "sentence_index": 6,
+              "excerpt_sha256": "96120d47fa6951cf3adb17609e977a70e536ccbc069875fb634b82b80dbf8746",
+              "short_evidence": "PPM1D mutations were truncating alterations in exon 6 that enhanced the ability of PPM1D to suppress the activation of the DNA damage response checkpoint protein CHK2."
+            }
+          ]
+        },
+        {
+          "doc_id": "4414547",
+          "title": "Mosaic PPM1D mutations are associated with predisposition to breast and ovarian cancer",
+          "annotated_labels": [
+            "SUPPORT"
+          ],
+          "detected_scope_cues": [],
+          "source_spans": [
+            {
+              "sentence_index": 5,
+              "excerpt_sha256": "d32d68b098f174e6975aed3748e6d9f1a453bf0a150a554d88ef2a3e1862a5d2",
+              "short_evidence": "Functional studies demonstrate that the mutations result in enhanced suppression of p53 in response to ionizing radiation exposure, suggesting that the mutant alleles encode hyperactive"
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "claim_id": 179,
+      "claim": "Birth-weight is positively associated with breast cancer.",
+      "external_gold_label_types": [
+        "SUPPORT"
+      ],
+      "cross_source_label_disagreement": false,
+      "distinct_evidence_papers": 4,
+      "papers": [
+        {
+          "doc_id": "16322674",
+          "title": "Birth Size and Breast Cancer Risk: Re-analysis of Individual Participant Data from 32 Studies",
+          "annotated_labels": [
+            "SUPPORT"
+          ],
+          "detected_scope_cues": [
+            "association_not_causation"
+          ],
+          "source_spans": [
+            {
+              "sentence_index": 5,
+              "excerpt_sha256": "c02ac2f37520665395193bfb4d775730286d30671a87a0a763975085676d983b",
+              "short_evidence": "Birth weight was positively associated with breast cancer risk in studies based on birth records (pooled relative risk [RR] per one standard deviation [SD] [= 0.5 kg] increment in birth"
+            },
+            {
+              "sentence_index": 6,
+              "excerpt_sha256": "5a782b36cf776c90656dc6fcb9432f0f039c2a2831da87bd7542fe60789f635f",
+              "short_evidence": "Relative to women who weighed 3.000-3.499 kg, the risk was 0.96 (CI 0.80-1.16) in those who weighed < 2.500 kg, and 1.12 (95% CI 1.00-1.25) in those who weighed > or = 4.000 kg (p for l"
+            },
+            {
+              "sentence_index": 11,
+              "excerpt_sha256": "2884be777d1b5b9f73fb4554db8f2aef61c26938fb3c82c0395b5997a84d5f94",
+              "short_evidence": "CONCLUSIONS This pooled analysis of individual participant data is consistent with birth size, and in particular birth length, being an independent correlate of breast cancer risk in ad"
+            }
+          ]
+        },
+        {
+          "doc_id": "27123743",
+          "title": "Role of birthweight in the etiology of breast cancer.",
+          "annotated_labels": [
+            "SUPPORT"
+          ],
+          "detected_scope_cues": [
+            "postmenopausal",
+            "premenopausal"
+          ],
+          "source_spans": [
+            {
+              "sentence_index": 3,
+              "excerpt_sha256": "53395ccbe660c91d66ed059cfae342fd816c82969613c58b3d7219ae95d8797f",
+              "short_evidence": "The majority of studies identified a positive link between birthweight and premenopausal, but not postmenopausal, breast cancer."
+            },
+            {
+              "sentence_index": 4,
+              "excerpt_sha256": "9b0bd9960e89b9eefca95dca4ef851231f6a3464921618cf93e868076eee8631",
+              "short_evidence": "The relative risk estimate for breast cancer comparing women with high birthweight to women with low birthweight combining all studies including both pre- and postmenopausal breast canc"
+            }
+          ]
+        },
+        {
+          "doc_id": "23557241",
+          "title": "Intrauterine factors and risk of breast cancer: a systematic review and meta-analysis of current evidence.",
+          "annotated_labels": [
+            "SUPPORT"
+          ],
+          "detected_scope_cues": [],
+          "source_spans": [
+            {
+              "sentence_index": 6,
+              "excerpt_sha256": "17c865a33984391a1a708317c58109b7e1e1591ae9e33c524f4b65abc100cee8",
+              "short_evidence": "Increased risk of breast cancer was noted with increased birthweight (relative risk [RR] 1.15 [95% CI 1.09-1.21]), birth length (1.28 [1.11-1.48]), higher maternal age (1.13 [1.02-1.25]"
+            }
+          ]
+        },
+        {
+          "doc_id": "17450673",
+          "title": "Intrauterine environments and breast cancer risk: meta-analysis and systematic review",
+          "annotated_labels": [
+            "SUPPORT"
+          ],
+          "detected_scope_cues": [
+            "association_not_causation"
+          ],
+          "source_spans": [
+            {
+              "sentence_index": 5,
+              "excerpt_sha256": "e12c4c2a672f8801fc45f5ecc9b5512de7107d94c8e1506fa552986d966aac52",
+              "short_evidence": "RESULTS We found that heavier birth weights were associated with increased breast cancer risk, with studies involving five categories of birth weight identifying odds ratios (ORs) of 1."
+            },
+            {
+              "sentence_index": 9,
+              "excerpt_sha256": "17144351537a38c792d429cdfc20e3b8b4e261eb75e681f2f295a9f9c33260d5",
+              "short_evidence": "CONCLUSION Our findings provide some support for the hypothesis that in utero exposures reflective of higher endogenous hormone levels could affect risk for development of breast cancer"
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "claim_id": 261,
+      "claim": "Chronic aerobic exercise alters endothelial function, improving vasodilating mechanisms mediated by NO.",
+      "external_gold_label_types": [
+        "SUPPORT"
+      ],
+      "cross_source_label_disagreement": false,
+      "distinct_evidence_papers": 2,
+      "papers": [
+        {
+          "doc_id": "1122279",
+          "title": "Endothelium-mediated relaxation of porcine collateral-dependent arterioles is improved by exercise training.",
+          "annotated_labels": [
+            "SUPPORT"
+          ],
+          "detected_scope_cues": [],
+          "source_spans": [
+            {
+              "sentence_index": 5,
+              "excerpt_sha256": "4b52fe8f32503c89a27a03605f7e59ef143bcd5e9653ec0c79309eb66e417142",
+              "short_evidence": "Relaxation to the endothelium-dependent vasodilator bradykinin was decreased (P<0.05) in arterioles isolated from collateral-dependent LCx versus nonoccluded LAD regions of SED animals."
+            },
+            {
+              "sentence_index": 10,
+              "excerpt_sha256": "754ee560dc6e50083242f6f8d39ffc440b93d1e9fcf65c7955191947e8698442",
+              "short_evidence": "CONCLUSIONS These data indicate that exercise training enhances bradykinin-mediated relaxation of collateral-dependent LCx arterioles isolated after chronic coronary occlusion, most lik"
+            }
+          ]
+        },
+        {
+          "doc_id": "10697096",
+          "title": "Vasodilator responses of coronary resistance arteries of exercise-trained pigs.",
+          "annotated_labels": [
+            "SUPPORT"
+          ],
+          "detected_scope_cues": [
+            "possible_hedge"
+          ],
+          "source_spans": [
+            {
+              "sentence_index": 12,
+              "excerpt_sha256": "4963f81191e904de300ac7004ac88df111fead686c184a2030715365566dc013",
+              "short_evidence": "CONCLUSIONS These results suggest that exercise training enhances bradykinin-induced vasodilation through increased endothelium-derived relaxing factor/nitric oxide production by the L-"
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "claim_id": 275,
+      "claim": "Combining phosphatidylinositide 3-kinase and MEK 1/2 inhibitors is effective at treating KRAS mutant tumors.",
+      "external_gold_label_types": [
+        "SUPPORT"
+      ],
+      "cross_source_label_disagreement": false,
+      "distinct_evidence_papers": 2,
+      "papers": [
+        {
+          "doc_id": "4961038",
+          "title": "Effective Use of PI3K and MEK Inhibitors to Treat Mutant K-Ras G12D and PIK3CA H1047R Murine Lung Cancers",
+          "annotated_labels": [
+            "SUPPORT"
+          ],
+          "detected_scope_cues": [
+            "possible_hedge"
+          ],
+          "source_spans": [
+            {
+              "sentence_index": 7,
+              "excerpt_sha256": "6e3fb59377b725678fdba3cbf0cce01a29dd264232293a4e6b6044f6a9849ca5",
+              "short_evidence": "However, when NVP-BEZ235 was combined with a mitogen-activated protein kinase kinase (MEK) inhibitor, ARRY-142886, there was marked synergy in shrinking these Kras-mutant cancers."
+            },
+            {
+              "sentence_index": 8,
+              "excerpt_sha256": "3efde3e830d2b1051cfd4824171deed708c6477e8eed7ba0730d12d0bdd163d9",
+              "short_evidence": "These in vivo studies suggest that inhibitors of the PI3K-mTOR pathway may be active in cancers with PIK3CA mutations and, when combined with MEK inhibitors, may effectively treat KRAS "
+            }
+          ]
+        },
+        {
+          "doc_id": "14241418",
+          "title": "NVP-BEZ235, a dual PI3K/mTOR inhibitor, prevents PI3K signaling and inhibits the growth of cancer cells with activating PI3K mutations.",
+          "annotated_labels": [
+            "SUPPORT"
+          ],
+          "detected_scope_cues": [],
+          "source_spans": [
+            {
+              "sentence_index": 10,
+              "excerpt_sha256": "436e64648090e86f871278d669be78a0cd5d55f02df6274c0287105f37b4ef85",
+              "short_evidence": "In summary, NVP-BEZ235 inhibits the PI3K/mTOR axis and results in antiproliferative and antitumoral activity in cancer cells with both wild-type and mutated p110-alpha."
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "claim_id": 452,
+      "claim": "Gene expression does not vary appreciably across genetically identical cells.",
+      "external_gold_label_types": [
+        "CONTRADICT"
+      ],
+      "cross_source_label_disagreement": false,
+      "distinct_evidence_papers": 2,
+      "papers": [
+        {
+          "doc_id": "12804937",
+          "title": "Nature, Nurture, or Chance: Stochastic Gene Expression and Its Consequences",
+          "annotated_labels": [
+            "CONTRADICT"
+          ],
+          "detected_scope_cues": [],
+          "source_spans": [
+            {
+              "sentence_index": 0,
+              "excerpt_sha256": "b49f1f3b1aca2bc4d26c9cb413b9f7579f28b5459ccad13bbc8308bd7b47dd7a",
+              "short_evidence": "Gene expression is a fundamentally stochastic process, with randomness in transcription and translation leading to cell-to-cell variations in mRNA and protein levels."
+            }
+          ]
+        },
+        {
+          "doc_id": "464511",
+          "title": "Memory and Modularity in Cell-Fate Decision Making",
+          "annotated_labels": [
+            "CONTRADICT"
+          ],
+          "detected_scope_cues": [],
+          "source_spans": [
+            {
+              "sentence_index": 0,
+              "excerpt_sha256": "8e0a3176009fd66dbb4285a280d99f6ecd717851ecf313d61b13f78887b691d8",
+              "short_evidence": "Genetically identical cells sharing an environment can display markedly different phenotypes."
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "claim_id": 597,
+      "claim": "Incidence rates of cervical cancer have decreased.",
+      "external_gold_label_types": [
+        "SUPPORT"
+      ],
+      "cross_source_label_disagreement": false,
+      "distinct_evidence_papers": 3,
+      "papers": [
+        {
+          "doc_id": "12779444",
+          "title": "Effect of screening on cervical cancer mortality in England and Wales: analysis of trends with an age period cohort model.",
+          "annotated_labels": [
+            "SUPPORT"
+          ],
+          "detected_scope_cues": [
+            "mortality"
+          ],
+          "source_spans": [
+            {
+              "sentence_index": 0,
+              "excerpt_sha256": "30dd9278b1bbfffe1799197326aa77252f371fff2089719d563b4b3545db3f77",
+              "short_evidence": "The number of women dying from cervical cancer in 1997 was 7% lower than in 1996 and has fallen by over 25% since 1992.1 Such rapid change must be at least partly due to cervical screen"
+            }
+          ]
+        },
+        {
+          "doc_id": "36355784",
+          "title": "The effect of mass screening on incidence and mortality of squamous and adenocarcinoma of cervix uteri.",
+          "annotated_labels": [
+            "SUPPORT"
+          ],
+          "detected_scope_cues": [
+            "incidence"
+          ],
+          "source_spans": [
+            {
+              "sentence_index": 6,
+              "excerpt_sha256": "46e69d95628147df2284eec87bfb25da0f2e56cd894f07a483521793c1ef2597",
+              "short_evidence": "RESULTS The mean incidence of cervical carcinoma in the early 1960s was 15.4 per 10(5) woman-years."
+            },
+            {
+              "sentence_index": 7,
+              "excerpt_sha256": "0fb3d55c647a4aa3f3cfb8de63869d8da8377328f701da737aefa34a683a1c6b",
+              "short_evidence": "In 1991, it was only 2.7 per 10(5) woman-years."
+            }
+          ]
+        },
+        {
+          "doc_id": "25742130",
+          "title": "Mass screening programmes and trends in cervical cancer in Finland and the Netherlands.",
+          "annotated_labels": [
+            "SUPPORT"
+          ],
+          "detected_scope_cues": [
+            "incidence",
+            "mortality"
+          ],
+          "source_spans": [
+            {
+              "sentence_index": 6,
+              "excerpt_sha256": "0dc7cc6f12705cad97a8f9eaea70a8fd00812a4585a44cd41d981275d761cd39",
+              "short_evidence": "Incidence and mortality rates have declined more in Finland."
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "claim_id": 873,
+      "claim": "Obesity is determined solely by environmental factors.",
+      "external_gold_label_types": [
+        "CONTRADICT"
+      ],
+      "cross_source_label_disagreement": false,
+      "distinct_evidence_papers": 5,
+      "papers": [
+        {
+          "doc_id": "1180972",
+          "title": "Genetics of obesity in adult adoptees and their biological siblings.",
+          "annotated_labels": [
+            "CONTRADICT"
+          ],
+          "detected_scope_cues": [
+            "possible_hedge"
+          ],
+          "source_spans": [
+            {
+              "sentence_index": 3,
+              "excerpt_sha256": "5898cefc42242ba45751e08792602522ad4e9fd9af5ee6604e9d70c83d11f848",
+              "short_evidence": "In full siblings body mass index (kg/m2) significantly increased with weight of the adoptees."
+            },
+            {
+              "sentence_index": 4,
+              "excerpt_sha256": "41d3e4683f5ff563671c08339ee3143e7f053a5f2fd8752e5776add160ae80ee",
+              "short_evidence": "Body mass index of the half siblings showed a steady but weaker increase across the four weight groups of adoptees."
+            },
+            {
+              "sentence_index": 6,
+              "excerpt_sha256": "d3cd476a8e2de1f74177c052e9f816a71c041f5210ac6b44ba6d00d89fcde504",
+              "short_evidence": "In contrast with the findings in half siblings and (previously) the natural parents there was a striking, significant increase in body mass index between full siblings of overweight and"
+            },
+            {
+              "sentence_index": 7,
+              "excerpt_sha256": "54beba31d0bd5ed286663a5523a965b9532f24b3dfe76892e4e86176bc0371f0",
+              "short_evidence": "The degree of fatness in adults living in the same environment appears to be influenced by genetic factors independent of sex, which may include polygenic as well as major gene effects "
+            }
+          ]
+        },
+        {
+          "doc_id": "19307912",
+          "title": "Familial obesity and leanness.",
+          "annotated_labels": [
+            "CONTRADICT"
+          ],
+          "detected_scope_cues": [],
+          "source_spans": [
+            {
+              "sentence_index": 3,
+              "excerpt_sha256": "42a757a9dc6be710c02989f329572a2c0f27181b696a0d3b589043ccf4e2cb80",
+              "short_evidence": "Suspected familial obesity was observed in 2.4 percent and 6 percent respectively of random and hyperlipidemic recall group whites."
+            },
+            {
+              "sentence_index": 7,
+              "excerpt_sha256": "fb05aa2ef5396f564446618e83c5e2bf0a9dbde611c35b157b0c749a2094c825",
+              "short_evidence": "Nearly all subjects with familial obesity or leanness had no overt metabolic or pharmacological explanations for their body habitus."
+            }
+          ]
+        },
+        {
+          "doc_id": "27393799",
+          "title": "The body-mass index of twins who have been reared apart.",
+          "annotated_labels": [
+            "CONTRADICT"
+          ],
+          "detected_scope_cues": [],
+          "source_spans": [
+            {
+              "sentence_index": 8,
+              "excerpt_sha256": "b0e1cc6f8087fd821f5c4cebfecd66b42c24d75003d69f29e9b783ece001452d",
+              "short_evidence": "We conclude that genetic influences on body-mass index are substantial, whereas the childhood environment has little or no influence."
+            }
+          ]
+        },
+        {
+          "doc_id": "29025270",
+          "title": "An adoption study of human obesity.",
+          "annotated_labels": [
+            "CONTRADICT"
+          ],
+          "detected_scope_cues": [],
+          "source_spans": [
+            {
+              "sentence_index": 1,
+              "excerpt_sha256": "58e73bd154d6e1c5f31e5fc898a3ef7e13d5ff6df40a400b8605f55778ad5d0f",
+              "short_evidence": "There was a strong relation between the weight class of the adoptees and the body-mass index of their biologic parents - for the mothers, P less than 0.0001; for the fathers, P less tha"
+            },
+            {
+              "sentence_index": 3,
+              "excerpt_sha256": "8b71e466be8606a8e3fcd7959a733cad247c51dbf495a21aabbdaa3b776a81a4",
+              "short_evidence": "Cumulative distributions of the body-mass index of parents showed similar results; there was a strong relation between the body-mass index of biologic parents and adoptee weight class a"
+            },
+            {
+              "sentence_index": 5,
+              "excerpt_sha256": "28c0bfb945ae152780f0be7a310e9f1cd0efefdee02e1fe95db83590de67dcfd",
+              "short_evidence": "We conclude that genetic influences have an important role in determining human fatness in adults, whereas the family environment alone has no apparent effect."
+            }
+          ]
+        },
+        {
+          "doc_id": "3315558",
+          "title": "Genetic analysis of human obesity in an Italian sample.",
+          "annotated_labels": [
+            "CONTRADICT"
+          ],
+          "detected_scope_cues": [
+            "possible_hedge"
+          ],
+          "source_spans": [
+            {
+              "sentence_index": 4,
+              "excerpt_sha256": "e9903421a37745cadf4fc95b41482154e533dd51ad6dca8b6667df44697f0837",
+              "short_evidence": "Our conclusions are that genetic factors are certainly present."
+            },
+            {
+              "sentence_index": 5,
+              "excerpt_sha256": "8af8faff204acf6cce8f052f60b860f14a061b48d96601d76d6c3caec0ae1d33",
+              "short_evidence": "Several analyses suggest the presence of a dominant major gene with weak effect."
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "claim_id": 971,
+      "claim": "Primary cervical cancer screening with HPV detection has higher longitudinal sensitivity than conventional cytology to detect cervical intraepithelial neoplasia grade 2.",
+      "external_gold_label_types": [
+        "SUPPORT"
+      ],
+      "cross_source_label_disagreement": false,
+      "distinct_evidence_papers": 4,
+      "papers": [
+        {
+          "doc_id": "46695481",
+          "title": "Human papillomavirus and Papanicolaou tests to screen for cervical cancer.",
+          "annotated_labels": [
+            "SUPPORT"
+          ],
+          "detected_scope_cues": [
+            "incidence"
+          ],
+          "source_spans": [
+            {
+              "sentence_index": 0,
+              "excerpt_sha256": "734bce941f05526479b1ad508d6072804aa1e4b7cb6d65905d5848144a4bb9b1",
+              "short_evidence": "BACKGROUND Screening for cervical cancer based on testing for human papillomavirus (HPV) increases the sensitivity of detection of high-grade (grade 2 or 3) cervical intraepithelial neo"
+            },
+            {
+              "sentence_index": 9,
+              "excerpt_sha256": "e4c4b2b75f1b2a012d53160ff8a44467b108d28015d4272635620ac6a0c74880",
+              "short_evidence": "CONCLUSIONS The addition of an HPV test to the Pap test to screen women in their mid-30s for cervical cancer reduces the incidence of grade 2 or 3 cervical intraepithelial neoplasia or "
+            }
+          ]
+        },
+        {
+          "doc_id": "27873158",
+          "title": "Efficacy of human papillomavirus testing for the detection of invasive cervical cancers and cervical intraepithelial neoplasia: a randomised controlled trial.",
+          "annotated_labels": [
+            "SUPPORT"
+          ],
+          "detected_scope_cues": [],
+          "source_spans": [
+            {
+              "sentence_index": 0,
+              "excerpt_sha256": "ad10fa66fc76f75e01619b2ee83ac72c6a2275f79217a6a04b4e6f541c7861a6",
+              "short_evidence": "BACKGROUND Human papillomavirus (HPV) testing is known to be more sensitive, but less specific than cytology for detecting cervical intraepithelial neoplasia (CIN)."
+            },
+            {
+              "sentence_index": 15,
+              "excerpt_sha256": "52296e600d2ea6a555a927698d0204b79cfbb3f887ad1d12f8033838fd7b746f",
+              "short_evidence": "Among women aged 35-60 years, at round one the relative detection (HPV vs cytology) was 2.00 (95% CI 1.44-2.77) for CIN2, 2.08 (1.47-2.95) for CIN3, and 2.03 (1.60-2.57) for CIN2 and 3 "
+            },
+            {
+              "sentence_index": 21,
+              "excerpt_sha256": "3b204ab8a818544697e28298a742e35e8185f0224a51e8022bb81b80449c6913",
+              "short_evidence": "INTERPRETATION HPV-based screening is more effective than cytology in preventing invasive cervical cancer, by detecting persistent high-grade lesions earlier and providing a longer low-"
+            }
+          ]
+        },
+        {
+          "doc_id": "28617573",
+          "title": "Evidence regarding human papillomavirus testing in secondary prevention of cervical cancer.",
+          "annotated_labels": [
+            "SUPPORT"
+          ],
+          "detected_scope_cues": [
+            "primary_disease"
+          ],
+          "source_spans": [
+            {
+              "sentence_index": 8,
+              "excerpt_sha256": "b8c14556313e56933489d37d2456ff1c595689fe698a986531782a85ab88f3c4",
+              "short_evidence": "Primary screening for hrHPV generally detects more CIN2, CIN3 or cancer compared to cytology at cut-off atypical squamous cells of undetermined significance (ASC-US) or LSIL, but is les"
+            }
+          ]
+        },
+        {
+          "doc_id": "9764256",
+          "title": "Human papillomavirus testing for the detection of high-grade cervical intraepithelial neoplasia and cancer: final results of the POBASCAM randomised controlled trial.",
+          "annotated_labels": [
+            "SUPPORT"
+          ],
+          "detected_scope_cues": [],
+          "source_spans": [
+            {
+              "sentence_index": 13,
+              "excerpt_sha256": "2c78cc1d7211692c712d4b51a78352f80e717b6a0ecd4a430728fa55eeb8d109",
+              "short_evidence": "Furthermore, significantly more cases of CIN grade 2 or worse were detected in the intervention group than in the control group (267 of 19 999 vs 215 of 20,106; 1·25, 1·05-1·50; p=0·015"
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "claim_id": 1029,
+      "claim": "Reduced responsiveness to interleukin-2 in regulatory T cells is associated with greater resistance to autoimmune diseases such as Type 1 Diabetes.",
+      "external_gold_label_types": [
+        "CONTRADICT"
+      ],
+      "cross_source_label_disagreement": false,
+      "distinct_evidence_papers": 3,
+      "papers": [
+        {
+          "doc_id": "13923140",
+          "title": "Interleukin-2 gene variation impairs regulatory T cell function and causes autoimmunity",
+          "annotated_labels": [
+            "CONTRADICT"
+          ],
+          "detected_scope_cues": [],
+          "source_spans": [
+            {
+              "sentence_index": 2,
+              "excerpt_sha256": "b50ce6240a827af6235ef17909504eb181a9d07d31db32f2b19d64cad9179898",
+              "short_evidence": "In order to test directly that an approximately twofold reduction in IL-2 underpins the Idd3-linked destabilization of immune homeostasis, we show that engineered haplodeficiency of Il2"
+            },
+            {
+              "sentence_index": 3,
+              "excerpt_sha256": "005b56c2d9be9a5a19104a81e1b023f8a0455f3c14998f1e339bce4cc2fbceb8",
+              "short_evidence": "Reduced IL-2 production achieved by either genetic mechanism correlates with reduced function of CD4+ CD25+ regulatory T cells, which are critical for maintaining immune homeostasis."
+            }
+          ]
+        },
+        {
+          "doc_id": "13940200",
+          "title": "Large-scale genetic fine mapping and genotype-phenotype associations implicate polymorphism in the IL2RA region in type 1 diabetes",
+          "annotated_labels": [
+            "CONTRADICT"
+          ],
+          "detected_scope_cues": [
+            "association_not_causation"
+          ],
+          "source_spans": [
+            {
+              "sentence_index": 3,
+              "excerpt_sha256": "4b956ea65d1da0afeb736d6f2c576a5f1bc9919fbf860db871ca9acaef1cc1a7",
+              "short_evidence": "Furthermore, we have associated IL2RA T1D susceptibility genotypes with lower circulating levels of the biomarker, soluble IL-2RA (P = 6.28 × 10−28), suggesting that an inherited lower "
+            }
+          ]
+        },
+        {
+          "doc_id": "11899391",
+          "title": "Type 1 diabetes-associated IL2RA variation lowers IL-2 signaling and contributes to diminished CD4+CD25+ regulatory T cell function.",
+          "annotated_labels": [
+            "CONTRADICT"
+          ],
+          "detected_scope_cues": [
+            "association_not_causation"
+          ],
+          "source_spans": [
+            {
+              "sentence_index": 6,
+              "excerpt_sha256": "c57f738e915d58c32c9146f05af7594085c8839d25fb30480cbd82820c5d446a",
+              "short_evidence": "We demonstrated that the presence of an autoimmune disease-associated IL2RA haplotype correlates with diminished IL-2 responsiveness in Ag-experienced CD4(+) T cells, as measured by pho"
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "claim_id": 1379,
+      "claim": "Women with a higher birth weight are more likely to develop breast cancer later in life.",
+      "external_gold_label_types": [
+        "SUPPORT"
+      ],
+      "cross_source_label_disagreement": false,
+      "distinct_evidence_papers": 4,
+      "papers": [
+        {
+          "doc_id": "16322674",
+          "title": "Birth Size and Breast Cancer Risk: Re-analysis of Individual Participant Data from 32 Studies",
+          "annotated_labels": [
+            "SUPPORT"
+          ],
+          "detected_scope_cues": [
+            "association_not_causation"
+          ],
+          "source_spans": [
+            {
+              "sentence_index": 5,
+              "excerpt_sha256": "c02ac2f37520665395193bfb4d775730286d30671a87a0a763975085676d983b",
+              "short_evidence": "Birth weight was positively associated with breast cancer risk in studies based on birth records (pooled relative risk [RR] per one standard deviation [SD] [= 0.5 kg] increment in birth"
+            },
+            {
+              "sentence_index": 6,
+              "excerpt_sha256": "5a782b36cf776c90656dc6fcb9432f0f039c2a2831da87bd7542fe60789f635f",
+              "short_evidence": "Relative to women who weighed 3.000-3.499 kg, the risk was 0.96 (CI 0.80-1.16) in those who weighed < 2.500 kg, and 1.12 (95% CI 1.00-1.25) in those who weighed > or = 4.000 kg (p for l"
+            }
+          ]
+        },
+        {
+          "doc_id": "27123743",
+          "title": "Role of birthweight in the etiology of breast cancer.",
+          "annotated_labels": [
+            "SUPPORT"
+          ],
+          "detected_scope_cues": [
+            "postmenopausal",
+            "premenopausal"
+          ],
+          "source_spans": [
+            {
+              "sentence_index": 3,
+              "excerpt_sha256": "53395ccbe660c91d66ed059cfae342fd816c82969613c58b3d7219ae95d8797f",
+              "short_evidence": "The majority of studies identified a positive link between birthweight and premenopausal, but not postmenopausal, breast cancer."
+            },
+            {
+              "sentence_index": 4,
+              "excerpt_sha256": "9b0bd9960e89b9eefca95dca4ef851231f6a3464921618cf93e868076eee8631",
+              "short_evidence": "The relative risk estimate for breast cancer comparing women with high birthweight to women with low birthweight combining all studies including both pre- and postmenopausal breast canc"
+            }
+          ]
+        },
+        {
+          "doc_id": "23557241",
+          "title": "Intrauterine factors and risk of breast cancer: a systematic review and meta-analysis of current evidence.",
+          "annotated_labels": [
+            "SUPPORT"
+          ],
+          "detected_scope_cues": [],
+          "source_spans": [
+            {
+              "sentence_index": 6,
+              "excerpt_sha256": "17c865a33984391a1a708317c58109b7e1e1591ae9e33c524f4b65abc100cee8",
+              "short_evidence": "Increased risk of breast cancer was noted with increased birthweight (relative risk [RR] 1.15 [95% CI 1.09-1.21]), birth length (1.28 [1.11-1.48]), higher maternal age (1.13 [1.02-1.25]"
+            }
+          ]
+        },
+        {
+          "doc_id": "17450673",
+          "title": "Intrauterine environments and breast cancer risk: meta-analysis and systematic review",
+          "annotated_labels": [
+            "SUPPORT"
+          ],
+          "detected_scope_cues": [
+            "association_not_causation"
+          ],
+          "source_spans": [
+            {
+              "sentence_index": 5,
+              "excerpt_sha256": "e12c4c2a672f8801fc45f5ecc9b5512de7107d94c8e1506fa552986d966aac52",
+              "short_evidence": "RESULTS We found that heavier birth weights were associated with increased breast cancer risk, with studies involving five categories of birth weight identifying odds ratios (ORs) of 1."
+            }
+          ]
+        }
+      ]
+    }
+  ]
+}

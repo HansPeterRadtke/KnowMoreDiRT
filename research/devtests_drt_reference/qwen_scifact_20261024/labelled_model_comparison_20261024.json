@@ -1,0 +1,264 @@
+{
+  "pre_inference_frozen_hash": "d707abc529f2d6be734b6d570069077c1518e38809b908e5821a8465919ca0ba",
+  "model_raw_checkpoint_sha256": "226824b919e4a22d029d1c4bd3696c30a2d2d3ae72b160f79944141a83877cb6",
+  "source_data_sha256": "f4c8fa82d8bd0653a9cc8d61a6ea48c25eacea64e90af5dbf390ebb1b74372f0",
+  "purpose": "A bounded real-source comparison with human-source-document truth labels. NOT formal DRS, production KMD, multi-document knowledge discovery or field discovery.",
+  "scientific_limitations": [
+    "N=8 stratified class balance before inference, high statistical uncertainty",
+    "SciFact TRAIN subset never used in this experiment before freezing; pretrained Qwen exposure to dataset cannot be ruled out",
+    "No actual full KMD chunk DRS; this is a lightweight automatic DRS-inspired source-only box extractor plus later claim judge, 2 model calls vs 1 direct",
+    "Human labels measure source support/contradiction, NOT empirical truth or scientific novelty",
+    "Gold evidence document supplied to both methods; source sentence selection automated, not gold annotated rationales",
+    "No dream/fiction, quotation or cross-paper coreference benchmark on these cases",
+    "Invalid source quotes or boxes never silently repaired"
+  ],
+  "metrics": {
+    "sample_count": 8,
+    "gold_counts": {
+      "SUPPORT": 4,
+      "CONTRADICT": 4
+    },
+    "direct_correct": 4,
+    "boxed_correct": 0,
+    "invalid_direct": 0,
+    "invalid_boxed": 0,
+    "grounded_box_frames": 0,
+    "direct_quotes_exact_source": 7,
+    "direct_total_seconds": 189.8,
+    "boxed_total_seconds": 380.57,
+    "confusion_direct": {
+      "SUPPORT=>SUPPORT": 4,
+      "CONTRADICT=>SUPPORT": 4
+    },
+    "confusion_boxed": {
+      "SUPPORT=>UNKNOWN": 4,
+      "CONTRADICT=>UNKNOWN": 4
+    }
+  },
+  "cases": [
+    {
+      "uid": "sci-144-10582939",
+      "gold": "SUPPORT",
+      "direct": "SUPPORT",
+      "boxed": "UNKNOWN",
+      "direct_correct": true,
+      "boxed_correct": false,
+      "direct_quote_exact_source": true,
+      "boxed_grounded_frames": false,
+      "boxed_validation_reason": "not_json_object",
+      "direct_elapsed": 28.21,
+      "boxed_elapsed": 51.63,
+      "direct_tokens": {
+        "prompt_tokens": 525,
+        "completion_tokens": 68,
+        "total_tokens": 593
+      },
+      "boxed_tokens": [
+        {
+          "prompt_tokens": 576,
+          "completion_tokens": 195,
+          "total_tokens": 771
+        },
+        {}
+      ],
+      "model_raw_file": "results_checkpoint.jsonl",
+      "source_doc": "10582939"
+    },
+    {
+      "uid": "sci-1404-38355793",
+      "gold": "SUPPORT",
+      "direct": "SUPPORT",
+      "boxed": "UNKNOWN",
+      "direct_correct": true,
+      "boxed_correct": false,
+      "direct_quote_exact_source": false,
+      "boxed_grounded_frames": false,
+      "boxed_validation_reason": "not_json_object",
+      "direct_elapsed": 22.46,
+      "boxed_elapsed": 45.18,
+      "direct_tokens": {
+        "prompt_tokens": 333,
+        "completion_tokens": 67,
+        "total_tokens": 400
+      },
+      "boxed_tokens": [
+        {
+          "prompt_tokens": 391,
+          "completion_tokens": 195,
+          "total_tokens": 586
+        },
+        {}
+      ],
+      "model_raw_file": "results_checkpoint.jsonl",
+      "source_doc": "38355793"
+    },
+    {
+      "uid": "sci-178-23557241",
+      "gold": "CONTRADICT",
+      "direct": "SUPPORT",
+      "boxed": "UNKNOWN",
+      "direct_correct": false,
+      "boxed_correct": false,
+      "direct_quote_exact_source": true,
+      "boxed_grounded_frames": false,
+      "boxed_validation_reason": "not_json_object",
+      "direct_elapsed": 25.74,
+      "boxed_elapsed": 50.13,
+      "direct_tokens": {
+        "prompt_tokens": 442,
+        "completion_tokens": 57,
+        "total_tokens": 499
+      },
+      "boxed_tokens": [
+        {
+          "prompt_tokens": 513,
+          "completion_tokens": 195,
+          "total_tokens": 708
+        },
+        {}
+      ],
+      "model_raw_file": "results_checkpoint.jsonl",
+      "source_doc": "23557241"
+    },
+    {
+      "uid": "sci-1184-16737210",
+      "gold": "CONTRADICT",
+      "direct": "SUPPORT",
+      "boxed": "UNKNOWN",
+      "direct_correct": false,
+      "boxed_correct": false,
+      "direct_quote_exact_source": true,
+      "boxed_grounded_frames": false,
+      "boxed_validation_reason": "not_json_object",
+      "direct_elapsed": 21.68,
+      "boxed_elapsed": 46.15,
+      "direct_tokens": {
+        "prompt_tokens": 351,
+        "completion_tokens": 53,
+        "total_tokens": 404
+      },
+      "boxed_tokens": [
+        {
+          "prompt_tokens": 398,
+          "completion_tokens": 195,
+          "total_tokens": 593
+        },
+        {}
+      ],
+      "model_raw_file": "results_checkpoint.jsonl",
+      "source_doc": "16737210"
+    },
+    {
+      "uid": "sci-488-1780819",
+      "gold": "SUPPORT",
+      "direct": "SUPPORT",
+      "boxed": "UNKNOWN",
+      "direct_correct": true,
+      "boxed_correct": false,
+      "direct_quote_exact_source": true,
+      "boxed_grounded_frames": false,
+      "boxed_validation_reason": "not_json_object",
+      "direct_elapsed": 26.11,
+      "boxed_elapsed": 49.97,
+      "direct_tokens": {
+        "prompt_tokens": 434,
+        "completion_tokens": 59,
+        "total_tokens": 493
+      },
+      "boxed_tokens": [
+        {
+          "prompt_tokens": 498,
+          "completion_tokens": 195,
+          "total_tokens": 693
+        },
+        {}
+      ],
+      "model_raw_file": "results_checkpoint.jsonl",
+      "source_doc": "1780819"
+    },
+    {
+      "uid": "sci-980-20128547",
+      "gold": "SUPPORT",
+      "direct": "SUPPORT",
+      "boxed": "UNKNOWN",
+      "direct_correct": true,
+      "boxed_correct": false,
+      "direct_quote_exact_source": true,
+      "boxed_grounded_frames": false,
+      "boxed_validation_reason": "not_json_object",
+      "direct_elapsed": 20.77,
+      "boxed_elapsed": 42.6,
+      "direct_tokens": {
+        "prompt_tokens": 279,
+        "completion_tokens": 68,
+        "total_tokens": 347
+      },
+      "boxed_tokens": [
+        {
+          "prompt_tokens": 331,
+          "completion_tokens": 195,
+          "total_tokens": 526
+        },
+        {}
+      ],
+      "model_raw_file": "results_checkpoint.jsonl",
+      "source_doc": "20128547"
+    },
+    {
+      "uid": "sci-925-17077004",
+      "gold": "CONTRADICT",
+      "direct": "SUPPORT",
+      "boxed": "UNKNOWN",
+      "direct_correct": false,
+      "boxed_correct": false,
+      "direct_quote_exact_source": true,
+      "boxed_grounded_frames": false,
+      "boxed_validation_reason": "not_json_object",
+      "direct_elapsed": 19.16,
+      "boxed_elapsed": 46.01,
+      "direct_tokens": {
+        "prompt_tokens": 337,
+        "completion_tokens": 41,
+        "total_tokens": 378
+      },
+      "boxed_tokens": [
+        {
+          "prompt_tokens": 398,
+          "completion_tokens": 195,
+          "total_tokens": 593
+        },
+        {}
+      ],
+      "model_raw_file": "results_checkpoint.jsonl",
+      "source_doc": "17077004"
+    },
+    {
+      "uid": "sci-772-24922825",
+      "gold": "CONTRADICT",
+      "direct": "SUPPORT",
+      "boxed": "UNKNOWN",
+      "direct_correct": false,
+      "boxed_correct": false,
+      "direct_quote_exact_source": true,
+      "boxed_grounded_frames": false,
+      "boxed_validation_reason": "not_json_object",
+      "direct_elapsed": 25.67,
+      "boxed_elapsed": 48.9,
+      "direct_tokens": {
+        "prompt_tokens": 416,
+        "completion_tokens": 64,
+        "total_tokens": 480
+      },
+      "boxed_tokens": [
+        {
+          "prompt_tokens": 466,
+          "completion_tokens": 195,
+          "total_tokens": 661
+        },
+        {}
+      ],
+      "model_raw_file": "results_checkpoint.jsonl",
+      "source_doc": "24922825"
+    }
+  ]
+}

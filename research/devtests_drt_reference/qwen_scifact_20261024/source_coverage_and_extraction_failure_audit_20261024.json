@@ -1,0 +1,246 @@
+{
+  "source_sha256": {
+    "frozen": "d707abc529f2d6be734b6d570069077c1518e38809b908e5821a8465919ca0ba",
+    "checkpoint": "226824b919e4a22d029d1c4bd3696c30a2d2d3ae72b160f79944141a83877cb6",
+    "external_train": "f4c8fa82d8bd0653a9cc8d61a6ea48c25eacea64e90af5dbf390ebb1b74372f0"
+  },
+  "sample_size": 8,
+  "human_gold_rationale_recovered_overall": 7,
+  "contradiction_cases": 4,
+  "human_rationale_recovered_in_contradiction_cases": 4,
+  "contradiction_claims_wrongly_called_support": 4,
+  "model_generated_frame_invalid": 8,
+  "extraction_length_truncations": 8,
+  "box_judge_abstentions_due_to_invalid_structure": 8,
+  "direct_quotes_exact_source": 7,
+  "important_interpretation": [
+    "Every CONTRADICT gold scientific pair included at least one original expert annotated evidence sentence in the model input, so failures cannot be explained solely by omitted gold rationale",
+    "All eight parser responses exhausted fixed 195-token budget and lacked a valid complete grounded model-produced box: the second model call did not occur and abstention was the safe path",
+    "This is one small local Qwen-1.5B variant, NOT the deployed KMD large-model DRS; no conclusions about general formal DRT parser superiority can follow",
+    "Human annotated scientific article textual support/refute is not ultimate scientific truth or new discovery",
+    "Some correct SUPPORT calls lacked included gold rationale, raising concern that plausibility/model priors or alternative non-gold source evidence may determine the result; this small audit cannot distinguish them"
+  ],
+  "rows": [
+    {
+      "uid": "sci-144-10582939",
+      "external_gold": "SUPPORT",
+      "source_title": "Induction therapy with autologous mesenchymal stem cells in living-related kidney transplants: a randomized controlled trial.",
+      "human_rationale_sentence_ids": [
+        8,
+        10,
+        12
+      ],
+      "automatic_source_sentence_ids": [
+        0,
+        1,
+        2,
+        11,
+        12,
+        13
+      ],
+      "human_gold_rationale_present_in_input": true,
+      "overlap_sentence_indices": [
+        12
+      ],
+      "direct_model_verdict": "SUPPORT",
+      "direct_model_quote_exact_input": true,
+      "direct_quote": "Among patients undergoing renal transplant, the use of autologous MSCs compared with anti-IL-2 receptor antibody induction therapy resulted in lower incidence of acute rejection, decreased risk of opportunistic infection, and better estimated renal function at 1 year.",
+      "box_extraction_finish_reason": "length",
+      "box_model_output_valid": false,
+      "box_judge_skipped": true,
+      "source_sha256": "dca835a39e4e6e4284560e685b1ea9b627ea5690647ce428294770efc96bf8de"
+    },
+    {
+      "uid": "sci-1404-38355793",
+      "external_gold": "SUPPORT",
+      "source_title": "A20 is overexpressed in glioma cells and may serve as a potential therapeutic target.",
+      "human_rationale_sentence_ids": [
+        7,
+        8,
+        9
+      ],
+      "automatic_source_sentence_ids": [
+        3,
+        4,
+        5,
+        7,
+        8,
+        9
+      ],
+      "human_gold_rationale_present_in_input": true,
+      "overlap_sentence_indices": [
+        7,
+        8,
+        9
+      ],
+      "direct_model_verdict": "SUPPORT",
+      "direct_model_quote_exact_input": false,
+      "direct_quote": "Inhibiting A20 expression by siRNAs in vitro reduced the growth rates of glioma cells and resulted in G1/S arrest and increased apoptosis. In a mouse tumor model, local administration of siRNA significantly suppressed solid tumor growth.",
+      "box_extraction_finish_reason": "length",
+      "box_model_output_valid": false,
+      "box_judge_skipped": true,
+      "source_sha256": "bb7dded9ba4e816ad14835253cea74a38f535577d90789f5f40de02423f095a6"
+    },
+    {
+      "uid": "sci-178-23557241",
+      "external_gold": "CONTRADICT",
+      "source_title": "Intrauterine factors and risk of breast cancer: a systematic review and meta-analysis of current evidence.",
+      "human_rationale_sentence_ids": [
+        6
+      ],
+      "automatic_source_sentence_ids": [
+        5,
+        6,
+        7,
+        8,
+        9,
+        10
+      ],
+      "human_gold_rationale_present_in_input": true,
+      "overlap_sentence_indices": [
+        6
+      ],
+      "direct_model_verdict": "SUPPORT",
+      "direct_model_quote_exact_input": true,
+      "direct_quote": "Increased risk of breast cancer was noted with increased birthweight (relative risk [RR] 1.15 [95% CI 1.09-1.21])",
+      "box_extraction_finish_reason": "length",
+      "box_model_output_valid": false,
+      "box_judge_skipped": true,
+      "source_sha256": "c7664861da7f58b01d149ad4e8b59552141c16aee05002b71be876e458111d61"
+    },
+    {
+      "uid": "sci-1184-16737210",
+      "external_gold": "CONTRADICT",
+      "source_title": "Kidney paired donation and optimizing the use of live donor organs.",
+      "human_rationale_sentence_ids": [
+        10
+      ],
+      "automatic_source_sentence_ids": [
+        0,
+        1,
+        2,
+        9,
+        10,
+        11
+      ],
+      "human_gold_rationale_present_in_input": true,
+      "overlap_sentence_indices": [
+        10
+      ],
+      "direct_model_verdict": "SUPPORT",
+      "direct_model_quote_exact_input": true,
+      "direct_quote": "Even if only 7% of patients awaiting kidney transplantation participated in an optimized national KPD program, the health care system could save as much as $750 million.",
+      "box_extraction_finish_reason": "length",
+      "box_model_output_valid": false,
+      "box_judge_skipped": true,
+      "source_sha256": "7e21dd390a5b51dafaa27e5e788c0fd40c60a6c9a15d0ab2baa91331c4ed3493"
+    },
+    {
+      "uid": "sci-488-1780819",
+      "external_gold": "SUPPORT",
+      "source_title": "Role of DNA Methylation and Epigenetic Silencing of HAND2 in Endometrial Cancer Development",
+      "human_rationale_sentence_ids": [
+        4,
+        7,
+        9,
+        11
+      ],
+      "automatic_source_sentence_ids": [
+        4,
+        5,
+        6,
+        10,
+        11,
+        12
+      ],
+      "human_gold_rationale_present_in_input": true,
+      "overlap_sentence_indices": [
+        4,
+        11
+      ],
+      "direct_model_verdict": "SUPPORT",
+      "direct_model_quote_exact_input": true,
+      "direct_quote": "HAND2 methylation is a common and crucial molecular alteration in endometrial cancer that could potentially be employed as a biomarker for early detection of endometrial cancer and as a predictor of treatment response.",
+      "box_extraction_finish_reason": "length",
+      "box_model_output_valid": false,
+      "box_judge_skipped": true,
+      "source_sha256": "6bb0831fb43fd62a0cbc96e16201e985b9f01ebcda75e1b49fef8d7d2071c67e"
+    },
+    {
+      "uid": "sci-980-20128547",
+      "external_gold": "SUPPORT",
+      "source_title": "Recovery of supraspinal control of stepping via indirect propriospinal relay connections after spinal cord injury",
+      "human_rationale_sentence_ids": [
+        3,
+        4
+      ],
+      "automatic_source_sentence_ids": [
+        0,
+        1,
+        2
+      ],
+      "human_gold_rationale_present_in_input": false,
+      "overlap_sentence_indices": [],
+      "direct_model_verdict": "SUPPORT",
+      "direct_model_quote_exact_input": true,
+      "direct_quote": "To investigate the neural basis of spontaneous recovery, we used kinematic, physiological and anatomical analyses to evaluate mice with various combinations of spatially and temporally separated lateral hemisections with or without the excitotoxic ablation of intrinsic spinal cord neurons.",
+      "box_extraction_finish_reason": "length",
+      "box_model_output_valid": false,
+      "box_judge_skipped": true,
+      "source_sha256": "7c2c54020ae5b0500640c9d90659fda1b9e86d2d14c4533117b40f837acab3ba"
+    },
+    {
+      "uid": "sci-925-17077004",
+      "external_gold": "CONTRADICT",
+      "source_title": "Stable partnership and progression to AIDS or death in HIV infected patients receiving highly active antiretroviral therapy: Swiss HIV cohort study.",
+      "human_rationale_sentence_ids": [
+        7,
+        9
+      ],
+      "automatic_source_sentence_ids": [
+        0,
+        1,
+        8,
+        9
+      ],
+      "human_gold_rationale_present_in_input": true,
+      "overlap_sentence_indices": [
+        9
+      ],
+      "direct_model_verdict": "SUPPORT",
+      "direct_model_quote_exact_input": true,
+      "direct_quote": "A stable partnership is associated with a slower rate of progression to AIDS or death in HIV infected patients receiving HAART.",
+      "box_extraction_finish_reason": "length",
+      "box_model_output_valid": false,
+      "box_judge_skipped": true,
+      "source_sha256": "3d96abc3e81096a7fcc319d6eba065795c28b19a5428a1835d37f9f4963019e2"
+    },
+    {
+      "uid": "sci-772-24922825",
+      "external_gold": "CONTRADICT",
+      "source_title": "A chikungunya fever vaccine utilizing an insect-specific virus platform",
+      "human_rationale_sentence_ids": [
+        7
+      ],
+      "automatic_source_sentence_ids": [
+        3,
+        4,
+        5,
+        6,
+        7,
+        8
+      ],
+      "human_gold_rationale_present_in_input": true,
+      "overlap_sentence_indices": [
+        7
+      ],
+      "direct_model_verdict": "SUPPORT",
+      "direct_model_quote_exact_input": true,
+      "direct_quote": "A single dose of EILV/CHIKV produced in mosquito cells elicited rapid (within 4 d) and long-lasting (>290 d) neutralizing antibodies that provided complete protection in two different mouse models.",
+      "box_extraction_finish_reason": "length",
+      "box_model_output_valid": false,
+      "box_judge_skipped": true,
+      "source_sha256": "504f90cb294cc07e57b8b63b6fbf2a632009399114e899e77fb73e02485620fd"
+    }
+  ]
+}
