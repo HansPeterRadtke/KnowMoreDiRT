@@ -1,0 +1,1349 @@
+{
+  "publisher": "Tal Schuster, Adam Fisch, Regina Barzilay, NAACL 2021 VitaminC, https://aclanthology.org/2021.naacl-main.52/",
+  "authors_source_revision": "tals/vitaminc@be6febb761b0b2807687e61e0b5282e459df2fa0, test.jsonl, CC BY-SA 3.0",
+  "original_test_sha256": "7ad1808dbc30c62e0a1427a53022d0dfaff668a1fde3c4b612a2d266edd753ad",
+  "frozen_model_input_selection_sha256": "a6c6fca2dd5de8674606c8496c7e6fb1918321ee16cf815cfe5d7ec2fdd9ed7c",
+  "completed_raw_model_prediction_sha256": "4a81587c84c69e70dca538d6c7ca93a2afa1714e750279b529fc448a2ab45330",
+  "scientific_question": "How frequently can an unchanged proposition have different entailment status depending on ORIGINAL SOURCE VERSION, and can an independently pretrained model track rather than merge two source passages?",
+  "full_original_real_four_way_subset": {
+    "n_same_claim_with_two_revision_variants": 11988,
+    "changed_source_entailment_labels": 11958,
+    "label_pair_frequency": {
+      "NOT ENOUGH INFO+REFUTES": 14,
+      "NOT ENOUGH INFO+SUPPORTS": 2082,
+      "SUPPORTS+SUPPORTS": 26,
+      "REFUTES+SUPPORTS": 9862,
+      "REFUTES+REFUTES": 4
+    },
+    "version_blind_one_label_max_accuracy_from_gold": 0.501251,
+    "why_upper_bound_only": "Version-unaware strategy must say same truth label for both evidence versions: when independent source gold differs it cannot be correct on both. This is a combinatorial oracle upper bound, NOT a measured retriever or an operational oracle classifier."
+  },
+  "frozen_separate_nli_sample": {
+    "n_case_groups": 700,
+    "n_fixed_claims": 1400,
+    "original_gold": {
+      "n_same_claim_with_two_revision_variants": 1400,
+      "changed_source_entailment_labels": 1396,
+      "label_pair_frequency": {
+        "REFUTES+SUPPORTS": 1148,
+        "NOT ENOUGH INFO+SUPPORTS": 248,
+        "SUPPORTS+SUPPORTS": 3,
+        "REFUTES+REFUTES": 1
+      },
+      "version_blind_one_label_max_accuracy_from_gold": 0.501429,
+      "why_upper_bound_only": "Version-unaware strategy must say same truth label for both evidence versions: when independent source gold differs it cannot be correct on both. This is a combinatorial oracle upper bound, NOT a measured retriever or an operational oracle classifier."
+    },
+    "model": {
+      "n_model_source_pairs": 2800,
+      "original_label_frequency": {
+        "SUPPORTS": 1402,
+        "REFUTES": 1150,
+        "NOT ENOUGH INFO": 248
+      },
+      "model_label_frequency": {
+        "NOT ENOUGH INFO": 1373,
+        "REFUTES": 670,
+        "SUPPORTS": 757
+      },
+      "model_accuracy_on_original_source_scoped_labels": 0.405714,
+      "model_correct": 1136,
+      "confusion": [
+        {
+          "human_source_label": "NOT ENOUGH INFO",
+          "model_predicted_label": "NOT ENOUGH INFO",
+          "count": 149
+        },
+        {
+          "human_source_label": "NOT ENOUGH INFO",
+          "model_predicted_label": "REFUTES",
+          "count": 75
+        },
+        {
+          "human_source_label": "NOT ENOUGH INFO",
+          "model_predicted_label": "SUPPORTS",
+          "count": 24
+        },
+        {
+          "human_source_label": "REFUTES",
+          "model_predicted_label": "NOT ENOUGH INFO",
+          "count": 536
+        },
+        {
+          "human_source_label": "REFUTES",
+          "model_predicted_label": "REFUTES",
+          "count": 434
+        },
+        {
+          "human_source_label": "REFUTES",
+          "model_predicted_label": "SUPPORTS",
+          "count": 180
+        },
+        {
+          "human_source_label": "SUPPORTS",
+          "model_predicted_label": "NOT ENOUGH INFO",
+          "count": 688
+        },
+        {
+          "human_source_label": "SUPPORTS",
+          "model_predicted_label": "REFUTES",
+          "count": 161
+        },
+        {
+          "human_source_label": "SUPPORTS",
+          "model_predicted_label": "SUPPORTS",
+          "count": 553
+        }
+      ],
+      "human_gold_label_flips_across_versions": 1396,
+      "model_predicted_label_flips_across_versions": 530,
+      "correctly_detected_label_flips": 529,
+      "unwarranted_predicted_label_flips": 1,
+      "missed_human_gold_label_flips": 867,
+      "model_label_flip_recall": 0.37894,
+      "model_label_flip_precision": 0.998113,
+      "both_source_versions_label_correct": 282,
+      "input_truncated_count": 4,
+      "observed_prediction_probabilities_source": "Unmodified raw_source_version_nli_predictions_20261025.jsonl; model selected its original label on each source variant, never saw human gold"
+    }
+  },
+  "clustered_change_frequency_uncertainty": {
+    "n_groups": 700,
+    "estimate": 0.997143,
+    "cluster_bootstrap_95CI": [
+      0.994286,
+      0.999286
+    ]
+  },
+  "controlled_example_errors": [
+    {
+      "case_id": "5ed7acfdc9e77c00084a54f9",
+      "page": "Chipotle Mexican Grill",
+      "source_label_changed_across_versions": true,
+      "source_label_combo": "REFUTES+SUPPORTS",
+      "same_claim_sha256": "a7bb226ed55bda7f5f5dabdd240b2407651e48b31ed7195495c4e8d7482034ec",
+      "unique_source_record_ids": [
+        "5ed7acfdc9e77c00084a54f9_1",
+        "5ed7acfdc9e77c00084a54f9_2"
+      ],
+      "original_source_hashes": [
+        "c1371dd07fd2dc72dc4632fe9c0cf18a4a6dfb9a4bdd4c522e07e2f1b45ecf9b",
+        "f870f5ec3db43ddef7348f3d2287c682538ccd91bce8b496583c8e225ee55d87"
+      ],
+      "model_label_changed_across_versions": true,
+      "human_labels_in_variant_order": [
+        "SUPPORTS",
+        "REFUTES"
+      ],
+      "model_labels_in_variant_order": [
+        "NOT ENOUGH INFO",
+        "REFUTES"
+      ],
+      "both_source_variants_classified_correctly": false,
+      "one_or_more_wrong": true,
+      "source_input_token_truncation_any": false
+    },
+    {
+      "case_id": "5ed7acfdc9e77c00084a54f9",
+      "page": "Chipotle Mexican Grill",
+      "source_label_changed_across_versions": true,
+      "source_label_combo": "REFUTES+SUPPORTS",
+      "same_claim_sha256": "87f040f26bb7c625eae22a3f33ebcc37f22110359927dbcc20005d24b12e6c61",
+      "unique_source_record_ids": [
+        "5ed7acfdc9e77c00084a54f9_3",
+        "5ed7acfdc9e77c00084a54f9_4"
+      ],
+      "original_source_hashes": [
+        "c1371dd07fd2dc72dc4632fe9c0cf18a4a6dfb9a4bdd4c522e07e2f1b45ecf9b",
+        "f870f5ec3db43ddef7348f3d2287c682538ccd91bce8b496583c8e225ee55d87"
+      ],
+      "model_label_changed_across_versions": false,
+      "human_labels_in_variant_order": [
+        "REFUTES",
+        "SUPPORTS"
+      ],
+      "model_labels_in_variant_order": [
+        "NOT ENOUGH INFO",
+        "NOT ENOUGH INFO"
+      ],
+      "both_source_variants_classified_correctly": false,
+      "one_or_more_wrong": true,
+      "source_input_token_truncation_any": false
+    },
+    {
+      "case_id": "5ec7d50ec9e77c0008442974",
+      "page": "The Heartland Institute",
+      "source_label_changed_across_versions": true,
+      "source_label_combo": "NOT ENOUGH INFO+SUPPORTS",
+      "same_claim_sha256": "974ce94a565bd1c79c5a2b9834015a058efb4364f1c529459698337758e0b975",
+      "unique_source_record_ids": [
+        "5ec7d50ec9e77c0008442974_1",
+        "5ec7d50ec9e77c0008442974_2"
+      ],
+      "original_source_hashes": [
+        "00616240a89c525eeaa5f852a45eba373d51d612239bd4674d30e9da4434b665",
+        "26686d635c4ad8217021edfe18239cb709371cfbdc77be93afd14400944ff62e"
+      ],
+      "model_label_changed_across_versions": true,
+      "human_labels_in_variant_order": [
+        "SUPPORTS",
+        "NOT ENOUGH INFO"
+      ],
+      "model_labels_in_variant_order": [
+        "NOT ENOUGH INFO",
+        "REFUTES"
+      ],
+      "both_source_variants_classified_correctly": false,
+      "one_or_more_wrong": true,
+      "source_input_token_truncation_any": false
+    },
+    {
+      "case_id": "5ec7d50ec9e77c0008442974",
+      "page": "The Heartland Institute",
+      "source_label_changed_across_versions": true,
+      "source_label_combo": "NOT ENOUGH INFO+SUPPORTS",
+      "same_claim_sha256": "d8eb8b70d7c98e35047a8dcef618ed94ae03af445c11eb58f4722888d13cef28",
+      "unique_source_record_ids": [
+        "5ec7d50ec9e77c0008442974_3",
+        "5ec7d50ec9e77c0008442974_4"
+      ],
+      "original_source_hashes": [
+        "00616240a89c525eeaa5f852a45eba373d51d612239bd4674d30e9da4434b665",
+        "26686d635c4ad8217021edfe18239cb709371cfbdc77be93afd14400944ff62e"
+      ],
+      "model_label_changed_across_versions": false,
+      "human_labels_in_variant_order": [
+        "NOT ENOUGH INFO",
+        "SUPPORTS"
+      ],
+      "model_labels_in_variant_order": [
+        "NOT ENOUGH INFO",
+        "NOT ENOUGH INFO"
+      ],
+      "both_source_variants_classified_correctly": false,
+      "one_or_more_wrong": true,
+      "source_input_token_truncation_any": false
+    },
+    {
+      "case_id": "5eb2988ac9e77c0008d9469f",
+      "page": "A Bug's Life",
+      "source_label_changed_across_versions": true,
+      "source_label_combo": "REFUTES+SUPPORTS",
+      "same_claim_sha256": "7e8741a85bab38f3783dfcb020fb30ca8a96b3b99e4231952d3b1f27dfcbfea4",
+      "unique_source_record_ids": [
+        "5eb2988ac9e77c0008d9469f_1",
+        "5eb2988ac9e77c0008d9469f_2"
+      ],
+      "original_source_hashes": [
+        "410309aff35b8025a0c57d4739c71880804f92f12cde03ec4bdd513ffd8e156a",
+        "fd93a87207f9cb2d229baa6fb88720c74d11d2f5400c8213b7bc69491b29f6b5"
+      ],
+      "model_label_changed_across_versions": true,
+      "human_labels_in_variant_order": [
+        "SUPPORTS",
+        "REFUTES"
+      ],
+      "model_labels_in_variant_order": [
+        "NOT ENOUGH INFO",
+        "REFUTES"
+      ],
+      "both_source_variants_classified_correctly": false,
+      "one_or_more_wrong": true,
+      "source_input_token_truncation_any": false
+    },
+    {
+      "case_id": "5eb2988ac9e77c0008d9469f",
+      "page": "A Bug's Life",
+      "source_label_changed_across_versions": true,
+      "source_label_combo": "REFUTES+SUPPORTS",
+      "same_claim_sha256": "2190aedb5dfb0d0329ce91cb4e4a0b50dff718e458e94232df3433fad7226bce",
+      "unique_source_record_ids": [
+        "5eb2988ac9e77c0008d9469f_3",
+        "5eb2988ac9e77c0008d9469f_4"
+      ],
+      "original_source_hashes": [
+        "410309aff35b8025a0c57d4739c71880804f92f12cde03ec4bdd513ffd8e156a",
+        "fd93a87207f9cb2d229baa6fb88720c74d11d2f5400c8213b7bc69491b29f6b5"
+      ],
+      "model_label_changed_across_versions": true,
+      "human_labels_in_variant_order": [
+        "REFUTES",
+        "SUPPORTS"
+      ],
+      "model_labels_in_variant_order": [
+        "REFUTES",
+        "NOT ENOUGH INFO"
+      ],
+      "both_source_variants_classified_correctly": false,
+      "one_or_more_wrong": true,
+      "source_input_token_truncation_any": false
+    },
+    {
+      "case_id": "5ec284fdc9e77c0008416ba0",
+      "page": "Thrift Shop",
+      "source_label_changed_across_versions": true,
+      "source_label_combo": "REFUTES+SUPPORTS",
+      "same_claim_sha256": "32e002128eabb9c1ce532e7c3fb06419ddf08eb2bcf144be52869b77a88191b5",
+      "unique_source_record_ids": [
+        "5ec284fdc9e77c0008416ba0_1",
+        "5ec284fdc9e77c0008416ba0_2"
+      ],
+      "original_source_hashes": [
+        "f4565f23dce07c346a7b0ec0583ff46abc39fa6e10728e8090df6bd25943e1e9",
+        "fedf0a2d8f40655bd296bf1f2f28715eb7d49212c710880b55342cc24b2d123a"
+      ],
+      "model_label_changed_across_versions": false,
+      "human_labels_in_variant_order": [
+        "SUPPORTS",
+        "REFUTES"
+      ],
+      "model_labels_in_variant_order": [
+        "NOT ENOUGH INFO",
+        "NOT ENOUGH INFO"
+      ],
+      "both_source_variants_classified_correctly": false,
+      "one_or_more_wrong": true,
+      "source_input_token_truncation_any": false
+    },
+    {
+      "case_id": "5ec284fdc9e77c0008416ba0",
+      "page": "Thrift Shop",
+      "source_label_changed_across_versions": true,
+      "source_label_combo": "REFUTES+SUPPORTS",
+      "same_claim_sha256": "7af08e9245463f4c25ac5c2db4681ac4b4f913a00f8044ad29a53a8d3b43e4ed",
+      "unique_source_record_ids": [
+        "5ec284fdc9e77c0008416ba0_3",
+        "5ec284fdc9e77c0008416ba0_4"
+      ],
+      "original_source_hashes": [
+        "f4565f23dce07c346a7b0ec0583ff46abc39fa6e10728e8090df6bd25943e1e9",
+        "fedf0a2d8f40655bd296bf1f2f28715eb7d49212c710880b55342cc24b2d123a"
+      ],
+      "model_label_changed_across_versions": false,
+      "human_labels_in_variant_order": [
+        "REFUTES",
+        "SUPPORTS"
+      ],
+      "model_labels_in_variant_order": [
+        "NOT ENOUGH INFO",
+        "NOT ENOUGH INFO"
+      ],
+      "both_source_variants_classified_correctly": false,
+      "one_or_more_wrong": true,
+      "source_input_token_truncation_any": false
+    },
+    {
+      "case_id": "5ee3932bc9e77c0008cca62a",
+      "page": "2020 coronavirus pandemic in Germany",
+      "source_label_changed_across_versions": true,
+      "source_label_combo": "REFUTES+SUPPORTS",
+      "same_claim_sha256": "1f90837cce431ee2566b89e98d7989661cacb051f789a5d93b0aa81c19c6c9ec",
+      "unique_source_record_ids": [
+        "5ee3932bc9e77c0008cca62a_1",
+        "5ee3932bc9e77c0008cca62a_2"
+      ],
+      "original_source_hashes": [
+        "1f383e6d4c7dd15393409671ae3143275dccc1c0da29f14878d58e03cd4c7583",
+        "51c73aafaad113309331403af89d89982db294a57df29178b90cc14aa07df991"
+      ],
+      "model_label_changed_across_versions": false,
+      "human_labels_in_variant_order": [
+        "SUPPORTS",
+        "REFUTES"
+      ],
+      "model_labels_in_variant_order": [
+        "NOT ENOUGH INFO",
+        "NOT ENOUGH INFO"
+      ],
+      "both_source_variants_classified_correctly": false,
+      "one_or_more_wrong": true,
+      "source_input_token_truncation_any": false
+    },
+    {
+      "case_id": "5ee3932bc9e77c0008cca62a",
+      "page": "2020 coronavirus pandemic in Germany",
+      "source_label_changed_across_versions": true,
+      "source_label_combo": "REFUTES+SUPPORTS",
+      "same_claim_sha256": "052db7e3bccc39d3ae91e97aac6ce6bb9c33a53d7b8dd44640231763993b26c9",
+      "unique_source_record_ids": [
+        "5ee3932bc9e77c0008cca62a_3",
+        "5ee3932bc9e77c0008cca62a_4"
+      ],
+      "original_source_hashes": [
+        "1f383e6d4c7dd15393409671ae3143275dccc1c0da29f14878d58e03cd4c7583",
+        "51c73aafaad113309331403af89d89982db294a57df29178b90cc14aa07df991"
+      ],
+      "model_label_changed_across_versions": false,
+      "human_labels_in_variant_order": [
+        "REFUTES",
+        "SUPPORTS"
+      ],
+      "model_labels_in_variant_order": [
+        "NOT ENOUGH INFO",
+        "NOT ENOUGH INFO"
+      ],
+      "both_source_variants_classified_correctly": false,
+      "one_or_more_wrong": true,
+      "source_input_token_truncation_any": false
+    },
+    {
+      "case_id": "5ee3932cc9e77c0008ccb1ae",
+      "page": "2020 coronavirus pandemic in Germany",
+      "source_label_changed_across_versions": true,
+      "source_label_combo": "REFUTES+SUPPORTS",
+      "same_claim_sha256": "bf5857ef27bcb32cd9448cc5efac5d00dcf456a383743595d4dc73f375eb1a3f",
+      "unique_source_record_ids": [
+        "5ee3932cc9e77c0008ccb1ae_1",
+        "5ee3932cc9e77c0008ccb1ae_2"
+      ],
+      "original_source_hashes": [
+        "e75c546719fdc1ff37e1544a2a149bba1d4ae189131706e5dfb9a98a5872f78a",
+        "43835bb2302c7be53022a6b66783dcc9f1000d73df2b0aa81ee23d2074bb151f"
+      ],
+      "model_label_changed_across_versions": false,
+      "human_labels_in_variant_order": [
+        "SUPPORTS",
+        "REFUTES"
+      ],
+      "model_labels_in_variant_order": [
+        "NOT ENOUGH INFO",
+        "NOT ENOUGH INFO"
+      ],
+      "both_source_variants_classified_correctly": false,
+      "one_or_more_wrong": true,
+      "source_input_token_truncation_any": false
+    },
+    {
+      "case_id": "5ee3932cc9e77c0008ccb1ae",
+      "page": "2020 coronavirus pandemic in Germany",
+      "source_label_changed_across_versions": true,
+      "source_label_combo": "REFUTES+SUPPORTS",
+      "same_claim_sha256": "b75eb6a66c984eecdae40976ff3529e90a159b75cfff41bd760c3c3ebbb51fd8",
+      "unique_source_record_ids": [
+        "5ee3932cc9e77c0008ccb1ae_3",
+        "5ee3932cc9e77c0008ccb1ae_4"
+      ],
+      "original_source_hashes": [
+        "e75c546719fdc1ff37e1544a2a149bba1d4ae189131706e5dfb9a98a5872f78a",
+        "43835bb2302c7be53022a6b66783dcc9f1000d73df2b0aa81ee23d2074bb151f"
+      ],
+      "model_label_changed_across_versions": false,
+      "human_labels_in_variant_order": [
+        "REFUTES",
+        "SUPPORTS"
+      ],
+      "model_labels_in_variant_order": [
+        "NOT ENOUGH INFO",
+        "NOT ENOUGH INFO"
+      ],
+      "both_source_variants_classified_correctly": false,
+      "one_or_more_wrong": true,
+      "source_input_token_truncation_any": false
+    },
+    {
+      "case_id": "5ece9460c9e77c0008465907",
+      "page": "Prophets of Rage",
+      "source_label_changed_across_versions": true,
+      "source_label_combo": "NOT ENOUGH INFO+SUPPORTS",
+      "same_claim_sha256": "ed130f0c730e8468494e47e77b4c7c1922c5b2f51383a4210018ba8f3e42cf78",
+      "unique_source_record_ids": [
+        "5ece9460c9e77c0008465907_1",
+        "5ece9460c9e77c0008465907_2"
+      ],
+      "original_source_hashes": [
+        "349e35baeae67022d8c22a970bf87a637f6aeca249ef6c87144b69ba5da91c31",
+        "cc312e4721dc12447310ef51d8c1c32cc0d993f2e72a0fe8a13a6e5478e25a5a"
+      ],
+      "model_label_changed_across_versions": true,
+      "human_labels_in_variant_order": [
+        "SUPPORTS",
+        "NOT ENOUGH INFO"
+      ],
+      "model_labels_in_variant_order": [
+        "NOT ENOUGH INFO",
+        "REFUTES"
+      ],
+      "both_source_variants_classified_correctly": false,
+      "one_or_more_wrong": true,
+      "source_input_token_truncation_any": false
+    },
+    {
+      "case_id": "5ece9460c9e77c0008465907",
+      "page": "Prophets of Rage",
+      "source_label_changed_across_versions": true,
+      "source_label_combo": "NOT ENOUGH INFO+SUPPORTS",
+      "same_claim_sha256": "a13857a9ec8a45c862c928138007b362b927c3f73ca9d978b6d9a41ad3e950d9",
+      "unique_source_record_ids": [
+        "5ece9460c9e77c0008465907_3",
+        "5ece9460c9e77c0008465907_4"
+      ],
+      "original_source_hashes": [
+        "349e35baeae67022d8c22a970bf87a637f6aeca249ef6c87144b69ba5da91c31",
+        "cc312e4721dc12447310ef51d8c1c32cc0d993f2e72a0fe8a13a6e5478e25a5a"
+      ],
+      "model_label_changed_across_versions": true,
+      "human_labels_in_variant_order": [
+        "NOT ENOUGH INFO",
+        "SUPPORTS"
+      ],
+      "model_labels_in_variant_order": [
+        "REFUTES",
+        "NOT ENOUGH INFO"
+      ],
+      "both_source_variants_classified_correctly": false,
+      "one_or_more_wrong": true,
+      "source_input_token_truncation_any": false
+    },
+    {
+      "case_id": "5ec284fdc9e77c000841693e",
+      "page": "Book Club -LRB-film-RRB-",
+      "source_label_changed_across_versions": true,
+      "source_label_combo": "REFUTES+SUPPORTS",
+      "same_claim_sha256": "225ef7181c9bd53c7906715398f71a413a81b933123bd9ef303aa685fe392afc",
+      "unique_source_record_ids": [
+        "5ec284fdc9e77c000841693e_1",
+        "5ec284fdc9e77c000841693e_2"
+      ],
+      "original_source_hashes": [
+        "1172f8a22106a1fbcef058b155eb7d3d10fc78234365d3177cd5715de9be8ef8",
+        "4ab742c20f2dea724481587acf2da31bb487f4e45cf817dc4071812c6334780d"
+      ],
+      "model_label_changed_across_versions": true,
+      "human_labels_in_variant_order": [
+        "SUPPORTS",
+        "REFUTES"
+      ],
+      "model_labels_in_variant_order": [
+        "REFUTES",
+        "NOT ENOUGH INFO"
+      ],
+      "both_source_variants_classified_correctly": false,
+      "one_or_more_wrong": true,
+      "source_input_token_truncation_any": false
+    },
+    {
+      "case_id": "5ec284fdc9e77c000841693e",
+      "page": "Book Club -LRB-film-RRB-",
+      "source_label_changed_across_versions": true,
+      "source_label_combo": "REFUTES+SUPPORTS",
+      "same_claim_sha256": "55b1d2891624f316d0dc1c714dafdb8103e74e4b072cc929c36f610b36586e53",
+      "unique_source_record_ids": [
+        "5ec284fdc9e77c000841693e_3",
+        "5ec284fdc9e77c000841693e_4"
+      ],
+      "original_source_hashes": [
+        "1172f8a22106a1fbcef058b155eb7d3d10fc78234365d3177cd5715de9be8ef8",
+        "4ab742c20f2dea724481587acf2da31bb487f4e45cf817dc4071812c6334780d"
+      ],
+      "model_label_changed_across_versions": false,
+      "human_labels_in_variant_order": [
+        "REFUTES",
+        "SUPPORTS"
+      ],
+      "model_labels_in_variant_order": [
+        "NOT ENOUGH INFO",
+        "NOT ENOUGH INFO"
+      ],
+      "both_source_variants_classified_correctly": false,
+      "one_or_more_wrong": true,
+      "source_input_token_truncation_any": false
+    },
+    {
+      "case_id": "5ec284fec9e77c00084172f1",
+      "page": "Jadon Sancho",
+      "source_label_changed_across_versions": true,
+      "source_label_combo": "REFUTES+SUPPORTS",
+      "same_claim_sha256": "331f8f2ac0d17732a6a54aaccd74bcba0097fd6e3d03ec44e2d80213806ae458",
+      "unique_source_record_ids": [
+        "5ec284fec9e77c00084172f1_1",
+        "5ec284fec9e77c00084172f1_2"
+      ],
+      "original_source_hashes": [
+        "14239958177fbe3144856f9d72f35fc72f04761c737aa4f42bb1af182d90bf0a",
+        "a344a4b806f9c00d756e3f6d365196c10aacd56b72cbc549735b9ade2052f8e8"
+      ],
+      "model_label_changed_across_versions": false,
+      "human_labels_in_variant_order": [
+        "SUPPORTS",
+        "REFUTES"
+      ],
+      "model_labels_in_variant_order": [
+        "SUPPORTS",
+        "SUPPORTS"
+      ],
+      "both_source_variants_classified_correctly": false,
+      "one_or_more_wrong": true,
+      "source_input_token_truncation_any": false
+    },
+    {
+      "case_id": "5ee3932cc9e77c0008ccaa7e",
+      "page": "2020 coronavirus pandemic in Romania",
+      "source_label_changed_across_versions": true,
+      "source_label_combo": "NOT ENOUGH INFO+SUPPORTS",
+      "same_claim_sha256": "da30cc85b1051fc5f6b4271724cec53dab761f7981ff95b7618fbd3b64749751",
+      "unique_source_record_ids": [
+        "5ee3932cc9e77c0008ccaa7e_1",
+        "5ee3932cc9e77c0008ccaa7e_2"
+      ],
+      "original_source_hashes": [
+        "f6077b9eb6cc8ee9fd37b8cfa8ca06a3dfa19097f335d6d48381b849e7d1d648",
+        "117080e201c467412893aabb4579615315c1eb13a165f47120d27992c1a8c3b4"
+      ],
+      "model_label_changed_across_versions": false,
+      "human_labels_in_variant_order": [
+        "SUPPORTS",
+        "NOT ENOUGH INFO"
+      ],
+      "model_labels_in_variant_order": [
+        "NOT ENOUGH INFO",
+        "NOT ENOUGH INFO"
+      ],
+      "both_source_variants_classified_correctly": false,
+      "one_or_more_wrong": true,
+      "source_input_token_truncation_any": false
+    },
+    {
+      "case_id": "5ee3932cc9e77c0008ccaa7e",
+      "page": "2020 coronavirus pandemic in Romania",
+      "source_label_changed_across_versions": true,
+      "source_label_combo": "NOT ENOUGH INFO+SUPPORTS",
+      "same_claim_sha256": "e95c0c81a14b33e5366dbcabe5e20d6290d8d05722f3e10b27809fdbb871ef14",
+      "unique_source_record_ids": [
+        "5ee3932cc9e77c0008ccaa7e_3",
+        "5ee3932cc9e77c0008ccaa7e_4"
+      ],
+      "original_source_hashes": [
+        "f6077b9eb6cc8ee9fd37b8cfa8ca06a3dfa19097f335d6d48381b849e7d1d648",
+        "117080e201c467412893aabb4579615315c1eb13a165f47120d27992c1a8c3b4"
+      ],
+      "model_label_changed_across_versions": false,
+      "human_labels_in_variant_order": [
+        "NOT ENOUGH INFO",
+        "SUPPORTS"
+      ],
+      "model_labels_in_variant_order": [
+        "NOT ENOUGH INFO",
+        "NOT ENOUGH INFO"
+      ],
+      "both_source_variants_classified_correctly": false,
+      "one_or_more_wrong": true,
+      "source_input_token_truncation_any": false
+    },
+    {
+      "case_id": "5ec284fdc9e77c0008416945",
+      "page": "Book Club -LRB-film-RRB-",
+      "source_label_changed_across_versions": true,
+      "source_label_combo": "REFUTES+SUPPORTS",
+      "same_claim_sha256": "e1f05d4d859ed692aec446a47794535e17185ee3439c6323fc181f88460e98da",
+      "unique_source_record_ids": [
+        "5ec284fdc9e77c0008416945_1",
+        "5ec284fdc9e77c0008416945_2"
+      ],
+      "original_source_hashes": [
+        "791e2d84acdc6f93a2389bd7c85e300a3a770b772f8bf1039001cb93297a3a54",
+        "9243836d20645ba3222dea9e49fcade8e9f67dc2619b72001a0d1bb1975689cc"
+      ],
+      "model_label_changed_across_versions": false,
+      "human_labels_in_variant_order": [
+        "SUPPORTS",
+        "REFUTES"
+      ],
+      "model_labels_in_variant_order": [
+        "REFUTES",
+        "REFUTES"
+      ],
+      "both_source_variants_classified_correctly": false,
+      "one_or_more_wrong": true,
+      "source_input_token_truncation_any": false
+    },
+    {
+      "case_id": "5ec284fdc9e77c0008416945",
+      "page": "Book Club -LRB-film-RRB-",
+      "source_label_changed_across_versions": true,
+      "source_label_combo": "REFUTES+SUPPORTS",
+      "same_claim_sha256": "f0ed3da194e1caae8179eadd0b6698da8031ad8c8b1f89f5805d92bcdfab13b5",
+      "unique_source_record_ids": [
+        "5ec284fdc9e77c0008416945_3",
+        "5ec284fdc9e77c0008416945_4"
+      ],
+      "original_source_hashes": [
+        "791e2d84acdc6f93a2389bd7c85e300a3a770b772f8bf1039001cb93297a3a54",
+        "9243836d20645ba3222dea9e49fcade8e9f67dc2619b72001a0d1bb1975689cc"
+      ],
+      "model_label_changed_across_versions": false,
+      "human_labels_in_variant_order": [
+        "REFUTES",
+        "SUPPORTS"
+      ],
+      "model_labels_in_variant_order": [
+        "SUPPORTS",
+        "SUPPORTS"
+      ],
+      "both_source_variants_classified_correctly": false,
+      "one_or_more_wrong": true,
+      "source_input_token_truncation_any": false
+    },
+    {
+      "case_id": "5ebe6f31c9e77c00084091ce",
+      "page": "2010 New England Patriots season",
+      "source_label_changed_across_versions": true,
+      "source_label_combo": "NOT ENOUGH INFO+SUPPORTS",
+      "same_claim_sha256": "e915bb7372f26605e8663f4d6332e9f1d953eb28573e794a7d6a02c658762da0",
+      "unique_source_record_ids": [
+        "5ebe6f31c9e77c00084091ce_1",
+        "5ebe6f31c9e77c00084091ce_2"
+      ],
+      "original_source_hashes": [
+        "72f7101dca35ac1f5fabdf08ec3368e76217cc2f2317cd2356a367c7d4a39647",
+        "4e6d86286a59aaff7409b28a435eee84859dc6242075a39823129233e20f9455"
+      ],
+      "model_label_changed_across_versions": true,
+      "human_labels_in_variant_order": [
+        "SUPPORTS",
+        "NOT ENOUGH INFO"
+      ],
+      "model_labels_in_variant_order": [
+        "SUPPORTS",
+        "REFUTES"
+      ],
+      "both_source_variants_classified_correctly": false,
+      "one_or_more_wrong": true,
+      "source_input_token_truncation_any": false
+    },
+    {
+      "case_id": "5ebe6f31c9e77c00084091ce",
+      "page": "2010 New England Patriots season",
+      "source_label_changed_across_versions": true,
+      "source_label_combo": "NOT ENOUGH INFO+SUPPORTS",
+      "same_claim_sha256": "73c3ca8610123106c3914dad7aef112bfa84dc010eb508492f20e758c3edb7bc",
+      "unique_source_record_ids": [
+        "5ebe6f31c9e77c00084091ce_3",
+        "5ebe6f31c9e77c00084091ce_4"
+      ],
+      "original_source_hashes": [
+        "72f7101dca35ac1f5fabdf08ec3368e76217cc2f2317cd2356a367c7d4a39647",
+        "4e6d86286a59aaff7409b28a435eee84859dc6242075a39823129233e20f9455"
+      ],
+      "model_label_changed_across_versions": true,
+      "human_labels_in_variant_order": [
+        "NOT ENOUGH INFO",
+        "SUPPORTS"
+      ],
+      "model_labels_in_variant_order": [
+        "REFUTES",
+        "SUPPORTS"
+      ],
+      "both_source_variants_classified_correctly": false,
+      "one_or_more_wrong": true,
+      "source_input_token_truncation_any": false
+    },
+    {
+      "case_id": "5eafed7ec9e77c0009ce0d81",
+      "page": "The Night Before -LRB-2015 film-RRB-",
+      "source_label_changed_across_versions": true,
+      "source_label_combo": "REFUTES+SUPPORTS",
+      "same_claim_sha256": "13b66fbb523ea9e102450089296940bd6b241f7a59495e841bb9aff9a4bfaab8",
+      "unique_source_record_ids": [
+        "5eafed7ec9e77c0009ce0d81_1",
+        "5eafed7ec9e77c0009ce0d81_2"
+      ],
+      "original_source_hashes": [
+        "5abecf4fb13ca7dbfa1b3f179e850143361e4440983eae878b7e3978823b85d4",
+        "baf1d6e8bb3fc781a38fdd3b36e70ed6a1ca3d78743e6dad4446ebab3cd43a3e"
+      ],
+      "model_label_changed_across_versions": false,
+      "human_labels_in_variant_order": [
+        "SUPPORTS",
+        "REFUTES"
+      ],
+      "model_labels_in_variant_order": [
+        "NOT ENOUGH INFO",
+        "NOT ENOUGH INFO"
+      ],
+      "both_source_variants_classified_correctly": false,
+      "one_or_more_wrong": true,
+      "source_input_token_truncation_any": false
+    }
+  ],
+  "actual_source_scoped_prediction_cases": [
+    {
+      "case_id": "5ed7acfdc9e77c00084a54f9",
+      "page": "Chipotle Mexican Grill",
+      "transition_revision_id": "814649834",
+      "pairs": [
+        {
+          "source_label_changed_across_versions": true,
+          "source_label_combo": "REFUTES+SUPPORTS",
+          "same_claim_sha256": "a7bb226ed55bda7f5f5dabdd240b2407651e48b31ed7195495c4e8d7482034ec",
+          "unique_source_record_ids": [
+            "5ed7acfdc9e77c00084a54f9_1",
+            "5ed7acfdc9e77c00084a54f9_2"
+          ],
+          "original_source_hashes": [
+            "c1371dd07fd2dc72dc4632fe9c0cf18a4a6dfb9a4bdd4c522e07e2f1b45ecf9b",
+            "f870f5ec3db43ddef7348f3d2287c682538ccd91bce8b496583c8e225ee55d87"
+          ],
+          "model_label_changed_across_versions": true,
+          "human_labels_in_variant_order": [
+            "SUPPORTS",
+            "REFUTES"
+          ],
+          "model_labels_in_variant_order": [
+            "NOT ENOUGH INFO",
+            "REFUTES"
+          ],
+          "both_source_variants_classified_correctly": false,
+          "one_or_more_wrong": true,
+          "source_input_token_truncation_any": false
+        },
+        {
+          "source_label_changed_across_versions": true,
+          "source_label_combo": "REFUTES+SUPPORTS",
+          "same_claim_sha256": "87f040f26bb7c625eae22a3f33ebcc37f22110359927dbcc20005d24b12e6c61",
+          "unique_source_record_ids": [
+            "5ed7acfdc9e77c00084a54f9_3",
+            "5ed7acfdc9e77c00084a54f9_4"
+          ],
+          "original_source_hashes": [
+            "c1371dd07fd2dc72dc4632fe9c0cf18a4a6dfb9a4bdd4c522e07e2f1b45ecf9b",
+            "f870f5ec3db43ddef7348f3d2287c682538ccd91bce8b496583c8e225ee55d87"
+          ],
+          "model_label_changed_across_versions": false,
+          "human_labels_in_variant_order": [
+            "REFUTES",
+            "SUPPORTS"
+          ],
+          "model_labels_in_variant_order": [
+            "NOT ENOUGH INFO",
+            "NOT ENOUGH INFO"
+          ],
+          "both_source_variants_classified_correctly": false,
+          "one_or_more_wrong": true,
+          "source_input_token_truncation_any": false
+        }
+      ]
+    },
+    {
+      "case_id": "5ec7d50ec9e77c0008442974",
+      "page": "The Heartland Institute",
+      "transition_revision_id": "889495530",
+      "pairs": [
+        {
+          "source_label_changed_across_versions": true,
+          "source_label_combo": "NOT ENOUGH INFO+SUPPORTS",
+          "same_claim_sha256": "974ce94a565bd1c79c5a2b9834015a058efb4364f1c529459698337758e0b975",
+          "unique_source_record_ids": [
+            "5ec7d50ec9e77c0008442974_1",
+            "5ec7d50ec9e77c0008442974_2"
+          ],
+          "original_source_hashes": [
+            "00616240a89c525eeaa5f852a45eba373d51d612239bd4674d30e9da4434b665",
+            "26686d635c4ad8217021edfe18239cb709371cfbdc77be93afd14400944ff62e"
+          ],
+          "model_label_changed_across_versions": true,
+          "human_labels_in_variant_order": [
+            "SUPPORTS",
+            "NOT ENOUGH INFO"
+          ],
+          "model_labels_in_variant_order": [
+            "NOT ENOUGH INFO",
+            "REFUTES"
+          ],
+          "both_source_variants_classified_correctly": false,
+          "one_or_more_wrong": true,
+          "source_input_token_truncation_any": false
+        },
+        {
+          "source_label_changed_across_versions": true,
+          "source_label_combo": "NOT ENOUGH INFO+SUPPORTS",
+          "same_claim_sha256": "d8eb8b70d7c98e35047a8dcef618ed94ae03af445c11eb58f4722888d13cef28",
+          "unique_source_record_ids": [
+            "5ec7d50ec9e77c0008442974_3",
+            "5ec7d50ec9e77c0008442974_4"
+          ],
+          "original_source_hashes": [
+            "00616240a89c525eeaa5f852a45eba373d51d612239bd4674d30e9da4434b665",
+            "26686d635c4ad8217021edfe18239cb709371cfbdc77be93afd14400944ff62e"
+          ],
+          "model_label_changed_across_versions": false,
+          "human_labels_in_variant_order": [
+            "NOT ENOUGH INFO",
+            "SUPPORTS"
+          ],
+          "model_labels_in_variant_order": [
+            "NOT ENOUGH INFO",
+            "NOT ENOUGH INFO"
+          ],
+          "both_source_variants_classified_correctly": false,
+          "one_or_more_wrong": true,
+          "source_input_token_truncation_any": false
+        }
+      ]
+    },
+    {
+      "case_id": "5eb2988ac9e77c0008d9469f",
+      "page": "A Bug's Life",
+      "transition_revision_id": "897454946",
+      "pairs": [
+        {
+          "source_label_changed_across_versions": true,
+          "source_label_combo": "REFUTES+SUPPORTS",
+          "same_claim_sha256": "7e8741a85bab38f3783dfcb020fb30ca8a96b3b99e4231952d3b1f27dfcbfea4",
+          "unique_source_record_ids": [
+            "5eb2988ac9e77c0008d9469f_1",
+            "5eb2988ac9e77c0008d9469f_2"
+          ],
+          "original_source_hashes": [
+            "410309aff35b8025a0c57d4739c71880804f92f12cde03ec4bdd513ffd8e156a",
+            "fd93a87207f9cb2d229baa6fb88720c74d11d2f5400c8213b7bc69491b29f6b5"
+          ],
+          "model_label_changed_across_versions": true,
+          "human_labels_in_variant_order": [
+            "SUPPORTS",
+            "REFUTES"
+          ],
+          "model_labels_in_variant_order": [
+            "NOT ENOUGH INFO",
+            "REFUTES"
+          ],
+          "both_source_variants_classified_correctly": false,
+          "one_or_more_wrong": true,
+          "source_input_token_truncation_any": false
+        },
+        {
+          "source_label_changed_across_versions": true,
+          "source_label_combo": "REFUTES+SUPPORTS",
+          "same_claim_sha256": "2190aedb5dfb0d0329ce91cb4e4a0b50dff718e458e94232df3433fad7226bce",
+          "unique_source_record_ids": [
+            "5eb2988ac9e77c0008d9469f_3",
+            "5eb2988ac9e77c0008d9469f_4"
+          ],
+          "original_source_hashes": [
+            "410309aff35b8025a0c57d4739c71880804f92f12cde03ec4bdd513ffd8e156a",
+            "fd93a87207f9cb2d229baa6fb88720c74d11d2f5400c8213b7bc69491b29f6b5"
+          ],
+          "model_label_changed_across_versions": true,
+          "human_labels_in_variant_order": [
+            "REFUTES",
+            "SUPPORTS"
+          ],
+          "model_labels_in_variant_order": [
+            "REFUTES",
+            "NOT ENOUGH INFO"
+          ],
+          "both_source_variants_classified_correctly": false,
+          "one_or_more_wrong": true,
+          "source_input_token_truncation_any": false
+        }
+      ]
+    },
+    {
+      "case_id": "5ec284fdc9e77c0008416ba0",
+      "page": "Thrift Shop",
+      "transition_revision_id": "655090476",
+      "pairs": [
+        {
+          "source_label_changed_across_versions": true,
+          "source_label_combo": "REFUTES+SUPPORTS",
+          "same_claim_sha256": "32e002128eabb9c1ce532e7c3fb06419ddf08eb2bcf144be52869b77a88191b5",
+          "unique_source_record_ids": [
+            "5ec284fdc9e77c0008416ba0_1",
+            "5ec284fdc9e77c0008416ba0_2"
+          ],
+          "original_source_hashes": [
+            "f4565f23dce07c346a7b0ec0583ff46abc39fa6e10728e8090df6bd25943e1e9",
+            "fedf0a2d8f40655bd296bf1f2f28715eb7d49212c710880b55342cc24b2d123a"
+          ],
+          "model_label_changed_across_versions": false,
+          "human_labels_in_variant_order": [
+            "SUPPORTS",
+            "REFUTES"
+          ],
+          "model_labels_in_variant_order": [
+            "NOT ENOUGH INFO",
+            "NOT ENOUGH INFO"
+          ],
+          "both_source_variants_classified_correctly": false,
+          "one_or_more_wrong": true,
+          "source_input_token_truncation_any": false
+        },
+        {
+          "source_label_changed_across_versions": true,
+          "source_label_combo": "REFUTES+SUPPORTS",
+          "same_claim_sha256": "7af08e9245463f4c25ac5c2db4681ac4b4f913a00f8044ad29a53a8d3b43e4ed",
+          "unique_source_record_ids": [
+            "5ec284fdc9e77c0008416ba0_3",
+            "5ec284fdc9e77c0008416ba0_4"
+          ],
+          "original_source_hashes": [
+            "f4565f23dce07c346a7b0ec0583ff46abc39fa6e10728e8090df6bd25943e1e9",
+            "fedf0a2d8f40655bd296bf1f2f28715eb7d49212c710880b55342cc24b2d123a"
+          ],
+          "model_label_changed_across_versions": false,
+          "human_labels_in_variant_order": [
+            "REFUTES",
+            "SUPPORTS"
+          ],
+          "model_labels_in_variant_order": [
+            "NOT ENOUGH INFO",
+            "NOT ENOUGH INFO"
+          ],
+          "both_source_variants_classified_correctly": false,
+          "one_or_more_wrong": true,
+          "source_input_token_truncation_any": false
+        }
+      ]
+    },
+    {
+      "case_id": "5ee3932bc9e77c0008cca62a",
+      "page": "2020 coronavirus pandemic in Germany",
+      "transition_revision_id": "947792737",
+      "pairs": [
+        {
+          "source_label_changed_across_versions": true,
+          "source_label_combo": "REFUTES+SUPPORTS",
+          "same_claim_sha256": "1f90837cce431ee2566b89e98d7989661cacb051f789a5d93b0aa81c19c6c9ec",
+          "unique_source_record_ids": [
+            "5ee3932bc9e77c0008cca62a_1",
+            "5ee3932bc9e77c0008cca62a_2"
+          ],
+          "original_source_hashes": [
+            "1f383e6d4c7dd15393409671ae3143275dccc1c0da29f14878d58e03cd4c7583",
+            "51c73aafaad113309331403af89d89982db294a57df29178b90cc14aa07df991"
+          ],
+          "model_label_changed_across_versions": false,
+          "human_labels_in_variant_order": [
+            "SUPPORTS",
+            "REFUTES"
+          ],
+          "model_labels_in_variant_order": [
+            "NOT ENOUGH INFO",
+            "NOT ENOUGH INFO"
+          ],
+          "both_source_variants_classified_correctly": false,
+          "one_or_more_wrong": true,
+          "source_input_token_truncation_any": false
+        },
+        {
+          "source_label_changed_across_versions": true,
+          "source_label_combo": "REFUTES+SUPPORTS",
+          "same_claim_sha256": "052db7e3bccc39d3ae91e97aac6ce6bb9c33a53d7b8dd44640231763993b26c9",
+          "unique_source_record_ids": [
+            "5ee3932bc9e77c0008cca62a_3",
+            "5ee3932bc9e77c0008cca62a_4"
+          ],
+          "original_source_hashes": [
+            "1f383e6d4c7dd15393409671ae3143275dccc1c0da29f14878d58e03cd4c7583",
+            "51c73aafaad113309331403af89d89982db294a57df29178b90cc14aa07df991"
+          ],
+          "model_label_changed_across_versions": false,
+          "human_labels_in_variant_order": [
+            "REFUTES",
+            "SUPPORTS"
+          ],
+          "model_labels_in_variant_order": [
+            "NOT ENOUGH INFO",
+            "NOT ENOUGH INFO"
+          ],
+          "both_source_variants_classified_correctly": false,
+          "one_or_more_wrong": true,
+          "source_input_token_truncation_any": false
+        }
+      ]
+    },
+    {
+      "case_id": "5ee3932cc9e77c0008ccb1ae",
+      "page": "2020 coronavirus pandemic in Germany",
+      "transition_revision_id": "944198178",
+      "pairs": [
+        {
+          "source_label_changed_across_versions": true,
+          "source_label_combo": "REFUTES+SUPPORTS",
+          "same_claim_sha256": "bf5857ef27bcb32cd9448cc5efac5d00dcf456a383743595d4dc73f375eb1a3f",
+          "unique_source_record_ids": [
+            "5ee3932cc9e77c0008ccb1ae_1",
+            "5ee3932cc9e77c0008ccb1ae_2"
+          ],
+          "original_source_hashes": [
+            "e75c546719fdc1ff37e1544a2a149bba1d4ae189131706e5dfb9a98a5872f78a",
+            "43835bb2302c7be53022a6b66783dcc9f1000d73df2b0aa81ee23d2074bb151f"
+          ],
+          "model_label_changed_across_versions": false,
+          "human_labels_in_variant_order": [
+            "SUPPORTS",
+            "REFUTES"
+          ],
+          "model_labels_in_variant_order": [
+            "NOT ENOUGH INFO",
+            "NOT ENOUGH INFO"
+          ],
+          "both_source_variants_classified_correctly": false,
+          "one_or_more_wrong": true,
+          "source_input_token_truncation_any": false
+        },
+        {
+          "source_label_changed_across_versions": true,
+          "source_label_combo": "REFUTES+SUPPORTS",
+          "same_claim_sha256": "b75eb6a66c984eecdae40976ff3529e90a159b75cfff41bd760c3c3ebbb51fd8",
+          "unique_source_record_ids": [
+            "5ee3932cc9e77c0008ccb1ae_3",
+            "5ee3932cc9e77c0008ccb1ae_4"
+          ],
+          "original_source_hashes": [
+            "e75c546719fdc1ff37e1544a2a149bba1d4ae189131706e5dfb9a98a5872f78a",
+            "43835bb2302c7be53022a6b66783dcc9f1000d73df2b0aa81ee23d2074bb151f"
+          ],
+          "model_label_changed_across_versions": false,
+          "human_labels_in_variant_order": [
+            "REFUTES",
+            "SUPPORTS"
+          ],
+          "model_labels_in_variant_order": [
+            "NOT ENOUGH INFO",
+            "NOT ENOUGH INFO"
+          ],
+          "both_source_variants_classified_correctly": false,
+          "one_or_more_wrong": true,
+          "source_input_token_truncation_any": false
+        }
+      ]
+    },
+    {
+      "case_id": "5ece9460c9e77c0008465907",
+      "page": "Prophets of Rage",
+      "transition_revision_id": "866630378",
+      "pairs": [
+        {
+          "source_label_changed_across_versions": true,
+          "source_label_combo": "NOT ENOUGH INFO+SUPPORTS",
+          "same_claim_sha256": "ed130f0c730e8468494e47e77b4c7c1922c5b2f51383a4210018ba8f3e42cf78",
+          "unique_source_record_ids": [
+            "5ece9460c9e77c0008465907_1",
+            "5ece9460c9e77c0008465907_2"
+          ],
+          "original_source_hashes": [
+            "349e35baeae67022d8c22a970bf87a637f6aeca249ef6c87144b69ba5da91c31",
+            "cc312e4721dc12447310ef51d8c1c32cc0d993f2e72a0fe8a13a6e5478e25a5a"
+          ],
+          "model_label_changed_across_versions": true,
+          "human_labels_in_variant_order": [
+            "SUPPORTS",
+            "NOT ENOUGH INFO"
+          ],
+          "model_labels_in_variant_order": [
+            "NOT ENOUGH INFO",
+            "REFUTES"
+          ],
+          "both_source_variants_classified_correctly": false,
+          "one_or_more_wrong": true,
+          "source_input_token_truncation_any": false
+        },
+        {
+          "source_label_changed_across_versions": true,
+          "source_label_combo": "NOT ENOUGH INFO+SUPPORTS",
+          "same_claim_sha256": "a13857a9ec8a45c862c928138007b362b927c3f73ca9d978b6d9a41ad3e950d9",
+          "unique_source_record_ids": [
+            "5ece9460c9e77c0008465907_3",
+            "5ece9460c9e77c0008465907_4"
+          ],
+          "original_source_hashes": [
+            "349e35baeae67022d8c22a970bf87a637f6aeca249ef6c87144b69ba5da91c31",
+            "cc312e4721dc12447310ef51d8c1c32cc0d993f2e72a0fe8a13a6e5478e25a5a"
+          ],
+          "model_label_changed_across_versions": true,
+          "human_labels_in_variant_order": [
+            "NOT ENOUGH INFO",
+            "SUPPORTS"
+          ],
+          "model_labels_in_variant_order": [
+            "REFUTES",
+            "NOT ENOUGH INFO"
+          ],
+          "both_source_variants_classified_correctly": false,
+          "one_or_more_wrong": true,
+          "source_input_token_truncation_any": false
+        }
+      ]
+    },
+    {
+      "case_id": "5ec284fdc9e77c000841693e",
+      "page": "Book Club -LRB-film-RRB-",
+      "transition_revision_id": "864334473",
+      "pairs": [
+        {
+          "source_label_changed_across_versions": true,
+          "source_label_combo": "REFUTES+SUPPORTS",
+          "same_claim_sha256": "225ef7181c9bd53c7906715398f71a413a81b933123bd9ef303aa685fe392afc",
+          "unique_source_record_ids": [
+            "5ec284fdc9e77c000841693e_1",
+            "5ec284fdc9e77c000841693e_2"
+          ],
+          "original_source_hashes": [
+            "1172f8a22106a1fbcef058b155eb7d3d10fc78234365d3177cd5715de9be8ef8",
+            "4ab742c20f2dea724481587acf2da31bb487f4e45cf817dc4071812c6334780d"
+          ],
+          "model_label_changed_across_versions": true,
+          "human_labels_in_variant_order": [
+            "SUPPORTS",
+            "REFUTES"
+          ],
+          "model_labels_in_variant_order": [
+            "REFUTES",
+            "NOT ENOUGH INFO"
+          ],
+          "both_source_variants_classified_correctly": false,
+          "one_or_more_wrong": true,
+          "source_input_token_truncation_any": false
+        },
+        {
+          "source_label_changed_across_versions": true,
+          "source_label_combo": "REFUTES+SUPPORTS",
+          "same_claim_sha256": "55b1d2891624f316d0dc1c714dafdb8103e74e4b072cc929c36f610b36586e53",
+          "unique_source_record_ids": [
+            "5ec284fdc9e77c000841693e_3",
+            "5ec284fdc9e77c000841693e_4"
+          ],
+          "original_source_hashes": [
+            "1172f8a22106a1fbcef058b155eb7d3d10fc78234365d3177cd5715de9be8ef8",
+            "4ab742c20f2dea724481587acf2da31bb487f4e45cf817dc4071812c6334780d"
+          ],
+          "model_label_changed_across_versions": false,
+          "human_labels_in_variant_order": [
+            "REFUTES",
+            "SUPPORTS"
+          ],
+          "model_labels_in_variant_order": [
+            "NOT ENOUGH INFO",
+            "NOT ENOUGH INFO"
+          ],
+          "both_source_variants_classified_correctly": false,
+          "one_or_more_wrong": true,
+          "source_input_token_truncation_any": false
+        }
+      ]
+    },
+    {
+      "case_id": "5ed4de0ac9e77c000848af44",
+      "page": "Men in Black-COLON- International",
+      "transition_revision_id": "904330012",
+      "pairs": [
+        {
+          "source_label_changed_across_versions": true,
+          "source_label_combo": "REFUTES+SUPPORTS",
+          "same_claim_sha256": "195f5aa8a20de95d6f1763f9f8751b348597e663d65863e2b3ce957073aab544",
+          "unique_source_record_ids": [
+            "5ed4de0ac9e77c000848af44_1",
+            "5ed4de0ac9e77c000848af44_2"
+          ],
+          "original_source_hashes": [
+            "40d90fe3e9d0e432997700dc3652cc5b51dee2e13d1b65d95f066f1601cd657c",
+            "58af616a6876ab0c838243685c203aa3c5868be0c74d65946944868ec879761d"
+          ],
+          "model_label_changed_across_versions": true,
+          "human_labels_in_variant_order": [
+            "SUPPORTS",
+            "REFUTES"
+          ],
+          "model_labels_in_variant_order": [
+            "SUPPORTS",
+            "REFUTES"
+          ],
+          "both_source_variants_classified_correctly": true,
+          "one_or_more_wrong": false,
+          "source_input_token_truncation_any": false
+        },
+        {
+          "source_label_changed_across_versions": true,
+          "source_label_combo": "REFUTES+SUPPORTS",
+          "same_claim_sha256": "3cfd7556bc8da2bc3228cbca475c17326f220fe92f1191f0def7235bb0244922",
+          "unique_source_record_ids": [
+            "5ed4de0ac9e77c000848af44_3",
+            "5ed4de0ac9e77c000848af44_4"
+          ],
+          "original_source_hashes": [
+            "40d90fe3e9d0e432997700dc3652cc5b51dee2e13d1b65d95f066f1601cd657c",
+            "58af616a6876ab0c838243685c203aa3c5868be0c74d65946944868ec879761d"
+          ],
+          "model_label_changed_across_versions": true,
+          "human_labels_in_variant_order": [
+            "REFUTES",
+            "SUPPORTS"
+          ],
+          "model_labels_in_variant_order": [
+            "REFUTES",
+            "SUPPORTS"
+          ],
+          "both_source_variants_classified_correctly": true,
+          "one_or_more_wrong": false,
+          "source_input_token_truncation_any": false
+        }
+      ]
+    },
+    {
+      "case_id": "5ea2d97dc9e77c0009cdafcd",
+      "page": "While She Sleeps",
+      "transition_revision_id": "603036693",
+      "pairs": [
+        {
+          "source_label_changed_across_versions": true,
+          "source_label_combo": "REFUTES+SUPPORTS",
+          "same_claim_sha256": "b1ae84a83ba91e23ea038767353719f1be1ead985984dc6bcda57d0a79d14176",
+          "unique_source_record_ids": [
+            "5ea2d97dc9e77c0009cdafcd_1",
+            "5ea2d97dc9e77c0009cdafcd_2"
+          ],
+          "original_source_hashes": [
+            "98feaf02c74510de65d8d756102e7781548f8eb6f9214efc9e2885b006c6504b",
+            "0a48f89958abf1c79634a8aaa39e83af1f89c1ac2df2f0ac0e31cec91ba9d768"
+          ],
+          "model_label_changed_across_versions": true,
+          "human_labels_in_variant_order": [
+            "SUPPORTS",
+            "REFUTES"
+          ],
+          "model_labels_in_variant_order": [
+            "SUPPORTS",
+            "REFUTES"
+          ],
+          "both_source_variants_classified_correctly": true,
+          "one_or_more_wrong": false,
+          "source_input_token_truncation_any": false
+        },
+        {
+          "source_label_changed_across_versions": true,
+          "source_label_combo": "REFUTES+SUPPORTS",
+          "same_claim_sha256": "1a2fae19e896d020481a2b5071e09b37a5b13710413654c5cf87b9280ad868a5",
+          "unique_source_record_ids": [
+            "5ea2d97dc9e77c0009cdafcd_3",
+            "5ea2d97dc9e77c0009cdafcd_4"
+          ],
+          "original_source_hashes": [
+            "98feaf02c74510de65d8d756102e7781548f8eb6f9214efc9e2885b006c6504b",
+            "0a48f89958abf1c79634a8aaa39e83af1f89c1ac2df2f0ac0e31cec91ba9d768"
+          ],
+          "model_label_changed_across_versions": true,
+          "human_labels_in_variant_order": [
+            "REFUTES",
+            "SUPPORTS"
+          ],
+          "model_labels_in_variant_order": [
+            "REFUTES",
+            "SUPPORTS"
+          ],
+          "both_source_variants_classified_correctly": true,
+          "one_or_more_wrong": false,
+          "source_input_token_truncation_any": false
+        }
+      ]
+    }
+  ],
+  "limitations": [
+    "Author VitaminC data label supports/contradicts/insufficient relative to a Wikipedia text version, NOT independently verified universal world truth.",
+    "Real Wikipedia revision groups have one revision transition ID but no per-version verified as-of date in downloaded test records, so OLD vs NEW chronological precedence and contemporary correctness cannot be assigned solely from this dataset.",
+    "The same claim with different textual versions is not strict same-world/same-time contradiction. Unscoped merging makes a false contradiction.",
+    "Original test has been public since 2021 and independently pretrained NLI may be exposed indirectly; not a training-exposure guarantee.",
+    "Actual sample is exactly 700 structurally selected groups, selected by source metadata only before labels; original human labels are read only after all 2,800 model outputs are saved.",
+    "Original Wikipedia texts can be corrected, revised, disputed or vandalized; a revision is a documented statement transition, not independently validated scientific discovery.",
+    "Only source-claim fact-verification text NLI; no full KMD DRS parsing, no dream/fiction/quote world semantics or cross-paper causal experimental falsification.",
+    "Model is off-the-shelf SNLI/MNLI ONNX CPU and not the intended KMD production Qwen worker; source quote is not a mathematical proof or experiment."
+  ]
+}

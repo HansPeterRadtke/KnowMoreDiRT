@@ -1,0 +1,188 @@
+{
+  "original_source_sha256": "7ad1808dbc30c62e0a1427a53022d0dfaff668a1fde3c4b612a2d266edd753ad",
+  "human_gold_original_score_sha256": "9d06d335719de31c41eaeb9f118209ba5b08728084bd62cb5abfa5dd137bfc27",
+  "original_real_four_way_groups": 5994,
+  "independent_wikipedia_revision_transition_families_in_original_subset": 5098,
+  "groups_per_revision_transition_distribution": {
+    "1": 4460,
+    "2": 457,
+    "3": 155,
+    "4": 11,
+    "5": 9,
+    "6": 1,
+    "7": 1,
+    "8": 2,
+    "12": 1,
+    "25": 1
+  },
+  "frozen_sample_groups": 700,
+  "frozen_sample_distinct_revision_families": 680,
+  "frozen_groups_per_revision_distribution": {
+    "1": 660,
+    "2": 20
+  },
+  "original_human_label_flip_frequency_clustered_by_revision_id": {
+    "revision_families": 5098,
+    "source_claims": 11988,
+    "label_flips": 11958,
+    "source_family_cluster_bootstrap95": [
+      0.996555,
+      0.998412
+    ],
+    "cluster_unit": "same original Wikipedia wiki_revision_id across source cases, not independent claim instances"
+  },
+  "sample_label_flip_frequency_clustered_by_revision_id": {
+    "revision_families": 680,
+    "source_claims": 1400,
+    "label_flips": 1396,
+    "source_family_cluster_bootstrap95": [
+      0.994302,
+      0.999289
+    ],
+    "cluster_unit": "same original Wikipedia wiki_revision_id across source cases, not independent claim instances"
+  },
+  "examples_of_many_claims_derived_from_one_revision": [
+    {
+      "revision_id": "954001136",
+      "page": "Travel restrictions related to the 2019\u201320 coronavirus pandemic",
+      "n_distinct_case_ids": 25,
+      "case_ids": [
+        "5ee3932cc9e77c0008ccb0fc",
+        "5ee3932cc9e77c0008ccb0fd",
+        "5ee3932cc9e77c0008ccb0fe",
+        "5ee3932cc9e77c0008ccb0ff",
+        "5ee3932cc9e77c0008ccb100",
+        "5ee3932cc9e77c0008ccb101",
+        "5ee3932cc9e77c0008ccb102",
+        "5ee3932cc9e77c0008ccb103"
+      ]
+    },
+    {
+      "revision_id": "946460067",
+      "page": "2020 coronavirus pandemic in the United Kingdom",
+      "n_distinct_case_ids": 12,
+      "case_ids": [
+        "5ee3932cc9e77c0008ccadeb",
+        "5ee3932cc9e77c0008ccadec",
+        "5ee3932cc9e77c0008ccaded",
+        "5ee3932cc9e77c0008ccadee",
+        "5ee3932cc9e77c0008ccadef",
+        "5ee393b8c9e77c0008cccfff",
+        "5ee393b8c9e77c0008ccd000",
+        "5ee393b8c9e77c0008ccd002"
+      ]
+    },
+    {
+      "revision_id": "950428940",
+      "page": "2020 coronavirus pandemic in Massachusetts",
+      "n_distinct_case_ids": 8,
+      "case_ids": [
+        "5ee3932bc9e77c0008cca6fe",
+        "5ee3932bc9e77c0008cca6ff",
+        "5ee393b7c9e77c0008ccc4cb",
+        "5ee393b7c9e77c0008ccc4cc",
+        "5ee393b7c9e77c0008ccc4cd",
+        "5ee393b7c9e77c0008ccc4ce",
+        "5ee393b7c9e77c0008ccc4cf",
+        "5ee393b7c9e77c0008ccc4d1"
+      ]
+    },
+    {
+      "revision_id": "947201189",
+      "page": "2020 coronavirus pandemic in Moldova",
+      "n_distinct_case_ids": 8,
+      "case_ids": [
+        "5ee3932ac9e77c0008cc9633",
+        "5ee3932bc9e77c0008cca7f1",
+        "5ee3932bc9e77c0008cca7f2",
+        "5ee3932bc9e77c0008cca7f3",
+        "5ee393b7c9e77c0008ccc62f",
+        "5ee393b7c9e77c0008ccc62e",
+        "5ee393b7c9e77c0008ccc62d",
+        "5ee393b7c9e77c0008ccc62c"
+      ]
+    },
+    {
+      "revision_id": "948531741",
+      "page": "2020 coronavirus pandemic in Massachusetts",
+      "n_distinct_case_ids": 7,
+      "case_ids": [
+        "5ee3932bc9e77c0008cca707",
+        "5ee393b7c9e77c0008ccc4db",
+        "5ee393b7c9e77c0008ccc4dc",
+        "5ee393b7c9e77c0008ccc4dd",
+        "5ee393b7c9e77c0008ccc4de",
+        "5ee393b7c9e77c0008ccc4e0",
+        "5ee393b7c9e77c0008ccc4e1"
+      ]
+    },
+    {
+      "revision_id": "948931864",
+      "page": "2020 coronavirus pandemic in Africa",
+      "n_distinct_case_ids": 6,
+      "case_ids": [
+        "5ee3932bc9e77c0008cca4fa",
+        "5ee3932bc9e77c0008cca4fb",
+        "5ee3932bc9e77c0008cca4fc",
+        "5ee393b6c9e77c0008ccc18c",
+        "5ee393b6c9e77c0008ccc18d",
+        "5ee393b6c9e77c0008ccc18e"
+      ]
+    },
+    {
+      "revision_id": "850143596",
+      "page": "Roberto Baggio",
+      "n_distinct_case_ids": 5,
+      "case_ids": [
+        "5eb29888c9e77c0008d9373c",
+        "5eb29888c9e77c0008d9373d",
+        "5eb29888c9e77c0008d9373e",
+        "5eb29888c9e77c0008d9373f",
+        "5eb29888c9e77c0008d93740"
+      ]
+    },
+    {
+      "revision_id": "767334230",
+      "page": "2010 New England Patriots season",
+      "n_distinct_case_ids": 5,
+      "case_ids": [
+        "5ebe6f31c9e77c00084091cb",
+        "5ebe6f31c9e77c00084091cc",
+        "5ebe6f31c9e77c00084091cd",
+        "5ebe6f31c9e77c00084091ce",
+        "5ebe6f31c9e77c00084091cf"
+      ]
+    },
+    {
+      "revision_id": "689394302",
+      "page": "Carlos Tevez",
+      "n_distinct_case_ids": 5,
+      "case_ids": [
+        "5ec55990c9e77c000842d4e7",
+        "5ec55990c9e77c000842d4e9",
+        "5ec55990c9e77c000842d4ea",
+        "5ec55990c9e77c000842d4ec",
+        "5ec55990c9e77c000842d4ee"
+      ]
+    },
+    {
+      "revision_id": "953515212",
+      "page": "2020 coronavirus pandemic in Bosnia and Herzegovina",
+      "n_distinct_case_ids": 5,
+      "case_ids": [
+        "5ee39329c9e77c0008cc9301",
+        "5ee39329c9e77c0008cc9303",
+        "5ee3932bc9e77c0008cc9e42",
+        "5ee3932dc9e77c0008ccb7a9",
+        "5ee3932dc9e77c0008ccb7a5"
+      ]
+    }
+  ],
+  "scientific_limitations": [
+    "A distinct Wikipedia revision transition is an AUTHOR/PAGE dependency grouping, NOT an independent new experiment or factual truth.",
+    "Different Wikipedia article revisions may themselves copy the same source study, so revision clustering still overstates world-level evidentiary independence.",
+    "Clustering by revision ID mitigates within-edit generated claim dependence; no independent valid-time timestamp is supplied in test file.",
+    "Bootstrap confidence intervals only reflect variation across these intentionally contrastive publisher-curated revisions, not natural news claims or all Wikipedia pages.",
+    "Model agreement or majority citation remains non-independent without underlying experiment/dataset trace and validation."
+  ]
+}
