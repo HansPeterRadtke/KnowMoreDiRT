@@ -1,0 +1,71 @@
+{
+  "source_gold_repo": "RikVN/DRS_parsing@190838f9adea2af616eb76156d2e66c8565a6c6e",
+  "source_test_text_sha256": "4bd557c2e6655d9b9c32269d4f6aa32415a314777bf16b517d7ae3da280f6263",
+  "selection": "Prespecified regex groups, max 144 characters, SHA sorted before new model calls; NO human gold structures inspected for eligibility",
+  "n": 7,
+  "method": "Actual installed KMD production build_chunk_drs_prompt and chunk_drs_json_schema with source ID; local Qwen2.5 1.5B gguf CPU JSON grammar with necessary local regex (?: to () syntax compatibility only; validator unchanged; never repair model semantics).",
+  "caveats": [
+    "The user established PMB and source examples have been studied in prior turns; cannot claim pristine heldout source relative to research or LLM training",
+    "Selection predefines lexical scope groups, which is not independent human gold for dreams/quotations/conditions",
+    "Tiny CPU model differs from intended production KMD Qwen worker model, and an offline JSON grammar compatibility adapter differs from deployed server inference",
+    "Feasibility/semantic smoke test on seven independently written natural sentences, not statistically powered general model benchmark or cross-document reasoning"
+  ],
+  "cases": [
+    {
+      "id": "pmb3-test-source-170",
+      "category_from_source_cue": "negation",
+      "sentence_index": 170,
+      "sentence": "He's not jealous.",
+      "sentence_sha256": "31fe9cb82d83416d49c7c66ec5c0af15cd43ec9c0481f8abe462772ebe78bf66",
+      "selection_hash": "010f26faca93b81e960978c65af9a337210cd71bb20a7da08563d05618f0e96e"
+    },
+    {
+      "id": "pmb3-test-source-800",
+      "category_from_source_cue": "negation",
+      "sentence_index": 800,
+      "sentence": "My name isn't on the list.",
+      "sentence_sha256": "67f9c96b0ce6fa71443944998713cb463215b423db68c32dcd55f92e6bda1170",
+      "selection_hash": "012cf8f860ede137f79d110d7fecd27bd7d340c48689e36d706e97c5ca1de5eb"
+    },
+    {
+      "id": "pmb3-test-source-635",
+      "category_from_source_cue": "reported_speech",
+      "sentence_index": 635,
+      "sentence": "According to a survey, 1 billion people are suffering from poverty in the world.",
+      "sentence_sha256": "0d8bdbc41df0d6acd9a34ec1e08f0355430a6cdac43fcefc09b9f714d0016932",
+      "selection_hash": "38cccc98fbd753cd76ef7504ba32279cab8307c86cb115b7d05ce74ec83129f0"
+    },
+    {
+      "id": "pmb3-test-source-88",
+      "category_from_source_cue": "dream",
+      "sentence_index": 88,
+      "sentence": "Both Cristina and Luis always dreamt of studying medicine.",
+      "sentence_sha256": "853b17a78970460311965997bd7156fb336adff76fca66df3163fd299222e072",
+      "selection_hash": "4a1211bec4a9ca4b1fe9c7cfc5c1e90659f20d09712b5ad6424847ad57ad3e1a"
+    },
+    {
+      "id": "pmb3-test-source-712",
+      "category_from_source_cue": "reported_speech",
+      "sentence_index": 712,
+      "sentence": "Melanie said that she likes swimming.",
+      "sentence_sha256": "63a594b651c6c2c0ebfb67106640a1e1207b2911a55eb043ca4347a1a2d3fe98",
+      "selection_hash": "84e98f5db6d3ebf1c23bd333e5bc292816febf708cdd3f2e4a49adb0548c2a3c"
+    },
+    {
+      "id": "pmb3-test-source-74",
+      "category_from_source_cue": "conditional",
+      "sentence_index": 74,
+      "sentence": "If it rains, he won't come.",
+      "sentence_sha256": "55e7876bc776752ff9a2009e6dc328d56a0992c9b343974921219d721b15eb59",
+      "selection_hash": "c7ce8957ebc15550902382e3591cab7431fe308bc842cc74042ba0565f4c1983"
+    },
+    {
+      "id": "pmb3-test-source-337",
+      "category_from_source_cue": "conditional",
+      "sentence_index": 337,
+      "sentence": "If you're tired, go to bed.",
+      "sentence_sha256": "804772c1966a1293d9da87a48afbe827e893c0bd7cc0be5b33f3d58332ff031b",
+      "selection_hash": "fb03338092d6df3c27c66efc1d7de66a1142fff2f9164e183a0b804eeca9d6bc"
+    }
+  ]
+}

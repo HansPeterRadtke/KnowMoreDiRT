@@ -1,0 +1,272 @@
+{
+  "source_gold_repo": "RikVN/DRS_parsing@190838f9adea2af616eb76156d2e66c8565a6c6e",
+  "KMD_schema_and_prompt": "actual KMD chunk-drs-v5 schema and prompt, untouched as of origin/master:321cc018, validation _validate_chunk_drs_payload",
+  "cpu_model": "Qwen2.5-1.5B-Instruct GGUF Q4_K_M, two CPU threads, n_ctx=3072, max completion=850, temp=0, local grammar compatibility (?: to ( only)",
+  "frozen_input_sha256": "4f500add47c30aa0b0463772a33b747bf909e1332fe9290a312d9698cb178d1b",
+  "original_predictions_sha256": "3dacbdf152711f8a9c936d6f84397630c546df4ce0043301764b6632e42d35c9",
+  "evaluation": "Each original generation tested against original KMD JSON Schema via jsonschema Draft202012Validator and exact unchanged KMD source/DRS payload validator. Independent published PMB operator categories are descriptive only; no human semantic tag provided during inference.",
+  "summary": {
+    "case_count": 7,
+    "complete_JSON": 7,
+    "canonical_json_schema_valid": 7,
+    "KMD_validated_and_grounded": 0,
+    "root_asserted_box_only": 7,
+    "non_asserted_scope_box_present": 0,
+    "has_source_grounding_failure": 5,
+    "has_kmd_schema_errors": 7,
+    "failed_or_truncated_generation": 0,
+    "total_cpu_seconds": 427.17
+  },
+  "per_source_cases": [
+    {
+      "id": "pmb3-test-source-170",
+      "source_category_by_original_text_not_human_annotated": "negation",
+      "source_sentence_index": 170,
+      "source_hash": "31fe9cb82d83416d49c7c66ec5c0af15cd43ec9c0481f8abe462772ebe78bf66",
+      "independent_original_pmb_gold_operator_count": {
+        "NEGATION": 1
+      },
+      "model_output_json_complete": true,
+      "canonical_original_schema_errors": [],
+      "original_json_schema_valid": true,
+      "production_KMD_source_semantics_valid": false,
+      "kmd_schema_validation_error_codes": [
+        "missing_holder_referent:b0->r0",
+        "missing_argument_referent:c0->r0",
+        "missing_identity_left:r0",
+        "missing_identity_right:r0",
+        "self_identity:r0"
+      ],
+      "kmd_source_grounding_failures": [
+        "temporal:t0:2023-01-01T00:00:00Z"
+      ],
+      "root_asserted_only": true,
+      "non_asserted_subordinate_scope_box_present": false,
+      "root_condition_count": 1,
+      "all_condition_count": 1,
+      "predicates_model_generated": [
+        "not"
+      ],
+      "model_box_kind": [
+        "asserted"
+      ],
+      "finish_reason": "stop",
+      "inference_seconds": 81.11,
+      "raw_model_output_sha256": "e2166f6e69e4b0f158f02a418b79db470da5e265cf1ec0ff9097570a56512c31"
+    },
+    {
+      "id": "pmb3-test-source-800",
+      "source_category_by_original_text_not_human_annotated": "negation",
+      "source_sentence_index": 800,
+      "source_hash": "67f9c96b0ce6fa71443944998713cb463215b423db68c32dcd55f92e6bda1170",
+      "independent_original_pmb_gold_operator_count": {
+        "NEGATION": 1
+      },
+      "model_output_json_complete": true,
+      "canonical_original_schema_errors": [],
+      "original_json_schema_valid": true,
+      "production_KMD_source_semantics_valid": false,
+      "kmd_schema_validation_error_codes": [
+        "missing_holder_referent:b0->r0",
+        "missing_argument_referent:c0->r0",
+        "missing_identity_left:r0",
+        "missing_identity_right:r0",
+        "self_identity:r0"
+      ],
+      "kmd_source_grounding_failures": [
+        "temporal:t0:2023-01-01T00:00:00Z"
+      ],
+      "root_asserted_only": true,
+      "non_asserted_subordinate_scope_box_present": false,
+      "root_condition_count": 1,
+      "all_condition_count": 1,
+      "predicates_model_generated": [
+        "has_name"
+      ],
+      "model_box_kind": [
+        "asserted"
+      ],
+      "finish_reason": "stop",
+      "inference_seconds": 55.56,
+      "raw_model_output_sha256": "c09ab65b459280ec451591ae23469258f8a08ca366b3e39287640cf4431aec1a"
+    },
+    {
+      "id": "pmb3-test-source-635",
+      "source_category_by_original_text_not_human_annotated": "reported_speech",
+      "source_sentence_index": 635,
+      "source_hash": "0d8bdbc41df0d6acd9a34ec1e08f0355430a6cdac43fcefc09b9f714d0016932",
+      "independent_original_pmb_gold_operator_count": {
+        "ATTRIBUTION": 1
+      },
+      "model_output_json_complete": true,
+      "canonical_original_schema_errors": [],
+      "original_json_schema_valid": true,
+      "production_KMD_source_semantics_valid": false,
+      "kmd_schema_validation_error_codes": [
+        "self_identity:r0"
+      ],
+      "kmd_source_grounding_failures": [
+        "temporal:t0:2023-01-01T00:00:00Z"
+      ],
+      "root_asserted_only": true,
+      "non_asserted_subordinate_scope_box_present": false,
+      "root_condition_count": 1,
+      "all_condition_count": 1,
+      "predicates_model_generated": [
+        "is"
+      ],
+      "model_box_kind": [
+        "asserted"
+      ],
+      "finish_reason": "stop",
+      "inference_seconds": 73.23,
+      "raw_model_output_sha256": "070711ffebfd5df6a82217e7e09ae1138414346cbf7f17d75985f4512198307f"
+    },
+    {
+      "id": "pmb3-test-source-88",
+      "source_category_by_original_text_not_human_annotated": "dream",
+      "source_sentence_index": 88,
+      "source_hash": "853b17a78970460311965997bd7156fb336adff76fca66df3163fd299222e072",
+      "independent_original_pmb_gold_operator_count": {
+        "CONDITION": 2,
+        "CONSEQUENCE": 2
+      },
+      "model_output_json_complete": true,
+      "canonical_original_schema_errors": [],
+      "original_json_schema_valid": true,
+      "production_KMD_source_semantics_valid": false,
+      "kmd_schema_validation_error_codes": [
+        "missing_holder_referent:b0->r0",
+        "missing_argument_referent:c0->r0",
+        "missing_identity_left:r0",
+        "missing_identity_right:r0",
+        "self_identity:r0"
+      ],
+      "kmd_source_grounding_failures": [],
+      "root_asserted_only": true,
+      "non_asserted_subordinate_scope_box_present": false,
+      "root_condition_count": 1,
+      "all_condition_count": 1,
+      "predicates_model_generated": [
+        "dreamt"
+      ],
+      "model_box_kind": [
+        "asserted"
+      ],
+      "finish_reason": "stop",
+      "inference_seconds": 50.98,
+      "raw_model_output_sha256": "df7ceef97fe0232fa7a8aebccd57e7aae89bce53a0a7f7a34af33d61d55859d9"
+    },
+    {
+      "id": "pmb3-test-source-712",
+      "source_category_by_original_text_not_human_annotated": "reported_speech",
+      "source_sentence_index": 712,
+      "source_hash": "63a594b651c6c2c0ebfb67106640a1e1207b2911a55eb043ca4347a1a2d3fe98",
+      "independent_original_pmb_gold_operator_count": {
+        "ATTRIBUTION": 1
+      },
+      "model_output_json_complete": true,
+      "canonical_original_schema_errors": [],
+      "original_json_schema_valid": true,
+      "production_KMD_source_semantics_valid": false,
+      "kmd_schema_validation_error_codes": [
+        "self_identity:r0"
+      ],
+      "kmd_source_grounding_failures": [
+        "temporal:t0:2023-01-01T00:00:00Z"
+      ],
+      "root_asserted_only": true,
+      "non_asserted_subordinate_scope_box_present": false,
+      "root_condition_count": 1,
+      "all_condition_count": 1,
+      "predicates_model_generated": [
+        "Melanie said"
+      ],
+      "model_box_kind": [
+        "asserted"
+      ],
+      "finish_reason": "stop",
+      "inference_seconds": 61.3,
+      "raw_model_output_sha256": "c625128bd06e2ac56896ea77c787965a14840172fc78b069d089342d2dec0f2b"
+    },
+    {
+      "id": "pmb3-test-source-74",
+      "source_category_by_original_text_not_human_annotated": "conditional",
+      "source_sentence_index": 74,
+      "source_hash": "55e7876bc776752ff9a2009e6dc328d56a0992c9b343974921219d721b15eb59",
+      "independent_original_pmb_gold_operator_count": {
+        "NEGATION": 1
+      },
+      "model_output_json_complete": true,
+      "canonical_original_schema_errors": [],
+      "original_json_schema_valid": true,
+      "production_KMD_source_semantics_valid": false,
+      "kmd_schema_validation_error_codes": [
+        "missing_holder_referent:b0->r0",
+        "missing_argument_referent:c0->r0",
+        "missing_identity_left:r0",
+        "missing_identity_right:r0",
+        "self_identity:r0"
+      ],
+      "kmd_source_grounding_failures": [],
+      "root_asserted_only": true,
+      "non_asserted_subordinate_scope_box_present": false,
+      "root_condition_count": 1,
+      "all_condition_count": 1,
+      "predicates_model_generated": [
+        "If it rains"
+      ],
+      "model_box_kind": [
+        "asserted"
+      ],
+      "finish_reason": "stop",
+      "inference_seconds": 48.55,
+      "raw_model_output_sha256": "cc155f727ea4fc8f1217374fe50851c0dee65098d30bfcbd6355d007605c79e2"
+    },
+    {
+      "id": "pmb3-test-source-337",
+      "source_category_by_original_text_not_human_annotated": "conditional",
+      "source_sentence_index": 337,
+      "source_hash": "804772c1966a1293d9da87a48afbe827e893c0bd7cc0be5b33f3d58332ff031b",
+      "independent_original_pmb_gold_operator_count": {
+        "CONDITION": 1,
+        "CONSEQUENCE": 1
+      },
+      "model_output_json_complete": true,
+      "canonical_original_schema_errors": [],
+      "original_json_schema_valid": true,
+      "production_KMD_source_semantics_valid": false,
+      "kmd_schema_validation_error_codes": [
+        "missing_holder_referent:b0->r0",
+        "self_argument_condition:c0->c0",
+        "missing_identity_left:r0",
+        "missing_identity_right:r0",
+        "self_identity:r0"
+      ],
+      "kmd_source_grounding_failures": [
+        "temporal:t0:2023-01-01T00:00:00Z"
+      ],
+      "root_asserted_only": true,
+      "non_asserted_subordinate_scope_box_present": false,
+      "root_condition_count": 1,
+      "all_condition_count": 1,
+      "predicates_model_generated": [
+        "if"
+      ],
+      "model_box_kind": [
+        "asserted"
+      ],
+      "finish_reason": "stop",
+      "inference_seconds": 56.44,
+      "raw_model_output_sha256": "be5b71586813de292279ca2fd098cbba3967f8af4b7b43b26401e4e36090df63"
+    }
+  ],
+  "limitations": [
+    "This local CPU small Qwen is NOT the intended large production KMD reasoning worker model; no shared inference server was used",
+    "Grammar conversion of noncapturing regex to capturing regex changes only grammar compiler compatibility and accepted string language not substantive semantics, but production server may use different sampling/backend",
+    "The seven original PMB natural utterances were selected by lexical category and frozen without gold structure, but sources are not pristine against prior research or pretraining",
+    "The PMB author DRS operator inventory and the project custom KMD box schema do NOT have identical clause structures; cannot calculate PMB truth-equivalence from KMD box names alone",
+    "Valid canonical JSON schema says types/IDs match regex; referent/entity grounding/box semantics must be checked separately, and false world assumptions are not independently validated just by a citation",
+    "No paired production KMD DRS answer accuracy vs provenance-neighbor baseline or new scientific discovery is measured"
+  ]
+}
