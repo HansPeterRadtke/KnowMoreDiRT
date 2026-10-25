@@ -1,0 +1,2227 @@
+{
+  "method": "For every gold CONDITION/CONSEQUENCE pair, both human-gold boxes and both independently generated neural-parser boxes must contain the same MULTISET of sense-labelled concepts for exact sense consistency; separately compare concept lemma only, and operator presence. Same standard on separate test and dev splits, original input hashes checked.",
+  "original_gold_git": "RikVN/DRS_parsing@190838f9adea2af616eb76156d2e66c8565a6c6e",
+  "published_parser_git": "RikVN/Neural_DRS@81bcb26dfcc08f0da999cc7beaa2952f8820860c",
+  "splits": {
+    "test": {
+      "sentences": 898,
+      "gold_antecedent_consequent_sentence_pairs": 31,
+      "parser_has_both_conditional_boxes": 25,
+      "both_antecedent_consequent_scopes_exact_lemmas": 19,
+      "both_antecedent_consequent_scopes_exact_lemmas_and_senses": 16,
+      "all_gold_scoped_concepts_present_anywhere_in_auto_generated_sentence": 20,
+      "original_attribution": {
+        "gold_cases": 18,
+        "produced_operator": 16,
+        "exact_lemma_semantic_target": 8,
+        "exact_lemma_and_sense_target": 5
+      },
+      "original_negation": {
+        "gold_cases": 79,
+        "produced_operator": 79,
+        "exact_lemma_semantic_target": 65,
+        "exact_lemma_and_sense_target": 54
+      },
+      "all_conditional_pair_rows": [
+        {
+          "index": 4,
+          "sentence": "You can't live on that island.",
+          "sha256": "9880e66faa1417d71f4c801307c681aa4850f5a5a899bd0a1237a9a57810124b",
+          "gold_antecedent_terms": [
+            "live:\"v.01\"",
+            "person:\"n.01\""
+          ],
+          "gold_consequent_terms": [
+            "live:\"v.01\""
+          ],
+          "pred_antecedent_terms": [],
+          "pred_consequent_terms": [],
+          "both_operators_produced": false,
+          "both_scopes_exact_lemma": false,
+          "both_scopes_exact_lemma_and_sense": false,
+          "gold_scoped_lemmas_all_present_somewhere_in_generated_sentence": false
+        },
+        {
+          "index": 11,
+          "sentence": "Nowadays anybody can get books.",
+          "sha256": "6e2a936919f065c3f381094d11ab7c200bfcb5a1dc49422e328deb3ae48bbd16",
+          "gold_antecedent_terms": [
+            "book:\"n.02\"",
+            "get:\"v.01\"",
+            "person:\"n.01\"",
+            "time:\"n.08\""
+          ],
+          "gold_consequent_terms": [
+            "book:\"n.02\"",
+            "get:\"v.01\""
+          ],
+          "pred_antecedent_terms": [
+            "book:\"n.01\"",
+            "get:\"v.01\""
+          ],
+          "pred_consequent_terms": [],
+          "both_operators_produced": false,
+          "both_scopes_exact_lemma": false,
+          "both_scopes_exact_lemma_and_sense": false,
+          "gold_scoped_lemmas_all_present_somewhere_in_generated_sentence": false
+        },
+        {
+          "index": 15,
+          "sentence": "An elephant has a long nose.",
+          "sha256": "6ab43e001ade2be37c0c3115356208461e12331806e8027c2c68495bf3d2231f",
+          "gold_antecedent_terms": [
+            "elephant:\"n.01\"",
+            "have:\"v.02\"",
+            "long:\"a.02\"",
+            "nose:\"n.01\""
+          ],
+          "gold_consequent_terms": [
+            "have:\"v.02\"",
+            "long:\"a.02\"",
+            "nose:\"n.01\""
+          ],
+          "pred_antecedent_terms": [
+            "elephant:\"n.01\"",
+            "long:\"a.02\"",
+            "nose:\"n.01\""
+          ],
+          "pred_consequent_terms": [
+            "long:\"a.02\"",
+            "nose:\"n.01\""
+          ],
+          "both_operators_produced": true,
+          "both_scopes_exact_lemma": false,
+          "both_scopes_exact_lemma_and_sense": false,
+          "gold_scoped_lemmas_all_present_somewhere_in_generated_sentence": false
+        },
+        {
+          "index": 21,
+          "sentence": "I'm always tired.",
+          "sha256": "619e0aeb652a27fd13ee22b8cb0d25708d78699a499943aefd11235842865251",
+          "gold_antecedent_terms": [
+            "time:\"n.08\"",
+            "tired:\"a.01\""
+          ],
+          "gold_consequent_terms": [
+            "tired:\"a.01\""
+          ],
+          "pred_antecedent_terms": [
+            "time:\"n.08\"",
+            "tired:\"a.01\""
+          ],
+          "pred_consequent_terms": [
+            "tired:\"a.01\""
+          ],
+          "both_operators_produced": true,
+          "both_scopes_exact_lemma": true,
+          "both_scopes_exact_lemma_and_sense": true,
+          "gold_scoped_lemmas_all_present_somewhere_in_generated_sentence": true
+        },
+        {
+          "index": 46,
+          "sentence": "Everyone shook hands.",
+          "sha256": "fbc2a5c07141b87fb6e3aa5b482cfd7b11d6c7e729c0787344e54746b038a838",
+          "gold_antecedent_terms": [
+            "hand:\"n.01\"",
+            "person:\"n.01\"",
+            "shake:\"v.09\"",
+            "time:\"n.08\""
+          ],
+          "gold_consequent_terms": [
+            "hand:\"n.01\"",
+            "shake:\"v.09\""
+          ],
+          "pred_antecedent_terms": [
+            "hand:\"n.01\"",
+            "person:\"n.01\"",
+            "shake:\"v.09\"",
+            "time:\"n.08\""
+          ],
+          "pred_consequent_terms": [
+            "hand:\"n.01\"",
+            "shake:\"v.09\""
+          ],
+          "both_operators_produced": true,
+          "both_scopes_exact_lemma": true,
+          "both_scopes_exact_lemma_and_sense": true,
+          "gold_scoped_lemmas_all_present_somewhere_in_generated_sentence": true
+        },
+        {
+          "index": 88,
+          "sentence": "Both Cristina and Luis always dreamt of studying medicine.",
+          "sha256": "853b17a78970460311965997bd7156fb336adff76fca66df3163fd299222e072",
+          "gold_antecedent_terms": [
+            "dream:\"v.01\"",
+            "entity:\"n.01\"",
+            "entity:\"n.01\"",
+            "entity:\"n.01\"",
+            "entity:\"n.01\"",
+            "medicine:\"n.03\"",
+            "study:\"v.04\"",
+            "time:\"n.08\"",
+            "time:\"n.08\""
+          ],
+          "gold_consequent_terms": [
+            "dream:\"v.01\"",
+            "entity:\"n.01\"",
+            "entity:\"n.01\"",
+            "entity:\"n.01\"",
+            "medicine:\"n.03\"",
+            "study:\"v.04\"",
+            "time:\"n.08\""
+          ],
+          "pred_antecedent_terms": [
+            "dream:\"v.01\"",
+            "entity:\"n.01\"",
+            "entity:\"n.01\"",
+            "entity:\"n.01\"",
+            "medicine:\"n.02\"",
+            "study:\"v.01\"",
+            "time:\"n.08\""
+          ],
+          "pred_consequent_terms": [
+            "dream:\"v.01\"",
+            "entity:\"n.01\"",
+            "entity:\"n.01\"",
+            "medicine:\"n.02\"",
+            "study:\"v.01\""
+          ],
+          "both_operators_produced": true,
+          "both_scopes_exact_lemma": false,
+          "both_scopes_exact_lemma_and_sense": false,
+          "gold_scoped_lemmas_all_present_somewhere_in_generated_sentence": false
+        },
+        {
+          "index": 146,
+          "sentence": "Everybody calls the small cat Tora.",
+          "sha256": "f3673d1e35a648a152eb422954846451312e54d1078630f326735e617fe8fc49",
+          "gold_antecedent_terms": [
+            "call:\"v.01\"",
+            "name:\"n.01\"",
+            "person:\"n.01\"",
+            "time:\"n.08\""
+          ],
+          "gold_consequent_terms": [
+            "call:\"v.01\"",
+            "name:\"n.01\""
+          ],
+          "pred_antecedent_terms": [
+            "call:\"v.01\"",
+            "name:\"n.01\"",
+            "person:\"n.01\"",
+            "time:\"n.08\""
+          ],
+          "pred_consequent_terms": [
+            "call:\"v.01\"",
+            "name:\"n.01\""
+          ],
+          "both_operators_produced": true,
+          "both_scopes_exact_lemma": true,
+          "both_scopes_exact_lemma_and_sense": true,
+          "gold_scoped_lemmas_all_present_somewhere_in_generated_sentence": true
+        },
+        {
+          "index": 296,
+          "sentence": "Police arrested everyone in the room.",
+          "sha256": "03d8611bd967b9a32e9fd98d499f612e0887d309650830e38a53987b259bdc8f",
+          "gold_antecedent_terms": [
+            "arrest:\"v.01\"",
+            "person:\"n.01\"",
+            "time:\"n.08\""
+          ],
+          "gold_consequent_terms": [
+            "arrest:\"v.01\""
+          ],
+          "pred_antecedent_terms": [],
+          "pred_consequent_terms": [],
+          "both_operators_produced": false,
+          "both_scopes_exact_lemma": false,
+          "both_scopes_exact_lemma_and_sense": false,
+          "gold_scoped_lemmas_all_present_somewhere_in_generated_sentence": false
+        },
+        {
+          "index": 324,
+          "sentence": "Everyone knows everyone.",
+          "sha256": "3b6278e1bb0d925e3fb94c0b1326d3630e44b60a2ed79a9d3c5fd6297afc5a86",
+          "gold_antecedent_terms": [
+            "know:\"v.04\"",
+            "know:\"v.04\"",
+            "person:\"n.01\"",
+            "person:\"n.01\"",
+            "person:\"n.01\"",
+            "time:\"n.08\"",
+            "time:\"n.08\""
+          ],
+          "gold_consequent_terms": [
+            "know:\"v.04\"",
+            "know:\"v.04\"",
+            "person:\"n.01\"",
+            "time:\"n.08\""
+          ],
+          "pred_antecedent_terms": [
+            "know:\"v.04\"",
+            "know:\"v.04\"",
+            "person:\"n.01\"",
+            "person:\"n.01\"",
+            "person:\"n.01\"",
+            "time:\"n.08\"",
+            "time:\"n.08\""
+          ],
+          "pred_consequent_terms": [
+            "know:\"v.04\"",
+            "know:\"v.04\"",
+            "person:\"n.01\"",
+            "time:\"n.08\""
+          ],
+          "both_operators_produced": true,
+          "both_scopes_exact_lemma": true,
+          "both_scopes_exact_lemma_and_sense": true,
+          "gold_scoped_lemmas_all_present_somewhere_in_generated_sentence": false
+        },
+        {
+          "index": 332,
+          "sentence": "A typhoon batters the Philippines.",
+          "sha256": "927c3df0a3fb7aaa645622390184a083ec7e97edf3fa36bd4ed41f15c82df13a",
+          "gold_antecedent_terms": [
+            "batter:\"v.01\"",
+            "time:\"n.08\"",
+            "typhoon:\"n.01\""
+          ],
+          "gold_consequent_terms": [
+            "batter:\"v.01\""
+          ],
+          "pred_antecedent_terms": [
+            "batter:\"v.01\"",
+            "time:\"n.08\"",
+            "typhoon:\"n.01\""
+          ],
+          "pred_consequent_terms": [
+            "batter:\"v.01\""
+          ],
+          "both_operators_produced": true,
+          "both_scopes_exact_lemma": true,
+          "both_scopes_exact_lemma_and_sense": true,
+          "gold_scoped_lemmas_all_present_somewhere_in_generated_sentence": true
+        },
+        {
+          "index": 337,
+          "sentence": "If you're tired, go to bed.",
+          "sha256": "804772c1966a1293d9da87a48afbe827e893c0bd7cc0be5b33f3d58332ff031b",
+          "gold_antecedent_terms": [
+            "bed:\"n.01\"",
+            "go:\"v.01\"",
+            "time:\"n.08\"",
+            "tired:\"a.01\""
+          ],
+          "gold_consequent_terms": [
+            "bed:\"n.01\"",
+            "go:\"v.01\""
+          ],
+          "pred_antecedent_terms": [],
+          "pred_consequent_terms": [],
+          "both_operators_produced": false,
+          "both_scopes_exact_lemma": false,
+          "both_scopes_exact_lemma_and_sense": false,
+          "gold_scoped_lemmas_all_present_somewhere_in_generated_sentence": true
+        },
+        {
+          "index": 343,
+          "sentence": "I'm always bored with his boastful talk.",
+          "sha256": "cd6a02f0a383f662f9ba1a03a6bcbfdce77bf894ec71fe92c583f17e2e32205d",
+          "gold_antecedent_terms": [
+            "bored:\"a.01\"",
+            "time:\"n.08\""
+          ],
+          "gold_consequent_terms": [
+            "bored:\"a.01\""
+          ],
+          "pred_antecedent_terms": [
+            "bored:\"a.01\"",
+            "time:\"n.08\""
+          ],
+          "pred_consequent_terms": [
+            "bored:\"a.01\""
+          ],
+          "both_operators_produced": true,
+          "both_scopes_exact_lemma": true,
+          "both_scopes_exact_lemma_and_sense": true,
+          "gold_scoped_lemmas_all_present_somewhere_in_generated_sentence": true
+        },
+        {
+          "index": 361,
+          "sentence": "All the students are present.",
+          "sha256": "f2d25f13579d0e60cb4759d4311e80ff09efd7e8a1bb05499e6a4529cf775a5f",
+          "gold_antecedent_terms": [
+            "entity:\"n.01\"",
+            "present:\"a.02\"",
+            "time:\"n.08\""
+          ],
+          "gold_consequent_terms": [
+            "present:\"a.02\""
+          ],
+          "pred_antecedent_terms": [
+            "entity:\"n.01\"",
+            "present:\"a.02\"",
+            "time:\"n.08\""
+          ],
+          "pred_consequent_terms": [
+            "present:\"a.02\""
+          ],
+          "both_operators_produced": true,
+          "both_scopes_exact_lemma": true,
+          "both_scopes_exact_lemma_and_sense": true,
+          "gold_scoped_lemmas_all_present_somewhere_in_generated_sentence": true
+        },
+        {
+          "index": 362,
+          "sentence": "I've always hated Tom.",
+          "sha256": "6dcb183bf73384ffa05b4982f81fb75bddf708bf61d7c5bc2e4ab02a060d1f12",
+          "gold_antecedent_terms": [
+            "hate:\"v.01\"",
+            "time:\"n.08\""
+          ],
+          "gold_consequent_terms": [
+            "hate:\"v.01\""
+          ],
+          "pred_antecedent_terms": [
+            "hate:\"v.01\"",
+            "time:\"n.08\""
+          ],
+          "pred_consequent_terms": [
+            "hate:\"v.01\""
+          ],
+          "both_operators_produced": true,
+          "both_scopes_exact_lemma": true,
+          "both_scopes_exact_lemma_and_sense": true,
+          "gold_scoped_lemmas_all_present_somewhere_in_generated_sentence": true
+        },
+        {
+          "index": 376,
+          "sentence": "Tom filled both glasses with wine.",
+          "sha256": "3de033cabd918ff3cb03ac24817f638bcca760c4cdb0e06cafdc630a75d34451",
+          "gold_antecedent_terms": [
+            "entity:\"n.01\"",
+            "fill:\"v.01\"",
+            "time:\"n.08\"",
+            "wine:\"n.01\""
+          ],
+          "gold_consequent_terms": [
+            "fill:\"v.01\"",
+            "wine:\"n.01\""
+          ],
+          "pred_antecedent_terms": [],
+          "pred_consequent_terms": [],
+          "both_operators_produced": false,
+          "both_scopes_exact_lemma": false,
+          "both_scopes_exact_lemma_and_sense": false,
+          "gold_scoped_lemmas_all_present_somewhere_in_generated_sentence": false
+        },
+        {
+          "index": 414,
+          "sentence": "Russia rejected both demands.",
+          "sha256": "ca245c77652e9eccff9b547ffbc003dbfc52b462822e77b4a7944109f6fccc0a",
+          "gold_antecedent_terms": [
+            "entity:\"n.01\"",
+            "reject:\"v.01\"",
+            "time:\"n.08\""
+          ],
+          "gold_consequent_terms": [
+            "reject:\"v.01\""
+          ],
+          "pred_antecedent_terms": [],
+          "pred_consequent_terms": [],
+          "both_operators_produced": false,
+          "both_scopes_exact_lemma": false,
+          "both_scopes_exact_lemma_and_sense": false,
+          "gold_scoped_lemmas_all_present_somewhere_in_generated_sentence": false
+        },
+        {
+          "index": 435,
+          "sentence": "She showers every morning.",
+          "sha256": "03792fdda02b3eafb20c8c7d64aee0b310eaaa37b0eb92045da8247a7e35aeaa",
+          "gold_antecedent_terms": [
+            "morning:\"n.01\"",
+            "shower:\"v.03\""
+          ],
+          "gold_consequent_terms": [
+            "shower:\"v.03\""
+          ],
+          "pred_antecedent_terms": [
+            "morning:\"n.01\"",
+            "shower:\"v.03\""
+          ],
+          "pred_consequent_terms": [
+            "shower:\"v.03\""
+          ],
+          "both_operators_produced": true,
+          "both_scopes_exact_lemma": true,
+          "both_scopes_exact_lemma_and_sense": true,
+          "gold_scoped_lemmas_all_present_somewhere_in_generated_sentence": true
+        },
+        {
+          "index": 448,
+          "sentence": "He put all his money in the box.",
+          "sha256": "baed45e905afdbe4b2ea3c989b3b46e32960508e85fe23c27985fb79a4e35d7e",
+          "gold_antecedent_terms": [
+            "entity:\"n.01\"",
+            "put:\"v.01\"",
+            "time:\"n.08\""
+          ],
+          "gold_consequent_terms": [
+            "put:\"v.01\""
+          ],
+          "pred_antecedent_terms": [
+            "entity:\"n.01\"",
+            "put:\"v.01\"",
+            "time:\"n.08\""
+          ],
+          "pred_consequent_terms": [
+            "put:\"v.01\""
+          ],
+          "both_operators_produced": true,
+          "both_scopes_exact_lemma": true,
+          "both_scopes_exact_lemma_and_sense": true,
+          "gold_scoped_lemmas_all_present_somewhere_in_generated_sentence": true
+        },
+        {
+          "index": 450,
+          "sentence": "Everybody liked Tom.",
+          "sha256": "4dbf720e15673ca99ac96a75cd4c1df31136c562e749e6cfb056cd510cefe544",
+          "gold_antecedent_terms": [
+            "like:\"v.03\"",
+            "person:\"n.01\"",
+            "time:\"n.08\""
+          ],
+          "gold_consequent_terms": [
+            "like:\"v.03\""
+          ],
+          "pred_antecedent_terms": [
+            "like:\"v.03\"",
+            "person:\"n.01\"",
+            "time:\"n.08\""
+          ],
+          "pred_consequent_terms": [
+            "like:\"v.03\""
+          ],
+          "both_operators_produced": true,
+          "both_scopes_exact_lemma": true,
+          "both_scopes_exact_lemma_and_sense": true,
+          "gold_scoped_lemmas_all_present_somewhere_in_generated_sentence": true
+        },
+        {
+          "index": 456,
+          "sentence": "He bores everybody.",
+          "sha256": "222ee3061232b3a9f95720100d9a88347baebe42e2957f7c8fd5e86fede6b505",
+          "gold_antecedent_terms": [
+            "bore:\"v.01\"",
+            "person:\"n.01\"",
+            "time:\"n.08\""
+          ],
+          "gold_consequent_terms": [
+            "bore:\"v.01\""
+          ],
+          "pred_antecedent_terms": [
+            "bore:\"v.01\"",
+            "person:\"n.01\"",
+            "time:\"n.08\""
+          ],
+          "pred_consequent_terms": [
+            "bore:\"v.01\""
+          ],
+          "both_operators_produced": true,
+          "both_scopes_exact_lemma": true,
+          "both_scopes_exact_lemma_and_sense": true,
+          "gold_scoped_lemmas_all_present_somewhere_in_generated_sentence": true
+        },
+        {
+          "index": 498,
+          "sentence": "Everyone was hungry.",
+          "sha256": "96f3f7f19150c5b15f638a786f643ab60278171887e44ccc06ba219928849b99",
+          "gold_antecedent_terms": [
+            "hungry:\"a.01\"",
+            "person:\"n.01\"",
+            "time:\"n.08\""
+          ],
+          "gold_consequent_terms": [
+            "hungry:\"a.01\""
+          ],
+          "pred_antecedent_terms": [
+            "hungry:\"a.01\"",
+            "person:\"n.01\"",
+            "time:\"n.08\""
+          ],
+          "pred_consequent_terms": [
+            "hungry:\"a.01\""
+          ],
+          "both_operators_produced": true,
+          "both_scopes_exact_lemma": true,
+          "both_scopes_exact_lemma_and_sense": true,
+          "gold_scoped_lemmas_all_present_somewhere_in_generated_sentence": true
+        },
+        {
+          "index": 527,
+          "sentence": "Tom and Mary are always flirting with each other.",
+          "sha256": "515162430d3ec636291b878d9db09aea009ddeb977fa775e13a541929ddec222",
+          "gold_antecedent_terms": [
+            "entity:\"n.01\"",
+            "flirt:\"v.01\"",
+            "time:\"n.08\""
+          ],
+          "gold_consequent_terms": [
+            "entity:\"n.01\"",
+            "flirt:\"v.01\""
+          ],
+          "pred_antecedent_terms": [
+            "entity:\"n.01\"",
+            "flirt:\"v.01\"",
+            "time:\"n.08\""
+          ],
+          "pred_consequent_terms": [
+            "entity:\"n.01\"",
+            "flirt:\"v.01\""
+          ],
+          "both_operators_produced": true,
+          "both_scopes_exact_lemma": true,
+          "both_scopes_exact_lemma_and_sense": true,
+          "gold_scoped_lemmas_all_present_somewhere_in_generated_sentence": true
+        },
+        {
+          "index": 528,
+          "sentence": "Everything's free.",
+          "sha256": "bfac0d4b7f3fe04b35bc37d6c9f4ff69870085d9d673486df3b4b9a3d1bd50c5",
+          "gold_antecedent_terms": [
+            "entity:\"n.01\"",
+            "free:\"a.03\"",
+            "time:\"n.08\""
+          ],
+          "gold_consequent_terms": [
+            "free:\"a.03\""
+          ],
+          "pred_antecedent_terms": [
+            "entity:\"n.01\"",
+            "free:\"a.01\"",
+            "time:\"n.08\""
+          ],
+          "pred_consequent_terms": [
+            "free:\"a.01\""
+          ],
+          "both_operators_produced": true,
+          "both_scopes_exact_lemma": true,
+          "both_scopes_exact_lemma_and_sense": false,
+          "gold_scoped_lemmas_all_present_somewhere_in_generated_sentence": true
+        },
+        {
+          "index": 617,
+          "sentence": "I always eat out.",
+          "sha256": "251be6adfde443c6f85393dc482220873fab186bf4e71a8988a4a43d9810c94f",
+          "gold_antecedent_terms": [
+            "eat_out:\"v.01\"",
+            "time:\"n.08\""
+          ],
+          "gold_consequent_terms": [
+            "eat_out:\"v.01\""
+          ],
+          "pred_antecedent_terms": [
+            "eat:\"v.01\"",
+            "time:\"n.08\""
+          ],
+          "pred_consequent_terms": [
+            "eat:\"v.01\""
+          ],
+          "both_operators_produced": true,
+          "both_scopes_exact_lemma": false,
+          "both_scopes_exact_lemma_and_sense": false,
+          "gold_scoped_lemmas_all_present_somewhere_in_generated_sentence": false
+        },
+        {
+          "index": 632,
+          "sentence": "A dog is sensitive to smell.",
+          "sha256": "92be14588e938173ddf12d99bf6a605c9c157c2da750ebbe1d6c326dd19791c5",
+          "gold_antecedent_terms": [
+            "dog:\"n.01\"",
+            "sensitive:\"a.03\"",
+            "smell:\"n.01\"",
+            "time:\"n.08\""
+          ],
+          "gold_consequent_terms": [
+            "sensitive:\"a.03\"",
+            "smell:\"n.01\""
+          ],
+          "pred_antecedent_terms": [
+            "dog:\"n.01\"",
+            "sensitive:\"a.01\"",
+            "smell:\"n.01\"",
+            "time:\"n.08\""
+          ],
+          "pred_consequent_terms": [
+            "sensitive:\"a.01\"",
+            "smell:\"n.01\""
+          ],
+          "both_operators_produced": true,
+          "both_scopes_exact_lemma": true,
+          "both_scopes_exact_lemma_and_sense": false,
+          "gold_scoped_lemmas_all_present_somewhere_in_generated_sentence": true
+        },
+        {
+          "index": 660,
+          "sentence": "The music lured everyone.",
+          "sha256": "65fd16b19c9af1199e7f25f888196056a95368af74f02d9a4e60788925b1f788",
+          "gold_antecedent_terms": [
+            "lure:\"v.01\"",
+            "person:\"n.01\"",
+            "time:\"n.08\""
+          ],
+          "gold_consequent_terms": [
+            "lure:\"v.01\""
+          ],
+          "pred_antecedent_terms": [
+            "person:\"n.01\"",
+            "time:\"n.08\""
+          ],
+          "pred_consequent_terms": [],
+          "both_operators_produced": true,
+          "both_scopes_exact_lemma": false,
+          "both_scopes_exact_lemma_and_sense": false,
+          "gold_scoped_lemmas_all_present_somewhere_in_generated_sentence": false
+        },
+        {
+          "index": 667,
+          "sentence": "Each building has a name.",
+          "sha256": "8aefadf0d5239692450a362e6d8dc3535ebae30dda0ff56bd87a5422e377d75e",
+          "gold_antecedent_terms": [
+            "building:\"n.01\"",
+            "have:\"v.02\"",
+            "name:\"n.01\"",
+            "time:\"n.08\""
+          ],
+          "gold_consequent_terms": [
+            "have:\"v.02\"",
+            "name:\"n.01\""
+          ],
+          "pred_antecedent_terms": [
+            "building:\"n.01\"",
+            "have:\"v.01\"",
+            "name:\"n.01\"",
+            "time:\"n.08\""
+          ],
+          "pred_consequent_terms": [
+            "have:\"v.01\"",
+            "name:\"n.01\""
+          ],
+          "both_operators_produced": true,
+          "both_scopes_exact_lemma": true,
+          "both_scopes_exact_lemma_and_sense": false,
+          "gold_scoped_lemmas_all_present_somewhere_in_generated_sentence": true
+        },
+        {
+          "index": 686,
+          "sentence": "The ship left every Monday.",
+          "sha256": "9c5446c9cf90b4cabf79804f449924975b0dc2cb789c4551b22dfbeb6723ac73",
+          "gold_antecedent_terms": [
+            "leave:\"v.01\"",
+            "time:\"n.08\""
+          ],
+          "gold_consequent_terms": [
+            "leave:\"v.01\""
+          ],
+          "pred_antecedent_terms": [
+            "leave:\"v.01\"",
+            "time:\"n.08\""
+          ],
+          "pred_consequent_terms": [
+            "leave:\"v.01\"",
+            "time:\"n.08\""
+          ],
+          "both_operators_produced": true,
+          "both_scopes_exact_lemma": false,
+          "both_scopes_exact_lemma_and_sense": false,
+          "gold_scoped_lemmas_all_present_somewhere_in_generated_sentence": true
+        },
+        {
+          "index": 817,
+          "sentence": "He is always smoking.",
+          "sha256": "87f781141a3e91233b5e2366edd6ec3033b2313c175d66498ec46cbaba79cfc9",
+          "gold_antecedent_terms": [
+            "smoke:\"v.01\"",
+            "time:\"n.08\""
+          ],
+          "gold_consequent_terms": [
+            "smoke:\"v.01\""
+          ],
+          "pred_antecedent_terms": [
+            "smoke:\"v.01\"",
+            "time:\"n.08\""
+          ],
+          "pred_consequent_terms": [
+            "smoke:\"v.01\""
+          ],
+          "both_operators_produced": true,
+          "both_scopes_exact_lemma": true,
+          "both_scopes_exact_lemma_and_sense": true,
+          "gold_scoped_lemmas_all_present_somewhere_in_generated_sentence": true
+        },
+        {
+          "index": 866,
+          "sentence": "He ate all of the apple.",
+          "sha256": "975e36feb621c207a529d293cdb62ce9bd4f8d28eb1cba5e6ad218b7527524c2",
+          "gold_antecedent_terms": [
+            "eat:\"v.01\"",
+            "entity:\"n.01\"",
+            "time:\"n.08\""
+          ],
+          "gold_consequent_terms": [
+            "eat:\"v.01\""
+          ],
+          "pred_antecedent_terms": [
+            "all:\"n.01\"",
+            "eat:\"v.01\"",
+            "time:\"n.08\""
+          ],
+          "pred_consequent_terms": [
+            "eat:\"v.01\""
+          ],
+          "both_operators_produced": true,
+          "both_scopes_exact_lemma": false,
+          "both_scopes_exact_lemma_and_sense": false,
+          "gold_scoped_lemmas_all_present_somewhere_in_generated_sentence": false
+        },
+        {
+          "index": 875,
+          "sentence": "Tom goes jogging every morning.",
+          "sha256": "0d54e6c0aa417035c088cf061728059002d1eb541c09dde5d3b7146726e25cbc",
+          "gold_antecedent_terms": [
+            "jog:\"v.03\"",
+            "morning:\"n.01\"",
+            "time:\"n.08\""
+          ],
+          "gold_consequent_terms": [
+            "jog:\"v.03\""
+          ],
+          "pred_antecedent_terms": [
+            "jog:\"v.03\"",
+            "morning:\"n.01\"",
+            "time:\"n.08\""
+          ],
+          "pred_consequent_terms": [
+            "jog:\"v.03\""
+          ],
+          "both_operators_produced": true,
+          "both_scopes_exact_lemma": true,
+          "both_scopes_exact_lemma_and_sense": true,
+          "gold_scoped_lemmas_all_present_somewhere_in_generated_sentence": true
+        }
+      ],
+      "examples_of_incorrect_premise_or_consequent": [
+        {
+          "index": 4,
+          "sentence": "You can't live on that island.",
+          "sha256": "9880e66faa1417d71f4c801307c681aa4850f5a5a899bd0a1237a9a57810124b",
+          "gold_antecedent_terms": [
+            "live:\"v.01\"",
+            "person:\"n.01\""
+          ],
+          "gold_consequent_terms": [
+            "live:\"v.01\""
+          ],
+          "pred_antecedent_terms": [],
+          "pred_consequent_terms": [],
+          "both_operators_produced": false,
+          "both_scopes_exact_lemma": false,
+          "both_scopes_exact_lemma_and_sense": false,
+          "gold_scoped_lemmas_all_present_somewhere_in_generated_sentence": false
+        },
+        {
+          "index": 11,
+          "sentence": "Nowadays anybody can get books.",
+          "sha256": "6e2a936919f065c3f381094d11ab7c200bfcb5a1dc49422e328deb3ae48bbd16",
+          "gold_antecedent_terms": [
+            "book:\"n.02\"",
+            "get:\"v.01\"",
+            "person:\"n.01\"",
+            "time:\"n.08\""
+          ],
+          "gold_consequent_terms": [
+            "book:\"n.02\"",
+            "get:\"v.01\""
+          ],
+          "pred_antecedent_terms": [
+            "book:\"n.01\"",
+            "get:\"v.01\""
+          ],
+          "pred_consequent_terms": [],
+          "both_operators_produced": false,
+          "both_scopes_exact_lemma": false,
+          "both_scopes_exact_lemma_and_sense": false,
+          "gold_scoped_lemmas_all_present_somewhere_in_generated_sentence": false
+        },
+        {
+          "index": 15,
+          "sentence": "An elephant has a long nose.",
+          "sha256": "6ab43e001ade2be37c0c3115356208461e12331806e8027c2c68495bf3d2231f",
+          "gold_antecedent_terms": [
+            "elephant:\"n.01\"",
+            "have:\"v.02\"",
+            "long:\"a.02\"",
+            "nose:\"n.01\""
+          ],
+          "gold_consequent_terms": [
+            "have:\"v.02\"",
+            "long:\"a.02\"",
+            "nose:\"n.01\""
+          ],
+          "pred_antecedent_terms": [
+            "elephant:\"n.01\"",
+            "long:\"a.02\"",
+            "nose:\"n.01\""
+          ],
+          "pred_consequent_terms": [
+            "long:\"a.02\"",
+            "nose:\"n.01\""
+          ],
+          "both_operators_produced": true,
+          "both_scopes_exact_lemma": false,
+          "both_scopes_exact_lemma_and_sense": false,
+          "gold_scoped_lemmas_all_present_somewhere_in_generated_sentence": false
+        },
+        {
+          "index": 88,
+          "sentence": "Both Cristina and Luis always dreamt of studying medicine.",
+          "sha256": "853b17a78970460311965997bd7156fb336adff76fca66df3163fd299222e072",
+          "gold_antecedent_terms": [
+            "dream:\"v.01\"",
+            "entity:\"n.01\"",
+            "entity:\"n.01\"",
+            "entity:\"n.01\"",
+            "entity:\"n.01\"",
+            "medicine:\"n.03\"",
+            "study:\"v.04\"",
+            "time:\"n.08\"",
+            "time:\"n.08\""
+          ],
+          "gold_consequent_terms": [
+            "dream:\"v.01\"",
+            "entity:\"n.01\"",
+            "entity:\"n.01\"",
+            "entity:\"n.01\"",
+            "medicine:\"n.03\"",
+            "study:\"v.04\"",
+            "time:\"n.08\""
+          ],
+          "pred_antecedent_terms": [
+            "dream:\"v.01\"",
+            "entity:\"n.01\"",
+            "entity:\"n.01\"",
+            "entity:\"n.01\"",
+            "medicine:\"n.02\"",
+            "study:\"v.01\"",
+            "time:\"n.08\""
+          ],
+          "pred_consequent_terms": [
+            "dream:\"v.01\"",
+            "entity:\"n.01\"",
+            "entity:\"n.01\"",
+            "medicine:\"n.02\"",
+            "study:\"v.01\""
+          ],
+          "both_operators_produced": true,
+          "both_scopes_exact_lemma": false,
+          "both_scopes_exact_lemma_and_sense": false,
+          "gold_scoped_lemmas_all_present_somewhere_in_generated_sentence": false
+        },
+        {
+          "index": 296,
+          "sentence": "Police arrested everyone in the room.",
+          "sha256": "03d8611bd967b9a32e9fd98d499f612e0887d309650830e38a53987b259bdc8f",
+          "gold_antecedent_terms": [
+            "arrest:\"v.01\"",
+            "person:\"n.01\"",
+            "time:\"n.08\""
+          ],
+          "gold_consequent_terms": [
+            "arrest:\"v.01\""
+          ],
+          "pred_antecedent_terms": [],
+          "pred_consequent_terms": [],
+          "both_operators_produced": false,
+          "both_scopes_exact_lemma": false,
+          "both_scopes_exact_lemma_and_sense": false,
+          "gold_scoped_lemmas_all_present_somewhere_in_generated_sentence": false
+        },
+        {
+          "index": 337,
+          "sentence": "If you're tired, go to bed.",
+          "sha256": "804772c1966a1293d9da87a48afbe827e893c0bd7cc0be5b33f3d58332ff031b",
+          "gold_antecedent_terms": [
+            "bed:\"n.01\"",
+            "go:\"v.01\"",
+            "time:\"n.08\"",
+            "tired:\"a.01\""
+          ],
+          "gold_consequent_terms": [
+            "bed:\"n.01\"",
+            "go:\"v.01\""
+          ],
+          "pred_antecedent_terms": [],
+          "pred_consequent_terms": [],
+          "both_operators_produced": false,
+          "both_scopes_exact_lemma": false,
+          "both_scopes_exact_lemma_and_sense": false,
+          "gold_scoped_lemmas_all_present_somewhere_in_generated_sentence": true
+        },
+        {
+          "index": 376,
+          "sentence": "Tom filled both glasses with wine.",
+          "sha256": "3de033cabd918ff3cb03ac24817f638bcca760c4cdb0e06cafdc630a75d34451",
+          "gold_antecedent_terms": [
+            "entity:\"n.01\"",
+            "fill:\"v.01\"",
+            "time:\"n.08\"",
+            "wine:\"n.01\""
+          ],
+          "gold_consequent_terms": [
+            "fill:\"v.01\"",
+            "wine:\"n.01\""
+          ],
+          "pred_antecedent_terms": [],
+          "pred_consequent_terms": [],
+          "both_operators_produced": false,
+          "both_scopes_exact_lemma": false,
+          "both_scopes_exact_lemma_and_sense": false,
+          "gold_scoped_lemmas_all_present_somewhere_in_generated_sentence": false
+        },
+        {
+          "index": 414,
+          "sentence": "Russia rejected both demands.",
+          "sha256": "ca245c77652e9eccff9b547ffbc003dbfc52b462822e77b4a7944109f6fccc0a",
+          "gold_antecedent_terms": [
+            "entity:\"n.01\"",
+            "reject:\"v.01\"",
+            "time:\"n.08\""
+          ],
+          "gold_consequent_terms": [
+            "reject:\"v.01\""
+          ],
+          "pred_antecedent_terms": [],
+          "pred_consequent_terms": [],
+          "both_operators_produced": false,
+          "both_scopes_exact_lemma": false,
+          "both_scopes_exact_lemma_and_sense": false,
+          "gold_scoped_lemmas_all_present_somewhere_in_generated_sentence": false
+        },
+        {
+          "index": 617,
+          "sentence": "I always eat out.",
+          "sha256": "251be6adfde443c6f85393dc482220873fab186bf4e71a8988a4a43d9810c94f",
+          "gold_antecedent_terms": [
+            "eat_out:\"v.01\"",
+            "time:\"n.08\""
+          ],
+          "gold_consequent_terms": [
+            "eat_out:\"v.01\""
+          ],
+          "pred_antecedent_terms": [
+            "eat:\"v.01\"",
+            "time:\"n.08\""
+          ],
+          "pred_consequent_terms": [
+            "eat:\"v.01\""
+          ],
+          "both_operators_produced": true,
+          "both_scopes_exact_lemma": false,
+          "both_scopes_exact_lemma_and_sense": false,
+          "gold_scoped_lemmas_all_present_somewhere_in_generated_sentence": false
+        },
+        {
+          "index": 660,
+          "sentence": "The music lured everyone.",
+          "sha256": "65fd16b19c9af1199e7f25f888196056a95368af74f02d9a4e60788925b1f788",
+          "gold_antecedent_terms": [
+            "lure:\"v.01\"",
+            "person:\"n.01\"",
+            "time:\"n.08\""
+          ],
+          "gold_consequent_terms": [
+            "lure:\"v.01\""
+          ],
+          "pred_antecedent_terms": [
+            "person:\"n.01\"",
+            "time:\"n.08\""
+          ],
+          "pred_consequent_terms": [],
+          "both_operators_produced": true,
+          "both_scopes_exact_lemma": false,
+          "both_scopes_exact_lemma_and_sense": false,
+          "gold_scoped_lemmas_all_present_somewhere_in_generated_sentence": false
+        },
+        {
+          "index": 686,
+          "sentence": "The ship left every Monday.",
+          "sha256": "9c5446c9cf90b4cabf79804f449924975b0dc2cb789c4551b22dfbeb6723ac73",
+          "gold_antecedent_terms": [
+            "leave:\"v.01\"",
+            "time:\"n.08\""
+          ],
+          "gold_consequent_terms": [
+            "leave:\"v.01\""
+          ],
+          "pred_antecedent_terms": [
+            "leave:\"v.01\"",
+            "time:\"n.08\""
+          ],
+          "pred_consequent_terms": [
+            "leave:\"v.01\"",
+            "time:\"n.08\""
+          ],
+          "both_operators_produced": true,
+          "both_scopes_exact_lemma": false,
+          "both_scopes_exact_lemma_and_sense": false,
+          "gold_scoped_lemmas_all_present_somewhere_in_generated_sentence": true
+        },
+        {
+          "index": 866,
+          "sentence": "He ate all of the apple.",
+          "sha256": "975e36feb621c207a529d293cdb62ce9bd4f8d28eb1cba5e6ad218b7527524c2",
+          "gold_antecedent_terms": [
+            "eat:\"v.01\"",
+            "entity:\"n.01\"",
+            "time:\"n.08\""
+          ],
+          "gold_consequent_terms": [
+            "eat:\"v.01\""
+          ],
+          "pred_antecedent_terms": [
+            "all:\"n.01\"",
+            "eat:\"v.01\"",
+            "time:\"n.08\""
+          ],
+          "pred_consequent_terms": [
+            "eat:\"v.01\""
+          ],
+          "both_operators_produced": true,
+          "both_scopes_exact_lemma": false,
+          "both_scopes_exact_lemma_and_sense": false,
+          "gold_scoped_lemmas_all_present_somewhere_in_generated_sentence": false
+        }
+      ]
+    },
+    "dev": {
+      "sentences": 885,
+      "gold_antecedent_consequent_sentence_pairs": 32,
+      "parser_has_both_conditional_boxes": 31,
+      "both_antecedent_consequent_scopes_exact_lemmas": 22,
+      "both_antecedent_consequent_scopes_exact_lemmas_and_senses": 14,
+      "all_gold_scoped_concepts_present_anywhere_in_auto_generated_sentence": 27,
+      "original_attribution": {
+        "gold_cases": 27,
+        "produced_operator": 26,
+        "exact_lemma_semantic_target": 21,
+        "exact_lemma_and_sense_target": 16
+      },
+      "original_negation": {
+        "gold_cases": 70,
+        "produced_operator": 70,
+        "exact_lemma_semantic_target": 60,
+        "exact_lemma_and_sense_target": 41
+      },
+      "all_conditional_pair_rows": [
+        {
+          "index": 3,
+          "sentence": "You can buy stamps at any post office.",
+          "sha256": "36bf254682a22b0b79bdf58bf7d4a6331399ff5fdc9aa3b215cdbac34c1f2b64",
+          "gold_antecedent_terms": [
+            "buy:\"v.01\"",
+            "person:\"n.01\"",
+            "post_office:\"n.01\"",
+            "post_office:\"n.01\"",
+            "stamp:\"n.04\""
+          ],
+          "gold_consequent_terms": [
+            "buy:\"v.01\"",
+            "post_office:\"n.01\"",
+            "stamp:\"n.04\""
+          ],
+          "pred_antecedent_terms": [
+            "buy:\"v.01\"",
+            "post_office:\"n.01\"",
+            "stamp:\"n.04\""
+          ],
+          "pred_consequent_terms": [],
+          "both_operators_produced": false,
+          "both_scopes_exact_lemma": false,
+          "both_scopes_exact_lemma_and_sense": false,
+          "gold_scoped_lemmas_all_present_somewhere_in_generated_sentence": false
+        },
+        {
+          "index": 47,
+          "sentence": "One cannot not communicate.",
+          "sha256": "9d8f6b83054b5b84bb97f53327996646a27836c7245f15849e8ea31a60273341",
+          "gold_antecedent_terms": [
+            "communicate:\"v.01\"",
+            "person:\"n.01\""
+          ],
+          "gold_consequent_terms": [
+            "communicate:\"v.01\""
+          ],
+          "pred_antecedent_terms": [
+            "communicate:\"v.01\"",
+            "person:\"n.01\""
+          ],
+          "pred_consequent_terms": [
+            "communicate:\"v.01\""
+          ],
+          "both_operators_produced": true,
+          "both_scopes_exact_lemma": true,
+          "both_scopes_exact_lemma_and_sense": true,
+          "gold_scoped_lemmas_all_present_somewhere_in_generated_sentence": true
+        },
+        {
+          "index": 61,
+          "sentence": "Everybody wants something.",
+          "sha256": "47e9121bfa839a6780d0ccc64159b416f746676494dc9342222a4741f2bc3120",
+          "gold_antecedent_terms": [
+            "entity:\"n.01\"",
+            "person:\"n.01\"",
+            "time:\"n.08\"",
+            "want:\"v.01\""
+          ],
+          "gold_consequent_terms": [
+            "entity:\"n.01\"",
+            "want:\"v.01\""
+          ],
+          "pred_antecedent_terms": [
+            "entity:\"n.01\"",
+            "person:\"n.01\"",
+            "time:\"n.08\"",
+            "want:\"v.01\""
+          ],
+          "pred_consequent_terms": [
+            "entity:\"n.01\"",
+            "want:\"v.01\""
+          ],
+          "both_operators_produced": true,
+          "both_scopes_exact_lemma": true,
+          "both_scopes_exact_lemma_and_sense": true,
+          "gold_scoped_lemmas_all_present_somewhere_in_generated_sentence": true
+        },
+        {
+          "index": 66,
+          "sentence": "Everyone's eating.",
+          "sha256": "5c1182d4618b992fc165506877db623cf92f8c94f87566d7e6d27e8308099e1e",
+          "gold_antecedent_terms": [
+            "eat:\"v.02\"",
+            "person:\"n.01\"",
+            "time:\"n.08\""
+          ],
+          "gold_consequent_terms": [
+            "eat:\"v.02\""
+          ],
+          "pred_antecedent_terms": [
+            "eat:\"v.02\"",
+            "person:\"n.01\"",
+            "time:\"n.08\""
+          ],
+          "pred_consequent_terms": [
+            "eat:\"v.02\""
+          ],
+          "both_operators_produced": true,
+          "both_scopes_exact_lemma": true,
+          "both_scopes_exact_lemma_and_sense": true,
+          "gold_scoped_lemmas_all_present_somewhere_in_generated_sentence": true
+        },
+        {
+          "index": 72,
+          "sentence": "Both were silent.",
+          "sha256": "1cb5f0a878ee998f17249671f82f8b85ff51f7b9a76fd8fa7915e32a52b28204",
+          "gold_antecedent_terms": [
+            "entity:\"n.01\"",
+            "silent:\"a.02\"",
+            "time:\"n.08\""
+          ],
+          "gold_consequent_terms": [
+            "silent:\"a.02\""
+          ],
+          "pred_antecedent_terms": [
+            "entity:\"n.01\"",
+            "silent:\"a.01\"",
+            "time:\"n.08\""
+          ],
+          "pred_consequent_terms": [
+            "silent:\"a.01\""
+          ],
+          "both_operators_produced": true,
+          "both_scopes_exact_lemma": true,
+          "both_scopes_exact_lemma_and_sense": false,
+          "gold_scoped_lemmas_all_present_somewhere_in_generated_sentence": true
+        },
+        {
+          "index": 78,
+          "sentence": "I told him everything.",
+          "sha256": "2a0c051ae346f0ad7c0cd49039e50c67ec2aee1f5deeb6b96c45ad155a56d342",
+          "gold_antecedent_terms": [
+            "entity:\"n.01\"",
+            "tell:\"v.03\"",
+            "time:\"n.08\""
+          ],
+          "gold_consequent_terms": [
+            "tell:\"v.03\""
+          ],
+          "pred_antecedent_terms": [
+            "entity:\"n.01\"",
+            "tell:\"v.02\"",
+            "time:\"n.08\""
+          ],
+          "pred_consequent_terms": [
+            "tell:\"v.02\""
+          ],
+          "both_operators_produced": true,
+          "both_scopes_exact_lemma": true,
+          "both_scopes_exact_lemma_and_sense": false,
+          "gold_scoped_lemmas_all_present_somewhere_in_generated_sentence": true
+        },
+        {
+          "index": 80,
+          "sentence": "Tom and Mary both laughed.",
+          "sha256": "4bb312782602abfe9b234a800fa716890471662023bb502bf0f14951c9f3de1a",
+          "gold_antecedent_terms": [
+            "entity:\"n.01\"",
+            "laugh:\"v.01\"",
+            "time:\"n.08\""
+          ],
+          "gold_consequent_terms": [
+            "laugh:\"v.01\""
+          ],
+          "pred_antecedent_terms": [
+            "entity:\"n.01\"",
+            "laugh:\"v.01\"",
+            "time:\"n.08\""
+          ],
+          "pred_consequent_terms": [
+            "laugh:\"v.01\""
+          ],
+          "both_operators_produced": true,
+          "both_scopes_exact_lemma": true,
+          "both_scopes_exact_lemma_and_sense": true,
+          "gold_scoped_lemmas_all_present_somewhere_in_generated_sentence": true
+        },
+        {
+          "index": 89,
+          "sentence": "Every author suffers from writer's block from time to time.",
+          "sha256": "69df3badec7215343f3ae7cac0e8fc11f0cefa418575b26e03fcd97a9b75ea66",
+          "gold_antecedent_terms": [
+            "author:\"n.01\"",
+            "from_time_to_time:\"r.01\"",
+            "person:\"n.01\"",
+            "suffer:\"v.02\"",
+            "time:\"n.08\""
+          ],
+          "gold_consequent_terms": [
+            "from_time_to_time:\"r.01\"",
+            "suffer:\"v.02\""
+          ],
+          "pred_antecedent_terms": [
+            "author:\"n.01\"",
+            "block:\"n.01\"",
+            "from_time_to_time:\"r.01\"",
+            "person:\"n.01\"",
+            "person:\"n.01\"",
+            "suffer:\"v.02\"",
+            "time:\"n.08\"",
+            "writer:\"n.01\""
+          ],
+          "pred_consequent_terms": [
+            "block:\"n.01\"",
+            "from_time_to_time:\"r.01\"",
+            "person:\"n.01\"",
+            "suffer:\"v.02\"",
+            "writer:\"n.01\""
+          ],
+          "both_operators_produced": true,
+          "both_scopes_exact_lemma": false,
+          "both_scopes_exact_lemma_and_sense": false,
+          "gold_scoped_lemmas_all_present_somewhere_in_generated_sentence": true
+        },
+        {
+          "index": 127,
+          "sentence": "Klava oversimplifies everything.",
+          "sha256": "2887be11cf3fc1514f25cd708b49dc93bbbd7846e2d232427af16dc879e1002c",
+          "gold_antecedent_terms": [
+            "entity:\"n.01\"",
+            "oversimplify:\"v.01\"",
+            "time:\"n.08\""
+          ],
+          "gold_consequent_terms": [
+            "oversimplify:\"v.01\""
+          ],
+          "pred_antecedent_terms": [
+            "entity:\"n.01\"",
+            "time:\"n.08\""
+          ],
+          "pred_consequent_terms": [],
+          "both_operators_produced": true,
+          "both_scopes_exact_lemma": false,
+          "both_scopes_exact_lemma_and_sense": false,
+          "gold_scoped_lemmas_all_present_somewhere_in_generated_sentence": false
+        },
+        {
+          "index": 140,
+          "sentence": "Tom loved all of us.",
+          "sha256": "4c9649f870de4c413337e92df5550b3c08a00fee01657f5c43b7a44ddeb121fe",
+          "gold_antecedent_terms": [
+            "love:\"v.01\"",
+            "person:\"n.01\"",
+            "time:\"n.08\""
+          ],
+          "gold_consequent_terms": [
+            "love:\"v.01\""
+          ],
+          "pred_antecedent_terms": [
+            "love:\"v.01\"",
+            "person:\"n.01\"",
+            "time:\"n.08\""
+          ],
+          "pred_consequent_terms": [
+            "love:\"v.01\""
+          ],
+          "both_operators_produced": true,
+          "both_scopes_exact_lemma": true,
+          "both_scopes_exact_lemma_and_sense": true,
+          "gold_scoped_lemmas_all_present_somewhere_in_generated_sentence": true
+        },
+        {
+          "index": 143,
+          "sentence": "The customer is always right.",
+          "sha256": "3b6d3390fb3657bd3ee75c7fb21af5c351dda20b604a700d2bf687ab929aeace",
+          "gold_antecedent_terms": [
+            "right:\"a.02\"",
+            "time:\"n.08\""
+          ],
+          "gold_consequent_terms": [
+            "right:\"a.02\""
+          ],
+          "pred_antecedent_terms": [
+            "right:\"a.01\"",
+            "time:\"n.08\""
+          ],
+          "pred_consequent_terms": [
+            "right:\"a.01\""
+          ],
+          "both_operators_produced": true,
+          "both_scopes_exact_lemma": true,
+          "both_scopes_exact_lemma_and_sense": false,
+          "gold_scoped_lemmas_all_present_somewhere_in_generated_sentence": true
+        },
+        {
+          "index": 187,
+          "sentence": "All journeys begin with a first step.",
+          "sha256": "10bf53d103e595bb327d05b9b89ed79dde95c6a89c21b4f543b80327274f6152",
+          "gold_antecedent_terms": [
+            "begin:\"v.01\"",
+            "first_step:\"n.01\"",
+            "journey:\"n.01\""
+          ],
+          "gold_consequent_terms": [
+            "begin:\"v.01\"",
+            "first_step:\"n.01\""
+          ],
+          "pred_antecedent_terms": [
+            "begin:\"v.01\"",
+            "first_step:\"n.01\"",
+            "journey:\"n.01\"",
+            "time:\"n.08\""
+          ],
+          "pred_consequent_terms": [
+            "begin:\"v.01\"",
+            "first_step:\"n.01\""
+          ],
+          "both_operators_produced": true,
+          "both_scopes_exact_lemma": false,
+          "both_scopes_exact_lemma_and_sense": false,
+          "gold_scoped_lemmas_all_present_somewhere_in_generated_sentence": true
+        },
+        {
+          "index": 206,
+          "sentence": "He dreams that everybody in China speaks Esperanto.",
+          "sha256": "c00141e147a8151b3337595c07a0895f33686d5d256b6cabc1029a05676f5c95",
+          "gold_antecedent_terms": [
+            "esperanto:\"n.01\"",
+            "person:\"n.01\"",
+            "speak:\"v.03\"",
+            "time:\"n.08\""
+          ],
+          "gold_consequent_terms": [
+            "esperanto:\"n.01\"",
+            "speak:\"v.03\""
+          ],
+          "pred_antecedent_terms": [
+            "esperanto:\"n.01\"",
+            "person:\"n.01\"",
+            "speak:\"v.03\"",
+            "time:\"n.08\""
+          ],
+          "pred_consequent_terms": [
+            "esperanto:\"n.01\"",
+            "speak:\"v.03\""
+          ],
+          "both_operators_produced": true,
+          "both_scopes_exact_lemma": true,
+          "both_scopes_exact_lemma_and_sense": true,
+          "gold_scoped_lemmas_all_present_somewhere_in_generated_sentence": true
+        },
+        {
+          "index": 223,
+          "sentence": "Everybody hates me.",
+          "sha256": "e3bb286c402edfd8dcfea352a8312ef61024ca90ebc31e1ab9402f104a37b3a4",
+          "gold_antecedent_terms": [
+            "hate:\"v.01\"",
+            "person:\"n.01\"",
+            "time:\"n.08\""
+          ],
+          "gold_consequent_terms": [
+            "hate:\"v.01\""
+          ],
+          "pred_antecedent_terms": [
+            "hate:\"v.01\"",
+            "person:\"n.01\"",
+            "time:\"n.08\""
+          ],
+          "pred_consequent_terms": [
+            "hate:\"v.01\""
+          ],
+          "both_operators_produced": true,
+          "both_scopes_exact_lemma": true,
+          "both_scopes_exact_lemma_and_sense": true,
+          "gold_scoped_lemmas_all_present_somewhere_in_generated_sentence": true
+        },
+        {
+          "index": 265,
+          "sentence": "Everyone except Tom was wearing a tie.",
+          "sha256": "a7ccdbd898207206854d83ac6fd1e7831c6f36386ca9deeac6e37c994a5f9325",
+          "gold_antecedent_terms": [
+            "person:\"n.01\"",
+            "tie:\"n.01\"",
+            "time:\"n.08\"",
+            "wear:\"v.02\""
+          ],
+          "gold_consequent_terms": [
+            "tie:\"n.01\"",
+            "wear:\"v.02\""
+          ],
+          "pred_antecedent_terms": [
+            "person:\"n.01\"",
+            "tie:\"n.01\"",
+            "time:\"n.08\"",
+            "wear:\"v.01\""
+          ],
+          "pred_consequent_terms": [
+            "tie:\"n.01\"",
+            "wear:\"v.01\""
+          ],
+          "both_operators_produced": true,
+          "both_scopes_exact_lemma": true,
+          "both_scopes_exact_lemma_and_sense": false,
+          "gold_scoped_lemmas_all_present_somewhere_in_generated_sentence": true
+        },
+        {
+          "index": 301,
+          "sentence": "All the students study English.",
+          "sha256": "97b55344038a5eb76c1757bfbd691c8adc30cc1d3e592b3f9546956312b7f868",
+          "gold_antecedent_terms": [
+            "english:\"n.01\"",
+            "entity:\"n.01\"",
+            "study:\"v.04\"",
+            "time:\"n.08\""
+          ],
+          "gold_consequent_terms": [
+            "english:\"n.01\"",
+            "study:\"v.04\""
+          ],
+          "pred_antecedent_terms": [
+            "english:\"n.01\"",
+            "entity:\"n.01\"",
+            "study:\"v.05\"",
+            "time:\"n.08\""
+          ],
+          "pred_consequent_terms": [
+            "english:\"n.01\"",
+            "study:\"v.05\""
+          ],
+          "both_operators_produced": true,
+          "both_scopes_exact_lemma": true,
+          "both_scopes_exact_lemma_and_sense": false,
+          "gold_scoped_lemmas_all_present_somewhere_in_generated_sentence": true
+        },
+        {
+          "index": 309,
+          "sentence": "She used to play tennis every Sunday.",
+          "sha256": "2d20c94cd7647f2a33c627f9a267397c111dc64d2c0e29947c5c6e662898e1b5",
+          "gold_antecedent_terms": [
+            "play:\"v.01\"",
+            "tennis:\"n.01\"",
+            "time:\"n.08\""
+          ],
+          "gold_consequent_terms": [
+            "play:\"v.01\"",
+            "tennis:\"n.01\""
+          ],
+          "pred_antecedent_terms": [
+            "play:\"v.01\"",
+            "tennis:\"n.01\""
+          ],
+          "pred_consequent_terms": [],
+          "both_operators_produced": true,
+          "both_scopes_exact_lemma": false,
+          "both_scopes_exact_lemma_and_sense": false,
+          "gold_scoped_lemmas_all_present_somewhere_in_generated_sentence": false
+        },
+        {
+          "index": 310,
+          "sentence": "I saw everything.",
+          "sha256": "72bfa4e75533b1316157bd34f1351434822af3de2d8ffe6673880db90be7f79c",
+          "gold_antecedent_terms": [
+            "entity:\"n.01\"",
+            "see:\"v.03\"",
+            "time:\"n.08\""
+          ],
+          "gold_consequent_terms": [
+            "see:\"v.03\""
+          ],
+          "pred_antecedent_terms": [
+            "entity:\"n.01\"",
+            "see:\"v.01\"",
+            "time:\"n.08\""
+          ],
+          "pred_consequent_terms": [
+            "see:\"v.01\""
+          ],
+          "both_operators_produced": true,
+          "both_scopes_exact_lemma": true,
+          "both_scopes_exact_lemma_and_sense": false,
+          "gold_scoped_lemmas_all_present_somewhere_in_generated_sentence": true
+        },
+        {
+          "index": 338,
+          "sentence": "That story is a famous one that everyone knows.",
+          "sha256": "9debeb12815afb8be72de4ff8f4de4d33b96e52fb24176840080e2419c523ed8",
+          "gold_antecedent_terms": [
+            "know:\"v.01\"",
+            "person:\"n.01\"",
+            "time:\"n.08\""
+          ],
+          "gold_consequent_terms": [
+            "know:\"v.01\""
+          ],
+          "pred_antecedent_terms": [
+            "know:\"v.01\"",
+            "person:\"n.01\"",
+            "time:\"n.08\""
+          ],
+          "pred_consequent_terms": [
+            "know:\"v.01\""
+          ],
+          "both_operators_produced": true,
+          "both_scopes_exact_lemma": true,
+          "both_scopes_exact_lemma_and_sense": true,
+          "gold_scoped_lemmas_all_present_somewhere_in_generated_sentence": true
+        },
+        {
+          "index": 393,
+          "sentence": "Everybody except Joe went to the party.",
+          "sha256": "5f5f6d0c9f54b5dc68ebdbbd9d032e37792cb18021415867eb2594d3bb09f86b",
+          "gold_antecedent_terms": [
+            "go:\"v.01\"",
+            "person:\"n.01\"",
+            "time:\"n.08\""
+          ],
+          "gold_consequent_terms": [
+            "go:\"v.01\""
+          ],
+          "pred_antecedent_terms": [
+            "go:\"v.01\"",
+            "person:\"n.01\"",
+            "time:\"n.08\""
+          ],
+          "pred_consequent_terms": [
+            "go:\"v.01\""
+          ],
+          "both_operators_produced": true,
+          "both_scopes_exact_lemma": true,
+          "both_scopes_exact_lemma_and_sense": true,
+          "gold_scoped_lemmas_all_present_somewhere_in_generated_sentence": true
+        },
+        {
+          "index": 456,
+          "sentence": "All the boys were yelling.",
+          "sha256": "531e149cb8248d5dc5ef445d2cd7341be0dad8ba541939525c187aa3520dbf1a",
+          "gold_antecedent_terms": [
+            "entity:\"n.01\"",
+            "time:\"n.08\"",
+            "yell:\"v.01\""
+          ],
+          "gold_consequent_terms": [
+            "yell:\"v.01\""
+          ],
+          "pred_antecedent_terms": [
+            "entity:\"n.01\"",
+            "time:\"n.08\"",
+            "yell:\"v.01\""
+          ],
+          "pred_consequent_terms": [
+            "yell:\"v.01\""
+          ],
+          "both_operators_produced": true,
+          "both_scopes_exact_lemma": true,
+          "both_scopes_exact_lemma_and_sense": true,
+          "gold_scoped_lemmas_all_present_somewhere_in_generated_sentence": true
+        },
+        {
+          "index": 480,
+          "sentence": "I always get up at 6 o'clock in the morning.",
+          "sha256": "c04d2fe65ae8076cc4cabff3fb17d735dfc1064b05590165369adae462949364",
+          "gold_antecedent_terms": [
+            "get_up:\"v.02\"",
+            "morning:\"n.01\"",
+            "time:\"n.08\"",
+            "time:\"n.08\""
+          ],
+          "gold_consequent_terms": [
+            "get_up:\"v.02\"",
+            "time:\"n.08\""
+          ],
+          "pred_antecedent_terms": [
+            "get_up:\"v.02\"",
+            "time:\"n.08\""
+          ],
+          "pred_consequent_terms": [
+            "get_up:\"v.02\""
+          ],
+          "both_operators_produced": true,
+          "both_scopes_exact_lemma": false,
+          "both_scopes_exact_lemma_and_sense": false,
+          "gold_scoped_lemmas_all_present_somewhere_in_generated_sentence": false
+        },
+        {
+          "index": 497,
+          "sentence": "All of us were surprised at the news.",
+          "sha256": "0eefb0fc585c36561ddb06b8c709cbec7dd0295682601ec906379deacd8a36cc",
+          "gold_antecedent_terms": [
+            "person:\"n.01\"",
+            "surprised:\"a.01\"",
+            "time:\"n.08\""
+          ],
+          "gold_consequent_terms": [
+            "surprised:\"a.01\""
+          ],
+          "pred_antecedent_terms": [
+            "person:\"n.01\"",
+            "surprised:\"a.01\"",
+            "time:\"n.08\""
+          ],
+          "pred_consequent_terms": [
+            "surprised:\"a.01\""
+          ],
+          "both_operators_produced": true,
+          "both_scopes_exact_lemma": true,
+          "both_scopes_exact_lemma_and_sense": true,
+          "gold_scoped_lemmas_all_present_somewhere_in_generated_sentence": true
+        },
+        {
+          "index": 545,
+          "sentence": "Both roads lead to the station.",
+          "sha256": "1c7547479971b9581bf614262ddcdccfaf7e9fe820d1b7263b0bc85fa5874adc",
+          "gold_antecedent_terms": [
+            "entity:\"n.01\"",
+            "lead:\"v.11\"",
+            "time:\"n.08\""
+          ],
+          "gold_consequent_terms": [
+            "lead:\"v.11\""
+          ],
+          "pred_antecedent_terms": [
+            "entity:\"n.01\"",
+            "lead:\"v.01\"",
+            "time:\"n.08\""
+          ],
+          "pred_consequent_terms": [
+            "lead:\"v.01\""
+          ],
+          "both_operators_produced": true,
+          "both_scopes_exact_lemma": true,
+          "both_scopes_exact_lemma_and_sense": false,
+          "gold_scoped_lemmas_all_present_somewhere_in_generated_sentence": true
+        },
+        {
+          "index": 555,
+          "sentence": "Everything is all right now.",
+          "sha256": "e11af20b7a30fc0062a4f5073f1c85feb64d52f530043dfd3b917f262001e955",
+          "gold_antecedent_terms": [
+            "all_right:\"a.01\"",
+            "entity:\"n.01\"",
+            "time:\"n.08\"",
+            "time:\"n.08\""
+          ],
+          "gold_consequent_terms": [
+            "all_right:\"a.01\"",
+            "time:\"n.08\""
+          ],
+          "pred_antecedent_terms": [
+            "all_right:\"a.01\"",
+            "entity:\"n.01\"",
+            "time:\"n.08\"",
+            "time:\"n.08\""
+          ],
+          "pred_consequent_terms": [
+            "all_right:\"a.01\"",
+            "time:\"n.08\""
+          ],
+          "both_operators_produced": true,
+          "both_scopes_exact_lemma": true,
+          "both_scopes_exact_lemma_and_sense": true,
+          "gold_scoped_lemmas_all_present_somewhere_in_generated_sentence": true
+        },
+        {
+          "index": 593,
+          "sentence": "The blast destroyed everything.",
+          "sha256": "7dcde5cdb0b4233abcb96f05f7177a65b3d7ba26b2c9e42065d00a9283428b46",
+          "gold_antecedent_terms": [
+            "destroy:\"v.02\"",
+            "entity:\"n.01\"",
+            "time:\"n.08\""
+          ],
+          "gold_consequent_terms": [
+            "destroy:\"v.02\""
+          ],
+          "pred_antecedent_terms": [
+            "destroy:\"v.01\"",
+            "entity:\"n.01\"",
+            "time:\"n.08\""
+          ],
+          "pred_consequent_terms": [
+            "destroy:\"v.01\""
+          ],
+          "both_operators_produced": true,
+          "both_scopes_exact_lemma": true,
+          "both_scopes_exact_lemma_and_sense": false,
+          "gold_scoped_lemmas_all_present_somewhere_in_generated_sentence": true
+        },
+        {
+          "index": 676,
+          "sentence": "Everyone wants that.",
+          "sha256": "216b0887fedc9de2e08fec498ede68075600b0a4cf194bbb0cca04cb44953c13",
+          "gold_antecedent_terms": [
+            "person:\"n.01\"",
+            "time:\"n.08\"",
+            "want:\"v.01\""
+          ],
+          "gold_consequent_terms": [
+            "want:\"v.01\""
+          ],
+          "pred_antecedent_terms": [
+            "person:\"n.01\"",
+            "time:\"n.08\"",
+            "want:\"v.01\""
+          ],
+          "pred_consequent_terms": [
+            "want:\"v.01\""
+          ],
+          "both_operators_produced": true,
+          "both_scopes_exact_lemma": true,
+          "both_scopes_exact_lemma_and_sense": true,
+          "gold_scoped_lemmas_all_present_somewhere_in_generated_sentence": true
+        },
+        {
+          "index": 703,
+          "sentence": "Everything is new.",
+          "sha256": "d257e46abbdc4c28df2ffc458adde6eb0dff1ff9cb12b350b2562db8d868339d",
+          "gold_antecedent_terms": [
+            "entity:\"n.01\"",
+            "new:\"a.01\"",
+            "time:\"n.08\""
+          ],
+          "gold_consequent_terms": [
+            "new:\"a.01\""
+          ],
+          "pred_antecedent_terms": [
+            "entity:\"n.01\"",
+            "new:\"a.01\"",
+            "time:\"n.08\""
+          ],
+          "pred_consequent_terms": [
+            "new:\"a.01\""
+          ],
+          "both_operators_produced": true,
+          "both_scopes_exact_lemma": true,
+          "both_scopes_exact_lemma_and_sense": true,
+          "gold_scoped_lemmas_all_present_somewhere_in_generated_sentence": true
+        },
+        {
+          "index": 806,
+          "sentence": "Tom didn't answer all the questions.",
+          "sha256": "9737986924239c02c57602b826d644d847398417a798db537d8a7b4cbcb6d59c",
+          "gold_antecedent_terms": [
+            "answer:\"v.03\"",
+            "entity:\"n.01\"",
+            "time:\"n.08\""
+          ],
+          "gold_consequent_terms": [
+            "answer:\"v.03\""
+          ],
+          "pred_antecedent_terms": [
+            "answer:\"v.01\"",
+            "entity:\"n.01\""
+          ],
+          "pred_consequent_terms": [
+            "answer:\"v.01\""
+          ],
+          "both_operators_produced": true,
+          "both_scopes_exact_lemma": false,
+          "both_scopes_exact_lemma_and_sense": false,
+          "gold_scoped_lemmas_all_present_somewhere_in_generated_sentence": true
+        },
+        {
+          "index": 851,
+          "sentence": "Tom is liked by everyone.",
+          "sha256": "13c23f9f91f4b4fa34907b5e272b9ce478def52a9b43fadb9491abd913c854af",
+          "gold_antecedent_terms": [
+            "person:\"n.01\"",
+            "time:\"n.08\""
+          ],
+          "gold_consequent_terms": [],
+          "pred_antecedent_terms": [
+            "person:\"n.01\""
+          ],
+          "pred_consequent_terms": [],
+          "both_operators_produced": true,
+          "both_scopes_exact_lemma": false,
+          "both_scopes_exact_lemma_and_sense": false,
+          "gold_scoped_lemmas_all_present_somewhere_in_generated_sentence": true
+        },
+        {
+          "index": 856,
+          "sentence": "The dove symbolizes peace.",
+          "sha256": "f6bac093495295abfc23d6d7cd1707c7f8f0d7fb889058113bf649a9bbe78291",
+          "gold_antecedent_terms": [
+            "dove:\"n.01\"",
+            "peace:\"n.03\"",
+            "symbolize:\"v.01\""
+          ],
+          "gold_consequent_terms": [
+            "peace:\"n.03\"",
+            "symbolize:\"v.01\""
+          ],
+          "pred_antecedent_terms": [
+            "movie:\"n.01\"",
+            "peace:\"n.01\"",
+            "symbolize:\"v.01\""
+          ],
+          "pred_consequent_terms": [
+            "peace:\"n.01\"",
+            "symbolize:\"v.01\""
+          ],
+          "both_operators_produced": true,
+          "both_scopes_exact_lemma": false,
+          "both_scopes_exact_lemma_and_sense": false,
+          "gold_scoped_lemmas_all_present_somewhere_in_generated_sentence": false
+        },
+        {
+          "index": 867,
+          "sentence": "All the passengers died, but he survived.",
+          "sha256": "9221140663dcc54bfcd29a31a9978ced6ed9d0b338213d1db38801fe83fac79a",
+          "gold_antecedent_terms": [
+            "die:\"v.01\"",
+            "entity:\"n.01\"",
+            "time:\"n.08\""
+          ],
+          "gold_consequent_terms": [
+            "die:\"v.01\"",
+            "time:\"n.08\""
+          ],
+          "pred_antecedent_terms": [
+            "die:\"v.01\"",
+            "entity:\"n.01\"",
+            "male:\"n.02\"",
+            "time:\"n.08\""
+          ],
+          "pred_consequent_terms": [
+            "die:\"v.01\"",
+            "male:\"n.02\"",
+            "time:\"n.08\""
+          ],
+          "both_operators_produced": true,
+          "both_scopes_exact_lemma": false,
+          "both_scopes_exact_lemma_and_sense": false,
+          "gold_scoped_lemmas_all_present_somewhere_in_generated_sentence": true
+        }
+      ],
+      "examples_of_incorrect_premise_or_consequent": [
+        {
+          "index": 3,
+          "sentence": "You can buy stamps at any post office.",
+          "sha256": "36bf254682a22b0b79bdf58bf7d4a6331399ff5fdc9aa3b215cdbac34c1f2b64",
+          "gold_antecedent_terms": [
+            "buy:\"v.01\"",
+            "person:\"n.01\"",
+            "post_office:\"n.01\"",
+            "post_office:\"n.01\"",
+            "stamp:\"n.04\""
+          ],
+          "gold_consequent_terms": [
+            "buy:\"v.01\"",
+            "post_office:\"n.01\"",
+            "stamp:\"n.04\""
+          ],
+          "pred_antecedent_terms": [
+            "buy:\"v.01\"",
+            "post_office:\"n.01\"",
+            "stamp:\"n.04\""
+          ],
+          "pred_consequent_terms": [],
+          "both_operators_produced": false,
+          "both_scopes_exact_lemma": false,
+          "both_scopes_exact_lemma_and_sense": false,
+          "gold_scoped_lemmas_all_present_somewhere_in_generated_sentence": false
+        },
+        {
+          "index": 89,
+          "sentence": "Every author suffers from writer's block from time to time.",
+          "sha256": "69df3badec7215343f3ae7cac0e8fc11f0cefa418575b26e03fcd97a9b75ea66",
+          "gold_antecedent_terms": [
+            "author:\"n.01\"",
+            "from_time_to_time:\"r.01\"",
+            "person:\"n.01\"",
+            "suffer:\"v.02\"",
+            "time:\"n.08\""
+          ],
+          "gold_consequent_terms": [
+            "from_time_to_time:\"r.01\"",
+            "suffer:\"v.02\""
+          ],
+          "pred_antecedent_terms": [
+            "author:\"n.01\"",
+            "block:\"n.01\"",
+            "from_time_to_time:\"r.01\"",
+            "person:\"n.01\"",
+            "person:\"n.01\"",
+            "suffer:\"v.02\"",
+            "time:\"n.08\"",
+            "writer:\"n.01\""
+          ],
+          "pred_consequent_terms": [
+            "block:\"n.01\"",
+            "from_time_to_time:\"r.01\"",
+            "person:\"n.01\"",
+            "suffer:\"v.02\"",
+            "writer:\"n.01\""
+          ],
+          "both_operators_produced": true,
+          "both_scopes_exact_lemma": false,
+          "both_scopes_exact_lemma_and_sense": false,
+          "gold_scoped_lemmas_all_present_somewhere_in_generated_sentence": true
+        },
+        {
+          "index": 127,
+          "sentence": "Klava oversimplifies everything.",
+          "sha256": "2887be11cf3fc1514f25cd708b49dc93bbbd7846e2d232427af16dc879e1002c",
+          "gold_antecedent_terms": [
+            "entity:\"n.01\"",
+            "oversimplify:\"v.01\"",
+            "time:\"n.08\""
+          ],
+          "gold_consequent_terms": [
+            "oversimplify:\"v.01\""
+          ],
+          "pred_antecedent_terms": [
+            "entity:\"n.01\"",
+            "time:\"n.08\""
+          ],
+          "pred_consequent_terms": [],
+          "both_operators_produced": true,
+          "both_scopes_exact_lemma": false,
+          "both_scopes_exact_lemma_and_sense": false,
+          "gold_scoped_lemmas_all_present_somewhere_in_generated_sentence": false
+        },
+        {
+          "index": 187,
+          "sentence": "All journeys begin with a first step.",
+          "sha256": "10bf53d103e595bb327d05b9b89ed79dde95c6a89c21b4f543b80327274f6152",
+          "gold_antecedent_terms": [
+            "begin:\"v.01\"",
+            "first_step:\"n.01\"",
+            "journey:\"n.01\""
+          ],
+          "gold_consequent_terms": [
+            "begin:\"v.01\"",
+            "first_step:\"n.01\""
+          ],
+          "pred_antecedent_terms": [
+            "begin:\"v.01\"",
+            "first_step:\"n.01\"",
+            "journey:\"n.01\"",
+            "time:\"n.08\""
+          ],
+          "pred_consequent_terms": [
+            "begin:\"v.01\"",
+            "first_step:\"n.01\""
+          ],
+          "both_operators_produced": true,
+          "both_scopes_exact_lemma": false,
+          "both_scopes_exact_lemma_and_sense": false,
+          "gold_scoped_lemmas_all_present_somewhere_in_generated_sentence": true
+        },
+        {
+          "index": 309,
+          "sentence": "She used to play tennis every Sunday.",
+          "sha256": "2d20c94cd7647f2a33c627f9a267397c111dc64d2c0e29947c5c6e662898e1b5",
+          "gold_antecedent_terms": [
+            "play:\"v.01\"",
+            "tennis:\"n.01\"",
+            "time:\"n.08\""
+          ],
+          "gold_consequent_terms": [
+            "play:\"v.01\"",
+            "tennis:\"n.01\""
+          ],
+          "pred_antecedent_terms": [
+            "play:\"v.01\"",
+            "tennis:\"n.01\""
+          ],
+          "pred_consequent_terms": [],
+          "both_operators_produced": true,
+          "both_scopes_exact_lemma": false,
+          "both_scopes_exact_lemma_and_sense": false,
+          "gold_scoped_lemmas_all_present_somewhere_in_generated_sentence": false
+        },
+        {
+          "index": 480,
+          "sentence": "I always get up at 6 o'clock in the morning.",
+          "sha256": "c04d2fe65ae8076cc4cabff3fb17d735dfc1064b05590165369adae462949364",
+          "gold_antecedent_terms": [
+            "get_up:\"v.02\"",
+            "morning:\"n.01\"",
+            "time:\"n.08\"",
+            "time:\"n.08\""
+          ],
+          "gold_consequent_terms": [
+            "get_up:\"v.02\"",
+            "time:\"n.08\""
+          ],
+          "pred_antecedent_terms": [
+            "get_up:\"v.02\"",
+            "time:\"n.08\""
+          ],
+          "pred_consequent_terms": [
+            "get_up:\"v.02\""
+          ],
+          "both_operators_produced": true,
+          "both_scopes_exact_lemma": false,
+          "both_scopes_exact_lemma_and_sense": false,
+          "gold_scoped_lemmas_all_present_somewhere_in_generated_sentence": false
+        },
+        {
+          "index": 806,
+          "sentence": "Tom didn't answer all the questions.",
+          "sha256": "9737986924239c02c57602b826d644d847398417a798db537d8a7b4cbcb6d59c",
+          "gold_antecedent_terms": [
+            "answer:\"v.03\"",
+            "entity:\"n.01\"",
+            "time:\"n.08\""
+          ],
+          "gold_consequent_terms": [
+            "answer:\"v.03\""
+          ],
+          "pred_antecedent_terms": [
+            "answer:\"v.01\"",
+            "entity:\"n.01\""
+          ],
+          "pred_consequent_terms": [
+            "answer:\"v.01\""
+          ],
+          "both_operators_produced": true,
+          "both_scopes_exact_lemma": false,
+          "both_scopes_exact_lemma_and_sense": false,
+          "gold_scoped_lemmas_all_present_somewhere_in_generated_sentence": true
+        },
+        {
+          "index": 851,
+          "sentence": "Tom is liked by everyone.",
+          "sha256": "13c23f9f91f4b4fa34907b5e272b9ce478def52a9b43fadb9491abd913c854af",
+          "gold_antecedent_terms": [
+            "person:\"n.01\"",
+            "time:\"n.08\""
+          ],
+          "gold_consequent_terms": [],
+          "pred_antecedent_terms": [
+            "person:\"n.01\""
+          ],
+          "pred_consequent_terms": [],
+          "both_operators_produced": true,
+          "both_scopes_exact_lemma": false,
+          "both_scopes_exact_lemma_and_sense": false,
+          "gold_scoped_lemmas_all_present_somewhere_in_generated_sentence": true
+        },
+        {
+          "index": 856,
+          "sentence": "The dove symbolizes peace.",
+          "sha256": "f6bac093495295abfc23d6d7cd1707c7f8f0d7fb889058113bf649a9bbe78291",
+          "gold_antecedent_terms": [
+            "dove:\"n.01\"",
+            "peace:\"n.03\"",
+            "symbolize:\"v.01\""
+          ],
+          "gold_consequent_terms": [
+            "peace:\"n.03\"",
+            "symbolize:\"v.01\""
+          ],
+          "pred_antecedent_terms": [
+            "movie:\"n.01\"",
+            "peace:\"n.01\"",
+            "symbolize:\"v.01\""
+          ],
+          "pred_consequent_terms": [
+            "peace:\"n.01\"",
+            "symbolize:\"v.01\""
+          ],
+          "both_operators_produced": true,
+          "both_scopes_exact_lemma": false,
+          "both_scopes_exact_lemma_and_sense": false,
+          "gold_scoped_lemmas_all_present_somewhere_in_generated_sentence": false
+        },
+        {
+          "index": 867,
+          "sentence": "All the passengers died, but he survived.",
+          "sha256": "9221140663dcc54bfcd29a31a9978ced6ed9d0b338213d1db38801fe83fac79a",
+          "gold_antecedent_terms": [
+            "die:\"v.01\"",
+            "entity:\"n.01\"",
+            "time:\"n.08\""
+          ],
+          "gold_consequent_terms": [
+            "die:\"v.01\"",
+            "time:\"n.08\""
+          ],
+          "pred_antecedent_terms": [
+            "die:\"v.01\"",
+            "entity:\"n.01\"",
+            "male:\"n.02\"",
+            "time:\"n.08\""
+          ],
+          "pred_consequent_terms": [
+            "die:\"v.01\"",
+            "male:\"n.02\"",
+            "time:\"n.08\""
+          ],
+          "both_operators_produced": true,
+          "both_scopes_exact_lemma": false,
+          "both_scopes_exact_lemma_and_sense": false,
+          "gold_scoped_lemmas_all_present_somewhere_in_generated_sentence": true
+        }
+      ]
+    }
+  },
+  "limitations": [
+    "Exact scoped lemmas and senses are NECESSARY but not SUFFICIENT for sound formal derivation: the clause graph, operator variable links, referents and quantifiers may still be wrong.",
+    "Gold DRS semantic annotations are expert linguistic interpretations, not scientific reality; this is NOT formal automated proof of genuine novel empirical facts.",
+    "This study does not test cross-document identity or dream and quote-world projection.",
+    "PMB dev/test source semantic gold was published with the neural parser original outputs; cannot guarantee complete absence of training/test exposure beyond authors release protocol.",
+    "This comparison follows a previous operator benchmark on the same data; it is a stricter diagnostic, not a new heldout model evaluation."
+  ]
+}

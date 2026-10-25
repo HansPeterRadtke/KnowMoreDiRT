@@ -1,0 +1,246 @@
+{
+  "source_gold_and_published_model_sha256": {
+    "gold": "aa5668fb150d3332f42fdee828457a89e3acdf2a92846b8b6e8f027654a032e5",
+    "pred": "7d56cceda381c66c9d890c5078161f22dedbaf3df002b04306a960e7bd8ed5a9",
+    "raw": "4bd557c2e6655d9b9c32269d4f6aa32415a314777bf16b517d7ae3da280f6263"
+  },
+  "source_score_sha256": {
+    "original_pmb_scoped_predicate_content_20261025.json": "45e3b2f9073b660c87691f519a0b881b7686c6135b30d7017c85d9637fcf455c",
+    "original_pmb_implication_attribution_scope_audit_20261025.json": "8458a5a35c1f3ad6e3db741bea1e8e7903b8b62c9053012638f4df006d4cf828",
+    "pmb_named_referents_in_scoped_events_20261025.json": "35276db6f3ceb1e9d9fc81a528deedf45e10c9417b9b25726301c60d5959c3da"
+  },
+  "model_published_ref": "https://github.com/RikVN/Neural_DRS/tree/81bcb26dfcc08f0da999cc7beaa2952f8820860c",
+  "gold_pmb_ref": "https://github.com/RikVN/DRS_parsing/tree/190838f9adea2af616eb76156d2e66c8565a6c6e",
+  "scope": "Model **generated** DR clauses vs human-corrected original DRS semantics. Does NOT establish full truth-conditions or scientific discovery.",
+  "splits": {
+    "test": {
+      "original_gold_sentences": 898,
+      "negation": {
+        "detected": {
+          "correct": 79,
+          "gold_cases": 79,
+          "fraction": 1.0,
+          "Wilson95": [
+            0.953629,
+            1.0
+          ]
+        },
+        "same_scoped_predicate_lemmas": {
+          "correct": 65,
+          "gold_cases": 79,
+          "fraction": 0.822785,
+          "Wilson95": [
+            0.724238,
+            0.891396
+          ]
+        },
+        "same_scoped_predicate_lemmas_and_senses": {
+          "correct": 54,
+          "gold_cases": 79,
+          "fraction": 0.683544,
+          "Wilson95": [
+            0.574519,
+            0.775547
+          ]
+        }
+      },
+      "if_then": {
+        "both_condition_and_consequence_operators": {
+          "correct": 25,
+          "gold_cases": 31,
+          "fraction": 0.806452,
+          "Wilson95": [
+            0.637197,
+            0.90813
+          ]
+        },
+        "exact_predicate_lemmas_on_both_sides": {
+          "correct": 19,
+          "gold_cases": 31,
+          "fraction": 0.612903,
+          "Wilson95": [
+            0.438241,
+            0.762669
+          ]
+        },
+        "exact_predicate_lemmas_and_senses_on_both_sides": {
+          "correct": 16,
+          "gold_cases": 31,
+          "fraction": 0.516129,
+          "Wilson95": [
+            0.348404,
+            0.680297
+          ]
+        }
+      },
+      "attributed_scope": {
+        "detected": {
+          "correct": 16,
+          "gold_cases": 18,
+          "fraction": 0.888889,
+          "Wilson95": [
+            0.672002,
+            0.96898
+          ]
+        },
+        "same_attributed_predicate_lemmas": {
+          "correct": 8,
+          "gold_cases": 18,
+          "fraction": 0.444444,
+          "Wilson95": [
+            0.245595,
+            0.662836
+          ]
+        },
+        "same_attributed_predicate_lemmas_and_senses": {
+          "correct": 5,
+          "gold_cases": 18,
+          "fraction": 0.277778,
+          "Wilson95": [
+            0.124998,
+            0.508727
+          ]
+        }
+      },
+      "named_actor_or_location_in_negated_event": {
+        "cases": 19,
+        "correct_event_predicate_role_and_name": {
+          "correct": 12,
+          "gold_cases": 19,
+          "fraction": 0.631579,
+          "Wilson95": [
+            0.410395,
+            0.808505
+          ]
+        },
+        "correct_event_predicate_role_name_and_sense": {
+          "correct": 10,
+          "gold_cases": 19,
+          "fraction": 0.526316,
+          "Wilson95": [
+            0.317078,
+            0.726702
+          ]
+        }
+      }
+    },
+    "dev": {
+      "original_gold_sentences": 885,
+      "negation": {
+        "detected": {
+          "correct": 70,
+          "gold_cases": 70,
+          "fraction": 1.0,
+          "Wilson95": [
+            0.947977,
+            1.0
+          ]
+        },
+        "same_scoped_predicate_lemmas": {
+          "correct": 60,
+          "gold_cases": 70,
+          "fraction": 0.857143,
+          "Wilson95": [
+            0.756616,
+            0.920511
+          ]
+        },
+        "same_scoped_predicate_lemmas_and_senses": {
+          "correct": 41,
+          "gold_cases": 70,
+          "fraction": 0.585714,
+          "Wilson95": [
+            0.468812,
+            0.693698
+          ]
+        }
+      },
+      "if_then": {
+        "both_condition_and_consequence_operators": {
+          "correct": 31,
+          "gold_cases": 32,
+          "fraction": 0.96875,
+          "Wilson95": [
+            0.842557,
+            0.994462
+          ]
+        },
+        "exact_predicate_lemmas_on_both_sides": {
+          "correct": 22,
+          "gold_cases": 32,
+          "fraction": 0.6875,
+          "Wilson95": [
+            0.514333,
+            0.820475
+          ]
+        },
+        "exact_predicate_lemmas_and_senses_on_both_sides": {
+          "correct": 14,
+          "gold_cases": 32,
+          "fraction": 0.4375,
+          "Wilson95": [
+            0.281653,
+            0.606744
+          ]
+        }
+      },
+      "attributed_scope": {
+        "detected": {
+          "correct": 26,
+          "gold_cases": 27,
+          "fraction": 0.962963,
+          "Wilson95": [
+            0.817165,
+            0.993432
+          ]
+        },
+        "same_attributed_predicate_lemmas": {
+          "correct": 21,
+          "gold_cases": 27,
+          "fraction": 0.777778,
+          "Wilson95": [
+            0.592431,
+            0.893928
+          ]
+        },
+        "same_attributed_predicate_lemmas_and_senses": {
+          "correct": 16,
+          "gold_cases": 27,
+          "fraction": 0.592593,
+          "Wilson95": [
+            0.407267,
+            0.754852
+          ]
+        }
+      },
+      "named_actor_or_location_in_negated_event": {
+        "cases": 17,
+        "correct_event_predicate_role_and_name": {
+          "correct": 17,
+          "gold_cases": 17,
+          "fraction": 1.0,
+          "Wilson95": [
+            0.815682,
+            1.0
+          ]
+        },
+        "correct_event_predicate_role_name_and_sense": {
+          "correct": 10,
+          "gold_cases": 17,
+          "fraction": 0.588235,
+          "Wilson95": [
+            0.360054,
+            0.783889
+          ]
+        }
+      }
+    }
+  },
+  "caveats": [
+    "Paired dev and test are from the same PMB source collection, not independent historical corpora or producer institutions",
+    "Exact predicate content is a necessary condition for some kinds of formal inference, not a sufficient condition, so figures must not be interpreted as reasoner accuracy.",
+    "Word-sense differences inflate exact lexical-semantic error counts compared with coarser meaning-equivalence metrics; the lemma-only result is separately reported.",
+    "Referent-role errors are checked only when a named entity and an in-scope event role are found by the restrictive parser, NOT all coreference.",
+    "Wilson intervals assume these benchmark sentences behave as independent Bernoulli trials; shared annotation/model biases are not covered."
+  ]
+}

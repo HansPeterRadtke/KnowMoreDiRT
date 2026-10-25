@@ -1,0 +1,2095 @@
+{
+  "method": "Original human-gold DRS operator target concept inventory vs original neural DRS target and any model sentence lexical concept. Gold-only and model-only mismatch categories MAY overlap.",
+  "original_sources": "RikVN/DRS_parsing@190838f9adea2af616eb76156d2e66c8565a6c6e and RikVN/Neural_DRS@81bcb26dfcc08f0da999cc7beaa2952f8820860c",
+  "splits": {
+    "test": {
+      "input_sha256": {
+        "gold": "aa5668fb150d3332f42fdee828457a89e3acdf2a92846b8b6e8f027654a032e5",
+        "pred": "7d56cceda381c66c9d890c5078161f22dedbaf3df002b04306a960e7bd8ed5a9",
+        "raw": "4bd557c2e6655d9b9c32269d4f6aa32415a314777bf16b517d7ae3da280f6263"
+      },
+      "operators": {
+        "NEGATION": {
+          "gold_source_sentences": 79,
+          "nonexclusive_error_cause_counts": {
+            "exact_gold_lemma_scope": 65,
+            "at_least_one_gold_lemma_not_extracted_anywhere": 14,
+            "spurious_lemma_inside_scoped_box": 9
+          },
+          "source_linked_mismatch_examples": [
+            {
+              "index": 40,
+              "sentence": "That black bird is not a blackbird.",
+              "classification": {
+                "exact_gold_lemma_scope": false,
+                "no_operator": false,
+                "at_least_one_gold_lemma_not_extracted_anywhere": true,
+                "gold_lemma_present_but_outside_correct_scoped_box": false,
+                "spurious_lemma_inside_scoped_box": true
+              },
+              "gold_lemmas": [
+                "blackbird"
+              ],
+              "model_scoped_lemmas": [
+                "be",
+                "person"
+              ],
+              "missing_from_any_model_box": [
+                "blackbird"
+              ],
+              "possibly_misscoped": [],
+              "model_spurious_in_scope": [
+                "be",
+                "person"
+              ]
+            },
+            {
+              "index": 102,
+              "sentence": "The room was anything but tidy.",
+              "classification": {
+                "exact_gold_lemma_scope": false,
+                "no_operator": false,
+                "at_least_one_gold_lemma_not_extracted_anywhere": true,
+                "gold_lemma_present_but_outside_correct_scoped_box": false,
+                "spurious_lemma_inside_scoped_box": false
+              },
+              "gold_lemmas": [
+                "tidy"
+              ],
+              "model_scoped_lemmas": [],
+              "missing_from_any_model_box": [
+                "tidy"
+              ],
+              "possibly_misscoped": [],
+              "model_spurious_in_scope": []
+            },
+            {
+              "index": 177,
+              "sentence": "Tom can't pronounce Mary's last name.",
+              "classification": {
+                "exact_gold_lemma_scope": false,
+                "no_operator": false,
+                "at_least_one_gold_lemma_not_extracted_anywhere": true,
+                "gold_lemma_present_but_outside_correct_scoped_box": false,
+                "spurious_lemma_inside_scoped_box": true
+              },
+              "gold_lemmas": [
+                "pronounce"
+              ],
+              "model_scoped_lemmas": [
+                "be"
+              ],
+              "missing_from_any_model_box": [
+                "pronounce"
+              ],
+              "possibly_misscoped": [],
+              "model_spurious_in_scope": [
+                "be"
+              ]
+            },
+            {
+              "index": 219,
+              "sentence": "I can't beat Tom at chess.",
+              "classification": {
+                "exact_gold_lemma_scope": false,
+                "no_operator": false,
+                "at_least_one_gold_lemma_not_extracted_anywhere": true,
+                "gold_lemma_present_but_outside_correct_scoped_box": false,
+                "spurious_lemma_inside_scoped_box": true
+              },
+              "gold_lemmas": [
+                "beat",
+                "chess"
+              ],
+              "model_scoped_lemmas": [
+                "male",
+                "chess"
+              ],
+              "missing_from_any_model_box": [
+                "beat"
+              ],
+              "possibly_misscoped": [],
+              "model_spurious_in_scope": [
+                "male"
+              ]
+            },
+            {
+              "index": 238,
+              "sentence": "I don't know where Tom's office is.",
+              "classification": {
+                "exact_gold_lemma_scope": false,
+                "no_operator": false,
+                "at_least_one_gold_lemma_not_extracted_anywhere": true,
+                "gold_lemma_present_but_outside_correct_scoped_box": false,
+                "spurious_lemma_inside_scoped_box": true
+              },
+              "gold_lemmas": [
+                "time",
+                "know",
+                "question",
+                "location",
+                "be"
+              ],
+              "model_scoped_lemmas": [
+                "time",
+                "know",
+                "question",
+                "reason",
+                "be"
+              ],
+              "missing_from_any_model_box": [
+                "location"
+              ],
+              "possibly_misscoped": [],
+              "model_spurious_in_scope": [
+                "reason"
+              ]
+            },
+            {
+              "index": 261,
+              "sentence": "None of his advice was very useful.",
+              "classification": {
+                "exact_gold_lemma_scope": false,
+                "no_operator": false,
+                "at_least_one_gold_lemma_not_extracted_anywhere": true,
+                "gold_lemma_present_but_outside_correct_scoped_box": false,
+                "spurious_lemma_inside_scoped_box": true
+              },
+              "gold_lemmas": [
+                "entity",
+                "very",
+                "useful"
+              ],
+              "model_scoped_lemmas": [
+                "entity",
+                "time"
+              ],
+              "missing_from_any_model_box": [
+                "very",
+                "useful"
+              ],
+              "possibly_misscoped": [],
+              "model_spurious_in_scope": [
+                "time"
+              ]
+            },
+            {
+              "index": 370,
+              "sentence": "I do not want to clean up dog poop.",
+              "classification": {
+                "exact_gold_lemma_scope": false,
+                "no_operator": false,
+                "at_least_one_gold_lemma_not_extracted_anywhere": true,
+                "gold_lemma_present_but_outside_correct_scoped_box": false,
+                "spurious_lemma_inside_scoped_box": true
+              },
+              "gold_lemmas": [
+                "time",
+                "proposition",
+                "want",
+                "clean_up",
+                "dog",
+                "poop"
+              ],
+              "model_scoped_lemmas": [
+                "time",
+                "proposition",
+                "want",
+                "clean",
+                "dog"
+              ],
+              "missing_from_any_model_box": [
+                "clean_up",
+                "poop"
+              ],
+              "possibly_misscoped": [],
+              "model_spurious_in_scope": [
+                "clean"
+              ]
+            },
+            {
+              "index": 426,
+              "sentence": "No one is invulnerable.",
+              "classification": {
+                "exact_gold_lemma_scope": false,
+                "no_operator": false,
+                "at_least_one_gold_lemma_not_extracted_anywhere": true,
+                "gold_lemma_present_but_outside_correct_scoped_box": false,
+                "spurious_lemma_inside_scoped_box": false
+              },
+              "gold_lemmas": [
+                "person",
+                "invulnerable"
+              ],
+              "model_scoped_lemmas": [
+                "person"
+              ],
+              "missing_from_any_model_box": [
+                "invulnerable"
+              ],
+              "possibly_misscoped": [],
+              "model_spurious_in_scope": []
+            },
+            {
+              "index": 455,
+              "sentence": "Mrs. Davis was anything but a perfect wife.",
+              "classification": {
+                "exact_gold_lemma_scope": false,
+                "no_operator": false,
+                "at_least_one_gold_lemma_not_extracted_anywhere": true,
+                "gold_lemma_present_but_outside_correct_scoped_box": false,
+                "spurious_lemma_inside_scoped_box": false
+              },
+              "gold_lemmas": [
+                "be",
+                "perfect",
+                "person",
+                "wife"
+              ],
+              "model_scoped_lemmas": [
+                "perfect",
+                "person",
+                "wife"
+              ],
+              "missing_from_any_model_box": [
+                "be"
+              ],
+              "possibly_misscoped": [],
+              "model_spurious_in_scope": []
+            },
+            {
+              "index": 474,
+              "sentence": "She hasn't reimbursed me yet.",
+              "classification": {
+                "exact_gold_lemma_scope": false,
+                "no_operator": false,
+                "at_least_one_gold_lemma_not_extracted_anywhere": true,
+                "gold_lemma_present_but_outside_correct_scoped_box": false,
+                "spurious_lemma_inside_scoped_box": false
+              },
+              "gold_lemmas": [
+                "reimburse"
+              ],
+              "model_scoped_lemmas": [],
+              "missing_from_any_model_box": [
+                "reimburse"
+              ],
+              "possibly_misscoped": [],
+              "model_spurious_in_scope": []
+            },
+            {
+              "index": 531,
+              "sentence": "The gun isn't loaded.",
+              "classification": {
+                "exact_gold_lemma_scope": false,
+                "no_operator": false,
+                "at_least_one_gold_lemma_not_extracted_anywhere": true,
+                "gold_lemma_present_but_outside_correct_scoped_box": false,
+                "spurious_lemma_inside_scoped_box": true
+              },
+              "gold_lemmas": [
+                "loaded"
+              ],
+              "model_scoped_lemmas": [
+                "load"
+              ],
+              "missing_from_any_model_box": [
+                "loaded"
+              ],
+              "possibly_misscoped": [],
+              "model_spurious_in_scope": [
+                "load"
+              ]
+            },
+            {
+              "index": 735,
+              "sentence": "Neither Tom nor Mary goes to the store.",
+              "classification": {
+                "exact_gold_lemma_scope": false,
+                "no_operator": false,
+                "at_least_one_gold_lemma_not_extracted_anywhere": true,
+                "gold_lemma_present_but_outside_correct_scoped_box": false,
+                "spurious_lemma_inside_scoped_box": false
+              },
+              "gold_lemmas": [
+                "go",
+                "go",
+                "time",
+                "time"
+              ],
+              "model_scoped_lemmas": [
+                "go",
+                "time"
+              ],
+              "missing_from_any_model_box": [
+                "go",
+                "time"
+              ],
+              "possibly_misscoped": [],
+              "model_spurious_in_scope": []
+            },
+            {
+              "index": 778,
+              "sentence": "The woman is not picking up a baby kangaroo",
+              "classification": {
+                "exact_gold_lemma_scope": false,
+                "no_operator": false,
+                "at_least_one_gold_lemma_not_extracted_anywhere": true,
+                "gold_lemma_present_but_outside_correct_scoped_box": false,
+                "spurious_lemma_inside_scoped_box": true
+              },
+              "gold_lemmas": [
+                "pick_up",
+                "baby",
+                "kangaroo"
+              ],
+              "model_scoped_lemmas": [
+                "pick",
+                "baby",
+                "kangaroo"
+              ],
+              "missing_from_any_model_box": [
+                "pick_up"
+              ],
+              "possibly_misscoped": [],
+              "model_spurious_in_scope": [
+                "pick"
+              ]
+            },
+            {
+              "index": 834,
+              "sentence": "Tom didn't realize he had his sweater on inside out.",
+              "classification": {
+                "exact_gold_lemma_scope": false,
+                "no_operator": false,
+                "at_least_one_gold_lemma_not_extracted_anywhere": true,
+                "gold_lemma_present_but_outside_correct_scoped_box": false,
+                "spurious_lemma_inside_scoped_box": true
+              },
+              "gold_lemmas": [
+                "have_on",
+                "inside_out",
+                "time",
+                "proposition",
+                "realize"
+              ],
+              "model_scoped_lemmas": [
+                "have",
+                "inside_out",
+                "time",
+                "proposition",
+                "realize"
+              ],
+              "missing_from_any_model_box": [
+                "have_on"
+              ],
+              "possibly_misscoped": [],
+              "model_spurious_in_scope": [
+                "have"
+              ]
+            }
+          ]
+        },
+        "CONDITION": {
+          "gold_source_sentences": 31,
+          "nonexclusive_error_cause_counts": {
+            "no_operator": 2,
+            "at_least_one_gold_lemma_not_extracted_anywhere": 11,
+            "gold_lemma_present_but_outside_correct_scoped_box": 6,
+            "exact_gold_lemma_scope": 20,
+            "spurious_lemma_inside_scoped_box": 2
+          },
+          "source_linked_mismatch_examples": [
+            {
+              "index": 4,
+              "sentence": "You can't live on that island.",
+              "classification": {
+                "exact_gold_lemma_scope": false,
+                "no_operator": true,
+                "at_least_one_gold_lemma_not_extracted_anywhere": true,
+                "gold_lemma_present_but_outside_correct_scoped_box": true,
+                "spurious_lemma_inside_scoped_box": false
+              },
+              "gold_lemmas": [
+                "person",
+                "live"
+              ],
+              "model_scoped_lemmas": [],
+              "missing_from_any_model_box": [
+                "person"
+              ],
+              "possibly_misscoped": [
+                "live"
+              ],
+              "model_spurious_in_scope": []
+            },
+            {
+              "index": 11,
+              "sentence": "Nowadays anybody can get books.",
+              "classification": {
+                "exact_gold_lemma_scope": false,
+                "no_operator": false,
+                "at_least_one_gold_lemma_not_extracted_anywhere": true,
+                "gold_lemma_present_but_outside_correct_scoped_box": true,
+                "spurious_lemma_inside_scoped_box": false
+              },
+              "gold_lemmas": [
+                "get",
+                "book",
+                "time",
+                "person"
+              ],
+              "model_scoped_lemmas": [
+                "get",
+                "book"
+              ],
+              "missing_from_any_model_box": [
+                "person"
+              ],
+              "possibly_misscoped": [
+                "time"
+              ],
+              "model_spurious_in_scope": []
+            },
+            {
+              "index": 15,
+              "sentence": "An elephant has a long nose.",
+              "classification": {
+                "exact_gold_lemma_scope": false,
+                "no_operator": false,
+                "at_least_one_gold_lemma_not_extracted_anywhere": true,
+                "gold_lemma_present_but_outside_correct_scoped_box": false,
+                "spurious_lemma_inside_scoped_box": false
+              },
+              "gold_lemmas": [
+                "elephant",
+                "have",
+                "long",
+                "nose"
+              ],
+              "model_scoped_lemmas": [
+                "elephant",
+                "long",
+                "nose"
+              ],
+              "missing_from_any_model_box": [
+                "have"
+              ],
+              "possibly_misscoped": [],
+              "model_spurious_in_scope": []
+            },
+            {
+              "index": 88,
+              "sentence": "Both Cristina and Luis always dreamt of studying medicine.",
+              "classification": {
+                "exact_gold_lemma_scope": false,
+                "no_operator": false,
+                "at_least_one_gold_lemma_not_extracted_anywhere": true,
+                "gold_lemma_present_but_outside_correct_scoped_box": false,
+                "spurious_lemma_inside_scoped_box": false
+              },
+              "gold_lemmas": [
+                "entity",
+                "entity",
+                "entity",
+                "entity",
+                "time",
+                "time",
+                "dream",
+                "study",
+                "medicine"
+              ],
+              "model_scoped_lemmas": [
+                "entity",
+                "entity",
+                "entity",
+                "time",
+                "dream",
+                "study",
+                "medicine"
+              ],
+              "missing_from_any_model_box": [
+                "entity",
+                "time"
+              ],
+              "possibly_misscoped": [],
+              "model_spurious_in_scope": []
+            },
+            {
+              "index": 296,
+              "sentence": "Police arrested everyone in the room.",
+              "classification": {
+                "exact_gold_lemma_scope": false,
+                "no_operator": false,
+                "at_least_one_gold_lemma_not_extracted_anywhere": true,
+                "gold_lemma_present_but_outside_correct_scoped_box": true,
+                "spurious_lemma_inside_scoped_box": false
+              },
+              "gold_lemmas": [
+                "time",
+                "person",
+                "arrest"
+              ],
+              "model_scoped_lemmas": [],
+              "missing_from_any_model_box": [
+                "time",
+                "person"
+              ],
+              "possibly_misscoped": [
+                "arrest"
+              ],
+              "model_spurious_in_scope": []
+            },
+            {
+              "index": 337,
+              "sentence": "If you're tired, go to bed.",
+              "classification": {
+                "exact_gold_lemma_scope": false,
+                "no_operator": true,
+                "at_least_one_gold_lemma_not_extracted_anywhere": false,
+                "gold_lemma_present_but_outside_correct_scoped_box": true,
+                "spurious_lemma_inside_scoped_box": false
+              },
+              "gold_lemmas": [
+                "time",
+                "tired",
+                "go",
+                "bed"
+              ],
+              "model_scoped_lemmas": [],
+              "missing_from_any_model_box": [],
+              "possibly_misscoped": [
+                "time",
+                "tired",
+                "go",
+                "bed"
+              ],
+              "model_spurious_in_scope": []
+            },
+            {
+              "index": 376,
+              "sentence": "Tom filled both glasses with wine.",
+              "classification": {
+                "exact_gold_lemma_scope": false,
+                "no_operator": false,
+                "at_least_one_gold_lemma_not_extracted_anywhere": true,
+                "gold_lemma_present_but_outside_correct_scoped_box": true,
+                "spurious_lemma_inside_scoped_box": false
+              },
+              "gold_lemmas": [
+                "fill",
+                "wine",
+                "time",
+                "entity"
+              ],
+              "model_scoped_lemmas": [],
+              "missing_from_any_model_box": [
+                "time",
+                "entity"
+              ],
+              "possibly_misscoped": [
+                "fill",
+                "wine"
+              ],
+              "model_spurious_in_scope": []
+            },
+            {
+              "index": 414,
+              "sentence": "Russia rejected both demands.",
+              "classification": {
+                "exact_gold_lemma_scope": false,
+                "no_operator": false,
+                "at_least_one_gold_lemma_not_extracted_anywhere": true,
+                "gold_lemma_present_but_outside_correct_scoped_box": true,
+                "spurious_lemma_inside_scoped_box": false
+              },
+              "gold_lemmas": [
+                "reject",
+                "time",
+                "entity"
+              ],
+              "model_scoped_lemmas": [],
+              "missing_from_any_model_box": [
+                "entity"
+              ],
+              "possibly_misscoped": [
+                "reject",
+                "time"
+              ],
+              "model_spurious_in_scope": []
+            },
+            {
+              "index": 617,
+              "sentence": "I always eat out.",
+              "classification": {
+                "exact_gold_lemma_scope": false,
+                "no_operator": false,
+                "at_least_one_gold_lemma_not_extracted_anywhere": true,
+                "gold_lemma_present_but_outside_correct_scoped_box": false,
+                "spurious_lemma_inside_scoped_box": true
+              },
+              "gold_lemmas": [
+                "time",
+                "eat_out"
+              ],
+              "model_scoped_lemmas": [
+                "time",
+                "eat"
+              ],
+              "missing_from_any_model_box": [
+                "eat_out"
+              ],
+              "possibly_misscoped": [],
+              "model_spurious_in_scope": [
+                "eat"
+              ]
+            },
+            {
+              "index": 660,
+              "sentence": "The music lured everyone.",
+              "classification": {
+                "exact_gold_lemma_scope": false,
+                "no_operator": false,
+                "at_least_one_gold_lemma_not_extracted_anywhere": true,
+                "gold_lemma_present_but_outside_correct_scoped_box": false,
+                "spurious_lemma_inside_scoped_box": false
+              },
+              "gold_lemmas": [
+                "lure",
+                "time",
+                "person"
+              ],
+              "model_scoped_lemmas": [
+                "time",
+                "person"
+              ],
+              "missing_from_any_model_box": [
+                "lure"
+              ],
+              "possibly_misscoped": [],
+              "model_spurious_in_scope": []
+            },
+            {
+              "index": 866,
+              "sentence": "He ate all of the apple.",
+              "classification": {
+                "exact_gold_lemma_scope": false,
+                "no_operator": false,
+                "at_least_one_gold_lemma_not_extracted_anywhere": true,
+                "gold_lemma_present_but_outside_correct_scoped_box": false,
+                "spurious_lemma_inside_scoped_box": true
+              },
+              "gold_lemmas": [
+                "eat",
+                "time",
+                "entity"
+              ],
+              "model_scoped_lemmas": [
+                "eat",
+                "time",
+                "all"
+              ],
+              "missing_from_any_model_box": [
+                "entity"
+              ],
+              "possibly_misscoped": [],
+              "model_spurious_in_scope": [
+                "all"
+              ]
+            }
+          ]
+        },
+        "CONSEQUENCE": {
+          "gold_source_sentences": 31,
+          "nonexclusive_error_cause_counts": {
+            "no_operator": 6,
+            "gold_lemma_present_but_outside_correct_scoped_box": 7,
+            "at_least_one_gold_lemma_not_extracted_anywhere": 4,
+            "exact_gold_lemma_scope": 20,
+            "spurious_lemma_inside_scoped_box": 2
+          },
+          "source_linked_mismatch_examples": [
+            {
+              "index": 4,
+              "sentence": "You can't live on that island.",
+              "classification": {
+                "exact_gold_lemma_scope": false,
+                "no_operator": true,
+                "at_least_one_gold_lemma_not_extracted_anywhere": false,
+                "gold_lemma_present_but_outside_correct_scoped_box": true,
+                "spurious_lemma_inside_scoped_box": false
+              },
+              "gold_lemmas": [
+                "live"
+              ],
+              "model_scoped_lemmas": [],
+              "missing_from_any_model_box": [],
+              "possibly_misscoped": [
+                "live"
+              ],
+              "model_spurious_in_scope": []
+            },
+            {
+              "index": 11,
+              "sentence": "Nowadays anybody can get books.",
+              "classification": {
+                "exact_gold_lemma_scope": false,
+                "no_operator": true,
+                "at_least_one_gold_lemma_not_extracted_anywhere": false,
+                "gold_lemma_present_but_outside_correct_scoped_box": true,
+                "spurious_lemma_inside_scoped_box": false
+              },
+              "gold_lemmas": [
+                "get",
+                "book"
+              ],
+              "model_scoped_lemmas": [],
+              "missing_from_any_model_box": [],
+              "possibly_misscoped": [
+                "get",
+                "book"
+              ],
+              "model_spurious_in_scope": []
+            },
+            {
+              "index": 15,
+              "sentence": "An elephant has a long nose.",
+              "classification": {
+                "exact_gold_lemma_scope": false,
+                "no_operator": false,
+                "at_least_one_gold_lemma_not_extracted_anywhere": true,
+                "gold_lemma_present_but_outside_correct_scoped_box": false,
+                "spurious_lemma_inside_scoped_box": false
+              },
+              "gold_lemmas": [
+                "have",
+                "long",
+                "nose"
+              ],
+              "model_scoped_lemmas": [
+                "long",
+                "nose"
+              ],
+              "missing_from_any_model_box": [
+                "have"
+              ],
+              "possibly_misscoped": [],
+              "model_spurious_in_scope": []
+            },
+            {
+              "index": 88,
+              "sentence": "Both Cristina and Luis always dreamt of studying medicine.",
+              "classification": {
+                "exact_gold_lemma_scope": false,
+                "no_operator": false,
+                "at_least_one_gold_lemma_not_extracted_anywhere": false,
+                "gold_lemma_present_but_outside_correct_scoped_box": true,
+                "spurious_lemma_inside_scoped_box": false
+              },
+              "gold_lemmas": [
+                "entity",
+                "entity",
+                "entity",
+                "dream",
+                "time",
+                "study",
+                "medicine"
+              ],
+              "model_scoped_lemmas": [
+                "entity",
+                "entity",
+                "dream",
+                "study",
+                "medicine"
+              ],
+              "missing_from_any_model_box": [],
+              "possibly_misscoped": [
+                "entity",
+                "time"
+              ],
+              "model_spurious_in_scope": []
+            },
+            {
+              "index": 296,
+              "sentence": "Police arrested everyone in the room.",
+              "classification": {
+                "exact_gold_lemma_scope": false,
+                "no_operator": true,
+                "at_least_one_gold_lemma_not_extracted_anywhere": false,
+                "gold_lemma_present_but_outside_correct_scoped_box": true,
+                "spurious_lemma_inside_scoped_box": false
+              },
+              "gold_lemmas": [
+                "arrest"
+              ],
+              "model_scoped_lemmas": [],
+              "missing_from_any_model_box": [],
+              "possibly_misscoped": [
+                "arrest"
+              ],
+              "model_spurious_in_scope": []
+            },
+            {
+              "index": 337,
+              "sentence": "If you're tired, go to bed.",
+              "classification": {
+                "exact_gold_lemma_scope": false,
+                "no_operator": true,
+                "at_least_one_gold_lemma_not_extracted_anywhere": false,
+                "gold_lemma_present_but_outside_correct_scoped_box": true,
+                "spurious_lemma_inside_scoped_box": false
+              },
+              "gold_lemmas": [
+                "go",
+                "bed"
+              ],
+              "model_scoped_lemmas": [],
+              "missing_from_any_model_box": [],
+              "possibly_misscoped": [
+                "go",
+                "bed"
+              ],
+              "model_spurious_in_scope": []
+            },
+            {
+              "index": 376,
+              "sentence": "Tom filled both glasses with wine.",
+              "classification": {
+                "exact_gold_lemma_scope": false,
+                "no_operator": true,
+                "at_least_one_gold_lemma_not_extracted_anywhere": false,
+                "gold_lemma_present_but_outside_correct_scoped_box": true,
+                "spurious_lemma_inside_scoped_box": false
+              },
+              "gold_lemmas": [
+                "fill",
+                "wine"
+              ],
+              "model_scoped_lemmas": [],
+              "missing_from_any_model_box": [],
+              "possibly_misscoped": [
+                "fill",
+                "wine"
+              ],
+              "model_spurious_in_scope": []
+            },
+            {
+              "index": 414,
+              "sentence": "Russia rejected both demands.",
+              "classification": {
+                "exact_gold_lemma_scope": false,
+                "no_operator": true,
+                "at_least_one_gold_lemma_not_extracted_anywhere": false,
+                "gold_lemma_present_but_outside_correct_scoped_box": true,
+                "spurious_lemma_inside_scoped_box": false
+              },
+              "gold_lemmas": [
+                "reject"
+              ],
+              "model_scoped_lemmas": [],
+              "missing_from_any_model_box": [],
+              "possibly_misscoped": [
+                "reject"
+              ],
+              "model_spurious_in_scope": []
+            },
+            {
+              "index": 617,
+              "sentence": "I always eat out.",
+              "classification": {
+                "exact_gold_lemma_scope": false,
+                "no_operator": false,
+                "at_least_one_gold_lemma_not_extracted_anywhere": true,
+                "gold_lemma_present_but_outside_correct_scoped_box": false,
+                "spurious_lemma_inside_scoped_box": true
+              },
+              "gold_lemmas": [
+                "eat_out"
+              ],
+              "model_scoped_lemmas": [
+                "eat"
+              ],
+              "missing_from_any_model_box": [
+                "eat_out"
+              ],
+              "possibly_misscoped": [],
+              "model_spurious_in_scope": [
+                "eat"
+              ]
+            },
+            {
+              "index": 660,
+              "sentence": "The music lured everyone.",
+              "classification": {
+                "exact_gold_lemma_scope": false,
+                "no_operator": false,
+                "at_least_one_gold_lemma_not_extracted_anywhere": true,
+                "gold_lemma_present_but_outside_correct_scoped_box": false,
+                "spurious_lemma_inside_scoped_box": false
+              },
+              "gold_lemmas": [
+                "lure"
+              ],
+              "model_scoped_lemmas": [],
+              "missing_from_any_model_box": [
+                "lure"
+              ],
+              "possibly_misscoped": [],
+              "model_spurious_in_scope": []
+            },
+            {
+              "index": 686,
+              "sentence": "The ship left every Monday.",
+              "classification": {
+                "exact_gold_lemma_scope": false,
+                "no_operator": false,
+                "at_least_one_gold_lemma_not_extracted_anywhere": false,
+                "gold_lemma_present_but_outside_correct_scoped_box": false,
+                "spurious_lemma_inside_scoped_box": true
+              },
+              "gold_lemmas": [
+                "leave"
+              ],
+              "model_scoped_lemmas": [
+                "leave",
+                "time"
+              ],
+              "missing_from_any_model_box": [],
+              "possibly_misscoped": [],
+              "model_spurious_in_scope": [
+                "time"
+              ]
+            }
+          ]
+        },
+        "ATTRIBUTION": {
+          "gold_source_sentences": 18,
+          "nonexclusive_error_cause_counts": {
+            "at_least_one_gold_lemma_not_extracted_anywhere": 7,
+            "spurious_lemma_inside_scoped_box": 7,
+            "no_operator": 2,
+            "gold_lemma_present_but_outside_correct_scoped_box": 1,
+            "exact_gold_lemma_scope": 8
+          },
+          "source_linked_mismatch_examples": [
+            {
+              "index": 51,
+              "sentence": "I think he ate about 10 oysters.",
+              "classification": {
+                "exact_gold_lemma_scope": false,
+                "no_operator": false,
+                "at_least_one_gold_lemma_not_extracted_anywhere": true,
+                "gold_lemma_present_but_outside_correct_scoped_box": false,
+                "spurious_lemma_inside_scoped_box": true
+              },
+              "gold_lemmas": [
+                "eat",
+                "quantity",
+                "quantity",
+                "oyster"
+              ],
+              "model_scoped_lemmas": [
+                "eat",
+                "quantity",
+                "quantity",
+                "mosque"
+              ],
+              "missing_from_any_model_box": [
+                "oyster"
+              ],
+              "possibly_misscoped": [],
+              "model_spurious_in_scope": [
+                "mosque"
+              ]
+            },
+            {
+              "index": 87,
+              "sentence": "Do you know where my watch is?",
+              "classification": {
+                "exact_gold_lemma_scope": false,
+                "no_operator": false,
+                "at_least_one_gold_lemma_not_extracted_anywhere": false,
+                "gold_lemma_present_but_outside_correct_scoped_box": false,
+                "spurious_lemma_inside_scoped_box": true
+              },
+              "gold_lemmas": [
+                "be"
+              ],
+              "model_scoped_lemmas": [
+                "reason",
+                "be"
+              ],
+              "missing_from_any_model_box": [],
+              "possibly_misscoped": [],
+              "model_spurious_in_scope": [
+                "reason"
+              ]
+            },
+            {
+              "index": 238,
+              "sentence": "I don't know where Tom's office is.",
+              "classification": {
+                "exact_gold_lemma_scope": false,
+                "no_operator": false,
+                "at_least_one_gold_lemma_not_extracted_anywhere": true,
+                "gold_lemma_present_but_outside_correct_scoped_box": false,
+                "spurious_lemma_inside_scoped_box": true
+              },
+              "gold_lemmas": [
+                "location",
+                "be"
+              ],
+              "model_scoped_lemmas": [
+                "reason",
+                "be"
+              ],
+              "missing_from_any_model_box": [
+                "location"
+              ],
+              "possibly_misscoped": [],
+              "model_spurious_in_scope": [
+                "reason"
+              ]
+            },
+            {
+              "index": 327,
+              "sentence": "\"I was a boy,\" he said impatiently.",
+              "classification": {
+                "exact_gold_lemma_scope": false,
+                "no_operator": true,
+                "at_least_one_gold_lemma_not_extracted_anywhere": false,
+                "gold_lemma_present_but_outside_correct_scoped_box": true,
+                "spurious_lemma_inside_scoped_box": false
+              },
+              "gold_lemmas": [
+                "be",
+                "boy"
+              ],
+              "model_scoped_lemmas": [],
+              "missing_from_any_model_box": [],
+              "possibly_misscoped": [
+                "be",
+                "boy"
+              ],
+              "model_spurious_in_scope": []
+            },
+            {
+              "index": 370,
+              "sentence": "I do not want to clean up dog poop.",
+              "classification": {
+                "exact_gold_lemma_scope": false,
+                "no_operator": false,
+                "at_least_one_gold_lemma_not_extracted_anywhere": true,
+                "gold_lemma_present_but_outside_correct_scoped_box": false,
+                "spurious_lemma_inside_scoped_box": true
+              },
+              "gold_lemmas": [
+                "clean_up",
+                "dog",
+                "poop"
+              ],
+              "model_scoped_lemmas": [
+                "clean",
+                "dog"
+              ],
+              "missing_from_any_model_box": [
+                "clean_up",
+                "poop"
+              ],
+              "possibly_misscoped": [],
+              "model_spurious_in_scope": [
+                "clean"
+              ]
+            },
+            {
+              "index": 658,
+              "sentence": "According to the newspaper there was an earthquake in Mexico.",
+              "classification": {
+                "exact_gold_lemma_scope": false,
+                "no_operator": false,
+                "at_least_one_gold_lemma_not_extracted_anywhere": true,
+                "gold_lemma_present_but_outside_correct_scoped_box": false,
+                "spurious_lemma_inside_scoped_box": false
+              },
+              "gold_lemmas": [
+                "be",
+                "earthquake"
+              ],
+              "model_scoped_lemmas": [
+                "earthquake"
+              ],
+              "missing_from_any_model_box": [
+                "be"
+              ],
+              "possibly_misscoped": [],
+              "model_spurious_in_scope": []
+            },
+            {
+              "index": 712,
+              "sentence": "Melanie said that she likes swimming.",
+              "classification": {
+                "exact_gold_lemma_scope": false,
+                "no_operator": false,
+                "at_least_one_gold_lemma_not_extracted_anywhere": true,
+                "gold_lemma_present_but_outside_correct_scoped_box": false,
+                "spurious_lemma_inside_scoped_box": true
+              },
+              "gold_lemmas": [
+                "like",
+                "swimming"
+              ],
+              "model_scoped_lemmas": [
+                "like",
+                "swim"
+              ],
+              "missing_from_any_model_box": [
+                "swimming"
+              ],
+              "possibly_misscoped": [],
+              "model_spurious_in_scope": [
+                "swim"
+              ]
+            },
+            {
+              "index": 756,
+              "sentence": "I need to shit.",
+              "classification": {
+                "exact_gold_lemma_scope": false,
+                "no_operator": true,
+                "at_least_one_gold_lemma_not_extracted_anywhere": true,
+                "gold_lemma_present_but_outside_correct_scoped_box": false,
+                "spurious_lemma_inside_scoped_box": false
+              },
+              "gold_lemmas": [
+                "shit"
+              ],
+              "model_scoped_lemmas": [],
+              "missing_from_any_model_box": [
+                "shit"
+              ],
+              "possibly_misscoped": [],
+              "model_spurious_in_scope": []
+            },
+            {
+              "index": 834,
+              "sentence": "Tom didn't realize he had his sweater on inside out.",
+              "classification": {
+                "exact_gold_lemma_scope": false,
+                "no_operator": false,
+                "at_least_one_gold_lemma_not_extracted_anywhere": true,
+                "gold_lemma_present_but_outside_correct_scoped_box": false,
+                "spurious_lemma_inside_scoped_box": true
+              },
+              "gold_lemmas": [
+                "have_on",
+                "inside_out"
+              ],
+              "model_scoped_lemmas": [
+                "have",
+                "inside_out"
+              ],
+              "missing_from_any_model_box": [
+                "have_on"
+              ],
+              "possibly_misscoped": [],
+              "model_spurious_in_scope": [
+                "have"
+              ]
+            },
+            {
+              "index": 854,
+              "sentence": "I want to fly above the clouds.",
+              "classification": {
+                "exact_gold_lemma_scope": false,
+                "no_operator": false,
+                "at_least_one_gold_lemma_not_extracted_anywhere": false,
+                "gold_lemma_present_but_outside_correct_scoped_box": false,
+                "spurious_lemma_inside_scoped_box": true
+              },
+              "gold_lemmas": [
+                "fly"
+              ],
+              "model_scoped_lemmas": [
+                "fly",
+                "location"
+              ],
+              "missing_from_any_model_box": [],
+              "possibly_misscoped": [],
+              "model_spurious_in_scope": [
+                "location"
+              ]
+            }
+          ]
+        }
+      }
+    },
+    "dev": {
+      "input_sha256": {
+        "gold": "10575176eeffaa5b7fa50e2db2c73b526620543f62452a0a470ce845a7e29ad6",
+        "pred": "f9bbfa86e64d05d19a2416e20721dedbf8aba68daa477f77a4e67081bca76521",
+        "raw": "84372c8a91a107e6cc808eb57c2cca699ae8aec1df2e355d1ccb145d5e5fc2c3"
+      },
+      "operators": {
+        "NEGATION": {
+          "gold_source_sentences": 70,
+          "nonexclusive_error_cause_counts": {
+            "exact_gold_lemma_scope": 60,
+            "at_least_one_gold_lemma_not_extracted_anywhere": 8,
+            "gold_lemma_present_but_outside_correct_scoped_box": 2,
+            "spurious_lemma_inside_scoped_box": 3
+          },
+          "source_linked_mismatch_examples": [
+            {
+              "index": 47,
+              "sentence": "One cannot not communicate.",
+              "classification": {
+                "exact_gold_lemma_scope": false,
+                "no_operator": false,
+                "at_least_one_gold_lemma_not_extracted_anywhere": true,
+                "gold_lemma_present_but_outside_correct_scoped_box": false,
+                "spurious_lemma_inside_scoped_box": false
+              },
+              "gold_lemmas": [
+                "communicate",
+                "communicate"
+              ],
+              "model_scoped_lemmas": [
+                "communicate"
+              ],
+              "missing_from_any_model_box": [
+                "communicate"
+              ],
+              "possibly_misscoped": [],
+              "model_spurious_in_scope": []
+            },
+            {
+              "index": 84,
+              "sentence": "You are not watching TV now.",
+              "classification": {
+                "exact_gold_lemma_scope": false,
+                "no_operator": false,
+                "at_least_one_gold_lemma_not_extracted_anywhere": false,
+                "gold_lemma_present_but_outside_correct_scoped_box": true,
+                "spurious_lemma_inside_scoped_box": false
+              },
+              "gold_lemmas": [
+                "watch",
+                "tv",
+                "time"
+              ],
+              "model_scoped_lemmas": [
+                "watch",
+                "tv"
+              ],
+              "missing_from_any_model_box": [],
+              "possibly_misscoped": [
+                "time"
+              ],
+              "model_spurious_in_scope": []
+            },
+            {
+              "index": 91,
+              "sentence": "I wasn't prepared.",
+              "classification": {
+                "exact_gold_lemma_scope": false,
+                "no_operator": false,
+                "at_least_one_gold_lemma_not_extracted_anywhere": true,
+                "gold_lemma_present_but_outside_correct_scoped_box": false,
+                "spurious_lemma_inside_scoped_box": true
+              },
+              "gold_lemmas": [
+                "prepared"
+              ],
+              "model_scoped_lemmas": [
+                "prepare"
+              ],
+              "missing_from_any_model_box": [
+                "prepared"
+              ],
+              "possibly_misscoped": [],
+              "model_spurious_in_scope": [
+                "prepare"
+              ]
+            },
+            {
+              "index": 215,
+              "sentence": "There is no person cutting some ginger",
+              "classification": {
+                "exact_gold_lemma_scope": false,
+                "no_operator": false,
+                "at_least_one_gold_lemma_not_extracted_anywhere": true,
+                "gold_lemma_present_but_outside_correct_scoped_box": false,
+                "spurious_lemma_inside_scoped_box": false
+              },
+              "gold_lemmas": [
+                "person",
+                "cut",
+                "ginger"
+              ],
+              "model_scoped_lemmas": [
+                "person",
+                "cut"
+              ],
+              "missing_from_any_model_box": [
+                "ginger"
+              ],
+              "possibly_misscoped": [],
+              "model_spurious_in_scope": []
+            },
+            {
+              "index": 411,
+              "sentence": "How many people in U.S. do not have health insurance?",
+              "classification": {
+                "exact_gold_lemma_scope": false,
+                "no_operator": false,
+                "at_least_one_gold_lemma_not_extracted_anywhere": true,
+                "gold_lemma_present_but_outside_correct_scoped_box": false,
+                "spurious_lemma_inside_scoped_box": false
+              },
+              "gold_lemmas": [
+                "have",
+                "health_insurance"
+              ],
+              "model_scoped_lemmas": [
+                "have"
+              ],
+              "missing_from_any_model_box": [
+                "health_insurance"
+              ],
+              "possibly_misscoped": [],
+              "model_spurious_in_scope": []
+            },
+            {
+              "index": 648,
+              "sentence": "The badger isn't burrowing a hole",
+              "classification": {
+                "exact_gold_lemma_scope": false,
+                "no_operator": false,
+                "at_least_one_gold_lemma_not_extracted_anywhere": true,
+                "gold_lemma_present_but_outside_correct_scoped_box": false,
+                "spurious_lemma_inside_scoped_box": false
+              },
+              "gold_lemmas": [
+                "burrow",
+                "hole"
+              ],
+              "model_scoped_lemmas": [
+                "hole"
+              ],
+              "missing_from_any_model_box": [
+                "burrow"
+              ],
+              "possibly_misscoped": [],
+              "model_spurious_in_scope": []
+            },
+            {
+              "index": 665,
+              "sentence": "Nobody can surpass him.",
+              "classification": {
+                "exact_gold_lemma_scope": false,
+                "no_operator": false,
+                "at_least_one_gold_lemma_not_extracted_anywhere": true,
+                "gold_lemma_present_but_outside_correct_scoped_box": false,
+                "spurious_lemma_inside_scoped_box": false
+              },
+              "gold_lemmas": [
+                "person",
+                "surpass"
+              ],
+              "model_scoped_lemmas": [
+                "person"
+              ],
+              "missing_from_any_model_box": [
+                "surpass"
+              ],
+              "possibly_misscoped": [],
+              "model_spurious_in_scope": []
+            },
+            {
+              "index": 679,
+              "sentence": "I don't know how they did it.",
+              "classification": {
+                "exact_gold_lemma_scope": false,
+                "no_operator": false,
+                "at_least_one_gold_lemma_not_extracted_anywhere": true,
+                "gold_lemma_present_but_outside_correct_scoped_box": false,
+                "spurious_lemma_inside_scoped_box": true
+              },
+              "gold_lemmas": [
+                "time",
+                "time",
+                "know",
+                "question",
+                "manner",
+                "do"
+              ],
+              "model_scoped_lemmas": [
+                "time",
+                "time",
+                "know",
+                "question",
+                "reason",
+                "do"
+              ],
+              "missing_from_any_model_box": [
+                "manner"
+              ],
+              "possibly_misscoped": [],
+              "model_spurious_in_scope": [
+                "reason"
+              ]
+            },
+            {
+              "index": 806,
+              "sentence": "Tom didn't answer all the questions.",
+              "classification": {
+                "exact_gold_lemma_scope": false,
+                "no_operator": false,
+                "at_least_one_gold_lemma_not_extracted_anywhere": false,
+                "gold_lemma_present_but_outside_correct_scoped_box": true,
+                "spurious_lemma_inside_scoped_box": false
+              },
+              "gold_lemmas": [
+                "answer",
+                "time",
+                "entity"
+              ],
+              "model_scoped_lemmas": [
+                "answer"
+              ],
+              "missing_from_any_model_box": [],
+              "possibly_misscoped": [
+                "time",
+                "entity"
+              ],
+              "model_spurious_in_scope": []
+            },
+            {
+              "index": 831,
+              "sentence": "You mustn't throw litter in the street.",
+              "classification": {
+                "exact_gold_lemma_scope": false,
+                "no_operator": false,
+                "at_least_one_gold_lemma_not_extracted_anywhere": true,
+                "gold_lemma_present_but_outside_correct_scoped_box": false,
+                "spurious_lemma_inside_scoped_box": true
+              },
+              "gold_lemmas": [
+                "throw",
+                "litter"
+              ],
+              "model_scoped_lemmas": [
+                "throw",
+                "defect"
+              ],
+              "missing_from_any_model_box": [
+                "litter"
+              ],
+              "possibly_misscoped": [],
+              "model_spurious_in_scope": [
+                "defect"
+              ]
+            }
+          ]
+        },
+        "CONDITION": {
+          "gold_source_sentences": 32,
+          "nonexclusive_error_cause_counts": {
+            "at_least_one_gold_lemma_not_extracted_anywhere": 5,
+            "exact_gold_lemma_scope": 22,
+            "spurious_lemma_inside_scoped_box": 4,
+            "gold_lemma_present_but_outside_correct_scoped_box": 3
+          },
+          "source_linked_mismatch_examples": [
+            {
+              "index": 3,
+              "sentence": "You can buy stamps at any post office.",
+              "classification": {
+                "exact_gold_lemma_scope": false,
+                "no_operator": false,
+                "at_least_one_gold_lemma_not_extracted_anywhere": true,
+                "gold_lemma_present_but_outside_correct_scoped_box": false,
+                "spurious_lemma_inside_scoped_box": false
+              },
+              "gold_lemmas": [
+                "post_office",
+                "post_office",
+                "buy",
+                "stamp",
+                "person"
+              ],
+              "model_scoped_lemmas": [
+                "buy",
+                "stamp",
+                "post_office"
+              ],
+              "missing_from_any_model_box": [
+                "post_office",
+                "person"
+              ],
+              "possibly_misscoped": [],
+              "model_spurious_in_scope": []
+            },
+            {
+              "index": 89,
+              "sentence": "Every author suffers from writer's block from time to time.",
+              "classification": {
+                "exact_gold_lemma_scope": false,
+                "no_operator": false,
+                "at_least_one_gold_lemma_not_extracted_anywhere": false,
+                "gold_lemma_present_but_outside_correct_scoped_box": false,
+                "spurious_lemma_inside_scoped_box": true
+              },
+              "gold_lemmas": [
+                "author",
+                "person",
+                "time",
+                "suffer",
+                "from_time_to_time"
+              ],
+              "model_scoped_lemmas": [
+                "author",
+                "person",
+                "person",
+                "time",
+                "suffer",
+                "writer",
+                "block",
+                "from_time_to_time"
+              ],
+              "missing_from_any_model_box": [],
+              "possibly_misscoped": [],
+              "model_spurious_in_scope": [
+                "person",
+                "writer",
+                "block"
+              ]
+            },
+            {
+              "index": 127,
+              "sentence": "Klava oversimplifies everything.",
+              "classification": {
+                "exact_gold_lemma_scope": false,
+                "no_operator": false,
+                "at_least_one_gold_lemma_not_extracted_anywhere": true,
+                "gold_lemma_present_but_outside_correct_scoped_box": false,
+                "spurious_lemma_inside_scoped_box": false
+              },
+              "gold_lemmas": [
+                "oversimplify",
+                "time",
+                "entity"
+              ],
+              "model_scoped_lemmas": [
+                "time",
+                "entity"
+              ],
+              "missing_from_any_model_box": [
+                "oversimplify"
+              ],
+              "possibly_misscoped": [],
+              "model_spurious_in_scope": []
+            },
+            {
+              "index": 187,
+              "sentence": "All journeys begin with a first step.",
+              "classification": {
+                "exact_gold_lemma_scope": false,
+                "no_operator": false,
+                "at_least_one_gold_lemma_not_extracted_anywhere": false,
+                "gold_lemma_present_but_outside_correct_scoped_box": false,
+                "spurious_lemma_inside_scoped_box": true
+              },
+              "gold_lemmas": [
+                "journey",
+                "begin",
+                "first_step"
+              ],
+              "model_scoped_lemmas": [
+                "journey",
+                "time",
+                "begin",
+                "first_step"
+              ],
+              "missing_from_any_model_box": [],
+              "possibly_misscoped": [],
+              "model_spurious_in_scope": [
+                "time"
+              ]
+            },
+            {
+              "index": 309,
+              "sentence": "She used to play tennis every Sunday.",
+              "classification": {
+                "exact_gold_lemma_scope": false,
+                "no_operator": false,
+                "at_least_one_gold_lemma_not_extracted_anywhere": true,
+                "gold_lemma_present_but_outside_correct_scoped_box": false,
+                "spurious_lemma_inside_scoped_box": false
+              },
+              "gold_lemmas": [
+                "time",
+                "play",
+                "tennis"
+              ],
+              "model_scoped_lemmas": [
+                "play",
+                "tennis"
+              ],
+              "missing_from_any_model_box": [
+                "time"
+              ],
+              "possibly_misscoped": [],
+              "model_spurious_in_scope": []
+            },
+            {
+              "index": 480,
+              "sentence": "I always get up at 6 o'clock in the morning.",
+              "classification": {
+                "exact_gold_lemma_scope": false,
+                "no_operator": false,
+                "at_least_one_gold_lemma_not_extracted_anywhere": true,
+                "gold_lemma_present_but_outside_correct_scoped_box": true,
+                "spurious_lemma_inside_scoped_box": false
+              },
+              "gold_lemmas": [
+                "time",
+                "time",
+                "morning",
+                "get_up"
+              ],
+              "model_scoped_lemmas": [
+                "time",
+                "get_up"
+              ],
+              "missing_from_any_model_box": [
+                "time"
+              ],
+              "possibly_misscoped": [
+                "morning"
+              ],
+              "model_spurious_in_scope": []
+            },
+            {
+              "index": 806,
+              "sentence": "Tom didn't answer all the questions.",
+              "classification": {
+                "exact_gold_lemma_scope": false,
+                "no_operator": false,
+                "at_least_one_gold_lemma_not_extracted_anywhere": false,
+                "gold_lemma_present_but_outside_correct_scoped_box": true,
+                "spurious_lemma_inside_scoped_box": false
+              },
+              "gold_lemmas": [
+                "answer",
+                "time",
+                "entity"
+              ],
+              "model_scoped_lemmas": [
+                "entity",
+                "answer"
+              ],
+              "missing_from_any_model_box": [],
+              "possibly_misscoped": [
+                "time"
+              ],
+              "model_spurious_in_scope": []
+            },
+            {
+              "index": 851,
+              "sentence": "Tom is liked by everyone.",
+              "classification": {
+                "exact_gold_lemma_scope": false,
+                "no_operator": false,
+                "at_least_one_gold_lemma_not_extracted_anywhere": false,
+                "gold_lemma_present_but_outside_correct_scoped_box": true,
+                "spurious_lemma_inside_scoped_box": false
+              },
+              "gold_lemmas": [
+                "time",
+                "person"
+              ],
+              "model_scoped_lemmas": [
+                "person"
+              ],
+              "missing_from_any_model_box": [],
+              "possibly_misscoped": [
+                "time"
+              ],
+              "model_spurious_in_scope": []
+            },
+            {
+              "index": 856,
+              "sentence": "The dove symbolizes peace.",
+              "classification": {
+                "exact_gold_lemma_scope": false,
+                "no_operator": false,
+                "at_least_one_gold_lemma_not_extracted_anywhere": true,
+                "gold_lemma_present_but_outside_correct_scoped_box": false,
+                "spurious_lemma_inside_scoped_box": true
+              },
+              "gold_lemmas": [
+                "dove",
+                "symbolize",
+                "peace"
+              ],
+              "model_scoped_lemmas": [
+                "movie",
+                "symbolize",
+                "peace"
+              ],
+              "missing_from_any_model_box": [
+                "dove"
+              ],
+              "possibly_misscoped": [],
+              "model_spurious_in_scope": [
+                "movie"
+              ]
+            },
+            {
+              "index": 867,
+              "sentence": "All the passengers died, but he survived.",
+              "classification": {
+                "exact_gold_lemma_scope": false,
+                "no_operator": false,
+                "at_least_one_gold_lemma_not_extracted_anywhere": false,
+                "gold_lemma_present_but_outside_correct_scoped_box": false,
+                "spurious_lemma_inside_scoped_box": true
+              },
+              "gold_lemmas": [
+                "entity",
+                "die",
+                "time"
+              ],
+              "model_scoped_lemmas": [
+                "entity",
+                "die",
+                "time",
+                "male"
+              ],
+              "missing_from_any_model_box": [],
+              "possibly_misscoped": [],
+              "model_spurious_in_scope": [
+                "male"
+              ]
+            }
+          ]
+        },
+        "CONSEQUENCE": {
+          "gold_source_sentences": 32,
+          "nonexclusive_error_cause_counts": {
+            "no_operator": 1,
+            "gold_lemma_present_but_outside_correct_scoped_box": 3,
+            "exact_gold_lemma_scope": 26,
+            "spurious_lemma_inside_scoped_box": 2,
+            "at_least_one_gold_lemma_not_extracted_anywhere": 1
+          },
+          "source_linked_mismatch_examples": [
+            {
+              "index": 3,
+              "sentence": "You can buy stamps at any post office.",
+              "classification": {
+                "exact_gold_lemma_scope": false,
+                "no_operator": true,
+                "at_least_one_gold_lemma_not_extracted_anywhere": false,
+                "gold_lemma_present_but_outside_correct_scoped_box": true,
+                "spurious_lemma_inside_scoped_box": false
+              },
+              "gold_lemmas": [
+                "post_office",
+                "buy",
+                "stamp"
+              ],
+              "model_scoped_lemmas": [],
+              "missing_from_any_model_box": [],
+              "possibly_misscoped": [
+                "post_office",
+                "buy",
+                "stamp"
+              ],
+              "model_spurious_in_scope": []
+            },
+            {
+              "index": 89,
+              "sentence": "Every author suffers from writer's block from time to time.",
+              "classification": {
+                "exact_gold_lemma_scope": false,
+                "no_operator": false,
+                "at_least_one_gold_lemma_not_extracted_anywhere": false,
+                "gold_lemma_present_but_outside_correct_scoped_box": false,
+                "spurious_lemma_inside_scoped_box": true
+              },
+              "gold_lemmas": [
+                "suffer",
+                "from_time_to_time"
+              ],
+              "model_scoped_lemmas": [
+                "suffer",
+                "person",
+                "writer",
+                "block",
+                "from_time_to_time"
+              ],
+              "missing_from_any_model_box": [],
+              "possibly_misscoped": [],
+              "model_spurious_in_scope": [
+                "person",
+                "writer",
+                "block"
+              ]
+            },
+            {
+              "index": 127,
+              "sentence": "Klava oversimplifies everything.",
+              "classification": {
+                "exact_gold_lemma_scope": false,
+                "no_operator": false,
+                "at_least_one_gold_lemma_not_extracted_anywhere": true,
+                "gold_lemma_present_but_outside_correct_scoped_box": false,
+                "spurious_lemma_inside_scoped_box": false
+              },
+              "gold_lemmas": [
+                "oversimplify"
+              ],
+              "model_scoped_lemmas": [],
+              "missing_from_any_model_box": [
+                "oversimplify"
+              ],
+              "possibly_misscoped": [],
+              "model_spurious_in_scope": []
+            },
+            {
+              "index": 309,
+              "sentence": "She used to play tennis every Sunday.",
+              "classification": {
+                "exact_gold_lemma_scope": false,
+                "no_operator": false,
+                "at_least_one_gold_lemma_not_extracted_anywhere": false,
+                "gold_lemma_present_but_outside_correct_scoped_box": true,
+                "spurious_lemma_inside_scoped_box": false
+              },
+              "gold_lemmas": [
+                "play",
+                "tennis"
+              ],
+              "model_scoped_lemmas": [],
+              "missing_from_any_model_box": [],
+              "possibly_misscoped": [
+                "play",
+                "tennis"
+              ],
+              "model_spurious_in_scope": []
+            },
+            {
+              "index": 480,
+              "sentence": "I always get up at 6 o'clock in the morning.",
+              "classification": {
+                "exact_gold_lemma_scope": false,
+                "no_operator": false,
+                "at_least_one_gold_lemma_not_extracted_anywhere": false,
+                "gold_lemma_present_but_outside_correct_scoped_box": true,
+                "spurious_lemma_inside_scoped_box": false
+              },
+              "gold_lemmas": [
+                "get_up",
+                "time"
+              ],
+              "model_scoped_lemmas": [
+                "get_up"
+              ],
+              "missing_from_any_model_box": [],
+              "possibly_misscoped": [
+                "time"
+              ],
+              "model_spurious_in_scope": []
+            },
+            {
+              "index": 867,
+              "sentence": "All the passengers died, but he survived.",
+              "classification": {
+                "exact_gold_lemma_scope": false,
+                "no_operator": false,
+                "at_least_one_gold_lemma_not_extracted_anywhere": false,
+                "gold_lemma_present_but_outside_correct_scoped_box": false,
+                "spurious_lemma_inside_scoped_box": true
+              },
+              "gold_lemmas": [
+                "die",
+                "time"
+              ],
+              "model_scoped_lemmas": [
+                "die",
+                "time",
+                "male"
+              ],
+              "missing_from_any_model_box": [],
+              "possibly_misscoped": [],
+              "model_spurious_in_scope": [
+                "male"
+              ]
+            }
+          ]
+        },
+        "ATTRIBUTION": {
+          "gold_source_sentences": 27,
+          "nonexclusive_error_cause_counts": {
+            "exact_gold_lemma_scope": 21,
+            "at_least_one_gold_lemma_not_extracted_anywhere": 5,
+            "spurious_lemma_inside_scoped_box": 4,
+            "no_operator": 1,
+            "gold_lemma_present_but_outside_correct_scoped_box": 1
+          },
+          "source_linked_mismatch_examples": [
+            {
+              "index": 210,
+              "sentence": "I wanted to run away with Tom.",
+              "classification": {
+                "exact_gold_lemma_scope": false,
+                "no_operator": false,
+                "at_least_one_gold_lemma_not_extracted_anywhere": true,
+                "gold_lemma_present_but_outside_correct_scoped_box": false,
+                "spurious_lemma_inside_scoped_box": true
+              },
+              "gold_lemmas": [
+                "run_away"
+              ],
+              "model_scoped_lemmas": [
+                "run"
+              ],
+              "missing_from_any_model_box": [
+                "run_away"
+              ],
+              "possibly_misscoped": [],
+              "model_spurious_in_scope": [
+                "run"
+              ]
+            },
+            {
+              "index": 304,
+              "sentence": "He asked her if she was Jane.",
+              "classification": {
+                "exact_gold_lemma_scope": false,
+                "no_operator": false,
+                "at_least_one_gold_lemma_not_extracted_anywhere": false,
+                "gold_lemma_present_but_outside_correct_scoped_box": false,
+                "spurious_lemma_inside_scoped_box": true
+              },
+              "gold_lemmas": [
+                "be"
+              ],
+              "model_scoped_lemmas": [
+                "be",
+                "name"
+              ],
+              "missing_from_any_model_box": [],
+              "possibly_misscoped": [],
+              "model_spurious_in_scope": [
+                "name"
+              ]
+            },
+            {
+              "index": 350,
+              "sentence": "Mary wants to paint her car bright blue.",
+              "classification": {
+                "exact_gold_lemma_scope": false,
+                "no_operator": false,
+                "at_least_one_gold_lemma_not_extracted_anywhere": true,
+                "gold_lemma_present_but_outside_correct_scoped_box": false,
+                "spurious_lemma_inside_scoped_box": true
+              },
+              "gold_lemmas": [
+                "paint",
+                "bright_blue"
+              ],
+              "model_scoped_lemmas": [
+                "paint",
+                "bright-red"
+              ],
+              "missing_from_any_model_box": [
+                "bright_blue"
+              ],
+              "possibly_misscoped": [],
+              "model_spurious_in_scope": [
+                "bright-red"
+              ]
+            },
+            {
+              "index": 619,
+              "sentence": "I need to buy one.",
+              "classification": {
+                "exact_gold_lemma_scope": false,
+                "no_operator": true,
+                "at_least_one_gold_lemma_not_extracted_anywhere": true,
+                "gold_lemma_present_but_outside_correct_scoped_box": true,
+                "spurious_lemma_inside_scoped_box": false
+              },
+              "gold_lemmas": [
+                "buy",
+                "one"
+              ],
+              "model_scoped_lemmas": [],
+              "missing_from_any_model_box": [
+                "one"
+              ],
+              "possibly_misscoped": [
+                "buy"
+              ],
+              "model_spurious_in_scope": []
+            },
+            {
+              "index": 636,
+              "sentence": "Tom suspected that his father was dyslexic.",
+              "classification": {
+                "exact_gold_lemma_scope": false,
+                "no_operator": false,
+                "at_least_one_gold_lemma_not_extracted_anywhere": true,
+                "gold_lemma_present_but_outside_correct_scoped_box": false,
+                "spurious_lemma_inside_scoped_box": false
+              },
+              "gold_lemmas": [
+                "dyslexic"
+              ],
+              "model_scoped_lemmas": [],
+              "missing_from_any_model_box": [
+                "dyslexic"
+              ],
+              "possibly_misscoped": [],
+              "model_spurious_in_scope": []
+            },
+            {
+              "index": 679,
+              "sentence": "I don't know how they did it.",
+              "classification": {
+                "exact_gold_lemma_scope": false,
+                "no_operator": false,
+                "at_least_one_gold_lemma_not_extracted_anywhere": true,
+                "gold_lemma_present_but_outside_correct_scoped_box": false,
+                "spurious_lemma_inside_scoped_box": true
+              },
+              "gold_lemmas": [
+                "manner",
+                "do"
+              ],
+              "model_scoped_lemmas": [
+                "reason",
+                "do"
+              ],
+              "missing_from_any_model_box": [
+                "manner"
+              ],
+              "possibly_misscoped": [],
+              "model_spurious_in_scope": [
+                "reason"
+              ]
+            }
+          ]
+        }
+      }
+    }
+  },
+  "limitations": [
+    "A gold scoped lemma absent from auto DRS can be lexical concept extraction error; a matching word outside the operator box suggests scope placement but does not establish full graph equivalence.",
+    "Categories overlap and should never be summed as an error rate. These are linguistic gold, not empirical world-truth controls.",
+    "No automatically generated model inference or new model test is done in this follow-up diagnostic."
+  ]
+}

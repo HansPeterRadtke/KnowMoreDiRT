@@ -1,0 +1,1886 @@
+{
+  "method": "Join published DRS scope box -> scoped event lexical predicate + semantic role -> original Name referent in same sentence; normalize variable names by proper name and compare role/predicate/name multiset against independently human-corrected source gold.",
+  "source_revisions": {
+    "published_neural": "RikVN/Neural_DRS@81bcb26dfcc08f0da999cc7beaa2952f8820860c",
+    "expert_gold": "RikVN/DRS_parsing@190838f9adea2af616eb76156d2e66c8565a6c6e"
+  },
+  "splits": {
+    "test": {
+      "original_source_sentence_count": 898,
+      "source_sha256": {
+        "gold": "aa5668fb150d3332f42fdee828457a89e3acdf2a92846b8b6e8f027654a032e5",
+        "pred": "7d56cceda381c66c9d890c5078161f22dedbaf3df002b04306a960e7bd8ed5a9",
+        "raw": "4bd557c2e6655d9b9c32269d4f6aa32415a314777bf16b517d7ae3da280f6263"
+      },
+      "operators": {
+        "NEGATION": {
+          "gold_source_sentences_with_named_scoped_event_roles": 19,
+          "gold_named_source_event_role_links": 24,
+          "original_auto_scope_operator_detected": 19,
+          "full_named_predicate_role_lemma_exact": 12,
+          "full_named_predicate_role_with_sense_exact": 10,
+          "micro_f1_lemma_name_role": 0.772727,
+          "micro_f1_sense_name_role": 0.681818,
+          "individual_evidence_errors": [
+            {
+              "index": 177,
+              "source_sentence": "Tom can't pronounce Mary's last name.",
+              "source_sha256": "396a917c49c82e78acadb3c24e19dfd76f843c8f27fb41cb74831bc83591c7c8",
+              "gold_operator_boxes": 1,
+              "generated_operator_boxes": 1,
+              "gold_named_referent_links": [
+                [
+                  "pronounce",
+                  "\"v.01\"",
+                  "Agent",
+                  "tom"
+                ]
+              ],
+              "generated_named_referent_links": [
+                [
+                  "be",
+                  "\"v.01\"",
+                  "Agent",
+                  "tom"
+                ]
+              ],
+              "correct_links_with_sense": 0,
+              "gold_links_with_sense": 1,
+              "pred_links_with_sense": 1,
+              "correct_links_lemma_only": 0,
+              "gold_links_lemma_only": 1,
+              "pred_links_lemma_only": 1,
+              "all_gold_named_role_predicates_exact_lemma": false,
+              "all_gold_named_role_predicates_exact_sense": false
+            },
+            {
+              "index": 219,
+              "source_sentence": "I can't beat Tom at chess.",
+              "source_sha256": "bd54ea0c4318453946eca7fcb9e026afa6ee52e30f547ca0e7fa2ba54de7a983",
+              "gold_operator_boxes": 1,
+              "generated_operator_boxes": 1,
+              "gold_named_referent_links": [
+                [
+                  "beat",
+                  "\"v.01\"",
+                  "Patient",
+                  "tom"
+                ]
+              ],
+              "generated_named_referent_links": [],
+              "correct_links_with_sense": 0,
+              "gold_links_with_sense": 1,
+              "pred_links_with_sense": 0,
+              "correct_links_lemma_only": 0,
+              "gold_links_lemma_only": 1,
+              "pred_links_lemma_only": 0,
+              "all_gold_named_role_predicates_exact_lemma": false,
+              "all_gold_named_role_predicates_exact_sense": false
+            },
+            {
+              "index": 455,
+              "source_sentence": "Mrs. Davis was anything but a perfect wife.",
+              "source_sha256": "e8530ac74f0827a90090a0b4608e0e930bb34f1a22c34d56c8e111e415cde338",
+              "gold_operator_boxes": 1,
+              "generated_operator_boxes": 1,
+              "gold_named_referent_links": [
+                [
+                  "be",
+                  "\"v.01\"",
+                  "Theme",
+                  "davis"
+                ]
+              ],
+              "generated_named_referent_links": [],
+              "correct_links_with_sense": 0,
+              "gold_links_with_sense": 1,
+              "pred_links_with_sense": 0,
+              "correct_links_lemma_only": 0,
+              "gold_links_lemma_only": 1,
+              "pred_links_lemma_only": 0,
+              "all_gold_named_role_predicates_exact_lemma": false,
+              "all_gold_named_role_predicates_exact_sense": false
+            },
+            {
+              "index": 487,
+              "source_sentence": "Chen is not Korean.",
+              "source_sha256": "eea78d1a84261ce8de384673e2806bf9b6ec1e1a168c71598669dfe5c02ac012",
+              "gold_operator_boxes": 1,
+              "generated_operator_boxes": 1,
+              "gold_named_referent_links": [
+                [
+                  "be",
+                  "\"v.03\"",
+                  "Source",
+                  "korea"
+                ],
+                [
+                  "be",
+                  "\"v.03\"",
+                  "Theme",
+                  "chen"
+                ]
+              ],
+              "generated_named_referent_links": [
+                [
+                  "be",
+                  "\"v.03\"",
+                  "Source",
+                  "korea"
+                ]
+              ],
+              "correct_links_with_sense": 1,
+              "gold_links_with_sense": 2,
+              "pred_links_with_sense": 1,
+              "correct_links_lemma_only": 1,
+              "gold_links_lemma_only": 2,
+              "pred_links_lemma_only": 1,
+              "all_gold_named_role_predicates_exact_lemma": false,
+              "all_gold_named_role_predicates_exact_sense": false
+            },
+            {
+              "index": 624,
+              "source_sentence": "Tom threw a rock at Mary, but it didn't hit her.",
+              "source_sha256": "dfe24c4941b71cf9fecabfb87f747c91bf33a5bc4b802440775fd15d778b2291",
+              "gold_operator_boxes": 1,
+              "generated_operator_boxes": 1,
+              "gold_named_referent_links": [
+                [
+                  "hit",
+                  "\"v.02\"",
+                  "Destination",
+                  "mary"
+                ]
+              ],
+              "generated_named_referent_links": [
+                [
+                  "hit",
+                  "\"v.01\"",
+                  "Agent",
+                  "mary"
+                ]
+              ],
+              "correct_links_with_sense": 0,
+              "gold_links_with_sense": 1,
+              "pred_links_with_sense": 1,
+              "correct_links_lemma_only": 0,
+              "gold_links_lemma_only": 1,
+              "pred_links_lemma_only": 1,
+              "all_gold_named_role_predicates_exact_lemma": false,
+              "all_gold_named_role_predicates_exact_sense": false
+            },
+            {
+              "index": 735,
+              "source_sentence": "Neither Tom nor Mary goes to the store.",
+              "source_sha256": "0c463602dbc05af737f9ba0b4f18ee5a2035e22cfcccfbb8bd47cf2d62be4a4b",
+              "gold_operator_boxes": 2,
+              "generated_operator_boxes": 1,
+              "gold_named_referent_links": [
+                [
+                  "go",
+                  "\"v.01\"",
+                  "Theme",
+                  "tom"
+                ],
+                [
+                  "go",
+                  "\"v.01\"",
+                  "Theme",
+                  "mary"
+                ]
+              ],
+              "generated_named_referent_links": [
+                [
+                  "go",
+                  "\"v.01\"",
+                  "Theme",
+                  "mary"
+                ]
+              ],
+              "correct_links_with_sense": 1,
+              "gold_links_with_sense": 2,
+              "pred_links_with_sense": 1,
+              "correct_links_lemma_only": 1,
+              "gold_links_lemma_only": 2,
+              "pred_links_lemma_only": 1,
+              "all_gold_named_role_predicates_exact_lemma": false,
+              "all_gold_named_role_predicates_exact_sense": false
+            },
+            {
+              "index": 834,
+              "source_sentence": "Tom didn't realize he had his sweater on inside out.",
+              "source_sha256": "6c6b8ee005e5c8aae9ed2a13853fe703b82e8af64ad575a751dd59fc50518a52",
+              "gold_operator_boxes": 1,
+              "generated_operator_boxes": 1,
+              "gold_named_referent_links": [
+                [
+                  "realize",
+                  "\"v.01\"",
+                  "Experiencer",
+                  "tom"
+                ],
+                [
+                  "have_on",
+                  "\"v.01\"",
+                  "Agent",
+                  "tom"
+                ]
+              ],
+              "generated_named_referent_links": [
+                [
+                  "realize",
+                  "\"v.01\"",
+                  "Experiencer",
+                  "tom"
+                ],
+                [
+                  "have",
+                  "\"v.01\"",
+                  "Agent",
+                  "tom"
+                ]
+              ],
+              "correct_links_with_sense": 1,
+              "gold_links_with_sense": 2,
+              "pred_links_with_sense": 2,
+              "correct_links_lemma_only": 1,
+              "gold_links_lemma_only": 2,
+              "pred_links_lemma_only": 2,
+              "all_gold_named_role_predicates_exact_lemma": false,
+              "all_gold_named_role_predicates_exact_sense": false
+            }
+          ],
+          "examples_of_exact_matches": [
+            {
+              "index": 0,
+              "source_sentence": "Tom doesn't live in Boston anymore.",
+              "source_sha256": "9d912327bfb7e5996210ad927d8d1184f4183da74cfe087af5312a42d6800728",
+              "gold_operator_boxes": 1,
+              "generated_operator_boxes": 1,
+              "gold_named_referent_links": [
+                [
+                  "live",
+                  "\"v.01\"",
+                  "Theme",
+                  "tom"
+                ],
+                [
+                  "live",
+                  "\"v.01\"",
+                  "Location",
+                  "boston"
+                ]
+              ],
+              "generated_named_referent_links": [
+                [
+                  "live",
+                  "\"v.01\"",
+                  "Theme",
+                  "tom"
+                ],
+                [
+                  "live",
+                  "\"v.01\"",
+                  "Location",
+                  "boston"
+                ]
+              ],
+              "correct_links_with_sense": 2,
+              "gold_links_with_sense": 2,
+              "pred_links_with_sense": 2,
+              "correct_links_lemma_only": 2,
+              "gold_links_lemma_only": 2,
+              "pred_links_lemma_only": 2,
+              "all_gold_named_role_predicates_exact_lemma": true,
+              "all_gold_named_role_predicates_exact_sense": true
+            },
+            {
+              "index": 154,
+              "source_sentence": "Millie isn't eating an apple.",
+              "source_sha256": "dbe0d9aca1bc489657eb010912d8a4116b8c283dc0b17ada507378bd2bf87745",
+              "gold_operator_boxes": 1,
+              "generated_operator_boxes": 1,
+              "gold_named_referent_links": [
+                [
+                  "eat",
+                  "\"v.01\"",
+                  "Agent",
+                  "millie"
+                ]
+              ],
+              "generated_named_referent_links": [
+                [
+                  "eat",
+                  "\"v.01\"",
+                  "Agent",
+                  "millie"
+                ]
+              ],
+              "correct_links_with_sense": 1,
+              "gold_links_with_sense": 1,
+              "pred_links_with_sense": 1,
+              "correct_links_lemma_only": 1,
+              "gold_links_lemma_only": 1,
+              "pred_links_lemma_only": 1,
+              "all_gold_named_role_predicates_exact_lemma": true,
+              "all_gold_named_role_predicates_exact_sense": true
+            },
+            {
+              "index": 230,
+              "source_sentence": "Tom never tells me anything.",
+              "source_sha256": "68a97d5e04516455fd3b3fd47702bb5564c2d3e0802aa241cc6b088b3bdcd8d3",
+              "gold_operator_boxes": 1,
+              "generated_operator_boxes": 1,
+              "gold_named_referent_links": [
+                [
+                  "tell",
+                  "\"v.02\"",
+                  "Agent",
+                  "tom"
+                ]
+              ],
+              "generated_named_referent_links": [
+                [
+                  "tell",
+                  "\"v.01\"",
+                  "Agent",
+                  "tom"
+                ]
+              ],
+              "correct_links_with_sense": 0,
+              "gold_links_with_sense": 1,
+              "pred_links_with_sense": 1,
+              "correct_links_lemma_only": 1,
+              "gold_links_lemma_only": 1,
+              "pred_links_lemma_only": 1,
+              "all_gold_named_role_predicates_exact_lemma": true,
+              "all_gold_named_role_predicates_exact_sense": false
+            },
+            {
+              "index": 251,
+              "source_sentence": "Tom is too lazy to cook.",
+              "source_sha256": "ad3a5c333c549cb8e645785fb302692bdee0cf712cfbc19beefdb9958eac620e",
+              "gold_operator_boxes": 1,
+              "generated_operator_boxes": 1,
+              "gold_named_referent_links": [
+                [
+                  "cook",
+                  "\"v.01\"",
+                  "Agent",
+                  "tom"
+                ]
+              ],
+              "generated_named_referent_links": [
+                [
+                  "cook",
+                  "\"v.01\"",
+                  "Agent",
+                  "tom"
+                ]
+              ],
+              "correct_links_with_sense": 1,
+              "gold_links_with_sense": 1,
+              "pred_links_with_sense": 1,
+              "correct_links_lemma_only": 1,
+              "gold_links_lemma_only": 1,
+              "pred_links_lemma_only": 1,
+              "all_gold_named_role_predicates_exact_lemma": true,
+              "all_gold_named_role_predicates_exact_sense": true
+            }
+          ]
+        },
+        "CONDITION": {
+          "gold_source_sentences_with_named_scoped_event_roles": 6,
+          "gold_named_source_event_role_links": 6,
+          "original_auto_scope_operator_detected": 6,
+          "full_named_predicate_role_lemma_exact": 4,
+          "full_named_predicate_role_with_sense_exact": 4,
+          "micro_f1_lemma_name_role": 0.8,
+          "micro_f1_sense_name_role": 0.8,
+          "individual_evidence_errors": [
+            {
+              "index": 376,
+              "source_sentence": "Tom filled both glasses with wine.",
+              "source_sha256": "3de033cabd918ff3cb03ac24817f638bcca760c4cdb0e06cafdc630a75d34451",
+              "gold_operator_boxes": 1,
+              "generated_operator_boxes": 1,
+              "gold_named_referent_links": [
+                [
+                  "fill",
+                  "\"v.01\"",
+                  "Agent",
+                  "tom"
+                ]
+              ],
+              "generated_named_referent_links": [],
+              "correct_links_with_sense": 0,
+              "gold_links_with_sense": 1,
+              "pred_links_with_sense": 0,
+              "correct_links_lemma_only": 0,
+              "gold_links_lemma_only": 1,
+              "pred_links_lemma_only": 0,
+              "all_gold_named_role_predicates_exact_lemma": false,
+              "all_gold_named_role_predicates_exact_sense": false
+            },
+            {
+              "index": 414,
+              "source_sentence": "Russia rejected both demands.",
+              "source_sha256": "ca245c77652e9eccff9b547ffbc003dbfc52b462822e77b4a7944109f6fccc0a",
+              "gold_operator_boxes": 1,
+              "generated_operator_boxes": 1,
+              "gold_named_referent_links": [
+                [
+                  "reject",
+                  "\"v.01\"",
+                  "Agent",
+                  "russia"
+                ]
+              ],
+              "generated_named_referent_links": [],
+              "correct_links_with_sense": 0,
+              "gold_links_with_sense": 1,
+              "pred_links_with_sense": 0,
+              "correct_links_lemma_only": 0,
+              "gold_links_lemma_only": 1,
+              "pred_links_lemma_only": 0,
+              "all_gold_named_role_predicates_exact_lemma": false,
+              "all_gold_named_role_predicates_exact_sense": false
+            }
+          ],
+          "examples_of_exact_matches": [
+            {
+              "index": 332,
+              "source_sentence": "A typhoon batters the Philippines.",
+              "source_sha256": "927c3df0a3fb7aaa645622390184a083ec7e97edf3fa36bd4ed41f15c82df13a",
+              "gold_operator_boxes": 1,
+              "generated_operator_boxes": 1,
+              "gold_named_referent_links": [
+                [
+                  "batter",
+                  "\"v.01\"",
+                  "Patient",
+                  "philippines"
+                ]
+              ],
+              "generated_named_referent_links": [
+                [
+                  "batter",
+                  "\"v.01\"",
+                  "Patient",
+                  "philippines"
+                ]
+              ],
+              "correct_links_with_sense": 1,
+              "gold_links_with_sense": 1,
+              "pred_links_with_sense": 1,
+              "correct_links_lemma_only": 1,
+              "gold_links_lemma_only": 1,
+              "pred_links_lemma_only": 1,
+              "all_gold_named_role_predicates_exact_lemma": true,
+              "all_gold_named_role_predicates_exact_sense": true
+            },
+            {
+              "index": 362,
+              "source_sentence": "I've always hated Tom.",
+              "source_sha256": "6dcb183bf73384ffa05b4982f81fb75bddf708bf61d7c5bc2e4ab02a060d1f12",
+              "gold_operator_boxes": 1,
+              "generated_operator_boxes": 1,
+              "gold_named_referent_links": [
+                [
+                  "hate",
+                  "\"v.01\"",
+                  "Stimulus",
+                  "tom"
+                ]
+              ],
+              "generated_named_referent_links": [
+                [
+                  "hate",
+                  "\"v.01\"",
+                  "Stimulus",
+                  "tom"
+                ]
+              ],
+              "correct_links_with_sense": 1,
+              "gold_links_with_sense": 1,
+              "pred_links_with_sense": 1,
+              "correct_links_lemma_only": 1,
+              "gold_links_lemma_only": 1,
+              "pred_links_lemma_only": 1,
+              "all_gold_named_role_predicates_exact_lemma": true,
+              "all_gold_named_role_predicates_exact_sense": true
+            },
+            {
+              "index": 450,
+              "source_sentence": "Everybody liked Tom.",
+              "source_sha256": "4dbf720e15673ca99ac96a75cd4c1df31136c562e749e6cfb056cd510cefe544",
+              "gold_operator_boxes": 1,
+              "generated_operator_boxes": 1,
+              "gold_named_referent_links": [
+                [
+                  "like",
+                  "\"v.03\"",
+                  "Stimulus",
+                  "tom"
+                ]
+              ],
+              "generated_named_referent_links": [
+                [
+                  "like",
+                  "\"v.03\"",
+                  "Stimulus",
+                  "tom"
+                ]
+              ],
+              "correct_links_with_sense": 1,
+              "gold_links_with_sense": 1,
+              "pred_links_with_sense": 1,
+              "correct_links_lemma_only": 1,
+              "gold_links_lemma_only": 1,
+              "pred_links_lemma_only": 1,
+              "all_gold_named_role_predicates_exact_lemma": true,
+              "all_gold_named_role_predicates_exact_sense": true
+            },
+            {
+              "index": 875,
+              "source_sentence": "Tom goes jogging every morning.",
+              "source_sha256": "0d54e6c0aa417035c088cf061728059002d1eb541c09dde5d3b7146726e25cbc",
+              "gold_operator_boxes": 1,
+              "generated_operator_boxes": 1,
+              "gold_named_referent_links": [
+                [
+                  "jog",
+                  "\"v.03\"",
+                  "Theme",
+                  "tom"
+                ]
+              ],
+              "generated_named_referent_links": [
+                [
+                  "jog",
+                  "\"v.03\"",
+                  "Theme",
+                  "tom"
+                ]
+              ],
+              "correct_links_with_sense": 1,
+              "gold_links_with_sense": 1,
+              "pred_links_with_sense": 1,
+              "correct_links_lemma_only": 1,
+              "gold_links_lemma_only": 1,
+              "pred_links_lemma_only": 1,
+              "all_gold_named_role_predicates_exact_lemma": true,
+              "all_gold_named_role_predicates_exact_sense": true
+            }
+          ]
+        },
+        "CONSEQUENCE": {
+          "gold_source_sentences_with_named_scoped_event_roles": 6,
+          "gold_named_source_event_role_links": 6,
+          "original_auto_scope_operator_detected": 4,
+          "full_named_predicate_role_lemma_exact": 4,
+          "full_named_predicate_role_with_sense_exact": 4,
+          "micro_f1_lemma_name_role": 0.8,
+          "micro_f1_sense_name_role": 0.8,
+          "individual_evidence_errors": [
+            {
+              "index": 376,
+              "source_sentence": "Tom filled both glasses with wine.",
+              "source_sha256": "3de033cabd918ff3cb03ac24817f638bcca760c4cdb0e06cafdc630a75d34451",
+              "gold_operator_boxes": 1,
+              "generated_operator_boxes": 0,
+              "gold_named_referent_links": [
+                [
+                  "fill",
+                  "\"v.01\"",
+                  "Agent",
+                  "tom"
+                ]
+              ],
+              "generated_named_referent_links": [],
+              "correct_links_with_sense": 0,
+              "gold_links_with_sense": 1,
+              "pred_links_with_sense": 0,
+              "correct_links_lemma_only": 0,
+              "gold_links_lemma_only": 1,
+              "pred_links_lemma_only": 0,
+              "all_gold_named_role_predicates_exact_lemma": false,
+              "all_gold_named_role_predicates_exact_sense": false
+            },
+            {
+              "index": 414,
+              "source_sentence": "Russia rejected both demands.",
+              "source_sha256": "ca245c77652e9eccff9b547ffbc003dbfc52b462822e77b4a7944109f6fccc0a",
+              "gold_operator_boxes": 1,
+              "generated_operator_boxes": 0,
+              "gold_named_referent_links": [
+                [
+                  "reject",
+                  "\"v.01\"",
+                  "Agent",
+                  "russia"
+                ]
+              ],
+              "generated_named_referent_links": [],
+              "correct_links_with_sense": 0,
+              "gold_links_with_sense": 1,
+              "pred_links_with_sense": 0,
+              "correct_links_lemma_only": 0,
+              "gold_links_lemma_only": 1,
+              "pred_links_lemma_only": 0,
+              "all_gold_named_role_predicates_exact_lemma": false,
+              "all_gold_named_role_predicates_exact_sense": false
+            }
+          ],
+          "examples_of_exact_matches": [
+            {
+              "index": 332,
+              "source_sentence": "A typhoon batters the Philippines.",
+              "source_sha256": "927c3df0a3fb7aaa645622390184a083ec7e97edf3fa36bd4ed41f15c82df13a",
+              "gold_operator_boxes": 1,
+              "generated_operator_boxes": 1,
+              "gold_named_referent_links": [
+                [
+                  "batter",
+                  "\"v.01\"",
+                  "Patient",
+                  "philippines"
+                ]
+              ],
+              "generated_named_referent_links": [
+                [
+                  "batter",
+                  "\"v.01\"",
+                  "Patient",
+                  "philippines"
+                ]
+              ],
+              "correct_links_with_sense": 1,
+              "gold_links_with_sense": 1,
+              "pred_links_with_sense": 1,
+              "correct_links_lemma_only": 1,
+              "gold_links_lemma_only": 1,
+              "pred_links_lemma_only": 1,
+              "all_gold_named_role_predicates_exact_lemma": true,
+              "all_gold_named_role_predicates_exact_sense": true
+            },
+            {
+              "index": 362,
+              "source_sentence": "I've always hated Tom.",
+              "source_sha256": "6dcb183bf73384ffa05b4982f81fb75bddf708bf61d7c5bc2e4ab02a060d1f12",
+              "gold_operator_boxes": 1,
+              "generated_operator_boxes": 1,
+              "gold_named_referent_links": [
+                [
+                  "hate",
+                  "\"v.01\"",
+                  "Stimulus",
+                  "tom"
+                ]
+              ],
+              "generated_named_referent_links": [
+                [
+                  "hate",
+                  "\"v.01\"",
+                  "Stimulus",
+                  "tom"
+                ]
+              ],
+              "correct_links_with_sense": 1,
+              "gold_links_with_sense": 1,
+              "pred_links_with_sense": 1,
+              "correct_links_lemma_only": 1,
+              "gold_links_lemma_only": 1,
+              "pred_links_lemma_only": 1,
+              "all_gold_named_role_predicates_exact_lemma": true,
+              "all_gold_named_role_predicates_exact_sense": true
+            },
+            {
+              "index": 450,
+              "source_sentence": "Everybody liked Tom.",
+              "source_sha256": "4dbf720e15673ca99ac96a75cd4c1df31136c562e749e6cfb056cd510cefe544",
+              "gold_operator_boxes": 1,
+              "generated_operator_boxes": 1,
+              "gold_named_referent_links": [
+                [
+                  "like",
+                  "\"v.03\"",
+                  "Stimulus",
+                  "tom"
+                ]
+              ],
+              "generated_named_referent_links": [
+                [
+                  "like",
+                  "\"v.03\"",
+                  "Stimulus",
+                  "tom"
+                ]
+              ],
+              "correct_links_with_sense": 1,
+              "gold_links_with_sense": 1,
+              "pred_links_with_sense": 1,
+              "correct_links_lemma_only": 1,
+              "gold_links_lemma_only": 1,
+              "pred_links_lemma_only": 1,
+              "all_gold_named_role_predicates_exact_lemma": true,
+              "all_gold_named_role_predicates_exact_sense": true
+            },
+            {
+              "index": 875,
+              "source_sentence": "Tom goes jogging every morning.",
+              "source_sha256": "0d54e6c0aa417035c088cf061728059002d1eb541c09dde5d3b7146726e25cbc",
+              "gold_operator_boxes": 1,
+              "generated_operator_boxes": 1,
+              "gold_named_referent_links": [
+                [
+                  "jog",
+                  "\"v.03\"",
+                  "Theme",
+                  "tom"
+                ]
+              ],
+              "generated_named_referent_links": [
+                [
+                  "jog",
+                  "\"v.03\"",
+                  "Theme",
+                  "tom"
+                ]
+              ],
+              "correct_links_with_sense": 1,
+              "gold_links_with_sense": 1,
+              "pred_links_with_sense": 1,
+              "correct_links_lemma_only": 1,
+              "gold_links_lemma_only": 1,
+              "pred_links_lemma_only": 1,
+              "all_gold_named_role_predicates_exact_lemma": true,
+              "all_gold_named_role_predicates_exact_sense": true
+            }
+          ]
+        },
+        "ATTRIBUTION": {
+          "gold_source_sentences_with_named_scoped_event_roles": 6,
+          "gold_named_source_event_role_links": 6,
+          "original_auto_scope_operator_detected": 6,
+          "full_named_predicate_role_lemma_exact": 3,
+          "full_named_predicate_role_with_sense_exact": 3,
+          "micro_f1_lemma_name_role": 0.545455,
+          "micro_f1_sense_name_role": 0.545455,
+          "individual_evidence_errors": [
+            {
+              "index": 658,
+              "source_sentence": "According to the newspaper there was an earthquake in Mexico.",
+              "source_sha256": "ddd9a70fb91661c8e5de6c54e9b25f23880b559b14841c7ea873a5ac01c25332",
+              "gold_operator_boxes": 1,
+              "generated_operator_boxes": 1,
+              "gold_named_referent_links": [
+                [
+                  "be",
+                  "\"v.03\"",
+                  "Location",
+                  "mexico"
+                ]
+              ],
+              "generated_named_referent_links": [
+                [
+                  "earthquake",
+                  "\"n.01\"",
+                  "Location",
+                  "mexico"
+                ]
+              ],
+              "correct_links_with_sense": 0,
+              "gold_links_with_sense": 1,
+              "pred_links_with_sense": 1,
+              "correct_links_lemma_only": 0,
+              "gold_links_lemma_only": 1,
+              "pred_links_lemma_only": 1,
+              "all_gold_named_role_predicates_exact_lemma": false,
+              "all_gold_named_role_predicates_exact_sense": false
+            },
+            {
+              "index": 834,
+              "source_sentence": "Tom didn't realize he had his sweater on inside out.",
+              "source_sha256": "6c6b8ee005e5c8aae9ed2a13853fe703b82e8af64ad575a751dd59fc50518a52",
+              "gold_operator_boxes": 1,
+              "generated_operator_boxes": 1,
+              "gold_named_referent_links": [
+                [
+                  "have_on",
+                  "\"v.01\"",
+                  "Agent",
+                  "tom"
+                ]
+              ],
+              "generated_named_referent_links": [
+                [
+                  "have",
+                  "\"v.01\"",
+                  "Agent",
+                  "tom"
+                ]
+              ],
+              "correct_links_with_sense": 0,
+              "gold_links_with_sense": 1,
+              "pred_links_with_sense": 1,
+              "correct_links_lemma_only": 0,
+              "gold_links_lemma_only": 1,
+              "pred_links_lemma_only": 1,
+              "all_gold_named_role_predicates_exact_lemma": false,
+              "all_gold_named_role_predicates_exact_sense": false
+            },
+            {
+              "index": 836,
+              "source_sentence": "I want to marry Martyna.",
+              "source_sha256": "ddd6acf31b9eb63d2895cdac9327fa490261ef5b56466ccc57fd8ded710c8172",
+              "gold_operator_boxes": 1,
+              "generated_operator_boxes": 1,
+              "gold_named_referent_links": [
+                [
+                  "marry",
+                  "\"v.01\"",
+                  "Co-Agent",
+                  "martyna"
+                ]
+              ],
+              "generated_named_referent_links": [],
+              "correct_links_with_sense": 0,
+              "gold_links_with_sense": 1,
+              "pred_links_with_sense": 0,
+              "correct_links_lemma_only": 0,
+              "gold_links_lemma_only": 1,
+              "pred_links_lemma_only": 0,
+              "all_gold_named_role_predicates_exact_lemma": false,
+              "all_gold_named_role_predicates_exact_sense": false
+            }
+          ],
+          "examples_of_exact_matches": [
+            {
+              "index": 489,
+              "source_sentence": "Tom knows Mary lied.",
+              "source_sha256": "0ee5805995dbda9389d59f36e97a0ba6d54d463ad48d97a2cf3cbde8c06e3ce3",
+              "gold_operator_boxes": 1,
+              "generated_operator_boxes": 1,
+              "gold_named_referent_links": [
+                [
+                  "lie",
+                  "\"v.05\"",
+                  "Agent",
+                  "mary"
+                ]
+              ],
+              "generated_named_referent_links": [
+                [
+                  "lie",
+                  "\"v.05\"",
+                  "Agent",
+                  "mary"
+                ]
+              ],
+              "correct_links_with_sense": 1,
+              "gold_links_with_sense": 1,
+              "pred_links_with_sense": 1,
+              "correct_links_lemma_only": 1,
+              "gold_links_lemma_only": 1,
+              "pred_links_lemma_only": 1,
+              "all_gold_named_role_predicates_exact_lemma": true,
+              "all_gold_named_role_predicates_exact_sense": true
+            },
+            {
+              "index": 712,
+              "source_sentence": "Melanie said that she likes swimming.",
+              "source_sha256": "63a594b651c6c2c0ebfb67106640a1e1207b2911a55eb043ca4347a1a2d3fe98",
+              "gold_operator_boxes": 1,
+              "generated_operator_boxes": 1,
+              "gold_named_referent_links": [
+                [
+                  "like",
+                  "\"v.02\"",
+                  "Experiencer",
+                  "melanie"
+                ]
+              ],
+              "generated_named_referent_links": [
+                [
+                  "like",
+                  "\"v.02\"",
+                  "Experiencer",
+                  "melanie"
+                ]
+              ],
+              "correct_links_with_sense": 1,
+              "gold_links_with_sense": 1,
+              "pred_links_with_sense": 1,
+              "correct_links_lemma_only": 1,
+              "gold_links_lemma_only": 1,
+              "pred_links_lemma_only": 1,
+              "all_gold_named_role_predicates_exact_lemma": true,
+              "all_gold_named_role_predicates_exact_sense": true
+            },
+            {
+              "index": 776,
+              "source_sentence": "Tom managed to sell his car for a lot of money.",
+              "source_sha256": "9dd262121d2c7b572973bf8c9cc8089bef6e1faad70d865d50f13333de8fa3eb",
+              "gold_operator_boxes": 1,
+              "generated_operator_boxes": 1,
+              "gold_named_referent_links": [
+                [
+                  "sell",
+                  "\"v.01\"",
+                  "Agent",
+                  "tom"
+                ]
+              ],
+              "generated_named_referent_links": [
+                [
+                  "sell",
+                  "\"v.01\"",
+                  "Agent",
+                  "tom"
+                ]
+              ],
+              "correct_links_with_sense": 1,
+              "gold_links_with_sense": 1,
+              "pred_links_with_sense": 1,
+              "correct_links_lemma_only": 1,
+              "gold_links_lemma_only": 1,
+              "pred_links_lemma_only": 1,
+              "all_gold_named_role_predicates_exact_lemma": true,
+              "all_gold_named_role_predicates_exact_sense": true
+            }
+          ]
+        },
+        "POSSIBILITY": {
+          "gold_source_sentences_with_named_scoped_event_roles": 5,
+          "gold_named_source_event_role_links": 5,
+          "original_auto_scope_operator_detected": 5,
+          "full_named_predicate_role_lemma_exact": 3,
+          "full_named_predicate_role_with_sense_exact": 3,
+          "micro_f1_lemma_name_role": 0.666667,
+          "micro_f1_sense_name_role": 0.666667,
+          "individual_evidence_errors": [
+            {
+              "index": 177,
+              "source_sentence": "Tom can't pronounce Mary's last name.",
+              "source_sha256": "396a917c49c82e78acadb3c24e19dfd76f843c8f27fb41cb74831bc83591c7c8",
+              "gold_operator_boxes": 1,
+              "generated_operator_boxes": 1,
+              "gold_named_referent_links": [
+                [
+                  "pronounce",
+                  "\"v.01\"",
+                  "Agent",
+                  "tom"
+                ]
+              ],
+              "generated_named_referent_links": [
+                [
+                  "be",
+                  "\"v.01\"",
+                  "Agent",
+                  "tom"
+                ]
+              ],
+              "correct_links_with_sense": 0,
+              "gold_links_with_sense": 1,
+              "pred_links_with_sense": 1,
+              "correct_links_lemma_only": 0,
+              "gold_links_lemma_only": 1,
+              "pred_links_lemma_only": 1,
+              "all_gold_named_role_predicates_exact_lemma": false,
+              "all_gold_named_role_predicates_exact_sense": false
+            },
+            {
+              "index": 219,
+              "source_sentence": "I can't beat Tom at chess.",
+              "source_sha256": "bd54ea0c4318453946eca7fcb9e026afa6ee52e30f547ca0e7fa2ba54de7a983",
+              "gold_operator_boxes": 1,
+              "generated_operator_boxes": 1,
+              "gold_named_referent_links": [
+                [
+                  "beat",
+                  "\"v.01\"",
+                  "Patient",
+                  "tom"
+                ]
+              ],
+              "generated_named_referent_links": [],
+              "correct_links_with_sense": 0,
+              "gold_links_with_sense": 1,
+              "pred_links_with_sense": 0,
+              "correct_links_lemma_only": 0,
+              "gold_links_lemma_only": 1,
+              "pred_links_lemma_only": 0,
+              "all_gold_named_role_predicates_exact_lemma": false,
+              "all_gold_named_role_predicates_exact_sense": false
+            }
+          ],
+          "examples_of_exact_matches": [
+            {
+              "index": 224,
+              "source_sentence": "Tom can drive now.",
+              "source_sha256": "ddac3222cc8d6fbe445bd960ae2fefb6111628c4adc37546d0e1d2847047dd2c",
+              "gold_operator_boxes": 1,
+              "generated_operator_boxes": 1,
+              "gold_named_referent_links": [
+                [
+                  "drive",
+                  "\"v.01\"",
+                  "Agent",
+                  "tom"
+                ]
+              ],
+              "generated_named_referent_links": [
+                [
+                  "drive",
+                  "\"v.01\"",
+                  "Agent",
+                  "tom"
+                ]
+              ],
+              "correct_links_with_sense": 1,
+              "gold_links_with_sense": 1,
+              "pred_links_with_sense": 1,
+              "correct_links_lemma_only": 1,
+              "gold_links_lemma_only": 1,
+              "pred_links_lemma_only": 1,
+              "all_gold_named_role_predicates_exact_lemma": true,
+              "all_gold_named_role_predicates_exact_sense": true
+            },
+            {
+              "index": 251,
+              "source_sentence": "Tom is too lazy to cook.",
+              "source_sha256": "ad3a5c333c549cb8e645785fb302692bdee0cf712cfbc19beefdb9958eac620e",
+              "gold_operator_boxes": 1,
+              "generated_operator_boxes": 1,
+              "gold_named_referent_links": [
+                [
+                  "cook",
+                  "\"v.01\"",
+                  "Agent",
+                  "tom"
+                ]
+              ],
+              "generated_named_referent_links": [
+                [
+                  "cook",
+                  "\"v.01\"",
+                  "Agent",
+                  "tom"
+                ]
+              ],
+              "correct_links_with_sense": 1,
+              "gold_links_with_sense": 1,
+              "pred_links_with_sense": 1,
+              "correct_links_lemma_only": 1,
+              "gold_links_lemma_only": 1,
+              "pred_links_lemma_only": 1,
+              "all_gold_named_role_predicates_exact_lemma": true,
+              "all_gold_named_role_predicates_exact_sense": true
+            },
+            {
+              "index": 576,
+              "source_sentence": "Naoko can run fast.",
+              "source_sha256": "55ca0a3784e7f82bd5b1bf02186e16e00256bf9c487d2770faad75e725576e65",
+              "gold_operator_boxes": 1,
+              "generated_operator_boxes": 1,
+              "gold_named_referent_links": [
+                [
+                  "run",
+                  "\"v.01\"",
+                  "Theme",
+                  "naoko"
+                ]
+              ],
+              "generated_named_referent_links": [
+                [
+                  "run",
+                  "\"v.01\"",
+                  "Theme",
+                  "naoko"
+                ]
+              ],
+              "correct_links_with_sense": 1,
+              "gold_links_with_sense": 1,
+              "pred_links_with_sense": 1,
+              "correct_links_lemma_only": 1,
+              "gold_links_lemma_only": 1,
+              "pred_links_lemma_only": 1,
+              "all_gold_named_role_predicates_exact_lemma": true,
+              "all_gold_named_role_predicates_exact_sense": true
+            }
+          ]
+        }
+      }
+    },
+    "dev": {
+      "original_source_sentence_count": 885,
+      "source_sha256": {
+        "gold": "10575176eeffaa5b7fa50e2db2c73b526620543f62452a0a470ce845a7e29ad6",
+        "pred": "f9bbfa86e64d05d19a2416e20721dedbf8aba68daa477f77a4e67081bca76521",
+        "raw": "84372c8a91a107e6cc808eb57c2cca699ae8aec1df2e355d1ccb145d5e5fc2c3"
+      },
+      "operators": {
+        "NEGATION": {
+          "gold_source_sentences_with_named_scoped_event_roles": 17,
+          "gold_named_source_event_role_links": 19,
+          "original_auto_scope_operator_detected": 17,
+          "full_named_predicate_role_lemma_exact": 17,
+          "full_named_predicate_role_with_sense_exact": 10,
+          "micro_f1_lemma_name_role": 1.0,
+          "micro_f1_sense_name_role": 0.631579,
+          "individual_evidence_errors": [],
+          "examples_of_exact_matches": [
+            {
+              "index": 17,
+              "source_sentence": "I've never been to Paris.",
+              "source_sha256": "1ead62c01103baf151ee22306f634ddd8d15015deaf13953556f07a862e7b294",
+              "gold_operator_boxes": 1,
+              "generated_operator_boxes": 1,
+              "gold_named_referent_links": [
+                [
+                  "be",
+                  "\"v.03\"",
+                  "Location",
+                  "paris"
+                ]
+              ],
+              "generated_named_referent_links": [
+                [
+                  "be",
+                  "\"v.01\"",
+                  "Location",
+                  "paris"
+                ]
+              ],
+              "correct_links_with_sense": 0,
+              "gold_links_with_sense": 1,
+              "pred_links_with_sense": 1,
+              "correct_links_lemma_only": 1,
+              "gold_links_lemma_only": 1,
+              "pred_links_lemma_only": 1,
+              "all_gold_named_role_predicates_exact_lemma": true,
+              "all_gold_named_role_predicates_exact_sense": false
+            },
+            {
+              "index": 196,
+              "source_sentence": "Tom isn't my father.",
+              "source_sha256": "6321b09fc0c93c2e38cc4c14b7cd77ce544e10ff96f1212d633708db4064e76d",
+              "gold_operator_boxes": 1,
+              "generated_operator_boxes": 1,
+              "gold_named_referent_links": [
+                [
+                  "be",
+                  "\"v.02\"",
+                  "Theme",
+                  "tom"
+                ]
+              ],
+              "generated_named_referent_links": [
+                [
+                  "be",
+                  "\"v.02\"",
+                  "Theme",
+                  "tom"
+                ]
+              ],
+              "correct_links_with_sense": 1,
+              "gold_links_with_sense": 1,
+              "pred_links_with_sense": 1,
+              "correct_links_lemma_only": 1,
+              "gold_links_lemma_only": 1,
+              "pred_links_lemma_only": 1,
+              "all_gold_named_role_predicates_exact_lemma": true,
+              "all_gold_named_role_predicates_exact_sense": true
+            },
+            {
+              "index": 201,
+              "source_sentence": "Tom can't speak French. Tom can't speak Spanish either.",
+              "source_sha256": "e016f7b01846da81a8c43ff4add70318fe3a3962d6b4fc3268e8a84d53e0f6db",
+              "gold_operator_boxes": 2,
+              "generated_operator_boxes": 2,
+              "gold_named_referent_links": [
+                [
+                  "speak",
+                  "\"v.03\"",
+                  "Agent",
+                  "tom"
+                ],
+                [
+                  "speak",
+                  "\"v.03\"",
+                  "Agent",
+                  "tom"
+                ]
+              ],
+              "generated_named_referent_links": [
+                [
+                  "speak",
+                  "\"v.03\"",
+                  "Agent",
+                  "tom"
+                ],
+                [
+                  "speak",
+                  "\"v.03\"",
+                  "Agent",
+                  "tom"
+                ]
+              ],
+              "correct_links_with_sense": 2,
+              "gold_links_with_sense": 2,
+              "pred_links_with_sense": 2,
+              "correct_links_lemma_only": 2,
+              "gold_links_lemma_only": 2,
+              "pred_links_lemma_only": 2,
+              "all_gold_named_role_predicates_exact_lemma": true,
+              "all_gold_named_role_predicates_exact_sense": true
+            },
+            {
+              "index": 281,
+              "source_sentence": "Tom won't speak to Mary.",
+              "source_sha256": "0639fd423645a1814fda691176c365deeaa57320b8e3115277f2c7b21e839f02",
+              "gold_operator_boxes": 1,
+              "generated_operator_boxes": 1,
+              "gold_named_referent_links": [
+                [
+                  "speak",
+                  "\"v.02\"",
+                  "Agent",
+                  "tom"
+                ],
+                [
+                  "speak",
+                  "\"v.02\"",
+                  "Co-Agent",
+                  "mary"
+                ]
+              ],
+              "generated_named_referent_links": [
+                [
+                  "speak",
+                  "\"v.02\"",
+                  "Agent",
+                  "tom"
+                ],
+                [
+                  "speak",
+                  "\"v.02\"",
+                  "Co-Agent",
+                  "mary"
+                ]
+              ],
+              "correct_links_with_sense": 2,
+              "gold_links_with_sense": 2,
+              "pred_links_with_sense": 2,
+              "correct_links_lemma_only": 2,
+              "gold_links_lemma_only": 2,
+              "pred_links_lemma_only": 2,
+              "all_gold_named_role_predicates_exact_lemma": true,
+              "all_gold_named_role_predicates_exact_sense": true
+            }
+          ]
+        },
+        "CONDITION": {
+          "gold_source_sentences_with_named_scoped_event_roles": 4,
+          "gold_named_source_event_role_links": 4,
+          "original_auto_scope_operator_detected": 4,
+          "full_named_predicate_role_lemma_exact": 3,
+          "full_named_predicate_role_with_sense_exact": 2,
+          "micro_f1_lemma_name_role": 0.857143,
+          "micro_f1_sense_name_role": 0.571429,
+          "individual_evidence_errors": [
+            {
+              "index": 127,
+              "source_sentence": "Klava oversimplifies everything.",
+              "source_sha256": "2887be11cf3fc1514f25cd708b49dc93bbbd7846e2d232427af16dc879e1002c",
+              "gold_operator_boxes": 1,
+              "generated_operator_boxes": 1,
+              "gold_named_referent_links": [
+                [
+                  "oversimplify",
+                  "\"v.01\"",
+                  "Agent",
+                  "klava"
+                ]
+              ],
+              "generated_named_referent_links": [],
+              "correct_links_with_sense": 0,
+              "gold_links_with_sense": 1,
+              "pred_links_with_sense": 0,
+              "correct_links_lemma_only": 0,
+              "gold_links_lemma_only": 1,
+              "pred_links_lemma_only": 0,
+              "all_gold_named_role_predicates_exact_lemma": false,
+              "all_gold_named_role_predicates_exact_sense": false
+            }
+          ],
+          "examples_of_exact_matches": [
+            {
+              "index": 140,
+              "source_sentence": "Tom loved all of us.",
+              "source_sha256": "4c9649f870de4c413337e92df5550b3c08a00fee01657f5c43b7a44ddeb121fe",
+              "gold_operator_boxes": 1,
+              "generated_operator_boxes": 1,
+              "gold_named_referent_links": [
+                [
+                  "love",
+                  "\"v.01\"",
+                  "Experiencer",
+                  "tom"
+                ]
+              ],
+              "generated_named_referent_links": [
+                [
+                  "love",
+                  "\"v.01\"",
+                  "Experiencer",
+                  "tom"
+                ]
+              ],
+              "correct_links_with_sense": 1,
+              "gold_links_with_sense": 1,
+              "pred_links_with_sense": 1,
+              "correct_links_lemma_only": 1,
+              "gold_links_lemma_only": 1,
+              "pred_links_lemma_only": 1,
+              "all_gold_named_role_predicates_exact_lemma": true,
+              "all_gold_named_role_predicates_exact_sense": true
+            },
+            {
+              "index": 206,
+              "source_sentence": "He dreams that everybody in China speaks Esperanto.",
+              "source_sha256": "c00141e147a8151b3337595c07a0895f33686d5d256b6cabc1029a05676f5c95",
+              "gold_operator_boxes": 1,
+              "generated_operator_boxes": 1,
+              "gold_named_referent_links": [
+                [
+                  "person",
+                  "\"n.01\"",
+                  "Location",
+                  "china"
+                ]
+              ],
+              "generated_named_referent_links": [
+                [
+                  "person",
+                  "\"n.01\"",
+                  "Location",
+                  "china"
+                ]
+              ],
+              "correct_links_with_sense": 1,
+              "gold_links_with_sense": 1,
+              "pred_links_with_sense": 1,
+              "correct_links_lemma_only": 1,
+              "gold_links_lemma_only": 1,
+              "pred_links_lemma_only": 1,
+              "all_gold_named_role_predicates_exact_lemma": true,
+              "all_gold_named_role_predicates_exact_sense": true
+            },
+            {
+              "index": 806,
+              "source_sentence": "Tom didn't answer all the questions.",
+              "source_sha256": "9737986924239c02c57602b826d644d847398417a798db537d8a7b4cbcb6d59c",
+              "gold_operator_boxes": 1,
+              "generated_operator_boxes": 1,
+              "gold_named_referent_links": [
+                [
+                  "answer",
+                  "\"v.03\"",
+                  "Agent",
+                  "tom"
+                ]
+              ],
+              "generated_named_referent_links": [
+                [
+                  "answer",
+                  "\"v.01\"",
+                  "Agent",
+                  "tom"
+                ]
+              ],
+              "correct_links_with_sense": 0,
+              "gold_links_with_sense": 1,
+              "pred_links_with_sense": 1,
+              "correct_links_lemma_only": 1,
+              "gold_links_lemma_only": 1,
+              "pred_links_lemma_only": 1,
+              "all_gold_named_role_predicates_exact_lemma": true,
+              "all_gold_named_role_predicates_exact_sense": false
+            }
+          ]
+        },
+        "CONSEQUENCE": {
+          "gold_source_sentences_with_named_scoped_event_roles": 3,
+          "gold_named_source_event_role_links": 3,
+          "original_auto_scope_operator_detected": 3,
+          "full_named_predicate_role_lemma_exact": 2,
+          "full_named_predicate_role_with_sense_exact": 1,
+          "micro_f1_lemma_name_role": 0.8,
+          "micro_f1_sense_name_role": 0.4,
+          "individual_evidence_errors": [
+            {
+              "index": 127,
+              "source_sentence": "Klava oversimplifies everything.",
+              "source_sha256": "2887be11cf3fc1514f25cd708b49dc93bbbd7846e2d232427af16dc879e1002c",
+              "gold_operator_boxes": 1,
+              "generated_operator_boxes": 1,
+              "gold_named_referent_links": [
+                [
+                  "oversimplify",
+                  "\"v.01\"",
+                  "Agent",
+                  "klava"
+                ]
+              ],
+              "generated_named_referent_links": [],
+              "correct_links_with_sense": 0,
+              "gold_links_with_sense": 1,
+              "pred_links_with_sense": 0,
+              "correct_links_lemma_only": 0,
+              "gold_links_lemma_only": 1,
+              "pred_links_lemma_only": 0,
+              "all_gold_named_role_predicates_exact_lemma": false,
+              "all_gold_named_role_predicates_exact_sense": false
+            }
+          ],
+          "examples_of_exact_matches": [
+            {
+              "index": 140,
+              "source_sentence": "Tom loved all of us.",
+              "source_sha256": "4c9649f870de4c413337e92df5550b3c08a00fee01657f5c43b7a44ddeb121fe",
+              "gold_operator_boxes": 1,
+              "generated_operator_boxes": 1,
+              "gold_named_referent_links": [
+                [
+                  "love",
+                  "\"v.01\"",
+                  "Experiencer",
+                  "tom"
+                ]
+              ],
+              "generated_named_referent_links": [
+                [
+                  "love",
+                  "\"v.01\"",
+                  "Experiencer",
+                  "tom"
+                ]
+              ],
+              "correct_links_with_sense": 1,
+              "gold_links_with_sense": 1,
+              "pred_links_with_sense": 1,
+              "correct_links_lemma_only": 1,
+              "gold_links_lemma_only": 1,
+              "pred_links_lemma_only": 1,
+              "all_gold_named_role_predicates_exact_lemma": true,
+              "all_gold_named_role_predicates_exact_sense": true
+            },
+            {
+              "index": 806,
+              "source_sentence": "Tom didn't answer all the questions.",
+              "source_sha256": "9737986924239c02c57602b826d644d847398417a798db537d8a7b4cbcb6d59c",
+              "gold_operator_boxes": 1,
+              "generated_operator_boxes": 1,
+              "gold_named_referent_links": [
+                [
+                  "answer",
+                  "\"v.03\"",
+                  "Agent",
+                  "tom"
+                ]
+              ],
+              "generated_named_referent_links": [
+                [
+                  "answer",
+                  "\"v.01\"",
+                  "Agent",
+                  "tom"
+                ]
+              ],
+              "correct_links_with_sense": 0,
+              "gold_links_with_sense": 1,
+              "pred_links_with_sense": 1,
+              "correct_links_lemma_only": 1,
+              "gold_links_lemma_only": 1,
+              "pred_links_lemma_only": 1,
+              "all_gold_named_role_predicates_exact_lemma": true,
+              "all_gold_named_role_predicates_exact_sense": false
+            }
+          ]
+        },
+        "ATTRIBUTION": {
+          "gold_source_sentences_with_named_scoped_event_roles": 8,
+          "gold_named_source_event_role_links": 10,
+          "original_auto_scope_operator_detected": 8,
+          "full_named_predicate_role_lemma_exact": 6,
+          "full_named_predicate_role_with_sense_exact": 5,
+          "micro_f1_lemma_name_role": 0.823529,
+          "micro_f1_sense_name_role": 0.705882,
+          "individual_evidence_errors": [
+            {
+              "index": 210,
+              "source_sentence": "I wanted to run away with Tom.",
+              "source_sha256": "a0b8b121a20f8b8c4fdae27df45c6ad55c6bd500631cc99b26fa1e8dbd007078",
+              "gold_operator_boxes": 1,
+              "generated_operator_boxes": 1,
+              "gold_named_referent_links": [
+                [
+                  "run_away",
+                  "\"v.01\"",
+                  "Co-Agent",
+                  "tom"
+                ]
+              ],
+              "generated_named_referent_links": [],
+              "correct_links_with_sense": 0,
+              "gold_links_with_sense": 1,
+              "pred_links_with_sense": 0,
+              "correct_links_lemma_only": 0,
+              "gold_links_lemma_only": 1,
+              "pred_links_lemma_only": 0,
+              "all_gold_named_role_predicates_exact_lemma": false,
+              "all_gold_named_role_predicates_exact_sense": false
+            },
+            {
+              "index": 304,
+              "source_sentence": "He asked her if she was Jane.",
+              "source_sha256": "9a5c795700681076ae7d9a6a493a313f9525d1a1563bcebaae05ac39436ad31f",
+              "gold_operator_boxes": 1,
+              "generated_operator_boxes": 1,
+              "gold_named_referent_links": [
+                [
+                  "be",
+                  "\"v.06\"",
+                  "Co-Theme",
+                  "jane"
+                ],
+                [
+                  "be",
+                  "\"v.06\"",
+                  "Theme",
+                  "jane"
+                ]
+              ],
+              "generated_named_referent_links": [],
+              "correct_links_with_sense": 0,
+              "gold_links_with_sense": 2,
+              "pred_links_with_sense": 0,
+              "correct_links_lemma_only": 0,
+              "gold_links_lemma_only": 2,
+              "pred_links_lemma_only": 0,
+              "all_gold_named_role_predicates_exact_lemma": false,
+              "all_gold_named_role_predicates_exact_sense": false
+            }
+          ],
+          "examples_of_exact_matches": [
+            {
+              "index": 38,
+              "source_sentence": "I hope Tom agrees.",
+              "source_sha256": "f8c668d8d2067d95594c25e02c98bd201a2c1787c5b6abbaac2300bee2584945",
+              "gold_operator_boxes": 1,
+              "generated_operator_boxes": 1,
+              "gold_named_referent_links": [
+                [
+                  "agree",
+                  "\"v.01\"",
+                  "Agent",
+                  "tom"
+                ]
+              ],
+              "generated_named_referent_links": [
+                [
+                  "agree",
+                  "\"v.01\"",
+                  "Agent",
+                  "tom"
+                ]
+              ],
+              "correct_links_with_sense": 1,
+              "gold_links_with_sense": 1,
+              "pred_links_with_sense": 1,
+              "correct_links_lemma_only": 1,
+              "gold_links_lemma_only": 1,
+              "pred_links_lemma_only": 1,
+              "all_gold_named_role_predicates_exact_lemma": true,
+              "all_gold_named_role_predicates_exact_sense": true
+            },
+            {
+              "index": 206,
+              "source_sentence": "He dreams that everybody in China speaks Esperanto.",
+              "source_sha256": "c00141e147a8151b3337595c07a0895f33686d5d256b6cabc1029a05676f5c95",
+              "gold_operator_boxes": 1,
+              "generated_operator_boxes": 1,
+              "gold_named_referent_links": [
+                [
+                  "person",
+                  "\"n.01\"",
+                  "Location",
+                  "china"
+                ]
+              ],
+              "generated_named_referent_links": [
+                [
+                  "person",
+                  "\"n.01\"",
+                  "Location",
+                  "china"
+                ]
+              ],
+              "correct_links_with_sense": 1,
+              "gold_links_with_sense": 1,
+              "pred_links_with_sense": 1,
+              "correct_links_lemma_only": 1,
+              "gold_links_lemma_only": 1,
+              "pred_links_lemma_only": 1,
+              "all_gold_named_role_predicates_exact_lemma": true,
+              "all_gold_named_role_predicates_exact_sense": true
+            },
+            {
+              "index": 350,
+              "source_sentence": "Mary wants to paint her car bright blue.",
+              "source_sha256": "11a2dd4ab0f1266a57ddaeb87f426d9e2376b9474a338eb66f775cee486eb3cb",
+              "gold_operator_boxes": 1,
+              "generated_operator_boxes": 1,
+              "gold_named_referent_links": [
+                [
+                  "paint",
+                  "\"v.02\"",
+                  "Agent",
+                  "mary"
+                ]
+              ],
+              "generated_named_referent_links": [
+                [
+                  "paint",
+                  "\"v.02\"",
+                  "Agent",
+                  "mary"
+                ]
+              ],
+              "correct_links_with_sense": 1,
+              "gold_links_with_sense": 1,
+              "pred_links_with_sense": 1,
+              "correct_links_lemma_only": 1,
+              "gold_links_lemma_only": 1,
+              "pred_links_lemma_only": 1,
+              "all_gold_named_role_predicates_exact_lemma": true,
+              "all_gold_named_role_predicates_exact_sense": true
+            },
+            {
+              "index": 512,
+              "source_sentence": "I thought Tom had stopped dating Mary.",
+              "source_sha256": "1d5190246499f5cc0ff682c7a58df7475b7d066a9b5799aca6516a0b5d5b5556",
+              "gold_operator_boxes": 1,
+              "generated_operator_boxes": 1,
+              "gold_named_referent_links": [
+                [
+                  "date",
+                  "\"v.01\"",
+                  "Agent",
+                  "tom"
+                ],
+                [
+                  "date",
+                  "\"v.01\"",
+                  "Co-Agent",
+                  "mary"
+                ]
+              ],
+              "generated_named_referent_links": [
+                [
+                  "date",
+                  "\"v.01\"",
+                  "Agent",
+                  "tom"
+                ],
+                [
+                  "date",
+                  "\"v.01\"",
+                  "Co-Agent",
+                  "mary"
+                ]
+              ],
+              "correct_links_with_sense": 2,
+              "gold_links_with_sense": 2,
+              "pred_links_with_sense": 2,
+              "correct_links_lemma_only": 2,
+              "gold_links_lemma_only": 2,
+              "pred_links_lemma_only": 2,
+              "all_gold_named_role_predicates_exact_lemma": true,
+              "all_gold_named_role_predicates_exact_sense": true
+            }
+          ]
+        },
+        "POSSIBILITY": {
+          "gold_source_sentences_with_named_scoped_event_roles": 5,
+          "gold_named_source_event_role_links": 7,
+          "original_auto_scope_operator_detected": 5,
+          "full_named_predicate_role_lemma_exact": 5,
+          "full_named_predicate_role_with_sense_exact": 5,
+          "micro_f1_lemma_name_role": 1.0,
+          "micro_f1_sense_name_role": 1.0,
+          "individual_evidence_errors": [],
+          "examples_of_exact_matches": [
+            {
+              "index": 174,
+              "source_sentence": "I am saving up so that I can go to Australia.",
+              "source_sha256": "bad4c85007f140bf6401d45a91d013f5cf58aab17eba01f2fc6d78ba3d5b33b3",
+              "gold_operator_boxes": 1,
+              "generated_operator_boxes": 1,
+              "gold_named_referent_links": [
+                [
+                  "go",
+                  "\"v.01\"",
+                  "Destination",
+                  "australia"
+                ]
+              ],
+              "generated_named_referent_links": [
+                [
+                  "go",
+                  "\"v.01\"",
+                  "Destination",
+                  "australia"
+                ]
+              ],
+              "correct_links_with_sense": 1,
+              "gold_links_with_sense": 1,
+              "pred_links_with_sense": 1,
+              "correct_links_lemma_only": 1,
+              "gold_links_lemma_only": 1,
+              "pred_links_lemma_only": 1,
+              "all_gold_named_role_predicates_exact_lemma": true,
+              "all_gold_named_role_predicates_exact_sense": true
+            },
+            {
+              "index": 201,
+              "source_sentence": "Tom can't speak French. Tom can't speak Spanish either.",
+              "source_sha256": "e016f7b01846da81a8c43ff4add70318fe3a3962d6b4fc3268e8a84d53e0f6db",
+              "gold_operator_boxes": 2,
+              "generated_operator_boxes": 2,
+              "gold_named_referent_links": [
+                [
+                  "speak",
+                  "\"v.03\"",
+                  "Agent",
+                  "tom"
+                ],
+                [
+                  "speak",
+                  "\"v.03\"",
+                  "Agent",
+                  "tom"
+                ]
+              ],
+              "generated_named_referent_links": [
+                [
+                  "speak",
+                  "\"v.03\"",
+                  "Agent",
+                  "tom"
+                ],
+                [
+                  "speak",
+                  "\"v.03\"",
+                  "Agent",
+                  "tom"
+                ]
+              ],
+              "correct_links_with_sense": 2,
+              "gold_links_with_sense": 2,
+              "pred_links_with_sense": 2,
+              "correct_links_lemma_only": 2,
+              "gold_links_lemma_only": 2,
+              "pred_links_lemma_only": 2,
+              "all_gold_named_role_predicates_exact_lemma": true,
+              "all_gold_named_role_predicates_exact_sense": true
+            },
+            {
+              "index": 345,
+              "source_sentence": "Maybe Tom killed himself.",
+              "source_sha256": "2a4e05623c4ab17897a18dfbf8e1ccc36aa060bdcb11555e78e6cd57108cdeaa",
+              "gold_operator_boxes": 1,
+              "generated_operator_boxes": 1,
+              "gold_named_referent_links": [
+                [
+                  "kill",
+                  "\"v.01\"",
+                  "Agent",
+                  "tom"
+                ],
+                [
+                  "kill",
+                  "\"v.01\"",
+                  "Patient",
+                  "tom"
+                ]
+              ],
+              "generated_named_referent_links": [
+                [
+                  "kill",
+                  "\"v.01\"",
+                  "Agent",
+                  "tom"
+                ],
+                [
+                  "kill",
+                  "\"v.01\"",
+                  "Patient",
+                  "tom"
+                ]
+              ],
+              "correct_links_with_sense": 2,
+              "gold_links_with_sense": 2,
+              "pred_links_with_sense": 2,
+              "correct_links_lemma_only": 2,
+              "gold_links_lemma_only": 2,
+              "pred_links_lemma_only": 2,
+              "all_gold_named_role_predicates_exact_lemma": true,
+              "all_gold_named_role_predicates_exact_sense": true
+            },
+            {
+              "index": 364,
+              "source_sentence": "Maybe Tom was hiding something.",
+              "source_sha256": "3c5acdd4c2f1ed8a07e429ebd3eee1c7650dae0f092c1e8632880ccd80501666",
+              "gold_operator_boxes": 1,
+              "generated_operator_boxes": 1,
+              "gold_named_referent_links": [
+                [
+                  "hide",
+                  "\"v.01\"",
+                  "Agent",
+                  "tom"
+                ]
+              ],
+              "generated_named_referent_links": [
+                [
+                  "hide",
+                  "\"v.01\"",
+                  "Agent",
+                  "tom"
+                ]
+              ],
+              "correct_links_with_sense": 1,
+              "gold_links_with_sense": 1,
+              "pred_links_with_sense": 1,
+              "correct_links_lemma_only": 1,
+              "gold_links_lemma_only": 1,
+              "pred_links_lemma_only": 1,
+              "all_gold_named_role_predicates_exact_lemma": true,
+              "all_gold_named_role_predicates_exact_sense": true
+            }
+          ]
+        }
+      }
+    }
+  },
+  "limitations": [
+    "Named referent gold covers a small subset of all sentences and excludes unnamed pronouns, anaphoric equality resolution, names assigned to multiple entities, event referent unification, and all cross-document identity.",
+    "Sense-labeled concepts can include event/type noun rather than only action, and role mapping can require semantic generalization; this is a diagnostic subset, NOT whole truth conditions.",
+    "A NAME clause outside a negated box does not imply that the named entity is being negated; only relation to the scoped lexical event is scored.",
+    "PMB short sentences are not new scientific documents, dream-law contexts or verification of truth. Model output is a published real automatic parse, not KMD production."
+  ]
+}
