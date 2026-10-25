@@ -1,0 +1,1862 @@
+{
+  "source_sha256": "4e9ecb5c8d3b719f624d66b60f8d56bf227f03914f5f0753d6fa1b359d7104ea",
+  "unlabelled_retrieval_sha256": "3b458f9dca38f0fd6a00896928d7df98c6269297c0da4a65fd4b22dfbd76cdf8",
+  "model_case_count": 36,
+  "selection": "SHA256 id sorted within original question type × predicted ranked doc difference, quotas fixed 16 bridge_changed 8 bridge_same 8 comparison_changed 4 comparison_same, without reference to gold article titles, supporting sentence IDs, or answer.",
+  "input": "Question plus top2 retrieved article source titles and automatically selected source sentences (same algorithm per method); no answer, gold support or DRS annotations.",
+  "methods": [
+    "fulltext_bm25",
+    "linked_secondhop"
+  ],
+  "limits": [
+    "A selected subset after corpus-level source labels already analyzed; independent individual answers not inspected or used to choose item IDs",
+    "Pretrained Qwen may have encountered HotpotQA answer text during original training; cannot guarantee unseen model evaluation",
+    "Original Wikipedia articles are two out of up to ten question-specific candidates, not internet-wide search",
+    "Model answer semantic correctness and exact source provenance assessed only after predictions are frozen"
+  ],
+  "records": [
+    {
+      "uid": "5ae1f528554299234fd04370",
+      "type_from_original_question_metadata": "bridge",
+      "rank_change_group": "bridge_same",
+      "hash_source_text": "7df1f16d2a75033b4bcac6c1d4cf443acbcb72d06f27a022f1a3e9295c647e44",
+      "question": "What is the population of the town that starts with the letter \"B\" that is connected by State Route 582 to Las Vegas?",
+      "question_sha256": "34d71e21b3518e0f2cc5340fc0cca58d15b3beb02842e14125ea930e310528ca",
+      "source_documents": {
+        "fulltext_bm25": [
+          {
+            "title": "Nevada State Route 582",
+            "indices": [
+              0,
+              1,
+              2,
+              3
+            ],
+            "text": "[0] State Route 582 (SR 582) is a major 16.688 mi highway in the Las Vegas Valley.\n[1] The highway is the former route of U.S. Route 93 (US 93) and US 95 before they were moved to the current freeway alignment shared with Interstate 515 (I-515).\n[2] It connects Downtown Las Vegas with Henderson and (indirectly) Boulder City to the southeast.\n[3] The highway is primarily known as Boulder Highway, but is named Fremont Street within the Las Vegas city limits."
+          },
+          {
+            "title": "Boulder City, Nevada",
+            "indices": [
+              0,
+              1,
+              2
+            ],
+            "text": "[0] Boulder City is a city in Clark County, Nevada.\n[1] It is approximately 26 mi southeast of Las Vegas.\n[2] As of the 2010 census, the population of Boulder City was 15,023."
+          }
+        ],
+        "linked_secondhop": [
+          {
+            "title": "Nevada State Route 582",
+            "indices": [
+              0,
+              1,
+              2,
+              3
+            ],
+            "text": "[0] State Route 582 (SR 582) is a major 16.688 mi highway in the Las Vegas Valley.\n[1] The highway is the former route of U.S. Route 93 (US 93) and US 95 before they were moved to the current freeway alignment shared with Interstate 515 (I-515).\n[2] It connects Downtown Las Vegas with Henderson and (indirectly) Boulder City to the southeast.\n[3] The highway is primarily known as Boulder Highway, but is named Fremont Street within the Las Vegas city limits."
+          },
+          {
+            "title": "Boulder City, Nevada",
+            "indices": [
+              0,
+              1,
+              2
+            ],
+            "text": "[0] Boulder City is a city in Clark County, Nevada.\n[1] It is approximately 26 mi southeast of Las Vegas.\n[2] As of the 2010 census, the population of Boulder City was 15,023."
+          }
+        ]
+      },
+      "selection_hash": "000220f552251f354f9db061561d2af2c82552d2352074a7ceec91a49d15b69f"
+    },
+    {
+      "uid": "5a7108fa5542994082a3e4ef",
+      "type_from_original_question_metadata": "comparison",
+      "rank_change_group": "comparison_changed",
+      "hash_source_text": "e74eb47b60761990a2a6fc9bfd864fe30041047cdd8161fc505b0b3d5d402bc6",
+      "question": "Which battle, the Battle of Cold Harbor, or the Second Battle of Bull Run, was fought first?",
+      "question_sha256": "30dd659efd681fc01cd9f657c22a14213ac745115e791eb3902ed8f87c1bc95d",
+      "source_documents": {
+        "fulltext_bm25": [
+          {
+            "title": "Cold Harbor, Virginia",
+            "indices": [
+              0,
+              1
+            ],
+            "text": "[0] Cold Harbor is an unincorporated community in Hanover County, Virginia.\n[1] The Battle of Cold Harbor was fought in the area in 1864, during the American Civil War."
+          },
+          {
+            "title": "Second Battle of Bull Run",
+            "indices": [
+              0,
+              1
+            ],
+            "text": "[0] The Second Battle of Bull Run or Battle of Second Manassas was fought August 28–30, 1862 in Prince William County, Virginia, as part of the American Civil War.\n[1] It was the culmination of the Northern Virginia Campaign waged by Confederate Gen. Robert E. Lee's Army of Northern Virginia against Union Maj. Gen. John Pope's Army of Virginia, and a battle of much larger scale and numbers than the First Battle of Bull Run (or \"First Manassas\") fought on July 21, 1861 on the same ground."
+          }
+        ],
+        "linked_secondhop": [
+          {
+            "title": "Cold Harbor, Virginia",
+            "indices": [
+              0,
+              1
+            ],
+            "text": "[0] Cold Harbor is an unincorporated community in Hanover County, Virginia.\n[1] The Battle of Cold Harbor was fought in the area in 1864, during the American Civil War."
+          },
+          {
+            "title": "Battle of Cold Harbor",
+            "indices": [
+              0,
+              1,
+              2
+            ],
+            "text": "[0] The Battle of Cold Harbor was fought from May 31 to June 12, 1864, with the most significant fighting occurring on June 3.\n[1] It was one of the final battles of Union Lt. Gen. Ulysses S. Grant's Overland Campaign during the American Civil War, and is remembered as one of American history's bloodiest, most lopsided battles.\n[2] Thousands of Union soldiers were killed or wounded in a hopeless frontal assault against the fortified positions of Confederate Gen. Robert E. Lee's army."
+          }
+        ]
+      },
+      "selection_hash": "000872710d87cd55669557a1c4d5a66113340354c5f6fe1659019f42ea39e9fc"
+    },
+    {
+      "uid": "5ae224da554299234fd043ee",
+      "type_from_original_question_metadata": "comparison",
+      "rank_change_group": "comparison_same",
+      "hash_source_text": "f21265ed4686ff363db015da6f9689504d8f4653205a01612b2a22769e7abb03",
+      "question": "Do the drinks Gibson and Zurracapote both contain gin?",
+      "question_sha256": "486646fcd95f879d151ff1976dd8189a520909d2157b3f10701f10fcf3a69243",
+      "source_documents": {
+        "fulltext_bm25": [
+          {
+            "title": "Gibson (cocktail)",
+            "indices": [
+              0,
+              1
+            ],
+            "text": "[0] The Gibson is a mixed drink made with gin and vermouth, and often garnished with a pickled onion.\n[1] The oldest published recipe for the Gibson is found in the 1908 book, \"The World's Drinks And How To Mix Them\" by William Boothby."
+          },
+          {
+            "title": "Zurracapote",
+            "indices": [
+              0,
+              1,
+              2
+            ],
+            "text": "[0] Zurracapote (sometimes abbreviated as zurra) is a popular Spanish alcoholic mixed drink, similar to sangría.\n[1] It consists of red wine mixed with fruit such as peaches and lemons, sugar, and cinnamon.\n[2] The concoction is then traditionally left to steep for several days, though some recipes call for the addition of other alcoholic beverages, juices, and fruit extracts."
+          }
+        ],
+        "linked_secondhop": [
+          {
+            "title": "Gibson (cocktail)",
+            "indices": [
+              0,
+              1
+            ],
+            "text": "[0] The Gibson is a mixed drink made with gin and vermouth, and often garnished with a pickled onion.\n[1] The oldest published recipe for the Gibson is found in the 1908 book, \"The World's Drinks And How To Mix Them\" by William Boothby."
+          },
+          {
+            "title": "Zurracapote",
+            "indices": [
+              0,
+              1,
+              2
+            ],
+            "text": "[0] Zurracapote (sometimes abbreviated as zurra) is a popular Spanish alcoholic mixed drink, similar to sangría.\n[1] It consists of red wine mixed with fruit such as peaches and lemons, sugar, and cinnamon.\n[2] The concoction is then traditionally left to steep for several days, though some recipes call for the addition of other alcoholic beverages, juices, and fruit extracts."
+          }
+        ]
+      },
+      "selection_hash": "00093d18dc196792e8e92278ad7ce7330e95d895c4ab76699f9f1ac2a4a4d645"
+    },
+    {
+      "uid": "5adf51e05542995534e8c78a",
+      "type_from_original_question_metadata": "bridge",
+      "rank_change_group": "bridge_same",
+      "hash_source_text": "ca42beb0033231ff626ee96eb622af358f17397fd1ea2c0411f24ff917d97cb7",
+      "question": "What is Diego Tonetto's Italian passport called?",
+      "question_sha256": "1c798e72fdaad9073cfa55709dbac3facc465ff84d78f08a66fd18c373ea9f5e",
+      "source_documents": {
+        "fulltext_bm25": [
+          {
+            "title": "Diego Tonetto",
+            "indices": [
+              0,
+              1
+            ],
+            "text": "[0] Diego Rubén Tonetto (born 5 December 1988) is an Argentine professional footballer who plays for Instituto Atlético Central Córdoba as a left winger.\n[1] He also holds an Italian passport."
+          },
+          {
+            "title": "Diego Balbinot",
+            "indices": [
+              0,
+              1
+            ],
+            "text": "[0] Diego Douglas Balbinot (born 7 January 1984) is a retired Brazilian footballer with Italian Passport.\n[1] He played as a defender."
+          }
+        ],
+        "linked_secondhop": [
+          {
+            "title": "Diego Tonetto",
+            "indices": [
+              0,
+              1
+            ],
+            "text": "[0] Diego Rubén Tonetto (born 5 December 1988) is an Argentine professional footballer who plays for Instituto Atlético Central Córdoba as a left winger.\n[1] He also holds an Italian passport."
+          },
+          {
+            "title": "Diego Balbinot",
+            "indices": [
+              0,
+              1
+            ],
+            "text": "[0] Diego Douglas Balbinot (born 7 January 1984) is a retired Brazilian footballer with Italian Passport.\n[1] He played as a defender."
+          }
+        ]
+      },
+      "selection_hash": "0019fe31e33071a1ce0821c1409b6e675d1d7d16d25be824339aa0661c45e69a"
+    },
+    {
+      "uid": "5ae16d9655429920d52343ce",
+      "type_from_original_question_metadata": "bridge",
+      "rank_change_group": "bridge_same",
+      "hash_source_text": "071156e05e086a8d17a420b26c0791be5f3a9fe9fb4c0d7dd2beb0299c4f50f0",
+      "question": " \"Collateral Damage\" is an episode of the television series \"Millennium\" and features the host of a late night talk show that airs how often?",
+      "question_sha256": "7ee61d1219cce1a9b167ac443c8b6beb1697da751a3244b8c041b3a6f01bafbd",
+      "source_documents": {
+        "fulltext_bm25": [
+          {
+            "title": "Collateral Damage (Millennium)",
+            "indices": [
+              0,
+              1,
+              2,
+              3,
+              4
+            ],
+            "text": "[0] \"Collateral Damage\" is the eleventh episode of the third season of the crime-thriller television series \"Millennium\".\n[1] It premiered on the Fox network on January 22, 1999.\n[2] The episode was written by Michael R. Perry, and directed by Thomas J. Wright.\n[3] \"Collateral Damage\" featured guest appearances by O'Quinn, Jacinda Barrett, James Marsters, and radio host Art Bell as himself.\n[4] Bell's radio show \"Coast to Coast AM\" was among Perry's inspirations for the script."
+          },
+          {
+            "title": "Joey Bishop",
+            "indices": [
+              0,
+              1
+            ],
+            "text": "[0] Joseph Abraham Gottlieb (February 3, 1918 – October 17, 2007), known professionally as Joey Bishop, was an American entertainer who appeared on television as early as 1948 and eventually starred in his own weekly comedy series playing a talk show host, then later hosted a late night talk show.\n[1] He later became a member of the \"Rat Pack\" with Frank Sinatra, Peter Lawford, Sammy Davis, Jr., and Dean Martin."
+          }
+        ],
+        "linked_secondhop": [
+          {
+            "title": "Collateral Damage (Millennium)",
+            "indices": [
+              0,
+              1,
+              2,
+              3,
+              4
+            ],
+            "text": "[0] \"Collateral Damage\" is the eleventh episode of the third season of the crime-thriller television series \"Millennium\".\n[1] It premiered on the Fox network on January 22, 1999.\n[2] The episode was written by Michael R. Perry, and directed by Thomas J. Wright.\n[3] \"Collateral Damage\" featured guest appearances by O'Quinn, Jacinda Barrett, James Marsters, and radio host Art Bell as himself.\n[4] Bell's radio show \"Coast to Coast AM\" was among Perry's inspirations for the script."
+          },
+          {
+            "title": "Joey Bishop",
+            "indices": [
+              0,
+              1
+            ],
+            "text": "[0] Joseph Abraham Gottlieb (February 3, 1918 – October 17, 2007), known professionally as Joey Bishop, was an American entertainer who appeared on television as early as 1948 and eventually starred in his own weekly comedy series playing a talk show host, then later hosted a late night talk show.\n[1] He later became a member of the \"Rat Pack\" with Frank Sinatra, Peter Lawford, Sammy Davis, Jr., and Dean Martin."
+          }
+        ]
+      },
+      "selection_hash": "001dbab30fe2c6cc5c3871f0321b0b2663c8826036ce5064de327313cd7ae758"
+    },
+    {
+      "uid": "5a89a82c5542993b751ca973",
+      "type_from_original_question_metadata": "comparison",
+      "rank_change_group": "comparison_same",
+      "hash_source_text": "e1e404547e28b38cb5655a49dda77618689a795b2900d07492bc201f55f18bc8",
+      "question": "Which of the following has released ten solo albums: Kristin Hersh or Mike Patton?",
+      "question_sha256": "efb554f116be3c644fe9538811d2b30988aee8604daf05b23e7f4faf52a1b807",
+      "source_documents": {
+        "fulltext_bm25": [
+          {
+            "title": "Mike Patton",
+            "indices": [
+              0,
+              1
+            ],
+            "text": "[0] Michael Allan \"Mike\" Patton (born January 27, 1968) is an American musician, singer, songwriter, actor, record producer, multi-instrumentalist and film composer, best known as the lead singer of the alternative metal band Faith No More.\n[1] Patton was also the founder and lead singer of Mr. Bungle, and has played with Tomahawk, Fantômas, Lovage, The Dillinger Escape Plan, and Peeping Tom."
+          },
+          {
+            "title": "Kristin Hersh",
+            "indices": [
+              0,
+              1,
+              2
+            ],
+            "text": "[0] Kristin Hersh (born August 7, 1966) is an American singer, songwriter and author, known for her solo work and with her rock bands Throwing Muses and 50FootWave.\n[1] She has released ten solo albums.\n[2] Her guitar work and composition style ranges from jaggedly dissonant to traditional folk."
+          }
+        ],
+        "linked_secondhop": [
+          {
+            "title": "Mike Patton",
+            "indices": [
+              0,
+              1
+            ],
+            "text": "[0] Michael Allan \"Mike\" Patton (born January 27, 1968) is an American musician, singer, songwriter, actor, record producer, multi-instrumentalist and film composer, best known as the lead singer of the alternative metal band Faith No More.\n[1] Patton was also the founder and lead singer of Mr. Bungle, and has played with Tomahawk, Fantômas, Lovage, The Dillinger Escape Plan, and Peeping Tom."
+          },
+          {
+            "title": "Kristin Hersh",
+            "indices": [
+              0,
+              1,
+              2
+            ],
+            "text": "[0] Kristin Hersh (born August 7, 1966) is an American singer, songwriter and author, known for her solo work and with her rock bands Throwing Muses and 50FootWave.\n[1] She has released ten solo albums.\n[2] Her guitar work and composition style ranges from jaggedly dissonant to traditional folk."
+          }
+        ]
+      },
+      "selection_hash": "001f3fcd79c32d85085276733b0a7bc25891b1fa70e0dcb033704f3c7cdf29d1"
+    },
+    {
+      "uid": "5a77a4fd5542997042120abc",
+      "type_from_original_question_metadata": "bridge",
+      "rank_change_group": "bridge_same",
+      "hash_source_text": "d7d431dda7912c3727ab2b2e990d303fa58f75db944c197c37c4dbd3723c8c5f",
+      "question": "Which professional footballer played for Kadji Sports Academy as a youth and went on to be the most decorated African player of all time?",
+      "question_sha256": "ff73c444c7740d600c62cddbef07c4d9e99a2390d4b5b00aa3537ddea49cc401",
+      "source_documents": {
+        "fulltext_bm25": [
+          {
+            "title": "Samuel Eto'o",
+            "indices": [
+              0,
+              1,
+              2
+            ],
+            "text": "[0] Samuel Eto'o Fils (] ; born 10 March 1981) is a Cameroonian professional footballer who plays as a striker for Turkish club Antalyaspor.\n[1] He is the most decorated African player of all time, having won the African Player of the Year award a record four times: in 2003, 2004, 2005 and 2010.\n[2] He was third in the FIFA World Player of the Year award in 2005."
+          },
+          {
+            "title": "George Weah",
+            "indices": [
+              0,
+              1,
+              2,
+              3
+            ],
+            "text": "[0] George Tawlon Manneh Oppong Ousman Weah (born 1 October 1966) is a Liberian humanitarian, politician, and retired professional footballer who played as a striker.\n[1] Regarded as one of the greatest African players of all-time and as one of the best forwards of his generation, in 1995 he was named FIFA World Player of the Year and won the Ballon d'Or, becoming the first African player to win these awards.\n[2] In 1989, 1994 and 1995, he was named the African Footballer of the Year, and in 1996, he was named African Player of the Century.\n[3] Known for his acceleration, speed, and dribbling ability, in addition to his goalscoring and clinical finishing, Weah was described by FIFA as \"the precursor of the multi-functional strikers of today\"."
+          }
+        ],
+        "linked_secondhop": [
+          {
+            "title": "Samuel Eto'o",
+            "indices": [
+              0,
+              1,
+              2
+            ],
+            "text": "[0] Samuel Eto'o Fils (] ; born 10 March 1981) is a Cameroonian professional footballer who plays as a striker for Turkish club Antalyaspor.\n[1] He is the most decorated African player of all time, having won the African Player of the Year award a record four times: in 2003, 2004, 2005 and 2010.\n[2] He was third in the FIFA World Player of the Year award in 2005."
+          },
+          {
+            "title": "George Weah",
+            "indices": [
+              0,
+              1,
+              2,
+              3
+            ],
+            "text": "[0] George Tawlon Manneh Oppong Ousman Weah (born 1 October 1966) is a Liberian humanitarian, politician, and retired professional footballer who played as a striker.\n[1] Regarded as one of the greatest African players of all-time and as one of the best forwards of his generation, in 1995 he was named FIFA World Player of the Year and won the Ballon d'Or, becoming the first African player to win these awards.\n[2] In 1989, 1994 and 1995, he was named the African Footballer of the Year, and in 1996, he was named African Player of the Century.\n[3] Known for his acceleration, speed, and dribbling ability, in addition to his goalscoring and clinical finishing, Weah was described by FIFA as \"the precursor of the multi-functional strikers of today\"."
+          }
+        ]
+      },
+      "selection_hash": "0020fe81e5189756f62755c66997542b586c85986631ecef26e73b9733cca6e8"
+    },
+    {
+      "uid": "5ae20427554299234fd04397",
+      "type_from_original_question_metadata": "bridge",
+      "rank_change_group": "bridge_same",
+      "hash_source_text": "ab0327c0f82055763e07964b15668d5de6355dd66851630f792df23826c8faef",
+      "question": "Sachem Central School District encompasses the CDPs that include the hamlet in which New York county?",
+      "question_sha256": "ba98e8b2d229e078d1547001360faad44c4759d0841d690f8df123c697fd0cbc",
+      "source_documents": {
+        "fulltext_bm25": [
+          {
+            "title": "WSHR",
+            "indices": [
+              0,
+              1,
+              2,
+              3
+            ],
+            "text": "[0] WSHR (91.9 FM, \"91.9 The Arrow\") is a radio station licensed to Lake Ronkonkoma, New York and serves the Long Island area.\n[1] The station is currently owned by Sachem Central School District Holbrook and operated with assistance from a grant by the U.S. Department of Education since the 1960s.\n[2] It broadcasts out of both Sachem High School East and Sachem High School North.\n[3] This school district owned radio station can be heard throughout Suffolk County and parts of Nassau County."
+          },
+          {
+            "title": "Sachem School District",
+            "indices": [
+              0,
+              1,
+              2
+            ],
+            "text": "[0] Sachem Central School District is one of the largest school districts by population on Long Island and among all suburban school districts in New York, United States.\n[1] Founded in 1955, the district now encompasses residents of the Census-Designated Places of Holbrook, Holtsville and Farmingville, as well as some parts of Lake Grove, Lake Ronkonkoma, Ronkonkoma, Nesconset, and Bohemia.\n[2] As of 2011, its district office is located in Lake Ronkonkoma at Samoset Middle School."
+          }
+        ],
+        "linked_secondhop": [
+          {
+            "title": "WSHR",
+            "indices": [
+              0,
+              1,
+              2,
+              3
+            ],
+            "text": "[0] WSHR (91.9 FM, \"91.9 The Arrow\") is a radio station licensed to Lake Ronkonkoma, New York and serves the Long Island area.\n[1] The station is currently owned by Sachem Central School District Holbrook and operated with assistance from a grant by the U.S. Department of Education since the 1960s.\n[2] It broadcasts out of both Sachem High School East and Sachem High School North.\n[3] This school district owned radio station can be heard throughout Suffolk County and parts of Nassau County."
+          },
+          {
+            "title": "Sachem School District",
+            "indices": [
+              0,
+              1,
+              2
+            ],
+            "text": "[0] Sachem Central School District is one of the largest school districts by population on Long Island and among all suburban school districts in New York, United States.\n[1] Founded in 1955, the district now encompasses residents of the Census-Designated Places of Holbrook, Holtsville and Farmingville, as well as some parts of Lake Grove, Lake Ronkonkoma, Ronkonkoma, Nesconset, and Bohemia.\n[2] As of 2011, its district office is located in Lake Ronkonkoma at Samoset Middle School."
+          }
+        ]
+      },
+      "selection_hash": "0026fd617966c068ffaa65384706b3dd5a0cf7af45bb53e1ca600a520fec650e"
+    },
+    {
+      "uid": "5a8cee9b554299441c6b9f87",
+      "type_from_original_question_metadata": "bridge",
+      "rank_change_group": "bridge_same",
+      "hash_source_text": "4c54523ee1cdac10e6c5cbad5816cc26d992456f83f67b7cf612b11838e2d2e1",
+      "question": "Haier has North American rights to which appliance company headquartered in Louisville, Kentucky?",
+      "question_sha256": "b04ae98c470a0d68d78a41537611a4a59a6bfd5db7d213b7d5e9451cf2e0926c",
+      "source_documents": {
+        "fulltext_bm25": [
+          {
+            "title": "Hotpoint",
+            "indices": [
+              0
+            ],
+            "text": "[0] The Hotpoint Electric Heating Company (generally known simply as Hotpoint) is an American and European brand of domestic appliances. Ownership of the brand is split between the American company Whirlpool, which has European rights, and Chinese company Haier, which has North American rights since its purchase of GE Appliances."
+          },
+          {
+            "title": "GE Appliances",
+            "indices": [
+              0,
+              1,
+              2,
+              3
+            ],
+            "text": "[0] GE Appliances, formerly known as GE Appliances & Lighting and GE Consumer & Industrial, along with GE Appliances, when owned by General Electric (GE), is an appliance company headquartered in Louisville, Kentucky and owned by Haier Group.\n[1] It is one of the largest appliance brands in the United States.\n[2] The company encompasses the appliance brands of GE, Profile, Cafe, Monogram, and Hotpoint.\n[3] GE Appliances includes wholly owned subsidiary FirstBuild, a global co-creation community and state-of-the-art microfactory located in Louisville, Kentucky."
+          }
+        ],
+        "linked_secondhop": [
+          {
+            "title": "Hotpoint",
+            "indices": [
+              0
+            ],
+            "text": "[0] The Hotpoint Electric Heating Company (generally known simply as Hotpoint) is an American and European brand of domestic appliances. Ownership of the brand is split between the American company Whirlpool, which has European rights, and Chinese company Haier, which has North American rights since its purchase of GE Appliances."
+          },
+          {
+            "title": "GE Appliances",
+            "indices": [
+              0,
+              1,
+              2,
+              3
+            ],
+            "text": "[0] GE Appliances, formerly known as GE Appliances & Lighting and GE Consumer & Industrial, along with GE Appliances, when owned by General Electric (GE), is an appliance company headquartered in Louisville, Kentucky and owned by Haier Group.\n[1] It is one of the largest appliance brands in the United States.\n[2] The company encompasses the appliance brands of GE, Profile, Cafe, Monogram, and Hotpoint.\n[3] GE Appliances includes wholly owned subsidiary FirstBuild, a global co-creation community and state-of-the-art microfactory located in Louisville, Kentucky."
+          }
+        ]
+      },
+      "selection_hash": "002bbc745dbde9379324728c6735e3968b4b7efcc525b7a6e77344f5d3496ff1"
+    },
+    {
+      "uid": "5ab6f9335542991d322236fc",
+      "type_from_original_question_metadata": "comparison",
+      "rank_change_group": "comparison_same",
+      "hash_source_text": "86d6918174ee500ad7ce9e27092cf348a726a9e324cfcd840f9dd935d5c6f6f7",
+      "question": "Are Ana Kasparian and Katherine Sarafian both Armenian-",
+      "question_sha256": "284d511eeb24c38ddf5860f839c4697360da01433bb33ea38f9e38b9c21c8984",
+      "source_documents": {
+        "fulltext_bm25": [
+          {
+            "title": "Ana Kasparian",
+            "indices": [
+              0,
+              1,
+              2
+            ],
+            "text": "[0] Anahit Misak \"Ana\" Kasparian (Armenian: Անահիտ Միսաքի Գասպարյան , ] ; born July 7, 1986), is an American political pundit and the co-host and producer for the online news show \"The Young Turks\".\n[1] She began working as a fill-in producer for \"The Young Turks\" in 2007, and is, as of 2012 , co-host of the main show and host of \"The Point\" on the TYT Network.\n[2] She also appeared on the TV version of the show that aired on Current TV."
+          },
+          {
+            "title": "Katherine Sarafian",
+            "indices": [
+              0,
+              1,
+              2
+            ],
+            "text": "[0] Katherine Marianne Sarafian (born January 27, 1969) is an Armenian-American film producer at Pixar Animation Studios.\n[1] She started at Pixar as an artist but was shifted from the art department to marketing during the making of \"A Bug's Life\" by Pixar head Steve Jobs.\n[2] She then became a producer within Pixar."
+          }
+        ],
+        "linked_secondhop": [
+          {
+            "title": "Ana Kasparian",
+            "indices": [
+              0,
+              1,
+              2
+            ],
+            "text": "[0] Anahit Misak \"Ana\" Kasparian (Armenian: Անահիտ Միսաքի Գասպարյան , ] ; born July 7, 1986), is an American political pundit and the co-host and producer for the online news show \"The Young Turks\".\n[1] She began working as a fill-in producer for \"The Young Turks\" in 2007, and is, as of 2012 , co-host of the main show and host of \"The Point\" on the TYT Network.\n[2] She also appeared on the TV version of the show that aired on Current TV."
+          },
+          {
+            "title": "Katherine Sarafian",
+            "indices": [
+              0,
+              1,
+              2
+            ],
+            "text": "[0] Katherine Marianne Sarafian (born January 27, 1969) is an Armenian-American film producer at Pixar Animation Studios.\n[1] She started at Pixar as an artist but was shifted from the art department to marketing during the making of \"A Bug's Life\" by Pixar head Steve Jobs.\n[2] She then became a producer within Pixar."
+          }
+        ]
+      },
+      "selection_hash": "0037880dfe8c4c12300875db0964d85e4fd58dad07c3d8dee092831ae795da48"
+    },
+    {
+      "uid": "5abbf7d755429931dba145eb",
+      "type_from_original_question_metadata": "bridge",
+      "rank_change_group": "bridge_same",
+      "hash_source_text": "1957b07de4b6efc1cd800c9d3fc29590738f075644c7e4c7cf74ff07be9d55d0",
+      "question": "ICI House is now named after the company that provides what type of item?",
+      "question_sha256": "9aa9dea055eee34a823e4898d8ea803d6b21e3efea08574bafce67b11b90c8e8",
+      "source_documents": {
+        "fulltext_bm25": [
+          {
+            "title": "ICI House",
+            "indices": [
+              0,
+              1,
+              2
+            ],
+            "text": "[0] ICI House (now Orica House) is a 19-storey office building in East Melbourne, Victoria, Australia.\n[1] Begun in 1955, it was the tallest building in Australia upon completion in 1958, breaking Melbourne's long standing 132ft height limit, and was the first International Style skyscraper in the country.\n[2] It symbolised progress, modernity, efficiency and corporate power in postwar Melbourne, and heralded the construction of the high-rise office buildings, changing the shape of Australia's major urban centres forever."
+          },
+          {
+            "title": "ICI Laboratory",
+            "indices": [
+              0,
+              1,
+              2,
+              3
+            ],
+            "text": "[0] ICI Fibres developed the Crimplene fibre.\n[1] It is a thick, polyester yarn used to make a fabric of the same name.\n[2] The resulting cloth is heavy, wrinkle-resistant and retains its shape well.\n[3] Britain's defunct ICI Laboratory developed the fibre in the early 1950s and named it after the Crimple Valley in which the company was situated."
+          }
+        ],
+        "linked_secondhop": [
+          {
+            "title": "ICI House",
+            "indices": [
+              0,
+              1,
+              2
+            ],
+            "text": "[0] ICI House (now Orica House) is a 19-storey office building in East Melbourne, Victoria, Australia.\n[1] Begun in 1955, it was the tallest building in Australia upon completion in 1958, breaking Melbourne's long standing 132ft height limit, and was the first International Style skyscraper in the country.\n[2] It symbolised progress, modernity, efficiency and corporate power in postwar Melbourne, and heralded the construction of the high-rise office buildings, changing the shape of Australia's major urban centres forever."
+          },
+          {
+            "title": "ICI Laboratory",
+            "indices": [
+              0,
+              1,
+              2,
+              3
+            ],
+            "text": "[0] ICI Fibres developed the Crimplene fibre.\n[1] It is a thick, polyester yarn used to make a fabric of the same name.\n[2] The resulting cloth is heavy, wrinkle-resistant and retains its shape well.\n[3] Britain's defunct ICI Laboratory developed the fibre in the early 1950s and named it after the Crimple Valley in which the company was situated."
+          }
+        ]
+      },
+      "selection_hash": "003bf9a7dec7e45790547b3ae1ef3acaa83dc8968afbeb53689a76d8064a8774"
+    },
+    {
+      "uid": "5ae31bbd55429928c42395fc",
+      "type_from_original_question_metadata": "comparison",
+      "rank_change_group": "comparison_same",
+      "hash_source_text": "13ed155f5acd307bedd70923a092e543bbd938694725d3d361fb7fc1b91d73e4",
+      "question": "Are Guildford Cathedral and St Paul's Cathedral both located in England?",
+      "question_sha256": "7f505dbfc89ac00b263e18efb3b043231b6f4b7eb71365163c404c0fa22b22e4",
+      "source_documents": {
+        "fulltext_bm25": [
+          {
+            "title": "St Paul's Cathedral, Rockhampton",
+            "indices": [
+              0,
+              1,
+              2,
+              3
+            ],
+            "text": "[0] St Paul's Anglican Cathedral is a heritage-listed cathedral at 89 William Street, Rockhampton, Rockhampton Region, Queensland, Australia.\n[1] It was designed principally by Annersley Voysey and built from 1883 to 1953.\n[2] It is also known as St Paul's Church of England and St Paul's Church of England Cathedral.\n[3] It was added to the Queensland Heritage Register on 21 October 1992."
+          },
+          {
+            "title": "St Paul's Anglican Cathedral Hall, Rockhampton",
+            "indices": [
+              0,
+              1,
+              2,
+              3,
+              4
+            ],
+            "text": "[0] St Paul's Anglican Cathedral Hall is a heritage-listed church hall at 89 William Street, Rockhampton, Rockhampton Region, Queensland, Australia.\n[1] It is adjacent to St Paul's Anglican Cathedral.\n[2] It was designed by Louis Spier Robertson and built  1900 .\n[3] It is also known as St Paul's Anglican Cathedral Offices, St Paul's Anglican Cathedral Parish Hall, and St Paul's Day School (1902-1912).\n[4] It was added to the Queensland Heritage Register on 23 June 2000."
+          }
+        ],
+        "linked_secondhop": [
+          {
+            "title": "St Paul's Cathedral, Rockhampton",
+            "indices": [
+              0,
+              1,
+              2,
+              3
+            ],
+            "text": "[0] St Paul's Anglican Cathedral is a heritage-listed cathedral at 89 William Street, Rockhampton, Rockhampton Region, Queensland, Australia.\n[1] It was designed principally by Annersley Voysey and built from 1883 to 1953.\n[2] It is also known as St Paul's Church of England and St Paul's Church of England Cathedral.\n[3] It was added to the Queensland Heritage Register on 21 October 1992."
+          },
+          {
+            "title": "St Paul's Anglican Cathedral Hall, Rockhampton",
+            "indices": [
+              0,
+              1,
+              2,
+              3,
+              4
+            ],
+            "text": "[0] St Paul's Anglican Cathedral Hall is a heritage-listed church hall at 89 William Street, Rockhampton, Rockhampton Region, Queensland, Australia.\n[1] It is adjacent to St Paul's Anglican Cathedral.\n[2] It was designed by Louis Spier Robertson and built  1900 .\n[3] It is also known as St Paul's Anglican Cathedral Offices, St Paul's Anglican Cathedral Parish Hall, and St Paul's Day School (1902-1912).\n[4] It was added to the Queensland Heritage Register on 23 June 2000."
+          }
+        ]
+      },
+      "selection_hash": "003e8172ae4e2608594cda6af376f5f0e1cf61f0f4838b1dfe0ac460ece8109e"
+    },
+    {
+      "uid": "5ab48ec25542991779162cdc",
+      "type_from_original_question_metadata": "bridge",
+      "rank_change_group": "bridge_same",
+      "hash_source_text": "bb42f114e2897fa4d7b12b65a3528f08acd6c8f9c401cf8a5d1f490251d7bbe9",
+      "question": "What was the English football club Tottenham Hotspur  that Leonard Francis played for commonly referred to as ?",
+      "question_sha256": "8c0aa9159fb33e48bd16c8a21f095d5c931690619c569957929ab43eb5db0533",
+      "source_documents": {
+        "fulltext_bm25": [
+          {
+            "title": "Len Worley",
+            "indices": [
+              0
+            ],
+            "text": "[0] Leonard Francis \"Len\" Worley (born 26 June 1937) is a former amateur footballer who played for Wycombe Wanderers, Charlton Athletic, Tottenham Hotspur, Chesham United, Wealdstone, Slough Town, Hayes and represented England at amateur level on seven occasions."
+          },
+          {
+            "title": "Tottenham Hotspur F.C.",
+            "indices": [
+              0,
+              1,
+              2
+            ],
+            "text": "[0] Tottenham Hotspur Football Club, commonly referred to simply as Tottenham ( ) or Spurs, is an English football club located in Tottenham, Haringey, London, that competes in the Premier League.\n[1] The club's home for the 2017–18 season will be Wembley Stadium, as their former home of White Hart Lane is being dismantled to make way for a completely new rebuilt stadium on the same site.\n[2] Their newly developed training ground is in Bulls Cross on the northern borders of the London Borough of Enfield."
+          }
+        ],
+        "linked_secondhop": [
+          {
+            "title": "Len Worley",
+            "indices": [
+              0
+            ],
+            "text": "[0] Leonard Francis \"Len\" Worley (born 26 June 1937) is a former amateur footballer who played for Wycombe Wanderers, Charlton Athletic, Tottenham Hotspur, Chesham United, Wealdstone, Slough Town, Hayes and represented England at amateur level on seven occasions."
+          },
+          {
+            "title": "Tottenham Hotspur F.C.",
+            "indices": [
+              0,
+              1,
+              2
+            ],
+            "text": "[0] Tottenham Hotspur Football Club, commonly referred to simply as Tottenham ( ) or Spurs, is an English football club located in Tottenham, Haringey, London, that competes in the Premier League.\n[1] The club's home for the 2017–18 season will be Wembley Stadium, as their former home of White Hart Lane is being dismantled to make way for a completely new rebuilt stadium on the same site.\n[2] Their newly developed training ground is in Bulls Cross on the northern borders of the London Borough of Enfield."
+          }
+        ]
+      },
+      "selection_hash": "0047332b6e210462843906832fe58dc26734e3b54f97f791531151abbf24f786"
+    },
+    {
+      "uid": "5ab3fa095542992ade7c6f0a",
+      "type_from_original_question_metadata": "bridge",
+      "rank_change_group": "bridge_changed",
+      "hash_source_text": "552afe58e1a4dc94a6053141b3d7fa2ab70aad83d09ede31f477acde715d7b8f",
+      "question": "Louis XVI style sought to evoke the artistic styles that were just then being rediscovered in  Pompeii and this ancient Roman town that was destroyed in what year",
+      "question_sha256": "007156d729e39f90ff57d678f508317cf128dc4851c8f80beb352940727189b5",
+      "source_documents": {
+        "fulltext_bm25": [
+          {
+            "title": "Louis XVI style",
+            "indices": [
+              0,
+              1
+            ],
+            "text": "[0] Louis XVI style, frequently also called Louis Seize, is a characteristic French style in art, architecture, and decorative motif which developed during the 19-year reign of the French monarch Louis XVI (1774–1793) though it often thought to encompass nearly twice that many (1750-1800).\n[1] It saw the final phase of Rococo-style art as well as the birth of French neoclassicism and the Directoire style which followed it: whereas Rococo has become labeled as overdone and gawdy with its constant use of symmetric flourishes and excessive precise decoration, neoclassicism sought to evoke the artistic styles that were just then being rediscovered in Herculaneum and Pompeii: the straight column, the simplicity of the post-and-lintel, the architrave of the Greek temple, etc., as well as the Rousseau-inspired values of returning to nature and the view of nature as an idealized and wild but still orderly and inherently worthy model for the arts to follow."
+          },
+          {
+            "title": "Temple of Apollo (Pompeii)",
+            "indices": [
+              0
+            ],
+            "text": "[0] The Temple of Apollo is a Roman temple dedicated to the Greek and Roman god Apollo in the ancient Roman town of Pompeii, southern Italy."
+          }
+        ],
+        "linked_secondhop": [
+          {
+            "title": "Louis XVI style",
+            "indices": [
+              0,
+              1
+            ],
+            "text": "[0] Louis XVI style, frequently also called Louis Seize, is a characteristic French style in art, architecture, and decorative motif which developed during the 19-year reign of the French monarch Louis XVI (1774–1793) though it often thought to encompass nearly twice that many (1750-1800).\n[1] It saw the final phase of Rococo-style art as well as the birth of French neoclassicism and the Directoire style which followed it: whereas Rococo has become labeled as overdone and gawdy with its constant use of symmetric flourishes and excessive precise decoration, neoclassicism sought to evoke the artistic styles that were just then being rediscovered in Herculaneum and Pompeii: the straight column, the simplicity of the post-and-lintel, the architrave of the Greek temple, etc., as well as the Rousseau-inspired values of returning to nature and the view of nature as an idealized and wild but still orderly and inherently worthy model for the arts to follow."
+          },
+          {
+            "title": "Herculaneum",
+            "indices": [
+              0,
+              1
+            ],
+            "text": "[0] Located in the shadow of Mount Vesuvius, Herculaneum (Italian: \"Ercolano\") was an ancient Roman town destroyed by volcanic pyroclastic flows in 79 AD.\n[1] Its ruins are located in the \"comune\" of Ercolano, Campania, Italy."
+          }
+        ]
+      },
+      "selection_hash": "00a7b2879bb7666729a9847d7c85cef4110a135d435c37f5b0a6ac1a16477960"
+    },
+    {
+      "uid": "5a74551555429974ef308bd9",
+      "type_from_original_question_metadata": "bridge",
+      "rank_change_group": "bridge_changed",
+      "hash_source_text": "1295ef615009af9038b48964b6d9d947b74bc6b3a42c59242caf52669bf20e4c",
+      "question": "At least how many countries does the company that bought Oil Can Henry's operate in?",
+      "question_sha256": "9d7312f2923bdc911f1395108c2c806d244a100c8cd72f8f2a2b294938c5665e",
+      "source_documents": {
+        "fulltext_bm25": [
+          {
+            "title": "Oil Can Henry's",
+            "indices": [
+              0,
+              1,
+              2
+            ],
+            "text": "[0] Oil Can Henry's is an oil-change shop based in Tualatin, Oregon, United States.\n[1] Prior to being bought by Ashland Inc. in 2015, the company operated as a franchisor, and had locations in Oregon, Washington, Idaho, California, Arizona, Colorado and Minnesota.\n[2] After the acquisition, the shops were re-branded as Valvoline Instant Oil Change locations."
+          },
+          {
+            "title": "Magnolia Petroleum Company",
+            "indices": [
+              0,
+              1,
+              2,
+              3
+            ],
+            "text": "[0] The Magnolia Petroleum Company was an early twentieth century petroleum company in Texas founded on April 24, 1911 by the Sealy family of Galveston, as a consolidation of several earlier companies.\n[1] Standard Oil of New York (Socony) exchanged its stock for all of the Magnolia stock (except seven shares for the Directors) in December 1925 though it continued to operate as an affiliate of Socony.\n[2] Socony merged with Vacuum Oil Company in 1931, becoming Socony-Vacuum Oil Company.\n[3] Magnolia Petroleum continued to operate as a subsidiary of Socony-Vacuum."
+          }
+        ],
+        "linked_secondhop": [
+          {
+            "title": "Oil Can Henry's",
+            "indices": [
+              0,
+              1,
+              2
+            ],
+            "text": "[0] Oil Can Henry's is an oil-change shop based in Tualatin, Oregon, United States.\n[1] Prior to being bought by Ashland Inc. in 2015, the company operated as a franchisor, and had locations in Oregon, Washington, Idaho, California, Arizona, Colorado and Minnesota.\n[2] After the acquisition, the shops were re-branded as Valvoline Instant Oil Change locations."
+          },
+          {
+            "title": "Ashland Inc.",
+            "indices": [
+              0,
+              1,
+              2,
+              3
+            ],
+            "text": "[0] Ashland Global Specialty Chemicals Inc. is an American chemical company which operates in more than 100 countries.\n[1] Headquartered in Covington, Kentucky, the company traces its roots back to the city of Ashland, Kentucky, where it was headquartered from 1924 to 1999.\n[2] The company currently has five wholly owned divisions, which include Chemical Intermediates and Solvents, Composites, Industrial Specialties, Personal and Home Care, & Pharmaceuticals, Food and Beverage, and Agriculture.\n[3] Until 2017, the company was the primary manufacturer of Valvoline"
+          }
+        ]
+      },
+      "selection_hash": "010bbc5e811ae601dbf831bc805ec1bb7ac2fd216160dcf1e39204faf2f8fbb2"
+    },
+    {
+      "uid": "5a8013e45542995d8a8ddf41",
+      "type_from_original_question_metadata": "bridge",
+      "rank_change_group": "bridge_changed",
+      "hash_source_text": "0141772458cef0e914e34bef2a2b79b2644321e03c516e67228111d127204bbb",
+      "question": "Cowie Castle at Stonehaven, and Allardice Castle near Inverbervie, are part of a coastal chain of castles in Scotland overlooking which sea?",
+      "question_sha256": "9f5e9d8e528c874c244409f4ef3fc2320027bf62e7144edd3f445c89166d6695",
+      "source_documents": {
+        "fulltext_bm25": [
+          {
+            "title": "Allardice Castle",
+            "indices": [
+              0,
+              1,
+              2,
+              3,
+              4
+            ],
+            "text": "[0] Allardice Castle (also spelled Allardyce) is a sixteenth-century manor house in Kincardineshire, Scotland.\n[1] This monument is occupied by the Cowie family and is approximately 1.5 kilometres northwest of the town of Inverbervie.\n[2] The Bervie Water flows around Allardice Castle on both sides.\n[3] Allardice may be viewed as one of a chain of coastal castles; to the north are Dunnottar Castle (ruined), Fetteresso Castle, Cowie Castle (ruined) and Muchalls Castle.\n[4] The castle is a category A listed building."
+          },
+          {
+            "title": "Cowie Bridge",
+            "indices": [
+              0,
+              1,
+              3,
+              4
+            ],
+            "text": "[0] Cowie Bridge is a roadway bridge across the Cowie Water in Stonehaven, Scotland near the river's mouth at the North Sea.\n[1] This construction is a listed historical structure in Aberdeenshire.\n[3] Between the Cowie Bridge and the North Sea, a new pedestrian bridge is planned, which will also support a new pipeline structure.\n[4] The site of Cowie Bridge is approximately the point of the southern terminus of the Causey Mounth trackway, which was the only available medieval route crossing the coastal Grampian Mountains northerly by way of Muchalls Castle and Gillybrands."
+          }
+        ],
+        "linked_secondhop": [
+          {
+            "title": "Allardice Castle",
+            "indices": [
+              0,
+              1,
+              2,
+              3,
+              4
+            ],
+            "text": "[0] Allardice Castle (also spelled Allardyce) is a sixteenth-century manor house in Kincardineshire, Scotland.\n[1] This monument is occupied by the Cowie family and is approximately 1.5 kilometres northwest of the town of Inverbervie.\n[2] The Bervie Water flows around Allardice Castle on both sides.\n[3] Allardice may be viewed as one of a chain of coastal castles; to the north are Dunnottar Castle (ruined), Fetteresso Castle, Cowie Castle (ruined) and Muchalls Castle.\n[4] The castle is a category A listed building."
+          },
+          {
+            "title": "Bervie Water",
+            "indices": [
+              0,
+              1,
+              2
+            ],
+            "text": "[0] Bervie Water (Scottish Gaelic: \"Uisge Bhiorbhaigh\" ) is a river in Aberdeenshire, Scotland which rises in the Drumtochty Forest and flows across The Mearns to reach the North Sea at Inverbervie.\n[1] Approximately two kilometres upstream of the North Sea, the Bervie Water flows through the grounds of Allardice Castle.\n[2] The Bothenoth Burn (Burn of Healing) joins the Bervie Water to the east of Arbuthnott House."
+          }
+        ]
+      },
+      "selection_hash": "0145d196e6cbefc3b4c90d15f8bdf4be32cb6885958618504c434a591dfd737e"
+    },
+    {
+      "uid": "5ab8372255429919ba4e226b",
+      "type_from_original_question_metadata": "bridge",
+      "rank_change_group": "bridge_changed",
+      "hash_source_text": "8c1f7b5891674c06f00818bb9ee5d9a8cf5ad545e40ce870817a1f94079f0256",
+      "question": "What band wrote the song \"Blue Letter\" and was inducted into the Rock and Roll Hall of Fame in 1998?",
+      "question_sha256": "6e538d4b39a2e1f3cc0812194302686e733e251363cc593f5a138df8a3a0ea96",
+      "source_documents": {
+        "fulltext_bm25": [
+          {
+            "title": "Blue Letter",
+            "indices": [
+              0,
+              1,
+              2,
+              3
+            ],
+            "text": "[0] \"Blue Letter\" is a song written by Michael Curtis and Richard Curtis that was first released by Fleetwood Mac on their 1975 album \"Fleetwood Mac\".\n[1] It was also released as a single in Japan with \"Say You Love Me\".\n[2] Fleetwood Mac performed \"Blue Letter\" on every tour for 1975–1990.\n[3] It was the only song on the album not written by a band member."
+          },
+          {
+            "title": "The Spirit of Radio",
+            "indices": [
+              0,
+              1,
+              2,
+              3,
+              5,
+              6
+            ],
+            "text": "[0] \"The Spirit of Radio\" is a song released in 1980 by the Canadian rock band Rush from their album \"Permanent Waves\".\n[1] The song's name was inspired by Toronto radio station CFNY-FM's slogan.\n[2] The song was significant in the growing popularity of the band.\n[3] The band had grazed the UK Top 40 two years earlier with \"Closer to the Heart\", but when issued as a single in March 1980, \"The Spirit of Radio\" soon reached #13 on the UK singles chart.\n[5] In the US, the single peaked at #51 on the \"Billboard\" Hot 100 in 1980, and in 1998 a live version of the song reached #27 on the Mainstream Rock Charts.\n[6] \"The Spirit of Radio\" was named one of The Rock and Roll Hall of Fame's 500 Songs that Shaped Rock and Roll and was among five Rush songs inducted into the Canadian Songwriters Hall of Fame on March 28, 2010."
+          }
+        ],
+        "linked_secondhop": [
+          {
+            "title": "Blue Letter",
+            "indices": [
+              0,
+              1,
+              2,
+              3
+            ],
+            "text": "[0] \"Blue Letter\" is a song written by Michael Curtis and Richard Curtis that was first released by Fleetwood Mac on their 1975 album \"Fleetwood Mac\".\n[1] It was also released as a single in Japan with \"Say You Love Me\".\n[2] Fleetwood Mac performed \"Blue Letter\" on every tour for 1975–1990.\n[3] It was the only song on the album not written by a band member."
+          },
+          {
+            "title": "Fleetwood Mac",
+            "indices": [
+              0,
+              1,
+              2
+            ],
+            "text": "[0] Fleetwood Mac are a British-American rock band, formed in London in 1967.\n[1] The band have sold more than 100 million records worldwide, making them one of the world's best-selling bands of all time.\n[2] In 1998, selected members of Fleetwood Mac were inducted into the Rock and Roll Hall of Fame, and received the Brit Award for Outstanding Contribution to Music."
+          }
+        ]
+      },
+      "selection_hash": "0166433ed43ec0a29d5a86c7421f6364e1ee52451851900b2749294c1696261c"
+    },
+    {
+      "uid": "5ade3e69554299728e26c68d",
+      "type_from_original_question_metadata": "bridge",
+      "rank_change_group": "bridge_changed",
+      "hash_source_text": "e3786076693a0d53ee81bdbc1b0878b5935114e2b466dfd10df94d73113e482d",
+      "question": "what country are Mudvayne and Hellyeah both from?",
+      "question_sha256": "6f25dafaeb5280c3e325e1ab07abd5a53918094ea382d9587243c9de583888a6",
+      "source_documents": {
+        "fulltext_bm25": [
+          {
+            "title": "Hellyeah (album)",
+            "indices": [
+              0
+            ],
+            "text": "[0] Hellyeah is the debut album by the heavy metal band Hellyeah, featuring various members of Pantera, Mudvayne, Damageplan and Nothingface."
+          },
+          {
+            "title": "Audiotopsy (band)",
+            "indices": [
+              0
+            ],
+            "text": "[0] Audiotopsy are an American alternative metal supergroup, consisting of Skrape lead vocalist Billy Keeton, former Mudvayne/Hellyeah guitarist Greg Tribbett, bass player Perry Stern, and former Mudvayne drummer Matthew McDonough."
+          }
+        ],
+        "linked_secondhop": [
+          {
+            "title": "Hellyeah (album)",
+            "indices": [
+              0
+            ],
+            "text": "[0] Hellyeah is the debut album by the heavy metal band Hellyeah, featuring various members of Pantera, Mudvayne, Damageplan and Nothingface."
+          },
+          {
+            "title": "Hellyeah",
+            "indices": [
+              0,
+              1,
+              2
+            ],
+            "text": "[0] Hellyeah is an American heavy metal supergroup, consisting of Mudvayne vocalist Chad Gray, former Nothingface guitarist Tom Maxwell, bass player Kyle Sanders, guitarist Christian Brady and former Pantera and Damageplan drummer Vinnie Paul.\n[1] The idea to form a supergroup originated in 2000 on the Tattoo the Earth tour, although plans were constantly put on hold due to scheduling conflicts.\n[2] The summer of 2006 allowed the band to take the project seriously and record its first album."
+          }
+        ]
+      },
+      "selection_hash": "0174358d6b7dfdaf1c5a2704b9a301cdd82fb77124a093e5b4c03ddcb9f344c7"
+    },
+    {
+      "uid": "5a89a74e554299669944a562",
+      "type_from_original_question_metadata": "bridge",
+      "rank_change_group": "bridge_changed",
+      "hash_source_text": "6f8c10714bbf44b59b2f2344a97f28e8f24044e60005d1a21596143b4b68f942",
+      "question": "Who directed the second film in a British series of action comedy film parodying the James Bond secret agent genre with comedy similar to Rowan Atkinson's Mr. Bean character?",
+      "question_sha256": "6deba90ac97989cf2f795d175a2fbffe2f86778a597c62d8813b05cefcb867d4",
+      "source_documents": {
+        "fulltext_bm25": [
+          {
+            "title": "Johnny English Reborn",
+            "indices": [
+              0,
+              1,
+              2
+            ],
+            "text": "[0] Johnny English Reborn is a 2011 British action comedy film parodying the James Bond secret agent genre.\n[1] The film is the sequel to \"Johnny English\" (2003), and stars Rowan Atkinson reprising his role as the title character and directed by Oliver Parker.\n[2] The film is the second installment of the \"Johnny English film series\"."
+          },
+          {
+            "title": "Johnny English (film series)",
+            "indices": [
+              0,
+              1,
+              2,
+              3
+            ],
+            "text": "[0] Johnny English is a British series of action comedy film parodying the James Bond secret agent genre.\n[1] It features Rowan Atkinson as the titular character, based on the screenplay was written by Neal Purvis and Robert Wade.\n[2] The series included 3 instalments: \"Johnny English\" (2003), \"Johnny English Reborn\" (2011), and the upcoming \"Johnny English 3\" which is in pre-production.\n[3] The series also infused with comedy similar to Atkinson's Mr. Bean character and grossed $320 worldwide."
+          }
+        ],
+        "linked_secondhop": [
+          {
+            "title": "Johnny English Reborn",
+            "indices": [
+              0,
+              1,
+              2
+            ],
+            "text": "[0] Johnny English Reborn is a 2011 British action comedy film parodying the James Bond secret agent genre.\n[1] The film is the sequel to \"Johnny English\" (2003), and stars Rowan Atkinson reprising his role as the title character and directed by Oliver Parker.\n[2] The film is the second installment of the \"Johnny English film series\"."
+          },
+          {
+            "title": "Johnny English",
+            "indices": [
+              0,
+              1,
+              2
+            ],
+            "text": "[0] Johnny English is a 2003 British-American spy comedy film parodying the James Bond secret agent genre infused with comedy similar to Atkinson's Mr. Bean character.\n[1] The film stars Rowan Atkinson, Natalie Imbruglia, Ben Miller and John Malkovich.\n[2] The screenplay was written by Bond writers Neal Purvis and Robert Wade, with William Davies, and the film was directed by Peter Howitt."
+          }
+        ]
+      },
+      "selection_hash": "0179328bec08ea7fca3cc31069dba5fa166dd1466d05691dac3ffa1cf9cd0c7d"
+    },
+    {
+      "uid": "5a7bbee85542997c3ec97270",
+      "type_from_original_question_metadata": "bridge",
+      "rank_change_group": "bridge_changed",
+      "hash_source_text": "864f1e5c908b3600c2aedddd706569cb91e59da0faaac211752ef8fdfca64b1c",
+      "question": "Rafe Hernandez is a fictional character who played with Chrishell Stause's charachter on Days of our live?",
+      "question_sha256": "60674e7851882b1b43bee7326a989a3cad26448fe701691f21121d68df7885e2",
+      "source_documents": {
+        "fulltext_bm25": [
+          {
+            "title": "Rafe Hernandez",
+            "indices": [
+              0,
+              1,
+              7,
+              8,
+              9
+            ],
+            "text": "[0] Rafe Hernandez is a fictional character on \"Days of Our Lives\", an American soap opera on the NBC network.\n[1] Portrayed by Galen Gering and created by Dena Higley, Rafe is introduced in 2008 as the FBI agent assigned to protect the troublesome Sami Brady (Alison Sweeney) during her stay in witness protection.\n[7] Rafe also has an affair with Kate Roberts (Lauren Koslow) putting him at odds with Stefano, Kate's ex-husband.\n[8] He later falls in love with physical therapist Jordan Ridgeway (Chrishell Stause) whom he tries to help overcome her own dark past.\n[9] In 2015, Rafe is forced to confront his past when his estranged father Eduardo (A Martinez) resurfaces."
+          },
+          {
+            "title": "Chrishell Stause",
+            "indices": [
+              0,
+              1
+            ],
+            "text": "[0] Terrina Chrishell Stause ( , born July 21, 1981), professionally known as Chrishell Stause, is an American actress.\n[1] She is known for her television roles as Amanda Dillon on \"All My Children\" and Jordan Ridgeway on \"Days of Our Lives\"."
+          }
+        ],
+        "linked_secondhop": [
+          {
+            "title": "Rafe Hernandez",
+            "indices": [
+              0,
+              1,
+              7,
+              8,
+              9
+            ],
+            "text": "[0] Rafe Hernandez is a fictional character on \"Days of Our Lives\", an American soap opera on the NBC network.\n[1] Portrayed by Galen Gering and created by Dena Higley, Rafe is introduced in 2008 as the FBI agent assigned to protect the troublesome Sami Brady (Alison Sweeney) during her stay in witness protection.\n[7] Rafe also has an affair with Kate Roberts (Lauren Koslow) putting him at odds with Stefano, Kate's ex-husband.\n[8] He later falls in love with physical therapist Jordan Ridgeway (Chrishell Stause) whom he tries to help overcome her own dark past.\n[9] In 2015, Rafe is forced to confront his past when his estranged father Eduardo (A Martinez) resurfaces."
+          },
+          {
+            "title": "Jordan Ridgeway",
+            "indices": [
+              0,
+              1,
+              2
+            ],
+            "text": "[0] Jordan Ridgeway is a fictional character on the NBC daytime soap opera \"Days of Our Lives\".\n[1] The character is portrayed by former \"All My Children\" actress Chrishell Stause.\n[2] She made her on-screen debut on August 15, 2013 and departed the series on March 9, 2015."
+          }
+        ]
+      },
+      "selection_hash": "01843c1fcee4e4ebea78d045f8ea21530ac4d1539097989bb3c905e15e8c08e9"
+    },
+    {
+      "uid": "5ae4f96755429913cc204551",
+      "type_from_original_question_metadata": "bridge",
+      "rank_change_group": "bridge_changed",
+      "hash_source_text": "d825db0519ea727e41201065338b1f84006034c53d3ea222414706c5da46d99c",
+      "question": "Ndlela kaSompisi was a key general to Zulu King Dingane and a king born in what year?",
+      "question_sha256": "d6e3fce7ff8eead31121a5a68c8ef20eaa3b81b507bd4981d4aebeba6a430123",
+      "source_documents": {
+        "fulltext_bm25": [
+          {
+            "title": "Ndlela kaSompisi",
+            "indices": [
+              0,
+              1,
+              2,
+              3,
+              4
+            ],
+            "text": "[0] Ndlela kaSompisi (died February 1840) was a key general to Zulu Kings Shaka and Dingane.\n[1] He rose to prominence as a highly effective warrior under Shaka.\n[2] Dingane appointed him as his \"inDuna\", or chief advisor.\n[3] He was also the principal commander of Dingane's armies.\n[4] However, Ndlela's failure to defeat the Boers under Andries Pretorius and a rebellion against Dingane led to his execution."
+          },
+          {
+            "title": "Battle of Maqongqo",
+            "indices": [
+              0,
+              1,
+              2,
+              3
+            ],
+            "text": "[0] The Battle of Maqongqo was fought on 29 January 1840 during a civil war between Zulu factions.\n[1] The Zulu king Dingane was challenged for the throne by his brother Mpande, in alliance with Boer settlers led by Andries Pretorius.\n[2] Mpande and his supporters were victorious.\n[3] Shortly thereafter Dingane was murdered and Mpande became king of the Zulus."
+          }
+        ],
+        "linked_secondhop": [
+          {
+            "title": "Ndlela kaSompisi",
+            "indices": [
+              0,
+              1,
+              2,
+              3,
+              4
+            ],
+            "text": "[0] Ndlela kaSompisi (died February 1840) was a key general to Zulu Kings Shaka and Dingane.\n[1] He rose to prominence as a highly effective warrior under Shaka.\n[2] Dingane appointed him as his \"inDuna\", or chief advisor.\n[3] He was also the principal commander of Dingane's armies.\n[4] However, Ndlela's failure to defeat the Boers under Andries Pretorius and a rebellion against Dingane led to his execution."
+          },
+          {
+            "title": "Shaka",
+            "indices": [
+              0
+            ],
+            "text": "[0] Shaka kaSenzangakhona (c. 1787 – 22 September 1828), also known as Shaka Zulu (] ), was one of the most influential monarchs of the Zulu Kingdom."
+          }
+        ]
+      },
+      "selection_hash": "020dfc074cbd89940ce11f919350adac51617d2b1a7ff6d60af42c81e4ffd9d7"
+    },
+    {
+      "uid": "5a8ec02e5542995a26add501",
+      "type_from_original_question_metadata": "bridge",
+      "rank_change_group": "bridge_changed",
+      "hash_source_text": "a3cae46b6bfb5e408c986c5db51cb2ab985e2e901fb61abe20871e6ebfa92e32",
+      "question": "Which American sketch comedy television series starring John C. Reilly was produced by Abso Lutely Productions?",
+      "question_sha256": "93ffdfbaae56bf7dfde23b9c5cf2b088c92e990e3ba8bec81503733ae9d43773",
+      "source_documents": {
+        "fulltext_bm25": [
+          {
+            "title": "Bagboy (TV special)",
+            "indices": [
+              0,
+              1,
+              2
+            ],
+            "text": "[0] Bagboy is a 2015 American television special produced for Adult Swim, and aired on February 21, 2015, to positive critical reception.\n[1] Written and directed by Tim Heidecker and Eric Wareheim for Abso Lutely Productions and John C. Reilly, the special is a fictional sitcom pilot in the universe of \"Tim and Eric Awesome Show, Great Job!\n[2] \", written by and starring Reilly's recurring \"Tim and Eric\" character Dr. Steve Brule."
+          },
+          {
+            "title": "Kate Berlant",
+            "indices": [
+              0,
+              1,
+              2,
+              3
+            ],
+            "text": "[0] Kate Berlant (born July 16, 1987) is an American stand-up comedian, actress, and writer.\n[1] She is known for appearing on \"The Meltdown with Jonah and Kumail\" and starring in an episode of the Netflix original series \"\".\n[2] With John Early, Berlant created the Vimeo original series \"555\" produced by Abso Lutely Productions.\n[3] Her father is the artist Tony Berlant."
+          }
+        ],
+        "linked_secondhop": [
+          {
+            "title": "Bagboy (TV special)",
+            "indices": [
+              0,
+              1,
+              2
+            ],
+            "text": "[0] Bagboy is a 2015 American television special produced for Adult Swim, and aired on February 21, 2015, to positive critical reception.\n[1] Written and directed by Tim Heidecker and Eric Wareheim for Abso Lutely Productions and John C. Reilly, the special is a fictional sitcom pilot in the universe of \"Tim and Eric Awesome Show, Great Job!\n[2] \", written by and starring Reilly's recurring \"Tim and Eric\" character Dr. Steve Brule."
+          },
+          {
+            "title": "Abso Lutely Productions",
+            "indices": [
+              0,
+              1,
+              2
+            ],
+            "text": "[0] Abso Lutely Productions is a film and television production company owned by actor and producers Tim Heidecker, Eric Wareheim and producer Dave Kneebone.\n[1] It is known for producing the long-running series \"Tom Goes to the Mayor\", \"Nathan For You\", \"Tim and Eric Awesome Show, Great Job!\n[2] \" and \"Check It Out!"
+          }
+        ]
+      },
+      "selection_hash": "025f41f423706d63544c3744af56808e5b378b5259d29a32b4f9f9da22474844"
+    },
+    {
+      "uid": "5ade9545554299728e26c740",
+      "type_from_original_question_metadata": "bridge",
+      "rank_change_group": "bridge_changed",
+      "hash_source_text": "dcae09c67dc8d97d2e35d933ac67112fb36ee461307b4906418e5453b09c238f",
+      "question": "What team did the recipient of the 2007 Brownlow Medal play for?",
+      "question_sha256": "ecdf7e0fc2b7c28d97eb7508d8b5434a6751d1c4a75d9be5958f874d2d9faf05",
+      "source_documents": {
+        "fulltext_bm25": [
+          {
+            "title": "2007 Brownlow Medal",
+            "indices": [
+              0,
+              1
+            ],
+            "text": "[0] The 2007 Brownlow Medal was the 80th year the award was presented to the player adjudged the fairest and best player during the Australian Football League (AFL) home and away season.\n[1] Jimmy Bartel of the Geelong Football Club won the medal by polling twenty-nine votes during the 2007 AFL season."
+          },
+          {
+            "title": "2006 Brownlow Medal",
+            "indices": [
+              0,
+              1,
+              2
+            ],
+            "text": "[0] The 2006 Brownlow Medal was the 79th year the award was presented to the player adjudged the fairest and best player during the Australian Football League (AFL) home and away season.\n[1] Adam Goodes of the Sydney Swans won the medal by polling twenty-six votes during the 2006 AFL season.\n[2] It was Goodes' second Brownlow Medal win, after his victory in 2003."
+          }
+        ],
+        "linked_secondhop": [
+          {
+            "title": "2007 Brownlow Medal",
+            "indices": [
+              0,
+              1
+            ],
+            "text": "[0] The 2007 Brownlow Medal was the 80th year the award was presented to the player adjudged the fairest and best player during the Australian Football League (AFL) home and away season.\n[1] Jimmy Bartel of the Geelong Football Club won the medal by polling twenty-nine votes during the 2007 AFL season."
+          },
+          {
+            "title": "Jimmy Bartel",
+            "indices": [
+              0,
+              1
+            ],
+            "text": "[0] James Ross Bartel (born 4 December 1983) is a former Australian rules footballer who played for the Geelong Football Club in the Australian Football League (AFL).\n[1] A utility, 1.87 m tall and weighing 86 kg , Bartel is able to contribute as a midfielder, forward, or defender."
+          }
+        ]
+      },
+      "selection_hash": "027799ca9e9d271e77a505b09092eaef87746782ac156d1c99f91af98a74cb24"
+    },
+    {
+      "uid": "5ae4cb2f55429960a22e01e8",
+      "type_from_original_question_metadata": "bridge",
+      "rank_change_group": "bridge_changed",
+      "hash_source_text": "d98dfe1a94c9916049c35e16998479d26671a2d57fe4baafdd5a77085c8aed21",
+      "question": "Which American popular music and country music singer recorded J. D. Souther song ",
+      "question_sha256": "b01448b2fdf3fb2958770c625135e6992340c4e533fe36feeccc44883562d614",
+      "source_documents": {
+        "fulltext_bm25": [
+          {
+            "title": "J. D. Souther",
+            "indices": [
+              0,
+              1
+            ],
+            "text": "[0] John David Souther, known professionally as J.D. Souther (born November 2, 1945) is an American singer and songwriter.\n[1] He has written and co-written songs recorded by Linda Ronstadt and the Eagles."
+          },
+          {
+            "title": "They Call the Wind Maria",
+            "indices": [
+              0,
+              1,
+              2,
+              3,
+              4
+            ],
+            "text": "[0] \"They Call the Wind Maria\" is an American popular song with lyrics written by Alan J. Lerner and music by Frederick Loewe for their 1951 Broadway musical, \"Paint Your Wagon\", which is set in the California Gold Rush.\n[1] Rufus Smith originally sang the song on Broadway, and Joseph Leader was the original singer in London's West End.\n[2] It quickly became a runaway hit, and during the Korean War, the song was among the \"popular music listened to by the troops\".\n[3] Vaughan Monroe and his Orchestra recorded the song in 1951, and it was among the \"popular hit singles at the record stores\" that year.\n[4] It has since become a standard, performed by many notable singers across several genres of popular music."
+          }
+        ],
+        "linked_secondhop": [
+          {
+            "title": "J. D. Souther",
+            "indices": [
+              0,
+              1
+            ],
+            "text": "[0] John David Souther, known professionally as J.D. Souther (born November 2, 1945) is an American singer and songwriter.\n[1] He has written and co-written songs recorded by Linda Ronstadt and the Eagles."
+          },
+          {
+            "title": "Linda Ronstadt",
+            "indices": [
+              0,
+              1,
+              2
+            ],
+            "text": "[0] Linda Maria Ronstadt (born July 15, 1946) is an American popular music and country music singer.\n[1] She has earned 11 Grammy Awards, three American Music Awards, two Academy of Country Music awards, an Emmy Award, and an ALMA Award, and many of her albums have been certified gold, platinum or multiplatinum in the United States and internationally.\n[2] She has also earned nominations for a Tony Award and a Golden Globe award."
+          }
+        ]
+      },
+      "selection_hash": "028c346a750e23b2902e806550314d1b425bbe140e9aed5f8713af9be6329bad"
+    },
+    {
+      "uid": "5ae2098e5542997f29b3c21b",
+      "type_from_original_question_metadata": "bridge",
+      "rank_change_group": "bridge_changed",
+      "hash_source_text": "ba9570cb10d8d1596bc4b5998af580a0d05de87decedf93bad6fc2ae3af912ec",
+      "question": "Hardley Flood is an area of lagoons that support populations of the waterfowl that are a medium sized version of what animal?",
+      "question_sha256": "ad58ae75c2bf2ceb39a72d60f1bf4949ba95db2911b58270aa2f09e64c3eb7a4",
+      "source_documents": {
+        "fulltext_bm25": [
+          {
+            "title": "Hardley Flood",
+            "indices": [
+              0,
+              1,
+              2
+            ],
+            "text": "[0] Hardley Flood is a Site of Special Scientific Interest on the north bank of the River Chet northeast of Loddon in Norfolk, part-managed by the Norfolk Wildlife Trust.\n[1] It is an area of shallow lagoons and reedbeds acting as a spillway for the River Chet.\n[2] Tidal muds attract a range of wading birds and the undisturbed reedbeds support nesting wildfowl and other fenland birds, including nationally important breeding populations of shoveller, pochard and gadwall."
+          },
+          {
+            "title": "Palmer Hay Flats State Game Refuge",
+            "indices": [
+              0,
+              1,
+              2
+            ],
+            "text": "[0] The Palmer Hayflats State Game Refuge is located in Alaska, south of Wasilla and north of Anchorage.\n[1] It is composed of 28800 acre of coastal marshy areas adjacent to Knik Arm that support populations of moose, muskrat, foxes, coyotes, eagles, and migratory waterfowl.\n[2] The Knik River, the Matanuska River, Rabbit Slough, Wasilla Creek, Cottonwood Creek, and Spring Creek flow through it."
+          }
+        ],
+        "linked_secondhop": [
+          {
+            "title": "Hardley Flood",
+            "indices": [
+              0,
+              1,
+              2
+            ],
+            "text": "[0] Hardley Flood is a Site of Special Scientific Interest on the north bank of the River Chet northeast of Loddon in Norfolk, part-managed by the Norfolk Wildlife Trust.\n[1] It is an area of shallow lagoons and reedbeds acting as a spillway for the River Chet.\n[2] Tidal muds attract a range of wading birds and the undisturbed reedbeds support nesting wildfowl and other fenland birds, including nationally important breeding populations of shoveller, pochard and gadwall."
+          },
+          {
+            "title": "River Chet",
+            "indices": [
+              0,
+              3,
+              4,
+              5,
+              6,
+              7
+            ],
+            "text": "[0] The River Chet is a small river in South Norfolk, England, a tributary of the River Yare.\n[3] From this point onwards the river is navigable.\n[4] It then passes Hardley Flood to the north, a nature reserve part-managed by the Norfolk Wildlife Trust.\n[5] The river finally joins the River Yare one mile west of Reedham at Hardley Cross, erected in 1676, which marks the ancient boundary between the City of Norwich and the Borough of Great Yarmouth.\n[6] The total navigable length is some 3½ miles.\n[7] Fishing is permitted between Loddon and Hardley Cross, bream and roach being the most common catch."
+          }
+        ]
+      },
+      "selection_hash": "02d98d84f6ee6c9ae61785adcea2ab9913c0b0556e2bedf6b3b97e571ac7cf0f"
+    },
+    {
+      "uid": "5a8b595855429949d91db563",
+      "type_from_original_question_metadata": "bridge",
+      "rank_change_group": "bridge_changed",
+      "hash_source_text": "ddb4862f5ea70faadcc21cd109ad21cd0ea596db98fe50a8b9ead544b2f7c132",
+      "question": "In what year was the band, whose bassist joined Arvas in 1996, formed?",
+      "question_sha256": "8f91d4bd80b71782c0933bc8ad06185a68f8b44896becff0a99c6d5c67d7c072",
+      "source_documents": {
+        "fulltext_bm25": [
+          {
+            "title": "Arvas",
+            "indices": [
+              0,
+              1,
+              2
+            ],
+            "text": "[0] Arvas, formerly known as Örth, is a Norwegian black metal band formed in Bergen in 1993 as a one-man project by multi musician V-Rex.\n[1] In Summer 1996, Borknagar drummer Grim and Gorgoroth bassist Ares joined the band.\n[2] They recorded an album in Winter 1996, titled \"Nocturno Inferno\", but it was never released."
+          },
+          {
+            "title": "Joe Raposo (bassist)",
+            "indices": [
+              0,
+              2,
+              3,
+              4,
+              5,
+              6
+            ],
+            "text": "[0] Joe Raposo (born 1970), of Portuguese descent, is the bassist for the seminal California punk rock band Lagwagon and qa engineer lead at Zynga.\n[2] Additionally, Raposo plays bass for the San Francisco-based fusion group King City, with fellow Lagwagon member Chris Rest as well as filling in on bass for several live shows with the Dwarves.\n[3] Raposo began his career in 1987 at the age of seventeen by joining California hardcore punk band Rich Kids on LSD as their new bassist and remained with RKL until their hiatus in 1996.\n[4] He began playing shows with RKL again in 2003 (after they had re-formed a year prior) until their current hiatus after the death of lead singer Jason Sears.\n[5] Raposo joined Lagwagon in 2010, replacing original bassist Jesse Buglione.\n[6] Raposo also plays bass in the cover band Uke-Hunt."
+          }
+        ],
+        "linked_secondhop": [
+          {
+            "title": "Arvas",
+            "indices": [
+              0,
+              1,
+              2
+            ],
+            "text": "[0] Arvas, formerly known as Örth, is a Norwegian black metal band formed in Bergen in 1993 as a one-man project by multi musician V-Rex.\n[1] In Summer 1996, Borknagar drummer Grim and Gorgoroth bassist Ares joined the band.\n[2] They recorded an album in Winter 1996, titled \"Nocturno Inferno\", but it was never released."
+          },
+          {
+            "title": "Gorgoroth",
+            "indices": [
+              0,
+              1,
+              2
+            ],
+            "text": "[0] Gorgoroth is a Norwegian black metal band based in Bergen.\n[1] It was formed in 1992 by guitarist Infernus, who is also the only original member remaining, and the band have since released nine studio albums.\n[2] Gorgoroth are a Satanic band and have drawn controversy due to some of their concerts, which have featured impaled sheep heads and mock crucifixions."
+          }
+        ]
+      },
+      "selection_hash": "02eb74e4f5423dfa788df0f0f8fbe7d89d8b29d94e6ca04ceaa97dee921f78bc"
+    },
+    {
+      "uid": "5aba9db7554299232ef4a361",
+      "type_from_original_question_metadata": "bridge",
+      "rank_change_group": "bridge_changed",
+      "hash_source_text": "2bf26339a44f17b22e70572edb4fb4bb46469d880aec74a6441e1dd2c7a20a70",
+      "question": "From 2003 to 2008 Tom Holland was responsible for what  ?",
+      "question_sha256": "a20eefe6c73b96771122eb26c9d1062ca94c73998af28df0fce3d0454a341b2d",
+      "source_documents": {
+        "fulltext_bm25": [
+          {
+            "title": "Tom Holland (politician)",
+            "indices": [
+              0,
+              1
+            ],
+            "text": "[0] Tom Holland (born July 23, 1961) is a Democratic member of the Kansas Senate, representing the 3rd District since 2009.\n[1] He was a member of the Kansas House of Representatives from 2003 to 2008."
+          },
+          {
+            "title": "Tom Rasmussen",
+            "indices": [
+              0,
+              1,
+              2,
+              3
+            ],
+            "text": "[0] Tom Rasmussen is a retired member of the Seattle City Council, first elected in 2003.\n[1] Between September 2004 and December 2007 he was chair of the Housing, Human Services & Health Committee, vice chair of the Urban Development & Planning Committee, and a member of the Transportation Committee.\n[2] On January 7, 2008 Tom was sworn in for his second term on City Council.\n[3] From January 2008 through December 2009, he was chair of the Parks & Seattle Center Committee, the vice chair of the Culture, Civil Rights, Health and Personnel Committee, and the Labor Policy Committee."
+          }
+        ],
+        "linked_secondhop": [
+          {
+            "title": "Tom Holland (politician)",
+            "indices": [
+              0,
+              1
+            ],
+            "text": "[0] Tom Holland (born July 23, 1961) is a Democratic member of the Kansas Senate, representing the 3rd District since 2009.\n[1] He was a member of the Kansas House of Representatives from 2003 to 2008."
+          },
+          {
+            "title": "Kansas House of Representatives",
+            "indices": [
+              0,
+              1
+            ],
+            "text": "[0] The Kansas House of Representatives is the lower house of the legislature of the U.S. state of Kansas.\n[1] Composed of 125 state representatives from districts with roughly equal populations of at least 19,000, its members are responsible for crafting and voting on legislation, helping to create a state budget, and legislative oversight over state agencies."
+          }
+        ]
+      },
+      "selection_hash": "02fbe78e0ec6bbead3c1c204213e147389424727fa4825b526889a77584acf5a"
+    },
+    {
+      "uid": "5a79caad5542994f819ef09f",
+      "type_from_original_question_metadata": "bridge",
+      "rank_change_group": "bridge_changed",
+      "hash_source_text": "94a8da3a3170d19347566149c1999d721336a8d203f311e7d3b6255ae8358e94",
+      "question": "Which professional baseball player was born in 1984 and played as a rookie for the Los Angeles Dogers in 2007?",
+      "question_sha256": "129848703ff1baae4397b7c7b0d6ca4de6b8572d61b00462341e16a749926274",
+      "source_documents": {
+        "fulltext_bm25": [
+          {
+            "title": "2007 Los Angeles Dodgers season",
+            "indices": [
+              0,
+              1,
+              2,
+              3
+            ],
+            "text": "[0] The Los Angeles Dodgers' 2007 season started off promisingly with the Dodgers holding the Western Division lead for most of the first half of the season.\n[1] However, the team faded down the stretch and finished the season in fourth place.\n[2] Two of the teams big free agent signings, pitchers Jason Schmidt and Randy Wolf were injured and missed most of the season.\n[3] A promising development was the play of several rookies including James Loney and Matt Kemp and the further development of second year catcher Russell Martin, who was named to his first All-Star Game."
+          },
+          {
+            "title": "Joel Guzmán",
+            "indices": [
+              0,
+              1,
+              2
+            ],
+            "text": "[0] Irvin Joel Vigo Guzmán (born November 24, 1984) is a Dominican professional baseball player.\n[1] He currently plays for the York Revolution of the Atlantic League.\n[2] He has played in Major League Baseball (MLB) for the Los Angeles Dodgers and Tampa Bay Devil Rays and in Nippon Professional Baseball (NPB) for the Chunichi Dragons."
+          }
+        ],
+        "linked_secondhop": [
+          {
+            "title": "2007 Los Angeles Dodgers season",
+            "indices": [
+              0,
+              1,
+              2,
+              3
+            ],
+            "text": "[0] The Los Angeles Dodgers' 2007 season started off promisingly with the Dodgers holding the Western Division lead for most of the first half of the season.\n[1] However, the team faded down the stretch and finished the season in fourth place.\n[2] Two of the teams big free agent signings, pitchers Jason Schmidt and Randy Wolf were injured and missed most of the season.\n[3] A promising development was the play of several rookies including James Loney and Matt Kemp and the further development of second year catcher Russell Martin, who was named to his first All-Star Game."
+          },
+          {
+            "title": "Matt Kemp",
+            "indices": [
+              0,
+              1,
+              2
+            ],
+            "text": "[0] Matthew Ryan Kemp (born September 23, 1984) is an American professional baseball outfielder for the Atlanta Braves of Major League Baseball (MLB).\n[1] He began his professional career in the Los Angeles Dodgers organization in 2003, and played with the Dodgers from 2006 until 2014.\n[2] He played for the San Diego Padres in 2015 and 2016."
+          }
+        ]
+      },
+      "selection_hash": "030a9583a758d500b888a27c2dd00708e7b8dc2ddbb198a491224eb4a7df31cd"
+    },
+    {
+      "uid": "5ae55e6855429960a22e02d0",
+      "type_from_original_question_metadata": "bridge",
+      "rank_change_group": "bridge_changed",
+      "hash_source_text": "3c486898474447fccc2170ce6c80c668730437f548c535340538a396dfb2a669",
+      "question": "When was the coach of \"2008 Texas Tech Red Raiders football team\" born? ",
+      "question_sha256": "2d789f941dbd4f2816d422064f53f9d376555803f0b5cda2d3aaf585eacfb643",
+      "source_documents": {
+        "fulltext_bm25": [
+          {
+            "title": "Mike Leach (American football coach)",
+            "indices": [
+              0,
+              1,
+              2
+            ],
+            "text": "[0] Michael Charles Leach (born March 9, 1961) is an American college football coach.\n[1] He is the head coach of the Washington State Cougars football team.\n[2] Previously, he was head coach of the Texas Tech Red Raiders football team, leading the Red Raiders to winning seasons in every year of his tenure."
+          },
+          {
+            "title": "2008 Texas Tech Red Raiders football team",
+            "indices": [
+              0,
+              1,
+              2
+            ],
+            "text": "[0] The 2008 Texas Tech Red Raiders football team represented Texas Tech University in the 2008 NCAA Division I FBS football season.\n[1] The team was coached by Mike Leach.\n[2] The Red Raiders played their home games at Jones AT&T Stadium in Lubbock, Texas."
+          }
+        ],
+        "linked_secondhop": [
+          {
+            "title": "Mike Leach (American football coach)",
+            "indices": [
+              0,
+              1,
+              2
+            ],
+            "text": "[0] Michael Charles Leach (born March 9, 1961) is an American college football coach.\n[1] He is the head coach of the Washington State Cougars football team.\n[2] Previously, he was head coach of the Texas Tech Red Raiders football team, leading the Red Raiders to winning seasons in every year of his tenure."
+          },
+          {
+            "title": "Texas Tech Red Raiders football",
+            "indices": [
+              0,
+              1,
+              2,
+              3,
+              4
+            ],
+            "text": "[0] The Texas Tech Red Raiders football program is a college football team that represents Texas Tech University (variously \"Texas Tech\" or \"TTU\").\n[1] The team competes, as a member of the Big 12 Conference, which is a Division I Football Bowl Subdivision (formerly Division I-A) of the National Collegiate Athletic Association (NCAA).\n[2] The program began in 1925 and has an overall winning record, including a total of 11 conference titles and one division title.\n[3] On December 12, 2012, former Red Raiders quarterback Kliff Kingsbury became the team's 15th head coach, following the resignation of Tommy Tuberville.\n[4] Home games are played at Jones AT&T Stadium in Lubbock, Texas."
+          }
+        ]
+      },
+      "selection_hash": "03136f0d875296c3fd8a7749b997fc104d68b81b97b9dc5388a9a8f57be3ea0d"
+    },
+    {
+      "uid": "5a8835245542994846c1ce27",
+      "type_from_original_question_metadata": "comparison",
+      "rank_change_group": "comparison_changed",
+      "hash_source_text": "3abcf977b853b12a15ac1b08a16a1cc9c5c563570f4ca2944369e85fb6cd4323",
+      "question": "Do Tropical Fish Hobbyist and Curve cover the same topic?",
+      "question_sha256": "9dbb4c85fa40099854b8c5f88e613c651124e817d06d0dbbd213292df4bfb7a1",
+      "source_documents": {
+        "fulltext_bm25": [
+          {
+            "title": "Tropical Fish Hobbyist",
+            "indices": [
+              0
+            ],
+            "text": "[0] Tropical Fish Hobbyist Magazine (abbreviated as \"TFH Magazine\") is a bi-monthly magazine geared to hobbyist keepers of tropical fish, with news and information on a variety of topics including: Care & Maintenance, Aquascaping, Husbandry, Health and Breeding, Species Reports, Aquarium Technology, Aquarium Science, Exploration & Collecting."
+          },
+          {
+            "title": "Curve fitting",
+            "indices": [
+              0,
+              1,
+              2,
+              3
+            ],
+            "text": "[0] Curve fitting is the process of constructing a curve, or mathematical function, that has the best fit to a series of data points, possibly subject to constraints.\n[1] Curve fitting can involve either interpolation, where an exact fit to the data is required, or smoothing, in which a \"smooth\" function is constructed that approximately fits the data.\n[2] A related topic is regression analysis, which focuses more on questions of statistical inference such as how much uncertainty is present in a curve that is fit to data observed with random errors.\n[3] Fitted curves can be used as an aid for data visualization, to infer values of a function where no data are available, and to summarize the relationships among two or more variables."
+          }
+        ],
+        "linked_secondhop": [
+          {
+            "title": "Tropical Fish Hobbyist",
+            "indices": [
+              0
+            ],
+            "text": "[0] Tropical Fish Hobbyist Magazine (abbreviated as \"TFH Magazine\") is a bi-monthly magazine geared to hobbyist keepers of tropical fish, with news and information on a variety of topics including: Care & Maintenance, Aquascaping, Husbandry, Health and Breeding, Species Reports, Aquarium Technology, Aquarium Science, Exploration & Collecting."
+          },
+          {
+            "title": "Tropical fish",
+            "indices": [
+              0,
+              1
+            ],
+            "text": "[0] Tropical fish are generally those fish found in aquatic tropical environments around the world, including both freshwater and saltwater species.\n[1] Fishkeepers often keep tropical fish in freshwater and saltwater aquariums."
+          }
+        ]
+      },
+      "selection_hash": "075209698f6d5c05eb92fe839a85c84e801fd5030065e86c7ed10483967c3413"
+    },
+    {
+      "uid": "5ac2ada255429967731025f9",
+      "type_from_original_question_metadata": "comparison",
+      "rank_change_group": "comparison_changed",
+      "hash_source_text": "310bc9dbb5204dd69eed0bee83d62ab965c6fc178fd0a8918be4819b7cf1d0c3",
+      "question": "Was Rudolf Schwarzkogler closely associated with the Viennese Actionism group, while Howard Zieff was an American television commercial director?",
+      "question_sha256": "9e4e8b11df1fe8b4ecba9f0da3976e3b9c599a60d3e8cbacbe7e3c746fec105b",
+      "source_documents": {
+        "fulltext_bm25": [
+          {
+            "title": "Rudolf Schwarzkogler",
+            "indices": [
+              0
+            ],
+            "text": "[0] Rudolf Schwarzkogler (13 November 1940, Vienna – 20 June 1969, Vienna) was an Austrian performance artist closely associated with the Viennese Actionism group that included artists Günter Brus, Otto Mühl, and Hermann Nitsch."
+          },
+          {
+            "title": "Howard Zieff",
+            "indices": [
+              0
+            ],
+            "text": "[0] Howard B. Zieff (21 October 1927 – 22 February 2009), (pronounced Zeef ) was an American director, television commercial director, and advertising photographer."
+          }
+        ],
+        "linked_secondhop": [
+          {
+            "title": "Rudolf Schwarzkogler",
+            "indices": [
+              0
+            ],
+            "text": "[0] Rudolf Schwarzkogler (13 November 1940, Vienna – 20 June 1969, Vienna) was an Austrian performance artist closely associated with the Viennese Actionism group that included artists Günter Brus, Otto Mühl, and Hermann Nitsch."
+          },
+          {
+            "title": "Viennese Actionism",
+            "indices": [
+              0,
+              1,
+              2,
+              3
+            ],
+            "text": "[0] Viennese Actionism was a short and violent movement in 20th-century art.\n[1] It can be regarded as part of the many independent efforts of the 1960s to develop \"performance art\" (Fluxus, happening, action painting, body art, etc.).\n[2] Its main participants were Günter Brus, Otto Mühl, Hermann Nitsch, and Rudolf Schwarzkogler.\n[3] As \"actionists\", they were active between 1960 and 1971."
+          }
+        ]
+      },
+      "selection_hash": "086a09e7f602b01bb2b6774201c446a57a4bc9680f86d0e2f705e6c88c917daa"
+    },
+    {
+      "uid": "5a89f6235542993b751ca9c7",
+      "type_from_original_question_metadata": "comparison",
+      "rank_change_group": "comparison_changed",
+      "hash_source_text": "3f305f64529f0728981e41e1793fe340d89367b8678cca210f004ec2b59596d5",
+      "question": "Were both Alvin Lee and Chad Gray lead vocalists for bands?",
+      "question_sha256": "4acf5bee8df4a7c22c07e6721bf9a2416c8218835d8e043b47253305253cf7d7",
+      "source_documents": {
+        "fulltext_bm25": [
+          {
+            "title": "Chad Gray",
+            "indices": [
+              0
+            ],
+            "text": "[0] Chad Gray (born October 16, 1971), is the lead vocalist for the groove metal supergroup Hellyeah and former lead vocalist for American heavy metal band Mudvayne."
+          },
+          {
+            "title": "Beautiful Monsters Tour",
+            "indices": [
+              0,
+              1,
+              2,
+              3
+            ],
+            "text": "[0] The Beautiful Monsters Tour was a North American concert tour co-headlined by American rock bands Hole and Marilyn Manson.\n[1] Launched in support of each band's respective third full-length studio LPs, 1998's \"Celebrity Skin\" and \"Mechanical Animals\", the tour was planned to run from February 28, 1999 until April 27, with 37 shows confirmed.\n[2] However, due to a highly publicized altercation between the bands' respective lead vocalists, the tour only visited arenas until March 14, for a total of 9 shows before Hole withdrew from the bill.\n[3] The tour garnered a large amount of media attention and was billed by MTV as a \"potentially volatile mix\" due to the public feud between each band's outspoken vocalist."
+          }
+        ],
+        "linked_secondhop": [
+          {
+            "title": "Chad Gray",
+            "indices": [
+              0
+            ],
+            "text": "[0] Chad Gray (born October 16, 1971), is the lead vocalist for the groove metal supergroup Hellyeah and former lead vocalist for American heavy metal band Mudvayne."
+          },
+          {
+            "title": "Hellyeah",
+            "indices": [
+              0,
+              1,
+              2
+            ],
+            "text": "[0] Hellyeah is an American heavy metal supergroup, consisting of Mudvayne vocalist Chad Gray, former Nothingface guitarist Tom Maxwell, bass player Kyle Sanders, guitarist Christian Brady and former Pantera and Damageplan drummer Vinnie Paul.\n[1] The idea to form a supergroup originated in 2000 on the Tattoo the Earth tour, although plans were constantly put on hold due to scheduling conflicts.\n[2] The summer of 2006 allowed the band to take the project seriously and record its first album."
+          }
+        ]
+      },
+      "selection_hash": "0981dd14835dde73744df2308050074475b1402133b10f42668b7dfab893e5f6"
+    },
+    {
+      "uid": "5abed9435542994516f45457",
+      "type_from_original_question_metadata": "comparison",
+      "rank_change_group": "comparison_changed",
+      "hash_source_text": "751f1807a1b51fdbbd53c8cb25e462f8a059c58c32c0681384a9c5ae949d5369",
+      "question": "Which of the following stars Jeff Bridges as a computer programmer: Tron or The Million Dollar Duck?",
+      "question_sha256": "bcde5e8559accf5f873eeae5f33287a73c1f2e44c1b49ff91d45ac16ddfcb590",
+      "source_documents": {
+        "fulltext_bm25": [
+          {
+            "title": "Tron",
+            "indices": [
+              0,
+              1,
+              2
+            ],
+            "text": "[0] Tron is a 1982 American science fiction action-adventure film written and directed by Steven Lisberger, based on a story by Lisberger and Bonnie MacBird and produced by Walt Disney Productions.\n[1] The film stars Jeff Bridges as a computer programmer who is transported inside the software world of a mainframe computer where he interacts with programs in his attempt to escape.\n[2] Bruce Boxleitner, David Warner, Cindy Morgan, and Barnard Hughes star in supporting roles."
+          },
+          {
+            "title": "The Million Dollar Duck",
+            "indices": [
+              0,
+              1
+            ],
+            "text": "[0] The Million Dollar Duck (also titled as The $1,000,000 Duck) is a 1971 American comedy film produced by Walt Disney Productions about a goose that lays golden eggs scenario.\n[1] It was directed by Vincent McEveety, and stars Dean Jones, Sandy Duncan and Joe Flynn."
+          }
+        ],
+        "linked_secondhop": [
+          {
+            "title": "Tron",
+            "indices": [
+              0,
+              1,
+              2
+            ],
+            "text": "[0] Tron is a 1982 American science fiction action-adventure film written and directed by Steven Lisberger, based on a story by Lisberger and Bonnie MacBird and produced by Walt Disney Productions.\n[1] The film stars Jeff Bridges as a computer programmer who is transported inside the software world of a mainframe computer where he interacts with programs in his attempt to escape.\n[2] Bruce Boxleitner, David Warner, Cindy Morgan, and Barnard Hughes star in supporting roles."
+          },
+          {
+            "title": "Programmer",
+            "indices": [
+              0,
+              1,
+              2
+            ],
+            "text": "[0] A programmer, computer programmer, developer, dev, coder, or software engineer is a person who creates computer software.\n[1] The term \"computer programmer\" can refer to a specialist in one area of computer programming or to a generalist who writes code for many kinds of software.\n[2] One who practices or professes a formal approach to programming may also be known as a programmer analyst."
+          }
+        ]
+      },
+      "selection_hash": "0a4037acdddd968b70ecc88950cbaf323386db5dbb8101ded5b5890e2759e216"
+    },
+    {
+      "uid": "5a79c9395542994bb94570a2",
+      "type_from_original_question_metadata": "comparison",
+      "rank_change_group": "comparison_changed",
+      "hash_source_text": "705727da546c32d1e289034e8f15d7eb8880cf8a0a73e3deb7548ec2805da5da",
+      "question": "Which two occupations does Ronnie Dunn and Annie Lennox have in common?",
+      "question_sha256": "f00fa43463c33c6221be264955e875a513d6349877fb9b349434ba52ea06c5da",
+      "source_documents": {
+        "fulltext_bm25": [
+          {
+            "title": "The Annie Lennox Collection",
+            "indices": [
+              0,
+              1,
+              2
+            ],
+            "text": "[0] The Annie Lennox Collection is the first greatest hits album by the Scottish singer-songwriter Annie Lennox.\n[1] It was released on 9 March 2009 and contains two brand-new songs, \"Shining Light\", originally a song by Ash, and a cover version of Keane's B-side \"Closer Now\", retitled \"Pattern of My Life\".\n[2] The artwork was shot by the rock singer Bryan Adams."
+          },
+          {
+            "title": "Step by Step (Annie Lennox song)",
+            "indices": [
+              0,
+              1,
+              2,
+              3
+            ],
+            "text": "[0] \"Step by Step\" is a song written and originally recorded by singer Annie Lennox, later a cross over pop hit by R&B/pop singer Whitney Houston.\n[1] The song served as the second single from Houston's 1996 soundtrack album, \"The Preacher's Wife\".\n[2] Lennox's recording originally appeared as the B-side to her 1992 single \"Precious\" Largely, Houston's version replaces Lennox's verses with new lyrics and omits portions from the bridge as well.\n[3] Annie Lennox also provides background vocals in Houston's rendition."
+          }
+        ],
+        "linked_secondhop": [
+          {
+            "title": "The Annie Lennox Collection",
+            "indices": [
+              0,
+              1,
+              2
+            ],
+            "text": "[0] The Annie Lennox Collection is the first greatest hits album by the Scottish singer-songwriter Annie Lennox.\n[1] It was released on 9 March 2009 and contains two brand-new songs, \"Shining Light\", originally a song by Ash, and a cover version of Keane's B-side \"Closer Now\", retitled \"Pattern of My Life\".\n[2] The artwork was shot by the rock singer Bryan Adams."
+          },
+          {
+            "title": "Annie Lennox",
+            "indices": [
+              0,
+              1,
+              2,
+              3
+            ],
+            "text": "[0] Ann \"Annie\" Lennox, (born 25 December 1954) is a Scottish singer, songwriter, political activist and philanthropist.\n[1] After achieving moderate success in the late 1970s as part of the new wave band The Tourists, she and fellow musician David A. Stewart went on to achieve major international success in the 1980s as Eurythmics.\n[2] With a total of eight Brit Awards, including Best British Female Artist six times, Lennox has won more than any other female artist.\n[3] She has also been named the \"Brits Champion of Champions\"."
+          }
+        ]
+      },
+      "selection_hash": "0a89c537e492c6cb956e9fc177ed40ac6f87dbdd5560046dbc8fb0e88b679764"
+    },
+    {
+      "uid": "5a72abb95542992359bc3162",
+      "type_from_original_question_metadata": "comparison",
+      "rank_change_group": "comparison_changed",
+      "hash_source_text": "513afe2bf17615f247c40ee4f06d35c4ef83029b481e560b5f1fb0ae9fce6bae",
+      "question": "Which film was not a 3D computer-animation Cars 3 or Smith!?",
+      "question_sha256": "866ba10f12032cd9c3659e774e7e07d2ba1fd7d16bff80e0c37ce82fae3ea943",
+      "source_documents": {
+        "fulltext_bm25": [
+          {
+            "title": "Cars 3",
+            "indices": [
+              0,
+              1,
+              2,
+              3
+            ],
+            "text": "[0] Cars 3 is a 2017 American 3D computer-animated auto racing sports comedy adventure film produced by Pixar and released by Walt Disney Pictures.\n[1] Directed by Brian Fee, the screenplay was written by Kiel Murray, Bob Peterson and Mike Rich.\n[2] The film is a sequel to \"Cars\" and a stand-alone sequel to \"Cars 2\".\n[3] The returning voices of Owen Wilson, Bonnie Hunt and Larry the Cable Guy are joined by Cristela Alonzo, Chris Cooper, Armie Hammer, Nathan Fillion, Kerry Washington and Lea DeLaria, in addition to a dozen NASCAR personalities."
+          },
+          {
+            "title": "Smith!",
+            "indices": [
+              0,
+              1
+            ],
+            "text": "[0] Smith!\n[1] (1969) is a western film starring Glenn Ford and directed by Michael O'Herlihy."
+          }
+        ],
+        "linked_secondhop": [
+          {
+            "title": "Cars 3",
+            "indices": [
+              0,
+              1,
+              2,
+              3
+            ],
+            "text": "[0] Cars 3 is a 2017 American 3D computer-animated auto racing sports comedy adventure film produced by Pixar and released by Walt Disney Pictures.\n[1] Directed by Brian Fee, the screenplay was written by Kiel Murray, Bob Peterson and Mike Rich.\n[2] The film is a sequel to \"Cars\" and a stand-alone sequel to \"Cars 2\".\n[3] The returning voices of Owen Wilson, Bonnie Hunt and Larry the Cable Guy are joined by Cristela Alonzo, Chris Cooper, Armie Hammer, Nathan Fillion, Kerry Washington and Lea DeLaria, in addition to a dozen NASCAR personalities."
+          },
+          {
+            "title": "Lightning McQueen",
+            "indices": [
+              0,
+              1,
+              3,
+              4
+            ],
+            "text": "[0] Lightning McQueen, typically referred to by his surname McQueen, is an anthropomorphic stock car in the animated Pixar film \"Cars\" (2006), its sequels \"Cars 2\" (2011), \"Cars 3\" (2017), and TV shorts known as \"Cars Toons.\"\n[1] The character is not named after actor and race driver Steve McQueen, but actually Pixar animator Glenn McQueen, who died in 2002.\n[3] During the scene where he helps restore Radiator Springs to its 1950s heyday, he is painted much like a 1950's Chevrolet Corvette C1, once again hinting at his Corvette lineage.\n[4] His number was originally set to be 57, Lasseter's birth year, but was changed to 95, the release year of Pixar's first film \"Toy Story\"."
+          }
+        ]
+      },
+      "selection_hash": "0ff1a0123a4164e017d8b0a1f0d9c2fbc487537856bec1e0a604a0865f3107e6"
+    },
+    {
+      "uid": "5a7aa0a55542990198eaf165",
+      "type_from_original_question_metadata": "comparison",
+      "rank_change_group": "comparison_changed",
+      "hash_source_text": "a1099a14940e140ff56abdaecaed46bb40708580e5cc128d17cd8d0859edbe8d",
+      "question": "Who was born first, Sathish Kalathil or Jacques Feyder?",
+      "question_sha256": "29fee25ba1d0cf140feffcec807ee052253df621a81ca2cdf3353b313f896c71",
+      "source_documents": {
+        "fulltext_bm25": [
+          {
+            "title": "Sathish Kalathil",
+            "indices": [
+              0,
+              1,
+              2,
+              3,
+              4
+            ],
+            "text": "[0] Sathish Kalathil (മലയാളം: ) is an Indian film and documentary Director and Producer in malayalam.\n[1] He is also Story Writer, and Lyricist.\n[2] His experimental works are well known and appropriately discussed in Malayalam Cinema industry and his debut movie Jalachhayam (2010) was well discussed according to its experimental approach.\n[3] Actually, his first venture was in 2008 named Veena Vaadanam, a documentary film about Art (Painting) and that was his first experimental entry in movie.\n[4] In 2012, he directed Laloorinu Parayanullathu, a social committed documentary film about Municipal solid waste."
+          },
+          {
+            "title": "Laloorinu Parayanullathu",
+            "indices": [
+              0,
+              1,
+              2
+            ],
+            "text": "[0] Laloorinu Parayanullathu (What Has Laloor To Say) (മലയാളം: ) is an Indian documentary film directed by Sathish Kalathil in Malayalam Language.\n[1] The documentary narrates about the problems of Municipal Garbage dumping in Laloor, a suburban area in Thrissur Municipal Corporation.\n[2] The film reveals the history of the waste dumping in Laloor since the period of Sakthan Thampuran who was the ruler of the Kingdom of Cochin and first violence against the Garbage dumping here."
+          }
+        ],
+        "linked_secondhop": [
+          {
+            "title": "Sathish Kalathil",
+            "indices": [
+              0,
+              1,
+              2,
+              3,
+              4
+            ],
+            "text": "[0] Sathish Kalathil (മലയാളം: ) is an Indian film and documentary Director and Producer in malayalam.\n[1] He is also Story Writer, and Lyricist.\n[2] His experimental works are well known and appropriately discussed in Malayalam Cinema industry and his debut movie Jalachhayam (2010) was well discussed according to its experimental approach.\n[3] Actually, his first venture was in 2008 named Veena Vaadanam, a documentary film about Art (Painting) and that was his first experimental entry in movie.\n[4] In 2012, he directed Laloorinu Parayanullathu, a social committed documentary film about Municipal solid waste."
+          },
+          {
+            "title": "Jalachhayam",
+            "indices": [
+              0,
+              1
+            ],
+            "text": "[0] Jalachhayam (മലയാളം: ) is a 2010 Indian Malayalam-language Experimental film, produced and directed by Sathish Kalathil under the banner of 'The People's Films'.\n[1] The story was written by Sujith Aalungal and describes the warm relationship between a village man and an artist (painter) from the city."
+          }
+        ]
+      },
+      "selection_hash": "1def79b6a2a3c97a5dfc0589a5a54a7925fefe59dde9a06aac0e50bbd685f219"
+    }
+  ]
+}

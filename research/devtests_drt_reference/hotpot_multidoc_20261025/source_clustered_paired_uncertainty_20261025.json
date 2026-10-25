@@ -1,0 +1,45 @@
+{
+  "method": "Post-hoc clustered uncertainty descriptive control, no new retrieval or model inference",
+  "original_frozen_pred_sha256": "3b458f9dca38f0fd6a00896928d7df98c6269297c0da4a65fd4b22dfbd76cdf8",
+  "original_external_gold_score_sha256": "6bdeaeb187816498b81ae9886b91fad78c4793c0cec8a8e84ba8e1a0a6bda15e",
+  "groups": {
+    "overall": {
+      "n_questions": 7405,
+      "first_source_clusters": 7216,
+      "largest_cluster": 3,
+      "paired_difference": 0.065091,
+      "cluster_bootstrap95": [
+        0.058092,
+        0.072296
+      ],
+      "cluster_method": "Resample distinct first-retrieved article title as cluster, carrying all questions associated with that title; random seed 20261025, n=1750"
+    },
+    "bridge": {
+      "n_questions": 5918,
+      "first_source_clusters": 5820,
+      "largest_cluster": 3,
+      "paired_difference": 0.08415,
+      "cluster_bootstrap95": [
+        0.075796,
+        0.092386
+      ],
+      "cluster_method": "Resample distinct first-retrieved article title as cluster, carrying all questions associated with that title; random seed 20261025, n=1750"
+    },
+    "comparison": {
+      "n_questions": 1487,
+      "first_source_clusters": 1400,
+      "largest_cluster": 3,
+      "paired_difference": -0.01076,
+      "cluster_bootstrap95": [
+        -0.01679,
+        -0.005405
+      ],
+      "cluster_method": "Resample distinct first-retrieved article title as cluster, carrying all questions associated with that title; random seed 20261025, n=1750"
+    }
+  },
+  "limitations": [
+    "Clusters by first retrieved Wikipedia article, not original underlying author/research experiment",
+    "Bootstrap assumes conditional exchangeability of source clusters and does not establish generalization outside HotpotQA",
+    "This controls one dependence type; no adjustment for repeated gold second sources or question paraphrases, and the source title link methods remain fixed"
+  ]
+}

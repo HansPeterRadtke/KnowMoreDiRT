@@ -1,0 +1,2298 @@
+{
+  "original_source_sha256": "4e9ecb5c8d3b719f624d66b60f8d56bf227f03914f5f0753d6fa1b359d7104ea",
+  "frozen_input_sha256": "8c5af13eb3db9b89923a37a2811082113a7e0d28e6c81921512c479d4977ccc2",
+  "verbatim_model_predictions_sha256": "e6754558804ff95078c3d0ffcce424e40b5de6c991bb59a275fa41a2e0bf445a",
+  "preselected_sample_size": 36,
+  "methods": [
+    "fulltext_bm25",
+    "linked_secondhop"
+  ],
+  "external_gold": "HotpotQA distractor development 2018, author answer and supporting article/sentence human annotations, CC BY-SA 4.0",
+  "analysis_scope": "Genuine two-document historical Wikipedia source-grounded answer by same local Qwen CPU, same fixed prompt/settings and two automatic source snippets; compare retrieval selection, NOT DRS",
+  "sham_control_equal_source_inputs": {
+    "n_identical_source_cases": 12,
+    "identical_original_input_docs": 12,
+    "identical_answer_strings": 11,
+    "identical_citation_quotes": 9,
+    "warning": "Both model methods see the same source and prompt in this group: differences are not link-induced retrieval effects."
+  },
+  "buckets": {
+    "overall": {
+      "n": 36,
+      "metrics": {
+        "fulltext_bm25": {
+          "em_n": 10,
+          "f1_avg": 0.3077,
+          "both_gold_docs": 12,
+          "any_gold_sentence": 32,
+          "source_quote_exact": 31,
+          "answer_correct_with_any_source_quote": 9,
+          "invalid_outputs": 0,
+          "total_seconds": 621.77
+        },
+        "linked_secondhop": {
+          "em_n": 10,
+          "f1_avg": 0.39223,
+          "both_gold_docs": 15,
+          "any_gold_sentence": 35,
+          "source_quote_exact": 30,
+          "answer_correct_with_any_source_quote": 10,
+          "invalid_outputs": 0,
+          "total_seconds": 542.75
+        }
+      },
+      "linked_minus_fulltext_em_paired": {
+        "wins": 3,
+        "losses": 3,
+        "ties": 30,
+        "difference": 0.0,
+        "paired_bootstrap_95CI": [
+          -0.1389,
+          0.1389
+        ],
+        "exact_mcnemar_p": 1.0
+      }
+    },
+    "bridge": {
+      "n": 24,
+      "metrics": {
+        "fulltext_bm25": {
+          "em_n": 6,
+          "f1_avg": 0.29488,
+          "both_gold_docs": 6,
+          "any_gold_sentence": 22,
+          "source_quote_exact": 21,
+          "answer_correct_with_any_source_quote": 6,
+          "invalid_outputs": 0,
+          "total_seconds": 415.17
+        },
+        "linked_secondhop": {
+          "em_n": 7,
+          "f1_avg": 0.44482,
+          "both_gold_docs": 12,
+          "any_gold_sentence": 24,
+          "source_quote_exact": 20,
+          "answer_correct_with_any_source_quote": 7,
+          "invalid_outputs": 0,
+          "total_seconds": 359.02
+        }
+      },
+      "linked_minus_fulltext_em_paired": {
+        "wins": 3,
+        "losses": 2,
+        "ties": 19,
+        "difference": 0.0417,
+        "paired_bootstrap_95CI": [
+          -0.1667,
+          0.2083
+        ],
+        "exact_mcnemar_p": 1.0
+      }
+    },
+    "bridge_same": {
+      "n": 8,
+      "metrics": {
+        "fulltext_bm25": {
+          "em_n": 1,
+          "f1_avg": 0.24773,
+          "both_gold_docs": 3,
+          "any_gold_sentence": 8,
+          "source_quote_exact": 6,
+          "answer_correct_with_any_source_quote": 1,
+          "invalid_outputs": 0,
+          "total_seconds": 123.22
+        },
+        "linked_secondhop": {
+          "em_n": 1,
+          "f1_avg": 0.225,
+          "both_gold_docs": 3,
+          "any_gold_sentence": 8,
+          "source_quote_exact": 7,
+          "answer_correct_with_any_source_quote": 1,
+          "invalid_outputs": 0,
+          "total_seconds": 87.46
+        }
+      },
+      "linked_minus_fulltext_em_paired": {
+        "wins": 0,
+        "losses": 0,
+        "ties": 8,
+        "difference": 0.0,
+        "paired_bootstrap_95CI": [
+          0.0,
+          0.0
+        ],
+        "exact_mcnemar_p": 1.0
+      }
+    },
+    "comparison": {
+      "n": 12,
+      "metrics": {
+        "fulltext_bm25": {
+          "em_n": 4,
+          "f1_avg": 0.33333,
+          "both_gold_docs": 6,
+          "any_gold_sentence": 10,
+          "source_quote_exact": 10,
+          "answer_correct_with_any_source_quote": 3,
+          "invalid_outputs": 0,
+          "total_seconds": 206.6
+        },
+        "linked_secondhop": {
+          "em_n": 3,
+          "f1_avg": 0.28704,
+          "both_gold_docs": 3,
+          "any_gold_sentence": 11,
+          "source_quote_exact": 10,
+          "answer_correct_with_any_source_quote": 3,
+          "invalid_outputs": 0,
+          "total_seconds": 183.73
+        }
+      },
+      "linked_minus_fulltext_em_paired": {
+        "wins": 0,
+        "losses": 1,
+        "ties": 11,
+        "difference": -0.0833,
+        "paired_bootstrap_95CI": [
+          -0.25,
+          0.0
+        ],
+        "exact_mcnemar_p": 1.0
+      }
+    },
+    "comparison_changed": {
+      "n": 8,
+      "metrics": {
+        "fulltext_bm25": {
+          "em_n": 3,
+          "f1_avg": 0.375,
+          "both_gold_docs": 3,
+          "any_gold_sentence": 7,
+          "source_quote_exact": 7,
+          "answer_correct_with_any_source_quote": 2,
+          "invalid_outputs": 0,
+          "total_seconds": 155.62
+        },
+        "linked_secondhop": {
+          "em_n": 2,
+          "f1_avg": 0.30556,
+          "both_gold_docs": 0,
+          "any_gold_sentence": 8,
+          "source_quote_exact": 7,
+          "answer_correct_with_any_source_quote": 2,
+          "invalid_outputs": 0,
+          "total_seconds": 140.34
+        }
+      },
+      "linked_minus_fulltext_em_paired": {
+        "wins": 0,
+        "losses": 1,
+        "ties": 7,
+        "difference": -0.125,
+        "paired_bootstrap_95CI": [
+          -0.375,
+          0.0
+        ],
+        "exact_mcnemar_p": 1.0
+      }
+    },
+    "comparison_same": {
+      "n": 4,
+      "metrics": {
+        "fulltext_bm25": {
+          "em_n": 1,
+          "f1_avg": 0.25,
+          "both_gold_docs": 3,
+          "any_gold_sentence": 3,
+          "source_quote_exact": 3,
+          "answer_correct_with_any_source_quote": 1,
+          "invalid_outputs": 0,
+          "total_seconds": 50.98
+        },
+        "linked_secondhop": {
+          "em_n": 1,
+          "f1_avg": 0.25,
+          "both_gold_docs": 3,
+          "any_gold_sentence": 3,
+          "source_quote_exact": 3,
+          "answer_correct_with_any_source_quote": 1,
+          "invalid_outputs": 0,
+          "total_seconds": 43.39
+        }
+      },
+      "linked_minus_fulltext_em_paired": {
+        "wins": 0,
+        "losses": 0,
+        "ties": 4,
+        "difference": 0.0,
+        "paired_bootstrap_95CI": [
+          0.0,
+          0.0
+        ],
+        "exact_mcnemar_p": 1.0
+      }
+    },
+    "bridge_changed": {
+      "n": 16,
+      "metrics": {
+        "fulltext_bm25": {
+          "em_n": 5,
+          "f1_avg": 0.31845,
+          "both_gold_docs": 3,
+          "any_gold_sentence": 14,
+          "source_quote_exact": 15,
+          "answer_correct_with_any_source_quote": 5,
+          "invalid_outputs": 0,
+          "total_seconds": 291.95
+        },
+        "linked_secondhop": {
+          "em_n": 6,
+          "f1_avg": 0.55473,
+          "both_gold_docs": 9,
+          "any_gold_sentence": 16,
+          "source_quote_exact": 13,
+          "answer_correct_with_any_source_quote": 6,
+          "invalid_outputs": 0,
+          "total_seconds": 271.56
+        }
+      },
+      "linked_minus_fulltext_em_paired": {
+        "wins": 3,
+        "losses": 2,
+        "ties": 11,
+        "difference": 0.0625,
+        "paired_bootstrap_95CI": [
+          -0.1875,
+          0.3125
+        ],
+        "exact_mcnemar_p": 1.0
+      }
+    }
+  },
+  "limitations": [
+    "Subset selected after earlier 7405-case retrieval-level aggregate gold was examined, but exact model-case IDs were chosen by predeclared per-id hash and rank-change group, with individual answer gold unseen until scoring",
+    "Pretrained Qwen can have seen HotpotQA gold text in training, despite user instruction to rely only on sources",
+    "Model-generated source quote validity does not prove semantic implication or correct cross-document reasoning",
+    "Both methods have oracle ten-candidate-document context and source-specific title; no full-web discovery",
+    "Not a source-vs-DRS comparison, only direct source retrieval method ablation; no scientific novelty or falsification"
+  ],
+  "cases": [
+    {
+      "uid": "5ae1f528554299234fd04370",
+      "type": "bridge",
+      "rank_change_group": "bridge_same",
+      "answer_gold": "15,023",
+      "original_gold_article_titles": [
+        "Boulder City, Nevada",
+        "Nevada State Route 582"
+      ],
+      "methods": {
+        "fulltext_bm25": {
+          "answer": "15,023",
+          "normalized_answer": "15023",
+          "em": 1,
+          "f1": 1.0,
+          "source_title": "Boulder City, Nevada",
+          "source_quote": "It is approximately 26 mi southeast of Las Vegas.",
+          "source_title_provided": true,
+          "source_quote_exact": true,
+          "both_gold_articles_in_context": true,
+          "one_gold_article_in_context": true,
+          "gold_sentence_count_in_context": 3,
+          "all_gold_sentences_in_context": true,
+          "any_gold_sentence_in_context": true,
+          "source_documents_provided": [
+            "Nevada State Route 582",
+            "Boulder City, Nevada"
+          ],
+          "seconds": 6.97,
+          "model_finish_reason": "stop",
+          "raw_output_sha256": "1b4113c2665fbe8901c5724e17946759d23ab492c97f980476368aab4cf7fcce"
+        },
+        "linked_secondhop": {
+          "answer": "15,023",
+          "normalized_answer": "15023",
+          "em": 1,
+          "f1": 1.0,
+          "source_title": "Boulder City, Nevada",
+          "source_quote": "It is approximately 26 mi southeast of Las Vegas.",
+          "source_title_provided": true,
+          "source_quote_exact": true,
+          "both_gold_articles_in_context": true,
+          "one_gold_article_in_context": true,
+          "gold_sentence_count_in_context": 3,
+          "all_gold_sentences_in_context": true,
+          "any_gold_sentence_in_context": true,
+          "source_documents_provided": [
+            "Nevada State Route 582",
+            "Boulder City, Nevada"
+          ],
+          "seconds": 18.99,
+          "model_finish_reason": "stop",
+          "raw_output_sha256": "1b4113c2665fbe8901c5724e17946759d23ab492c97f980476368aab4cf7fcce"
+        }
+      }
+    },
+    {
+      "uid": "5a7108fa5542994082a3e4ef",
+      "type": "comparison",
+      "rank_change_group": "comparison_changed",
+      "answer_gold": "Second Battle of Bull Run",
+      "original_gold_article_titles": [
+        "Battle of Cold Harbor",
+        "Second Battle of Bull Run"
+      ],
+      "methods": {
+        "fulltext_bm25": {
+          "answer": "The Second Battle of Bull Run",
+          "normalized_answer": "second battle of bull run",
+          "em": 1,
+          "f1": 1.0,
+          "source_title": "Second Battle of Bull Run",
+          "source_quote": "It was the culmination of the Northern Virginia Campaign waged by Confederate Gen. Robert E. Lee's Army of Northern Virginia against Union Maj. Gen. John Pope's Army of Virginia, and a battle of much larger scale and numbers than the First Battle of Bull Run (or \"First Manassas\") fought on July 21, 1861 on the same ground.",
+          "source_title_provided": true,
+          "source_quote_exact": true,
+          "both_gold_articles_in_context": false,
+          "one_gold_article_in_context": true,
+          "gold_sentence_count_in_context": 1,
+          "all_gold_sentences_in_context": false,
+          "any_gold_sentence_in_context": true,
+          "source_documents_provided": [
+            "Cold Harbor, Virginia",
+            "Second Battle of Bull Run"
+          ],
+          "seconds": 24.56,
+          "model_finish_reason": "stop",
+          "raw_output_sha256": "4538334624cb3356c07d087f1405180b87191c0e087213541dfd6e27e7cb6be5"
+        },
+        "linked_secondhop": {
+          "answer": "The Battle of Cold Harbor",
+          "normalized_answer": "battle of cold harbor",
+          "em": 0,
+          "f1": 0.44444,
+          "source_title": "Battle of Cold Harbor",
+          "source_quote": "The Battle of Cold Harbor was fought in the area in 1864, during the American Civil War.",
+          "source_title_provided": true,
+          "source_quote_exact": false,
+          "both_gold_articles_in_context": false,
+          "one_gold_article_in_context": true,
+          "gold_sentence_count_in_context": 1,
+          "all_gold_sentences_in_context": false,
+          "any_gold_sentence_in_context": true,
+          "source_documents_provided": [
+            "Cold Harbor, Virginia",
+            "Battle of Cold Harbor"
+          ],
+          "seconds": 13.68,
+          "model_finish_reason": "stop",
+          "raw_output_sha256": "0f722728eae5f526ea2d4e9f56d99c15415a08edcb504756714b19610aa7c4a7"
+        }
+      }
+    },
+    {
+      "uid": "5ae224da554299234fd043ee",
+      "type": "comparison",
+      "rank_change_group": "comparison_same",
+      "answer_gold": "no",
+      "original_gold_article_titles": [
+        "Gibson (cocktail)",
+        "Zurracapote"
+      ],
+      "methods": {
+        "fulltext_bm25": {
+          "answer": "unknown",
+          "normalized_answer": "unknown",
+          "em": 0,
+          "f1": 0.0,
+          "source_title": "Gibson (cocktail)",
+          "source_quote": "The Gibson is a mixed drink made with gin and vermouth",
+          "source_title_provided": true,
+          "source_quote_exact": true,
+          "both_gold_articles_in_context": true,
+          "one_gold_article_in_context": true,
+          "gold_sentence_count_in_context": 2,
+          "all_gold_sentences_in_context": true,
+          "any_gold_sentence_in_context": true,
+          "source_documents_provided": [
+            "Gibson (cocktail)",
+            "Zurracapote"
+          ],
+          "seconds": 6.51,
+          "model_finish_reason": "stop",
+          "raw_output_sha256": "004becdae6e304ea33c061050f1512c599e6a192e49daaa08845217a238cc76c"
+        },
+        "linked_secondhop": {
+          "answer": "unknown",
+          "normalized_answer": "unknown",
+          "em": 0,
+          "f1": 0.0,
+          "source_title": "Gibson (cocktail)",
+          "source_quote": "The Gibson is a mixed drink made with gin and vermouth",
+          "source_title_provided": true,
+          "source_quote_exact": true,
+          "both_gold_articles_in_context": true,
+          "one_gold_article_in_context": true,
+          "gold_sentence_count_in_context": 2,
+          "all_gold_sentences_in_context": true,
+          "any_gold_sentence_in_context": true,
+          "source_documents_provided": [
+            "Gibson (cocktail)",
+            "Zurracapote"
+          ],
+          "seconds": 13.0,
+          "model_finish_reason": "stop",
+          "raw_output_sha256": "004becdae6e304ea33c061050f1512c599e6a192e49daaa08845217a238cc76c"
+        }
+      }
+    },
+    {
+      "uid": "5adf51e05542995534e8c78a",
+      "type": "bridge",
+      "rank_change_group": "bridge_same",
+      "answer_gold": "Italian nationality law",
+      "original_gold_article_titles": [
+        "Diego Tonetto",
+        "Italian nationality law"
+      ],
+      "methods": {
+        "fulltext_bm25": {
+          "answer": "Diego Tonetto's Italian passport is called an Italian passport.",
+          "normalized_answer": "diego tonettos italian passport is called italian passport",
+          "em": 0,
+          "f1": 0.18182,
+          "source_title": "Diego Tonetto",
+          "source_quote": "He also holds an Italian passport.",
+          "source_title_provided": true,
+          "source_quote_exact": true,
+          "both_gold_articles_in_context": false,
+          "one_gold_article_in_context": true,
+          "gold_sentence_count_in_context": 1,
+          "all_gold_sentences_in_context": false,
+          "any_gold_sentence_in_context": true,
+          "source_documents_provided": [
+            "Diego Tonetto",
+            "Diego Balbinot"
+          ],
+          "seconds": 10.94,
+          "model_finish_reason": "stop",
+          "raw_output_sha256": "e8c1fc1431e39dc853f131aa679f2acb4b627f5edf4cec806b8e14dfdd11e665"
+        },
+        "linked_secondhop": {
+          "answer": "unknown",
+          "normalized_answer": "unknown",
+          "em": 0,
+          "f1": 0.0,
+          "source_title": "Diego Tonetto",
+          "source_quote": "He also holds an Italian passport.",
+          "source_title_provided": true,
+          "source_quote_exact": true,
+          "both_gold_articles_in_context": false,
+          "one_gold_article_in_context": true,
+          "gold_sentence_count_in_context": 1,
+          "all_gold_sentences_in_context": false,
+          "any_gold_sentence_in_context": true,
+          "source_documents_provided": [
+            "Diego Tonetto",
+            "Diego Balbinot"
+          ],
+          "seconds": 5.39,
+          "model_finish_reason": "stop",
+          "raw_output_sha256": "21bfd7096016d8b7cf4e9ec10627f9a719378fb47102df5801c10cf39c671917"
+        }
+      }
+    },
+    {
+      "uid": "5ae16d9655429920d52343ce",
+      "type": "bridge",
+      "rank_change_group": "bridge_same",
+      "answer_gold": "seven nights a week",
+      "original_gold_article_titles": [
+        "Coast to Coast AM",
+        "Collateral Damage (Millennium)"
+      ],
+      "methods": {
+        "fulltext_bm25": {
+          "answer": "unknown",
+          "normalized_answer": "unknown",
+          "em": 0,
+          "f1": 0.0,
+          "source_title": "Collateral Damage (Millennium)",
+          "source_quote": "and hosted a late night talk show.",
+          "source_title_provided": true,
+          "source_quote_exact": false,
+          "both_gold_articles_in_context": false,
+          "one_gold_article_in_context": true,
+          "gold_sentence_count_in_context": 3,
+          "all_gold_sentences_in_context": false,
+          "any_gold_sentence_in_context": true,
+          "source_documents_provided": [
+            "Collateral Damage (Millennium)",
+            "Joey Bishop"
+          ],
+          "seconds": 16.8,
+          "model_finish_reason": "stop",
+          "raw_output_sha256": "bd0a2db6a4ce5cdee50ceae39ffcaf076e9e5b2dc7c18aa06fc9619f7493c21a"
+        },
+        "linked_secondhop": {
+          "answer": "unknown",
+          "normalized_answer": "unknown",
+          "em": 0,
+          "f1": 0.0,
+          "source_title": "Collateral Damage (Millennium)",
+          "source_quote": "The episode was written by Michael R. Perry, and directed by Thomas J. Wright.",
+          "source_title_provided": true,
+          "source_quote_exact": true,
+          "both_gold_articles_in_context": false,
+          "one_gold_article_in_context": true,
+          "gold_sentence_count_in_context": 3,
+          "all_gold_sentences_in_context": false,
+          "any_gold_sentence_in_context": true,
+          "source_documents_provided": [
+            "Collateral Damage (Millennium)",
+            "Joey Bishop"
+          ],
+          "seconds": 7.47,
+          "model_finish_reason": "stop",
+          "raw_output_sha256": "c236b33765062d7bcec4222b86a4876474dee89eaf7047042dcc9245ffca95a0"
+        }
+      }
+    },
+    {
+      "uid": "5a89a82c5542993b751ca973",
+      "type": "comparison",
+      "rank_change_group": "comparison_same",
+      "answer_gold": "Kristin Hersh",
+      "original_gold_article_titles": [
+        "Kristin Hersh",
+        "Mike Patton"
+      ],
+      "methods": {
+        "fulltext_bm25": {
+          "answer": "Kristin Hersh",
+          "normalized_answer": "kristin hersh",
+          "em": 1,
+          "f1": 1.0,
+          "source_title": "Kristin Hersh",
+          "source_quote": "She has released ten solo albums.",
+          "source_title_provided": true,
+          "source_quote_exact": true,
+          "both_gold_articles_in_context": true,
+          "one_gold_article_in_context": true,
+          "gold_sentence_count_in_context": 3,
+          "all_gold_sentences_in_context": true,
+          "any_gold_sentence_in_context": true,
+          "source_documents_provided": [
+            "Mike Patton",
+            "Kristin Hersh"
+          ],
+          "seconds": 5.7,
+          "model_finish_reason": "stop",
+          "raw_output_sha256": "37f69a2bf5682f1a10235d78fb7bc657036e469654276a29579692cade05be08"
+        },
+        "linked_secondhop": {
+          "answer": "Kristin Hersh",
+          "normalized_answer": "kristin hersh",
+          "em": 1,
+          "f1": 1.0,
+          "source_title": "Kristin Hersh",
+          "source_quote": "She has released ten solo albums.",
+          "source_title_provided": true,
+          "source_quote_exact": true,
+          "both_gold_articles_in_context": true,
+          "one_gold_article_in_context": true,
+          "gold_sentence_count_in_context": 3,
+          "all_gold_sentences_in_context": true,
+          "any_gold_sentence_in_context": true,
+          "source_documents_provided": [
+            "Mike Patton",
+            "Kristin Hersh"
+          ],
+          "seconds": 13.89,
+          "model_finish_reason": "stop",
+          "raw_output_sha256": "37f69a2bf5682f1a10235d78fb7bc657036e469654276a29579692cade05be08"
+        }
+      }
+    },
+    {
+      "uid": "5a77a4fd5542997042120abc",
+      "type": "bridge",
+      "rank_change_group": "bridge_same",
+      "answer_gold": "Samuel Eto'o Fils",
+      "original_gold_article_titles": [
+        "Kadji Sports Academy",
+        "Samuel Eto'o"
+      ],
+      "methods": {
+        "fulltext_bm25": {
+          "answer": "Samuel Eto'o",
+          "normalized_answer": "samuel etoo",
+          "em": 0,
+          "f1": 0.8,
+          "source_title": "Samuel Eto'o",
+          "source_quote": "He is the most decorated African player of all time, having won the African Player of the Year award a record four times: in 2003, 2004, 2005 and 2010.",
+          "source_title_provided": true,
+          "source_quote_exact": true,
+          "both_gold_articles_in_context": false,
+          "one_gold_article_in_context": true,
+          "gold_sentence_count_in_context": 2,
+          "all_gold_sentences_in_context": false,
+          "any_gold_sentence_in_context": true,
+          "source_documents_provided": [
+            "Samuel Eto'o",
+            "George Weah"
+          ],
+          "seconds": 26.97,
+          "model_finish_reason": "stop",
+          "raw_output_sha256": "6dee545c584888a95810b73eaf19fb5b951dab38e0e9bbada990add4b7793430"
+        },
+        "linked_secondhop": {
+          "answer": "Samuel Eto'o",
+          "normalized_answer": "samuel etoo",
+          "em": 0,
+          "f1": 0.8,
+          "source_title": "Samuel Eto'o",
+          "source_quote": "He is the most decorated African player of all time, having won the African Player of the Year award a record four times: in 2003, 2004, 2005 and 2010.",
+          "source_title_provided": true,
+          "source_quote_exact": true,
+          "both_gold_articles_in_context": false,
+          "one_gold_article_in_context": true,
+          "gold_sentence_count_in_context": 2,
+          "all_gold_sentences_in_context": false,
+          "any_gold_sentence_in_context": true,
+          "source_documents_provided": [
+            "Samuel Eto'o",
+            "George Weah"
+          ],
+          "seconds": 12.77,
+          "model_finish_reason": "stop",
+          "raw_output_sha256": "6dee545c584888a95810b73eaf19fb5b951dab38e0e9bbada990add4b7793430"
+        }
+      }
+    },
+    {
+      "uid": "5ae20427554299234fd04397",
+      "type": "bridge",
+      "rank_change_group": "bridge_same",
+      "answer_gold": "Suffolk",
+      "original_gold_article_titles": [
+        "Holbrook, New York",
+        "Sachem School District"
+      ],
+      "methods": {
+        "fulltext_bm25": {
+          "answer": "Nassau County",
+          "normalized_answer": "nassau county",
+          "em": 0,
+          "f1": 0.0,
+          "source_title": "WSHR",
+          "source_quote": "This school district owned radio station can be heard throughout Suffolk County and parts of Nassau County.",
+          "source_title_provided": true,
+          "source_quote_exact": true,
+          "both_gold_articles_in_context": false,
+          "one_gold_article_in_context": true,
+          "gold_sentence_count_in_context": 1,
+          "all_gold_sentences_in_context": false,
+          "any_gold_sentence_in_context": true,
+          "source_documents_provided": [
+            "WSHR",
+            "Sachem School District"
+          ],
+          "seconds": 18.86,
+          "model_finish_reason": "stop",
+          "raw_output_sha256": "23f7be19daaf61c6ec21d587e46a6cdaf1ddf56bce4c0d9be5e3cf897e6f7633"
+        },
+        "linked_secondhop": {
+          "answer": "Nassau County",
+          "normalized_answer": "nassau county",
+          "em": 0,
+          "f1": 0.0,
+          "source_title": "WSHR",
+          "source_quote": "This school district owned radio station can be heard throughout Suffolk County and parts of Nassau County.",
+          "source_title_provided": true,
+          "source_quote_exact": true,
+          "both_gold_articles_in_context": false,
+          "one_gold_article_in_context": true,
+          "gold_sentence_count_in_context": 1,
+          "all_gold_sentences_in_context": false,
+          "any_gold_sentence_in_context": true,
+          "source_documents_provided": [
+            "WSHR",
+            "Sachem School District"
+          ],
+          "seconds": 7.17,
+          "model_finish_reason": "stop",
+          "raw_output_sha256": "23f7be19daaf61c6ec21d587e46a6cdaf1ddf56bce4c0d9be5e3cf897e6f7633"
+        }
+      }
+    },
+    {
+      "uid": "5a8cee9b554299441c6b9f87",
+      "type": "bridge",
+      "rank_change_group": "bridge_same",
+      "answer_gold": "GE Appliances",
+      "original_gold_article_titles": [
+        "GE Appliances",
+        "Hotpoint"
+      ],
+      "methods": {
+        "fulltext_bm25": {
+          "answer": "Hotpoint",
+          "normalized_answer": "hotpoint",
+          "em": 0,
+          "f1": 0.0,
+          "source_title": "Hotpoint",
+          "source_quote": "It is one of the largest appliance brands in the United States.",
+          "source_title_provided": true,
+          "source_quote_exact": false,
+          "both_gold_articles_in_context": true,
+          "one_gold_article_in_context": true,
+          "gold_sentence_count_in_context": 2,
+          "all_gold_sentences_in_context": true,
+          "any_gold_sentence_in_context": true,
+          "source_documents_provided": [
+            "Hotpoint",
+            "GE Appliances"
+          ],
+          "seconds": 6.78,
+          "model_finish_reason": "stop",
+          "raw_output_sha256": "4c4d96b82ef829852fa680a83143039894954ea8b2c533e61e7729110048b038"
+        },
+        "linked_secondhop": {
+          "answer": "Hotpoint",
+          "normalized_answer": "hotpoint",
+          "em": 0,
+          "f1": 0.0,
+          "source_title": "Hotpoint",
+          "source_quote": "It is one of the largest appliance brands in the United States.",
+          "source_title_provided": true,
+          "source_quote_exact": false,
+          "both_gold_articles_in_context": true,
+          "one_gold_article_in_context": true,
+          "gold_sentence_count_in_context": 2,
+          "all_gold_sentences_in_context": true,
+          "any_gold_sentence_in_context": true,
+          "source_documents_provided": [
+            "Hotpoint",
+            "GE Appliances"
+          ],
+          "seconds": 14.09,
+          "model_finish_reason": "stop",
+          "raw_output_sha256": "4c4d96b82ef829852fa680a83143039894954ea8b2c533e61e7729110048b038"
+        }
+      }
+    },
+    {
+      "uid": "5ab6f9335542991d322236fc",
+      "type": "comparison",
+      "rank_change_group": "comparison_same",
+      "answer_gold": "yes",
+      "original_gold_article_titles": [
+        "Ana Kasparian",
+        "Katherine Sarafian"
+      ],
+      "methods": {
+        "fulltext_bm25": {
+          "answer": "unknown",
+          "normalized_answer": "unknown",
+          "em": 0,
+          "f1": 0.0,
+          "source_title": "Ana Kasparian",
+          "source_quote": "She is, as of 2012, co-host of the main show and host of 'The Point' on the TYT Network.",
+          "source_title_provided": true,
+          "source_quote_exact": false,
+          "both_gold_articles_in_context": true,
+          "one_gold_article_in_context": true,
+          "gold_sentence_count_in_context": 2,
+          "all_gold_sentences_in_context": true,
+          "any_gold_sentence_in_context": true,
+          "source_documents_provided": [
+            "Ana Kasparian",
+            "Katherine Sarafian"
+          ],
+          "seconds": 19.14,
+          "model_finish_reason": "stop",
+          "raw_output_sha256": "f0ec973912a06e2d794b62f9f1aaa9db07e870598a2f88afdcb8da3d9d9ecdd5"
+        },
+        "linked_secondhop": {
+          "answer": "unknown",
+          "normalized_answer": "unknown",
+          "em": 0,
+          "f1": 0.0,
+          "source_title": "Ana Kasparian",
+          "source_quote": "She is, as of 2012, co-host of the main show and host of 'The Point' on the TYT Network.",
+          "source_title_provided": true,
+          "source_quote_exact": false,
+          "both_gold_articles_in_context": true,
+          "one_gold_article_in_context": true,
+          "gold_sentence_count_in_context": 2,
+          "all_gold_sentences_in_context": true,
+          "any_gold_sentence_in_context": true,
+          "source_documents_provided": [
+            "Ana Kasparian",
+            "Katherine Sarafian"
+          ],
+          "seconds": 8.69,
+          "model_finish_reason": "stop",
+          "raw_output_sha256": "f0ec973912a06e2d794b62f9f1aaa9db07e870598a2f88afdcb8da3d9d9ecdd5"
+        }
+      }
+    },
+    {
+      "uid": "5abbf7d755429931dba145eb",
+      "type": "bridge",
+      "rank_change_group": "bridge_same",
+      "answer_gold": "explosives",
+      "original_gold_article_titles": [
+        "ICI House",
+        "Orica"
+      ],
+      "methods": {
+        "fulltext_bm25": {
+          "answer": "ICI Laboratory",
+          "normalized_answer": "ici laboratory",
+          "em": 0,
+          "f1": 0.0,
+          "source_title": "ICI Laboratory",
+          "source_quote": "The resulting cloth is heavy, wrinkle-resistant and retains its shape well.",
+          "source_title_provided": true,
+          "source_quote_exact": true,
+          "both_gold_articles_in_context": false,
+          "one_gold_article_in_context": true,
+          "gold_sentence_count_in_context": 1,
+          "all_gold_sentences_in_context": false,
+          "any_gold_sentence_in_context": true,
+          "source_documents_provided": [
+            "ICI House",
+            "ICI Laboratory"
+          ],
+          "seconds": 15.75,
+          "model_finish_reason": "stop",
+          "raw_output_sha256": "99c6ef715f9e4b10856cb454901a7c859530b6bc821eef7e38d4431cd1595674"
+        },
+        "linked_secondhop": {
+          "answer": "ICI Laboratory",
+          "normalized_answer": "ici laboratory",
+          "em": 0,
+          "f1": 0.0,
+          "source_title": "ICI House",
+          "source_quote": "It symbolised progress, modernity, efficiency and corporate power in postwar Melbourne, and heralded the construction of the high-rise office buildings, changing the shape of Australia's major urban centres forever.",
+          "source_title_provided": true,
+          "source_quote_exact": true,
+          "both_gold_articles_in_context": false,
+          "one_gold_article_in_context": true,
+          "gold_sentence_count_in_context": 1,
+          "all_gold_sentences_in_context": false,
+          "any_gold_sentence_in_context": true,
+          "source_documents_provided": [
+            "ICI House",
+            "ICI Laboratory"
+          ],
+          "seconds": 10.16,
+          "model_finish_reason": "stop",
+          "raw_output_sha256": "ecc5f20249ea5c2e9bc3dee9b90f2154f39e30c8d5df9c9ce90f1efbb8c08acf"
+        }
+      }
+    },
+    {
+      "uid": "5ae31bbd55429928c42395fc",
+      "type": "comparison",
+      "rank_change_group": "comparison_same",
+      "answer_gold": "yes",
+      "original_gold_article_titles": [
+        "Guildford Cathedral",
+        "St Paul's Cathedral"
+      ],
+      "methods": {
+        "fulltext_bm25": {
+          "answer": "unknown",
+          "normalized_answer": "unknown",
+          "em": 0,
+          "f1": 0.0,
+          "source_title": "St Paul's Cathedral, Rockhampton",
+          "source_quote": "It was designed principally by Annersley Voysey and built from 1883 to 1953.",
+          "source_title_provided": true,
+          "source_quote_exact": true,
+          "both_gold_articles_in_context": false,
+          "one_gold_article_in_context": false,
+          "gold_sentence_count_in_context": 0,
+          "all_gold_sentences_in_context": false,
+          "any_gold_sentence_in_context": false,
+          "source_documents_provided": [
+            "St Paul's Cathedral, Rockhampton",
+            "St Paul's Anglican Cathedral Hall, Rockhampton"
+          ],
+          "seconds": 19.63,
+          "model_finish_reason": "stop",
+          "raw_output_sha256": "fbb830f4ad55385aede05fb2dfa6279541bf8092ccaf94c21d14bcc3380ed2ad"
+        },
+        "linked_secondhop": {
+          "answer": "unknown",
+          "normalized_answer": "unknown",
+          "em": 0,
+          "f1": 0.0,
+          "source_title": "St Paul's Cathedral, Rockhampton",
+          "source_quote": "It is also known as St Paul's Church of England and St Paul's Church of England Cathedral.",
+          "source_title_provided": true,
+          "source_quote_exact": true,
+          "both_gold_articles_in_context": false,
+          "one_gold_article_in_context": false,
+          "gold_sentence_count_in_context": 0,
+          "all_gold_sentences_in_context": false,
+          "any_gold_sentence_in_context": false,
+          "source_documents_provided": [
+            "St Paul's Cathedral, Rockhampton",
+            "St Paul's Anglican Cathedral Hall, Rockhampton"
+          ],
+          "seconds": 7.81,
+          "model_finish_reason": "stop",
+          "raw_output_sha256": "16903cdecdfbd9c4b63c46db9f542f8d061b68b0103835df9bd19650651d9f67"
+        }
+      }
+    },
+    {
+      "uid": "5ab48ec25542991779162cdc",
+      "type": "bridge",
+      "rank_change_group": "bridge_same",
+      "answer_gold": "Spurs",
+      "original_gold_article_titles": [
+        "Len Worley",
+        "Tottenham Hotspur F.C."
+      ],
+      "methods": {
+        "fulltext_bm25": {
+          "answer": "Tottenham",
+          "normalized_answer": "tottenham",
+          "em": 0,
+          "f1": 0.0,
+          "source_title": "Tottenham Hotspur F.C.",
+          "source_quote": "Tottenham Hotspur Football Club, commonly referred to simply as Tottenham ( ) or Spurs, is an English football club located in Tottenham, Haringey, London, that competes in the Premier League.",
+          "source_title_provided": true,
+          "source_quote_exact": true,
+          "both_gold_articles_in_context": true,
+          "one_gold_article_in_context": true,
+          "gold_sentence_count_in_context": 2,
+          "all_gold_sentences_in_context": true,
+          "any_gold_sentence_in_context": true,
+          "source_documents_provided": [
+            "Len Worley",
+            "Tottenham Hotspur F.C."
+          ],
+          "seconds": 20.15,
+          "model_finish_reason": "stop",
+          "raw_output_sha256": "7b374641661297adcf3fa6cf7f1ef538f5f4dd9f6aff33890082f315772e92bc"
+        },
+        "linked_secondhop": {
+          "answer": "Tottenham",
+          "normalized_answer": "tottenham",
+          "em": 0,
+          "f1": 0.0,
+          "source_title": "Tottenham Hotspur F.C.",
+          "source_quote": "Tottenham Hotspur Football Club, commonly referred to simply as Tottenham ( ) or Spurs, is an English football club located in Tottenham, Haringey, London, that competes in the Premier League.",
+          "source_title_provided": true,
+          "source_quote_exact": true,
+          "both_gold_articles_in_context": true,
+          "one_gold_article_in_context": true,
+          "gold_sentence_count_in_context": 2,
+          "all_gold_sentences_in_context": true,
+          "any_gold_sentence_in_context": true,
+          "source_documents_provided": [
+            "Len Worley",
+            "Tottenham Hotspur F.C."
+          ],
+          "seconds": 11.42,
+          "model_finish_reason": "stop",
+          "raw_output_sha256": "7b374641661297adcf3fa6cf7f1ef538f5f4dd9f6aff33890082f315772e92bc"
+        }
+      }
+    },
+    {
+      "uid": "5ab3fa095542992ade7c6f0a",
+      "type": "bridge",
+      "rank_change_group": "bridge_changed",
+      "answer_gold": "79 AD",
+      "original_gold_article_titles": [
+        "Herculaneum",
+        "Louis XVI style"
+      ],
+      "methods": {
+        "fulltext_bm25": {
+          "answer": "unknown",
+          "normalized_answer": "unknown",
+          "em": 0,
+          "f1": 0.0,
+          "source_title": "Louis XVI style",
+          "source_quote": "it often thought to encompass nearly twice that many (1750-1800)",
+          "source_title_provided": true,
+          "source_quote_exact": true,
+          "both_gold_articles_in_context": false,
+          "one_gold_article_in_context": true,
+          "gold_sentence_count_in_context": 1,
+          "all_gold_sentences_in_context": false,
+          "any_gold_sentence_in_context": true,
+          "source_documents_provided": [
+            "Louis XVI style",
+            "Temple of Apollo (Pompeii)"
+          ],
+          "seconds": 18.78,
+          "model_finish_reason": "stop",
+          "raw_output_sha256": "7d4a3cd26fc58f3340b4a9eb9dee6d74c3abeee1c1e45fa3603788f3064a0463"
+        },
+        "linked_secondhop": {
+          "answer": "79 AD",
+          "normalized_answer": "79 ad",
+          "em": 1,
+          "f1": 1.0,
+          "source_title": "Herculaneum",
+          "source_quote": "Its ruins are located in the \"comune\" of Ercolano, Campania, Italy.",
+          "source_title_provided": true,
+          "source_quote_exact": true,
+          "both_gold_articles_in_context": true,
+          "one_gold_article_in_context": true,
+          "gold_sentence_count_in_context": 2,
+          "all_gold_sentences_in_context": true,
+          "any_gold_sentence_in_context": true,
+          "source_documents_provided": [
+            "Louis XVI style",
+            "Herculaneum"
+          ],
+          "seconds": 13.24,
+          "model_finish_reason": "stop",
+          "raw_output_sha256": "eb1e9af6950c08409ebb05effabb63cc3a30cf59f93593f179016f4e02546483"
+        }
+      }
+    },
+    {
+      "uid": "5a74551555429974ef308bd9",
+      "type": "bridge",
+      "rank_change_group": "bridge_changed",
+      "answer_gold": "100 countries",
+      "original_gold_article_titles": [
+        "Ashland Inc.",
+        "Oil Can Henry's"
+      ],
+      "methods": {
+        "fulltext_bm25": {
+          "answer": "5",
+          "normalized_answer": "5",
+          "em": 0,
+          "f1": 0.0,
+          "source_title": "Oil Can Henry's",
+          "source_quote": "Prior to being bought by Ashland Inc. in 2015, the company operated as a franchisor, and had locations in Oregon, Washington, Idaho, California, Arizona, Colorado and Minnesota.",
+          "source_title_provided": true,
+          "source_quote_exact": true,
+          "both_gold_articles_in_context": false,
+          "one_gold_article_in_context": true,
+          "gold_sentence_count_in_context": 1,
+          "all_gold_sentences_in_context": false,
+          "any_gold_sentence_in_context": true,
+          "source_documents_provided": [
+            "Oil Can Henry's",
+            "Magnolia Petroleum Company"
+          ],
+          "seconds": 21.86,
+          "model_finish_reason": "stop",
+          "raw_output_sha256": "33d8e4f7db555e8ce3e579fba7c472803e99246980113fd7fa9680fdd044b598"
+        },
+        "linked_secondhop": {
+          "answer": "100",
+          "normalized_answer": "100",
+          "em": 0,
+          "f1": 0.66667,
+          "source_title": "Oil Can Henry's",
+          "source_quote": "Ashland Inc. is an American chemical company which operates in more than 100 countries.",
+          "source_title_provided": true,
+          "source_quote_exact": false,
+          "both_gold_articles_in_context": true,
+          "one_gold_article_in_context": true,
+          "gold_sentence_count_in_context": 2,
+          "all_gold_sentences_in_context": true,
+          "any_gold_sentence_in_context": true,
+          "source_documents_provided": [
+            "Oil Can Henry's",
+            "Ashland Inc."
+          ],
+          "seconds": 13.93,
+          "model_finish_reason": "stop",
+          "raw_output_sha256": "5edbb9b1f77a31bdb71394b5292aaeb9c535241dfc402efc59b47039d18414f6"
+        }
+      }
+    },
+    {
+      "uid": "5a8013e45542995d8a8ddf41",
+      "type": "bridge",
+      "rank_change_group": "bridge_changed",
+      "answer_gold": "North Sea",
+      "original_gold_article_titles": [
+        "Allardice Castle",
+        "Cowie Castle"
+      ],
+      "methods": {
+        "fulltext_bm25": {
+          "answer": "North Sea",
+          "normalized_answer": "north sea",
+          "em": 1,
+          "f1": 1.0,
+          "source_title": "Allardice Castle",
+          "source_quote": "The Bervie Water flows around Allardice Castle on both sides.",
+          "source_title_provided": true,
+          "source_quote_exact": true,
+          "both_gold_articles_in_context": false,
+          "one_gold_article_in_context": true,
+          "gold_sentence_count_in_context": 1,
+          "all_gold_sentences_in_context": false,
+          "any_gold_sentence_in_context": true,
+          "source_documents_provided": [
+            "Allardice Castle",
+            "Cowie Bridge"
+          ],
+          "seconds": 19.55,
+          "model_finish_reason": "stop",
+          "raw_output_sha256": "5247dd85a28e4be1b3a6575beb4c5becdab653057c7056d712b91ff5daf85acf"
+        },
+        "linked_secondhop": {
+          "answer": "the North Sea",
+          "normalized_answer": "north sea",
+          "em": 1,
+          "f1": 1.0,
+          "source_title": "Bervie Water",
+          "source_quote": "The Bothenoth Burn (Burn of Healing) joins the Bervie Water to the east of Arbuthnott House.",
+          "source_title_provided": true,
+          "source_quote_exact": true,
+          "both_gold_articles_in_context": false,
+          "one_gold_article_in_context": true,
+          "gold_sentence_count_in_context": 1,
+          "all_gold_sentences_in_context": false,
+          "any_gold_sentence_in_context": true,
+          "source_documents_provided": [
+            "Allardice Castle",
+            "Bervie Water"
+          ],
+          "seconds": 15.59,
+          "model_finish_reason": "stop",
+          "raw_output_sha256": "89ef9e4d76954549f201ca673adfe12b6a285b89554685043d36d800a3f33824"
+        }
+      }
+    },
+    {
+      "uid": "5ab8372255429919ba4e226b",
+      "type": "bridge",
+      "rank_change_group": "bridge_changed",
+      "answer_gold": "Fleetwood Mac",
+      "original_gold_article_titles": [
+        "Blue Letter",
+        "Fleetwood Mac"
+      ],
+      "methods": {
+        "fulltext_bm25": {
+          "answer": "Fleetwood Mac",
+          "normalized_answer": "fleetwood mac",
+          "em": 1,
+          "f1": 1.0,
+          "source_title": "Blue Letter",
+          "source_quote": "Fleetwood Mac performed \"Blue Letter\" on every tour for 1975–1990.",
+          "source_title_provided": true,
+          "source_quote_exact": true,
+          "both_gold_articles_in_context": false,
+          "one_gold_article_in_context": true,
+          "gold_sentence_count_in_context": 1,
+          "all_gold_sentences_in_context": false,
+          "any_gold_sentence_in_context": true,
+          "source_documents_provided": [
+            "Blue Letter",
+            "The Spirit of Radio"
+          ],
+          "seconds": 23.51,
+          "model_finish_reason": "stop",
+          "raw_output_sha256": "16247706ce6279fe99cdd15e1406efd2431ce8c87d17d04e597e3578334a3e1b"
+        },
+        "linked_secondhop": {
+          "answer": "Fleetwood Mac",
+          "normalized_answer": "fleetwood mac",
+          "em": 1,
+          "f1": 1.0,
+          "source_title": "Fleetwood Mac",
+          "source_quote": "In 1998, selected members of Fleetwood Mac were inducted into the Rock and Roll Hall of Fame, and received the Brit Award for Outstanding Contribution to Music.",
+          "source_title_provided": true,
+          "source_quote_exact": true,
+          "both_gold_articles_in_context": true,
+          "one_gold_article_in_context": true,
+          "gold_sentence_count_in_context": 2,
+          "all_gold_sentences_in_context": true,
+          "any_gold_sentence_in_context": true,
+          "source_documents_provided": [
+            "Blue Letter",
+            "Fleetwood Mac"
+          ],
+          "seconds": 16.37,
+          "model_finish_reason": "stop",
+          "raw_output_sha256": "338fb54ad0a82a5404afa37b1fb1b97e41b950d25ef1e7b81b208f6569e7c481"
+        }
+      }
+    },
+    {
+      "uid": "5ade3e69554299728e26c68d",
+      "type": "bridge",
+      "rank_change_group": "bridge_changed",
+      "answer_gold": "American",
+      "original_gold_article_titles": [
+        "Hellyeah",
+        "Mudvayne"
+      ],
+      "methods": {
+        "fulltext_bm25": {
+          "answer": "unknown",
+          "normalized_answer": "unknown",
+          "em": 0,
+          "f1": 0.0,
+          "source_title": "Hellyeah (album)",
+          "source_quote": "Hellyeah is the debut album by the heavy metal band Hellyeah, featuring various members of Pantera, Mudvayne, Damageplan and Nothingface.",
+          "source_title_provided": true,
+          "source_quote_exact": true,
+          "both_gold_articles_in_context": false,
+          "one_gold_article_in_context": false,
+          "gold_sentence_count_in_context": 0,
+          "all_gold_sentences_in_context": false,
+          "any_gold_sentence_in_context": false,
+          "source_documents_provided": [
+            "Hellyeah (album)",
+            "Audiotopsy (band)"
+          ],
+          "seconds": 12.23,
+          "model_finish_reason": "stop",
+          "raw_output_sha256": "b8d4e16f30f54b87335833c6caf579aaf18a45aa966c05c6cb8b1cd60bca3750"
+        },
+        "linked_secondhop": {
+          "answer": "unknown",
+          "normalized_answer": "unknown",
+          "em": 0,
+          "f1": 0.0,
+          "source_title": "Hellyeah (album)",
+          "source_quote": "Hellyeah is the debut album by the heavy metal band Hellyeah, featuring various members of Pantera, Mudvayne, Damageplan and Nothingface.",
+          "source_title_provided": true,
+          "source_quote_exact": true,
+          "both_gold_articles_in_context": false,
+          "one_gold_article_in_context": true,
+          "gold_sentence_count_in_context": 1,
+          "all_gold_sentences_in_context": false,
+          "any_gold_sentence_in_context": true,
+          "source_documents_provided": [
+            "Hellyeah (album)",
+            "Hellyeah"
+          ],
+          "seconds": 16.33,
+          "model_finish_reason": "stop",
+          "raw_output_sha256": "b8d4e16f30f54b87335833c6caf579aaf18a45aa966c05c6cb8b1cd60bca3750"
+        }
+      }
+    },
+    {
+      "uid": "5a89a74e554299669944a562",
+      "type": "bridge",
+      "rank_change_group": "bridge_changed",
+      "answer_gold": "Oliver Parker",
+      "original_gold_article_titles": [
+        "Johnny English (film series)",
+        "Johnny English Reborn"
+      ],
+      "methods": {
+        "fulltext_bm25": {
+          "answer": "Oliver Parker",
+          "normalized_answer": "oliver parker",
+          "em": 1,
+          "f1": 1.0,
+          "source_title": "Johnny English Reborn",
+          "source_quote": "The film is the sequel to \"Johnny English\" (2003), and stars Rowan Atkinson reprising his role as the title character and directed by Oliver Parker.",
+          "source_title_provided": true,
+          "source_quote_exact": true,
+          "both_gold_articles_in_context": true,
+          "one_gold_article_in_context": true,
+          "gold_sentence_count_in_context": 4,
+          "all_gold_sentences_in_context": true,
+          "any_gold_sentence_in_context": true,
+          "source_documents_provided": [
+            "Johnny English Reborn",
+            "Johnny English (film series)"
+          ],
+          "seconds": 17.21,
+          "model_finish_reason": "stop",
+          "raw_output_sha256": "c4f7f963a9d8c7e9cdea1d83afcaa880454c7af89a4dc404f7c8314b210af5d4"
+        },
+        "linked_secondhop": {
+          "answer": "Peter Howitt",
+          "normalized_answer": "peter howitt",
+          "em": 0,
+          "f1": 0.0,
+          "source_title": "Johnny English",
+          "source_quote": "The screenplay was written by Bond writers Neal Purvis and Robert Wade, with William Davies, and the film was directed by Peter Howitt.",
+          "source_title_provided": true,
+          "source_quote_exact": true,
+          "both_gold_articles_in_context": false,
+          "one_gold_article_in_context": true,
+          "gold_sentence_count_in_context": 1,
+          "all_gold_sentences_in_context": false,
+          "any_gold_sentence_in_context": true,
+          "source_documents_provided": [
+            "Johnny English Reborn",
+            "Johnny English"
+          ],
+          "seconds": 17.52,
+          "model_finish_reason": "stop",
+          "raw_output_sha256": "2bb70b437780034a6d89e9ce2e94b95c8054d0822255c715f6206564e6bb875c"
+        }
+      }
+    },
+    {
+      "uid": "5a7bbee85542997c3ec97270",
+      "type": "bridge",
+      "rank_change_group": "bridge_changed",
+      "answer_gold": "Jordan Ridgeway",
+      "original_gold_article_titles": [
+        "Chrishell Stause",
+        "Rafe Hernandez"
+      ],
+      "methods": {
+        "fulltext_bm25": {
+          "answer": "Yes",
+          "normalized_answer": "yes",
+          "em": 0,
+          "f1": 0.0,
+          "source_title": "Rafe Hernandez",
+          "source_quote": "Rafe also has an affair with Kate Roberts (Lauren Koslow) putting him at odds with Stefano, Kate's ex-husband.",
+          "source_title_provided": true,
+          "source_quote_exact": true,
+          "both_gold_articles_in_context": true,
+          "one_gold_article_in_context": true,
+          "gold_sentence_count_in_context": 2,
+          "all_gold_sentences_in_context": true,
+          "any_gold_sentence_in_context": true,
+          "source_documents_provided": [
+            "Rafe Hernandez",
+            "Chrishell Stause"
+          ],
+          "seconds": 13.02,
+          "model_finish_reason": "stop",
+          "raw_output_sha256": "5fc88ae7a9db4a3c246f9de00c59a44ab685a055182eebcc253f8899ee5d4c5e"
+        },
+        "linked_secondhop": {
+          "answer": "Yes",
+          "normalized_answer": "yes",
+          "em": 0,
+          "f1": 0.0,
+          "source_title": "Rafe Hernandez",
+          "source_quote": "Rafe also has an affair with Kate Roberts (Lauren Koslow) putting him at odds with Stefano, Kate's ex-husband.",
+          "source_title_provided": true,
+          "source_quote_exact": true,
+          "both_gold_articles_in_context": false,
+          "one_gold_article_in_context": true,
+          "gold_sentence_count_in_context": 1,
+          "all_gold_sentences_in_context": false,
+          "any_gold_sentence_in_context": true,
+          "source_documents_provided": [
+            "Rafe Hernandez",
+            "Jordan Ridgeway"
+          ],
+          "seconds": 20.52,
+          "model_finish_reason": "stop",
+          "raw_output_sha256": "5fc88ae7a9db4a3c246f9de00c59a44ab685a055182eebcc253f8899ee5d4c5e"
+        }
+      }
+    },
+    {
+      "uid": "5ae4f96755429913cc204551",
+      "type": "bridge",
+      "rank_change_group": "bridge_changed",
+      "answer_gold": "1787",
+      "original_gold_article_titles": [
+        "Ndlela kaSompisi",
+        "Shaka"
+      ],
+      "methods": {
+        "fulltext_bm25": {
+          "answer": "unknown",
+          "normalized_answer": "unknown",
+          "em": 0,
+          "f1": 0.0,
+          "source_title": "Battle of Maqongqo",
+          "source_quote": "The Zulu king Dingane was challenged for the throne by his brother Mpande, in alliance with Boer settlers led by Andries Pretorius.",
+          "source_title_provided": true,
+          "source_quote_exact": true,
+          "both_gold_articles_in_context": false,
+          "one_gold_article_in_context": true,
+          "gold_sentence_count_in_context": 1,
+          "all_gold_sentences_in_context": false,
+          "any_gold_sentence_in_context": true,
+          "source_documents_provided": [
+            "Ndlela kaSompisi",
+            "Battle of Maqongqo"
+          ],
+          "seconds": 14.89,
+          "model_finish_reason": "stop",
+          "raw_output_sha256": "513f69559d0f87a12bd813bd3191d496bc4040f8c048d96fd9e5ba9400bf4914"
+        },
+        "linked_secondhop": {
+          "answer": "1787",
+          "normalized_answer": "1787",
+          "em": 1,
+          "f1": 1.0,
+          "source_title": "Shaka",
+          "source_quote": "Shaka kaSenzangakhona (c. 1787 – 22 September 1828), also known as Shaka Zulu (] ), was one of the most influential monarchs of the Zulu Kingdom.",
+          "source_title_provided": true,
+          "source_quote_exact": true,
+          "both_gold_articles_in_context": true,
+          "one_gold_article_in_context": true,
+          "gold_sentence_count_in_context": 2,
+          "all_gold_sentences_in_context": true,
+          "any_gold_sentence_in_context": true,
+          "source_documents_provided": [
+            "Ndlela kaSompisi",
+            "Shaka"
+          ],
+          "seconds": 20.69,
+          "model_finish_reason": "stop",
+          "raw_output_sha256": "382eb112e63025269692cec1dd8783aaa43fc2364c8fe16bf0bea091b04cf668"
+        }
+      }
+    },
+    {
+      "uid": "5a8ec02e5542995a26add501",
+      "type": "bridge",
+      "rank_change_group": "bridge_changed",
+      "answer_gold": "Check It Out!",
+      "original_gold_article_titles": [
+        "Abso Lutely Productions",
+        "Check It Out! with Dr. Steve Brule"
+      ],
+      "methods": {
+        "fulltext_bm25": {
+          "answer": "The Meltdown with Jonah and Kumail",
+          "normalized_answer": "meltdown with jonah and kumail",
+          "em": 0,
+          "f1": 0.0,
+          "source_title": "Kate Berlant",
+          "source_quote": "She is known for appearing on 'The Meltdown with Jonah and Kumail' and starring in an episode of the Netflix original series ''",
+          "source_title_provided": true,
+          "source_quote_exact": false,
+          "both_gold_articles_in_context": false,
+          "one_gold_article_in_context": false,
+          "gold_sentence_count_in_context": 0,
+          "all_gold_sentences_in_context": false,
+          "any_gold_sentence_in_context": false,
+          "source_documents_provided": [
+            "Bagboy (TV special)",
+            "Kate Berlant"
+          ],
+          "seconds": 22.25,
+          "model_finish_reason": "stop",
+          "raw_output_sha256": "69244a146371e511ba52508981144cc6022e7c167336add266753b73a0115192"
+        },
+        "linked_secondhop": {
+          "answer": "Tim and Eric Awesome Show, Great Job!",
+          "normalized_answer": "tim and eric awesome show great job",
+          "em": 0,
+          "f1": 0.0,
+          "source_title": "Abso Lutely Productions",
+          "source_quote": "It is known for producing the long-running series \"Tim and Eric Awesome Show, Great Job! \"",
+          "source_title_provided": true,
+          "source_quote_exact": false,
+          "both_gold_articles_in_context": false,
+          "one_gold_article_in_context": true,
+          "gold_sentence_count_in_context": 2,
+          "all_gold_sentences_in_context": false,
+          "any_gold_sentence_in_context": true,
+          "source_documents_provided": [
+            "Bagboy (TV special)",
+            "Abso Lutely Productions"
+          ],
+          "seconds": 13.38,
+          "model_finish_reason": "stop",
+          "raw_output_sha256": "095c27f1ac694aa4c12075513ed6370992091e5724e54f260001a97a4ea05c08"
+        }
+      }
+    },
+    {
+      "uid": "5ade9545554299728e26c740",
+      "type": "bridge",
+      "rank_change_group": "bridge_changed",
+      "answer_gold": "Geelong Football Club",
+      "original_gold_article_titles": [
+        "2007 Brownlow Medal",
+        "Jimmy Bartel"
+      ],
+      "methods": {
+        "fulltext_bm25": {
+          "answer": "Geelong Football Club",
+          "normalized_answer": "geelong football club",
+          "em": 1,
+          "f1": 1.0,
+          "source_title": "2007 Brownlow Medal",
+          "source_quote": "Jimmy Bartel of the Geelong Football Club won the medal by polling twenty-nine votes during the 2007 AFL season.",
+          "source_title_provided": true,
+          "source_quote_exact": true,
+          "both_gold_articles_in_context": false,
+          "one_gold_article_in_context": true,
+          "gold_sentence_count_in_context": 1,
+          "all_gold_sentences_in_context": false,
+          "any_gold_sentence_in_context": true,
+          "source_documents_provided": [
+            "2007 Brownlow Medal",
+            "2006 Brownlow Medal"
+          ],
+          "seconds": 18.19,
+          "model_finish_reason": "stop",
+          "raw_output_sha256": "ad55383ec6c7c80a785a15915266fe156eaaa791edc745f8635636b4d1b23fee"
+        },
+        "linked_secondhop": {
+          "answer": "Geelong Football Club",
+          "normalized_answer": "geelong football club",
+          "em": 1,
+          "f1": 1.0,
+          "source_title": "2007 Brownlow Medal",
+          "source_quote": "Jimmy Bartel of the Geelong Football Club won the medal by polling twenty-nine votes during the 2007 AFL season.",
+          "source_title_provided": true,
+          "source_quote_exact": true,
+          "both_gold_articles_in_context": true,
+          "one_gold_article_in_context": true,
+          "gold_sentence_count_in_context": 2,
+          "all_gold_sentences_in_context": true,
+          "any_gold_sentence_in_context": true,
+          "source_documents_provided": [
+            "2007 Brownlow Medal",
+            "Jimmy Bartel"
+          ],
+          "seconds": 13.39,
+          "model_finish_reason": "stop",
+          "raw_output_sha256": "ad55383ec6c7c80a785a15915266fe156eaaa791edc745f8635636b4d1b23fee"
+        }
+      }
+    },
+    {
+      "uid": "5ae4cb2f55429960a22e01e8",
+      "type": "bridge",
+      "rank_change_group": "bridge_changed",
+      "answer_gold": "Linda Maria Ronstadt",
+      "original_gold_article_titles": [
+        "J. D. Souther",
+        "Linda Ronstadt"
+      ],
+      "methods": {
+        "fulltext_bm25": {
+          "answer": "unknown",
+          "normalized_answer": "unknown",
+          "em": 0,
+          "f1": 0.0,
+          "source_title": "They Call the Wind Maria",
+          "source_quote": "It has since become a standard, performed by many notable singers across several genres of popular music.",
+          "source_title_provided": true,
+          "source_quote_exact": true,
+          "both_gold_articles_in_context": false,
+          "one_gold_article_in_context": true,
+          "gold_sentence_count_in_context": 1,
+          "all_gold_sentences_in_context": false,
+          "any_gold_sentence_in_context": true,
+          "source_documents_provided": [
+            "J. D. Souther",
+            "They Call the Wind Maria"
+          ],
+          "seconds": 15.22,
+          "model_finish_reason": "stop",
+          "raw_output_sha256": "99583c7db172a6bf4beccd62fa0dc6873a24f0d20a54f5e2e1cdba4143b82fc9"
+        },
+        "linked_secondhop": {
+          "answer": "Linda Ronstadt",
+          "normalized_answer": "linda ronstadt",
+          "em": 0,
+          "f1": 0.8,
+          "source_title": "Linda Ronstadt",
+          "source_quote": "She has earned 11 Grammy Awards, three American Music Awards, two Academy of Country Music awards, an Emmy Award, and an ALMA Award, and many of her albums have been certified gold, platinum or multiplatinum in the United States and internationally.",
+          "source_title_provided": true,
+          "source_quote_exact": true,
+          "both_gold_articles_in_context": true,
+          "one_gold_article_in_context": true,
+          "gold_sentence_count_in_context": 2,
+          "all_gold_sentences_in_context": true,
+          "any_gold_sentence_in_context": true,
+          "source_documents_provided": [
+            "J. D. Souther",
+            "Linda Ronstadt"
+          ],
+          "seconds": 20.94,
+          "model_finish_reason": "stop",
+          "raw_output_sha256": "acdef8c0065ac17f533cd73bb8b86438ee6e21d0a2c9c49c7842c4e2c2d084cb"
+        }
+      }
+    },
+    {
+      "uid": "5ae2098e5542997f29b3c21b",
+      "type": "bridge",
+      "rank_change_group": "bridge_changed",
+      "answer_gold": "duck",
+      "original_gold_article_titles": [
+        "Common pochard",
+        "Hardley Flood"
+      ],
+      "methods": {
+        "fulltext_bm25": {
+          "answer": "goose",
+          "normalized_answer": "goose",
+          "em": 0,
+          "f1": 0.0,
+          "source_title": "Hardley Flood",
+          "source_quote": "It is an area of shallow lagoons and reedbeds acting as a spillway for the River Chet.",
+          "source_title_provided": true,
+          "source_quote_exact": true,
+          "both_gold_articles_in_context": false,
+          "one_gold_article_in_context": true,
+          "gold_sentence_count_in_context": 1,
+          "all_gold_sentences_in_context": false,
+          "any_gold_sentence_in_context": true,
+          "source_documents_provided": [
+            "Hardley Flood",
+            "Palmer Hay Flats State Game Refuge"
+          ],
+          "seconds": 14.03,
+          "model_finish_reason": "stop",
+          "raw_output_sha256": "4384504f6c6eedef1daa11f5b4d844e2f084a9d5ed26b9bf088c27187bfbff98"
+        },
+        "linked_secondhop": {
+          "answer": "goose",
+          "normalized_answer": "goose",
+          "em": 0,
+          "f1": 0.0,
+          "source_title": "Hardley Flood",
+          "source_quote": "It is an area of shallow lagoons and reedbeds acting as a spillway for the River Chet.",
+          "source_title_provided": true,
+          "source_quote_exact": true,
+          "both_gold_articles_in_context": false,
+          "one_gold_article_in_context": true,
+          "gold_sentence_count_in_context": 1,
+          "all_gold_sentences_in_context": false,
+          "any_gold_sentence_in_context": true,
+          "source_documents_provided": [
+            "Hardley Flood",
+            "River Chet"
+          ],
+          "seconds": 20.72,
+          "model_finish_reason": "stop",
+          "raw_output_sha256": "4384504f6c6eedef1daa11f5b4d844e2f084a9d5ed26b9bf088c27187bfbff98"
+        }
+      }
+    },
+    {
+      "uid": "5a8b595855429949d91db563",
+      "type": "bridge",
+      "rank_change_group": "bridge_changed",
+      "answer_gold": "1992",
+      "original_gold_article_titles": [
+        "Arvas",
+        "Gorgoroth"
+      ],
+      "methods": {
+        "fulltext_bm25": {
+          "answer": "1993",
+          "normalized_answer": "1993",
+          "em": 0,
+          "f1": 0.0,
+          "source_title": "Arvas",
+          "source_quote": "Arvas, formerly known as Örth, is a Norwegian black metal band formed in Bergen in 1993 as a one-man project by multi musician V-Rex.",
+          "source_title_provided": true,
+          "source_quote_exact": true,
+          "both_gold_articles_in_context": false,
+          "one_gold_article_in_context": true,
+          "gold_sentence_count_in_context": 1,
+          "all_gold_sentences_in_context": false,
+          "any_gold_sentence_in_context": true,
+          "source_documents_provided": [
+            "Arvas",
+            "Joe Raposo (bassist)"
+          ],
+          "seconds": 24.5,
+          "model_finish_reason": "stop",
+          "raw_output_sha256": "313876e8e95bb9013317d3e967da5a919448b0aa1440ca724554d4c497c8416b"
+        },
+        "linked_secondhop": {
+          "answer": "1992",
+          "normalized_answer": "1992",
+          "em": 1,
+          "f1": 1.0,
+          "source_title": "Gorgoroth",
+          "source_quote": "It was formed in 1992 by guitarist Infernus, who is also the only original member remaining, and the band have since released nine studio albums.",
+          "source_title_provided": true,
+          "source_quote_exact": true,
+          "both_gold_articles_in_context": true,
+          "one_gold_article_in_context": true,
+          "gold_sentence_count_in_context": 2,
+          "all_gold_sentences_in_context": true,
+          "any_gold_sentence_in_context": true,
+          "source_documents_provided": [
+            "Arvas",
+            "Gorgoroth"
+          ],
+          "seconds": 14.75,
+          "model_finish_reason": "stop",
+          "raw_output_sha256": "9f4fa7f939592743b76d921d675429b7b909db603dc782c0a0b475ada184532d"
+        }
+      }
+    },
+    {
+      "uid": "5aba9db7554299232ef4a361",
+      "type": "bridge",
+      "rank_change_group": "bridge_changed",
+      "answer_gold": "for crafting and voting on legislation",
+      "original_gold_article_titles": [
+        "Kansas House of Representatives",
+        "Tom Holland (politician)"
+      ],
+      "methods": {
+        "fulltext_bm25": {
+          "answer": "Tom Holland was responsible for representing the 3rd District in the Kansas Senate from 2003 to 2008.",
+          "normalized_answer": "tom holland was responsible for representing 3rd district in kansas senate from 2003 to 2008",
+          "em": 0,
+          "f1": 0.09524,
+          "source_title": "Tom Holland (politician)",
+          "source_quote": "He was a member of the Kansas House of Representatives from 2003 to 2008.",
+          "source_title_provided": true,
+          "source_quote_exact": true,
+          "both_gold_articles_in_context": false,
+          "one_gold_article_in_context": true,
+          "gold_sentence_count_in_context": 1,
+          "all_gold_sentences_in_context": false,
+          "any_gold_sentence_in_context": true,
+          "source_documents_provided": [
+            "Tom Holland (politician)",
+            "Tom Rasmussen"
+          ],
+          "seconds": 23.02,
+          "model_finish_reason": "stop",
+          "raw_output_sha256": "916305caad6b9f43d1c558176245362fdbe81fc226f94419edcd8cdd4bf9f8d0"
+        },
+        "linked_secondhop": {
+          "answer": "crafting and voting on legislation",
+          "normalized_answer": "crafting and voting on legislation",
+          "em": 0,
+          "f1": 0.90909,
+          "source_title": "Kansas House of Representatives",
+          "source_quote": "Its members are responsible for crafting and voting on legislation",
+          "source_title_provided": true,
+          "source_quote_exact": false,
+          "both_gold_articles_in_context": true,
+          "one_gold_article_in_context": true,
+          "gold_sentence_count_in_context": 2,
+          "all_gold_sentences_in_context": true,
+          "any_gold_sentence_in_context": true,
+          "source_documents_provided": [
+            "Tom Holland (politician)",
+            "Kansas House of Representatives"
+          ],
+          "seconds": 10.81,
+          "model_finish_reason": "stop",
+          "raw_output_sha256": "80ffc7f5ab521ac041d211911e96689436abd76efdc1862a7e49160b17645284"
+        }
+      }
+    },
+    {
+      "uid": "5a79caad5542994f819ef09f",
+      "type": "bridge",
+      "rank_change_group": "bridge_changed",
+      "answer_gold": "Matthew Ryan Kemp",
+      "original_gold_article_titles": [
+        "2007 Los Angeles Dodgers season",
+        "Matt Kemp"
+      ],
+      "methods": {
+        "fulltext_bm25": {
+          "answer": "James Loney",
+          "normalized_answer": "james loney",
+          "em": 0,
+          "f1": 0.0,
+          "source_title": "2007 Los Angeles Dodgers season",
+          "source_quote": "Two of the teams big free agent signings, pitchers Jason Schmidt and Randy Wolf were injured and missed most of the season.",
+          "source_title_provided": true,
+          "source_quote_exact": true,
+          "both_gold_articles_in_context": false,
+          "one_gold_article_in_context": true,
+          "gold_sentence_count_in_context": 2,
+          "all_gold_sentences_in_context": false,
+          "any_gold_sentence_in_context": true,
+          "source_documents_provided": [
+            "2007 Los Angeles Dodgers season",
+            "Joel Guzmán"
+          ],
+          "seconds": 18.29,
+          "model_finish_reason": "stop",
+          "raw_output_sha256": "df6b3d76750138d93e219816f89e157df8af66df4f8ccc27579209dfd6fba205"
+        },
+        "linked_secondhop": {
+          "answer": "James Loney",
+          "normalized_answer": "james loney",
+          "em": 0,
+          "f1": 0.0,
+          "source_title": "2007 Los Angeles Dodgers season",
+          "source_quote": "Two of the teams big free agent signings, pitchers Jason Schmidt and Randy Wolf were injured and missed most of the season.",
+          "source_title_provided": true,
+          "source_quote_exact": true,
+          "both_gold_articles_in_context": true,
+          "one_gold_article_in_context": true,
+          "gold_sentence_count_in_context": 3,
+          "all_gold_sentences_in_context": true,
+          "any_gold_sentence_in_context": true,
+          "source_documents_provided": [
+            "2007 Los Angeles Dodgers season",
+            "Matt Kemp"
+          ],
+          "seconds": 20.7,
+          "model_finish_reason": "stop",
+          "raw_output_sha256": "df6b3d76750138d93e219816f89e157df8af66df4f8ccc27579209dfd6fba205"
+        }
+      }
+    },
+    {
+      "uid": "5ae55e6855429960a22e02d0",
+      "type": "bridge",
+      "rank_change_group": "bridge_changed",
+      "answer_gold": "March 9, 1961",
+      "original_gold_article_titles": [
+        "2008 Texas Tech Red Raiders football team",
+        "Mike Leach (American football coach)"
+      ],
+      "methods": {
+        "fulltext_bm25": {
+          "answer": "March 9, 1961",
+          "normalized_answer": "march 9 1961",
+          "em": 1,
+          "f1": 1.0,
+          "source_title": "2008 Texas Tech Red Raiders football team",
+          "source_quote": "The 2008 Texas Tech Red Raiders football team represented Texas Tech University in the 2008 NCAA Division I FBS football season.",
+          "source_title_provided": true,
+          "source_quote_exact": true,
+          "both_gold_articles_in_context": true,
+          "one_gold_article_in_context": true,
+          "gold_sentence_count_in_context": 2,
+          "all_gold_sentences_in_context": true,
+          "any_gold_sentence_in_context": true,
+          "source_documents_provided": [
+            "Mike Leach (American football coach)",
+            "2008 Texas Tech Red Raiders football team"
+          ],
+          "seconds": 15.4,
+          "model_finish_reason": "stop",
+          "raw_output_sha256": "7d9fc5801fde59c76aad101d680457d56094fffe93b56b86cfafa771003d802f"
+        },
+        "linked_secondhop": {
+          "answer": "1961",
+          "normalized_answer": "1961",
+          "em": 0,
+          "f1": 0.5,
+          "source_title": "Mike Leach (American football coach)",
+          "source_quote": "Michael Charles Leach (born March 9, 1961)",
+          "source_title_provided": true,
+          "source_quote_exact": true,
+          "both_gold_articles_in_context": false,
+          "one_gold_article_in_context": true,
+          "gold_sentence_count_in_context": 1,
+          "all_gold_sentences_in_context": false,
+          "any_gold_sentence_in_context": true,
+          "source_documents_provided": [
+            "Mike Leach (American football coach)",
+            "Texas Tech Red Raiders football"
+          ],
+          "seconds": 22.68,
+          "model_finish_reason": "stop",
+          "raw_output_sha256": "02d8dbbe6b6be3e39c1f66067954305d502ecec4a5132dd24b92cf594b883bec"
+        }
+      }
+    },
+    {
+      "uid": "5a8835245542994846c1ce27",
+      "type": "comparison",
+      "rank_change_group": "comparison_changed",
+      "answer_gold": "no",
+      "original_gold_article_titles": [
+        "Curve (magazine)",
+        "Tropical Fish Hobbyist"
+      ],
+      "methods": {
+        "fulltext_bm25": {
+          "answer": "unknown",
+          "normalized_answer": "unknown",
+          "em": 0,
+          "f1": 0.0,
+          "source_title": "Tropical Fish Hobbyist",
+          "source_quote": "Tropical Fish Hobbyist Magazine (abbreviated as \"TFH Magazine\") is a bi-monthly magazine geared to hobbyist keepers of tropical fish, with news and information on a variety of topics including: Care & Maintenance, Aquascaping, Husbandry, Health and Breeding, Species Reports, Aquarium Technology, Aquarium Science, Exploration & Collecting.",
+          "source_title_provided": true,
+          "source_quote_exact": true,
+          "both_gold_articles_in_context": false,
+          "one_gold_article_in_context": true,
+          "gold_sentence_count_in_context": 1,
+          "all_gold_sentences_in_context": false,
+          "any_gold_sentence_in_context": true,
+          "source_documents_provided": [
+            "Tropical Fish Hobbyist",
+            "Curve fitting"
+          ],
+          "seconds": 22.05,
+          "model_finish_reason": "stop",
+          "raw_output_sha256": "0c1be98ca27ce31e10a21ce1d116998a34526d562fa5255968125c5b163a906d"
+        },
+        "linked_secondhop": {
+          "answer": "unknown",
+          "normalized_answer": "unknown",
+          "em": 0,
+          "f1": 0.0,
+          "source_title": "Tropical Fish Hobbyist",
+          "source_quote": "Tropical Fish Hobbyist Magazine (abbreviated as \"TFH Magazine\") is a bi-monthly magazine geared to hobbyist keepers of tropical fish, with news and information on a variety of topics including: Care & Maintenance, Aquascaping, Husbandry, Health and Breeding, Species Reports, Aquarium Technology, Aquarium Science, Exploration & Collecting.",
+          "source_title_provided": true,
+          "source_quote_exact": true,
+          "both_gold_articles_in_context": false,
+          "one_gold_article_in_context": true,
+          "gold_sentence_count_in_context": 1,
+          "all_gold_sentences_in_context": false,
+          "any_gold_sentence_in_context": true,
+          "source_documents_provided": [
+            "Tropical Fish Hobbyist",
+            "Tropical fish"
+          ],
+          "seconds": 21.21,
+          "model_finish_reason": "stop",
+          "raw_output_sha256": "0c1be98ca27ce31e10a21ce1d116998a34526d562fa5255968125c5b163a906d"
+        }
+      }
+    },
+    {
+      "uid": "5ac2ada255429967731025f9",
+      "type": "comparison",
+      "rank_change_group": "comparison_changed",
+      "answer_gold": "yes",
+      "original_gold_article_titles": [
+        "Howard Zieff",
+        "Rudolf Schwarzkogler"
+      ],
+      "methods": {
+        "fulltext_bm25": {
+          "answer": "unknown",
+          "normalized_answer": "unknown",
+          "em": 0,
+          "f1": 0.0,
+          "source_title": "Rudolf Schwarzkogler",
+          "source_quote": "Rudolf Schwarzkogler (13 November 1940, Vienna – 20 June 1969, Vienna) was an Austrian performance artist closely associated with the Viennese Actionism group that included artists Günter Brus, Otto Mühl, and Hermann Nitsch.",
+          "source_title_provided": true,
+          "source_quote_exact": true,
+          "both_gold_articles_in_context": true,
+          "one_gold_article_in_context": true,
+          "gold_sentence_count_in_context": 2,
+          "all_gold_sentences_in_context": true,
+          "any_gold_sentence_in_context": true,
+          "source_documents_provided": [
+            "Rudolf Schwarzkogler",
+            "Howard Zieff"
+          ],
+          "seconds": 21.24,
+          "model_finish_reason": "stop",
+          "raw_output_sha256": "750bdf34fd6664a5a7ef8b01d93ff4a6473dd4b68ee8b5da395b8012f99bf062"
+        },
+        "linked_secondhop": {
+          "answer": "unknown",
+          "normalized_answer": "unknown",
+          "em": 0,
+          "f1": 0.0,
+          "source_title": "Rudolf Schwarzkogler",
+          "source_quote": "Rudolf Schwarzkogler (13 November 1940, Vienna – 20 June 1969, Vienna) was an Austrian performance artist closely associated with the Viennese Actionism group that included artists Günter Brus, Otto Mühl, and Hermann Nitsch.",
+          "source_title_provided": true,
+          "source_quote_exact": true,
+          "both_gold_articles_in_context": false,
+          "one_gold_article_in_context": true,
+          "gold_sentence_count_in_context": 1,
+          "all_gold_sentences_in_context": false,
+          "any_gold_sentence_in_context": true,
+          "source_documents_provided": [
+            "Rudolf Schwarzkogler",
+            "Viennese Actionism"
+          ],
+          "seconds": 21.21,
+          "model_finish_reason": "stop",
+          "raw_output_sha256": "750bdf34fd6664a5a7ef8b01d93ff4a6473dd4b68ee8b5da395b8012f99bf062"
+        }
+      }
+    },
+    {
+      "uid": "5a89f6235542993b751ca9c7",
+      "type": "comparison",
+      "rank_change_group": "comparison_changed",
+      "answer_gold": "yes",
+      "original_gold_article_titles": [
+        "Alvin Lee",
+        "Chad Gray"
+      ],
+      "methods": {
+        "fulltext_bm25": {
+          "answer": "unknown",
+          "normalized_answer": "unknown",
+          "em": 0,
+          "f1": 0.0,
+          "source_title": "Chad Gray",
+          "source_quote": "Chad Gray (born October 16, 1971), is the lead vocalist for the groove metal supergroup Hellyeah and former lead vocalist for American heavy metal band Mudvayne.",
+          "source_title_provided": true,
+          "source_quote_exact": true,
+          "both_gold_articles_in_context": false,
+          "one_gold_article_in_context": true,
+          "gold_sentence_count_in_context": 1,
+          "all_gold_sentences_in_context": false,
+          "any_gold_sentence_in_context": true,
+          "source_documents_provided": [
+            "Chad Gray",
+            "Beautiful Monsters Tour"
+          ],
+          "seconds": 20.42,
+          "model_finish_reason": "stop",
+          "raw_output_sha256": "cfa24f8077021fa2c251927b08b74589707c0f8ec7876afc373a3464043cdf88"
+        },
+        "linked_secondhop": {
+          "answer": "unknown",
+          "normalized_answer": "unknown",
+          "em": 0,
+          "f1": 0.0,
+          "source_title": "Chad Gray",
+          "source_quote": "Chad Gray (born October 16, 1971), is the lead vocalist for the groove metal supergroup Hellyeah and former lead vocalist for American heavy metal band Mudvayne.",
+          "source_title_provided": true,
+          "source_quote_exact": true,
+          "both_gold_articles_in_context": false,
+          "one_gold_article_in_context": true,
+          "gold_sentence_count_in_context": 1,
+          "all_gold_sentences_in_context": false,
+          "any_gold_sentence_in_context": true,
+          "source_documents_provided": [
+            "Chad Gray",
+            "Hellyeah"
+          ],
+          "seconds": 15.88,
+          "model_finish_reason": "stop",
+          "raw_output_sha256": "cfa24f8077021fa2c251927b08b74589707c0f8ec7876afc373a3464043cdf88"
+        }
+      }
+    },
+    {
+      "uid": "5abed9435542994516f45457",
+      "type": "comparison",
+      "rank_change_group": "comparison_changed",
+      "answer_gold": "Tron",
+      "original_gold_article_titles": [
+        "The Million Dollar Duck",
+        "Tron"
+      ],
+      "methods": {
+        "fulltext_bm25": {
+          "answer": "Tron",
+          "normalized_answer": "tron",
+          "em": 1,
+          "f1": 1.0,
+          "source_title": "Tron",
+          "source_quote": "The film stars Jeff Bridges as a computer programmer who is transported inside the software world of a mainframe computer where he interacts with programs in his attempt to escape.",
+          "source_title_provided": true,
+          "source_quote_exact": true,
+          "both_gold_articles_in_context": true,
+          "one_gold_article_in_context": true,
+          "gold_sentence_count_in_context": 3,
+          "all_gold_sentences_in_context": true,
+          "any_gold_sentence_in_context": true,
+          "source_documents_provided": [
+            "Tron",
+            "The Million Dollar Duck"
+          ],
+          "seconds": 17.26,
+          "model_finish_reason": "stop",
+          "raw_output_sha256": "ebf96a6334f83bf68e500b0e1ed09d2b228dd2761059bd4ad1c499b8e11ea7f4"
+        },
+        "linked_secondhop": {
+          "answer": "Tron",
+          "normalized_answer": "tron",
+          "em": 1,
+          "f1": 1.0,
+          "source_title": "Tron",
+          "source_quote": "The film stars Jeff Bridges as a computer programmer who is transported inside the software world of a mainframe computer where he interacts with programs in his attempt to escape.",
+          "source_title_provided": true,
+          "source_quote_exact": true,
+          "both_gold_articles_in_context": false,
+          "one_gold_article_in_context": true,
+          "gold_sentence_count_in_context": 2,
+          "all_gold_sentences_in_context": false,
+          "any_gold_sentence_in_context": true,
+          "source_documents_provided": [
+            "Tron",
+            "Programmer"
+          ],
+          "seconds": 13.24,
+          "model_finish_reason": "stop",
+          "raw_output_sha256": "ebf96a6334f83bf68e500b0e1ed09d2b228dd2761059bd4ad1c499b8e11ea7f4"
+        }
+      }
+    },
+    {
+      "uid": "5a79c9395542994bb94570a2",
+      "type": "comparison",
+      "rank_change_group": "comparison_changed",
+      "answer_gold": "singer, songwriter",
+      "original_gold_article_titles": [
+        "Annie Lennox",
+        "Ronnie Dunn"
+      ],
+      "methods": {
+        "fulltext_bm25": {
+          "answer": "singer-songwriter",
+          "normalized_answer": "singersongwriter",
+          "em": 0,
+          "f1": 0.0,
+          "source_title": "The Annie Lennox Collection",
+          "source_quote": "The Annie Lennox Collection is the first greatest hits album by the Scottish singer-songwriter Annie Lennox.",
+          "source_title_provided": true,
+          "source_quote_exact": true,
+          "both_gold_articles_in_context": false,
+          "one_gold_article_in_context": false,
+          "gold_sentence_count_in_context": 0,
+          "all_gold_sentences_in_context": false,
+          "any_gold_sentence_in_context": false,
+          "source_documents_provided": [
+            "The Annie Lennox Collection",
+            "Step by Step (Annie Lennox song)"
+          ],
+          "seconds": 18.57,
+          "model_finish_reason": "stop",
+          "raw_output_sha256": "e54e796e32b3c13c2ead57c6b0105bde32b66f2cdc5e72b6ddc61791e418676c"
+        },
+        "linked_secondhop": {
+          "answer": "singer-songwriter",
+          "normalized_answer": "singersongwriter",
+          "em": 0,
+          "f1": 0.0,
+          "source_title": "The Annie Lennox Collection",
+          "source_quote": "The Annie Lennox Collection is the first greatest hits album by the Scottish singer-songwriter Annie Lennox.",
+          "source_title_provided": true,
+          "source_quote_exact": true,
+          "both_gold_articles_in_context": false,
+          "one_gold_article_in_context": true,
+          "gold_sentence_count_in_context": 1,
+          "all_gold_sentences_in_context": false,
+          "any_gold_sentence_in_context": true,
+          "source_documents_provided": [
+            "The Annie Lennox Collection",
+            "Annie Lennox"
+          ],
+          "seconds": 14.84,
+          "model_finish_reason": "stop",
+          "raw_output_sha256": "e54e796e32b3c13c2ead57c6b0105bde32b66f2cdc5e72b6ddc61791e418676c"
+        }
+      }
+    },
+    {
+      "uid": "5a72abb95542992359bc3162",
+      "type": "comparison",
+      "rank_change_group": "comparison_changed",
+      "answer_gold": "Smith!",
+      "original_gold_article_titles": [
+        "Cars 3",
+        "Smith!"
+      ],
+      "methods": {
+        "fulltext_bm25": {
+          "answer": "Smith!",
+          "normalized_answer": "smith",
+          "em": 1,
+          "f1": 1.0,
+          "source_title": "Smith!",
+          "source_quote": "1969 is a western film starring Glenn Ford and directed by Michael O'Herlihy.",
+          "source_title_provided": true,
+          "source_quote_exact": false,
+          "both_gold_articles_in_context": true,
+          "one_gold_article_in_context": true,
+          "gold_sentence_count_in_context": 3,
+          "all_gold_sentences_in_context": true,
+          "any_gold_sentence_in_context": true,
+          "source_documents_provided": [
+            "Cars 3",
+            "Smith!"
+          ],
+          "seconds": 14.79,
+          "model_finish_reason": "stop",
+          "raw_output_sha256": "f07b366206d897cd8089dfa49a91138f16dc801af84e8b5491f33469aaec79b4"
+        },
+        "linked_secondhop": {
+          "answer": "Smith!",
+          "normalized_answer": "smith",
+          "em": 1,
+          "f1": 1.0,
+          "source_title": "Cars 3",
+          "source_quote": "Cars 3 is a 2017 American 3D computer-animated auto racing sports comedy adventure film produced by Pixar and released by Walt Disney Pictures.",
+          "source_title_provided": true,
+          "source_quote_exact": true,
+          "both_gold_articles_in_context": false,
+          "one_gold_article_in_context": true,
+          "gold_sentence_count_in_context": 1,
+          "all_gold_sentences_in_context": false,
+          "any_gold_sentence_in_context": true,
+          "source_documents_provided": [
+            "Cars 3",
+            "Lightning McQueen"
+          ],
+          "seconds": 18.32,
+          "model_finish_reason": "stop",
+          "raw_output_sha256": "0a7e963646809dd9f309b0f7488e07ddda60487ad538627c924c841a76b5c35d"
+        }
+      }
+    },
+    {
+      "uid": "5a7aa0a55542990198eaf165",
+      "type": "comparison",
+      "rank_change_group": "comparison_changed",
+      "answer_gold": "Jacques Feyder",
+      "original_gold_article_titles": [
+        "Jacques Feyder",
+        "Sathish Kalathil"
+      ],
+      "methods": {
+        "fulltext_bm25": {
+          "answer": "unknown",
+          "normalized_answer": "unknown",
+          "em": 0,
+          "f1": 0.0,
+          "source_title": "Sathish Kalathil",
+          "source_quote": "Actually, his first venture was in 2008 named Veena Vaadanam, a documentary film about Art (Painting) and that was his first experimental entry in movie.",
+          "source_title_provided": true,
+          "source_quote_exact": true,
+          "both_gold_articles_in_context": false,
+          "one_gold_article_in_context": true,
+          "gold_sentence_count_in_context": 1,
+          "all_gold_sentences_in_context": false,
+          "any_gold_sentence_in_context": true,
+          "source_documents_provided": [
+            "Sathish Kalathil",
+            "Laloorinu Parayanullathu"
+          ],
+          "seconds": 16.73,
+          "model_finish_reason": "stop",
+          "raw_output_sha256": "f2cb7f705d1702e2f3e51cf9ba2c3f885b6bc81a4364b0294d4ff827f9e748f7"
+        },
+        "linked_secondhop": {
+          "answer": "unknown",
+          "normalized_answer": "unknown",
+          "em": 0,
+          "f1": 0.0,
+          "source_title": "Sathish Kalathil",
+          "source_quote": "Actually, his first venture was in 2008 named Veena Vaadanam, a documentary film about Art (Painting) and that was his first experimental entry in movie.",
+          "source_title_provided": true,
+          "source_quote_exact": true,
+          "both_gold_articles_in_context": false,
+          "one_gold_article_in_context": true,
+          "gold_sentence_count_in_context": 1,
+          "all_gold_sentences_in_context": false,
+          "any_gold_sentence_in_context": true,
+          "source_documents_provided": [
+            "Sathish Kalathil",
+            "Jalachhayam"
+          ],
+          "seconds": 21.96,
+          "model_finish_reason": "stop",
+          "raw_output_sha256": "f2cb7f705d1702e2f3e51cf9ba2c3f885b6bc81a4364b0294d4ff827f9e748f7"
+        }
+      }
+    }
+  ]
+}

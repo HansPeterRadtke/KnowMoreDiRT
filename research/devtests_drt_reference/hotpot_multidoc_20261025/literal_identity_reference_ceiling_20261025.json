@@ -1,0 +1,382 @@
+{
+  "original_source_sha256": "4e9ecb5c8d3b719f624d66b60f8d56bf227f03914f5f0753d6fa1b359d7104ea",
+  "original_frozen_predictions_sha256": "3b458f9dca38f0fd6a00896928d7df98c6269297c0da4a65fd4b22dfbd76cdf8",
+  "posthoc_gold_score_sha256": "6bdeaeb187816498b81ae9886b91fad78c4793c0cec8a8e84ba8e1a0a6bda15e",
+  "note": "After-gold retrieval ceiling analysis; source actual first chosen from model-free fulltext BM25; gold other Wikipedia title exact string present/absent in first article body. Identity aliases may still be present; do not label all absent titles as semantically unlinked.",
+  "bridge_cases": 5918,
+  "counts": {
+    "first_ranked_article_right": 5165,
+    "literal_present_linked_missed_gold": 72,
+    "gold_other_article_name_explicitly_in_first_source": 1080,
+    "literal_absent_linked_selected_gold": 1684,
+    "gold_other_article_name_not_literal_in_first_source": 4085,
+    "literal_present_linked_selected_gold": 1008,
+    "literal_absent_linked_missed_gold": 2401,
+    "first_ranked_article_wrong": 753
+  },
+  "fraction_gold_other_title_not_literal_given_first_gold": 0.7909,
+  "case_examples": {
+    "literal_present_linked_missed_gold": [
+      {
+        "uid": "5adf39ce5542995534e8c76d",
+        "question": "What did Karan Kapoor's maternal grandfather deliver?",
+        "human_gold_source_titles": [
+          "Geoffrey Kendal",
+          "Karan Kapoor"
+        ],
+        "top_first_title": "Karan Kapoor",
+        "top_second_base": "Loha (1987 film)",
+        "top_second_link": "Loha (1987 film)",
+        "first_source_support_excerpt": [
+          " His maternal grandparents, Geoffrey Kendal and Laura Kendal, were actors who toured India and Asia with their theatre group, Shakespeareana, performing Shakespeare and S"
+        ]
+      },
+      {
+        "uid": "5a8b3f8a5542995d1e6f131f",
+        "question": "What company did a man who hired Sioux Falls architect Wallace L. Dow to build a home in Worthing, Minnesota found?",
+        "human_gold_source_titles": [
+          "George D. Dayton House",
+          "George Dayton"
+        ],
+        "top_first_title": "George D. Dayton House",
+        "top_second_base": "Wallace L. Dow",
+        "top_second_link": "Wallace L. Dow",
+        "first_source_support_excerpt": [
+          "The George Draper Dayton House was built in 1890 in Worthington, Minnesota, United States.",
+          " George Dayton hired the Sioux Falls architect Wallace L. Dow to design his grand home on a parcel that took up eight lots."
+        ]
+      },
+      {
+        "uid": "5a7625e8554299109176e66a",
+        "question": "In which year was the King who made the 1925 Birthday Honours born?",
+        "human_gold_source_titles": [
+          "1925 Birthday Honours",
+          "George V"
+        ],
+        "top_first_title": "1925 Birthday Honours",
+        "top_second_base": "1965 Birthday Honours",
+        "top_second_link": "Birthday Honours",
+        "first_source_support_excerpt": [
+          "The 1925 Birthday Honours were appointments by King George V to various orders and honours to reward and highlight good works by citizens of the British Empire."
+        ]
+      },
+      {
+        "uid": "5a80a7f6554299485f598680",
+        "question": "Abraham Lincoln Neiman and his wife Carrie Marcus Neiman cofounded Neiman Marcus with Carrie's brother Herbert in which American city in 1907?",
+        "human_gold_source_titles": [
+          "Abraham Lincoln Neiman",
+          "Carrie Marcus Neiman"
+        ],
+        "top_first_title": "Abraham Lincoln Neiman",
+        "top_second_base": "Minnie Lichtenstein Marcus",
+        "top_second_link": "Minnie Lichtenstein Marcus",
+        "first_source_support_excerpt": [
+          "Abraham Lincoln \"Al\" Neiman was born on July 4, 1875, in Chicago, Illinois and raised in a Jewish orphanage in Cleveland, Ohio.",
+          " He met his first wife Carrie Marcus Neiman in Dallas, Texas, while they were working at A. Harris & Company."
+        ]
+      },
+      {
+        "uid": "5a8d02cc554299441c6b9fb6",
+        "question": "John MacGregor, Baron MacGregor of Pulham Market was educated at the University of St Andrews and another university established by what monach?",
+        "human_gold_source_titles": [
+          "John MacGregor, Baron MacGregor of Pulham Market",
+          "King's College London"
+        ],
+        "top_first_title": "John MacGregor, Baron MacGregor of Pulham Market",
+        "top_second_base": "Pulham Market",
+        "top_second_link": "University of St Andrews",
+        "first_source_support_excerpt": [
+          " He was educated at Merchiston Castle School, then at the University of St Andrews (MA economics and history, 1959) and at King's College London (LLB, 1962)."
+        ]
+      }
+    ],
+    "literal_absent_linked_selected_gold": [
+      {
+        "uid": "5a8b20335542996c9b8d5fb3",
+        "question": "What distinction is held by the former NBA player who was a member of the Charlotte Hornets during their 1992-93 season and was head coach for the WNBA team Charlotte Sting?",
+        "human_gold_source_titles": [
+          "1992–93 Charlotte Hornets season",
+          "Muggsy Bogues"
+        ],
+        "top_first_title": "Muggsy Bogues",
+        "top_second_base": "1992–93 Charlotte Hornets season",
+        "top_second_link": "1992–93 Charlotte Hornets season",
+        "first_source_support_excerpt": [
+          " The shortest player ever to play in the National Basketball Association, the 5 ft Bogues played point guard for four teams during his 14-season career in the NBA.",
+          " After his NBA career, he served as head coach of the now-defunct WNBA team Charlotte Sting."
+        ]
+      },
+      {
+        "uid": "5ae33c4d5542992f92d82262",
+        "question": "Robert Suettinger was the national intelligence officer under which former Governor of Arkansas?",
+        "human_gold_source_titles": [
+          "Bill Clinton",
+          "Robert Suettinger"
+        ],
+        "top_first_title": "Robert Suettinger",
+        "top_second_base": "Bill Clinton",
+        "top_second_link": "Bill Clinton",
+        "first_source_support_excerpt": [
+          "Robert Suettinger was United States President Bill Clinton's national intelligence officer for East Asia at the National Intelligence Council (NIC) from 1997-1998."
+        ]
+      },
+      {
+        "uid": "5a828c8355429966c78a6a50",
+        "question": "Kaiser Ventures corporation was founded by an American industrialist who became known as the father of modern American shipbuilding?",
+        "human_gold_source_titles": [
+          "Henry J. Kaiser",
+          "Kaiser Ventures"
+        ],
+        "top_first_title": "Henry J. Kaiser",
+        "top_second_base": "Kaiser Ventures",
+        "top_second_link": "Kaiser Ventures",
+        "first_source_support_excerpt": [
+          "Henry John Kaiser (May 9, 1882 – August 24, 1967) was an American industrialist who became known as the father of modern American shipbuilding."
+        ]
+      },
+      {
+        "uid": "5a85ea095542994775f606a8",
+        "question": "What science fantasy young adult series, told in first person, has a set of companion books narrating the stories of enslaved worlds and alien species?",
+        "human_gold_source_titles": [
+          "Animorphs",
+          "The Hork-Bajir Chronicles"
+        ],
+        "top_first_title": "Animorphs",
+        "top_second_base": "The Hork-Bajir Chronicles",
+        "top_second_link": "The Hork-Bajir Chronicles",
+        "first_source_support_excerpt": [
+          "Animorphs is a science fantasy series of young adult books written by Katherine Applegate and her husband Michael Grant, writing together under the name K. A. Applegate, ",
+          " It is told in first person, with all six main characters taking turns narrating the books through their own perspectives."
+        ]
+      },
+      {
+        "uid": "5a77152355429966f1a36c2e",
+        "question": "What was the Roud Folk Song Index of the nursery rhyme inspiring What Are Little Girls Made Of?",
+        "human_gold_source_titles": [
+          "What Are Little Boys Made Of?",
+          "What Are Little Girls Made Of?"
+        ],
+        "top_first_title": "What Are Little Girls Made Of?",
+        "top_second_base": "What Are Little Boys Made Of?",
+        "top_second_link": "What Are Little Boys Made Of?",
+        "first_source_support_excerpt": [
+          " The title of the episode is taken from the fourth line of the 19th century nursery rhyme, \"What Are Little Boys Made Of?"
+        ]
+      }
+    ],
+    "literal_present_linked_selected_gold": [
+      {
+        "uid": "5a8e3ea95542995a26add48d",
+        "question": "The director of the romantic comedy \"Big Stone Gap\" is based in what New York city?",
+        "human_gold_source_titles": [
+          "Adriana Trigiani",
+          "Big Stone Gap (film)"
+        ],
+        "top_first_title": "Big Stone Gap (film)",
+        "top_second_base": "Adriana Trigiani",
+        "top_second_link": "Adriana Trigiani",
+        "first_source_support_excerpt": [
+          "Big Stone Gap is a 2014 American drama romantic comedy film written and directed by Adriana Trigiani and produced by Donna Gigliotti for Altar Identity Studios, a subsidi"
+        ]
+      },
+      {
+        "uid": "5abdf12255429976d4830a2f",
+        "question": "The Album Against the Wind was the 11th Album of a Rock singer Robert C Seger born may 6 1945. What was the Rock singers stage name ?",
+        "human_gold_source_titles": [
+          "Against the Wind (album)",
+          "Bob Seger"
+        ],
+        "top_first_title": "Against the Wind (album)",
+        "top_second_base": "Bob Seger",
+        "top_second_link": "Bob Seger",
+        "first_source_support_excerpt": [
+          "Against the Wind is the eleventh album by American rock singer Bob Seger and his fourth with the Silver Bullet Band."
+        ]
+      },
+      {
+        "uid": "5ab47d765542991751b4d78f",
+        "question": "Who designed the hotel that held the IFBB professional bodybuilding competition in September 1991?",
+        "human_gold_source_titles": [
+          "1991 Mr. Olympia",
+          "Walt Disney World Dolphin"
+        ],
+        "top_first_title": "1991 Mr. Olympia",
+        "top_second_base": "1991 Ms. Olympia",
+        "top_second_link": "Walt Disney World Dolphin",
+        "first_source_support_excerpt": [
+          "The 1991 Mr. Olympia contest was an IFBB professional bodybuilding competition held in September 1991 at the Walt Disney World Dolphin Hotel in Orlando, Florida."
+        ]
+      },
+      {
+        "uid": "5a8eea4a5542990e94052bb7",
+        "question": "When was the Western Germanic language spoken from which the small settlement situated on the river Leda opposite Leer derives its name?",
+        "human_gold_source_titles": [
+          "Leda (river)",
+          "Old Frisian"
+        ],
+        "top_first_title": "Leda (river)",
+        "top_second_base": "Leer",
+        "top_second_link": "Old Frisian",
+        "first_source_support_excerpt": [
+          " On the southern bank of the Leda, in the \"Overledingen Land\" (Overledingen=\"country over the Leda\"), opposite Leer, lies the small settlement of Kloster Muhde (\"Muhde\" f"
+        ]
+      },
+      {
+        "uid": "5a7997a2554299029c4b5f59",
+        "question": "Tefik Selim Mborja was a part of a party that held power in Albania until what year? ",
+        "human_gold_source_titles": [
+          "Albanian Fascist Party",
+          "Tefik Mborja"
+        ],
+        "top_first_title": "Tefik Mborja",
+        "top_second_base": "Albanian Fascist Party",
+        "top_second_link": "Albanian Fascist Party",
+        "first_source_support_excerpt": [
+          " He served as the general secretary of the Albanian Fascist Party during the Second World War."
+        ]
+      }
+    ],
+    "literal_absent_linked_missed_gold": [
+      {
+        "uid": "5a79311755429970f5fffe67",
+        "question": "A Japanese manga series based on a 16 year old high school student Ichitaka Seto, is written and illustrated by someone born in what year?",
+        "human_gold_source_titles": [
+          "I&quot;s",
+          "Masakazu Katsura"
+        ],
+        "top_first_title": "I&quot;s",
+        "top_second_base": "The Kindaichi Case Files",
+        "top_second_link": "The Kindaichi Case Files",
+        "first_source_support_excerpt": [
+          " The story's main character is 16-year-old high school student Ichitaka Seto who is in love with his classmate Iori Yoshizuki, but too shy to tell her."
+        ]
+      },
+      {
+        "uid": "5a7bbb64554299042af8f7cc",
+        "question": "Who is older, Annie Morton or Terry Richardson?",
+        "human_gold_source_titles": [
+          "Annie Morton",
+          "Terry Richardson"
+        ],
+        "top_first_title": "Annie Morton",
+        "top_second_base": "Gumbo (PJ Morton album)",
+        "top_second_link": "Gumbo (PJ Morton album)",
+        "first_source_support_excerpt": [
+          "Annie Morton (born October 8, 1970) is an American model born in Pennsylvania.",
+          " She has been photographed by Helmut Newton; Peter Lindbergh; Annie Leibovitz; Richard Avedon; Juergen Teller; Paul Jasmin, Mary Ellen Mark and Terry Richardson, and mode"
+        ]
+      },
+      {
+        "uid": "5ae22b8d554299234fd0440f",
+        "question": "What was the father of Kasper Schmeichel voted to be by the IFFHS in 1992?",
+        "human_gold_source_titles": [
+          "Kasper Schmeichel",
+          "Peter Schmeichel"
+        ],
+        "top_first_title": "Peter Schmeichel",
+        "top_second_base": "Kasper Schmeichel",
+        "top_second_link": "IFFHS World's Best Goalkeeper",
+        "first_source_support_excerpt": [
+          "Peter Bolesław Schmeichel MBE (] ; born 18 November 1963) is a Danish former professional footballer who played as a goalkeeper, and was voted the IFFHS World's Best Goal"
+        ]
+      },
+      {
+        "uid": "5ae5aba0554299546bf82f17",
+        "question": "Which of Tara Strong major voice role in animated series is an American animated television series based on the DC Comics fictional superhero team, the \"Teen Titans\"?",
+        "human_gold_source_titles": [
+          "Tara Strong",
+          "Teen Titans Go! (TV series)"
+        ],
+        "top_first_title": "Teen Titans Go! (TV series)",
+        "top_second_base": "List of Teen Titans Go! episodes",
+        "top_second_link": "Teen Titans",
+        "first_source_support_excerpt": [
+          "Teen Titans Go!"
+        ]
+      },
+      {
+        "uid": "5ae73acb5542991e8301cc07",
+        "question": "D1NZ is a series based on what oversteering technique?",
+        "human_gold_source_titles": [
+          "D1NZ",
+          "Drifting (motorsport)"
+        ],
+        "top_first_title": "D1NZ",
+        "top_second_base": "List of The Office (U.S. TV series) characters",
+        "top_second_link": "List of The Office (U.S. TV series) characters",
+        "first_source_support_excerpt": [
+          "D1NZ is a production car drifting series in New Zealand."
+        ]
+      }
+    ],
+    "first_wrong": [
+      {
+        "uid": "5a879adb5542996e4f30887f",
+        "question": "What other political position did the person who introduced the DISCLOSE Act hold?",
+        "human_gold_source_titles": [
+          "Chris Van Hollen",
+          "DISCLOSE Act"
+        ],
+        "top_first_title": "State Secretary (Norway)",
+        "top_second_base": "Hannah Gale",
+        "top_second_link": "Hannah Gale",
+        "first_source_support_excerpt": []
+      },
+      {
+        "uid": "5a80840f554299485f59863b",
+        "question": "What WB supernatrual drama series was Jawbreaker star Rose Mcgowan best known for being in?",
+        "human_gold_source_titles": [
+          "Jawbreaker (film)",
+          "Rose McGowan"
+        ],
+        "top_first_title": "Kay Tagal Kang Hinintay",
+        "top_second_base": "Rose McGowan",
+        "top_second_link": "Rose McGowan",
+        "first_source_support_excerpt": []
+      },
+      {
+        "uid": "5a85fb085542994775f606de",
+        "question": "What is the name of the executive producer of the film that has a score composed by Jerry Goldsmith?",
+        "human_gold_source_titles": [
+          "Alien (film)",
+          "Alien (soundtrack)"
+        ],
+        "top_first_title": "Innerspace",
+        "top_second_base": "Lionheart (1987 film)",
+        "top_second_link": "Lionheart (1987 film)",
+        "first_source_support_excerpt": []
+      },
+      {
+        "uid": "5a77724455429972597f153e",
+        "question": "What race track in the midwest hosts a 500 mile race eavery May?",
+        "human_gold_source_titles": [
+          "1957 Indianapolis 500",
+          "Indianapolis Motor Speedway"
+        ],
+        "top_first_title": "Carolina Dodge Dealers 400",
+        "top_second_base": "1957 Indianapolis 500",
+        "top_second_link": "1957 Indianapolis 500",
+        "first_source_support_excerpt": []
+      },
+      {
+        "uid": "5a7d61775542991319bc93b9",
+        "question": "During Siege of Bharatpur, which Commander-in-Chief of Ireland and Commander-in-Chief of India contributed to the storming of the castle?",
+        "human_gold_source_titles": [
+          "Siege of Bharatpur",
+          "Stapleton Cotton, 1st Viscount Combermere"
+        ],
+        "top_first_title": "Commander-in-Chief, India",
+        "top_second_base": "Stapleton Cotton, 1st Viscount Combermere",
+        "top_second_link": "Stapleton Cotton, 1st Viscount Combermere",
+        "first_source_support_excerpt": []
+      }
+    ]
+  },
+  "limitations": [
+    "Posthoc descriptive diagnostic, not a fresh heldout after seeing labels",
+    "An absent full proper title can still be linked via pronoun, shortened surname, alias, indirect relationship, titles and nicknames",
+    "No automatic semantic/DRS coreference detection was measured or validated on these 4085 cases",
+    "The first source is chosen from ten already offered sources, not a global corpus",
+    "Source text is 2018 version and gold labels reflect benchmark, not new verified scientific facts"
+  ]
+}

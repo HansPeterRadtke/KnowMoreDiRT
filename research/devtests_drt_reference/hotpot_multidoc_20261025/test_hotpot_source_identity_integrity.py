@@ -41,4 +41,22 @@ class OriginalExternalSourceAndGold(unittest.TestCase):
     line=p[occurrence['source_title']][occurrence['source_sentence_index']]
     self.assertEqual(hashlib.sha256(line.encode()).hexdigest(),occurrence['source_sentence_sha256'])
     self.assertIn(occurrence['matched_title'].lower(),line.lower())
+ def test_literal_title_link_has_measured_ceiling_not_coreference_success(self):
+  x=json.loads((HERE/'literal_identity_reference_ceiling_20261025.json').read_text())
+  c=x['counts']
+  self.assertEqual((c['first_ranked_article_right'],c['first_ranked_article_wrong']),(5165,753))
+  self.assertEqual((c['gold_other_article_name_explicitly_in_first_source'],c['gold_other_article_name_not_literal_in_first_source']),(1080,4085))
+  self.assertEqual((c['literal_present_linked_selected_gold'],c['literal_present_linked_missed_gold']),(1008,72))
+  self.assertEqual((c['literal_absent_linked_selected_gold'],c['literal_absent_linked_missed_gold']),(1684,2401))
+  self.assertAlmostEqual(x['fraction_gold_other_title_not_literal_given_first_gold'],4085/5165,places=5)
+ def test_musique_unscored_source_only_snapshot_does_not_claim_performance(self):
+  path=HERE/'frozen_untuned_musique_rankings_20261025.json'
+  src=Path('/data/tmp/kmd-musique-official-answerable-dev-20261025.jsonl')
+  snap=json.loads(path.read_text())
+  self.assertEqual(len(snap['predictions']),snap['n'])
+  self.assertEqual(snap['n'],2417)
+  self.assertEqual(snap['source_original_MuSiQue_sha256'],hashlib.sha256(src.read_bytes()).hexdigest())
+  self.assertNotIn('gold',snap)
+  self.assertNotIn('results',snap)
+  self.assertTrue(all('is_supporting' not in str(x) for x in snap['predictions']))
 if __name__=='__main__':unittest.main()
