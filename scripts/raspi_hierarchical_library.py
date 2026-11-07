@@ -35,6 +35,9 @@ from file_system_catalog.hierarchical_summary_search import search_summary_entri
 from file_system_catalog.summary_search_audit import (
     append_query_audit, make_search_audit, recent_search_audits, AUDIT_DIR,
 )
+from file_system_catalog.summary_coverage import (
+    current_completed_originals, summary_progress_metrics,
+)
 
 DB = Path("/data/var/knowmoredirt/knowledge-library/filesystem.sqlite3")
 LIBRARY = Path("/data/var/Knowledge Library")
@@ -429,21 +432,27 @@ def review_search_log(args) -> None:
 
 
 def status(_args):
+    with sqlite3.connect(f"file:{SOURCE_MAP.resolve()}?mode=ro", uri=True) as source:
+        current = {
+            row[0]: (row[1], row[2], int(row[3]))
+            for row in source.execute(
+                "SELECT source_path,source_sha256,derived_sha256,text_characters "
+                "FROM originals WHERE status='complete' AND text_characters>100"
+            )
+        }
     with sqlite3.connect(f"file:{DB.resolve()}?mode=ro", uri=True) as conn:
         result = summary_index_status(conn)
-    with sqlite3.connect(f"file:{SOURCE_MAP.resolve()}?mode=ro", uri=True) as source:
-        extracted = source.execute(
-            "SELECT COUNT(*) FROM originals WHERE status='complete'"
-        ).fetchone()[0]
-    result["complete_extracted_originals"] = extracted
-    result["originals_without_recursive_summaries"] = max(
-        0, extracted - result["original_documents_with_summaries"]
-    )
+        valid = current_completed_originals(conn, current)
+    result.update(summary_progress_metrics(current, valid))
+    # Retain physical rows, including any stale historic source revisions.
+    result["all_historical_originals_with_summary_vectors"] = result["original_documents_with_summaries"]
+    result["original_documents_with_summaries"] = len(valid)
+    result["originals_without_recursive_summaries"] = result["remaining_originals"]
+    result["complete_extracted_originals"] = len(current)
     result["canonical_database"] = str(DB)
     result["database_bytes"] = DB.stat().st_size
     result["configured_database_budget_bytes"] = DB_BUDGET
     print(json.dumps(result, indent=2))
-
 
 def main():
     p = argparse.ArgumentParser(description=__doc__)

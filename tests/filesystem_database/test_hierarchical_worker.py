@@ -65,28 +65,41 @@ class ContinuousWorkerTest(unittest.TestCase):
             with sqlite3.connect(filedb) as db:
                 db.executescript(
                     "CREATE TABLE filesystem_entries"
-                    "(id INTEGER,relative_path_display TEXT);"
+                    "(id INTEGER,relative_path_display TEXT,entry_type TEXT);"
                     "CREATE TABLE content_chunks "
-                    "(chunk_id TEXT,filesystem_entry_id INTEGER,collection_id TEXT);"
+                    "(chunk_id TEXT,filesystem_entry_id INTEGER,collection_id TEXT,"
+                    " content_sha256 TEXT,start_char INTEGER,end_char INTEGER);"
                     "CREATE TABLE content_representations "
-                    "(chunk_id TEXT,prompt_version TEXT);"
+                    "(chunk_id TEXT,prompt_version TEXT,representation_kind TEXT,"
+                    " analysis_status TEXT,generation_json TEXT,"
+                    " representation_text TEXT,representation_text_sha256 TEXT);"
+                )
+                import hashlib
+                source_summary = "An accurate full original summary."
+                summary_sha = hashlib.sha256(source_summary.encode()).hexdigest()
+                metadata = json.dumps({
+                    "original_sha256": "a"*64, "derived_sha256": "b"*64,
+                    "source_tree_sha256": "b"*64, "source_start_char": 0,
+                    "source_end_char": 555, "node_id": "root-a",
+                })
+                db.executemany(
+                    "INSERT INTO filesystem_entries VALUES(?,?,?)",
+                    [(1, "docs/a.pdf","file"), (2, "docs/b.pdf","file")],
                 )
                 db.executemany(
-                    "INSERT INTO filesystem_entries VALUES(?,?)",
-                    [(1, "docs/a.pdf"), (2, "docs/b.pdf")],
-                )
-                db.executemany(
-                    "INSERT INTO content_chunks VALUES(?,?,?)",
+                    "INSERT INTO content_chunks VALUES(?,?,?,?,?,?)",
                     [
-                        ("summary-a", 1, "original-library:summary"),
-                        ("overview-b", 2, "original-library:overview"),
+                        ("summary-a", 1, "original-library:summary","a"*64,0,555),
+                        ("overview-b", 2, "original-library:overview","c"*64,0,100),
                     ],
                 )
                 db.executemany(
-                    "INSERT INTO content_representations VALUES(?,?)",
+                    "INSERT INTO content_representations VALUES(?,?,?,?,?,?,?)",
                     [
-                        ("summary-a", "kmd-hierarchical-source-summary-v1"),
-                        ("overview-b", "legacy-overview-v1"),
+                        ("summary-a", "kmd-hierarchical-source-summary-v1",
+                         "summary_long", "complete", metadata,source_summary,summary_sha),
+                        ("overview-b", "legacy-overview-v1", "summary",
+                         "complete","{}",source_summary,summary_sha),
                     ],
                 )
             with mock.patch.object(worker, "SOURCE_MAP", index), \
@@ -95,6 +108,68 @@ class ContinuousWorkerTest(unittest.TestCase):
             self.assertEqual(2, len(available))
             self.assertEqual({"docs/a.pdf"}, processed)
             self.assertEqual({"docs/b.pdf"}, {r[0] for r in available} - processed)
+
+    def test_revision_or_partial_only_root_reenters_worker_backlog(self):
+        worker = load_worker()
+        import hashlib
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            index = root/"source-map.sqlite3"
+            filedb = root/"filedb.sqlite3"
+            records = [
+                ("docs/current.pdf","a"*64,"b"*64,1500,"complete"),
+                ("docs/changed.pdf","c"*64,"e"*64,2200,"complete"),
+                ("docs/partial.pdf","f"*64,"g"*64,1800,"complete"),
+            ]
+            with sqlite3.connect(index) as db:
+                db.execute("CREATE TABLE originals(source_path TEXT,source_sha256 TEXT,"
+                           "derived_sha256 TEXT,text_characters INTEGER,status TEXT)")
+                db.executemany("INSERT INTO originals VALUES(?,?,?,?,?)",records)
+            with sqlite3.connect(filedb) as db:
+                db.executescript(
+                    "CREATE TABLE filesystem_entries(id INTEGER,relative_path_display TEXT,entry_type TEXT);"
+                    "CREATE TABLE content_chunks(chunk_id TEXT,filesystem_entry_id INTEGER,"
+                    "collection_id TEXT,content_sha256 TEXT,start_char INTEGER,end_char INTEGER);"
+                    "CREATE TABLE content_representations(chunk_id TEXT,prompt_version TEXT,"
+                    "representation_kind TEXT,analysis_status TEXT,generation_json TEXT,"
+                    "representation_text TEXT,representation_text_sha256 TEXT);"
+                )
+                db.executemany("INSERT INTO filesystem_entries VALUES(?,?,?)",
+                               [(i, p, "file") for i,(p,*_) in enumerate(records,1)])
+                text="Source-grounded summary"
+                text_sha=hashlib.sha256(text.encode()).hexdigest()
+                for i,(path,orig,derived,_,_) in enumerate(records,1):
+                    if path=="docs/changed.pdf":
+                        derived="d"*64  # a genuine stale summary revision
+                    marker="summary_long" if path!="docs/partial.pdf" else "summary"
+                    db.execute("INSERT INTO content_chunks VALUES(?,?,?,?,?,?)",
+                               (str(i),i,"collection:summary",orig,0,2600))
+                    metadata=json.dumps({
+                        "original_sha256":orig,"derived_sha256":derived,
+                        "source_tree_sha256":derived,"source_start_char":0,
+                        "source_end_char":2600,"node_id":str(i),
+                    })
+                    db.execute("INSERT INTO content_representations VALUES(?,?,?,?,?,?,?)",
+                               (str(i),"kmd-hierarchical-source-summary-v1",marker,
+                                "complete",metadata,text,text_sha))
+            with mock.patch.object(worker,"SOURCE_MAP",index),                  mock.patch.object(worker,"FILEDB",filedb):
+                available,done=worker.scope()
+            self.assertEqual({"docs/current.pdf"},done)
+            self.assertEqual(3,len(available))
+            self.assertEqual({"docs/changed.pdf","docs/partial.pdf"},
+                             {x[0] for x in available}-done)
+
+    def test_source_text_weighted_progress_is_reported_separately(self):
+        worker = load_worker()
+        corpus = {
+            "small.pdf":("a"*64,"b"*64,2000),
+            "huge.pdf":("c"*64,"d"*64,998000),
+        }
+        result=worker.summary_progress_metrics(corpus,{"small.pdf"})
+        self.assertEqual(50.0,result["percentage"])
+        self.assertEqual(0.2,result["text_percentage"])
+        self.assertEqual(2000,result["indexed_text_characters"])
+        self.assertEqual(1000000,result["eligible_text_characters"])
 
     def test_atomic_progress_file_persists_incremental_complete_count(self):
         worker = load_worker()

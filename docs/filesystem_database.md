@@ -30,6 +30,14 @@ This subsystem does not initialize DRT, create persistent KMD referents, or perf
 
 The source was copied from devtests commit `6faaccc9`. Regression tests from that repository are preserved under `tests/filesystem_database/`. Any future synchronization must be explicit and reviewed; changes in either copy do not automatically propagate to the other repository.
 
+## Version-aware complete source roots and text-volume progress, November 2026
+
+The [revision-aware completion and progress audit](kmd-revision-aware-progress-2026-11-07.md)
+requires a current full-source root before skipping any original, and
+separately reports document percentage and actual source-text-character
+percentage. Source-map text-character counts exclude extraction headers,
+so full-source SHA-256 is used instead of comparing incompatible offsets.
+
 ## Source-complete concise retry and ranking rejection evidence, November 2026
 
 [The summarization recovery and ranking audit](kmd-summary-retry-and-ranking-audit-2026-11-07.md)
