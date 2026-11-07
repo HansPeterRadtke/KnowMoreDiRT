@@ -186,13 +186,17 @@ def build(args) -> None:
     # Only the model prompt receives a bounded title, so unusually long
     # publisher titles never prevent complete document processing.
     model_title = source["title"][:300]
+    if getattr(args,"native_facets",False) and args.output_tokens<700:
+        raise ValueError("native keyword/facet output requires at least 700 reserved generation tokens")
     model = LocalSummaryModel(
         args.model_url, model=args.model,
         timeout_seconds=args.model_timeout,
+        context_cap_tokens=getattr(args,"context_cap_tokens",None),
     )
     engine = HierarchicalSummarizer(
         model, output_tokens=args.output_tokens, safety_tokens=args.safety_tokens,
         max_levels=args.max_levels, max_nodes=args.max_nodes,
+        native_facets=getattr(args,"native_facets",False),
     )
     sections, groups = engine.plan_source(title=model_title, text=source["derived_text"])
     plan = {
@@ -204,6 +208,7 @@ def build(args) -> None:
         "configured_context": model.context_tokens,
         "reserved_output": args.output_tokens,
         "reserved_safety": args.safety_tokens,
+        "native_facets":getattr(args,"native_facets",False),
     }
     print("PLAN", json.dumps(plan, ensure_ascii=False), flush=True)
     if args.plan_only:
@@ -276,6 +281,7 @@ def build(args) -> None:
         "model": args.model,
         "model_context": model.context_tokens,
         "reserved_output_tokens": args.output_tokens,
+        "native_facets":getattr(args,"native_facets",False),
         "tree": asdict(tree),
     }
     OUT.mkdir(parents=True, exist_ok=True)
@@ -358,12 +364,20 @@ def import_source(args):
             analysis_model=payload["model"],
             collection_id=COLLECTION,
         )
-    if len(chunks) != len(tree.nodes) or len(reps) != len(tree.nodes):
-        raise RuntimeError("missing summary vector: every tree node must be embedded")
+    if (len(chunks)!=len(tree.nodes)
+            or sum(r["representation_kind"] in ("summary","summary_long") for r in reps)!=len(tree.nodes)):
+        raise RuntimeError("missing required source-linked native summary vector")
+    if (payload.get("native_facets") and
+            not any(r["representation_kind"] in ("keyword","keyphrase") for r in reps)):
+        raise RuntimeError("requested native keyword and keyphrase generation produced no indexable terms")
     print("VERIFIED_SUMMARY_VECTORS", json.dumps({
         "original_path": source["original_path"],
         "nodes": len(tree.nodes),
         "vector_count": len(reps),
+        "representation_kinds":{
+            kind:sum(r["representation_kind"]==kind for r in reps)
+            for kind in sorted({r["representation_kind"] for r in reps})
+        },
         "levels": tree.root.level + 1,
         "summary_chars": sum(len(n.summary) for n in tree.nodes),
         "bytes_halfprecision_vectors": sum(len(bytes(r["embedding_blob"])) for r in reps),
@@ -452,6 +466,7 @@ def _search_impl(args) -> dict:
     with sqlite3.connect(f"file:{DB.resolve()}?mode=ro", uri=True) as conn:
         found = search_summary_entries_batched(
             conn, vector, limit=args.top,
+            include_facets=getattr(args,"with_facets",False),
             nodes_per_document=args.nodes_per_original,
             expected_model=model.model,
             require_source=verify,
@@ -475,7 +490,9 @@ def _search_impl(args) -> dict:
     return {
         "query": args.query,
         "database": str(DB),
-        "retrieval_engine": "native_batched_cosine_v1",
+        "retrieval_engine": ("native_batched_facets_cosine_v1"
+                             if getattr(args,"with_facets",False)
+                             else "native_batched_cosine_v1"),
         "documents": out,
         "count": len(out),
         "originals_validated_for_version": sum(checked.values()),
@@ -649,18 +666,24 @@ def main():
     b.add_argument("--model-url", default="http://10.8.0.7:14829")
     b.add_argument("--model", default="qwen38-q4-default")
     b.add_argument("--model-timeout", type=float, default=150)
+    b.add_argument("--context-cap-tokens", type=int, default=None,
+                   help="Conservatively limit planning context below the model's configured maximum")
     b.add_argument("--output-tokens", type=int, default=420)
     b.add_argument("--safety-tokens", type=int, default=384)
     b.add_argument("--max-levels", type=int, default=12)
     b.add_argument("--max-nodes", type=int, default=50000)
     b.add_argument("--max-calls", type=int, default=80)
     b.add_argument("--plan-only", action="store_true")
+    b.add_argument("--native-facets",action="store_true",
+                   help="Use existing KMD file facet schema for summary+keywords in each model call")
     i = sub.add_parser("import", help="Prepare or append every summary vector to the original FileDB")
     i.add_argument("--original-path", required=True)
     i.add_argument("--write", action="store_true")
     s = sub.add_parser("search", help="Find original documents by any summary level")
     s.add_argument("query")
     s.add_argument("--top", type=int, default=8)
+    s.add_argument("--with-facets",action="store_true",
+                   help="Include existing native KMD keyword/topic/keyphrase embeddings in candidate ranking")
     s.add_argument("--nodes-per-original", type=int, default=5)
     sub.add_parser("status")
     evidence=sub.add_parser(
