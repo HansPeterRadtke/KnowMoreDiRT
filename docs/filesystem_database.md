@@ -30,6 +30,14 @@ This subsystem does not initialize DRT, create persistent KMD referents, or perf
 
 The source was copied from devtests commit `6faaccc9`. Regression tests from that repository are preserved under `tests/filesystem_database/`. Any future synchronization must be explicit and reviewed; changes in either copy do not automatically propagate to the other repository.
 
+## Original native KMD facets in recursive summaries, November 2026
+
+The [native facet bridge](kmd-native-facet-integration-2026-11-07.md)
+reuses the existing KMD file-facet schema and representation normalization
+to generate and embed summary, topic, keyword and keyphrase records at
+every recursive level in the existing original FileDB. A real Qwen
+summary-plus-keyword call was stored and retrieved successfully.
+
 ## Original native KMD keywords versus live recursive summary audit, November 2026
 
 The [native facet reuse and whole-book audit](kmd-native-facet-reuse-and-huge-book-audit-2026-11-07.md)

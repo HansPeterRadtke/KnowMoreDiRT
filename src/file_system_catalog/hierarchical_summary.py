@@ -16,7 +16,7 @@ from bisect import bisect_right
 import hashlib
 import json
 import re
-from typing import Callable, Protocol, Sequence
+from typing import Callable, Protocol, Sequence, Any
 
 _MARKER = re.compile(r"\[\[SOURCE UNIT: ([^\]\n]{1,400})\]\]")
 _CHAPTER = re.compile(
@@ -36,6 +36,28 @@ quoted, hypothetical, disputed or historical assertion to a universal fact.
 Preserve distinctions needed to search for a precise section later. Avoid
 unnecessary prose and never invent claims. Do not claim to be complete: this
 summary is a lossy retrieval aid and source passages remain authoritative."""
+
+# Reuse the existing native KMD facet instructions and schema rather than
+# inventing a competing keyword extraction protocol.
+from .content_pipeline import FILE_SYSTEM_PROMPT
+SUMMARY_FACETS_SYSTEM = (
+    SUMMARY_SYSTEM + "\n" + FILE_SYSTEM_PROMPT
+    + "\nFor each meaningful facet, provide concise explicit native keyword "
+      "and keyphrase representations where supported. Include precise named "
+      "entities, technical terms, negations and context. Put one compact "
+      "source-grounded document_summary of at most 130 words in its own JSON "
+      "field. Use native kind=keyphrase for multiword search phrases and "
+      "kind=keyword for stand-alone technical terms. Include both kinds "
+      "when supported by the source. Do not label every item keyword "
+      "or description. Keep distinct useful terms, not near-duplicates."
+)
+SUMMARY_FACETS_STRICT_SYSTEM = (
+    SUMMARY_SYSTEM
+    + "\nReturn the original KnowMoreDiRT file facet JSON schema. "
+      "Summarize in at most 100 words, then identify three to six strongest "
+      "facets with one or two meaningful keyphrases and native keyword "
+      "representations per facet. Avoid repeated prose. Preserve caveats."
+)
 
 # A deterministic, context-checked fallback for models that insist on
 # generating until they hit the token cap even for a short document.
@@ -97,6 +119,7 @@ class SummaryNode:
     allocated_output_tokens: int
     prompt_version: str = _VERSION
     prompt_policy: str = "legacy_unrecorded"
+    native_analysis: dict[str, Any] | None = None
 
 
 @dataclass(frozen=True)
@@ -153,6 +176,7 @@ class HierarchicalSummarizer:
         safety_tokens: int | None = None,
         max_levels: int = 12,
         max_nodes: int = 50_000,
+        native_facets: bool = False,
     ):
         context = model.context_tokens
         if type(context) is not int or context < 256:
@@ -164,6 +188,9 @@ class HierarchicalSummarizer:
         reserve = (max(48, context // 32) if safety_tokens is None else safety_tokens)
         if not 0 <= reserve < context // 3:
             raise ValueError("invalid safety reserve")
+        if native_facets and not callable(getattr(model, "generate_retrieval_analysis", None)):
+            raise ValueError("model lacks native structured facet generation")
+        self.native_facets = native_facets
         self.model = model
         self.output_tokens = output_tokens
         self.safety_tokens = reserve
@@ -183,9 +210,12 @@ class HierarchicalSummarizer:
             f"\nSOURCE_BEGIN\n" + "\n\n".join(lines) + "\nSOURCE_END"
         )
 
+    def _system(self) -> str:
+        return SUMMARY_FACETS_SYSTEM if self.native_facets else SUMMARY_SYSTEM
+
     def _prompt_cost(self, *, title: str, level: int, sections: Sequence[Section | SummaryInput]) -> int:
         return self.model.prompt_tokens(
-            system=SUMMARY_SYSTEM,
+            system=self._system(),
             user=self._prompt(title=title, level=level, nodes=sections),
         )
 
@@ -342,15 +372,23 @@ class HierarchicalSummarizer:
                     )
                 first, last = group[0], group[-1]
                 prompt = self._prompt(title=title, level=level, nodes=group)
-                cost = self.model.prompt_tokens(system=SUMMARY_SYSTEM, user=prompt)
+                active_system = self._system()
+                cost = self.model.prompt_tokens(system=active_system, user=prompt)
                 if cost + self.output_tokens + self.safety_tokens > self.model.context_tokens:
                     raise RuntimeError("prompt no longer fits the context reserved for summary")
                 output_allowance = self.output_tokens
-                prompt_policy = "standard"
+                prompt_policy = "native_facets" if self.native_facets else "standard"
+                native_analysis = None
                 try:
-                    summary = self.model.generate_summary(
-                        system=SUMMARY_SYSTEM, user=prompt, output_tokens=output_allowance
-                    )
+                    if self.native_facets:
+                        native_analysis = self.model.generate_retrieval_analysis(
+                            system=active_system, user=prompt, output_tokens=output_allowance
+                        )
+                        summary = native_analysis["document_summary"]
+                    else:
+                        summary = self.model.generate_summary(
+                            system=active_system, user=prompt, output_tokens=output_allowance
+                        )
                 except RuntimeError as error:
                     # A short source may need more room to state all its
                     # conditions. Retry *only* an explicit length-exhausted
@@ -359,20 +397,30 @@ class HierarchicalSummarizer:
                     # otherwise the native summary vector would truncate.
                     if "did not finish within reserved generation tokens" not in str(error):
                         raise
+                    strict_system = (SUMMARY_FACETS_STRICT_SYSTEM
+                                     if self.native_facets else SUMMARY_STRICT_SYSTEM)
                     retry_cost = self.model.prompt_tokens(
-                        system=SUMMARY_STRICT_SYSTEM, user=prompt
+                        system=strict_system, user=prompt
                     )
                     available = self.model.context_tokens - retry_cost - self.safety_tokens
-                    retry_allowance = min(480, available)
+                    retry_allowance = min(2400 if self.native_facets else 480, available)
                     if retry_allowance < self.output_tokens:
                         raise
                     output_allowance = retry_allowance
-                    prompt_policy = "strict_shortened_after_length"
+                    prompt_policy = ("native_facets_strict_shortened_after_length"
+                                     if self.native_facets else "strict_shortened_after_length")
                     cost = retry_cost
-                    summary = self.model.generate_summary(
-                        system=SUMMARY_STRICT_SYSTEM, user=prompt,
-                        output_tokens=output_allowance,
-                    )
+                    if self.native_facets:
+                        native_analysis = self.model.generate_retrieval_analysis(
+                            system=strict_system, user=prompt,
+                            output_tokens=output_allowance,
+                        )
+                        summary = native_analysis["document_summary"]
+                    else:
+                        summary = self.model.generate_summary(
+                            system=strict_system, user=prompt,
+                            output_tokens=output_allowance,
+                        )
                 if not isinstance(summary, str) or not summary.strip():
                     raise RuntimeError("model failed to provide a usable summary")
                 if self.model.text_tokens(summary) > output_allowance:
@@ -398,6 +446,7 @@ class HierarchicalSummarizer:
                     model_context_tokens=self.model.context_tokens,
                     allocated_output_tokens=output_allowance,
                     prompt_policy=prompt_policy,
+                    native_analysis=native_analysis,
                 )
                 next_nodes.append(node)
                 nodes.append(node)

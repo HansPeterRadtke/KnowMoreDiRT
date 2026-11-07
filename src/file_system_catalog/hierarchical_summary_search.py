@@ -173,7 +173,8 @@ def summary_index_status(db: sqlite3.Connection) -> dict:
            FROM content_representations r
            JOIN content_chunks c ON c.chunk_id = r.chunk_id
            WHERE c.collection_id LIKE '%:summary'
-             AND r.prompt_version = ?""",
+             AND r.prompt_version = ?
+             AND r.representation_kind IN ('summary','summary_long')""",
         (_VERSION,),
     ).fetchone()
     levels = {
@@ -184,12 +185,28 @@ def summary_index_status(db: sqlite3.Connection) -> dict:
                JOIN content_chunks c ON c.chunk_id=r.chunk_id
                WHERE c.collection_id LIKE '%:summary'
                  AND r.prompt_version=?
+                 AND r.representation_kind IN ('summary','summary_long')
                GROUP BY json_extract(r.generation_json,'$.summary_level')
                ORDER BY 1""",
             (_VERSION,),
         )
     }
+    kinds = {
+        kind:count for kind,count in db.execute(
+            """SELECT r.representation_kind, COUNT(*)
+               FROM content_representations r
+               JOIN content_chunks c ON c.chunk_id=r.chunk_id
+               WHERE c.collection_id LIKE '%:summary'
+                 AND r.prompt_version=?
+               GROUP BY r.representation_kind ORDER BY 1""",(_VERSION,)
+        )
+    }
     return {
+        "native_facet_vectors": sum(
+            count for kind,count in kinds.items()
+            if kind not in ("summary","summary_long")
+        ),
+        "native_representations_by_kind":kinds,
         "native_summary_vectors": row[0],
         "original_documents_with_summaries": row[1],
         "minimum_summary_level": row[2],

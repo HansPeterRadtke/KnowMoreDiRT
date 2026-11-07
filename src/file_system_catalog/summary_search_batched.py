@@ -29,6 +29,7 @@ def _scan_vectors(
     *,
     expected_model: str | None,
     batch_size: int,
+    include_facets: bool = False,
 ) -> dict[int, list[tuple[float, str, str]]]:
     if not 64 <= batch_size <= 8192:
         raise ValueError("invalid bounded vector batch")
@@ -49,6 +50,8 @@ def _scan_vectors(
           AND r.analysis_status='complete'
           AND f.entry_type='file'
     """
+    sql += ("" if include_facets else
+            " AND r.representation_kind IN ('summary','summary_long')")
     batch = []
     embeddings = []
 
@@ -92,7 +95,8 @@ def _scan_vectors(
     return by_doc
 
 
-def _validated_summary_node(db, rep_id, similarity: float) -> dict | None:
+def _validated_summary_node(db, rep_id, similarity: float, *,
+                            include_facets: bool = False) -> dict | None:
     sql = """
         SELECT f.id, f.relative_path_display, f.size_bytes,
                c.chunk_id, c.start_char, c.end_char, c.text_sha256,
@@ -130,7 +134,11 @@ def _validated_summary_node(db, rep_id, similarity: float) -> dict | None:
         or len(provenance["derived_sha256"]) != 64
         or not isinstance(provenance.get("summary_level"), int)
         or not isinstance(provenance.get("node_id"), str)
-        or kind not in ("summary", "summary_long")
+        or kind not in (
+            ("summary","summary_long","keyword","keyphrase","entity",
+             "topic","description","sentence")
+            if include_facets else ("summary","summary_long")
+        )
     ):
         return None
     return {
@@ -165,6 +173,7 @@ def search_summary_entries_batched(
     expected_model: str | None = None,
     require_source: Callable[[dict], bool] | None = None,
     vector_batch_size: int = 1024,
+    include_facets: bool = False,
 ) -> list[dict]:
     """Same source-linked output as KMD scalar search, with bounded memory."""
     if not 1 <= limit <= 100 or not 1 <= nodes_per_document <= 30:
@@ -172,6 +181,7 @@ def search_summary_entries_batched(
     documents = _scan_vectors(
         db, query_vector, expected_model=expected_model,
         batch_size=vector_batch_size,
+        include_facets=include_facets,
     )
     ranked = []
     for entry_id, hits in documents.items():
@@ -186,7 +196,8 @@ def search_summary_entries_batched(
                 break
         valid=[]
         for score, path, rep_id in raw_hits:
-            hit=_validated_summary_node(db, rep_id, score)
+            hit=_validated_summary_node(db, rep_id, score,
+                                        include_facets=include_facets)
             if hit is None:
                 continue
             if require_source is not None and not require_source(hit):
@@ -208,6 +219,7 @@ def search_summary_entries_batched(
             "original_sha256": best["original_sha256"],
             "similarity": best["similarity"],
             "best_summary": best["summary"],
+            "best_kind": best["summary_kind"],
             "best_level": best["summary_level"],
             "matched_summary_nodes": valid[:nodes_per_document],
             "indexed_summary_nodes_for_document": len(valid),

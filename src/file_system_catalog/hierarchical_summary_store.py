@@ -23,6 +23,7 @@ import numpy as np
 
 from .content_pipeline import (
     stable_file_id, stable_chunk_id, stable_representation_id, count_words,
+    flatten_representations, normalize_analysis,
 )
 from .content_schema import (
     CHUNK_COLUMN_NAMES, REPRESENTATION_COLUMN_NAMES,
@@ -173,9 +174,32 @@ def summary_rows(
         for node in ordered:
             if embedding_client.token_count(node.summary) > limit:
                 raise ValueError("one generated summary exceeds embedding context; regenerate more compactly")
-    vectors = embedding_client.embed([n.summary for n in ordered])
-    if len(vectors) != len(ordered):
-        raise RuntimeError("one embedding is required for every summary node")
+    # The native KMD schema already supports multiple topic/keyphrase/keyword
+    # representations for the SAME source-linked content_chunk. Reuse its
+    # existing facet normalization and rank assignment, not a second table.
+    facets_by_node=[]
+    extra_texts=[]
+    for node in ordered:
+        extra=[]
+        if node.native_analysis is not None:
+            analysis=normalize_analysis(node.native_analysis)
+            if analysis["document_summary"] != node.summary:
+                raise ValueError("native facet analysis summary differs from verified node")
+            extra=flatten_representations(analysis)[1:]
+            if len(extra)>256:
+                raise ValueError("unbounded native facet representation count")
+            extra_texts.extend(item["text"] for item in extra)
+        facets_by_node.append(extra)
+    all_texts=[node.summary for node in ordered]+extra_texts
+    if hasattr(embedding_client, "token_count") and hasattr(embedding_client, "model_context"):
+        limit=int(embedding_client.model_context().configured_tokens)
+        if any(embedding_client.token_count(text)>limit for text in all_texts):
+            raise ValueError("native keyword, keyphrase or summary exceeds embedding context")
+    all_vectors=embedding_client.embed(all_texts)
+    if len(all_vectors)!=len(all_texts):
+        raise RuntimeError("missing native facet or summary embedding")
+    vectors=all_vectors[:len(ordered)]
+    extra_vectors=iter(all_vectors[len(ordered):])
     if getattr(embedding_client, "embedding_dimension", None) != 384:
         raise ValueError("expected verified 384-dimensional native embedding model")
     if not getattr(embedding_client, "model", "") or not getattr(embedding_client, "revision", ""):
@@ -290,6 +314,63 @@ def summary_rows(
             "created_at_ns": now,
             "updated_at_ns": now,
         })
+        for item in facets_by_node[ordinal]:
+            native_kind=item["kind"]
+            native_text=item["text"]
+            native_vector=np.asarray(next(extra_vectors),dtype="<f4")
+            if native_vector.shape!=(384,) or not np.isfinite(native_vector).all():
+                raise ValueError("invalid native facet embedding")
+            if not 0.99<=float(np.linalg.norm(native_vector))<=1.01:
+                raise ValueError("native facet embedding must be normalized")
+            native_blob=np.asarray(native_vector,dtype="<f2").tobytes()
+            native_sha=hashlib.sha256(native_blob).hexdigest()
+            native_representation_id=stable_representation_id(
+                chunk_id, analysis_model, _VERSION, embedding_client.model,
+                int(item["global_rank"]),
+            )
+            representations.append({
+                "representation_id":native_representation_id,
+                "chunk_id":chunk_id,
+                "representation_kind":native_kind,
+                "facet_label":item["facet_label"],
+                "facet_strength":item["facet_strength"],
+                "item_strength":item["item_strength"],
+                "facet_rank":int(item["facet_rank"]),
+                "item_rank":int(item["item_rank"]),
+                "global_rank":int(item["global_rank"]),
+                "representation_text":native_text,
+                "representation_text_sha256":_sha(native_text),
+                "analysis_model":analysis_model,
+                "analysis_model_fingerprint":None,
+                "prompt_version":_VERSION,
+                "generation_seed":summary_generation_seed,
+                "pipeline_version":_VERSION,
+                "generation_json":json.dumps({
+                    **provenance,
+                    "native_facet_kind":native_kind,
+                    "native_facet_label":item["facet_label"],
+                    "summary_sha256":_sha(native_text),
+                    "owning_summary_sha256":node.summary_sha256,
+                },ensure_ascii=False,sort_keys=True),
+                "attributes_json":json.dumps({
+                    "source_label":node.source_label,
+                    "summary_node_id":node.node_id,
+                    "native_facet_kind":native_kind,
+                },ensure_ascii=False,sort_keys=True),
+                "embedding_model":embedding_client.model,
+                "embedding_model_revision":embedding_client.revision,
+                "embedding_dimension":384,
+                "embedding_dtype":"float16",
+                "embedding_norm":float(np.linalg.norm(
+                    np.frombuffer(native_blob,dtype="<f2").astype("<f4")
+                )),
+                "embedding_blob":sqlite3.Binary(native_blob),
+                "embedding_sha256":native_sha,
+                "analysis_status":"complete",
+                "analysis_error":None,
+                "created_at_ns":now,
+                "updated_at_ns":now,
+            })
     ids = {n.node_id for n in tree.nodes}
     if any(child not in ids for node in tree.nodes for child in node.child_ids):
         raise ValueError("summary tree has unknown child node")
@@ -304,8 +385,17 @@ def append_summary_rows(
     max_database_bytes: int = 640 * 1024 * 1024,
 ) -> dict:
     """Guarded, idempotent transaction. Production resolver must be upgraded first."""
-    if not chunk_rows or len(chunk_rows) != len(representation_rows):
-        raise ValueError("summary row count mismatch")
+    if not chunk_rows or len(representation_rows) < len(chunk_rows):
+        raise ValueError("native summary rows or facet representations are missing")
+    chunk_ids={row["chunk_id"] for row in chunk_rows}
+    if len(chunk_ids)!=len(chunk_rows):
+        raise ValueError("duplicate native summary source node")
+    if any(row["chunk_id"] not in chunk_ids for row in representation_rows):
+        raise ValueError("native facet representation has no source-linked summary chunk")
+    if len({row["representation_id"] for row in representation_rows})!=len(representation_rows):
+        raise ValueError("duplicate native facet or summary representation")
+    if len([r for r in representation_rows if r["representation_kind"] in ("summary","summary_long")])!=len(chunk_rows):
+        raise ValueError("every original summary node requires one native summary embedding")
     if not 1024 * 1024 <= max_database_bytes <= 16 * 1024 * 1024 * 1024:
         raise ValueError("invalid FileDB capacity limit")
     if not connection.execute("PRAGMA foreign_keys").fetchone()[0]:
@@ -317,7 +407,7 @@ def append_summary_rows(
     before = connection.total_changes
     connection.execute("BEGIN IMMEDIATE")
     try:
-        for chunk, representation in zip(chunk_rows, representation_rows, strict=True):
+        for chunk in chunk_rows:
             connection.execute(cinsert, [chunk[c] for c in CHUNK_COLUMN_NAMES])
             native = connection.execute(
                 f"SELECT text_sha256,content_sha256,collection_id FROM {CHUNK_TABLE_NAME} WHERE chunk_id=?",
@@ -325,6 +415,7 @@ def append_summary_rows(
             ).fetchone()
             if native is None or tuple(native) != (chunk["text_sha256"], chunk["content_sha256"], chunk["collection_id"]):
                 raise RuntimeError("conflicting native KMD source revision for summary anchor")
+        for representation in representation_rows:
             connection.execute(rinsert, [representation[c] for c in REPRESENTATION_COLUMN_NAMES])
             saved = connection.execute(
                 f"SELECT representation_text_sha256,embedding_sha256,prompt_version "
