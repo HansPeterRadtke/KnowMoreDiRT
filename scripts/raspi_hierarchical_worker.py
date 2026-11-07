@@ -21,6 +21,11 @@ import sys
 import time
 from datetime import datetime, timezone
 
+sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "src"))
+from file_system_catalog.summary_coverage import (
+    current_completed_originals, summary_progress_metrics,
+)
+
 FILEDB = Path("/data/var/knowmoredirt/knowledge-library/filesystem.sqlite3")
 SOURCE_MAP = Path("/data/var/knowmoredirt/knowledge-library/semantic/source-map.sqlite3")
 RUNROOT = Path("/data/var/knowmoredirt/knowledge-library")
@@ -67,17 +72,12 @@ def scope():
             "SELECT source_path, source_sha256,derived_sha256,text_characters "
             "FROM originals WHERE status='complete' AND text_characters>100"
         ).fetchall()
+    current_versions = {
+        path: (original_sha, derived_sha, int(characters))
+        for path, original_sha, derived_sha, characters in available
+    }
     with sqlite3.connect("file:" + str(FILEDB) + "?mode=ro", uri=True) as db:
-        processed = {
-            row[0] for row in db.execute(
-                """SELECT DISTINCT f.relative_path_display
-                   FROM content_representations r
-                   JOIN content_chunks c ON c.chunk_id=r.chunk_id
-                   JOIN filesystem_entries f ON f.id=c.filesystem_entry_id
-                   WHERE c.collection_id LIKE '%:summary'
-                     AND r.prompt_version='kmd-hierarchical-source-summary-v1'"""
-            )
-        }
+        processed = current_completed_originals(db, current_versions)
     return available, processed
 
 def pending_failures(failed: dict, available: list, processed: set) -> dict:
@@ -144,11 +144,9 @@ def run(*, sleep_seconds: int, max_calls: int, once: bool, dry_run: bool):
             # Smallest first yields early complete documents; the full backlog
             # remains scheduled and large textbooks are never permanently skipped.
             records.sort(key=lambda x: (x[3], x[0]))
-            state_update(phase="running", total_eligible_originals=len(available),
-                         complete_originals=len(processed),
-                         remaining_originals=len(records),
-                         percentage=round(100.0*len(processed)/max(1,len(available)), 6),
-                         failed=failed)
+            versions = {p: (orig, deriv, int(chars)) for p, orig, deriv, chars in available}
+            metrics = summary_progress_metrics(versions, processed)
+            state_update(phase="running", **metrics, failed=failed)
             if not records:
                 state_update(phase="caught_up", current_original=None)
                 print("KMD_HIERARCHICAL_CAUGHT_UP", now(), len(processed), flush=True)
@@ -157,6 +155,8 @@ def run(*, sleep_seconds: int, max_calls: int, once: bool, dry_run: bool):
                 continue
             progress = False
             completed_count = len(processed)
+            completed_chars = metrics["indexed_text_characters"]
+            eligible_chars = metrics["eligible_text_characters"]
             completed_in_pass = 0
             for path, original_sha, derived_sha, text_chars in records:
                 if stop: break
@@ -192,11 +192,15 @@ def run(*, sleep_seconds: int, max_calls: int, once: bool, dry_run: bool):
                     failed.pop(path, None)
                     progress = True
                     completed_count += 1
+                    completed_chars += text_chars
                     completed_in_pass += 1
                     state_update(
                         complete_originals=completed_count,
                         remaining_originals=max(0, len(available)-completed_count),
                         percentage=round(100.0*completed_count/max(1,len(available)), 6),
+                        eligible_text_characters=eligible_chars,
+                        indexed_text_characters=completed_chars,
+                        text_percentage=round(100.0*completed_chars/max(1,eligible_chars), 6),
                         last_completed_original=path,
                         last_completed_utc=now(),
                         failed=failed,
