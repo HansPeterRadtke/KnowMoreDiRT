@@ -30,6 +30,13 @@ This subsystem does not initialize DRT, create persistent KMD referents, or perf
 
 The source was copied from devtests commit `6faaccc9`. Regression tests from that repository are preserved under `tests/filesystem_database/`. Any future synchronization must be explicit and reviewed; changes in either copy do not automatically propagate to the other repository.
 
+## Original native KMD keywords versus live recursive summary audit, November 2026
+
+The [native facet reuse and whole-book audit](kmd-native-facet-reuse-and-huge-book-audit-2026-11-07.md)
+verifies pre-existing keyword and keyphrase schema, storage and tests;
+records real Qwen structured output; and distinguishes synthetic
+whole-book coverage from actual real-model book completion.
+
 ## Verified original passage inspection, November 2026
 
 The [source-evidence and abstention research](kmd-source-evidence-and-abstention-2026-11-07.md)
