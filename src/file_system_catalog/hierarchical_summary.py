@@ -16,7 +16,7 @@ from bisect import bisect_right
 import hashlib
 import json
 import re
-from typing import Protocol, Sequence
+from typing import Callable, Protocol, Sequence
 
 _MARKER = re.compile(r"\[\[SOURCE UNIT: ([^\]\n]{1,400})\]\]")
 _CHAPTER = re.compile(
@@ -307,7 +307,10 @@ class HierarchicalSummarizer:
             raise RuntimeError("incomplete or misordered source coverage")
         return sections, groups
 
-    def summarize(self, *, title: str, text: str, max_calls: int | None = None) -> SummaryTree:
+    def summarize(
+        self, *, title: str, text: str, max_calls: int | None = None,
+        on_node: Callable[[SummaryNode, int], None] | None = None,
+    ) -> SummaryTree:
         """Summarize all inputs, recursively, or fail clearly at a bounded limit.
 
         max_calls guards time/cost for pilots; a partial run is never reported
@@ -401,6 +404,11 @@ class HierarchicalSummarizer:
                 calls += 1
                 if len(nodes) > self.max_nodes:
                     raise RuntimeError("summary node budget exceeded")
+                if on_node is not None:
+                    # Source text and generated summaries stay in private
+                    # KMD storage. Observers receive only this verified node
+                    # receipt, not a partial or fabricated whole-book root.
+                    on_node(node, calls)
             if (next_nodes[0].start_char != 0
                     or next_nodes[-1].end_char != len(text)
                     or any(a.end_char != b.start_char for a, b in zip(next_nodes, next_nodes[1:]))):

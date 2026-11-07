@@ -15,6 +15,8 @@ from __future__ import annotations
 
 import argparse
 from dataclasses import asdict
+from datetime import datetime, timezone
+import tempfile
 import hashlib
 import json
 import os
@@ -134,6 +136,34 @@ def payload_path(original_path: str, original_sha: str, derived_sha: str) -> Pat
     return OUT / (basename + "." + key + ".summary-tree.json")
 
 
+def source_progress_path(original_path: str, original_sha: str, derived_sha: str) -> Path:
+    """Private per-original journal, independent of canonical vector FileDB."""
+    return OUT / "progress" / (
+        payload_path(original_path, original_sha, derived_sha).name + ".progress.json"
+    )
+
+
+def save_source_progress(path: Path, value: dict) -> None:
+    """Atomic, owner-only progress: no partial document or summary text leaked."""
+    path.parent.mkdir(parents=True, exist_ok=True, mode=0o700)
+    if path.parent.is_symlink():
+        raise ValueError("source progress directory must not be a symlink")
+    os.chmod(path.parent, 0o700)
+    content = dict(value)
+    content["updated_utc"] = datetime.now(timezone.utc).isoformat(timespec="seconds")
+    fd, temp = tempfile.mkstemp(prefix=".source-progress-", suffix=".tmp", dir=path.parent)
+    try:
+        with os.fdopen(fd, "w", encoding="utf-8") as writer:
+            json.dump(content, writer, indent=2, ensure_ascii=False)
+            writer.write(chr(10))
+            writer.flush()
+            os.fsync(writer.fileno())
+        os.chmod(temp, 0o600)
+        os.replace(temp, path)
+    finally:
+        Path(temp).unlink(missing_ok=True)
+
+
 def load_tree(payload: dict) -> SummaryTree:
     fields = payload["tree"]
     nodes = tuple(SummaryNode(**{
@@ -177,10 +207,61 @@ def build(args) -> None:
     print("PLAN", json.dumps(plan, ensure_ascii=False), flush=True)
     if args.plan_only:
         return
-    tree = engine.summarize(
-        title=model_title, text=source["derived_text"],
-        max_calls=args.max_calls,
+    elapsed_from = time.monotonic()
+    progress_file = source_progress_path(
+        source["original_path"], source["original_sha256"], source["derived_sha256"]
     )
+    progress = {
+        "schema": "knowmoredirt-recursive-summary-node-progress-v1",
+        "status": "summarizing",
+        "original_path": source["original_path"],
+        "original_sha256": source["original_sha256"],
+        "derived_sha256": source["derived_sha256"],
+        "model": args.model,
+        "source_characters": len(source["derived_text"]),
+        "first_level_summary_nodes_planned": len(groups),
+        "completed_first_level_nodes": 0,
+        "completed_model_calls": 0,
+        "last_summary_level": None,
+        "last_node_id": None,
+        "elapsed_seconds": 0.0,
+    }
+    save_source_progress(progress_file, progress)
+    def on_node(node: SummaryNode, count: int) -> None:
+        progress["completed_model_calls"] = count
+        progress["last_summary_level"] = node.level
+        progress["last_node_id"] = node.node_id
+        progress["last_summary_sha256"] = node.summary_sha256
+        progress["last_source_start_char"] = node.start_char
+        progress["last_source_end_char"] = node.end_char
+        progress["elapsed_seconds"] = round(time.monotonic() - elapsed_from, 1)
+        if node.level == 0:
+            progress["completed_first_level_nodes"] += 1
+            progress["completed_source_characters_in_leaf_pass"] = node.end_char
+        # First-level completion is a real known denominator. The number of
+        # later parent calls is unknown until each recursive stage is planned.
+        progress["first_level_percent"] = round(
+            100.0 * progress["completed_first_level_nodes"] / max(1,len(groups)), 2
+        )
+        save_source_progress(progress_file, progress)
+        print("KMD_HIERARCHICAL_SUMMARY_NODE", json.dumps({
+            "original_path": source["original_path"], "level": node.level,
+            "completed_calls": count,
+            "first_level_percent": progress["first_level_percent"],
+            "source_end_char": node.end_char,
+            "summary_sha256": node.summary_sha256,
+        }, ensure_ascii=False), flush=True)
+    try:
+        tree = engine.summarize(
+            title=model_title, text=source["derived_text"],
+            max_calls=args.max_calls, on_node=on_node,
+        )
+    except Exception as error:
+        progress["status"] = "incomplete_generation"
+        progress["last_error"] = f"{type(error).__name__}: {str(error)[:260]}"
+        progress["elapsed_seconds"] = round(time.monotonic() - elapsed_from, 1)
+        save_source_progress(progress_file, progress)
+        raise
     if tree.source_sha256 != sha(source["derived_text"].encode()):
         raise RuntimeError("generated summary tree source mismatch")
     if len(tree.nodes) < 1:
@@ -203,6 +284,9 @@ def build(args) -> None:
         # Never overwrite a different completed LLM output on another run.
         existing = json.loads(output.read_text(encoding="utf-8"))
         if existing != payload:
+            progress["status"] = "existing_complete_tree_differs"
+            progress["last_error"] = "different completed tree already exists; replacement refused"
+            save_source_progress(progress_file, progress)
             print("EXISTING COMPLETE SUMMARY TREE FOUND; refusing replacement", flush=True)
             return
     else:
@@ -210,6 +294,19 @@ def build(args) -> None:
             json.dump(payload, handle, ensure_ascii=False, indent=2)
             handle.write("\n")
         os.chmod(output, 0o600)
+    progress.update({
+        "status": "complete_tree_saved",
+        "completed_model_calls": len(tree.nodes),
+        "completed_first_level_nodes": sum(node.level == 0 for node in tree.nodes),
+        "first_level_percent": 100.0,
+        "completed_source_characters_in_leaf_pass": len(source["derived_text"]),
+        "root_summary_sha256": tree.root.summary_sha256,
+        "root_node_id": tree.root_id,
+        "root_level": tree.root.level,
+        "elapsed_seconds": round(time.monotonic() - elapsed_from, 1),
+        "complete_tree_path": str(output),
+    })
+    save_source_progress(progress_file, progress)
     print("COMPLETE_TREE", json.dumps({
         "original_path": source["original_path"],
         "nodes": len(tree.nodes),
@@ -454,6 +551,28 @@ def status(_args):
     result["canonical_database"] = str(DB)
     result["database_bytes"] = DB.stat().st_size
     result["configured_database_budget_bytes"] = DB_BUDGET
+    # Active document progress is separate from durable complete-root counts:
+    # an unfinished subtree must never be presented as indexed evidence.
+    worker_state = DB.parent / "hierarchical-worker-status.json"
+    try:
+        state = json.loads(worker_state.read_text(encoding="utf-8"))
+        active = state.get("current_original")
+        if isinstance(active, str) and active in current:
+            result["active_original"] = active
+            result["worker_phase"] = state.get("phase")
+            original_sha, derivative_sha, _ = current[active]
+            target = source_progress_path(active, original_sha, derivative_sha)
+            if target.is_file() and not target.is_symlink() and target.stat().st_size < 65536:
+                receipt = json.loads(target.read_text(encoding="utf-8"))
+                if (receipt.get("original_path") == active
+                        and receipt.get("original_sha256") == original_sha
+                        and receipt.get("derived_sha256") == derivative_sha
+                        and str(receipt.get("updated_utc", "")) >= str(
+                            state.get("current_started_utc", "")
+                        )):
+                    result["active_source_progress"] = receipt
+    except (OSError, ValueError, TypeError, KeyError):
+        result["active_source_progress_unavailable"] = True
     print(json.dumps(result, indent=2))
 
 def main():
