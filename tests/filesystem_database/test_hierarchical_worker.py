@@ -27,6 +27,21 @@ def load_worker():
 
 
 class ContinuousWorkerTest(unittest.TestCase):
+    def test_completed_sources_are_not_reported_as_outstanding_failures(self):
+        worker = load_worker()
+        old = {
+            "docs/completed.pdf": {"attempts": 5},
+            "docs/retry.pdf": {"attempts": 2},
+            "docs/retired.pdf": {"attempts": 1},
+        }
+        active = [
+            ("docs/completed.pdf", "a"*64, "b"*64, 100),
+            ("docs/retry.pdf", "c"*64, "d"*64, 200),
+        ]
+        result = worker.pending_failures(old, active, {"docs/completed.pdf"})
+        self.assertEqual({"docs/retry.pdf": {"attempts": 2}}, result)
+        self.assertEqual(3, len(old))
+
     def test_resume_scope_uses_original_file_id_and_only_summary_representations(self):
         worker = load_worker()
         with tempfile.TemporaryDirectory() as tmp:

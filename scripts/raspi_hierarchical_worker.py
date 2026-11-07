@@ -80,6 +80,15 @@ def scope():
         }
     return available, processed
 
+def pending_failures(failed: dict, available: list, processed: set) -> dict:
+    """Do not report already indexed or retired revisions as active failures."""
+    valid = {row[0] for row in available}
+    return {
+        path: entry for path, entry in failed.items()
+        if path in valid and path not in processed
+    }
+
+
 def run_command(parts, label, path):
     print("KMD_HIERARCHICAL", now(), label, path, flush=True)
     result = subprocess.run(
@@ -126,6 +135,7 @@ def run(*, sleep_seconds: int, max_calls: int, once: bool, dry_run: bool):
     while not stop:
         try:
             available, processed = scope()
+            failed = pending_failures(failed, available, processed)
             records = [
                 (path, original_sha, derived_sha, int(size))
                 for path, original_sha, derived_sha, size in available
