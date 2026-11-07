@@ -8,6 +8,8 @@ from __future__ import annotations
 
 import hashlib
 import json
+import time
+import urllib.request
 
 from kmd_model_call_cache import (
     model_content_fingerprint,
@@ -35,12 +37,20 @@ class LocalSummaryModel:
         timeout_seconds: float = 150.0,
         seed: int = 42,
         context_cap_tokens: int | None = None,
+        shared_slot_idle_seconds: float = 0.0,
+        admission_max_wait_seconds: float = 3600.0,
     ):
         if not base_url.startswith(("http://127.0.0.1:", "http://localhost:", "http://10.")):
             raise ValueError("only an explicitly configured local trusted model endpoint is allowed")
         if context_cap_tokens is not None and not 1024 <= context_cap_tokens <= 262144:
             raise ValueError("context cap outside safe bounds")
+        if not 0 <= shared_slot_idle_seconds <= 300:
+            raise ValueError("invalid bounded shared inference idle policy")
+        if not 1 <= admission_max_wait_seconds <= 14400:
+            raise ValueError("invalid bounded shared inference admission wait")
         self._context_cap_tokens = context_cap_tokens
+        self._shared_slot_idle_seconds = float(shared_slot_idle_seconds)
+        self._admission_max_wait_seconds = float(admission_max_wait_seconds)
         self.client = AnalysisClient(
             base_url,
             model=model,
@@ -61,6 +71,43 @@ class LocalSummaryModel:
 
     def text_tokens(self, text: str) -> int:
         return self.client.token_count(text)
+
+    def _wait_for_shared_slot(self) -> None:
+        """Yield to the voice client whenever the shared llama.cpp slot is busy.
+
+        This is admission control, not preemption. Voice requests arriving
+        after a KMD request starts can still queue until that call completes.
+        The worker must use conservative bounded prompt/output sizes.
+        """
+        if self._shared_slot_idle_seconds <= 0:
+            return
+        started = time.monotonic()
+        idle_since = None
+        while True:
+            current=time.monotonic()
+            if current-started > self._admission_max_wait_seconds:
+                raise RuntimeError("shared voice model did not become idle before bounded deadline")
+            try:
+                with urllib.request.urlopen(
+                    self.client.base_url + "/slots", timeout=4
+                ) as response:
+                    slots=json.loads(response.read(131072).decode("utf-8"))
+                if (not isinstance(slots,list) or not slots
+                        or any(not isinstance(s,dict) or
+                               not isinstance(s.get("is_processing"),bool)
+                               for s in slots)):
+                    raise RuntimeError("llama.cpp shared-slot status is unavailable")
+                busy=any(s["is_processing"] for s in slots)
+            except (OSError,ValueError,TimeoutError):
+                # Do not flood the voice server when its status is unknown.
+                busy=True
+            if busy:
+                idle_since=None
+            elif idle_since is None:
+                idle_since=current
+            elif current-idle_since >= self._shared_slot_idle_seconds:
+                return
+            time.sleep(min(2.0,max(0.1,self._shared_slot_idle_seconds/4.0)))
 
     def generate_summary(self, *, system: str, user: str, output_tokens: int) -> str:
         prompt_cost = self.prompt_tokens(system=system, user=user)
@@ -108,6 +155,7 @@ class LocalSummaryModel:
         cached = read_model_call(cache_key)
         if cached and isinstance(cached.get("summary"), str) and cached["summary"].strip():
             return cached["summary"]
+        self._wait_for_shared_slot()
         response = stream_chat_completion_json(
             f"{self.client.base_url}/v1/chat/completions",
             payload,
@@ -182,6 +230,7 @@ class LocalSummaryModel:
         cached=read_model_call(cache_key)
         if cached is not None and isinstance(cached.get("native_analysis"),dict):
             return normalize_analysis(cached["native_analysis"])
+        self._wait_for_shared_slot()
         response=stream_chat_completion_json(
             f"{self.client.base_url}/v1/chat/completions",
             payload,

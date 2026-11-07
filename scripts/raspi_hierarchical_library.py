@@ -192,11 +192,13 @@ def build(args) -> None:
         args.model_url, model=args.model,
         timeout_seconds=args.model_timeout,
         context_cap_tokens=getattr(args,"context_cap_tokens",None),
+        shared_slot_idle_seconds=getattr(args,"shared_slot_idle_seconds",0.0),
     )
     engine = HierarchicalSummarizer(
         model, output_tokens=args.output_tokens, safety_tokens=args.safety_tokens,
         max_levels=args.max_levels, max_nodes=args.max_nodes,
         native_facets=getattr(args,"native_facets",False),
+        native_facets_compact=getattr(args,"compact_native_facets",False),
     )
     sections, groups = engine.plan_source(title=model_title, text=source["derived_text"])
     plan = {
@@ -209,6 +211,8 @@ def build(args) -> None:
         "reserved_output": args.output_tokens,
         "reserved_safety": args.safety_tokens,
         "native_facets":getattr(args,"native_facets",False),
+        "compact_native_facets":getattr(args,"compact_native_facets",False),
+        "shared_model_idle_admission_seconds":getattr(args,"shared_slot_idle_seconds",0),
     }
     print("PLAN", json.dumps(plan, ensure_ascii=False), flush=True)
     if args.plan_only:
@@ -667,7 +671,9 @@ def main():
     b.add_argument("--model", default="qwen38-q4-default")
     b.add_argument("--model-timeout", type=float, default=150)
     b.add_argument("--context-cap-tokens", type=int, default=None,
-                   help="Conservatively limit planning context below the model's configured maximum")
+                   help="Quality source-group cap; actual llama.cpp context is still discovered")
+    b.add_argument("--shared-slot-idle-seconds",type=float,default=0.0,
+                   help="Wait for a continuously idle llama.cpp slot before each request")
     b.add_argument("--output-tokens", type=int, default=420)
     b.add_argument("--safety-tokens", type=int, default=384)
     b.add_argument("--max-levels", type=int, default=12)
@@ -676,6 +682,8 @@ def main():
     b.add_argument("--plan-only", action="store_true")
     b.add_argument("--native-facets",action="store_true",
                    help="Use existing KMD file facet schema for summary+keywords in each model call")
+    b.add_argument("--compact-native-facets",action="store_true",
+                   help="Use concise source-faithful KMD facet instructions for faster structured output")
     i = sub.add_parser("import", help="Prepare or append every summary vector to the original FileDB")
     i.add_argument("--original-path", required=True)
     i.add_argument("--write", action="store_true")

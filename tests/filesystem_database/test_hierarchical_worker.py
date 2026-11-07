@@ -235,6 +235,53 @@ class ContinuousWorkerTest(unittest.TestCase):
                 self.assertEqual(stat.S_IMODE((root / "worker-status.json").stat().st_mode), 0o600)
                 self.assertEqual([], list(root.glob("*.tmp.*")))
 
+    def test_coder_voice_slot_flags_forwarded_without_second_worker(self):
+        worker=load_worker()
+        with tempfile.TemporaryDirectory() as tmp:
+            root=Path(tmp)
+            source=root/"source-map.sqlite3"
+            filedb=root/"filedb.sqlite3"
+            cli=root/"test-cli.py"
+            source.touch();filedb.touch();cli.touch()
+            recorded=[]
+            with mock.patch.object(worker,"RUNROOT",root), \
+                 mock.patch.object(worker,"STATE",root/"progress.json"), \
+                 mock.patch.object(worker,"LOCK",root/".lock"), \
+                 mock.patch.object(worker,"SOURCE_MAP",source), \
+                 mock.patch.object(worker,"FILEDB",filedb), \
+                 mock.patch.object(worker,"CLI",cli), \
+                 mock.patch.object(worker,"scope",return_value=(
+                    [("docs/source.txt","a"*64,"b"*64,1200)],set(),
+                 )), \
+                 mock.patch.object(worker,"run_command",
+                    side_effect=lambda args,label,path:recorded.append((args,label,path))):
+                worker.run(
+                    sleep_seconds=0,max_calls=50,once=True,dry_run=True,
+                    model_url="http://10.8.0.7:14833",
+                    model_name="qwen3-coder-30b-a3b-instruct-q4-k-m",
+                    output_tokens=2400,context_cap_tokens=16384,
+                    shared_slot_idle_seconds=8,
+                    compact_native_facets=True,
+                )
+            self.assertEqual(1,len(recorded))
+            parts,label,path=recorded[0]
+            self.assertEqual("PLAN",label)
+            self.assertEqual("http://10.8.0.7:14833",
+                             parts[parts.index("--model-url")+1])
+            self.assertEqual("qwen3-coder-30b-a3b-instruct-q4-k-m",
+                             parts[parts.index("--model")+1])
+            self.assertEqual("2400",parts[parts.index("--output-tokens")+1])
+            self.assertEqual("16384",parts[parts.index("--context-cap-tokens")+1])
+            self.assertEqual("8",parts[parts.index("--shared-slot-idle-seconds")+1])
+            self.assertIn("--native-facets",parts)
+            self.assertIn("--compact-native-facets",parts)
+            self.assertIn("--plan-only",parts)
+            self.assertEqual("docs/source.txt",path)
+            state=json.loads((root/"progress.json").read_text())
+            self.assertEqual("qwen3-coder-30b-a3b-instruct-q4-k-m",state["model"])
+            self.assertEqual(8,state["shared_voice_slot_idle_seconds"])
+            self.assertTrue(state["compact_native_facets"])
+
     def test_command_uses_fixed_local_python_bounded_timeout(self):
         worker = load_worker()
         class Response:
