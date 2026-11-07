@@ -49,14 +49,40 @@ SUMMARY_FACETS_SYSTEM = (
       "field. Use native kind=keyphrase for multiword search phrases and "
       "kind=keyword for stand-alone technical terms. Include both kinds "
       "when supported by the source. Do not label every item keyword "
-      "or description. Keep distinct useful terms, not near-duplicates."
+      "or description. Keep distinct useful terms, not near-duplicates. "
+      "Fidelity priority: retain every specifically named method, action, "
+      "procedure, command, technical mechanism, example and governing scope "
+      "when the source contains a finite list of at most forty. Do not "
+      "replace concrete source terms with broad categories or 'and more'. "
+      "Where a named numeric constant has an explicit value, preserve "
+      "the actual value with its name; for example, use the native "
+      "keyphrase text 'parameter: value' when supported. Include "
+      "conditional, negative and historical qualifiers instead of "
+      "inventing unsupported generalizations."
 )
 SUMMARY_FACETS_STRICT_SYSTEM = (
     SUMMARY_SYSTEM
     + "\nReturn the original KnowMoreDiRT file facet JSON schema. "
       "Summarize in at most 100 words, then identify three to six strongest "
       "facets with one or two meaningful keyphrases and native keyword "
-      "representations per facet. Avoid repeated prose. Preserve caveats."
+      "representations per facet. Prefer concrete specific named source "
+      "terms and numeric parameter values rather than generic categories. "
+      "Avoid repeated prose. Preserve caveats."
+)
+
+# Low-latency schema-constrained facet variant for the existing voice Coder
+# model. This is the SAME original KMD FILE_ANALYSIS_SCHEMA and normalizer,
+# with a shorter instruction, not an alternative metadata representation.
+SUMMARY_FACETS_COMPACT_SYSTEM = (
+    SUMMARY_FACETS_STRICT_SYSTEM
+    + "\nUse a compact native KMD facet response, keeping no more than six "
+      "meaningful facets. In an explicit source enumeration of up to "
+      "twenty-five named methods, procedures, roles or technical terms, "
+      "preserve every specific name as a short separate native keyword "
+      "or keyphrase. Split a long list across topic facets where necessary. "
+      "Preserve actual numeric values next to named constants when given. "
+      "Do not spend output tokens on generic descriptions or repeated prose. "
+      "The document summary is concise; return schema-valid JSON only."
 )
 
 # A deterministic, context-checked fallback for models that insist on
@@ -177,6 +203,7 @@ class HierarchicalSummarizer:
         max_levels: int = 12,
         max_nodes: int = 50_000,
         native_facets: bool = False,
+        native_facets_compact: bool = False,
     ):
         context = model.context_tokens
         if type(context) is not int or context < 256:
@@ -190,7 +217,10 @@ class HierarchicalSummarizer:
             raise ValueError("invalid safety reserve")
         if native_facets and not callable(getattr(model, "generate_retrieval_analysis", None)):
             raise ValueError("model lacks native structured facet generation")
+        if native_facets_compact and not native_facets:
+            raise ValueError("compact native facets require native facet generation")
         self.native_facets = native_facets
+        self.native_facets_compact = native_facets_compact
         self.model = model
         self.output_tokens = output_tokens
         self.safety_tokens = reserve
@@ -211,6 +241,8 @@ class HierarchicalSummarizer:
         )
 
     def _system(self) -> str:
+        if self.native_facets_compact:
+            return SUMMARY_FACETS_COMPACT_SYSTEM
         return SUMMARY_FACETS_SYSTEM if self.native_facets else SUMMARY_SYSTEM
 
     def _prompt_cost(self, *, title: str, level: int, sections: Sequence[Section | SummaryInput]) -> int:
@@ -377,7 +409,9 @@ class HierarchicalSummarizer:
                 if cost + self.output_tokens + self.safety_tokens > self.model.context_tokens:
                     raise RuntimeError("prompt no longer fits the context reserved for summary")
                 output_allowance = self.output_tokens
-                prompt_policy = "native_facets" if self.native_facets else "standard"
+                prompt_policy = ("native_facets_compact"
+                                 if self.native_facets_compact else
+                                 "native_facets" if self.native_facets else "standard")
                 native_analysis = None
                 try:
                     if self.native_facets:
@@ -397,8 +431,11 @@ class HierarchicalSummarizer:
                     # otherwise the native summary vector would truncate.
                     if "did not finish within reserved generation tokens" not in str(error):
                         raise
-                    strict_system = (SUMMARY_FACETS_STRICT_SYSTEM
-                                     if self.native_facets else SUMMARY_STRICT_SYSTEM)
+                    strict_system = (
+                        SUMMARY_FACETS_COMPACT_SYSTEM if self.native_facets_compact
+                        else SUMMARY_FACETS_STRICT_SYSTEM if self.native_facets
+                        else SUMMARY_STRICT_SYSTEM
+                    )
                     retry_cost = self.model.prompt_tokens(
                         system=strict_system, user=prompt
                     )

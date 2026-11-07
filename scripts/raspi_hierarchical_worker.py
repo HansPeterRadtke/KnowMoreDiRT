@@ -149,9 +149,23 @@ def run_command(parts, label, path):
         raise RuntimeError(label + " exited " + str(result.returncode) + ": " + tail[-800:])
     return tail
 
-def run(*, sleep_seconds: int, max_calls: int, once: bool, dry_run: bool):
+def run(
+    *, sleep_seconds: int, max_calls: int, once: bool, dry_run: bool,
+    model_url: str = "http://10.8.0.7:14829",
+    model_name: str = "qwen38-q4-default",
+    output_tokens: int = 1600,
+    context_cap_tokens: int | None = None,
+    shared_slot_idle_seconds: float = 0.0,
+    compact_native_facets: bool = False,
+):
     if os.uname().nodename.split(".")[0] != "raspi":
         raise RuntimeError("KnowMoreDiRT Knowledge Library exists only on Raspi")
+    if (not model_url.startswith(("http://10.","http://127.0.0.1:","http://localhost:"))
+            or not model_name.strip()
+            or not 700<=output_tokens<=8000
+            or (context_cap_tokens is not None and not 1024<=context_cap_tokens<=262144)
+            or not 0<=shared_slot_idle_seconds<=300):
+        raise ValueError("invalid bounded local model configuration")
     if not CLI.is_file() or not SOURCE_MAP.is_file() or not FILEDB.is_file():
         raise FileNotFoundError("missing canonical KnowMoreDiRT summary program/database")
     for signum in (signal.SIGINT, signal.SIGTERM):
@@ -171,7 +185,12 @@ def run(*, sleep_seconds: int, max_calls: int, once: bool, dry_run: bool):
         pass
     state_update(phase="starting", worker_pid=os.getpid(), started_utc=now(),
                  summaries_per_original="all levels", source_of_truth=str(FILEDB),
-                 model="qwen38-q4-default", concurrent_llm_requests=1,
+                 model=model_name, model_url=model_url,
+                 quality_source_group_context_cap_tokens=context_cap_tokens,
+                 shared_voice_slot_idle_seconds=shared_slot_idle_seconds,
+                 output_tokens=output_tokens,
+                 compact_native_facets=compact_native_facets,
+                 concurrent_llm_requests=1,
                  storage_budget_bytes=4 * 1024**3,
                  native_facet_policy="summary_and_keywords_single_constrained_model_call")
     while not stop:
@@ -188,6 +207,17 @@ def run(*, sleep_seconds: int, max_calls: int, once: bool, dry_run: bool):
             # thousands of very short documents have been processed.
             # Ordering never introduces a second concurrent model request.
             records = balanced_backlog(records, len(processed))
+            model_flags=[
+                "--model-url",model_url,"--model",model_name,
+                "--output-tokens",str(output_tokens),
+                "--safety-tokens","384",
+                "--shared-slot-idle-seconds",str(shared_slot_idle_seconds),
+                "--native-facets",
+            ]
+            if context_cap_tokens is not None:
+                model_flags.extend(["--context-cap-tokens",str(context_cap_tokens)])
+            if compact_native_facets:
+                model_flags.append("--compact-native-facets")
             versions = {p: (orig, deriv, int(chars)) for p, orig, deriv, chars in available}
             metrics = summary_progress_metrics(versions, processed)
             state_update(
@@ -219,6 +249,7 @@ def run(*, sleep_seconds: int, max_calls: int, once: bool, dry_run: bool):
                     if dry_run:
                         run_command(["build", "--original-path", path,
                                      "--max-calls", str(max_calls),
+                                     *model_flags,
                                      "--plan-only"], "PLAN", path)
                     else:
                         from raspi_hierarchical_library import payload_path
@@ -227,9 +258,7 @@ def run(*, sleep_seconds: int, max_calls: int, once: bool, dry_run: bool):
                             run_command(
                                 ["build", "--original-path", path,
                                  "--max-calls", str(max_calls),
-                                 "--output-tokens", "1600",
-                                 "--safety-tokens", "384",
-                                 "--native-facets"],
+                                 *model_flags],
                                 "BUILD", path,
                             )
                         state_update(phase="embedding", current_original=path)
@@ -297,8 +326,19 @@ if __name__ == "__main__":
     p.add_argument("--max-calls", type=int, default=3000)
     p.add_argument("--once", action="store_true")
     p.add_argument("--dry-run", action="store_true")
+    p.add_argument("--model-url",default="http://10.8.0.7:14829")
+    p.add_argument("--model",default="qwen38-q4-default")
+    p.add_argument("--output-tokens",type=int,default=1600)
+    p.add_argument("--context-cap-tokens",type=int,default=None)
+    p.add_argument("--shared-slot-idle-seconds",type=float,default=0.0)
+    p.add_argument("--compact-native-facets",action="store_true")
     args = p.parse_args()
     if not 0 <= args.sleep_seconds <= 3600 or not 1 <= args.max_calls <= 50000:
         raise ValueError("invalid bounded worker settings")
     run(sleep_seconds=args.sleep_seconds, max_calls=args.max_calls,
-        once=args.once, dry_run=args.dry_run)
+        once=args.once, dry_run=args.dry_run,
+        model_url=args.model_url,model_name=args.model,
+        output_tokens=args.output_tokens,
+        context_cap_tokens=args.context_cap_tokens,
+        shared_slot_idle_seconds=args.shared_slot_idle_seconds,
+        compact_native_facets=args.compact_native_facets)

@@ -30,6 +30,14 @@ This subsystem does not initialize DRT, create persistent KMD referents, or perf
 
 The source was copied from devtests commit `6faaccc9`. Regression tests from that repository are preserved under `tests/filesystem_database/`. Any future synchronization must be explicit and reviewed; changes in either copy do not automatically propagate to the other repository.
 
+## Voice Coder model benchmarking and safe sharing, November 2026
+
+The [Coder model evaluation](kmd-coder-voice-model-acceleration-2026-11-08.md)
+compares the existing voice-assistant model against Qwen3.8 on complete
+source/keyword extraction. Model context is read from llama.cpp. A conservative
+source-group cap retains detailed retrieval vectors, and optional idle-slot
+admission yields the shared model to voice requests between calls.
+
 ## Original native KMD facets in recursive summaries, November 2026
 
 The [native facet bridge](kmd-native-facet-integration-2026-11-07.md)
