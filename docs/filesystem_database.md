@@ -30,6 +30,13 @@ This subsystem does not initialize DRT, create persistent KMD referents, or perf
 
 The source was copied from devtests commit `6faaccc9`. Regression tests from that repository are preserved under `tests/filesystem_database/`. Any future synchronization must be explicit and reviewed; changes in either copy do not automatically propagate to the other repository.
 
+## Mixed source-length recursive summary scheduling, November 2026
+
+The [balanced library schedule](kmd-balanced-recursive-library-2026-11-07.md)
+interleaves smaller originals with regular medium and larger documents,
+allowing actual multi-level summary indexing to be validated earlier
+without increasing model concurrency or changing the canonical FileDB.
+
 ## Batched native semantic search scalability, November 2026
 
 The [native search scaling report](kmd-summary-search-scaling-2026-11-07.md)

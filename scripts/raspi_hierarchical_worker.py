@@ -20,6 +20,7 @@ import subprocess
 import sys
 import time
 from datetime import datetime, timezone
+from collections import deque
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "src"))
 from file_system_catalog.summary_coverage import (
@@ -89,6 +90,46 @@ def pending_failures(failed: dict, available: list, processed: set) -> dict:
     }
 
 
+def balanced_backlog(records: list, completed_count: int):
+    """Mix brief sources with substantial chapter and book material.
+
+    Every eighth *scheduled* source attempts a medium-size document
+    (at least 60k extracted chars); every fortieth attempts a large
+    document (at least 200k chars). Each bucket remains shortest-first,
+    all sources are eventually visited, and no extra model concurrency
+    is introduced. The mutable index already records successful originals
+    across resumptions, so a restarted run resumes at its global position.
+    """
+    if type(completed_count) is not int or completed_count < 0:
+        raise ValueError("invalid processed-original count")
+    buckets = {"short": [], "medium": [], "large": []}
+    for row in records:
+        if len(row) != 4 or type(row[3]) is not int or row[3] < 0:
+            raise ValueError("invalid original source size in backlog")
+        if row[3] >= 200000:
+            bucket = "large"
+        elif row[3] >= 60000:
+            bucket = "medium"
+        else:
+            bucket = "short"
+        buckets[bucket].append(row)
+    for label in buckets:
+        buckets[label] = deque(sorted(
+            buckets[label], key=lambda row: (row[3], row[0])
+        ))
+    for offset in range(len(records)):
+        ordinal = completed_count + offset + 1
+        preferred = (
+            "large" if ordinal % 40 == 0
+            else "medium" if ordinal % 8 == 0
+            else "short"
+        )
+        for label in dict.fromkeys((preferred, "short", "medium", "large")):
+            if buckets[label]:
+                yield buckets[label].popleft()
+                break
+
+
 def run_command(parts, label, path):
     print("KMD_HIERARCHICAL", now(), label, path, flush=True)
     result = subprocess.run(
@@ -141,13 +182,18 @@ def run(*, sleep_seconds: int, max_calls: int, once: bool, dry_run: bool):
                 for path, original_sha, derived_sha, size in available
                 if path not in processed
             ]
-            # Smallest first yields early complete documents; the full backlog
-            # remains scheduled and large textbooks are never permanently skipped.
-            records.sort(key=lambda x: (x[3], x[0]))
+            # Periodically exercise chapter-level and larger recursive
+            # hierarchies, rather than delaying all substantial books until
+            # thousands of very short documents have been processed.
+            # Ordering never introduces a second concurrent model request.
+            records = balanced_backlog(records, len(processed))
             versions = {p: (orig, deriv, int(chars)) for p, orig, deriv, chars in available}
             metrics = summary_progress_metrics(versions, processed)
-            state_update(phase="running", **metrics, failed=failed)
-            if not records:
+            state_update(
+                phase="running", **metrics, failed=failed,
+                backlog_policy="interleave_short_medium_every8_large_every40",
+            )
+            if not any(p not in processed for p in versions):
                 state_update(phase="caught_up", current_original=None)
                 print("KMD_HIERARCHICAL_CAUGHT_UP", now(), len(processed), flush=True)
                 if once: return
