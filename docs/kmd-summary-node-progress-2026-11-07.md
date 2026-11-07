@@ -11,3 +11,39 @@ The existing Raspi summary status command now checks the active worker original 
 A disposable synthetic 35-section source produced five first-level summaries and one parent. Tests verified leaf progress at 20, 40, 60, 80 and 100 percent, final root linkage and digest, 0600 private file permissions, 0700 private directory permissions, atomic file replacement and explicit incomplete status after an injected model failure. No extra model server or SQLite database is created.
 
 The balanced live worker already completed one 60,842-character research document as a single summary. It subsequently started a substantially larger research PDF to test multi-level summarization. The current in-flight model call is deliberately not interrupted to install this observational feature; new builds pick it up after code integration.
+
+## Live two-document multilevel verification
+
+After the balanced queue was enabled, the continuous Raspi worker completed
+two original documents requiring genuine hierarchical reduction.
+
+The original PACER causal-discovery paper contained 200,796 verified extracted
+characters. Its canonical KMD rows contain three contiguous source-level
+summaries covering ranges 0–71,872, 71,872–144,364, and 144,364–200,796,
+plus one full-source parent summary linked to exactly those three children.
+All four SHA-linked E5 vectors passed independent original binary, derived
+text, node source-span, summary and serialized vector checksum checks.
+A live natural-language search for PACER and large-scale interventional
+causal discovery returned that original in first place with cosine 0.9236.
+
+The original RFC 9866 root-node failure detector text contained 60,749
+verified derived characters. Despite its smaller character count, the
+tokenizer required three first-level source summaries plus a root summary.
+The source spans were 0–738, 738–59,552 and 59,552–60,749. All four
+native summary vectors, source hashes and root child references were
+independently verified. A search for Root Node Failure Detection and RPL
+border-router crashes returned the RFC original first at cosine 0.9211.
+
+The audit receipt is privately preserved at the existing Raspi
+KnowMoreDiRT search-audit/live-multilevel-retrieval-acceptance-20261107.json.
+Neither original document's copyrighted content nor the vector database
+is committed to Git. SQLite quick check returned OK and foreign keys
+had no errors.
+
+After the per-node progress code was integrated, live builds produced
+owner-only progress files under summaries/progress. The KMD status
+command exposed the current original's source revision, leaf-group
+count, generation status and last node checkpoint. A successfully
+completed source was marked complete_tree_saved; the following
+source was shown as summarizing, not incorrectly reported finished.
+The active worker remained up without an unexpected restart.
