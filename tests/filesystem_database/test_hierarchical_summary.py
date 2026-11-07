@@ -198,6 +198,21 @@ class HierarchicalSummaryTest(unittest.TestCase):
         self.assertEqual("stop", result["finish_reason"])
         self.assertEqual('{"summary":"OK"}', result["content"])
 
+    def test_length_exhaustion_expands_output_only_with_actual_spare_context(self):
+        class BudgetSensitive(FakeSummaryModel):
+            def generate_summary(self, *, system, user, output_tokens):
+                self.calls.append((system, user, output_tokens))
+                if output_tokens <= 320:
+                    raise RuntimeError("local summary did not finish within reserved generation tokens")
+                return "Complete source-grounded summary: a bounded successful retry."
+        model = BudgetSensitive(1000)
+        tree = HierarchicalSummarizer(model, output_tokens=320, safety_tokens=64).summarize(
+            title="small document", text="A short document with enough available model context."
+        )
+        self.assertEqual([320, 480], [x[2] for x in model.calls])
+        self.assertEqual(480, tree.root.allocated_output_tokens)
+        self.assertLessEqual(tree.root.prompt_tokens + 480 + 64, 1000)
+
     def test_model_rejects_external_api_urls(self):
         with self.assertRaises(ValueError):
             LocalSummaryModel("https://api.some-cloud.com", model="cloud")

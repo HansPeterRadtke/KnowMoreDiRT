@@ -30,6 +30,15 @@ This subsystem does not initialize DRT, create persistent KMD referents, or perf
 
 The source was copied from devtests commit `6faaccc9`. Regression tests from that repository are preserved under `tests/filesystem_database/`. Any future synchronization must be explicit and reviewed; changes in either copy do not automatically propagate to the other repository.
 
+## Independent real-query summary retrieval QA, November 2026
+
+The [native summary retrieval benchmark](kmd-summary-retrieval-quality-2026-11-07.md)
+documents easy and paraphrased real searches, German-language queries,
+unsupported-topic false positives, a fair same-document old-excerpt versus
+new-summary comparison, and persistent private query/rank JSONL logging.
+Search is usable for already summarized originals but has not been shown to
+be reliable across the full Knowledge Library.
+
 ## Actual Raspi hierarchical summary search pilot, November 2026
 
 The verified two-source native KMD full-document experiment is documented in

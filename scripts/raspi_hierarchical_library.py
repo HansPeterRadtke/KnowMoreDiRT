@@ -21,6 +21,7 @@ import os
 from pathlib import Path
 import re
 import sqlite3
+import time
 import sys
 
 ROOT = Path(__file__).resolve().parents[1]
@@ -31,6 +32,9 @@ from file_system_catalog.hierarchical_summary import HierarchicalSummarizer, Sum
 from file_system_catalog.hierarchical_summary_model import LocalSummaryModel
 from file_system_catalog.hierarchical_summary_store import summary_rows, append_summary_rows
 from file_system_catalog.hierarchical_summary_search import search_summary_entries, summary_index_status
+from file_system_catalog.summary_search_audit import (
+    append_query_audit, make_search_audit, recent_search_audits, AUDIT_DIR,
+)
 
 DB = Path("/data/var/knowmoredirt/knowledge-library/filesystem.sqlite3")
 LIBRARY = Path("/data/var/Knowledge Library")
@@ -301,7 +305,7 @@ def _current_versions():
     return manifest, ledger, source_map
 
 
-def search(args) -> None:
+def _search_impl(args) -> dict:
     from knowledge_library_semantic_model import LocalE5
     manifest, ledger, sources = _current_versions()
     checked: dict[tuple[str, str, str], bool] = {}
@@ -350,6 +354,7 @@ def search(args) -> None:
             expected_model=model.model,
             require_source=verify,
         )
+        snapshot = summary_index_status(conn)
     out = []
     for row in found:
         original = row["original_path"]
@@ -365,13 +370,62 @@ def search(args) -> None:
             "matched_summary_nodes": row["matched_summary_nodes"],
             "source_scope": "summaries_for_document_discovery_not_original_factual_evidence",
         })
-    print(json.dumps({
+    return {
         "query": args.query,
         "database": str(DB),
         "documents": out,
         "count": len(out),
         "originals_validated_for_version": sum(checked.values()),
-    }, ensure_ascii=False, indent=2))
+        "index_scope": {
+            "native_summary_vectors": snapshot["native_summary_vectors"],
+            "summarized_originals": snapshot["original_documents_with_summaries"],
+            "complete_extracted_originals": len(sources),
+            "indexed_original_percent": round(100.0*snapshot["original_documents_with_summaries"]/max(1,len(sources)),6),
+        },
+        "relevance_warning": (
+            "The ranked results are nearest summaries, not verified answers. "
+            "A nonempty response does not establish that the requested topic "
+            "is contained in the currently summarized original documents."
+        ),
+    }
+
+
+def search(args) -> None:
+    """Always retain actual query, ranked results and failure for later QA."""
+    if len(args.query) > 1000:
+        raise ValueError("search query exceeds bound")
+    started = time.monotonic()
+    try:
+        result = _search_impl(args)
+    except Exception as error:
+        receipt = make_search_audit(
+            query=args.query, result=None,
+            elapsed_seconds=time.monotonic() - started,
+            error=f"{type(error).__name__}: {str(error)[:300]}",
+            model="intfloat/multilingual-e5-small-onnx-int8",
+            database=str(DB),
+        )
+        append_query_audit(receipt)
+        raise
+    receipt = make_search_audit(
+        query=args.query, result=result,
+        elapsed_seconds=time.monotonic() - started,
+        model="intfloat/multilingual-e5-small-onnx-int8",
+        database=str(DB),
+    )
+    path = append_query_audit(receipt)
+    result["query_audit_logged"] = True
+    result["private_query_audit_file"] = str(path)
+    print(json.dumps(result, ensure_ascii=False, indent=2))
+
+
+def review_search_log(args) -> None:
+    """Inspect the latest private query/rank receipts."""
+    records = recent_search_audits(directory=AUDIT_DIR, limit=args.last)
+    print(json.dumps({
+        "count": len(records), "audit_directory": str(AUDIT_DIR),
+        "search_audits": records,
+    }, indent=2, ensure_ascii=False))
 
 
 def status(_args):
@@ -413,8 +467,11 @@ def main():
     s.add_argument("--top", type=int, default=8)
     s.add_argument("--nodes-per-original", type=int, default=5)
     sub.add_parser("status")
+    audit = sub.add_parser("search-log", help="Review persistent native semantic query rankings")
+    audit.add_argument("--last", type=int, default=10)
     a = p.parse_args()
-    {"build": build, "import": import_source, "search": search, "status": status}[a.cmd](a)
+    {"build": build, "import": import_source, "search": search, "status": status,
+     "search-log": review_search_log}[a.cmd](a)
 
 
 if __name__ == "__main__":

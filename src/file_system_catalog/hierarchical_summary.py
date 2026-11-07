@@ -331,12 +331,30 @@ class HierarchicalSummarizer:
                 cost = self.model.prompt_tokens(system=SUMMARY_SYSTEM, user=prompt)
                 if cost + self.output_tokens + self.safety_tokens > self.model.context_tokens:
                     raise RuntimeError("prompt no longer fits the context reserved for summary")
-                summary = self.model.generate_summary(
-                    system=SUMMARY_SYSTEM, user=prompt, output_tokens=self.output_tokens
-                )
+                output_allowance = self.output_tokens
+                try:
+                    summary = self.model.generate_summary(
+                        system=SUMMARY_SYSTEM, user=prompt, output_tokens=output_allowance
+                    )
+                except RuntimeError as error:
+                    # A short source may need more room to state all its
+                    # conditions. Retry *only* an explicit length-exhausted
+                    # generation when its actual prompt leaves extra room.
+                    # Stay below the E5 embedding context (512 tokens),
+                    # otherwise the native summary vector would truncate.
+                    if "did not finish within reserved generation tokens" not in str(error):
+                        raise
+                    available = self.model.context_tokens - cost - self.safety_tokens
+                    retry_allowance = min(480, available)
+                    if retry_allowance <= output_allowance:
+                        raise
+                    output_allowance = retry_allowance
+                    summary = self.model.generate_summary(
+                        system=SUMMARY_SYSTEM, user=prompt, output_tokens=output_allowance
+                    )
                 if not isinstance(summary, str) or not summary.strip():
                     raise RuntimeError("model failed to provide a usable summary")
-                if self.model.text_tokens(summary) > self.output_tokens:
+                if self.model.text_tokens(summary) > output_allowance:
                     raise RuntimeError("model exceeded the output reservation")
                 content_hash = hashlib.sha256(summary.encode("utf-8")).hexdigest()
                 child_ids = tuple(n.node_id for n in current[group_pos:group_pos + len(group)]) if level else ()
@@ -357,7 +375,7 @@ class HierarchicalSummarizer:
                     source_sha256=source_sha,
                     prompt_tokens=cost,
                     model_context_tokens=self.model.context_tokens,
-                    allocated_output_tokens=self.output_tokens,
+                    allocated_output_tokens=output_allowance,
                 )
                 next_nodes.append(node)
                 nodes.append(node)
