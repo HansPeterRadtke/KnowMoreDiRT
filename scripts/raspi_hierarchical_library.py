@@ -35,6 +35,7 @@ from file_system_catalog.hierarchical_summary_model import LocalSummaryModel
 from file_system_catalog.hierarchical_summary_store import summary_rows, append_summary_rows
 from file_system_catalog.hierarchical_summary_search import summary_index_status
 from file_system_catalog.summary_search_batched import search_summary_entries_batched
+from file_system_catalog.source_evidence import source_evidence_candidates
 from file_system_catalog.summary_search_audit import (
     append_query_audit, make_search_audit, recent_search_audits, AUDIT_DIR,
 )
@@ -530,6 +531,71 @@ def review_search_log(args) -> None:
     }, indent=2, ensure_ascii=False))
 
 
+def original_source_evidence(args) -> None:
+    """Inspect verified original pages; never mistake lexical hits for truth."""
+    started=time.monotonic()
+    try:
+        source=checked_original(args.original_path)
+        with sqlite3.connect(f"file:{DB.resolve()}?mode=ro",uri=True) as db:
+            row=db.execute(
+                "SELECT id FROM filesystem_entries WHERE entry_type='file' "
+                "AND relative_path_display=?",(args.original_path,)
+            ).fetchone()
+        if row is None:
+            raise ValueError("original has no canonical KnowMoreDiRT FileDB entry")
+        result=source_evidence_candidates(
+            original_path=args.original_path,
+            original_title=source["title"],
+            filesystem_entry_id=int(row[0]),
+            original_sha256=source["original_sha256"],
+            derived_sha256=source["derived_sha256"],
+            derived_text=source["derived_text"],
+            query=args.query,
+            top=args.top,
+            snippet_characters=args.snippet_characters,
+        )
+    except Exception as error:
+        append_query_audit({
+            "operation":"verified_original_source_evidence",
+            "query":args.query,
+            "original_path":args.original_path,
+            "success":False,
+            "error":f"{type(error).__name__}: {str(error)[:300]}",
+            "duration_seconds":round(time.monotonic()-started,3),
+        })
+        raise
+    receipt={
+        "operation":"verified_original_source_evidence",
+        "query":args.query,
+        "original_path":args.original_path,
+        "original_sha256":result["original_sha256"],
+        "derived_sha256":result["derived_sha256"],
+        "success":True,
+        "count":result["returned_passages"],
+        "retrieval_engine":"verified_original_ephemeral_fts5_v1",
+        "duration_seconds":round(time.monotonic()-started,3),
+        "ranked_source_spans":[{
+            "rank":i,
+            "source_section":v["source_section"],
+            "source_start_char":v["source_start_char"],
+            "source_end_char":v["source_end_char"],
+            "source_span_sha256":v["source_span_sha256"],
+            "excerpt_start_char":v["excerpt_start_char"],
+            "excerpt_end_char":v["excerpt_end_char"],
+            "excerpt_sha256":v["excerpt_sha256"],
+            "lexical_bm25":v["lexical_bm25"],
+            "matched_source_terms":v["matched_source_terms"],
+        } for i,v in enumerate(result["passages"],1)],
+        "evidence_warning":result["evidence_warning"],
+    }
+    filename=append_query_audit(receipt)
+    result["query"]=args.query
+    result["retrieval_engine"]="verified_original_ephemeral_fts5_v1"
+    result["query_audit_logged"]=True
+    result["private_query_audit_file"]=str(filename)
+    print(json.dumps(result,indent=2,ensure_ascii=False))
+
+
 def status(_args):
     with sqlite3.connect(f"file:{SOURCE_MAP.resolve()}?mode=ro", uri=True) as source:
         current = {
@@ -597,11 +663,20 @@ def main():
     s.add_argument("--top", type=int, default=8)
     s.add_argument("--nodes-per-original", type=int, default=5)
     sub.add_parser("status")
+    evidence=sub.add_parser(
+        "source-evidence",
+        help="Read verified source pages/sections of an explicitly chosen original",
+    )
+    evidence.add_argument("--original-path",required=True)
+    evidence.add_argument("query")
+    evidence.add_argument("--top",type=int,default=5)
+    evidence.add_argument("--snippet-characters",type=int,default=900)
     audit = sub.add_parser("search-log", help="Review persistent native semantic query rankings")
     audit.add_argument("--last", type=int, default=10)
     a = p.parse_args()
     {"build": build, "import": import_source, "search": search, "status": status,
-     "search-log": review_search_log}[a.cmd](a)
+     "search-log": review_search_log,
+     "source-evidence": original_source_evidence}[a.cmd](a)
 
 
 if __name__ == "__main__":

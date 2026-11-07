@@ -30,6 +30,13 @@ This subsystem does not initialize DRT, create persistent KMD referents, or perf
 
 The source was copied from devtests commit `6faaccc9`. Regression tests from that repository are preserved under `tests/filesystem_database/`. Any future synchronization must be explicit and reviewed; changes in either copy do not automatically propagate to the other repository.
 
+## Verified original passage inspection, November 2026
+
+The [source-evidence and abstention research](kmd-source-evidence-and-abstention-2026-11-07.md)
+measures false positives from naive similarity and lexical thresholds,
+then adds a bounded read-only original-page locator. Every candidate retains
+original source offsets and hashes; no score is promoted to factual support.
+
 ## Per-node source progress receipts, November 2026
 
 The [recursive summary node-progress audit](kmd-summary-node-progress-2026-11-07.md)
