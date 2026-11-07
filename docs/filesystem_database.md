@@ -30,6 +30,14 @@ This subsystem does not initialize DRT, create persistent KMD referents, or perf
 
 The source was copied from devtests commit `6faaccc9`. Regression tests from that repository are preserved under `tests/filesystem_database/`. Any future synchronization must be explicit and reviewed; changes in either copy do not automatically propagate to the other repository.
 
+## Per-node source progress receipts, November 2026
+
+The [recursive summary node-progress audit](kmd-summary-node-progress-2026-11-07.md)
+stores private atomic progress after every verified leaf or parent
+summary, without copying source text or claiming incomplete trees
+are indexed. The existing native status command can inspect progress
+for the currently active and revision-matched original source.
+
 ## Mixed source-length recursive summary scheduling, November 2026
 
 The [balanced library schedule](kmd-balanced-recursive-library-2026-11-07.md)
