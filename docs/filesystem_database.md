@@ -30,6 +30,15 @@ This subsystem does not initialize DRT, create persistent KMD referents, or perf
 
 The source was copied from devtests commit `6faaccc9`. Regression tests from that repository are preserved under `tests/filesystem_database/`. Any future synchronization must be explicit and reviewed; changes in either copy do not automatically propagate to the other repository.
 
+## Source-complete concise retry and ranking rejection evidence, November 2026
+
+[The summarization recovery and ranking audit](kmd-summary-retry-and-ranking-audit-2026-11-07.md)
+records a source-grounded short-output fallback for real local-model
+length exhaustion, stale-failure progress cleanup, and an exploratory
+hybrid ranking sweep followed by an unused held-out source test.
+A blended ranking that worsened holdout first-place accuracy was *not*
+enabled; native summary-first semantic ranking and query logging are preserved.
+
 ## Independent real-query summary retrieval QA, November 2026
 
 The [native summary retrieval benchmark](kmd-summary-retrieval-quality-2026-11-07.md)

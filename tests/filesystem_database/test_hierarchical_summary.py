@@ -213,6 +213,32 @@ class HierarchicalSummaryTest(unittest.TestCase):
         self.assertEqual(480, tree.root.allocated_output_tokens)
         self.assertLessEqual(tree.root.prompt_tokens + 480 + 64, 1000)
 
+    def test_shorter_prompt_retry_succeeds_even_without_additional_output_room(self):
+        class BriefOnly(FakeSummaryModel):
+            def generate_summary(self, *, system, user, output_tokens):
+                self.calls.append((system, user, output_tokens))
+                if "at most 115 words" not in system:
+                    raise RuntimeError("local summary did not finish within reserved generation tokens")
+                return "Source topics with the original limitations and conditions."
+        model = BriefOnly(420)
+        tree = HierarchicalSummarizer(
+            model, output_tokens=64, safety_tokens=40
+        ).summarize(title="short", text="Example source. More source detail.")
+        self.assertEqual(len(model.calls), 2)
+        self.assertIn("at most 115 words", model.calls[-1][0])
+        self.assertEqual(tree.root.prompt_tokens, model.prompt_tokens(
+            system=model.calls[-1][0], user=model.calls[-1][1]
+        ))
+        self.assertEqual("strict_shortened_after_length", tree.root.prompt_policy)
+        self.assertLessEqual(tree.root.prompt_tokens+tree.root.allocated_output_tokens+40, 420)
+
+    def test_strict_prompt_does_not_suppress_unrelated_model_errors(self):
+        model = FakeSummaryModel(750)
+        engine = HierarchicalSummarizer(model, output_tokens=64, safety_tokens=16)
+        with patch.object(model, "generate_summary", side_effect=RuntimeError("transport offline")):
+            with self.assertRaisesRegex(RuntimeError, "transport offline"):
+                engine.summarize(title="small", text="A short source.")
+
     def test_model_rejects_external_api_urls(self):
         with self.assertRaises(ValueError):
             LocalSummaryModel("https://api.some-cloud.com", model="cloud")

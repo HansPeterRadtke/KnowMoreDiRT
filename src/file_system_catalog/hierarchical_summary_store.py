@@ -254,6 +254,7 @@ def summary_rows(
             "prompt_tokens": node.prompt_tokens,
             "configured_model_context": node.model_context_tokens,
             "reserved_output_tokens": node.allocated_output_tokens,
+            "summary_prompt_policy": node.prompt_policy,
             "source_scope": "retrieval_summary_only_not_original_evidence",
         }
         representations.append({
