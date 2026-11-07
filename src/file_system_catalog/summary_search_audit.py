@@ -105,6 +105,7 @@ def make_search_audit(
         "query": query,
         "model": model,
         "database": database,
+        "retrieval_engine": (result or {}).get("retrieval_engine", "legacy_or_failed_query"),
         "duration_seconds": round(elapsed_seconds, 3),
         "success": error is None,
         "error": error,

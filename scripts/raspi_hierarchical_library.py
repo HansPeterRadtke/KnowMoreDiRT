@@ -31,7 +31,8 @@ sys.path.insert(0, str(INFRA))
 from file_system_catalog.hierarchical_summary import HierarchicalSummarizer, SummaryNode, SummaryTree
 from file_system_catalog.hierarchical_summary_model import LocalSummaryModel
 from file_system_catalog.hierarchical_summary_store import summary_rows, append_summary_rows
-from file_system_catalog.hierarchical_summary_search import search_summary_entries, summary_index_status
+from file_system_catalog.hierarchical_summary_search import summary_index_status
+from file_system_catalog.summary_search_batched import search_summary_entries_batched
 from file_system_catalog.summary_search_audit import (
     append_query_audit, make_search_audit, recent_search_audits, AUDIT_DIR,
 )
@@ -351,7 +352,7 @@ def _search_impl(args) -> dict:
     model = LocalE5(threads=2, batch_size=4)
     vector = model.embed_queries([args.query])[0]
     with sqlite3.connect(f"file:{DB.resolve()}?mode=ro", uri=True) as conn:
-        found = search_summary_entries(
+        found = search_summary_entries_batched(
             conn, vector, limit=args.top,
             nodes_per_document=args.nodes_per_original,
             expected_model=model.model,
@@ -376,6 +377,7 @@ def _search_impl(args) -> dict:
     return {
         "query": args.query,
         "database": str(DB),
+        "retrieval_engine": "native_batched_cosine_v1",
         "documents": out,
         "count": len(out),
         "originals_validated_for_version": sum(checked.values()),

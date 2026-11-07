@@ -30,6 +30,13 @@ This subsystem does not initialize DRT, create persistent KMD referents, or perf
 
 The source was copied from devtests commit `6faaccc9`. Regression tests from that repository are preserved under `tests/filesystem_database/`. Any future synchronization must be explicit and reviewed; changes in either copy do not automatically propagate to the other repository.
 
+## Batched native semantic search scalability, November 2026
+
+The [native search scaling report](kmd-summary-search-scaling-2026-11-07.md)
+compares bounded batched cosine calculation and deferred source metadata
+loading with 10,000/30,000-vector and 27 real query equivalence tests.
+Original KMD FileDB authority, source revisions and ranking remain unchanged.
+
 ## Version-aware complete source roots and text-volume progress, November 2026
 
 The [revision-aware completion and progress audit](kmd-revision-aware-progress-2026-11-07.md)
