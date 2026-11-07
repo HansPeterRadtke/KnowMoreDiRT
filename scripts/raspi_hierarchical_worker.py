@@ -172,7 +172,8 @@ def run(*, sleep_seconds: int, max_calls: int, once: bool, dry_run: bool):
     state_update(phase="starting", worker_pid=os.getpid(), started_utc=now(),
                  summaries_per_original="all levels", source_of_truth=str(FILEDB),
                  model="qwen38-q4-default", concurrent_llm_requests=1,
-                 storage_budget_bytes=4 * 1024**3)
+                 storage_budget_bytes=4 * 1024**3,
+                 native_facet_policy="summary_and_keywords_single_constrained_model_call")
     while not stop:
         try:
             available, processed = scope()
@@ -226,8 +227,9 @@ def run(*, sleep_seconds: int, max_calls: int, once: bool, dry_run: bool):
                             run_command(
                                 ["build", "--original-path", path,
                                  "--max-calls", str(max_calls),
-                                 "--output-tokens", "320",
-                                 "--safety-tokens", "384"],
+                                 "--output-tokens", "1600",
+                                 "--safety-tokens", "384",
+                                 "--native-facets"],
                                 "BUILD", path,
                             )
                         state_update(phase="embedding", current_original=path)
