@@ -159,6 +159,49 @@ class ContinuousWorkerTest(unittest.TestCase):
             self.assertEqual({"docs/changed.pdf","docs/partial.pdf"},
                              {x[0] for x in available}-done)
 
+    def test_balanced_schedule_includes_medium_and_large_documents(self):
+        worker = load_worker()
+        sources = (
+            [(f"small/{i:03d}", "a"*64, "b"*64, 1000+i)
+             for i in range(70)]
+            + [(f"medium/{i:03d}", "c"*64, "d"*64, 70000+i)
+               for i in range(12)]
+            + [(f"large/{i:03d}", "e"*64, "f"*64, 250000+i)
+               for i in range(3)]
+        )
+        scheduled=list(worker.balanced_backlog(sources,0))
+        self.assertEqual(len(sources),len(scheduled))
+        self.assertEqual(len(set(x[0] for x in sources)),len(set(x[0] for x in scheduled)))
+        self.assertEqual({x[0] for x in sources},{x[0] for x in scheduled})
+        self.assertTrue(scheduled[7][0].startswith("medium/"))
+        self.assertTrue(scheduled[15][0].startswith("medium/"))
+        self.assertTrue(scheduled[39][0].startswith("large/"))
+        self.assertTrue(scheduled[0][0].startswith("small/"))
+        # Within each class, shortest sources should be first, avoiding
+        # unexpectedly picking the largest book before bounded samples.
+        for kind in ("small/","medium/","large/"):
+            found=[r[3] for r in scheduled if r[0].startswith(kind)]
+            self.assertEqual(found,sorted(found))
+
+    def test_balanced_schedule_resume_modulo_and_empty_bucket_fallback(self):
+        worker=load_worker()
+        sources=(
+            [(f"short/{i}", "a"*64, "b"*64, 2200+i) for i in range(38)]
+            + [(f"mid/{i}", "c"*64, "d"*64, 60000+i) for i in range(3)]
+            + [("long/0", "e"*64, "f"*64, 400000)]
+        )
+        schedule=list(worker.balanced_backlog(sources,7))
+        self.assertEqual("mid/0",schedule[0][0])  # eighth source
+        self.assertEqual("long/0",schedule[32][0])  # fortieth source
+        self.assertEqual(len(sources),len(schedule))
+        self.assertEqual({x[0] for x in sources},{x[0] for x in schedule})
+        only_small=[("x/1","a","b",100),("x/2","c","d",200)]
+        self.assertEqual(only_small,list(worker.balanced_backlog(only_small,39)))
+        with self.assertRaises(ValueError):
+            list(worker.balanced_backlog(only_small,-1))
+        with self.assertRaises(ValueError):
+            list(worker.balanced_backlog([("bad","a","b","wrong")],0))
+
     def test_source_text_weighted_progress_is_reported_separately(self):
         worker = load_worker()
         corpus = {
