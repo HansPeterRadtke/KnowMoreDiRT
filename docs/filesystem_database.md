@@ -30,6 +30,13 @@ This subsystem does not initialize DRT, create persistent KMD referents, or perf
 
 The source was copied from devtests commit `6faaccc9`. Regression tests from that repository are preserved under `tests/filesystem_database/`. Any future synchronization must be explicit and reviewed; changes in either copy do not automatically propagate to the other repository.
 
+## Experimental complete-document hierarchical summaries (November 2026)
+
+The source-complete recursive summary engine, source-linked native KMD writer
+and real local-model experiments are in the [hierarchical summary report](kmd-hierarchical-summary-2026-11-07.md). These modules are opt-in and not
+yet deployed into the live Raspi index: the Infra query resolver must first
+recognize summary nodes and protect their source-level provenance.
+
 ## Experimental library retrieval extension (November 2026)
 
 A separate KMD-side, in-memory FTS5 and reciprocal-rank-fusion **candidate**
