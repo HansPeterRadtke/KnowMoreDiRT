@@ -1,0 +1,62 @@
+# Source-linked evidence inspection and abstention research — 7 November 2026
+
+This bounded KnowMoreDiRT research increment continues the original Knowledge Library work on Raspi. It does not change production semantic ranking, source ingestion, recursive summary generation, or the authoritative original KMD FileDB.
+
+## Research basis
+
+The offline Knowledge Library already contains the complete original 2026 ICML paper *Rethinking the Reranker: Boundary-Aware Evidence Selection for Robust Retrieval-Augmented Generation* and the original 2026 EMNLP paper *Uncertainty-Aware Hybrid Retrieval for Long-Document RAG*. Both distinguish semantic similarity from evidence appropriate to the reader. The first considers whether the retrieved evidence is sufficient for reasoning; the second emphasizes query-dependent uncertainty and the tradeoff between full-document context and small retrievable passages.
+
+The original 2026 paper *Relevance Supervision Can Teach Neural Retrievers to Prefer LLM-Generated Text* warns that retrievers may develop preferences for fluently generated material over independently written originals. *Don't Be Misled by Style*, ACL 2026, similarly shows that style can bias ranking. These are reasons not to replace the source text with the generated summaries or treat fluent summary language as a citation.
+
+Recent independent work on evidence sufficiency and answer abstention (Zhang and Wu, Computers, Materials & Continua 2026, DOI 10.32604/cmc.2026.086343) also reports poor model abstention under conflicting evidence. A confidence declaration by an LLM alone would not validate a source claim.
+
+Research sources and full publisher articles:
+- https://proceedings.mlr.press/v306/sun26p.html
+- https://aclanthology.org/2026.emnlp-main.2104/
+- https://aclanthology.org/2026.findings-emnlp.2038/
+- https://aclanthology.org/2026.acl-long.302/
+- https://doi.org/10.32604/cmc.2026.086343
+
+## Empirical unsupported-result experiment (private source corpus)
+
+A read-only experiment ran 104 queries against the original native KMD FileDB with about 499 summarized originals at the checkpoint. The labels were drawn from the existing easy and difficult source-finding benchmark, the previously fixed positive holdout, and an additional small held-out unsupported-query set. The positive label means precisely that the top-ranked original path equals the predeclared gold path; it does NOT mean a factual answer has been independently verified.
+
+In the training split (69 queries), 39 top-ranked results matched the predetermined source; 30 were different or unsupported. The held-out split (35 queries) contained 17 exact expected top-ranked originals and 18 other/unsupported first results. Negatives had cosine scores of approximately 0.782 to 0.877 on the holdout, overlapping the correct-result score range of roughly 0.868 to 0.919.
+
+Using a score cutoff of 0.88 selected 11/17 correct holdout top results but still accepted 5/18 incorrect/unsupported results. Requiring source-summary term overlap of 0.30 selected 14/17 correct top results while still accepting 7/18 incorrect/unsupported. Title-term overlap reduced some false positives but rejected many correct source matches. Top-one/two score margin also failed to distinguish outcomes robustly. Therefore NO cosine, lexical, score-margin or fused acceptance threshold was added to production search.
+
+Private reproducible test program and complete metric receipt:
+- search-audit/evidence_gate_experiment_20261107.py
+- search-audit/source-sufficiency-diagnostic-20261107.json
+
+These data are not a blind model-calibration benchmark. Source identities and some questions were authored with knowledge of the small existing index, and an apparently wrong first document can still be topically relevant. The outcome is negative evidence for blindly deploying a simple threshold, not a certified estimate of deployment-wide factual accuracy.
+
+## New experimental original-evidence command
+
+The new file_system_catalog.source_evidence module can inspect an **explicit original document** after canonical source selection. The Raspi-only CLI adds:
+
+    knowledge-library-summaries source-evidence --original-path '...' 'graphical interfaces windows icons menus'
+
+The operation calls the existing complete original-publisher binary SHA-256, completed-download ledger, source-map and derived-text SHA verification. It finds the exact original KMD FileDB entry and loads the current complete extracted source. An in-memory, bounded SQLite FTS5 index locates lexical matches across original page/section units. It never persists another database, modifies original text, or replaces the native semantic vectors.
+
+Each returned candidate has the exact original FileDB ID, original and derivative SHA, source unit/page label, original derived-text start/end offsets, source-span SHA-256, selected bounded excerpt offsets and SHA, literal matched query words, and an explicit status identifying it as a **source lexical candidate rather than a verified factual answer**. The query and exact returned source-span metadata are appended to the existing owner-only private query JSONL log. The full source or publisher text is not copied into Git.
+
+Extraction-specific KMD provenance JSON precedes real publisher pages and often repeats the source title and search terms. The evidence locator explicitly excludes that generated metadata prologue from evidence candidates (while retaining the source offsets and checksum). An in-memory test using actual RFC 9866 source confirmed that the first evidence candidate is from the publisher's Original plain text section rather than the metadata prelude.
+
+## Actual full-book verification
+
+The original current HCI textbook extraction contains 2,752,515 characters and 830 source sections. The prototype indexed the complete verified text in RAM in about a second and located GUI pages 504 and 503 first for a question about graphical interface windows, icons, menus and pointers. Page 504/506 material was also returned for visual hierarchy. Every returned source excerpt's offsets and hashes matched the original verified extracted text.
+
+An unrelated question about German building-permit applications still produced lexical page matches for incidental words such as application, building, and legal. This demonstrates directly why full-text results cannot be promoted to a claim that the book supports the user's answer.
+
+Separate real-source tests found matching original sections in RFC 9866 and the 200,796-character PACER causal-discovery paper, correctly retaining the current publisher source and derivative checksums. All lookups were logged in the existing private daily query-audit file.
+
+## Safety and next evaluation
+
+- Keep summary-vector similarity as **document discovery** only.
+- Treat source-page FTS as a second retrieval stage that gives the user inspectable original evidence, never as a truth oracle.
+- For question answering, verify the actual passage with its preceding/following and governing chapter/discourse context, including negation, historical dates, quotations, and conflicts.
+- Benchmark the eventual evidence sufficiency / abstention layer with independently labeled answerable, partially supported, irrelevant, absent, and contradictory queries rather than raw cosine cutoffs.
+- Do not enable a new answer-rejection or document-reranking policy until it improves independent held-out relevance without suppressing valid originals.
+
+The existing continuous KnowMoreDiRT summarization worker remains independently enabled and is not restarted for this optional source-inspection feature.
