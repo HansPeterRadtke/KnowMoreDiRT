@@ -40,12 +40,21 @@ CACHE = Path("/data/var/knowmoredirt/knowledge-library/semantic")
 SOURCE_MAP = CACHE / "source-map.sqlite3"
 OUT = Path("/data/var/knowmoredirt/knowledge-library/summaries")
 COLLECTION = "raspi-original-books-semantic-content-v1"
-DB_BUDGET = 640 * 1024 * 1024
+DB_BUDGET = 4 * 1024 * 1024 * 1024
 GUARD_TEXT = "exclude_unresolvable_summary_candidates_from_native_excerpt_search_v1"
 
 
 def sha(raw: bytes) -> str:
     return hashlib.sha256(raw).hexdigest()
+
+
+def file_sha256(path: Path) -> str:
+    """Hash original publisher bytes without loading a multi-gigabyte PDF."""
+    digest = hashlib.sha256()
+    with path.open("rb") as reader:
+        for chunk in iter(lambda: reader.read(8 * 1024 * 1024), b""):
+            digest.update(chunk)
+    return digest.hexdigest()
 
 
 def checked_original(relative: str) -> dict:
@@ -75,7 +84,7 @@ def checked_original(relative: str) -> dict:
     stat = path.stat()
     if stat.st_size != record.get("bytes_received"):
         raise ValueError("original file byte count differs from completed receipt")
-    if sha(path.read_bytes()) != record["sha256"]:
+    if file_sha256(path) != record["sha256"]:
         raise ValueError("original file SHA differs from completed receipt")
     with sqlite3.connect(f"file:{SOURCE_MAP}?mode=ro", uri=True) as con:
         rows = con.execute(
@@ -134,8 +143,10 @@ def load_tree(payload: dict) -> SummaryTree:
 
 def build(args) -> None:
     source = checked_original(args.original_path)
-    if len(source["title"]) > 300:
-        raise ValueError("title exceeds native summary source title bound")
+    # The full canonical title remains in the source manifest/payload.
+    # Only the model prompt receives a bounded title, so unusually long
+    # publisher titles never prevent complete document processing.
+    model_title = source["title"][:300]
     model = LocalSummaryModel(
         args.model_url, model=args.model,
         timeout_seconds=args.model_timeout,
@@ -144,7 +155,7 @@ def build(args) -> None:
         model, output_tokens=args.output_tokens, safety_tokens=args.safety_tokens,
         max_levels=args.max_levels, max_nodes=args.max_nodes,
     )
-    sections, groups = engine.plan_source(title=source["title"], text=source["derived_text"])
+    sections, groups = engine.plan_source(title=model_title, text=source["derived_text"])
     plan = {
         "title": source["title"],
         "original_path": source["original_path"],
@@ -159,7 +170,7 @@ def build(args) -> None:
     if args.plan_only:
         return
     tree = engine.summarize(
-        title=source["title"], text=source["derived_text"],
+        title=model_title, text=source["derived_text"],
         max_calls=args.max_calls,
     )
     if tree.source_sha256 != sha(source["derived_text"].encode()):
@@ -293,12 +304,13 @@ def _current_versions():
 def search(args) -> None:
     from knowledge_library_semantic_model import LocalE5
     manifest, ledger, sources = _current_versions()
-    checked: dict[str, bool] = {}
+    checked: dict[tuple[str, str, str], bool] = {}
 
     def verify(hit):
         path = hit["original_path"]
-        if path in checked:
-            return checked[path]
+        revision = (path, hit["original_sha256"], hit["derived_sha256"])
+        if revision in checked:
+            return checked[revision]
         original = ledger.get(path)
         derivative = sources.get(path)
         good = bool(
@@ -326,8 +338,8 @@ def search(args) -> None:
                         good = sha(source.read_bytes()) == derivative[2]
             except OSError:
                 good = False
-        checked[path] = bool(good)
-        return checked[path]
+        checked[revision] = bool(good)
+        return checked[revision]
 
     model = LocalE5(threads=2, batch_size=4)
     vector = model.embed_queries([args.query])[0]

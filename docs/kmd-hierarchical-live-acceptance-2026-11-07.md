@@ -121,3 +121,45 @@ schedule, actual multi-level long-book runs, held-out relevance
 evaluation, robust resumption, and a suitable disk budget.
 Do not claim perfect search accuracy or complete document
 coverage before independently testing that larger workload.
+
+## Continuous worker startup, 7 November 2026
+
+The owner subsequently explicitly authorized starting the whole-library
+recursive-summary run. The enabled Raspi systemd unit
+knowledge-library-hierarchical-summary.service now executes
+scripts/raspi_hierarchical_worker.py continuously, under low CPU and
+I/O priority, a memory/cgroup bound and a singleton file lock. It uses
+the local Thor Qwen endpoint and the native Raspi E5 vector model.
+
+The worker selects all completed, source-mapped originals, creates
+the complete recursive tree for each, verifies hashes and source spans,
+and imports *every* node/embedding into the canonical native FileDB.
+It records a current document, completed/remaining counts, percentage,
+retry state, and last successful source in a private JSON status receipt.
+It refreshes the authoritative database counts every ten successful
+originals and updates progress after each completed document.
+
+The original 640-MiB sample-only FileDB checkpoint has been superseded
+by a bounded 4-GiB cap for this owner-authorized full-library task.
+The earlier native embedding worker's systemd cap is aligned separately
+in the Infra research branch. The data disk had around 303 GiB free
+at startup. This is still a hard limit, not unbounded disk growth.
+
+The first real live samples completed and were inserted successfully
+after service activation. The worker restarted safely on a completed
+document boundary to apply the progress counter correction and continued
+processing, with no observed process failure. Each failed source
+receives a persisted exponential retry while other originals continue.
+
+The active KMD reader has a separate native summary-search API so
+ordinary hash-verified original passages cannot be hidden by higher-scoring
+summary embeddings. Searches validate the best-ranked candidate
+documents' revisions rather than hashing all seventeen thousand
+original derivatives for every query. Original publisher binary SHA checks
+use bounded streaming reads, rather than materializing a large book
+entirely in memory.
+
+The service is running, but *only* the observed completed files have
+recursive summaries. Generated source and summary data remain private
+outside Git; the worker source and synthetic tests belong in the
+separate KnowMoreDiRT research branch.

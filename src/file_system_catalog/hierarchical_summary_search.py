@@ -121,13 +121,32 @@ def search_summary_entries(
             "native_representation_id": representation_id,
             "children": provenance.get("children", []),
         }
-        if require_source is not None and not require_source(candidate):
-            continue
         indexed[filesystem_entry_id].append(candidate)
 
-    documents = []
+    # Rank all original document candidates first. Source revision checks may
+    # rehash multi-megabyte PDF derivatives, so do not verify seventeen
+    # thousand originals on *every* query. Walk documents in descending
+    # maximum similarity, verifying only candidates capable of entering top K.
+    # If the highest node is stale, use the next valid node and rerank.
+    ranked_documents = []
     for filesystem_id, hits in indexed.items():
-        hits.sort(key=lambda x: (-x["similarity"], -x["summary_level"], x["source_start_char"], x["summary_node_id"]))
+        hits.sort(key=lambda x: (
+            -x["similarity"], -x["summary_level"], x["source_start_char"], x["summary_node_id"],
+        ))
+        ranked_documents.append((filesystem_id, hits))
+    ranked_documents.sort(key=lambda item: (
+        -item[1][0]["similarity"], item[1][0]["original_path"],
+    ))
+    documents = []
+    for filesystem_id, hits in ranked_documents:
+        if len(documents) >= limit:
+            cutoff = sorted((r["similarity"] for r in documents), reverse=True)[limit-1]
+            if hits[0]["similarity"] < cutoff:
+                break
+        if require_source is not None:
+            hits = [hit for hit in hits if require_source(hit)]
+        if not hits:
+            continue
         best = hits[0]
         documents.append({
             "filesystem_entry_id": filesystem_id,
