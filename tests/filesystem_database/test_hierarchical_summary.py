@@ -161,6 +161,43 @@ class HierarchicalSummaryTest(unittest.TestCase):
         self.assertEqual(call.call_args.args[1]["max_tokens"], 100)
         save.assert_called_once()
 
+    def test_recursive_reduction_reaches_three_levels_on_long_source(self):
+        model = FakeSummaryModel(context_tokens=750)
+        engine = HierarchicalSummarizer(model, output_tokens=64, safety_tokens=16)
+        text = long_document(700, 160)
+        tree = engine.summarize(title="Long technical reference", text=text)
+        self.assertGreaterEqual(tree.root.level, 2)
+        self.assertGreater(len([n for n in tree.nodes if n.level == 0]), 20)
+        ids = {n.node_id: n for n in tree.nodes}
+        for node in tree.nodes:
+            for child in node.child_ids:
+                self.assertIn(child, ids)
+                self.assertLess(ids[child].level, node.level)
+        self.assertEqual((0, len(text)), (tree.root.start_char, tree.root.end_char))
+
+    def test_streaming_sse_keepalive_is_not_a_json_error(self):
+        from file_system_catalog.content_pipeline import stream_chat_completion_json
+        class Stream:
+            def __enter__(self):
+                return self
+            def __exit__(self, *args):
+                pass
+            def __iter__(self):
+                return iter([
+                    b":\n",
+                    b"event: message\n",
+                    b'data: {"choices":[{"delta":{"content":"{\\"summary\\":\\"OK\\"}"},"finish_reason":"stop"}]}\n',
+                    b"data: [DONE]\n",
+                ])
+        with patch("file_system_catalog.content_pipeline.urllib.request.urlopen",
+                   return_value=Stream()):
+            result = stream_chat_completion_json(
+                "http://127.0.0.1:14829/v1/chat/completions",
+                {"model": "mock"}, per_token_timeout_seconds=10,
+            )
+        self.assertEqual("stop", result["finish_reason"])
+        self.assertEqual('{"summary":"OK"}', result["content"])
+
     def test_model_rejects_external_api_urls(self):
         with self.assertRaises(ValueError):
             LocalSummaryModel("https://api.some-cloud.com", model="cloud")

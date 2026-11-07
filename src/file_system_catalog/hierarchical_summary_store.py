@@ -35,6 +35,67 @@ def _sha(text: str) -> str:
     return hashlib.sha256(text.encode("utf-8")).hexdigest()
 
 
+def validate_complete_summary_tree(tree: SummaryTree) -> None:
+    """Reject a missing level, leaf, parent link or original source interval.
+
+    Every level, including all recursively produced intermediary summaries,
+    must cover the complete source exactly once. This is mandatory before any
+    vector generation or native KMD database write.
+    """
+    if not tree.nodes or not tree.root_id or tree.original_characters < 1:
+        raise ValueError("incomplete hierarchical summary tree")
+    nodes = {node.node_id: node for node in tree.nodes}
+    if len(nodes) != len(tree.nodes) or tree.root_id not in nodes:
+        raise ValueError("duplicate or missing summary node identity")
+    max_level = max(node.level for node in tree.nodes)
+    if max_level < 0 or max_level > 50:
+        raise ValueError("invalid summary depth")
+    if sorted({node.level for node in tree.nodes}) != list(range(max_level + 1)):
+        raise ValueError("missing intermediate summary level")
+    groups = {
+        level: sorted(
+            (n for n in tree.nodes if n.level == level),
+            key=lambda n: (n.start_char, n.end_char, n.node_id),
+        )
+        for level in range(max_level + 1)
+    }
+    for level, current in groups.items():
+        if current[0].start_char != 0 or current[-1].end_char != tree.original_characters:
+            raise ValueError(f"summary level {level} fails full source coverage")
+        if any(a.end_char != b.start_char for a, b in zip(current, current[1:])):
+            raise ValueError(f"summary level {level} contains a gap or overlap")
+        if any(n.start_char >= n.end_char or n.source_sha256 != tree.source_sha256 for n in current):
+            raise ValueError(f"summary level {level} has invalid source spans or revision")
+    if len(groups[max_level]) != 1 or groups[max_level][0].node_id != tree.root_id:
+        raise ValueError("hierarchy must have exactly one full-document root")
+    if tree.leaf_sections < 1:
+        raise ValueError("missing original source section accounting")
+    if any(n.child_ids for n in groups[0]):
+        raise ValueError("source-level summary should not reference generated children")
+    for level in range(1, max_level + 1):
+        parents = groups[level]
+        children = groups[level - 1]
+        seen = []
+        for parent in parents:
+            if not parent.child_ids:
+                raise ValueError("parent summary has no child summaries")
+            try:
+                linked = [nodes[k] for k in parent.child_ids]
+            except KeyError as error:
+                raise ValueError("parent references a missing summary") from error
+            if any(child.level != level - 1 for child in linked):
+                raise ValueError("parent references wrong summary hierarchy level")
+            if (
+                linked[0].start_char != parent.start_char
+                or linked[-1].end_char != parent.end_char
+                or any(a.end_char != b.start_char for a, b in zip(linked, linked[1:]))
+            ):
+                raise ValueError("parent summary does not cover exactly its child spans")
+            seen.extend(child.node_id for child in linked)
+        if seen != [child.node_id for child in children]:
+            raise ValueError("parent summaries omit, duplicate or reorder child nodes")
+
+
 def summary_rows(
     connection: sqlite3.Connection,
     *,
@@ -71,6 +132,7 @@ def summary_rows(
             raise ValueError("invalid source revision identifier")
     if _sha(derived_text) != derived_sha256:
         raise ValueError("derived text SHA differs from source map")
+    validate_complete_summary_tree(tree)
     root = tree.root
     if not isinstance(derived_text, str) or type(summary_start_char) is not int:
         raise ValueError("invalid source text or original offset")
@@ -104,6 +166,13 @@ def summary_rows(
     ordered = sorted(tree.nodes, key=lambda n: (n.level, n.start_char, n.end_char, n.node_id))
     if not ordered or len(ordered) > 50_000:
         raise ValueError("empty or unbounded summary nodes")
+    # Never feed a longer summary than the embedding model can actually read.
+    # The E5 model in Raspi's current production deployment has 512 tokens.
+    if hasattr(embedding_client, "token_count") and hasattr(embedding_client, "model_context"):
+        limit = int(embedding_client.model_context().configured_tokens)
+        for node in ordered:
+            if embedding_client.token_count(node.summary) > limit:
+                raise ValueError("one generated summary exceeds embedding context; regenerate more compactly")
     vectors = embedding_client.embed([n.summary for n in ordered])
     if len(vectors) != len(ordered):
         raise RuntimeError("one embedding is required for every summary node")

@@ -5,6 +5,7 @@ import base64
 import hashlib
 import sqlite3
 import unittest
+from dataclasses import replace
 from copy import deepcopy
 
 import numpy as np
@@ -127,6 +128,42 @@ class SummaryStorageTest(unittest.TestCase):
             "SELECT embedding_sha256 FROM content_representations WHERE representation_id=?",
             (rep[0]["representation_id"],),
         ).fetchone()[0])
+        db.close()
+
+    def test_missing_leaf_and_parent_link_block_all_vectors(self):
+        db, kwargs = self.prepare()
+        tree = kwargs["tree"]
+        leaves = [n for n in tree.nodes if n.level == 0]
+        self.assertGreater(len(leaves), 1)
+        missing = replace(tree, nodes=tuple(
+            n for n in tree.nodes if n.node_id != leaves[0].node_id
+        ))
+        with self.assertRaisesRegex(ValueError, "coverage|missing|child"):
+            summary_rows(db, **dict(kwargs, tree=missing))
+        root = tree.root
+        disconnected = replace(
+            tree,
+            nodes=tuple(
+                replace(n, child_ids=n.child_ids[:-1]) if n.node_id == root.node_id else n
+                for n in tree.nodes
+            )
+        )
+        with self.assertRaisesRegex(ValueError, "child"):
+            summary_rows(db, **dict(kwargs, tree=disconnected))
+        self.assertEqual(0, db.execute("SELECT COUNT(*) FROM content_chunks").fetchone()[0])
+        db.close()
+
+    def test_summary_over_embedding_context_is_never_silently_truncated(self):
+        db, kwargs = self.prepare()
+        class BoundedEmbedding(FakeEmbeddings):
+            def model_context(self):
+                from types import SimpleNamespace
+                return SimpleNamespace(configured_tokens=20)
+            def token_count(self, text):
+                return len(text)
+        with self.assertRaisesRegex(ValueError, "exceeds embedding context"):
+            summary_rows(db, **dict(kwargs, embedding_client=BoundedEmbedding()))
+        self.assertEqual(0, db.execute("SELECT COUNT(*) FROM content_representations").fetchone()[0])
         db.close()
 
     def test_requires_foreign_keys_and_bounded_storage(self):

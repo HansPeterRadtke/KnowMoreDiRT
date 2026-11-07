@@ -30,6 +30,13 @@ This subsystem does not initialize DRT, create persistent KMD referents, or perf
 
 The source was copied from devtests commit `6faaccc9`. Regression tests from that repository are preserved under `tests/filesystem_database/`. Any future synchronization must be explicit and reviewed; changes in either copy do not automatically propagate to the other repository.
 
+## Actual Raspi hierarchical summary search pilot, November 2026
+
+The verified two-source native KMD full-document experiment is documented in
+[live summary search acceptance](kmd-hierarchical-live-acceptance-2026-11-07.md).
+It includes an actual recursive summary-of-summaries and all summary-node
+vectors in the original FileDB. Whole-library summarization remains pending.
+
 ## Experimental complete-document hierarchical summaries (November 2026)
 
 The source-complete recursive summary engine, source-linked native KMD writer

@@ -365,7 +365,9 @@ def stream_chat_completion_json(
                 for raw_line in response:
                     stream_bytes += len(raw_line)
                     line = raw_line.decode("utf-8", "replace").strip()
-                    if not line or line.startswith("event:"):
+                    # SSE comment/keepalive lines may be as short as ":".
+                    # They are legal protocol metadata, not JSON events.
+                    if not line or line.startswith("event:") or line.startswith(":"):
                         continue
                     if line.startswith("data:"):
                         line = line[5:].strip()
