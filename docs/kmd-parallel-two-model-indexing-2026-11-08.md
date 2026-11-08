@@ -92,3 +92,22 @@ contending on a disposable lock, releases after the first writer
 finishes, retry count, bounded timeout and invalid parameters.
 This is a source-controlled CLI fix; its next executed import subprocess
 uses the corrected behavior without stopping an in-progress LLM call.
+
+## Live original writer-lock acceptance
+
+The corrected writer-admission routine was tested in the actual
+installed Raspi KMD checkout against the *existing* original content
+lock. A separate tester deliberately acquired the same original
+FileDB flock. The normal authenticated source-checking import of the
+already indexed NVIDIA JetPack archive proceeded through model-vector
+validation, then waited while the test held the lock. The lock was
+released after a short controlled hold; the importer finished with
+exit code zero and `new_rows: 0`. No duplicate original chunk or
+representation was created, and the previously saved summary and
+keywords remained unchanged.
+
+The re-import completed in about eight seconds including local
+embedding startup. This verifies that a temporary real writer lock
+collision is no longer recorded as a failed original source. If
+writers contend for longer than ninety seconds, the fail-closed
+timeout remains intact and the normal queued retry runs later.
