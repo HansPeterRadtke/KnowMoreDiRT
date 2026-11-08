@@ -330,6 +330,31 @@ def build(args) -> None:
     }, ensure_ascii=False), flush=True)
 
 
+def acquire_native_filedb_content_lock(
+    file_descriptor: int, *, wait_seconds: float = 90.0,
+    poll_seconds: float = 0.25,
+) -> None:
+    """Bounded interprocess writer admission for the SAME canonical FileDB.
+
+    Multiple source workers may generate and embed concurrently; only
+    their final original-KMD SQLite transactions are serialized under
+    the existing writer lock. Never silently skip another source.
+    """
+    import fcntl
+    if not 1 <= wait_seconds <= 300 or not 0.05 <= poll_seconds <= 10:
+        raise ValueError("invalid bounded FileDB lock wait")
+    deadline=time.monotonic()+wait_seconds
+    while True:
+        try:
+            fcntl.flock(file_descriptor,fcntl.LOCK_EX|fcntl.LOCK_NB)
+            return
+        except BlockingIOError:
+            remaining=deadline-time.monotonic()
+            if remaining<=0:
+                raise TimeoutError("native KMD content lock remained busy beyond bounded wait")
+            time.sleep(min(poll_seconds,remaining))
+
+
 def import_source(args):
     source = checked_original(args.original_path)
     tree_file = payload_path(
@@ -394,10 +419,9 @@ def import_source(args):
     live_reader = (INFRA / "knowledge_library_semantic_query.py").read_text(encoding="utf-8")
     if GUARD_TEXT not in live_reader:
         raise RuntimeError("live Infra source-excerpt search not yet protected from summary-only candidates")
-    import fcntl
     lockfile = DB.parent / ".primary-kmd-content.lock"
     with lockfile.open("a+") as lock:
-        fcntl.flock(lock.fileno(), fcntl.LOCK_EX | fcntl.LOCK_NB)
+        acquire_native_filedb_content_lock(lock.fileno(),wait_seconds=90)
         with sqlite3.connect(DB, timeout=60) as conn:
             conn.execute("PRAGMA foreign_keys=ON")
             result = append_summary_rows(
