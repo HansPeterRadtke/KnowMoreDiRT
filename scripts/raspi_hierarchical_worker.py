@@ -254,7 +254,14 @@ def run(
         while not stop:
             try:
                 available, processed = scope()
-                failed = pending_failures(failed, available, processed)
+                # A failure from before sharding may belong to the OTHER
+                # worker. Keep only this worker's assigned source failures,
+                # so retries/statuses remain source-disjoint.
+                assigned_available = [
+                    row for row in available
+                    if shard_for_original(row[0],shard_count) in shard_set
+                ]
+                failed = pending_failures(failed, assigned_available, processed)
                 records = [
                     (path, original_sha, derived_sha, int(size))
                     for path, original_sha, derived_sha, size in available
@@ -342,8 +349,12 @@ def run(
                         completed_count += 1
                         completed_chars += text_chars
                         completed_in_pass += 1
+                        shard_completed_count += 1
+                        assigned_pending -= 1
                         state_update(
                             complete_originals=completed_count,
+                            assigned_complete_originals=shard_completed_count,
+                            assigned_pending_originals=max(0,assigned_pending),
                             remaining_originals=max(0, len(available)-completed_count),
                             percentage=round(100.0*completed_count/max(1,len(available)), 6),
                             eligible_text_characters=eligible_chars,

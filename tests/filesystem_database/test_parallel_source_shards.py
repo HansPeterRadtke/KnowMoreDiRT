@@ -18,6 +18,27 @@ def load_worker():
 
 
 class ParallelShardTests(unittest.TestCase):
+    def test_prior_failure_receipts_are_not_imported_from_other_shard(self):
+        mod=load_worker()
+        paths=[f"docs/source-{i}.pdf" for i in range(300)]
+        coder={p for p in paths if mod.shard_for_original(p,4) in {1,2,3}}
+        standard=set(paths)-coder
+        self.assertTrue(coder and standard)
+        fail={
+           next(iter(coder)):{"attempts":3},
+           next(iter(standard)):{"attempts":9},
+        }
+        coder_avail=[(p,"a"*64,"b"*64,1000) for p in coder]
+        standard_avail=[(p,"a"*64,"b"*64,1000) for p in standard]
+        self.assertEqual(
+            {next(iter(coder))},
+            set(mod.pending_failures(fail,coder_avail,set())),
+        )
+        self.assertEqual(
+            {next(iter(standard))},
+            set(mod.pending_failures(fail,standard_avail,set())),
+        )
+
     def test_full_corpus_split_has_no_duplicate_or_missing_original(self):
         mod=load_worker()
         items=[f"library/section_{i:05d}.pdf" for i in range(17714)]
@@ -103,6 +124,11 @@ class ParallelShardTests(unittest.TestCase):
                 self.assertEqual([0] if shard==0 else [1,2,3],status["assigned_shards"])
                 self.assertEqual("summary_and_keywords_single_constrained_model_call",status["native_facet_policy"])
                 self.assertGreater(status["assigned_eligible_originals"],0)
+                self.assertEqual(1,status["assigned_complete_originals"])
+                self.assertEqual(
+                    status["assigned_eligible_originals"]-1,
+                    status["assigned_pending_originals"],
+                )
                 seen[shard]=path
             self.assertNotEqual(seen[0],seen[1])
             self.assertTrue((root/".hierarchical-worker.lock").is_file())

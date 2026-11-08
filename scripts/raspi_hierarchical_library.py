@@ -660,6 +660,35 @@ def status(_args):
                     result["active_source_progress"] = receipt
     except (OSError, ValueError, TypeError, KeyError):
         result["active_source_progress_unavailable"] = True
+    # The original FileDB is the authoritative total across both workers.
+    # Expose their separate queues without pretending either's status file
+    # has sole ownership of the library.
+    worker_snapshots = {}
+    for worker_name,filename in (
+        ("coder","hierarchical-worker-status.json"),
+        ("qwen38_q4","hierarchical-worker-q4-status.json"),
+    ):
+        path = DB.parent/filename
+        try:
+            w=json.loads(path.read_text(encoding="utf-8"))
+        except (OSError,ValueError,TypeError):
+            continue
+        if not isinstance(w,dict):
+            continue
+        worker_snapshots[worker_name]={
+            key:w.get(key) for key in (
+                "phase","model","shard_count","assigned_shards",
+                "assigned_eligible_originals","assigned_complete_originals",
+                "assigned_pending_originals","current_original",
+                "current_started_utc","last_completed_original",
+                "last_completed_utc","updated_utc",
+            )
+        }
+        worker_snapshots[worker_name]["pending_failure_count"]=len(
+            w.get("failed",{}) if isinstance(w.get("failed"),dict) else {}
+        )
+    if worker_snapshots:
+        result["parallel_workers"]=worker_snapshots
     print(json.dumps(result, indent=2))
 
 def main():

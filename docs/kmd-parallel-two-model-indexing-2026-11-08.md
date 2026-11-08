@@ -27,3 +27,40 @@ This prevents duplicate processing through deterministic source assignment; it i
 Voice safety remains an important caveat. The Coder server has one llama.cpp inference slot shared with the SWAAG foreground voice assistant. The existing Coder worker waits eight continuously idle seconds before each uncached LLM request. This does NOT preempt a running book-summary call when a voice request arrives. Running a second standard-Qwen model concurrently can also contend for Thor GPU bandwidth even with separate inference slots. Monitor queue waiting time, inference throughput, thermal/DRAM load, native DB errors and source-specific quality. If voice latency deteriorates, stop the secondary Q4 worker and restore an unsharded Coder worker, or reduce the Q4 workload before further tuning.
 
 Use the original source-controlled KMD worker and Infra systemd units rather than untracked live scripts. Preserve all owner-only source and evaluation data outside Git.
+
+## Live original-FileDB dual-worker proof, November 8
+
+The Qwen Coder service was restarted at a successful complete-document
+boundary with shards one/two/three and its original unchanged persistent
+worker lock and status. Only after verifying the running process and
+nonoverlapping path assignment was the secondary Qwen3.8 Q4 systemd
+service started with shard zero and its own independent lock/status.
+The two processes and both Thor llama.cpp server slots were observed
+active concurrently. The original canonical KMD SQLite quick check
+reported 'ok' and foreign-key check reported zero violations while
+both were active.
+
+The secondary Q4 worker immediately completed and imported its first
+real original, the official NVIDIA JetPack releases archive source,
+which had previously been a source of retry errors under Coder. It
+saved its complete root, original-linked keyword/topic representations
+and source SHA metadata in the SAME original KMD FileDB, then started
+a second distinct original. The Coder worker was simultaneously
+processing a different original. Every observed current source had a
+SHA-256 original-path shard assignment within its service's allowed
+partition.
+
+Thor showed approximately 113,464 MiB occupied of 125,750 MiB;
+temperatures were about 67 degrees Celsius under both model calls,
+and both inference model services and the voice gateway remained
+running. These observations are a limited live acceptance, not proof
+of complete absence of GPU contention or unmeasured human voice
+response latency.
+
+Additional source-level tests ensure that a failure receipt inherited
+from the previous unsharded worker is not incorrectly reported as an
+outstanding error of the newly unassigned shard, and that per-shard
+completed-source and pending-source counts are incremented after
+each successful import. The operator status command exposes the
+two independent worker models/queues while still deriving total
+library completion from the authoritative native FileDB.
