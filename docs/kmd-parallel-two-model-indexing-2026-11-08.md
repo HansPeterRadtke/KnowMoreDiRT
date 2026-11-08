@@ -64,3 +64,31 @@ completed-source and pending-source counts are incremented after
 each successful import. The operator status command exposes the
 two independent worker models/queues while still deriving total
 library completion from the authoritative native FileDB.
+
+## Production contention discovered and corrected
+
+The live dual-worker pilot found a race that a fake SQLite writer test
+did not initially exercise: the legacy Raspi import CLI uses the native
+global `.primary-kmd-content.lock` to serialize final original FileDB
+writes. The old one-worker importer acquired this flock in nonblocking
+mode. With two independently scheduled models, source import times
+can overlap. A real Coder source completed its whole Qwen generation
+but temporarily failed its database import with BlockingIOError while
+the Q4 worker held that original content writer lock. The worker's
+retries preserved the tree and original data, but wasted scheduling
+time and produced a false-negative completion status.
+
+The original source-linked import now waits for this **same global
+lock** with a bounded ninety-second maximum and a quarter-second
+poll, then proceeds with the existing serial native SQLite transaction
+and foreign-key/integrity validation. It does not weaken locking,
+insert a second database or make concurrent commits possible. If an
+unexpected writer holds the original lock longer than the limit, the
+explicit timeout causes the existing bounded model/source retry,
+rather than waiting forever or silently claiming a completed source.
+
+A regression suite validates actual distinct file descriptors
+contending on a disposable lock, releases after the first writer
+finishes, retry count, bounded timeout and invalid parameters.
+This is a source-controlled CLI fix; its next executed import subprocess
+uses the corrected behavior without stopping an in-progress LLM call.
