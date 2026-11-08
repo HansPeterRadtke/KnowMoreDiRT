@@ -1,0 +1,29 @@
+# Concurrent original-KMD summarization with Qwen3.8 Q4 and Qwen Coder
+
+As of November 8, 2026, the complete Raspberry Pi Knowledge Library has 17,714 verified extracted eligible originals, approximately 2.84 billion extracted text characters. The existing Thor voice-assistant Coder endpoint and Qwen3.8 Q4 endpoint were both already loaded and accessible. No additional model download, model service restart, alternate FileDB, or transcription/voice service change is necessary.
+
+## Verified parallel inference pilot
+
+The existing Coder-backed production indexer remained active on the canonical original KMD FileDB while a separate Qwen3.8 Q4 test summarized the complete W3C WAI Writing for Accessibility source (16,282 verified extracted characters) into the **same native KnowMoreDiRT facet JSON schema** without writing the production FileDB. Both llama.cpp slots reported inference in progress simultaneously. Qwen3.8 finished in 121.55 seconds, produced a complete source-linked root, 28 keywords and 8 keyphrases, with validated native summary provenance. Coder continued indexing its own source queue during the test. Thor memory remained roughly 105–106 GiB used of 122 GiB, services had no unexpected restarts and measured GPU/temperature remained within observed normal load. The additional Q4 test was deliberately read-only.
+
+An even longer full 2.75-million-character HCI textbook already completed Qwen inference, tree verification and native embedding successfully; those previous results remain intact.
+
+## Worker coordination without duplicate sources
+
+The original persistent worker now optionally accepts a static deterministic source partition. The owner-approved original relative path is hashed with SHA-256; the unsigned first 64 bits are reduced modulo the configured shard count. All revisions of the SAME original go to the SAME shard. The two services receive nonoverlapping assigned shard sets and therefore cannot generate the same original simultaneously. Every original is covered exactly once across the assignments. New originals are assigned stably using the same hash without changes to source-map or publisher files.
+
+Based on actual measured source traffic, Coder typically handles about three times as many small documents per hour as Qwen3.8 Q4, though there is substantial variance by source length. The four-way assignment therefore gives the Qwen3.8 worker shard zero and the Coder worker shards one, two, and three. On the current real library manifest, this gives Q4 4,437 originals and 27.06 percent of all extracted characters, and Coder 13,277 originals and 72.94 percent. This is a throughput-motivated division, not a claim that their long-term speeds are fully measured or that the split is permanently optimal.
+
+Each worker retains an independent persistent run lock, status file and retry list. The existing main worker retains the canonical .hierarchical-worker.lock and hierarchical-worker-status.json; the new Q4 worker uses .hierarchical-worker-q4.lock and hierarchical-worker-q4-status.json. Neither introduces another FileDB or shadow semantic index. Both read source-map and the original native KMD FileDB and append source-linked chunks and representation vectors using independent SQLite connections. Actual FileDB writer transactions use BEGIN IMMEDIATE with native foreign keys, complete source IDs, SHA checks and file-size checkpoint. Any short contention or failure is retried through the existing worker retry machinery.
+
+Status reports include global completed-source numbers and the worker's own partition counts, to avoid confusing the main worker's global coverage with each shard's individual workload. They do not count in-progress book branches as complete.
+
+## Test proof and limitations
+
+Five new deterministic sharding tests verify full path coverage without overlap, stable assignments independent of content revisions, invalid/duplicate shard rejection, independent worker locks and statuses, and actual concurrent SQLite native-row inserts from separate connections into the same temporary canonical-shaped original FileDB. The previous semantic, provenance, recursive summary and status tests also pass.
+
+This prevents duplicate processing through deterministic source assignment; it is not a distributed leader-election mechanism and requires **both services to run with the same shard count and disjoint shard ownership**. Never run an unsharded original worker concurrently with a sharded worker. If one service is disabled long-term, either restore the unsharded solo unit safely or reassign its shards to the other worker at a completed-source boundary.
+
+Voice safety remains an important caveat. The Coder server has one llama.cpp inference slot shared with the SWAAG foreground voice assistant. The existing Coder worker waits eight continuously idle seconds before each uncached LLM request. This does NOT preempt a running book-summary call when a voice request arrives. Running a second standard-Qwen model concurrently can also contend for Thor GPU bandwidth even with separate inference slots. Monitor queue waiting time, inference throughput, thermal/DRAM load, native DB errors and source-specific quality. If voice latency deteriorates, stop the secondary Q4 worker and restore an unsharded Coder worker, or reduce the Q4 workload before further tuning.
+
+Use the original source-controlled KMD worker and Infra systemd units rather than untracked live scripts. Preserve all owner-only source and evaluation data outside Git.

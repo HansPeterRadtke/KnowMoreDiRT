@@ -30,6 +30,14 @@ This subsystem does not initialize DRT, create persistent KMD referents, or perf
 
 The source was copied from devtests commit `6faaccc9`. Regression tests from that repository are preserved under `tests/filesystem_database/`. Any future synchronization must be explicit and reviewed; changes in either copy do not automatically propagate to the other repository.
 
+## Concurrent source-disjoint Qwen and Coder indexing, November 2026
+
+The [parallel indexing audit and test plan](kmd-parallel-two-model-indexing-2026-11-08.md)
+uses two already loaded Thor models, deterministic disjoint original-file
+shards and independent worker status locks, while both write to the same
+original native KMD FileDB. It covers throughput evidence, conflict tests,
+resource limits, SWAAG voice latency and the safe rollback procedure.
+
 ## Voice Coder model benchmarking and safe sharing, November 2026
 
 The [Coder model evaluation](kmd-coder-voice-model-acceleration-2026-11-08.md)
