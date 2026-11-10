@@ -50,6 +50,27 @@ class SourceNodeProgressTests(unittest.TestCase):
             self.source["derived_sha256"],
         )
 
+    def test_printed_edition_is_disambiguated_and_kept_with_a_long_title(self):
+        source = {**self.source, "title": "T" * 300, "edition_version": "Stand: Mai 2022",
+                  "derived_text": 'Catalog: 2026\n[[SOURCE UNIT: PDF page 1]]\n  Stand: Mai 2022\n'}
+        label = self.cli.summary_prompt_title(source)
+        self.assertLessEqual(len(label), 300)
+        self.assertTrue(label.startswith("T"))
+        self.assertTrue(label.endswith("Stand: Mai 2022]"))
+        self.assertEqual("T" * 300, source["title"])
+
+    def test_catalog_only_partial_or_multiline_editions_do_not_override_source(self):
+        source = {**self.source, "edition_version": "Stand: Mai 2022"}
+        for body in ("Stand: Mai 2022\n",
+                     "Stand: Mai 2022\n[[SOURCE UNIT: PDF page 1]]\nOther text",
+                     "[[SOURCE UNIT: PDF page 1]]\nStand: Mai 2022 or later"):
+            with self.subTest(body=body):
+                self.assertEqual(source["title"], self.cli.summary_prompt_title(
+                    {**source, "derived_text": "metadata\n" + body}))
+        for edition in (None, 2022, "", "2022\nWrong", "A" * 101):
+            self.assertEqual(source["title"], self.cli.summary_prompt_title(
+                {**source, "edition_version": edition}))
+
     def test_complete_multilevel_saves_intermediate_node_progress_and_root(self):
         events=[]
         original=self.cli.save_source_progress

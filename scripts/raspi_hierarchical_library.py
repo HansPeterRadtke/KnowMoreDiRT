@@ -123,6 +123,7 @@ def checked_original(relative: str) -> dict:
     return {
         "original_path": relative,
         "title": entries[0]["title"],
+        "edition_version": entries[0].get("edition_version"),
         "original_sha256": record["sha256"],
         "original_bytes": stat.st_size,
         "derived_sha256": derivative_sha,
@@ -180,12 +181,28 @@ def load_tree(payload: dict) -> SummaryTree:
     )
 
 
+def summary_prompt_title(source: dict) -> str:
+    """Prefer an original's printed edition over a stale extraction header."""
+    title = source["title"][:300]
+    edition = source.get("edition_version")
+    if (not isinstance(edition, str) or not 1 <= len(edition) <= 100
+            or not edition.isprintable() or not edition.strip()):
+        return title
+    text = source["derived_text"]
+    body = text.find("\n[[SOURCE UNIT: ")
+    printed_line = re.compile(r"^[ \t]*" + re.escape(edition) + r"[ \t]*\r?$", re.MULTILINE)
+    if body < 0 or not printed_line.search(text, body):
+        return title
+    suffix = f" [Publisher's printed edition, authoritative over catalog dates: {edition}]"
+    return title[:300 - len(suffix)] + suffix
+
+
 def build(args) -> None:
     source = checked_original(args.original_path)
     # The full canonical title remains in the source manifest/payload.
     # Only the model prompt receives a bounded title, so unusually long
     # publisher titles never prevent complete document processing.
-    model_title = source["title"][:300]
+    model_title = summary_prompt_title(source)
     if getattr(args,"native_facets",False) and args.output_tokens<700:
         raise ValueError("native keyword/facet output requires at least 700 reserved generation tokens")
     model = LocalSummaryModel(

@@ -125,3 +125,12 @@ The tests exercise the workers' real output allowance, the rendered
 transport requests, cache identity and rejection of partial responses.
 The operational receipt and live outcomes are kept privately on Raspi
 in the search audit named `compact-length-retry-20261110`.
+
+The first successful compact retry for a real IHK handover checklist
+repeated an incorrect year in the extracted text's management header.
+The publisher printed its edition on physical page one. The pilot kept
+the misleading output as private rejected evidence before import.
+Summary builds now include the curated edition in the model's document
+label when the exact edition is also present on a line of the extracted
+publisher content. Header-only dates are ineligible. The complete source
+bytes, offsets and digest still refer to the original verified derivative.
