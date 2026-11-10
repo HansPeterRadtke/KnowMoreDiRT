@@ -15,6 +15,7 @@ import base64
 import hashlib
 import json
 import math
+import re
 import sqlite3
 import time
 from pathlib import Path
@@ -97,6 +98,82 @@ def validate_complete_summary_tree(tree: SummaryTree) -> None:
             raise ValueError("parent summaries omit, duplicate or reorder child nodes")
 
 
+_IDENTIFIER = re.compile(r"(?<!\w)[A-Za-z][A-Za-z0-9]*(?:_[A-Za-z0-9]+)+(?!\w)")
+_SOURCE_UNIT_LINE = re.compile(r"^\[\[SOURCE UNIT: [^\]\n]{1,400}\]\][ \t]*\r?$", re.MULTILINE)
+_MAX_NODE_FACETS = 256
+
+
+def _source_identifier_members(item, *, text, start, end, capacity, embedding_client, limit):
+    """Resolve a whole overlength identifier enumeration or reject it before embedding."""
+    raw = item["text"]
+    terms = [term.strip() for term in raw.split(",", capacity)]
+    if (item["kind"] not in ("keyword", "keyphrase") or not 2 <= len(terms) <= capacity
+            or len(set(terms)) != len(terms)
+            or any(not _IDENTIFIER.fullmatch(term) for term in terms)):
+        raise ValueError("native facet exceeds embedding context and is not a bounded identifier list")
+    if any(embedding_client.token_count(term) > limit for term in terms):
+        raise ValueError("individual source identifier exceeds embedding context")
+
+    # Coordinates are in the entire verified derivative. Skip its administrative
+    # header and unit labels, even if a node starts in the middle of either.
+    first_unit = _SOURCE_UNIT_LINE.search(text)
+    if first_unit is None:
+        raise ValueError("no marked publisher body for oversized identifier list")
+    missing = set(terms)
+    locations = {}
+    # One character of lookahead prevents treating the end of a node as the
+    # end of an identifier when the next source character continues the word.
+    for match in _IDENTIFIER.finditer(text, max(start, first_unit.end()), end + 1):
+        term = match.group()
+        if term not in missing or match.end() > end:
+            continue
+        line_start = text.rfind("\n", 0, match.start()) + 1
+        if text.startswith("[[SOURCE UNIT: ", line_start):
+            continue
+        locations[term] = match.span()
+        missing.remove(term)
+        if not missing:
+            break
+    if missing:
+        raise ValueError("oversized identifier list contains a term absent from the publisher span")
+
+    list_digest = _sha(raw)
+    return [
+        {**item, "kind": "keyword", "text": term, "identifier_list_member": {
+            "original_kind": item["kind"], "original_global_rank": item["global_rank"],
+            "list_sha256": list_digest, "index": index, "count": len(terms),
+            "start_char": locations[term][0], "end_char": locations[term][1],
+        }}
+        for index, term in enumerate(terms, 1)
+    ]
+
+
+def _fit_native_facets(items, *, text, start, end, embedding_client, limit):
+    if len(items) > _MAX_NODE_FACETS:
+        raise ValueError("unbounded native facet representation count")
+    fitted = []
+    global_shift = 0
+    facet_shift = 0
+    previous_facet = None
+    for item in items:
+        if item["facet_rank"] != previous_facet:
+            previous_facet = item["facet_rank"]
+            facet_shift = 0
+        members = [item]
+        if limit is not None and embedding_client.token_count(item["text"]) > limit:
+            members = _source_identifier_members(
+                item, text=text, start=start, end=end,
+                capacity=_MAX_NODE_FACETS - len(items) - global_shift + 1,
+                embedding_client=embedding_client, limit=limit,
+            )
+        for offset, member in enumerate(members):
+            fitted.append({**member, "global_rank": item["global_rank"] + global_shift + offset,
+                           "item_rank": item["item_rank"] + facet_shift + offset})
+        global_shift += len(members) - 1
+        facet_shift += len(members) - 1
+    return fitted
+
+
 def summary_rows(
     connection: sqlite3.Connection,
     *,
@@ -169,6 +246,7 @@ def summary_rows(
         raise ValueError("empty or unbounded summary nodes")
     # Never feed a longer summary than the embedding model can actually read.
     # The E5 model in Raspi's current production deployment has 512 tokens.
+    limit = None
     if hasattr(embedding_client, "token_count") and hasattr(embedding_client, "model_context"):
         limit = int(embedding_client.model_context().configured_tokens)
         for node in ordered:
@@ -186,15 +264,13 @@ def summary_rows(
             if analysis["document_summary"] != node.summary:
                 raise ValueError("native facet analysis summary differs from verified node")
             extra=flatten_representations(analysis)[1:]
-            if len(extra)>256:
-                raise ValueError("unbounded native facet representation count")
+            extra = _fit_native_facets(
+                extra, text=derived_text, start=summary_start_char + node.start_char,
+                end=summary_start_char + node.end_char, embedding_client=embedding_client, limit=limit,
+            )
             extra_texts.extend(item["text"] for item in extra)
         facets_by_node.append(extra)
     all_texts=[node.summary for node in ordered]+extra_texts
-    if hasattr(embedding_client, "token_count") and hasattr(embedding_client, "model_context"):
-        limit=int(embedding_client.model_context().configured_tokens)
-        if any(embedding_client.token_count(text)>limit for text in all_texts):
-            raise ValueError("native keyword, keyphrase or summary exceeds embedding context")
     all_vectors=embedding_client.embed(all_texts)
     if len(all_vectors)!=len(all_texts):
         raise RuntimeError("missing native facet or summary embedding")
@@ -349,6 +425,8 @@ def summary_rows(
                     **provenance,
                     "native_facet_kind":native_kind,
                     "native_facet_label":item["facet_label"],
+                    **({"identifier_list_member": item["identifier_list_member"]}
+                       if "identifier_list_member" in item else {}),
                     "summary_sha256":_sha(native_text),
                     "owning_summary_sha256":node.summary_sha256,
                 },ensure_ascii=False,sort_keys=True),
