@@ -85,6 +85,17 @@ SUMMARY_FACETS_COMPACT_SYSTEM = (
       "The document summary is concise; return schema-valid JSON only."
 )
 
+# After a compact facet response hits the output limit, narrow the requested
+# JSON content while keeping the complete source group and the native schema.
+SUMMARY_FACETS_COMPACT_RETRY_SYSTEM = (
+    SUMMARY_SYSTEM
+    + "\nReturn the native facet JSON. Write a document_summary of at most 60 "
+      "words. Select at most three distinct facets that best identify this "
+      "source passage. Use a short topic label and at most two short keyword "
+      "or keyphrase representations per facet. Keep important names, numeric "
+      "values and their conditions. Omit redundant entries and finish the JSON."
+)
+
 # A deterministic, context-checked fallback for models that insist on
 # generating until they hit the token cap even for a short document.
 # Use a *shorter* system prompt so no extra source context is silently lost.
@@ -424,15 +435,12 @@ class HierarchicalSummarizer:
                             system=active_system, user=prompt, output_tokens=output_allowance
                         )
                 except RuntimeError as error:
-                    # A short source may need more room to state all its
-                    # conditions. Retry *only* an explicit length-exhausted
-                    # generation when its actual prompt leaves extra room.
-                    # Stay below the E5 embedding context (512 tokens),
-                    # otherwise the native summary vector would truncate.
+                    # Retry an explicit generation cutoff once. Recompute the
+                    # reservation for the shorter instruction and identical source.
                     if "did not finish within reserved generation tokens" not in str(error):
                         raise
                     strict_system = (
-                        SUMMARY_FACETS_COMPACT_SYSTEM if self.native_facets_compact
+                        SUMMARY_FACETS_COMPACT_RETRY_SYSTEM if self.native_facets_compact
                         else SUMMARY_FACETS_STRICT_SYSTEM if self.native_facets
                         else SUMMARY_STRICT_SYSTEM
                     )
@@ -444,8 +452,12 @@ class HierarchicalSummarizer:
                     if retry_allowance < self.output_tokens:
                         raise
                     output_allowance = retry_allowance
-                    prompt_policy = ("native_facets_strict_shortened_after_length"
-                                     if self.native_facets else "strict_shortened_after_length")
+                    if self.native_facets_compact:
+                        prompt_policy = "native_facets_compact_bounded_after_length"
+                    elif self.native_facets:
+                        prompt_policy = "native_facets_strict_shortened_after_length"
+                    else:
+                        prompt_policy = "strict_shortened_after_length"
                     cost = retry_cost
                     if self.native_facets:
                         native_analysis = self.model.generate_retrieval_analysis(

@@ -100,3 +100,28 @@ other agents' concurrently dirty Infra files. After restart, inspect
 service PID, progress, failed count, summary vectors, query history,
 SQLite integrity and retry cases rather than claiming success from
 a service-active flag alone.
+
+## Compact native facet retry on 10 November 2026
+
+Both live recursive indexers used the compact native facet prompt and a
+2,400-token output reservation. On a generation cutoff, the fallback
+selected the same prompt, allowance, source and seed. A regression test
+reproduced an identical second request. Nine pending originals had a
+cutoff as their most recent error. Their ledgers recorded 119 source
+attempts in total, which do not establish how many requests failed
+for this particular reason.
+
+The compact-mode fallback now asks for a summary of up to 60 words,
+up to three facets and up to two short terms per facet. These are model
+instructions. The existing native JSON schema, safety reservation and
+embedding admission checks still apply. The engine remeasures the prompt,
+passes the full original source group and records the policy on the
+resulting node. A second cutoff leaves the source incomplete. A different
+error bypasses the fallback. This change applies during generation.
+Previously saved trees that exceed the embedding limit require separate
+recovery.
+
+The tests exercise the workers' real output allowance, the rendered
+transport requests, cache identity and rejection of partial responses.
+The operational receipt and live outcomes are kept privately on Raspi
+in the search audit named `compact-length-retry-20261110`.
