@@ -144,3 +144,25 @@ available for provenance. The first real publisher passage owns that
 prefix in storage. The header cannot become a separate generated leaf.
 The tests include a nonmatching source identity, genuine publisher
 preface, unchanged year, oversized first page and multilevel coverage.
+
+### Verified native outcome
+
+The outgoing-owner checklist had 20 recorded source attempts and no
+recursive summary rows before the live pilot. Its first successful
+length fallback was preserved outside the index because it repeated
+the wrong catalog year. After the source record was corrected and
+the stale management header excluded from the model input, the normal
+compact request succeeded. The reviewed summary identifies the May 2022
+edition. Its source span covers the complete archived derivative and
+all six of the publisher's pages. The accepted summary, six topics and
+18 keyphrases contributed 25 verified vectors. All 256 sampled older
+vectors kept their recorded byte digests.
+
+Of two questions fixed before import, the German question asking for the
+IHK outgoing-owner checklist went from absent in the first eight to first.
+The broader English question on preparing a family-business handover
+still missed this particular original in the first eight. Neither result
+establishes the accuracy of other summaries or complete corpus coverage.
+The private evidence includes both rejected intermediate outputs and
+their reasons. Seventy-two distinct KnowMoreDiRT tests, fifteen Infra
+business tests and twelve documentation tests passed.
