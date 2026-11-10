@@ -134,3 +134,13 @@ Summary builds now include the curated edition in the model's document
 label when the exact edition is also present on a line of the extracted
 publisher content. Header-only dates are ineligible. The complete source
 bytes, offsets and digest still refer to the original verified derivative.
+
+A second private pilot correctly dated the summary but also emitted the
+superseded catalog year as a keyword. For an extractor-owned header whose
+source path and SHA match but whose year differs from the corrected
+manifest, the generator now sees only the publisher content. Native
+offsets, the complete derivative digest and the archived header remain
+available for provenance. The first real publisher passage owns that
+prefix in storage. The header cannot become a separate generated leaf.
+The tests include a nonmatching source identity, genuine publisher
+preface, unchanged year, oversized first page and multilevel coverage.

@@ -124,6 +124,7 @@ def checked_original(relative: str) -> dict:
         "original_path": relative,
         "title": entries[0]["title"],
         "edition_version": entries[0].get("edition_version"),
+        "publication_year": entries[0].get("publication_year"),
         "original_sha256": record["sha256"],
         "original_bytes": stat.st_size,
         "derived_sha256": derivative_sha,
@@ -197,6 +198,29 @@ def summary_prompt_title(source: dict) -> str:
     return title[:300 - len(suffix)] + suffix
 
 
+def stale_catalog_header_length(source: dict) -> int:
+    """Identify just the extractor-owned preamble for the same original."""
+    text = source["derived_text"]
+    prefix = "KMD source provenance (the original PDF/HTML/ZIP/XLSX, not a new publisher book):\n"
+    if not text.startswith(prefix) or not source.get("publication_year"):
+        return 0
+    end = text.find("\n\n", len(prefix), 16_384)
+    if end < 0:
+        return 0
+    try:
+        header = json.loads(text[len(prefix):end])
+    except ValueError:
+        return 0
+    if (not isinstance(header, dict) or header.get("source_path") != source["original_path"]
+            or header.get("source_sha256") != source["original_sha256"]
+            or header.get("publication_year") == source["publication_year"]):
+        return 0
+    marker = text.find("[[SOURCE UNIT: ", end + 2, 16_384)
+    if marker < 0 or text[end:marker].strip():
+        return 0
+    return marker
+
+
 def build(args) -> None:
     source = checked_original(args.original_path)
     # The full canonical title remains in the source manifest/payload.
@@ -216,6 +240,7 @@ def build(args) -> None:
         max_levels=args.max_levels, max_nodes=args.max_nodes,
         native_facets=getattr(args,"native_facets",False),
         native_facets_compact=getattr(args,"compact_native_facets",False),
+        catalog_header_chars=stale_catalog_header_length(source),
     )
     sections, groups = engine.plan_source(title=model_title, text=source["derived_text"])
     plan = {

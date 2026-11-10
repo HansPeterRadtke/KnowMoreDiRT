@@ -215,6 +215,7 @@ class HierarchicalSummarizer:
         max_nodes: int = 50_000,
         native_facets: bool = False,
         native_facets_compact: bool = False,
+        catalog_header_chars: int = 0,
     ):
         context = model.context_tokens
         if type(context) is not int or context < 256:
@@ -230,6 +231,9 @@ class HierarchicalSummarizer:
             raise ValueError("model lacks native structured facet generation")
         if native_facets_compact and not native_facets:
             raise ValueError("compact native facets require native facet generation")
+        if type(catalog_header_chars) is not int or not 0 <= catalog_header_chars <= 16_384:
+            raise ValueError("invalid catalog header length")
+        self.catalog_header_chars = catalog_header_chars
         self.native_facets = native_facets
         self.native_facets_compact = native_facets_compact
         self.model = model
@@ -241,9 +245,12 @@ class HierarchicalSummarizer:
     def _prompt(self, *, title: str, level: int, nodes: Sequence[Section | SummaryInput]) -> str:
         lines = []
         for ix, section in enumerate(nodes):
+            start = section.start_char
+            if level == 0:
+                start = max(start, self.catalog_header_chars)
             lines.append(
-                f"[{ix + 1}: {section.label}; original chars {section.start_char}:{section.end_char}]"
-                f"\n{section.text}"
+                f"[{ix + 1}: {section.label}; original chars {start}:{section.end_char}]"
+                f"\n{section.text[start - section.start_char:]}"
             )
         return (
             f"Document: {title}\nStage: {'source passages' if level == 0 else 'ordered child summaries'}"
@@ -373,8 +380,22 @@ class HierarchicalSummarizer:
         """Plan a lossless complete input scan, without any model generation."""
         if not isinstance(title, str) or len(title) > 300:
             raise ValueError("invalid document title")
-        sections = split_sections(text)
+        if self.catalog_header_chars and self.catalog_header_chars >= len(text):
+            raise ValueError("catalog header cannot cover the entire document")
+        offset = self.catalog_header_chars
+        sections = split_sections(text[offset:])
+        if offset:
+            sections = [Section(s.start_char + offset, s.end_char + offset, s.label, s.text)
+                        for s in sections]
         groups = self._pack(sections, title=title, level=0)
+        if offset:
+            # Pack the actual publisher content first. Attach the archival
+            # preamble to the first real leaf for FileDB's full-span contract.
+            # The displayed start and prompt budget are identical in both views.
+            first = sections[0]
+            sections[0] = Section(0, first.end_char, first.label, text[:first.end_char])
+            first = groups[0][0]
+            groups[0][0] = Section(0, first.end_char, first.label, text[:first.end_char])
         reconstructed = "".join(s.text for g in groups for s in g)
         if reconstructed != text:
             raise RuntimeError("incomplete or misordered source coverage")

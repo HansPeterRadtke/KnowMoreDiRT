@@ -71,6 +71,43 @@ class SourceNodeProgressTests(unittest.TestCase):
             self.assertEqual(source["title"], self.cli.summary_prompt_title(
                 {**source, "edition_version": edition}))
 
+    def test_stale_management_header_omission_requires_the_verified_source(self):
+        prefix = "KMD source provenance (the original PDF/HTML/ZIP/XLSX, not a new publisher book):\n"
+        metadata = {"source_path": self.source["original_path"],
+                    "source_sha256": self.source["original_sha256"], "publication_year": "2026"}
+        header = prefix + json.dumps(metadata) + "\n\n\n"
+        body = "[[SOURCE UNIT: PDF page 1]]\nStand: Mai 2022"
+        source = {**self.source, "publication_year": "2022", "derived_text": header + body}
+        self.assertEqual(len(header), self.cli.stale_catalog_header_length(source))
+        for changed in ({"original_path": "another-file"}, {"original_sha256": "f"*64},
+                        {"publication_year": "2026"}, {"publication_year": None},
+                        {"derived_text": header + "publisher preface\n" + body},
+                        {"derived_text": prefix + "malformed\n\n" + body}):
+            with self.subTest(changed=changed):
+                self.assertEqual(0, self.cli.stale_catalog_header_length({**source, **changed}))
+
+    def test_stale_header_never_becomes_a_leaf_or_a_keyword_prompt(self):
+        from file_system_catalog.hierarchical_summary import HierarchicalSummarizer
+        from file_system_catalog.hierarchical_summary_store import validate_complete_summary_tree
+        model = FakeSummaryModel(750)
+        header = "ARCHIVED_CATALOG_YEAR_2026" * 30 + "\n\n"
+        body = long_document(24, 3400)
+        text = header + body
+        engine = HierarchicalSummarizer(model, output_tokens=64, safety_tokens=16,
+                                         catalog_header_chars=len(header))
+        _, groups = engine.plan_source(title="Edition 2022", text=text)
+        self.assertEqual(text, "".join(s.text for group in groups for s in group))
+        self.assertGreater(len(groups[0][0].text), len(header))
+        self.assertEqual(0, groups[0][0].start_char)
+        shown = "".join(s.text[max(0, len(header)-s.start_char):] for g in groups for s in g)
+        self.assertEqual(body, shown)
+        tree = engine.summarize(title="Edition 2022", text=text)
+        self.assertTrue(all("ARCHIVED_CATALOG_YEAR" not in user for _, user, _ in model.calls))
+        self.assertEqual(hashlib.sha256(text.encode()).hexdigest(), tree.source_sha256)
+        self.assertGreater(tree.root.level, 0)
+        self.assertEqual((0, len(text)), (tree.root.start_char, tree.root.end_char))
+        validate_complete_summary_tree(tree)
+
     def test_complete_multilevel_saves_intermediate_node_progress_and_root(self):
         events=[]
         original=self.cli.save_source_progress
