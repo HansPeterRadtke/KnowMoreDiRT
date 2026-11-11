@@ -13,14 +13,77 @@ from bisect import bisect_left
 import hashlib
 import re
 
+from .publisher_excerpt import attach_publisher_excerpts
 from .hybrid_search import BoundedPassageIndex, lexical_token_spans, query_terms
-from .hierarchical_summary import split_sections
+from .hierarchical_summary import Section, split_sections
 
 _UNIT_PREFIX = re.compile(r"\A\[\[SOURCE UNIT: [^\]\n]{1,400}\]\][ \t]*(?:\r?\n|$)")
 
 
 def _sha(text: str) -> str:
     return hashlib.sha256(text.encode("utf-8")).hexdigest()
+
+
+_SOURCE_UNIT = re.compile(r"(?m)^\[\[SOURCE UNIT: ([^\]\r\n]{1,400})\]\][ \t]*(?:\r?\n|$)")
+_FRONT_OPEN = re.compile(r"---[ \t]*\r?\n")
+_FRONT_END = re.compile(r"(?m)^(?:---|\.\.\.)[ \t]*(?:\r?\n|$)")
+_FRONT_FIELD = re.compile(r"(?m)^[A-Za-z_][\w-]*[ \t]*:")
+_ATX = re.compile(r"^ {0,3}(#{1,6})[ \t]+(.+)")
+_FENCE = re.compile(r"^ {0,3}(`{3,}|~{3,})(.*)$")
+
+
+def _markdown_sections(text: str, start: int):
+    """Keep publisher headings and character offsets; ignore heading syntax inside code or YAML."""
+    initial = start
+    front = _FRONT_OPEN.match(text, start)
+    if front:
+        end = _FRONT_END.search(text, front.end())
+        if end and _FRONT_FIELD.search(text, front.end(), end.start()):
+            initial = end.end()
+    label = "Original plain text"
+    opened = ""
+    headings = []
+    for line in re.compile(r"(?m)^.*$").finditer(text, initial):
+        value = line.group().rstrip("\r")
+        fence = _FENCE.fullmatch(value)
+        if opened:
+            if fence and fence[1].startswith(opened) and not fence[2].strip():
+                opened = ""
+            continue
+        if fence and (fence[1][0] == "~" or "`" not in fence[2]):
+            opened = fence[1]
+            continue
+        heading = _ATX.match(value)
+        if not heading:
+            continue
+        title = re.sub(r"[ \t]+#+[ \t]*$", "", heading[2]).strip()
+        if not title:
+            continue
+        if start < line.start():
+            yield Section(start, line.start(), label, text[start:line.start()])
+        level = len(heading[1])
+        while headings and headings[-1][0] >= level:
+            headings.pop()
+        headings.append((level, title))
+        # Name the current heading even when its full ancestor path is long.
+        label = " / ".join(name[:110] for _, name in headings[-2:])[:230]
+        start = line.start()
+    if start < len(text):
+        yield Section(start, len(text), label, text[start:])
+
+
+def _publisher_sections(text: str, markdown: bool):
+    generated_header = text.startswith("KMD source provenance ")
+    first = _SOURCE_UNIT.search(text) if generated_header or text.startswith("[[SOURCE UNIT:") else None
+    if generated_header and first is None:
+        # A damaged wrapper gives us no boundary between catalog metadata and the publisher.
+        return
+    if markdown and (first is None or first[1] == "Original plain text"):
+        yield from _markdown_sections(text, first.end() if first else 0)
+    else:
+        for section in split_sections(text):
+            if first is None or section.start_char >= first.start():
+                yield section
 
 
 def _best_excerpt(
@@ -73,6 +136,7 @@ def source_evidence_candidates(
     snippet_characters: int = 900,
     max_source_characters: int = 20_000_000,
     max_passages: int = 30_000,
+    publisher_text_bytes: bytes | None = None,
 ) -> dict:
     """Return exact original-source lexical candidates with stable char spans.
 
@@ -100,22 +164,16 @@ def source_evidence_candidates(
     if not terms:
         raise ValueError("no informative source search terms")
     identifiers = {term for term in terms if "_" in term}
-    sections=split_sections(derived_text)
+    markdown = original_path.casefold().endswith((".md", ".markdown"))
+    sections = _publisher_sections(derived_text, markdown)
+    source_units = 0
     offsets={}
     chunks=0
     with BoundedPassageIndex(
         max_passages=max_passages,max_characters=max_source_characters
     ) as idx:
         for section in sections:
-            # The extraction ledger prepends a KMD-owned metadata JSON
-            # header containing titles and search keywords. It is NOT
-            # publisher evidence. Never index this prologue as an
-            # answer-bearing source passage, although its bytes remain
-            # included in the verified full derivative hash and offsets.
-            if (len(sections)>1 and section.start_char==0
-                    and section.label=="document opening"
-                    and section.text.startswith("KMD source provenance ")):
-                continue
+            source_units += 1
             # >65k-sized sections are divided without changing source
             # character indices; the model's source unit labels stay intact.
             part=0
@@ -137,12 +195,14 @@ def source_evidence_candidates(
                     label=f"{label} [source offset {start}]"
                     key=(label,digest)
                 offsets[key]=(start,end)
+                heading = _ATX.match(text.split("\n", 1)[0]) if markdown and rel == 0 else None
                 idx.add_passage(
                     filesystem_entry_id=filesystem_entry_id,
                     original_path=original_path,
                     original_title=original_title,
                     source_section=label,
                     passage=text,
+                    publisher_heading=heading[2][:300] if heading else "",
                     original_sha256=original_sha256,
                     derived_sha256=derived_sha256,
                 )
@@ -160,7 +220,7 @@ def source_evidence_candidates(
         matches = set(terms).intersection(term for term, _, _ in lexical_token_spans(body))
         if identifiers and identifiers.isdisjoint(matches):
             continue
-        if len(matches)<min(2,len(terms)):
+        if not identifiers and not item["matched_publisher_heading_terms"] and len(matches)<min(2,len(terms)):
             continue
         start,end=offsets[(item["source_section"],item["passage_sha256"])]
         small_start,small_end,covered=_best_excerpt(
@@ -184,18 +244,26 @@ def source_evidence_candidates(
             "source_excerpt":excerpt,
             "lexical_bm25":item["lexical_bm25"],
             "matched_source_terms":sorted(matches),
+            **({"matched_publisher_heading_terms": item["matched_publisher_heading_terms"]}
+               if item["matched_publisher_heading_terms"] else {}),
             "matched_excerpt_terms":list(covered),
             "total_informative_query_terms":len(terms),
             "status":"source_lexical_candidate_not_verified_answer",
         })
         if len(out)>=top:
             break
+    if out and publisher_text_bytes is not None:
+        first = _SOURCE_UNIT.search(derived_text)
+        if first and first[1] == "Original plain text":
+            attach_publisher_excerpts(publisher_text_bytes, original_sha256, derived_text, out,
+                                      body_start=first.end())
     return {
+        "source_coordinates": "zero_based_half_open_character_offsets_in_verified_derivative",
         "original_path":original_path,
         "original_sha256":original_sha256,
         "derived_sha256":derived_sha256,
         "source_characters":len(derived_text),
-        "source_units":len(sections),
+        "source_units":source_units,
         "ephemeral_fts_passages":chunks,
         "returned_passages":len(out),
         "passages":out,

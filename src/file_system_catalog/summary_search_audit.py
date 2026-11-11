@@ -121,6 +121,8 @@ def make_search_audit(
         "index_scope": (result or {}).get("index_scope"),
         "relevance_warning": (result or {}).get("relevance_warning"),
         "provenance_policy": policy,
+        **({"source_passage_validation": result["source_passage_validation"]}
+           if result and "source_passage_validation" in result else {}),
     }
 
 

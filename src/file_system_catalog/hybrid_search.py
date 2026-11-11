@@ -103,6 +103,7 @@ class BoundedPassageIndex:
         passage: str,
         original_sha256: str,
         derived_sha256: str,
+        publisher_heading: str = "",
     ) -> None:
         if self._closed:
             raise RuntimeError("passage index is closed")
@@ -126,6 +127,7 @@ class BoundedPassageIndex:
             or len(original_title) > 1000
             or not isinstance(source_section, str)
             or len(source_section) > 300
+            or not isinstance(publisher_heading, str) or len(publisher_heading) > 300
             or not isinstance(passage, str)
             or not passage.strip()
             or len(passage) > 65_536
@@ -154,6 +156,7 @@ class BoundedPassageIndex:
             "original_path": original_path,
             "original_title": original_title,
             "source_section": source_section,
+            "publisher_heading": publisher_heading,
             "passage": passage,
             "passage_sha256": hashlib.sha256(passage.encode("utf-8")).hexdigest(),
             "original_sha256": original_sha256,
@@ -193,14 +196,16 @@ class BoundedPassageIndex:
                 re.search(r"(?<!\w)" + re.escape(term) + r"(?!\w)", searchable) is not None
                 for term in terms
             )
-            if found < min(2, len(terms)):
-                continue
-            if len(terms) >= 5 and found / len(terms) < 0.25:
+            heading_terms = set(terms).intersection(t for t, _, _ in lexical_token_spans(item["publisher_heading"]))
+            # The FTS passage-column constraint above already requires a whole identifier.
+            specific_match = heading_terms or (require_identifier_in_passage and identifiers)
+            if not specific_match and (found < min(2, len(terms)) or (len(terms) >= 5 and found / len(terms) < 0.25)):
                 continue
             out.append({
                 **item,
                 "lexical_bm25": float(bm25),
                 "matched_query_terms": found,
+                "matched_publisher_heading_terms": sorted(heading_terms),
                 "total_query_terms": len(terms),
                 "lexical_passage_rank": len(out) + 1,
             })

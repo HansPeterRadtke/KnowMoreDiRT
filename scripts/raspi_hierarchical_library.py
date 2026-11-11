@@ -38,10 +38,11 @@ from file_system_catalog.hierarchical_summary_model import LocalSummaryModel
 from file_system_catalog.hierarchical_summary_store import (
     append_summary_rows, prepare_node_facets, retain_fitting_native_fields, summary_rows, validate_complete_summary_tree,
 )
-from file_system_catalog.hierarchical_summary_search import summary_index_status
+from file_system_catalog.hierarchical_summary_search import summary_index_scope, summary_index_status
 from file_system_catalog.summary_search_batched import search_summary_entries_batched
 from file_system_catalog.source_evidence import source_evidence_candidates
 from file_system_catalog.named_source import resolve_source_name
+from file_system_catalog.source_passage_digests import source_passage_digests
 from file_system_catalog.summary_search_audit import (
     append_query_audit, make_search_audit, recent_search_audits, AUDIT_DIR,
 )
@@ -65,20 +66,28 @@ def sha(raw: bytes) -> str:
     return hashlib.sha256(raw).hexdigest()
 
 
-def file_sha256(path: Path) -> str:
-    """Stream a regular file and reject replacement or mutation during hashing."""
+def regular_file_blocks(path: Path):
+    """Yield stable regular-file bytes, checking for replacement when the reader reaches EOF."""
     flags = os.O_RDONLY | os.O_NOFOLLOW | os.O_NONBLOCK
     with os.fdopen(os.open(path, flags), "rb") as reader:
         before = os.fstat(reader.fileno())
         if not stat.S_ISREG(before.st_mode):
             raise ValueError("expected a regular file for source verification")
-        digest = hashlib.sha256()
-        for chunk in iter(lambda: reader.read(8 * 1024 * 1024), b""):
-            digest.update(chunk)
+        yield from iter(lambda: reader.read(1024 * 1024), b"")
         after = path.stat(follow_symlinks=False)
         if (not os.path.samestat(before, after) or before.st_size != after.st_size
                 or before.st_mtime_ns != after.st_mtime_ns or before.st_ctime_ns != after.st_ctime_ns):
             raise ValueError("source file changed during verification")
+
+
+def file_sha256(path: Path, *, capture: bytearray | None = None, max_bytes: int | None = None) -> str:
+    digest = hashlib.sha256()
+    for block in regular_file_blocks(path):
+        if capture is not None:
+            if max_bytes is None or len(capture) + len(block) > max_bytes:
+                raise ValueError("publisher file exceeds the expected capture size")
+            capture.extend(block)
+        digest.update(block)
     return digest.hexdigest()
 
 
@@ -100,11 +109,11 @@ def publisher_path(relative: str) -> Path:
     return path
 
 
-def verify_publisher_revision(path: Path, record: dict) -> int:
+def verify_publisher_revision(path: Path, record: dict, *, capture: bytearray | None = None) -> int:
     size = path.stat().st_size
     if size != record.get("bytes_received"):
         raise ValueError("original file byte count differs from completed receipt")
-    if file_sha256(path) != record.get("sha256"):
+    if file_sha256(path, capture=capture, max_bytes=size) != record.get("sha256"):
         raise ValueError("original file SHA differs from completed receipt")
     return size
 
@@ -123,7 +132,7 @@ def checked_derivative_path(derivative_relative: str) -> Path:
     return derived
 
 
-def checked_original(relative: str) -> dict:
+def checked_original(relative: str, *, include_publisher_text: bool = False) -> dict:
     path = publisher_path(relative)
     manifest = json.loads(SOURCES.read_text())["sources"]
     entries = [r for r in manifest if r["path"] == relative]
@@ -134,7 +143,11 @@ def checked_original(relative: str) -> dict:
     if len(completed) != 1:
         raise ValueError("original source not completed in the download ledger")
     record = completed[0]
-    original_bytes = verify_publisher_revision(path, record)
+    capture = None
+    if (include_publisher_text and path.suffix.casefold() in (".md", ".markdown", ".txt")
+            and type(record.get("bytes_received")) is int and record["bytes_received"] <= 8 * 1024 * 1024):
+        capture = bytearray()
+    original_bytes = verify_publisher_revision(path, record, capture=capture)
     with sqlite3.connect(f"file:{SOURCE_MAP}?mode=ro", uri=True) as con:
         rows = con.execute(
             "SELECT source_sha256,derived_sha256,derived_path,status "
@@ -158,6 +171,7 @@ def checked_original(relative: str) -> dict:
         "original_bytes": original_bytes,
         "derived_sha256": derivative_sha,
         "derived_text": text,
+        **({"publisher_text_bytes": bytes(capture)} if capture is not None else {}),
     }
 
 
@@ -598,12 +612,12 @@ def import_source(args):
     print("CANONICAL_KMD_UPDATED", json.dumps(result), flush=True)
 
 
-def _unique_path_records(records):
+def _unique_path_records(records, path_key="path"):
     """An ambiguous manifest or completion receipt cannot identify a revision."""
     by_path = {}
     ambiguous = set()
     for record in records:
-        path = record["path"]
+        path = record[path_key]
         if path in by_path:
             ambiguous.add(path)
         else:
@@ -620,12 +634,10 @@ def _current_versions():
         if record.get("status") == "complete"
     )
     with sqlite3.connect(f"file:{SOURCE_MAP.resolve()}?mode=ro", uri=True) as con:
-        source_map = {
-            x[0]: x for x in con.execute(
-                "SELECT source_path,source_sha256,derived_sha256,derived_path,status "
-                "FROM originals WHERE status='complete'"
-            )
-        }
+        source_map = _unique_path_records(con.execute(
+            "SELECT source_path,source_sha256,derived_sha256,derived_path,status "
+            "FROM originals WHERE status='complete'"
+        ), path_key=0)
     return manifest, ledger, source_map
 
 
@@ -634,27 +646,35 @@ def _search_impl(args) -> dict:
     manifest, ledger, sources = _current_versions()
     name_match = resolve_source_name(args.query, manifest)
     preferred_path = name_match.get("original_path") if name_match else None
-    checked: dict[tuple[str, str, str], bool] = {}
+    checked = set()
 
-    def verify(hit):
-        path = hit["original_path"]
+    def verify_document(hits):
+        path = hits[0]["original_path"]
         original = ledger.get(path)
         derivative = sources.get(path)
-        if (path not in manifest or not original or not derivative
-                or hit["original_sha256"] != original.get("sha256")
-                or hit["original_sha256"] != derivative[1]
-                or hit["derived_sha256"] != derivative[2]
-                or hit["original_bytes"] != original.get("bytes_received")):
-            return False
-        revision = (path, hit["original_sha256"], hit["derived_sha256"])
-        if revision not in checked:
-            try:
-                verify_publisher_revision(publisher_path(path), original)
-                derived = checked_derivative_path(derivative[3])
-                checked[revision] = file_sha256(derived) == derivative[2]
-            except (OSError, ValueError):
-                checked[revision] = False
-        return checked[revision]
+        if path not in manifest or not original or not derivative or original.get("sha256") != derivative[1]:
+            return []
+        current = [
+            hit for hit in hits
+            if hit["original_path"] == path and hit["original_sha256"] == derivative[1]
+            and hit["derived_sha256"] == derivative[2] and hit["original_bytes"] == original.get("bytes_received")
+        ]
+        if not current:
+            return []
+        intervals = {(hit["source_start_char"], hit["source_end_char"]) for hit in current}
+        try:
+            verify_publisher_revision(publisher_path(path), original)
+            derived = checked_derivative_path(derivative[3])
+            full_digest, passages = source_passage_digests(regular_file_blocks(derived), intervals)
+        except (OSError, ValueError):
+            return []
+        if full_digest != derivative[2]:
+            return []
+        verified = [hit for hit in current
+                    if passages.get((hit["source_start_char"], hit["source_end_char"])) == hit["source_passage_sha256"]]
+        if verified:
+            checked.add((path, derivative[1], derivative[2]))
+        return verified
 
     model = LocalE5(threads=2, batch_size=4)
     vector = model.embed_queries([args.query])[0]
@@ -664,9 +684,9 @@ def _search_impl(args) -> dict:
             include_facets=getattr(args,"with_facets",False),
             nodes_per_document=args.nodes_per_original,
             expected_model=model.model,
-            require_source=verify, preferred_path=preferred_path,
+            filter_source_nodes=verify_document, preferred_path=preferred_path,
         )
-        snapshot = summary_index_status(conn)
+        snapshot = summary_index_scope(conn)
     out = []
     for row in found:
         original = row["original_path"]
@@ -682,11 +702,21 @@ def _search_impl(args) -> dict:
             "matched_summary_nodes": row["matched_summary_nodes"],
             "source_scope": "summaries_for_document_discovery_not_original_factual_evidence",
         })
+    warning = ("The ranked results are nearest summaries. Inspect the original "
+               "to determine whether it contains the information you need.")
     if preferred_path is not None:
         verified = bool(out and out[0]["original_path"] == preferred_path)
         name_match["status"] = "verified" if verified else "no_verified_index_match"
         if verified:
             out[0]["rank_basis"] = "explicit_source_name"
+            warning = ("The requested original was verified by name and revision. Cosine similarity ranks "
+                       "its passages and the other documents. Check factual claims in the original.")
+        else:
+            warning = ("The named original has no verified summary result. Any ranked documents are other "
+                       "sources. Use source-evidence with the exact catalog path to inspect the named original.")
+    elif name_match:
+        warning = ("The source name matches multiple catalog paths. The listed documents use semantic "
+                   "ranking. Select an exact candidate path to choose an archived source.")
     return {
         **({"source_name_match": name_match} if name_match else {}),
         "query": args.query,
@@ -696,7 +726,8 @@ def _search_impl(args) -> dict:
                              else "native_batched_cosine_v1"),
         "documents": out,
         "count": len(out),
-        "originals_validated_for_version": sum(checked.values()),
+        "originals_validated_for_version": len(checked),
+        "source_passage_validation": "exact_character_interval_sha256_in_current_derivative",
         "provenance_policy": "publisher_and_derived_sha256_checked;summary_is_not_primary_evidence",
         "index_scope": {
             "native_summary_vectors": snapshot["native_summary_vectors"],
@@ -704,14 +735,7 @@ def _search_impl(args) -> dict:
             "complete_extracted_originals": len(sources),
             "indexed_original_percent": round(100.0*snapshot["original_documents_with_summaries"]/max(1,len(sources)),6),
         },
-        "relevance_warning": (
-            "The requested original was verified by name and revision. Cosine similarity ranks its passages "
-            "and the other documents. Check factual claims in the original."
-            if name_match and name_match["status"] == "verified" else
-            "The ranked results are nearest summaries, not verified answers. "
-            "A nonempty response does not establish that the requested topic "
-            "is contained in the currently summarized original documents."
-        ),
+        "relevance_warning": warning,
     }
 
 
@@ -756,23 +780,42 @@ def review_search_log(args) -> None:
 def original_source_evidence(args) -> None:
     """Inspect verified original pages; never mistake lexical hits for truth."""
     started=time.monotonic()
+    original_path = getattr(args, "original_path", None)
+    evidence_query = args.query
+    match = None
     try:
-        source=checked_original(args.original_path)
+        if original_path is None:
+            explicit_name = getattr(args, "source_name", None)
+            manifest = _unique_path_records(json.loads(SOURCES.read_text())["sources"])
+            match = resolve_source_name(explicit_name or args.query, manifest)
+            if not match:
+                raise ValueError("source name unrecognized; supply an exact --source-name or --original-path")
+            if match["status"] != "unique":
+                choices = "\n".join(match["candidate_paths"])
+                raise ValueError(f"source name matches {match['matching_catalog_paths']} catalog paths; "
+                                 f"select --original-path. Available choices include\n{choices}")
+            original_path = match["original_path"]
+            if explicit_name is None:
+                evidence_query = match.get("subject_query", "")
+                if not evidence_query:
+                    raise ValueError("supply the topic to find after --source-name or --original-path")
+        source=checked_original(original_path, include_publisher_text=True)
         with sqlite3.connect(f"file:{DB.resolve()}?mode=ro",uri=True) as db:
             row=db.execute(
                 "SELECT id FROM filesystem_entries WHERE entry_type='file' "
-                "AND relative_path_display=?",(args.original_path,)
+                "AND relative_path_display=?",(original_path,)
             ).fetchone()
         if row is None:
             raise ValueError("original has no canonical KnowMoreDiRT FileDB entry")
         result=source_evidence_candidates(
-            original_path=args.original_path,
+            original_path=original_path,
             original_title=source["title"],
             filesystem_entry_id=int(row[0]),
             original_sha256=source["original_sha256"],
             derived_sha256=source["derived_sha256"],
             derived_text=source["derived_text"],
-            query=args.query,
+            publisher_text_bytes=source.get("publisher_text_bytes"),
+            query=evidence_query,
             top=args.top,
             snippet_characters=args.snippet_characters,
         )
@@ -780,16 +823,22 @@ def original_source_evidence(args) -> None:
         append_query_audit({
             "operation":"verified_original_source_evidence",
             "query":args.query,
-            "original_path":args.original_path,
+            "original_path":original_path,
+            **({"source_name_match":match} if match else {}),
             "success":False,
             "error":f"{type(error).__name__}: {str(error)[:300]}",
             "duration_seconds":round(time.monotonic()-started,3),
         })
         raise
+    selection = {}
+    if match:
+        selection = {"source_name_match": {**match, "status": "verified"}, "evidence_query": evidence_query}
+        result.update(selection)
     receipt={
+        **selection,
         "operation":"verified_original_source_evidence",
         "query":args.query,
-        "original_path":args.original_path,
+        "original_path":original_path,
         "original_sha256":result["original_sha256"],
         "derived_sha256":result["derived_sha256"],
         "success":True,
@@ -807,6 +856,7 @@ def original_source_evidence(args) -> None:
             "excerpt_sha256":v["excerpt_sha256"],
             "lexical_bm25":v["lexical_bm25"],
             "matched_source_terms":v["matched_source_terms"],
+            **({"publisher_excerpt": v["publisher_excerpt"]} if "publisher_excerpt" in v else {}),
         } for i,v in enumerate(result["passages"],1)],
         "evidence_warning":result["evidence_warning"],
     }
@@ -930,7 +980,9 @@ def main():
         "source-evidence",
         help="Read verified source pages/sections of an explicitly chosen original",
     )
-    evidence.add_argument("--original-path",required=True)
+    target = evidence.add_mutually_exclusive_group()
+    target.add_argument("--original-path", help="Exact catalog path of the publisher file")
+    target.add_argument("--source-name", help="Unique catalog title or publisher-qualified archived skill name")
     evidence.add_argument("query")
     evidence.add_argument("--top",type=int,default=5)
     evidence.add_argument("--snippet-characters",type=int,default=900)

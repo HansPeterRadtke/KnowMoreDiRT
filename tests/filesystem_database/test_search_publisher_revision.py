@@ -109,6 +109,8 @@ class PublisherRevisionSearchTests(unittest.TestCase):
         publisher.write_bytes(b"X" * publisher.stat().st_size)
         missing = self.search(top=1)
         self.assertEqual(missing["source_name_match"]["status"], "no_verified_index_match")
+        self.assertIn("no verified summary result", missing["relevance_warning"])
+        self.assertIn("source-evidence", missing["relevance_warning"])
         self.assertEqual(missing["documents"][0]["original_path"], ranked[0]["original_path"])
         self.assertNotIn("rank_basis", missing["documents"][0])
 
@@ -199,8 +201,80 @@ class PublisherRevisionSearchTests(unittest.TestCase):
             db.execute("UPDATE originals SET derived_path=NULL WHERE source_path=?",self.names[:1])
         self.assertEqual(self.paths(top=2), self.names[1:])
 
+    def assert_false_anchor_rejected(self, change):
+        self.query = self.names[0]
+        with sqlite3.connect(self.cli.DB) as db:
+            rows = db.execute(
+                "SELECT r.representation_id,r.chunk_id,r.generation_json FROM content_representations r "
+                "JOIN content_chunks c ON c.chunk_id=r.chunk_id WHERE c.filesystem_entry_id=1"
+            ).fetchall()
+            for rid, cid, raw in rows:
+                g = json.loads(raw)
+                if change == "digest":
+                    g["source_passage_sha256"] = "e" * 64
+                    db.execute("UPDATE content_chunks SET text_sha256=? WHERE chunk_id=?", ("e"*64, cid))
+                else:
+                    g["source_start_char"] += 500000
+                    g["source_end_char"] += 500000
+                    db.execute("UPDATE content_chunks SET start_char=?,end_char=? WHERE chunk_id=?",
+                               (g["source_start_char"], g["source_end_char"], cid))
+                db.execute("UPDATE content_representations SET generation_json=? WHERE representation_id=?",
+                           (json.dumps(g), rid))
+        for mode in (False, True):
+            result = self.search(top=1, facets=mode)
+            self.assertEqual(result["source_name_match"]["status"], "no_verified_index_match")
+            self.assertEqual([d["original_path"] for d in result["documents"]], self.names[1:])
+
+    def test_consistent_but_incorrect_database_digest_cannot_support_a_named_hit(self):
+        self.assert_false_anchor_rejected("digest")
+
+    def test_out_of_bounds_offsets_cannot_support_a_named_hit(self):
+        self.assert_false_anchor_rejected("past_end")
+
+    def test_a_bad_node_does_not_hide_other_valid_passages_in_the_same_source(self):
+        self.query = self.names[0]
+        before = self.search(top=1)["documents"][0]
+        bad = before["matched_summary_nodes"][0]["native_representation_id"]
+        with sqlite3.connect(self.cli.DB) as db:
+            cid, raw = db.execute("SELECT chunk_id,generation_json FROM content_representations "
+                                  "WHERE representation_id=?", (bad,)).fetchone()
+            g = json.loads(raw)
+            g["source_passage_sha256"] = "f"*64
+            db.execute("UPDATE content_chunks SET text_sha256=? WHERE chunk_id=?", ("f"*64, cid))
+            db.execute("UPDATE content_representations SET generation_json=? WHERE representation_id=?",
+                       (json.dumps(g), bad))
+        result = self.search(top=1)
+        self.assertEqual(result["source_name_match"]["status"], "verified")
+        remaining = result["documents"][0]
+        self.assertEqual(remaining["indexed_summary_nodes_for_document"], before["indexed_summary_nodes_for_document"]-1)
+        self.assertNotIn(bad, [n["native_representation_id"] for n in remaining["matched_summary_nodes"]])
+
+    def test_unreadable_vector_and_corrupt_metadata_leave_healthy_sources_searchable(self):
+        for kind in ("odd_vector", "malformed_json"):
+            with self.subTest(kind=kind), sqlite3.connect(self.cli.DB) as db:
+                rid = db.execute("SELECT representation_id FROM content_representations "
+                                 "WHERE json_valid(generation_json) LIMIT 1").fetchone()[0]
+                if kind == "odd_vector":
+                    db.execute("UPDATE content_representations SET embedding_blob=?,embedding_sha256=? "
+                               "WHERE representation_id=?", (b"x",digest(b"x"),rid))
+                else:
+                    db.execute("UPDATE content_representations SET generation_json='{' WHERE representation_id=?", (rid,))
+                db.commit()
+                result = self.search(top=2, facets=True)
+                self.assertCountEqual([x["original_path"] for x in result["documents"]], self.names)
+                for doc in result["documents"]:
+                    self.assertNotIn(rid, [n["native_representation_id"] for n in doc["matched_summary_nodes"]])
+
+    def test_duplicate_current_source_map_rows_block_explicit_name(self):
+        self.query = self.names[0]
+        with sqlite3.connect(self.cli.SOURCE_MAP) as db:
+            db.execute("INSERT INTO originals SELECT * FROM originals WHERE source_path=?", (self.query,))
+        result = self.search(top=1)
+        self.assertEqual(result["source_name_match"]["status"], "no_verified_index_match")
+        self.assertEqual(result["documents"][0]["original_path"], self.names[1])
+
     def test_one_hash_per_file_per_query_with_multiple_nodes(self):
-        with mock.patch.object(self.cli, "file_sha256", wraps=self.cli.file_sha256) as hasher:
+        with mock.patch.object(self.cli, "regular_file_blocks", wraps=self.cli.regular_file_blocks) as hasher:
             result=self.search(top=2)
         self.assertGreater(len(result["documents"][0]["matched_summary_nodes"]),1)
         files=[c.args[0] for c in hasher.call_args_list]

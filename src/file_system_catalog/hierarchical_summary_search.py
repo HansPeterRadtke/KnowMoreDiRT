@@ -164,39 +164,37 @@ def search_summary_entries(
     return documents[:limit]
 
 
+_SUMMARY_ROWS = """
+    FROM content_representations r
+    JOIN content_chunks c ON c.chunk_id=r.chunk_id
+    WHERE c.collection_id LIKE '%:summary' AND r.prompt_version=?
+      AND r.representation_kind IN ('summary','summary_long') AND json_valid(r.generation_json)
+"""
+
+
+def summary_index_scope(db: sqlite3.Connection) -> dict:
+    """Count only the summary vectors and original documents shown with search results."""
+    vectors, originals = db.execute(
+        "SELECT COUNT(*), COUNT(DISTINCT c.filesystem_entry_id) " + _SUMMARY_ROWS, (_VERSION,)
+    ).fetchone()
+    return {"native_summary_vectors": vectors, "original_documents_with_summaries": originals}
+
+
 def summary_index_status(db: sqlite3.Connection) -> dict:
     """Read-only native database summary counts and provenance dimensions."""
-    row = db.execute(
-        """SELECT COUNT(*), COUNT(DISTINCT c.filesystem_entry_id),
-                  MIN(json_extract(r.generation_json,'$.summary_level')),
-                  MAX(json_extract(r.generation_json,'$.summary_level'))
-           FROM content_representations r
-           JOIN content_chunks c ON c.chunk_id = r.chunk_id
-           WHERE c.collection_id LIKE '%:summary'
-             AND r.prompt_version = ?
-             AND r.representation_kind IN ('summary','summary_long')""",
-        (_VERSION,),
-    ).fetchone()
-    levels = {
-        str(level): count
-        for level, count in db.execute(
-            """SELECT json_extract(r.generation_json,'$.summary_level'), COUNT(*)
-               FROM content_representations r
-               JOIN content_chunks c ON c.chunk_id=r.chunk_id
-               WHERE c.collection_id LIKE '%:summary'
-                 AND r.prompt_version=?
-                 AND r.representation_kind IN ('summary','summary_long')
-               GROUP BY json_extract(r.generation_json,'$.summary_level')
-               ORDER BY 1""",
-            (_VERSION,),
-        )
-    }
+    scope = summary_index_scope(db)
+    by_level = db.execute(
+        "SELECT json_extract(r.generation_json,'$.summary_level') AS level, COUNT(*) "
+        + _SUMMARY_ROWS + " GROUP BY level ORDER BY level", (_VERSION,)
+    ).fetchall()
+    # SQL MIN / MAX ignore NULL. Preserve the existing inventory behavior for legacy rows.
+    levels = [level for level, _ in by_level if level is not None]
     kinds = {
         kind:count for kind,count in db.execute(
             """SELECT r.representation_kind, COUNT(*)
                FROM content_representations r
                JOIN content_chunks c ON c.chunk_id=r.chunk_id
-               WHERE c.collection_id LIKE '%:summary'
+               WHERE c.collection_id LIKE '%:summary' AND json_valid(r.generation_json)
                  AND r.prompt_version=?
                GROUP BY r.representation_kind ORDER BY 1""",(_VERSION,)
         )
@@ -207,9 +205,8 @@ def summary_index_status(db: sqlite3.Connection) -> dict:
             if kind not in ("summary","summary_long")
         ),
         "native_representations_by_kind":kinds,
-        "native_summary_vectors": row[0],
-        "original_documents_with_summaries": row[1],
-        "minimum_summary_level": row[2],
-        "maximum_summary_level": row[3],
-        "vectors_by_summary_level": levels,
+        **scope,
+        "minimum_summary_level": levels[0] if levels else None,
+        "maximum_summary_level": levels[-1] if levels else None,
+        "vectors_by_summary_level": {str(level): count for level, count in by_level},
     }

@@ -81,7 +81,9 @@ def _scan_vectors(
             continue
         if dimension != 384 or dtype not in ("float16", "float32") or blob is None:
             continue
-        raw = bytes(blob)
+        if not isinstance(blob, bytes) or len(blob) != dimension * (2 if dtype == "float16" else 4):
+            continue
+        raw = blob
         if hashlib.sha256(raw).hexdigest() != raw_sha:
             continue
         arr = np.frombuffer(raw, dtype="<f2" if dtype == "float16" else "<f4").astype("<f4")
@@ -125,6 +127,8 @@ def _validated_summary_node(db, rep_id, similarity: float, *,
         return None
     if (
         not isinstance(provenance, dict)
+        or type(start) is not int or type(end) is not int or not 0 <= start < end
+        or not isinstance(source_passage_sha, str) or len(source_passage_sha) != 64
         or provenance.get("source_start_char") != start
         or provenance.get("source_end_char") != end
         or provenance.get("source_passage_sha256") != source_passage_sha
@@ -175,6 +179,7 @@ def search_summary_entries_batched(
     vector_batch_size: int = 1024,
     include_facets: bool = False,
     preferred_path: str | None = None,
+    filter_source_nodes: Callable[[list[dict]], list[dict]] | None = None,
 ) -> list[dict]:
     """Same source-linked output as KMD scalar search, with bounded memory."""
     if not 1 <= limit <= 100 or not 1 <= nodes_per_document <= 30:
@@ -208,6 +213,8 @@ def search_summary_entries_batched(
             if require_source is not None and not require_source(hit):
                 continue
             valid.append(hit)
+        if filter_source_nodes is not None and valid:
+            valid = filter_source_nodes(valid)
         if not valid:
             continue
         # Reproduce incumbent tie-breaking by the original section

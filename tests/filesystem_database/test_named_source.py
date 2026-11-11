@@ -28,11 +28,21 @@ class SourceNameTests(unittest.TestCase):
 
     def test_unindexed_revision_and_duplicate_titles_are_still_ambiguous(self):
         self.manifest.update([skill("nvidia-ontology-setup", "b234567")])
-        ambiguous = {"status": "ambiguous", "matching_catalog_paths": 2}
-        self.assertEqual(resolve_source_name("nvidia ontology setup", self.manifest), ambiguous)
+        result = resolve_source_name("nvidia ontology setup", self.manifest)
+        self.assertEqual(result["status"], "ambiguous")
+        self.assertEqual(result["matching_catalog_paths"], 2)
+        self.assertEqual(result["candidate_paths"], sorted((self.path, skill("nvidia-ontology-setup", "b234567")[0])))
         self.assertEqual(resolve_source_name(self.path, self.manifest)["original_path"], self.path)
         self.manifest["other.pdf"] = {"title": "C++ Reference"}
-        self.assertEqual(resolve_source_name('In the “C++ Reference”, what is constexpr?', self.manifest), ambiguous)
+        result = resolve_source_name('In the “C++ Reference”, what is constexpr?', self.manifest)
+        self.assertEqual(result["candidate_paths"], ["books/C.pdf", "other.pdf"])
+        self.assertEqual(result["matching_catalog_paths"], 2)
+
+    def test_ambiguous_display_is_bounded_and_stable(self):
+        manifest = {f"guides/{i:02}.md": {"title": "A Handbook"} for i in reversed(range(12))}
+        result = resolve_source_name("A Handbook", manifest)
+        self.assertEqual(result["matching_catalog_paths"], 12)
+        self.assertEqual(result["candidate_paths"], sorted(manifest)[:8])
 
     def test_exact_path_has_priority_over_another_catalog_display_title(self):
         self.manifest["other.pdf"] = {"title": self.path}

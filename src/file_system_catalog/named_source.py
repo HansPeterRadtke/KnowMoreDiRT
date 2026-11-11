@@ -10,6 +10,7 @@ from collections.abc import Mapping
 # reference. A comparison, exclusion, or incidental topic remains a vector query.
 _CITATION = re.compile(
     r"^(?:according to (?:the )?|in (?:the )?|what does (?:the )?|how does (?:the )?|"
+    r"which revision of (?:the )?|"
     r"laut (?:dem |der )?|was steht (?:im |in der )?|was sagt (?:der |die |das )?)",
     re.IGNORECASE,
 )
@@ -36,37 +37,38 @@ def _quoted(text: str):
     return text[1:end], text[end + 1:]
 
 
-def _requested_names(query: str) -> set[str]:
-    names = {query}
+def _requested_names(query: str) -> dict[str, str]:
+    """Map complete names to any remaining question about their contents."""
+    names = {query: ""}
     quoted = _quoted(query)
     if quoted and not quoted[1].strip():
-        names.add(quoted[0])
+        names[quoted[0]] = quoted[1].lstrip(" ,:;—")
     citation = _CITATION.match(query)
     if citation:
         rest = query[citation.end():]
         quoted = _quoted(rest)
         if quoted and not _COORDINATED.match(quoted[1]):
-            names.add(quoted[0])
+            names[quoted[0]] = quoted[1].lstrip(" ,:;—")
         elif not quoted:
             for word in _SOURCE_WORD.finditer(rest):
                 if not _COORDINATED.match(rest[word.end():]):
-                    names.add(rest[:word.start()])
+                    names[rest[:word.start()]] = rest[word.end():].lstrip(" ,:;—")
     return names
 
 
 def resolve_source_name(query: str, manifest: Mapping[str, dict]) -> dict | None:
     """Resolve only a complete name. Ambiguity includes cataloged, unindexed editions."""
-    if not isinstance(query, str) or not 0 < len(query) <= 1000:
+    if not isinstance(query, str) or not query.strip() or len(query) > 1000:
         return None
     requested = _requested_names(query.strip())
     # File paths are case-sensitive. A catalog name is never interpreted as a filesystem path.
     paths = {value for value in requested if value in manifest}
     if len(paths) == 1:
-        return {"status": "unique", "matching_catalog_paths": 1,
-                "original_path": paths.pop(), "kind": "original_path"}
+        path = paths.pop()
+        return _unique(path, "original_path", requested[path])
     if paths:
-        return {"status": "ambiguous", "matching_catalog_paths": len(paths)}
-    forms = {_name(value) for value in requested if value.strip()}
+        return _ambiguous(paths)
+    forms = {_name(value): subject for value, subject in requested.items() if value.strip()}
     matches = {}
     for path, record in manifest.items():
         title = record.get("title")
@@ -74,7 +76,7 @@ def resolve_source_name(query: str, manifest: Mapping[str, dict]) -> dict | None
             continue
         title = _name(title)
         if title in forms:
-            matches.setdefault(path, "catalog_title")
+            matches[path] = ("catalog_title", forms[title])
             continue
         if record.get("source_type") != "agent_skill_instructions":
             continue
@@ -85,12 +87,28 @@ def resolve_source_name(query: str, manifest: Mapping[str, dict]) -> dict | None
         if title != f"{publisher} agent skill: {slug}":
             continue
         qualified = slug if slug.startswith(publisher + "-") else publisher + "-" + slug
-        if (qualified in forms or qualified.replace("-", " ") in forms
-                or ("-" in slug and slug in forms)):
-            matches.setdefault(path, "pinned_skill_name")
+        aliases = [qualified, qualified.replace("-", " ")]
+        if "-" in slug:
+            aliases.append(slug)
+        for alias in aliases:
+            if alias in forms:
+                matches[path] = ("pinned_skill_name", forms[alias])
+                break
     if not matches:
         return None
     if len(matches) > 1:
-        return {"status": "ambiguous", "matching_catalog_paths": len(matches)}
-    path, kind = next(iter(matches.items()))
-    return {"status": "unique", "matching_catalog_paths": 1, "original_path": path, "kind": kind}
+        return _ambiguous(matches)
+    path, (kind, subject) = next(iter(matches.items()))
+    return _unique(path, kind, subject)
+
+
+def _ambiguous(paths):
+    return {"status": "ambiguous", "matching_catalog_paths": len(paths),
+            "candidate_paths": sorted(paths)[:8]}
+
+
+def _unique(path, kind, subject):
+    result = {"status": "unique", "matching_catalog_paths": 1, "original_path": path, "kind": kind}
+    if subject:
+        result["subject_query"] = subject
+    return result
