@@ -217,3 +217,41 @@ Stripe identifiers. The corrected locator found every one of the 144 and
 verified its excerpt against the complete derivative. Two absent identifiers
 returned zero passages. Five ordinary questions across three documents kept
 their original ranked section lists.
+
+
+### Live admission and regression results on 11 November
+
+The canonical FileDB accepted the NVIDIA ontology setup guide, MICAS,
+and VisionZip. The three sources contributed seven hierarchical nodes
+and 191 source-linked vectors. All three publisher and derivative hashes,
+all node intervals, all representation identities, and all normalized
+384-dimensional vectors were verified after import. Both pre-existing
+summary files retained their original byte digests.
+
+Five of six predeclared questions placed their intended original in the
+first eight results after admission, including four first-place results.
+All six had missed before admission. The remaining MCP configuration
+question put the setup guide eleventh under summary search and thirteenth
+with facets. The existing filesystem `find --path nvidia-ontology-setup
+--name SKILL.md` command resolved that guide uniquely. A separate
+file-name comparison included one skill with two archived revisions,
+for which a name alone could not choose a unique publisher file.
+
+The paired experiment added exactly the 191 admitted vectors to the
+previously frozen 139,966-row cohort. Across 39 previous questions in
+both search modes, every one of the 624 top-eight positions retained its
+source path, rounded similarity, matched node identity, and text digests.
+A separate comparison of every field and stored blob in the live
+pre-admission prefix matched all 75,866 chunk rows and 140,911
+representation rows. The workers continued adding other new rows.
+
+At the time of the capacity audit, 13,639 eligible sources remained.
+In the preceding 24 hours, 659 newly indexed originals contributed
+28.6 million source characters. At that throughput, indexing the remaining
+2.74 billion characters would take about 96 days. Applying the same
+observed storage density to those characters would add 6.24 GiB for vector
+blobs, generation metadata and representation text alone. The configured
+4 GiB checkpoint had about 2.85 GiB of headroom. Both projections depend
+on the future document mix and throughput. The detailed per-source,
+per-query, and storage measurements are under the private Raspi
+`search-audit/embedding-context-recovery-20261111` directory.
