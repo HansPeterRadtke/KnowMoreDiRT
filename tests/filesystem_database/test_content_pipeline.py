@@ -238,6 +238,14 @@ class KeywordEmbeddingClient(FakeEmbeddingClient):
 
 
 class ContentPipelineTest(unittest.TestCase):
+    def setUp(self) -> None:
+        # Cached mock embeddings would skip the request and invalidate timeout and batching tests.
+        cache = tempfile.TemporaryDirectory()
+        self.addCleanup(cache.cleanup)
+        env = patch.dict("os.environ", {"KMD_MODEL_CALL_CACHE_DIR": cache.name})
+        env.start()
+        self.addCleanup(env.stop)
+
     def _build_catalog(self, root: Path, database: Path) -> None:
         FilesystemScanner(root, progress_every=0).scan_to_database(database)
 
