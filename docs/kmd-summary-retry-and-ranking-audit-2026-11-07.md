@@ -166,3 +166,36 @@ establishes the accuracy of other summaries or complete corpus coverage.
 The private evidence includes both rejected intermediate outputs and
 their reasons. Seventy-two distinct KnowMoreDiRT tests, fifteen Infra
 business tests and twelve documentation tests passed.
+
+
+## Recovering a source that exceeds the passage encoder budget
+
+The native builder measures each generated summary, topic, and representation
+with the deployed passage tokenizer, including its prefix and special tokens.
+One shorter native-schema request can recover a model length cutoff or a
+measured passage overflow. It receives the same complete source group. Both
+requests count against the pilot's model-request limit, including cache hits.
+Progress receipts count processed nodes, adapter requests, successful calls,
+and reused saved nodes separately.
+
+For an existing completed tree that failed import, run the usual native build
+with the same model and add `--recover-embedding-context`. The command checks
+the publisher and derivative revisions and confirms an actual overflow. It
+preserves the saved tree and writes the complete recovery beside it, keyed to
+the SHA-256 of the predecessor's exact bytes. The ordinary import selects and
+validates that recovery. A dry import computes every vector before admission.
+Concurrent writers expose one complete file atomically. A different result
+cannot replace an existing file.
+
+Recovery reuses intact nodes when their source interval and exact child IDs
+match. On a rejected node, admissible original terms retain their native facet.
+A shorter model result can supply the rejected summary or additional fitting
+terms. The original tree remains available for comparing both outputs.
+
+In the Raspi dry runs, the NVIDIA setup guide had a 523-token summary and
+MICAS had a 642-token keyphrase against the encoder's 512-token limit. The
+corrected trees retained all 46 and 67 previously admissible fields,
+respectively. Two of the three MICAS nodes matched their saved records in
+full, including the root. The ordinary importer prepared 47 and 76 vectors.
+A read-only replay also matched all 139,966 indexed representation identities,
+ranks, kinds and text hashes in the fixed 4,045-original regression cohort.

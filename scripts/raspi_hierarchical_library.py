@@ -31,9 +31,13 @@ ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT / "src"))
 INFRA = Path("/data/infra/libexec")
 sys.path.insert(0, str(INFRA))
-from file_system_catalog.hierarchical_summary import HierarchicalSummarizer, SummaryNode, SummaryTree
+from file_system_catalog.hierarchical_summary import (
+    EmbeddingContextExceeded, HierarchicalSummarizer, SummaryActivity, SummaryNode, SummaryTree,
+)
 from file_system_catalog.hierarchical_summary_model import LocalSummaryModel
-from file_system_catalog.hierarchical_summary_store import summary_rows, append_summary_rows
+from file_system_catalog.hierarchical_summary_store import (
+    append_summary_rows, prepare_node_facets, retain_fitting_native_fields, summary_rows, validate_complete_summary_tree,
+)
 from file_system_catalog.hierarchical_summary_search import summary_index_status
 from file_system_catalog.summary_search_batched import search_summary_entries_batched
 from file_system_catalog.source_evidence import source_evidence_candidates
@@ -206,6 +210,75 @@ def load_tree(payload: dict) -> SummaryTree:
     )
 
 
+class E5PassageBudget:
+    """Token-only preflight using the pinned Raspi encoder's files and passage prefix."""
+    def __init__(self):
+        from knowledge_library_semantic_model import MODEL_DIRECTORY
+        from tokenizers import Tokenizer
+        self.tokenizer = Tokenizer.from_file(str(MODEL_DIRECTORY / "tokenizer.json"))
+        self.tokenizer.no_truncation()
+        self.tokenizer.no_padding()
+        self.limit = json.loads((MODEL_DIRECTORY / "tokenizer_config.json").read_bytes())["model_max_length"]
+
+    def token_count(self, text):
+        return len(self.tokenizer.encode("passage: " + text).ids)
+
+
+def read_source_tree(path, source):
+    if path.is_symlink() or not path.is_file():
+        raise FileNotFoundError("verified complete summary tree not generated yet")
+    raw = path.read_bytes()
+    payload = json.loads(raw)
+    if (payload["schema"] != "kmd-complete-hierarchical-summary-tree-v1"
+            or any(payload[key] != source[key] for key in ("original_path", "original_sha256", "derived_sha256"))):
+        raise ValueError("summary tree is stale or belongs to a different original")
+    tree = load_tree(payload)
+    if tree.source_sha256 != source["derived_sha256"] or tree.original_characters != len(source["derived_text"]):
+        raise ValueError("summary tree does not cover the verified derivative")
+    validate_complete_summary_tree(tree)
+    for node in tree.nodes:
+        if node.summary_sha256 != sha(node.summary.encode()) or (
+            node.native_analysis is not None and node.native_analysis["document_summary"] != node.summary
+        ):
+            raise ValueError("saved summary or native analysis differs from node digest")
+    return payload, tree, sha(raw)
+
+
+def recovery_path(base, digest):
+    return base.with_name(base.name + ".recovery-" + digest + ".json")
+
+
+def import_tree(base, source):
+    payload, tree, digest = read_source_tree(base, source)
+    candidate = recovery_path(base, digest)
+    if not candidate.exists() and not candidate.is_symlink():
+        return payload, tree
+    recovered, tree, _ = read_source_tree(candidate, source)
+    if (recovered.get("recovered_from_tree_sha256") != digest or recovered["model"] != payload["model"]
+            or not recovered.get("native_facets") or not payload.get("native_facets")):
+        raise ValueError("recovered summary tree is not bound to its saved predecessor")
+    return recovered, tree
+
+
+def save_tree_once(output, payload):
+    """Atomically expose a complete owner-only file; an existing tree wins the race."""
+    fd, temporary = tempfile.mkstemp(prefix=".complete-tree-", dir=output.parent)
+    try:
+        with os.fdopen(fd, "w", encoding="utf-8") as writer:
+            json.dump(payload, writer, ensure_ascii=False, indent=2)
+            writer.write("\n")
+            writer.flush()
+            os.fsync(writer.fileno())
+        try:
+            os.link(temporary, output)
+        except FileExistsError:
+            return (not output.is_symlink() and output.is_file()
+                    and json.loads(output.read_bytes()) == json.loads(Path(temporary).read_bytes()))
+        return True
+    finally:
+        Path(temporary).unlink(missing_ok=True)
+
+
 def summary_prompt_title(source: dict) -> str:
     """Prefer an original's printed edition over a stale extraction header."""
     title = source["title"][:300]
@@ -253,6 +326,44 @@ def build(args) -> None:
     model_title = summary_prompt_title(source)
     if getattr(args,"native_facets",False) and args.output_tokens<700:
         raise ValueError("native keyword/facet output requires at least 700 reserved generation tokens")
+    output = payload_path(source["original_path"], source["original_sha256"], source["derived_sha256"])
+    recovery_digest = None
+    previous_tree = None
+    recover = getattr(args, "recover_embedding_context", False)
+    need_budget = getattr(args, "native_facets", False) and (recover or not args.plan_only)
+    passage_budget = E5PassageBudget() if need_budget else None
+
+    def validate_native(analysis, start, end):
+        prepare_node_facets(
+            analysis["document_summary"], analysis, text=source["derived_text"], start=start, end=end,
+            embedding_client=passage_budget, limit=passage_budget.limit,
+        )
+
+    def retain_native(original, retry, start, end):
+        return retain_fitting_native_fields(original, retry, text=source["derived_text"], start=start,
+                                            end=end, embedding_client=passage_budget, limit=passage_budget.limit)
+
+    if recover:
+        prior, tree, recovery_digest = read_source_tree(output, source)
+        if not (passage_budget and prior.get("native_facets") and args.model == prior["model"]):
+            raise ValueError("recovery requires the saved native tree's generation model")
+        overflows = 0
+        for node in tree.nodes:
+            if node.native_analysis is None:
+                raise ValueError("recovery requires a complete native facet tree")
+            try:
+                validate_native(node.native_analysis, node.start_char, node.end_char)
+            except EmbeddingContextExceeded:
+                overflows += 1
+        if not overflows:
+            raise ValueError("saved tree fits the passage encoder; recovery is unnecessary")
+        recovered = recovery_path(output, recovery_digest)
+        if recovered.exists() or recovered.is_symlink():
+            import_tree(output, source)
+            print("EXISTING_CONTEXT_RECOVERY", str(recovered), flush=True)
+            return
+        output = recovered
+        previous_tree = tree
     model = LocalSummaryModel(
         args.model_url, model=args.model,
         timeout_seconds=args.model_timeout,
@@ -287,6 +398,9 @@ def build(args) -> None:
     progress_file = source_progress_path(
         source["original_path"], source["original_sha256"], source["derived_sha256"]
     )
+    if recovery_digest is not None:
+        progress_file = progress_file.with_name(output.name + ".progress.json")
+    activity = SummaryActivity()
     progress = {
         "schema": "knowmoredirt-recursive-summary-node-progress-v1",
         "status": "summarizing",
@@ -297,14 +411,16 @@ def build(args) -> None:
         "source_characters": len(source["derived_text"]),
         "first_level_summary_nodes_planned": len(groups),
         "completed_first_level_nodes": 0,
-        "completed_model_calls": 0,
+        **asdict(activity),
+        "completed_nodes": 0,
         "last_summary_level": None,
         "last_node_id": None,
         "elapsed_seconds": 0.0,
     }
     save_source_progress(progress_file, progress)
     def on_node(node: SummaryNode, count: int) -> None:
-        progress["completed_model_calls"] = count
+        progress.update(asdict(activity))
+        progress["completed_nodes"] = count
         progress["last_summary_level"] = node.level
         progress["last_node_id"] = node.node_id
         progress["last_summary_sha256"] = node.summary_sha256
@@ -322,7 +438,8 @@ def build(args) -> None:
         save_source_progress(progress_file, progress)
         print("KMD_HIERARCHICAL_SUMMARY_NODE", json.dumps({
             "original_path": source["original_path"], "level": node.level,
-            "completed_calls": count,
+            "completed_calls": activity.completed_model_calls,
+            "completed_nodes": count,
             "first_level_percent": progress["first_level_percent"],
             "source_end_char": node.end_char,
             "summary_sha256": node.summary_sha256,
@@ -331,8 +448,11 @@ def build(args) -> None:
         tree = engine.summarize(
             title=model_title, text=source["derived_text"],
             max_calls=args.max_calls, on_node=on_node,
+            validate_native=validate_native if passage_budget is not None else None,
+            retain_native=retain_native, previous_tree=previous_tree, activity=activity,
         )
     except Exception as error:
+        progress.update(asdict(activity))
         progress["status"] = "incomplete_generation"
         progress["last_error"] = f"{type(error).__name__}: {str(error)[:260]}"
         progress["elapsed_seconds"] = round(time.monotonic() - elapsed_from, 1)
@@ -356,24 +476,18 @@ def build(args) -> None:
     }
     OUT.mkdir(parents=True, exist_ok=True)
     os.chmod(OUT, 0o700)
-    output = payload_path(source["original_path"], source["original_sha256"], source["derived_sha256"])
-    if output.exists():
-        # Never overwrite a different completed LLM output on another run.
-        existing = json.loads(output.read_text(encoding="utf-8"))
-        if existing != payload:
-            progress["status"] = "existing_complete_tree_differs"
-            progress["last_error"] = "different completed tree already exists; replacement refused"
-            save_source_progress(progress_file, progress)
-            print("EXISTING COMPLETE SUMMARY TREE FOUND; refusing replacement", flush=True)
-            return
-    else:
-        with output.open("x", encoding="utf-8") as handle:
-            json.dump(payload, handle, ensure_ascii=False, indent=2)
-            handle.write("\n")
-        os.chmod(output, 0o600)
+    if recovery_digest is not None:
+        payload["recovered_from_tree_sha256"] = recovery_digest
+    if not save_tree_once(output, payload):
+        progress["status"] = "existing_complete_tree_differs"
+        progress["last_error"] = "different completed tree already exists; replacement refused"
+        save_source_progress(progress_file, progress)
+        print("EXISTING COMPLETE SUMMARY TREE FOUND; refusing replacement", flush=True)
+        return
     progress.update({
         "status": "complete_tree_saved",
-        "completed_model_calls": len(tree.nodes),
+        **asdict(activity),
+        "completed_nodes": len(tree.nodes),
         "completed_first_level_nodes": sum(node.level == 0 for node in tree.nodes),
         "first_level_percent": 100.0,
         "completed_source_characters_in_leaf_pass": len(source["derived_text"]),
@@ -426,23 +540,7 @@ def import_source(args):
     tree_file = payload_path(
         source["original_path"], source["original_sha256"], source["derived_sha256"],
     )
-    if not tree_file.is_file() or tree_file.is_symlink():
-        raise FileNotFoundError("verified complete summary tree not generated yet")
-    payload = json.loads(tree_file.read_text(encoding="utf-8"))
-    if (
-        payload["original_path"] != source["original_path"]
-        or payload["original_sha256"] != source["original_sha256"]
-        or payload["derived_sha256"] != source["derived_sha256"]
-        or payload["schema"] != "kmd-complete-hierarchical-summary-tree-v1"
-    ):
-        raise ValueError("summary tree is stale or belongs to a different original")
-    tree = load_tree(payload)
-    if (
-        tree.root.start_char != 0
-        or tree.root.end_char != len(source["derived_text"])
-        or tree.original_characters != len(source["derived_text"])
-    ):
-        raise RuntimeError("refusing partial-book summary insertion")
+    payload, tree = import_tree(tree_file, source)
     from knowledge_library_semantic_model import LocalE5
     model = LocalE5(threads=2, batch_size=4)
     with sqlite3.connect(f"file:{DB.resolve()}?mode=ro", uri=True) as ro:
@@ -804,6 +902,8 @@ def main():
                    help="Use existing KMD file facet schema for summary+keywords in each model call")
     b.add_argument("--compact-native-facets",action="store_true",
                    help="Use concise source-faithful KMD facet instructions for faster structured output")
+    b.add_argument("--recover-embedding-context", action="store_true",
+                   help="Rebuild an oversized saved native tree beside its hash-verified predecessor")
     i = sub.add_parser("import", help="Prepare or append every summary vector to the original FileDB")
     i.add_argument("--original-path", required=True)
     i.add_argument("--write", action="store_true")

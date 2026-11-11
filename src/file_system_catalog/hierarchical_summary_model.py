@@ -17,6 +17,7 @@ from kmd_model_call_cache import (
     semantic_request_hash,
     write_model_call,
 )
+from .hierarchical_summary import EmbeddingContextExceeded
 from .content_pipeline import (
     AnalysisClient,
     FILE_ANALYSIS_SCHEMA,
@@ -246,7 +247,7 @@ class LocalSummaryModel:
         # The original E5 index has a 512-token maximum. Leave room for its
         # passage prefix and avoid truncating the root summary silently.
         if self.text_tokens(normalized["document_summary"])>400:
-            raise RuntimeError("native summary exceeds safe embedding context")
+            raise EmbeddingContextExceeded("native summary exceeds safe embedding context")
         if self.text_tokens(normalized["document_summary"])>output_tokens:
             raise RuntimeError("native summary exceeds generation reservation")
         write_model_call(cache_key,{"native_analysis":normalized})

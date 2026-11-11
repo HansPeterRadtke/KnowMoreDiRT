@@ -30,7 +30,7 @@ from .content_schema import (
     CHUNK_COLUMN_NAMES, REPRESENTATION_COLUMN_NAMES,
     CHUNK_TABLE_NAME, REPRESENTATION_TABLE_NAME,
 )
-from .hierarchical_summary import SummaryTree, _VERSION
+from .hierarchical_summary import EmbeddingContextExceeded, SummaryTree, _VERSION
 
 
 def _sha(text: str) -> str:
@@ -110,15 +110,15 @@ def _source_identifier_members(item, *, text, start, end, capacity, embedding_cl
     if (item["kind"] not in ("keyword", "keyphrase") or not 2 <= len(terms) <= capacity
             or len(set(terms)) != len(terms)
             or any(not _IDENTIFIER.fullmatch(term) for term in terms)):
-        raise ValueError("native facet exceeds embedding context and is not a bounded identifier list")
+        raise EmbeddingContextExceeded("native facet exceeds embedding context and is not a bounded identifier list")
     if any(embedding_client.token_count(term) > limit for term in terms):
-        raise ValueError("individual source identifier exceeds embedding context")
+        raise EmbeddingContextExceeded("individual source identifier exceeds embedding context")
 
     # Coordinates are in the entire verified derivative. Skip its administrative
     # header and unit labels, even if a node starts in the middle of either.
     first_unit = _SOURCE_UNIT_LINE.search(text)
     if first_unit is None:
-        raise ValueError("no marked publisher body for oversized identifier list")
+        raise EmbeddingContextExceeded("no marked publisher body for oversized identifier list")
     missing = set(terms)
     locations = {}
     # One character of lookahead prevents treating the end of a node as the
@@ -135,7 +135,7 @@ def _source_identifier_members(item, *, text, start, end, capacity, embedding_cl
         if not missing:
             break
     if missing:
-        raise ValueError("oversized identifier list contains a term absent from the publisher span")
+        raise EmbeddingContextExceeded("oversized identifier list contains a term absent from the publisher span")
 
     list_digest = _sha(raw)
     return [
@@ -172,6 +172,71 @@ def _fit_native_facets(items, *, text, start, end, embedding_client, limit):
         global_shift += len(members) - 1
         facet_shift += len(members) - 1
     return fitted
+
+
+def prepare_node_facets(summary, analysis, *, text, start, end, embedding_client, limit):
+    """Apply identical text budgets before saving a model node and before embedding it."""
+    if limit is not None and embedding_client.token_count(summary) > limit:
+        raise EmbeddingContextExceeded("one generated summary exceeds embedding context; regenerate more compactly")
+    if analysis is None:
+        return []
+    analysis = normalize_analysis(analysis)
+    if analysis["document_summary"] != summary:
+        raise ValueError("native facet analysis summary differs from verified node")
+    return _fit_native_facets(
+        flatten_representations(analysis)[1:], text=text, start=start, end=end,
+        embedding_client=embedding_client, limit=limit,
+    )
+
+
+def retain_fitting_native_fields(original, retry, *, text, start, end, embedding_client, limit):
+    """Keep the previous model's admissible fields and use a checked retry for replacements."""
+    original = normalize_analysis(original)
+    retry = normalize_analysis(retry)
+    summary = original["document_summary"]
+    if embedding_client.token_count(summary) > limit:
+        summary = retry["document_summary"]
+
+    def fits(facets):
+        analysis = {"document_summary": summary, "facets": facets}
+        if len(flatten_representations(analysis)) - 1 > _MAX_NODE_FACETS:
+            return False
+        try:
+            prepare_node_facets(summary, analysis, text=text, start=start, end=end,
+                                embedding_client=embedding_client, limit=limit)
+        except EmbeddingContextExceeded:
+            return False
+        return True
+
+    if fits(original["facets"]):
+        return {"document_summary": summary, "facets": original["facets"]}
+
+    retained = []
+    for facet in original["facets"]:
+        if fits([*retained, facet]):
+            retained.append(facet)
+            continue
+        items = []
+        for item in facet["representations"]:
+            candidate = {**facet, "representations": [*items, item]}
+            if fits([*retained, candidate]):
+                items.append(item)
+        if items:
+            retained.append({**facet, "representations": items})
+
+    # Keep the original order, then add genuinely new terms from the bounded response.
+    for facet in retry["facets"]:
+        merged = list(retained)
+        for i, prior in enumerate(merged):
+            if prior["label"].casefold() == facet["label"].casefold():
+                merged[i] = {**prior, "representations": prior["representations"] + facet["representations"]}
+                break
+        else:
+            merged.append(facet)
+        merged = normalize_analysis({"document_summary": summary, "facets": merged})["facets"]
+        if fits(merged):
+            retained = merged
+    return {"document_summary": summary, "facets": retained}
 
 
 def summary_rows(
@@ -249,26 +314,15 @@ def summary_rows(
     limit = None
     if hasattr(embedding_client, "token_count") and hasattr(embedding_client, "model_context"):
         limit = int(embedding_client.model_context().configured_tokens)
-        for node in ordered:
-            if embedding_client.token_count(node.summary) > limit:
-                raise ValueError("one generated summary exceeds embedding context; regenerate more compactly")
-    # The native KMD schema already supports multiple topic/keyphrase/keyword
-    # representations for the SAME source-linked content_chunk. Reuse its
-    # existing facet normalization and rank assignment, not a second table.
-    facets_by_node=[]
-    extra_texts=[]
+    facets_by_node = []
+    extra_texts = []
     for node in ordered:
-        extra=[]
-        if node.native_analysis is not None:
-            analysis=normalize_analysis(node.native_analysis)
-            if analysis["document_summary"] != node.summary:
-                raise ValueError("native facet analysis summary differs from verified node")
-            extra=flatten_representations(analysis)[1:]
-            extra = _fit_native_facets(
-                extra, text=derived_text, start=summary_start_char + node.start_char,
-                end=summary_start_char + node.end_char, embedding_client=embedding_client, limit=limit,
-            )
-            extra_texts.extend(item["text"] for item in extra)
+        extra = prepare_node_facets(
+            node.summary, node.native_analysis, text=derived_text,
+            start=summary_start_char + node.start_char, end=summary_start_char + node.end_char,
+            embedding_client=embedding_client, limit=limit,
+        )
+        extra_texts.extend(item["text"] for item in extra)
         facets_by_node.append(extra)
     all_texts=[node.summary for node in ordered]+extra_texts
     all_vectors=embedding_client.embed(all_texts)

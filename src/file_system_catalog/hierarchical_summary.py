@@ -107,6 +107,10 @@ source's actual claims, never invent facts. Prefer a complete short summary
 over a verbose, unfinished one. Return only the summary in the required JSON."""
 
 
+class EmbeddingContextExceeded(ValueError):
+    """A generated representation cannot fit the deployed passage encoder."""
+
+
 class SummaryModel(Protocol):
     @property
     def context_tokens(self) -> int: ...
@@ -157,6 +161,14 @@ class SummaryNode:
     prompt_version: str = _VERSION
     prompt_policy: str = "legacy_unrecorded"
     native_analysis: dict[str, Any] | None = None
+
+
+@dataclass
+class SummaryActivity:
+    # Adapter requests include cache hits. Reusing a checked saved node makes no request.
+    model_requests: int = 0
+    completed_model_calls: int = 0
+    reused_saved_nodes: int = 0
 
 
 @dataclass(frozen=True)
@@ -404,6 +416,10 @@ class HierarchicalSummarizer:
     def summarize(
         self, *, title: str, text: str, max_calls: int | None = None,
         on_node: Callable[[SummaryNode, int], None] | None = None,
+        validate_native: Callable[[dict, int, int], None] | None = None,
+        retain_native: Callable[[dict, dict, int, int], dict] | None = None,
+        previous_tree: SummaryTree | None = None,
+        activity: SummaryActivity | None = None,
     ) -> SummaryTree:
         """Summarize all inputs, recursively, or fail clearly at a bounded limit.
 
@@ -414,9 +430,14 @@ class HierarchicalSummarizer:
             raise ValueError("invalid bounded model-call limit")
         sections, groups = self.plan_source(title=title, text=text)
         source_sha = hashlib.sha256(text.encode("utf-8")).hexdigest()
+        prior = {}
+        if previous_tree is not None:
+            if previous_tree.source_sha256 != source_sha or not self.native_facets or validate_native is None:
+                raise ValueError("native recovery requires the same complete source revision")
+            prior = {(n.level, n.start_char, n.end_char, n.child_ids): n for n in previous_tree.nodes}
         nodes: list[SummaryNode] = []
         current: list[SummaryNode] = []
-        calls = 0
+        activity = activity if activity is not None else SummaryActivity()
         for level in range(self.max_levels):
             if level > 0:
                 child_sections = [
@@ -429,12 +450,10 @@ class HierarchicalSummarizer:
             next_nodes = []
             group_pos = 0
             for group in groups:
-                if max_calls is not None and calls >= max_calls:
-                    raise RuntimeError(
-                        f"bounded pilot incomplete: {calls} of at least {len(groups)} "
-                        f"calls, not a complete document summary"
-                    )
                 first, last = group[0], group[-1]
+                child_ids = tuple(n.node_id for n in current[group_pos:group_pos + len(group)]) if level else ()
+                group_pos += len(group)
+                previous = prior.get((level, first.start_char, last.end_char, child_ids))
                 prompt = self._prompt(title=title, level=level, nodes=group)
                 active_system = self._system()
                 cost = self.model.prompt_tokens(system=active_system, user=prompt)
@@ -444,21 +463,37 @@ class HierarchicalSummarizer:
                 prompt_policy = ("native_facets_compact"
                                  if self.native_facets_compact else
                                  "native_facets" if self.native_facets else "standard")
-                native_analysis = None
-                try:
+                original_analysis = None
+
+                def generate(system, allowance):
+                    if max_calls is not None and activity.model_requests >= max_calls:
+                        raise RuntimeError(f"bounded pilot incomplete: {max_calls} model requests exhausted")
+                    activity.model_requests += 1
                     if self.native_facets:
-                        native_analysis = self.model.generate_retrieval_analysis(
-                            system=active_system, user=prompt, output_tokens=output_allowance
+                        analysis = self.model.generate_retrieval_analysis(
+                            system=system, user=prompt, output_tokens=allowance,
                         )
-                        summary = native_analysis["document_summary"]
+                        result = analysis["document_summary"], analysis
                     else:
-                        summary = self.model.generate_summary(
-                            system=active_system, user=prompt, output_tokens=output_allowance
-                        )
-                except RuntimeError as error:
-                    # Retry an explicit generation cutoff once. Recompute the
-                    # reservation for the shorter instruction and identical source.
-                    if "did not finish within reserved generation tokens" not in str(error):
+                        result = self.model.generate_summary(
+                            system=system, user=prompt, output_tokens=allowance,
+                        ), None
+                    activity.completed_model_calls += 1
+                    return result
+
+                try:
+                    if previous is None:
+                        summary, native_analysis = generate(active_system, output_allowance)
+                    else:
+                        summary, native_analysis = previous.summary, previous.native_analysis
+                    original_analysis = native_analysis
+                    if native_analysis is not None and validate_native is not None:
+                        validate_native(native_analysis, first.start_char, last.end_char)
+                except (RuntimeError, EmbeddingContextExceeded) as error:
+                    embedding_overflow = isinstance(error, EmbeddingContextExceeded)
+                    if embedding_overflow and not self.native_facets:
+                        raise
+                    if not embedding_overflow and "did not finish within reserved generation tokens" not in str(error):
                         raise
                     strict_system = (
                         SUMMARY_FACETS_COMPACT_RETRY_SYSTEM if self.native_facets_compact
@@ -473,36 +508,34 @@ class HierarchicalSummarizer:
                     if retry_allowance < self.output_tokens:
                         raise
                     output_allowance = retry_allowance
-                    if self.native_facets_compact:
+                    if embedding_overflow:
+                        prompt_policy = "native_facets_bounded_after_embedding_overflow"
+                    elif self.native_facets_compact:
                         prompt_policy = "native_facets_compact_bounded_after_length"
                     elif self.native_facets:
                         prompt_policy = "native_facets_strict_shortened_after_length"
                     else:
                         prompt_policy = "strict_shortened_after_length"
                     cost = retry_cost
-                    if self.native_facets:
-                        native_analysis = self.model.generate_retrieval_analysis(
-                            system=strict_system, user=prompt,
-                            output_tokens=output_allowance,
-                        )
-                        summary = native_analysis["document_summary"]
-                    else:
-                        summary = self.model.generate_summary(
-                            system=strict_system, user=prompt,
-                            output_tokens=output_allowance,
-                        )
+                    summary, native_analysis = generate(strict_system, output_allowance)
+                    if native_analysis is not None and validate_native is not None:
+                        validate_native(native_analysis, first.start_char, last.end_char)
+                        if embedding_overflow and original_analysis is not None and retain_native is not None:
+                            native_analysis = retain_native(original_analysis, native_analysis,
+                                                           first.start_char, last.end_char)
+                            summary = native_analysis["document_summary"]
+                            prompt_policy = "native_facets_bounded_after_embedding_overflow_retained_fields"
+                    previous = None
                 if not isinstance(summary, str) or not summary.strip():
                     raise RuntimeError("model failed to provide a usable summary")
                 if self.model.text_tokens(summary) > output_allowance:
                     raise RuntimeError("model exceeded the output reservation")
                 content_hash = hashlib.sha256(summary.encode("utf-8")).hexdigest()
-                child_ids = tuple(n.node_id for n in current[group_pos:group_pos + len(group)]) if level else ()
-                group_pos += len(group)
                 stable = hashlib.sha256(
                     json.dumps([source_sha, level, first.start_char, last.end_char, content_hash, child_ids],
                                separators=(",", ":"), ensure_ascii=False).encode("utf-8")
                 ).hexdigest()[:24]
-                node = SummaryNode(
+                node = previous or SummaryNode(
                     node_id="summary:" + stable,
                     level=level,
                     start_char=first.start_char,
@@ -520,14 +553,15 @@ class HierarchicalSummarizer:
                 )
                 next_nodes.append(node)
                 nodes.append(node)
-                calls += 1
+                if previous is not None:
+                    activity.reused_saved_nodes += 1
                 if len(nodes) > self.max_nodes:
                     raise RuntimeError("summary node budget exceeded")
                 if on_node is not None:
                     # Source text and generated summaries stay in private
                     # KMD storage. Observers receive only this verified node
                     # receipt, not a partial or fabricated whole-book root.
-                    on_node(node, calls)
+                    on_node(node, len(nodes))
             if (next_nodes[0].start_char != 0
                     or next_nodes[-1].end_char != len(text)
                     or any(a.end_char != b.start_char for a, b in zip(next_nodes, next_nodes[1:]))):
