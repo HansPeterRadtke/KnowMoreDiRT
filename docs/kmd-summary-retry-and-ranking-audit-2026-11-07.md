@@ -255,3 +255,27 @@ blobs, generation metadata and representation text alone. The configured
 on the future document mix and throughput. The detailed per-source,
 per-query, and storage measurements are under the private Raspi
 `search-audit/embedding-context-recovery-20261111` directory.
+
+### Finding a named original and citing its publisher text
+
+To find a named guide, use an exact catalog title, original path, or a publisher-qualified archived skill name. For example:
+
+```sh
+knowledge-library-summaries search 'What does the NVIDIA ontology setup guide say about configuring the MCP connection?'
+knowledge-library-summaries source-evidence 'What does the NVIDIA ontology setup guide say about configuring the MCP connection?'
+knowledge-library-summaries source-evidence --source-name 'NVIDIA Agent Skill: nvidia-ontology-setup' 'MCP connection'
+```
+
+Search brings a uniquely named original to the first position only after its native rows, original file, derivative and character intervals pass verification. Scores retain their original cosine values. If no verified summary for that original is available, the result says so. Direct source evidence can still inspect an extracted original with a canonical FileDB entry. A shared name offers up to eight exact catalog paths, along with the total number of matches. Choosing an exact path keeps different archived revisions distinct.
+
+The evidence locator uses publisher Markdown headings and excludes the generated catalog preamble. Shell comments in fenced code examples and YAML front matter do not create headings. Results include zero-based, half-open character offsets into the verified derivative. For UTF-8 Markdown and plain text up to eight MiB with a single plain-text extraction unit that reproduces the publisher file, the additional `publisher_excerpt` field gives half-open **byte** offsets and a digest for the raw publisher slice. Decode that slice as UTF-8 and normalize newlines to recover the displayed excerpt. PDF, HTML and other converted formats retain their extraction-unit labels and verified derivative offsets.
+
+### November 11 named retrieval and provenance checks
+
+A paired replay froze 142,100 native representations and ran 62 questions in both native search modes. The intended original came first in all 22 explicitly named runs, including the NVIDIA setup question that had previously ranked eleventh and thirteenth. Fourteen named runs improved. All 624 top-eight positions across the 39 older control questions kept their paths, scores, node identities and revision hashes. The 102 runs without a unique verified preference retained all ranked results.
+
+In twelve publisher-evidence questions, the required details appeared together in the first five excerpts on all twelve, up from five with full questions on the previous version. Eleven additional questions from eight other publisher guides increased from two qualifying full questions to eleven. Ten of the eleven had the supporting passage first. Thirty-four older HTML questions kept identical ranked excerpts, offsets and scores. All 144 positive identifier checks found a literal in verified source text, and both absent identifier checks returned zero excerpts.
+
+A separate sweep matched all 5,327 stored source intervals for 4,081 originals to an independent whole-text hash. It verified 5.82 billion original bytes and 102 million derivative bytes. Independent checks across all 733 archived skills reproduced 4,210 excerpt byte ranges from the actual publisher files. Of the 729 publisher-qualified names, 725 identified one path and four identified two paths each.
+
+The search command now counts only the two coverage fields it displays. Over six alternating measurements on one read-only database snapshot, the median coverage query decreased from 1.30 seconds to 0.07 seconds, with identical counts. In the 62-question replay, median end-to-end retrieval decreased from 1.49 to 0.95 seconds for summaries and from 5.23 to 4.52 seconds with facets. Timings include concurrent index workers. Private protocols, per-query rankings and file-verification results are in the Raspi audit directory `named-source-retrieval-20261111`.
