@@ -68,6 +68,28 @@ class MarkdownEvidenceTests(unittest.TestCase):
         for row in hits:
             self.assertEqual(text[row["excerpt_start_char"]:row["excerpt_end_char"]], row["source_excerpt"])
 
+    def test_plural_fallback_preserves_stronger_hits_and_proves_two_excerpt_concepts(self):
+        text = ("# Notes\nWeekly update concerning construction.\n"
+                "## Outputs\nThe resulting file is ref_likelihoods_merged.npy.\n"
+                "## Reviews\nWeekly updates contain progress, plans and problems.\n")
+        rows = evidence(text, "weekly update")
+        self.assertEqual(["Notes", "Notes / Reviews"], [h["source_section"] for h in rows])
+        self.assertNotIn("matched_word_forms", rows[0])
+        self.assertEqual(rows[1]["matched_word_forms"], {"update": "updates"})
+        rows = evidence(text, "What output carries the merged likelihoods?")
+        self.assertEqual(rows[0]["matched_identifier_words"], ["likelihoods", "merged"])
+        self.assertEqual(rows[0]["matched_word_forms"], {"output": "outputs"})
+        self.assertFalse(evidence(text, "What output contains prehistoric diatoms?"))
+        self.assertFalse(evidence("# Outputs\nChoose the output_dir.", "What output contains diatoms?"))
+        self.assertFalse(evidence(text, "ref_likelihoods_merger output"))
+        self.assertFalse(evidence("# Examples\nMeasure using a ruler.", "Which example measures a plesiosaur?"))
+
+    def test_fallback_is_limited_to_markdown_and_never_counts_one_form_twice(self):
+        text = "[[SOURCE UNIT: PDF page 1]]\nWeekly updates.\n"
+        self.assertFalse(evidence(text, "weekly update", "archived/paper.pdf"))
+        text = "# Publication\nThe models remain.\n"
+        self.assertFalse(evidence(text, "Is there a model models particle accelerator?"))
+
     def test_heading_terms_do_not_bypass_literal_identifier_constraint(self):
         text = "# Credentials\nNo variable is defined.\n## Other\nUse APP_TOKEN_BACKUP.\n"
         self.assertFalse(evidence(text, "credentials APP_TOKEN"))

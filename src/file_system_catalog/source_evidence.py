@@ -123,6 +123,30 @@ def _best_excerpt(
     return best
 
 
+def _regular_word_forms(terms):
+    forms = {}
+    for word in terms:
+        if len(word) < 4 or len(word) > 46 or not word.isascii() or not word.isalpha():
+            continue
+        if word.endswith("s"):
+            if len(word) > 4 and not word.endswith(("ss", "us", "is", "ies")):
+                forms[word] = word[:-1]
+        elif not word.endswith(("x", "z", "ch", "sh", "y")):
+            forms[word] = word + "s"
+    return {word: form for word, form in forms.items() if form not in terms}
+
+
+def _passage_matches(index, query, terms, *, allow_forms, limit):
+    for row in index.search(query, limit=limit, require_identifier_in_passage=True):
+        yield row, {}
+    if allow_forms:
+        forms = _regular_word_forms(terms)
+        alternative = " ".join(forms.get(term, term) for term in terms)
+        if forms and len(alternative) <= 1000:
+            for row in index.search(alternative, limit=limit):
+                yield row, forms
+
+
 def source_evidence_candidates(
     *,
     original_path: str,
@@ -210,48 +234,74 @@ def source_evidence_candidates(
         # Oversample a small bounded group then rank by literal evidence
         # found in the source *body*. A matched document title alone is
         # not a supporting source passage.
-        found=idx.search(query,limit=min(2000,max(100,top*12)),require_identifier_in_passage=True)
-    out=[]
-    for item in found:
-        passage=item["passage"]
-        marker = _UNIT_PREFIX.match(passage)
-        body_start = marker.end() if marker else 0
-        body = passage[body_start:]
-        matches = set(terms).intersection(term for term, _, _ in lexical_token_spans(body))
-        if identifiers and identifiers.isdisjoint(matches):
-            continue
-        if not identifiers and not item["matched_publisher_heading_terms"] and len(matches)<min(2,len(terms)):
-            continue
-        start,end=offsets[(item["source_section"],item["passage_sha256"])]
-        small_start,small_end,covered=_best_excerpt(
-            body,terms,length=snippet_characters
-        )
-        small_start += body_start
-        small_end += body_start
-        excerpt=passage[small_start:small_end]
-        out.append({
-            "original_path":original_path,
-            "filesystem_entry_id":filesystem_entry_id,
-            "original_sha256":original_sha256,
-            "derived_sha256":derived_sha256,
-            "source_section":item["source_section"],
-            "source_start_char":start,
-            "source_end_char":end,
-            "source_span_sha256":item["passage_sha256"],
-            "excerpt_start_char":start+small_start,
-            "excerpt_end_char":start+small_end,
-            "excerpt_sha256":_sha(excerpt),
-            "source_excerpt":excerpt,
-            "lexical_bm25":item["lexical_bm25"],
-            "matched_source_terms":sorted(matches),
-            **({"matched_publisher_heading_terms": item["matched_publisher_heading_terms"]}
-               if item["matched_publisher_heading_terms"] else {}),
-            "matched_excerpt_terms":list(covered),
-            "total_informative_query_terms":len(terms),
-            "status":"source_lexical_candidate_not_verified_answer",
-        })
-        if len(out)>=top:
-            break
+        out = []
+        accepted = set()
+        candidates = _passage_matches(idx, query, terms, allow_forms=markdown and not identifiers,
+                                      limit=min(2000, max(100, top * 12)))
+        for item, forms in candidates:
+            passage=item["passage"]
+            marker = _UNIT_PREFIX.match(passage)
+            body_start = marker.end() if marker else 0
+            body = passage[body_start:]
+            start,end=offsets[(item["source_section"],item["passage_sha256"])]
+            if (start, end) in accepted:
+                continue
+            words = {term for term, _, _ in lexical_token_spans(body)}
+            matches = set(terms).intersection(words)
+            matched_forms = {q: form for q, form in forms.items() if form in words and q not in matches}
+            if forms and not matched_forms:
+                continue
+            if identifiers and identifiers.isdisjoint(matches):
+                continue
+            has_specific_match = identifiers or item["matched_publisher_heading_terms"]
+            if not has_specific_match and len(matches) + len(matched_forms) < min(2, len(terms)):
+                continue
+            small_start,small_end,covered=_best_excerpt(
+                body, terms + tuple(matched_forms.values()), length=snippet_characters
+            )
+            small_start += body_start
+            small_end += body_start
+            excerpt=passage[small_start:small_end]
+            identifier_words = set()
+            if matched_forms:
+                matched_forms = {q: form for q, form in matched_forms.items() if form in covered}
+                if not matched_forms:
+                    continue
+                # A morphological fallback for a multi-term question needs a second
+                # concept in the actual excerpt. Filenames can spell it inside an identifier.
+                identifier_words = set(terms).intersection(
+                    word for token, _, _ in lexical_token_spans(excerpt) if "_" in token
+                    for word in token.split("_")
+                )
+                exact_concepts = set(terms).intersection(covered) | identifier_words
+                if len(terms) > 1 and not exact_concepts.difference(matched_forms):
+                    continue
+            accepted.add((start, end))
+            out.append({
+                "original_path":original_path,
+                "filesystem_entry_id":filesystem_entry_id,
+                "original_sha256":original_sha256,
+                "derived_sha256":derived_sha256,
+                "source_section":item["source_section"],
+                "source_start_char":start,
+                "source_end_char":end,
+                "source_span_sha256":item["passage_sha256"],
+                "excerpt_start_char":start+small_start,
+                "excerpt_end_char":start+small_end,
+                "excerpt_sha256":_sha(excerpt),
+                "source_excerpt":excerpt,
+                "lexical_bm25":item["lexical_bm25"],
+                "matched_source_terms":sorted(matches),
+                **({"matched_word_forms": matched_forms} if matched_forms else {}),
+                **({"matched_identifier_words": sorted(identifier_words)} if identifier_words else {}),
+                **({"matched_publisher_heading_terms": item["matched_publisher_heading_terms"]}
+                   if item["matched_publisher_heading_terms"] else {}),
+                "matched_excerpt_terms":list(covered),
+                "total_informative_query_terms":len(terms),
+                "status":"source_lexical_candidate_not_verified_answer",
+            })
+            if len(out)>=top:
+                break
     if out and publisher_text_bytes is not None:
         first = _SOURCE_UNIT.search(derived_text)
         if first and first[1] == "Original plain text":

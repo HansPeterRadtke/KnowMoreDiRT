@@ -856,6 +856,8 @@ def original_source_evidence(args) -> None:
             "excerpt_sha256":v["excerpt_sha256"],
             "lexical_bm25":v["lexical_bm25"],
             "matched_source_terms":v["matched_source_terms"],
+            **({"matched_word_forms": v["matched_word_forms"]} if "matched_word_forms" in v else {}),
+            **({"matched_identifier_words": v["matched_identifier_words"]} if "matched_identifier_words" in v else {}),
             **({"publisher_excerpt": v["publisher_excerpt"]} if "publisher_excerpt" in v else {}),
         } for i,v in enumerate(result["passages"],1)],
         "evidence_warning":result["evidence_warning"],
