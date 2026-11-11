@@ -23,6 +23,7 @@ import os
 from pathlib import Path
 import re
 import sqlite3
+import stat
 import time
 import sys
 
@@ -60,15 +61,23 @@ def sha(raw: bytes) -> str:
 
 
 def file_sha256(path: Path) -> str:
-    """Hash original publisher bytes without loading a multi-gigabyte PDF."""
-    digest = hashlib.sha256()
-    with path.open("rb") as reader:
+    """Stream a regular file and reject replacement or mutation during hashing."""
+    flags = os.O_RDONLY | os.O_NOFOLLOW | os.O_NONBLOCK
+    with os.fdopen(os.open(path, flags), "rb") as reader:
+        before = os.fstat(reader.fileno())
+        if not stat.S_ISREG(before.st_mode):
+            raise ValueError("expected a regular file for source verification")
+        digest = hashlib.sha256()
         for chunk in iter(lambda: reader.read(8 * 1024 * 1024), b""):
             digest.update(chunk)
+        after = path.stat(follow_symlinks=False)
+        if (not os.path.samestat(before, after) or before.st_size != after.st_size
+                or before.st_mtime_ns != after.st_mtime_ns or before.st_ctime_ns != after.st_ctime_ns):
+            raise ValueError("source file changed during verification")
     return digest.hexdigest()
 
 
-def checked_original(relative: str) -> dict:
+def publisher_path(relative: str) -> Path:
     if (
         not isinstance(relative, str)
         or not relative
@@ -79,34 +88,24 @@ def checked_original(relative: str) -> dict:
         or len(relative) > 1500
     ):
         raise ValueError("invalid exact original path")
-    manifest = json.loads(SOURCES.read_text())["sources"]
-    entries = [r for r in manifest if r["path"] == relative]
-    if len(entries) != 1:
-        raise ValueError("source not found uniquely in original manifest")
-    download = json.loads(LEDGER.read_text())["items"]
-    completed = [r for r in download if r["path"] == relative and r["status"] == "complete"]
-    if len(completed) != 1:
-        raise ValueError("original source not completed in the download ledger")
-    record = completed[0]
     path = LIBRARY / relative
     if (not path.is_file() or path.is_symlink() or
             not path.resolve().is_relative_to(LIBRARY.resolve())):
         raise ValueError("original file absent, symlink or outside library")
-    stat = path.stat()
-    if stat.st_size != record.get("bytes_received"):
+    return path
+
+
+def verify_publisher_revision(path: Path, record: dict) -> int:
+    size = path.stat().st_size
+    if size != record.get("bytes_received"):
         raise ValueError("original file byte count differs from completed receipt")
-    if file_sha256(path) != record["sha256"]:
+    if file_sha256(path) != record.get("sha256"):
         raise ValueError("original file SHA differs from completed receipt")
-    with sqlite3.connect(f"file:{SOURCE_MAP}?mode=ro", uri=True) as con:
-        rows = con.execute(
-            "SELECT source_sha256,derived_sha256,derived_path,status "
-            "FROM originals WHERE source_path=?",
-            (relative,),
-        ).fetchall()
-    if len(rows) != 1 or rows[0][3] != "complete" or rows[0][0] != record["sha256"]:
-        raise ValueError("no current complete source-map derivative for this original")
-    _, derivative_sha, derivative_relative, _ = rows[0]
-    if not derivative_relative:
+    return size
+
+
+def checked_derivative_path(derivative_relative: str) -> Path:
+    if not isinstance(derivative_relative, str) or not derivative_relative:
         raise ValueError("empty derived relative path")
     rel = Path(derivative_relative)
     if rel.is_absolute() or ".." in rel.parts:
@@ -116,6 +115,31 @@ def checked_original(relative: str) -> dict:
             not derived.resolve().is_relative_to((CACHE / "text").resolve()) or
             derived.stat().st_size > 350 * 1024 * 1024):
         raise ValueError("derived source absent/unsafe/oversized")
+    return derived
+
+
+def checked_original(relative: str) -> dict:
+    path = publisher_path(relative)
+    manifest = json.loads(SOURCES.read_text())["sources"]
+    entries = [r for r in manifest if r["path"] == relative]
+    if len(entries) != 1:
+        raise ValueError("source not found uniquely in original manifest")
+    download = json.loads(LEDGER.read_text())["items"]
+    completed = [r for r in download if r["path"] == relative and r["status"] == "complete"]
+    if len(completed) != 1:
+        raise ValueError("original source not completed in the download ledger")
+    record = completed[0]
+    original_bytes = verify_publisher_revision(path, record)
+    with sqlite3.connect(f"file:{SOURCE_MAP}?mode=ro", uri=True) as con:
+        rows = con.execute(
+            "SELECT source_sha256,derived_sha256,derived_path,status "
+            "FROM originals WHERE source_path=?",
+            (relative,),
+        ).fetchall()
+    if len(rows) != 1 or rows[0][3] != "complete" or rows[0][0] != record["sha256"]:
+        raise ValueError("no current complete source-map derivative for this original")
+    _, derivative_sha, derivative_relative, _ = rows[0]
+    derived = checked_derivative_path(derivative_relative)
     original_text = derived.read_bytes()
     if sha(original_text) != derivative_sha:
         raise ValueError("derived source SHA differs from source-map receipt")
@@ -126,7 +150,7 @@ def checked_original(relative: str) -> dict:
         "edition_version": entries[0].get("edition_version"),
         "publication_year": entries[0].get("publication_year"),
         "original_sha256": record["sha256"],
-        "original_bytes": stat.st_size,
+        "original_bytes": original_bytes,
         "derived_sha256": derivative_sha,
         "derived_text": text,
     }
@@ -475,12 +499,27 @@ def import_source(args):
     print("CANONICAL_KMD_UPDATED", json.dumps(result), flush=True)
 
 
+def _unique_path_records(records):
+    """An ambiguous manifest or completion receipt cannot identify a revision."""
+    by_path = {}
+    ambiguous = set()
+    for record in records:
+        path = record["path"]
+        if path in by_path:
+            ambiguous.add(path)
+        else:
+            by_path[path] = record
+    for path in ambiguous:
+        del by_path[path]
+    return by_path
+
+
 def _current_versions():
-    manifest = {x["path"]: x for x in json.loads(SOURCES.read_text())["sources"]}
-    ledger = {
-        x["path"]: x for x in json.loads(LEDGER.read_text())["items"]
-        if x.get("status") == "complete" and x.get("sha256")
-    }
+    manifest = _unique_path_records(json.loads(SOURCES.read_text())["sources"])
+    ledger = _unique_path_records(
+        record for record in json.loads(LEDGER.read_text())["items"]
+        if record.get("status") == "complete"
+    )
     with sqlite3.connect(f"file:{SOURCE_MAP.resolve()}?mode=ro", uri=True) as con:
         source_map = {
             x[0]: x for x in con.execute(
@@ -498,37 +537,22 @@ def _search_impl(args) -> dict:
 
     def verify(hit):
         path = hit["original_path"]
-        revision = (path, hit["original_sha256"], hit["derived_sha256"])
-        if revision in checked:
-            return checked[revision]
         original = ledger.get(path)
         derivative = sources.get(path)
-        good = bool(
-            path in manifest and original and derivative and
-            hit["original_sha256"] == original["sha256"] == derivative[1] and
-            hit["derived_sha256"] == derivative[2] and
-            hit["original_bytes"] == original.get("bytes_received")
-        )
-        if good:
-            # Verify actual current extracted text and native source bytes
-            # once per candidate document; reject stale or tampered summaries.
+        if (path not in manifest or not original or not derivative
+                or hit["original_sha256"] != original.get("sha256")
+                or hit["original_sha256"] != derivative[1]
+                or hit["derived_sha256"] != derivative[2]
+                or hit["original_bytes"] != original.get("bytes_received")):
+            return False
+        revision = (path, hit["original_sha256"], hit["derived_sha256"])
+        if revision not in checked:
             try:
-                rel = Path(derivative[3])
-                if rel.is_absolute() or ".." in rel.parts:
-                    good = False
-                else:
-                    source = CACHE / "text" / rel
-                    if (
-                        not source.is_file() or source.is_symlink()
-                        or not source.resolve().is_relative_to((CACHE / "text").resolve())
-                        or source.stat().st_size > 350 * 1024 * 1024
-                    ):
-                        good = False
-                    else:
-                        good = sha(source.read_bytes()) == derivative[2]
-            except OSError:
-                good = False
-        checked[revision] = bool(good)
+                verify_publisher_revision(publisher_path(path), original)
+                derived = checked_derivative_path(derivative[3])
+                checked[revision] = file_sha256(derived) == derivative[2]
+            except (OSError, ValueError):
+                checked[revision] = False
         return checked[revision]
 
     model = LocalE5(threads=2, batch_size=4)
@@ -566,6 +590,7 @@ def _search_impl(args) -> dict:
         "documents": out,
         "count": len(out),
         "originals_validated_for_version": sum(checked.values()),
+        "provenance_policy": "publisher_and_derived_sha256_checked;summary_is_not_primary_evidence",
         "index_scope": {
             "native_summary_vectors": snapshot["native_summary_vectors"],
             "summarized_originals": snapshot["original_documents_with_summaries"],

@@ -65,6 +65,8 @@ class SearchAuditTest(unittest.TestCase):
                 stored = json.loads(handle.readline())
             self.assertEqual(SCHEMA, stored["schema"])
             self.assertEqual(query, stored["query"])
+            self.assertEqual("ledger_and_current_derived_revision_checked;summary_is_not_primary_evidence",
+                             stored["provenance_policy"])
             self.assertEqual("graphics/blender/normal-map-node.html", stored["ranked_results"][0]["original_path"])
             self.assertEqual(1, stored["ranked_results"][0]["rank"])
             self.assertEqual("b"*64, stored["ranked_results"][0]["matched_nodes"][0]["summary_sha256"])
@@ -95,6 +97,7 @@ class SearchAuditTest(unittest.TestCase):
         )
         self.assertEqual(0, item["count"])
         self.assertFalse(item["success"])
+        self.assertIsNone(item["provenance_policy"])
         self.assertEqual([], item["ranked_results"])
 
     def test_public_cli_search_automatically_logs_result(self):

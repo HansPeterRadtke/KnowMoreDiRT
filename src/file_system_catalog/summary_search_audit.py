@@ -86,6 +86,8 @@ def make_search_audit(
                 "summary_sha256": node.get("summary_sha256"),
                 "original_path": node.get("original_path"),
                 "original_sha256": node.get("original_sha256"),
+                "derived_sha256": node.get("derived_sha256"),
+                "source_passage_sha256": node.get("source_passage_sha256"),
                 "source_start_char": node.get("source_start_char"),
                 "source_end_char": node.get("source_end_char"),
                 "score": round(float(node.get("similarity", 0)), 6),
@@ -101,6 +103,9 @@ def make_search_audit(
             "indexed_nodes": source.get("indexed_summary_nodes_for_document"),
             "matched_nodes": matched,
         })
+    policy = None
+    if result is not None and error is None:
+        policy = result.get("provenance_policy", "ledger_and_current_derived_revision_checked;summary_is_not_primary_evidence")
     return {
         "query": query,
         "model": model,
@@ -113,7 +118,7 @@ def make_search_audit(
         "ranked_results": ranked,
         "index_scope": (result or {}).get("index_scope"),
         "relevance_warning": (result or {}).get("relevance_warning"),
-        "provenance_policy": "ledger_and_current_derived_revision_checked;summary_is_not_primary_evidence",
+        "provenance_policy": policy,
     }
 
 
