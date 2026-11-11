@@ -174,6 +174,7 @@ def search_summary_entries_batched(
     require_source: Callable[[dict], bool] | None = None,
     vector_batch_size: int = 1024,
     include_facets: bool = False,
+    preferred_path: str | None = None,
 ) -> list[dict]:
     """Same source-linked output as KMD scalar search, with bounded memory."""
     if not 1 <= limit <= 100 or not 1 <= nodes_per_document <= 30:
@@ -183,16 +184,20 @@ def search_summary_entries_batched(
         batch_size=vector_batch_size,
         include_facets=include_facets,
     )
+    def rank_key(score, path):
+        # The raw best cosine is an upper bound until all row and source checks pass.
+        return (path != preferred_path, -score, path)
+
     ranked = []
     for entry_id, hits in documents.items():
         hits.sort(key=lambda t: (-t[0], t[1], t[2]))
         ranked.append((entry_id, hits))
-    ranked.sort(key=lambda t: (-t[1][0][0], t[1][0][1]))
+    ranked.sort(key=lambda t: rank_key(t[1][0][0], t[1][0][1]))
     out = []
     for entry_id, raw_hits in ranked:
         if len(out) >= limit:
-            cutoff = sorted((r["similarity"] for r in out), reverse=True)[limit-1]
-            if raw_hits[0][0] < cutoff:
+            cutoff = sorted(rank_key(r["similarity"], r["original_path"]) for r in out)[limit-1]
+            if rank_key(raw_hits[0][0], raw_hits[0][1]) > cutoff:
                 break
         valid=[]
         for score, path, rep_id in raw_hits:
@@ -225,5 +230,5 @@ def search_summary_entries_batched(
             "indexed_summary_nodes_for_document": len(valid),
             "source_scope": "retrieval_candidate_only_verify_original_before_claims",
         })
-    out.sort(key=lambda x:(-x["similarity"],x["original_path"]))
+    out.sort(key=lambda x: rank_key(x["similarity"], x["original_path"]))
     return out[:limit]

@@ -94,6 +94,7 @@ def make_search_audit(
                 "summary_excerpt": str(node.get("summary", ""))[:1000],
             })
         ranked.append({
+            **({"rank_basis": source["rank_basis"]} if "rank_basis" in source else {}),
             "rank": rank,
             "title": source.get("title"),
             "original_path": source.get("original_path"),
@@ -110,6 +111,7 @@ def make_search_audit(
         "query": query,
         "model": model,
         "database": database,
+        **({"source_name_match": result["source_name_match"]} if result and result.get("source_name_match") else {}),
         "retrieval_engine": (result or {}).get("retrieval_engine", "legacy_or_failed_query"),
         "duration_seconds": round(elapsed_seconds, 3),
         "success": error is None,

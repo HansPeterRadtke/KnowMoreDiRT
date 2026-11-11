@@ -88,6 +88,42 @@ class PublisherRevisionSearchTests(unittest.TestCase):
     def paths(self, **options):
         return [doc["original_path"] for doc in self.search(**options)["documents"]]
 
+    def test_named_source_precedes_a_better_cosine_only_after_revision_checks(self):
+        ranked = self.search(top=2)["documents"]
+        preferred = ranked[1]["original_path"]
+        original_query = self.query
+        self.query = preferred
+        self.embeddings.embed_queries = lambda _: self.embeddings.embed([original_query])
+        for facets in (False, True):
+            result = self.search(top=1, facets=facets)
+            self.assertEqual(result["source_name_match"]["status"], "verified")
+            hit = result["documents"][0]
+            self.assertEqual(hit["original_path"], preferred)
+            self.assertEqual(hit["rank_basis"], "explicit_source_name")
+            self.assertEqual(hit["similarity"], ranked[1]["similarity"])
+            self.assertEqual(hit["matched_summary_nodes"], ranked[1]["matched_summary_nodes"])
+            audit = make_search_audit(query=self.query, result=result, elapsed_seconds=0, model="fixture", database="fixture")
+            self.assertEqual(audit["ranked_results"][0]["rank_basis"], "explicit_source_name")
+            self.assertEqual(audit["source_name_match"], result["source_name_match"])
+        publisher = self.cli.LIBRARY / preferred
+        publisher.write_bytes(b"X" * publisher.stat().st_size)
+        missing = self.search(top=1)
+        self.assertEqual(missing["source_name_match"]["status"], "no_verified_index_match")
+        self.assertEqual(missing["documents"][0]["original_path"], ranked[0]["original_path"])
+        self.assertNotIn("rank_basis", missing["documents"][0])
+
+    def test_named_source_with_changed_derivative_or_unavailable_vectors_gets_backfilled(self):
+        self.query = self.names[0]
+        self.derivative.write_bytes(b"X" + self.derivative.read_bytes()[1:])
+        self.assertEqual(self.paths(top=1), self.names[1:])
+        with sqlite3.connect(self.cli.DB) as db:
+            db.execute("UPDATE content_representations SET embedding_sha256=? WHERE chunk_id IN "
+                       "(SELECT chunk_id FROM content_chunks WHERE filesystem_entry_id=2)", ("0"*64,))
+        self.query = self.names[1]
+        result = self.search(top=2)
+        self.assertEqual(result["documents"], [])
+        self.assertEqual(result["source_name_match"]["status"], "no_verified_index_match")
+
     def test_changed_publisher_bytes_at_same_size_and_mtime_get_backfilled(self):
         self.assertEqual(self.paths(), self.names[:1])
         stamp=self.original.stat()

@@ -41,6 +41,7 @@ from file_system_catalog.hierarchical_summary_store import (
 from file_system_catalog.hierarchical_summary_search import summary_index_status
 from file_system_catalog.summary_search_batched import search_summary_entries_batched
 from file_system_catalog.source_evidence import source_evidence_candidates
+from file_system_catalog.named_source import resolve_source_name
 from file_system_catalog.summary_search_audit import (
     append_query_audit, make_search_audit, recent_search_audits, AUDIT_DIR,
 )
@@ -631,6 +632,8 @@ def _current_versions():
 def _search_impl(args) -> dict:
     from knowledge_library_semantic_model import LocalE5
     manifest, ledger, sources = _current_versions()
+    name_match = resolve_source_name(args.query, manifest)
+    preferred_path = name_match.get("original_path") if name_match else None
     checked: dict[tuple[str, str, str], bool] = {}
 
     def verify(hit):
@@ -661,7 +664,7 @@ def _search_impl(args) -> dict:
             include_facets=getattr(args,"with_facets",False),
             nodes_per_document=args.nodes_per_original,
             expected_model=model.model,
-            require_source=verify,
+            require_source=verify, preferred_path=preferred_path,
         )
         snapshot = summary_index_status(conn)
     out = []
@@ -679,7 +682,13 @@ def _search_impl(args) -> dict:
             "matched_summary_nodes": row["matched_summary_nodes"],
             "source_scope": "summaries_for_document_discovery_not_original_factual_evidence",
         })
+    if preferred_path is not None:
+        verified = bool(out and out[0]["original_path"] == preferred_path)
+        name_match["status"] = "verified" if verified else "no_verified_index_match"
+        if verified:
+            out[0]["rank_basis"] = "explicit_source_name"
     return {
+        **({"source_name_match": name_match} if name_match else {}),
         "query": args.query,
         "database": str(DB),
         "retrieval_engine": ("native_batched_facets_cosine_v1"
@@ -696,6 +705,9 @@ def _search_impl(args) -> dict:
             "indexed_original_percent": round(100.0*snapshot["original_documents_with_summaries"]/max(1,len(sources)),6),
         },
         "relevance_warning": (
+            "The requested original was verified by name and revision. Cosine similarity ranks its passages "
+            "and the other documents. Check factual claims in the original."
+            if name_match and name_match["status"] == "verified" else
             "The ranked results are nearest summaries, not verified answers. "
             "A nonempty response does not establish that the requested topic "
             "is contained in the currently summarized original documents."
