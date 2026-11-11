@@ -199,3 +199,21 @@ respectively. Two of the three MICAS nodes matched their saved records in
 full, including the root. The ordinary importer prepared 47 and 76 vectors.
 A read-only replay also matched all 139,966 indexed representation identities,
 ranks, kinds and text hashes in the fixed 4,045-original regression cohort.
+
+
+### Checking exact identifiers in the original
+
+After document discovery, pass an exact configuration variable or tax-code
+identifier to the existing `source-evidence` command. Its in-memory FTS and
+excerpt selection recognize internal underscores as part of the name. Source
+evidence requires the literal in the publisher body. Generated catalog headers,
+unit labels, longer identifiers and space-separated lookalikes cannot substitute
+for it. Excerpt offsets and hashes identify the exact verified derivative bytes.
+
+The two recovered documents prompted a live comparison. The earlier passage
+locator returned no excerpt for any of the nine distinct uppercase configuration
+identifiers in the NVIDIA publisher file or the 135 native source-anchored
+Stripe identifiers. The corrected locator found every one of the 144 and
+verified its excerpt against the complete derivative. Two absent identifiers
+returned zero passages. Five ordinary questions across three documents kept
+their original ranked section lists.

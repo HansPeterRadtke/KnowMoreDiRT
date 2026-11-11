@@ -16,7 +16,7 @@ import re
 import sqlite3
 from typing import Mapping, Sequence
 
-_WORD = re.compile(r"(?u)\b[^\W_]+\b")
+_WORD = re.compile(r"(?u)\b[^\W_]+(?:_[^\W_]+)*\b")
 _SHA256 = re.compile(r"[0-9a-f]{64}\Z")
 # Generic connective words, not GUI- or library-specific subject rules.
 _STOP = frozenset(
@@ -24,6 +24,14 @@ _STOP = frozenset(
     "it its of on or our that the their then there these this those to was were "
     "what when where which who why will with would you your".split()
 )
+
+
+def lexical_token_spans(text: str):
+    """Yield bounded whole terms alongside their exact original character offsets."""
+    for match in _WORD.finditer(text):
+        term = match.group().casefold()
+        if 2 <= len(term) <= (128 if "_" in term else 48):
+            yield term, match.start(), match.end()
 
 
 def query_terms(query: str, *, max_terms: int = 20) -> tuple[str, ...]:
@@ -34,8 +42,8 @@ def query_terms(query: str, *, max_terms: int = 20) -> tuple[str, ...]:
         raise ValueError("query must be a string of at most 1000 characters")
     terms = []
     seen = set()
-    for token in _WORD.findall(query.casefold()):
-        if (len(token) < 2 or len(token) > 48 or token in _STOP or token in seen):
+    for token, _, _ in lexical_token_spans(query):
+        if token in _STOP or token in seen:
             continue
         seen.add(token)
         terms.append(token)
@@ -64,7 +72,7 @@ class BoundedPassageIndex:
             self._db.execute(
                 "CREATE VIRTUAL TABLE passage_fts USING fts5("
                 "title, source_path, section, passage, "
-                "tokenize='unicode61 remove_diacritics 2')"
+                "tokenize='unicode61 remove_diacritics 2 tokenchars _')"
             )
         except sqlite3.OperationalError as exc:
             self._db.close()
@@ -153,7 +161,7 @@ class BoundedPassageIndex:
             "evidence_status": "candidate_requires_source_revision_check",
         }
 
-    def search(self, query: str, *, limit: int = 300) -> list[dict]:
+    def search(self, query: str, *, limit: int = 300, require_identifier_in_passage: bool = False) -> list[dict]:
         """Page-level lexical candidates; lower SQLite BM25 is better.
 
         Uses parameterized FTS5 MATCH. Require at least two meaningful terms
@@ -167,6 +175,10 @@ class BoundedPassageIndex:
         if not terms:
             return []
         match = " OR ".join('"' + term.replace('"', '""') + '"' for term in terms)
+        identifiers = [t for t in terms if "_" in t]
+        if require_identifier_in_passage and identifiers:
+            identifier_match = " OR ".join('"' + t + '"' for t in identifiers)
+            match = f"({match}) AND passage : ({identifier_match})"
         rows = self._db.execute(
             "SELECT rowid,bm25(passage_fts,6.0,0.15,1.2,1.0) "
             "FROM passage_fts WHERE passage_fts MATCH ? "

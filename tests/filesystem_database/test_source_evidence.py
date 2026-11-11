@@ -89,6 +89,42 @@ class OriginalEvidenceTests(TestCase):
         self.assertEqual(1,visual["returned_passages"])
         self.assertEqual("PDF page 1",visual["passages"][0]["source_section"])
 
+    def test_exact_identifier_requires_the_entire_literal_in_the_source_body(self):
+        identifier = "APP_SERVICE_URL"
+        text = ("KMD source provenance example\n" + identifier + "\n"
+                + "[[SOURCE UNIT: APP_SERVICE_URL]]\nOnly the section label contains it. The installation settings configure the service.\n"
+                + "[[SOURCE UNIT: PDF page 2]]\nAPP SERVICE URL and APP_SERVICE_URL_BACKUP.\n"
+                + "[[SOURCE UNIT: PDF page 3]]\n" + "Background. " * 75
+                + "Set APP_SERVICE_URL before installation.\n")
+        args = dict(self.args, original_title=identifier, derived_text=text,
+                    derived_sha256=hashlib.sha256(text.encode()).hexdigest())
+        for query in (identifier.lower(), "APP_SERVICE_URL installation",
+                      "How do I configure APP_SERVICE_URL in the installation settings?"):
+            result = source_evidence_candidates(**args, query=query, snippet_characters=160)
+            self.assertEqual(result["returned_passages"], 1)
+            row = result["passages"][0]
+            self.assertEqual(row["source_section"], "PDF page 3")
+            self.assertIn(identifier.lower(), row["matched_excerpt_terms"])
+            self.assertIn(identifier, row["source_excerpt"])
+            self.assertEqual(text[row["excerpt_start_char"]:row["excerpt_end_char"]], row["source_excerpt"])
+        result = source_evidence_candidates(**args, query="APP_SERVICE_URL_EXTRA")
+        self.assertEqual(result["returned_passages"], 0)
+
+    def test_cropped_prefixed_identifier_is_never_credited_as_a_literal(self):
+        from file_system_catalog.source_evidence import _best_excerpt
+        text = "prefix_APP_SERVICE_URL " + ("installation " * 30) + "Suffix APP_SERVICE_URL."
+        start, end, covered = _best_excerpt(text, ("app_service_url", "installation"), length=160)
+        self.assertIn("app_service_url", covered)
+        self.assertIn("Suffix APP_SERVICE_URL.", text[start:end])
+        self.assertGreater(start, text.index("installation"))
+
+    def test_identifier_survives_many_separated_word_decoys_before_the_match(self):
+        text = "".join(f"[[SOURCE UNIT: page {i}]]\nAPP SERVICE URL.\n" for i in range(125))
+        text += "[[SOURCE UNIT: actual page]]\nAPP_SERVICE_URL config.\n"
+        args = dict(self.args, derived_text=text, derived_sha256=hashlib.sha256(text.encode()).hexdigest())
+        result = source_evidence_candidates(**args, query="APP_SERVICE_URL", top=1)
+        self.assertEqual([r["source_section"] for r in result["passages"]], ["actual page"])
+
     def test_no_lexical_hit_is_not_mislabeled_as_sufficient(self):
         result=source_evidence_candidates(
             **self.args,query="Galactic interstellar zebras neutronium bananas",

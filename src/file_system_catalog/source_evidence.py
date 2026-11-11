@@ -9,11 +9,14 @@ No new persistent vector/metadata DB, no source file modification.
 """
 from __future__ import annotations
 
+from bisect import bisect_left
 import hashlib
 import re
 
-from .hybrid_search import BoundedPassageIndex, query_terms
+from .hybrid_search import BoundedPassageIndex, lexical_token_spans, query_terms
 from .hierarchical_summary import split_sections
+
+_UNIT_PREFIX = re.compile(r"\A\[\[SOURCE UNIT: [^\]\n]{1,400}\]\][ \t]*(?:\r?\n|$)")
 
 
 def _sha(text: str) -> str:
@@ -27,36 +30,33 @@ def _best_excerpt(
     """Prefer dense exact query-term coverage within a bounded source span."""
     if not 160 <= length <= 2000:
         raise ValueError("invalid excerpt length")
+    positions = {term: [] for term in terms}
+    for term, start, end in lexical_token_spans(passage):
+        if term in positions:
+            positions[term].append((start, end))
     if len(passage) <= length:
-        found = tuple(sorted(set(terms) & {
-            t.casefold() for t in re.findall(r"(?u)\b[^\W_]{2,48}\b",passage)
-        }))
-        return 0,len(passage),found
-    matches=[]
-    for term in terms:
-        expr=r"(?<!\w)"+re.escape(term)+r"(?!\w)"
-        for match in list(re.finditer(expr,passage,flags=re.IGNORECASE))[:50]:
-            matches.append(match.start())
-    if not matches:
-        return 0,min(len(passage),length),()
-    options={0}
-    for pos in matches:
-        options.add(max(0,min(len(passage)-length,pos-length//3)))
-        options.add(max(0,min(len(passage)-length,pos-length//2)))
-    best=(0,0,())
-    bestscore=(-1,-1)
+        return 0, len(passage), tuple(sorted(term for term in terms if positions[term]))
+
+    options = {0}
+    for occurrences in positions.values():
+        for start, _ in occurrences[:50]:
+            for offset in (length // 3, length // 2):
+                options.add(max(0, min(len(passage) - length, start - offset)))
+
+    best = (0, length, ())
+    best_score = (-1, -1)
     for start in sorted(options):
-        end=min(len(passage),start+length)
-        words={
-            t.casefold() for t in re.findall(r"(?u)\b[^\W_]{2,48}\b",passage[start:end])
-        }
-        covered=tuple(sorted(set(terms)&words))
-        # All else equal, prefer a later passage containing more distinct
-        # matches; never invent a citation for terms outside the source.
-        score=(len(covered),sum(t in words for t in terms))
-        if score>bestscore:
-            bestscore=score
-            best=(start,end,covered)
+        end = start + length
+        covered = []
+        for term, occurrences in positions.items():
+            i = bisect_left(occurrences, (start,))
+            if i < len(occurrences) and occurrences[i][1] <= end:
+                covered.append(term)
+        # Exact identifiers take precedence over surrounding generic question words.
+        score = (sum("_" in term for term in covered), len(covered))
+        if score > best_score:
+            best_score = score
+            best = (start, end, tuple(sorted(covered)))
     return best
 
 
@@ -99,6 +99,7 @@ def source_evidence_candidates(
     terms=query_terms(query)
     if not terms:
         raise ValueError("no informative source search terms")
+    identifiers = {term for term in terms if "_" in term}
     sections=split_sections(derived_text)
     offsets={}
     chunks=0
@@ -149,19 +150,24 @@ def source_evidence_candidates(
         # Oversample a small bounded group then rank by literal evidence
         # found in the source *body*. A matched document title alone is
         # not a supporting source passage.
-        found=idx.search(query,limit=min(2000,max(100,top*12)))
+        found=idx.search(query,limit=min(2000,max(100,top*12)),require_identifier_in_passage=True)
     out=[]
     for item in found:
         passage=item["passage"]
-        matches={
-            x.casefold() for x in re.findall(r"(?u)\b[^\W_]{2,48}\b",passage)
-        } & set(terms)
+        marker = _UNIT_PREFIX.match(passage)
+        body_start = marker.end() if marker else 0
+        body = passage[body_start:]
+        matches = set(terms).intersection(term for term, _, _ in lexical_token_spans(body))
+        if identifiers and identifiers.isdisjoint(matches):
+            continue
         if len(matches)<min(2,len(terms)):
             continue
         start,end=offsets[(item["source_section"],item["passage_sha256"])]
         small_start,small_end,covered=_best_excerpt(
-            passage,terms,length=snippet_characters
+            body,terms,length=snippet_characters
         )
+        small_start += body_start
+        small_end += body_start
         excerpt=passage[small_start:small_end]
         out.append({
             "original_path":original_path,
