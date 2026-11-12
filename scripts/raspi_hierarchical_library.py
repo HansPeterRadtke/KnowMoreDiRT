@@ -830,6 +830,7 @@ def original_source_evidence(args) -> None:
     match = None
     publication_record = None
     engine = "verified_original_ephemeral_fts5_v1"
+    cursor = getattr(args, "continue_section", None)
     try:
         if not 1 <= args.top <= 50:
             raise ValueError("invalid bounded requested source passage count")
@@ -867,9 +868,11 @@ def original_source_evidence(args) -> None:
             raise ValueError("original has no canonical KnowMoreDiRT FileDB entry")
         rfc = source.get("verified_rfc_number")
         selector = section_key(evidence_query) if rfc else None
+        if cursor is not None and not selector:
+            raise ValueError("--continue-section requires an exact RFC section citation")
         if selector:
-            engine = "verified_rfc_section_opening_v1"
-            result = rfc_section_evidence(source, int(row[0]), rfc, selector, args.snippet_characters)
+            engine = "verified_rfc_section_context_v1" if cursor is not None else "verified_rfc_section_opening_v1"
+            result = rfc_section_evidence(source, int(row[0]), rfc, selector, args.snippet_characters, cursor=cursor)
         else:
             result = source_evidence_candidates(
                 original_path=original_path,
@@ -901,6 +904,7 @@ def original_source_evidence(args) -> None:
         append_query_audit({
             "operation":"verified_original_source_evidence",
             "query":args.query,
+            **({"continuation_requested": True} if cursor is not None else {}),
             "original_path":original_path,
             **({"source_name_match":match} if match else {}),
             "success":False,
@@ -922,6 +926,7 @@ def original_source_evidence(args) -> None:
         "success":True,
         "count":result["returned_passages"],
         "retrieval_engine":engine,
+        **({"continuation_cursor": cursor} if cursor is not None else {}),
         **({"rfc_section_lookup":result["rfc_section_lookup"]} if "rfc_section_lookup" in result else {}),
         "duration_seconds":round(time.monotonic()-started,3),
         **({"pdf_page_verification": result["pdf_page_verification"]} if "pdf_page_verification" in result else {}),
@@ -1067,6 +1072,8 @@ def main():
     target.add_argument("--original-path", help="Exact catalog path of the publisher file")
     target.add_argument("--source-name", help="Exact catalog title, RFC number, DOI, arXiv reference, or publisher-qualified archived skill name")
     evidence.add_argument("query")
+    evidence.add_argument("--continue-section", metavar="CURSOR",
+                          help="Read the next contiguous excerpt using the previous RFC section result\u0027s context.next_cursor")
     evidence.add_argument("--top",type=int,default=5)
     evidence.add_argument("--snippet-characters",type=int,default=900)
     audit = sub.add_parser("search-log", help="Review persistent native semantic query rankings")

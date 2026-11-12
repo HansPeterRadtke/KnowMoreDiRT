@@ -22,6 +22,13 @@ _HEADING = re.compile(rf"(?:Appendix [A-Z]|{_KEY})\.[ \t]+\S")
 _BODY_LABEL = re.compile(rf"(?m)^(?:Appendix )?({_KEY})\.[ \t]+\S")
 _CONTINUATION = re.compile(r"\n( +)(\S[^\n]*)")
 _PARAGRAPH = re.compile(r"\n(?:[ \t]*\n)+[ \t]+\S[^\n]*(?:\n[ \t]+\S[^\n]*)*")
+_BLANK_GAP = re.compile(r"\n(?:[ \t]*\n)+")
+_FIGURE_CAPTION = re.compile(r"[ \t]*Figure [1-9][0-9]*(?::[^\n]+)?[ \t]*(?=\n[ \t]*\n|\n?\Z)")
+_BOX_BORDER = re.compile(r"\+(?:[-=]+\+)+[ \t]*")
+_MARGIN_LINE = re.compile(r"(?m)^([^ \t\n][^\n]*)")
+_CONTENTS = re.compile(r"(?m)^Table of Contents[ \t]*$")
+_FIRST_BODY = re.compile(r"(?m)^1\.[ \t]+\S")
+_CURSOR = re.compile(r"([1-9][0-9]{0,8})\.[0-9a-f]{64}")
 _UNIT = re.compile(r"(?m)^\[\[SOURCE UNIT: Original plain text\]\][ \t]*\r?\n")
 
 
@@ -114,10 +121,10 @@ def _section_basis(toc: str, body: str, key: str, start: int, title: str) -> str
 
 
 def _opening(text: str, key: str):
-    toc = re.search(r"(?m)^Table of Contents[ \t]*$", text)
+    toc = _CONTENTS.search(text)
     if not toc:
         return None
-    first = re.compile(r"(?m)^1\.[ \t]+\S").search(text, toc.end())
+    first = _FIRST_BODY.search(text, toc.end())
     if not first:
         return None
     body = text[first.start() :]
@@ -138,8 +145,65 @@ def _opening(text: str, key: str):
     )
 
 
-def rfc_section_evidence(source: dict, entry: int, number: str, key: str, limit: int) -> dict:
-    """Confirm the opening against the contents, derivative and exact original text bytes."""
+def _diagram_row(line: str) -> bool:
+    return line.count("|") >= 2 or _BOX_BORDER.fullmatch(line) is not None
+
+
+def _caption_after_diagram(body: str, first_row: re.Match) -> int | None:
+    """Skip a flush-left box drawing only when its own block ends in a numbered caption."""
+    if not _diagram_row(first_row[1]):
+        return None
+    gap = _BLANK_GAP.search(body, first_row.end())
+    caption = _FIGURE_CAPTION.match(body, gap.end()) if gap else None
+    if not caption:
+        return None
+    for row in _MARGIN_LINE.finditer(body, first_row.start(), gap.start()):
+        if _BODY_LABEL.match(body, row.start()) or not _diagram_row(row[1]):
+            return None
+    return caption.end()
+
+
+def _context_extent(body: str, opening_end: int) -> tuple[int, str]:
+    """Limit context to this heading's own text, including indented lists and code."""
+    line = _MARGIN_LINE.search(body, opening_end)
+    while line and (caption_end := _caption_after_diagram(body, line)) is not None:
+        line = _MARGIN_LINE.search(body, caption_end)
+    stop = line.start() if line else len(body)
+    end = opening_end + len(body[opening_end:stop].rstrip(" \t\n"))
+    if line is None:
+        return end, "end_of_text"
+    if _BODY_LABEL.match(body, stop):
+        return end, "numbered_heading"
+    # An unnumbered heading in the printed contents can begin the back matter.
+    # Unknown margin text may be a figure or a new division. Stop before it.
+    toc = _CONTENTS.search(body)
+    first = _FIRST_BODY.search(body, toc.end())
+    label = line[1].rstrip()
+    listed = any(
+        item[:1] in (" ", "\t") and item.strip() == label
+        for item in body[toc.end() : first.start()].splitlines()
+    )
+    boundary = "contents_heading" if listed else "unclassified_margin"
+    return end, boundary
+
+
+def _cursor(source: dict, number: str, key: str, offset: int) -> str:
+    parts = (
+        "rfc-context-v1",
+        source["original_path"],
+        source["original_sha256"],
+        source["derived_sha256"],
+        number,
+        key,
+        str(offset),
+    )
+    return f"{offset}." + hashlib.sha256("\0".join(parts).encode("utf-8")).hexdigest()
+
+
+def rfc_section_evidence(
+    source: dict, entry: int, number: str, key: str, limit: int, *, cursor: str | None = None
+) -> dict:
+    """Verify a section opening or its next contiguous window against both source revisions."""
     if not 160 <= limit <= 2000:
         raise ValueError("invalid source snippet size")
     raw = source.get("publisher_text_bytes")
@@ -157,12 +221,28 @@ def rfc_section_evidence(source: dict, entry: int, number: str, key: str, limit:
     lookup = {"rfc": number, "section": key, "status": "section_not_verified"}
     rows = []
     opening = _opening(body, key)
+    if cursor is not None and opening is None:
+        raise ValueError("continuation requires the same verified RFC section")
     if opening:
-        start, end, title, scope, basis = opening
-        start += marker.end()
-        end += marker.end()
-        excerpt_end = min(start + limit, end)
-        excerpt = text[start:excerpt_end]
+        heading_start, opening_end, title, scope, basis = opening
+        context_end, boundary = _context_extent(body, opening_end)
+        length = context_end - heading_start
+        offset = 0
+        span_end = opening_end
+        if cursor is not None:
+            token = _CURSOR.fullmatch(cursor)
+            if not token:
+                raise ValueError("invalid RFC section continuation cursor")
+            offset = int(token[1])
+            if offset >= length or cursor != _cursor(source, number, key, offset):
+                raise ValueError("continuation cursor does not match the RFC section and source revision")
+            scope = "section_continuation"
+            span_end = context_end
+        start = marker.end() + heading_start
+        end = marker.end() + span_end
+        excerpt_start = start + offset
+        excerpt_end = min(excerpt_start + limit, end)
+        excerpt = text[excerpt_start:excerpt_end]
         rows.append(
             {
                 "original_path": source["original_path"],
@@ -173,17 +253,34 @@ def rfc_section_evidence(source: dict, entry: int, number: str, key: str, limit:
                 "source_start_char": start,
                 "source_end_char": end,
                 "source_span_sha256": hashlib.sha256(text[start:end].encode()).hexdigest(),
-                "excerpt_start_char": start,
+                "excerpt_start_char": excerpt_start,
                 "excerpt_end_char": excerpt_end,
                 "excerpt_sha256": hashlib.sha256(excerpt.encode()).hexdigest(),
                 "source_excerpt": excerpt,
-                "status": "verified_rfc_section_opening",
+                "status": "verified_rfc_section_continuation"
+                if cursor is not None
+                else "verified_rfc_section_opening",
             }
         )
         attach_publisher_excerpts(raw, source["original_sha256"], text, rows, body_start=marker.end())
         if "publisher_excerpt" not in rows[0]:
             raise ValueError("RFC section could not be reproduced in the publisher original")
-        lookup.update(status="verified", title=title, scope=scope, basis=basis, truncated=excerpt_end < end)
+        next_offset = excerpt_end - start
+        context = {
+            "start_offset": offset,
+            "end_offset": next_offset,
+            "length_characters": length,
+            "boundary": boundary,
+            "next_cursor": _cursor(source, number, key, next_offset) if next_offset < length else None,
+        }
+        lookup.update(
+            status="verified",
+            title=title,
+            scope=scope,
+            basis=basis,
+            truncated=excerpt_end < end,
+            context=context,
+        )
     return {
         "original_path": source["original_path"],
         "original_sha256": source["original_sha256"],
@@ -192,5 +289,8 @@ def rfc_section_evidence(source: dict, entry: int, number: str, key: str, limit:
         "passages": rows,
         "returned_passages": len(rows),
         "source_coordinates": "zero_based_half_open_character_offsets_in_verified_derivative",
-        "evidence_warning": "Exact section lookup returns its heading and opening paragraph when present. Later paragraphs can add qualifications.",
+        "evidence_warning": (
+            "Later paragraphs can qualify the opening. Follow context.next_cursor to read the source in order. "
+            "If the boundary is unclassified_margin, inspect the original for the rest of the section."
+        ),
     }

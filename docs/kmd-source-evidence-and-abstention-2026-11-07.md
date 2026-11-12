@@ -97,3 +97,20 @@ Exact section evidence identifies a unique body heading and compares its title w
 Read `rfc_section_lookup.scope` to distinguish a heading with an opening paragraph from a heading that immediately introduces a child section. The excerpt ends at the configured character limit, and `truncated` records whether more of the opening is available. Read the rest of the section before treating the opening as a complete requirement. To reproduce the citation, use the half-open `publisher_excerpt.start_byte` and `end_byte` range in the original file. The SHA-256 of those bytes must equal `publisher_excerpt.sha256`. Decode UTF-8 and normalize line endings to compare with `source_excerpt`. The query receipt records the same section, extent, and hashes.
 
 The November 12 audit checked 344 archived publisher texts. It matched 12,524 numbered body heading positions, including 816 whose enclosing headings supplied the contents check. A separate sample fixed 694 raw byte positions before implementation. All 694 returned excerpts reproduced the publisher bytes at those positions. An additional deep subsection in each of 72 standards also reproduced the expected raw bytes. One invented section number in each original returned zero passages. In the two native search comparisons, RFC 9607 moved from outside the first three results to first, and RFC 9941 moved from third to first. The private reproduction protocol and receipts are in `search-audit/rfc-section-citations-20261112`.
+
+### Reading past the opening
+
+An RFC section result carries a continuation cursor when more text follows the excerpt. This lets a reader follow a condition, exception, or example across several excerpts. In RFC 9110 section 9.2.2, the opening defines idempotence. The restriction on automatic proxy retries comes at the end of the section.
+
+```sh
+citation='RFC 9110, Section 9.2.2'
+first=$(knowledge-library-summaries source-evidence "$citation")
+cursor=$(printf '%s' "$first" | jq -er '.rfc_section_lookup.context.next_cursor')
+knowledge-library-summaries source-evidence "$citation" --continue-section "$cursor"
+```
+
+Repeat with each returned `next_cursor` until it is null. The next excerpt starts at the previous excerpt’s exclusive end. Concatenate `source_excerpt` values directly to reproduce the text with normalized line endings. Each page retains its own exact byte range and SHA-256 in the publisher file. The cursor binds its position to the catalog path, RFC number, section, original checksum and extraction checksum. A different source revision requires a fresh opening. Page size can change between calls.
+
+The context covers the heading’s own text up to its next child, sibling, unnumbered division or the end of the file. The reader preserves indented lists and code, and recognizes flush-left box drawings followed by publisher figure captions. A null cursor with `boundary=unclassified_margin` means a flush-left block could not be classified. Inspect the original for the remaining material in that case.
+
+Across 344 archived RFCs, 12,507 of 12,524 numbered sections reached their independently located structural boundary. The other 17 stopped early at an unclassified margin. Across 350 selected sections, 1,557 consecutive excerpts reconstructed every expected publisher byte interval. A separate revision test on 32 archived texts changed publisher bytes or the extraction in memory. All 64 old cursors were rejected, and fresh lookups reproduced the updated revision. The private protocol and receipts are in `search-audit/rfc-section-context-20261112`.
