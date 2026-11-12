@@ -43,6 +43,7 @@ from file_system_catalog.hierarchical_summary_search import summary_index_scope,
 from file_system_catalog.summary_search_batched import search_summary_entries_batched
 from file_system_catalog.source_evidence import source_evidence_candidates
 from file_system_catalog.named_source import resolve_source_name
+from file_system_catalog.publication_identifier import publication_receipt_matches
 from file_system_catalog.publisher_ccs import PREFIX_CHARS, first_page_ccs
 from file_system_catalog.source_passage_digests import source_passage_digests
 from file_system_catalog.summary_search_audit import (
@@ -134,7 +135,8 @@ def checked_derivative_path(derivative_relative: str) -> Path:
     return derived
 
 
-def checked_original(relative: str, *, include_publisher_text: bool = False) -> dict:
+def checked_original(relative: str, *, include_publisher_text: bool = False,
+                     publication_record: dict | None = None) -> dict:
     path = publisher_path(relative)
     manifest = json.loads(SOURCES.read_text())["sources"]
     entries = [r for r in manifest if r["path"] == relative]
@@ -145,6 +147,9 @@ def checked_original(relative: str, *, include_publisher_text: bool = False) -> 
     if len(completed) != 1:
         raise ValueError("original source not completed in the download ledger")
     record = completed[0]
+    if publication_record is not None and (
+            entries[0] != publication_record or not publication_receipt_matches(entries[0], record)):
+        raise ValueError("publication catalog record changed or acquisition URL differs from completed receipt")
     capture = None
     if (include_publisher_text and path.suffix.casefold() in (".md", ".markdown", ".txt")
             and type(record.get("bytes_received")) is int and record["bytes_received"] <= 8 * 1024 * 1024):
@@ -642,7 +647,6 @@ def _current_versions():
 
 
 def _search_impl(args) -> dict:
-    from knowledge_library_semantic_model import LocalE5
     manifest, ledger, sources = _current_versions()
     name_match = resolve_source_name(args.query, manifest)
     preferred_path = name_match.get("original_path") if name_match else None
@@ -653,6 +657,9 @@ def _search_impl(args) -> dict:
         original = ledger.get(path)
         derivative = sources.get(path)
         if path not in manifest or not original or not derivative or original.get("sha256") != derivative[1]:
+            return []
+        if (path == preferred_path and name_match.get("kind") in ("catalog_arxiv", "catalog_doi")
+                and not publication_receipt_matches(manifest[path], original)):
             return []
         current = [
             hit for hit in hits
@@ -685,16 +692,20 @@ def _search_impl(args) -> dict:
             checked.add((path, derivative[1], derivative[2]))
         return verified
 
-    model = LocalE5(threads=2, batch_size=4)
-    vector = model.embed_queries([args.query])[0]
+    missing_identifier = name_match and name_match["status"] == "no_catalog_match"
     with sqlite3.connect(f"file:{DB.resolve()}?mode=ro", uri=True) as conn:
-        found = search_summary_entries_batched(
-            conn, vector, limit=args.top,
-            include_facets=getattr(args,"with_facets",False),
-            nodes_per_document=args.nodes_per_original,
-            expected_model=model.model,
-            filter_source_nodes=verify_document, preferred_path=preferred_path,
-        )
+        found = []
+        if not missing_identifier:
+            from knowledge_library_semantic_model import LocalE5
+            model = LocalE5(threads=2, batch_size=4)
+            vector = model.embed_queries([args.query])[0]
+            found = search_summary_entries_batched(
+                conn, vector, limit=args.top,
+                include_facets=getattr(args, "with_facets", False),
+                nodes_per_document=args.nodes_per_original,
+                expected_model=model.model,
+                filter_source_nodes=verify_document, preferred_path=preferred_path,
+            )
         snapshot = summary_index_scope(conn)
     out = []
     for row in found:
@@ -723,6 +734,8 @@ def _search_impl(args) -> dict:
         else:
             warning = ("The named original has no verified summary result. Any ranked documents are other "
                        "sources. Use source-evidence with the exact catalog path to inspect the named original.")
+    elif missing_identifier:
+        warning = "The catalog has no archived PDF matching this publication identifier and requested version."
     elif name_match:
         warning = ("The source name matches multiple catalog paths. The listed documents use semantic "
                    "ranking. Select an exact candidate path to choose an archived source.")
@@ -730,7 +743,8 @@ def _search_impl(args) -> dict:
         **({"source_name_match": name_match} if name_match else {}),
         "query": args.query,
         "database": str(DB),
-        "retrieval_engine": ("native_batched_facets_cosine_v1"
+        "retrieval_engine": ("exact_publication_catalog_lookup_v1" if missing_identifier
+                             else "native_batched_facets_cosine_v1"
                              if getattr(args,"with_facets",False)
                              else "native_batched_cosine_v1"),
         "documents": out,
@@ -792,6 +806,7 @@ def original_source_evidence(args) -> None:
     original_path = getattr(args, "original_path", None)
     evidence_query = args.query
     match = None
+    publication_record = None
     try:
         if original_path is None:
             explicit_name = getattr(args, "source_name", None)
@@ -799,16 +814,20 @@ def original_source_evidence(args) -> None:
             match = resolve_source_name(explicit_name or args.query, manifest)
             if not match:
                 raise ValueError("source name unrecognized; supply an exact --source-name or --original-path")
+            if match["status"] == "no_catalog_match":
+                raise ValueError("no cataloged PDF matches this publication identifier and requested version")
             if match["status"] != "unique":
                 choices = "\n".join(match["candidate_paths"])
                 raise ValueError(f"source name matches {match['matching_catalog_paths']} catalog paths; "
                                  f"select --original-path. Available choices include\n{choices}")
             original_path = match["original_path"]
+            if match["kind"] in ("catalog_arxiv", "catalog_doi"):
+                publication_record = manifest[original_path]
             if explicit_name is None:
                 evidence_query = match.get("subject_query", "")
                 if not evidence_query:
                     raise ValueError("supply the topic to find after --source-name or --original-path")
-        source=checked_original(original_path, include_publisher_text=True)
+        source=checked_original(original_path, include_publisher_text=True, publication_record=publication_record)
         with sqlite3.connect(f"file:{DB.resolve()}?mode=ro",uri=True) as db:
             row=db.execute(
                 "SELECT id FROM filesystem_entries WHERE entry_type='file' "
@@ -994,7 +1013,7 @@ def main():
     )
     target = evidence.add_mutually_exclusive_group()
     target.add_argument("--original-path", help="Exact catalog path of the publisher file")
-    target.add_argument("--source-name", help="Unique catalog title or publisher-qualified archived skill name")
+    target.add_argument("--source-name", help="Exact catalog title, DOI, arXiv reference, or publisher-qualified archived skill name")
     evidence.add_argument("query")
     evidence.add_argument("--top",type=int,default=5)
     evidence.add_argument("--snippet-characters",type=int,default=900)

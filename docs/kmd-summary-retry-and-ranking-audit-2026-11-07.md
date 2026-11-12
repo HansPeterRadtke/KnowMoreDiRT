@@ -293,3 +293,19 @@ The Eurographics paper *On the Accuracy of Surface Scattering Theories* had a co
 The installed importer added one source chunk and eleven representations for the paper. All persisted fields and vector hashes matched the read-only preparation, apart from insertion timestamps. The saved summary tree retained its original hash. On a fixed 173,277-row baseline plus this paper, it went from absent in the first eight results to first in seven of eight query and search-mode combinations. The remaining case was the bare subject phrase in summary-only mode. Searching the printed phrase with facets enabled put the paper first, and source-evidence returned the classification on page one as its first excerpt. All sixty-four control positions retained their paths, scores and matched node identities.
 
 Worker status presents both the failure count in the saved worker snapshot and the count still pending against current source revisions and complete FileDB roots. Historical receipts remain available after a separate verified admission. At this check the older snapshot still recorded the paper, while the index showed it was complete. Five archived skills remained on the ordinary processing queue, each with a verified local source and no recorded failure.
+
+### Offline lookup by DOI or arXiv identifier
+
+Paste a DOI, a DOI resolver URL, a modern arXiv reference such as `arXiv:2304.06828v2`, or an HTTPS arXiv abstract or PDF URL. The same identifiers work with a topic in a direct evidence query.
+
+```sh
+knowledge-library-summaries search '10.21437/Interspeech.2026-2080'
+knowledge-library-summaries source-evidence 'According to 10.21437/Interspeech.2026-120, what does pairwise verification cost?'
+knowledge-library-summaries source-evidence --source-name 'arXiv:2304.06828v2' 'incrementality'
+```
+
+DOI lookup uses the catalog's explicit DOI for a PDF. A related interview or reference page can link to a paper without providing its text. arXiv lookup takes the identifier from the catalog's archive download URL and checks it against any arXiv reference or identifier recorded for the same file. A versioned request requires the version on the download URL. A versionless request can match a pinned PDF, and the result reports its archived identifier in `source_name_match.matched_identifier`. Multiple matching paths leave the choice to the reader. The CLI checks the acquisition URL against the completed download receipt before verifying the file, extraction and source intervals. A well-formed identifier with no matching record returns zero search results.
+
+The November 12 catalog had 507 DOI records and 270 arXiv PDFs. All 777 matched their acquisition receipts. Across 2,335 identifier queries, every supported spelling tested selected the independently expected path. Asking for an unarchived version of each arXiv record returned zero catalog matches. Of 35 archived PDFs inspected directly, 28 printed the identifier on the first page. Catalog matches use the recorded acquisition metadata and can also cover books or proceedings whose first page omits the identifier.
+
+Two indexed papers previously missed the top three for their own identifiers. Both came first in summary and facet search after the change. Two papers awaiting a summary were available through direct evidence. For these four papers, eight entire excerpts were reproduced on their cited pages by extracting the physical PDFs again and normalizing whitespace. Four control questions over the same frozen native rows retained all 40 ranked positions, scores, node identities and source digests. The private protocol and per-query results are in the Raspi audit directory `publication-identifiers-20261112`.

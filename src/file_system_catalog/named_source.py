@@ -5,6 +5,8 @@ import re
 import unicodedata
 from collections.abc import Mapping
 
+from .publication_identifier import matching_publications, publication_identifier
+
 
 # An unquoted name inside a longer question needs an affirmative source
 # reference. A comparison, exclusion, or incidental topic remains a vector query.
@@ -47,9 +49,12 @@ def _requested_names(query: str) -> dict[str, str]:
     if citation:
         rest = query[citation.end():]
         quoted = _quoted(rest)
-        if quoted and not _COORDINATED.match(quoted[1]):
+        if quoted and not _COORDINATED.match(quoted[1].lstrip(" ,:;—")):
             names[quoted[0]] = quoted[1].lstrip(" ,:;—")
         elif not quoted:
+            name, comma, subject = rest.partition(",")
+            if comma and publication_identifier(name.strip()) and not _COORDINATED.match(subject):
+                names[name.strip()] = subject.strip()
             for word in _SOURCE_WORD.finditer(rest):
                 if not _COORDINATED.match(rest[word.end():]):
                     names[rest[:word.start()]] = rest[word.end():].lstrip(" ,:;—")
@@ -68,6 +73,17 @@ def resolve_source_name(query: str, manifest: Mapping[str, dict]) -> dict | None
         return _unique(path, "original_path", requested[path])
     if paths:
         return _ambiguous(paths)
+    for name, subject in requested.items():
+        identifier = publication_identifier(name)
+        if identifier is None:
+            continue
+        publications = matching_publications(identifier, manifest)
+        if len(publications) == 1:
+            path, archived_identifier = next(iter(publications.items()))
+            return {**_unique(path, identifier[0], subject), "matched_identifier": archived_identifier}
+        if publications:
+            return _ambiguous(publications)
+        return {"status": "no_catalog_match", "kind": identifier[0], "matching_catalog_paths": 0}
     forms = {_name(value): subject for value, subject in requested.items() if value.strip()}
     matches = {}
     for path, record in manifest.items():

@@ -88,6 +88,32 @@ class PublisherRevisionSearchTests(unittest.TestCase):
     def paths(self, **options):
         return [doc["original_path"] for doc in self.search(**options)["documents"]]
 
+    def test_publication_requires_matching_acquisition_receipt(self):
+        raw = json.loads(self.cli.SOURCES.read_text())
+        book = raw["sources"][0]
+        book.update(kind="pdf", doi="10.1234/guide", url="https://example.org/archive/guide.pdf")
+        self.cli.SOURCES.write_text(json.dumps(raw))
+        self.query = book["doi"]
+        self.assertEqual(self.search()["source_name_match"]["status"], "no_verified_index_match")
+        with self.assertRaisesRegex(ValueError, "acquisition URL"):
+            self.cli.checked_original(self.names[0], publication_record=book)
+        ledger = json.loads(self.cli.LEDGER.read_text())
+        ledger["items"][0]["url"] = book["url"]
+        self.cli.LEDGER.write_text(json.dumps(ledger))
+        self.assertEqual(self.search()["source_name_match"]["status"], "verified")
+        self.assertEqual(self.cli.checked_original(self.names[0], publication_record=book)["original_path"], self.names[0])
+        with self.assertRaisesRegex(ValueError, "catalog record changed"):
+            self.cli.checked_original(self.names[0], publication_record=dict(book, doi="10.1234/old"))
+
+    def test_missing_publication_identifier_returns_no_semantic_substitute(self):
+        self.query = "arXiv:2608.03496v3"
+        with mock.patch.object(self.embeddings, "embed_queries", side_effect=AssertionError("unexpected embedding")):
+            result = self.search(top=2)
+        self.assertEqual(result["source_name_match"]["status"], "no_catalog_match")
+        self.assertEqual(result["retrieval_engine"], "exact_publication_catalog_lookup_v1")
+        self.assertEqual(result["documents"], [])
+        self.assertIn("no archived PDF", result["relevance_warning"])
+
     def test_named_source_precedes_a_better_cosine_only_after_revision_checks(self):
         ranked = self.search(top=2)["documents"]
         preferred = ranked[1]["original_path"]
