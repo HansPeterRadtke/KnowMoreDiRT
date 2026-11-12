@@ -270,6 +270,77 @@ class RfcSectionTests(unittest.TestCase):
             self.assertEqual(blocked["rfc_section_lookup"]["context"]["boundary"], "unclassified_margin")
             self.assertIsNone(blocked["rfc_section_lookup"]["context"]["next_cursor"])
 
+    def with_figure(self, figure):
+        return BODY.replace(
+            "   A second paragraph describes an exception.",
+            figure + "\n\n   The condition after the example applies.",
+        )
+
+    def test_captioned_folded_json_returns_the_unchanged_publisher_text(self):
+        prefix = '  "value": "' + "a" * 60
+        self.assertEqual(len(prefix), 72)
+        block = "{\n" + prefix + '\nabcdef"\n}\n\n   Figure 2: An encoded example'
+        body = self.with_figure(block)
+        first, _, _ = self.evidence("1.1", body)
+        context = first["rfc_section_lookup"]["context"]
+        self.assertEqual(context["boundary"], "numbered_heading")
+        following, raw, _ = self.evidence("1.1", body, cursor=context["next_cursor"])
+        (row,) = following["passages"]
+        proof = row["publisher_excerpt"]
+        quoted = raw[proof["start_byte"] : proof["end_byte"]]
+        self.assertEqual(sha(quoted), proof["sha256"])
+        self.assertIn(block, quoted.decode().replace("\r\n", "\n"))
+        self.assertIn("The condition after", row["source_excerpt"])
+
+    def test_json_figure_requires_complete_syntax_and_an_adjacent_caption(self):
+        for block in ('{\n  "value": 1\n}', '[\n  1,\n\n  {"flag": true}\n]'):
+            d, _, _ = self.evidence("1.1", self.with_figure(block + "\n\nFigure 5: Example"))
+            self.assertEqual(d["rfc_section_lookup"]["context"]["boundary"], "numbered_heading")
+        prefix = '  "value": "' + "a" * 60
+        for invalid in (
+            '{\n  "value": 1\n}',
+            '{\n  "value": 1,\n}\n\nFigure 5',
+            '{\n  "value": NaN\n}\n\nFigure 5',
+            '{\n  "value": "short\nline"\n}\n\nFigure 5',
+            '{\n  "value": 1\n}\n\nAnother heading\n\nFigure 5',
+            "{\n" + prefix + '\n2.  Next section"\n}\n\nFigure 5',
+        ):
+            with self.subTest(invalid=invalid[:40]):
+                d, _, _ = self.evidence("1.1", self.with_figure(invalid))
+                self.assertEqual(d["rfc_section_lookup"]["context"]["boundary"], "unclassified_margin")
+                self.assertIsNone(d["rfc_section_lookup"]["context"]["next_cursor"])
+
+    def test_fold_does_not_fuse_numbers_or_hide_a_listed_heading(self):
+        prefix = '  "n":' + " " * 65 + "1"
+        self.assertEqual(len(prefix), 72)
+        body = self.with_figure("{\n" + prefix + "\n2\n}\n\nFigure 5: A value")
+        d, _, _ = self.evidence("1.1", body)
+        self.assertEqual(d["rfc_section_lookup"]["context"]["boundary"], "unclassified_margin")
+        body = self.with_figure("| left | right |\n| Listed | Boundary |\n\nFigure 9: Diagram")
+        body = body.replace("   1.  Scope", "   | Listed | Boundary |\n   1.  Scope")
+        d, _, _ = self.evidence("1.1", body)
+        self.assertEqual(d["rfc_section_lookup"]["context"]["boundary"], "unclassified_margin")
+
+    def test_parallel_boxes_and_wrapped_captions_preserve_scope(self):
+        drawing = (
+            "+------+    +------+\n| A    |    | B    |\n+------+    +------+\n\n"
+            "     |----->|\n     |<-----|\n\n     <----Network---->\n\n"
+            "  Figure 3: A caption that continues\n            on the next line"
+        )
+        d, _, _ = self.evidence("1.1", self.with_figure(drawing))
+        info = d["rfc_section_lookup"]["context"]
+        self.assertEqual(info["boundary"], "numbered_heading")
+        following, _, _ = self.evidence("1.1", self.with_figure(drawing), cursor=info["next_cursor"])
+        self.assertIn(drawing, following["passages"][0]["source_excerpt"])
+        for unrelated in (
+            "   This is a separate paragraph.",
+            "2.  Another | section |",
+            "Unclassified division",
+        ):
+            body = self.with_figure(drawing.replace("     |----->|", unrelated + "\n\n     |----->|"))
+            result, _, _ = self.evidence("1.1", body)
+            self.assertEqual(result["rfc_section_lookup"]["context"]["boundary"], "unclassified_margin")
+
     def test_long_opening_and_unnumbered_back_matter(self):
         body = BODY.replace("   Appendix A.  Notes\n", "   Appendix A.  Notes\n   Contributors\n")
         body = body.replace(

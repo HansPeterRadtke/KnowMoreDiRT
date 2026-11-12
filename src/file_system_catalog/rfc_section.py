@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import hashlib
+import json
 import re
 
 from .publisher_excerpt import attach_publisher_excerpts
@@ -23,7 +24,10 @@ _BODY_LABEL = re.compile(rf"(?m)^(?:Appendix )?({_KEY})\.[ \t]+\S")
 _CONTINUATION = re.compile(r"\n( +)(\S[^\n]*)")
 _PARAGRAPH = re.compile(r"\n(?:[ \t]*\n)+[ \t]+\S[^\n]*(?:\n[ \t]+\S[^\n]*)*")
 _BLANK_GAP = re.compile(r"\n(?:[ \t]*\n)+")
-_FIGURE_CAPTION = re.compile(r"[ \t]*Figure [1-9][0-9]*(?::[^\n]+)?[ \t]*(?=\n[ \t]*\n|\n?\Z)")
+_FIGURE_CAPTION = re.compile(r"[ \t]*Figure [1-9][0-9]*(?::[^\n]+)?[ \t]*(?=\n|\Z)")
+_DISPLAY_FOLD = re.compile(r"(?m)^([^\n]{72})\n")
+_BOX_EDGE = re.compile(r"[+.'`][-+=]{2,}[+.'`]")
+_DOUBLE_ARROW = re.compile(r"<[-=]{2}[^<>]*[-=]{2}>")
 _BOX_BORDER = re.compile(r"\+(?:[-=]+\+)+[ \t]*")
 _MARGIN_LINE = re.compile(r"(?m)^([^ \t\n][^\n]*)")
 _CONTENTS = re.compile(r"(?m)^Table of Contents[ \t]*$")
@@ -146,45 +150,86 @@ def _opening(text: str, key: str):
 
 
 def _diagram_row(line: str) -> bool:
-    return line.count("|") >= 2 or _BOX_BORDER.fullmatch(line) is not None
+    if line.count("|") + line.count("║") >= 2 or _BOX_BORDER.fullmatch(line) or _DOUBLE_ARROW.fullmatch(line):
+        return True
+    # Parallel boxes can share a row with arrows or labels between their borders.
+    edge = _BOX_EDGE.match(line)
+    return edge is not None and _BOX_EDGE.search(line, edge.end()) is not None
 
 
-def _caption_after_diagram(body: str, first_row: re.Match) -> int | None:
-    """Skip a flush-left box drawing only when its own block ends in a numbered caption."""
-    if not _diagram_row(first_row[1]):
+def _diagram_block(block: str) -> bool:
+    lines = block.split("\n")
+    return any(_diagram_row(line.strip(" \t")) for line in lines) and all(
+        _diagram_row(line.rstrip()) for line in lines if line and line[0] not in " \t"
+    )
+
+
+def _invalid_json_constant(value: str):
+    raise ValueError(f"non-JSON constant {value}")
+
+
+def _json_figure(block: str) -> bool:
+    # The RFC text renderer can hard-wrap long encoded strings at column 72.
+    # A space at the physical fold permits a syntax check without fusing tokens.
+    # Offsets, digests and excerpts always use the unmodified publisher bytes.
+    try:
+        json.loads(_DISPLAY_FOLD.sub(r"\1 ", block), parse_constant=_invalid_json_constant)
+    except (ValueError, RecursionError):
+        return False
+    return True
+
+
+def _caption_after_figure(body: str, first_row: re.Match, contents: set[str]) -> int | None:
+    start = first_row.start()
+    json_block = first_row[1].rstrip() in ("{", "[")
+    if not json_block and not _diagram_row(first_row[1]):
         return None
-    gap = _BLANK_GAP.search(body, first_row.end())
-    caption = _FIGURE_CAPTION.match(body, gap.end()) if gap else None
-    if not caption:
-        return None
-    for row in _MARGIN_LINE.finditer(body, first_row.start(), gap.start()):
-        if _BODY_LABEL.match(body, row.start()) or not _diagram_row(row[1]):
+    pos = start
+    while gap := _BLANK_GAP.search(body, pos):
+        # Never consume a numbered division or a back-matter heading printed in the contents.
+        if _BODY_LABEL.search(body, pos, gap.start()) or any(
+            row[1].rstrip() in contents for row in _MARGIN_LINE.finditer(body, pos, gap.start())
+        ):
             return None
-    return caption.end()
+        if not json_block and not _diagram_block(body[pos : gap.start()]):
+            return None
+        caption = _FIGURE_CAPTION.match(body, gap.end())
+        if caption:
+            if caption.group().strip() in contents or (
+                json_block and not _json_figure(body[start : gap.start()])
+            ):
+                return None
+            return caption.end()
+        pos = gap.end()
+    return None
 
 
 def _context_extent(body: str, opening_end: int) -> tuple[int, str]:
-    """Limit context to this heading's own text, including indented lists and code."""
+    """Limit context to this heading's own text, including verified captioned artwork."""
     line = _MARGIN_LINE.search(body, opening_end)
-    while line and (caption_end := _caption_after_diagram(body, line)) is not None:
+    contents = set()
+    if line and not _BODY_LABEL.match(body, line.start()):
+        toc = _CONTENTS.search(body)
+        first = _FIRST_BODY.search(body, toc.end())
+        contents = {
+            item.strip() for item in body[toc.end() : first.start()].splitlines() if item[:1] in (" ", "\t")
+        }
+    while line:
+        if _BODY_LABEL.match(body, line.start()):
+            boundary = "numbered_heading"
+            break
+        if line[1].rstrip() in contents:
+            boundary = "contents_heading"
+            break
+        caption_end = _caption_after_figure(body, line, contents)
+        if caption_end is None:
+            boundary = "unclassified_margin"
+            break
         line = _MARGIN_LINE.search(body, caption_end)
+    else:
+        boundary = "end_of_text"
     stop = line.start() if line else len(body)
-    end = opening_end + len(body[opening_end:stop].rstrip(" \t\n"))
-    if line is None:
-        return end, "end_of_text"
-    if _BODY_LABEL.match(body, stop):
-        return end, "numbered_heading"
-    # An unnumbered heading in the printed contents can begin the back matter.
-    # Unknown margin text may be a figure or a new division. Stop before it.
-    toc = _CONTENTS.search(body)
-    first = _FIRST_BODY.search(body, toc.end())
-    label = line[1].rstrip()
-    listed = any(
-        item[:1] in (" ", "\t") and item.strip() == label
-        for item in body[toc.end() : first.start()].splitlines()
-    )
-    boundary = "contents_heading" if listed else "unclassified_margin"
-    return end, boundary
+    return opening_end + len(body[opening_end:stop].rstrip(" \t\n")), boundary
 
 
 def _cursor(source: dict, number: str, key: str, offset: int) -> str:
