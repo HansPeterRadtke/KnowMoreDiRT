@@ -49,7 +49,7 @@ from file_system_catalog.summary_search_audit import (
     append_query_audit, make_search_audit, recent_search_audits, AUDIT_DIR,
 )
 from file_system_catalog.summary_coverage import (
-    current_completed_originals, summary_progress_metrics,
+    current_completed_originals, pending_failures, revision_identity, summary_progress_metrics,
 )
 
 DB = Path("/data/var/knowmoredirt/knowledge-library/filesystem.sqlite3")
@@ -180,7 +180,7 @@ def checked_original(relative: str, *, include_publisher_text: bool = False) -> 
 def payload_path(original_path: str, original_sha: str, derived_sha: str) -> Path:
     basename = Path(original_path).name[:64]
     basename = re.sub(r"[^A-Za-z0-9_.-]+", "-", basename)
-    key = sha((original_path + "\0" + original_sha + "\0" + derived_sha).encode("utf-8"))[:24]
+    key = revision_identity(original_path, original_sha, derived_sha)[:24]
     return OUT / (basename + "." + key + ".summary-tree.json")
 
 
@@ -946,9 +946,10 @@ def status(_args):
                 "last_completed_utc","updated_utc",
             )
         }
-        worker_snapshots[worker_name]["pending_failure_count"]=len(
-            w.get("failed",{}) if isinstance(w.get("failed"),dict) else {}
-        )
+        recorded = w.get("failed") if isinstance(w.get("failed"), dict) else {}
+        revisions = ((p, *current[p]) for p in recorded if p in current)
+        worker_snapshots[worker_name]["recorded_failure_count"] = len(recorded)
+        worker_snapshots[worker_name]["pending_failure_count"] = len(pending_failures(recorded, revisions, valid))
     if worker_snapshots:
         result["parallel_workers"]=worker_snapshots
     print(json.dumps(result, indent=2))

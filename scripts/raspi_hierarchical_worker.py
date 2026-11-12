@@ -24,7 +24,7 @@ from collections import deque
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "src"))
 from file_system_catalog.summary_coverage import (
-    current_completed_originals, summary_progress_metrics,
+    current_completed_originals, pending_failures, revision_identity, summary_progress_metrics,
 )
 
 FILEDB = Path("/data/var/knowmoredirt/knowledge-library/filesystem.sqlite3")
@@ -42,9 +42,6 @@ def signal_stop(_signal, _frame):
 
 def now():
     return datetime.now(timezone.utc).isoformat(timespec="seconds")
-
-def sha(raw: bytes) -> str:
-    return hashlib.sha256(raw).hexdigest()
 
 def state_update(**fields):
     old = {}
@@ -80,15 +77,6 @@ def scope():
     with sqlite3.connect("file:" + str(FILEDB) + "?mode=ro", uri=True) as db:
         processed = current_completed_originals(db, current_versions)
     return available, processed
-
-def pending_failures(failed: dict, available: list, processed: set) -> dict:
-    """Do not report already indexed or retired revisions as active failures."""
-    valid = {row[0] for row in available}
-    return {
-        path: entry for path, entry in failed.items()
-        if path in valid and path not in processed
-    }
-
 
 def shard_for_original(original_path: str, shard_count: int) -> int:
     """Stable original-file assignment; independent of revisions and queue order.
@@ -315,7 +303,7 @@ def run(
                 completed_in_pass = 0
                 for path, original_sha, derived_sha, text_chars in records:
                     if stop: break
-                    identity = sha((path+"\0"+original_sha+"\0"+derived_sha).encode())
+                    identity = revision_identity(path, original_sha, derived_sha)
                     status = failed.get(path, {})
                     if status.get("identity") != identity:
                         status = {}

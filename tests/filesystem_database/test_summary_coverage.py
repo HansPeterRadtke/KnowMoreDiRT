@@ -6,7 +6,7 @@ import json
 import sqlite3
 import unittest
 from file_system_catalog.summary_coverage import (
-    current_completed_originals, summary_progress_metrics,
+    current_completed_originals, pending_failures, summary_progress_metrics,
 )
 
 class RevisionCoverageTests(unittest.TestCase):
@@ -71,6 +71,22 @@ class RevisionCoverageTests(unittest.TestCase):
         self.add("wrong-root.pdf",metadata_override={"source_start_char":8})
         got=current_completed_originals(self.db,self.sources)
         self.assertEqual({"current.pdf"},got)
+
+    def test_pending_failure_receipts_follow_the_current_revision_and_native_root(self):
+        self.add("current.pdf")
+        sources = [(p, *row) for p, row in self.sources.items()]
+        def identity(p, derived):
+            return hashlib.sha256((p + "\0" + self.original + "\0" + derived).encode()).hexdigest()
+        recorded = {
+            "current.pdf": {"identity": identity("current.pdf", self.derived)},
+            "leaf.pdf": {"identity": identity("leaf.pdf", self.derived)},
+            "revised.pdf": {"identity": identity("revised.pdf", "c" * 64)},
+            "retired.pdf": {"attempts": 3},
+            "truncated.pdf": {"attempts": 2},
+        }
+        completed = current_completed_originals(self.db, self.sources)
+        self.assertEqual({"leaf.pdf", "truncated.pdf"}, set(pending_failures(recorded, sources, completed)))
+        self.assertEqual(len(recorded), 5)
 
     def test_multiple_versions_only_current_one_qualifies(self):
         self.add("current.pdf",derived="f"*64,tree="f"*64)

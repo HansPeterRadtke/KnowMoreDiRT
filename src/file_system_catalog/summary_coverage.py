@@ -19,6 +19,23 @@ from typing import Mapping, Sequence
 PROMPT_VERSION = "kmd-hierarchical-source-summary-v1"
 
 
+def revision_identity(path: str, original_sha: str, derived_sha: str) -> str:
+    return hashlib.sha256("\0".join((path, original_sha, derived_sha)).encode("utf-8")).hexdigest()
+
+
+def pending_failures(failed, available, processed):
+    """Filter worker receipts against eligible revisions and current complete roots."""
+    pending = {}
+    for path, original, derived, _ in available:
+        entry = failed.get(path)
+        if path in processed or not isinstance(entry, dict):
+            continue
+        # Earlier receipts have no revision identity; retain their path-based behavior.
+        if "identity" not in entry or entry["identity"] == revision_identity(path, original, derived):
+            pending[path] = entry
+    return pending
+
+
 def current_completed_originals(
     db: sqlite3.Connection,
     sources: Mapping[str, tuple[str, str, int]],
