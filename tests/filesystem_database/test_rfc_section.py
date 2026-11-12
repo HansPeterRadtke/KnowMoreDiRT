@@ -276,6 +276,75 @@ class RfcSectionTests(unittest.TestCase):
             figure + "\n\n   The condition after the example applies.",
         )
 
+    def test_referenced_protocol_figures_recover_literal_following_condition(self):
+        for diagram in (
+            "Alpha   Beta\n\nOpen ------>\n     <------ Ack",
+            "    Alpha      Beta\n\nStage ^ Init\nSync  | Data ------>\n             <------ Ack"
+            "\n\n      {} Protected lines\n         use this marker.",
+            "Response:\n\nHeader: Busy (Code=5.03)\nContent-Format: 257 (application/example)"
+            '\nPayload:\n{\n  -1: "busy"\n}',
+        ):
+            with self.subTest(diagram=diagram):
+                figure = "   The exchange is shown in Figure 9.\n\n" + diagram + "\n\n    Figure 9: Example"
+                body = self.with_figure(figure)
+                first, _, _ = self.evidence("1.1", body)
+                context = first["rfc_section_lookup"]["context"]
+                self.assertEqual(context["boundary"], "numbered_heading")
+                following, raw, _ = self.evidence("1.1", body, cursor=context["next_cursor"])
+                (row,) = following["passages"]
+                proof = row["publisher_excerpt"]
+                piece = raw[proof["start_byte"] : proof["end_byte"]]
+                self.assertEqual(proof["sha256"], sha(piece))
+                self.assertEqual(row["source_excerpt"], piece.decode().replace("\r\n", "\n"))
+                self.assertIn(figure, row["source_excerpt"])
+                self.assertTrue(row["source_excerpt"].endswith("The condition after the example applies."))
+
+    def test_referenced_flow_requires_local_callout_matching_caption_and_structured_rows(self):
+        flow = "   See Figure 9.\n\nAlpha   Beta\n\nOpen ------>\n     <------ Ack\n\n    Figure 9: Example"
+        for invalid in (
+            flow.replace("See Figure 9.", "See Figure 8."),
+            flow.replace("See Figure 9.", "See Figure 9.1."),
+            flow.replace("See Figure 9.", "See Figures 8 and 9."),
+            flow.replace("See Figure 9.", "Compare Figure 8 with Figure 9."),
+            flow.replace("See Figure 9.", "See Figure 9.\n\n   A separate paragraph."),
+            flow.replace("Open ------>", "Unknown topic\nOpen ------>"),
+            flow.replace("Open ------>", "2.  New section ------>"),
+            flow.replace("Open ------>", "Open ------>\n\n   Unrelated prose."),
+            flow.replace("<------ Ack", "Ack"),
+            flow.replace("\n\n    Figure 9:", "\n    Figure 9:"),
+            flow.replace("Alpha   Beta", "Response:"),
+            flow.replace("Alpha   Beta", "Stage ^ Opening"),
+        ):
+            with self.subTest(invalid=invalid):
+                d, _, _ = self.evidence("1.1", self.with_figure(invalid))
+                self.assertEqual(d["rfc_section_lookup"]["context"]["boundary"], "unclassified_margin")
+        body = self.with_figure(flow).replace("   1.  Scope", "   Open ------>\n   1.  Scope")
+        d, _, _ = self.evidence("1.1", body)
+        self.assertEqual(d["rfc_section_lookup"]["context"]["boundary"], "unclassified_margin")
+
+    def test_phase_diagram_rejects_a_margin_heading_with_an_internal_separator(self):
+        figure = (
+            "   See Figure 8.\n\n   Alpha   Beta\n\nSetup ^ Open\n         Send ----->\n"
+            "Another division | Extra\n         <----- Reply\n\n   Figure 8: Example"
+        )
+        d, _, _ = self.evidence("1.1", self.with_figure(figure))
+        self.assertEqual(d["rfc_section_lookup"]["context"]["boundary"], "unclassified_margin")
+
+    def test_referenced_response_requires_complete_printed_headers_and_payload(self):
+        message = (
+            "   See Figure 7.\n\nResponse:\n\nHeader: Busy (Code=5.03)\nContent-Format: 257 (application/example)"
+            '\nPayload:\n{\n  -1: "busy"\n}\n\n   Figure 7: Example'
+        )
+        for invalid in (
+            message.replace("Content-Format: 257", "Another heading: 257"),
+            message.replace("  -1:", "Unknown heading\n  -1:"),
+            message.replace("\n}\n", "\n"),
+            message.replace("\nPayload:", "\n2.  Next heading\nPayload:"),
+        ):
+            with self.subTest(invalid=invalid):
+                d, _, _ = self.evidence("1.1", self.with_figure(invalid))
+                self.assertEqual(d["rfc_section_lookup"]["context"]["boundary"], "unclassified_margin")
+
     def test_captioned_folded_json_returns_the_unchanged_publisher_text(self):
         prefix = '  "value": "' + "a" * 60
         self.assertEqual(len(prefix), 72)

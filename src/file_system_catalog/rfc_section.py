@@ -24,7 +24,12 @@ _BODY_LABEL = re.compile(rf"(?m)^(?:Appendix )?({_KEY})\.[ \t]+\S")
 _CONTINUATION = re.compile(r"\n( +)(\S[^\n]*)")
 _PARAGRAPH = re.compile(r"\n(?:[ \t]*\n)+[ \t]+\S[^\n]*(?:\n[ \t]+\S[^\n]*)*")
 _BLANK_GAP = re.compile(r"\n(?:[ \t]*\n)+")
-_FIGURE_CAPTION = re.compile(r"[ \t]*Figure [1-9][0-9]*(?::[^\n]+)?[ \t]*(?=\n|\Z)")
+_FIGURE_CAPTION = re.compile(r"[ \t]*Figure ([1-9][0-9]*)(?::[^\n]+)?[ \t]*(?=\n|\Z)")
+_PARTICIPANTS = re.compile(r"[A-Za-z][\w-]*(?:[ \t]{2,}[A-Za-z][\w-]*)+")
+_PHASE_ROW = re.compile(r"[A-Za-z][\w-]*[ \t]+[|^v][ \t]+\S")
+_PHASE_MARKER = re.compile(r"(?:^|[ \t])[|^v](?:[ \t]|$)")
+_FLOW_ARROW = re.compile(r"<[-=]{2,}>?|[-=]{2,}>")
+_LEGEND = re.compile(r"([ \t]+)(?:[+*]|\{\}|\[\])[ \t]+\S[^\n]*(?:\n\1[ \t]+\S[^\n]*)*")
 _DISPLAY_FOLD = re.compile(r"(?m)^([^\n]{72})\n")
 _BOX_EDGE = re.compile(r"[+.'`][-+=]{2,}[+.'`]")
 _DOUBLE_ARROW = re.compile(r"<[-=]{2}[^<>]*[-=]{2}>")
@@ -179,11 +184,106 @@ def _json_figure(block: str) -> bool:
     return True
 
 
+def _preceding_paragraph(body: str, start: int) -> tuple[int, str]:
+    """Return the immediately preceding block only across a blank line."""
+    pos = start
+    while pos:
+        begin = body.rfind("\n", 0, pos - 1) + 1
+        if body[begin : pos - 1].strip(" \t"):
+            break
+        pos = begin
+    if pos == start or pos == 0:
+        return pos, ""
+    end = pos - 1
+    while pos:
+        begin = body.rfind("\n", 0, pos - 1) + 1
+        if not body[begin : pos - 1].strip(" \t"):
+            break
+        pos = begin
+    return pos, body[pos:end]
+
+
+def _printed_response(block: str) -> bool:
+    # These are display boundaries. The indented payload can be diagnostic notation.
+    lines = block.split("\n")
+    return (
+        len(lines) >= 6
+        and re.fullmatch(r"Header: \S[^\n]* \(Code=[0-9]\.[0-9]{2}\)", lines[0]) is not None
+        and re.fullmatch(r"Content-Format: [0-9]+ \([^()\s]+\)", lines[1]) is not None
+        and lines[2:4] == ["Payload:", "{"]
+        and lines[-1] == "}"
+        and all(line[:1] in (" ", "\t") for line in lines[4:-1])
+    )
+
+
+def _flow_row(line: str, phases: bool) -> bool:
+    if _FLOW_ARROW.search(line):
+        return True
+    if not phases:
+        return False
+    if line.startswith((" ", "\t")):
+        return _PHASE_MARKER.search(line) is not None
+    return _PHASE_ROW.match(line) is not None
+
+
+def _referenced_figure_end(body: str, first_row: re.Match, contents: set[str]) -> int | None:
+    row = first_row[1].rstrip()
+    response = row == "Response:"
+    phases = _PHASE_ROW.match(row) is not None
+    if not (response or phases or _PARTICIPANTS.fullmatch(row)):
+        return None
+    start = first_row.start()
+    before, intro = _preceding_paragraph(body, start)
+    if phases:
+        if not intro.startswith((" ", "\t")) or not _PARTICIPANTS.fullmatch(intro.strip(" \t")):
+            return None
+        _, intro = _preceding_paragraph(body, before)
+    numbers = set(re.findall(r"\bFigure[ \t]+([1-9][0-9]*)\b(?!\.[0-9])", intro))
+    if len(numbers) != 1 or not all(line.startswith((" ", "\t")) for line in intro.splitlines()):
+        return None
+
+    pos = start
+    left = right = payload = legend = False
+    while gap := _BLANK_GAP.search(body, pos):
+        block = body[pos : gap.start()]
+        if _BODY_LABEL.search(block) or any(
+            line[1].rstrip() in contents for line in _MARGIN_LINE.finditer(block)
+        ):
+            return None
+        if pos == start and not phases:
+            if block.rstrip(" \t") != row:  # A participant header or response marker stands alone.
+                return None
+        elif response:
+            if payload or not _printed_response(block):
+                return None
+            payload = True
+        elif _LEGEND.fullmatch(block):
+            if not (left and right):
+                return None
+            legend = True
+        else:
+            arrows = _FLOW_ARROW.findall(block)
+            if legend or not arrows or not all(_flow_row(line, phases) for line in block.splitlines()):
+                return None
+            left |= any(arrow.startswith("<") for arrow in arrows)
+            right |= any(arrow.endswith(">") for arrow in arrows)
+        pos = gap.end()
+        if caption := _FIGURE_CAPTION.match(body, pos):
+            if (
+                caption[1] in numbers
+                and caption.group().strip() not in contents
+                and (payload or (left and right))
+            ):
+                return caption.end()
+            return None
+    return None
+
+
 def _caption_after_figure(body: str, first_row: re.Match, contents: set[str]) -> int | None:
     start = first_row.start()
     json_block = first_row[1].rstrip() in ("{", "[")
     if not json_block and not _diagram_row(first_row[1]):
-        return None
+        return _referenced_figure_end(body, first_row, contents)
     pos = start
     while gap := _BLANK_GAP.search(body, pos):
         # Never consume a numbered division or a back-matter heading printed in the contents.
