@@ -45,6 +45,7 @@ from file_system_catalog.source_evidence import source_evidence_candidates
 from file_system_catalog.named_source import resolve_source_name
 from file_system_catalog.publication_identifier import publication_receipt_matches
 from file_system_catalog.publisher_ccs import PREFIX_CHARS, first_page_ccs
+from file_system_catalog.publisher_pdf_page import verify_pdf_page_excerpts
 from file_system_catalog.source_passage_digests import source_passage_digests
 from file_system_catalog.summary_search_audit import (
     append_query_audit, make_search_audit, recent_search_audits, AUDIT_DIR,
@@ -847,6 +848,20 @@ def original_source_evidence(args) -> None:
             top=args.top,
             snippet_characters=args.snippet_characters,
         )
+        if Path(original_path).suffix.casefold() == ".pdf":
+            hits = result["passages"]
+            proofs = verify_pdf_page_excerpts(publisher_path(original_path), source["original_sha256"], hits)
+            for hit, proof in zip(hits, proofs, strict=True):
+                hit["publisher_pdf_page"] = proof
+            verified = sum(proof["status"] == "verified" for proof in proofs)
+            result["pdf_page_verification"] = {
+                "verified": verified, "unverified": len(hits) - verified,
+                "coordinates": "zero_based_half_open_characters_in_whitespace_normalized_pdftotext_layout_page",
+            }
+            result["evidence_warning"] += (
+                " The source section is the derivative label. Cite the physical PDF page only "
+                "when publisher_pdf_page has verified status."
+            )
     except Exception as error:
         append_query_audit({
             "operation":"verified_original_source_evidence",
@@ -873,6 +888,7 @@ def original_source_evidence(args) -> None:
         "count":result["returned_passages"],
         "retrieval_engine":"verified_original_ephemeral_fts5_v1",
         "duration_seconds":round(time.monotonic()-started,3),
+        **({"pdf_page_verification": result["pdf_page_verification"]} if "pdf_page_verification" in result else {}),
         "ranked_source_spans":[{
             "rank":i,
             "source_section":v["source_section"],
@@ -887,6 +903,7 @@ def original_source_evidence(args) -> None:
             **({"matched_word_forms": v["matched_word_forms"]} if "matched_word_forms" in v else {}),
             **({"matched_identifier_words": v["matched_identifier_words"]} if "matched_identifier_words" in v else {}),
             **({"publisher_excerpt": v["publisher_excerpt"]} if "publisher_excerpt" in v else {}),
+            **({"publisher_pdf_page": v["publisher_pdf_page"]} if "publisher_pdf_page" in v else {}),
         } for i,v in enumerate(result["passages"],1)],
         "evidence_warning":result["evidence_warning"],
     }

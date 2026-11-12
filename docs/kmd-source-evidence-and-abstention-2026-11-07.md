@@ -60,3 +60,21 @@ Separate real-source tests found matching original sections in RFC 9866 and the 
 - Do not enable a new answer-rejection or document-reranking policy until it improves independent held-out relevance without suppressing valid originals.
 
 The existing continuous KnowMoreDiRT summarization worker remains independently enabled and is not restarted for this optional source-inspection feature.
+
+## Physical PDF page citations on Raspi
+
+The installed `knowledge-library-summaries source-evidence` command checks PDF excerpts against physical pages automatically. For example, this query finds passages about query latency in the archived Duhu paper.
+
+```sh
+knowledge-library-summaries source-evidence \
+  --original-path infrastructure/2026-usenix-osdi26-full-peer-reviewed-papers/osdi26-men.pdf \
+  'How does shared disaggregated memory affect query latency?'
+```
+
+Use `passages[].publisher_pdf_page.page` for the one-based physical page when its status is `verified`. The existing `source_section` and derivative character offsets describe the indexed extraction. In the Duhu test, the first result carried the old label “PDF page 28”. The complete excerpt occurred on physical page 13 of the 19-page PDF.
+
+The checker hashes the open publisher PDF against the expected revision and gives Poppler that same open file. It first reads each nominated physical page once. If a label fails and the document has up to 32 pages, the checker can correct it when exactly one page in a complete scan contains the entire excerpt. Longer documents get direct checks of the nominated pages. An ambiguous passage, incomplete scan or OCR-only label can still be returned as a retrieval candidate with an explicit unverified reason. The query audit retains the same per-passage result.
+
+To reproduce a citation, run `pdftotext -f N -l N -layout -enc UTF-8 original.pdf -` for the reported page. The SHA-256 of its output bytes must equal `page_text_sha256`. Decode UTF-8, collapse whitespace with `" ".join(text.split())`, then take the half-open character range `[start_char:end_char]`. That slice reproduces the entire excerpt after the same whitespace normalization, preserving case, punctuation and word order. These coordinates refer to extracted page text. The check does not assess whether an excerpt answers a question or establish visual content in a scanned figure.
+
+In the November 12 replay, independent extraction located all 26 sampled excerpts from 13 PDFs. Fourteen historical labels needed correction across seven papers and twelve labels were accurate. A separate panel of four natural questions returned twelve excerpts, nine of which needed new page numbers. Three citations in a longer textbook verified on their nominated pages. An image-only OCR result retained an unverified page status. Repeated phrases and deliberately altered excerpts in two real papers received no physical citation. The private Raspi protocol and per-page checks are under `search-audit/physical-pdf-citations-20261112`.

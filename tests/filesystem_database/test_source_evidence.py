@@ -183,10 +183,14 @@ class OriginalEvidenceTests(TestCase):
             logroot=root/"audits"
             source=dict(self.args, title=self.args["original_title"],
                         original_bytes=130)
+            pdf = root / "book.pdf"
+            pdf.write_bytes(b"fixture without readable physical pages")
+            source["original_sha256"] = hashlib.sha256(pdf.read_bytes()).hexdigest()
             def audit(item):
                 return append_query_audit(item,directory=logroot)
             with mock.patch.object(module,"DB",dbfile), \
                  mock.patch.object(module,"checked_original",return_value=source), \
+                 mock.patch.object(module,"publisher_path",return_value=pdf), \
                  mock.patch.object(module,"append_query_audit",side_effect=audit), \
                  mock.patch("builtins.print") as printed:
                 module.original_source_evidence(SimpleNamespace(
@@ -202,6 +206,8 @@ class OriginalEvidenceTests(TestCase):
             self.assertEqual(1,saved[0]["count"])
             self.assertEqual(self.derived,saved[0]["derived_sha256"])
             self.assertEqual("PDF page 2",saved[0]["ranked_source_spans"][0]["source_section"])
+            self.assertEqual(1, saved[0]["pdf_page_verification"]["unverified"])
+            self.assertEqual("page_count_unavailable", saved[0]["ranked_source_spans"][0]["publisher_pdf_page"]["reason"])
             self.assertEqual(0o600,stat.S_IMODE(next(logroot.glob("*.jsonl")).stat().st_mode))
 
 
