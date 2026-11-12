@@ -82,6 +82,8 @@ def make_search_audit(
             matched.append({
                 "summary_node_id": node.get("summary_node_id"),
                 "summary_kind": node.get("summary_kind"),
+                **({"publisher_classification":node["publisher_classification"]}
+                   if "publisher_classification" in node else {}),
                 "summary_level": node.get("summary_level"),
                 "summary_sha256": node.get("summary_sha256"),
                 "original_path": node.get("original_path"),

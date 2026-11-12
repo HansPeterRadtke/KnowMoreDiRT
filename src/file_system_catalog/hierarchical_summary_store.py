@@ -30,6 +30,7 @@ from .content_schema import (
     CHUNK_COLUMN_NAMES, REPRESENTATION_COLUMN_NAMES,
     CHUNK_TABLE_NAME, REPRESENTATION_TABLE_NAME,
 )
+from .publisher_ccs import CCS_EXTRACTOR, first_page_ccs
 from .hierarchical_summary import EmbeddingContextExceeded, SummaryTree, _VERSION
 
 
@@ -239,6 +240,26 @@ def retain_fitting_native_fields(original, retry, *, text, start, end, embedding
     return {"document_summary": summary, "facets": retained}
 
 
+def _publisher_keyphrases(text, existing, start, end, embedding_client, limit):
+    """Append deterministic, publisher-attributed ranks after the model's existing rows."""
+    facet_rank = max((item["facet_rank"] for item in existing), default=0) + 1
+    result = []
+    for term, anchor in first_page_ccs(text).items():
+        if len(existing) + len(result) >= _MAX_NODE_FACETS:
+            break
+        if not start <= anchor["start_char"] < anchor["end_char"] <= end:
+            continue
+        if limit is not None and embedding_client.token_count(term) > limit:
+            continue
+        result.append({
+            "kind": "keyphrase", "text": term, "facet_label": "Publisher CCS Concepts",
+            "facet_strength": "strong", "item_strength": "strong", "facet_rank": facet_rank,
+            "item_rank": len(result) + 1, "global_rank": len(existing) + len(result) + 1,
+            "publisher_classification": anchor,
+        })
+    return result
+
+
 def summary_rows(
     connection: sqlite3.Connection,
     *,
@@ -253,6 +274,7 @@ def summary_rows(
     analysis_model: str,
     collection_id: str,
     summary_generation_seed: int = 42,
+    require_native_terms: bool = False,
 ) -> tuple[list[dict], list[dict]]:
     """Prepare native summary rows without writing anything to FileDB."""
     if (
@@ -315,19 +337,37 @@ def summary_rows(
     if hasattr(embedding_client, "token_count") and hasattr(embedding_client, "model_context"):
         limit = int(embedding_client.model_context().configured_tokens)
     facets_by_node = []
-    extra_texts = []
     for node in ordered:
         extra = prepare_node_facets(
             node.summary, node.native_analysis, text=derived_text,
             start=summary_start_char + node.start_char, end=summary_start_char + node.end_char,
             embedding_client=embedding_client, limit=limit,
         )
-        extra_texts.extend(item["text"] for item in extra)
         facets_by_node.append(extra)
+    extra_texts = [item["text"] for items in facets_by_node for item in items]
+    publisher_items = []
+    if require_native_terms and not any(
+        item["kind"] in ("keyword", "keyphrase") for items in facets_by_node for item in items
+    ):
+        # Each printed subject belongs to the full-document root and is indexed only once.
+        if original_path.lower().endswith(".pdf") and root.native_analysis is not None:
+            publisher_items = _publisher_keyphrases(
+                derived_text, facets_by_node[-1], summary_start_char, summary_start_char + root.end_char,
+                embedding_client, limit,
+            )
+        if not publisher_items:
+            raise RuntimeError("requested native keyword and keyphrase generation produced no indexable terms")
+        facets_by_node[-1].extend(publisher_items)
     all_texts=[node.summary for node in ordered]+extra_texts
     all_vectors=embedding_client.embed(all_texts)
     if len(all_vectors)!=len(all_texts):
         raise RuntimeError("missing native facet or summary embedding")
+    if publisher_items:
+        # Quantized E5 batches can change with padding. Keep the model's original batch intact.
+        publisher_vectors = embedding_client.embed([item["text"] for item in publisher_items])
+        if len(publisher_vectors) != len(publisher_items):
+            raise RuntimeError("missing publisher classification embedding")
+        all_vectors = [*all_vectors, *publisher_vectors]
     vectors=all_vectors[:len(ordered)]
     extra_vectors=iter(all_vectors[len(ordered):])
     if getattr(embedding_client, "embedding_dimension", None) != 384:
@@ -454,8 +494,9 @@ def summary_rows(
                 raise ValueError("native facet embedding must be normalized")
             native_blob=np.asarray(native_vector,dtype="<f2").tobytes()
             native_sha=hashlib.sha256(native_blob).hexdigest()
+            extractor = CCS_EXTRACTOR if "publisher_classification" in item else analysis_model
             native_representation_id=stable_representation_id(
-                chunk_id, analysis_model, _VERSION, embedding_client.model,
+                chunk_id, extractor, _VERSION, embedding_client.model,
                 int(item["global_rank"]),
             )
             representations.append({
@@ -470,7 +511,7 @@ def summary_rows(
                 "global_rank":int(item["global_rank"]),
                 "representation_text":native_text,
                 "representation_text_sha256":_sha(native_text),
-                "analysis_model":analysis_model,
+                "analysis_model":extractor,
                 "analysis_model_fingerprint":None,
                 "prompt_version":_VERSION,
                 "generation_seed":summary_generation_seed,
@@ -478,6 +519,9 @@ def summary_rows(
                 "generation_json":json.dumps({
                     **provenance,
                     "native_facet_kind":native_kind,
+                    **({"publisher_classification": item["publisher_classification"],
+                        "source_scope": "publisher_printed_classification"}
+                       if "publisher_classification" in item else {}),
                     "native_facet_label":item["facet_label"],
                     **({"identifier_list_member": item["identifier_list_member"]}
                        if "identifier_list_member" in item else {}),

@@ -18,6 +18,7 @@ from dataclasses import asdict
 from datetime import datetime, timezone
 import tempfile
 import hashlib
+from itertools import chain
 import json
 import os
 from pathlib import Path
@@ -42,6 +43,7 @@ from file_system_catalog.hierarchical_summary_search import summary_index_scope,
 from file_system_catalog.summary_search_batched import search_summary_entries_batched
 from file_system_catalog.source_evidence import source_evidence_candidates
 from file_system_catalog.named_source import resolve_source_name
+from file_system_catalog.publisher_ccs import PREFIX_CHARS, first_page_ccs
 from file_system_catalog.source_passage_digests import source_passage_digests
 from file_system_catalog.summary_search_audit import (
     append_query_audit, make_search_audit, recent_search_audits, AUDIT_DIR,
@@ -570,14 +572,12 @@ def import_source(args):
             tree=tree,
             embedding_client=model,
             analysis_model=payload["model"],
+            require_native_terms=bool(payload.get("native_facets")),
             collection_id=COLLECTION,
         )
     if (len(chunks)!=len(tree.nodes)
             or sum(r["representation_kind"] in ("summary","summary_long") for r in reps)!=len(tree.nodes)):
         raise RuntimeError("missing required source-linked native summary vector")
-    if (payload.get("native_facets") and
-            not any(r["representation_kind"] in ("keyword","keyphrase") for r in reps)):
-        raise RuntimeError("requested native keyword and keyphrase generation produced no indexable terms")
     print("VERIFIED_SUMMARY_VECTORS", json.dumps({
         "original_path": source["original_path"],
         "nodes": len(tree.nodes),
@@ -665,13 +665,22 @@ def _search_impl(args) -> dict:
         try:
             verify_publisher_revision(publisher_path(path), original)
             derived = checked_derivative_path(derivative[3])
-            full_digest, passages = source_passage_digests(regular_file_blocks(derived), intervals)
+            blocks = regular_file_blocks(derived)
+            subjects = {}
+            if any("publisher_classification" in hit for hit in current):
+                prefix = next(blocks, b"")
+                # The complete stream is strictly decoded and hashed below.
+                subjects = first_page_ccs(prefix[:4 * PREFIX_CHARS].decode("utf-8", errors="ignore"))
+                blocks = chain((prefix,), blocks)
+            full_digest, passages = source_passage_digests(blocks, intervals)
         except (OSError, ValueError):
             return []
         if full_digest != derivative[2]:
             return []
         verified = [hit for hit in current
-                    if passages.get((hit["source_start_char"], hit["source_end_char"])) == hit["source_passage_sha256"]]
+                    if passages.get((hit["source_start_char"], hit["source_end_char"])) == hit["source_passage_sha256"]
+                    and ("publisher_classification" not in hit
+                         or subjects.get(hit["summary"]) == hit["publisher_classification"])]
         if verified:
             checked.add((path, derivative[1], derivative[2]))
         return verified

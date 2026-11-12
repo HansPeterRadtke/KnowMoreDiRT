@@ -20,6 +20,8 @@ from typing import Callable
 
 import numpy as np
 
+from .publisher_ccs import CCS_EXTRACTOR
+
 SUMMARY_PROMPT = "kmd-hierarchical-source-summary-v1"
 
 
@@ -104,7 +106,7 @@ def _validated_summary_node(db, rep_id, similarity: float, *,
                c.chunk_id, c.start_char, c.end_char, c.text_sha256,
                c.content_sha256, r.representation_id,
                r.representation_kind, r.representation_text,
-               r.representation_text_sha256, r.generation_json
+               r.representation_text_sha256, r.generation_json, r.analysis_model
         FROM content_representations r
         JOIN content_chunks c ON c.chunk_id=r.chunk_id
         JOIN filesystem_entries f ON f.id=c.filesystem_entry_id
@@ -118,7 +120,7 @@ def _validated_summary_node(db, rep_id, similarity: float, *,
     if not r:
         return None
     (entry_id,path,source_bytes,chunk_id,start,end,source_passage_sha,
-     original_sha,representation_id,kind,text,summary_sha,provenance_raw)=r
+     original_sha,representation_id,kind,text,summary_sha,provenance_raw,analysis_model)=r
     if not isinstance(text, str) or hashlib.sha256(text.encode("utf-8")).hexdigest() != summary_sha:
         return None
     try:
@@ -145,12 +147,20 @@ def _validated_summary_node(db, rep_id, similarity: float, *,
         )
     ):
         return None
+    anchor = provenance.get("publisher_classification")
+    if analysis_model == CCS_EXTRACTOR or "publisher_classification" in provenance:
+        if (analysis_model != CCS_EXTRACTOR or kind != "keyphrase" or not isinstance(anchor, dict)
+                or type(anchor.get("start_char")) is not int or type(anchor.get("end_char")) is not int
+                or not start <= anchor["start_char"] < anchor["end_char"] <= end
+                or anchor["end_char"] - anchor["start_char"] != len(text)):
+            return None
     return {
         "filesystem_entry_id": entry_id,
         "original_path": path,
         "original_bytes": source_bytes,
         "original_sha256": original_sha,
         "derived_sha256": provenance["derived_sha256"],
+        **({"publisher_classification": anchor} if anchor is not None else {}),
         "summary_level": provenance["summary_level"],
         "summary_node_id": provenance["node_id"],
         "summary_kind": kind,
