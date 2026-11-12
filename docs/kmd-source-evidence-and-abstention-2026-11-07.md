@@ -126,3 +126,17 @@ The November 12 audit revisited all 17 previously shortened sections and restore
 The reader also follows a protocol exchange when the preceding paragraph identifies the figure by number, the printed messages fit the drawing, and the caption repeats that number. It recognizes exchanges with participant columns, labeled handshake phases and symbol legends. It can follow a printed CoAP error response with a header, a content format and an indented payload. For example, continuing RFC 9846 section 2 now reaches the qualification about early application data and peer authentication after the handshake diagram.
 
 A follow-up check recovered four section endings and 12,532 characters. Across the same 344 RFCs, 12,521 of 12,524 numbered sections now reach the next independently located boundary. RFC 9919 appendices B.3 and B.5 and RFC 9578 section 4 still stop at an unclassified margin. The before-and-after publisher byte ranges are under `search-audit/rfc-referenced-figures-20261112`.
+
+## Two ACL papers on citation attribution and redundant evidence
+
+On November 12, the offline collection already held the 2026 ACL papers *CiteGuard* and *RARE* with CC BY 4.0 recorded in the source manifest. Each had three overview vectors. Neither had native full-text passages. CiteGuard tests citation attribution against human references and examines alternative citations. RARE evaluates retrieval when the same fact appears in several documents. Both are relevant to the shared request for source-revision-aware retrieval evaluation. [CiteGuard](https://aclanthology.org/2026.acl-long.282/) and [RARE](https://aclanthology.org/2026.acl-long.923/).
+
+The existing incremental writer added 81 CiteGuard passage vectors and 187 RARE passage vectors to the original FileDB. Re-extracting each of the 43 physical PDF pages reproduced its stored page text. The audit verified every new vector checksum and source span, coverage of every non-whitespace character in both derivatives, and the byte-for-byte contents of all 70,575 previous passage and overview rows. All 21 planned units were present afterward. Eight controls using in-memory changes to revision records confirmed rejection of stale or missing provenance.
+
+Four questions about the papers’ methods were fixed before indexing. Previously, the expected papers ranked third and fourth on two questions and fell outside the first eight on the other two. After indexing, they ranked first on three questions and second on the fourth. For all four questions, the best semantic passage missed the preselected methods page. Passing the same wording and the selected original path to `knowledge-library-summaries source-evidence` returned a physically verified answer in its first excerpt for each question. Three excerpts matched the preselected page. On the fourth, the expected explanation of rank fusion was on page 3, and the first excerpt independently supported it on page 19. These measurements cover two papers and four questions.
+
+On Raspi, the following read-only check verifies the saved results against the publisher PDFs, the native rows, and the original query receipts. The same directory contains the frozen questions, before-and-after rankings, revision controls, and the final checkpoint. To rerun the four semantic queries against the current index, run the neighboring `retrieval.py` with the semantic Python interpreter.
+
+```sh
+python3 /data/var/knowmoredirt/knowledge-library/search-audit/acl-citation-redundancy-20261112/replay.py
+```
