@@ -4,6 +4,8 @@ from __future__ import annotations
 import re
 from collections.abc import Mapping
 
+from .rfc_section import matching_rfc, rfc_number
+
 _FLAGS = re.IGNORECASE | re.ASCII
 _DOI = re.compile(r"(?:doi:[ \t]*|https://doi\.org/)?(10\.[0-9]{4,9}/[-._;()/:a-z0-9]+)", _FLAGS)
 _MODERN_ARXIV = r"([0-9]{2}(?:0[1-9]|1[0-2])\.[0-9]{4,5}(?:v[1-9][0-9]*)?)"
@@ -13,6 +15,9 @@ _ARXIV_PDF = re.compile(r"https://arxiv\.org/pdf/" + _MODERN_ARXIV + r"(?:\.pdf)
 
 
 def publication_identifier(text: str) -> tuple[str, str] | None:
+    number = rfc_number(text)
+    if number:
+        return "catalog_rfc", number
     match = _DOI.fullmatch(text)
     if match:
         return "catalog_doi", match[1].lower()
@@ -68,10 +73,14 @@ def _matching_arxiv(record: dict, requested: str) -> str | None:
 
 def matching_publications(identifier: tuple[str, str], manifest: Mapping[str, dict]) -> dict[str, str]:
     kind, value = identifier
-    match = _matching_doi if kind == "catalog_doi" else _matching_arxiv
+    media, match = {
+        "catalog_doi": ("pdf", _matching_doi),
+        "catalog_arxiv": ("pdf", _matching_arxiv),
+        "catalog_rfc": ("text", matching_rfc),
+    }[kind]
     publications = {}
     for path, record in manifest.items():
-        if record.get("kind") == "pdf":
+        if record.get("kind") == media:
             archived_identifier = match(record, value)
             if archived_identifier is not None:
                 publications[path] = archived_identifier

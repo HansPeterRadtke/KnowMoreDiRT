@@ -6,6 +6,7 @@ import unicodedata
 from collections.abc import Mapping
 
 from .publication_identifier import matching_publications, publication_identifier
+from .rfc_section import split_rfc_citation
 
 
 # An unquoted name inside a longer question needs an affirmative source
@@ -42,9 +43,13 @@ def _quoted(text: str):
 def _requested_names(query: str) -> dict[str, str]:
     """Map complete names to any remaining question about their contents."""
     names = {query: ""}
+    if rfc := split_rfc_citation(query):
+        names[rfc[0]] = rfc[1]
     quoted = _quoted(query)
     if quoted and not quoted[1].strip():
         names[quoted[0]] = quoted[1].lstrip(" ,:;—")
+        if rfc := split_rfc_citation(quoted[0]):
+            names[rfc[0]] = rfc[1]
     citation = _CITATION.match(query)
     if citation:
         rest = query[citation.end():]

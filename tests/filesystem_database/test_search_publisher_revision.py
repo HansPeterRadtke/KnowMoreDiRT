@@ -105,6 +105,28 @@ class PublisherRevisionSearchTests(unittest.TestCase):
         with self.assertRaisesRegex(ValueError, "catalog record changed"):
             self.cli.checked_original(self.names[0], publication_record=dict(book, doi="10.1234/old"))
 
+    def test_exact_section_respects_source_evidence_passage_limit(self):
+        args = SimpleNamespace(query="RFC 9110, Section 9.2.2", top=0, snippet_characters=900)
+        with mock.patch.object(self.cli, "append_query_audit") as log, self.assertRaisesRegex(ValueError, "passage count"):
+            self.cli.original_source_evidence(args)
+        self.assertFalse(log.call_args.args[0]["success"])
+
+    def test_rfc_pin_requires_the_actual_publisher_header_and_acquisition_url(self):
+        manifest = json.loads(self.cli.SOURCES.read_text())
+        book = manifest["sources"][0]
+        book.update(kind="text", url="https://www.rfc-editor.org/rfc/rfc9110.txt")
+        self.cli.SOURCES.write_text(json.dumps(manifest))
+        self.query = "RFC 9110"
+        self.assertEqual(self.search()["source_name_match"]["status"], "no_verified_index_match")
+        with self.assertRaisesRegex(ValueError, "acquisition URL"):
+            self.cli.checked_original(self.names[0], include_publisher_text=True, publication_record=book)
+        ledger = json.loads(self.cli.LEDGER.read_text())
+        ledger["items"][0]["url"] = book["url"]
+        self.cli.LEDGER.write_text(json.dumps(ledger))
+        self.assertEqual(self.search(facets=True)["source_name_match"]["status"], "no_verified_index_match")
+        with self.assertRaisesRegex(ValueError, "publisher header"):
+            self.cli.checked_original(self.names[0], include_publisher_text=True, publication_record=book)
+
     def test_missing_publication_identifier_returns_no_semantic_substitute(self):
         self.query = "arXiv:2608.03496v3"
         with mock.patch.object(self.embeddings, "embed_queries", side_effect=AssertionError("unexpected embedding")):

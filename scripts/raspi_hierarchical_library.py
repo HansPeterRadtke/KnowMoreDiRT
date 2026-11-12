@@ -46,6 +46,7 @@ from file_system_catalog.named_source import resolve_source_name
 from file_system_catalog.publication_identifier import publication_receipt_matches
 from file_system_catalog.publisher_ccs import PREFIX_CHARS, first_page_ccs
 from file_system_catalog.publisher_pdf_page import verify_pdf_page_excerpts
+from file_system_catalog.rfc_section import matching_rfc, rfc_header_matches, rfc_number, rfc_section_evidence, section_key
 from file_system_catalog.source_passage_digests import source_passage_digests
 from file_system_catalog.summary_search_audit import (
     append_query_audit, make_search_audit, recent_search_audits, AUDIT_DIR,
@@ -63,6 +64,7 @@ SOURCE_MAP = CACHE / "source-map.sqlite3"
 OUT = Path("/data/var/knowmoredirt/knowledge-library/summaries")
 COLLECTION = "raspi-original-books-semantic-content-v1"
 DB_BUDGET = 4 * 1024 * 1024 * 1024
+PUBLISHER_TEXT_LIMIT = 8 * 1024 * 1024
 GUARD_TEXT = "exclude_unresolvable_summary_candidates_from_native_excerpt_search_v1"
 
 
@@ -153,9 +155,16 @@ def checked_original(relative: str, *, include_publisher_text: bool = False,
         raise ValueError("publication catalog record changed or acquisition URL differs from completed receipt")
     capture = None
     if (include_publisher_text and path.suffix.casefold() in (".md", ".markdown", ".txt")
-            and type(record.get("bytes_received")) is int and record["bytes_received"] <= 8 * 1024 * 1024):
+            and type(record.get("bytes_received")) is int and record["bytes_received"] <= PUBLISHER_TEXT_LIMIT):
         capture = bytearray()
     original_bytes = verify_publisher_revision(path, record, capture=capture)
+    number = None
+    if include_publisher_text and entries[0].get("kind") == "text":
+        number = rfc_number(entries[0].get("url") or "")
+        if number and (not matching_rfc(entries[0], number)
+                       or not publication_receipt_matches(entries[0], record)
+                       or not rfc_header_matches(capture or b"", number)):
+            raise ValueError("RFC number, publisher header or acquisition receipt does not match")
     with sqlite3.connect(f"file:{SOURCE_MAP}?mode=ro", uri=True) as con:
         rows = con.execute(
             "SELECT source_sha256,derived_sha256,derived_path,status "
@@ -180,6 +189,7 @@ def checked_original(relative: str, *, include_publisher_text: bool = False,
         "derived_sha256": derivative_sha,
         "derived_text": text,
         **({"publisher_text_bytes": bytes(capture)} if capture is not None else {}),
+        **({"verified_rfc_number": number} if number else {}),
     }
 
 
@@ -651,6 +661,7 @@ def _search_impl(args) -> dict:
     manifest, ledger, sources = _current_versions()
     name_match = resolve_source_name(args.query, manifest)
     preferred_path = name_match.get("original_path") if name_match else None
+    publication = name_match.get("matched_identifier") if name_match else None
     checked = set()
 
     def verify_document(hits):
@@ -659,7 +670,7 @@ def _search_impl(args) -> dict:
         derivative = sources.get(path)
         if path not in manifest or not original or not derivative or original.get("sha256") != derivative[1]:
             return []
-        if (path == preferred_path and name_match.get("kind") in ("catalog_arxiv", "catalog_doi")
+        if (path == preferred_path and publication
                 and not publication_receipt_matches(manifest[path], original)):
             return []
         current = [
@@ -671,7 +682,15 @@ def _search_impl(args) -> dict:
             return []
         intervals = {(hit["source_start_char"], hit["source_end_char"]) for hit in current}
         try:
-            verify_publisher_revision(publisher_path(path), original)
+            if path == preferred_path and name_match["kind"] == "catalog_rfc":
+                if original["bytes_received"] > PUBLISHER_TEXT_LIMIT:
+                    return []
+                raw = bytearray()
+                verify_publisher_revision(publisher_path(path), original, capture=raw)
+                if not rfc_header_matches(raw, publication.removeprefix("RFC ")):
+                    return []
+            else:
+                verify_publisher_revision(publisher_path(path), original)
             derived = checked_derivative_path(derivative[3])
             blocks = regular_file_blocks(derived)
             subjects = {}
@@ -735,6 +754,8 @@ def _search_impl(args) -> dict:
         else:
             warning = ("The named original has no verified summary result. Any ranked documents are other "
                        "sources. Use source-evidence with the exact catalog path to inspect the named original.")
+    elif missing_identifier and name_match["kind"] == "catalog_rfc":
+        warning = "The catalog has no archived RFC Editor text matching this RFC number."
     elif missing_identifier:
         warning = "The catalog has no archived PDF matching this publication identifier and requested version."
     elif name_match:
@@ -808,7 +829,10 @@ def original_source_evidence(args) -> None:
     evidence_query = args.query
     match = None
     publication_record = None
+    engine = "verified_original_ephemeral_fts5_v1"
     try:
+        if not 1 <= args.top <= 50:
+            raise ValueError("invalid bounded requested source passage count")
         if original_path is None:
             explicit_name = getattr(args, "source_name", None)
             manifest = _unique_path_records(json.loads(SOURCES.read_text())["sources"])
@@ -816,14 +840,19 @@ def original_source_evidence(args) -> None:
             if not match:
                 raise ValueError("source name unrecognized; supply an exact --source-name or --original-path")
             if match["status"] == "no_catalog_match":
+                if match["kind"] == "catalog_rfc":
+                    raise ValueError("no archived RFC Editor text matches this RFC number")
                 raise ValueError("no cataloged PDF matches this publication identifier and requested version")
             if match["status"] != "unique":
                 choices = "\n".join(match["candidate_paths"])
                 raise ValueError(f"source name matches {match['matching_catalog_paths']} catalog paths; "
                                  f"select --original-path. Available choices include\n{choices}")
             original_path = match["original_path"]
-            if match["kind"] in ("catalog_arxiv", "catalog_doi"):
+            if "matched_identifier" in match:
                 publication_record = manifest[original_path]
+            if explicit_name and match.get("kind") == "catalog_rfc" and match.get("subject_query"):
+                if section_key(match["subject_query"]) != section_key(args.query):
+                    raise ValueError("a section citation is a complete evidence query; supply it as the positional query")
             if explicit_name is None:
                 evidence_query = match.get("subject_query", "")
                 if not evidence_query:
@@ -836,18 +865,24 @@ def original_source_evidence(args) -> None:
             ).fetchone()
         if row is None:
             raise ValueError("original has no canonical KnowMoreDiRT FileDB entry")
-        result=source_evidence_candidates(
-            original_path=original_path,
-            original_title=source["title"],
-            filesystem_entry_id=int(row[0]),
-            original_sha256=source["original_sha256"],
-            derived_sha256=source["derived_sha256"],
-            derived_text=source["derived_text"],
-            publisher_text_bytes=source.get("publisher_text_bytes"),
-            query=evidence_query,
-            top=args.top,
-            snippet_characters=args.snippet_characters,
-        )
+        rfc = source.get("verified_rfc_number")
+        selector = section_key(evidence_query) if rfc else None
+        if selector:
+            engine = "verified_rfc_section_opening_v1"
+            result = rfc_section_evidence(source, int(row[0]), rfc, selector, args.snippet_characters)
+        else:
+            result = source_evidence_candidates(
+                original_path=original_path,
+                original_title=source["title"],
+                filesystem_entry_id=int(row[0]),
+                original_sha256=source["original_sha256"],
+                derived_sha256=source["derived_sha256"],
+                derived_text=source["derived_text"],
+                publisher_text_bytes=source.get("publisher_text_bytes"),
+                query=evidence_query,
+                top=args.top,
+                snippet_characters=args.snippet_characters,
+            )
         if Path(original_path).suffix.casefold() == ".pdf":
             hits = result["passages"]
             proofs = verify_pdf_page_excerpts(publisher_path(original_path), source["original_sha256"], hits)
@@ -886,7 +921,8 @@ def original_source_evidence(args) -> None:
         "derived_sha256":result["derived_sha256"],
         "success":True,
         "count":result["returned_passages"],
-        "retrieval_engine":"verified_original_ephemeral_fts5_v1",
+        "retrieval_engine":engine,
+        **({"rfc_section_lookup":result["rfc_section_lookup"]} if "rfc_section_lookup" in result else {}),
         "duration_seconds":round(time.monotonic()-started,3),
         **({"pdf_page_verification": result["pdf_page_verification"]} if "pdf_page_verification" in result else {}),
         "ranked_source_spans":[{
@@ -898,8 +934,7 @@ def original_source_evidence(args) -> None:
             "excerpt_start_char":v["excerpt_start_char"],
             "excerpt_end_char":v["excerpt_end_char"],
             "excerpt_sha256":v["excerpt_sha256"],
-            "lexical_bm25":v["lexical_bm25"],
-            "matched_source_terms":v["matched_source_terms"],
+            **{key: v[key] for key in ("lexical_bm25", "matched_source_terms") if key in v},
             **({"matched_word_forms": v["matched_word_forms"]} if "matched_word_forms" in v else {}),
             **({"matched_identifier_words": v["matched_identifier_words"]} if "matched_identifier_words" in v else {}),
             **({"publisher_excerpt": v["publisher_excerpt"]} if "publisher_excerpt" in v else {}),
@@ -909,7 +944,7 @@ def original_source_evidence(args) -> None:
     }
     filename=append_query_audit(receipt)
     result["query"]=args.query
-    result["retrieval_engine"]="verified_original_ephemeral_fts5_v1"
+    result["retrieval_engine"]=engine
     result["query_audit_logged"]=True
     result["private_query_audit_file"]=str(filename)
     print(json.dumps(result,indent=2,ensure_ascii=False))
@@ -1030,7 +1065,7 @@ def main():
     )
     target = evidence.add_mutually_exclusive_group()
     target.add_argument("--original-path", help="Exact catalog path of the publisher file")
-    target.add_argument("--source-name", help="Exact catalog title, DOI, arXiv reference, or publisher-qualified archived skill name")
+    target.add_argument("--source-name", help="Exact catalog title, RFC number, DOI, arXiv reference, or publisher-qualified archived skill name")
     evidence.add_argument("query")
     evidence.add_argument("--top",type=int,default=5)
     evidence.add_argument("--snippet-characters",type=int,default=900)

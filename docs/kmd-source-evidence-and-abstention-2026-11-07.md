@@ -78,3 +78,22 @@ The checker hashes the open publisher PDF against the expected revision and give
 To reproduce a citation, run `pdftotext -f N -l N -layout -enc UTF-8 original.pdf -` for the reported page. The SHA-256 of its output bytes must equal `page_text_sha256`. Decode UTF-8, collapse whitespace with `" ".join(text.split())`, then take the half-open character range `[start_char:end_char]`. That slice reproduces the entire excerpt after the same whitespace normalization, preserving case, punctuation and word order. These coordinates refer to extracted page text. The check does not assess whether an excerpt answers a question or establish visual content in a scanned figure.
 
 In the November 12 replay, independent extraction located all 26 sampled excerpts from 13 PDFs. Fourteen historical labels needed correction across seven papers and twelve labels were accurate. A separate panel of four natural questions returned twelve excerpts, nine of which needed new page numbers. Three citations in a longer textbook verified on their nominated pages. An image-only OCR result retained an unverified page status. Repeated phrases and deliberately altered excerpts in two real papers received no physical citation. The private Raspi protocol and per-page checks are under `search-audit/physical-pdf-citations-20261112`.
+
+## RFC numbers and section citations on Raspi
+
+Use an RFC number to find the archived standard. Use a section citation to read the opening of that section directly from the publisher text, even while the standard is waiting for recursive summaries.
+
+```sh
+knowledge-library-summaries search 'RFC 9607' --top 3
+knowledge-library-summaries source-evidence 'RFC 9110, Section 9.2.2'
+knowledge-library-summaries source-evidence 'https://www.rfc-editor.org/rfc/rfc9000.html#appendix-A.1'
+knowledge-library-summaries source-evidence --source-name 'RFC 9110' 'HTTP request semantics'
+```
+
+A verified native summary of an explicitly requested RFC ranks first. Its cosine score retains its original meaning. The operator checks the official plain-text acquisition URL, the completed download receipt, the number in the publisher header, and the original, derivative and indexed passage hashes. An unarchived RFC returns zero documents. An archived RFC still awaiting a verified summary reports `no_verified_index_match`. Use the section command to inspect it directly.
+
+Exact section evidence identifies a unique body heading and compares its title with the printed contents. Some standards omit deep subsections from their contents. For those, the lookup verifies the chain of enclosing body headings back to an ancestor listed in the contents. A missing or conflicting section returns zero passages and `section_not_verified`. An ordinary topic query within a named standard uses the existing lexical search.
+
+Read `rfc_section_lookup.scope` to distinguish a heading with an opening paragraph from a heading that immediately introduces a child section. The excerpt ends at the configured character limit, and `truncated` records whether more of the opening is available. Read the rest of the section before treating the opening as a complete requirement. To reproduce the citation, use the half-open `publisher_excerpt.start_byte` and `end_byte` range in the original file. The SHA-256 of those bytes must equal `publisher_excerpt.sha256`. Decode UTF-8 and normalize line endings to compare with `source_excerpt`. The query receipt records the same section, extent, and hashes.
+
+The November 12 audit checked 344 archived publisher texts. It matched 12,524 numbered body heading positions, including 816 whose enclosing headings supplied the contents check. A separate sample fixed 694 raw byte positions before implementation. All 694 returned excerpts reproduced the publisher bytes at those positions. An additional deep subsection in each of 72 standards also reproduced the expected raw bytes. One invented section number in each original returned zero passages. In the two native search comparisons, RFC 9607 moved from outside the first three results to first, and RFC 9941 moved from third to first. The private reproduction protocol and receipts are in `search-audit/rfc-section-citations-20261112`.
