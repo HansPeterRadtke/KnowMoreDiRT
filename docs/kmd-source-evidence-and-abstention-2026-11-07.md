@@ -140,3 +140,38 @@ On Raspi, the following read-only check verifies the saved results against the p
 ```sh
 python3 /data/var/knowmoredirt/knowledge-library/search-audit/acl-citation-redundancy-20261112/replay.py
 ```
+
+## November 13 — abstain from unreadable PDF font extraction
+
+Verifying an extracted excerpt against its original PDF page proves physical
+location, not human readability. A recovered ten-page, 97.8 MB rendering
+paper, *Multi-Layer Reservoir Splatting for Temporal Reuse under Disocclusion*,
+has some pages where the publisher's embedded font mapping produces
+NUL-interleaved strings. In six previously physically verified search
+excerpts, four included 52–165 NULs per 950 characters. Despite matching the
+source's PDF text layer, those excerpts should not be presented as normal
+readable source evidence.
+
+The original-source evidence locator now skips PDF excerpts with at least
+twelve NUL characters and at least two percent NUL density. It records
+`unreadable_pdf_excerpts_dropped` and explicitly directs the reader back to
+the publisher PDF; it does not modify or "correct" original or derivative
+text, any source byte position, vector, document rank, or original checksum.
+This is a bounded heuristic for one demonstrated encoding failure, not a
+semantic or OCR correctness classifier; low-NUL excerpts can still be bad,
+and source images or equations may require direct reading.
+
+On the same query, four unreadable excerpts were omitted and the normal
+candidate search returned five alternative, physically verified page excerpts,
+all with zero NULs and exact derivative character offsets and checksums.
+The original PDF was unchanged. Five CiteGuard and five RARE control excerpts
+retained their exact page, order, text hash, coordinates and verification
+status. The 244 unittest-compatible KMD filesystem tests passed, excluding
+the separate pytest-only resource-safety module because pytest is not
+installed in the selected Python environment. New synthetic cases cover a
+garbled PDF page, its clean alternative, control strings and non-PDF scope.
+
+Private reproducibility evidence and before/after query JSON are under
+`/data/var/knowmoredirt/knowledge-library/search-audit/large-ambiguous-pdf-20261113/`.
+This code does not automatically run in other deployed commands until their
+version is updated; no shared dirty tree or original source was altered.

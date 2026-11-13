@@ -24,6 +24,17 @@ def _sha(text: str) -> str:
     return hashlib.sha256(text.encode("utf-8")).hexdigest()
 
 
+def _garbled_pdf_excerpt(text: str) -> bool:
+    """Detect text-layer encoding failures, not a semantic quality judgment.
+
+    Some publisher PDFs expose glyph codes as NUL-interleaved strings. Such
+    spans can exactly match the PDF bytes yet are unusable as quoted evidence.
+    Do not repair/normalize the source text or invent replacement glyphs.
+    """
+    nul = text.count("\x00")
+    return nul >= 12 and nul * 50 >= max(1, len(text))
+
+
 _SOURCE_UNIT = re.compile(r"(?m)^\[\[SOURCE UNIT: ([^\]\r\n]{1,400})\]\][ \t]*(?:\r?\n|$)")
 _FRONT_OPEN = re.compile(r"---[ \t]*\r?\n")
 _FRONT_END = re.compile(r"(?m)^(?:---|\.\.\.)[ \t]*(?:\r?\n|$)")
@@ -236,6 +247,7 @@ def source_evidence_candidates(
         # not a supporting source passage.
         out = []
         accepted = set()
+        unreadable_pdf_excerpts_dropped = 0
         candidates = _passage_matches(idx, query, terms, allow_forms=markdown and not identifiers,
                                       limit=min(2000, max(100, top * 12)))
         for item, forms in candidates:
@@ -276,6 +288,12 @@ def source_evidence_candidates(
                 exact_concepts = set(terms).intersection(covered) | identifier_words
                 if len(terms) > 1 and not exact_concepts.difference(matched_forms):
                     continue
+            # Physical PDF verification establishes location, not readability.
+            # Reject heavily NUL-interleaved font extraction from evidence, but
+            # keep the original and derivative intact for independent inspection.
+            if original_path.casefold().endswith(".pdf") and _garbled_pdf_excerpt(excerpt):
+                unreadable_pdf_excerpts_dropped += 1
+                continue
             accepted.add((start, end))
             out.append({
                 "original_path":original_path,
@@ -316,10 +334,14 @@ def source_evidence_candidates(
         "source_units":source_units,
         "ephemeral_fts_passages":chunks,
         "returned_passages":len(out),
+        "unreadable_pdf_excerpts_dropped":unreadable_pdf_excerpts_dropped,
         "passages":out,
         "evidence_warning":(
             "These are literal matches in the verified original source, "
             "not proof the passage answers the question. Source scope, "
             "negation, date and contradictions require separate validation."
+            + (" Heavily NUL-interleaved PDF text-layer excerpts were excluded; "
+               "consult the publisher file for their content."
+               if unreadable_pdf_excerpts_dropped else "")
         ),
     }
