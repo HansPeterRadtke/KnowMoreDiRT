@@ -125,6 +125,39 @@ class OriginalEvidenceTests(TestCase):
         result = source_evidence_candidates(**args, query="APP_SERVICE_URL", top=1)
         self.assertEqual([r["source_section"] for r in result["passages"]], ["actual page"])
 
+    def test_garbled_pdf_excerpt_excluded_without_changing_source_provenance(self):
+        # A font-encoded physical page can contain exact bytes but be illegible.
+        # Its source identity, page marker and SHA remain intact in the source.
+        corrupt = ("reservoir temporal reuse " * 6) + ("\x00G" * 50)
+        clean = ("reservoir temporal reuse works by maintaining samples. " * 8)
+        text = ("[[SOURCE UNIT: PDF page 1]]\n" + corrupt +
+                "\n[[SOURCE UNIT: PDF page 2]]\n" + clean)
+        args = dict(self.args, derived_text=text, derived_sha256=hashlib.sha256(text.encode()).hexdigest(),
+                    original_title="Reservoir sampling paper")
+        result = source_evidence_candidates(**args, query="reservoir temporal reuse",
+                                            top=5, snippet_characters=800)
+        self.assertEqual(1, result["unreadable_pdf_excerpts_dropped"])
+        self.assertEqual(["PDF page 2"], [x["source_section"] for x in result["passages"]])
+        self.assertIn("NUL-interleaved", result["evidence_warning"])
+        for row in result["passages"]:
+            start, end = row["excerpt_start_char"], row["excerpt_end_char"]
+            self.assertEqual(text[start:end], row["source_excerpt"])
+            self.assertEqual(hashlib.sha256(text[start:end].encode()).hexdigest(), row["excerpt_sha256"])
+            self.assertEqual(args["derived_sha256"], row["derived_sha256"])
+
+    def test_pdf_readability_guard_preserves_single_literal_control_and_non_pdf(self):
+        from file_system_catalog.source_evidence import _garbled_pdf_excerpt
+        self.assertFalse(_garbled_pdf_excerpt("normal PDF text with one \x00 and meaningful technical details"))
+        self.assertTrue(_garbled_pdf_excerpt(("\x00G" * 20) + " source terms"))
+        text = ("[[SOURCE UNIT: Original plain text]]\n"
+                + "reservoir temporal reuse " * 6 + ("\x00G" * 50))
+        args = dict(self.args, original_path="reference/notes.md",
+                    derived_text=text, derived_sha256=hashlib.sha256(text.encode()).hexdigest())
+        result = source_evidence_candidates(**args, query="reservoir temporal reuse",
+                                            top=5, snippet_characters=800)
+        self.assertEqual(0, result["unreadable_pdf_excerpts_dropped"])
+        self.assertGreater(result["returned_passages"], 0)
+
     def test_no_lexical_hit_is_not_mislabeled_as_sufficient(self):
         result=source_evidence_candidates(
             **self.args,query="Galactic interstellar zebras neutronium bananas",
