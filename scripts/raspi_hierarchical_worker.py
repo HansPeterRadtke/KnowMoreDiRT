@@ -26,6 +26,7 @@ sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "src"))
 from file_system_catalog.summary_coverage import (
     current_completed_originals, pending_failures, revision_identity, summary_progress_metrics,
 )
+from file_system_catalog.summary_storage_policy import DEFAULT_DATABASE_BUDGET_BYTES
 
 FILEDB = Path("/data/var/knowmoredirt/knowledge-library/filesystem.sqlite3")
 SOURCE_MAP = Path("/data/var/knowmoredirt/knowledge-library/semantic/source-map.sqlite3")
@@ -237,7 +238,7 @@ def run(
                      shard_algorithm="sha256_path_first64_be_modulo",
                      worker_label=worker_label or "original_primary",
                      concurrent_llm_requests=1,
-                     storage_budget_bytes=4 * 1024**3,
+                     storage_budget_bytes=DEFAULT_DATABASE_BUDGET_BYTES,
                      native_facet_policy="summary_and_keywords_single_constrained_model_call")
         while not stop:
             try:

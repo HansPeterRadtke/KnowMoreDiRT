@@ -166,6 +166,23 @@ class SummaryStorageTest(unittest.TestCase):
         self.assertEqual(0, db.execute("SELECT COUNT(*) FROM content_representations").fetchone()[0])
         db.close()
 
+    def test_large_explicit_budget_is_still_bounded_and_transactional(self):
+        db, kwargs = self.prepare()
+        chunks, representations = summary_rows(db, **kwargs)
+        result = append_summary_rows(
+            db, chunk_rows=chunks, representation_rows=representations,
+            max_database_bytes=32 * 1024 ** 3,
+        )
+        self.assertEqual(len(chunks) + len(representations), result["new_rows"])
+        before = db.execute("SELECT COUNT(*) FROM content_representations").fetchone()[0]
+        with self.assertRaisesRegex(ValueError, "capacity"):
+            append_summary_rows(
+                db, chunk_rows=chunks, representation_rows=representations,
+                max_database_bytes=33 * 1024 ** 3,
+            )
+        self.assertEqual(before, db.execute("SELECT COUNT(*) FROM content_representations").fetchone()[0])
+        db.close()
+
     def test_requires_foreign_keys_and_bounded_storage(self):
         db, kwargs = self.prepare()
         c, r = summary_rows(db, **kwargs)

@@ -572,7 +572,7 @@ def append_summary_rows(
         raise ValueError("duplicate native facet or summary representation")
     if len([r for r in representation_rows if r["representation_kind"] in ("summary","summary_long")])!=len(chunk_rows):
         raise ValueError("every original summary node requires one native summary embedding")
-    if not 1024 * 1024 <= max_database_bytes <= 16 * 1024 * 1024 * 1024:
+    if not 1024 * 1024 <= max_database_bytes <= 32 * 1024 * 1024 * 1024:
         raise ValueError("invalid FileDB capacity limit")
     if not connection.execute("PRAGMA foreign_keys").fetchone()[0]:
         raise RuntimeError("foreign keys must be enabled for native KMD writes")
