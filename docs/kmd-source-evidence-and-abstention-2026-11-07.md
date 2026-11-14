@@ -310,3 +310,16 @@ results and read-only reproduction script remain under Raspi's
 `/data/var/knowmoredirt/knowledge-library/search-audit/owner-continuation-20261114-1338/`.
 The original documents, converted text and source index have not been
 rewritten or copied into Git.
+
+### Cross-format archive and workbook acceptance on November 14
+
+The installed exact-source command additionally recovered three individually
+SHA-verified derivative excerpts from the original IHK Rostock liquidity
+planning XLSX and three from the original *10 detailed posters* ZIP of
+embedded usability-heuristic PDFs. The workbook's worksheet labels and the
+ZIP's archive-member page labels are preserved as **extracted-text** scope;
+no original XLSX cell byte interval or independently verified embedded PDF
+physical page is implied. The independent private replay was extended to
+nine originals and 26 current excerpt hashes, including eight exact original
+UTF-8 intervals and six physically verified standalone PDF pages. It did
+not execute workbook formulas, archived scripts, skills or source code.
