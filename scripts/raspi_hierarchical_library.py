@@ -829,6 +829,109 @@ def review_search_log(args) -> None:
     }, indent=2, ensure_ascii=False))
 
 
+def _original_passages(source, entry_id, query, top, snippet_characters):
+    return source_evidence_candidates(
+        original_path=source["original_path"], original_title=source["title"], filesystem_entry_id=entry_id,
+        original_sha256=source["original_sha256"], derived_sha256=source["derived_sha256"],
+        derived_text=source["derived_text"], publisher_text_bytes=source.get("publisher_text_bytes"),
+        query=query, top=top, snippet_characters=snippet_characters,
+    )
+
+
+def _native_passage_search(query, top):
+    # This search belongs to the existing Infra semantic reader on Raspi.
+    from knowledge_library_semantic_query import search as native_search
+
+    return native_search(query, top=top, mode="any")
+
+
+def _discovered_pdf(hit, rank, args, versions, db):
+    path = hit["original_path"]
+    doc = {
+        "rank": rank, "original_path": path, "discovery_chunk_id": hit["kmd_native_chunk_id"],
+        "discovery_similarity": hit["semantic_similarity"], "passages": [],
+    }
+    if hit["source_kind"] != "pdf" or Path(path).suffix.casefold() != ".pdf":
+        return {**doc, "status": "not_pdf"}
+    manifest, ledger, derivatives = versions
+    record = manifest.get(path)
+    derivative = derivatives.get(path)
+    original_sha = hit["original_source_sha256"]
+    if (not record or record.get("kind") != "pdf" or not derivative
+            or ledger.get(path, {}).get("sha256") != original_sha or derivative[1] != original_sha):
+        return {**doc, "status": "source_unavailable", "reason": "discovery revision differs from catalog"}
+    entry_id = hit["kmd_original_file_entry_id"]
+    entry = db.execute(
+        "SELECT id FROM filesystem_entries WHERE id=? AND relative_path_display=? AND entry_type='file'",
+        (entry_id, path),
+    ).fetchone()
+    if entry is None:
+        return {**doc, "status": "source_unavailable", "reason": "discovery entry differs from current FileDB"}
+
+    try:
+        source = checked_original(path, publication_record=record)
+        if (source["original_sha256"], source["derived_sha256"]) != (original_sha, derivative[2]):
+            raise ValueError("source revision changed during discovery")
+        # Look beyond the requested count when a high-ranked excerpt lacks a physical page match.
+        candidates = _original_passages(source, entry_id, args.query,
+                                        args.passages + 3, args.snippet_characters)
+        hits = candidates["passages"]
+        unreadable_dropped = int(candidates.get("unreadable_pdf_excerpts_dropped", 0))
+        proofs = verify_pdf_page_excerpts(publisher_path(path), original_sha, hits)
+    except (ValueError, OSError) as exc:
+        return {**doc, "status": "source_unavailable", "reason": str(exc)[:300]}
+
+    verified = [
+        dict(passage, publisher_pdf_page=proof, source_lexical_rank=rank,
+             matched_excerpt_query_terms=len(passage.get("matched_excerpt_terms", ())))
+        for rank, (passage, proof) in enumerate(zip(hits, proofs, strict=True), 1)
+        if proof["status"] == "verified"
+    ]
+    # A high BM25 match can be generic and omit the decisive sentence.
+    # Prefer physical-page-verified excerpts that cover more DISTINCT actual
+    # query terms, breaking ties with the original lexical order. Retain that
+    # order as source_lexical_rank; these are candidate excerpts, not answers.
+    verified.sort(key=lambda passage: (-passage["matched_excerpt_query_terms"],
+                                       passage["source_lexical_rank"]))
+    verified = verified[:args.passages]
+    return {
+        **doc, "status": "verified" if verified else "no_verified_excerpt", "passages": verified,
+        "source_candidates": len(hits),
+        "unreadable_pdf_excerpts_dropped": unreadable_dropped,
+        "physical_page_unverified_candidates": sum(p["status"] != "verified" for p in proofs),
+        "original_sha256": original_sha, "derived_sha256": derivative[2], "title": source["title"],
+        "publisher_url": record.get("source_url") or record["url"], "filesystem_entry_id": entry_id,
+    }
+
+
+def find_pdf_evidence(args) -> None:
+    """Discover original documents and return only excerpts reproduced on physical PDF pages."""
+    engine = "native_discovery_verified_pdf_excerpts_v1"
+    receipt = {"operation": "find_pdf_evidence", "query": args.query, "retrieval_engine": engine}
+    try:
+        if (not args.query.strip() or len(args.query) > 600 or not 1 <= args.documents <= 5
+                or not 1 <= args.passages <= 5 or not 160 <= args.snippet_characters <= 2000):
+            raise ValueError("invalid PDF evidence query or bounds")
+        versions = _current_versions()
+        discovery = _native_passage_search(args.query, top=args.documents)
+        with sqlite3.connect(f"{DB.resolve().as_uri()}?mode=ro", uri=True) as db:
+            documents = [_discovered_pdf(hit, rank, args, versions, db)
+                         for rank, hit in enumerate(discovery["results"], 1)]
+    except Exception as exc:
+        append_query_audit({**receipt, "success": False, "error": f"{type(exc).__name__}: {exc}"[:300]})
+        raise
+
+    count = sum(len(doc["passages"]) for doc in documents)
+    audited = [{**doc, "passages": [{k: v for k, v in hit.items() if k != "source_excerpt"}
+                                     for hit in doc["passages"]]} for doc in documents]
+    audit_file = append_query_audit({**receipt, "success": True, "verified_excerpts": count, "documents": audited})
+    print(json.dumps({
+        "query": args.query, "retrieval_engine": engine, "documents": documents, "verified_excerpts": count,
+        "query_audit_logged": True, "private_query_audit_file": str(audit_file),
+        "evidence_scope": "Documents retain their native semantic rank. Check whether the quoted text answers the question.",
+    }, indent=2, ensure_ascii=False))
+
+
 def original_source_evidence(args) -> None:
     """Inspect verified original pages; never mistake lexical hits for truth."""
     started=time.monotonic()
@@ -881,18 +984,8 @@ def original_source_evidence(args) -> None:
             engine = "verified_rfc_section_context_v1" if cursor is not None else "verified_rfc_section_opening_v1"
             result = rfc_section_evidence(source, int(row[0]), rfc, selector, args.snippet_characters, cursor=cursor)
         else:
-            result = source_evidence_candidates(
-                original_path=original_path,
-                original_title=source["title"],
-                filesystem_entry_id=int(row[0]),
-                original_sha256=source["original_sha256"],
-                derived_sha256=source["derived_sha256"],
-                derived_text=source["derived_text"],
-                publisher_text_bytes=source.get("publisher_text_bytes"),
-                query=evidence_query,
-                top=args.top,
-                snippet_characters=args.snippet_characters,
-            )
+            result = _original_passages({**source, "original_path": original_path}, int(row[0]), evidence_query,
+                                        args.top, args.snippet_characters)
         if Path(original_path).suffix.casefold() == ".pdf":
             hits = result["passages"]
             proofs = verify_pdf_page_excerpts(publisher_path(original_path), source["original_sha256"], hits)
@@ -1086,11 +1179,16 @@ def main():
                           help="Read the next contiguous excerpt using the previous RFC section result\u0027s context.next_cursor")
     evidence.add_argument("--top",type=int,default=5)
     evidence.add_argument("--snippet-characters",type=int,default=900)
+    discover = sub.add_parser("find-pdf-evidence", help="Find originals by meaning and quote matching physical PDF pages")
+    discover.add_argument("query")
+    discover.add_argument("--documents", type=int, default=3, help="Inspect this many ranked originals (1–5)")
+    discover.add_argument("--passages", type=int, default=2, help="Verified excerpts per PDF (1–5)")
+    discover.add_argument("--snippet-characters", type=int, default=1600)
     audit = sub.add_parser("search-log", help="Review persistent native semantic query rankings")
     audit.add_argument("--last", type=int, default=10)
     a = p.parse_args()
     {"build": build, "import": import_source, "search": search, "status": status,
-     "search-log": review_search_log,
+     "search-log": review_search_log, "find-pdf-evidence": find_pdf_evidence,
      "source-evidence": original_source_evidence}[a.cmd](a)
 
 
