@@ -309,3 +309,57 @@ DOI lookup uses the catalog's explicit DOI for a PDF. A related interview or ref
 The November 12 catalog had 507 DOI records and 270 arXiv PDFs. All 777 matched their acquisition receipts. Across 2,335 identifier queries, every supported spelling tested selected the independently expected path. Asking for an unarchived version of each arXiv record returned zero catalog matches. Of 35 archived PDFs inspected directly, 28 printed the identifier on the first page. Catalog matches use the recorded acquisition metadata and can also cover books or proceedings whose first page omits the identifier.
 
 Two indexed papers previously missed the top three for their own identifiers. Both came first in summary and facet search after the change. Two papers awaiting a summary were available through direct evidence. For these four papers, eight entire excerpts were reproduced on their cited pages by extracting the physical PDFs again and normalizing whitespace. Four control questions over the same frozen native rows retained all 40 ranked positions, scores, node identities and source digests. The private protocol and per-query results are in the Raspi audit directory `publication-identifiers-20261112`.
+
+## November 14, 2026 — native FileDB budget versus full-library indexing
+
+The old four-GiB FileDB checkpoint was a deliberately bounded safeguard, not
+a completed-corpus size estimate. At the November 14 live checkpoint the native
+FileDB contained roughly 1.63 billion bytes, with 5,387 of 17,715 eligible
+originals fully summarized; the total extracted original text was approximately
+2.84 billion characters, only about 168 million of them under completed
+recursive summaries. Both workers were active and reported zero pending errors.
+The existing source inventory was fully downloaded; no new sources or original
+text were fabricated for this capacity change.
+
+A read-only 48-hour measurement counted 852 source-revision-linked documents,
+approximately 47.9 million original characters and 107.5 million bytes across
+three representation fields: native vectors, generated JSON and representation
+text. Extrapolating **only those fields**, the remaining original characters
+would add approximately 5.98 billion bytes at that observed density, with significant uncertainty.
+That is not a complete FileDB size forecast: SQLite indexes, btree pages,
+metadata, future document mix and other writers make the real required space
+larger. The four-GiB checkpoint would therefore stop the two workers long
+before full coverage.
+
+The new bounded operating ceiling is **32 GiB** on the same original KMD
+SQLite FileDB. It is a maximum, not a preallocation, demand to index every
+source immediately, or permission to erase historic rows. The existing
+transactional page-count and foreign-key checks remain mandatory.
+Independent admission requires at least **32 GiB of unprivileged filesystem
+free space plus 256 MiB for SQLite write headroom** before the shared
+content-writer lock can proceed. The guard is checked after acquiring that
+lock and rejects missing or symlinked FileDB paths. Failed admission does not
+delete or replace sources or native vectors. The upper bound in the generic
+native summary writer was raised from 16 to 32 GiB solely to support this
+explicit, tested production checkpoint; smaller caller-specified limits
+remain supported. Both worker programs use the same policy for newly started
+processes, and the operator reports actual disk capacity and admission state
+without claiming a broker disk reservation.
+
+Raspi's data filesystem had approximately 317.7 billion *unprivileged*
+available bytes at the measurement; this exceeded the safety floor.
+The read-only reproducible monitor is:
+
+```sh
+/data/var/knowmoredirt/semantic-venv/bin/python \
+  /data/src/worktrees/knowmoredirt-hierarchical-summary-20261107/scripts/raspi_hierarchical_capacity_audit.py \
+  --window-hours 48
+```
+
+This command reports measured payload and a conservative *partial* remaining
+projection, not a completion date or unconditional guarantee that 32 GiB is
+sufficient. The actual database and progress remain authoritative. Additional
+tests exercise low-space admission, unsafe paths, exhaustion at an explicit
+limit, rejection beyond 32 GiB, and source-hash-preserving native rows.
+The original long-running workers are not automatically restarted or
+interrupted by publishing this policy.

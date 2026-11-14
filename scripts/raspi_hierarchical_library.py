@@ -54,6 +54,9 @@ from file_system_catalog.summary_search_audit import (
 from file_system_catalog.summary_coverage import (
     current_completed_originals, pending_failures, revision_identity, summary_progress_metrics,
 )
+from file_system_catalog.summary_storage_policy import (
+    DEFAULT_DATABASE_BUDGET_BYTES, require_storage_admission, storage_budget_snapshot,
+)
 
 DB = Path("/data/var/knowmoredirt/knowledge-library/filesystem.sqlite3")
 LIBRARY = Path("/data/var/Knowledge Library")
@@ -63,7 +66,7 @@ CACHE = Path("/data/var/knowmoredirt/knowledge-library/semantic")
 SOURCE_MAP = CACHE / "source-map.sqlite3"
 OUT = Path("/data/var/knowmoredirt/knowledge-library/summaries")
 COLLECTION = "raspi-original-books-semantic-content-v1"
-DB_BUDGET = 4 * 1024 * 1024 * 1024
+DB_BUDGET = DEFAULT_DATABASE_BUDGET_BYTES
 PUBLISHER_TEXT_LIMIT = 8 * 1024 * 1024
 GUARD_TEXT = "exclude_unresolvable_summary_candidates_from_native_excerpt_search_v1"
 
@@ -617,6 +620,10 @@ def import_source(args):
     lockfile = DB.parent / ".primary-kmd-content.lock"
     with lockfile.open("a+") as lock:
         acquire_native_filedb_content_lock(lock.fileno(),wait_seconds=90)
+        # Check after taking the inter-process writer lock so concurrent
+        # native jobs cannot race this admission. SQLite keeps its own
+        # transactional size ceiling even if free disk changes afterward.
+        require_storage_admission(DB, budget_bytes=DB_BUDGET)
         with sqlite3.connect(DB, timeout=60) as conn:
             conn.execute("PRAGMA foreign_keys=ON")
             result = append_summary_rows(
@@ -976,6 +983,9 @@ def status(_args):
     result["canonical_database"] = str(DB)
     result["database_bytes"] = DB.stat().st_size
     result["configured_database_budget_bytes"] = DB_BUDGET
+    result["native_filedb_storage_admission"] = storage_budget_snapshot(
+        DB, budget_bytes=DB_BUDGET,
+    )
     # Active document progress is separate from durable complete-root counts:
     # an unfinished subtree must never be presented as indexed evidence.
     worker_state = DB.parent / "hierarchical-worker-status.json"
