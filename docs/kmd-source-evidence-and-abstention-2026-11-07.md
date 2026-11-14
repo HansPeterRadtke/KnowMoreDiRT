@@ -175,3 +175,61 @@ Private reproducibility evidence and before/after query JSON are under
 `/data/var/knowmoredirt/knowledge-library/search-audit/large-ambiguous-pdf-20261113/`.
 This code does not automatically run in other deployed commands until their
 version is updated; no shared dirty tree or original source was altered.
+
+## November 14 — discover documents, then verify their PDF page evidence
+
+The previously separate steps of semantic document discovery and source
+passage inspection can now be run together against the *same* canonical
+KnowMoreDiRT FileDB:
+
+```sh
+knowledge-library-summaries find-pdf-evidence \
+  'How does RARE check whether atomic facts from different documents are redundant?' \
+  --documents 3 --passages 5 --snippet-characters 1600
+```
+
+This is **local, read-only source retrieval**, not generated question
+answering. The command discovers up to five current source documents using
+the existing native semantic reader, preserving their original similarity
+scores and positions. Non-PDF results remain explicitly labeled `not_pdf`;
+missing, stale or reassigned FileDB IDs produce `source_unavailable`, not
+an invented citation. For each eligible PDF, it independently verifies
+the original publisher checksum, the exact completed download receipt,
+the current derived extraction checksum and native FileDB entry ID.
+It then runs bounded original-source lexical passage search and checks
+each selected excerpt against the physical PDF pages using Poppler, the
+original's SHA-256 and exact text occurrence. Only page-`verified`
+excerpts may be returned as candidate evidence. Unverifiable physical
+pages and heavily NUL-corrupted text excerpts remain omitted, with separate
+drop counts and explicit source-status fields.
+
+Passages are candidate evidence, never a proof of the answer. Their selection
+first maximizes **distinct query terms present in the actual excerpt**, and
+uses original lexical rank to break ties. The original lexical rank is
+retained as `source_lexical_rank` alongside the number of covered terms.
+Document rankings and similarity scores are not overwritten by this
+within-document ordering. The original span offsets, passage hashes,
+publisher-page SHA and source revision remain unchanged. Audit logs are
+private and omit quoted `source_excerpt` text, preserving source
+identities and hashes for later reproduction.
+
+The pre-registered ACL CiteGuard/RARE questions from November 12 test exactly
+this distinction. All four questions located their intended paper within
+native document ranks 1–2. Before within-paper evidence ordering, three
+of four returned their expected physical page and both required anchors
+within five excerpts. RARE's question about CRRF rank aggregation and
+confidence scores located the correct paper first but placed its physically
+verified page 3 seventh in the lexical passages. Sorting physically
+verified candidates by distinct query-term coverage lifted that same
+original page into the first five. A complete independent repeat recovered
+the intended page and both anchors in **all four of four** held-out cases.
+Those four successes do not establish open-domain QA precision or
+faithfulness beyond the included source excerpts.
+
+Tests additionally simulate stale publisher revisions, a different native
+filesystem-entry ID, absent physical page evidence, zero matching excerpts,
+unreadable publisher text and correct accounting of rejected candidates.
+No downloaded original, PDF, derivative source, model weights, native
+vectors or concurrent agent worktrees were modified. Private frozen
+questions, pre-change failures, results, and exact repetition scripts live
+in `/data/var/knowmoredirt/knowledge-library/search-audit/provenance-integration-20261114/`.

@@ -159,3 +159,15 @@ Usage on Raspi:
 `status --verify` checks that all currently downloaded originals are present in native `filesystem_entries`, the source root is correct, the SQLite schema/integrity/foreign keys are valid, and reports whether native `content_chunks` and `content_representations` have been populated. Metadata alone is not a completed semantic vector index; preserve that limitation for agents and user reports. Full text PDF page search currently also exists in a **separate** Infra-managed, business-only lexical index; it is not part of this native metadata database. All downloaded text, full-file caches, outputs, SQLite, source inventories and privacy-sensitive metadata remain exclusively under private `/data/var`, not in the KMD or Infra Git repository.
 
 **Initial live acceptance (October 30, 2026):** The original KMD filesystem scanner completed on the full Raspi Knowledge Library, producing the three original SQLite tables and 13,798 real filesystem entries (12,764 files and 1,034 directories); all 12,311 downloader-verified original books and documents matched their KMD paths and byte sizes. There were no scan/hash errors, missing originals, or SQLite integrity/foreign-key failures. KMD counted 10,062 PDFs with parsable page metadata. Poppler emitted 165 nonfatal PDF metadata syntax warnings; those affected originals retained PDF page counts and sampled files were independently readable. The bounded mode intentionally skipped deep ExifTool and full KMD hashing of files exceeding sixty-four kibibytes; original download-ledger full SHA-256 values remain separately available. The semantic content tables are empty and must not be reported as a full vectorized knowledge index. The private complete acceptance report and source inventory live outside Git in the Raspi KMD database directory. Always use live `status --verify` for newer data.
+
+### Native semantic discovery with publisher-verified PDF passages (November 14)
+
+Raspi's summary operator supports
+`knowledge-library-summaries find-pdf-evidence '<question>'` for a bounded
+combination of native FileDB document discovery and physically checked
+publisher PDF excerpts. It returns source identity, native rank, read-only
+passage offsets and SHA-256s, and explicit verification/failure status; it
+does not replace general text or semantic search, verify an answer's
+truth, download new content, or create another FileDB. See
+`docs/kmd-source-evidence-and-abstention-2026-11-07.md` for measured
+retrieval and the audit/revision contract.
