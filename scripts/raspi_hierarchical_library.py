@@ -904,6 +904,221 @@ def _discovered_pdf(hit, rank, args, versions, db):
     }
 
 
+_NON_PDF_SOURCE_KINDS = frozenset(("html", "text", "skill", "xlsx", "zip"))
+
+
+def _discovered_non_pdf(hit, rank, args, versions, db):
+    """Find exact SHA-linked derivative excerpts without claiming literal publisher text.
+
+    The original bytes and extracted text are both independently revision
+    checked. HTML/Office/archive text extraction is a transformation; physical
+    original byte offsets cannot be invented from a matching derivative span.
+    """
+    path = hit["original_path"]
+    kind = hit["source_kind"]
+    doc = {
+        "rank": rank, "original_path": path, "source_kind": kind,
+        "discovery_chunk_id": hit["kmd_native_chunk_id"],
+        "discovery_similarity": hit["semantic_similarity"], "passages": [],
+    }
+    if kind not in _NON_PDF_SOURCE_KINDS:
+        return {**doc, "status": "unsupported_source_kind"}
+    manifest, ledger, derivatives = versions
+    record = manifest.get(path)
+    derivative = derivatives.get(path)
+    original_sha = hit["original_source_sha256"]
+    if (not record or record.get("kind") != kind or not derivative
+            or ledger.get(path, {}).get("sha256") != original_sha
+            or derivative[1] != original_sha):
+        return {**doc, "status": "source_unavailable",
+                "reason": "discovery source kind or revision differs from catalog"}
+    entry_id = hit["kmd_original_file_entry_id"]
+    entry = db.execute(
+        "SELECT id FROM filesystem_entries "
+        "WHERE id=? AND relative_path_display=? AND entry_type='file'",
+        (entry_id, path),
+    ).fetchone()
+    if entry is None:
+        return {**doc, "status": "source_unavailable",
+                "reason": "discovery entry differs from current FileDB"}
+
+    try:
+        # When a plain UTF-8 text source is reproduced exactly, the existing
+        # publisher_excerpt machinery may prove literal original byte offsets.
+        # Other formats keep only the SHA-verified derivative span claim.
+        source = checked_original(path, include_publisher_text=True, publication_record=record)
+        if (source["original_sha256"], source["derived_sha256"]) != (original_sha, derivative[2]):
+            raise ValueError("source revision changed during discovery")
+        candidates = _original_passages(
+            source, entry_id, args.query, args.passages + 3, args.snippet_characters,
+        )
+        hits = candidates["passages"]
+    except (ValueError, OSError) as exc:
+        return {**doc, "status": "source_unavailable", "reason": str(exc)[:300]}
+
+    verified = []
+    for lexical_rank, passage in enumerate(hits, 1):
+        # source_evidence_candidates has checked the exact derived SHA and
+        # calculated excerpt offsets and SHA over those very original-derived
+        # characters. The original bytes have a separate completed ledger SHA.
+        pub = passage.get("publisher_excerpt")
+        scope = "publisher_utf8_byte_interval" if pub else "verified_extracted_text_only"
+        verified.append(dict(
+            passage, source_lexical_rank=lexical_rank,
+            matched_excerpt_query_terms=len(passage.get("matched_excerpt_terms", ())),
+            evidence_provenance={
+                "status": "verified" if pub else "verified_derived_text",
+                "scope": scope,
+                "physical_pdf_page_verified": False,
+                "warning": (
+                    "A publisher-byte range was reproduced against the exact original UTF-8 revision."
+                    if pub else
+                    "The original file SHA and derived text SHA are verified, but extracted "
+                    "text can differ from literal publisher bytes; no physical page/byte quote proven."
+                ),
+            },
+        ))
+    verified.sort(key=lambda passage: (
+        -passage["matched_excerpt_query_terms"], passage["source_lexical_rank"],
+    ))
+    verified = verified[:args.passages]
+    return {
+        **doc, "status": "verified_derived_text" if verified else "no_verified_excerpt",
+        "passages": verified, "source_candidates": len(hits),
+        "original_sha256": original_sha, "derived_sha256": derivative[2],
+        "title": source["title"], "publisher_url": record.get("source_url") or record["url"],
+        "filesystem_entry_id": entry_id,
+        "evidence_scope": "SHA-linked extracted text; publisher byte proof only where explicitly present",
+    }
+
+
+def find_source_evidence(args) -> None:
+    """Discover native originals or resolve one explicit named publisher source.
+
+    An unambiguous RFC question or explicitly supplied --source-name takes the
+    verified catalog path, NOT a speculative semantic similarity rank.
+    """
+    engine = "native_discovery_mixed_source_evidence_v1"
+    receipt = {"operation": "find_source_evidence", "query": args.query, "retrieval_engine": engine}
+    try:
+        if (not args.query.strip() or len(args.query) > 600
+                or not 1 <= args.documents <= 5
+                or not 1 <= args.passages <= 5
+                or not 160 <= args.snippet_characters <= 2000):
+            raise ValueError("invalid bounded source evidence query")
+        source_name = getattr(args, "source_name", None)
+        if source_name is not None and (
+                not isinstance(source_name, str) or not source_name.strip()
+                or len(source_name) > 1000):
+            raise ValueError("invalid explicit source name")
+        versions = _current_versions()
+        manifest, ledger, _ = versions
+        # Do not choose among editions or similarly worded studies. Resolve
+        # only complete catalog names, publisher identifiers and strict RFC
+        # content questions. A comparison remains an ordinary vector query.
+        named = resolve_source_name(source_name or args.query, manifest)
+        if source_name is not None and named is None:
+            raise ValueError("explicit source name not uniquely recognized in current catalog")
+        if named and named["status"] == "ambiguous":
+            raise ValueError("ambiguous catalog original; specify one exact source path or edition")
+        if named and named["status"] == "no_catalog_match":
+            raise ValueError("requested original not found in approved source catalog")
+
+        selection_basis = "native_semantic_document_ranking"
+        evidence_args = args
+        with sqlite3.connect(f"{DB.resolve().as_uri()}?mode=ro", uri=True) as db:
+            if named is not None:
+                path = named["original_path"]
+                record = manifest[path]
+                receipt_row = ledger.get(path)
+                if not receipt_row or not receipt_row.get("sha256"):
+                    raise ValueError("requested original is not a completed download")
+                rows = db.execute(
+                    "SELECT id FROM filesystem_entries "
+                    "WHERE relative_path_display=? AND entry_type='file'",
+                    (path,),
+                ).fetchall()
+                if len(rows) != 1:
+                    raise ValueError("named original lacks a unique native FileDB identity")
+                hits = [{
+                    "original_path": path, "source_kind": record["kind"],
+                    "original_source_sha256": receipt_row["sha256"],
+                    "kmd_native_chunk_id": None,
+                    "kmd_original_file_entry_id": rows[0][0],
+                    "semantic_similarity": None,
+                }]
+                selection_basis = (
+                    "explicit_named_catalog_original" if source_name is not None
+                    else "unambiguous_named_source_question"
+                )
+                evidence_args = argparse.Namespace(**{
+                    **vars(args), "query": named.get("subject_query") or args.query,
+                })
+            else:
+                hits = _native_passage_search(args.query, top=args.documents)["results"]
+
+            documents = [
+                (_discovered_pdf(hit, rank, evidence_args, versions, db)
+                 if hit["source_kind"] == "pdf"
+                 else _discovered_non_pdf(hit, rank, evidence_args, versions, db))
+                for rank, hit in enumerate(hits, 1)
+            ]
+    except Exception as exc:
+        append_query_audit({**receipt, "success": False,
+                            "error": f"{type(exc).__name__}: {exc}"[:300]})
+        raise
+
+    # Document order is the native ranking for generic queries; for explicit
+    # name selection rank 1 means one catalog choice, not a measured similarity.
+    for doc in documents:
+        doc["selection_basis"] = selection_basis
+        if doc.get("status") == "verified" and "source_kind" not in doc:
+            doc["source_kind"] = "pdf"
+    pdf_count = sum(len(doc["passages"]) for doc in documents if doc["status"] == "verified")
+    derived_count = sum(len(doc["passages"]) for doc in documents
+                        if doc["status"] == "verified_derived_text")
+    publisher_byte_count = sum(
+        bool(passage.get("publisher_excerpt"))
+        for doc in documents if doc["status"] == "verified_derived_text"
+        for passage in doc["passages"]
+    )
+    evidence_kind_counts = {
+        "physical_pdf_pages": pdf_count,
+        "publisher_utf8_byte_intervals": publisher_byte_count,
+        "extracted_text_only": derived_count - publisher_byte_count,
+    }
+    # Store SHA/coordinates/status but never unnecessary copyrighted quoted text.
+    audited = [
+        {**doc, "passages": [
+            {key: value for key, value in passage.items() if key != "source_excerpt"}
+            for passage in doc["passages"]
+        ]} for doc in documents
+    ]
+    audit_file = append_query_audit({
+        **receipt, "success": True, "selection_basis": selection_basis,
+        "evidence_query": evidence_args.query,
+        "verified_pdf_excerpts": pdf_count,
+        "verified_non_pdf_derived_excerpts": derived_count,
+        "evidence_kind_counts": evidence_kind_counts, "documents": audited,
+    })
+    print(json.dumps({
+        "query": args.query, "evidence_query": evidence_args.query,
+        "selection_basis": selection_basis, "retrieval_engine": engine,
+        "documents": documents,
+        "verified_pdf_excerpts": pdf_count,
+        "verified_non_pdf_derived_excerpts": derived_count,
+        "evidence_kind_counts": evidence_kind_counts,
+        "query_audit_logged": True, "private_query_audit_file": str(audit_file),
+        "evidence_scope": (
+            "PDF excerpts require physical publisher-page verification. For HTML, Office, ZIP "
+            "and other source types, excerpt evidence is only verified against the "
+            "revision-linked extracted text unless a publisher-byte interval is explicit. "
+            "An explicitly named catalog original has no semantic score. "
+            "No excerpt alone proves a question's answer or real-world factual scope."
+        ),
+    }, indent=2, ensure_ascii=False))
+
+
 def find_pdf_evidence(args) -> None:
     """Discover original documents and return only excerpts reproduced on physical PDF pages."""
     engine = "native_discovery_verified_pdf_excerpts_v1"
@@ -1179,6 +1394,17 @@ def main():
                           help="Read the next contiguous excerpt using the previous RFC section result\u0027s context.next_cursor")
     evidence.add_argument("--top",type=int,default=5)
     evidence.add_argument("--snippet-characters",type=int,default=900)
+    mixed = sub.add_parser(
+        "find-source-evidence",
+        help="Find native originals with physically verified PDF or SHA-linked non-PDF excerpts",
+    )
+    mixed.add_argument("query")
+    mixed.add_argument("--source-name", help="Exact original title, RFC, DOI or pinned skill name; bypasses unrelated vector ranks")
+    mixed.add_argument("--documents", type=int, default=3,
+                       help="Inspect this many ranked originals (1–5)")
+    mixed.add_argument("--passages", type=int, default=2,
+                       help="Candidate excerpts per original (1–5)")
+    mixed.add_argument("--snippet-characters", type=int, default=1600)
     discover = sub.add_parser("find-pdf-evidence", help="Find originals by meaning and quote matching physical PDF pages")
     discover.add_argument("query")
     discover.add_argument("--documents", type=int, default=3, help="Inspect this many ranked originals (1–5)")
@@ -1189,6 +1415,7 @@ def main():
     a = p.parse_args()
     {"build": build, "import": import_source, "search": search, "status": status,
      "search-log": review_search_log, "find-pdf-evidence": find_pdf_evidence,
+     "find-source-evidence": find_source_evidence,
      "source-evidence": original_source_evidence}[a.cmd](a)
 
 

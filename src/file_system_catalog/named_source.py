@@ -22,6 +22,14 @@ _SOURCE_WORD = re.compile(
     re.IGNORECASE,
 )
 _COORDINATED = re.compile(r"^\s*(?:and|or|versus|vs\.?|und|oder)\b", re.IGNORECASE)
+# An affirmative single-RFC question can name its authoritative original,
+# without promoting an incidental/comparison mention into a source choice.
+_RFC_CONTENT_QUESTION = re.compile(
+    r"^\s*(?:what does|how does)\s+(?:the\s+)?"
+    r"(RFC[ \t]*[1-9][0-9]{0,4})\s+"
+    r"(?:say|describe|specify)(?:\s+about)?\s+(.+?)\s*\??\s*$",
+    re.IGNORECASE,
+)
 _QUOTES = {'"': '"', '`': '`', '“': '”', '„': '“', '«': '»'}
 _SKILL_PATH = re.compile(r"skills/([a-z0-9-]+)/([a-z0-9][a-z0-9-]*)-[0-9a-f]{7,40}/SKILL\.md")
 _TRANSLATE = str.maketrans({"’": "'", "‘": "'", "‐": "-", "‑": "-"})
@@ -43,6 +51,9 @@ def _quoted(text: str):
 def _requested_names(query: str) -> dict[str, str]:
     """Map complete names to any remaining question about their contents."""
     names = {query: ""}
+    named_rfc = _RFC_CONTENT_QUESTION.match(query)
+    if named_rfc and not _COORDINATED.match(named_rfc[2]):
+        names[named_rfc[1]] = named_rfc[2].strip()
     if rfc := split_rfc_citation(query):
         names[rfc[0]] = rfc[1]
     quoted = _quoted(query)

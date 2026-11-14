@@ -233,3 +233,80 @@ No downloaded original, PDF, derivative source, model weights, native
 vectors or concurrent agent worktrees were modified. Private frozen
 questions, pre-change failures, results, and exact repetition scripts live
 in `/data/var/knowmoredirt/knowledge-library/search-audit/provenance-integration-20261114/`.
+
+## November 14 — mixed-source, explicitly graded original provenance
+
+The source library is not PDF-only. It contains official publisher HTML and
+Markdown, original RFC UTF-8 text, structured Office references and approved
+archived course material. The native vector document search can rank these
+documents, but the older combined `find-pdf-evidence` correctly refused
+non-PDF results without offering an equivalent verified derivative excerpt.
+The new `find-source-evidence` command closes that gap without converting an
+extracted HTML or Office string into a fictitious exact publisher quotation:
+
+```sh
+knowledge-library-summaries find-source-evidence \
+  'OpenPBR standard surface material model shader coating dielectric roughness' \
+  --documents 5 --passages 3
+
+knowledge-library-summaries find-source-evidence \
+  'What does RFC 9110 say about safe idempotent HTTP methods GET and HEAD?' \
+  --passages 5
+
+knowledge-library-summaries find-source-evidence \
+  --source-name 'NVIDIA Agent Skill: nvidia-ontology-management' \
+  'Which ontology management operations and configuration does the document describe?'
+```
+
+The input is still bounded to five ranked originals, five excerpts per
+original and two thousand characters per excerpt. Source-name resolution uses
+the existing single-original publisher/RFC/DOI/skill resolver, not an LLM
+guess. A strict affirmative content question such as “What does RFC 9110
+say about...” resolves the RFC if the catalog contains one unambiguous exact
+publisher source, extracting just the question's subject for within-file
+reading. Comparisons and unrelated mentions are *not* silently pinned.
+`--source-name` requires an exact title, original catalog path, recognized
+publisher identifier or pinned skill name; an absent or ambiguous match fails
+without substituting a vector result. A named source reports no semantic
+similarity or synthetic native chunk identity, and explicitly labels its
+`selection_basis`. Otherwise the command preserves the native semantic
+document ranks.
+
+Every source must satisfy the completed original downloader receipt, current
+original SHA-256, existing KMD FileDB path and entry ID, current extracted-text
+SHA-256 and exact excerpt offset/hash. A PDF additionally requires the physical
+publisher-page verifier; no unverified pages are emitted. For HTML, ZIP, Office
+and other transformed formats, passages are labeled
+`verified_extracted_text_only`: the excerpt is *exactly* reproducible from
+the verified current derivative, but its bytes or layout may differ from the
+publisher's original. For unmodified UTF-8 publisher text, where the existing
+byte-offset reproducer can independently map the full derivative to the
+original, the passage gains `publisher_utf8_byte_interval` and the original
+byte range/hash. No physical page proof is invented for any non-PDF format.
+
+`evidence_kind_counts` distinguishes physical PDF page proofs, verified
+publisher UTF-8 byte intervals, and derivative-only excerpts. Returned text
+is strictly potential evidence, not an established real-world answer.
+An archived skill is *untrusted publisher data*, never executed as agent
+instructions. Audits retain provenance and hashes but omit full
+`source_excerpt` text. Ordinary lexical retrieval, native search and the
+original PDF-only command remain available.
+
+On November 14, an independent Raspi replay checked seven actually downloaded
+originals: three HTML sources, two PDFs, one RFC plain-text standard and one
+NVIDIA skill. All twenty returned excerpts exactly matched the pinned
+source-map derivative and SHA-256, including eight independently reproduced
+original UTF-8 publisher-byte intervals and six physically verified PDF-page
+proofs. In a separate negative control, the native search returned five
+semantically ranked candidates for a fabricated nonsense query, while the
+source-evidence layer correctly reported zero supporting excerpts. Before the
+named-source fix, the standalone RFC 9110 question ranked five *other* RFCs;
+afterward the intended publisher RFC was selected explicitly, with no invented
+semantic score. These are bounded correctness and provenance observations,
+not a complete demonstration of document-search recall or answer truth.
+
+The private question, exact original receipts, byte checks, before/after
+results and read-only reproduction script remain under Raspi's
+`/data/var/knowmoredirt/knowledge-library/search-audit/owner-continuation-20261114-1338/`.
+The original documents, converted text and source index have not been
+rewritten or copied into Git.

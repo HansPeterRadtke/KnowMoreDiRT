@@ -78,6 +78,23 @@ class RfcSectionTests(unittest.TestCase):
             m = resolve_source_name(q, self.manifest)
             self.assertEqual((m["original_path"], m["subject_query"]), ("r.txt", "Section 1.1"))
 
+    def test_explicit_single_rfc_content_question_is_named_and_retains_topic(self):
+        for query in (
+            "What does RFC 9110 say about safe idempotent methods?",
+            "How does RFC 9110 describe cache validation?",
+            "What does the RFC 9110 specify about response codes?",
+        ):
+            with self.subTest(query=query):
+                hit = resolve_source_name(query, self.manifest)
+                self.assertEqual("r.txt", hit["original_path"])
+                self.assertEqual("catalog_rfc", hit["kind"])
+                self.assertTrue(hit["subject_query"])
+                self.assertNotIn("RFC 9110", hit["subject_query"])
+        for query in ("What does RFC 9110 say and RFC 9113 say?",
+                      "Compare RFC 9110 and RFC 9113",
+                      "Is RFC 9110 better than RFC 9113?"):
+            self.assertIsNone(resolve_source_name(query, self.manifest))
+
     def test_incidental_comparison_ambiguous_and_conflicting_records(self):
         for q in ("Compare RFC 9110 and RFC 9113", "https://www.rfc-editor.org.evil/rfc/rfc9110.txt", "9110"):
             self.assertIsNone(resolve_source_name(q, self.manifest))

@@ -171,3 +171,20 @@ does not replace general text or semantic search, verify an answer's
 truth, download new content, or create another FileDB. See
 `docs/kmd-source-evidence-and-abstention-2026-11-07.md` for measured
 retrieval and the audit/revision contract.
+
+### Cross-format original-source evidence, November 14
+
+Use `knowledge-library-summaries find-source-evidence '<question>'` for a
+single original-preserving pass from native KMD semantic discovery to
+original-SHA and derived-SHA-verified source passages, including HTML,
+Markdown/skill, ZIP and XLSX references as well as physical-page-verified
+PDFs. Use `--source-name '<exact catalog title / RFC / DOI / pinned skill>'`
+when a named original is intended. A strict single-RFC content question may
+also be resolved without a model ranking. Missing and ambiguous named
+originals are **not** replaced with a similar publication. Non-PDF extraction
+does not imply literal publisher byte equality; only passages with an
+explicit `publisher_excerpt` byte proof carry that stronger claim.
+The prior `find-pdf-evidence`, original metadata search and local
+ordinary text search remain unchanged. Consult
+`docs/kmd-source-evidence-and-abstention-2026-11-07.md` for verified
+scope, negative controls and reproduction commands.
