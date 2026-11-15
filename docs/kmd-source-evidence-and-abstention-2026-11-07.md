@@ -323,3 +323,67 @@ physical page is implied. The independent private replay was extended to
 nine originals and 26 current excerpt hashes, including eight exact original
 UTF-8 intervals and six physically verified standalone PDF pages. It did
 not execute workbook formulas, archived scripts, skills or source code.
+
+## November 15 — exact governing-context windows for source excerpts
+
+The original mixed-source retrieval command previously returned a small
+query-matching extract from an otherwise SHA-verified source. That is
+insufficient when the *source section's own opening or neighboring text*
+qualifies the matched statement as a dream, hypothetical, historical draft,
+quotation, denial or superseded practice. A valid excerpt checksum does
+not preserve the meaning of prose it omits.
+
+`knowledge-library-summaries find-source-evidence` now includes bounded
+`scope_context` alongside each returned excerpt. It carries up to three
+individually hashed spans: `section_opening` when the excerpt is far from
+the start of the current PDF source unit, Markdown section or original
+text section; `preceding` text adjacent to the excerpt; and `following`
+text that may contain a qualification or retraction. Each span contains
+zero-based half-open character offsets, its own SHA-256 and exact text from
+the *same verified current derivative*. No span crosses the parsed original
+source-unit or Markdown section boundary. A large source section split into
+bounded search chunks still retains its original section opening, rather than
+pretending the start of the search chunk is the governing context.
+
+The default is `--scope-context-characters 320` for each span. Use
+`--scope-context-characters 0` to retain the previous compact result, or
+set an integer from 80 through 600. The original matched excerpt, its SHA
+and native document rank are unchanged. This does not rebuild the corpus or
+change stored vectors. The separate `find-pdf-evidence` and
+`source-evidence` interfaces remain unchanged unless deliberately upgraded
+and tested later.
+
+These added spans are marked
+`basis=verified_current_derivative_section_only` and
+`publisher_page_or_byte_proof=false` even when the *matched* excerpt has
+a separately verified physical PDF page or original UTF-8 byte interval.
+They are untrusted publisher content, not model instructions or a
+statement of truth. A local LLM must inspect scope and, where important,
+the complete original rather than declaring a rule true from a retrieved
+quote. The original cannot be called simultaneously current and superseded,
+and conflicting sources cannot be resolved by a single span. The query
+audit retains the relative source positions and SHA-256s of each context
+piece, but strips all `text` values, along with the primary
+`source_excerpt`, before recording the evidence.
+
+Four independent synthetic hard negatives—fictional dream legislation,
+superseded shipment policy, conditional laboratory instruction and a
+disputed perpetual-motion quote—showed the same exact excerpt bytes
+before and after the change. The old 260-character excerpt lacked the
+scope-setting opening in all four cases; the new section-opening proof
+recovered it in all four. Additional tests cover explicit retractions
+after a clipped passage, opposing statements on different physical pages
+that must not be combined, Markdown headings, a long section split at
+60,000 characters, stale derivative revisions, strict bounds and privacy
+of audit logs. These tests measure *availability of real source context*,
+not correctness of a generated answer or universal scope recognition.
+
+Independent examples on the actual OpenPBR HTML specification, the
+CiteGuard paper and RFC 9110 reproduced context SHA/offsets exactly,
+with PDF excerpts retaining their previously verified physical-page status
+and plain UTF-8 excerpts retaining their original-byte proofs. All added
+context remains derivative-only evidence. Results and the model-free
+reproducible negative-case script are under
+`/data/var/knowmoredirt/knowledge-library/search-audit/source-scope-context-20261115/`.
+No source originals, FileDB entries, vectors or model servers were
+modified by this read-only retrieval extension.

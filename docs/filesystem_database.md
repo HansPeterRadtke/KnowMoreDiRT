@@ -188,3 +188,20 @@ The prior `find-pdf-evidence`, original metadata search and local
 ordinary text search remain unchanged. Consult
 `docs/kmd-source-evidence-and-abstention-2026-11-07.md` for verified
 scope, negative controls and reproduction commands.
+
+### Bounded source-scope windows in mixed evidence, November 15
+
+The combined original-linked operator supports
+`knowledge-library-summaries find-source-evidence '<question>'
+--scope-context-characters 320` by default, or zero to disable this
+additional read-only context. It returns independently SHA-verified
+section-opening, preceding and following *extracted-text* spans to keep
+potentially governing quote, dream, conditional and supersession context
+visible. Context spans do not borrow content from an adjacent original PDF
+page or Markdown section. Their separate status explicitly does not
+establish a physical publisher-page location, original-byte match or
+real-world factual truth; only a separately checked `source_excerpt`
+has its previously available publisher proof. Audit receipts contain
+the context span coordinates/hashes **without** the extra quoted text.
+See the dated source-evidence-and-abstention report for hard negatives and
+the reproduction commands.

@@ -158,6 +158,59 @@ def _passage_matches(index, query, terms, *, allow_forms, limit):
                 yield row, forms
 
 
+def _checked_scope_context(
+    derived_text: str, *, section_start: int, section_end: int,
+    excerpt_start: int, excerpt_end: int, characters: int,
+) -> dict:
+    """Bounded exact derivative context; NEVER independently verified publisher bytes.
+
+    The source unit/Markdown section boundaries were already parsed and
+    verified against the current derivative. Only span within this section.
+    Preserve the separate excerpt's original coordinates and digest.
+    """
+    if not 80 <= characters <= 600:
+        raise ValueError("invalid bounded scope context size")
+    if not (0 <= section_start < section_end <= len(derived_text)
+            and section_start <= excerpt_start < excerpt_end <= section_end):
+        raise ValueError("scope context interval outside exact original section")
+    marker = _SOURCE_UNIT.match(derived_text, section_start)
+    first = marker.end() if marker else section_start
+    if first > excerpt_start:
+        raise ValueError("source metadata marker overlaps requested evidence")
+    spans: dict[str, dict] = {}
+
+    def add(label: str, left: int, right: int):
+        if left >= right:
+            return
+        actual = derived_text[left:right]
+        if not actual.strip():
+            return
+        spans[label] = {
+            "start_char": left, "end_char": right,
+            "sha256": _sha(actual), "text": actual,
+        }
+
+    # A distant opening often establishes that an excerpt is a dream,
+    # hypothetical, historic version, or reported claim. The introduction
+    # and immediate neighbors are kept as separate spans, not stitched into
+    # a fabricated contiguous publisher quotation.
+    intro_end = min(section_end, first + characters)
+    if intro_end + 40 < excerpt_start:
+        add("section_opening", first, intro_end)
+    add("preceding", max(first, excerpt_start - characters), excerpt_start)
+    add("following", excerpt_end, min(section_end, excerpt_end + characters))
+    return {
+        "basis": "verified_current_derivative_section_only",
+        "publisher_page_or_byte_proof": False,
+        "warning": (
+            "Exact source-text context, not an answer or a verified physical "
+            "PDF page / publisher-byte interval. Inspect governing scope, "
+            "negation, hypothetical language and later qualifications."
+        ),
+        "spans": spans,
+    }
+
+
 def source_evidence_candidates(
     *,
     original_path: str,
@@ -172,6 +225,7 @@ def source_evidence_candidates(
     max_source_characters: int = 20_000_000,
     max_passages: int = 30_000,
     publisher_text_bytes: bytes | None = None,
+    scope_context_characters: int = 0,
 ) -> dict:
     """Return exact original-source lexical candidates with stable char spans.
 
@@ -183,6 +237,10 @@ def source_evidence_candidates(
     The derivative text itself is *also* hashed here so direct callers
     cannot accidentally bypass the revision precondition.
     """
+    if type(scope_context_characters) is not int or (
+            scope_context_characters != 0
+            and not 80 <= scope_context_characters <= 600):
+        raise ValueError("invalid scope context limit")
     if not 1<=top<=50:
         raise ValueError("invalid bounded requested source passage count")
     if not 160<=snippet_characters<=2000:
@@ -203,6 +261,7 @@ def source_evidence_candidates(
     sections = _publisher_sections(derived_text, markdown)
     source_units = 0
     offsets={}
+    section_bounds={}
     chunks=0
     with BoundedPassageIndex(
         max_passages=max_passages,max_characters=max_source_characters
@@ -230,6 +289,7 @@ def source_evidence_candidates(
                     label=f"{label} [source offset {start}]"
                     key=(label,digest)
                 offsets[key]=(start,end)
+                section_bounds[(start,end)] = (section.start_char, section.end_char)
                 heading = _ATX.match(text.split("\n", 1)[0]) if markdown and rel == 0 else None
                 idx.add_passage(
                     filesystem_entry_id=filesystem_entry_id,
@@ -325,6 +385,15 @@ def source_evidence_candidates(
         if first and first[1] == "Original plain text":
             attach_publisher_excerpts(publisher_text_bytes, original_sha256, derived_text, out,
                                       body_start=first.end())
+    if scope_context_characters:
+        for row in out:
+            start, end = section_bounds[(row["source_start_char"], row["source_end_char"])]
+            row["scope_context"] = _checked_scope_context(
+                derived_text, section_start=start, section_end=end,
+                excerpt_start=row["excerpt_start_char"],
+                excerpt_end=row["excerpt_end_char"],
+                characters=scope_context_characters,
+            )
     return {
         "source_coordinates": "zero_based_half_open_character_offsets_in_verified_derivative",
         "original_path":original_path,
