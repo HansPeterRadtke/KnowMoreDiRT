@@ -205,3 +205,18 @@ has its previously available publisher proof. Audit receipts contain
 the context span coordinates/hashes **without** the extra quoted text.
 See the dated source-evidence-and-abstention report for hard negatives and
 the reproduction commands.
+
+### Exact RFC sections through mixed-source retrieval, November 15
+
+`knowledge-library-summaries find-source-evidence 'RFC 9110, Section 9.2.2'`
+now selects that verified original RFC section structurally, instead of
+searching for incidental copies of the section number in the contents,
+references or another section. The body heading, table of contents,
+original UTF-8 byte interval and source revision must agree; missing
+sections fail closed. The result's `rfc_section_lookup.context.next_cursor`
+can be passed to the same command using `--source-name 'RFC 9110'
+--continue-section "$cursor" 'Section 9.2.2'`. Each continued window
+retains publisher-byte proof and a source-bound cursor. Ordinary
+semantic document queries and non-RFC original passages retain their
+existing retrieval path, and this structural proof remains evidence,
+not automatic correctness of a normative claim.
