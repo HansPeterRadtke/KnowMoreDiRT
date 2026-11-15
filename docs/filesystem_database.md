@@ -220,3 +220,14 @@ retains publisher-byte proof and a source-bound cursor. Ordinary
 semantic document queries and non-RFC original passages retain their
 existing retrieval path, and this structural proof remains evidence,
 not automatic correctness of a normative claim.
+
+### Original-linked visual PDF evidence, November 15
+
+The read-only scripts/raspi_visual_pdf_link.py verifies the original
+source-map SHA, canonical native FileDB identity, exact PDF physical page,
+independent page raster and crop SHA/pixel rectangle, plus an optional
+same-page exact extracted-caption-prefix source span. It reports the actual
+source-indexed embedding collections and deliberately keeps image-only
+OCR failures without fabricated text. All results go to new private
+revisioned audit files, not into the existing FileDB. See the dated source
+evidence document for original-case checks and limitations.
