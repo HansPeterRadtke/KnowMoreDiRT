@@ -50,6 +50,42 @@ def _read_limited_json(p:Path)->dict:
     return x
 
 
+def safe_private_result_path(
+    output: Path, *, source_root: Path, derived_root: Path,
+    native_filedb: Path, source_map_db: Path,
+) -> Path:
+    """A new report MUST NOT enter protected original or native-data trees.
+
+    KMD's canonical database parent may contain a separate approved
+    search-audit child; writing a report directly into its database root or
+    semantic/source-map tree is forbidden. Ancestor symlinks are resolved.
+    """
+    target=Path(output).expanduser()
+    if target.exists() or target.is_symlink():
+        raise ValueError("refuse to overwrite existing original-linked proof")
+    if not target.parent.is_dir():
+        raise ValueError("private output parent directory missing")
+    parent=target.parent.resolve(strict=True)
+    candidate=parent/target.name
+    orig=Path(source_root).resolve(strict=True)
+    derived=Path(derived_root).resolve(strict=True)
+    filedb=Path(native_filedb).resolve(strict=True)
+    source_map=Path(source_map_db).resolve(strict=True)
+    if (parent.is_relative_to(orig)
+            or parent.is_relative_to(derived)
+            or candidate in (filedb,source_map)
+            or parent==filedb.parent
+            or parent==source_map.parent):
+        raise ValueError("refuse writing source-linked proof inside protected original or native-data paths")
+    # An operator may keep private evidence below the FileDB working root,
+    # but only under its purpose-built search-audit subtree.
+    if parent.is_relative_to(filedb.parent):
+        audit=filedb.parent/"search-audit"
+        if not parent.is_relative_to(audit):
+            raise ValueError("proof inside native FileDB root requires private search-audit path")
+    return candidate
+
+
 def _inside(root:Path,relative:str)->Path:
     p=root/_safe_rel(relative)
     if p.is_symlink() or not p.resolve().is_relative_to(root.resolve()) or not p.is_file():

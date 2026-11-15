@@ -502,3 +502,11 @@ and crop tamper cases. This provides reproducible image provenance, NOT
 a visual description accuracy score, complete OCR, correct chart values,
 or photo/render authenticity. Ordinary text, semantic retrieval and ongoing
 KMD background summarization continue to use the existing native FileDB.
+
+A final fail-closed output guard checks the report's resolved destination
+before doing any original/filedb reads: it rejects an existing report,
+original-corpus or derived-text destination, a direct native database-root
+or source-map folder report, and symlinked parent paths into protected
+storage. Inside the KMD runtime tree, only the purpose-built private
+search-audit directory is permitted. A synthetic test independently
+exercised all these cases and preserved existing file contents.

@@ -16,18 +16,20 @@ def main():
     p.add_argument("--output",type=Path,required=True)
     args=p.parse_args()
     sys.path.insert(0,str(Path(__file__).resolve().parents[1]/"src"))
-    from file_system_catalog.pdf_visual_link import link_pdf_regions
+    from file_system_catalog.pdf_visual_link import (
+        link_pdf_regions, safe_private_result_path,
+    )
+    out=safe_private_result_path(
+        args.output,source_root=args.source_root,
+        derived_root=args.derived_text_root,native_filedb=args.filedb,
+        source_map_db=args.source_map_db,
+    )
     data=link_pdf_regions(
         region_manifest=args.regions,context_manifest=args.visual_context,
         source_root=args.source_root,source_map_db=args.source_map_db,
         filedb=args.filedb,derived_root=args.derived_text_root,
         independently_rerender=True,
     )
-    out=args.output.expanduser()
-    if out.exists() or out.is_symlink():
-        raise ValueError("refuse to overwrite existing original-linked proof")
-    if not out.parent.is_dir():
-        raise ValueError("private output parent directory missing")
     out.write_text(json.dumps(data,indent=2,ensure_ascii=False)+"\n")
     out.chmod(0o600)
     print(json.dumps({
