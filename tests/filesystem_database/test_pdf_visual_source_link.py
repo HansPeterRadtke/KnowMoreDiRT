@@ -11,7 +11,7 @@ from PIL import Image, ImageDraw
 
 from file_system_catalog.pdf_visual_link import (
     link_pdf_regions, _caption_anchor, _fold_with_positions,
-    _safe_rel,
+    _safe_rel, safe_private_result_path,
 )
 
 
@@ -207,6 +207,39 @@ class NativeVisualSourceLinkTests(unittest.TestCase):
         self.context_file.write_text(json.dumps(payload))
         with self.assertRaisesRegex(ValueError,"another original/page"):
             self.link()
+
+    def test_output_guards_keep_reports_outside_originals_and_database(self):
+        audit=self.root/"runtime"/"search-audit"/"proofs"
+        audit.mkdir(parents=True)
+        native_dir=self.root/"runtime"
+        real_filedb=native_dir/"filedb.sqlite3"
+        source_map=native_dir/"source-map.sqlite3"
+        real_filedb.write_bytes(b"database file")
+        source_map.write_bytes(b"source map")
+        def checked(where):
+            return safe_private_result_path(
+                where,source_root=self.source,
+                derived_root=self.text_root,native_filedb=real_filedb,
+                source_map_db=source_map,
+            )
+        self.assertEqual(audit/"new.json",checked(audit/"new.json"))
+        with self.assertRaisesRegex(ValueError,"inside protected"):
+            checked(self.source/"unwanted.json")
+        with self.assertRaisesRegex(ValueError,"inside protected"):
+            checked(self.text_root/"unwanted.json")
+        with self.assertRaisesRegex(ValueError,"inside protected"):
+            checked(native_dir/"unwanted.json")
+        alias=self.root/"symlink-to-originals"
+        alias.symlink_to(self.source,target_is_directory=True)
+        with self.assertRaisesRegex(ValueError,"inside protected"):
+            checked(alias/"unwanted.json")
+        existing=audit/"existing.json"
+        existing.write_text("original result")
+        with self.assertRaisesRegex(ValueError,"overwrite"):
+            checked(existing)
+        with self.assertRaisesRegex(ValueError,"missing"):
+            checked(self.root/"unknown"/"unwanted.json")
+        self.assertEqual("original result",existing.read_text())
 
     def test_safe_relative_path_and_fold_map(self):
         for bad in ('../x.pdf','/etc/password.pdf','one\\two.pdf','x/../a.pdf'):
