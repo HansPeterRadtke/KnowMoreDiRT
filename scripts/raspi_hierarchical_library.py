@@ -953,11 +953,36 @@ def _discovered_non_pdf(hit, rank, args, versions, db):
         source = checked_original(path, include_publisher_text=True, publication_record=record)
         if (source["original_sha256"], source["derived_sha256"]) != (original_sha, derivative[2]):
             raise ValueError("source revision changed during discovery")
-        candidates = _original_passages(
-            source, entry_id, args.query, args.passages + 3, args.snippet_characters,
-            scope_context_characters=getattr(args, "scope_context_characters", 0),
-        )
-        hits = candidates["passages"]
+        # Exact RFC section citations are a structural request, NOT lexical
+        # search terms. The publisher's table of contents and numbered body
+        # boundary must agree before returning the verified section opening.
+        # Never use a TOC occurrence or arbitrary nearest vector hit as a
+        # replacement for a cited section.
+        rfc = source.get("verified_rfc_number")
+        selector = section_key(args.query) if rfc else None
+        section_result = None
+        if selector:
+            section_result = rfc_section_evidence(
+                source, entry_id, rfc, selector, args.snippet_characters,
+                cursor=getattr(args, "continue_section", None),
+            )
+            if section_result["rfc_section_lookup"]["status"] != "verified":
+                hits = []
+            else:
+                hits = section_result["passages"]
+                if (len(hits) != 1 or
+                        any(not passage.get("publisher_excerpt") or
+                            passage.get("status") not in (
+                                "verified_rfc_section_opening",
+                                "verified_rfc_section_continuation",
+                            ) for passage in hits)):
+                    raise ValueError("RFC structural section lacks original publisher byte proof")
+        else:
+            candidates = _original_passages(
+                source, entry_id, args.query, args.passages + 3, args.snippet_characters,
+                scope_context_characters=getattr(args, "scope_context_characters", 0),
+            )
+            hits = candidates["passages"]
     except (ValueError, OSError) as exc:
         return {**doc, "status": "source_unavailable", "reason": str(exc)[:300]}
 
@@ -969,8 +994,10 @@ def _discovered_non_pdf(hit, rank, args, versions, db):
         pub = passage.get("publisher_excerpt")
         scope = "publisher_utf8_byte_interval" if pub else "verified_extracted_text_only"
         verified.append(dict(
-            passage, source_lexical_rank=lexical_rank,
-            matched_excerpt_query_terms=len(passage.get("matched_excerpt_terms", ())),
+            passage, source_lexical_rank=None if selector else lexical_rank,
+            matched_excerpt_query_terms=(
+                None if selector else len(passage.get("matched_excerpt_terms", ()))
+            ),
             evidence_provenance={
                 "status": "verified" if pub else "verified_derived_text",
                 "scope": scope,
@@ -983,13 +1010,25 @@ def _discovered_non_pdf(hit, rank, args, versions, db):
                 ),
             },
         ))
-    verified.sort(key=lambda passage: (
-        -passage["matched_excerpt_query_terms"], passage["source_lexical_rank"],
-    ))
+    if not selector:
+        verified.sort(key=lambda passage: (
+            -passage["matched_excerpt_query_terms"], passage["source_lexical_rank"],
+        ))
     verified = verified[:args.passages]
     return {
-        **doc, "status": "verified_derived_text" if verified else "no_verified_excerpt",
+        **doc,
+        "status": (
+            "verified_derived_text" if verified else
+            "rfc_section_not_verified" if selector else "no_verified_excerpt"
+        ),
         "passages": verified, "source_candidates": len(hits),
+        "passage_selection_basis": (
+            "verified_rfc_body_section_boundary" if selector
+            else "within_original_lexical_evidence"
+        ),
+        **({"rfc_section_lookup": section_result["rfc_section_lookup"],
+            "rfc_context_notice": section_result["evidence_warning"]}
+           if section_result else {}),
         "original_sha256": original_sha, "derived_sha256": derivative[2],
         "title": source["title"], "publisher_url": record.get("source_url") or record["url"],
         "filesystem_entry_id": entry_id,
@@ -1035,6 +1074,10 @@ def find_source_evidence(args) -> None:
                 not isinstance(source_name, str) or not source_name.strip()
                 or len(source_name) > 1000):
             raise ValueError("invalid explicit source name")
+        cursor = getattr(args, "continue_section", None)
+        if cursor is not None and (
+                not isinstance(cursor, str) or not 1 <= len(cursor) <= 128):
+            raise ValueError("invalid RFC continuation cursor")
         versions = _current_versions()
         manifest, ledger, _ = versions
         # Do not choose among editions or similarly worded studies. Resolve
@@ -1047,6 +1090,15 @@ def find_source_evidence(args) -> None:
             raise ValueError("ambiguous catalog original; specify one exact source path or edition")
         if named and named["status"] == "no_catalog_match":
             raise ValueError("requested original not found in approved source catalog")
+        if cursor is not None:
+            if not named or named.get("status") != "unique":
+                raise ValueError("RFC section continuation requires one exact named original")
+            selected_record = manifest.get(named["original_path"])
+            if not selected_record:
+                raise ValueError("named original not found in current catalog")
+            subject = named.get("subject_query") or args.query
+            if selected_record.get("kind") != "text" or section_key(subject) is None:
+                raise ValueError("RFC section continuation requires a verified numbered RFC citation")
 
         selection_basis = "native_semantic_document_ranking"
         evidence_args = args
@@ -1431,6 +1483,8 @@ def main():
     mixed.add_argument("--snippet-characters", type=int, default=1600)
     mixed.add_argument("--scope-context-characters", type=int, default=320,
                        help="Bounded original-derived opening/neighbor context per excerpt (0 or 80–600); no physical-page claim")
+    mixed.add_argument("--continue-section", metavar="CURSOR",
+                       help="Continue one exact RFC section using the previous rfc_section_lookup.context.next_cursor")
     discover = sub.add_parser("find-pdf-evidence", help="Find originals by meaning and quote matching physical PDF pages")
     discover.add_argument("query")
     discover.add_argument("--documents", type=int, default=3, help="Inspect this many ranked originals (1–5)")

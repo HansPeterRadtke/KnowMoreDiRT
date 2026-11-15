@@ -387,3 +387,65 @@ reproducible negative-case script are under
 `/data/var/knowmoredirt/knowledge-library/search-audit/source-scope-context-20261115/`.
 No source originals, FileDB entries, vectors or model servers were
 modified by this read-only retrieval extension.
+
+## November 15 — named RFC sections must use publisher body structure
+
+The combined mixed-source operator previously handled exact source names,
+but a citation such as `RFC 9110, Section 9.2.2` was reduced to lexical
+query terms. On the actual downloaded RFC 9110, this returned SHA-matching
+passages from unrelated body locations and an index at the back of the
+standard. Valid source hashes did NOT establish section relevance. The
+existing dedicated RFC reader already checks the publisher's numbered
+body heading against the original table of contents and source revision.
+
+The combined `find-source-evidence` operator now invokes that *existing*
+structural source reader, not FTS5 or model similarity, when an exact
+unambiguous RFC publisher source and valid numbered section are requested.
+It retains the named original and its original publisher SHA, independent
+native FileDB entry ID, current exact derivative SHA and verified original
+UTF-8 publisher-byte interval. The result has
+`passage_selection_basis=verified_rfc_body_section_boundary`, one
+`verified_rfc_section_opening` or `verified_rfc_section_continuation`,
+and the original `rfc_section_lookup` metadata. It reports no invented
+lexical rank or count of query terms for a structurally resolved opening.
+The RFC table of contents cannot become an answer substitute.
+
+For a missing section, the result is explicitly
+`rfc_section_not_verified`, with zero excerpts and no lexical fallback.
+A malformed or source-mismatched original-byte proof is refused. A revision-
+and-section-bound continuation cursor cannot be borrowed for another
+section or source, and no continuation is accepted without an exact RFC
+source and numbered section. The same operator can follow a verified
+section window by passing `--continue-section` the prior
+`rfc_section_lookup.context.next_cursor`; it never crosses the
+independently located publisher section boundary.
+
+```sh
+knowledge-library-summaries find-source-evidence \
+  'RFC 9110, Section 9.2.2' --documents 1 --passages 2 --snippet-characters 520
+
+# Extract .documents[0].rfc_section_lookup.context.next_cursor and then:
+knowledge-library-summaries find-source-evidence \
+  --source-name 'RFC 9110' --continue-section "$cursor" \
+  'Section 9.2.2' --documents 1 --passages 1 --snippet-characters 520
+```
+
+The November 15 live negative control was the *actual* original RFC 9110.
+Before the change, `find-source-evidence 'RFC 9110, Section 9.2.2'`
+returned five unrelated original-text passages with valid but irrelevant
+publisher-byte proofs. Afterward, it returned **Idempotent Methods** in
+Section 9.2.2, with a 333-character opening, a publisher-byte SHA match and
+a continuation cursor. Following that cursor returned source characters
+333–853, exactly contiguous with the opening, with a second verified
+publisher-byte interval. Reusing the first cursor against Section 9.2.1
+returned `source_unavailable` with an explicit source/section cursor
+mismatch and no quoted text. Section 999.999 did not exist and produced
+zero excerpts. These tests preserve the source semantics but do not
+decide an answer's truth or validity beyond that section.
+
+Private before/after results and publisher-byte checks are under
+`/data/var/knowmoredirt/knowledge-library/search-audit/rfc-direct-section-20261115/`.
+The original `source-evidence` specialized RFC section reader is
+unchanged, and the same proof routine is reused rather than cloned.
+No original text, native vectors or background inference workers have
+been modified.
