@@ -226,11 +226,48 @@ class MixedSourceEvidenceTests(unittest.TestCase):
         self.mocks["source_evidence_candidates"].side_effect=lambda **kw: {"passages":[]}
         self.assertEqual("no_verified_excerpt",self.call()["documents"][0]["status"])
 
+    def test_scope_context_is_returned_but_original_text_redacted_from_audit(self):
+        secret = "DREAM ONLY: This is a fictional claim, not enacted legislation."
+        self.args.scope_context_characters = 320
+        self.mocks["_native_passage_search"].return_value={"results":[self.hit("html")]}
+        self.mocks["source_evidence_candidates"].side_effect=None
+        self.mocks["source_evidence_candidates"].return_value={
+            "passages": [{
+                "source_excerpt":"Source has hypothetical laws", "excerpt_sha256":"e"*64,
+                "source_start_char":0, "source_end_char":100,
+                "matched_excerpt_terms":["source","laws"],
+                "scope_context": {
+                    "basis":"verified_current_derivative_section_only",
+                    "publisher_page_or_byte_proof":False,
+                    "warning":"Not evidence of real law",
+                    "spans":{"section_opening":{
+                        "start_char":0,"end_char":len(secret),
+                        "sha256":"f"*64,"text":secret,
+                    }},
+                },
+            }],
+        }
+        result=self.call()
+        passage=result["documents"][0]["passages"][0]
+        self.assertEqual(secret, passage["scope_context"]["spans"]["section_opening"]["text"])
+        audited=self.mocks["append_query_audit"].call_args.args[0]
+        rendered=json.dumps(audited)
+        self.assertNotIn(secret, rendered)
+        self.assertNotIn("Source has hypothetical laws", rendered)
+        context=audited["documents"][0]["passages"][0]["scope_context"]
+        self.assertEqual("f"*64,context["spans"]["section_opening"]["sha256"])
+        self.assertNotIn("text",context["spans"]["section_opening"])
+        self.assertFalse(context["publisher_page_or_byte_proof"])
+        call=self.mocks["source_evidence_candidates"].call_args
+        self.assertEqual(320,call.kwargs["scope_context_characters"])
+
     def test_invalid_bounds_fail_before_native_discovery(self):
         for kwargs in (
             {"documents":0}, {"documents":6}, {"passages":0}, {"passages":6},
             {"snippet_characters":20}, {"snippet_characters":2500},
             {"query":" "}, {"query":"x"*601},
+            {"scope_context_characters":79}, {"scope_context_characters":601},
+            {"scope_context_characters":True}, {"scope_context_characters":-1},
         ):
             with self.subTest(kwargs=kwargs):
                 values={**vars(self.args),**kwargs}

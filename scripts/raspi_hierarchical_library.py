@@ -829,12 +829,14 @@ def review_search_log(args) -> None:
     }, indent=2, ensure_ascii=False))
 
 
-def _original_passages(source, entry_id, query, top, snippet_characters):
+def _original_passages(source, entry_id, query, top, snippet_characters, *,
+                       scope_context_characters=0):
     return source_evidence_candidates(
         original_path=source["original_path"], original_title=source["title"], filesystem_entry_id=entry_id,
         original_sha256=source["original_sha256"], derived_sha256=source["derived_sha256"],
         derived_text=source["derived_text"], publisher_text_bytes=source.get("publisher_text_bytes"),
         query=query, top=top, snippet_characters=snippet_characters,
+        scope_context_characters=scope_context_characters,
     )
 
 
@@ -874,7 +876,9 @@ def _discovered_pdf(hit, rank, args, versions, db):
             raise ValueError("source revision changed during discovery")
         # Look beyond the requested count when a high-ranked excerpt lacks a physical page match.
         candidates = _original_passages(source, entry_id, args.query,
-                                        args.passages + 3, args.snippet_characters)
+                                        args.passages + 3, args.snippet_characters,
+                                        scope_context_characters=getattr(
+                                            args, "scope_context_characters", 0))
         hits = candidates["passages"]
         unreadable_dropped = int(candidates.get("unreadable_pdf_excerpts_dropped", 0))
         proofs = verify_pdf_page_excerpts(publisher_path(path), original_sha, hits)
@@ -951,6 +955,7 @@ def _discovered_non_pdf(hit, rank, args, versions, db):
             raise ValueError("source revision changed during discovery")
         candidates = _original_passages(
             source, entry_id, args.query, args.passages + 3, args.snippet_characters,
+            scope_context_characters=getattr(args, "scope_context_characters", 0),
         )
         hits = candidates["passages"]
     except (ValueError, OSError) as exc:
@@ -992,6 +997,22 @@ def _discovered_non_pdf(hit, rank, args, versions, db):
     }
 
 
+def _audit_passage_without_text(passage):
+    """Retain exact SHA, intervals and scope indicators, never extra quoted text."""
+    output = {key: value for key, value in passage.items()
+              if key not in ("source_excerpt", "scope_context")}
+    if "scope_context" in passage:
+        context = passage["scope_context"]
+        output["scope_context"] = {
+            key: value for key, value in context.items() if key != "spans"
+        }
+        output["scope_context"]["spans"] = {
+            label: {key: value for key, value in entry.items() if key != "text"}
+            for label, entry in context["spans"].items()
+        }
+    return output
+
+
 def find_source_evidence(args) -> None:
     """Discover native originals or resolve one explicit named publisher source.
 
@@ -1004,7 +1025,10 @@ def find_source_evidence(args) -> None:
         if (not args.query.strip() or len(args.query) > 600
                 or not 1 <= args.documents <= 5
                 or not 1 <= args.passages <= 5
-                or not 160 <= args.snippet_characters <= 2000):
+                or not 160 <= args.snippet_characters <= 2000
+                or type(getattr(args, "scope_context_characters", 0)) is not int
+                or (getattr(args, "scope_context_characters", 0) != 0
+                    and not 80 <= args.scope_context_characters <= 600)):
             raise ValueError("invalid bounded source evidence query")
         source_name = getattr(args, "source_name", None)
         if source_name is not None and (
@@ -1087,11 +1111,11 @@ def find_source_evidence(args) -> None:
         "publisher_utf8_byte_intervals": publisher_byte_count,
         "extracted_text_only": derived_count - publisher_byte_count,
     }
-    # Store SHA/coordinates/status but never unnecessary copyrighted quoted text.
+    # Both evidence and extra source-scope text are untrusted original data:
+    # keep coordinate/checksum audit receipts, never actual publisher prose.
     audited = [
         {**doc, "passages": [
-            {key: value for key, value in passage.items() if key != "source_excerpt"}
-            for passage in doc["passages"]
+            _audit_passage_without_text(passage) for passage in doc["passages"]
         ]} for doc in documents
     ]
     audit_file = append_query_audit({
@@ -1405,6 +1429,8 @@ def main():
     mixed.add_argument("--passages", type=int, default=2,
                        help="Candidate excerpts per original (1–5)")
     mixed.add_argument("--snippet-characters", type=int, default=1600)
+    mixed.add_argument("--scope-context-characters", type=int, default=320,
+                       help="Bounded original-derived opening/neighbor context per excerpt (0 or 80–600); no physical-page claim")
     discover = sub.add_parser("find-pdf-evidence", help="Find originals by meaning and quote matching physical PDF pages")
     discover.add_argument("query")
     discover.add_argument("--documents", type=int, default=3, help="Inspect this many ranked originals (1–5)")
