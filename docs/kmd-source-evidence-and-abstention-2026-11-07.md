@@ -449,3 +449,56 @@ The original `source-evidence` specialized RFC section reader is
 unchanged, and the same proof routine is reused rather than cloned.
 No original text, native vectors or background inference workers have
 been modified.
+
+## November 15: verified source link from All2Text PDF figure crops to native KMD
+
+All2Text's isolated feat/pdf-figure-provenance-20261115 feature extracts
+source-linked raster image groups from already approved original PDF pages,
+with original full-file SHA-256, exact 1-based physical page, original PDF
+figure bbox, Poppler-rendered page SHA, bounded crop bbox and crop PNG SHA.
+Captions are PDFMiner extracted text, only heuristically associated with
+nearby images; neither captions nor figures are original publisher-byte
+quotes or authenticated factual claims. It does not discover vector-only
+figures or convert scanned pages into trusted text.
+
+The independent read-only KMD operator,
+scripts/raspi_visual_pdf_link.py, checks each crop's original full-file
+SHA-256 against the current source-map revision, one canonical FileDB entry
+ID, full current extracted text SHA if available, pixel-exact crop equality
+against its rendered page, and an independent second Poppler re-render of
+that original physical page whose full raster SHA must match. It finds
+one unique initial 96 normalized caption characters inside only the
+exact verified [SOURCE UNIT: PDF page N] source section, mapping the match
+back to literal derived character offsets and SHA-256. Duplicated or
+absent caption matches abstain. Visual-only originals remain marked without
+completed text. No originals, KMD databases, vectors or current summaries
+are rewritten.
+
+Observed real-original examples:
+- OpenPBR SIGGRAPH 2025 shading source PDF, physical pages 8 and 14:
+  3 grouped raster figures (Figure 4, 5 and 9), all 3 caption-prefix
+  anchors independently verified, native FileDB entry 14180 with
+  exactly 3 overview vectors, not full-text coverage.
+- Multi-Layer Reservoir Splatting original PDF, page 1:
+  a 13-panel rendered comparison grouped as one source figure, Figure 1
+  derived caption anchor, native FileDB entry 19069 with 67 full-text
+  vector chunks and 3 overview vectors.
+- Philippines RA11232 original scan, page 1:
+  one full-document-page image, native FileDB entry 9913, source-map
+  status error for incomplete OCR, zero native vectors and no invented
+  caption proof.
+
+The three source original physical pages also passed independent
+whole-page Poppler raster SHA reproduction. The current read-only linkage
+JSON and exact hashes are under Raspi's private
+/data/var/knowmoredirt/knowledge-library/search-audit/pdf-layout-grounding-20261115/kmd_links/
+with *_with_native_chunks.json names. The All2Text input figure/context
+receipts, independent source-raster copies and a review contact sheet stay
+in the parent audit folder; cropped publisher figures stay outside Git.
+
+The KMD full unittest-compatible suite passed 294 tests, including nine new
+source/derived revision, duplicated/wrong-page caption, source-map failure,
+and crop tamper cases. This provides reproducible image provenance, NOT
+a visual description accuracy score, complete OCR, correct chart values,
+or photo/render authenticity. Ordinary text, semantic retrieval and ongoing
+KMD background summarization continue to use the existing native FileDB.
