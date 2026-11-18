@@ -4898,6 +4898,21 @@ class KnowMoreDiRTEngine:
         evidence_payload = self._evidence_payload(evidence, limit=6)
         if not evidence_payload:
             return value
+        # Formatting a complete person name that is already present verbatim
+        # in the original source cannot improve its spelling or grounding.
+        # Retain the independent model *verification* in the caller: this
+        # shortcut only avoids a redundant canonicalization model request.
+        if expected.answer_type == "person":
+            candidate = str(value).strip()
+            if (
+                2 <= len(candidate.split()) <= 4
+                and canonicalize_answer(expected, candidate) == candidate
+                and any(
+                    re.search(r"(?<![\w])" + re.escape(candidate) + r"(?![\w])", str(item.get("text") or ""))
+                    for item in evidence_payload
+                )
+            ):
+                return candidate
         source_resolved = self._source_resolve_model_answer_with_local_model(
             question,
             value,
