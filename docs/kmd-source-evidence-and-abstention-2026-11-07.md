@@ -510,3 +510,46 @@ or source-map folder report, and symlinked parent paths into protected
 storage. Inside the KMD runtime tree, only the purpose-built private
 search-audit directory is permitted. A synthetic test independently
 exercised all these cases and preserved existing file contents.
+
+## November 19 — schema-level native summary bounds on one stalled original
+
+The existing Qwen3-Coder shard worker remains active and has completed
+thousands of other source originals. Its persisted failure ledger shows a
+single pending original, the EVATok video-tokenization paper (matching
+original and derivative revisions); it has retried nine times. The precise
+failure is `EmbeddingContextExceeded: native summary exceeds safe embedding
+context` raised by `hierarchical_summary_model.generate_retrieval_analysis`.
+The native E5 encoder uses a maximum of 512 tokens and only 400 are safe
+for the document summary after source/embedding prefix reservations. A
+*word-count instruction alone* had not constrained the model to that
+budget reliably even after a shorter retry. Do not treat repeated
+scheduled retries as evidence of progress or mark this original complete.
+
+The isolated KMD change adds a portable, schema-constrained `maxLength`
+and `minLength` to the original native `document_summary` field **before
+model generation**: a bounded initial 1200-character field and an even
+shorter 480-character field on the strict/compact retry. These bounds
+apply ONLY to the generated summary, not to the publisher's original
+source text, original complete-source group, native facets or the native
+KMD FileDB schema. The context-aware JSON schema still uses the same
+original KMD facet structure; the original FILE_ANALYSIS_SCHEMA constant
+is unchanged. The generated output still has to pass the independent
+400-*model-token* check before being embedded or cached. The new branch
+also refuses an overlong cached summary, and treats a model/server that
+ignores maxLength as an explicit recoverable `EmbeddingContextExceeded`,
+not a reason to truncate generated text or publish an incomplete node.
+
+Five new isolated tests cover both decoder-side bounds, model ignoring
+the cap, unsafe cached output, original facet schema preservation and
+ordinary short native summaries; the former retry request-equality test
+was updated to compare unchanged facet schema while requiring the shorter
+retry's deliberate new summary cap. The complete KMD unittest-compatible
+suite passes **300 tests, zero failures** on the isolated branch.
+
+This is a verified **code-level guard**, not yet proof that the historical
+EVATok source now completes against the real shared Qwen server. At
+inspection the shared Coder model slot was busy serving the existing
+worker. Do not issue an uncontrolled parallel request or restart the
+worker mid-document merely to claim recovery. Install and independently
+confirm the safe code revision, then allow or coordinate a documented
+safe worker handoff before declaring the pending source resolved.
