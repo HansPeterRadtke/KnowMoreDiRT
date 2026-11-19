@@ -81,7 +81,19 @@ class CompactFacetRetryTest(unittest.TestCase):
         first, second = [call.args[1] for call in transport.call_args_list]
         self.assertNotEqual(first["messages"][0], second["messages"][0])
         self.assertEqual(first["messages"][1:], second["messages"][1:])
-        self.assertEqual(first["response_format"], second["response_format"])
+        # The native response structure, facet schema and total generation
+        # budget remain unchanged. The retry's document_summary string is
+        # now deliberately grammar-bounded more tightly, to prevent
+        # repeated overflow of the deployed 400-token embedding encoder.
+        self.assertEqual(first["response_format"]["type"],
+                         second["response_format"]["type"])
+        f_schema=first["response_format"]["json_schema"]["schema"]
+        r_schema=second["response_format"]["json_schema"]["schema"]
+        self.assertEqual(f_schema["properties"]["facets"],
+                         r_schema["properties"]["facets"])
+        self.assertEqual(f_schema["required"],r_schema["required"])
+        self.assertEqual(1200,f_schema["properties"]["document_summary"]["maxLength"])
+        self.assertEqual(480,r_schema["properties"]["document_summary"]["maxLength"])
         self.assertEqual(first["max_tokens"], second["max_tokens"])
         first_key, second_key = [call.args[0] for call in cache_reads.call_args_list]
         self.assertNotEqual(first_key, second_key)

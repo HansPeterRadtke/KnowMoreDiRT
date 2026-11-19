@@ -17,7 +17,10 @@ from kmd_model_call_cache import (
     semantic_request_hash,
     write_model_call,
 )
-from .hierarchical_summary import EmbeddingContextExceeded
+from .hierarchical_summary import (
+    EmbeddingContextExceeded, SUMMARY_FACETS_COMPACT_RETRY_SYSTEM,
+    SUMMARY_FACETS_STRICT_SYSTEM,
+)
 from .content_pipeline import (
     AnalysisClient,
     FILE_ANALYSIS_SCHEMA,
@@ -195,6 +198,24 @@ class LocalSummaryModel:
             context_size=self.context_tokens,
             output_tokens=output_tokens,
         )
+        # The native embedding encoder accepts at most 400 tokens per
+        # summary; repeated source failures proved a short-word-count
+        # prompt does not reliably constrain Qwen's JSON string size.
+        # Constrain the decoder BEFORE generation, instead of silently
+        # truncating an already generated summary. The original publisher
+        # source and independently generated native facets remain intact.
+        # The strict retry is allowed 480 *characters*, not merely a
+        # requested number of words. Token count is still checked below.
+        strict_retry = system in (
+            SUMMARY_FACETS_COMPACT_RETRY_SYSTEM, SUMMARY_FACETS_STRICT_SYSTEM,
+        )
+        summary_char_cap = 480 if strict_retry else 1200
+        summary_schema = schema["properties"]["document_summary"]
+        summary_schema["minLength"] = 1
+        summary_schema["maxLength"] = summary_char_cap
+        # No pattern constraint is set: installed llama.cpp supports
+        # maxLength on plain strings but some versions drop it when
+        # combined with a regex pattern.
         Draft202012Validator.check_schema(schema)
         payload={
             "model":self.client.effective_model(),
@@ -230,7 +251,13 @@ class LocalSummaryModel:
         })
         cached=read_model_call(cache_key)
         if cached is not None and isinstance(cached.get("native_analysis"),dict):
-            return normalize_analysis(cached["native_analysis"])
+            normalized=normalize_analysis(cached["native_analysis"])
+            if (len(normalized["document_summary"])>summary_char_cap
+                    or self.text_tokens(normalized["document_summary"])>400):
+                raise EmbeddingContextExceeded(
+                    "cached native summary exceeds bound, refuses unsafe reuse"
+                )
+            return normalized
         self._wait_for_shared_slot()
         response=stream_chat_completion_json(
             f"{self.client.base_url}/v1/chat/completions",
@@ -242,6 +269,14 @@ class LocalSummaryModel:
         if response.get("reasoning_content"):
             raise RuntimeError("local structured summary unexpectedly emitted reasoning")
         raw=json.loads(response.get("content") or "{}")
+        if (isinstance(raw,dict)
+                and isinstance(raw.get("document_summary"),str)
+                and len(raw["document_summary"])>summary_char_cap):
+            # If a server ignored maxLength, preserve existing bounded
+            # retry semantics rather than accepting/truncating invalid text.
+            raise EmbeddingContextExceeded(
+                "model ignored native document-summary schema character bound"
+            )
         Draft202012Validator(schema).validate(raw)
         normalized=normalize_analysis(raw)
         # The original E5 index has a 512-token maximum. Leave room for its

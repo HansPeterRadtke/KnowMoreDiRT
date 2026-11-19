@@ -231,3 +231,15 @@ source-indexed embedding collections and deliberately keeps image-only
 OCR failures without fabricated text. All results go to new private
 revisioned audit files, not into the existing FileDB. See the dated source
 evidence document for original-case checks and limitations.
+
+### Native retrieval-summary length safety, November 19
+
+Qwen-generated file facet JSON now has model-generation-time bounds on
+its document summary field (1200 characters initially, 480 on the
+strict retry), in addition to the existing strict 400-embedding-token
+post-check. This prevents invalid unbounded summaries from being
+silently stored or endlessly retried without a constrained alternative.
+The original complete source and separate native facets are unchanged;
+no generated string is truncated or treated as original publisher proof.
+The EVATok source's previous nine failed retries are independently
+recorded; actual completion requires a later real worker-run check.
