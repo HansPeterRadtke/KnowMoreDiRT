@@ -79,9 +79,9 @@ comparison, limited facet pilot and real smoke-test logs are under
 For a bounded independent smoke test, the operator can run:
 
 ```sh
-PYTHONPATH=/data/src/worktrees/knowmoredirt-retrieval-regression-20261120/src \
+PYTHONPATH=/data/src/github/KnowMoreDiRT/src \
  /data/var/knowmoredirt/semantic-venv/bin/python \
- /data/src/worktrees/knowmoredirt-retrieval-regression-20261120/scripts/raspi_retrieval_regression.py \
+ /data/src/github/KnowMoreDiRT/scripts/raspi_retrieval_regression.py \
  --gold /data/var/knowmoredirt/knowledge-library/search-audit/hard-retrieval-benchmark-20261107/predeclared-gold.json \
  --database /data/var/knowmoredirt/knowledge-library/filesystem.sqlite3 \
  --source-map /data/var/knowmoredirt/knowledge-library/semantic/source-map.sqlite3 \
