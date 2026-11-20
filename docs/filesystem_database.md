@@ -265,3 +265,16 @@ and 98 derivatives, with ten overlapping originals. Across both audits,
 byte-level source-revision verification, with no mismatches; the other
 library originals remain outside this byte audit and are not declared
 verified by sampling.
+
+### Read-only native original retrieval regression guard (November 20)
+
+An original-path-based retrieval audit uses externally predeclared gold
+queries, current FileDB and source-map revisions, and the existing native
+source-verified semantic search. It reports exact top-one/top-three/
+top-five/top-ten original identification and detects when the expected
+original is still indexed but has fallen out of the top results. No-gold
+historical samples are not assumed unanswerable. The observed old-to-new
+recall deterioration on the larger library and rejection of simplistic
+root-only ranking are recorded in
+`docs/kmd-retrieval-drift-benchmark-2026-11-20.md`. This is a QA tool only;
+it neither creates a second index nor modifies production ranking.
