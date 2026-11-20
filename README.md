@@ -97,3 +97,12 @@ The main test areas are unit behavior, smoke coverage of the two-function API, m
 ## Documentation
 
 Start with [`docs/current_system.md`](docs/current_system.md), [`docs/runtime_configuration.md`](docs/runtime_configuration.md), [`docs/llm_roles.md`](docs/llm_roles.md), [`docs/cache_contract.md`](docs/cache_contract.md), [`docs/benchmark_status.md`](docs/benchmark_status.md), and [`docs/conversational_boundary.md`](docs/conversational_boundary.md). The deeper references remain [`docs/architecture.md`](docs/architecture.md), [`docs/theory.md`](docs/theory.md), [`docs/evaluation.md`](docs/evaluation.md), [`docs/storage_architecture.md`](docs/storage_architecture.md), [`docs/filesystem_database.md`](docs/filesystem_database.md), [`docs/public_api.md`](docs/public_api.md), and [`docs/current_work.md`](docs/current_work.md).
+
+### Curated original-source revision audit
+
+scripts/raspi_source_revision_audit.py performs a full read-only
+curated-source metadata reconciliation and a deterministic bounded
+sample of actual publisher/derivative file bytes, joined to the
+existing native FileDB and its embedding coverage. The exact tested
+workflow and its limitations are documented in
+docs/kmd-source-revision-audit-2026-11-20.md.
