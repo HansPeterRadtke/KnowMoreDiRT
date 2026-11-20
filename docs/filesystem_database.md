@@ -243,3 +243,25 @@ The original complete source and separate native facets are unchanged;
 no generated string is truncated or treated as original publisher proof.
 The EVATok source's previous nine failed retries are independently
 recorded; actual completion requires a later real worker-run check.
+
+### Full metadata and sampled original-source revision QA — November 20
+
+The read-only scripts/raspi_source_revision_audit.py verifies every curated
+original's metadata link across approved catalog, completed download
+receipt, source-map and the one canonical FileDB. A deterministic,
+source-kind-stratified sample additionally hashes complete original
+publisher bytes and complete source-map derivatives. Embedded generated
+provenance headers are verified but excluded from the publisher-text
+character count. The operator writes only a new private report, cannot
+overwrite originals or native database files, and does not create a
+second search index. A real snapshot found zero metadata mismatches
+across 17,717 source records and zero SHA mismatches among 100 sampled
+originals and 98 converted texts. See the separate November 20 project
+audit document for reproducibility, citation checks and limitations.
+
+A second independent deterministic replay checked another 100 originals
+and 98 derivatives, with ten overlapping originals. Across both audits,
+190 unique publisher originals and 188 unique derived texts had direct
+byte-level source-revision verification, with no mismatches; the other
+library originals remain outside this byte audit and are not declared
+verified by sampling.
