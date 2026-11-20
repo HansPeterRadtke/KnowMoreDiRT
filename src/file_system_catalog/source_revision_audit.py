@@ -365,6 +365,14 @@ def audit(
         "deterministic_selected_originals":len(selected),
         "originals_independently_hashed":sum(r["original_file_revision_verified"] for r in sample),
         "current_derivatives_independently_hashed":sum(r["extracted_derivative_revision_verified"] for r in sample),
+        "publisher_and_derivative_jointly_byte_verified":sum(
+            r["original_file_revision_verified"] and r["extracted_derivative_revision_verified"]
+            for r in sample
+        ),
+        "derivatives_verified_without_original_rehash":sum(
+            r["extracted_derivative_revision_verified"] and not r["original_file_revision_verified"]
+            for r in sample
+        ),
         "selected_originals_with_failures":sum(bool(r["failures"]) for r in sample),
         "sampled_bytes_read_at_least":bytes_hashed,
         "skipped_due_budgets":sum(bool(r["skips"]) for r in sample),

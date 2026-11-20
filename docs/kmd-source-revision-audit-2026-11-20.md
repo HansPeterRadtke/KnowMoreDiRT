@@ -21,6 +21,12 @@ scripts/raspi_source_revision_audit.py does two DIFFERENT levels of verification
    A stable file's device/inode/size/time is verified around reading; path
    traversal and symlinks are refused.
 
+An independent derivative SHA can be valid even when its original was skipped
+due to the total-byte budget. The report separately counts publisher originals
+rehash-verified, source-map derivatives rehash-verified, and the JOINT subset
+where both original publisher and derived revisions were independently checked.
+A skipped original must never be counted as a publisher-byte proof.
+
 The source-map text_characters count excludes the KMD-generated provenance
 header. This audit verifies the generated header as metadata, including source
 path/SHA/kind, and checks text_characters against the publisher source-unit

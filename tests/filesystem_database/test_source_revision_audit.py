@@ -121,6 +121,8 @@ class TestSourceRevisionAudit(unittest.TestCase):
         self.assertEqual(3,m["deterministic_selected_originals"])
         self.assertEqual(3,m["originals_independently_hashed"])
         self.assertEqual(2,m["current_derivatives_independently_hashed"])
+        self.assertEqual(2,m["publisher_and_derivative_jointly_byte_verified"])
+        self.assertEqual(0,m["derivatives_verified_without_original_rehash"])
         self.assertEqual(2,m["native_overview_originals"])
         self.assertEqual(1,m["native_summary_originals"])
         self.assertEqual("ok",m["filedb_quick_check"])
@@ -208,6 +210,11 @@ class TestSourceRevisionAudit(unittest.TestCase):
         res=self.run_audit(max_total_bytes=27)
         self.assertGreater(res["summary"]["skipped_due_budgets"],0)
         self.assertLess(res["summary"]["originals_independently_hashed"],3)
+        self.assertLessEqual(res["summary"]["publisher_and_derivative_jointly_byte_verified"],
+                             res["summary"]["originals_independently_hashed"])
+        self.assertEqual(res["summary"]["current_derivatives_independently_hashed"],
+                         res["summary"]["publisher_and_derivative_jointly_byte_verified"]+
+                         res["summary"]["derivatives_verified_without_original_rehash"])
         self.assertGreaterEqual(res["summary"]["selected_originals_with_failures"],0)
 
     def test_output_destination_protects_original_derivative_and_database(self):
