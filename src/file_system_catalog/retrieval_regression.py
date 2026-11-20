@@ -13,7 +13,19 @@ from pathlib import Path
 from typing import Callable
 
 
+def _safe_original_path(path:str)->bool:
+    return (isinstance(path,str) and 1<=len(path)<=1500
+            and not path.startswith("/") and "\\" not in path
+            and not any(part in ("", ".", "..") for part in path.split("/")))
+
+
 def validated_gold(raw:list[dict]) -> list[dict]:
+    """Older exact-single-original fixtures and newer multi-relevant cases.
+
+    A relevant path is independently verified as ONE supporting source;
+    annotators must not assume the list exhausts other relevant sources.
+    No path may be selected from live search ranking while labeling.
+    """
     if not isinstance(raw,list) or not 1<=len(raw)<=200:
         raise ValueError("gold cases must be a bounded nonempty list")
     ids=set()
@@ -24,17 +36,45 @@ def validated_gold(raw:list[dict]) -> list[dict]:
         label=row.get("id")
         query=row.get("query")
         expected=row.get("expected_path")
+        relevant=row.get("relevant_paths")
         if (not isinstance(label,str) or not 1<=len(label)<=128 or label in ids
                 or not isinstance(query,str) or not 3<=len(query)<=1000
-                or (expected is not None and
-                    (not isinstance(expected,str) or not expected or
-                     expected.startswith("/") or "\\" in expected or
-                     any(part in ("",".","..") for part in expected.split("/"))))):
+                or (expected is not None and not _safe_original_path(expected))):
             raise ValueError("invalid, duplicate, or unsafe retrieval gold case")
+        if relevant is None:
+            paths=[expected] if expected is not None else []
+        else:
+            if (not isinstance(relevant,list) or not 1<=len(relevant)<=20
+                    or any(not _safe_original_path(path) for path in relevant)
+                    or len(set(relevant))!=len(relevant)
+                    or (expected is not None and expected not in relevant)):
+                raise ValueError("invalid or inconsistent multi-source gold")
+            paths=list(relevant)
         ids.add(label)
         cases.append({"id":label,"query":query,"expected_path":expected,
-                      "category":row.get("category")})
+                      "relevant_paths":paths,"category":row.get("category")})
     return cases
+
+
+def assert_equivalent_gold(cases:list[dict],baseline_report:dict)->None:
+    """Prevent historical score comparison after silently changing gold."""
+    prior=baseline_report.get("cases")
+    if not isinstance(prior,list) or len(prior)!=len(cases):
+        raise ValueError("historical baseline does not contain matching gold cases")
+    prior_by_id={z.get("id"):z for z in prior if isinstance(z,dict)}
+    if len(prior_by_id)!=len(prior):
+        raise ValueError("historical baseline has ambiguous gold identifiers")
+    for case in cases:
+        other=prior_by_id.get(case["id"])
+        if (other is None or other.get("query")!=case["query"]
+                or other.get("expected_path")!=case["expected_path"]
+                or ("relevant_paths" in other
+                    and other["relevant_paths"]!=case["relevant_paths"])):
+            raise ValueError("historical baseline and current gold differ")
+        # Single-gold historical reports do not specify relevant_paths.
+        if ("relevant_paths" not in other
+                and len(case["relevant_paths"])>int(case["expected_path"] is not None)):
+            raise ValueError("cannot compare old one-gold baseline to multi-source labels")
 
 
 def source_record(db:sqlite3.Connection,source_map:sqlite3.Connection,
@@ -109,25 +149,44 @@ def evaluate_case(case:dict, search:Callable[[str],list[str]],
         raise ValueError("search results not a bounded list of original paths")
     if len(set(paths))!=len(paths):
         raise ValueError("search returned duplicate original identity")
-    expected=case["expected_path"]
-    rank=paths.index(expected)+1 if expected in paths else None
+    gold=list(case.get("relevant_paths") or
+              ([case["expected_path"]] if case.get("expected_path") is not None else []))
+    per_gold={p:(paths.index(p)+1 if p in paths else None) for p in gold}
+    found=[rank for rank in per_gold.values() if rank is not None]
+    best=min(found) if found else None
+    primary=case.get("expected_path") or (gold[0] if gold else None)
+    proofs={p:source_info(p) for p in gold}
     return {
         "id":case["id"],
         "category":case.get("category"),
         "query_sha256":hashlib.sha256(case["query"].encode("utf-8")).hexdigest(),
-        "gold_path":expected,
-        "gold_rank":rank,
+        "gold_path":primary,
+        "known_relevant_original_paths":gold,
+        "known_relevant_ranks":per_gold,
+        "gold_rank":best,
         "top_three_original_paths":paths[:3],
-        "source_identity_evidence":source_info(expected),
-        "historical_negative_means_absent_gold_not_no_answer":expected is None,
+        "source_identity_evidence":proofs.get(primary) if primary is not None else source_info(None),
+        "known_relevant_source_evidence":proofs,
+        "known_relevant_gold_is_not_guaranteed_exhaustive":True,
+        "historical_negative_means_absent_gold_not_no_answer":not gold,
     }
 
 
 def score(rows:list[dict],baseline:dict|None=None)->dict:
-    positives=[r for r in rows if r["gold_path"] is not None]
-    negatives=[r for r in rows if r["gold_path"] is None]
+    """Evaluate first supporting original and fractional known-source recall."""
+    def gold_paths(r):
+        return r.get("known_relevant_original_paths",
+                     [r["gold_path"]] if r["gold_path"] is not None else [])
+    positives=[r for r in rows if gold_paths(r)]
+    negatives=[r for r in rows if not gold_paths(r)]
     total=len(positives)
     values=[r["gold_rank"] for r in positives]
+    def known_ranks(row):
+        return row.get("known_relevant_ranks",
+                       {row["gold_path"]:row["gold_rank"]})
+    def proofs(row):
+        return row.get("known_relevant_source_evidence",
+                       {row["gold_path"]:row["source_identity_evidence"]})
     summary={
         "cases":len(rows),
         "positive_gold_cases":total,
@@ -137,9 +196,18 @@ def score(rows:list[dict],baseline:dict|None=None)->dict:
         "correct_top5":sum(v is not None and v<=5 for v in values),
         "correct_top10":sum(v is not None and v<=10 for v in values),
         "mean_reciprocal_rank_at10":round(sum(1/v for v in values if v)/max(1,total),6),
+        "mean_known_relevant_source_recall_at10":round(
+            sum(sum(rank is not None and rank<=10 for rank in known_ranks(row).values())
+                /max(1,len(known_ranks(row))) for row in positives)/max(1,total),6),
+        "complete_known_relevant_source_recall_at10":sum(
+            bool(known_ranks(row)) and all(rank is not None and rank<=10
+                                           for rank in known_ranks(row).values())
+            for row in positives),
+        "known_relevant_source_identifiers":sum(len(gold_paths(r)) for r in positives),
         "gold_with_missing_or_stale_native_source":sum(
-            r["source_identity_evidence"].get("gold_status")!="native_summaries_match_source_map_revision"
-            for r in positives),
+            any(not isinstance(e,dict) or e.get("gold_status")!="native_summaries_match_source_map_revision"
+                for e in proofs(row).values())
+            for row in positives),
     }
     if baseline is not None:
         summary["historical_top1"]=baseline.get("top1_count")

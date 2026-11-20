@@ -95,3 +95,85 @@ ranking needs multi-source gold, larger top-k retrieval, hard irrelevant
 counterexamples, query-to-citation provenance and user relevance
 judgments. A reranking/hybrid candidate should be evaluated strictly
 without using these old 28 examples to fit parameters.
+
+## November 20 follow-up: all-source lexical and pre-frozen holdout reject early hybrid deployment
+
+The previous November 7 FTS pilot selected only new UX reference sources, so
+its lexical candidate pool privileged that domain. This new read-only private
+experiment used **every** current source-revision-matched native KMD summary
+and summary_long text, without gold-specific selection. The FTS5 index was
+created in RAM only and immediately closed; source-map original and derivative
+digests and each representation text SHA were checked before indexing.
+The first run admitted 16,560 descriptions over about 10.2 million
+characters, rising slightly during active background indexing. These are
+generated KMD summaries, **not original publisher passages** or factual proof.
+
+Against the **older, predeclared 28-source diagnostic gold**:
+
+- Existing source-verified hierarchical semantic search: 4 top-one,
+  17 top-ten known-original hits.
+- Source-revision-checked in-memory summary-text FTS: 6 top-one,
+  10 top-ten. Lexical-only ranking is **worse** on top-ten.
+- Reciprocal-rank fusion with the **previously documented** lexical weight
+  two, semantic weight one and constant sixty, not tuned on this gold:
+  8 top-one and 18 top-ten. This is a small improvement on old gold,
+  NOT independent validation and NOT authorization to change live ranking.
+
+To assess that improvement without fitting the 28 diagnostic questions,
+thirteen other topical queries were authored from independently read,
+SHA-matched original ACL, Interspeech and CVPR papers covering grounded
+claims, agent hallucinations, multi-speaker diarization, robotic recovery,
+3D texture/material reconstruction and scene/image quality. Their full
+publisher-original bytes and current derived text SHA were rechecked, each
+had an existing native KMD summary, and the gold file was hashed and
+frozen **before** running any semantic or lexical retrieval against them.
+Each question has **one confirmed relevant original, not an exhaustive list
+of all relevant papers**.
+
+On this thirteen-paper holdout:
+
+- Existing hierarchical semantic search: **6 top-one, 10 top-ten**.
+- Same all-indexed-summary lexical candidate retrieval: **4 top-one,
+  5 top-ten**.
+- Same pre-established fusion weights: **5 top-one, 7 top-ten**.
+
+The hybrid method helps the old diagnostic but **harms the independently
+frozen new sample**. Neither a production reranker nor a new lexical
+database was installed. A single-source identified paper should not be
+mistaken for the sole correct source: the owner needs a larger independent
+multi-relevant-answer benchmark, especially for adjacent papers describing
+similar methods.
+
+The private unmodified-gold and results receipts are in
+/data/var/knowmoredirt/knowledge-library/search-audit/retrieval-hybrid-corpuswide-20261120/.
+The frozen thirteen-paper query file, its full SHA-256, the two complete
+all-indexed lexical scans, source-verified semantic candidate receipts and
+both RRF result sets remain there. The tiny first FTS run hit a local
+Python reporting error after finishing the retrieval loop; it was
+corrected in the private diagnostic script and fully rerun before
+reporting numbers. No publisher books or full text were committed.
+
+### Regression harness now supports non-exclusive relevance gold
+
+The standard read-only scripts/raspi_retrieval_regression.py accepts old
+single expected_path gold and new relevant_paths lists of up to twenty
+distinct canonical original paths per question. A first relevant
+match determines top-one and reciprocal-rank discovery, while
+mean_known_relevant_source_recall_at10 measures the fraction of all
+**known** source labels returned. It reports complete known-source
+recall and independently checks the native source/derivative revision
+for **every** gold path. Other sources can still be relevant and are
+not automatically declared false by missing labels.
+
+Historical baseline comparison now requires the actual original query,
+identifier and gold path labels to agree, not merely the same number of
+test cases. The private gold may be a direct JSON case list or a
+source-audit wrapper containing a cases list. When only a named subset
+is replayed, the historical total is intentionally omitted. Old
+historical "negative" cases remain unlabeled, never unanswerable truth.
+Source-revision hashes in the regression harness corroborate current
+FileDB metadata; factual claims still require original publisher bytes
+and properly scoped passages, not merely this score.
+
+No native FileDB rows, source-map, original PDFs, model services or
+production ranking were changed by these evaluations.

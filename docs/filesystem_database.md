@@ -278,3 +278,17 @@ recall deterioration on the larger library and rejection of simplistic
 root-only ranking are recorded in
 `docs/kmd-retrieval-drift-benchmark-2026-11-20.md`. This is a QA tool only;
 it neither creates a second index nor modifies production ranking.
+
+### Non-exclusive source gold for retrieval quality, November 20
+
+The canonical read-only native retrieval regression accepts one or many
+independently judged relevant original paths per question, measures
+first-relevant discovery and fractional known-source recall, and checks
+every known relevant source's native original/derivative revision
+metadata. Historical baseline comparisons now require unchanged query
+and gold identities. A question with one annotated source does NOT
+imply all other retrieved sources are irrelevant. A pre-frozen
+thirteen-paper comparison demonstrated that the existing KMD hybrid
+fusion harmed source retrieval versus the current semantic baseline;
+production ranking was deliberately left unchanged. See
+docs/kmd-retrieval-drift-benchmark-2026-11-20.md.

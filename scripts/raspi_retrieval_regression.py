@@ -36,12 +36,13 @@ def main()->None:
         raise ValueError("private benchmark output must be a new file in an existing real directory")
     sys.path.insert(0,str(Path(__file__).resolve().parents[1]/"src"))
     from file_system_catalog.retrieval_regression import (
-        validated_gold,source_record,evaluate_case,score,
+        validated_gold,source_record,evaluate_case,score,assert_equivalent_gold,
     )
     gold=args.gold.read_bytes()
     if len(gold)>100000:
         raise ValueError("gold file too large")
-    full_cases=validated_gold(json.loads(gold))
+    document=json.loads(gold)
+    full_cases=validated_gold(document["cases"] if isinstance(document,dict) else document)
     cases=full_cases
     if args.case_id:
         selected=set(args.case_id)
@@ -54,7 +55,9 @@ def main()->None:
     baseline=None
     if args.baseline:
         raw=json.loads(args.baseline.read_text())
-        baseline=raw["summary"] if len(cases)==len(full_cases) else None
+        if len(cases)==len(full_cases):
+            assert_equivalent_gold(cases,raw)
+            baseline=raw["summary"]
     if not all(p.is_file() and not p.is_symlink() for p in
                (args.database,args.source_map,args.search_cli)):
         raise ValueError("canonical source, map or search executable missing/symlinked")
