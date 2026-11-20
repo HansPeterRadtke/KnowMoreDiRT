@@ -1,10 +1,14 @@
 """Fixed-source ranking regression cannot become guessed answer correctness."""
+import hashlib
 import json
+from pathlib import Path
 import sqlite3
+from tempfile import TemporaryDirectory
 import unittest
 
 from file_system_catalog.retrieval_regression import (
     validated_gold,evaluate_case,score,source_record,assert_equivalent_gold,
+    attest_html_original_gold,
 )
 
 
@@ -155,6 +159,95 @@ class FixedOriginalRetrievalTests(unittest.TestCase):
         self.assertEqual(-1,stats["top10_difference_vs_historical"])
         self.assertEqual(1,stats["gold_with_missing_or_stale_native_source"])
         self.assertEqual(1,stats["historical_negative_unlabeled_cases"])
+
+
+class PublisherGoldAttestationTests(unittest.TestCase):
+    def setUp(self):
+        self.dir=TemporaryDirectory()
+        self.addCleanup(self.dir.cleanup)
+        root=Path(self.dir.name)
+        self.original=root/"original"
+        self.derived=root/"derived"
+        self.original.mkdir()
+        self.derived.mkdir()
+        self.rel="manuals/example.html"
+        path=self.original/self.rel
+        path.parent.mkdir(parents=True)
+        path.write_text("<html><body><h1>Layer Weight</h1><p>Facing varies with surface angle and blends materials.</p></body></html>")
+        target=self.derived/(self.rel+".txt")
+        target.parent.mkdir(parents=True)
+        target.write_text("[[SOURCE UNIT: HTML original publisher document]]\\n"
+                          "Layer Weight Facing varies with surface angle and blends materials.")
+        self.path=path
+        self.target=target
+        self.hash=lambda p:hashlib.sha256(p.read_bytes()).hexdigest()
+        self.db=sqlite3.connect(":memory:")
+        self.addCleanup(self.db.close)
+        self.db.execute("CREATE TABLE originals (source_path TEXT,status TEXT,"
+                        "source_sha256 TEXT,derived_sha256 TEXT,derived_path TEXT)")
+        self.db.execute("INSERT INTO originals VALUES (?,?,?,?,?)",(
+            self.rel,"complete",self.hash(path),self.hash(target),self.rel+".txt",
+        ))
+        self.quote="Facing varies with surface angle and blends materials."
+        self.case={"id":"one","query":"How to use Blender view-angle shader weights?",
+                   "relevant_paths":[self.rel],
+                   "provenance":[{"path":self.rel,
+                       "original_sha256":self.hash(path),
+                       "derived_sha256":self.hash(target),
+                       "publisher_anchor_normalized":self.quote.casefold(),
+                       "publisher_anchor_sha256":hashlib.sha256(self.quote.encode()).hexdigest()}]}
+
+    def attest(self):
+        return attest_html_original_gold([self.case],{"one"},
+            original_root=self.original,derivative_root=self.derived,
+            source_map=self.db)
+
+    def test_exact_original_and_derivative_bytes_are_rechecked(self):
+        result=self.attest()["one"][self.rel]
+        self.assertTrue(result["publisher_source_bytes_rechecked"])
+        self.assertTrue(result["derived_source_bytes_rechecked"])
+        self.assertTrue(result["literal_publisher_phrase_found_after_html_text_normalization"])
+        self.assertEqual(self.hash(self.path),result["original_sha256"])
+
+    def test_mutated_original_or_derived_fails_without_claiming_a_source(self):
+        self.path.write_text(self.path.read_text()+"changed")
+        with self.assertRaisesRegex(ValueError,"bytes differ"):
+            self.attest()
+        self.path.write_text(self.path.read_text()[:-7])
+        assert self.hash(self.path)==self.case["provenance"][0]["original_sha256"]
+        self.target.write_text(self.target.read_text()+"changed")
+        with self.assertRaisesRegex(ValueError,"bytes differ"):
+            self.attest()
+
+    def test_relevant_phrase_missing_in_verified_original_fails(self):
+        new="No supporting original text. "*2
+        self.path.write_text(new)
+        digest=self.hash(self.path)
+        self.db.execute("UPDATE originals SET source_sha256=?",(digest,))
+        self.case["provenance"][0]["original_sha256"]=digest
+        with self.assertRaisesRegex(ValueError,"anchor not present"):
+            self.attest()
+
+    def test_symlink_and_extra_gold_label_are_rejected(self):
+        self.path.unlink()
+        self.path.symlink_to(self.target)
+        with self.assertRaisesRegex(ValueError,"symlinked"):
+            self.attest()
+        self.path.unlink()
+        self.path.write_text("<p>"+self.quote+"</p>")
+        digest=self.hash(self.path)
+        self.db.execute("UPDATE originals SET source_sha256=?",(digest,))
+        self.case["provenance"][0]["original_sha256"]=digest
+        self.case["relevant_paths"].append("manuals/other.html")
+        with self.assertRaisesRegex(ValueError,"all independently attested"):
+            self.attest()
+
+    def test_nontext_pdf_source_must_use_separate_attestation(self):
+        old=self.case["relevant_paths"][0]
+        self.case["relevant_paths"]=["manuals/example.pdf"]
+        self.case["provenance"][0]["path"]="manuals/example.pdf"
+        with self.assertRaisesRegex(ValueError,"separate source-aware"):
+            self.attest()
 
 
 if __name__=="__main__":

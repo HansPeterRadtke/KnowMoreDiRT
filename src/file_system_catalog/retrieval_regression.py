@@ -7,6 +7,8 @@ predeclared gold", NOT objectively unanswerable or irrelevant.
 from __future__ import annotations
 
 import hashlib
+import html
+import re
 import json
 import sqlite3
 from pathlib import Path
@@ -215,3 +217,107 @@ def score(rows:list[dict],baseline:dict|None=None)->dict:
         if isinstance(summary["historical_top10"],int):
             summary["top10_difference_vs_historical"]=summary["correct_top10"]-summary["historical_top10"]
     return summary
+
+
+def attest_html_original_gold(
+    original_cases:list[dict],
+    selected_ids:set[str],
+    *,
+    original_root:Path,
+    derivative_root:Path,
+    source_map:sqlite3.Connection,
+    maximum_bytes:int=16*1024*1024,
+)->dict[str,dict]:
+    """Independently rehash each labeled ORIGINAL and current derivative.
+
+    Optional stricter ground-truth gate for publisher HTML and plain text.
+    Image/PDF evidence needs a separate format-aware source attestor; refuse
+    silently treating a text-layer derivative as original PDF bytes.
+    The anchors are short externally predeclared source phrases in BOTH
+    current publisher original and generated derivative, not model output.
+    The result carries only paths/digests, not publisher content.
+    """
+    if not isinstance(selected_ids,set) or not selected_ids:
+        raise ValueError("no selected gold cases")
+    if not 1<=maximum_bytes<=64*1024*1024:
+        raise ValueError("invalid source gold byte bound")
+    original_root=Path(original_root).resolve(strict=True)
+    derivative_root=Path(derivative_root).resolve(strict=True)
+    if not original_root.is_dir() or not derivative_root.is_dir():
+        raise ValueError("source/derivative roots must exist")
+    evidence={}
+    def path_below(base:Path,relative:str)->Path:
+        if not _safe_original_path(relative):
+            raise ValueError("unsafe gold publisher or derivative path")
+        p=base/relative
+        if p.is_symlink() or not p.is_file() or not p.resolve().is_relative_to(base):
+            raise ValueError("gold publisher or derivative is absent or symlinked")
+        if p.stat().st_size>maximum_bytes:
+            raise ValueError("gold source exceeds bounded attestation bytes")
+        return p
+    def normalized(txt:str)->str:
+        return re.sub(r"\s+"," ",txt).strip().casefold()
+    for case in original_cases:
+        if case.get("id") not in selected_ids:
+            continue
+        labels=case.get("relevant_paths")
+        entries=case.get("provenance")
+        if not isinstance(labels,list) or not isinstance(entries,list) or len(labels)!=len(entries):
+            raise ValueError("strict publisher gold requires all independently attested source labels")
+        keyed={}
+        for item in entries:
+            if not isinstance(item,dict) or item.get("path") in keyed:
+                raise ValueError("duplicate or invalid gold provenance entry")
+            keyed[item.get("path")]=item
+        result={}
+        for relative in labels:
+            item=keyed.get(relative)
+            if not isinstance(item,dict):
+                raise ValueError("gold label lacks publisher source evidence")
+            if Path(relative).suffix.casefold() not in (".html",".htm",".txt"):
+                raise ValueError("PDF/graphics original requires a separate source-aware attestor")
+            original=path_below(original_root,relative)
+            rows=source_map.execute(
+                "SELECT status,source_sha256,derived_sha256,derived_path FROM originals WHERE source_path=?",
+                (relative,),
+            ).fetchall()
+            if len(rows)!=1 or rows[0][0]!="complete":
+                raise ValueError("gold original not uniquely complete in current source map")
+            _,orig_sha,derived_sha,der_rel=rows[0]
+            if item.get("original_sha256")!=orig_sha or item.get("derived_sha256")!=derived_sha:
+                raise ValueError("predeclared gold source revision differs from current source map")
+            derivative=path_below(derivative_root,der_rel)
+            orig=original.read_bytes()
+            converted=derivative.read_bytes()
+            if hashlib.sha256(orig).hexdigest()!=orig_sha or hashlib.sha256(converted).hexdigest()!=derived_sha:
+                raise ValueError("publisher/derivative bytes differ from current source map")
+            anchor=item.get("publisher_anchor_normalized")
+            if not isinstance(anchor,str) or not 24<=len(anchor)<=300:
+                raise ValueError("source anchor must be a bounded independently quoted phrase")
+            anchor=normalized(anchor)
+            if (not anchor or anchor!=item["publisher_anchor_normalized"] or
+                    not isinstance(item.get("publisher_anchor_sha256"),str) or
+                    not re.fullmatch(r"[0-9a-f]{64}",item["publisher_anchor_sha256"])):
+                # The quoted publisher anchor's pre-normalization SHA is
+                # metadata from the private frozen gold. We do not pretend
+                # hashing normalized text reproduces original raw bytes.
+                raise ValueError("invalid frozen gold anchor evidence")
+            raw=orig.decode("utf-8","strict")
+            if original.suffix.casefold() in (".html",".htm"):
+                raw=html.unescape(re.sub(r"<[^>]*>"," ",raw))
+            text=converted.decode("utf-8","strict")
+            if anchor not in normalized(raw) or anchor not in normalized(text):
+                raise ValueError("gold anchor not present in current publisher and derived source")
+            result[relative]={
+                "original_sha256":orig_sha,
+                "derived_sha256":derived_sha,
+                "anchor_sha256":item["publisher_anchor_sha256"],
+                "publisher_source_bytes_rechecked":True,
+                "derived_source_bytes_rechecked":True,
+                "literal_publisher_phrase_found_after_html_text_normalization":True,
+                "known_source_not_claimed_exhaustively_relevant":True,
+            }
+        evidence[case["id"]]=result
+    if set(evidence)!=selected_ids:
+        raise ValueError("selected gold ids missing from original attestation")
+    return evidence

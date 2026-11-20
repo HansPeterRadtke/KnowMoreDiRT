@@ -177,3 +177,41 @@ and properly scoped passages, not merely this score.
 
 No native FileDB rows, source-map, original PDFs, model services or
 production ranking were changed by these evaluations.
+
+## November 21: independently publisher-attested multi-source holdout
+
+A separately authored, privately frozen five-question multi-relevant
+original test covers Blender normal maps, layer weights, material
+roughness, Unity cubemaps and runtime Render Textures. Eleven known
+relevant publisher originals were selected and SHA checked BEFORE
+these queries were run. The private frozen gold SHA-256 is
+21d34b00b5b24a1d1d304ec8c1e01b3904d721c58c7250f1bd3b5cd3bb8456c3.
+
+Without tuning production ranking, native search returned ten of eleven
+known sources within top ten. Three of five questions had a relevant
+source at rank one; all five had at least one at rank ten; four of five
+had complete known-source recall. The PBRT fourth-edition microfacet
+roughness chapter was the single missing known source, also absent from
+the thirty-candidate pool. The Epic roughness reference was at rank ten.
+Other unannotated sources may be equally relevant; these five questions
+do not establish overall corpus accuracy or override the independent
+thirteen-paper RRF test that rejected early hybrid deployment.
+
+The canonical read-only regression script now supports optional
+--attest-html-gold with --original-root and --derived-root. Before any
+search, it independently rehashes every labeled HTML/text publisher
+original and current derived text, matches both SHA-256 values against
+the current source-map and the separately frozen labels, and confirms
+that the supporting normalized original passage appears in both the
+publisher original and its current derivative. Unknown/symlinked/changed
+originals, incomplete gold or missing source excerpts fail closed.
+The report stores checksums and attestation flags, not copyrighted
+source paragraphs. HTML whitespace/tag normalization is not an exact
+publisher-byte quotation; PDF source evidence requires the existing
+physical-page original attestor and is deliberately unsupported here.
+With the flag omitted, prior query regression behavior is unchanged.
+
+Private gold, first-ten and first-thirty rankings and complete
+publisher-byte-attested replay are in
+/data/var/knowmoredirt/knowledge-library/search-audit/multirelevant-originals-20261121/.
+No index, search weight, publisher original, model or worker was changed.

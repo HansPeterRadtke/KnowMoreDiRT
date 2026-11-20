@@ -292,3 +292,15 @@ thirteen-paper comparison demonstrated that the existing KMD hybrid
 fusion harmed source retrieval versus the current semantic baseline;
 production ranking was deliberately left unchanged. See
 docs/kmd-retrieval-drift-benchmark-2026-11-20.md.
+
+### Publisher-attested multi-relevant-original retrieval checks
+
+The read-only original retrieval regression tool optionally accepts
+--attest-html-gold --original-root ROOT --derived-root ROOT. It rehashes
+the original publisher HTML/text source and its extracted derivative,
+checks the current source-map and verifies a frozen supporting phrase
+before retrieving. The private gold must identify all supporting sources.
+PDF and image evidence requires the separate physical-page verifier.
+The new five-question, eleven-source November twenty-first acceptance
+is recorded in the dated retrieval benchmark guide. Ordinary search
+and scoring remain unchanged.
