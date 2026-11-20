@@ -106,3 +106,9 @@ sample of actual publisher/derivative file bytes, joined to the
 existing native FileDB and its embedding coverage. The exact tested
 workflow and its limitations are documented in
 docs/kmd-source-revision-audit-2026-11-20.md.
+
+Optional read-only scripts/raspi_dual_source_discovery.py exposes both
+current original-source semantic passage results and generated
+hierarchical-summary results separately, with full source revision
+checks and without replacing either production rank. See the dated
+retrieval regression guide for exact usage and limitations.

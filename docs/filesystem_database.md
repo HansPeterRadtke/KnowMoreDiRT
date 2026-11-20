@@ -304,3 +304,16 @@ PDF and image evidence requires the separate physical-page verifier.
 The new five-question, eleven-source November twenty-first acceptance
 is recorded in the dated retrieval benchmark guide. Ordinary search
 and scoring remain unchanged.
+
+### Original-source and generated-summary discovery side by side
+
+The optional read-only Raspi dual source discovery operator invokes
+scripts/raspi_dual_source_discovery.py with a question and --top limit.
+It returns two independent ranked sets from the existing native FileDB:
+current source-derived original passage previews and generated
+hierarchical summary hints, plus an alphabetic path union. Both exact
+publisher original and current derivative file SHA-256 are rechecked,
+and raw chunk text SHA is verified again. It does NOT fuse ranks, create
+another FileDB or treat an excerpt as a complete, physically validated
+PDF source citation. See the November twenty-first evidence and CLI
+notes in docs/kmd-retrieval-drift-benchmark-2026-11-20.md.

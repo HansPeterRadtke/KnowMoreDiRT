@@ -215,3 +215,81 @@ Private gold, first-ten and first-thirty rankings and complete
 publisher-byte-attested replay are in
 /data/var/knowmoredirt/knowledge-library/search-audit/multirelevant-originals-20261121/.
 No index, search weight, publisher original, model or worker was changed.
+
+## November 21 — optional two-channel discovery without reranking
+
+The native FileDB contains 59,294 SHA-valid original-source overview
+embeddings over 17,715 text-extracted originals as well as the ongoing
+generated hierarchical summaries (about 16,955 representations over
+8,427 originals at the test checkpoint). These are the SAME canonical
+FileDB, not duplicate source-content databases. The existing Raspi
+original-passage semantic CLI already finds full SHA-confirmed current
+source-derived passages even before recursive summarization completes.
+
+The optional read-only scripts/raspi_dual_source_discovery.py invokes the
+current native hierarchical summary lookup and original-source overview
+passage lookup separately. Their rankings and similarity values remain
+independent. An alphabetically sorted union is for navigation, NOT a
+new relevance score or rank fusion. The helper additionally verifies the
+full original publisher SHA-256 against its completed download receipt
+and source-map current revision; the full current derivative SHA-256; and
+each returned raw source passage SHA and presence in the current
+derivative. An absent, symlinked, altered, ambiguous or unrecognized
+source fails closed without claiming a partially verified result.
+
+Use on Raspi:
+
+    /data/var/knowmoredirt/semantic-venv/bin/python \
+      /data/src/github/KnowMoreDiRT/scripts/raspi_dual_source_discovery.py \
+      'Which original source explains microfacet roughness?' --top 6
+
+Top defaults to eight, maximum twenty originals per separate channel.
+The raw backend reads at most thirty distinct source passage hits before
+deduplicating original paths. Both E5 retrievals are local, CPU-only and
+read the single original FileDB. It is slower than one search because
+two complete vector lookups and publisher-source revision checks are run.
+The output is a bounded current extracted-text passage preview and a
+generated-summary candidate, not a validated factual answer. Physical
+PDF page/figure geometry, scope outside a single chunk and source
+rights must still be checked against the original.
+
+### Frozen-gold shadow results and real end-to-end acceptance
+
+A private experiment using already-frozen questions independently
+SHA-checked all 59,294 original-overview and 16,955 hierarchical summary
+vectors, plus source-map revisions. It evaluated 28 old diagnostic
+questions, an independent thirteen-paper original holdout and five
+multi-relevant-source Blender/Unity/PBRT questions without fitting new
+weights. A predetermined equal-weight rank fusion with constant sixty
+improved source ranking on the older twenty-eight (top-ten eleven raw,
+sixteen summary, twenty-one fusion) and independent thirteen (eleven
+raw, ten summary, twelve fusion). On the separate five-question set,
+all three shadow variants recovered nine of eleven known originals
+within ten, whereas a separate full native summary CLI run had recovered
+ten. Thus the model-only shadow is NOT equivalent to full
+source-verified production ranking and cannot justify deploying RRF.
+
+Instead the optional helper shows two independent source-verified views
+without demoting the first-ranked result of either. Real original-source
+tests confirmed a focused PBRT microfacet query places its original
+roughness chapter at rank one in both channels; a broad material query
+surfaces different relevant originals in separate lists; and an ACL
+paper about hierarchical planning and web-agent failure, lacking a
+completed recursive summary, ranks first in the original-passage view.
+That latter query returned thirteen distinct originals across two
+seven-item views, including six found only in the original-source view.
+
+All output publishers and derivatives were rehashed, preserving the
+verified passage SHA, publisher URL and PDF page-citation warning rather
+than inventing a page or fact. Focused tests cover duplicate passages,
+stale originals and derivatives, symlinks, fabricated raw chunks,
+inconsistent backend query identity and original-only sources.
+
+Private source evidence, 46-case shadow vector scores, original PDFs'
+checksum metadata and real two-channel acceptance are under:
+ /data/var/knowmoredirt/knowledge-library/search-audit/native-overview-retrieval-20261121/
+
+The current production summary ranking is unchanged. No model was
+downloaded, service restarted, source acquired or FileDB row rewritten.
+Longer-term ranking decisions require independent multi-answer relevance
+judgments, contextual hard negatives and citation-level tests.
