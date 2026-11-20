@@ -1,0 +1,204 @@
+{
+  "cases": [
+    {
+      "name": "plain",
+      "chunks": [
+        "Agency states:",
+        "Bridge A is open."
+      ],
+      "fact": "Bridge A is open.",
+      "expected": true,
+      "scope": "real",
+      "source": "agency",
+      "valid_at": 2026
+    },
+    {
+      "name": "dream_cross_chunk",
+      "chunks": [
+        "Mia dreamed last night:",
+        "Bridge A is open."
+      ],
+      "fact": "Bridge A is open.",
+      "expected": false,
+      "scope": "dream",
+      "source": "Mia",
+      "valid_at": 2026
+    },
+    {
+      "name": "fiction_cross_chunk",
+      "chunks": [
+        "A story says:",
+        "Bridge A is open."
+      ],
+      "fact": "Bridge A is open.",
+      "expected": false,
+      "scope": "fiction",
+      "source": "narrator",
+      "valid_at": 2026
+    },
+    {
+      "name": "quotation_cross_chunk",
+      "chunks": [
+        "Mia quotes a rumor:",
+        "Bridge A is open."
+      ],
+      "fact": "Bridge A is open.",
+      "expected": false,
+      "scope": "quote",
+      "source": "Mia",
+      "valid_at": 2026
+    },
+    {
+      "name": "negated",
+      "chunks": [
+        "Agency correction: NOT",
+        "Bridge A is open."
+      ],
+      "fact": "Bridge A is open.",
+      "expected": false,
+      "scope": "negated",
+      "source": "agency",
+      "valid_at": 2026
+    },
+    {
+      "name": "conditional",
+      "chunks": [
+        "Agency says only IF approved:",
+        "Bridge A is open."
+      ],
+      "fact": "Bridge A is open.",
+      "expected": false,
+      "scope": "conditional",
+      "source": "agency",
+      "valid_at": 2026
+    },
+    {
+      "name": "expired",
+      "chunks": [
+        "Agency notice dated 2024, expires 2025:",
+        "Bridge A is open."
+      ],
+      "fact": "Bridge A is open.",
+      "expected": false,
+      "scope": "real",
+      "source": "agency",
+      "valid_at": 2024
+    },
+    {
+      "name": "wrong_authority",
+      "chunks": [
+        "Unverified visitor says:",
+        "Bridge A is open."
+      ],
+      "fact": "Bridge A is open.",
+      "expected": false,
+      "scope": "real",
+      "source": "visitor",
+      "valid_at": 2026
+    },
+    {
+      "name": "conflict",
+      "chunks": [
+        "Agency says: Bridge A is open.",
+        "Agency correction: Bridge A is not open."
+      ],
+      "fact": "Bridge A is open.",
+      "expected": false,
+      "scope": "conflict",
+      "source": "agency",
+      "valid_at": 2026
+    },
+    {
+      "name": "different_place",
+      "chunks": [
+        "Agency says: Bridge B is open."
+      ],
+      "fact": "Bridge A is open.",
+      "expected": false,
+      "scope": "real",
+      "source": "agency",
+      "valid_at": 2026
+    },
+    {
+      "name": "agency_recent",
+      "chunks": [
+        "Agency notice 2026:",
+        "Bridge A is open."
+      ],
+      "fact": "Bridge A is open.",
+      "expected": true,
+      "scope": "real",
+      "source": "agency",
+      "valid_at": 2026
+    },
+    {
+      "name": "scoped_quoted_fact",
+      "chunks": [
+        "Agency confirms current road status:",
+        "Bridge A is open."
+      ],
+      "fact": "Bridge A is open.",
+      "expected": true,
+      "scope": "real",
+      "source": "agency",
+      "valid_at": 2026
+    }
+  ],
+  "methods": {
+    "chunk_only": {
+      "correct": 4,
+      "total": 12,
+      "errors": [
+        "dream_cross_chunk",
+        "fiction_cross_chunk",
+        "quotation_cross_chunk",
+        "negated",
+        "conditional",
+        "expired",
+        "wrong_authority",
+        "conflict"
+      ]
+    },
+    "neighbor_provenance": {
+      "correct": 11,
+      "total": 12,
+      "errors": [
+        "wrong_authority"
+      ]
+    },
+    "scoped_oracle_metadata": {
+      "correct": 12,
+      "total": 12,
+      "errors": []
+    }
+  },
+  "demonstrations": {
+    "derivation": {
+      "conclusion": "Bridge may open",
+      "rule": "modus_ponens",
+      "premises": [
+        "A",
+        "B"
+      ],
+      "valid_given_premises": true,
+      "empirically_verified": false
+    },
+    "contradiction": {
+      "claims": [
+        "Bridge open",
+        "Bridge not open"
+      ],
+      "same_entity": "Bridge A",
+      "same_time": 2026,
+      "same_scope": "agency current",
+      "syntactic_incompatibility": true,
+      "truth_resolved": false
+    }
+  },
+  "limitations": [
+    "Synthetic, not heldout real documents",
+    "Scoped mode is an oracle metadata upper bound, not DRS parsing",
+    "Rules cannot establish extracted premises are true",
+    "Conflict resolution needs source ordering and authority"
+  ]
+}

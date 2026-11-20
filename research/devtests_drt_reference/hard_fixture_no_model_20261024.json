@@ -1,0 +1,30 @@
+{
+  "total": 134,
+  "correct": 131,
+  "failures": [
+    {
+      "id": "hrq086",
+      "category": "actor_identifier_role_chain",
+      "question": "Which actor id belongs to the key reviewer of Aurora Loom Safety Note?",
+      "expected": "ACT-411",
+      "predicted": "ACT-411; ACT-412",
+      "correct": false
+    },
+    {
+      "id": "hrq087",
+      "category": "actor_identifier_role_chain",
+      "question": "Find actor IDs of the author and reviewers of Aurora Loom Safety Note.",
+      "expected": "ACT-410; ACT-411; ACT-412",
+      "predicted": "ACT-410; ACT-412; ACT-411",
+      "correct": false
+    },
+    {
+      "id": "hrq089",
+      "category": "actor_identifier_role_chain",
+      "question": "Which actor id belongs to the reviewer of Brindle Map Survey named Dax Ivor?",
+      "expected": "ACT-512",
+      "predicted": "ACT-510",
+      "correct": false
+    }
+  ]
+}
