@@ -147,6 +147,49 @@ def _regular_word_forms(terms):
     return {word: form for word, form in forms.items() if form not in terms}
 
 
+_NON_COMPOUND_QUERY = re.compile(r"(?<!\w)non([a-z]{3,42})(?!\w)", re.IGNORECASE)
+_NON_HYPHEN = "-\u2010\u2011\u2012\u2013\u2014"
+
+
+def _publisher_spelling_query(query: str, derived_text: str) -> tuple[str, dict[str, str]]:
+    """Equivalent `nonzero`/`non-zero` spelling, without changing publisher text.
+
+    Apply only if the current *publisher-source body* has the hyphenated
+    token and the corresponding joined word is absent. Do not rewrite a
+    queried identifier, an unrelated general term or generated catalog
+    metadata. The caller retains the original query in its audit receipt.
+    This only broadens safe lexical retrieval, never verifies an answer.
+    """
+    if not isinstance(query, str) or not isinstance(derived_text, str):
+        raise ValueError("source query normalization requires original text")
+    first = _SOURCE_UNIT.search(derived_text)
+    publisher_body = derived_text[first.end():] if first else derived_text
+    replacement = query
+    aliases: dict[str, str] = {}
+    # Inspect the actual original query once; never recursively expand
+    # artificial forms created by a previous normalization.
+    for term in query_terms(query):
+        if "_" in term:
+            continue
+        match = _NON_COMPOUND_QUERY.fullmatch(term)
+        if not match:
+            continue
+        suffix = match[1]
+        joined = re.compile(r"(?<!\w)" + re.escape(term) + r"(?!\w)", re.IGNORECASE)
+        separated = re.compile(
+            r"(?<!\w)non[" + _NON_HYPHEN + r"]\s*"
+            + re.escape(suffix) + r"(?!\w)", re.IGNORECASE,
+        )
+        if joined.search(publisher_body) or not separated.search(publisher_body):
+            continue
+        spelling = "non " + suffix
+        newer, count = joined.subn(spelling, replacement)
+        if count and len(newer) <= 1000:
+            aliases[term] = spelling
+            replacement = newer
+    return replacement, aliases
+
+
 def _passage_matches(index, query, terms, *, allow_forms, limit):
     for row in index.search(query, limit=limit, require_identifier_in_passage=True):
         yield row, {}
@@ -253,7 +296,8 @@ def source_evidence_candidates(
         raise ValueError("source exceeds explicit RAM-only FTS bound; no silent sampling")
     if _sha(derived_text)!=derived_sha256:
         raise ValueError("source text digest differs from required derivative revision")
-    terms=query_terms(query)
+    effective_query,compound_aliases = _publisher_spelling_query(query,derived_text)
+    terms=query_terms(effective_query)
     if not terms:
         raise ValueError("no informative source search terms")
     identifiers = {term for term in terms if "_" in term}
@@ -308,7 +352,8 @@ def source_evidence_candidates(
         out = []
         accepted = set()
         unreadable_pdf_excerpts_dropped = 0
-        candidates = _passage_matches(idx, query, terms, allow_forms=markdown and not identifiers,
+        candidates = _passage_matches(idx, effective_query, terms,
+                                      allow_forms=markdown and not identifiers,
                                       limit=min(2000, max(100, top * 12)))
         for item, forms in candidates:
             passage=item["passage"]
@@ -404,6 +449,7 @@ def source_evidence_candidates(
         "ephemeral_fts_passages":chunks,
         "returned_passages":len(out),
         "unreadable_pdf_excerpts_dropped":unreadable_pdf_excerpts_dropped,
+        "publisher_non_compound_spelling_aliases":compound_aliases,
         "passages":out,
         "evidence_warning":(
             "These are literal matches in the verified original source, "

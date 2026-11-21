@@ -254,6 +254,62 @@ and `P2GS` against current original/derivative digests and physically checked
 PDF pages. No new original was acquired, no inference server was changed,
 and independently judged answer correctness remains open.
 
+### Conservative original-source spelling equivalence in lexical evidence, November 21
+
+Native `source-evidence` searches a **specified, SHA-verified original source**
+with an ephemeral SQLite FTS5 index. A previously observable failure on the
+pre-frozen four-domain original-PDF-page holdout was caused by the question
+using the single term `nonzero` while the actual independent publisher
+passage says `non-zero`. Without spelling equivalence, the supporting original
+PDF physical page five was ranked seventh behind unrelated reference,
+diagram and ablation-table pages. A query with `non zero` ranked the same
+original page first, as independently verified against the publisher PDF.
+
+`file_system_catalog.source_evidence._publisher_spelling_query` now applies a
+**narrow, source-conditional spelling-only equivalence** for compounds of
+`non` plus an alphabetic suffix of at least three letters. It never edits
+publisher text, original source bytes, a derivative, or a native index. It
+searches only the actual publisher-source body **after** the first source-unit
+marker, not any KMD-generated catalog header. It rewrites a query term such
+as `nonzero`, `nonlinear` or `nonparametric` to its separate FTS tokens
+`non zero`, `non linear` or `non parametric` ONLY when the joined spelling
+is absent from the publisher body and an actual matching hyphenated form
+(such as `non-zero`, `non-linear`, `non-parametric`, or a physical typographic
+hyphen) is present. If the existing joined spelling is in the source,
+if no genuine hyphenated form exists, or for exact underscore identifiers,
+there is no change. No arbitrary synonyms, guessed semantic paraphrases,
+external model expansions, or replacements of absent publisher originals
+are introduced. The original user question stays unchanged in query audit
+and source identity, while `publisher_non_compound_spelling_aliases` records
+any locally applied lexical form; quoted passages and offsets retain their
+**actual unmodified source** and physical PDF-page proof.
+
+The unchanged, independently publisher-page-verified **eleven-case** frozen
+pre-change test spans CiteGuard, dense search-agent process supervision,
+TexGaussian PBR materials, and *The Little Book of Deep Learning*. Baseline
+real source-evidence retrieved nine of eleven expected original physical
+pages at rank five, with six at rank one. With this spelling correction it
+retrieved **ten of eleven at rank five** and **seven at rank one**. The dense
+reward page moved from seventh to first, with a verified original physical
+page, and the other ten gold page ranks did not worsen. The separate four-
+case 2025 HCI reference control retained four of four at rank five. These
+small hand-selected source-specific tests do **not** establish general
+semantic retrieval or complete answer accuracy. The still-missed TexGaussian
+text-conditioned material generation page remains an open morphological/
+semantic ranking challenge. A read-only Porter stemming experiment recovered
+that page in one shadow configuration, but reduced exact first-place matches
+in other cases; it was **not** deployed. Global semantic embeddings and the
+existing two independent corpus search channels remain unchanged.
+
+Private SHA-frozen source/gold, unchanged baseline, patched actual PDF-page
+results, HCI control and experimental non-production candidate ranks are
+kept under `search-audit/continued-20261121-wave49/`; the programmatic
+original-PDF verifier was run for all cited pages before the pre-change
+queries and again before both patched live replays. Unit tests verify actual
+publisher-only hyphen forms, Unicode hyphens, absent forms, already joined
+source spellings, generated metadata exclusions, exact identifier isolation,
+original source offsets/SHA and unchanged unverified-answer status.
+
 ### Bounded source-scope windows in mixed evidence, November 15
 
 The combined original-linked operator supports

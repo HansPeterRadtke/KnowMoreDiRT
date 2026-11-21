@@ -125,6 +125,72 @@ class OriginalEvidenceTests(TestCase):
         result = source_evidence_candidates(**args, query="APP_SERVICE_URL", top=1)
         self.assertEqual([r["source_section"] for r in result["passages"]], ["actual page"])
 
+    def test_approved_publisher_nonzero_hyphen_variant_preserves_exact_citation(self):
+        from file_system_catalog.source_evidence import _publisher_spelling_query
+        source=(
+            'KMD source provenance {"title":"An unrelated catalog string: nonzero"}\n'
+            '[[SOURCE UNIT: PDF page 1]]\n'
+            'The introduction covers ordinary reward shaping.\n'
+            '[[SOURCE UNIT: PDF page 2]]\n'
+            'The dense process reward is non-zero only when new semantic '
+            'information is acquired by a search agent. Previous actions '
+            'are still required for this reward.\n'
+        )
+        args=dict(self.args,derived_text=source,
+                  derived_sha256=hashlib.sha256(source.encode()).hexdigest())
+        query='What makes the nonzero process reward occur during search?'
+        effective,alias=_publisher_spelling_query(query,source)
+        self.assertEqual({'nonzero':'non zero'},alias)
+        self.assertIn('non zero',effective)
+        result=source_evidence_candidates(**args,query=query,top=5,snippet_characters=450)
+        self.assertEqual(1,result['returned_passages'])
+        self.assertEqual({'nonzero':'non zero'},result['publisher_non_compound_spelling_aliases'])
+        row=result['passages'][0]
+        self.assertEqual('PDF page 2',row['source_section'])
+        self.assertIn('non-zero',row['source_excerpt'])
+        self.assertEqual(source[row['excerpt_start_char']:row['excerpt_end_char']],row['source_excerpt'])
+        self.assertEqual(hashlib.sha256(row['source_excerpt'].encode()).hexdigest(),row['excerpt_sha256'])
+        self.assertEqual(args['derived_sha256'],row['derived_sha256'])
+        self.assertIn('not_verified_answer',row['status'])
+
+    def test_non_compound_variant_only_when_actual_publisher_has_real_split_spelling(self):
+        from file_system_catalog.source_evidence import _publisher_spelling_query
+        query='Why is a nonlinear relationship difficult?'
+        cases=[
+            ('[[SOURCE UNIT: PDF page 1]]\nA non-linear relationship appears in the observations.',
+             {'nonlinear':'non linear'}),
+            ('[[SOURCE UNIT: PDF page 1]]\nA non\u2011linear relationship appears in the observations.',
+             {'nonlinear':'non linear'}),
+            ('[[SOURCE UNIT: PDF page 1]]\nA nonlinear relationship and a non-linear correlation appear.',{}),
+            ('KMD source provenance metadata title: non-linear example.\n[[SOURCE UNIT: PDF page 1]]\nA linear relationship appears.',{}),
+            ('[[SOURCE UNIT: PDF page 1]]\nA nonsensical phrase with unrelated content appears.',{}),
+        ]
+        for body,expected in cases:
+            with self.subTest(body=body[:120]):
+                effective,aliases=_publisher_spelling_query(query,body)
+                self.assertEqual(expected,aliases)
+                self.assertEqual(bool(expected),'non linear' in effective)
+        # A literal queried identifier or already separated query may not
+        # be morphed; the exact identifier rule remains fully authoritative.
+        effective,aliases=_publisher_spelling_query('APP_NONLINEAR_Config',cases[0][0])
+        self.assertEqual({},aliases)
+        self.assertEqual('APP_NONLINEAR_Config',effective)
+        effective,aliases=_publisher_spelling_query('non-linear relationship',cases[0][0])
+        self.assertEqual({},aliases)
+        self.assertEqual('non-linear relationship',effective)
+
+    def test_no_unsupported_content_introduction_or_automatic_semantic_claim(self):
+        from file_system_catalog.source_evidence import _publisher_spelling_query
+        source='[[SOURCE UNIT: PDF page 1]]\nThe source uses a non-parametric estimator in an example.'
+        effective,alias=_publisher_spelling_query('What does a nonparametric estimator do?',source)
+        self.assertEqual({'nonparametric':'non parametric'},alias)
+        self.assertEqual('What does a non parametric estimator do?',effective)
+        self.assertEqual((source,{}),_publisher_spelling_query(source,source))
+        with self.assertRaises(ValueError):
+            _publisher_spelling_query(None,source)
+        with self.assertRaises(ValueError):
+            _publisher_spelling_query('nonparametric',None)
+
     def test_garbled_pdf_excerpt_excluded_without_changing_source_provenance(self):
         # A font-encoded physical page can contain exact bytes but be illegible.
         # Its source identity, page marker and SHA remain intact in the source.
