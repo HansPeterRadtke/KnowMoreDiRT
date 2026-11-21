@@ -884,3 +884,79 @@ The live source-map and indexing workers change over time, so record the
 fresh per-run timestamp and do not claim results reproduce byte-for-byte
 across different library index states. A publisher/source identity result is
 not a guarantee of truthful or complete answers.
+
+### Independent newest-original SHA and complete hierarchy-integrity sweep — November 21
+
+The live recursive-summary worker's normal `current_completed_originals()`
+checks each current publisher SHA, derivative SHA, and whole-source root,
+but a matching **root alone** is not proof that all recursively generated
+leaves, parent-child source spans and current vector bytes remain intact.
+The optional read-only source-integrity tool
+`scripts/raspi_recent_summary_integrity.py` independently rechecks a bounded
+sample of original documents from the actual two installed worker
+`KMD_HIERARCHICAL_DOCUMENT_COMPLETE` journals. This is a verification
+operation, **not** an index, new embedding corpus, or workload scheduler.
+
+For each recent completed original, it requires the same completed acquisition
+ledger receipt, exactly one current source-map identity, a full-byte matching
+publisher original SHA-256, complete derived-text SHA, exactly one canonical
+native FileDB original path, and current revision-linked summary rows. Every
+current summary node must match its native source start/end character offsets,
+actual derived-source span digest, summary-text digest, generated-source SHA
+metadata, embedding-byte digest, declared embedding dimension and dtype, and
+finite embedding norm. The verifier requires exactly one full-source root,
+correct child order and nested summary levels, an unambiguous acyclic
+parent-child graph, no orphaned nodes, and **contiguous complete source-text
+coverage** across all leaves. Stale historical-revision nodes are counted but
+not mistaken for current original representations. Checks do not require a
+trusted language model or any remote service.
+
+Invoke on Raspi with an exact local journal time and a **new private** output
+filename:
+
+```bash
+cd /data/src/github/KnowMoreDiRT
+W=/data/var/knowmoredirt/knowledge-library/search-audit/continued-20261121-wave48
+/data/var/knowmoredirt/semantic-venv/bin/python \
+  scripts/raspi_recent_summary_integrity.py \
+  --source-map /data/var/knowmoredirt/knowledge-library/semantic/source-map.sqlite3 \
+  --native-db /data/var/knowmoredirt/knowledge-library/filesystem.sqlite3 \
+  --original-root '/data/var/Knowledge Library' \
+  --derived-root /data/var/knowmoredirt/knowledge-library/semantic/text \
+  --completed-ledger '/data/var/Knowledge Library/_management/status.json' \
+  --since '2026-11-21 14:30:00' --last 15 \
+  --output "$W/NEW-recent-source-integrity.json"
+```
+
+Only one to twenty-five distinct recent real completion events can be
+checked in a call; the tool never treats arbitrary stdout or a title in a
+research abstract as a completion event. Any original or derivative above
+64 MiB is marked **unverified**, not silently skipped as verified. Other
+source SHA, missing child, disconnected hierarchy, incorrect offsets,
+modified summary text and incompatible embedding errors are clearly reported
+as **failed provenance**, with a nonzero exit status. Existing output paths
+and symlinked source paths are refused. All original, source-map and FileDB
+paths are opened for read-only verification; only a new mode-0600 private
+JSON report is written. The worker and shared model services are untouched.
+
+The November 21 first full sample rehashed fifteen approved publisher
+originals and their current extracted text. It verified forty-nine native
+recursive summary nodes, including the complete leaf-to-root source coverage
+and embedded vector fingerprints, with zero detected integrity failures.
+That is a bounded recent sample, not a guarantee for all roughly half-indexed
+originals or for the factual quality of AI-generated summaries. The source
+identity and tree audit are complementary to independent PDF-page physical
+citation validation, and neither replaces original documents or ordinary
+filesystem/grep search. This audit is intentionally NOT executed on every
+interactive search, to avoid the large original-byte scanning cost.
+
+The private reproducible receipt is at
+`/data/var/knowmoredirt/knowledge-library/search-audit/continued-20261121-wave48/approved-recent-full-native-graph-check.json`.
+The associated disposable SQLite regressions under
+`tests/filesystem_database/test_recent_source_tree_audit.py` and
+`test_recent_summary_integrity_cli.py` inject changed publisher bytes,
+modified derivatives, incomplete roots, missing or reordered source children,
+invalid source spans, digest mismatches, manipulated embedding shape and
+missing approvals, and check that each fails rather than being promoted to
+complete. Retain historical source-map error classifications for the two
+existing image-only originals until independently verified OCR is available.
