@@ -27,6 +27,10 @@ from file_system_catalog.summary_coverage import (
     current_completed_originals, pending_failures, revision_identity, summary_progress_metrics,
 )
 from file_system_catalog.summary_storage_policy import DEFAULT_DATABASE_BUDGET_BYTES
+from file_system_catalog.source_shard_runtime import current_assignment
+from file_system_catalog.source_shard_handoff_operator import (
+    verify_releasing_worker_acknowledged, verify_releasing_q4_acknowledged,
+)
 
 FILEDB = Path("/data/var/knowmoredirt/knowledge-library/filesystem.sqlite3")
 SOURCE_MAP = Path("/data/var/knowmoredirt/knowledge-library/semantic/source-map.sqlite3")
@@ -35,6 +39,10 @@ STATE = RUNROOT / "hierarchical-worker-status.json"
 LOCK = RUNROOT / ".hierarchical-worker.lock"
 CLI = Path(__file__).with_name("raspi_hierarchical_library.py")
 SOURCE_MANIFEST = Path("/data/infra/etc/knowledge-library-sources.json")
+# Optional, owner-only *runtime* allocation file. Absent by default, so an
+# installed systemd unit retains its exact existing --assigned-shards value.
+# Only after both workers run this code may the supervisor stage changes.
+ALLOCATION_MANIFEST = RUNROOT / "hierarchical-shard-handoff.json"
 stop = False
 
 def signal_stop(_signal, _frame):
@@ -157,6 +165,56 @@ def balanced_backlog(records: list, completed_count: int):
                 break
 
 
+def verify_source_shard_acquisition(candidate, prior_shards, runtime_label, *, startup=False):
+    """Fail closed if either worker acquires bucket three before release ACK.
+
+    Startup must NOT trust the installed CLI baseline as proof that a
+    restarted worker already owns bucket three. A legitimate rollback may
+    have released it to Q4, while the fixed systemd command still contains
+    --assigned-shards 1,2,3. Cross-check live release ACKs at startup too.
+    """
+    if 3 not in candidate.shards:
+        return
+    if candidate.generation == 0 and candidate.stage is None and 3 in prior_shards:
+        return  # No manifest: precisely the existing legacy CLI assignment.
+    must_check = startup or 3 not in prior_shards
+    if runtime_label=='coder' and candidate.stage=='baseline' and candidate.generation <= 1:
+        must_check = False  # Initial verified baseline is the installed unit's existing assignment.
+    if not must_check:
+        return
+    if runtime_label=='q4' and candidate.stage!='balanced':
+        raise ValueError('Q4 cannot acquire shard three outside balanced stage')
+    if runtime_label=='coder' and candidate.stage!='baseline':
+        raise ValueError('Coder cannot reacquire shard three outside baseline stage')
+    # The administrative operator checks two real live workers before writing
+    # any new generation. Independently verify this also in the Q4 worker:
+    # a manually altered/forged manifest must not cause dual source ownership.
+    import subprocess as _subprocess
+    def active_pid(unit):
+        result=_subprocess.run(['systemctl','show',unit,'-p','MainPID','--value'],
+                               capture_output=True,text=True,timeout=5,check=True)
+        return int(result.stdout.strip())
+    def current_command(pid):
+        with (Path('/proc')/str(pid)/'cmdline').open('rb') as stream:
+            return stream.read(8192)
+    other_label='coder' if runtime_label=='q4' else 'q4'
+    state_path=(RUNROOT/'hierarchical-worker-status.json' if other_label=='coder'
+                else RUNROOT/'hierarchical-worker-q4-status.json')
+    if state_path.is_symlink() or not state_path.is_file() or state_path.stat().st_size>64*1024:
+        raise ValueError('missing reliable releasing worker source-boundary handoff state')
+    state=json.loads(state_path.read_text('utf8'))
+    if other_label=='coder':
+        verify_releasing_worker_acknowledged(
+            coder_state=state,requested_generation=candidate.generation,
+            live_pid=active_pid,proc_command=current_command,
+        )
+    else:
+        verify_releasing_q4_acknowledged(
+            q4_state=state,requested_generation=candidate.generation,
+            live_pid=active_pid,proc_command=current_command,
+        )
+
+
 def run_command(parts, label, path):
     print("KMD_HIERARCHICAL", now(), label, path, flush=True)
     result = subprocess.run(
@@ -220,13 +278,38 @@ def run(
         raise RuntimeError("another KnowMoreDiRT hierarchical worker already owns this library")
     try:
         failed = {}
+        prior = {}
         try:
             prior = json.loads(STATE.read_text())
             if isinstance(prior.get("failed"), dict):
                 failed = prior["failed"]
         except (OSError, ValueError):
             pass
-        state_update(phase="starting", worker_pid=os.getpid(), started_utc=now(),
+        runtime_label = "coder" if not worker_label else worker_label
+        runtime_enabled = shard_count == 4 and runtime_label in ("coder", "q4")
+        if not runtime_enabled and ALLOCATION_MANIFEST.exists():
+            raise ValueError("unrecognized worker cannot join active source ownership handoff")
+        current_generation = 0
+        current_digest = None
+        current_stage = None
+        if runtime_enabled:
+            # Persisted generation prevents a restart from silently falling
+            # back to the old CLI buckets after a live balanced allocation
+            # manifest was removed or rolled back by mistake.
+            current_generation = prior.get("allocation_generation", 0)
+            current_digest = prior.get("allocation_manifest_sha256")
+            assignment = current_assignment(
+                ALLOCATION_MANIFEST,worker=runtime_label,default=shard_set,
+                shard_count=shard_count,previous_generation=current_generation,
+                previous_digest=current_digest)
+            verify_source_shard_acquisition(assignment,shard_set,runtime_label,startup=True)
+            shard_set = assignment.shards
+            current_generation = assignment.generation
+            current_digest = assignment.digest
+            current_stage = assignment.stage
+        start_utc=now()
+        state_update(phase="starting", worker_pid=os.getpid(), started_utc=start_utc,
+                     allocation_runtime_started_utc=start_utc if runtime_enabled else None,
                      summaries_per_original="all levels", source_of_truth=str(FILEDB),
                      model=model_name, model_url=model_url,
                      quality_source_group_context_cap_tokens=context_cap_tokens,
@@ -235,6 +318,10 @@ def run(
                      compact_native_facets=compact_native_facets,
                      shard_index=shard_index,shard_count=shard_count,
                      assigned_shards=sorted(shard_set),
+                     allocation_protocol="kmd.two_worker_shard_handoff.v1" if runtime_enabled else None,
+                     allocation_generation=current_generation,
+                     allocation_manifest_sha256=current_digest,
+                     allocation_stage=current_stage,
                      shard_algorithm="sha256_path_first64_be_modulo",
                      worker_label=worker_label or "original_primary",
                      concurrent_llm_requests=1,
@@ -242,6 +329,25 @@ def run(
                      native_facet_policy="summary_and_keywords_single_constrained_model_call")
         while not stop:
             try:
+                if runtime_enabled:
+                    assignment = current_assignment(
+                        ALLOCATION_MANIFEST,worker=runtime_label,default=shard_set,
+                        shard_count=shard_count,previous_generation=current_generation,
+                        previous_digest=current_digest)
+                    if (assignment.shards != shard_set or assignment.generation != current_generation
+                            or assignment.digest != current_digest):
+                        verify_source_shard_acquisition(assignment,shard_set,runtime_label)
+                        shard_set = assignment.shards
+                        current_generation = assignment.generation
+                        current_digest = assignment.digest
+                        current_stage = assignment.stage
+                        state_update(phase="allocation_applied",current_original=None,
+                                     assigned_shards=sorted(shard_set),
+                                     allocation_generation=current_generation,
+                                     allocation_manifest_sha256=current_digest,
+                                     allocation_stage=current_stage)
+                        print("KMD_HIERARCHICAL_ALLOCATION_APPLIED",now(),runtime_label,
+                              current_generation,sorted(shard_set),flush=True)
                 available, processed = scope()
                 # A failure from before sharding may belong to the OTHER
                 # worker. Keep only this worker's assigned source failures,
@@ -302,8 +408,34 @@ def run(
                 completed_chars = metrics["indexed_text_characters"]
                 eligible_chars = metrics["eligible_text_characters"]
                 completed_in_pass = 0
+                allocation_changed = False
                 for path, original_sha, derived_sha, text_chars in records:
                     if stop: break
+                    if runtime_enabled:
+                        # Source *boundary* only: never change ownership while
+                        # building/importing the current source. A releasing
+                        # worker publishes this acknowledgement only after
+                        # its previous subprocess finished completely.
+                        candidate = current_assignment(
+                            ALLOCATION_MANIFEST,worker=runtime_label,default=shard_set,
+                            shard_count=shard_count,previous_generation=current_generation,
+                            previous_digest=current_digest)
+                        if (candidate.shards != shard_set or candidate.generation != current_generation
+                                or candidate.digest != current_digest):
+                            verify_source_shard_acquisition(candidate,shard_set,runtime_label)
+                            shard_set = candidate.shards
+                            current_generation = candidate.generation
+                            current_digest = candidate.digest
+                            current_stage = candidate.stage
+                            state_update(phase="allocation_applied",current_original=None,
+                                         assigned_shards=sorted(shard_set),
+                                         allocation_generation=current_generation,
+                                         allocation_manifest_sha256=current_digest,
+                                         allocation_stage=current_stage)
+                            print("KMD_HIERARCHICAL_ALLOCATION_APPLIED",now(),runtime_label,
+                                  current_generation,sorted(shard_set),flush=True)
+                            allocation_changed = True
+                            break  # Rebuild a source-disjoint backlog.
                     identity = revision_identity(path, original_sha, derived_sha)
                     status = failed.get(path, {})
                     if status.get("identity") != identity:
@@ -377,6 +509,8 @@ def run(
                     if completed_in_pass >= 10:
                         break
                 if stop: break
+                if allocation_changed:
+                    continue  # Release/acquisition takes effect immediately at boundary.
                 if not progress:
                     earliest = min((v.get("retry_after_epoch", time.time()+60)
                                     for v in failed.values()), default=time.time()+120)

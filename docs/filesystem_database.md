@@ -653,3 +653,92 @@ clean active summary-worker source checkout only when no import is currently
 running; the workers launch a fresh CLI subprocess per source, so future
 imports use the corrected bound without stopping the existing model services.
 Verify actual source retry/completion and any future journal errors separately.
+
+### Safe *cooperative* source-boundary reassignment protocol (November 21)
+
+**Important current deployment distinction:** The canonical KMD worker code
+has an optional `hierarchical-shard-handoff.json` reader, but the two running
+Raspi systemd worker Python processes have not yet restarted into that code.
+The private manifest **does not exist**. Their existing source ownership
+remains Coder buckets **1, 2, 3** and Qwen3.8 Q4 bucket **0**. No systemd unit,
+shared resident model, source original, native FileDB or service setting was
+changed by the implementation. The operator's real dry-run explicitly REFUSES
+to proceed until **both** active processes demonstrably run the new code.
+The prior read-only 2:2 plan is still a proposal, not a deployed speedup.
+
+In a future coordinated maintenance window, the System Integrity Supervisor
+must first establish a safe **document-boundary restart** (or let each worker
+naturally restart), preserving the active model endpoints and ensuring no
+current KMD import is interrupted. The systemd `KillMode=control-group` and
+`TimeoutStopSec=90s` make a blind `systemctl restart` unsafe for the existing
+multi-minute generation subprocess; it may discard ongoing model work. No
+component in this source-shard protocol signals, kills, starts or restarts a
+worker, modifies those service units, evicts a model or bypasses that guard.
+Do not use the tool merely because sudo is available. The active project
+exchange and resource broker must be checked before any maintenance.
+
+Once both running workers have loaded the new source, their private status
+JSON must report `allocation_protocol=kmd.two_worker_shard_handoff.v1`, a
+`allocation_runtime_started_utc` exactly equal to the real current worker
+`started_utc`, current installed main PIDs, generation zero and the original
+command-line assignments. Verify this independently, not from Git HEAD alone.
+The optional manifest is accepted only if a strict, regular, owner-only,
+small JSON file with an allowed generation, exact two-worker bucket ownership,
+no unexpected keys or symlinks. No file means original command-line behavior.
+A manifest once active cannot be silently deleted, downgraded or overwritten
+under the same generation. Illegal state makes a worker fail closed and retry
+its non-destructive outer loop rather than silently claiming a released shard.
+
+Use the owner-only, tested, atomic operator, which checks **both current live
+systemd main PIDs**, their actual Python process command-lines, protocol
+start markers, status freshness, current in-progress source shard, exact
+manifest SHA and acknowledgement generation before each possible write:
+
+```bash
+cd /data/src/github/KnowMoreDiRT
+python3 scripts/raspi_source_shard_handoff.py --target balanced
+# READ-ONLY BY DEFAULT. Currently expected to refuse: workers too old.
+# After both workers naturally run the new source and all checks pass:
+python3 scripts/raspi_source_shard_handoff.py --target balanced --apply
+# Wait until BOTH workers acknowledge source-boundary generation 1.
+python3 scripts/raspi_source_shard_handoff.py --target balanced --apply
+# Wait for Coder to COMPLETE its last bucket-3 source and for BOTH workers
+# to acknowledge generation 2: Coder [1,2], Q4 [0].
+python3 scripts/raspi_source_shard_handoff.py --target balanced --apply
+# After Q4 safely acquires shard 3 at a fresh source boundary,
+# both worker statuses eventually acknowledge generation 3, [1,2] / [0,3].
+```
+
+A second call before the prior generation's acknowledgements returns a
+nonzero error **without** writing or starting any model. The private
+`hierarchical-shard-handoff-operator.jsonl` journal records each actual
+manifest stage change; the manifest is written atomically and fsynced.
+The worker itself also verifies the releasing Coder's live protocol/PID and
+source-boundary acknowledgement before Q4 can acquire shard three. The
+rollback check is symmetric: if later restoring the old 3:1 split,
+**Coder must check Q4's release** before it can reacquire shard three. This
+protects against a manually forged full-assignment manifest bypassing the
+operator. The worker rechecks the owner-only source manifest between source
+documents, never during the model generation or native import of an active
+source; on a change, it acknowledges and rebuilds the backlog immediately.
+The SHA-based original-to-bucket mapping itself is unchanged, and no source
+is duplicated between the two valid owners.
+
+Rollback uses the same operator with `--target baseline`, also in two
+acknowledged stages: Q4 releases shard three, then Coder reacquires it.
+Never remove the active manifest as a rollback, alter the status JSON by hand,
+or directly write `balanced` without the two-phase acknowledgement. A worker
+whose saved generation refers to a missing manifest refuses to resume old
+ownership automatically. On fatal or unavailable worker status, do not
+apply more stages: preserve the current safe manifest and escalate the exact
+source boundary to the Integrity Supervisor.
+
+The isolated `test_source_shard_runtime.py`,
+`test_source_shard_worker_boundary.py`, and
+`test_source_shard_handoff_operator.py` verify strict manifest identity,
+rollback, per-original boundary ordering, normal legacy behavior, stale PIDs,
+missing acknowledgements, symmetrical acquisition proofs, atomic private
+file writes and the append-only journal. Those tests use only disposable
+fixtures, never the live process managers. The private wave47 receipt and the
+real *refusing* dry-run log are retained under
+`/data/var/knowmoredirt/knowledge-library/search-audit/continued-20261121-wave47`.
