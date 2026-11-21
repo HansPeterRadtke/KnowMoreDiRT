@@ -1154,16 +1154,22 @@ native semantic ranking; other projects may still use ordinary folder and
 grep searches directly on the preserved original files.
 
 The operator reads **up to sixteen kibibytes** from each completed existing
-source-map derivative to find the first `[[SOURCE UNIT: ...]]` publisher unit.
-It excludes the preceding generated KMD catalog header, any later source unit,
-and NUL-interleaved unreadable text-layer samples. At most 6,500 source-unit
-characters are added to temporary FTS per original. The entire corpus is
-never recopied, no independent persistent database is created, and the two
-existing recursive-summary workers/models are not stopped, changed, or given
-new work by this CLI. An original without a safely parsed source-unit marker
-remains visibly **not indexed by this first-page tool**, not marked absent.
-A queried fact on a distant page will often remain unavailable from the
-first-source-unit lookup, even when the document itself is approved.
+source-map derivative and selects the **earliest usable original publisher
+source unit**. PDF title, copyright and cover pages may be empty, and some
+pages have NUL-interleaved font codes; these are skipped instead of rejecting
+the entire approved reference. It inspects at most sixty-four publisher
+source markers in that same bounded prefix, without changing the original
+text, stitching separate pages into a fabricated quote or treating the
+preceding KMD-generated catalog header as publisher evidence. The selected
+unit can therefore be physical PDF page two, three or later. Its genuine
+source label and original derivative character offsets are retained.
+At most 6,500 characters from that **single** source unit are added to
+temporary FTS per original. The corpus is not recopied, no independent
+persistent DB is created, and the two existing summary workers and models
+are not stopped, modified or given new work. An original without a readable
+source unit within this bounded preview remains visibly **unindexed by this
+optional search**, not missing from the library. A fact on a distant page
+may still be unavailable even when the original is approved and catalogued.
 
 **A first-stage lexical hit is not a verified original.** Before emitting
 *each displayed result*, the CLI verifies its current source-map status,
@@ -1183,30 +1189,53 @@ verified publisher page. The optional physical-page check never invents a
 citation or repairs an unreadable PDF. Native original/derived/index writes,
 external downloads, model calls and publisher-origin replacements are absent.
 
-**Measured private result, November 21:** The live Raspi run inspected
-17,715 completed source-map records and built **17,677** publisher-first-unit
-candidates from about 261 MiB of sampled source bytes in memory. The
-remaining **thirty-eight** approved originals are visibly classified as
-first-page **sample coverage exceptions**, not missing documents: fourteen
-first units contain NUL-interleaved unreadable text-layer glyph codes and
-twenty-four have under twenty-five usable first-unit characters. Only
-original-relative paths and bounded reason codes are logged, never private
-source-text or metadata headers. The tool returns at most the first one
-hundred and fifty such identities and a truncation flag if the list grows.
-The stricter real replay retained the same eight-of-eleven known-source
-recall at rank five, without admitting the unreadable page text. Across the same **eleven fixed** independently frozen
-original-source queries, the full-source-SHA-attested new literal channel
-found **six of eleven** exact known originals in its top five, the Porter
-channel **seven of eleven**, and their *candidate set union* **eight of
-eleven**. On these exact queries the prior two global native channels
-jointly found only two of eleven; these are **document discovery**
-measurements, not complete answer truth or broad relevance estimates.
-In an additional real one-query opt-in physical PDF proof, the top result
-from both literal and Porter channels selected the CiteGuard original and
-verified its publisher PDF **physical page one**, not merely its derivative
-page label. The predeclared eleven-query gold and the optional lookup output
-are kept privately in the November 21 wave-forty-nine audit folder, without
-copying original copyrighted content to Git.
+**Measured private results, November 21:** On the previous opening-page
+baseline, the live Raspi scan inspected 17,715 completed source-map records,
+indexed **17,677** first-unit previews from approximately 261 MiB of sampled
+existing source bytes, and excluded **thirty-eight** approved originals:
+fourteen had mostly unreadable NUL-interleaved font codes on the opening
+page, and twenty-four had very short opening pages. The strictly bounded
+**earliest-usable-source-unit** recovery found a later readable publisher
+page for **thirty-seven** of these thirty-eight originals. The later real
+published-source code replay scanned the same 17,715 completed originals,
+indexed **17,714** early source-unit previews and left exactly **one**
+source excluded from this optional first-unit discovery layer. All original
+files remain present and unchanged. The eleven pre-frozen questions retained
+**six of eleven** first-stage exact known-source hits in the literal channel,
+**seven of eleven** in Porter, and **eight of eleven** in their candidate-set
+union; no source ranking was silently replaced. On those same questions,
+the pre-existing two global native channels jointly found only two selected
+originals in their top five. These are **document discovery** measurements,
+not complete answer truth or broad relevance estimates. A real test across
+three previously omitted approved PDFs additionally rehashed the full
+publisher original and full derived source for each and independently
+verified original physical PDF page location on **two of three**. For the
+third, the physical-page verification failed and no publisher-page citation
+was invented. The optional tool still reports exact omitted original-relative
+paths and bounded reasons, not source prose or private catalog metadata; it
+limits printed omission identities to 150 with an explicit truncation flag,
+without changing the full omission count. The separate real CiteGuard paper
+test independently verified publisher physical PDF page one. Evidence and
+pre-frozen source labels remain private under the wave-forty-nine and
+wave-fifty search-audit folders; no copyrighted publisher text was copied
+to Git.
+
+An additional **non-production** original-wide stratified source FTS shadow
+sampled six deterministic positions within the 17,715 existing derivatives,
+representing about 421 million indexed source characters in temporary RAM.
+On the unchanged frozen eleven questions its two channels alone retrieved
+**five literal** and **seven Porter** known originals at top five. Adding
+its separately observed candidates to those from the unchanged native and
+earlier first-unit channels would have increased known selected-original
+coverage from eight to **nine of eleven**. But the temporary index took
+nearly two minutes to build, did not solve the remaining two misses, and its
+candidate sources were not fully rehashed for publisher-quality citation.
+It was **not** deployed as a new ranker, default retrieval system or persistent
+cache. A separate read-only PDF text-layer audit of the fourteen NUL-font
+cases compared `pdftotext` layout, raw and default extraction over the first
+two physical pages. All fourteen retained NUL glyph failures; simply
+switching extraction mode did **not** repair their first pages. Source data
+and indexes were not mutated, and no OCR or new acquisition was performed.
 
 **Known limitations and next evidence gate:** The query set is small,
 source-selected from four original documents and hand-authored before either

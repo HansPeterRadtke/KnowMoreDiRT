@@ -38,31 +38,34 @@ class Entry(NamedTuple):
 
 
 def source_firstunit_from_prefix(prefix:bytes) -> tuple[str,int,int,str] | None:
-    """Exact first publisher unit in an original-derived UTF8 prefix.
+    """Earliest *usable* publisher unit in an original-derived UTF8 prefix.
 
-    Never mistake KMD's generated catalog header for publisher text.
-    Partial trailing UTF8 at byte 16KiB is excluded; no claim of whole-file
-    extraction, page or text accuracy follows from a sampling prefix.
+    A reference book may begin with image-only title/copyright pages. Some
+    PDFs have NUL-interleaved text-layer glyph codes only on the front page
+    but fully readable publisher text on the next original physical page.
+    Search bounded consecutive *actual* source-unit markers; never stitch
+    separate pages together or treat generated catalog text as a source.
+    The returned coordinates always refer to the unmodified current text.
+    No claim of exhaustive text/physical-page truth follows from sampling.
     """
     if not isinstance(prefix,bytes) or len(prefix)>FIRST_UNIT_PREFIX_BYTES:
         raise ValueError('oversized or nonbyte source prefix')
     text=prefix.decode('utf8','ignore')
-    first=UNIT.search(text)
-    if first is None:
-        return None
-    next_unit=UNIT.search(text,first.end())
-    ending=min(len(text),first.end()+FIRST_UNIT_INDEX_CHARS,
-               next_unit.start() if next_unit else len(text))
-    start=first.end()
-    segment=text[start:ending]
-    if not segment.strip() or len(segment.strip())<25:
-        return None
-    # A PDF whose text layer decodes as NUL-interleaved glyph codes must
-    # remain an explicit source-coverage exclusion, not a readable quote.
-    nul=segment.count('\x00')
-    if nul>=12 and nul*50>=len(segment):
-        return None
-    return first.group(1),start,ending,segment
+    markers=list(UNIT.finditer(text))
+    for i,marker in enumerate(markers[:64]):
+        start=marker.end()
+        ending=min(len(text),start+FIRST_UNIT_INDEX_CHARS,
+                   markers[i+1].start() if i+1<len(markers) else len(text))
+        segment=text[start:ending]
+        if len(segment.strip())<25:
+            continue
+        # A physical page whose extraction is unreadable must be excluded,
+        # even if another earlier/shorter unit carries the query title.
+        nul=segment.count('\x00')
+        if nul>=12 and nul*50>=len(segment):
+            continue
+        return marker.group(1),start,ending,segment
+    return None
 
 
 class FirstUnitRAMIndex:

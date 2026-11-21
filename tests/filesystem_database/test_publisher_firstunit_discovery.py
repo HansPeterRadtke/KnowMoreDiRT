@@ -96,6 +96,63 @@ class PublisherFirstUnitDiscoveryTests(unittest.TestCase):
             self.assertNotIn(omitted_path,[e.original_path for e,_,_ in
                              self.idx.ranked('inaccessible text source',channel=channel)])
 
+    def test_earliest_usable_physical_source_section_skips_short_and_garbled_pages(self):
+        raw=(
+            'KMD source provenance title mentions useful but untrusted facts.\n'
+            '[[SOURCE UNIT: PDF page 1]]\nCover.\n'
+            '[[SOURCE UNIT: PDF page 2]]\n'
+            + ('\x00G'*70) + ' publisher illegible page.\n'
+            '[[SOURCE UNIT: PDF page 3]]\n'
+            'A directly readable publisher passage about accurate materials '
+            'and independent physical page evidence after a bad PDF font layer.\n'
+            '[[SOURCE UNIT: PDF page 4]]\nLater back matter unrelated to the query.\n'
+        )
+        label,start,end,excerpt=source_firstunit_from_prefix(raw.encode())
+        self.assertEqual('PDF page 3',label)
+        self.assertEqual(raw[start:end],excerpt)
+        self.assertIn('accurate materials',excerpt)
+        self.assertNotIn('Cover.',excerpt)
+        self.assertNotIn('publisher illegible',excerpt)
+        self.assertNotIn('Later back matter',excerpt)
+
+    def test_live_source_map_uses_later_publisher_unit_without_guessing_excluded_ones(self):
+        path='papers/new-gap.pdf'
+        body=('KMD source provenance heading, not source evidence.\n'
+              '[[SOURCE UNIT: PDF page 1]]\nCover.\n'
+              '[[SOURCE UNIT: PDF page 2]]\n'
+              + ('\x00Y'*80)+'garbled PDF page.\n'
+              '[[SOURCE UNIT: PDF page 3]]\n'
+              'A clean source section about physically based rendering and '
+              'measurement methodology, without unreadable font glyphs.\n')
+        self.add_source(path,'Material Book With Front Matter',body,3)
+        response=self.load()
+        self.assertEqual(3,response['publisher_firstunit_rows_indexed'])
+        self.assertFalse(response['skipped_source_identities'])
+        candidate=next(x for x in self.idx.entries.values() if x.original_path==path)
+        self.assertEqual('PDF page 3',candidate.first_unit_label)
+        evidence=verify_index_candidate(entry=candidate,
+              original_root=self.originals,derived_root=self.derivatives,
+              completed_receipts=self.receipts,native_db=self.native,source_map=self.sm,
+              query='physically based rendering measurement')
+        self.assertEqual('PDF page 3',evidence['source_unit_label'])
+        self.assertEqual(sha(evidence['publisher_first_unit_preview'].encode()),
+                         evidence['source_preview_sha256'])
+        text=self.papers[path]['derived'].read_text()
+        self.assertEqual(text[evidence['source_preview_start_char']:evidence['source_preview_end_char']],
+                         evidence['publisher_first_unit_preview'])
+        self.assertFalse(evidence['physical_pdf_page']['physical_pdf_page_verified'])
+
+    def test_no_source_unit_recovery_when_all_candidate_pages_are_illegible(self):
+        raw=('KMD generated metadata.\n[[SOURCE UNIT: PDF page 1]]\n'
+             + ('\x00G'*50)
+             + '\n[[SOURCE UNIT: PDF page 2]]\n'
+             + ('\x00T'*65))
+        self.assertIsNone(source_firstunit_from_prefix(raw.encode()))
+        raw+='\n[[SOURCE UNIT: PDF page 3]]\nReal readable publisher content about ' + ('source search '*12)
+        label,start,end,source=source_firstunit_from_prefix(raw.encode())
+        self.assertEqual('PDF page 3',label)
+        self.assertEqual(source,raw[start:end])
+
     def test_both_bounded_ranking_channels_return_real_source_identity(self):
         self.load()
         for channel in ('literal','porter'):
