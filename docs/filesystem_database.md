@@ -928,6 +928,24 @@ W=/data/var/knowmoredirt/knowledge-library/search-audit/continued-20261121-wave4
   --output "$W/NEW-recent-source-integrity.json"
 ```
 
+The same command also accepts `--selection largest --last 12` to test
+large books and multi-section sources instead of preferentially sampling
+recent short worker completions. This mode queries only the **existing**
+canonical FileDB's current source-spanning root candidates, selects the
+twelve distinct originals with the longest extracted-text spans, and applies
+all of the same independent original/source-map/root/leaf/vector SHA checks.
+It never uses a different database, source downloader, model, or generated
+reference document. The source root's presence is a *candidate* for audit,
+not proof of a valid full hierarchy. Test fixture coverage confirms that
+stale duplicate roots do not inflate the sample, invalid sizes fail, and
+an entirely empty native index cannot pass as a successful large-book audit.
+In a real November 21 read-only sample, twelve of the largest completed
+originals passed, including a roughly 2.75-million-character HCI reference
+with forty-two linked native summary nodes. The twelve large-original tests
+covered 105 nodes and independently rehashed their original and derivative
+full-file bytes and source-spanning tree/embedding structures. No source
+content or native index was modified.
+
 Only one to twenty-five distinct recent real completion events can be
 checked in a call; the tool never treats arbitrary stdout or a title in a
 research abstract as a completion event. Any original or derivative above

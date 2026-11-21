@@ -50,6 +50,35 @@ def completed_paths_from_lines(lines: list[str], *, limit: int) -> list[str]:
     return sources[-limit:]
 
 
+def largest_current_source_roots(native_db: sqlite3.Connection, *, limit: int) -> list[str]:
+    """Read-only long-source sample from existing native source-spanning roots.
+
+    The entire current original revision and hierarchy are reverified by
+    the downstream source validator. A candidate root is not proof itself.
+    """
+    if type(limit) is not int or not 1 <= limit <= 25:
+        raise ValueError('invalid long-source sample size')
+    rows = native_db.execute('''
+        SELECT f.relative_path_display, MAX(c.end_char) AS source_end
+        FROM content_chunks c
+        JOIN filesystem_entries f ON f.id=c.filesystem_entry_id
+        JOIN content_representations r ON r.chunk_id=c.chunk_id
+        WHERE f.entry_type='file' AND c.collection_id LIKE '%:summary'
+          AND c.start_char=0 AND r.prompt_version=?
+          AND r.analysis_status='complete' AND r.representation_kind='summary_long'
+        GROUP BY f.relative_path_display ORDER BY source_end DESC LIMIT ?
+    ''',('kmd-hierarchical-source-summary-v1',limit)).fetchall()
+    if not rows:
+        raise ValueError('no native original-linked long-source roots')
+    paths=[]
+    for path,length in rows:
+        if (not isinstance(path,str) or not path or type(length) is not int
+                or length<=0 or path in paths):
+            raise ValueError('invalid longest-source native identity')
+        paths.append(path)
+    return paths
+
+
 def ledger_receipts(path: Path) -> tuple[dict[str,str],str]:
     if not path.is_file() or path.is_symlink() or path.stat().st_size>64*1024*1024:
         raise ValueError('missing or oversized official completed original receipt ledger')
@@ -78,6 +107,8 @@ def main():
     ap.add_argument('--since',default='2026-11-21 00:00:00',
                     help='Local systemd journal date; use exact YYYY-MM-DD HH:MM:SS')
     ap.add_argument('--last',type=int,default=15)
+    ap.add_argument('--selection',choices=('recent','largest'),default='recent',
+                    help='Recent worker events or largest current source-summary roots; read-only')
     args=ap.parse_args()
     if (type(args.last) is not int or not 1<=args.last<=25
             or not isinstance(args.since,str) or len(args.since)!=19
@@ -94,17 +125,21 @@ def main():
     for name in (args.source_map,args.native_db):
         if not name.is_file() or name.is_symlink():
             raise ValueError('canonical native source-map/SQLite missing or symlinked')
-    log=subprocess.run(['journalctl',*(x for unit in UNITS for x in ('-u',unit)),
-                        '--since',args.since,'--no-pager','-o','cat', '-n','6500'],
-                       capture_output=True,text=True,timeout=20,check=True)
-    paths=completed_paths_from_lines(log.stdout.splitlines(),limit=args.last)
-    if not paths:
-        raise ValueError('worker journal has no verified completed source events for selected time')
+    paths=[]
+    if args.selection=='recent':
+        log=subprocess.run(['journalctl',*(x for unit in UNITS for x in ('-u',unit)),
+                            '--since',args.since,'--no-pager','-o','cat', '-n','6500'],
+                           capture_output=True,text=True,timeout=20,check=True)
+        paths=completed_paths_from_lines(log.stdout.splitlines(),limit=args.last)
+        if not paths:
+            raise ValueError('worker journal has no completed source events for selected time')
     receipts,ledger_sha=ledger_receipts(args.completed_ledger)
     checks=[]
     with sqlite3.connect(args.source_map.resolve().as_uri()+'?mode=ro',uri=True) as sm, \
          sqlite3.connect(args.native_db.resolve().as_uri()+'?mode=ro',uri=True) as db:
         sm.execute('PRAGMA query_only=ON');db.execute('PRAGMA query_only=ON')
+        if args.selection=='largest':
+            paths=largest_current_source_roots(db,limit=args.last)
         for source in paths:
             try:
                 record=audit_current_source_tree(
@@ -124,13 +159,16 @@ def main():
     report={
         'schema':'kmd.recent_source_full_original_and_recursive_native_graph_audit.v1',
         'completed_utc':datetime.now(timezone.utc).isoformat(),
-        'worker_journal_units':list(UNITS),'source_journal_since_local':args.since,
+        'source_selection_mode':args.selection,
+        'worker_journal_units':list(UNITS) if args.selection=='recent' else [],
+        'source_journal_since_local':args.since if args.selection=='recent' else None,
         'completed_original_receipt_ledger_sha256':ledger_sha,
         'approved_originals_hashed_and_native_graph_verified':len(passed),
         'verified_native_summary_nodes':sum(z['current_native_summary_nodes_fully_verified'] for z in passed),
         'known_source_audit_failures':len(failed),
         'oversized_sources_explicitly_unverified':len(checks)-len(passed)-len(failed),
-        'journal_completed_origins_selected':len(paths),
+        'source_originals_selected':len(paths),
+        'source_sample_is_full_eligible_corpus':False,
         'queries_and_originals_accessed_read_only':True,
         'no_source_or_filedb_or_model_mutation':True,
         'statement_scope':'Publisher original+derivative SHA, native exact span, model-produced summary and embedding digest/shape, complete source graph; not factual accuracy.',
