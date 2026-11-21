@@ -8,9 +8,11 @@ A token match or original-page excerpt is a retrieval candidate, not an answer.
 from __future__ import annotations
 
 import hashlib
+import os
 from pathlib import Path
 import re
 import sqlite3
+import subprocess
 from typing import NamedTuple
 
 from .hybrid_search import query_terms
@@ -19,7 +21,9 @@ from .source_evidence import _best_excerpt
 from .publisher_pdf_page import verify_pdf_page_excerpts
 
 UNIT=re.compile(r'(?m)^\[\[SOURCE UNIT: ([^\]\r\n]{1,500})\]\][ \t]*(?:\r?\n|$)')
-SOURCE_SHA=re.compile('[0-9a-f]{64}\\Z')
+SOURCE_SHA=re.compile('[0-9a-f]{64}\Z')
+PDF_LABEL=re.compile(r'(?m)^\[\[SOURCE UNIT: PDF page ([1-9][0-9]{0,5})(?:, continued section [1-9][0-9]*)?\]\]')
+PDFINFO_PAGES=re.compile(r'(?m)^Pages:[ \t]+([1-9][0-9]{0,5})[ \t]*$')
 FIRST_UNIT_PREFIX_BYTES=16*1024
 MAX_FALLBACK_PREFIX_BYTES=64*1024
 FIRST_UNIT_INDEX_CHARS=6500
@@ -192,6 +196,65 @@ def load_complete_source_previews(*,source_map:sqlite3.Connection,derived_root:P
             'skipped_source_details_truncated':len(index.failed_samples)>len(skipped)}
 
 
+def publisher_pdf_page_map_bounds(original:Path, derived_text:str) -> dict:
+    """Read-only ORIGINAL-PDF page count compared with every DERIVED page label.
+
+    The check is deliberately a *negative page-provenance gate*: exceeding
+    the publisher's actual page count conclusively invalidates some cached
+    page labels, but matching counts do NOT prove correct page positions.
+    Excerpts still require independent physical original-page verification.
+    """
+    if not isinstance(derived_text,str):
+        raise ValueError('PDF page-map check requires a current complete derivative')
+    labels=[int(z) for z in PDF_LABEL.findall(derived_text)]
+    if not labels:
+        return {'status':'no_derived_pdf_page_labels',
+                'publisher_page_position_verified':False}
+    before=original.stat(follow_symlinks=False)
+    try:
+        output=subprocess.run(
+            ['/usr/bin/pdfinfo',str(original)],capture_output=True,
+            text=True,timeout=8,check=False,
+            env={**os.environ,'LC_ALL':'C'},
+        )
+    except (OSError,subprocess.TimeoutExpired):
+        after=original.stat(follow_symlinks=False)
+        if (not os.path.samestat(before,after) or before.st_size!=after.st_size
+                or before.st_mtime_ns!=after.st_mtime_ns
+                or before.st_ctime_ns!=after.st_ctime_ns):
+            raise ValueError('publisher original changed during physical PDF page-count inspection')
+        return {'status':'physical_page_count_unavailable',
+                'publisher_page_position_verified':False,
+                'max_derived_page_label':max(labels)}
+    after=original.stat(follow_symlinks=False)
+    if (not os.path.samestat(before,after) or before.st_size!=after.st_size
+            or before.st_mtime_ns!=after.st_mtime_ns
+            or before.st_ctime_ns!=after.st_ctime_ns):
+        raise ValueError('publisher original changed during physical PDF page-count inspection')
+    if output.returncode or len(output.stdout)>32768:
+        return {'status':'physical_page_count_unavailable',
+                'publisher_page_position_verified':False,
+                'max_derived_page_label':max(labels)}
+    matches=PDFINFO_PAGES.findall(output.stdout)
+    if len(matches)!=1:
+        return {'status':'physical_page_count_unavailable',
+                'publisher_page_position_verified':False,
+                'max_derived_page_label':max(labels)}
+    count=int(matches[0]);max_label=max(labels)
+    unsafe=max_label>count
+    return {
+        'status':('derived_page_labels_exceed_original_physical_pages' if unsafe
+                  else 'page_label_bounds_consistent_only_not_verification'),
+        'original_physical_pdf_pages':count,
+        'derived_source_unit_labels':len(labels),
+        'max_derived_page_label':max_label,
+        'derived_pdf_page_map_suspect':unsafe,
+        'publisher_page_position_verified':False,
+        'warning':('Some cached extracted PDF page labels are invalid; verify actual publisher page independently before any page citation.'
+                   if unsafe else 'Bounds agree, but no individual physical PDF page or answer truth was verified.'),
+    }
+
+
 def verify_index_candidate(*,entry:Entry,original_root:Path,derived_root:Path,
                            completed_receipts:dict[str,str],native_db:sqlite3.Connection,
                            source_map:sqlite3.Connection,query:str,verify_pdf_page:bool=False,
@@ -236,8 +299,15 @@ def verify_index_candidate(*,entry:Entry,original_root:Path,derived_root:Path,
     passage_end=entry.excerpt_start_char+end
     if text[passage_start:passage_end]!=excerpt:
         raise ValueError('source-body preview location differs from current original derivative')
+    is_pdf=entry.original_path.casefold().endswith('.pdf')
+    page_scope=(publisher_pdf_page_map_bounds(original,text) if is_pdf
+                else {'status':'not_pdf','publisher_page_position_verified':False})
     pdf_status={'status':'not_requested_or_not_pdf','physical_pdf_page_verified':False}
-    if verify_pdf_page and entry.original_path.casefold().endswith('.pdf'):
+    if page_scope.get('derived_pdf_page_map_suspect'):
+        pdf_status={'status':'unverified_derived_page_map_exceeds_physical_pdf',
+                    'physical_pdf_page_verified':False,
+                    'reason':'The cached derivative has page labels past the original publisher PDF physical page count.'}
+    if verify_pdf_page and is_pdf:
         match=re.fullmatch(r'PDF page ([1-9][0-9]{0,5})',entry.first_unit_label)
         if match:
             verifier=pdf_verifier or verify_pdf_page_excerpts
@@ -267,6 +337,8 @@ def verify_index_candidate(*,entry:Entry,original_root:Path,derived_root:Path,
         'source_preview_end_char':passage_end,
         'source_preview_sha256':hashlib.sha256(excerpt.encode()).hexdigest(),
         'physical_pdf_page':pdf_status,
+        'source_pdf_page_map_integrity':page_scope,
+        'source_unit_label_scope':'derived_source_text_only_not_physical_page_proof',
         'quoted_text_is_original_publisher_bytes':False,
         'factual_answer_verified':False,
         'evidence_warning':'This is an FTS-ranked current derived-original preview, NOT a verified answer, semantic confidence or publisher-byte quotation. Physical PDF page proof applies only when explicitly verified.',

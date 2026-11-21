@@ -1263,6 +1263,78 @@ lookup; if an original or derivative changes later, it must be reverified
 before being cited. The corpus remains automatically incremented by the
 existing KnowMoreDiRT workers, not by this optional read-only search.
 
+### Original PDF physical-page bounds: legacy extraction provenance faults, November 21
+
+The optional source lookup now performs an **independent original-PDF
+physical-page-count negative check** before displaying any selected PDF
+preview. It first rehashes the entire source against the completed approved
+acquisition receipt, the complete current extracted derivative against
+`source-map.sqlite3`, and the unique original identity in native FileDB. It
+then reads the *current original PDF* page count with a bounded, read-only
+`pdfinfo` subprocess and compares it to the maximum **anchored** `PDF page N`
+source-unit label in the **complete extracted derivative**. If any cached
+page marker is above the original PDF's physical page count, the new
+`source_pdf_page_map_integrity` object reports
+`derived_page_labels_exceed_original_physical_pages`, the physical page count,
+the current maximum derived label and a warning. Merely consistent page
+bounds return `page_label_bounds_consistent_only_not_verification`, **not** a
+verified citation; the selected source label is explicitly marked
+`derived_source_text_only_not_physical_page_proof`. Failure or timeout to read
+`pdfinfo` is reported as `physical_page_count_unavailable`; the tool never
+claims it checked the original page when it did not. Replacement of the
+source file during the check fails closed. **Only an independently confirmed
+excerpt on the correct physical publisher PDF page** can receive a positive
+`physical_pdf_page.physical_pdf_page_verified` field. The corpus-wide page
+count cannot establish literal excerpt match, factual correctness or citation
+accuracy for an in-range page. It does not change semantic scoring or alter
+source bytes, derivatives, summary/vectors, or the native database.
+
+This is not speculative. A private Raspi **full existing-corpus read-only
+page-label audit** compared all **14,474** completed source-map PDF derivatives
+against actual original physical-page counts already represented in native
+KnowMoreDiRT FileDB PDF metadata. It found **327** candidates with out-of-range
+cached `PDF page` labels. For **every one** of those 327, the audit then
+independently rehashed the entire original publisher PDF and derivative
+against their approved current source-map and acquisition receipt SHA-256 and
+queried actual `/usr/bin/pdfinfo`; **all 327 mismatches were confirmed**,
+with no failed attestation. The old November 2 nine-source warning set is
+included in these 327; **318 confirmed currently affected sources were not
+in that previous nine-source set**. All 327 have original-content vectors in
+native FileDB; **119 already have summary representations**. The problem is
+material to existing source-linked retrieval, even though an individual
+verified passage may still be correct. Another 168 completed source-map PDFs
+had no anchored `PDF page` label and were not classified as correct by this
+overcount check; for the 13,979 with in-bounds labels, individual page
+position remains unverified absent per-excerpt original PDF proof. The 327
+represent confirmed lower-bound page overcounts, **not** measured overall
+citation error frequency or total prevalence of all false in-bounds pages.
+
+The source of many excessive labels is older cached text extraction splitting
+*every* Poppler form-feed, including form-feed controls embedded inside
+physical pages by PDF fonts. The reproducible example `AgentSteerTTS` has
+**19 actual PDF pages** but the cached derivative has **245 labeled source
+units**; its original and derivative hashes can both validate while its
+page labels are wrong. The current Raspi Infra PDF extractor already checks
+the expected PDF page count and, for bounded eligible files, falls back to
+per-physical-page extraction; it does not automatically repair unchanged
+historical derivatives. The original files have **not** been modified and
+neither stale derived pages nor dependent native vectors/summaries have been
+silently rebuilt while the two resident indexing workers are active.
+
+Private reproducible evidence:
+`search-audit/continued-20261121-wave50/corpus-original-pdf-page-overcount-independent-audit.json`
+contains original-relative paths, current original/derived SHA-256, native
+metadata page count, independent actual `pdfinfo` count and maximum cached
+page marker for each fully verified candidate; no publisher full text is in
+the audit. `live-pdf-derivative-overcount-safety-proof.json` exercises the
+new read-only lookup against one invalid original and one page-count control.
+The current native indexing workers must be coordinated before any targeted
+re-extraction, source-map revision update, invalidation of dependent vector
+chunks, or recursive summary rebuild. Do not mark old source-revision-linked
+citations verified simply because an original-file SHA matches. An unverified
+page is a **source provenance gap**, not a source to replace by unrelated
+papers or a request to download anything externally.
+
 The disposable regression tests are
 `tests/filesystem_database/test_publisher_firstunit_discovery.py` and
 `test_publisher_firstunit_discovery_cli.py`. They test generated-metadata

@@ -6,6 +6,8 @@ import json
 import sqlite3
 from pathlib import Path
 from tempfile import TemporaryDirectory
+from types import SimpleNamespace
+from unittest import mock
 import unittest
 
 from file_system_catalog.publisher_firstunit_discovery import (
@@ -287,6 +289,78 @@ class PublisherFirstUnitDiscoveryTests(unittest.TestCase):
                     verify_index_candidate(**options)
                 self.sm.execute(f'UPDATE originals SET {field}=? WHERE source_path=?',(before,entry.original_path))
         self.assertTrue(verify_index_candidate(**options)['current_approved_publisher_and_extracted_bytes_rehashed'])
+
+    def test_forged_derived_pdf_page_labels_do_not_pass_original_physical_count(self):
+        original='papers/suspicious-pdf.pdf'
+        derived=('KMD generated metadata has 99 unrelated page claims.\n'
+                 '[[SOURCE UNIT: PDF page 1]]\n'
+                 'This original text excerpt has useful research evidence and precise quotation.\n'
+                 '[[SOURCE UNIT: PDF page 99]]\n'
+                 'A later cached source text unit is labeled beyond the original publisher pages.\n')
+        self.add_source(original,'Original PDF With Stale Page Markers',derived,3)
+        self.load()
+        entry=next(e for e in self.idx.entries.values() if e.original_path==original)
+        options={'entry':entry,'original_root':self.originals,'derived_root':self.derivatives,
+                 'completed_receipts':self.receipts,'native_db':self.native,
+                 'source_map':self.sm,'query':'useful research evidence'}
+        with mock.patch('file_system_catalog.publisher_firstunit_discovery.subprocess.run',
+                        return_value=SimpleNamespace(returncode=0,stdout='Pages: 2\n')) as proc:
+            result=verify_index_candidate(**options)
+            proc.assert_called_once()
+        page=result['source_pdf_page_map_integrity']
+        self.assertEqual('derived_page_labels_exceed_original_physical_pages',page['status'])
+        self.assertEqual(99,page['max_derived_page_label'])
+        self.assertEqual(2,page['original_physical_pdf_pages'])
+        self.assertTrue(page['derived_pdf_page_map_suspect'])
+        self.assertFalse(page['publisher_page_position_verified'])
+        self.assertEqual('unverified_derived_page_map_exceeds_physical_pdf',result['physical_pdf_page']['status'])
+        self.assertFalse(result['physical_pdf_page']['physical_pdf_page_verified'])
+        self.assertFalse(result['factual_answer_verified'])
+        self.assertEqual('derived_source_text_only_not_physical_page_proof',result['source_unit_label_scope'])
+        # A separately original-PDF-verified *single* page can still be
+        # cited while the overall cached page map remains suspect.
+        def independent(_path,_sha,claims):
+            self.assertEqual('PDF page 1',claims[0]['source_section'])
+            return [{'status':'verified','page':1,'page_text_sha256':'d'*64}]
+        with mock.patch('file_system_catalog.publisher_firstunit_discovery.subprocess.run',
+                        return_value=SimpleNamespace(returncode=0,stdout='Pages: 2\n')):
+            p=verify_index_candidate(**options,verify_pdf_page=True,pdf_verifier=independent)
+        self.assertTrue(p['physical_pdf_page']['physical_pdf_page_verified'])
+        self.assertTrue(p['source_pdf_page_map_integrity']['derived_pdf_page_map_suspect'])
+
+    def test_pdf_page_count_consistent_is_still_not_physical_citation_proof(self):
+        self.load()
+        entry=next(e for e in self.idx.entries.values() if e.original_path=='papers/rare.pdf')
+        with mock.patch('file_system_catalog.publisher_firstunit_discovery.subprocess.run',
+                        return_value=SimpleNamespace(returncode=0,stdout='Pages: 2\n')):
+            p=verify_index_candidate(entry=entry,original_root=self.originals,
+                 derived_root=self.derivatives,completed_receipts=self.receipts,
+                 native_db=self.native,source_map=self.sm,query='fact utility',verify_pdf_page=False)
+        self.assertEqual('page_label_bounds_consistent_only_not_verification',p['source_pdf_page_map_integrity']['status'])
+        self.assertFalse(p['source_pdf_page_map_integrity']['publisher_page_position_verified'])
+        self.assertEqual('not_requested_or_not_pdf',p['physical_pdf_page']['status'])
+        self.assertFalse(p['factual_answer_verified'])
+        with mock.patch('file_system_catalog.publisher_firstunit_discovery.subprocess.run',
+                        return_value=SimpleNamespace(returncode=1,stdout='')):
+            p=verify_index_candidate(entry=entry,original_root=self.originals,
+                 derived_root=self.derivatives,completed_receipts=self.receipts,
+                 native_db=self.native,source_map=self.sm,query='fact utility',verify_pdf_page=False)
+        self.assertEqual('physical_page_count_unavailable',p['source_pdf_page_map_integrity']['status'])
+        self.assertFalse(p['source_pdf_page_map_integrity']['publisher_page_position_verified'])
+
+    def test_original_changed_during_pdfinfo_fails_closed(self):
+        self.load()
+        entry=next(e for e in self.idx.entries.values() if e.original_path=='papers/rare.pdf')
+        publisher=self.papers['papers/rare.pdf']['original']
+        def corrupt_during_original_count(*args,**kwargs):
+            publisher.write_bytes(publisher.read_bytes()+b'changed-during-count')
+            return SimpleNamespace(returncode=0,stdout='Pages: 2\n')
+        with mock.patch('file_system_catalog.publisher_firstunit_discovery.subprocess.run',
+                        side_effect=corrupt_during_original_count):
+            with self.assertRaisesRegex(ValueError,'changed during physical PDF page-count'):
+                verify_index_candidate(entry=entry,original_root=self.originals,
+                     derived_root=self.derivatives,completed_receipts=self.receipts,
+                     native_db=self.native,source_map=self.sm,query='fact utility',verify_pdf_page=False)
 
     def test_metadata_only_prefix_bad_paths_and_oversized_population_are_excluded(self):
         self.assertIsNone(source_firstunit_from_prefix(b'KMD source provenance hidden. no publisher body.'))
