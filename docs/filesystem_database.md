@@ -816,3 +816,71 @@ independent-paper and multi-source families. That untuned, metadata-only
 channel was not added to production. For general relevance improvements,
 new independently judged multi-answer and adversarial original-text labels
 are needed, preserving the frozen pre-change evidence.
+
+A fresh, publisher-source-byte-attested *live* comparison of all five
+existing fixed multi-source questions on November 21 confirmed that the
+summary channel recovered **10 of 11** predeclared known relevant original
+identities at rank ten, the raw original-overview channel recovered **9 of 11**,
+and the separate source-identity **union recovered all 11 of 11**, across all
+five questions. The PBR microfacet publisher original missing from the current
+summary top-ten list appeared in original-overview rank ten; in two Blender
+normal-map questions the generated summaries recovered relevant publisher
+references absent from the raw top ten. These are exact known source-label
+hits under today's moving index, not exhaustive corpus precision, semantic
+answer accuracy, or a promise that the same metrics persist as indexing grows.
+The report, checked publisher and derivative SHA evidence, and per-source
+rank details remain private under wave47. Continue to measure both independent
+channels rather than replacing them with the weaker metadata-only option.
+
+### Current original-byte-attested two-channel recall monitor (November 21)
+
+`scripts/raspi_dual_channel_recall.py` measures *separate* top-K summary
+and native original-source passage retrieval over the existing, SHA-pinned
+predeclared five-query multi-source original set. This directly monitors a
+known problem: as the corpus grows, first-stage source recall and rank may
+change, and a relevant document can occur in one independent channel but not
+in the other. The metric never turns a similar passage into an asserted answer.
+
+Before any model search, the monitor validates the frozen original gold SHA
+and checks every known HTML publisher original against the native source-map
+original and derivative SHA, plus the original independently predeclared
+publisher-text anchor. Every newly returned KMD candidate must be publisher
+revision verified and each displayed source excerpt must have its own
+verifiable SHA. Top-K ordering must be sequential and source paths unique.
+It reports per-question exact original-source ranks and count of known
+relevant documents found separately in the original-passage channel, the
+hierarchical-summary channel, and their simple **set union**, never score
+fusion or model confidence. Missing known-source labels are *candidate
+retrieval misses*, not proof that an answer is impossible. The predeclared
+originals were established before comparing new rankings, but this five-query
+set is not exhaustive, and source SHA equality alone cannot prove that every
+candidate contains a complete, contextually valid answer.
+
+Use the existing private fixed gold and a NEW output file, without changing
+source paths or downloading anything:
+
+```bash
+cd /data/src/github/KnowMoreDiRT
+G=/data/var/knowmoredirt/knowledge-library/search-audit/multirelevant-originals-20261121/original_multirelevant_gold_frozen.json
+OUT=/data/var/knowmoredirt/knowledge-library/search-audit/continued-20261121-wave47
+/data/var/knowmoredirt/semantic-venv/bin/python scripts/raspi_dual_channel_recall.py \
+  --gold "$G" --gold-sha256 "$(sha256sum "$G" | cut -c1-64)" \
+  --dual-cli /data/src/github/KnowMoreDiRT/scripts/raspi_dual_source_discovery.py \
+  --source-map /data/var/knowmoredirt/knowledge-library/semantic/source-map.sqlite3 \
+  --original-root '/data/var/Knowledge Library' \
+  --derived-root /data/var/knowmoredirt/knowledge-library/semantic/text \
+  --completed-ledger '/data/var/Knowledge Library/_management/status.json' \
+  --output "$OUT/NEW-native-dual-source-holdout.json" --top 10
+```
+
+The original-SHA attestor handles the *publisher HTML/text* gold of this
+fixed set; it explicitly refuses to pretend a PDF derivative is an original
+physical-PDF byte quote. Physical PDF evidence still uses the existing
+independent page verifier. Individual subsets may be run via `--case-id`,
+but a subset must not be reported as the complete frozen population. All
+program effects are read-only apart from the newly generated private test
+report; it does not re-embed, download, modify a source or train ranking.
+The live source-map and indexing workers change over time, so record the
+fresh per-run timestamp and do not claim results reproduce byte-for-byte
+across different library index states. A publisher/source identity result is
+not a guarantee of truthful or complete answers.
