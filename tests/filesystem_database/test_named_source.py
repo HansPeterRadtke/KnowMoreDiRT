@@ -68,6 +68,60 @@ class SourceNameTests(unittest.TestCase):
                   "What does the Nvidia ontology setup wizard guide say?", "x"*1001):
             self.assertIsNone(resolve_source_name(q, self.manifest), q)
 
+    def test_explicit_unique_paper_title_lead_is_named_without_subtitle(self):
+        manifest = {
+            "research/citeguard.pdf": {"title": "CiteGuard: Conformal False-Discovery Control for RAG"},
+            "graphics/matlat.pdf": {"title": "MatLat: Material Latent Space for PBR Textures"},
+            "science/vera.pdf": {"title": "Vera-Life: Lifecycle Faithfulness for RAG"},
+            "graphics/p2gs.pdf": {"title": "P2GS: Photometrically Consistent Gaussian Splatting"},
+        }
+        checks = (
+            ("According to CiteGuard, what is its evidence control?", "research/citeguard.pdf", "what is its evidence control?"),
+            ("What does the Vera-Life paper say about lifecycle faithfulness?", "science/vera.pdf", "say about lifecycle faithfulness?"),
+            ("In the MatLat paper, which textures are generated?", "graphics/matlat.pdf", "which textures are generated?"),
+            ("According to P2GS, how are splats constrained?", "graphics/p2gs.pdf", "how are splats constrained?"),
+            ('According to "CiteGuard", what does the evaluation show?', "research/citeguard.pdf", "what does the evaluation show?"),
+        )
+        for query, path, subject in checks:
+            with self.subTest(query=query):
+                result=resolve_source_name(query,manifest)
+                self.assertEqual("unique",result["status"])
+                self.assertEqual((path,"catalog_title_lead"),(result["original_path"],result["kind"]))
+                self.assertEqual(subject,result["subject_query"])
+
+    def test_duplicate_paper_name_must_remain_ambiguous_across_editions(self):
+        manifest={
+            "papers/a.pdf": {"title": "ToolScope: Vision-Guided Tool Use"},
+            "papers/b.pdf": {"title": "ToolScope: Context-Aware Tool Filtering"},
+            "papers/c.pdf": {"title": "CiteGuard: Conformal Attribution"},
+        }
+        result=resolve_source_name("According to ToolScope, which tool is used?",manifest)
+        self.assertEqual("ambiguous",result["status"])
+        self.assertEqual(2,result["matching_catalog_paths"])
+        self.assertEqual(["papers/a.pdf","papers/b.pdf"],result["candidate_paths"])
+        # A complete name still resolves its own publisher edition, instead
+        # of being swallowed by a less-specific ambiguous title lead.
+        result=resolve_source_name('According to "ToolScope: Vision-Guided Tool Use", what is measured?',manifest)
+        self.assertEqual("papers/a.pdf",result["original_path"])
+        self.assertEqual("catalog_title",result["kind"])
+
+    def test_uncited_or_false_context_does_not_select_a_title_lead(self):
+        manifest={
+            "science/matlat.pdf": {"title": "MatLat: Material Latent Space"},
+            "science/natex.pdf": {"title": "NaTex: Seamless Texture Generation"},
+            "books/guide.pdf": {"title": "design: A Plain English Overview"},
+            "books/home.pdf": {"title": "Home: A General Description"},
+        }
+        for query in ("MatLat", "How does MatLat generate materials?",
+                      "Compare MatLat and NaTex.",
+                      "What does the MatLat paper and NaTex paper say about materials?",
+                      "Exclude MatLat from the results.",
+                      "According to Design, which technique is better?",
+                      "According to Home, how is the model used?",
+                      "What does the MatLat paper and other methods say?"):
+            with self.subTest(query=query):
+                self.assertIsNone(resolve_source_name(query,manifest))
+
     def test_generic_skill_needs_catalog_identity_and_publisher(self):
         path, rec = skill("brand-guidelines", "b234567", "anthropic")
         self.manifest[path] = rec

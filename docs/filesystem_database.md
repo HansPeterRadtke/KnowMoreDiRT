@@ -189,6 +189,53 @@ ordinary text search remain unchanged. Consult
 `docs/kmd-source-evidence-and-abstention-2026-11-07.md` for verified
 scope, negative controls and reproduction commands.
 
+### Explicit short publisher-title references without unsafe topic routing
+
+The native source-name resolver also recognizes the **exact publisher title
+lead before a colon** in explicit source citations, for example:
+
+```bash
+/data/var/knowmoredirt/semantic-venv/bin/python \
+  /data/src/github/KnowMoreDiRT/scripts/raspi_hierarchical_library.py \
+  source-evidence 'According to CiteGuard, what is the false-discovery method?' \
+  --top 3
+```
+
+A longer full catalog title remains an exact match with higher precedence.
+Only an explicitly quoted name, a source-reference construction such as
+`According to CiteGuard, ...`, or a source-qualified question such as
+`What does the MatLat paper say ...?` can use a title lead. A bare topic,
+a mere incidental mention, a comparison or an instruction to exclude a
+source cannot silently force a named original. The lead must be an exact
+normalized publisher-catalog prefix before a colon, not a substring, fuzzy
+match or guessed expansion. Short four-character leads must be distinctive
+capitalized/digit-bearing identifiers, not ordinary words. If multiple
+originals/editions share the lead (for example two distinct `ToolScope`
+papers), the resolver returns **ambiguous** including unsummarized catalog
+records; select an exact full title or original path instead. A missing or
+unindexed source is never replaced with a similar sounding publication.
+
+A source match selects **only the archived publisher identity**, not an
+answer. `source-evidence` then independently checks original file and
+extracted-text SHA-256 revisions and requires physically verified original
+PDF page text where possible. A query against ordinary summary search may
+still return `no_verified_index_match` when that exact original has not yet
+been summarized; source-evidence can inspect the completed original without
+waiting for a summary. No retrieval score, embedding, corpus or ranked
+semantic fallback was changed by this exact-source routing.
+
+The private Raspi `search-audit/continued-20261121-wave45/` contains the
+publisher catalog/ledger SHA-frozen **twelve-case** named-source benchmark
+created before this change. Previously the exact source-name resolver found
+none of five explicit short names. The updated parser resolved all five
+unique leads, retained ambiguity for both duplicated leads, and preserved
+all five non-citation/coordination negative cases. This is deliberately an
+**explicit source identity** result, not a claim about general semantic
+retrieval recall. Live original-only reads verified `CiteGuard`, `MatLat`
+and `P2GS` against current original/derivative digests and physically checked
+PDF pages. No new original was acquired, no inference server was changed,
+and independently judged answer correctness remains open.
+
 ### Bounded source-scope windows in mixed evidence, November 15
 
 The combined original-linked operator supports

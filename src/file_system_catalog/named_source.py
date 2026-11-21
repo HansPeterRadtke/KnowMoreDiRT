@@ -69,7 +69,11 @@ def _requested_names(query: str) -> dict[str, str]:
             names[quoted[0]] = quoted[1].lstrip(" ,:;—")
         elif not quoted:
             name, comma, subject = rest.partition(",")
-            if comma and publication_identifier(name.strip()) and not _COORDINATED.match(subject):
+            # A comma explicitly terminates the cited source name. The
+            # following passage remains the subject, not part of the title.
+            # A later EXACT catalog-title-lead check is needed before this
+            # candidate can select an archived source; topical words cannot.
+            if comma and name.strip() and not _COORDINATED.match(subject):
                 names[name.strip()] = subject.strip()
             for word in _SOURCE_WORD.finditer(rest):
                 if not _COORDINATED.match(rest[word.end():]):
@@ -126,11 +130,50 @@ def resolve_source_name(query: str, manifest: Mapping[str, dict]) -> dict | None
             if alias in forms:
                 matches[path] = ("pinned_skill_name", forms[alias])
                 break
-    if not matches:
+    if matches:
+        # A complete catalog title or verified publisher-qualified skill
+        # always takes precedence over a possible abbreviated title lead.
+        if len(matches) > 1:
+            return _ambiguous(matches)
+        path, (kind, subject) = next(iter(matches.items()))
+        return _unique(path, kind, subject)
+
+    # An explicit citation of a publisher's distinctive pre-colon title lead
+    # can name an entire archived paper without spelling its long subtitle.
+    # Require an independently extracted citation/quoted name. A bare topic,
+    # incidental mention, comparison or unqualified "How does X work?" must
+    # NOT be silently promoted to a particular source edition.
+    citations = {_name(value): subject for value, subject in requested.items()
+                 if value != query.strip() and value.strip()}
+    if not citations:
         return None
-    if len(matches) > 1:
-        return _ambiguous(matches)
-    path, (kind, subject) = next(iter(matches.items()))
+    lead_matches = {}
+    for path, record in manifest.items():
+        title = record.get("title")
+        if not isinstance(title, str):
+            continue
+        lead, colon, _subtitle = title.partition(":")
+        lead = lead.strip()
+        if (not colon or not 4 <= len(lead) <= 90
+                or len(lead.split()) > 5 or not lead[0].isupper()):
+            continue
+        # Four-letter ordinary words such as "Home" are not dependable
+        # short citations; allow compact four-character coined names only
+        # with an internal capital, hyphen, or model/algorithm digit.
+        if len(lead) == 4 and not (any(c.isupper() for c in lead[1:])
+                                     or any(c.isdigit() for c in lead)
+                                     or "-" in lead):
+            continue
+        normalized = _name(lead)
+        if normalized in citations:
+            lead_matches[path] = ("catalog_title_lead", citations[normalized])
+    if not lead_matches:
+        return None
+    if len(lead_matches) > 1:
+        # Keep duplicates from every cataloged edition, INCLUDING originals
+        # that have not yet been summarized/embedded.
+        return _ambiguous(lead_matches)
+    path, (kind, subject) = next(iter(lead_matches.items()))
     return _unique(path, kind, subject)
 
 
