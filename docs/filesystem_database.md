@@ -474,3 +474,70 @@ program, ongoing build jobs and live recovery separately. This change does
 not claim that a long, full SQLite integrity scan has become inexpensive;
 further throughput evaluation should not weaken data-integrity assurance
 without independent tests.
+
+### Publisher-original-grounded **post-hoc** retrieval review, November 21
+
+When an older *single-original* gold misses its specific expected file, do not
+silently conclude every competing retrieval result is irrelevant. A returned
+source may be useful context, partly support the question, or concern a
+completely different problem. The **new diagnostic only**
+`scripts/raspi_source_review_audit.py` checks original publisher and extracted
+source revisions against the completed acquisition ledger and read-only native
+source map for a small manually selected qualitative review set. It refuses
+changed originals, changed derivatives, duplicated/retired sources, symlinks,
+source-header-only pseudo-evidence, altered frozen ranking identities, and
+excerpt SHA/offset mismatches. The quoted evidence must occur AFTER the
+actual publisher-source unit boundary in current UTF-8 derived text.
+Optional `--verify-physical-pdf-pages` independently rehashes publisher PDF
+bytes and uses the existing physical-page verifier for each quoted span.
+Neither a digest nor a physical page is a semantic relevance or answer-truth
+proof. A failed page match remains explicitly unverified; non-PDF source
+excerpts are not misrepresented as physically verified PDF passages.
+
+A review must have a SHA-256-pinned, existing frozen shadow, a separately
+SHA-256-pinned private review file, the canonical source map, original root,
+extracted source root, completed source acquisition ledger, and a NEW private
+output path. Permitted provisional labels are `partial_support`,
+`direct_support`, `different_topic_observed`, and `evidence_unclear`.
+These are **manually supplied qualitative judgments**, not validated factual
+answers, independent held-out labels, or license to tune relevance scoring.
+The tool validates only the original identity, actual quoted source text,
+original page location if applicable, and membership in an observed top-three
+rank list. It never adds to the predeclared frozen gold, changes native
+rankings, writes an original, or builds a second index.
+
+Raspi private example (use the recorded SHA sums, not the review output itself
+as a source of truth):
+
+```bash
+cd /data/src/github/KnowMoreDiRT
+AUDIT=/data/var/knowmoredirt/knowledge-library/search-audit
+W=$AUDIT/continued-20261121-wave46
+F=$AUDIT/native-overview-retrieval-20261121/predeclared_native_overview_shadow_results.json
+R=$W/posthoc-indirect-question-original-source-review.json
+python3 scripts/raspi_source_review_audit.py \
+  --shadow "$F" --shadow-sha256 "$(sha256sum "$F" | cut -c1-64)" \
+  --review "$R" --review-sha256 "$(sha256sum "$R" | cut -c1-64)" \
+  --original-root '/data/var/Knowledge Library' \
+  --derived-root /data/var/knowmoredirt/knowledge-library/semantic/text \
+  --completed-ledger '/data/var/Knowledge Library/_management/status.json' \
+  --source-map /data/var/knowmoredirt/knowledge-library/semantic/source-map.sqlite3 \
+  --verify-physical-pdf-pages \
+  --output "$W/NEW-posthoc-review.json"
+```
+
+The first real review deliberately selected three previously **observed**
+competing candidates, not three unseen held-out questions. The source/derivative
+revision and six excerpt SHA/offset proofs passed. On the Hick's Law decision-
+time question, the retrieved Choice Overload original discusses closely related
+decision behavior but is not the stronger law-specific source. On Unity texture
+import settings, the retrieved Import a Texture original gives the correct
+Inspector workflow and platform-specific override context but is not the
+complete reference for texture filtering. A leading RGB highlight-removal
+paper addressed a different research problem from the requested Blender
+normal-map node; two sampled excerpts also matched its original physical PDF
+page one. These findings **do not imply** all non-gold documents are wrong,
+that the source answers the entire question, or that a particular replacement
+ranking has been validated. The original frozen evaluation remains untouched.
+Private original/derived SHA receipts, review, validated physical-page results
+and regression evidence live under `search-audit/continued-20261121-wave46`.
