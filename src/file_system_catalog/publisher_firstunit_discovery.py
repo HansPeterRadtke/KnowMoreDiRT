@@ -159,10 +159,16 @@ def load_complete_source_previews(*,source_map:sqlite3.Connection,derived_root:P
             index.failed_samples.append({'original_path':str(path)[:1600],
                                           'reason':f'{type(error).__name__}: {str(error)[:180]}'})
     index.commit()
+    # Display only source identities and bounded skip reasons, never copied
+    # publisher text or generated catalog metadata. A partial sample is not
+    # proof that the omitted original is missing from the library.
+    skipped=index.failed_samples[:150]
     return {'eligible_complete_source_map_records':len(rowset),
             'publisher_firstunit_rows_indexed':len(index.entries),
             'bounded_prefix_bytes_read':index.bytes_sampled,
-            'skipped_sources':len(index.failed_samples)}
+            'skipped_sources':len(index.failed_samples),
+            'skipped_source_identities':skipped,
+            'skipped_source_details_truncated':len(index.failed_samples)>len(skipped)}
 
 
 def verify_index_candidate(*,entry:Entry,original_root:Path,derived_root:Path,

@@ -1184,10 +1184,17 @@ citation or repairs an unreadable PDF. Native original/derived/index writes,
 external downloads, model calls and publisher-origin replacements are absent.
 
 **Measured private result, November 21:** The live Raspi run inspected
-17,715 completed source-map records, built 17,691 publisher-first-unit
-candidates from about 261 MiB of sampled source bytes in memory, and
-explicitly excluded **twenty-four** entries that lacked safe usable bounded
-first-unit samples. Across the same **eleven fixed** independently frozen
+17,715 completed source-map records and built **17,677** publisher-first-unit
+candidates from about 261 MiB of sampled source bytes in memory. The
+remaining **thirty-eight** approved originals are visibly classified as
+first-page **sample coverage exceptions**, not missing documents: fourteen
+first units contain NUL-interleaved unreadable text-layer glyph codes and
+twenty-four have under twenty-five usable first-unit characters. Only
+original-relative paths and bounded reason codes are logged, never private
+source-text or metadata headers. The tool returns at most the first one
+hundred and fifty such identities and a truncation flag if the list grows.
+The stricter real replay retained the same eight-of-eleven known-source
+recall at rank five, without admitting the unreadable page text. Across the same **eleven fixed** independently frozen
 original-source queries, the full-source-SHA-attested new literal channel
 found **six of eleven** exact known originals in its top five, the Porter
 channel **seven of eleven**, and their *candidate set union* **eight of

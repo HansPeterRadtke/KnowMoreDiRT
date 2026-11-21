@@ -74,8 +74,27 @@ class PublisherFirstUnitDiscoveryTests(unittest.TestCase):
         self.assertIn('non-zero shaped reward',excerpt)
         self.assertNotIn('unsupported nonzero memory advice',excerpt)
         self.assertNotIn('fabricated instruction',excerpt)
-        self.assertEqual(2,self.load()['publisher_firstunit_rows_indexed'])
+        scan=self.load()
+        self.assertEqual(2,scan['publisher_firstunit_rows_indexed'])
         self.assertEqual(0,len(self.idx.failed_samples))
+        self.assertEqual([],scan['skipped_source_identities'])
+        self.assertFalse(scan['skipped_source_details_truncated'])
+
+    def test_unsampled_original_is_reported_by_exact_identity_and_cannot_be_retrieved(self):
+        omitted_path='papers/unsampled.pdf'
+        self.add_source(omitted_path,'An approved but inaccessible text source',
+                        'KMD source provenance header without any proper publisher-source unit',3)
+        report=self.load()
+        self.assertEqual(3,report['eligible_complete_source_map_records'])
+        self.assertEqual(2,report['publisher_firstunit_rows_indexed'])
+        self.assertEqual(1,report['skipped_sources'])
+        self.assertEqual([{'original_path':omitted_path,
+                           'reason':'publisher_source_unit_not_found_in_bounded_prefix'}],
+                         report['skipped_source_identities'])
+        self.assertFalse(report['skipped_source_details_truncated'])
+        for channel in ('literal','porter'):
+            self.assertNotIn(omitted_path,[e.original_path for e,_,_ in
+                             self.idx.ranked('inaccessible text source',channel=channel)])
 
     def test_both_bounded_ranking_channels_return_real_source_identity(self):
         self.load()
