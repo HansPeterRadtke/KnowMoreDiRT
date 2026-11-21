@@ -67,6 +67,11 @@ SOURCE_MAP = CACHE / "source-map.sqlite3"
 OUT = Path("/data/var/knowmoredirt/knowledge-library/summaries")
 COLLECTION = "raspi-original-books-semantic-content-v1"
 DB_BUDGET = DEFAULT_DATABASE_BUDGET_BYTES
+# A live three-gigabyte native FileDB had a legitimate concurrent summary import
+# hold this shared writer lock beyond ninety seconds. Retain a bounded wait
+# rather than falsely marking another already-generated source as failed.
+# The lock helper explicitly refuses anything above five minutes.
+NATIVE_WRITER_WAIT_SECONDS = 300.0
 PUBLISHER_TEXT_LIMIT = 8 * 1024 * 1024
 GUARD_TEXT = "exclude_unresolvable_summary_candidates_from_native_excerpt_search_v1"
 
@@ -619,7 +624,7 @@ def import_source(args):
         raise RuntimeError("live Infra source-excerpt search not yet protected from summary-only candidates")
     lockfile = DB.parent / ".primary-kmd-content.lock"
     with lockfile.open("a+") as lock:
-        acquire_native_filedb_content_lock(lock.fileno(),wait_seconds=90)
+        acquire_native_filedb_content_lock(lock.fileno(),wait_seconds=NATIVE_WRITER_WAIT_SECONDS)
         # Check after taking the inter-process writer lock so concurrent
         # native jobs cannot race this admission. SQLite keeps its own
         # transactional size ceiling even if free disk changes afterward.

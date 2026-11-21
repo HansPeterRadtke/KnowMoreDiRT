@@ -53,6 +53,24 @@ class NativeWriterAdmissionTests(unittest.TestCase):
         self.assertTrue(all(x & fcntl.LOCK_EX for x in count))
         self.assertTrue(all(x & fcntl.LOCK_NB for x in count))
 
+    def test_production_wait_covers_observed_slow_valid_native_writer(self):
+        module=cli()
+        self.assertEqual(300.0,module.NATIVE_WRITER_WAIT_SECONDS)
+        clock=Clock()
+        held=[]
+        def flock(fd,flags):
+            held.append(clock.now)
+            if clock.now < 125:
+                raise BlockingIOError('another legitimate large native write is active')
+        with mock.patch('fcntl.flock',side_effect=flock), \
+             mock.patch.object(module.time,'monotonic',side_effect=clock.monotonic), \
+             mock.patch.object(module.time,'sleep',side_effect=clock.sleep):
+            module.acquire_native_filedb_content_lock(
+                7,wait_seconds=module.NATIVE_WRITER_WAIT_SECONDS,poll_seconds=5.0)
+        self.assertGreater(clock.now,90)
+        self.assertLessEqual(clock.now,300)
+        self.assertGreater(len(held),18)
+
     def test_refuses_to_wait_indefinitely_if_writer_never_releases(self):
         module=cli()
         clock=Clock()

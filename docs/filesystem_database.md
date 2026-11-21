@@ -379,3 +379,33 @@ modifies the native FileDB or creates another index. For complete passage
 context and image/figure evidence, use the existing original-source evidence
 reader and original-PDF page inspection. The private live regression receipt
 and tests are in the Raspi `search-audit/continued-20261121-wave44` directory.
+
+### Serialized import lock false-failure correction (November 21)
+
+The two background summary workers already generate their source trees and
+embeddings separately and serialize final writes to the **same** canonical
+FileDB. A live source on the Coder worker completed its tree but timed out
+waiting ninety seconds for the shared `.primary-kmd-content.lock`, while
+another legitimate Q4-worker import completed shortly afterward. The source
+was retained for automatic retry and the FileDB continued passing its
+existing write checks; this is lock contention, not evidence of a broken
+publisher PDF or failed model output.
+
+The production import now waits **up to five minutes** for that lock using
+the original bounded, cooperative, non-blocking flock polling. A real writer
+still has exclusive access; waiting neither bypasses the lock nor alters
+existing storage/embedding/page identity and does not remove the subsequent
+foreign-key and full SQLite integrity checks. A test simulates another
+legitimate writer releasing the lock only after one hundred and twenty-five
+seconds, plus a separate never-released-lock timeout. If contention outlasts
+the new bound, the already-present retry journal still handles it without
+truncating or deleting the source. Do not run duplicate manual imports of a
+failed original while either worker is active.
+
+Only the identical worker-source checkout already registered for the two
+Raspi systemd services can be safely fast-forwarded from canonical KMD
+master; preserve any local changes first, and verify the exact installed
+program, ongoing build jobs and live recovery separately. This change does
+not claim that a long, full SQLite integrity scan has become inexpensive;
+further throughput evaluation should not weaken data-integrity assurance
+without independent tests.
