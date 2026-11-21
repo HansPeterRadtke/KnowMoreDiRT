@@ -54,14 +54,29 @@ def main()->None:
         if not name.is_file() or name.is_symlink():
             raise ValueError("source verification CLI or native source-map unavailable")
     sys.path.insert(0,str(Path(__file__).resolve().parents[1]/"src"))
-    from file_system_catalog.dual_source_discovery import combined_dual_discovery,attach_verified_pdf_previews
+    from file_system_catalog.dual_source_discovery import (
+        combined_dual_discovery,attach_verified_pdf_previews,scope_explicit_publisher_query,
+    )
     # Both established native programs already apply source-provenance
     # rejection. The combined helper additionally rehashes the publisher
     # original, whole derivative and exact raw passage before reporting.
     summary=_command([sys.executable,str(args.summary_cli),"search",
                       args.query,"--top",str(args.top)])
-    raw=_command([str(args.original_passage_cli),args.query,
-                  "--mode","overview","--top",str(min(30,args.top*3))])
+    summary,scoped_original,run_original,selection=scope_explicit_publisher_query(summary,args.query)
+    if run_original:
+        argv=[str(args.original_passage_cli),args.query,
+              "--mode","overview","--top",str(min(30,args.top*3))]
+        if scoped_original is not None:
+            argv.extend(["--original-path",scoped_original])
+        raw=_command(argv)
+        if (scoped_original is not None and any(
+                not isinstance(hit,dict) or hit.get('original_path')!=scoped_original
+                for hit in raw.get('results',[]))):
+            raise ValueError('original passage search returned a different explicitly cited original')
+    else:
+        # Deliberately no global original query for an ambiguous/missing
+        # publisher identity: this would silently substitute another work.
+        raw={"query":args.query,"retrieval_mode":"overview","results":[]}
     with sqlite3.connect(args.source_map.resolve().as_uri()+"?mode=ro",uri=True) as con:
         con.execute("PRAGMA query_only=ON")
         result=combined_dual_discovery(
@@ -70,7 +85,13 @@ def main()->None:
             derivative_root=args.derivative_root.resolve(strict=True),
             original_receipts=_receipts(args.download_ledger),
             max_originals=args.top,
+            omit_verified_nonpublisher_passages=True,
         )
+    if selection is not None:
+        result['explicit_source_selection']={**selection,
+            'original_passages_scoped_to_named_source':scoped_original is not None,
+            'other_publications_substituted':False,
+            'factual_answer_verified':False}
     if args.verify_pdf_previews:
         result=attach_verified_pdf_previews(
             result, original_root=args.original_root.resolve(strict=True),

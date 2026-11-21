@@ -742,3 +742,77 @@ file writes and the append-only journal. Those tests use only disposable
 fixtures, never the live process managers. The private wave47 receipt and the
 real *refusing* dry-run log are retained under
 `/data/var/knowmoredirt/knowledge-library/search-audit/continued-20261121-wave47`.
+
+### Explicit-source binding across both independently ranked native channels, November 21
+
+The optional combined original/summary search must not confuse two different
+source contracts. `raspi_dual_source_discovery.py` used the native
+summary channel's exact publisher-name resolver while still issuing an
+**unrestricted** original-passage search, so the explicit request
+`According to CiteGuard, ...` could return the named source **and** other
+semantically similar, unrelated publications. The source-linked `source-evidence`
+operator correctly handled a named original; the combined two-channel
+operator did not. The fix enforces the native summary search's existing
+publisher-identity decision for both independent channels, not a second
+parser or new relevance model.
+
+- A unique, explicitly cited publisher original is the only permitted source
+  in either channel. If its summary is not indexed yet, its independently
+  available original passage may still be read from the existing source map,
+  with the *exact* `--original-path` applied to the original-passage program.
+- If an explicit title/identifier is absent or matches multiple original
+  publications, the combined operator returns **zero** unrelated documents
+  and describes the ambiguity/absence. Up to eight actual candidate paths
+  can be displayed for a larger ambiguous source family, preserving the
+  distinct total count. Users must choose a full title/path; vector ranking
+  is not evidence that one edition was intended.
+- Ordinary unqualified topic questions still run both global independent
+  searches. There is no rank fusion, confidence score, source substitution
+  or model retraining.
+
+The publisher-source excerpt path also has two separate, explicit safeguards:
+
+1. A native source-passage chunk can have a valid native SHA while existing
+   **only** in the automatically generated extraction/catalog preamble rather
+   than the current publisher's actual source unit. The combined CLI now
+   explicitly *abstains* from presenting that candidate when the full
+   original and derivative hashes match but the exact quoted passage does
+   **not** occur after `[[SOURCE UNIT:...]]`. The candidate's original path,
+   native rank and reason are recorded in the result. **Any changed source
+   SHA, missing original, invalid chunk SHA or other integrity error still
+   causes the entire query to fail closed**. The reusable pure combiner
+   retains strict all-candidate rejection by default; only the installed
+   combined CLI opts into the visible metadata-only candidate exclusion.
+2. A derived-PDF search passage can include extractor-only page delimiters
+   or span the boundary between two physical pages. These markers must not
+   be displayed as literal publisher quotations. The preview reader selects
+   only exact underlying text from one segment and tracks the source page
+   label independently of the original chunk label. A SHA-256 of the
+   **displayed preview** is retained alongside the original full-passage
+   SHA, and physical-page evidence is still checked separately against the
+   original source PDF bytes. Physical-page verification does not establish
+   complete answer correctness or context outside the displayed excerpt.
+
+The real Raspi same-query before/after outputs are kept privately under
+`/data/var/knowmoredirt/knowledge-library/search-audit/continued-20261121-wave47`.
+An explicitly named `CiteGuard` question went from the original and two
+unrelated originals to **only CiteGuard**, and the new publisher-text-only
+preview was independently verified on original physical page **one**.
+An ambiguous `ToolScope` name returned the two possible original editions
+without substituting a source. An ordinary citation-auditing question kept
+both search channels, returned three independently rehashed original-source
+passage candidates, omitted one metadata-only candidate **with a visible
+provenance rejection**, and verified two returned PDF excerpt previews on
+original pages **ten** and **one**. The third retrieved item was a non-PDF
+source and correctly carried no physical-PDF proof. No native model, source
+original, summary, FileDB or corpus configuration changed.
+
+This is a **source-identity/citation-integrity** correction, not a measured
+improvement in open-domain semantic recall. The separate frozen experiment
+`lexical-metadata-frozen-first-pass.json` also tested an in-memory title/topic
+BM25 channel and recovered **zero additional known source labels** beyond the
+incumbent two-channel union at top ten, across the frozen historical,
+independent-paper and multi-source families. That untuned, metadata-only
+channel was not added to production. For general relevance improvements,
+new independently judged multi-answer and adversarial original-text labels
+are needed, preserving the frozen pre-change evidence.

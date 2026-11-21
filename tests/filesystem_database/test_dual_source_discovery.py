@@ -10,7 +10,7 @@ import unittest
 
 from file_system_catalog.dual_source_discovery import (
     safe_corpus_relative, existing_file, verify_current_source,
-    combined_dual_discovery,
+    combined_dual_discovery,publisher_text_preview,
 )
 
 
@@ -91,7 +91,40 @@ class SourceBoundDualSearchTests(unittest.TestCase):
             derivative_root=self.derivatives,
             original_receipts=self.receipts,
             max_originals=kwargs.get("max_originals",5),
+            omit_verified_nonpublisher_passages=kwargs.get("omit_unverified",False),
         )
+
+    def test_pdf_publisher_preview_never_quotes_extractor_marker(self):
+        source='[[SOURCE UNIT: PDF page 1]]\n' + 'Paper title and abstract about the actual method ' * 9
+        preview,label=publisher_text_preview(source,'PDF page 1')
+        self.assertEqual('PDF page 1',label)
+        self.assertTrue(preview.startswith('Paper title and abstract'))
+        self.assertNotIn('[[SOURCE UNIT:',preview)
+        self.assertIn(preview,source)
+        self.assertLessEqual(len(preview),350)
+        self.assertEqual('PDF page 1',label)
+
+    def test_crossing_pdf_page_delimiter_uses_real_selected_page(self):
+        source='tail end of older page 13.\n' + '[[SOURCE UNIT: PDF page 14]]\n' + 'New page authoritative text about a relevant issue. ' * 8
+        preview,label=publisher_text_preview(source,'PDF page 13')
+        self.assertEqual('PDF page 14',label)
+        self.assertTrue(preview.startswith('New page authoritative text'))
+        self.assertNotIn('[[SOURCE UNIT:',preview)
+        self.assertIn(preview,source)
+        source='This is a sufficiently detailed statement from page 13 with more than eighty characters.' + '[[SOURCE UNIT: PDF page 14]]\n' + 'Other page separate statement.'
+        preview,label=publisher_text_preview(source,'PDF page 13')
+        self.assertEqual('PDF page 13',label)
+        self.assertTrue(preview.startswith('This is a sufficiently detailed'))
+        self.assertNotIn('[[SOURCE UNIT:',preview)
+
+    def test_no_raw_publisher_text_preview_fails_closed(self):
+        with self.assertRaisesRegex(ValueError,'only extractor metadata'):
+            publisher_text_preview('[[SOURCE UNIT: PDF page 2]]','PDF page 2')
+        for bad in (None,'',False):
+            with self.assertRaises(ValueError):
+                publisher_text_preview(bad,'PDF page 2')
+        with self.assertRaises(ValueError):
+            publisher_text_preview('This is publisher text','PDF page 2',max_chars=10000)
 
     def test_both_independent_ranks_preserved_without_fusion(self):
         before=self.map.total_changes
@@ -171,6 +204,44 @@ class SourceBoundDualSearchTests(unittest.TestCase):
                   source_passage_sha256=sha(unsupported.encode()))
         with self.assertRaisesRegex(ValueError,"absent from current publisher-source"):
             self.combine(raw={**self.raw,"results":[item]})
+
+    def test_explicitly_audited_metadata_only_passages_are_omitted_without_fabrication(self):
+        path="official/material.html"
+        derived=self.derivatives/(path+".txt")
+        metadata_only="A model's generated catalog summary is not publisher text."
+        original=derived.read_text()
+        derived.write_text(metadata_only+"\n"+original)
+        updated_sha=sha(derived.read_bytes())
+        self.map.execute("UPDATE originals SET derived_sha256=? WHERE source_path=?",(updated_sha,path))
+        meta=dict(self.raw_node(path),source_passage=metadata_only,
+                  source_passage_sha256=sha(metadata_only.encode()))
+        raw={**self.raw,"results":[meta,self.raw_node('research/other.html')]}
+        # The default pure function remains strictly fail-closed for callers
+        # that require all submitted native candidate proofs to be valid.
+        with self.assertRaisesRegex(ValueError,'absent from current publisher-source'):
+            self.combine(raw=raw)
+        result=self.combine(raw=raw,omit_unverified=True)
+        self.assertEqual(1,result['uncitable_native_passage_candidates_omitted'])
+        self.assertEqual(path,result['excluded_uncitable_native_passage_sources'][0]['original_path'])
+        self.assertEqual(1,result['excluded_uncitable_native_passage_sources'][0]['native_candidate_rank'])
+        self.assertEqual(['research/other.html'],[x['original_path'] for x in result['original_passage_channel']])
+        self.assertEqual(2,result['original_passage_channel'][0]['native_raw_candidate_rank_before_verification'])
+        self.assertEqual(1,result['original_passage_channel'][0]['original_source_rank'])
+        self.assertTrue(result['no_database_or_original_mutation'])
+        self.assertEqual(1,result['summary_original_count'])
+
+    def test_reported_metadata_abstention_never_hides_changed_original_hash(self):
+        path="official/material.html"
+        original=self.originals/path
+        original.write_bytes(original.read_bytes()+b"tampered")
+        with self.assertRaisesRegex(ValueError,'bytes changed'):
+            self.combine(omit_unverified=True)
+        original.write_bytes(original.read_bytes()[:-8])
+        raw={**self.raw,'results':[dict(self.raw_node(path),exact_passage_hash_verified=False)]}
+        with self.assertRaisesRegex(ValueError,'unverified'):
+            self.combine(raw=raw,omit_unverified=True)
+        with self.assertRaisesRegex(ValueError,'untrusted source verification mode'):
+            self.combine(omit_unverified='yes')
 
     def test_source_map_and_summary_node_sha_are_mandatory(self):
         bad=dict(self.summary)

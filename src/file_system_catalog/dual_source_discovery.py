@@ -132,6 +132,109 @@ def verify_current_source(
 
 
 
+_DERIVED_SOURCE_UNIT = re.compile(r"\[\[SOURCE UNIT: ([^\]\r\n]{1,120})\]\]")
+_PHYSICAL_PDF_LABEL = re.compile(r"PDF page ([1-9][0-9]{0,5})$")
+
+
+def publisher_text_preview(full_passage: str, source_section: str,
+                           *, max_chars: int = 350) -> tuple[str,str]:
+    """Quote source-unit text, not KMD metadata; avoid spanning PDF pages.
+
+    Native extracted chunks may begin with a generated `[[SOURCE UNIT:]]`
+    delimiter or straddle two independently extracted PDF pages. Those
+    delimiters are NOT printed publisher text. Prefer the first substantive
+    segment, preserving an explicit physical page label if its marker is
+    encountered, and never pretend the displayed preview crosses pages.
+    The full passage's native position and SHA are verified separately.
+    """
+    if (not isinstance(full_passage,str) or not full_passage
+            or not isinstance(source_section,str)
+            or type(max_chars) is not int or not 30<=max_chars<=350):
+        raise ValueError('invalid source-derived passage preview')
+    delimiters=list(_DERIVED_SOURCE_UNIT.finditer(full_passage))
+    segments=[]
+    previous_end=0
+    label=source_section
+    for match in delimiters:
+        part=full_passage[previous_end:match.start()].strip()
+        if part:
+            segments.append((part,label))
+        next_label=match.group(1)
+        if _PHYSICAL_PDF_LABEL.fullmatch(next_label):
+            label=next_label
+        else:
+            label=source_section  # Non-PDF source-unit labels are still context.
+        previous_end=match.end()
+    final=full_passage[previous_end:].strip()
+    if final:
+        segments.append((final,label))
+    if not segments:
+        raise ValueError('source passage contains only extractor metadata')
+    # A page-crossing window may start with only an ending phrase from the
+    # preceding page; require a modest substantive excerpt when possible.
+    selected=next(((text,section) for text,section in segments if len(text)>=80),segments[0])
+    preview=selected[0][:max_chars].rstrip()
+    if not preview or preview not in full_passage:
+        raise ValueError('source preview is not a literal verified derivative span')
+    return preview,selected[1]
+
+
+def scope_explicit_publisher_query(summary_payload: dict, query: str) -> tuple[dict,str | None,bool,dict | None]:
+    """Respect exact publisher identity in BOTH independent search channels.
+
+    Native KMD summary search may resolve an explicit catalog title while the
+    independently called original-passage program would otherwise execute
+    a global vector lookup with misleading different originals. Enforce the
+    known publisher path in both channels; never reinterpret an ambiguous
+    or absent catalog source as a different paper. Ordinary topic searches
+    continue unchanged. This routes candidates, not factual answers.
+    """
+    if (not isinstance(summary_payload,dict) or summary_payload.get('query')!=query
+            or not isinstance(query,str) or not query):
+        raise ValueError('source selection must use identical native query')
+    match=summary_payload.get('source_name_match')
+    if match is None:
+        return summary_payload,None,True,None
+    if not isinstance(match,dict):
+        raise ValueError('invalid native source-name identity contract')
+    status=match.get('status')
+    if status not in ('verified','no_verified_index_match','ambiguous','no_catalog_match'):
+        raise ValueError('unrecognized explicit original selection state')
+    selection={'status':status,'kind':match.get('kind'),
+               'policy':'Explicit original identity must not be replaced by unrelated ranked sources.'}
+    docs=summary_payload.get('documents')
+    if not isinstance(docs,list):
+        raise ValueError('native summary channel missing source documents')
+    if status in ('ambiguous','no_catalog_match'):
+        if status=='ambiguous':
+            choices=match.get('candidate_paths')
+            if (not isinstance(choices,list) or not choices or len(choices)>30
+                    or len(choices)!=len(set(choices))):
+                raise ValueError('invalid explicit ambiguous catalog candidate paths')
+            selection['candidate_paths']=[safe_corpus_relative(p) for p in choices]
+            actual_count=match.get('matching_catalog_paths')
+            if (type(actual_count) is not int or actual_count < len(choices)
+                    or actual_count <= 1):
+                raise ValueError('catalog ambiguity count differs from displayed choices')
+            selection['matching_catalog_paths']=actual_count
+            selection['candidate_choices_truncated']=actual_count>len(choices)
+        return {**summary_payload,'documents':[]},None,False,selection
+    path=safe_corpus_relative(match.get('original_path'))
+    selection['original_path']=path
+    selection['matching_catalog_paths']=1
+    if match.get('matching_catalog_paths')!=1:
+        raise ValueError('explicit unique original has ambiguous catalog count')
+    if status=='verified':
+        if not docs or docs[0].get('original_path')!=path:
+            raise ValueError('named summary verification lacks the selected publisher original')
+        filtered=[record for record in docs if record.get('original_path')==path]
+    else:
+        # This native summary is missing/stale: a fallback cosine document
+        # in the summary result is not a substitute for that original.
+        filtered=[]
+    return {**summary_payload,'documents':filtered},path,True,selection
+
+
 def attach_verified_pdf_previews(
     result: dict[str,Any], *, original_root: Path,
     original_receipts: dict[str,str], max_pdf_previews: int,
@@ -216,10 +319,11 @@ def combined_dual_discovery(
     original_root: Path, derivative_root: Path,
     original_receipts: dict[str, str],
     max_originals: int,
+    omit_verified_nonpublisher_passages: bool = False,
 ) -> dict[str,Any]:
     """Keep each independently source-verified rank; never replace with RRF."""
-    if not 1<=max_originals<=20:
-        raise ValueError("invalid bounded original count")
+    if not 1<=max_originals<=20 or type(omit_verified_nonpublisher_passages) is not bool:
+        raise ValueError("invalid bounded original count or untrusted source verification mode")
     summaries=summary_payload.get("documents")
     passages=original_payload.get("results")
     if (not isinstance(summaries,list) or not isinstance(passages,list) or
@@ -260,6 +364,7 @@ def combined_dual_discovery(
                 "source_scope":"Generated summary is a navigation hint, NOT source text.",
             })
     raw_out=[]
+    excluded_nonpublisher=[]
     for i,item in enumerate(passages,1):
         if len(raw_out)>=max_originals:
             break
@@ -268,29 +373,50 @@ def combined_dual_discovery(
         # only the first qualifying appearance in the separately ranked view.
         if path in passage_seen:
             continue
-        passage_seen.add(path)
         if item.get("exact_passage_hash_verified") is not True:
             raise ValueError("original passage search returned unverified source text")
         full_passage=item["source_passage"]
         passage_sha=item["source_passage_sha256"]
         expected=item["original_source_sha256"]
-        proof=verify_current_source(
-            path=path,expected_sha256=expected,
-            raw_passage=full_passage,raw_passage_sha256=passage_sha,
-            source_map=source_map,original_root=original_root,
-            derivative_root=derivative_root,original_receipts=original_receipts,
-        )
+        try:
+            proof=verify_current_source(
+                path=path,expected_sha256=expected,
+                raw_passage=full_passage,raw_passage_sha256=passage_sha,
+                source_map=source_map,original_root=original_root,
+                derivative_root=derivative_root,original_receipts=original_receipts,
+            )
+        except ValueError as error:
+            # Optional *explicitly reported* abstention: the native original
+            # scanner can occasionally return a valid chunk SHA whose text
+            # occurs only in extractor-written catalog metadata. Publisher
+            # and derivative bytes were both rehashed inside the verifier.
+            # Do not allow an unquoted metadata header to destroy otherwise
+            # verified, useful source excerpts in this one result set.
+            # ALL OTHER integrity failures (changed original/derivative,
+            # invalid span hash, missing source) still abort the full result.
+            if (omit_verified_nonpublisher_passages and
+                    str(error)=="raw passage absent from current publisher-source section of derivative"):
+                excluded_nonpublisher.append({"original_path":path,
+                    "native_candidate_rank":i,
+                    "reason":"source_excerpt_not_present_after_publisher_source_unit_marker"})
+                continue
+            raise
+        passage_seen.add(path)
         if path in verified and verified[path]["source_original_sha256"]!=proof["source_original_sha256"]:
             raise ValueError("source revisions differ between the two retrieval channels")
         verified[path]=proof
         if len(raw_out)<max_originals:
+            preview,preview_section=publisher_text_preview(full_passage,str(item.get("source_section") or ""))
             raw_out.append({
                 "original_path":path,
                 "original_source_rank":len(raw_out)+1,
+                "native_raw_candidate_rank_before_verification":i,
                 "original_source_similarity_not_probability":item["semantic_similarity"],
                 "exact_derived_source_passage_sha256":passage_sha,
-                "source_section":item.get("source_section"),
-                "passage_preview":str(full_passage)[:350],
+                "source_section":preview_section,
+                "native_chunk_source_section":item.get("source_section"),
+                "passage_preview":preview,
+                "passage_preview_sha256":hashlib.sha256(preview.encode("utf-8")).hexdigest(),
                 "publisher_url":item.get("publisher_url"),
                 "source_page_citation_warning":item.get("source_page_citation_warning"),
                 "source_scope":"Exact current derivative passage, NOT guaranteed physically correct PDF page or complete governing context.",
@@ -322,10 +448,13 @@ def combined_dual_discovery(
         "originals_found_only_via_generated_summaries":len(summary_paths-source_paths),
         "no_ranking_fusion_or_score_threshold_applied":True,
         "no_database_or_original_mutation":True,
+        "uncitable_native_passage_candidates_omitted":len(excluded_nonpublisher),
+        "excluded_uncitable_native_passage_sources":excluded_nonpublisher,
         "limitations":[
             "Two independent rank lists. Neither includes an independently established relevance/answerability probability.",
             "SHA-valid source excerpts require complete parent/surrounding discourse and physical-PDF-page verification before factual use.",
             "A raw passage may be a chunk of an original-extracted text derivative, not a literal byte quotation from PDF or HTML source.",
             "No claims that summary and passage rank lists have equal coverage or scores on different tasks.",
+            "When explicitly enabled, native passage candidates seen only in extractor metadata are omitted with visible source/reason receipts; all changed-revision failures still abort.",
         ],
     }
