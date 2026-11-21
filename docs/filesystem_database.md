@@ -1415,6 +1415,39 @@ model workload or source acquisition action. A future program version must
 not turn this narrowly scoped staging exception into an unbounded or
 unsupervised extraction default.
 
+**Independent full private stage acceptance, November 21:** All **327**
+originals with independently confirmed stale out-of-range cached PDF page
+labels now have exclusive, privately stored, physical-page-correct candidate
+text derivatives. The existing automatic bounded parser staged **323**;
+only the four previously attested and SHA-pinned longer originals used
+individually bounded extended page extraction. Two initial SQLite reader-lock
+rejections were corrected by staging exactly those two sources in a *new*
+private path without replaying or overwriting their prior receipts. An
+independent separate excerpt check matched **981 of 981** selected source
+excerpts against the **actual original physical publisher PDF page** across
+the 327 staged PDFs. Two original text-layer font issues required a shorter,
+still exact, original-PDF-verified excerpt; neither had been accepted as a
+citation before its successful second proof. The final read-only preflight
+**rehashes the complete original PDFs, all existing old source-map
+publisher-text derivatives and all staged replacements for all 327 again**,
+verifies current completed acquisition receipts, exact existing source-map
+revisions and unique original FileDB IDs, cross-checks the existing 327
+SHA-gated warnings, validates increasing original physical page labels,
+and asserts all 981 page-sample proof references. Its private checkpoint
+is `continued-20261121-wave51/all-327-private-staged-original-PDF-preflight-complete.json`
+(SHA-256 `46bfb4ae4e463168eeb10d9ef7bfd08a454307fc99739a8134bbfd2440e302f0`).
+No private publisher text was copied into Git. **Staging is NOT live repair:**
+all 327 old original-linked derivatives, the canonical native FileDB vector
+and chunk representation, 119 previously observed affected recursive summary
+trees and the two live workers were deliberately left unchanged. The existing
+native source-revision-gated page citation warnings therefore remain active.
+Only a separately coordinated transactional, rollback-safe migration across
+all affected dependencies can clear those old source-revision warnings after
+physical-page regression checks. This preflight also does not claim complete
+page-by-page text or image-fidelity validation beyond sampled original PDF
+page excerpt checks; the 168 OCR-only-marked PDFs are a separate review
+population and were not silently reclassified as repaired.
+
 The script refuses existing output receipts/staging folders, out-of-audit
 output paths, stale source SHA revisions, invalid/duplicated FileDB original
 identities, changed source-map rows, mutable original/derived bytes, original
