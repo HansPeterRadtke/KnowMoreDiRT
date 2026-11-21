@@ -142,6 +142,47 @@ class PublisherFirstUnitDiscoveryTests(unittest.TestCase):
                          evidence['publisher_first_unit_preview'])
         self.assertFalse(evidence['physical_pdf_page']['physical_pdf_page_verified'])
 
+    def test_exceptional_extended_prefix_only_after_first_sixteen_kib_unreadable(self):
+        from file_system_catalog.publisher_firstunit_discovery import (
+            MAX_FALLBACK_PREFIX_BYTES,FIRST_UNIT_PREFIX_BYTES,
+        )
+        bad_pages=''.join(
+            f'[[SOURCE UNIT: PDF page {i}]]\n'+('\x00G'*2500)+'\n'
+            for i in range(1,12)
+        )
+        raw=('KMD generated metadata title should not be searchable.\n'
+             +bad_pages+'[[SOURCE UNIT: PDF page 12]]\n'
+             +'A clean original publisher section discusses phonon voice '
+             'agent evaluation with source evidence and genuine human assessment. '*15)
+        self.assertGreater(len(raw.encode()),FIRST_UNIT_PREFIX_BYTES)
+        self.assertLess(len(raw.encode()),MAX_FALLBACK_PREFIX_BYTES)
+        self.assertIsNone(source_firstunit_from_prefix(raw.encode()[:FIRST_UNIT_PREFIX_BYTES]))
+        with self.assertRaises(ValueError):
+            source_firstunit_from_prefix(raw.encode())
+        label,start,end,excerpt=source_firstunit_from_prefix(
+            raw.encode(),max_prefix_bytes=MAX_FALLBACK_PREFIX_BYTES)
+        self.assertEqual('PDF page 12',label)
+        self.assertEqual(raw[start:end],excerpt)
+        with self.assertRaises(ValueError):
+            source_firstunit_from_prefix(raw.encode(),max_prefix_bytes=128*1024)
+        p='papers/voice-agent-with-bad-first-eleven-pages.pdf'
+        self.add_source(p,'A phonon source with unreadable cover pages',raw,3)
+        receipt=self.load()
+        self.assertEqual(3,receipt['publisher_firstunit_rows_indexed'])
+        self.assertEqual(1,receipt['extended_source_preview_reads'])
+        self.assertEqual(0,receipt['skipped_sources'])
+        self.assertEqual(MAX_FALLBACK_PREFIX_BYTES,receipt['exceptional_extended_preview_max_bytes'])
+        entry=next(x for x in self.idx.entries.values() if x.original_path==p)
+        self.assertEqual('PDF page 12',entry.first_unit_label)
+        result=verify_index_candidate(entry=entry,original_root=self.originals,
+              derived_root=self.derivatives,completed_receipts=self.receipts,
+              native_db=self.native,source_map=self.sm,
+              query='source evidence phonon voice agent evaluation')
+        self.assertEqual(p,result['original_path'])
+        self.assertTrue(result['current_approved_publisher_and_extracted_bytes_rehashed'])
+        self.assertEqual(raw[result['source_preview_start_char']:result['source_preview_end_char']],
+                         result['publisher_first_unit_preview'])
+
     def test_no_source_unit_recovery_when_all_candidate_pages_are_illegible(self):
         raw=('KMD generated metadata.\n[[SOURCE UNIT: PDF page 1]]\n'
              + ('\x00G'*50)

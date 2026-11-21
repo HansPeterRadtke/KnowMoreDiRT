@@ -21,6 +21,7 @@ from .publisher_pdf_page import verify_pdf_page_excerpts
 UNIT=re.compile(r'(?m)^\[\[SOURCE UNIT: ([^\]\r\n]{1,500})\]\][ \t]*(?:\r?\n|$)')
 SOURCE_SHA=re.compile('[0-9a-f]{64}\\Z')
 FIRST_UNIT_PREFIX_BYTES=16*1024
+MAX_FALLBACK_PREFIX_BYTES=64*1024
 FIRST_UNIT_INDEX_CHARS=6500
 MAX_ROWS=25000
 
@@ -37,7 +38,7 @@ class Entry(NamedTuple):
     excerpt: str
 
 
-def source_firstunit_from_prefix(prefix:bytes) -> tuple[str,int,int,str] | None:
+def source_firstunit_from_prefix(prefix:bytes,*,max_prefix_bytes:int=FIRST_UNIT_PREFIX_BYTES) -> tuple[str,int,int,str] | None:
     """Earliest *usable* publisher unit in an original-derived UTF8 prefix.
 
     A reference book may begin with image-only title/copyright pages. Some
@@ -48,7 +49,9 @@ def source_firstunit_from_prefix(prefix:bytes) -> tuple[str,int,int,str] | None:
     The returned coordinates always refer to the unmodified current text.
     No claim of exhaustive text/physical-page truth follows from sampling.
     """
-    if not isinstance(prefix,bytes) or len(prefix)>FIRST_UNIT_PREFIX_BYTES:
+    if (type(max_prefix_bytes) is not int
+            or max_prefix_bytes not in (FIRST_UNIT_PREFIX_BYTES,MAX_FALLBACK_PREFIX_BYTES)
+            or not isinstance(prefix,bytes) or len(prefix)>max_prefix_bytes):
         raise ValueError('oversized or nonbyte source prefix')
     text=prefix.decode('utf8','ignore')
     markers=list(UNIT.finditer(text))
@@ -80,6 +83,7 @@ class FirstUnitRAMIndex:
         self.entries:dict[int,Entry]={}
         self.failed_samples:list[dict]=[]
         self.bytes_sampled=0
+        self.extended_source_preview_reads=0
         self.closed=False
 
     def __enter__(self):return self
@@ -91,7 +95,8 @@ class FirstUnitRAMIndex:
             self.closed=True
 
     def add(self,*,path:str,original_sha:str,derived_sha:str,derived_path:str,
-            title:str,original_text_prefix:bytes):
+            title:str,original_text_prefix:bytes,
+            max_prefix_bytes:int=FIRST_UNIT_PREFIX_BYTES):
         if self.closed:raise ValueError('first-unit index closed')
         if len(self.entries)>=self.max_records:raise ValueError('source catalog exceeds explicit bound')
         parts=path.split('/') if isinstance(path,str) else ()
@@ -105,8 +110,10 @@ class FirstUnitRAMIndex:
                 or not isinstance(original_sha,str) or not SOURCE_SHA.fullmatch(original_sha)
                 or not isinstance(derived_sha,str) or not SOURCE_SHA.fullmatch(derived_sha)):
             raise ValueError('publisher first-unit original identity invalid')
-        item=source_firstunit_from_prefix(original_text_prefix)
+        item=source_firstunit_from_prefix(original_text_prefix,max_prefix_bytes=max_prefix_bytes)
         self.bytes_sampled+=len(original_text_prefix)
+        if max_prefix_bytes==MAX_FALLBACK_PREFIX_BYTES and len(original_text_prefix)>FIRST_UNIT_PREFIX_BYTES:
+            self.extended_source_preview_reads+=1
         if item is None:
             self.failed_samples.append({'original_path':path,'reason':'publisher_source_unit_not_found_in_bounded_prefix'})
             return
@@ -154,8 +161,16 @@ def load_complete_source_previews(*,source_map:sqlite3.Connection,derived_root:P
             source=safe_file(derived_root,derived_path)
             with source.open('rb') as stream:
                 prefix=stream.read(FIRST_UNIT_PREFIX_BYTES)
+                # Only exceptional sources lacking any readable first-page
+                # evidence may use the larger bounded prefix; the normal
+                # seventeen-thousand-source scan remains unchanged.
+                if source_firstunit_from_prefix(prefix) is None:
+                    prefix+=stream.read(MAX_FALLBACK_PREFIX_BYTES-FIRST_UNIT_PREFIX_BYTES)
+            bound=(MAX_FALLBACK_PREFIX_BYTES if len(prefix)>FIRST_UNIT_PREFIX_BYTES
+                   else FIRST_UNIT_PREFIX_BYTES)
             index.add(path=path,original_sha=original_sha,derived_sha=derivative_sha,
-                      derived_path=derived_path,title=title or '',original_text_prefix=prefix)
+                      derived_path=derived_path,title=title or '',original_text_prefix=prefix,
+                      max_prefix_bytes=bound)
         except (ValueError,OSError,TypeError) as error:
             # No unsafe candidate is indexed. The skip must remain visible
             # to callers, never interpreted as a verified source omission.
@@ -169,6 +184,9 @@ def load_complete_source_previews(*,source_map:sqlite3.Connection,derived_root:P
     return {'eligible_complete_source_map_records':len(rowset),
             'publisher_firstunit_rows_indexed':len(index.entries),
             'bounded_prefix_bytes_read':index.bytes_sampled,
+            'extended_source_preview_reads':index.extended_source_preview_reads,
+            'ordinary_preview_bytes':FIRST_UNIT_PREFIX_BYTES,
+            'exceptional_extended_preview_max_bytes':MAX_FALLBACK_PREFIX_BYTES,
             'skipped_sources':len(index.failed_samples),
             'skipped_source_identities':skipped,
             'skipped_source_details_truncated':len(index.failed_samples)>len(skipped)}

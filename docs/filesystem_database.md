@@ -1153,16 +1153,20 @@ confidence or factual accuracy. The two lists are NOT fused or substituted for
 native semantic ranking; other projects may still use ordinary folder and
 grep searches directly on the preserved original files.
 
-The operator reads **up to sixteen kibibytes** from each completed existing
+The operator normally reads **only sixteen kibibytes** from each completed
 source-map derivative and selects the **earliest usable original publisher
 source unit**. PDF title, copyright and cover pages may be empty, and some
 pages have NUL-interleaved font codes; these are skipped instead of rejecting
-the entire approved reference. It inspects at most sixty-four publisher
-source markers in that same bounded prefix, without changing the original
-text, stitching separate pages into a fabricated quote or treating the
-preceding KMD-generated catalog header as publisher evidence. The selected
-unit can therefore be physical PDF page two, three or later. Its genuine
-source label and original derivative character offsets are retained.
+the entire approved reference. If **and only if** no readable source unit
+exists in this standard prefix, the operator reads at most **sixty-four
+kibibytes** from that same file to seek a later readable section. It inspects
+at most sixty-four genuine publisher source-unit markers in whichever
+bounded prefix applies, without changing original text, stitching separate
+pages into a fabricated quote or treating the preceding KMD-generated
+catalog header as publisher evidence. The selected unit may be physical PDF
+page two, three or later. Its actual derived label and original character
+offsets are retained as derivative metadata, not independently proven
+physical-page identity.
 At most 6,500 characters from that **single** source unit are added to
 temporary FTS per original. The corpus is not recopied, no independent
 persistent DB is created, and the two existing summary workers and models
@@ -1198,9 +1202,18 @@ page, and twenty-four had very short opening pages. The strictly bounded
 **earliest-usable-source-unit** recovery found a later readable publisher
 page for **thirty-seven** of these thirty-eight originals. The later real
 published-source code replay scanned the same 17,715 completed originals,
-indexed **17,714** early source-unit previews and left exactly **one**
-source excluded from this optional first-unit discovery layer. All original
-files remain present and unchanged. The eleven pre-frozen questions retained
+indexed **17,714** early source-unit previews and left one difficult PDF
+outside the standard sixteen-kibibyte preview. That last original retained
+usable original text on its *derived* PDF page twelve, near sixty kibibytes
+into the extracted file. The bounded exceptional fallback subsequently
+indexed it too, yielding **17,715 out of 17,715 eligible completed original
+source previews** with **zero** skipped in a fresh full batch replay. Only
+one source used the extended read; the frozen original-source rankings
+remained six literal, seven Porter, eight in the separate-channel union.
+This counts *early-page candidate eligibility*, not full-document indexing
+or physical-page truth. Its derived page-twelve label has **not** passed
+independent verification against the original physical PDF page. All
+original files remain present and unchanged. The eleven pre-frozen questions retained
 **six of eleven** first-stage exact known-source hits in the literal channel,
 **seven of eleven** in Porter, and **eight of eleven** in their candidate-set
 union; no source ranking was silently replaced. On those same questions,
