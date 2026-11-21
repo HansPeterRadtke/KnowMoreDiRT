@@ -1415,6 +1415,49 @@ model workload or source acquisition action. A future program version must
 not turn this narrowly scoped staging exception into an unbounded or
 unsupervised extraction default.
 
+### No-action native cutover dependency inventory (before any real migration)
+
+Preparing all corrected publisher-text derivatives does **not** by itself
+repair the live corpus. Use the separately tested, *read-only* command
+`scripts/raspi_pdf_repair_cutover_readiness.py` to inventory the exact
+original-revision dependencies without stopping resident workers, acquiring
+writer locks, modifying source-map files or adding duplicate vectors.
+The tool requires the complete **327-source** private stage-preflight receipt,
+rehashes every complete approved original PDF, every old live derivative and
+every proposed private replacement, checks exact source-map and unique native
+KnowMoreDiRT FileDB identities, and reads the current `content_chunks` and
+`content_representations` counts for those originals. It also directly checks
+both resident summary worker service states. A missing/changed file, ambiguous
+original, stale receipt, source-map mismatch or missing service observation
+fails closed. Both SQLite connections are opened with `mode=ro` and
+`PRAGMA query_only=ON` and the result is written to a **new mode-0600 JSON**
+under private Raspi search-audit; no publisher text is exported in the result.
+
+```bash
+D=/data/var/knowmoredirt/knowledge-library/search-audit/continued-20261121-wave51
+PYTHONDONTWRITEBYTECODE=1 /data/var/knowmoredirt/semantic-venv/bin/python \
+ /data/src/github/KnowMoreDiRT/scripts/raspi_pdf_repair_cutover_readiness.py \
+ --stage-preflight "$D/all-327-private-staged-original-PDF-preflight-complete.json" \
+ --output "$D/NEW-unique-native-cutover-readiness-receipt.json"
+```
+
+The real independently run inventory checked all 327 staged source revisions:
+**1,188 existing original-content vectors** and **12,623 native generated
+summary representations/vectors** are attached to these originals, across
+**119** documents with native summaries. These rows must not be orphaned,
+misattributed to the new derivative SHA, or silently duplicated during a
+migration. Both workers were still `active`; the report explicitly returned
+`workers_not_quiesced=true` and `safe_to_cutover=false`. The tool returns
+`safe_to_cutover=false` **even when both services are inactive**, because
+service inactivity alone does not acquire exclusive writer leases, prove no
+other consumers, create a cross-file atomic transaction, or establish a
+verified rollback. This tool is deliberately *incapable* of promoting the
+staged sources; the real migration procedure remains unimplemented and
+requires separately verified coordination and tests. This preserves all
+native semantic search results and the original books as they are until the
+full dependent-state replacement can be safely verified. See the private
+readiness receipt `continued-20261121-wave51/second-turn-native-cutover-readiness-327.json`.
+
 **Independent full private stage acceptance, November 21:** All **327**
 originals with independently confirmed stale out-of-range cached PDF page
 labels now have exclusive, privately stored, physical-page-correct candidate
