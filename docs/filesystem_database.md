@@ -1114,3 +1114,114 @@ Private result and per-original page SHA receipts are under
 The disposable SQLite and source-verifier test fixtures are in
 `tests/filesystem_database/test_original_page_recall.py`. No synthesized test
 PDF is ever claimed to prove production physical-page extraction.
+
+### Optional RAM-only first-publisher-unit discovery for incompletely summarized originals
+
+The current native summary and original-overview corpus-wide vector search is
+source-revision checked and remains the **default**. Its first-stage source
+selection can nevertheless miss the requested approved original when the
+relevant first page uses terms absent from its overview embedding or when a
+new document has not yet received a hierarchical summary. This is independent
+of the existing `source-evidence` operation, which can locate and physically
+verify relevant pages once an exact original path is supplied. In a separately
+frozen **eleven-query, four-domain** test, only **two of eleven** known exact
+approved originals appeared in the top five of either existing global vector
+channel. That small set does not prove all other candidates irrelevant.
+
+A separate **optional read-only** source discovery is provided by
+`src/file_system_catalog/publisher_firstunit_discovery.py` and its command:
+
+```bash
+/data/var/knowmoredirt/semantic-venv/bin/python \
+  /data/src/github/KnowMoreDiRT/scripts/raspi_publisher_firstunit_discovery.py \
+  --query 'Which paper uses conformal false-discovery control in RAG?' \
+  --top 5 \
+  --output /data/var/knowmoredirt/knowledge-library/search-audit/NEW-firstunit.json
+```
+
+For several related questions, use one restricted private JSON file containing
+`{"queries":[{"id":"question_one","query":"..."}, ...]}` and replace
+`--query ...` with `--queries-file /absolute/private/questions.json`. One to
+**thirty-two** questions can share the single temporary first-page index.
+The operator writes only to a **new** mode-0600 JSON file, or stdout if no
+`--output` is specified; it refuses an existing output, unsafe query paths,
+invalid query fields, or unsupported query-size limits. It uses one in-memory
+SQLite FTS5 index with two independent rank channels: literal Unicode61 and
+Porter Unicode61. `bm25(title=3, source_topic=0.4,
+first_source_unit_body=1)` provides *lexical candidate order only*, not
+confidence or factual accuracy. The two lists are NOT fused or substituted for
+native semantic ranking; other projects may still use ordinary folder and
+grep searches directly on the preserved original files.
+
+The operator reads **up to sixteen kibibytes** from each completed existing
+source-map derivative to find the first `[[SOURCE UNIT: ...]]` publisher unit.
+It excludes the preceding generated KMD catalog header, any later source unit,
+and NUL-interleaved unreadable text-layer samples. At most 6,500 source-unit
+characters are added to temporary FTS per original. The entire corpus is
+never recopied, no independent persistent database is created, and the two
+existing recursive-summary workers/models are not stopped, changed, or given
+new work by this CLI. An original without a safely parsed source-unit marker
+remains visibly **not indexed by this first-page tool**, not marked absent.
+A queried fact on a distant page will often remain unavailable from the
+first-source-unit lookup, even when the document itself is approved.
+
+**A first-stage lexical hit is not a verified original.** Before emitting
+*each displayed result*, the CLI verifies its current source-map status,
+source original SHA and derivative SHA/path/title against the source-map row
+*again*, checks exactly one current completed acquisition receipt and a
+single original `filesystem_entries` identity in the existing native FileDB,
+rehashes **all bytes** of the original publisher file and its full extracted
+text, validates exact unmodified source character intervals and excerpt SHA,
+and excludes any stale, unreadable, unapproved, nonmatching or oversized
+candidate with a recorded reason. Raw textual source previews remain
+untrusted original content and never executable instructions. Their
+`factual_answer_verified` and `quoted_text_is_original_publisher_bytes`
+flags remain false. `--verify-pdf-previews 1` (maximum three per channel and
+question) additionally checks a returned excerpt on the *original physical
+PDF page*, with its own page-text SHA. A derived page label alone is not a
+verified publisher page. The optional physical-page check never invents a
+citation or repairs an unreadable PDF. Native original/derived/index writes,
+external downloads, model calls and publisher-origin replacements are absent.
+
+**Measured private result, November 21:** The live Raspi run inspected
+17,715 completed source-map records, built 17,691 publisher-first-unit
+candidates from about 261 MiB of sampled source bytes in memory, and
+explicitly excluded **twenty-four** entries that lacked safe usable bounded
+first-unit samples. Across the same **eleven fixed** independently frozen
+original-source queries, the full-source-SHA-attested new literal channel
+found **six of eleven** exact known originals in its top five, the Porter
+channel **seven of eleven**, and their *candidate set union* **eight of
+eleven**. On these exact queries the prior two global native channels
+jointly found only two of eleven; these are **document discovery**
+measurements, not complete answer truth or broad relevance estimates.
+In an additional real one-query opt-in physical PDF proof, the top result
+from both literal and Porter channels selected the CiteGuard original and
+verified its publisher PDF **physical page one**, not merely its derivative
+page label. The predeclared eleven-query gold and the optional lookup output
+are kept privately in the November 21 wave-forty-nine audit folder, without
+copying original copyrighted content to Git.
+
+**Known limitations and next evidence gate:** The query set is small,
+source-selected from four original documents and hand-authored before either
+search, not a representative sample of all possible questions. The extra
+first-page lexical candidate set still misses questions whose answer-bearing
+content is deeper in the document, and a keyword match need not be the
+correct answer. Adding or tuning a default global rank fusion is unjustified
+without independent hard-negative relevance labels, larger representative
+question sets, full-source first-stage recall and answer support quality
+checks. Candidate results are revision-checked only at the time of each
+lookup; if an original or derivative changes later, it must be reverified
+before being cited. The corpus remains automatically incremented by the
+existing KnowMoreDiRT workers, not by this optional read-only search.
+
+The disposable regression tests are
+`tests/filesystem_database/test_publisher_firstunit_discovery.py` and
+`test_publisher_firstunit_discovery_cli.py`. They test generated-metadata
+exclusion, first-source-unit-only parsing, bounded cardinality and queries,
+noncommercial local corpus previews, exact source offsets and hashes, invalid
+source paths, malformed or duplicate approvals, current source-map revision
+changes after an ephemeral index was built, unique native FileDB identity,
+stale original/derivative bytes, and independently verified versus unverified
+physical-page citations. Successful tests verify the specified safeguards;
+they are not evidence that the corpus-wide lexical ranking is universally
+correct or faster than native vector retrieval on all hardware.
