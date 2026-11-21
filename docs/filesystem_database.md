@@ -347,3 +347,35 @@ separate channel versus nine through fusion. This metric evaluates only
 previously frozen candidates and cannot justify replacing the production
 ranking. The private replay result and current index-status checkpoint are
 under `search-audit/rollover-20261121` on Raspi.
+
+### Optional source-revision-bound physical-PDF preview proof (November 21)
+
+`raspi_dual_source_discovery.py` supports `--verify-pdf-previews N` for one
+through five PDF preview snippets, where zero (the default) performs the
+previous unmodified dual-channel discovery. With the option, the existing
+read-only publisher-page checker independently opens each selected canonical
+original PDF without following source symlinks, rehashes its *complete original
+bytes* against the completed acquisition receipt, and checks that exactly the
+**displayed** extracted-source preview occurs on a specific physical PDF page.
+A successful proof reports the original page number, a hash of its extracted
+page text, and the basis of the match. Unlocatable excerpts are explicitly
+`unverified`; later PDF results above the bounded verification count are
+`not_checked_limit`; non-PDF results are `not_pdf`. A changed publisher PDF,
+missing source receipt or malformed verifier output fails closed.
+
+For example, on Raspi (one bounded original-PDF proof):
+
+```bash
+/data/var/knowmoredirt/semantic-venv/bin/python \
+  /data/src/github/KnowMoreDiRT/scripts/raspi_dual_source_discovery.py \
+  'How do cited sources support an agent evaluation method?' \
+  --top 3 --verify-pdf-previews 1
+```
+
+This opt-in check does **not** prove the entire source passage, a figure,
+surrounding governing context, an LLM answer, or even that the page explains
+the question. It never changes semantic search ranking, generates summaries,
+modifies the native FileDB or creates another index. For complete passage
+context and image/figure evidence, use the existing original-source evidence
+reader and original-PDF page inspection. The private live regression receipt
+and tests are in the Raspi `search-audit/continued-20261121-wave44` directory.

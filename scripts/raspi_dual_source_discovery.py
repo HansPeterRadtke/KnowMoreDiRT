@@ -39,6 +39,7 @@ def main()->None:
     p=argparse.ArgumentParser(description=__doc__)
     p.add_argument("query")
     p.add_argument("--top",type=int,default=8)
+    p.add_argument("--verify-pdf-previews",type=int,default=0,help="Opt-in physical-page verification for at most one to five displayed PDF excerpts; unchanged rankings")
     p.add_argument("--summary-cli",type=Path,default=Path("/data/src/github/KnowMoreDiRT/scripts/raspi_hierarchical_library.py"))
     p.add_argument("--original-passage-cli",type=Path,default=Path("/data/bin/knowledge-library-semantic-search"))
     p.add_argument("--source-map",type=Path,default=Path("/data/var/knowmoredirt/knowledge-library/semantic/source-map.sqlite3"))
@@ -47,13 +48,13 @@ def main()->None:
     p.add_argument("--download-ledger",type=Path,default=Path("/data/var/Knowledge Library/_management/status.json"))
     args=p.parse_args()
     if (not isinstance(args.query,str) or not 3<=len(args.query)<=600
-            or type(args.top) is not int or not 1<=args.top<=20):
+            or type(args.top) is not int or not 1<=args.top<=20 or not 0<=args.verify_pdf_previews<=5):
         raise ValueError("invalid bounded query or top")
     for name in (args.summary_cli,args.original_passage_cli,args.source_map):
         if not name.is_file() or name.is_symlink():
             raise ValueError("source verification CLI or native source-map unavailable")
     sys.path.insert(0,str(Path(__file__).resolve().parents[1]/"src"))
-    from file_system_catalog.dual_source_discovery import combined_dual_discovery
+    from file_system_catalog.dual_source_discovery import combined_dual_discovery,attach_verified_pdf_previews
     # Both established native programs already apply source-provenance
     # rejection. The combined helper additionally rehashes the publisher
     # original, whole derivative and exact raw passage before reporting.
@@ -69,6 +70,12 @@ def main()->None:
             derivative_root=args.derivative_root.resolve(strict=True),
             original_receipts=_receipts(args.download_ledger),
             max_originals=args.top,
+        )
+    if args.verify_pdf_previews:
+        result=attach_verified_pdf_previews(
+            result, original_root=args.original_root.resolve(strict=True),
+            original_receipts=_receipts(args.download_ledger),
+            max_pdf_previews=args.verify_pdf_previews,
         )
     print(json.dumps(result,ensure_ascii=False,indent=2))
 

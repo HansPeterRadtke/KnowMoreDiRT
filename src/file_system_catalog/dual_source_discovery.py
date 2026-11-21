@@ -14,6 +14,8 @@ import re
 import sqlite3
 from typing import Any
 
+from .publisher_pdf_page import verify_pdf_page_excerpts
+
 
 MAX_PASSAGE_BYTES = 131072
 READ_BLOCK = 1024 * 1024
@@ -128,6 +130,84 @@ def verify_current_source(
         "scope":"Both source revisions verified; PDF physical-page geometry/complete discourse must be checked separately.",
     }
 
+
+
+def attach_verified_pdf_previews(
+    result: dict[str,Any], *, original_root: Path,
+    original_receipts: dict[str,str], max_pdf_previews: int,
+    verifier=None,
+) -> dict[str,Any]:
+    """Opt-in physical PDF page proof of only the displayed original preview.
+
+    This operation never reranks either discovery channel. Exact full-publisher
+    and derivative SHA checks are performed upstream. The original PDF is
+    *again* rehashed inside the physical-page verifier against the completed
+    publisher receipt, so a revision change fails closed before a quote can
+    become a page citation. A successful proof covers only the displayed
+    preview, not a whole derivative passage or factual answer.
+    """
+    if type(max_pdf_previews) is not int or not 1 <= max_pdf_previews <= 5:
+        raise ValueError("PDF preview verification requires 1–5 physical originals")
+    if result.get("schema") != "kmd.two_channel_original_discovery.v1":
+        raise ValueError("unknown dual source discovery contract")
+    rows = result.get("original_passage_channel")
+    if not isinstance(rows,list) or len(rows)>20:
+        raise ValueError("invalid bounded source passage channel")
+    if verifier is None:
+        verifier = verify_pdf_page_excerpts
+    checked=0
+    verified=0
+    updated=[]
+    for row in rows:
+        if not isinstance(row,dict) or row.get("publisher_revision_verified") is not True:
+            raise ValueError("unverified publisher revision in dual source channel")
+        item=dict(row)
+        rel=safe_corpus_relative(item.get("original_path"))
+        if Path(rel).suffix.casefold() != ".pdf":
+            item["physical_pdf_preview_check"]={"status":"not_pdf"}
+        elif checked>=max_pdf_previews:
+            item["physical_pdf_preview_check"]={"status":"not_checked_limit"}
+        else:
+            checked+=1
+            expected=original_receipts.get(rel)
+            if not isinstance(expected,str) or not re.fullmatch("[0-9a-f]{64}",expected):
+                raise ValueError("missing completed original PDF receipt")
+            original=existing_file(original_root,rel)
+            excerpt=item.get("passage_preview")
+            section=item.get("source_section")
+            if not isinstance(excerpt,str) or not excerpt or len(excerpt)>350 or not isinstance(section,str):
+                raise ValueError("unsafe original preview for PDF page proof")
+            proofs=verifier(original,expected,[{"source_section":section,"source_excerpt":excerpt}])
+            if not isinstance(proofs,list) or len(proofs)!=1 or not isinstance(proofs[0],dict):
+                raise ValueError("invalid PDF physical-page verifier response")
+            page=proofs[0]
+            if page.get("status")=="verified":
+                number=page.get("page")
+                digest=page.get("page_text_sha256")
+                if type(number) is not int or number<1 or not isinstance(digest,str) or not re.fullmatch("[0-9a-f]{64}",digest):
+                    raise ValueError("invalid verified physical page location")
+                item["physical_pdf_preview_check"]={
+                    "status":"verified", "physical_pdf_page":number,
+                    "basis":page.get("basis"), "page_text_sha256":digest,
+                    "scope":"Only the displayed derivative excerpt is matched to original PDF page text; not full passage or answer truth.",
+                }
+                verified+=1
+            elif page.get("status")=="unverified":
+                item["physical_pdf_preview_check"]={
+                    "status":"unverified", "reason":str(page.get("reason","unknown"))[:120],
+                }
+            else:
+                raise ValueError("unknown physical-page verifier status")
+        updated.append(item)
+    return {
+        **result, "original_passage_channel":updated,
+        "physical_pdf_preview_audit":{
+            "original_pdf_previews_checked":checked,
+            "original_pdf_previews_physically_verified":verified,
+            "max_original_pdf_previews":max_pdf_previews,
+            "evidence_scope":"Display preview only; full passage, page-spanning context and factual answer not certified.",
+        },
+    }
 
 def combined_dual_discovery(
     *,
