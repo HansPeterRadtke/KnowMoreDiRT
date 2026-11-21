@@ -6,11 +6,16 @@ import json
 from pathlib import Path
 import sqlite3
 from tempfile import TemporaryDirectory
+from types import SimpleNamespace
+from unittest import mock
 import unittest
 
 from file_system_catalog.source_page_repair_stage import (
     approved_identity, original_derivative_header, stage_verified_original,
     write_exact_physical_pages,
+    extended_original_physical_pdf_pages,
+    validate_separately_attested_long_pdf,
+    MAX_REVIEWED_EXTENDED_PAGES,
 )
 
 
@@ -135,6 +140,69 @@ class PrivatePublisherPageRepairStageTests(unittest.TestCase):
         self.assertFalse((self.staging/(self.rel+'.txt')).exists())
         self.assertEqual(0,len(list(self.staging.rglob('*.part'))))
         self.assertEqual(old+b'concurrent change',self.old.read_bytes())
+
+    def test_extended_four_original_shadow_proof_is_mandatory_and_revision_locked(self):
+        extended={**self.item,'publisher_physical_pdf_pages':64,
+                  'old_derived_max_page_label':73,
+                  'candidate_existing_extractor_repair_method':'requires_bounded_large_pdf_page_extractor_review',
+                  'publisher_pdf_size_bytes':len(self.original.read_bytes())}
+        self.old.write_text('old derivative\n[[SOURCE UNIT: PDF page 1]]\noriginal text\n[[SOURCE UNIT: PDF page 73]]\nincorrect page')
+        old_sha=digest(self.old.read_bytes());extended['old_derived_sha256']=old_sha
+        self.sm.execute('UPDATE originals SET derived_sha256=?',(old_sha,))
+        evidence={'schema':'kmd.long_pdf_original_physical_pagewise_extraction_shadow_v1',
+                  'tested_approved_originals':4,'physical_pages_bounded_individually_extracted':628,
+                  'records':[]}
+        sizes=[64,76,70,418]
+        for j,count in enumerate(sizes):
+            evidence['records'].append({
+                'original_path':self.rel if j==0 else f'papers/other-{j}.pdf',
+                'original_sha256':self.original_sha if j==0 else '1'*64,
+                'old_derived_sha256':old_sha if j==0 else '2'*64,
+                'actual_pdf_physical_pages':count,
+                'old_invalid_max_derived_page_label':73 if j==0 else count+5,
+                'full_original_and_derivative_byte_shas_unchanged':True,
+                'private_exact_physical_page_extraction':{'physical_page_units':count},
+                'sampled_publisher_page_excerpts_reverified':[
+                    {'publisher_physical_pdf_page':1,'original_physical_pdf_page_verified':True},
+                    {'publisher_physical_pdf_page':count,'original_physical_pdf_page_verified':True},
+                ]})
+        validate_separately_attested_long_pdf(extended,evidence)
+        with self.assertRaisesRegex(ValueError,'bounded physical PDF repair scope'):
+            self.stage(item=extended,actual_pdf_count=lambda src:64)
+        staged=self.stage(item=extended,actual_pdf_count=lambda src:64,
+                          max_physical_pages=MAX_REVIEWED_EXTENDED_PAGES,
+                          extract_page_units=lambda src,scratch:[
+                            ('PDF page 1','Readable source text early in the PDF with detailed discussion.'),
+                            ('PDF page 64','Readable original physical last-page discussion and final conclusions.')])
+        self.assertEqual(64,staged['current_physical_pdf_pages'])
+        self.assertTrue(staged['extended_separately_attested_pagewise_mode'])
+        self.assertEqual(2,staged['physical_page_labels_emitted'])
+        with self.assertRaisesRegex(ValueError,'different source revision'):
+            validate_separately_attested_long_pdf({**extended,'old_derived_sha256':'f'*64},evidence)
+        with self.assertRaisesRegex(ValueError,'source-verified long PDF repair cohort'):
+            validate_separately_attested_long_pdf({**extended,'candidate_existing_extractor_repair_method':'unreviewed'},evidence)
+
+    def test_reviewed_large_original_pagewise_reader_is_memory_and_page_bounded(self):
+        calls=[]
+        def fake_poppler(argv,**kwargs):
+            calls.append(argv)
+            self.assertIn('/usr/bin/prlimit',argv)
+            self.assertIn('--as=536870912',argv)
+            self.assertIn('--fsize=8388608',argv)
+            kwargs['stdout'].write(b'Valid publisher original source text\f within one physical page.\f')
+            return SimpleNamespace(returncode=0)
+        with TemporaryDirectory() as temp, mock.patch('file_system_catalog.source_page_repair_stage.subprocess.run',side_effect=fake_poppler):
+            rows=list(extended_original_physical_pdf_pages(self.original,Path(temp),pages=61))
+        self.assertEqual(61,len(rows))
+        self.assertEqual('PDF page 1',rows[0][0])
+        self.assertEqual('PDF page 61',rows[-1][0])
+        self.assertTrue(all('\f' not in text for label,text in rows))
+        self.assertEqual(61,len(calls))
+        with TemporaryDirectory() as temp:
+            with self.assertRaisesRegex(ValueError,'unreviewed'):
+                list(extended_original_physical_pdf_pages(self.original,Path(temp),pages=60))
+            with self.assertRaisesRegex(ValueError,'unreviewed'):
+                list(extended_original_physical_pdf_pages(self.original,Path(temp),pages=451))
 
     def test_duplicate_native_original_is_rejected(self):
         self.native.execute('INSERT INTO filesystem_entries VALUES(?,?,?)',(714,self.rel,'file'))

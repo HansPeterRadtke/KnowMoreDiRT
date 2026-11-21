@@ -13,6 +13,7 @@ import os
 from pathlib import Path
 import re
 import sqlite3
+import subprocess
 import tempfile
 from collections.abc import Callable, Iterable
 
@@ -21,6 +22,8 @@ from .source_review_audit import safe_file, sha_file
 SHA = re.compile(r"[0-9a-f]{64}\Z")
 PDF_UNIT = re.compile(r"(?m)^\[\[SOURCE UNIT: PDF page ([1-9][0-9]{0,5})\]\]")
 MAX_PAGES = 60
+MAX_REVIEWED_EXTENDED_PAGES = 450
+MAX_EXTENDED_PAGE_TEXT_BYTES = 8*1024*1024
 MAX_ORIGINAL_BYTES = 50 * 1024 * 1024
 MAX_PUBLISHER_TEXT_CHARS_PER_PAGE = 32 * 1024 * 1024
 SPLIT_CHARS = 1024 * 1024
@@ -29,12 +32,15 @@ MAX_ITEMS = 327
 
 def approved_identity(item: dict, source_entry: dict, source_map: sqlite3.Connection,
                       native_db: sqlite3.Connection, completed_receipts: dict[str, str],
-                      original_root: Path, derived_root: Path) -> dict:
+                      original_root: Path, derived_root: Path,
+                      max_physical_pages:int=MAX_PAGES) -> dict:
     """Require current approved original, cached derivative and native FileDB ID.
 
     A previous audit/repair plan is only a *proposal*. All revisions are
     verified again against the present source-map, receipt, and full files.
     """
+    if type(max_physical_pages) is not int or max_physical_pages not in (MAX_PAGES,MAX_REVIEWED_EXTENDED_PAGES):
+        raise ValueError("unsupported original physical PDF repair page bound")
     if not isinstance(item, dict) or not isinstance(source_entry, dict):
         raise ValueError("untrusted staged original reference")
     rel = item.get("source_original_path")
@@ -74,7 +80,7 @@ def approved_identity(item: dict, source_entry: dict, source_map: sqlite3.Connec
         raise ValueError("publisher source or existing derivative full SHA changed")
     physical = item.get("publisher_physical_pdf_pages")
     claimed_max = item.get("old_derived_max_page_label")
-    if (type(physical) is not int or not 1 <= physical <= MAX_PAGES
+    if (type(physical) is not int or not 1 <= physical <= max_physical_pages
             or type(claimed_max) is not int or claimed_max <= physical):
         raise ValueError("candidate is not confirmed within bounded physical PDF repair scope")
     if old.stat().st_size > 128*1024*1024:
@@ -143,19 +149,103 @@ def write_exact_physical_pages(stream, pages: Iterable[tuple[str, str]],
             "staged_source_units": emitted, "staged_text_characters": chars}
 
 
+def validate_separately_attested_long_pdf(item:dict,prior_shadow:dict)->None:
+    """Allow extended staging ONLY for an already independently inspected PDF.
+
+    The earlier original SHA and current old derivative SHA are checked
+    independently again by `approved_identity`, and the actual current PDF
+    page count is re-measured before each new private staged extraction.
+    """
+    if (not isinstance(prior_shadow,dict)
+            or prior_shadow.get('schema')!='kmd.long_pdf_original_physical_pagewise_extraction_shadow_v1'
+            or prior_shadow.get('tested_approved_originals')!=4
+            or prior_shadow.get('physical_pages_bounded_individually_extracted')!=628):
+        raise ValueError('not the four separately original-verified long PDF studies')
+    candidates=prior_shadow.get('records')
+    if (not isinstance(candidates,list) or len(candidates)!=4
+            or any(not isinstance(r,dict) for r in candidates)):
+        raise ValueError('private long original publisher page proof incomplete')
+    paths=[r.get('original_path') for r in candidates]
+    if len(set(paths))!=4:
+        raise ValueError('duplicated or ambiguous private long source studies')
+    rel=item.get('source_original_path') if isinstance(item,dict) else None
+    found=next((r for r in candidates if r.get('original_path')==rel),None)
+    if (found is None or item.get('candidate_existing_extractor_repair_method')
+            !='requires_bounded_large_pdf_page_extractor_review'):
+        raise ValueError('not the previously source-verified long PDF repair cohort')
+    size=item.get('publisher_pdf_size_bytes')
+    pages=item.get('publisher_physical_pdf_pages')
+    if (type(size) is not int or size>MAX_ORIGINAL_BYTES
+            or type(pages) is not int or not MAX_PAGES<pages<=MAX_REVIEWED_EXTENDED_PAGES):
+        raise ValueError('unsafe original size or page count for reviewed extension')
+    if (found.get('original_sha256')!=item.get('original_sha256')
+            or found.get('old_derived_sha256')!=item.get('old_derived_sha256')
+            or found.get('actual_pdf_physical_pages')!=pages
+            or found.get('old_invalid_max_derived_page_label')!=item.get('old_derived_max_page_label')
+            or found.get('full_original_and_derivative_byte_shas_unchanged') is not True):
+        raise ValueError('original publisher PDF review has different source revision')
+    page_counts=found.get('private_exact_physical_page_extraction')
+    if not isinstance(page_counts,dict) or page_counts.get('physical_page_units')!=pages:
+        raise ValueError('previous original pagewise extraction did not verify exact physical pages')
+    samples=found.get('sampled_publisher_page_excerpts_reverified')
+    if (not isinstance(samples,list) or len(samples)<2
+            or not all(isinstance(z,dict) and z.get('original_physical_pdf_page_verified') is True
+                       and type(z.get('publisher_physical_pdf_page')) is int
+                       and 1<=z['publisher_physical_pdf_page']<=pages for z in samples)):
+        raise ValueError('independent original physical PDF page sample proof insufficient')
+
+
+def extended_original_physical_pdf_pages(source:Path,scratch:Path,*,pages:int):
+    """Stream *individual* original PDF physical pages with strict OS caps.
+
+    For only four separately attested originals above Infra's normal 60-page
+    fallback bound; does not write live derivative or alter Infra extractor.
+    A publisher page may be empty, but a form-feed inside a page is NEVER a
+    new page label. Each per-page Poppler subprocess has a bounded output,
+    memory and execution time. Text is yielded and discarded page by page.
+    """
+    if (type(pages) is not int or not MAX_PAGES<pages<=MAX_REVIEWED_EXTENDED_PAGES
+            or not isinstance(source,Path) or not isinstance(scratch,Path)
+            or not scratch.is_dir() or scratch.is_symlink()):
+        raise ValueError("unreviewed large original PDF physical page extraction")
+    for page in range(1,pages+1):
+        with tempfile.TemporaryFile(mode="w+b",dir=scratch) as temporary:
+            try:
+                proc=subprocess.run([
+                    "/usr/bin/prlimit",f"--fsize={MAX_EXTENDED_PAGE_TEXT_BYTES}",
+                    "--as=536870912","--",
+                    "/usr/bin/pdftotext","-f",str(page),"-l",str(page),
+                    "-layout","-enc","UTF-8",str(source),"-",
+                ],stdout=temporary,stderr=subprocess.DEVNULL,timeout=8,check=False)
+            except (OSError,subprocess.TimeoutExpired) as exc:
+                raise ValueError("bounded publisher physical page conversion unavailable") from exc
+            if proc.returncode or temporary.tell()>=MAX_EXTENDED_PAGE_TEXT_BYTES:
+                raise ValueError(f"bounded PDF physical page {page} conversion failed")
+            temporary.seek(0)
+            raw=temporary.read()
+        try:
+            body=raw.decode("utf8","strict")
+        except UnicodeDecodeError as exc:
+            raise ValueError("publisher original PDF page text is not valid UTF-8") from exc
+        # Poppler control characters inside one page do not create pages.
+        yield f"PDF page {page}",body.replace("\f","\n")
+
+
 def stage_verified_original(item: dict, source_entry: dict,
                             source_map: sqlite3.Connection, native_db: sqlite3.Connection,
                             completed_receipts: dict[str, str], original_root: Path,
                             derived_root: Path, stage_dir: Path,
                             extract_page_units: Callable[[Path,Path],Iterable[tuple[str,str]]],
-                            actual_pdf_count: Callable[[Path],int]) -> dict:
+                            actual_pdf_count: Callable[[Path],int],
+                            max_physical_pages:int=MAX_PAGES) -> dict:
     """Write one new private staging file exclusively; never overwrite live.
 
     The physical page count and the current original/derived hashes are
     rechecked after extraction and before stage publication.
     """
     state = approved_identity(item, source_entry, source_map, native_db,
-                              completed_receipts, original_root, derived_root)
+                              completed_receipts, original_root, derived_root,
+                              max_physical_pages=max_physical_pages)
     src = state["original_path"]
     actual = actual_pdf_count(src)
     if type(actual) is not int or actual != state["expected_physical_pdf_pages"]:
@@ -212,6 +302,7 @@ def stage_verified_original(item: dict, source_entry: dict,
                 "staged_sha256": staged_sha, "native_original_file_entry_id": state["native_original_id"],
                 "old_invalid_cached_last_pdf_page": state["old_max_cached_pdf_page_label"],
                 "current_physical_pdf_pages": actual,
+                "extended_separately_attested_pagewise_mode":max_physical_pages==MAX_REVIEWED_EXTENDED_PAGES,
                 "staged_file": str(final), "staged_bytes": final.stat().st_size,
                 "original_and_live_derived_full_sha_reverified": True,
                 "no_live_source_map_fileDB_summary_vector_original_or_old_derivative_writes_by_stager": True,

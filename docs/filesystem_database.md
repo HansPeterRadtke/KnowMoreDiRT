@@ -1381,6 +1381,40 @@ mkdir -m 700 -p "$D"
 PYTHONDONTWRITEBYTECODE=1 /data/var/knowmoredirt/semantic-venv/bin/python   scripts/raspi_stage_original_pdf_page_repairs.py   --repair-plan /data/var/knowmoredirt/knowledge-library/search-audit/continued-20261121-wave50/read-only-pdf-page-attribution-repair-plan-327-originals.json   --offset 0 --limit 12   --stage-root "$D/first-twelve-original-page-caches"   --output "$D/first-twelve-original-page-caches-receipt.json"
 ```
 
+**Exceptional four-publisher-original extension, still private staging only:**
+The prior full-original, physically indexed wave-fifty shadow independently
+proved exact pages for four approved PDFs whose **64, 76, 70 and 418** physical
+pages exceed the current Infra automatic sixty-page fallback bound. For
+**only those exact four source and derivative SHA revisions**, the staging
+CLI accepts an explicit `--extended-shadow-proof` with the private,
+independently attested `all-four-larger-PDF-physical-pagewise-shadow-verification.json`.
+It accepts **one original per call**, requires matching approved original,
+old cached derivative and prior physical-page samples, and rehashes the
+entire current original/old derived text and rechecks the real PDF page count.
+It then streams only individually requested original physical pages using
+`pdftotext -f N -l N` inside the private stage. Each Poppler child is bounded
+by a **512 MiB virtual-address-space limit**, **8 MiB output file limit**
+and **eight-second page timeout**, and the selected original is capped at
+450 pages / fifty MiB. PDF form-feed codes *within a physical page* become
+newlines, **never additional PDF page numbers**. The source-map, source
+original, cached derivative, native vectors and summaries remain untouched.
+This is **not** a relaxation of the shared Infra production extractor.
+
+Example for the originally attested index-24 PDF (indices 47, 244 and 286
+were separately checked using new stage and output paths):
+
+```bash
+D=/data/var/knowmoredirt/knowledge-library/search-audit/NEW-STAGE-DIRECTORY
+mkdir -m 700 -p "$D"
+PYTHONDONTWRITEBYTECODE=1 /data/var/knowmoredirt/semantic-venv/bin/python   /data/src/github/KnowMoreDiRT/scripts/raspi_stage_original_pdf_page_repairs.py   --repair-plan /data/var/knowmoredirt/knowledge-library/search-audit/continued-20261121-wave50/read-only-pdf-page-attribution-repair-plan-327-originals.json   --offset 24 --limit 1   --extended-shadow-proof /data/var/knowmoredirt/knowledge-library/search-audit/continued-20261121-wave50/all-four-larger-PDF-physical-pagewise-shadow-verification.json   --stage-root "$D/extended-one-original"   --output "$D/extended-one-original-receipt.json"
+```
+
+The CLI **rejects all other long PDFs** absent a separately verified
+four-original source-proof record. It creates no live migration capability,
+model workload or source acquisition action. A future program version must
+not turn this narrowly scoped staging exception into an unbounded or
+unsupervised extraction default.
+
 The script refuses existing output receipts/staging folders, out-of-audit
 output paths, stale source SHA revisions, invalid/duplicated FileDB original
 identities, changed source-map rows, mutable original/derived bytes, original

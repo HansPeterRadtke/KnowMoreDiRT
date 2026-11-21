@@ -22,7 +22,9 @@ HERE=Path(__file__).resolve().parents[1]
 sys.path.insert(0,str(HERE/'src'))
 sys.path.insert(0,'/data/infra/libexec')
 from file_system_catalog.source_page_repair_stage import (
-    MAX_ITEMS, stage_verified_original,
+    MAX_ITEMS, MAX_REVIEWED_EXTENDED_PAGES,
+    stage_verified_original, extended_original_physical_pdf_pages,
+    validate_separately_attested_long_pdf,
 )
 
 AUDIT_ROOT=Path('/data/var/knowmoredirt/knowledge-library/search-audit')
@@ -63,6 +65,8 @@ def main():
     ap.add_argument('--stage-root',type=Path,required=True,
                     help='NEW directory under the private Raspi search-audit root')
     ap.add_argument('--output',type=Path,required=True,help='NEW private JSON receipt')
+    ap.add_argument('--extended-shadow-proof',type=Path,default=None,
+                    help='Explicit separately verified four-long-PDF original physical-page proof; one source only')
     args=ap.parse_args()
     if os.uname().nodename.split('.')[0]!='raspi':
         raise SystemExit('Raspi-only private source page staging')
@@ -90,6 +94,16 @@ def main():
     if len(set(paths))!=len(items):raise ValueError('duplicate repair candidate path')
     selected=items[args.offset:args.offset+args.limit]
     if not selected:raise ValueError('empty private repair batch')
+    extended=None
+    extended_sha=None
+    if args.extended_shadow_proof is not None:
+        if args.limit!=1 or len(selected)!=1:
+            raise ValueError('reviewed above-normal PDF page fallback permits exactly one original at a time')
+        if not args.extended_shadow_proof.resolve(strict=True).is_relative_to(base):
+            raise ValueError('extended physical-page evidence must be from the private audit tree')
+        extended=read_bounded_json(args.extended_shadow_proof,1024*1024)
+        validate_separately_attested_long_pdf(selected[0],extended)
+        extended_sha=hashlib.sha256(args.extended_shadow_proof.read_bytes()).hexdigest()
     raw_manifest=read_bounded_json(APPROVED,32*1024*1024)
     raw_ledger=read_bounded_json(LEDGER,64*1024*1024)
     pinned_approved_source_manifest_sha256=hashlib.sha256(APPROVED.read_bytes()).hexdigest()
@@ -129,14 +143,24 @@ def main():
         for n,item in enumerate(selected,1):
             rel=item.get('source_original_path','') if isinstance(item,dict) else ''
             try:
-                if item.get('candidate_existing_extractor_repair_method')!='current_pagewise_fallback_in_private_staging':
-                    raise ValueError('source above the current Infra safe automatic fallback bound')
+                kind=item.get('candidate_existing_extractor_repair_method')
+                if extended is not None:
+                    validate_separately_attested_long_pdf(item,extended)
+                    page_reader=lambda source,scratch:extended_original_physical_pdf_pages(
+                        source,scratch,pages=item['publisher_physical_pdf_pages'])
+                    max_pages=MAX_REVIEWED_EXTENDED_PAGES
+                elif kind=='current_pagewise_fallback_in_private_staging':
+                    page_reader=_large_pdf_pages
+                    max_pages=60
+                else:
+                    raise ValueError('source above existing automatic fallback requires an independently approved long-source audit')
                 res=stage_verified_original(
                     item=item,source_entry=by_source.get(rel,{}),
                     source_map=sm,native_db=native,completed_receipts=receipts,
                     original_root=ORIGINAL_ROOT,derived_root=DERIVED_ROOT,
                     stage_dir=args.stage_root,
-                    extract_page_units=_large_pdf_pages,actual_pdf_count=exact_pdfinfo_pages)
+                    extract_page_units=page_reader,actual_pdf_count=exact_pdfinfo_pages,
+                    max_physical_pages=max_pages)
                 staged.append(res)
                 print('STAGED_VALIDATED',args.offset+n,'/',len(items),
                       'PHYSICAL_PAGES',res['current_physical_pdf_pages'],
@@ -146,6 +170,9 @@ def main():
                                'reason':f'{type(err).__name__}: {str(err)[:180]}'})
                 print('STAGING_REJECTED',args.offset+n,'/',len(items),
                       str(rel).rsplit('/',1)[-1][:68],f'{type(err).__name__}: {str(err)[:120]}',flush=True)
+    if (extended_sha is not None
+            and hashlib.sha256(args.extended_shadow_proof.read_bytes()).hexdigest()!=extended_sha):
+        raise ValueError('independent long PDF physical-page proof changed during staging')
     if (hashlib.sha256(args.repair_plan.read_bytes()).hexdigest()!=pinned_repair_plan_sha256
             or hashlib.sha256(APPROVED.read_bytes()).hexdigest()!=pinned_approved_source_manifest_sha256
             or hashlib.sha256(LEDGER.read_bytes()).hexdigest()!=pinned_original_ledger_sha256):
@@ -156,6 +183,7 @@ def main():
              'repair_plan_sha256':pinned_repair_plan_sha256,
              'approved_curated_source_manifest_sha256':pinned_approved_source_manifest_sha256,
              'approved_complete_original_ledger_sha256':pinned_original_ledger_sha256,
+             'separately_verified_long_original_page_shadow_sha256':extended_sha,
              'offset':args.offset,'limit':args.limit,'source_records_attempted':len(selected),
              'staged_validated':sum(x['status']=='staged_private_only' for x in staged),
              'staging_rejected':sum(x['status']=='staging_rejected' for x in staged),
