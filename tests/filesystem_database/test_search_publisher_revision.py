@@ -162,6 +162,61 @@ class PublisherRevisionSearchTests(unittest.TestCase):
         self.assertEqual(missing["documents"][0]["original_path"], ranked[0]["original_path"])
         self.assertNotIn("rank_basis", missing["documents"][0])
 
+    def test_explicit_short_publisher_name_never_substitutes_a_different_source(self):
+        manifest = json.loads(self.cli.SOURCES.read_text())
+        manifest["sources"][0]["title"] = "CiteGuard: An Archived Method Paper"
+        self.cli.SOURCES.write_text(json.dumps(manifest))
+        self.query = "According to CiteGuard, how is the evidence selected?"
+        with mock.patch.object(self.cli,"search_summary_entries_batched",
+                               wraps=self.cli.search_summary_entries_batched) as search_impl:
+            good = self.search(top=2)
+        self.assertEqual(self.names[0],search_impl.call_args.kwargs["restrict_original_path"])
+        self.assertEqual("verified", good["source_name_match"]["status"])
+        self.assertEqual("catalog_title_lead", good["source_name_match"]["kind"])
+        self.assertEqual(self.names[0], good["documents"][0]["original_path"])
+        # A publisher revision mismatch must never allow a semantically
+        # similar and fully verified different source to replace this one.
+        self.original.write_bytes(b"Z" * self.original.stat().st_size)
+        missing = self.search(top=2)
+        self.assertEqual("no_verified_index_match", missing["source_name_match"]["status"])
+        self.assertEqual([], missing["documents"])
+        self.assertEqual(0, missing["originals_validated_for_version"])
+        self.assertIn("no different publication was substituted", missing["relevance_warning"])
+        # Restoring the original publisher bytes restores source-identity
+        # resolution without reindexing or changing its model embedding.
+        self.original.write_bytes(b"A" * 12345)
+        self.assertEqual(self.names[0], self.search(top=2)["documents"][0]["original_path"])
+
+    def test_unindexed_short_title_never_loads_e5_or_scans_other_originals(self):
+        manifest=json.loads(self.cli.SOURCES.read_text())
+        manifest["sources"][0]["title"]="CiteGuard: Original Publisher Research"
+        self.cli.SOURCES.write_text(json.dumps(manifest))
+        self.query="According to CiteGuard, what is the main claim?"
+        with sqlite3.connect(self.cli.DB) as db:
+            db.execute("DELETE FROM content_representations WHERE chunk_id IN "
+                       "(SELECT chunk_id FROM content_chunks WHERE filesystem_entry_id=1)")
+        with mock.patch.object(self.embeddings,"embed_queries",side_effect=AssertionError("model should not load")):
+            result=self.search(top=2)
+        self.assertEqual("no_verified_index_match",result["source_name_match"]["status"])
+        self.assertEqual([],result["documents"])
+        self.assertEqual("exact_catalog_unindexed_original_v1",result["retrieval_engine"])
+        self.assertEqual(0,result["originals_validated_for_version"])
+
+    def test_duplicate_short_publisher_titles_fail_closed_without_model_calls(self):
+        manifest = json.loads(self.cli.SOURCES.read_text())
+        manifest["sources"][0]["title"] = "ToolScope: Tool-Based Reasoning"
+        manifest["sources"][1]["title"] = "ToolScope: A Separate Original Method"
+        self.cli.SOURCES.write_text(json.dumps(manifest))
+        self.query = "According to ToolScope, which policy is described?"
+        with mock.patch.object(self.embeddings,"embed_queries",side_effect=AssertionError("model should not run")):
+            result = self.search(top=2)
+        self.assertEqual("ambiguous",result["source_name_match"]["status"])
+        self.assertEqual(self.names,result["source_name_match"]["candidate_paths"])
+        self.assertEqual([],result["documents"])
+        self.assertEqual(0,result["originals_validated_for_version"])
+        self.assertEqual("exact_ambiguous_catalog_lookup_v1",result["retrieval_engine"])
+        self.assertIn("No document was substituted",result["relevance_warning"])
+
     def test_named_source_with_changed_derivative_or_unavailable_vectors_gets_backfilled(self):
         self.query = self.names[0]
         self.derivative.write_bytes(b"X" + self.derivative.read_bytes()[1:])

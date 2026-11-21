@@ -7,7 +7,7 @@ import unittest
 from test_hierarchical_summary_store import SummaryStorageTest, FakeEmbeddings
 from file_system_catalog.hierarchical_summary_search import search_summary_entries
 from file_system_catalog.summary_search_batched import (
-    search_summary_entries_batched, _scan_vectors,
+    search_summary_entries_batched, _scan_vectors, has_native_summary_candidates,
 )
 
 
@@ -110,6 +110,46 @@ class BatchedNativeSearchTest(unittest.TestCase):
             self.assertEqual(1,new[0]["indexed_summary_nodes_for_document"])
             self.assertTrue(all(node["summary_kind"]=="summary_long"
                 for node in new[0]["matched_summary_nodes"]))
+        finally:
+            db.close()
+
+    def test_named_original_presence_is_not_model_or_truth_proof(self):
+        db,kwargs,chunks,reps=self.prepare()
+        source=kwargs["original_path"]
+        try:
+            self.assertTrue(has_native_summary_candidates(db,source))
+            self.assertFalse(has_native_summary_candidates(db,"unknown/archived.pdf"))
+            for bad in ("/absolute", "../escape", "missing//file", 7, ""):
+                with self.subTest(bad=bad),self.assertRaises(ValueError):
+                    has_native_summary_candidates(db,bad)
+            db.execute("DELETE FROM content_representations")
+            self.assertFalse(has_native_summary_candidates(db,source))
+        finally:
+            db.close()
+
+    def test_explicit_source_filter_restricts_vector_scan_without_fusion(self):
+        db,kwargs,chunks,reps=self.prepare()
+        query=FakeEmbeddings().embed([kwargs["tree"].root.summary])[0]
+        source=kwargs["original_path"]
+        try:
+            before=db.total_changes
+            matching=search_summary_entries_batched(
+                db,query,expected_model="test-embedding-384",
+                preferred_path=source,restrict_original_path=source)
+            self.assertEqual([source],[z["original_path"] for z in matching])
+            self.assertEqual([],search_summary_entries_batched(
+                db,query,expected_model="test-embedding-384",
+                preferred_path="another/archived.pdf",
+                restrict_original_path="another/archived.pdf"))
+            self.assertEqual(before,db.total_changes)
+            self.assertEqual([],db.execute('SELECT name FROM sqlite_temp_master').fetchall())
+            for path in ("", "../x", "/absolute/x", "broken//name", "a\\name", 12):
+                with self.subTest(path=path),self.assertRaises(ValueError):
+                    search_summary_entries_batched(db,query,
+                        preferred_path=path,restrict_original_path=path)
+            with self.assertRaisesRegex(ValueError,"verified preferred path"):
+                search_summary_entries_batched(db,query,
+                    preferred_path="different.pdf",restrict_original_path=source)
         finally:
             db.close()
 

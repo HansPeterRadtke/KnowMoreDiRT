@@ -221,8 +221,26 @@ extracted-text SHA-256 revisions and requires physically verified original
 PDF page text where possible. A query against ordinary summary search may
 still return `no_verified_index_match` when that exact original has not yet
 been summarized; source-evidence can inspect the completed original without
-waiting for a summary. No retrieval score, embedding, corpus or ranked
-semantic fallback was changed by this exact-source routing.
+waiting for a summary. No vector score, embedding, corpus or default general
+semantic ranking was changed by this exact-source routing.
+
+Explicitly named *short-title* summary requests fail closed: if a matching
+native summary is absent, stale or otherwise unverified, **no unrelated
+ranked publication appears as a substitute**. An ambiguous shorthand also
+returns no vector-ranked documents, but retains its exact possible catalog
+originals for explicit disambiguation. A no-summary read first uses a small
+SQL `EXISTS` gate in the one canonical FileDB, skipping even local E5 model
+loading. When native summary candidates exist, a parameterized original-path
+filter restricts the vector scan to the selected document, followed by all
+existing original and derivative SHA checks. This is distinct from a general
+unscoped question, which still runs the ordinary cross-corpus ranking.
+The first live unsummarized CiteGuard example returned zero substitutions,
+correctly directing the caller to original-only evidence; the originally
+ranked unrelated `SKILL.md` and other candidates no longer appear in its
+source-scoped result. The same real query declined from about three-point-
+seven seconds in the old global scan to about one-point-five seconds with
+the presence gate (four logged measurements, on a changing live corpus).
+The speed observation is a local sample, not a guaranteed service latency.
 
 The private Raspi `search-audit/continued-20261121-wave45/` contains the
 publisher catalog/ledger SHA-frozen **twelve-case** named-source benchmark

@@ -40,7 +40,9 @@ from file_system_catalog.hierarchical_summary_store import (
     append_summary_rows, prepare_node_facets, retain_fitting_native_fields, summary_rows, validate_complete_summary_tree,
 )
 from file_system_catalog.hierarchical_summary_search import summary_index_scope, summary_index_status
-from file_system_catalog.summary_search_batched import search_summary_entries_batched
+from file_system_catalog.summary_search_batched import (
+    search_summary_entries_batched, has_native_summary_candidates,
+)
 from file_system_catalog.source_evidence import source_evidence_candidates
 from file_system_catalog.named_source import resolve_source_name
 from file_system_catalog.publication_identifier import publication_receipt_matches
@@ -725,9 +727,15 @@ def _search_impl(args) -> dict:
         return verified
 
     missing_identifier = name_match and name_match["status"] == "no_catalog_match"
+    ambiguous_reference = name_match and name_match["status"] == "ambiguous"
+    named_title_lead = (name_match and name_match.get("kind") == "catalog_title_lead")
     with sqlite3.connect(f"file:{DB.resolve()}?mode=ro", uri=True) as conn:
         found = []
-        if not missing_identifier:
+        # No model request or whole-corpus vector scan is justified when an
+        # explicitly named publisher original has zero native summary rows.
+        missing_named_summary = bool(named_title_lead and not
+            has_native_summary_candidates(conn, preferred_path))
+        if not missing_identifier and not ambiguous_reference and not missing_named_summary:
             from knowledge_library_semantic_model import LocalE5
             model = LocalE5(threads=2, batch_size=4)
             vector = model.embed_queries([args.query])[0]
@@ -737,6 +745,7 @@ def _search_impl(args) -> dict:
                 nodes_per_document=args.nodes_per_original,
                 expected_model=model.model,
                 filter_source_nodes=verify_document, preferred_path=preferred_path,
+                restrict_original_path=preferred_path if named_title_lead else None,
             )
         snapshot = summary_index_scope(conn)
     out = []
@@ -764,20 +773,34 @@ def _search_impl(args) -> dict:
             warning = ("The requested original was verified by name and revision. Cosine similarity ranks "
                        "its passages and the other documents. Check factual claims in the original.")
         else:
-            warning = ("The named original has no verified summary result. Any ranked documents are other "
-                       "sources. Use source-evidence with the exact catalog path to inspect the named original.")
+            if name_match["kind"] == "catalog_title_lead":
+                # The user explicitly cited a unique short publisher title.
+                # If its summary is missing, stale, or not yet indexed,
+                # unrelated vector matches must never masquerade as answers.
+                out = []
+                checked.clear()
+                warning = ("The explicitly cited original has no verified indexed summary; no different "
+                           "publication was substituted. Use source-evidence with the exact catalog path "
+                           "to inspect the existing publisher original directly.")
+            else:
+                warning = ("The named original has no verified summary result. Any ranked documents are other "
+                           "sources. Use source-evidence with the exact catalog path to inspect the named original.")
     elif missing_identifier and name_match["kind"] == "catalog_rfc":
         warning = "The catalog has no archived RFC Editor text matching this RFC number."
     elif missing_identifier:
         warning = "The catalog has no archived PDF matching this publication identifier and requested version."
-    elif name_match:
-        warning = ("The source name matches multiple catalog paths. The listed documents use semantic "
-                   "ranking. Select an exact candidate path to choose an archived source.")
+    elif ambiguous_reference:
+        # Neither a source quote nor an edition can be attributed when the
+        # catalog contains multiple real publications with the same name.
+        warning = ("The explicitly cited source name identifies multiple catalog originals. "
+                   "No document was substituted; select the full title or exact original path.")
     return {
         **({"source_name_match": name_match} if name_match else {}),
         "query": args.query,
         "database": str(DB),
         "retrieval_engine": ("exact_publication_catalog_lookup_v1" if missing_identifier
+                             else "exact_ambiguous_catalog_lookup_v1" if ambiguous_reference
+                             else "exact_catalog_unindexed_original_v1" if missing_named_summary
                              else "native_batched_facets_cosine_v1"
                              if getattr(args,"with_facets",False)
                              else "native_batched_cosine_v1"),

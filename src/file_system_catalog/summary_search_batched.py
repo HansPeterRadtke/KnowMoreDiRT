@@ -25,6 +25,30 @@ from .publisher_ccs import CCS_EXTRACTOR
 SUMMARY_PROMPT = "kmd-hierarchical-source-summary-v1"
 
 
+def has_native_summary_candidates(db: sqlite3.Connection, original_path: str) -> bool:
+    """Cheap read-only presence gate for explicitly cited catalog originals.
+
+    Absence means no current native summary rows can answer this *named* search.
+    Presence is only a candidate hint: a later full retrieval must still
+    validate embeddings and source original/derivative revision bytes.
+    """
+    if (not isinstance(original_path,str) or not 1 <= len(original_path) <= 1600
+            or original_path.startswith("/") or "\\" in original_path
+            or any(part in ("", ".", "..") for part in original_path.split("/"))):
+        raise ValueError("invalid named catalog original path")
+    return db.execute("""
+        SELECT 1 FROM filesystem_entries f
+        JOIN content_chunks c ON c.filesystem_entry_id=f.id
+        JOIN content_representations r ON r.chunk_id=c.chunk_id
+        WHERE f.relative_path_display=? AND f.entry_type='file'
+          AND c.collection_id LIKE '%:summary'
+          AND r.prompt_version=? AND r.analysis_status='complete'
+          AND r.representation_kind IN ('summary','summary_long')
+          AND r.embedding_blob IS NOT NULL
+        LIMIT 1
+    """, (original_path, SUMMARY_PROMPT)).fetchone() is not None
+
+
 def _scan_vectors(
     db: sqlite3.Connection,
     query_vector: np.ndarray,
@@ -32,6 +56,7 @@ def _scan_vectors(
     expected_model: str | None,
     batch_size: int,
     include_facets: bool = False,
+    restrict_original_path: str | None = None,
 ) -> dict[int, list[tuple[float, str, str]]]:
     if not 64 <= batch_size <= 8192:
         raise ValueError("invalid bounded vector batch")
@@ -54,6 +79,13 @@ def _scan_vectors(
     """
     sql += ("" if include_facets else
             " AND r.representation_kind IN ('summary','summary_long')")
+    parameters = [SUMMARY_PROMPT]
+    if restrict_original_path is not None:
+        # Explicitly cited originals need only their own native embeddings.
+        # In particular, a missing/stale summary must not acquire an
+        # unrelated candidate simply because its cosine rank was high.
+        sql += " AND f.relative_path_display=?"
+        parameters.append(restrict_original_path)
     batch = []
     embeddings = []
 
@@ -77,7 +109,7 @@ def _scan_vectors(
         batch.clear()
         embeddings.clear()
 
-    for row in db.execute(sql, (SUMMARY_PROMPT,)):
+    for row in db.execute(sql, tuple(parameters)):
         entry_id, path, representation_id, model, dimension, dtype, blob, raw_sha = row
         if expected_model and model != expected_model:
             continue
@@ -190,14 +222,23 @@ def search_summary_entries_batched(
     include_facets: bool = False,
     preferred_path: str | None = None,
     filter_source_nodes: Callable[[list[dict]], list[dict]] | None = None,
+    restrict_original_path: str | None = None,
 ) -> list[dict]:
     """Same source-linked output as KMD scalar search, with bounded memory."""
     if not 1 <= limit <= 100 or not 1 <= nodes_per_document <= 30:
         raise ValueError("invalid bounded summary-search results")
+    if restrict_original_path is not None and (
+            not isinstance(restrict_original_path,str)
+            or not 1 <= len(restrict_original_path) <= 1600
+            or restrict_original_path.startswith("/")
+            or "\\" in restrict_original_path
+            or any(part in ("", ".", "..") for part in restrict_original_path.split("/"))
+            or restrict_original_path != preferred_path):
+        raise ValueError("exact source restriction requires a safe verified preferred path")
     documents = _scan_vectors(
         db, query_vector, expected_model=expected_model,
         batch_size=vector_batch_size,
-        include_facets=include_facets,
+        include_facets=include_facets,restrict_original_path=restrict_original_path,
     )
     def rank_key(score, path):
         # The raw best cosine is an upper bound until all row and source checks pass.
