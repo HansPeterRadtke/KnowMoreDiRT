@@ -619,3 +619,37 @@ rate snapshot and fresh read-only comparison.
 
 Full private journal samples, source-char-normalized rates and live source-map
 counterfactual receipts are in `search-audit/continued-20261121-wave46/`.
+
+### Source-identity read lock contention during simultaneous native imports
+
+The November twenty-first live Coder indexing journal recorded a different
+transient failure from the earlier serialized *writer* lock timeout. A source
+had a complete generated summary tree but `summary_rows()` failed with
+`sqlite3.OperationalError: database is locked` during a **read-only native
+source-anchor lookup**, before acquiring `.primary-kmd-content.lock`. This can
+occur while the other summary worker is committing through SQLite's existing
+DELETE journal mode: the standard Python SQLite connection defaults to only
+five seconds of busy waiting. A later clean import from the worker does not
+imply that this particular failed original was already reindexed; the retry
+journal is the authoritative pending record.
+
+`open_native_summary_read_connection()` now opens the **same** original KMD
+FileDB in SQLite `mode=ro` with a **bounded two-minute reader timeout**, turns
+on `PRAGMA query_only`, and safely closes the handle after the original-linked
+summary row preparation. It rejects missing/symlinked native databases and
+invalid wait settings. The separately bounded writer lock, normal foreign-key
+checks, source revision protection, complete SQLite writer integrity check,
+database journal mode, two workers and models remain unchanged. No new
+connection permits native writes. The deferred worker automatically retries
+its already-generated source after ordinary failure backoff.
+
+The independent `test_native_reader_lock_parallel.py` fixture uses two real
+SQLite connections, holds an EXCLUSIVE writer transaction, demonstrates a
+blocked source read waits and succeeds when the writer releases, proves
+`query_only` prevents inserts, checks the journal remains DELETE, and requires
+bounded failure if the exclusive lock never releases. The test never opens
+the actual original library or its native FileDB. After publishing, update the
+clean active summary-worker source checkout only when no import is currently
+running; the workers launch a fresh CLI subprocess per source, so future
+imports use the corrected bound without stopping the existing model services.
+Verify actual source retry/completion and any future journal errors separately.

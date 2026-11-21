@@ -21,6 +21,7 @@ import hashlib
 from itertools import chain
 import json
 import os
+from contextlib import closing
 from pathlib import Path
 import re
 import sqlite3
@@ -74,6 +75,11 @@ DB_BUDGET = DEFAULT_DATABASE_BUDGET_BYTES
 # rather than falsely marking another already-generated source as failed.
 # The lock helper explicitly refuses anything above five minutes.
 NATIVE_WRITER_WAIT_SECONDS = 300.0
+# Two background workers can overlap a read-only source-anchor lookup with
+# another worker's native FileDB commit in DELETE journal mode. The SQLite
+# default five-second reader wait is too short for that legitimate workload.
+# This stays read-only and bounded, separate from the exclusive writer lock.
+NATIVE_READER_WAIT_SECONDS = 120.0
 PUBLISHER_TEXT_LIMIT = 8 * 1024 * 1024
 GUARD_TEXT = "exclude_unresolvable_summary_candidates_from_native_excerpt_search_v1"
 
@@ -578,6 +584,32 @@ def acquire_native_filedb_content_lock(
             time.sleep(min(poll_seconds,remaining))
 
 
+def open_native_summary_read_connection(
+    database: Path, *, wait_seconds: float = NATIVE_READER_WAIT_SECONDS,
+) -> sqlite3.Connection:
+    """Bounded source-identity read of the SAME native FileDB during commits.
+
+    SQLite's default five-second reader busy timeout is insufficient while
+    another source worker commits a large DELETE-journal transaction. This
+    function never changes journal mode, acquires a writer lock, creates a
+    new database, or treats delayed source evidence as a valid source.
+    """
+    if (not isinstance(wait_seconds,(int,float)) or isinstance(wait_seconds,bool)
+            or not 1 <= wait_seconds <= 300):
+        raise ValueError("native read-only source wait must be bounded")
+    database = Path(database)
+    if database.is_symlink() or not database.is_file():
+        raise ValueError("canonical native FileDB is missing or symlinked")
+    connection=sqlite3.connect(database.resolve().as_uri()+"?mode=ro",
+                               uri=True,timeout=float(wait_seconds))
+    try:
+        connection.execute("PRAGMA query_only=ON")
+    except Exception:
+        connection.close()
+        raise
+    return connection
+
+
 def import_source(args):
     source = checked_original(args.original_path)
     tree_file = payload_path(
@@ -586,7 +618,7 @@ def import_source(args):
     payload, tree = import_tree(tree_file, source)
     from knowledge_library_semantic_model import LocalE5
     model = LocalE5(threads=2, batch_size=4)
-    with sqlite3.connect(f"file:{DB.resolve()}?mode=ro", uri=True) as ro:
+    with closing(open_native_summary_read_connection(DB)) as ro:
         chunks, reps = summary_rows(
             ro,
             original_path=source["original_path"],
