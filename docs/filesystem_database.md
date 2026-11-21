@@ -317,3 +317,33 @@ and raw chunk text SHA is verified again. It does NOT fuse ranks, create
 another FileDB or treat an excerpt as a complete, physically validated
 PDF source citation. See the November twenty-first evidence and CLI
 notes in docs/kmd-retrieval-drift-benchmark-2026-11-20.md.
+
+### Frozen dual-channel candidate recall audit (November 21)
+
+`scripts/raspi_dual_channel_gold_audit.py` independently replays the stored
+predeclared original-overview-versus-hierarchical-summary **rank arrays**, not
+new embeddings or generated answers. For each fixed source label it measures
+whether the source appears within the original-overview top K, summary top K,
+either channel's separate top K, or the earlier *experimental* fused top K.
+It rejects duplicate frozen questions, repeated expected source paths, malformed
+ranks and changed shadow-file checksums. Results retain per-question miss
+locations for follow-up publisher-source inspection. This is a candidate
+recall diagnostic: no independently verified PDF page citation, exhaustive
+relevance set, answer truth, or better default ranking is inferred.
+
+Read-only Raspi reproduction, using the existing private shadow snapshot:
+
+```bash
+SHADOW=/data/var/knowmoredirt/knowledge-library/search-audit/native-overview-retrieval-20261121/predeclared_native_overview_shadow_results.json
+SHA=$(sha256sum "$SHADOW" | cut -d' ' -f1)
+python3 scripts/raspi_dual_channel_gold_audit.py "$SHADOW" --top 10 --expected-sha256 "$SHA"
+```
+
+On the frozen 46 questions/52 known source labels, the separate-channel
+union found 41 labels, while summary alone found 35, original overviews 31,
+and pre-existing experimental fusion 42. The five publisher-attested
+multi-source questions recovered all 11 labeled sources through either
+separate channel versus nine through fusion. This metric evaluates only
+previously frozen candidates and cannot justify replacing the production
+ranking. The private replay result and current index-status checkpoint are
+under `search-audit/rollover-20261121` on Raspi.
