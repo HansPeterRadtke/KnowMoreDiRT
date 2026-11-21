@@ -1309,6 +1309,57 @@ position remains unverified absent per-excerpt original PDF proof. The 327
 represent confirmed lower-bound page overcounts, **not** measured overall
 citation error frequency or total prevalence of all false in-bounds pages.
 
+**Native-library citation guard activated without modifying the shared
+Infra checkout.** The existing Raspi native original-vector search already
+consults a private, exact original-and-derived-revision-gated historical
+PDF warning registry. After independently proving all 327 current defects,
+the Knowledge Library project extended that **same existing private registry**
+with **318 new attested records**, preserving the prior nine records and
+historical November 2 evidence, adding a dated extension receipt and keeping
+a private exact pre-extension backup. An atomic publication and existing
+source/derived SHA validation prevented publishing stale or ambiguous source
+identities. The already-installed `knowledge_library_semantic_query`
+`_page_scope_warning` was called against **all 327** confirmed exact current
+original revisions and returned the expected original physical page count and
+cached derived-label maximum for every one, while a deliberately wrong source
+SHA returned no warning. A real `knowledge-library-semantic-search` query
+restricted to the affected AgentSteerTTS publisher original returned a
+native SHA-verified passage with `source_page_citation_warning`, and
+`--pdf-page-context` correctly withheld the untrustworthy cached page context
+as `historical_page_citation_warning`. **No source content, native vectors,
+summary tree, model, resident worker, or shared dirty Infra code was changed.**
+The private historical warning is tied to the **exact** original plus current
+derivative SHA and will cease matching if a future correctly re-extracted
+source revision is committed and propagated through the native index. It is a
+risk warning, not an automatic repair or independent positive physical-page
+citation proof.
+
+**Reconstruction feasibility is independently tested, but live migration is
+not yet safe.** The current Infra `_large_pdf_pages` extractor, invoked only
+in private temporary scratch, produced the correct **nineteen** original
+physical-page units from the previously 245-unit AgentSteerTTS derivative;
+seven selected excerpts were independently verified on the original physical
+PDF pages one, three, six, ten, twelve, fifteen and nineteen. Three further
+originals from graphics, infrastructure and financial research were privately
+re-extracted with the current physical-page-count fallback, producing their
+exact 12, 23 and 35 physical-page units rather than 30, 87 and 56 old labels,
+and fifteen independently source-PDF verified excerpts. Original and existing
+derivative full SHA-256 remained unchanged. A private deterministic
+**327-source repair manifest** records every original/old derivative SHA,
+native FileDB original ID, physical page count and next safe migration path.
+**323** affected PDFs fit the existing bounded pagewise extractor; **four**
+with more than sixty physical pages require a separate tested recovery path.
+Do **not** directly overwrite the old SHA-pinned derivatives while the two
+resident summary workers or other dependent native semantic tasks can use
+them. Coordinate service leases and a rollback-capable, versioned, transactional
+refresh of affected source-map, extracted text, native vectors and hierarchical
+summaries; keep approved originals and ordinary grep searches untouched.
+All technical evidence is private under the wave-fifty audit folder. The
+remaining **168** completed PDFs without a standard `PDF page N` label were
+independently classified as **OCR-only-marked** extracts, not mistakenly
+counted as sound physical-page citations by the overcount audit; OCR text
+requires separate original-page and figure-quality validation before citing.
+
 The source of many excessive labels is older cached text extraction splitting
 *every* Poppler form-feed, including form-feed controls embedded inside
 physical pages by PDF fonts. The reproducible example `AgentSteerTTS` has
