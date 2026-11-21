@@ -1415,6 +1415,67 @@ model workload or source acquisition action. A future program version must
 not turn this narrowly scoped staging exception into an unbounded or
 unsupervised extraction default.
 
+### Immediately usable private physical-page search on the 327 staged repair sources
+
+Until the resident summary workers can be coordinated for a complete
+rollback-safe original cache/semantic vector/summary migration, the approved
+**327 staged source replacements** can be searched **without changing the
+live KnowMoreDiRT native FileDB** using the opt-in, temporary
+`scripts/raspi_staged_pdf_original_page_search.py`. This is a **supplement to
+native and ordinary folder/grep search**, not a new persistent semantic
+index, not an automatic publisher-data download and not a factual-answer
+model. The script constructs a bounded **in-memory SQLite FTS5** index of
+only the staged PDF source-unit bodies, excluding generated catalog
+provenance headers. It supports an exact approved `--original-path` or all
+327 sources, and restricts page candidates to at most 100, verified output
+passages to at most 8, staged text input to 128 MiB and original count to
+327. The RAM-only FTS database closes at the end of each invocation. There
+is **no** persistent alternate FTS database to maintain and no model/GPU
+resource lease required.
+
+```bash
+D=/data/var/knowmoredirt/knowledge-library/search-audit/continued-20261121-wave51
+PYTHONDONTWRITEBYTECODE=1 /data/var/knowmoredirt/semantic-venv/bin/python \
+ /data/src/github/KnowMoreDiRT/scripts/raspi_staged_pdf_original_page_search.py \
+ 'scientific calibration uncertainty benchmark evaluation' \
+ --stage-preflight "$D/all-327-private-staged-original-PDF-preflight-complete.json" \
+ --top 5 --candidates 25
+```
+
+An optional `--original-path 'ai-agents/.../document.pdf'` narrows the search
+to one exact existing approved publisher original. The result is local JSON
+with bounded publisher excerpt, **actual PDF physical page**, original
+SHA-256, existing cached derived SHA, private corrected candidate SHA and
+native original FileDB identity. Before any result appears, the verifier
+independently rechecks the **complete original publisher PDF**, existing
+old derivative, and exact staged candidate against their SHA-256 receipts,
+plus the completed original-acquisition ledger, current source-map revision
+and unique native FileDB entry. It then runs the existing original-PDF
+`verify_pdf_page_excerpts`, returning a page citation **only if the claimed
+page's original PDF text actually contains the excerpt**. A failed, timed-out
+or ambiguous original-page match is returned as unverified and excluded from
+confirmed hits. No source-model summary is promoted into a citation.
+
+Independently observed on Raspi: the full 327-original input indexed
+**7,157 staged original PDF physical-page text units**, a total of
+**54,493,366 bytes**, into **RAM only**. Searching for *scientific calibration
+uncertainty benchmark evaluation* returned **five independently original-
+physical-page-verified citations** across five different publisher papers,
+with no unverified hits shown. A separate exact-original AgentSteerTTS query
+returned three publisher-page-matched passages, on actual pages **6, 10,
+and 11**, instead of the old physically impossible 245-page derivative.
+These are observed **lexical** retrieval and original-page proof, not a
+representative semantic recall benchmark or a claim that every passage in
+all 327 sources has been individually verified. The private JSON receipts
+for both tested queries are under `continued-20261121-wave52/`, with
+publisher passages deliberately excluded from Git and owner reports.
+
+The original PDF files, all other library files, current FileDB vectors,
+old source-map/cache, recursively generated summaries and both running
+indexing workers are unaffected. Once the full coordinated native migration
+is safe, native source search should again serve the repaired revisions
+without relying on this temporary staging-only path.
+
 ### No-action native cutover dependency inventory (before any real migration)
 
 Preparing all corrected publisher-text derivatives does **not** by itself
