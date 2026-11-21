@@ -24,6 +24,7 @@ SOURCE_MAP=Path('/data/var/knowmoredirt/knowledge-library/semantic/source-map.sq
 NATIVE=Path('/data/var/knowmoredirt/knowledge-library/filesystem.sqlite3')
 ORIGINALS=Path('/data/var/Knowledge Library')
 DERIVED=Path('/data/var/knowmoredirt/knowledge-library/semantic/text')
+SUMMARY=Path('/data/var/knowmoredirt/knowledge-library/summaries')
 RECEIPTS=ORIGINALS/'_management/status.json'
 SERVICE_UNITS={
  'kmd-summary-worker-coder':'knowledge-library-hierarchical-summary.service',
@@ -87,7 +88,7 @@ def main():
         status=inspect_staged_cutover(items,source_map=sm,native=native,
                      original_root=ORIGINALS,derived_root=DERIVED,
                      stage_root=PRIVATE_ROOT,completed_receipts=completed,
-                     service_states=states)
+                     service_states=states,summary_root=SUMMARY)
     status['checked_utc']=datetime.now(timezone.utc).isoformat()
     status['source_preflight_sha256']=hashlib.sha256(args.stage_preflight.read_bytes()).hexdigest()
     status['no_live_migration_was_attempted']=True

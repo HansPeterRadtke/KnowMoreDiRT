@@ -4,6 +4,9 @@ import hashlib
 import sqlite3
 from pathlib import Path
 from tempfile import TemporaryDirectory
+import json
+import re
+from file_system_catalog.summary_coverage import revision_identity
 import unittest
 from file_system_catalog.source_page_cutover_readiness import inspect_staged_cutover
 
@@ -15,8 +18,9 @@ class SourcePageReadinessTests(unittest.TestCase):
     def setUp(self):
         self.temp=TemporaryDirectory();self.addCleanup(self.temp.cleanup)
         self.root=Path(self.temp.name)
-        self.original=self.root/'orig';self.der=self.root/'old';self.stage=self.root/'private';
-        for p in (self.original,self.der,self.stage):p.mkdir()
+        self.original=self.root/'orig';self.der=self.root/'old';self.stage=self.root/'private';self.summary=self.root/'summaries'
+        for p in (self.original,self.der,self.stage,self.summary):p.mkdir()
+        (self.summary/'progress').mkdir()
         self.sm=sqlite3.connect(':memory:');self.addCleanup(self.sm.close)
         self.native=sqlite3.connect(':memory:');self.addCleanup(self.native.close)
         self.sm.execute('CREATE TABLE originals (source_path TEXT,source_sha256 TEXT,derived_sha256 TEXT,derived_path TEXT,status TEXT)')
@@ -34,6 +38,10 @@ class SourcePageReadinessTests(unittest.TestCase):
             self.native.execute('INSERT INTO content_chunks VALUES (?,?,?)',(f'chunk{index}',100+index,b'embed'))
             if index==1:
                 self.native.execute('INSERT INTO content_representations VALUES (?,?,?)',('summary1','chunk1',b'rep'))
+                token=revision_identity(relative,o,d)[:24]
+                name=re.sub(r'[^A-Za-z0-9_.-]+','-',Path(relative).name[:64])+'.'+token+'.summary-tree.json'
+                (self.summary/name).write_text(json.dumps({'original_path':relative,'original_sha256':o,'derived_sha256':d}))
+                (self.summary/'progress'/(name+'.progress.json')).write_text('preserved progress journal')
             self.records.append({'original_path':relative,'original_sha256':o,'old_derived_sha256':d,
                'new_staged_derived_sha256':n,'staged_private_file':str(self.stage/(relative+'.txt')),
                'native_original_filedb_id':100+index})
@@ -45,7 +53,7 @@ class SourcePageReadinessTests(unittest.TestCase):
                original_root=self.original,derived_root=self.der,stage_root=self.stage,
                completed_receipts=self.receipts,
                service_states={'kmd-summary-worker-coder':service,'kmd-summary-worker-q4':service},
-               expected_count=2)
+               summary_root=self.summary,expected_count=2)
 
     def test_actual_native_dependents_listed_but_cutover_never_permitted(self):
         r=self.evaluate()
@@ -54,9 +62,22 @@ class SourcePageReadinessTests(unittest.TestCase):
         self.assertEqual(2,r['native_dependencies']['original_vectors'])
         self.assertEqual(1,r['native_dependencies']['summary_nodes'])
         self.assertEqual(1,r['native_dependencies']['affected_sources_with_summary_nodes'])
+        self.assertEqual(1,r['native_dependencies']['old_revision_summary_trees'])
+        self.assertEqual(1,r['native_dependencies']['old_revision_progress_journals'])
+        self.assertEqual(0,r['native_dependencies']['unexpected_new_revision_summary_trees'])
         self.assertTrue(r['no_source_cache_source_map_filedb_vector_or_summary_writes'])
         self.assertFalse(self.evaluate('inactive')['safe_to_cutover'])
         self.assertFalse(self.evaluate('inactive')['workers_not_quiesced'])
+
+    def test_missing_revision_tree_for_existing_native_summary_blocks_readiness(self):
+        for p in self.summary.glob('*.summary-tree.json'):p.unlink()
+        with self.assertRaisesRegex(ValueError,'no revision-matched original tree'):self.evaluate()
+
+    def test_stale_summary_payload_revision_is_refused(self):
+        target=next(self.summary.glob('*.summary-tree.json'))
+        payload=json.loads(target.read_text());payload['derived_sha256']='0'*64
+        target.write_text(json.dumps(payload))
+        with self.assertRaisesRegex(ValueError,'different source revision'):self.evaluate()
 
     def test_missing_service_or_unbounded_cohort_refused(self):
         with self.assertRaisesRegex(ValueError,'missing actually observed'):inspect_staged_cutover(
