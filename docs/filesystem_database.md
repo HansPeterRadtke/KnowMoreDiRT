@@ -1349,6 +1349,20 @@ derivative full SHA-256 remained unchanged. A private deterministic
 native FileDB original ID, physical page count and next safe migration path.
 **323** affected PDFs fit the existing bounded pagewise extractor; **four**
 with more than sixty physical pages require a separate tested recovery path.
+The four beyond the existing sixty-page automatic fallback have now
+**also been independently tested in private**, using bounded single-physical-
+page `pdftotext -f N -l N` reads on the **unchanged, approved** original PDFs:
+64, 76, 70 and 418 physical pages, for **628 physical page extractions**.
+The private read-only shadow generated exactly those original physical-page
+identities and independently verified eighteen source-PDF page excerpts from
+sampled first, middle and late pages; it stored only SHA receipts and counts,
+not copyrighted publisher text or replacement derivatives. The current
+Infra implementation still **refuses live automatic pagewise extraction for
+these four** due its existing safety bound; this was a test of a possible
+bounded extension, **not a deployed parser change** or bulk source repair.
+The separate private long-source evidence is under the wave-fifty audit
+folder in `all-four-larger-PDF-physical-pagewise-shadow-verification.json`.
+
 Do **not** directly overwrite the old SHA-pinned derivatives while the two
 resident summary workers or other dependent native semantic tasks can use
 them. Coordinate service leases and a rollback-capable, versioned, transactional
