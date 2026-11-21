@@ -1456,6 +1456,16 @@ page's original PDF text actually contains the excerpt**. A failed, timed-out
 or ambiguous original-page match is returned as unverified and excluded from
 confirmed hits. No source-model summary is promoted into a citation.
 
+**Lexical relevance safeguard:** The temporary FTS5 indexes *only the source
+body*; the original filename and generated title/header metadata are
+**unindexed** and cannot drive search rank. For a multi-term query, an actual
+quoted publisher excerpt must contain at least **two distinct normalized
+query terms** before its physical PDF page can be offered as search evidence.
+One-term queries require one matching term. Candidates passing physical-page
+proof but matching only a generic isolated word are rejected as weak excerpt
+coverage, *not misclassified as fake publisher citations*. The source excerpt
+remains a search candidate, not a completed factual answer.
+
 Independently observed on Raspi: the full 327-original input indexed
 **7,157 staged original PDF physical-page text units**, a total of
 **54,493,366 bytes**, into **RAM only**. Searching for *scientific calibration
@@ -1464,6 +1474,18 @@ physical-page-verified citations** across five different publisher papers,
 with no unverified hits shown. A separate exact-original AgentSteerTTS query
 returned three publisher-page-matched passages, on actual pages **6, 10,
 and 11**, instead of the old physically impossible 245-page derivative.
+After adding the source-body-only and two-query-term relevance guards,
+the same entire 327-book query again returned **five publisher-original-page
+verified passages** and excluded one weak excerpt. A second read-only
+predeclared **six-topic** original-page QA (scientific calibration, multi-agent
+speech synthesis, 3D reconstruction, agent tool use, financial price history
+and causal inference) produced **18 publisher-page-verified passages across
+all six queries**, with one weak excerpt rejected. See
+`continued-20261121-wave52/six-domain-private-physical-page-retrieval-evaluation.json`.
+This verifies original physical PDF page evidence across topics, not source
+relevance judgments by a domain expert or representativeness of the entire
+17,715-source library.
+
 These are observed **lexical** retrieval and original-page proof, not a
 representative semantic recall benchmark or a claim that every passage in
 all 327 sources has been individually verified. The private JSON receipts

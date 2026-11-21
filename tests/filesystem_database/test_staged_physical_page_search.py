@@ -97,6 +97,23 @@ class StagedPhysicalPageSearchTests(unittest.TestCase):
             index.add(self.item,stage_root=self.stage)
             with self.assertRaisesRegex(ValueError,'duplicate'):index.add(self.item,stage_root=self.stage)
 
+    def test_filename_does_not_rank_without_publisher_body_word(self):
+        with StagedPhysicalPageRAMIndex(1) as index:
+            index.add(self.item,stage_root=self.stage);index.commit()
+            self.assertEqual([],index.ranked('known'))
+
+    def test_exact_publisher_page_but_irrelevant_excerpt_is_excluded(self):
+        with StagedPhysicalPageRAMIndex(1) as index:
+            index.add(self.item,stage_root=self.stage);index.commit()
+            # The page contains 'publisher' but not multiple relevant terms.
+            hit=index.ranked('publisher extraterrestrial ontology')[0]
+            result=verify_staged_page_result(hit,query='publisher extraterrestrial ontology',
+                original_root=self.orig,derived_root=self.live,stage_root=self.stage,
+                completed_receipts={self.relative:digest(self.original)},
+                source_map=self.sm,native_db=self.native,
+                verifier=lambda *_:[{'status':'verified','page':2,'basis':'derivative_label_confirmed'}])
+            self.assertEqual('insufficient_source_query_term_coverage',result['status'])
+
     def test_no_verified_original_page_without_proof(self):
         with StagedPhysicalPageRAMIndex(1) as index:
             index.add(self.item,stage_root=self.stage);index.commit()

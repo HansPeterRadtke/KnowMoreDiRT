@@ -58,7 +58,7 @@ class StagedPhysicalPageRAMIndex:
         if type(max_records) is not int or not 1<=max_records<=MAX_RECORDS:
             raise ValueError('invalid bounded original source cohort')
         self.db=sqlite3.connect(':memory:')
-        self.db.execute("CREATE VIRTUAL TABLE passages USING fts5(path, body, tokenize='porter unicode61 remove_diacritics 2')")
+        self.db.execute("CREATE VIRTUAL TABLE passages USING fts5(body, path UNINDEXED, tokenize='porter unicode61 remove_diacritics 2')")
         self.max_records=max_records
         self.loaded_originals=set();self.rows={}
         self.bytes_indexed=0;self.closed=False
@@ -92,7 +92,7 @@ class StagedPhysicalPageRAMIndex:
         for label,pg,body in source_units_from_corrected_text(content,original_pages,maximum):
             rowid=len(self.rows)+1
             if rowid>MAX_ROWS:raise ValueError('too many physical publisher page units')
-            self.db.execute('INSERT INTO passages (rowid,path,body) VALUES (?,?,?)',(rowid,path,body))
+            self.db.execute('INSERT INTO passages (rowid,body,path) VALUES (?,?,?)',(rowid,body,path))
             self.rows[rowid]=(path,label,pg,body,item)
             added+=1
         if not added:raise ValueError('no verifiable physical publisher page text in staged source')
@@ -111,7 +111,7 @@ class StagedPhysicalPageRAMIndex:
         terms=query_terms(query)
         if not terms:raise ValueError('no useful publisher-source search terms')
         clause=' OR '.join('"'+token.replace('"','""')+'"' for token in terms)
-        ranked=self.db.execute('SELECT rowid,bm25(passages,0.4,1.0) AS score '
+        ranked=self.db.execute('SELECT rowid,bm25(passages,1.0) AS score '
                      'FROM passages WHERE passages MATCH ? ORDER BY score,rowid LIMIT ?',
                      (clause,limit)).fetchall()
         return [(self.rows[int(i)],float(score)) for i,score in ranked]
@@ -137,7 +137,16 @@ def verify_staged_page_result(hit,*,query:str,original_root:Path,derived_root:Pa
     candidate=safe_file(stage_root,str(Path(item['staged_private_file']).relative_to(stage_root)))
     if sha_file(original)!=o or sha_file(oldtext)!=old or sha_file(candidate)!=new:
         raise ValueError('original, old live derivative, or staged physical PDF page revision differs')
-    start,end,covered=_best_excerpt(body,query_terms(query),length=520)
+    terms=query_terms(query)
+    start,end,covered=_best_excerpt(body,terms,length=520)
+    # A correct physical PDF page is not automatically a relevant answer.
+    # Metadata-only matches and excerpts matching only a generic word in a
+    # multi-term question must not be presented as strong source evidence.
+    required_terms=min(2,len(terms))
+    if len(covered)<required_terms:
+        return {'status':'insufficient_source_query_term_coverage',
+                'reason':'not_enough_distinct_query_terms_in_original_passage',
+                'original_path':path,'covered_terms':list(covered),'required_terms':required_terms}
     excerpt=body[start:end].strip()
     # Deliberately refuse low-information and unreadable publisher glyph spans.
     if len(excerpt)<35 or ('\x00' in excerpt and excerpt.count('\x00')>3):

@@ -18,6 +18,7 @@ sys.path.insert(0,str(ROOT/'src'))
 from file_system_catalog.staged_physical_page_search import (
     StagedPhysicalPageRAMIndex,verify_staged_page_result,
 )
+from file_system_catalog.hybrid_search import query_terms
 
 AUDITS=Path('/data/var/knowmoredirt/knowledge-library/search-audit')
 SOURCES=Path('/data/var/Knowledge Library')
@@ -94,6 +95,8 @@ def main():
                 'private_staged_text_bytes_indexed':index.bytes_indexed,
                 'verified_original_pdf_physical_page_passages':evidence,
                 'unverified_ranked_candidates_excluded':len(failed),
+                'rejected_for_weak_excerpt_query_coverage':sum(z['status']=='insufficient_source_query_term_coverage' for z in failed),
+                'lexical_minimum_distinct_query_terms_per_verified_excerpt':min(2,len(query_terms(args.query))),
                 'source_original_semantic_answer_not_generated':True,
                 'not_a_second_persistent_database':True,
                 'no_original_source_filedb_source_map_summary_cache_or_worker_writes':True}
