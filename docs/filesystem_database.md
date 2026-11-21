@@ -1570,6 +1570,104 @@ full dependent-state replacement can be safely verified. See the private
 readiness receipts `continued-20261121-wave51/second-turn-native-cutover-readiness-327.json`
 and `continued-20261121-wave51/second-turn-native-cutover-summary-tree-readiness-327.json`.
 
+### Sealed private recovery subset and forced-rollback rehearsal (November 22)
+
+The next phase after source/page-readiness is a **fully private recovery
+snapshot and simulated failure rehearsal**, **not** a live cache/database
+migration. Use `scripts/raspi_pdf_repair_shadow_cohort.py` with the existing
+full original/SHA-verified 327-stage preflight and a new exclusive private
+folder. The tool reruns the exact 327 source-map and native ID preflight,
+including SHA-256 of each original publisher PDF, both old and corrected
+text revisions, current old summary tree and per-source progress journal.
+It copies only the **affected old cached text, old summary tree and progress
+files** into a protected recovery folder; all original books remain in their
+ordinary public folder structure and are never copied, deleted or rewritten.
+It reads the two live SQLite metadata stores with `mode=ro`,
+`PRAGMA query_only=ON`, and separate read-only transactions, copying only
+327 original source-map rows, the 327 corresponding native file entries,
+their content chunks/vectors and source-linked generated representation rows
+into **one new private SQLite clone** with the source table constraints and
+foreign keys preserved. The original 3-GB database is never bulk-copied or
+written. Foreign-key parent lookups in the **private clone** have dedicated
+indexes, so the isolated cascading-delete rehearsal is bounded rather than
+quadratic. Both registered indexing workers remain running; the script
+never stops or restarts them, and never changes the live source-map, native
+FileDB, old derived caches, summaries or search results.
+
+The isolated SQLite clone then **simulates updating all 327 source revisions
+and clearing their existing source-linked vectors/summary rows** and
+*deliberately rolls the transaction back*. Logical digests of **every column,
+including embedding BLOB bytes**, are compared across all four original
+tables before and after. SQLite `quick_check` and `foreign_key_check` must
+pass. The independently reusable verifier
+`scripts/raspi_verify_pdf_repair_shadow_bundle.py` subsequently checks the
+full SHA-256 of every saved publisher-text and old summary/progress file,
+SHA-256 of the SQLite clone, exact source-map/native original identities,
+all 327 required old text records, the old summary-tree/progress identities
+for any original with native analysis rows, and the original full-column
+logical table digests. An incomplete, modified, duplicate, foreign-key-
+broken or wrong-revision archive fails closed.
+
+```bash
+P=/data/var/knowmoredirt/knowledge-library/search-audit/continued-20261121-wave51
+D=/data/var/knowmoredirt/knowledge-library/search-audit/continued-20261121-wave53
+V=/data/var/knowmoredirt/semantic-venv/bin/python
+# Use NEW unused names: never overwrite a historical private recovery bundle.
+$V /data/src/github/KnowMoreDiRT/scripts/raspi_pdf_repair_shadow_cohort.py \
+ --stage-preflight "$P/all-327-private-staged-original-PDF-preflight-complete.json" \
+ --new-private-bundle-dir "$D/NEW-private-versioned-recovery-bundle"
+$V /data/src/github/KnowMoreDiRT/scripts/raspi_verify_pdf_repair_shadow_bundle.py \
+ --private-bundle "$D/NEW-private-versioned-recovery-bundle"
+$V /data/src/github/KnowMoreDiRT/scripts/raspi_rehearse_pdf_repair_file_db_restore.py \
+ --private-bundle "$D/NEW-private-versioned-recovery-bundle" \
+ --staged-preflight "$P/all-327-private-staged-original-PDF-preflight-complete.json" \
+ --new-private-rehearsal-dir "$D/NEW-private-cross-file-fault-rehearsal"
+```
+
+A separate cross-file failure rehearsal uses **only copied old source text,
+old summary tree/progress and a cloned native/source-map subset**, plus one
+independently SHA-pinned corrected private source: it injects failures
+**immediately after a text/summary swap** and **after a committed metadata
+change and cascade removal**. Both failure points must be restored from the
+sealed historical sources, including full original text SHA, summary/progress
+SHA, all native old rows and metadata revisions. These tests do **not**
+exercise live concurrent writers, cross-database atomic commit, a durable
+writer lease, or end-user query continuity; a genuine live migration must
+still be coordinated and independently verified.
+
+**Actual result (private wave53):** 327 old text files plus 119 revision-pinned
+summary trees and 119 corresponding progress journals (**565 files,
+46,210,889 protected bytes**) saved. The selective private SQLite image was
+**61,870,080 bytes** and contained **327 old source-map rows**, **327 original
+native file entries**, **1,578 original-content chunks** (1,188 already had
+vectors in the preceding preflight), and **12,623 original-linked generated
+summary representations**. A full cohort rehearsal briefly removed all
+1,578 chunks and their 12,623 dependent rows **only inside the cloned SQLite
+transaction**, then recovered all four tables with exact logical byte hashes
+and no foreign-key errors. The separate SHA-based archive verifier accepted
+all 565 files and all 119 summary/progress identity pairs. In an additional
+single-original cross-file test, both injected failure points correctly
+restored its old source text, summary tree/progress, and all 9 original native
+chunks with 244 original-linked representations. The sealed bundle occupies
+about 105 MiB, and the private cross-file failure simulation has separate
+protected scratch files; neither changes live publisher books or metadata.
+Reproducible private proofs, command logs and full manifests are under
+`continued-20261121-wave53/`. These are recovery *rehearsal* results,
+**not permission or a ready procedure to promote the 327 staged files**.
+
+**Remaining explicit release gate:** obtain actual verified coordination for
+both live summary workers and all other native reader/writer consumers,
+prevent stale citations during migration, establish a fresh fully quiesced
+source-map/cache/native/summary state with rollback for **multiple independent
+filesystem and SQLite stores**, re-run all original revision checks, then
+incrementally reindex the corrected sources and independently verify physical
+publisher page excerpts, retrieval and clean stale summary invalidation
+before declaring native search fully repaired. A private snapshot taken while
+summary workers are live is **historical evidence**, not a current release-
+ready rollback point. Do not auto-stop shared services, remove older live
+vectors, erase originals or weaken the existing citation warnings merely
+because the isolated test passed.
+
 **Independent full private stage acceptance, November 21:** All **327**
 originals with independently confirmed stale out-of-range cached PDF page
 labels now have exclusive, privately stored, physical-page-correct candidate
