@@ -541,3 +541,81 @@ that the source answers the entire question, or that a particular replacement
 ranking has been validated. The original frozen evaluation remains untouched.
 Private original/derived SHA receipts, review, validated physical-page results
 and regression evidence live under `search-audit/continued-20261121-wave46`.
+
+### Read-only incremental indexing shard-balance planning, November 21
+
+The two native recursive-summary workers retain source-disjoint assignments
+using a stable original-relative-path SHA-256 modulo four. The Coder worker
+currently owns hash buckets one, two and three; the Qwen Q4 worker owns bucket
+zero. This remains reliable and resumable but **is not balanced by pending
+source workload** after several thousand successful incremental insertions.
+
+`/data/src/github/KnowMoreDiRT/scripts/raspi_summary_shard_plan.py` is a
+read-only capacity diagnostic. It uses the installed canonical **source-map
+and one native FileDB** via the existing SHA-respecting worker `scope()` to
+count pending originals and complete extracted-text characters per hash bucket.
+A separate timestamped, SHA-pinned worker throughput observation supplies a
+measured characters-per-hour rate for each model. The pure function
+`file_system_catalog.summary_shard_planner.compare_assignments` enumerates
+every non-empty, source-disjoint assignment of up to sixteen hash buckets to
+the two workers. It compares present ownership against both a minimal-churn
+alternative and a purely mathematical best estimated completion duration,
+with unique complete source coverage checked by tests. This is an analytical
+sensitivity calculation, **not a reliable ETA, guaranteed speedup, active
+scheduler or an automatic worker migration**. Relative model speed, source
+tokenization, library-size distribution, current model sharing and per-source
+quality/call count vary. It does not download models, touch the corpus/SQLite,
+change thread counts, edit Infra, or call systemd.
+
+On Raspi, use a new private output file and the recorded real observed-rate
+file SHA, for example:
+
+```bash
+W=/data/var/knowmoredirt/knowledge-library/search-audit/continued-20261121-wave46
+OBS=$W/native-worker-throughput-normalized.json
+python3 scripts/raspi_summary_shard_plan.py \
+  --source-map /data/var/knowmoredirt/knowledge-library/semantic/source-map.sqlite3 \
+  --filedb /data/var/knowmoredirt/knowledge-library/filesystem.sqlite3 \
+  --observed-rates "$OBS" --rate-report-sha256 "$(sha256sum "$OBS" | cut -c1-64)" \
+  --output "$W/NEW-shard-sensitivity.json"
+```
+
+The first live read-only comparison saw approximately eight thousand pending
+originals on Coder's three shards versus about one thousand on Q4's single
+shard. The document lengths differed, so counts are not workload-equivalent:
+current pending **text** was about 1.86 billion vs 0.56 billion characters.
+During the measured seven-hour historical window Coder completed roughly
+0.65 million source characters/hour and Q4 roughly 0.80 million/hour; the
+median completed **model generation** stage lasted roughly six minutes on
+Coder and eight minutes on Q4, while source embedding/native import was
+roughly half a minute. This does not support sacrificing transactional
+FileDB integrity checks as the primary throughput solution.
+
+The simplest non-overlapping two-versus-two allocation would retain Coder
+hash buckets one and two and give Q4 buckets zero and three. At the captured
+snapshot each would then have about 1.2 billion *remaining source characters*;
+under the old sampled rates, the proxy largest remaining worker duration
+would decrease from roughly 2,860 to 1,880 hours. These numbers **must not**
+be presented as a true completion ETA or promised productivity gain; they
+ignore future document size/call mixes and ongoing shared-model competition.
+An unconstrained mathematical allocation reallocating three hash buckets has
+a slightly smaller proxy duration but materially greater operational churn.
+
+**No deployment was authorized or performed by this planner.** If rebalancing
+is later approved for production, the active Infrastructure/systemd owner must
+stage an atomic source-ownership-safe handoff while preserving in-flight
+summary documents, generated trees, the source-map and FileDB. In particular,
+never let both models own bucket three simultaneously. A safe ordering is to
+release bucket three from the old Coder assignment at a verified document
+boundary, then add it to Q4 after the reduced Coder assignment is definitely
+active. Current installed worker units use `Restart=always` and a ninety-
+second systemd stop timeout; a blind `systemctl restart` can interrupt a
+multi-minute generation. Use a separately reviewed quiesce protocol, service
+settings and rollback plan instead. The running Qwen/model services are shared
+with other projects; do not stop them as part of this operation. Coordinate
+with the System Integrity Supervisor and preserve other Infra agents' dirty
+working tree. A model-speed change or source growth requires a new measured
+rate snapshot and fresh read-only comparison.
+
+Full private journal samples, source-char-normalized rates and live source-map
+counterfactual receipts are in `search-audit/continued-20261121-wave46/`.
