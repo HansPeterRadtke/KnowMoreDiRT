@@ -1461,7 +1461,21 @@ derivative revision identity, so they can be targeted without confusing other
 books' summaries. These rows must not be orphaned,
 misattributed to the new derivative SHA, or silently duplicated during a
 migration. Both workers were still `active`; the report explicitly returned
-`workers_not_quiesced=true` and `safe_to_cutover=false`. The tool returns
+`workers_not_quiesced=true` and `safe_to_cutover=false`. A separate read-only quality gate compared *all 327* old versus privately
+corrected PDF extracted texts after removing the KMD-generated provenance
+header and derived `[[SOURCE UNIT: ...]]` page markers, using case-folded
+readable word tokens and occurrence-weighted **three-word sequence counts**.
+All **327 of 327** preserved **100% of these three-word sequences in both
+directions**, with **zero word-count changes**. This is an independently
+recorded lexical/text-retention result (private receipt
+`continued-20261121-wave51/second-turn-private-327-corrected-pdf-word-trigram-retention.json`),
+not a proof of identical byte layout, OCR quality, ordered section boundaries,
+illustration fidelity, factual correctness, or every possible original-source
+quotation. The real publisher physical-page sampled citation proofs still
+matter; neither the legacy wrong page labels nor original source PDFs were
+modified by the comparison.
+
+The tool returns
 `safe_to_cutover=false` **even when both services are inactive**, because
 service inactivity alone does not acquire exclusive writer leases, prove no
 other consumers, create a cross-file atomic transaction, or establish a
