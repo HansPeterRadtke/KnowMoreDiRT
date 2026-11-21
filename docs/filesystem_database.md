@@ -978,3 +978,83 @@ invalid source spans, digest mismatches, manipulated embedding shape and
 missing approvals, and check that each fails rather than being promoted to
 complete. Retain historical source-map error classifications for the two
 existing image-only originals until independently verified OCR is available.
+
+### Independently pinned physical-PDF-page recall instead of merely page-location integrity
+
+A source-linked retrieved passage is not sufficient proof that the search
+selected the **correct supporting physical PDF page**. The publisher source
+may have been selected successfully while the passage selector returns an
+unrelated page from the same book. Source page recall, source identity, page
+location validity, complete answer support and summary truth are **separate
+acceptance questions**. This distinction is emphasized in the October 2026
+GroundLM papers *PageRecall* and *Does the Selected Object Reach the Reader?*;
+external paper benchmark percentages are not estimates for this Knowledge
+Library. Do not infer correctness from a generated summary or a valid SHA.
+
+`src/file_system_catalog/original_page_recall.py` and
+`scripts/raspi_original_page_recall.py` add a **read-only, original-publisher
+PDF page recall** benchmark against a small, previously frozen gold file.
+Each gold case specifies an exact approved original-relative PDF path,
+full original and current derived source SHA-256, the question, an expected
+*physical* PDF page, a publisher excerpt from that page and its digest, and
+an independently checked original physical-page text SHA. Before any test
+query the audit verifies the completed acquisition ledger, full publisher
+original and derived bytes, source-unit page boundary and **again** validates
+the frozen excerpt on the same physical page of the original PDF. Any stale
+source, missing receipt, changed excerpt, wrong page, invalid Unicode/quoted
+SHA, wrong rank/identity/engine or source mutation fails closed. The separate
+native `source-evidence` results must identify the same original and show
+verified PDF-page proof; unverified pages never count as successful hits.
+The metric is **known gold-page recall at K**, not exhaustive relevance,
+complete factual answer correctness, global source recall, or confidence.
+
+The verified small four-question test was frozen from the approved **2025
+Introduction to Human-Computer Interaction** reference *before* any of its
+four page-lookup queries were replayed. The independently original-PDF-
+verified supporting pages were physical 112 (GOMS), 339 (System Usability
+Scale), 53 (signal detection theory), and 367 (information scent). Their
+four exact source excerpts, SHA-256s and original page-text SHA evidence are
+in the private `frozen-physical-hci-page-gold.json`. A first genuine source-
+restricted FTS5 retrieval returned the original gold pages at respective
+ranks **2, 1, 2, 1**. That is **4/4 at rank five** and **2/4 at rank one**
+for this deliberately small reference sample, not a broad quality claim.
+The independent original-PDF page verifier was invoked again before the
+standalone benchmark's second replay, reproducing those numbers. Neither
+run modifies source documents, embeddings, native FileDB, source-map, models
+or original source approvals. KMD may append ordinary private query audit
+records as its existing read-only lookup normally does.
+
+Run on the existing Raspi canonical library with an entirely **new** private
+output path, keeping the pre-frozen SHA independent of current search results:
+
+```bash
+cd /data/src/github/KnowMoreDiRT
+W=/data/var/knowmoredirt/knowledge-library/search-audit/continued-20261121-wave48
+G="$W/frozen-physical-hci-page-gold.json"
+/data/var/knowmoredirt/semantic-venv/bin/python \
+ scripts/raspi_original_page_recall.py \
+ --gold "$G" --gold-sha256 "$(sha256sum "$G" | cut -c1-64)" \
+ --source-map /data/var/knowmoredirt/knowledge-library/semantic/source-map.sqlite3 \
+ --original-root '/data/var/Knowledge Library' \
+ --derived-root /data/var/knowmoredirt/knowledge-library/semantic/text \
+ --completed-ledger '/data/var/Knowledge Library/_management/status.json' \
+ --source-cli /data/src/github/KnowMoreDiRT/scripts/raspi_hierarchical_library.py \
+ --top 5 --output "$W/NEW-page-recall.json"
+```
+
+The script refuses an existing output and duplicate or altered gold cases,
+accepts no more than twenty source cases or ten results per case, and writes
+the result under mode-0600 with explicit per-case page identities and hit
+ranks. An optional `--case-id` subset is labeled **not full population**.
+The original PDF excerpt/page gold has independent source bytes and a
+physical-page SHA; no retrieval output can silently replace a label. This
+metric is particularly useful for lengthy reference books where known
+answer-bearing pages can be far apart. Broader unbiased answer-level
+benchmarks still require independent human evaluation and more varied source
+families before deciding to modify the native ranking algorithm.
+
+Private result and per-original page SHA receipts are under
+`search-audit/continued-20261121-wave48/official-attested-original-page-recall.json`.
+The disposable SQLite and source-verifier test fixtures are in
+`tests/filesystem_database/test_original_page_recall.py`. No synthesized test
+PDF is ever claimed to prove production physical-page extraction.
