@@ -1349,6 +1349,81 @@ derivative full SHA-256 remained unchanged. A private deterministic
 native FileDB original ID, physical page count and next safe migration path.
 **323** affected PDFs fit the existing bounded pagewise extractor; **four**
 with more than sixty physical pages require a separate tested recovery path.
+### Private, non-destructive original PDF page-cache repair staging
+
+The source-linked PDF page-overcount repair cannot be applied to the live
+source-map text/semantic vectors/summaries while the two resident source
+summarization workers and other native retrieval readers depend on those
+identities. Use only the optional, **staging-only** script
+`scripts/raspi_stage_original_pdf_page_repairs.py` to generate a new proposed
+replacement text outside the live source tree. It reads the private
+revision-pinned 327-original remediation plan, the authorized complete
+acquisition ledger, the current curated source manifest, the current
+read-only source-map and original FileDB. It rehashes the **entire existing
+original and old extracted derivative** (not only prefixes or excerpts),
+checks unique original FileDB IDs and requires a physically impossible
+historic page-label overcount before regenerating anything. The original
+PDF is processed through the currently installed Infra
+`knowledge_library_semantic._large_pdf_pages` original physical-page
+extractor. Only one-to-thirty-two existing safe-bound original PDFs are
+processed per private batch; no non-PDF, unapproved, stale, too-large or
+unknown source is silently admitted. All output files and receipts are
+new/exclusive and private, including the full regenerated copyright-bearing
+text; such text must never be committed or distributed.
+
+Example on **Raspi** from an existing privately attested repair plan (use
+fresh stage and output names; never overwrite a prior stage):
+
+```bash
+cd /data/src/github/KnowMoreDiRT
+D=/data/var/knowmoredirt/knowledge-library/search-audit/NEW-STAGE-DIRECTORY
+mkdir -m 700 -p "$D"
+PYTHONDONTWRITEBYTECODE=1 /data/var/knowmoredirt/semantic-venv/bin/python   scripts/raspi_stage_original_pdf_page_repairs.py   --repair-plan /data/var/knowmoredirt/knowledge-library/search-audit/continued-20261121-wave50/read-only-pdf-page-attribution-repair-plan-327-originals.json   --offset 0 --limit 12   --stage-root "$D/first-twelve-original-page-caches"   --output "$D/first-twelve-original-page-caches-receipt.json"
+```
+
+The script refuses existing output receipts/staging folders, out-of-audit
+output paths, stale source SHA revisions, invalid/duplicated FileDB original
+identities, changed source-map rows, mutable original/derived bytes, original
+physical PDF count disagreements, false/repeated/reordered/invented page
+labels, untrusted derivative page delimiters inside publisher text, and
+extraction outside the existing safe sixty-physical-page/fifty-MiB bounds.
+Blank original pages may be absent from the staged text but the emitted
+page identities must remain strictly increasing and within verified PDF
+physical-page bounds. Stage receipts explicitly distinguish
+`live_promoted=false` and `original_physical_page_excerpts_verified=false`:
+matching source bytes and page marker bounds are **not physical page citation
+proof**. Independently verify selected staged source excerpts against the
+original PDF with `publisher_pdf_page.verify_pdf_page_excerpts` before any
+future live migration. Staging intentionally provides **no** CLI to rewrite
+the live source-map, native FileDB vectors, summary graph, original PDF or
+existing derivative. The separately coordinated rollback-capable migration,
+resident-worker/source-lease quiescence, invalidation/rebuild and physical
+PDF page regression are still REQUIRED and not delegated to this command.
+A successful staging receipt is **not** evidence that any live citation or
+summary was repaired. Ordinary original folder/grep search remains usable.
+
+**Raspi private acceptance, wave fifty-one:** The first twenty-four unique
+revision-pinned affected PDFs were staged without touching the running
+original index: twelve initial successes, ten successes plus two bounded
+SQLite read-lock rejections in the next batch, then exactly the two
+rejected originals successfully staged in a **new** private retry directory.
+The tool uses an explicit read-only forty-five-second SQLite lock wait, not
+a worker restart. The private receipts distinguish the successful/failed
+source identities rather than treating a partial batch as complete. In a
+separate publisher-source test, **all seventy-two sampled original physical
+PDF page excerpts** across those twenty-four staged sources were matched
+against the exact approved original SHA and the correct actual physical
+page. Two difficult-page verifications needed a shorter still-exact excerpt
+from the existing PDF text layer; neither was promoted as evidence before
+independent physical page verification. Each staged output has a full staged
+SHA-256 and the old original/derived source revisions remain unchanged.
+The private evidence root is
+`/data/var/knowmoredirt/knowledge-library/search-audit/continued-20261121-wave51/`;
+`first-24-staged-originals-all-72-publisher-PDF-page-proofs.json` contains
+source hashes and page proofs **without copyrighted publisher passages**.
+This validates the staging *method* for a first batch; it is deliberately
+not a live native vector or hierarchical-summary migration.
+
 The four beyond the existing sixty-page automatic fallback have now
 **also been independently tested in private**, using bounded single-physical-
 page `pdftotext -f N -l N` reads on the **unchanged, approved** original PDFs:
