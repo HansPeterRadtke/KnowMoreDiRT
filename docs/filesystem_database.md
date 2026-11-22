@@ -1886,6 +1886,80 @@ separately verified that it is no longer needed. The private command logs and
 receipts are under `continued-20261122-wave55/`; no original text or
 private archive is committed to Git.
 
+### Independent *new-revision native search readiness* gate, November 22
+
+**A source-map SHA update does not mean the source is indexed.** The 327-PDF
+private migration experiment intentionally creates corrected derivative files
+and `staged_needs_reindex` source-map rows while deleting old original-specific
+chunks and summary vectors. Those private files are NOT yet native-search-ready.
+Simply setting `status=complete` after copying corrected text would still
+produce an incomplete or stale index. Native KMD has independent
+**original-content overview/full** vectors and **recursive-summary keyword,
+facet and whole-document root** vectors. A future release needs every source
+channel, not merely a copied file, a hash and one root summary.
+
+The new `scripts/raspi_verify_pdf_reindex_release_fidelity.py` is a strictly
+**read-only private-candidate quality gate**, not a live publication tool.
+It independently re-verifies the existing complete 327-original historical
+recovery bundle, its original source-map/identity and old direct-index channel
+inventory, the fixed private correction-stage receipt, and the 327 corrected
+candidate text derivatives. It verifies source path and original/derived
+SHA, canonical provenance wrapper, physical PDF page sequence, source-unit
+body character count **excluding generated header**, complete new source-map
+state, and immutable native original IDs. From the historical native snapshot
+it additionally identifies which originals previously had searchable **full**
+content channels, and refuses to silently drop those at migration.
+
+For each publisher original it refuses to accept new native passage chunks
+unless their source spans and text hashes match the **corrected** derivative.
+Both directly embedded original overview/full chunks and all recursive
+summary/facet representations must have 384 finite float values, valid
+byte hashes, consistent model identities and normalized nonzero vectors.
+Every recursive representation must refer to the same original SHA and **new**
+derivative SHA as its complete summary tree, with exact source range,
+summary text SHA and summary-node identity. The revision-specific complete
+summary-tree JSON must pass the original native hierarchy/coverage validator;
+all tree nodes must appear with valid native representations, including the
+full-document root. The existing production completed-root reader is also
+run on the accepted sources, rather than counting any stale leaf as complete.
+No write access is granted to either SQL connection. This tool never opens
+Raspi's actual 3 GB production database as a candidate or reads publisher
+content outside the guarded private staging paths.
+
+Use **new** private output filenames, never overwrite earlier evidence:
+
+```bash
+D=/data/var/knowmoredirt/knowledge-library/search-audit/continued-20261122-wave56
+B=/data/var/knowmoredirt/knowledge-library/search-audit/continued-20261122-wave55/private-forward-complete-327
+H=/data/var/knowmoredirt/knowledge-library/search-audit/continued-20261121-wave53/shadow-recovery-bundle-327-20261121-v1
+P=/data/var/knowmoredirt/knowledge-library/search-audit/continued-20261121-wave51/all-327-private-staged-original-PDF-preflight-complete.json
+V=/data/var/knowmoredirt/semantic-venv/bin/python
+PYTHONDONTWRITEBYTECODE=1 "$V" \
+ /data/src/github/KnowMoreDiRT/scripts/raspi_verify_pdf_reindex_release_fidelity.py \
+ --staged-preflight "$P" --historical-private-bundle "$H" \
+ --private-candidate-db "$B/private_after_transition_not_search_ready.sqlite3" \
+ --private-derived-root "$B/corrected_source_text" \
+ --private-summary-root "$D/private-new-revision-summary-trees-missing" \
+ --new-private-report "$D/ANOTHER-UNUSED-new-revision-readiness.json"
+```
+
+**Actual full-cohort negative acceptance:** all **327** corrected candidate
+text derivative SHA revisions independently reverified. **Zero of 327**
+new-revision original documents are currently native-search-ready; every one
+was rejected because it still has `staged_needs_reindex` and no rebuilt
+original-plus-summary vector hierarchy. **No evidence of a lost original or
+failed running worker** follows from that expected private negative result.
+The positive isolated fixture with an exact current root, full tree, direct
+source vectors and matching normalized embeddings passes. Tests separately
+reject a missing original overview, a missing *historically present* full
+content channel, stale source spans, stale keyword/facet metadata, incomplete
+summary trees, malformed source revision, mismatched embedding SHA, finite
+zero vectors and nonfinite embeddings. Even if a future isolated candidate
+passes every check, its result explicitly says **safe_to_cutover_live=false**:
+the indispensable writer/reader quiescence, synchronized source-map/native/
+cache/summary generation switch, fresh rollback point and original-publisher
+page-citation checks remain separate release gates.
+
 **Remaining explicit release gate:** obtain actual verified coordination for
 both live summary workers and all other native reader/writer consumers,
 prevent stale citations during migration, establish a fresh fully quiesced
