@@ -1751,6 +1751,60 @@ Reproducible private proofs, command logs and full manifests are under
 `continued-20261121-wave53/`. These are recovery *rehearsal* results,
 **not permission or a ready procedure to promote the 327 staged files**.
 
+### Read-only recovery-bundle freshness against ongoing source reindexing
+
+A recovery bundle can pass its own archived hash and SQLite integrity checks
+yet become **stale** as the original two summarization services continue to
+append new source-linked representations, revised document chunks, or new
+old-revision summary trees. The recovery folder is a *historical snapshot*;
+correctly rebuilding it at one instant while workers remain active does not
+make it a current exclusive rollback point.
+
+Use the separately tested **read-only**
+`scripts/raspi_pdf_repair_shadow_freshness.py` before relying even on an
+existing protected historical recovery copy. It first independently
+validates all archived original text, old summary/progress file SHA-256
+revisions, the full selective native DB image, all embedding bytes,
+foreign keys and source-map publisher identities using the existing
+archive verifier. It then opens both current live SQLite sources with
+`mode=ro` and `query_only`, compares the entire present cohort of 327
+source-map identities and native original IDs, every original-content chunk
+and generated representation with **full-column digests including embedded
+vectors**, and exact current revision-pinned summary-tree/progress files
+against the archived versions. It detects both added/deleted rows and
+changed bytes **even when SQL row counts stay equal**. No file is removed,
+rewritten or migrated and the running models are not stopped. Any mismatch,
+missing source, unreadable old tree, or changed progress journal is explicit.
+Even when everything happens to match, the tool ALWAYS refuses to authorize
+cutover because concurrent readers/writers and multiple independent files
+are not made atomic by this check.
+
+```bash
+D=/data/var/knowmoredirt/knowledge-library/search-audit/continued-20261122-wave54
+B=/data/var/knowmoredirt/knowledge-library/search-audit/continued-20261121-wave53/shadow-recovery-bundle-327-20261121-v1
+PYTHONDONTWRITEBYTECODE=1 /data/var/knowmoredirt/semantic-venv/bin/python \
+ /data/src/github/KnowMoreDiRT/scripts/raspi_pdf_repair_shadow_freshness.py \
+ --historical-private-bundle "$B" \
+ --new-private-output "$D/NEW-private-current-source-drift-check.json"
+```
+
+**Observed on November 22:** The first private recovery bundle was intact
+and retained the exact prior original versions, but it was **already stale**:
+its 327-original index snapshot contained **1,578 chunks**, **12,623 summary
+representations** and **119 summary trees**, while fresh live read-only
+queries found **1,605 chunks**, **13,496 summary representations** and
+**127 summary trees**. That is **27 additional original chunk rows**,
+**873 additional generated representations** and **eight additional
+old-revision source summary trees** since the isolated backup. No original
+publisher revision or cached derivative had been promoted; the fresh
+327-original SHA and dependency inventory still reported both workers
+active, **zero** corrected-revision summary trees, and cutover unsafe.
+The historical archive is suitable for independent testing and comparison,
+**not** rollback of those newly produced live summaries. Replacing the
+live FileDB with this old subset would destroy newer work. No automatic
+live-worker stop, overwrite or snapshot promotion is permitted.
+The independent private proof is under `continued-20261122-wave54/`.
+
 **Remaining explicit release gate:** obtain actual verified coordination for
 both live summary workers and all other native reader/writer consumers,
 prevent stale citations during migration, establish a fresh fully quiesced

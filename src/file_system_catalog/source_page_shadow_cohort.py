@@ -414,3 +414,151 @@ def rehearse_private_file_database_restore(*,bundle_root:Path,staged_new_text:Pa
             'failure_injection_scenarios':output,
             'actual_live_multifile_atomicity_not_proven':True,
             'only_private_isolated_copies_changed_and_restored':True}
+
+
+def compare_historical_shadow_with_current_live(*, historical_db:Path,
+             source_map:sqlite3.Connection,native:sqlite3.Connection,
+             expected_originals:int=327, summary_root:Path|None=None,
+             archive_root:Path|None=None):
+    """Detect whether an old private publisher recovery bundle is now STALE.
+
+    A verified historical backup is NOT a present-day recovery point while
+    background workers generate or update the original-derived summaries.
+    Compare all original-linked FileDB chunks and generated representations,
+    including full embedding bytes, and all old source-revision summary trees
+    against current read-only live data. This never authorizes a cutover.
+    """
+    import re
+    from .source_review_audit import safe_file,sha_file
+    from .summary_coverage import revision_identity
+
+    _require_read_only(source_map);_require_read_only(native)
+    if (not historical_db.is_absolute() or historical_db.is_symlink()
+            or not historical_db.is_file() or type(expected_originals) is not int
+            or not 1<=expected_originals<=327):
+        raise ValueError('invalid original cohort historical recovery source')
+    if (summary_root is None)!=(archive_root is None):
+        raise ValueError('summary historical and live roots must both be explicit')
+    if summary_root is not None and (not summary_root.is_dir() or summary_root.is_symlink()
+                                     or not archive_root.is_dir() or archive_root.is_symlink()):
+        raise ValueError('publisher summary sources must be regular directories')
+    with sqlite3.connect(historical_db.resolve().as_uri()+'?mode=ro',uri=True,timeout=12) as old:
+        old.execute('PRAGMA query_only=ON')
+        if old.execute('PRAGMA quick_check').fetchone()[0]!='ok' or old.execute('PRAGMA foreign_key_check').fetchall():
+            raise ValueError('historical original source recovery database has invalid integrity')
+        originals=old.execute('''SELECT original_path,original_sha256,old_derived_sha256,
+                native_file_id FROM snapshot_revisions ORDER BY original_path''').fetchall()
+        if len(originals)!=expected_originals or len(set(r[0] for r in originals))!=expected_originals:
+            raise ValueError('historical old publisher recovery snapshot missing originals')
+        paths=[r[0] for r in originals];ids=[r[3] for r in originals]
+        if len(set(ids))!=expected_originals:
+            raise ValueError('historical native original IDs not unique')
+        for path,sha,derived,ident in originals:
+            row=old.execute('SELECT source_sha256,derived_sha256,derived_path,status FROM originals WHERE source_path=?',(path,)).fetchone()
+            entry=old.execute('SELECT relative_path_display FROM filesystem_entries WHERE id=?',(ident,)).fetchone()
+            if row!=(sha,derived,path+'.txt','complete') or entry!=(path,):
+                raise ValueError('historical original source-map/native identity self-inconsistent')
+        markers=','.join('?' for _ in ids)
+        old_c=table_fingerprint(old,'content_chunks')
+        old_r=table_fingerprint(old,'content_representations')
+        old_vec=old.execute('SELECT COUNT(*) FROM content_chunks WHERE embedding_blob IS NOT NULL').fetchone()[0]
+        old_reps=old_r['rows']
+        # Both current connections are opened read-only and held under
+        # independent snapshot transactions. Their exact records are NOT an
+        # atomic cross-database state or a licence to stop active writers.
+        source_map.execute('BEGIN');native.execute('BEGIN')
+        try:
+            current_source_rows={r[0]:r[1:] for r in source_map.execute(
+                 'SELECT source_path,source_sha256,derived_sha256,derived_path,status FROM originals '
+                 'WHERE source_path IN ('+','.join('?' for _ in paths)+')',paths)}
+            current_native_rows={r[0]:r[1:] for r in native.execute(
+                 'SELECT id,relative_path_display,entry_type FROM filesystem_entries '
+                 'WHERE id IN ('+markers+')',ids)}
+            altered=[];missing=[]
+            for path,sha,derived,ident in originals:
+                if current_source_rows.get(path)!=(sha,derived,path+'.txt','complete'):
+                    altered.append(path)
+                if current_native_rows.get(ident)!=(path,'file'):
+                    missing.append(path)
+            now_chunks=native.execute(
+                'SELECT * FROM content_chunks WHERE filesystem_entry_id IN ('+markers+') '
+                'ORDER BY chunk_id',ids)
+            now_c=_fingerprint_rows(now_chunks)
+            now_vectors=native.execute(
+                'SELECT COUNT(*) FROM content_chunks WHERE filesystem_entry_id IN ('+markers+') '
+                'AND embedding_blob IS NOT NULL',ids).fetchone()[0]
+            now_reps=native.execute(
+                'SELECT r.* FROM content_representations r JOIN content_chunks c '
+                'ON c.chunk_id=r.chunk_id WHERE c.filesystem_entry_id IN ('+markers+') '
+                'ORDER BY r.representation_id',ids)
+            now_r=_fingerprint_rows(now_reps)
+        finally:
+            native.rollback();source_map.rollback()
+        tree_stats={'historical_source_trees':0,'current_source_trees':0,
+                    'new_current_trees_not_in_historical_archive':0,
+                    'current_trees_changed_since_historical_archive':0,
+                    'current_progress_journals_changed_or_missing':0,
+                    'current_summary_files_unreadable':0}
+        if summary_root is not None:
+            for path,sha,derived,_ in originals:
+                prefix=re.sub(r'[^A-Za-z0-9_.-]+','-',Path(path).name[:64])
+                name=prefix+'.'+revision_identity(path,sha,derived)[:24]+'.summary-tree.json'
+                relative='old_summaries/'+name
+                current=summary_root/name
+                prior=archive_root/relative
+                exists=current.exists() or current.is_symlink()
+                historic=prior.exists() or prior.is_symlink()
+                tree_stats['historical_source_trees']+=bool(historic)
+                tree_stats['current_source_trees']+=bool(exists)
+                if exists and not historic:
+                    tree_stats['new_current_trees_not_in_historical_archive']+=1
+                if exists and historic:
+                    try:
+                        if sha_file(safe_file(summary_root,name))!=sha_file(safe_file(archive_root,relative)):
+                            tree_stats['current_trees_changed_since_historical_archive']+=1
+                    except (OSError,ValueError):
+                        tree_stats['current_summary_files_unreadable']+=1
+                if historic:
+                    current_journal=summary_root/'progress'/(name+'.progress.json')
+                    old_journal=archive_root/'old_summaries/progress'/(name+'.progress.json')
+                    if not current_journal.is_file() or not old_journal.is_file() or current_journal.is_symlink() or old_journal.is_symlink():
+                        tree_stats['current_progress_journals_changed_or_missing']+=1
+                    else:
+                        try:
+                            if sha_file(current_journal)!=sha_file(old_journal):
+                                tree_stats['current_progress_journals_changed_or_missing']+=1
+                        except (OSError,ValueError):
+                            tree_stats['current_summary_files_unreadable']+=1
+        changed=(bool(altered or missing) or now_c!=old_c or now_r!=old_r or now_vectors!=old_vec or
+                 any(tree_stats[k] for k in ('new_current_trees_not_in_historical_archive',
+                    'current_trees_changed_since_historical_archive',
+                    'current_progress_journals_changed_or_missing','current_summary_files_unreadable'))
+                 or tree_stats['historical_source_trees']!=tree_stats['current_source_trees'])
+        return {'schema':'kmd.historical_pdf_recovery_vs_current_live_native_drift.v1',
+                'historical_originals':expected_originals,
+                'live_original_revision_mismatches':len(altered),
+                'live_native_original_identity_mismatches':len(missing),
+                'historical_native_chunk_rows':old_c['rows'],
+                'current_native_chunk_rows':now_c['rows'],
+                'historical_native_original_vectors':old_vec,
+                'current_native_original_vectors':now_vectors,
+                'historical_native_summary_representations':old_reps,
+                'current_native_summary_representations':now_r['rows'],
+                'old_native_chunk_bytes_and_metadata_equal_current':old_c==now_c,
+                'old_native_generated_summary_rows_and_embedding_bytes_equal_current':old_r==now_r,
+                'summary_tree_and_progress_revision_counts':tree_stats,
+                'historical_snapshot_content_is_different_from_current_live':bool(changed),
+                'historic_backup_is_not_a_current_coordinated_rollback_point':True,
+                'live_cutover_permitted_by_this_audit':False,
+                'independent_cross_store_snapshot_not_guaranteed_during_active_writers':True,
+                'all_current_original_and_summary_observations_read_only':True}
+
+
+def _fingerprint_rows(rows):
+    """Hash SELECT * live rows using the same every-column encoding as archive."""
+    digest=hashlib.sha256();count=0
+    for row in rows:
+        count+=1;digest.update(b'ROW[')
+        for val in row:_fingerprint_value(digest,val)
+        digest.update(b']')
+    return {'rows':count,'logical_sha256':digest.hexdigest()}

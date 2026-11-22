@@ -11,6 +11,7 @@ import unittest
 from file_system_catalog.source_page_shadow_cohort import (
     export_cohort_snapshot,rehearse_isolated_sqlite_rollback,table_fingerprint,
     verify_private_shadow_bundle,rehearse_private_file_database_restore,
+    compare_historical_shadow_with_current_live,
 )
 
 
@@ -129,6 +130,94 @@ class ShadowSnapshotTests(unittest.TestCase):
         (bundle/archived[0]['saved_relative_path']).write_text('changed old source contents')
         with self.assertRaisesRegex(ValueError,'recovery content SHA/length mismatch'):
             verify_private_shadow_bundle(bundle_root=bundle,expected_count=2)
+
+    def test_historical_snapshot_always_lacks_live_cutover_authority_even_when_current_matches(self):
+        export_cohort_snapshot(original_receipts=self.rows,source_map=self.original,
+            native=self.native,dest=self.destination,expected_count=2)
+        report=compare_historical_shadow_with_current_live(historical_db=self.destination,
+             source_map=self.original,native=self.native,expected_originals=2)
+        self.assertFalse(report['historical_snapshot_content_is_different_from_current_live'])
+        self.assertTrue(report['historic_backup_is_not_a_current_coordinated_rollback_point'])
+        self.assertFalse(report['live_cutover_permitted_by_this_audit'])
+        self.assertTrue(report['old_native_generated_summary_rows_and_embedding_bytes_equal_current'])
+        self.assertEqual(2,report['historical_native_summary_representations'])
+
+    def test_newly_generated_summary_row_marks_historical_recovery_bundle_stale(self):
+        export_cohort_snapshot(original_receipts=self.rows,source_map=self.original,
+            native=self.native,dest=self.destination,expected_count=2)
+        self.native.execute('PRAGMA query_only=OFF')
+        self.native.execute('INSERT INTO content_representations VALUES(?,?,?)',
+                            ('new-summarization','chunk1',b'new-live-summary-vector'))
+        self.native.commit();self.native.execute('PRAGMA query_only=ON')
+        report=compare_historical_shadow_with_current_live(historical_db=self.destination,
+             source_map=self.original,native=self.native,expected_originals=2)
+        self.assertTrue(report['historical_snapshot_content_is_different_from_current_live'])
+        self.assertEqual(2,report['historical_native_summary_representations'])
+        self.assertEqual(3,report['current_native_summary_representations'])
+        self.assertFalse(report['old_native_generated_summary_rows_and_embedding_bytes_equal_current'])
+        self.assertFalse(report['live_cutover_permitted_by_this_audit'])
+
+    def test_equal_summary_count_but_changed_vector_bytes_is_detected_as_stale(self):
+        export_cohort_snapshot(original_receipts=self.rows,source_map=self.original,
+            native=self.native,dest=self.destination,expected_count=2)
+        self.native.execute('PRAGMA query_only=OFF')
+        self.native.execute('UPDATE content_representations SET embedding_blob=? WHERE representation_id=?',
+                            (b'changed-vector-blob','rep2'))
+        self.native.commit();self.native.execute('PRAGMA query_only=ON')
+        report=compare_historical_shadow_with_current_live(historical_db=self.destination,
+             source_map=self.original,native=self.native,expected_originals=2)
+        self.assertEqual(2,report['current_native_summary_representations'])
+        self.assertTrue(report['historical_snapshot_content_is_different_from_current_live'])
+        self.assertFalse(report['old_native_generated_summary_rows_and_embedding_bytes_equal_current'])
+
+    def test_live_source_revision_moved_marks_historical_bundle_stale(self):
+        export_cohort_snapshot(original_receipts=self.rows,source_map=self.original,
+            native=self.native,dest=self.destination,expected_count=2)
+        self.original.execute('PRAGMA query_only=OFF')
+        self.original.execute('UPDATE originals SET derived_sha256=? WHERE source_path=?',
+                              ('b'*64,self.rows[1]['original_path']))
+        self.original.commit();self.original.execute('PRAGMA query_only=ON')
+        report=compare_historical_shadow_with_current_live(historical_db=self.destination,
+             source_map=self.original,native=self.native,expected_originals=2)
+        self.assertEqual(1,report['live_original_revision_mismatches'])
+        self.assertTrue(report['historical_snapshot_content_is_different_from_current_live'])
+
+    def test_missing_live_writer_query_only_rejected(self):
+        export_cohort_snapshot(original_receipts=self.rows,source_map=self.original,
+            native=self.native,dest=self.destination,expected_count=2)
+        self.native.execute('PRAGMA query_only=OFF')
+        with self.assertRaisesRegex(ValueError,'query-only'):
+            compare_historical_shadow_with_current_live(historical_db=self.destination,
+                 source_map=self.original,native=self.native,expected_originals=2)
+
+    def test_private_old_and_current_summary_trees_growth_detected_without_database_growth(self):
+        export_cohort_snapshot(original_receipts=self.rows,source_map=self.original,
+            native=self.native,dest=self.destination,expected_count=2)
+        summary=self.root/'summaries';summary.mkdir()
+        (summary/'progress').mkdir()
+        historic=self.root/'historic';historic.mkdir()
+        (historic/'old_summaries/progress').mkdir(parents=True)
+        for i,row in enumerate(self.rows):
+            from file_system_catalog.summary_coverage import revision_identity
+            name=Path(row['original_path']).name
+            tree=name+'.'+revision_identity(row['original_path'],row['original_sha256'],row['old_derived_sha256'])[:24]+'.summary-tree.json'
+            payload=json.dumps({'original_path':row['original_path'],
+                                'original_sha256':row['original_sha256'],
+                                'derived_sha256':row['old_derived_sha256']}).encode()
+            (summary/tree).write_bytes(payload)
+            (summary/'progress'/(tree+'.progress.json')).write_text('old progress')
+            if i==0:
+                (historic/'old_summaries'/tree).write_bytes(payload)
+                (historic/'old_summaries/progress'/(tree+'.progress.json')).write_text('old progress')
+        report=compare_historical_shadow_with_current_live(historical_db=self.destination,
+           source_map=self.original,native=self.native,expected_originals=2,
+           summary_root=summary,archive_root=historic)
+        tree=report['summary_tree_and_progress_revision_counts']
+        self.assertEqual(1,tree['historical_source_trees'])
+        self.assertEqual(2,tree['current_source_trees'])
+        self.assertEqual(1,tree['new_current_trees_not_in_historical_archive'])
+        self.assertEqual(0,tree['current_trees_changed_since_historical_archive'])
+        self.assertTrue(report['historical_snapshot_content_is_different_from_current_live'])
 
     def test_cross_file_and_sqlite_forced_failures_restore_immutable_archive(self):
         export_cohort_snapshot(original_receipts=self.rows,source_map=self.original,
