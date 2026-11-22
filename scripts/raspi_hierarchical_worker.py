@@ -28,6 +28,12 @@ from file_system_catalog.summary_coverage import (
 )
 from file_system_catalog.summary_storage_policy import DEFAULT_DATABASE_BUDGET_BYTES
 from file_system_catalog.source_shard_runtime import current_assignment
+from file_system_catalog.source_page_quiescence import (
+    SCHEMA as PUBLISHER_QUIESCE_SCHEMA,
+    SCOPE as PUBLISHER_QUIESCE_SCOPE,
+    read_control as read_publisher_quiesce_control,
+    hold_at_source_boundary,
+)
 from file_system_catalog.source_shard_handoff_operator import (
     verify_releasing_worker_acknowledged, verify_releasing_q4_acknowledged,
 )
@@ -43,6 +49,10 @@ SOURCE_MANIFEST = Path("/data/infra/etc/knowledge-library-sources.json")
 # installed systemd unit retains its exact existing --assigned-shards value.
 # Only after both workers run this code may the supervisor stage changes.
 ALLOCATION_MANIFEST = RUNROOT / "hierarchical-shard-handoff.json"
+# Optional, no file by default. Only a future separately coordinated
+# maintenance operator may request a source-boundary hold; NEVER stop
+# resident workers or replace source-map/native files from this reader.
+PUBLISHER_QUIESCE_MANIFEST = RUNROOT / "hierarchical-publisher-revision-quiesce.json"
 stop = False
 
 def signal_stop(_signal, _frame):
@@ -307,8 +317,31 @@ def run(
             current_generation = assignment.generation
             current_digest = assignment.digest
             current_stage = assignment.stage
+        quiesce_enabled = runtime_enabled
+        quiesce_generation = 0
+        quiesce_digest = None
+        if quiesce_enabled:
+            # A restarted worker must never silently forget a prior hold
+            # or release generation. A missing manifest after opt-in fails
+            # closed even if the old process has already exited.
+            quiesce_generation = prior.get("quiesce_generation", 0)
+            quiesce_digest = prior.get("quiesce_manifest_sha256")
+            prior_control = read_publisher_quiesce_control(
+                PUBLISHER_QUIESCE_MANIFEST,
+                prior_generation=quiesce_generation,
+                prior_digest=quiesce_digest,
+            )
+            quiesce_generation = prior_control.generation
+            quiesce_digest = prior_control.digest
         start_utc=now()
         state_update(phase="starting", worker_pid=os.getpid(), started_utc=start_utc,
+                     quiesce_runtime_started_utc=start_utc if quiesce_enabled else None,
+                     quiesce_protocol=PUBLISHER_QUIESCE_SCHEMA if quiesce_enabled else None,
+                     quiesce_scope=PUBLISHER_QUIESCE_SCOPE if quiesce_enabled else None,
+                     quiesce_generation=quiesce_generation,
+                     quiesce_manifest_sha256=quiesce_digest,
+                     quiesce_worker_pid=os.getpid() if quiesce_enabled else None,
+                     quiesce_ack_utc=None,
                      allocation_runtime_started_utc=start_utc if runtime_enabled else None,
                      summaries_per_original="all levels", source_of_truth=str(FILEDB),
                      model=model_name, model_url=model_url,
@@ -327,8 +360,38 @@ def run(
                      concurrent_llm_requests=1,
                      storage_budget_bytes=DEFAULT_DATABASE_BUDGET_BYTES,
                      native_facet_policy="summary_and_keywords_single_constrained_model_call")
+        def enforce_original_boundary_hold():
+            nonlocal quiesce_generation,quiesce_digest
+            if not quiesce_enabled:
+                return
+            def record_control(**fields):
+                nonlocal quiesce_generation,quiesce_digest
+                # CRITICAL: remember the observed hold generation AS SOON AS
+                # it is acknowledged. If a marker is deleted/replayed while
+                # held, a raised reader error must not return our local
+                # generation to zero on the next outer retry iteration.
+                generation=fields.get('quiesce_generation')
+                if type(generation) is int and generation>0:
+                    quiesce_generation=generation
+                    quiesce_digest=fields['quiesce_manifest_sha256']
+                state_update(**fields)
+            observed = hold_at_source_boundary(
+                marker=PUBLISHER_QUIESCE_MANIFEST,
+                worker_label=runtime_label, worker_pid=os.getpid(),
+                prior_generation=quiesce_generation, prior_digest=quiesce_digest,
+                update_status=record_control, should_stop=lambda:stop,
+            )
+            quiesce_generation=observed.generation
+            quiesce_digest=observed.digest
+
         while not stop:
             try:
+                # Do not enumerate or begin a new original while the hold is
+                # active. If it arrived during the previous long build/import,
+                # this acknowledgement occurs AFTER that subprocess ended.
+                enforce_original_boundary_hold()
+                if stop:
+                    break
                 if runtime_enabled:
                     assignment = current_assignment(
                         ALLOCATION_MANIFEST,worker=runtime_label,default=shard_set,
@@ -410,6 +473,11 @@ def run(
                 completed_in_pass = 0
                 allocation_changed = False
                 for path, original_sha, derived_sha, text_chars in records:
+                    if stop: break
+                    # Verify again at every source boundary; a hold posted
+                    # after scope() but before this candidate cannot admit
+                    # any additional source. Never pause inside build/import.
+                    enforce_original_boundary_hold()
                     if stop: break
                     if runtime_enabled:
                         # Source *boundary* only: never change ownership while

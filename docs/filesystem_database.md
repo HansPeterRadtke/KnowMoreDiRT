@@ -1960,6 +1960,70 @@ the indispensable writer/reader quiescence, synchronized source-map/native/
 cache/summary generation switch, fresh rollback point and original-publisher
 page-citation checks remain separate release gates.
 
+### Opt-in cooperative source-boundary hold and live-acknowledgement gate (November 22)
+
+A **strictly opt-in** source-boundary quiescence protocol is implemented by
+`src/file_system_catalog/source_page_quiescence.py` and the existing native
+`scripts/raspi_hierarchical_worker.py`. The absence of the owner-only control
+file `hierarchical-publisher-revision-quiesce.json` deliberately leaves the
+current worker behavior **unchanged**. No extra model concurrency, new
+worker process, startup flag or change to installed systemd services is
+introduced. The source-boundary hold is **not active on the running Raspi
+workers**: both existing Python processes were started on November 8 and
+have not loaded this newer in-memory worker code. Git checkout fast-forward
+alone does not reload running Python. Never create a live hold marker,
+restart/stop the long-running workers or evict their shared models merely
+because the new code exists; coordinate a verified safe source-boundary
+transition with the System Integrity Supervisor first.
+
+A future separately coordinated maintenance operator may produce a strict,
+owner-only, 0600, single-file, monotonic JSON generation with the exact
+`kmd.publisher_pdf_document_boundary_quiescence.v1` schema, fixed scope and
+`action=hold`. This module **provides only the pure encoder and validated
+reader**; it is NOT the operator and cannot create the live control marker.
+The operator must first independently establish that BOTH workers have
+already naturally loaded the new protocol, retain their registered model
+leases and have no interrupted source build/import. When an upgraded worker
+sees a hold, it **finishes the existing source** before acknowledging, then
+refuses to begin another source while waiting. On each bounded heartbeat it
+atomically publishes its own actual `quiesce_generation`, control SHA,
+resident PID, fresh timestamp, `current_original=None`, and
+`phase=publisher_revision_quiesced`. A strictly later `action=release`
+generation allows that worker to continue; same-generation rewrites,
+rollback, deletion, symlink, group-readable markers and invalid ownership
+fail closed. No direct signal or service control is involved.
+
+`python3 scripts/raspi_publisher_pdf_quiesce_readiness.py` is a **read-only**
+operator-facing prerequisite check. It examines the real owner-only status
+files, installed systemd MainPIDs and actual `/proc` command lines and
+requires BOTH currently running workers to acknowledge the identical hold
+generation, digest, process identity and fresh heartbeat. It has no `--apply`
+option and NEVER creates or modifies the marker, any source file, databases,
+models, worker services or owner reports. A missing marker or an old worker
+returns `both_workers_quiesced_at_complete_original_boundary=false`. The
+observed current Raspi result had no hold marker, both resident workers had
+**not** loaded the new pause protocol, and full native cutover remained
+**unapproved**. This is expected, not an error to work around by forcing
+restarts. Synthetic tests exercised the actual worker loop with a hold
+arriving during the first source import, verified the import finished before
+the boundary acknowledgement, proved the second source could not begin
+until a later release, and verified a requested stop while held never
+started a new source. Replayed manifests, missing controls after restart,
+forged/stale status and invalid worker PID/commands also fail closed.
+
+**Important independent release gates remain:** acknowledgement of BOTH
+summary workers is only one *necessary* condition, not sufficient to freeze
+*all* FileDB/source-map/cache/summary writes or existing query readers.
+The production native FileDB writer lock, source-map updates, manual indexing
+consumers and read-only search processes require a separately implemented,
+independently tested all-store reader/writer lease and fresh complete snapshot
+and rollback plan. Read-only pause readiness must always report
+`safe_to_cutover_live=false` even if two workers correctly hold. The 327
+corrected publisher texts and new native vectors/recursive summaries must
+then be rebuilt with real physical PDF page provenance and retrieval quality
+verified before any user-facing native revision becomes available. The current
+old original sources and running indexer services remain intact.
+
 **Remaining explicit release gate:** obtain actual verified coordination for
 both live summary workers and all other native reader/writer consumers,
 prevent stale citations during migration, establish a fresh fully quiesced
