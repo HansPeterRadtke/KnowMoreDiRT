@@ -166,6 +166,28 @@ def verify_staged_page_result(hit,*,query:str,original_root:Path,derived_root:Pa
     if proof.get('status')!='verified' or proof.get('page')!=page or proof.get('basis')!='derivative_label_confirmed':
         return {'status':'not_independently_verified','reason':str(proof.get('reason','original_pdf_page_mismatch'))[:100],
                 'original_path':path,'source_page_label':label}
+    # A verified physical page is only meaningful for the same *current*
+    # corpus revision used when the RAM index was built. An extraction or
+    # native writer may have advanced while Poppler inspected the original.
+    # Verify all source identities a SECOND time after the page proof.
+    # A normal SQLite read-only connection provides fresh committed rows
+    # between statements; the caller must not hold a read transaction.
+    if (not isinstance(proof.get('page_text_sha256'),str)
+            or not SHA.fullmatch(proof['page_text_sha256'])):
+        raise ValueError('physical publisher page proof lacks a valid text digest')
+    after_map=source_map.execute(
+        'SELECT source_sha256,derived_sha256,derived_path,status FROM originals WHERE source_path=?',
+        (path,)).fetchall()
+    if len(after_map)!=1 or after_map[0]!=(o,old,path+'.txt','complete'):
+        raise ValueError('native source-map revision changed during physical PDF page verification')
+    after_native=native_db.execute(
+        "SELECT id FROM filesystem_entries WHERE entry_type='file' AND relative_path_display=?",
+        (path,)).fetchall()
+    if len(after_native)!=1 or after_native[0][0]!=item.get('native_original_filedb_id'):
+        raise ValueError('native original FileDB identity changed during physical PDF page verification')
+    if (sha_file(original)!=o or sha_file(oldtext)!=old
+            or sha_file(candidate)!=new):
+        raise ValueError('original or derivative revision changed during physical PDF page verification')
     return {'status':'publisher_original_physical_pdf_page_verified',
             'original_path':path,'publisher_original_sha256':o,
             'current_old_derived_sha256':old,'corrected_private_derived_sha256':new,
@@ -176,5 +198,6 @@ def verify_staged_page_result(hit,*,query:str,original_root:Path,derived_root:Pa
             'page_verification_basis':proof['basis'],
             'covered_query_terms':list(covered),
             'read_only_live_source_and_all_three_complete_sha256_rechecked':True,
+            'source_map_native_id_and_three_file_sha_rechecked_after_original_pdf_page_proof':True,
             'temporary_staged_evidence_only_not_native_embedding_or_summary_replacement':True,
             'factual_answer_verified':False,'score':score}

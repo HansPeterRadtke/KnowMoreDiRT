@@ -2672,3 +2672,45 @@ old originals, current writer processes and all already indexed sources
 until that separate release admits them. Owner-private exact provenance and
 positive/negative evidence are saved in
 `search-audit/continued-20261122-wave59/`.
+
+### Original-revision stability after staged PDF page proof, November 23
+
+The optional, **private** temporary publisher-page reader for the 327 staged
+original PDF corrections now revalidates source-map rows, canonical native
+FileDB original identity, complete publisher original bytes, old live extracted
+text, and privately staged replacement SHA **after** Poppler's independent
+original physical-page verification and **before** returning any verified
+source excerpt. This closes an earlier read-only time-of-check/time-of-use
+window: a concurrent writer could previously change the old derivative,
+private staged candidate or source-map record between the first SHA check and
+completion of the physical-page match, and a stale indexed excerpt could
+still receive a successful original-page proof.
+
+Every verified result now includes
+`source_map_native_id_and_three_file_sha_rechecked_after_original_pdf_page_proof`;
+the page proof's `page_text_sha256` must also be exactly one lowercase
+SHA-256 digest. The second check **raises** if any original, old derivative,
+private corrected candidate, source-map identity or native original FileDB
+identity changed. Negative tests actively modify each of those dependencies
+*inside* the mocked publisher page proof and confirm no evidence is
+returned. The first source-reader precondition, exact approved acquisition
+ledger and last physical original page proof remain mandatory. The operator
+still returns **physical source citations, never established factual
+answers**; no model, live source-map/native index, original publisher PDF,
+summary worker or vector is changed by this improvement.
+
+Verified reproduction on the **actual approved** USENIX security publisher
+original, with the live source-map and the privately staged corrected PDF:
+`raspi_staged_pdf_original_page_search.py 'SGX bouncer memory barriers'
+--stage-preflight <existing private full-327 receipt>
+--original-path <the exact approved original PDF path> --top 3
+--candidates 20`. The source-bound private RAM-only search saw twenty
+physical-page units and verified actual publisher pages **twenty-one** and
+**eighteen**, with correct original physical-page labels, all three current
+full-source digests and the final native/source-map identity rechecked;
+seventeen weaker competing page candidates were excluded. Exact output,
+source revisions, hashes and command proof are saved only in the owner-private
+`search-audit/continued-20261123-wave60/` folder. The prior old cached
+page-forty-nine to physical-page-twenty-one discrepancy remains documented;
+this independent staged retrieval does not mean any 327-document live
+reindexing or cutover was done.

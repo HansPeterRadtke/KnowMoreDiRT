@@ -86,7 +86,7 @@ class StagedPhysicalPageSearchTests(unittest.TestCase):
             def verified(_source,_sha,passages):
                 self.assertEqual('PDF page 2',passages[0]['source_section'])
                 self.assertIn('preserve page provenance',passages[0]['source_excerpt'])
-                return [{'status':'verified','page':2,'basis':'derivative_label_confirmed','page_text_sha256':'x'*64}]
+                return [{'status':'verified','page':2,'basis':'derivative_label_confirmed','page_text_sha256':'a'*64}]
             r=verify_staged_page_result(ranked[0],query='publisher physical page provenance',
                 original_root=self.orig,derived_root=self.live,stage_root=self.stage,
                 completed_receipts={self.relative:digest(self.original)},
@@ -94,6 +94,91 @@ class StagedPhysicalPageSearchTests(unittest.TestCase):
             self.assertEqual('publisher_original_physical_pdf_page_verified',r['status'])
             self.assertEqual(2,r['physical_pdf_page'])
             self.assertFalse(r['factual_answer_verified'])
+            self.assertTrue(r['source_map_native_id_and_three_file_sha_rechecked_after_original_pdf_page_proof'])
+
+    def test_publisher_pdf_original_changed_while_verifying_page_fails_closed(self):
+        with StagedPhysicalPageRAMIndex(1) as index:
+            index.add(self.item,stage_root=self.stage);index.commit()
+            hit=index.ranked('publisher physical page provenance')[0]
+            def changed(*_):
+                (self.orig/self.relative).write_bytes(b'changed during proof')
+                return [{'status':'verified','page':2,'basis':'derivative_label_confirmed',
+                         'page_text_sha256':'a'*64}]
+            with self.assertRaisesRegex(ValueError,'changed during physical PDF page verification'):
+                verify_staged_page_result(hit,query='publisher physical page provenance',
+                    original_root=self.orig,derived_root=self.live,stage_root=self.stage,
+                    completed_receipts={self.relative:digest(self.original)},
+                    source_map=self.sm,native_db=self.native,verifier=changed)
+
+    def test_live_derivative_changed_while_verifying_page_fails_closed(self):
+        with StagedPhysicalPageRAMIndex(1) as index:
+            index.add(self.item,stage_root=self.stage);index.commit()
+            hit=index.ranked('publisher physical page provenance')[0]
+            def changed(*_):
+                (self.live/(self.relative+'.txt')).write_bytes(b'new extraction revision mid-query')
+                return [{'status':'verified','page':2,'basis':'derivative_label_confirmed',
+                         'page_text_sha256':'a'*64}]
+            with self.assertRaisesRegex(ValueError,'changed during physical PDF page verification'):
+                verify_staged_page_result(hit,query='publisher physical page provenance',
+                    original_root=self.orig,derived_root=self.live,stage_root=self.stage,
+                    completed_receipts={self.relative:digest(self.original)},
+                    source_map=self.sm,native_db=self.native,verifier=changed)
+
+    def test_private_corrected_derivative_changed_while_verifying_page_fails_closed(self):
+        with StagedPhysicalPageRAMIndex(1) as index:
+            index.add(self.item,stage_root=self.stage);index.commit()
+            hit=index.ranked('publisher physical page provenance')[0]
+            def changed(*_):
+                (self.stage/(self.relative+'.txt')).write_bytes(self.staged+b' concurrent changed body')
+                return [{'status':'verified','page':2,'basis':'derivative_label_confirmed',
+                         'page_text_sha256':'a'*64}]
+            with self.assertRaisesRegex(ValueError,'changed during physical PDF page verification'):
+                verify_staged_page_result(hit,query='publisher physical page provenance',
+                    original_root=self.orig,derived_root=self.live,stage_root=self.stage,
+                    completed_receipts={self.relative:digest(self.original)},
+                    source_map=self.sm,native_db=self.native,verifier=changed)
+
+    def test_source_map_advances_during_page_verification_fails_closed(self):
+        with StagedPhysicalPageRAMIndex(1) as index:
+            index.add(self.item,stage_root=self.stage);index.commit()
+            hit=index.ranked('publisher physical page provenance')[0]
+            def changed(*_):
+                self.sm.execute('UPDATE originals SET derived_sha256=? WHERE source_path=?',
+                                ('0'*64,self.relative));self.sm.commit()
+                return [{'status':'verified','page':2,'basis':'derivative_label_confirmed',
+                         'page_text_sha256':'a'*64}]
+            with self.assertRaisesRegex(ValueError,'source-map revision changed'):
+                verify_staged_page_result(hit,query='publisher physical page provenance',
+                    original_root=self.orig,derived_root=self.live,stage_root=self.stage,
+                    completed_receipts={self.relative:digest(self.original)},
+                    source_map=self.sm,native_db=self.native,verifier=changed)
+
+    def test_native_filedb_identity_changes_during_page_proof_fails_closed(self):
+        with StagedPhysicalPageRAMIndex(1) as index:
+            index.add(self.item,stage_root=self.stage);index.commit()
+            hit=index.ranked('publisher physical page provenance')[0]
+            def changed(*_):
+                self.native.execute('UPDATE filesystem_entries SET id=? WHERE relative_path_display=?',
+                                    (300,self.relative));self.native.commit()
+                return [{'status':'verified','page':2,'basis':'derivative_label_confirmed',
+                         'page_text_sha256':'a'*64}]
+            with self.assertRaisesRegex(ValueError,'FileDB identity changed'):
+                verify_staged_page_result(hit,query='publisher physical page provenance',
+                    original_root=self.orig,derived_root=self.live,stage_root=self.stage,
+                    completed_receipts={self.relative:digest(self.original)},
+                    source_map=self.sm,native_db=self.native,verifier=changed)
+
+    def test_publisher_page_proof_with_malformed_sha_is_not_valid(self):
+        with StagedPhysicalPageRAMIndex(1) as index:
+            index.add(self.item,stage_root=self.stage);index.commit()
+            hit=index.ranked('publisher physical page provenance')[0]
+            with self.assertRaisesRegex(ValueError,'page proof lacks a valid text digest'):
+                verify_staged_page_result(hit,query='publisher physical page provenance',
+                    original_root=self.orig,derived_root=self.live,stage_root=self.stage,
+                    completed_receipts={self.relative:digest(self.original)},
+                    source_map=self.sm,native_db=self.native,
+                    verifier=lambda *_:[{'status':'verified','page':2,
+                        'basis':'derivative_label_confirmed','page_text_sha256':'not-a-sha'}])
 
     def test_wrong_original_page_never_verified(self):
         with StagedPhysicalPageRAMIndex(1) as index:
