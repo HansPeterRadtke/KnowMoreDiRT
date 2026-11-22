@@ -1498,6 +1498,70 @@ indexing workers are unaffected. Once the full coordinated native migration
 is safe, native source search should again serve the repaired revisions
 without relying on this temporary staging-only path.
 
+### Native discovery with opt-in original-verified corrected PDF pages (November 22)
+
+The normal `raspi_hierarchical_library.py find-source-evidence` reader can now
+add the already-verified corrected **publisher physical PDF page excerpts**
+as a **separate optional field** for *only the PDF originals that native
+search already selected*. The default command and default output are
+unchanged. This directly makes corrected page references usable during
+normal agent document search, before a safe full cache and vector cutover.
+It does **not** change native rank, stored vector content, source map, old
+cached text, summary trees or any original PDF. It is not a second
+persistent search service and never considers other unpublished sources.
+
+Opt in only when searching on Raspi with the previously independently
+verified private stage receipt (never place the private source text or
+private receipt in Git or external outputs):
+
+```bash
+P=/data/var/knowmoredirt/knowledge-library/search-audit/continued-20261121-wave51
+PYTHONDONTWRITEBYTECODE=1 /data/var/knowmoredirt/semantic-venv/bin/python \
+ /data/src/github/KnowMoreDiRT/scripts/raspi_hierarchical_library.py \
+ find-source-evidence 'scientific calibration reliability evidence' \
+ --source-name 'ai-agents/2026-acl-scientific-calibration/2026.acl-long.1423.pdf' \
+ --private-staged-pdf-preflight "$P/all-327-private-staged-original-PDF-preflight-complete.json" \
+ --documents 1 --passages 2
+```
+
+The additional `corrected_private_publisher_page_overlay` field reports the
+native-selected publisher source and up to two independently verified
+original-PDF **physical** page excerpts per selected original, or a
+no-proof status. The private stage receipt must match all 327 approved
+sources; a duplicate/malformed receipt fails closed. The operator requires
+read-only source-map and original FileDB handles and matches the specific
+native selected PDF's original SHA-256, old derivative SHA and native file
+entry to the private candidate. It hashes the original publisher PDF, old
+live derivative and corrected private candidate on each proof, and requires
+original PDF text on the claimed page to contain the quoted excerpt.
+Filename or catalog headers alone cannot supply source hits. An
+incomplete/unavailable original or an incorrect page is not relabeled as
+verified. For a native original that is *not* in the 327 repaired sources,
+no private overlay is attached. A named original uses FTS5 ranking
+**restricted to that verified original**, preventing other documents'
+generic terms from crowding out its own pages. All queries operate on a
+bounded RAM-only temporary text index; no new persistent database is made.
+
+**Real independent behavior checked November 22:** Three different
+existing approved publisher PDF originals for scientific calibration,
+ACL evidence retrieval, and speech-science each returned **two**
+corrected-private-page excerpts that were independently reproduced on
+the original physical PDF (six verified page proofs). A deliberately
+irrelevant five-term query to the calibration original returned **zero**
+verified corrected-page passages. The ordinary native `documents`,
+`evidence_kind_counts` and native selection basis were structurally identical
+when the **same** query was repeated with and without this optional layer;
+no private stage was loaded for the default command. Both background
+summarization service process identities remained unchanged and active.
+Private complete query receipts and source excerpt text are under
+`continued-20261122-wave54/`; only the behavior and counts are described
+here. A verified page is *source evidence*, not a measured semantic recall
+or generated-answer correctness claim. The real 327-source reindexing,
+summary refresh, stale-warning removal and transactional cutover still remain
+outstanding. Until then, use this read-only option when you need corrected
+publisher-page citations, or use normal native search, source folders and
+ordinary grep without any private staging input.
+
 ### No-action native cutover dependency inventory (before any real migration)
 
 Preparing all corrected publisher-text derivatives does **not** by itself

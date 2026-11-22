@@ -54,6 +54,29 @@ class StagedPhysicalPageSearchTests(unittest.TestCase):
         with self.assertRaisesRegex(ValueError,'repeated'):
             list(source_units_from_corrected_text(broken,2,1))
 
+    def test_named_original_restricts_ranked_physical_pages_without_rewriting_global_order(self):
+        with StagedPhysicalPageRAMIndex(2) as index:
+            index.add(self.item,stage_root=self.stage)
+            other=dict(self.item)
+            other['original_path']='ai-agents/other.pdf'
+            other_source=('KMD source provenance another original\n'
+                 '[[SOURCE UNIT: PDF page 1]]\nPublisher physical page provenance and vectors.\n')
+            p=self.stage/(other['original_path']+'.txt');p.parent.mkdir(parents=True,exist_ok=True)
+            p.write_text(other_source)
+            other.update(staged_private_file=str(p),
+                         new_staged_derived_sha256=digest(other_source.encode()),
+                         original_pdf_physical_pages=1,new_max_staged_page_label=1)
+            index.add(other,stage_root=self.stage);index.commit()
+            global_hits=index.ranked('publisher physical page provenance',limit=10)
+            scoped=index.ranked('publisher physical page provenance',limit=10,
+                                original_path=self.relative)
+            self.assertTrue(global_hits)
+            self.assertTrue(scoped)
+            self.assertTrue(all(row[0][0]==self.relative for row in scoped))
+            self.assertEqual(2,len({row[0][0] for row in global_hits}))
+            with self.assertRaisesRegex(ValueError,'not present'):
+                index.ranked('publisher physical page',original_path='not-in-index.pdf')
+
     def test_exact_verified_publisher_page_result(self):
         with StagedPhysicalPageRAMIndex(1) as index:
             index.add(self.item,stage_root=self.stage);index.commit()

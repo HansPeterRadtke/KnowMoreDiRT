@@ -1204,6 +1204,37 @@ def find_source_evidence(args) -> None:
                             "error": f"{type(exc).__name__}: {exc}"[:300]})
         raise
 
+    # Corrected publisher-page lookup is deliberately opt-in and a SEPARATE
+    # original-PDF-verified evidence channel. Existing live vectors, cached
+    # derivatives and native search results remain unchanged until a safe
+    # coordinated cutover. Never promote private staged text to native rows.
+    corrected_overlay = None
+    private_stage = getattr(args, 'private_staged_pdf_preflight', None)
+    if private_stage is not None:
+        from file_system_catalog.staged_page_native_bridge import (
+            pinned_private_corrected_sources, verified_native_selected_private_page_overlay,
+        )
+        audit_root = Path('/data/var/knowmoredirt/knowledge-library/search-audit')
+        try:
+            staged = pinned_private_corrected_sources(stage_preflight=private_stage,
+                                                       private_root=audit_root)
+            completed = {p:r['sha256'] for p,r in ledger.items()
+                         if isinstance(r,dict) and isinstance(r.get('sha256'),str)}
+            with sqlite3.connect(f'{SOURCE_MAP.resolve().as_uri()}?mode=ro',uri=True,timeout=25) as sm,\
+                 sqlite3.connect(f'{DB.resolve().as_uri()}?mode=ro',uri=True,timeout=25) as native:
+                sm.execute('PRAGMA query_only=ON');native.execute('PRAGMA query_only=ON')
+                corrected_overlay = verified_native_selected_private_page_overlay(
+                   documents=documents, query=evidence_args.query,
+                   staged_records=staged,stage_root=audit_root,
+                   original_root=LIBRARY,derived_root=CACHE/'text',
+                   completed_receipts=completed,source_map=sm,native=native,
+                   top_per_original=min(2,args.passages),candidates_per_original=20)
+        except Exception as exc:
+            append_query_audit({**receipt,'success':False,
+                'operation_stage':'opt_in_original_pdf_corrected_page_overlay',
+                'error':f'{type(exc).__name__}: {exc}'[:250]})
+            raise
+
     # Document order is the native ranking for generic queries; for explicit
     # name selection rank 1 means one catalog choice, not a measured similarity.
     for doc in documents:
@@ -1232,6 +1263,10 @@ def find_source_evidence(args) -> None:
     ]
     audit_file = append_query_audit({
         **receipt, "success": True, "selection_basis": selection_basis,
+        "corrected_private_source_overlay_enabled": corrected_overlay is not None,
+        "private_overlay_verified_pdf_pages":
+            (corrected_overlay['publisher_verified_corrected_passages']
+             if corrected_overlay is not None else 0),
         "evidence_query": evidence_args.query,
         "verified_pdf_excerpts": pdf_count,
         "verified_non_pdf_derived_excerpts": derived_count,
@@ -1241,6 +1276,8 @@ def find_source_evidence(args) -> None:
         "query": args.query, "evidence_query": evidence_args.query,
         "selection_basis": selection_basis, "retrieval_engine": engine,
         "documents": documents,
+        **({'corrected_private_publisher_page_overlay': corrected_overlay}
+           if corrected_overlay is not None else {}),
         "verified_pdf_excerpts": pdf_count,
         "verified_non_pdf_derived_excerpts": derived_count,
         "evidence_kind_counts": evidence_kind_counts,
@@ -1536,6 +1573,8 @@ def main():
     )
     mixed.add_argument("query")
     mixed.add_argument("--source-name", help="Exact original title, RFC, DOI or pinned skill name; bypasses unrelated vector ranks")
+    mixed.add_argument("--private-staged-pdf-preflight",type=Path,
+        help="Optional exact private 327-PDF page repair receipt; add original-verified corrected page excerpts for native-selected PDFs without changing live indexes")
     mixed.add_argument("--documents", type=int, default=3,
                        help="Inspect this many ranked originals (1–5)")
     mixed.add_argument("--passages", type=int, default=2,

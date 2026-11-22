@@ -8,6 +8,7 @@ The live source-map/derivative/vectors/summary trees are never modified.
 from __future__ import annotations
 from collections import Counter
 import hashlib
+import json
 from pathlib import Path
 import re
 import sqlite3
@@ -103,7 +104,7 @@ class StagedPhysicalPageRAMIndex:
         if self.closed:raise ValueError('RAM index already closed')
         self.db.commit()
 
-    def ranked(self,query:str,*,limit:int=60):
+    def ranked(self,query:str,*,limit:int=60,original_path:str|None=None):
         if self.closed or type(limit) is not int or not 1<=limit<=100:
             raise ValueError('invalid bounded evidence search')
         if not isinstance(query,str) or len(query)>400:
@@ -111,9 +112,19 @@ class StagedPhysicalPageRAMIndex:
         terms=query_terms(query)
         if not terms:raise ValueError('no useful publisher-source search terms')
         clause=' OR '.join('"'+token.replace('"','""')+'"' for token in terms)
-        ranked=self.db.execute('SELECT rowid,bm25(passages,1.0) AS score '
-                     'FROM passages WHERE passages MATCH ? ORDER BY score,rowid LIMIT ?',
-                     (clause,limit)).fetchall()
+        # A named publisher source must not lose its relevant page merely
+        # because another original has more repeated generic query words.
+        if original_path is not None:
+            if original_path not in self.loaded_originals:
+                raise ValueError('original source not present in this verified RAM index')
+            sql=('SELECT rowid,bm25(passages,1.0) AS score FROM passages '
+                 'WHERE passages MATCH ? AND path=? ORDER BY score,rowid LIMIT ?')
+            args=(clause,original_path,limit)
+        else:
+            sql=('SELECT rowid,bm25(passages,1.0) AS score FROM passages '
+                 'WHERE passages MATCH ? ORDER BY score,rowid LIMIT ?')
+            args=(clause,limit)
+        ranked=self.db.execute(sql,args).fetchall()
         return [(self.rows[int(i)],float(score)) for i,score in ranked]
 
 

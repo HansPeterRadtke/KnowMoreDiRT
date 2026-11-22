@@ -101,6 +101,40 @@ class MixedSourceEvidenceTests(unittest.TestCase):
             self.cli.find_source_evidence(self.args)
         return json.loads(output.call_args.args[0])
 
+    def test_native_mixed_evidence_can_include_separate_publisher_verified_private_pdf_pages(self):
+        self.args.private_staged_pdf_preflight=Path(self.temp.name)/'approved-private.json'
+        staged_row={'original_path':self.paths['pdf'],'original_sha256':'a'*64,
+                    'old_derived_sha256':'b'*64,'new_staged_derived_sha256':'c'*64}
+        evidence={'enabled_by_explicit_private_stage_preflight':True,
+                  'native_documents_received':2,'staged_originals_in_native_selection':1,
+                  'publisher_verified_corrected_passages':1,
+                  'source_originals_with_private_page_evidence':[
+                      {'original_path':self.paths['pdf'],
+                       'status':'publisher_original_physical_pages_verified',
+                       'corrected_private_pdf_excerpts':[{'status':'publisher_original_physical_pdf_page_verified',
+                                                          'physical_pdf_page':2,
+                                                          'original_path':self.paths['pdf'],
+                                                          'factual_answer_verified':False}]}],
+                  'not_live_source_map_cache_or_semantic_index_migration':True}
+        from file_system_catalog import staged_page_native_bridge as bridge
+        with patch.object(self.cli,'SOURCE_MAP',self.db),\
+             patch.object(bridge,'pinned_private_corrected_sources',return_value={self.paths['pdf']:staged_row}) as reader,\
+             patch.object(bridge,'verified_native_selected_private_page_overlay',return_value=evidence) as verifier:
+            result=self.call()
+        self.assertIn('corrected_private_publisher_page_overlay',result)
+        self.assertEqual(evidence,result['corrected_private_publisher_page_overlay'])
+        self.assertEqual([self.paths['html'],self.paths['pdf']],
+                         [z['original_path'] for z in result['documents']])
+        self.assertEqual(1,result['verified_pdf_excerpts'])
+        self.assertEqual(1,result['verified_non_pdf_derived_excerpts'])
+        self.assertTrue(reader.called and verifier.called)
+        self.assertEqual('How are glass material coatings physically represented?',
+                         verifier.call_args.kwargs['query'])
+        self.assertEqual('native_discovery_mixed_source_evidence_v1',result['retrieval_engine'])
+
+    def test_native_mixed_evidence_does_not_load_private_stage_without_explicit_opt_in(self):
+        self.assertNotIn('corrected_private_publisher_page_overlay',self.call())
+
     def test_mixed_document_rank_distinguishes_derived_html_from_physically_verified_pdf(self):
         result = self.call()
         self.assertEqual("native_discovery_mixed_source_evidence_v1", result["retrieval_engine"])
