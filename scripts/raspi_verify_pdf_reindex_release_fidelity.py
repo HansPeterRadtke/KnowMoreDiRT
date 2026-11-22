@@ -39,6 +39,8 @@ def main():
     p=argparse.ArgumentParser(description=__doc__)
     p.add_argument('--staged-preflight',type=Path,required=True)
     p.add_argument('--private-candidate-db',type=Path,required=True)
+    p.add_argument('--private-source-map-db',type=Path,default=None,
+                   help='separate isolated corrected source-map SQLite, if present')
     p.add_argument('--historical-private-bundle',type=Path,required=True)
     p.add_argument('--private-derived-root',type=Path,required=True)
     p.add_argument('--private-summary-root',type=Path,required=True)
@@ -46,6 +48,8 @@ def main():
     args=p.parse_args()
     for name in ('staged_preflight','private_candidate_db'):
         inside_private(getattr(args,name),file_kind='file')
+    source_map_db=args.private_source_map_db or args.private_candidate_db
+    inside_private(source_map_db,file_kind='file')
     for name in ('private_derived_root','private_summary_root','historical_private_bundle'):
         inside_private(getattr(args,name),file_kind='directory')
     verified_archive=verify_private_shadow_bundle(bundle_root=args.historical_private_bundle)
@@ -66,22 +70,37 @@ def main():
     # result in a write: this script only opens a <=128MB private clone.
     if args.private_candidate_db.resolve().is_relative_to(ACTIVE.resolve()) and not args.private_candidate_db.resolve().is_relative_to(PRIVATE.resolve()):
         raise ValueError('live original and native database are not candidate clones')
+    # A prepared private candidate is immutable during verification. Check
+    # both stores before and after source+vector proof; a mutable candidate
+    # cannot receive a positive receipt bound to a different revision.
+    native_initial=hashlib.sha256(args.private_candidate_db.read_bytes()).hexdigest()
+    source_map_initial=hashlib.sha256(source_map_db.read_bytes()).hexdigest()
     pinned=pinned_private_corrected_sources(stage_preflight=args.staged_preflight,
                                              private_root=PRIVATE)
     if len(pinned)!=327:
         raise ValueError('reindex release fidelity demands all corrected publisher sources')
     with sqlite3.connect(args.private_candidate_db.resolve().as_uri()+'?mode=ro',
                          uri=True,timeout=18) as conn, \
+         sqlite3.connect(source_map_db.resolve().as_uri()+'?mode=ro',
+                         uri=True,timeout=18) as source_map, \
          sqlite3.connect(historical_db.resolve().as_uri()+'?mode=ro',
                          uri=True,timeout=18) as history:
         conn.execute('PRAGMA query_only=ON')
+        source_map.execute('PRAGMA query_only=ON')
         history.execute('PRAGMA query_only=ON')
         result=assess_corrected_native_release(records=list(pinned.values()),
-                 source_map=conn,native=conn,historical=history,
+                 source_map=source_map,native=conn,historical=history,
                  derived_root=args.private_derived_root,
                  summary_root=args.private_summary_root,expected_count=327)
     result['checked_utc']=datetime.now(timezone.utc).isoformat()
-    result['private_candidate_db_file_sha256']=hashlib.sha256(args.private_candidate_db.read_bytes()).hexdigest()
+    native_final=hashlib.sha256(args.private_candidate_db.read_bytes()).hexdigest()
+    source_map_final=hashlib.sha256(source_map_db.read_bytes()).hexdigest()
+    if native_final!=native_initial or source_map_final!=source_map_initial:
+        raise ValueError('private source map/native FileDB changed during corrected-source QA')
+    result['native_sqlite_sha256']=native_final
+    result['source_map_sqlite_sha256']=source_map_final
+    result['both_private_sqlite_files_unchanged_throughout_reindex_evidence_check']=True
+    result['private_candidate_db_file_sha256']=result['native_sqlite_sha256']
     result['private_source_receipt_sha256']=hashlib.sha256(args.staged_preflight.read_bytes()).hexdigest()
     result['historical_full_cohort_source_and_native_archive_reverified']=True
     result['historical_bundle_old_source_sha256']=hashlib.sha256(historical_db.read_bytes()).hexdigest()

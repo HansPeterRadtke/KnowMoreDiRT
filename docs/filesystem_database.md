@@ -2185,3 +2185,99 @@ stale original/derivative bytes, and independently verified versus unverified
 physical-page citations. Successful tests verify the specified safeguards;
 they are not evidence that the corpus-wide lexical ranking is universally
 correct or faster than native vector retrieval on all hardware.
+
+### Private, complete-generation pointer and two-database source-revision checks (November 22)
+
+The publisher PDF repair pipeline cannot safely replace the live source-map
+SQLite (WAL mode), native FileDB SQLite (DELETE journal mode), source-derived
+text files and recursive summary JSON as one transaction. These are **separate
+storage engines and filesystem operations**. One SQLite commit, a correct
+source-map SHA, or two paused recursive-summary workers cannot constitute an
+atomic multi-store release. The existing Raspi scheduled direct-embedding
+worker, semantic extractor and hourly library-refresh service are independent
+sources of change; direct embedding uses the native FileDB content lock,
+extraction uses its own `semantic/extract.lock`, and neither of these is
+identical to the optional KMD recursive-summary document-boundary hold.
+Installed legacy native-search readers also read the live mutable paths,
+not a version-selected immutable generation.
+
+For future architecture evaluation, the new
+`src/file_system_catalog/private_source_generation.py` is a deliberately
+**isolated and private-only** generation protocol. It refuses the actual
+Knowledge Library and live KMD directories and has **no production CLI**.
+The caller supplies a new version directory under a private audit root with
+**two separately addressable SQLite files**, the exact new-revision derived
+text for every selected original and that original's exact revision-pinned
+complete recursive-summary JSON. An owner-only manifest lists the exact
+relative paths, byte counts and hashes, plus the independent native revision
+QA receipt. The verifier requires a complete unique source-map cohort of
+PDFs, verifies every current original/derived SHA and exact associated text
+file and complete summary tree, verifies the native root for every current
+source, checks both private SQLite files' integrity, and binds the *positive*
+original/vector/summary QA receipt to the exact bytes of **both** SQLite
+files. A QA receipt declaring incomplete reindex or an old staged-only source
+is rejected even when its publisher text SHA passes. Merely renaming a source
+or updating all listed file hashes without preserving the original/source
+identity is also rejected. It never claims a summary proves factual truth.
+
+The related read-only `raspi_verify_pdf_reindex_release_fidelity.py` supports
+`--private-source-map-db` for a **separate** isolated corrected source-map
+snapshot; when omitted, it retains the earlier single-private-clone testing
+behavior. It records separate native/source-map database SHA-256 values and
+independently requires that neither private candidate file changed between
+its first SHA and the end of its all-source evidence check. These are evidence
+requirements for an eventual complete private generation, not authority to
+promote a source.
+
+For the private switch test, an exclusive owner-only file lock serializes
+marker updates. The marker is **one** atomically replaced, fsynced file
+pointing to a numbered prevalidated immutable generation. Readers acquire a
+shared lock, verify all assets, then hold the selected generation's exact path
+and SHA rather than rereading the mutable marker for each source component.
+A prior generation is **never deleted** by this protocol. A failed validation,
+missing tree, stale source, corrupt vector, inconsistent native QA,
+symlinked or world-readable lock, replayed generation, or a simulated crash
+**before** marker replacement retains the old selection. A simulated crash
+**after** marker replacement requires reading the current marker and verifying
+its selected contents instead of blindly replaying the uncertain operation.
+A reader already pinned to the old generation can still validate that old
+source while a second reader pins the newly selected generation. The
+real native-source vector verifier is exercised on two isolated original-PDF
+fixtures, including **separate source-map and native SQLite files**; this
+is not merely a symbolic pointer test. All test paths and inputs are temporary
+or owner-private copies, not the public publisher originals.
+
+**Observed latest old-revision recovery snapshot:** A new protected private
+bundle for all **327** corrected publisher PDF original identities preserved
+**585** current old-version derivative and summary artifacts (46,484,409
+bytes) and a **67,334,144-byte** selective native/source-map SQLite snapshot
+with **1,612** source chunks and **13,767** dependent native summary
+representations. A separate complete private-bundle SHA verification and a
+fresh read-only comparison against the live original FileDB returned the
+**same** 327 original/derived identities and those exact chunk/representation
+counts, with **zero** original or native identity mismatches and no observed
+cohort difference at comparison time. This is a substantially newer snapshot
+than the preceding historical 12,623-representation recovery bundle, but
+**still not a proven quiesced multi-store rollback point**. Uncoordinated
+writers may continue changing other documents while the private snapshot is
+captured. No full-library snapshot, live promotion or service interruption
+was performed.
+
+**Observed release result remains negative:** All 327 previously staged
+corrected PDF text derivatives have verified private SHAs, but the private
+forward-migration copy deliberately has zero rebuilt complete native summary
+roots and still uses `staged_needs_reindex`. The new double-SQLite-SHA
+read-only QA receipt likewise rejects all 327 as unfinished; no private
+versioned pointer can replace missing real native vectors or required
+source-page citations. The pointer protocol is an architectural **prototype**
+only: it does **not** make the installed Raspi native readers version-aware,
+does **not** quiesce all independent writers and readers, does **not** install
+an executable live cutover operator, does **not** coordinate the existing
+November 8 resident worker processes, does **not** copy original publisher
+PDFs or authorize downloading and deliberately reports
+`safe_to_cutover_live=false` even on isolated positive tests. A true release
+requires independently coordinated all-store writer/reader admission,
+complete original-preserving backup, tested recovery, full new-revision
+embedding and recursive-summary rebuild, real publisher physical-page
+verification, and real end-to-end legacy-reader integration. Until then the
+old original/source-map/native paths remain authoritative and untouched.
