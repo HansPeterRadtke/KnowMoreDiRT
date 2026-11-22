@@ -2340,3 +2340,108 @@ service, shared model, source file, native FileDB, extracted text or source-map
 was stopped or changed. Mocked writer/timer/protocol failures and the real
 unit types were independently tested, and the original source corpus remains
 available through ordinary folder search and existing verified retrieval.
+
+### Same-snapshot, physically source-checked three-channel retrieval (November 22 continuation)
+
+The installed two-channel native discovery and standalone original-passage
+search remain the live interfaces. A previously frozen seventy-three-question
+retrieval evaluation was previously inconclusive because vector and optional
+lexical results had been recorded on different dates as the live summary
+index expanded. It was also observed that all eleven predeclared source-label
+misses of the earlier forty-six-question benchmark **already had complete
+current original-linked recursive summary roots**. Those specific failures
+were retrieval ranking/discovery failures, not missing summaries.
+
+The **optional, private read-only**
+`scripts/raspi_frozen_same_snapshot_three_channel_eval.py` captures its three
+candidate channels from **one** bounded native SQLite read transaction and
+the same eligible complete-source revision list, then closes the canonical
+native database before evaluating any question. It loads the exact native
+original **passage chunk** embedding vectors (the installed full original
+reader's additional *analysis facet representations* are **not** included),
+the independent current original-linked summary/super-summary embeddings and
+an ephemeral RAM-only SQLite FTS5 index of verified current summary-root text
+and publisher titles. It uses the preexisting local CPU-only multilingual E5
+model once, limits CPU inference to two threads and does not create a second
+persistent semantic database. Every native raw and summary vector must match
+the pinned model revision, dimensions, byte length, embedding SHA-256 and
+source-map original/content revisions; generated summary text hashes and
+source-linked JSON metadata must also be valid. Sources without current
+full-root summary coverage are excluded **from all three channels**, ensuring
+an equal candidate population for this diagnostic rather than silently
+changing the eligible corpus by search method. Search outputs are original
+source identities, not asserted factual answers or confirmed physical PDF
+pages.
+
+The benchmark and policies were frozen before re-reading its labels: the
+first forty-six questions contain fifty-two predeclared relevant original
+labels; the distinct independent twenty-seven-question set contains twenty-
+seven. The source original and extracted derivative bytes of **all sixty-nine
+distinct expected originals** were independently checked against SHA-256
+completion receipts and current source-map revisions. In a separate subsequent
+low-priority audit, the **seven hundred thirty-one distinct documents**
+appearing within the top five positions across all five evaluated source-
+ranking views, plus the known-relevant originals, were independently
+physically rehashed as complete publisher original and current extracted
+source bytes: **1,948,337,652 original bytes** and **26,252,359 extracted
+bytes**, with **zero SHA mismatches**. This does not establish factual
+relevance for all retrieved candidates, physical PDF page citations,
+extraction correctness, or exhaustive independent source relevance gold.
+
+The lexical query code intentionally reproduces the *exact* earlier private
+benchmark's tokenization, including an observed error in its long stop-word
+literal (the original set accidentally contained one unsplit multiword string).
+Fixing that after seeing evaluation results would not be the same frozen
+method. The unchanged lexical channel uses OR match, Porter stemming and
+FTS5 BM25 weighted **five for titles and one for current summary roots**.
+Two-channel and three-channel reciprocal-rank fusion are reported as
+**experimental** equal-vote ranking with fixed `k=60`, without outcome-based
+parameter fitting. Union coverage is separately shown: candidate union is
+**not** the same as a single top-ten ranked answer list. The original and
+summary native vector matrices used the same captured source revision cohort
+for every one of the seventy-three questions; the metadata source-map and
+native SQLite stores are separate read snapshots, **not an atomic
+cross-store transaction**. Observed native vector read time was about five
+seconds and reusing that in-memory snapshot for all questions took around ten
+more seconds. No native original, source-map, persistent keyword index,
+summary, model, systemd unit or deployed ranking configuration was changed.
+
+**Verified current-source candidate results, known source-label recall only:**
+
+- Earlier forty-six questions, fifty-two known relevant original labels, at
+  ten **per individual channel**: original chunks **34**, source summary **37**,
+  title/root lexical **32**. Union of original+summary **42**; union of all
+  three **44**. Fixed two-channel RRF's actual top ten **40**, three-channel
+  RRF's actual top ten **41**. The larger three-channel candidate set found
+  two further known originals, but a single ranked top-ten answer list did
+  **not** gain those two as top-ten results.
+- Separate predeclared twenty-seven questions: original chunks **24**,
+  source summary **24**, lexical **23**, original+summary candidate union
+  **24**, all-three candidate union **26**. Fixed two-channel RRF and
+  three-channel RRF both found **24** known labels in their actual top ten.
+  The lexical channel by itself performs worse here, and only the **candidate
+  set** improves. Previous November 7 vector/hybrid scores are not the
+  same-date baseline and must not be reused to claim a causal improvement.
+- At top one on the earlier forty-six questions the three-channel fixed RRF
+  found **23** known original labels versus **16** for two-channel RRF; on
+  the twenty-seven questions the corresponding values were **16** versus
+  **15**. These are **source identity** comparisons, not graded answer quality
+  or semantic truth. A more demanding independent hard-negative/authority-
+  context validation is mandatory before changing any production ranking.
+
+The source-only evaluator lives under the **canonical current master**;
+source/publication metadata, private gold and observed outputs remain in the
+protected Raspi `search-audit/continued-20261122-wave58/` directory, not
+inside Git. The first private trial had a harmless timing-report variable
+shadowing error; its ranking metrics were verified unchanged by a second
+independent corrected run. The *corrected* receipt is
+`frozen-73-same-snapshot-three-channel-native-label-recall-timing-corrected.json`,
+with the full seven-hundred-thirty-one-original physical hash proof
+`actual-original-and-current-extract-full-sha-top-five-all-three-and-rrf-candidates.json`.
+The earlier incorrect timing receipt is preserved as negative evidence and
+must **not** be cited for elapsed time. The current benchmark does **not**
+prove a production ranker improvement; the actionable next step is an opt-in
+separate-channel candidate discovery interface with source-level provenance
+and a truly new, independent, adversarial context/negation/false-source test
+before any default search reranking is enabled. The two resident recursive
+summarizers and all existing project dependencies must remain protected.
