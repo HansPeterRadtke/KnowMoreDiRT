@@ -1556,7 +1556,39 @@ summarization service process identities remained unchanged and active.
 Private complete query receipts and source excerpt text are under
 `continued-20261122-wave54/`; only the behavior and counts are described
 here. A verified page is *source evidence*, not a measured semantic recall
-or generated-answer correctness claim. The real 327-source reindexing,
+or generated-answer correctness claim.
+
+**Independently pre-frozen original-page retrieval check:** Before replaying
+any retrieval results, the private QA script deterministically chose **32**
+repaired publisher PDF originals by SHA-256 source-path ordering. For each,
+it read an independent *original physical publisher PDF page* with Poppler,
+froze its actual page text hash, one exact sentence and an associated
+six-term **lexical** probe based on that original sentence; no staged
+retrieval score chose the publisher page or query. The subsequent evaluation
+reverified all **32** frozen full original PDF hashes, original-page text
+hashes and excerpt matches, and applied the strict original/old-cache/new-
+private-stage SHA and FileDB identity checks before considering a citation.
+The corrected-page RAM-only path independently returned the expected original
+physical page as its **top result in 30/32** cases and within its **first
+three results in all 32/32** cases. It withheld **113** lower-ranked weak or
+unverifiable excerpt candidates instead of displaying them as confirmed
+publisher-page citations. The unchanged old native text on these *exact
+same pre-frozen 32 source/page pairs* located the expected publisher page
+within its top three results in **29/32** cases. The three failures consisted
+of **two** original PDF searches with no verified excerpts and **one** case
+where native search returned other verified pages but missed the frozen gold
+page; the corrected private version found the expected gold page in all
+three cases, each at top rank. This is a reproducible, controlled **exact-
+source lexical page-location experiment**, not an independent natural-language
+user query benchmark, semantic document-discovery recall test, or proof of
+answer truth. Do not extrapolate these 32 cases to all other library sources.
+The uncommitted private frozen-gold, all original-page verification evidence,
+per-query comparison and both locally reusable evaluation scripts are under
+`continued-20261122-wave54/`. This QA used original publisher files only:
+no new material was downloaded, no source indexes/summaries were rewritten,
+and both live summary workers remained active.
+
+The real 327-source reindexing,
 summary refresh, stale-warning removal and transactional cutover still remain
 outstanding. Until then, use this read-only option when you need corrected
 publisher-page citations, or use normal native search, source folders and
