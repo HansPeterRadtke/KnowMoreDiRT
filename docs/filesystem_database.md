@@ -2445,3 +2445,73 @@ separate-channel candidate discovery interface with source-level provenance
 and a truly new, independent, adversarial context/negation/false-source test
 before any default search reranking is enabled. The two resident recursive
 summarizers and all existing project dependencies must remain protected.
+
+### Opt-in original-verifying three-channel source navigation (November 22)
+
+The validated earlier comparison supports **separate candidate discovery**,
+not replacing the default original-passage/recursive-summary ranker. The new
+`scripts/raspi_three_channel_source_discovery.py` implements an opt-in read-only, **source-navigation-only** CLI
+using the same candidate population, original-chunk vectors, native recursive
+summary vectors and ephemeral current-title/root-summary FTS5 keyword channel
+as the fixed source-label evaluation above. The command's result returns
+three **separately ranked** lists, never silently merges them into a single
+supposedly authoritative answer. It does not change the installed primary
+dual source query, ordinary folder/grep search, FileDB, service/timer,
+extracted text, publisher originals, shared model service or current source
+revision. Local E5 inference uses the pinned CPU-only ONNX model in the
+existing `semantic-venv`, with two threads and no cloud API calls.
+
+Example, with **no automatic report publication** and only a bounded maximum
+of eight source candidates per channel:
+
+```bash
+cd /data/src/github/KnowMoreDiRT
+PYTHONDONTWRITEBYTECODE=1 OPENBLAS_NUM_THREADS=2 OMP_NUM_THREADS=2 \
+ PYTHONPATH=/data/src/github/KnowMoreDiRT/src:/data/infra/libexec \
+ /data/var/knowmoredirt/semantic-venv/bin/python \
+ scripts/raspi_three_channel_source_discovery.py \
+ 'Research on evaluating evidence-dense question answering using multi-level text division and automatic merging of retrieved passages.' \
+ --top 8
+```
+
+Source search results include the exact current original catalog path,
+original title, official/source URL metadata, content kind, publisher
+rights/context where recorded, full publisher-original SHA and current
+extracted-derivative SHA. **Before returning any candidate**, the CLI
+independently streams and verifies its complete original file bytes and
+complete extracted text bytes, and rechecks the current source-map and
+completed acquisition record against the earlier snapshot. A missing,
+revised, symlinked or ambiguous original makes the **entire search fail
+closed** instead of emitting an unrelated substitute source. Source text is
+not reproduced; a selected publication must still be inspected via the
+existing original-source-evidence tools for exact section, literal passage,
+conditional/quoted context and physical PDF page correctness. Returning
+an original's filename, title, similar abstract or nearest summary is **not
+factual evidence** and does not establish publisher page numbers, answer
+truth, or suitability for external redistribution/training.
+
+An observed real AI research question returned its expected existing original
+PDF in both the summary and lexical source channels (at respectively native
+ranks eight and seven among ten), although its original-passage chunk channel
+missed it in its top ten. Twenty-nine unique returned original files and
+corresponding extracted source revisions passed full SHA verification. A
+**separate** Unity GPU renderer question returned the official current GPU
+Resident Drawer reference **first in the summary channel** and correctly
+separate top-ranked candidate lists from the other channels, with nineteen
+unique original source SHA proofs. The original two-channel production CLI
+remains installed; normal Knowledge Library catalog browsing and grep are
+unaffected. Strict query and per-channel result bounds, malformed source-map
+revisions, modified original/derivative content, symlinks, read-only DB
+admission and fail-closed source substitution are covered by focused tests.
+
+This supplemental discovery uses an in-memory native snapshot and scans the
+model's source-linked content vectors, so it is appropriate for bounded,
+selective queries rather than replacing a low-latency default search daemon.
+The most important remaining gap is **independent contextual correctness**:
+future original-source QA must still challenge quoted falsehoods, negation,
+dream versus real-world claims, hypothetical statements, conflicting revisions
+and missing evidence, and verify that an assistant says a fact is unknown
+from the corpus rather than taking a nearest-neighbor hit as true. The new
+CLI makes no automatic factual claims, no external downloads or account
+operations, and is not a reason to disturb the two existing live recursive-
+summary workers or prematurely release the staged 327 PDF page corrections.
