@@ -2194,10 +2194,14 @@ text files and recursive summary JSON as one transaction. These are **separate
 storage engines and filesystem operations**. One SQLite commit, a correct
 source-map SHA, or two paused recursive-summary workers cannot constitute an
 atomic multi-store release. The existing Raspi scheduled direct-embedding
-worker, semantic extractor and hourly library-refresh service are independent
-sources of change; direct embedding uses the native FileDB content lock,
-extraction uses its own `semantic/extract.lock`, and neither of these is
-identical to the optional KMD recursive-summary document-boundary hold.
+worker and semantic extractor are independent database writers;
+direct embedding uses the native FileDB content lock, while extraction
+uses its own `semantic/extract.lock`. Neither is covered by the optional
+recursive-summary document-boundary hold. The hourly `knowledge-library refresh`
+job is different: its inspected implementation updates the generated source
+catalog and README, **not** the native KMD vectors or semantic source-map.
+It still belongs in overall source inventory and deployment coordination,
+but is not itself evidence of an independent native database writer.
 Installed legacy native-search readers also read the live mutable paths,
 not a version-selected immutable generation.
 
@@ -2281,3 +2285,58 @@ complete original-preserving backup, tested recovery, full new-revision
 embedding and recursive-summary rebuild, real publisher physical-page
 verification, and real end-to-end legacy-reader integration. Until then the
 old original/source-map/native paths remain authoritative and untouched.
+
+### Independent native direct-writer and source-map extractor release admission (November 22)
+
+The private `scripts/raspi_pdf_repair_additional_writer_readiness.py` is a
+**read-only**, fail-closed Raspi admission inventory. It reads the installed
+systemd service and timer states for the two writers **outside** the
+recursive-summary workers: `knowledge-library-semantic-worker.service` and its
+timer can prepare and write direct overview vectors into the native FileDB;
+`knowledge-library-semantic-extract.service` and its timer can replace derived
+text and update the separate semantic source-map. The actual deployed Python
+writer implementations and their locks were inspected before assigning these
+responsibilities. The tool also invokes the independent read-only
+`raspi_publisher_pdf_quiesce_readiness.py`, which requires both resident
+recursive-summary processes to acknowledge the **same real complete-document
+boundary**, not merely an inactive or allegedly idle process. It reports
+these separate blockers explicitly and **never** grants permission to
+perform a live migration.
+
+A timer unit's `systemctl show` normally omits `MainPID` because it is **not
+a service**. The inventory accepts that absent field **only for an exact
+allowlisted timer**, representing no timer main process, but requires a
+reported actual MainPID from each installed service. Unknown, failed or
+missing service/timer states fail closed. A process being inactive does not
+make a still-armed timer incapable of restarting it during migration; manual
+or otherwise unregistered writers and legacy readers remain unknown even if
+all named services happen to be idle. The existing hourly
+`knowledge-library-index.service` is correctly classified separately as a
+**catalog/README refresh**, not a native-embedding or source-map writer; its
+source was inspected rather than assuming that every service named "index"
+writes the semantic DB.
+
+Usage on Raspi is private-only and cannot overwrite an existing report:
+
+```bash
+D=/data/var/knowmoredirt/knowledge-library/search-audit/continued-20261122-wave57
+PYTHONDONTWRITEBYTECODE=1 python3 \
+ /data/src/github/KnowMoreDiRT/scripts/raspi_pdf_repair_additional_writer_readiness.py \
+ --new-private-output "$D/ANOTHER-NEW-read-only-writer-inventory.json"
+```
+
+**Current independent live observations:** Both direct semantic/vector and
+source-map extraction services were inactive, but **both scheduled timers
+were armed**. The two resident recursive-summary worker processes were still
+active and had **not** loaded or acknowledged the newer optional source-
+boundary pause protocol. The source-map and native database use separate
+journal modes; no universal read/write generation admission or rollback
+lease exists. The read-only inventory therefore listed seven explicit
+blockers, including the two scheduled timers, old worker code, missing
+quiescence and unpinned legacy native readers. Its result
+`safe_to_cutover_live=false` is **not** a malfunction of indexing; it is the
+correct evidence that a coordinated release has not happened. No timer,
+service, shared model, source file, native FileDB, extracted text or source-map
+was stopped or changed. Mocked writer/timer/protocol failures and the real
+unit types were independently tested, and the original source corpus remains
+available through ordinary folder search and existing verified retrieval.
