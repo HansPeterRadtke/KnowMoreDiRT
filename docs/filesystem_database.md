@@ -2545,3 +2545,93 @@ answer-truth claim follows from these three verified page snippets. All exact
 source and negative-control receipts remain in the private
 `search-audit/continued-20261122-wave58/` evidence folder; no protected
 publisher file, already-indexed vector or service was modified.
+
+### Publisher-original physical PDF neighboring context, without quotation-to-fact promotion (November 22 late)
+
+A SHA-valid short retrieval excerpt can still omit a governing qualification
+located on the **previous or next physical PDF page**. Existing source-evidence
+keeps its default read-only context strictly within each separately labeled
+source unit, appropriately preventing accidental mixing but offering no
+adjacent original physical page expansion. Two **optional read-only** operators
+now supply this missing navigation stage, never a generated factual answer:
+
+- `scripts/raspi_original_pdf_page_neighbors.py` accepts one **exact** approved
+  original PDF path, a **physical PDF page number**, zero or one adjacent page
+  on either side, and an optional exact center-page phrase. It independently
+  rehashes the complete current original and derived text against completed
+  acquisition receipts and source-map, pins the original PDF **open file
+  descriptor** while running bounded Poppler `pdfinfo` and `pdftotext`, requires
+  the real physical page number to exist, and rechecks file identity and
+  current source-map revision afterward. Each returned physical page has its
+  own complete extracted text, source coordinates and raw page-text SHA. Up
+  to **three separately labeled** original physical pages are returned. There
+  is no cross-page synthetic quote, automatic OCR, hidden excerpt truncation,
+  external network access, model service change or native FileDB write.
+- `scripts/raspi_source_evidence_pdf_neighbors.py` accepts the exact approved
+  PDF original path and a source-specific question. It reuses the **already
+  installed** KMD original `source-evidence` reader (which verifies the exact
+  source revision and performs independent physical PDF page proof). Only the
+  first **physically verified** result from that same original may become the
+  anchor for the optional full-page context. The new operator then reproduces
+  that passage on the physical PDF page, verifies the **complete page text
+  SHA matches the prior independent original-reader proof**, and displays
+  the immediate original PDF pages separately. An ambiguous, OCR-only,
+  absent, changed or uncitable passage **aborts instead of substituting a
+  different source**. Native original lexical evidence continues to write
+  its existing private query audit, but publisher files and native vectors
+  remain unchanged.
+
+Both operators have a hard three-page limit, independent page-body length
+limits (no silently clipped negations or qualifiers), a per-invocation
+Poppler execution deadline, a restricted child memory/output budget, and
+strict no-symlink publisher file and source-map checks. Pages with missing
+text layers require separate explicitly authorized original-page visual/OCR
+inspection; they cannot silently acquire text citations from the cached
+OCR derivative. `pdftotext` is a **physical-page-bound text extraction**, not
+visual proof that all publisher glyphs, figures, formulas or reading order are
+correct. A fully verified physical page is **not** evidence that its content
+is a factual assertion: it may be an example, reported claim, quotation,
+negation, hypothetical, test question or obsolete version.
+
+Example, with **no external effects**, from an already approved first-party
+ACL paper and its self-contained experimental question, including the paper's
+neighboring pages:
+
+```bash
+cd /data/src/github/KnowMoreDiRT
+PYTHONPATH=/data/src/github/KnowMoreDiRT/src:/data/infra/libexec \
+ PYTHONDONTWRITEBYTECODE=1 \
+ /data/var/knowmoredirt/semantic-venv/bin/python \
+ scripts/raspi_source_evidence_pdf_neighbors.py \
+ 'Scott Derrickson Born' \
+ --original-path 'ai-agents/2026-acl-source-retrieval/2026.acl-long.1372.pdf' \
+ --neighbor-radius 1
+```
+
+The actual owner-private test performed the native exact-original
+source-evidence lookup, verified the matched sample question on **real PDF
+physical page two** of the original sixteen-page hierarchical-retrieval
+paper, then independently extracted **pages one, two and three** of that
+same SHA-checked original and matched the two independent physical page-text
+hashes exactly. The sample is a **benchmark question inside a retrieval
+research paper**, not first-party proof of any real-world person's date of
+birth. A separate real multi-talker ASR/diarization scientific paper passed
+source-evidence and physical original-page hash checks for its first two
+pages. Negative controls confirmed the machine-OCR-only HCI template yields
+**no inferred PDF citation**, and a former extracted-page label requesting
+page thirty of a peer-reviewed PDF with only nineteen actual publisher pages
+is **rejected** rather than silently treated as a physical page. An absent
+assertion on the original physical page is also rejected. Entire originals,
+current extracted text, native embeddings and resident workers were preserved.
+
+Reproduction evidence, including complete source-original physical page
+texts and SHA checksums, remains under private Raspi
+`search-audit/continued-20261122-wave59/`, **not Git**. New unit tests cover
+literal source/derivative SHA mismatch, source-map change after extraction,
+zero or excessive page requests, page-count boundaries, Poppler unavailable,
+OCR-only/blank page, unbounded page length, publisher file replacement during
+reading, independent source-evidence SHA mismatch, a wrong original identity,
+and refused citation substitution. The preexisting native two/three-channel
+ranking and corpus keyword/grep tools are unchanged. A separate independent
+answer-grounding evaluation is still required: physical page localization
+and honest abstention **do not** automatically judge scope, meaning or truth.
