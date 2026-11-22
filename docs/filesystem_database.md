@@ -1915,6 +1915,16 @@ unless their source spans and text hashes match the **corrected** derivative.
 Both directly embedded original overview/full chunks and all recursive
 summary/facet representations must have 384 finite float values, valid
 byte hashes, consistent model identities and normalized nonzero vectors.
+A further native keyword retention guard compares each original against
+its sealed historical summary-vector channel. If the old original had at
+least one native keyword/keyphrase representation, the corrected candidate
+must have at least one new-revision keyword/keyphrase representation, not
+just a root summary. This is a necessary minimum channel-preservation test,
+**not** a claim that every previously extracted keyword is semantically
+reproduced or that summary accuracy is proven. Synthetic tests exercise a
+case where the old keyword channel disappears entirely and verify that
+adding a revision-checked new keyword vector satisfies the minimum gate.
+
 Every recursive representation must refer to the same original SHA and **new**
 derivative SHA as its complete summary tree, with exact source range,
 summary text SHA and summary-node identity. The revision-specific complete

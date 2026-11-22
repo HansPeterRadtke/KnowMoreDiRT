@@ -104,6 +104,7 @@ def _native_vectors_for_one(db:sqlite3.Connection,*,file_id:int,original_sha:str
         FROM content_chunks c LEFT JOIN content_representations r ON r.chunk_id=c.chunk_id
         WHERE c.filesystem_entry_id=? ORDER BY c.chunk_id,r.representation_id''',(file_id,))
     chunks=set();kinds=Counter();reps=0
+    native_representation_kinds=Counter()
     summary_nodes={}
     node_by_id={} if tree is None else {node.node_id:node for node in tree.nodes}
     for row in cursor:
@@ -168,13 +169,16 @@ def _native_vectors_for_one(db:sqlite3.Connection,*,file_id:int,original_sha:str
                 raise ValueError('duplicate native summary vector for one complete tree node')
             summary_nodes[node_id]=True
         reps+=1
+        native_representation_kinds[kind]+=1
     if not kinds['overview'] or not kinds['summary'] or not reps:
         raise ValueError('corrected source lacks direct original and hierarchical summary vectors')
     if tree is None or set(summary_nodes)!={n.node_id for n in tree.nodes}:
         raise ValueError('corrected source tree nodes have missing native representations')
     return {'direct_overview_chunks':kinds['overview'],'direct_full_chunks':kinds['full'],
             'recursive_summary_chunks':kinds['summary'],'native_representations':reps,
-            'native_tree_nodes_matched':len(summary_nodes)}
+            'native_tree_nodes_matched':len(summary_nodes),
+            'native_keyword_or_keyphrase_representations':(
+                native_representation_kinds['keyword']+native_representation_kinds['keyphrase'])}
 
 
 def assess_corrected_native_release(*,records:list[dict],source_map:sqlite3.Connection,
@@ -254,6 +258,12 @@ def assess_corrected_native_release(*,records:list[dict],source_map:sqlite3.Conn
                     derived_sha=derived_sha,source_text=text,tree=tree)
             if old_types.get('full',0)>0 and summary['direct_full_chunks']<1:
                 raise ValueError('new original omits a historically present full-document native content channel')
+            old_keyword_count=historical.execute('''SELECT COUNT(*) FROM content_representations r
+                    JOIN content_chunks c ON c.chunk_id=r.chunk_id
+                    WHERE c.filesystem_entry_id=? AND r.representation_kind IN ('keyword','keyphrase')''',
+                    (ident,)).fetchone()[0]
+            if old_keyword_count and not summary['native_keyword_or_keyphrase_representations']:
+                raise ValueError('new original silently drops historically present native keyword search')
             chunks_verified+=sum(summary[k] for k in ('direct_overview_chunks','direct_full_chunks','recursive_summary_chunks'))
             reps_verified+=summary['native_representations']
             sources[path]=(original_sha,derived_sha,chars)

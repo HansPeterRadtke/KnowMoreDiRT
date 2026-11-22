@@ -29,6 +29,8 @@ class NativeReleaseGateTests(unittest.TestCase):
             baseline.execute('ALTER TABLE content_chunks ADD COLUMN collection_id TEXT')
             baseline.execute('UPDATE content_chunks SET collection_id=?',
                              ('raspi-original-books-semantic-content-v1:overview',))
+            baseline.execute('ALTER TABLE content_representations ADD COLUMN representation_kind TEXT')
+            baseline.execute("UPDATE content_representations SET representation_kind='summary_long'")
 
     def _add_native_columns_for_minimal_rehearsal_fixture(self):
         # The source-page shadow's minimal SQL fixture deliberately excludes
@@ -178,6 +180,41 @@ class NativeReleaseGateTests(unittest.TestCase):
         result=self.check()
         self.assertFalse(result['full_corpus_new_revision_search_ready'])
         self.assertEqual(1,result['originals_with_native_full_source_roots_and_vectors'])
+
+    def test_original_historical_keyword_search_channel_must_not_silently_disappear(self):
+        self.build_all_correct_revisions()
+        original=self.fixture.records[0]
+        old_ident=original['native_original_filedb_id']
+        with sqlite3.connect(self.fixture.sqlite) as historical:
+            old_chunk=historical.execute(
+                'SELECT chunk_id FROM content_chunks WHERE filesystem_entry_id=? LIMIT 1',
+                (old_ident,)).fetchone()[0]
+            historical.execute('INSERT INTO content_representations '
+                               '(representation_id,chunk_id,embedding_blob,representation_kind) '
+                               'VALUES(?,?,?,?)',
+                               ('old_keyword_term',old_chunk,b'digest','keyword'))
+        rejected=self.check()
+        self.assertEqual(1,rejected['originals_with_native_full_source_roots_and_vectors'])
+        self.assertFalse(rejected['full_corpus_new_revision_search_ready'])
+        self.assertTrue(any('keyword' in k for k in rejected['failures_by_reason']))
+        with sqlite3.connect(self.db) as new:
+            previous=new.execute('SELECT generation_json,embedding_blob '
+                     'FROM content_representations WHERE representation_id=?',
+                     ('rep_new_1',)).fetchone()
+            provenance=json.loads(previous[0]);provenance['native_facet_kind']='keyphrase'
+            keyphrase='corrected original physical PDF publisher page'
+            new.execute('''INSERT INTO content_representations (
+                representation_id,chunk_id,embedding_blob,representation_kind,representation_text,
+                representation_text_sha256,generation_json,embedding_sha256,embedding_dimension,
+                embedding_dtype,embedding_model,embedding_model_revision,
+                prompt_version,analysis_status)
+                VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?,?)''',
+                ('new_keyword_term','summary1',previous[1],'keyphrase',keyphrase,
+                 digest(keyphrase.encode()),json.dumps(provenance),digest(previous[1]),
+                 384,'float16','fixture-e5','fixture-revision',_VERSION,'complete'))
+        accepted=self.check()
+        self.assertTrue(accepted['full_corpus_new_revision_search_ready'])
+        self.assertFalse(accepted['safe_to_cutover_live'])
 
     def test_source_chunk_excerpt_stale_from_previous_derived_revision_rejected(self):
         self.build_all_correct_revisions()
