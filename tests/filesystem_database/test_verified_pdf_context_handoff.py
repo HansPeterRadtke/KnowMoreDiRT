@@ -28,6 +28,9 @@ class VerifiedPhysicalPageHandoffTests(unittest.TestCase):
         self.assertEqual(self.page_sha,anchor['physical_pdf_page_text_sha256'])
         self.assertEqual(self.sha,anchor['source_excerpt_sha256'])
         self.assertIn('not a factual answer',anchor['citation_scope'])
+        self.assertEqual(2,anchor['original_derived_page_label_number'])
+        self.assertFalse(anchor['original_derived_page_label_disagrees_with_physical_page'])
+        self.assertFalse(anchor['corrected_physical_page_citation_required'])
 
     def test_only_bounded_same_original_pages_no_wrong_substitution(self):
         for changed in (
@@ -47,6 +50,29 @@ class VerifiedPhysicalPageHandoffTests(unittest.TestCase):
             with self.subTest(patch=patch):
                 with self.assertRaises(ValueError):
                     verified_physical_page_candidate({**self.payload,'passages':[fake]},self.path)
+
+    def test_mislabeled_derivative_page_correction_preserves_actual_publisher_page(self):
+        # Real-world old extractor sometimes has 34 labels for 19 physical
+        # pages. A verified unique relocation is source proof, not an excuse
+        # to keep citing the wrong derivative page number.
+        old={**self.entry,'source_section':'PDF page 19',
+             'publisher_pdf_page':{'status':'verified','page':13,
+                                  'page_text_sha256':self.page_sha,
+                                  'basis':'unique_across_pdf'}}
+        anchor=verified_physical_page_candidate({**self.payload,'passages':[old]},self.path)
+        self.assertEqual(13,anchor['physical_pdf_page'])
+        self.assertEqual(19,anchor['original_derived_page_label_number'])
+        self.assertTrue(anchor['original_derived_page_label_disagrees_with_physical_page'])
+        self.assertTrue(anchor['corrected_physical_page_citation_required'])
+        x={'source':{'original_path':self.path,'original_sha256':'a'*64},
+           'source_map_revision_reverified_after_physical_page_extraction':True,
+           'physical_pages':{'original_pdf_sha256':'a'*64,
+               'requested_center_physical_page':13,'required_center_excerpt_verified':True,
+               'pages':[{'physical_page':13,'physical_page_poppler_sha256':self.page_sha}]}}
+        result=bind_original_pdf_context_to_source_evidence(anchor,x)
+        self.assertEqual(19,result['original_derived_page_label_number'])
+        self.assertEqual(13,result['correct_physical_original_pdf_page'])
+        self.assertTrue(result['physical_page_citation_replaces_old_derivative_label_only_if_disagreement'])
 
     def test_ocr_and_fake_physical_page_markers_rejected(self):
         for proof in ({'status':'unverified','reason':'no_text_page_label'},

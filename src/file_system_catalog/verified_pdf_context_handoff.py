@@ -39,8 +39,18 @@ def verified_physical_page_candidate(payload:dict,original_path:str)->dict:
                 or not isinstance(proof.get('page_text_sha256'),str)
                 or not HEX.fullmatch(proof['page_text_sha256'])):
             raise ValueError('source reader claimed a page without a valid physical PDF proof')
+        label=passage.get('source_section')
+        derived_label_page=None
+        if isinstance(label,str):
+            old_page=re.match(r'^PDF page ([1-9][0-9]*)(?=$|,| \|| \[)',label)
+            if old_page:
+                derived_label_page=int(old_page.group(1))
+        mismatch=derived_label_page is not None and derived_label_page!=page
         return {'first_verified_source_excerpt_rank':rank,
             'original_path':original_path,
+            'original_derived_page_label_number':derived_label_page,
+            'original_derived_page_label_disagrees_with_physical_page':mismatch,
+            'corrected_physical_page_citation_required':mismatch,
             'source_excerpt_sha256':sha,
             'source_excerpt':excerpt,
             'physical_pdf_page':page,
@@ -73,6 +83,12 @@ def bind_original_pdf_context_to_source_evidence(anchor:dict,page_context:dict)-
             'original_path':anchor['original_path'],
             'first_verified_source_excerpt_rank':anchor['first_verified_source_excerpt_rank'],
             'original_source_excerpt_sha256':anchor['source_excerpt_sha256'],
+            'original_derived_page_label_number':anchor['original_derived_page_label_number'],
+            'correct_physical_original_pdf_page':anchor['physical_pdf_page'],
+            'original_derived_page_label_disagrees_with_physical_page':
+                anchor['original_derived_page_label_disagrees_with_physical_page'],
+            'physical_page_citation_replaces_old_derivative_label_only_if_disagreement':
+                anchor['corrected_physical_page_citation_required'],
             'physical_source_page_sha256_cross_verified_twice':True,
             'source_revision_and_original_pdf_sha_reverified':True,
             'source_context_factual_answer_not_established':True,

@@ -2635,3 +2635,40 @@ and refused citation substitution. The preexisting native two/three-channel
 ranking and corpus keyword/grep tools are unchanged. A separate independent
 answer-grounding evaluation is still required: physical page localization
 and honest abstention **do not** automatically judge scope, meaning or truth.
+
+**Verified old-extraction page relabeling, not just overcount.** A separate
+fresh original-byte-attested read-only audit of **three** representatives
+from the existing three-hundred-twenty-seven-document page-repair backlog
+proved mismatches *inside* the physical page range, not only at oversized
+labels. One current USENIX OSDI original contains text labeled cached
+`PDF page 19` that Poppler independently locates on original physical
+**page 13**; its old `PDF page 34` is actually original physical **page
+19**. A robotics publication's old page-six excerpt is physically on
+page five, and a security publication's former page-forty-nine excerpt is
+physically on the original last page, **page 21**. The physical original and
+current extracted derivative SHA were checked before and after the review;
+these examples are a bounded audit, **not** an assertion that every page
+or all 327 original documents has already been repaired.
+
+The optional `source-evidence` → physical page neighbor handoff now surfaces
+`original_derived_page_label_disagrees_with_physical_page`, the original
+page label and the **correct original physical PDF page** as distinct
+fields. It does not quietly cite a wrong cached page. In an **actual live
+source-specific KMD lookup** for terms from that security research paper,
+the existing source-evidence verifier returned original-page proof with
+`unique_across_pdf` for cached page **49** → physical page **21**; the new
+operator then reverified that exact complete original/derivative revision,
+independently re-extracted original physical pages **20 and 21**, and
+reproduced the independently verified source page-text SHA. No citation
+was promoted from the cached label or changed in the native FileDB.
+
+This makes the *read-only* per-source correction immediately usable for
+selected evidence, while the broader 327-PDF source extraction repair still
+**cannot be cut over** until both installed native/source-map writers and
+readers are quiesced at proven boundaries, all affected vectors and
+summaries are actually regenerated at the new source revision, and an
+atomic, rollback-safe generation switch is verified end-to-end. Preserve
+old originals, current writer processes and all already indexed sources
+until that separate release admits them. Owner-private exact provenance and
+positive/negative evidence are saved in
+`search-audit/continued-20261122-wave59/`.
