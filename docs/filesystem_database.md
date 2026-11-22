@@ -1805,6 +1805,87 @@ live FileDB with this old subset would destroy newer work. No automatic
 live-worker stop, overwrite or snapshot promotion is permitted.
 The independent private proof is under `continued-20261122-wave54/`.
 
+### Full 327-source private forward migration and forced-recovery acceptance (November 22)
+
+The sealed historical subset permits a much stronger **isolated forward
+migration** experiment than testing that one document's old state can be
+restored. The new `scripts/raspi_rehearse_pdf_repair_forward_generation.py`
+uses the full, previously SHA-verified **327-PDF** private staging receipt,
+independently validates the sealed recovery archive before and after each
+simulation and performs the transition **only inside a new exclusive private
+audit directory**. It never opens the real source-map/native FileDB for
+writing, stops either worker or overwrites the originals. It also explicitly
+refuses a destination within the sealed recovery bundle or the private
+staged-source tree; nested files cannot silently contaminate the archive.
+
+For each historical original, the rehearsal independently validates its
+canonical original SHA, old SHA, new staged candidate SHA, current historical
+native ID and PDF original physical-page markers. Before creating any output,
+it checks the corrected candidate's canonical provenance JSON, the physical
+page sequence, exact staged SHA and source-unit counts. It deliberately
+computes `text_characters` as **source-unit body characters excluding the
+synthetic KMD provenance header**, not the entire derivative file length.
+It privately copies all **327** corrected text derivatives into a separate
+folder, with new-file-only creation, full post-copy SHA, file sync and no
+existing-file replacement. In an isolated cloned SQL database, it updates
+all **327** original-derived SHA and physical-page metadata rows, sets their
+status to `staged_needs_reindex` and removes all **historical original-content
+chunks and generated summary representations** using the original source's
+native identity and the existing foreign-key cascades. The unrelated
+publisher original file identity/metadata is unchanged. The private
+transaction commits only after all 327 text copies succeeded and after
+relational integrity and orphan checks pass. Its result is intentionally
+**NOT native-search-ready**: new content embeddings, source-linked recursive
+summaries, native reader synchronization and real PDF original-page checks
+must still be regenerated under an actual live writer/reader coordination
+protocol. This prototype never publishes a post-cutover source-map or a
+live migration switch.
+
+Use new never-before-existing output names in the audit root; each invocation
+also produces a separate private JSON receipt. For example:
+
+```bash
+D=/data/var/knowmoredirt/knowledge-library/search-audit/continued-20261122-wave55
+B=/data/var/knowmoredirt/knowledge-library/search-audit/continued-20261121-wave53/shadow-recovery-bundle-327-20261121-v1
+P=/data/var/knowmoredirt/knowledge-library/search-audit/continued-20261121-wave51/all-327-private-staged-original-PDF-preflight-complete.json
+V=/data/var/knowmoredirt/semantic-venv/bin/python
+PYTHONDONTWRITEBYTECODE=1 "$V" \
+ /data/src/github/KnowMoreDiRT/scripts/raspi_rehearse_pdf_repair_forward_generation.py \
+ --historical-private-bundle "$B" --staged-preflight "$P" \
+ --mode forward --new-private-generation-dir "$D/UNUSED-full-private-forward-dir" \
+ --new-private-result "$D/UNUSED-private-forward-result.json"
+# For isolated failure-recovery tests, use --mode fail_after_164_files,
+# --mode fail_after_database_commit, or --mode restore_old, each with a
+# DIFFERENT new-private-generation-dir and new-private-result.
+```
+
+**Observed full-size rehearsal:** **327** corrected publisher PDF derivatives,
+**7,580** labeled original physical PDF source units (including continued
+sections), and **53,929,527** original source-unit body characters were
+verified and privately staged. **7,157** source units were eligible for
+temporary RAM lexical candidate retrieval after the existing malformed-
+glyph/empty-body screening; the remaining **423** are not verified quoteable
+page evidence. The isolated forward SQLite clone removed **1,578 historical
+native original chunks** and **12,623 historical native summary rows**, with
+zero stale dependent rows and all original file metadata preserved. Its 327
+new source revisions have `staged_needs_reindex` status, so the new isolated
+copy is expressly **not** a published or usable full semantic index.
+Two full-cohort crash simulations were separately executed: failure after
+**164** corrected private files, and failure after the **327th** corrected
+file and the private SQLite source-revision/dependent-row transaction had
+committed. Both left the protected historical archive intact. Independent
+restoration from that sealed archive recovered **565 historical old cached
+source/summary/progress files**, the exact private 327-original SQLite image,
+all **1,578** historical original chunks and all **12,623** historical
+summary representations, with exact full-byte file and native-row checks.
+These are **isolated fault-injection recoveries from the historical snapshot**:
+because resident workers have meanwhile created more live summaries, the
+archive is *stale relative to the live system* and cannot restore those newer
+results. Preserve every protected audit folder until the supervisor has
+separately verified that it is no longer needed. The private command logs and
+receipts are under `continued-20261122-wave55/`; no original text or
+private archive is committed to Git.
+
 **Remaining explicit release gate:** obtain actual verified coordination for
 both live summary workers and all other native reader/writer consumers,
 prevent stale citations during migration, establish a fresh fully quiesced
