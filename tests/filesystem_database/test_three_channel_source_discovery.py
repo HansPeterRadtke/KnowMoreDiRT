@@ -47,9 +47,11 @@ class OptionalThreeChannelSourceDiscoveryTests(unittest.TestCase):
                  mock.patch.object(self.cli,'title_summary_fts',return_value=(object(),1)), \
                  mock.patch.object(self.cli,'query_channels',return_value=responses), \
                  mock.patch.object(self.cli,'checked_sqlite',return_value=db), \
-                 mock.patch.object(self.cli,'verify_selected_source',side_effect=proof):
+                 mock.patch.object(self.cli,'verify_selected_source',side_effect=proof), \
+                 mock.patch.object(self.cli,'require_unchanged_final_source_map',return_value=None) as finalproof:
                 got=self.cli.read_only_source_discovery('Find the original publication.',top=1)
             self.assertEqual([path],recorded)
+            finalproof.assert_called_once()
             self.assertEqual(1,got['all_returned_originals_physically_sha_verified'])
             self.assertTrue(got['separate_original_channels_no_rank_fusion_or_source_suppression'])
             self.assertTrue(got['source_navigation_only_not_a_generated_answer'])
@@ -69,7 +71,8 @@ class OptionalThreeChannelSourceDiscoveryTests(unittest.TestCase):
                  mock.patch.object(self.cli,'title_summary_fts',return_value=(object(),1)), \
                  mock.patch.object(self.cli,'query_channels',return_value={'original_passage':[path],'summary':[],'lexical':[]}), \
                  mock.patch.object(self.cli,'checked_sqlite',return_value=db), \
-                 mock.patch.object(self.cli,'verify_selected_source',side_effect=ValueError('stale source')):
+                 mock.patch.object(self.cli,'verify_selected_source',side_effect=ValueError('stale source')), \
+                 mock.patch.object(self.cli,'require_unchanged_final_source_map',return_value=None):
                 with self.assertRaisesRegex(ValueError,'stale source'):
                     self.cli.read_only_source_discovery('Find the original.',top=5)
 

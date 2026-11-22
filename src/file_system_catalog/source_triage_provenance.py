@@ -59,3 +59,27 @@ def verify_selected_source(path:str,*,source_versions:dict,source_map:sqlite3.Co
         'factual_answer_or_claim_supported_by_retrieval_alone':False,
         'source_scope':'original navigation only; inspect governing source section, original page and discourse before asserting facts',
     }
+
+
+def require_unchanged_final_source_map(verified:dict[str,dict],*,
+                                       newest_source_map:sqlite3.Connection)->None:
+    """Reopen a fresh source-map view after hashing every chosen original.
+
+    The original and native SQLite databases are independent. A read-only
+    transaction held during candidate validation cannot prove no concurrent
+    source-map change committed in WAL mode; this extra fresh view detects
+    known revision changes before emitting the source-only navigation result.
+    It still cannot replace real cross-store immutable generation pinning.
+    """
+    if (not isinstance(verified,dict) or not 1<=len(verified)<=30
+            or newest_source_map.execute('PRAGMA query_only').fetchone()!=(1,)):
+        raise ValueError('untrusted or writable final source-revision check')
+    for path,candidate in verified.items():
+        if (not isinstance(candidate,dict) or candidate.get('original_path')!=path
+                or candidate.get('publisher_original_actual_sha256_verified') is not True
+                or candidate.get('source_map_derivative_actual_sha256_verified') is not True):
+            raise ValueError('unverified original source supplied to final revision fence')
+        rows=newest_source_map.execute(
+             'SELECT source_sha256,derived_sha256,status FROM originals WHERE source_path=?',(path,)).fetchall()
+        if (rows!=[(candidate['original_sha256'],candidate['current_derived_sha256'],'complete')]):
+            raise ValueError('original source revision changed since native snapshot and physical byte checks')

@@ -5,7 +5,9 @@ from pathlib import Path
 import sqlite3
 from tempfile import TemporaryDirectory
 import unittest
-from file_system_catalog.source_triage_provenance import verify_selected_source
+from file_system_catalog.source_triage_provenance import (
+    verify_selected_source,require_unchanged_final_source_map,
+)
 
 
 class SourceTriageProvenanceTests(unittest.TestCase):
@@ -76,6 +78,31 @@ class SourceTriageProvenanceTests(unittest.TestCase):
         with sqlite3.connect(self.database) as writable:
             with self.assertRaisesRegex(ValueError,'query-only'):
                 self.run_proof(source_map=writable)
+
+    def test_fresh_source_map_revision_recheck_rejects_wal_commit_after_valid_hash(self):
+        result=self.run_proof()
+        selected={self.path:result}
+        require_unchanged_final_source_map(selected,newest_source_map=self.ro)
+        # The earlier source SHA proof was valid. A concurrent extractor can
+        # now commit a different source-map derivative without changing that
+        # original. The fresh database connection must not accept the old
+        # cached row as the current revision.
+        with sqlite3.connect(self.database) as db:
+            db.execute('UPDATE originals SET derived_sha256=? WHERE source_path=?',('f'*64,self.path))
+        newest=sqlite3.connect(self.database.resolve().as_uri()+'?mode=ro',uri=True)
+        newest.execute('PRAGMA query_only=ON')
+        try:
+            with self.assertRaisesRegex(ValueError,'revision changed'):
+                require_unchanged_final_source_map(selected,newest_source_map=newest)
+        finally:newest.close()
+
+    def test_invalid_final_source_claim_cannot_complete_false_citation(self):
+        result=self.run_proof()
+        with self.assertRaisesRegex(ValueError,'untrusted'):
+            require_unchanged_final_source_map({},newest_source_map=self.ro)
+        with self.assertRaisesRegex(ValueError,'unverified original'):
+            require_unchanged_final_source_map({self.path:{**result,
+                'publisher_original_actual_sha256_verified':False}},newest_source_map=self.ro)
 
     def test_symlinked_source_and_directory_traversal_rejected(self):
         shadow=self.root/'research/a/shadow.html'

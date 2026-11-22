@@ -21,7 +21,9 @@ from raspi_frozen_same_snapshot_three_channel_eval import (
     CORPUS,DERIVED,SOURCE_MAP,LocalE5,capture_source_channels,
     title_summary_fts,query_channels,checked_sqlite,
 )
-from file_system_catalog.source_triage_provenance import verify_selected_source
+from file_system_catalog.source_triage_provenance import (
+    verify_selected_source,require_unchanged_final_source_map,
+)
 
 
 def read_only_source_discovery(query:str,*,top:int=8)->dict:
@@ -42,6 +44,12 @@ def read_only_source_discovery(query:str,*,top:int=8)->dict:
               source_map=ro,approval_ledger=snapshot['receipt'],catalog=snapshot['catalog'],
               original_root=CORPUS,derived_root=DERIVED)
         ro.rollback()
+    # The first source-map connection held one read transaction while the
+    # publisher/derived file hashes were streamed. Because SQLite WAL can
+    # commit independently, do not silently report that old view as current.
+    # Reopen a fresh read-only source-map view after all hashes are complete.
+    with checked_sqlite(SOURCE_MAP) as latest:
+        require_unchanged_final_source_map(verified,newest_source_map=latest)
     return {
        'schema':'kmd.opt_in_three_channel_source_discovery_with_real_original_sha.v1',
        'checked_utc':datetime.now(timezone.utc).isoformat(),
@@ -56,6 +64,7 @@ def read_only_source_discovery(query:str,*,top:int=8)->dict:
        'service_stop_restart_or_gpu_model_eviction_performed':False,
        'source_navigation_only_not_a_generated_answer':True,
        'all_returned_originals_physically_sha_verified':len(verified),
+       'all_returned_source_map_revisions_rechecked_after_physical_hashes':True,
        'elapsed_seconds':round(time.monotonic()-start,3),
        'channels':{name:[{'rank':i,'source':verified[path]}
              for i,path in enumerate(records,1)] for name,records in visible.items()},

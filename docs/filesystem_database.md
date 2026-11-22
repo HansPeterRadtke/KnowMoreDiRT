@@ -2515,3 +2515,33 @@ from the corpus rather than taking a nearest-neighbor hit as true. The new
 CLI makes no automatic factual claims, no external downloads or account
 operations, and is not a reason to disturb the two existing live recursive-
 summary workers or prematurely release the staged 327 PDF page corrections.
+
+**Source-map commit-race guard and selected physical-page evidence.** The
+optional source navigation now checks a **fresh** read-only source-map
+snapshot **after** streaming all selected original and derivative SHA hashes.
+Because the extractor's source-map database is WAL-mode, an extractor may
+commit a new derivative while an earlier read transaction still sees the
+old source revision. An actual separate SQLite-connection regression test
+changes the source-map derivative after a previously correct original SHA
+proof and verifies that the old result is **rejected**, not silently returned
+as current. The real opt-in Unity search was repeated after this guard:
+all nineteen returned publisher originals passed SHA and the final current
+source-map revision fence. This remains a best-effort non-atomic live read;
+only an immutable cross-store source-generation protocol could offer a
+stronger global snapshot guarantee.
+
+A separate private source-evidence audit inspected actual **original PDF
+physical pages**, not merely a derivative file's page-like labels. The
+existing Poppler-based `verify_pdf_page_excerpts` reproduced exact normalized
+first-page excerpt bytes and verified the actual **physical page one** for
+three real retrieved original documents: the HiChunk retrieval paper, the
+multi-talker ASR/diarization paper and a loading-dock construction drawing.
+Their publisher original SHA and current extracted text SHA were checked
+independently. The fourth machine-recognized cognitive-walkthrough PDF
+retains an **OCR-only** page label and was correctly reported
+**`unverified: no_text_page_label`**, even though its OCR text contains a
+plausible matching phrase. No broad PDF-citation completeness or factual
+answer-truth claim follows from these three verified page snippets. All exact
+source and negative-control receipts remain in the private
+`search-audit/continued-20261122-wave58/` evidence folder; no protected
+publisher file, already-indexed vector or service was modified.
