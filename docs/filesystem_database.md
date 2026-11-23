@@ -2984,3 +2984,82 @@ rejection of live publication are preserved under owner-private wave-sixty-
 one audit files. A larger optional private cohort is only a research source
 for later visual/semantic review; it **must never** silently replace native
 KnowMoreDiRT originals, vectors or generated summaries.
+
+### Source-bound, RAM-only recovered-page search across 170 approved PDF originals (November 23, wave sixty-two)
+
+The existing 327 approved physical-page-corrected source derivatives and the
+170 new **private, unapproved alternate-machine-text preview** files make a
+bounded, reversible retrieval-quality comparison possible without touching
+native KnowMoreDiRT. Across these 170 affected originals, the safe staged
+temporary lexical index originally had **4,230** searchable physical page
+sections of **4,653**. The strict glyph-rescue preview has **4,641**
+provisional candidate sections: **411** recoverable and **12** still
+unusable. Across all 327 original PDFs, that is **7,157** original-section
+candidates before and **7,568** after. The increase is *provisional textual
+coverage*, not verified PDF visual text correctness, restored native vectors,
+semantic embedding recall or a released source revision.
+
+The new **opt-in read-only** entry point
+`scripts/raspi_private_recovered_pdf_corpus_search.py` takes one query, the
+previously approved complete 327-source PDF stage receipt and the protected
+170-source recovery-preview rollup; optional filters specify an exact
+approved publisher-original relative path and bounded top/candidate counts.
+No network, source download, OCR, external LLM or persistent index is used.
+The input rollup is required to match the *same* approved 327-source receipt
+SHA. It must contain **170 unique complete original PDF identities** and
+exactly **411** provisional machine recovered page sections. It rehashes
+every publisher original, current old live text derivative, initial
+corrected physical-page stage, new private preview and native FileDB source
+ID against the complete acquisition ledger and read-only source-map/native
+databases. Source identity and every published result's PDF and private text
+revisions are verified again after any page-level proof. Sources whose
+single attempted machine extraction was rejected on all formerly damaged
+pages (five approved originals in this cohort) stay in the inventory with
+**zero recovered rows**, never fake indexed content.
+
+Only the separately SHA-attested **411 newly recovered physical page bodies**
+enter the short-lived in-memory SQLite FTS index. Existing original PDFs,
+untouched pages and all normal lexical search remain outside this supplement
+and unchanged. The user-facing output does **not** expose the original
+Ghostscript-only text excerpt. A whole-corpus query selects an ephemeral
+page candidate, then searches its *full internal provisional page* for a
+source-relevant, verbatim short passage. That short passage is returned
+**only if** an independently re-read Poppler extraction confirms its exact
+text on the **same real physical original PDF page** with a source SHA and
+page digest; otherwise the result is only the source and real page locator,
+explicitly labeled **unverified**. Never infer complete-page accuracy,
+readability of equations and figures or the truth of the source's claim.
+
+Real owner-private end-to-end acceptance used a frozen attribution/source
+retrieval query and the **entire 170-original cohort**. The query returned
+an exact publisher-original physical page **27** from an ACL paper as its
+highest-ranked candidate, and the final tool independently confirmed a
+**279-byte** short text fragment on that page against both Ghostscript and
+Poppler; the second-ranked page 35 from the same paper also corroborated a
+short fragment. Both are original-source navigational evidence, not a model
+answer. The strict **zero-recovered-page source** returned no results and
+remained in the input source set. An unrelated hard-negative question also
+returned no result. The tool did not return unconfirmed machine-only
+quotes. These tests used the existing original source checks, not fabricated
+page labels or new downloads.
+
+The independently frozen six-query baseline comparison and its unmodified
+source records remain owner-private. Its OSDI chart example was initially
+misclassified as a missing page; post-hoc inspection established that it was
+NUL-contaminated but already present in the prior temporary index. A
+separate immutable erratum corrects the classification: only the ACL and
+AgentSteerTTS examples were truly missing from the earlier *lexical* index,
+and both became discoverable after provisional recovery. Existing security
+and robotics control ranks were preserved and the hard negative stayed
+negative. See owner-private `search-audit/continued-20261123-wave61/` for
+full 170-source preview, all 411 physical pages and independent full-byte
+checks, and `search-audit/continued-20261123-wave62/` for end-to-end
+whole-corpus and regression results. Do not add copyrighted originals or
+full private extracted-book texts to Git.
+
+**Production boundary:** this new source-page navigation does *not* authorize
+promoting a provisional preview into the live source-map, native FileDB,
+source vectors, summary embeddings, summary-tree generations or hierarchical
+indexing. A coordinated rollback-safe source-revision cutover and visual
+original-source citation/reading-order acceptance remain outstanding. All
+resident summary workers and shared service dependencies continue unchanged.
