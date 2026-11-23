@@ -2827,3 +2827,82 @@ fabricated page text** replaced their damaged text layers. Results and
 ranked evidence remain source-bound, not asserted factual answers. This
 functionality is a safe *read-only bridge while waiting for* the 327-PDF
 transactional native reindex cutover, not a completed index repair.
+
+### Opt-in provisional search for original PDF pages skipped by unreadable glyphs (November 23, wave sixty-one)
+
+Source-page correctness is separate from the quality of text extracted from
+that source page. A complete read-only source SHA, old live extraction SHA,
+private corrected candidate SHA, original acquisition receipt and native
+source-map/FileDB proof of all **327 privately staged original PDFs** found
+**7,580 physical publisher page labels**. The previous safe temporary
+physical-page lexical index admitted only **7,157 physical pages**, omitting
+**423 glyph-corrupted pages across 170 original documents**. A larger group
+of **860** physical pages contained twelve or more literal NUL glyphs, but
+some of those met the separate temporary index's length-proportional
+criteria; neither classification is a proof of visual accuracy.
+
+A full source-byte-verified **read-only** alternative-extractor evaluation
+has now inspected all **423** pages skipped by that temporary index. The
+installed Ghostscript text extractor successfully returned UTF-8 page
+text on **423 of 423**; **412** contained zero literal NUL codes. With a
+less strict provisional quality candidate threshold allowing a small number
+of NUL glyphs, **420 of 423** met the prior length and word-token rules.
+**This is *not* 420 verified publisher-accurate pages.** Ghostscript often
+recovers meaningful chart labels and text where Poppler's encoding is broken,
+but text order, column interpretation, formulae, chart labels and sentence
+scope remain to be independently checked against the rendered original PDF.
+The entire source-by-source full-SHA diagnostic is private and contains
+**only counts and page-text hashes**, not copyrighted paper bodies.
+
+The new optional `scripts/raspi_staged_pdf_alternate_glyph_search.py` accepts
+an exact completed, approved original relative PDF path, its existing
+private 327-source stage receipt, a bounded natural-language query and
+optionally one explicit physical PDF page. It operates *only* on the
+original page units previously **omitted** by the standard private search,
+not the current native index. No new files are downloaded; no OCR is invoked.
+Before and after the temporary query, a fresh read-only source-map/native
+FileDB snapshot checks the exact original ID and current extraction
+revision, and complete hashes of the original publisher PDF, its old live
+extracted text and privately staged corrected text must match the approved
+records. A Ghostscript process is restricted to one selected publisher PDF
+page at a time, with a hard time, virtual-memory and output-size limit,
+using the same original file descriptor whose full SHA and true physical
+page count are checked before and after. One query admits at most **32
+previously omitted physical pages**. Larger documents require an explicit
+page selection instead of silently dropping other damaged pages.
+
+The production-quality **provisional reader is deliberately stricter** than
+the exploratory 420-page test: it rejects any NUL or replacement-character
+glyph, abnormally sparse text and text too long for untruncated output.
+Only horizontal spacing may be compacted when all non-whitespace characters
+and original line boundaries survive. The selected source's candidates are
+ranked in **RAM-only** SQLite FTS5, with the same minimum two-distinct-word
+excerpt coverage guard as existing staged physical-page search. A second
+independent Poppler pass on the **same physical publisher page** may
+corroborate the complete short excerpt. If it does not, the result is
+explicitly named `provisional_alternate_machine_text_only_not_a_verified_quote`.
+Even a corroborated source excerpt is **never** a proven factual answer or
+guaranteed visual-layout reconstruction. Both statuses preserve original
+publisher identity, original physical page, extracted-text digest and
+review requirements.
+
+Real private acceptance: the ACL source-attribution paper's original
+physical page twenty-seven, previously excluded by corrupted character
+codes, now yields a bounded original-PDF-linked *provisional* answer
+candidate for an attribution/search question. The source-aware TTS agent
+paper also yields an original-page-one candidate; among its eleven
+previously omitted physical pages, ten meet the **strict, zero-NUL**
+provisional extraction rules, with five ranked hits on a source-specific
+speech query. The eleventh was **not** represented as recovered. None of
+these examples was promoted as an independently verified PDF quotation or
+factual answer, and no resident model, running summarizer, live source
+cache, native vector, summary or source-map was changed. All original PDFs,
+private diagnostic evidence, outputs, SHA receipts and unresolved reading-
+order checks are under owner-private `search-audit/continued-20261123-wave61/`.
+
+Until an actual PDF visual and phrase-reliability benchmark establishes
+accuracy across hard cases, **do not automatically replace** the original
+live extraction or certify these provisional pages as authoritative.
+The 327-source rollback-safe, coordinated native reindex and summary/vector
+revision cutover is still a separate outstanding step; a cleared source
+page text-corruption warning cannot by itself authorize it.
