@@ -21,7 +21,9 @@ import sys
 
 ROOT=Path(__file__).resolve().parents[1]
 sys.path.insert(0,str(ROOT/'src'))
-from file_system_catalog.recent_source_tree_audit import audit_current_source_tree
+from file_system_catalog.recent_source_tree_audit import (
+    audit_current_source_tree,MAX_SOURCE_BYTES,MAX_EXTENDED_SOURCE_BYTES,MAX_DERIVED_BYTES,
+)
 
 UNITS=('knowledge-library-hierarchical-summary.service',
        'knowledge-library-hierarchical-summary-q4.service')
@@ -107,10 +109,14 @@ def main():
     ap.add_argument('--since',default='2026-11-21 00:00:00',
                     help='Local systemd journal date; use exact YYYY-MM-DD HH:MM:SS')
     ap.add_argument('--last',type=int,default=15)
+    ap.add_argument('--max-original-mib',type=int,default=MAX_SOURCE_BYTES//(1024*1024),
+                    help='Explicit read-only streaming original-PDF SHA cap in MiB (1 to 256); default 64. Derived text remains capped at 64 MiB.')
     ap.add_argument('--selection',choices=('recent','largest'),default='recent',
                     help='Recent worker events or largest current source-summary roots; read-only')
     args=ap.parse_args()
     if (type(args.last) is not int or not 1<=args.last<=25
+            or type(args.max_original_mib) is not int
+            or not 1<=args.max_original_mib<=MAX_EXTENDED_SOURCE_BYTES//(1024*1024)
             or not isinstance(args.since,str) or len(args.since)!=19
             or args.since[4]!='-' or args.since[7]!='-' or args.since[10]!=' '
             or args.since[13]!=':' or args.since[16]!=':'):
@@ -145,7 +151,8 @@ def main():
                 record=audit_current_source_tree(
                     original_path=source,source_map=sm,native_db=db,
                     original_root=args.original_root,derivative_root=args.derived_root,
-                    completed_receipts=receipts)
+                    completed_receipts=receipts,
+                    max_original_bytes=args.max_original_mib*1024*1024)
                 checks.append({'status':'verified',**record})
                 print('VERIFIED',source.rsplit('/',1)[-1][:90],
                       record['current_native_summary_nodes_fully_verified'],flush=True)
@@ -168,6 +175,8 @@ def main():
         'known_source_audit_failures':len(failed),
         'oversized_sources_explicitly_unverified':len(checks)-len(passed)-len(failed),
         'source_originals_selected':len(paths),
+        'source_original_streaming_hash_limit_mib':args.max_original_mib,
+        'derived_source_whole_text_memory_limit_mib':MAX_DERIVED_BYTES//(1024*1024),
         'source_sample_is_full_eligible_corpus':False,
         'queries_and_originals_accessed_read_only':True,
         'no_source_or_filedb_or_model_mutation':True,

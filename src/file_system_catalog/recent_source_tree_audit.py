@@ -18,8 +18,9 @@ from .source_review_audit import safe_file, sha_file
 
 SHA = re.compile(r"[0-9a-f]{64}\Z")
 PROMPT = 'kmd-hierarchical-source-summary-v1'
-MAX_SOURCE_BYTES = 64 * 1024 * 1024
-MAX_DERIVED_BYTES = 64 * 1024 * 1024
+MAX_SOURCE_BYTES = 64 * 1024 * 1024  # Default ordinary original-PDF byte audit cap.
+MAX_EXTENDED_SOURCE_BYTES = 256 * 1024 * 1024  # Explicit opt-in only, source hash streams.
+MAX_DERIVED_BYTES = 64 * 1024 * 1024  # Entire derivative is inspected in memory.
 MAX_NODES = 4096
 
 
@@ -37,7 +38,11 @@ def audit_current_source_tree(
     in the current derived original; this verifies structure and provenance,
     **not** factual accuracy of generated summaries.
     """
-    if (type(max_original_bytes) is not int or not 1<=max_original_bytes<=MAX_SOURCE_BYTES
+    # The publisher PDF is independently SHA-hashed via safe_file/sha_file's
+    # bounded streaming descriptor (not loaded into RAM), so a larger real
+    # publisher scan can be admitted deliberately, without expanding the
+    # 64-MiB in-memory *derived source text* cap or changing normal defaults.
+    if (type(max_original_bytes) is not int or not 1<=max_original_bytes<=MAX_EXTENDED_SOURCE_BYTES
             or type(max_derived_bytes) is not int or not 1<=max_derived_bytes<=MAX_DERIVED_BYTES):
         raise ValueError('bounded publisher source and derivative limits required')
     original = safe_file(original_root, original_path)

@@ -3112,3 +3112,45 @@ the change. The owner-private reports and extracted passages remain outside
 Git under the wave-sixty-two review directory. Never interpret any of these
 machine-matched excerpts as confirmation of the full page, its diagrams,
 claims or its semantic indexing completeness.
+
+### Explicit, bounded streaming proof of large approved original PDFs (November 23, wave sixty-two)
+
+The existing read-only `scripts/raspi_recent_summary_integrity.py` audits
+native hierarchical source-summary graphs from independently completed
+original publisher files. Previously, it intentionally returned
+`unverified_oversized` if a source's original publisher PDF exceeded **64 MiB**,
+even when its extracted source text was far smaller. This was an audit
+safety limit, **not** proof that the original file or its generated native
+hierarchy was corrupt. The default **64 MiB** original and **64 MiB** derived
+limits remain intact for normal audit calls.
+
+An additional **explicit opt-in** `--max-original-mib 128` (one through
+**256 MiB** maximum) permits independent verification of a larger *original
+file* only. The original PDF is SHA-256 hashed through a same-file-descriptor,
+mutation-checked **streaming reader**; the content is **not** loaded wholesale
+into RAM. The full derived source text is still capped at **64 MiB** and
+inspected with the existing exact source-span, summary-node, current original
+revision, native vector digest/dimension and complete hierarchical graph
+checks. Invalid, Boolean, negative or above-256-MiB bounds are rejected.
+The native database and source map remain query-only SQLite connections;
+this command neither causes summary generation nor changes the workers.
+
+A real original publisher graphics/renderer research PDF of **97,804,345**
+bytes, previously reported merely as `unverified_oversized` in the
+fifteen-source bounded recent-completion sample, now passes an independent
+**128-MiB streaming original-file** proof. Its **71,225-byte** extracted
+source text and **all three current native recursive summary nodes** were
+fully SHA-linked to the exact publisher original and their native embeddings
+and source spans were verified. All original source text was accounted for
+by the descendant graph. The proof is private under the wave-sixty-two audit
+directory. This validates provenance and structure **only**; it does not
+establish that AI-generated summaries are factually accurate or that page
+figures/diagrams were properly interpreted.
+
+The special larger-source bound is an **optional QA setting**, never a global
+relaxation of the ordinary worker, download, text-source memory, or native
+indexer limits. The default normal source audit must continue to report
+large originals as explicitly unverified unless the operator knowingly uses
+this bounded streaming override and rechecks the exact bytes. Unresolved
+large or derived-over-limit sources remain unverified, never automatically
+declared valid.

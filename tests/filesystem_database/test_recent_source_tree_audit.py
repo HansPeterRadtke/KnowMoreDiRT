@@ -163,6 +163,26 @@ class RecursiveTreeOriginalProofTests(unittest.TestCase):
         self.assertEqual(3,result['current_native_summary_nodes_fully_verified'])
         self.assertEqual(1,result['historical_revision_nodes_not_counted_as_current'])
 
+    def test_explicit_extended_original_SHA_guard_preserves_default_derived_memory_bound(self):
+        from file_system_catalog.recent_source_tree_audit import (
+            MAX_SOURCE_BYTES,MAX_EXTENDED_SOURCE_BYTES,MAX_DERIVED_BYTES,
+        )
+        self.assertEqual(64*1024*1024,MAX_SOURCE_BYTES)
+        self.assertEqual(256*1024*1024,MAX_EXTENDED_SOURCE_BYTES)
+        self.assertEqual(64*1024*1024,MAX_DERIVED_BYTES)
+        # A caller may deliberately hash a larger publisher PDF using a
+        # streaming descriptor, but the *derived* source read_bytes remains
+        # bounded at the previous strict 64-MiB limit.
+        proven=self.check(max_original_bytes=128*1024*1024)
+        self.assertEqual(self.o_sha,proven['publisher_original_sha256_reverified'])
+        self.assertTrue(proven['all_original_text_covered_by_recursive_summary_graph'])
+        for invalid in (True,0,MAX_EXTENDED_SOURCE_BYTES+1,MAX_EXTENDED_SOURCE_BYTES*10):
+            with self.subTest(max_original_bytes=invalid),self.assertRaisesRegex(ValueError,'limits required'):
+                self.check(max_original_bytes=invalid)
+        for invalid in (True,0,MAX_DERIVED_BYTES+1):
+            with self.subTest(max_derived_bytes=invalid),self.assertRaisesRegex(ValueError,'limits required'):
+                self.check(max_derived_bytes=invalid)
+
     def test_unsafe_original_path_symlink_and_bounded_size(self):
         with self.assertRaises(ValueError):
             self.check(original_path='../original.html')
