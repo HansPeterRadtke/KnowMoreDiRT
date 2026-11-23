@@ -2714,3 +2714,52 @@ source revisions, hashes and command proof are saved only in the owner-private
 page-forty-nine to physical-page-twenty-one discrepancy remains documented;
 this independent staged retrieval does not mean any 327-document live
 reindexing or cutover was done.
+
+### Opt-in original physical PDF page neighbors for all 327 corrected staged sources, November 23
+
+The 327 publisher-original PDF corrections have a verified private staged
+source candidate and a RAM-only publisher-page search, but the current native
+FileDB and its generated summaries must remain on the old revision while the
+active workers cannot safely quiesce. **Source-bound search may now optionally
+expand its verified staged page into adjacent real publisher physical PDF
+pages** without cutting over those sources. Set the new
+`--original-neighbor-radius 1` parameter on the existing
+`scripts/raspi_staged_pdf_original_page_search.py` command, or zero to request
+only the verified original page. Omitting this parameter retains all former
+output and ranking behavior. The search first verifies the **same source**
+against its acquisition record, current old derivative revision, staged
+corrected derivative revision, native FileDB identity and independently
+matched original PDF physical page. The opt-in stage then extracts at most
+one original physical page either side, **without joining them into a
+fabricated quotation**, and requires that the center-page text SHA match the
+previous independent publisher-page proof. It verifies the three full file
+SHA digests, approved acquisition receipt and live native/source-map identity
+**again after** extracting the adjacent pages. Unverified, stale,
+wrong-original, missing page, overlong, corrupted or image-only page text
+cannot acquire a source-context citation.
+
+The original full-text and all surrounding pages remain restricted to the
+owner's machine. An actual publisher PDF page is not automatically a factual
+claim: quoted statements, examples, negative evidence, old versions or
+benchmark questions must still be assessed in context. This operator
+neither edits native vectors nor restarts writer services. Actual original
+publisher PDF evidence passed on three independent previously approved
+sources with extraction-label problems: the USENIX security paper located
+correct **pages twenty and twenty-one** for an actual security research
+query, the RSS robot motion paper returned **pages twelve and thirteen**,
+and the USENIX OSDI implementation paper returned **pages eighteen and
+nineteen**. All hits reverified the original, old extracted text, corrected
+private staged text, source-map and native FileDB identity *after* the
+physical-page expansion; the first hit's original physical-page citation,
+source excerpt, revision digests and rank stayed unchanged compared with
+search without the optional neighbor expansion.
+
+New read-only negative tests force a concurrent original, current live
+extracted source, private staged candidate, source-map row or native FileDB
+identity mutation **during neighbor extraction**, and require failure.
+Additional tests reject incorrect original document/excerpt, cross-PDF
+page SHA disagreement, missing/oversized and re-ordered page sets, invalid
+neighbor radius and fabricated factual-answer status. Exact reproduction
+receipts, real publisher physical-page bytes, hash proofs and current corpus
+coverage are preserved owner-privately in the continuation wave-sixty audit
+folder; never place publisher page bodies or private transcripts in Git.

@@ -15,6 +15,7 @@ import sqlite3
 
 from .hybrid_search import query_terms
 from .publisher_pdf_page import verify_pdf_page_excerpts
+from .verified_pdf_neighbor_context import verified_page_neighbors
 from .source_review_audit import safe_file, sha_file
 from .source_evidence import _best_excerpt
 
@@ -201,3 +202,87 @@ def verify_staged_page_result(hit,*,query:str,original_root:Path,derived_root:Pa
             'source_map_native_id_and_three_file_sha_rechecked_after_original_pdf_page_proof':True,
             'temporary_staged_evidence_only_not_native_embedding_or_summary_replacement':True,
             'factual_answer_verified':False,'score':score}
+
+
+def attach_staged_physical_page_neighbors(
+    hit, verified:dict, *, original_root:Path, derived_root:Path,
+    stage_root:Path, completed_receipts:dict[str,str],
+    source_map:sqlite3.Connection, native_db:sqlite3.Connection,
+    neighbor_radius:int=1, reader=verified_page_neighbors,
+) -> dict:
+    """Optional verified original physical page neighbors around staged source evidence.
+
+    The original staged passage must already have passed the separate full
+    revision and publisher physical page verification. Independently recheck
+    the full original PDF and matching center page SHA, and then recheck every
+    current source revision *again* after the neighbor extraction. A changed
+    staged or live source during either page read must never be cited.
+    """
+    if type(neighbor_radius) is not int or neighbor_radius not in (0,1):
+        raise ValueError('invalid bounded physical PDF neighbor radius')
+    if not isinstance(verified,dict) or verified.get('status')!='publisher_original_physical_pdf_page_verified':
+        raise ValueError('neighbor context requires an independently verified staged publisher page')
+    (path,label,page,_,item),_ = hit
+    original_sha=item.get('original_sha256')
+    old=item.get('old_derived_sha256');stage_sha=item.get('new_staged_derived_sha256')
+    excerpt=verified.get('publisher_source_excerpt')
+    excerpt_sha=verified.get('source_excerpt_sha256')
+    page_sha=verified.get('page_text_sha256')
+    if (verified.get('original_path')!=path or verified.get('source_section')!=label
+            or verified.get('physical_pdf_page')!=page
+            or verified.get('publisher_original_sha256')!=original_sha
+            or verified.get('current_old_derived_sha256')!=old
+            or verified.get('corrected_private_derived_sha256')!=stage_sha
+            or verified.get('native_original_filedb_entry_id')!=item.get('native_original_filedb_id')
+            or verified.get('page_verification_basis')!='derivative_label_confirmed'
+            or not all(isinstance(v,str) and SHA.fullmatch(v) for v in
+                       (original_sha,old,stage_sha,page_sha,excerpt_sha))
+            or not isinstance(excerpt,str) or not 3<=len(excerpt)<=600
+            or hashlib.sha256(excerpt.encode('utf8')).hexdigest()!=excerpt_sha):
+        raise ValueError('staged original citation and publisher page anchor identity disagree')
+    if completed_receipts.get(path)!=original_sha:
+        raise ValueError('completed acquisition original approval changed before context read')
+    original=safe_file(original_root,path)
+    old_derived=safe_file(derived_root,path+'.txt')
+    stage_path=Path(item['staged_private_file'])
+    if not stage_path.is_relative_to(stage_root):
+        raise ValueError('private corrected candidate is outside approved stage')
+    staged=safe_file(stage_root,str(stage_path.relative_to(stage_root)))
+    context=reader(original,original_sha,requested_page=page,
+                   neighbor_radius=neighbor_radius,required_center_excerpt=excerpt)
+    if (not isinstance(context,dict) or not context.get('original_pdf_revision_verified_before_and_after')
+            or not context.get('required_center_excerpt_verified')
+            or not context.get('separate_original_pages_not_joined_into_one_quotation')
+            or context.get('original_pdf_sha256')!=original_sha
+            or context.get('requested_center_physical_page')!=page
+            or context.get('neighbor_radius')!=neighbor_radius):
+        raise ValueError('adjacent original PDF source context proof is incomplete or from another document')
+    pages=context.get('pages')
+    if not isinstance(pages,list) or not 1<=len(pages)<=3:
+        raise ValueError('adjacent publisher page context exceeds the physical page limit')
+    physical=[p.get('physical_page') for p in pages if isinstance(p,dict)]
+    if len(physical)!=len(pages) or len(set(physical))!=len(physical) or physical!=sorted(physical):
+        raise ValueError('adjacent physical pages are not distinct and ordered')
+    center=[p for p in pages if p['physical_page']==page]
+    if len(center)!=1 or center[0].get('physical_page_poppler_sha256')!=page_sha:
+        raise ValueError('publisher center PDF page digest changed across two independent readers')
+    if completed_receipts.get(path)!=original_sha:
+        raise ValueError('completed acquisition approval changed after context read')
+    latest_map=source_map.execute(
+        'SELECT source_sha256,derived_sha256,derived_path,status FROM originals WHERE source_path=?',
+        (path,)).fetchall()
+    if len(latest_map)!=1 or latest_map[0]!=(original_sha,old,path+'.txt','complete'):
+        raise ValueError('native source-map revision changed during neighbor extraction')
+    latest_native=native_db.execute(
+        "SELECT id FROM filesystem_entries WHERE entry_type='file' AND relative_path_display=?",
+        (path,)).fetchall()
+    if len(latest_native)!=1 or latest_native[0][0]!=item.get('native_original_filedb_id'):
+        raise ValueError('native original FileDB identity changed during neighbor extraction')
+    if sha_file(original)!=original_sha or sha_file(old_derived)!=old or sha_file(staged)!=stage_sha:
+        raise ValueError('original or corrected/old derivative changed during neighbor extraction')
+    return {**verified,
+        'publisher_original_physical_page_neighbors':context,
+        'center_physical_pdf_page_sha_independently_correlated_twice':True,
+        'source_map_native_id_and_all_three_source_sha_rechecked_after_neighbor_extraction':True,
+        'neighbor_context_factual_answer_verified':False,
+        'neighbor_context_does_not_replace_native_filedb_or_index':True}

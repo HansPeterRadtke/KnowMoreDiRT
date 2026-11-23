@@ -17,6 +17,7 @@ ROOT=Path(__file__).resolve().parents[1]
 sys.path.insert(0,str(ROOT/'src'))
 from file_system_catalog.staged_physical_page_search import (
     StagedPhysicalPageRAMIndex,verify_staged_page_result,
+    attach_staged_physical_page_neighbors,
 )
 from file_system_catalog.hybrid_search import query_terms
 
@@ -63,6 +64,8 @@ def main():
     parser.add_argument('--original-path',help='Optional exact original-relative source path, otherwise search all 327')
     parser.add_argument('--top',type=int,default=3,help='Maximum original PDF verified excerpts (1-8)')
     parser.add_argument('--candidates',type=int,default=30,help='Maximum ranked page candidates to verify (1-100)')
+    parser.add_argument('--original-neighbor-radius',type=int,default=None,choices=(0,1),
+                        help='Opt-in full original physical PDF page and up to one page on each side; omitted by default')
     args=parser.parse_args()
     if not 1<=args.top<=8 or not args.top<=args.candidates<=100:
         parser.error('invalid bounded original-physical-page verification count')
@@ -85,6 +88,12 @@ def main():
                         derived_root=DERIVED,stage_root=AUDITS,completed_receipts=receipts,
                         source_map=sm,native_db=native)
                 if check['status']=='publisher_original_physical_pdf_page_verified':
+                    if args.original_neighbor_radius is not None:
+                        check=attach_staged_physical_page_neighbors(
+                            hit,check,original_root=SOURCES,derived_root=DERIVED,
+                            stage_root=AUDITS,completed_receipts=receipts,
+                            source_map=sm,native_db=native,
+                            neighbor_radius=args.original_neighbor_radius)
                     evidence.append(check)
                     if len(evidence)>=args.top:break
                 else:failed.append(check)
@@ -98,6 +107,8 @@ def main():
                 'rejected_for_weak_excerpt_query_coverage':sum(z['status']=='insufficient_source_query_term_coverage' for z in failed),
                 'lexical_minimum_distinct_query_terms_per_verified_excerpt':min(2,len(query_terms(args.query))),
                 'source_original_semantic_answer_not_generated':True,
+                'opt_in_original_physical_neighbor_radius':args.original_neighbor_radius,
+                'original_neighbor_page_context_not_a_factual_answer':True,
                 'not_a_second_persistent_database':True,
                 'no_original_source_filedb_source_map_summary_cache_or_worker_writes':True}
         print(json.dumps(result,ensure_ascii=False,indent=2))

@@ -8,6 +8,7 @@ import unittest
 
 from file_system_catalog.staged_physical_page_search import (
     StagedPhysicalPageRAMIndex,source_units_from_corrected_text,verify_staged_page_result,
+    attach_staged_physical_page_neighbors,
 )
 
 
@@ -199,6 +200,123 @@ class StagedPhysicalPageSearchTests(unittest.TestCase):
                 verify_staged_page_result(hit,query='publisher physical page',original_root=self.orig,
                     derived_root=self.live,stage_root=self.stage,
                     completed_receipts={self.relative:digest(self.original)},source_map=self.sm,native_db=self.native)
+
+    def _attested_stage_hit(self):
+        with StagedPhysicalPageRAMIndex(1) as idx:
+            idx.add(self.item,stage_root=self.stage);idx.commit()
+            hit=idx.ranked('publisher physical page provenance')[0]
+        verified=verify_staged_page_result(hit,query='publisher physical page provenance',
+            original_root=self.orig,derived_root=self.live,stage_root=self.stage,
+            completed_receipts={self.relative:digest(self.original)},
+            source_map=self.sm,native_db=self.native,
+            verifier=lambda *_:[{'status':'verified','page':2,
+                'basis':'derivative_label_confirmed','page_text_sha256':'a'*64}])
+        self.assertEqual('publisher_original_physical_pdf_page_verified',verified['status'])
+        return hit,verified
+
+    def _physical_neighbor_proof(self,*,page_sha='a'*64):
+        return {'original_pdf_revision_verified_before_and_after':True,
+           'required_center_excerpt_verified':True,
+           'separate_original_pages_not_joined_into_one_quotation':True,
+           'original_pdf_sha256':digest(self.original),
+           'requested_center_physical_page':2,'neighbor_radius':1,
+           'pages':[{'physical_page':1,'physical_page_poppler_sha256':'b'*64},
+                    {'physical_page':2,'physical_page_poppler_sha256':page_sha}]}
+
+    def _neighbors(self,hit,proof,reader):
+        return attach_staged_physical_page_neighbors(hit,proof,
+            original_root=self.orig,derived_root=self.live,stage_root=self.stage,
+            completed_receipts={self.relative:digest(self.original)},
+            source_map=self.sm,native_db=self.native,neighbor_radius=1,reader=reader)
+
+    def test_adjacent_physical_page_context_attests_two_separate_original_pages(self):
+        hit,proof=self._attested_stage_hit()
+        def reader(_pdf,_sha,*,requested_page,neighbor_radius,required_center_excerpt):
+            self.assertEqual(2,requested_page)
+            self.assertEqual(1,neighbor_radius)
+            self.assertEqual(proof['publisher_source_excerpt'],required_center_excerpt)
+            return self._physical_neighbor_proof()
+        got=self._neighbors(hit,proof,reader)
+        self.assertEqual([1,2],[r['physical_page'] for r in got['publisher_original_physical_page_neighbors']['pages']])
+        self.assertTrue(got['center_physical_pdf_page_sha_independently_correlated_twice'])
+        self.assertTrue(got['source_map_native_id_and_all_three_source_sha_rechecked_after_neighbor_extraction'])
+        self.assertFalse(got['neighbor_context_factual_answer_verified'])
+        self.assertFalse(got['factual_answer_verified'])
+
+    def test_neighbor_page_digest_mismatch_refused_after_source_bound_reader(self):
+        hit,proof=self._attested_stage_hit()
+        with self.assertRaisesRegex(ValueError,'digest changed'):
+            self._neighbors(hit,proof,lambda *_args,**_kw:self._physical_neighbor_proof(page_sha='c'*64))
+
+    def test_neighbor_extraction_source_map_advancement_fails_closed(self):
+        hit,proof=self._attested_stage_hit()
+        def change(*_args,**_kw):
+            self.sm.execute('UPDATE originals SET derived_sha256=? WHERE source_path=?',('0'*64,self.relative))
+            self.sm.commit()
+            return self._physical_neighbor_proof()
+        with self.assertRaisesRegex(ValueError,'source-map revision changed during neighbor extraction'):
+            self._neighbors(hit,proof,change)
+
+    def test_neighbor_extraction_changes_private_staged_text_fails_closed(self):
+        hit,proof=self._attested_stage_hit()
+        def change(*_args,**_kw):
+            (self.stage/(self.relative+'.txt')).write_bytes(b'private source changed after page hash')
+            return self._physical_neighbor_proof()
+        with self.assertRaisesRegex(ValueError,'changed during neighbor extraction'):
+            self._neighbors(hit,proof,change)
+
+    def test_neighbor_extraction_changes_old_live_source_fails_closed(self):
+        hit,proof=self._attested_stage_hit()
+        def change(*_args,**_kw):
+            (self.live/(self.relative+'.txt')).write_bytes(b'old source revised mid-query')
+            return self._physical_neighbor_proof()
+        with self.assertRaisesRegex(ValueError,'changed during neighbor extraction'):
+            self._neighbors(hit,proof,change)
+
+    def test_neighbor_extraction_changes_original_publisher_file_fails_closed(self):
+        hit,proof=self._attested_stage_hit()
+        def change(*_args,**_kw):
+            (self.orig/self.relative).write_bytes(b'publisher original replaced mid-query')
+            return self._physical_neighbor_proof()
+        with self.assertRaisesRegex(ValueError,'changed during neighbor extraction'):
+            self._neighbors(hit,proof,change)
+
+    def test_neighbor_extraction_changes_native_original_id_fails_closed(self):
+        hit,proof=self._attested_stage_hit()
+        def change(*_args,**_kw):
+            self.native.execute('UPDATE filesystem_entries SET id=888 WHERE relative_path_display=?',(self.relative,))
+            self.native.commit()
+            return self._physical_neighbor_proof()
+        with self.assertRaisesRegex(ValueError,'FileDB identity changed during neighbor extraction'):
+            self._neighbors(hit,proof,change)
+
+    def test_unverified_or_stale_page_cannot_be_promoted_to_neighbor_proof(self):
+        hit,proof=self._attested_stage_hit()
+        for bad in ({**proof,'status':'not_independently_verified'},
+                    {**proof,'source_excerpt_sha256':'0'*64},
+                    {**proof,'original_path':'different.pdf'},
+                    {**proof,'page_text_sha256':'not-a-digest'}):
+            with self.subTest(bad=bad):
+                with self.assertRaises(ValueError):
+                    self._neighbors(hit,bad,lambda *_args,**_kw:self._physical_neighbor_proof())
+
+    def test_unbounded_or_fabricated_neighbor_page_set_rejected(self):
+        hit,proof=self._attested_stage_hit()
+        with self.assertRaisesRegex(ValueError,'invalid bounded physical PDF neighbor radius'):
+            attach_staged_physical_page_neighbors(hit,proof,original_root=self.orig,
+                derived_root=self.live,stage_root=self.stage,
+                completed_receipts={self.relative:digest(self.original)},
+                source_map=self.sm,native_db=self.native,neighbor_radius=2,
+                reader=lambda *_args,**_kw:self._physical_neighbor_proof())
+        damaged=self._physical_neighbor_proof()
+        damaged['pages']=[{'physical_page':2,'physical_page_poppler_sha256':'a'*64}]*4
+        with self.assertRaisesRegex(ValueError,'exceeds the physical page limit'):
+            self._neighbors(hit,proof,lambda *_args,**_kw:damaged)
+        malformed=self._physical_neighbor_proof()
+        malformed['pages']=[{'physical_page':2,'physical_page_poppler_sha256':'a'*64},
+                            {'physical_page':1,'physical_page_poppler_sha256':'b'*64}]
+        with self.assertRaisesRegex(ValueError,'not distinct and ordered'):
+            self._neighbors(hit,proof,lambda *_args,**_kw:malformed)
 
     def test_duplicate_source_entry_rejected(self):
         with StagedPhysicalPageRAMIndex(2) as index:
