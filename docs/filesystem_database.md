@@ -2942,3 +2942,45 @@ or malformed proof, an unrelated single generic query term, and the wrong
 source identity cannot be elevated into a verified quotation. This is
 opt-in evidence navigation only, not approval for native text/vector/summary
 source revision replacement.
+
+### Strictly private and unapproved physical-PDF glyph recovery preview assembly
+
+A separate optional review-only tool, `scripts/raspi_stage_provisional_pdf_glyph_recovery.py`,
+creates **one new isolated private preview directory** for one exact
+publisher-approved original PDF. It accepts only an already verified full
+327-source physical page stage receipt, current unmodified original/source
+bytes and native source-map/FileDB identities. It identifies **only** page
+units omitted from the safe temporary page search and obtains bounded,
+source-SHA-attested alternative candidate text through the local guarded
+Ghostscript reader. The strict preview assembly accepts only candidate
+pages without any NUL/replacement-character glyphs; unavailable pages
+retain their prior original Poppler text, with their omission disclosed.
+
+The preview repeats exactly the existing staged publisher physical page
+markers and preserves **every untouched page's text body byte-for-byte**
+(in UTF-8 representation) and the document header. It replaces nothing
+except specifically identified formerly excluded physical pages. Tests
+refuse missing/duplicate/reordered labels, a forged new source-unit marker,
+a tampered alternate text SHA, a changed unchanged page, unknown candidate
+states, and made-up text on unavailable pages. The tool requires a new
+restricted private directory, writes a candidate text file plus a separate
+source-revision/page-level manifest, verifies both output hashes, and
+explicitly declares `PRIVATE_UNAPPROVED_MACHINE_PDF_TEXT_PREVIEW_NOT_FOR_LIVE_CUTOVER`.
+This metadata **cannot** be used as a native source-map generation or
+release authorization; no live original, index, vector, summary or resident
+model is changed.
+
+A live source-real pilot with the original approved agent speech-synthesis
+paper preserved **all nineteen physical page labels**. Its previous
+corrected-physical-page text was searchable on **eight** pages because
+**eleven** were omitted for damaged glyphs. The new private review-only
+machine candidate recovered **ten** of those omitted pages under the
+**zero-NUL** rule. Consequently an offline *unapproved preview* would be
+searchable on **eighteen of nineteen** original physical pages; the last
+unrecovered page remains visibly omitted. Both the original cached text
+and the earlier private approved physical-page stage remain exactly
+unchanged. Exact source SHA checks, output hashes and the candidate's
+rejection of live publication are preserved under owner-private wave-sixty-
+one audit files. A larger optional private cohort is only a research source
+for later visual/semantic review; it **must never** silently replace native
+KnowMoreDiRT originals, vectors or generated summaries.
