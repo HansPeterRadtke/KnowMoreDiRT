@@ -220,8 +220,10 @@ class StagedPhysicalPageSearchTests(unittest.TestCase):
            'separate_original_pages_not_joined_into_one_quotation':True,
            'original_pdf_sha256':digest(self.original),
            'requested_center_physical_page':2,'neighbor_radius':1,
-           'pages':[{'physical_page':1,'physical_page_poppler_sha256':'b'*64},
-                    {'physical_page':2,'physical_page_poppler_sha256':page_sha}]}
+           'pages':[{'physical_page':1,'physical_page_poppler_sha256':'b'*64,
+                     'status':'verified_original_page_text','extracted_page_text':'Earlier source context.'},
+                    {'physical_page':2,'physical_page_poppler_sha256':page_sha,
+                     'status':'verified_original_page_text','extracted_page_text':'Actual original publisher physical page text.'}]}
 
     def _neighbors(self,hit,proof,reader):
         return attach_staged_physical_page_neighbors(hit,proof,
@@ -247,6 +249,25 @@ class StagedPhysicalPageSearchTests(unittest.TestCase):
         hit,proof=self._attested_stage_hit()
         with self.assertRaisesRegex(ValueError,'digest changed'):
             self._neighbors(hit,proof,lambda *_args,**_kw:self._physical_neighbor_proof(page_sha='c'*64))
+
+    def test_unreadable_adjacent_page_is_explicitly_unknown_but_center_remains_proven(self):
+        hit,proof=self._attested_stage_hit()
+        context=self._physical_neighbor_proof()
+        context['pages'][0]={'physical_page':1,'status':'adjacent_original_pdf_page_text_unavailable',
+            'physical_page_poppler_sha256':'b'*64,'extracted_page_text':None,
+            'reason':'unreadable original neighbor','requires_original_pdf_visual_or_authorized_ocr_review':True}
+        context['unavailable_neighbor_text_pages']=1
+        out=self._neighbors(hit,proof,lambda *_args,**_kw:context)
+        self.assertTrue(out['center_physical_pdf_page_sha_independently_correlated_twice'])
+        self.assertIsNone(out['publisher_original_physical_page_neighbors']['pages'][0]['extracted_page_text'])
+        self.assertFalse(out['neighbor_context_factual_answer_verified'])
+
+    def test_unreadable_neighbor_must_never_invent_its_publisher_text(self):
+        hit,proof=self._attested_stage_hit()
+        context=self._physical_neighbor_proof()
+        context['pages'][0]['status']='adjacent_original_pdf_page_text_unavailable'
+        with self.assertRaisesRegex(ValueError,'invented text'):
+            self._neighbors(hit,proof,lambda *_args,**_kw:context)
 
     def test_neighbor_extraction_source_map_advancement_fails_closed(self):
         hit,proof=self._attested_stage_hit()

@@ -23,6 +23,10 @@ _MAX_CHARACTERS=18000
 _MAX_SECONDS=23
 
 
+class PhysicalPdfPageContextUnavailable(ValueError):
+    """Text for a physical page cannot be supplied; not a source-revision mismatch."""
+
+
 def verified_page_neighbors(pdf:Path,expected_sha256:str,*,
         requested_page:int,neighbor_radius:int=1,
         required_center_excerpt:str|None=None,
@@ -65,21 +69,67 @@ def verified_page_neighbors(pdf:Path,expected_sha256:str,*,
         for page in selected:
             raw=_poppler(['/usr/bin/pdftotext','-f',str(page),'-l',str(page),
                           '-layout','-enc','UTF-8',name,'-'],fd,deadline)
-            if raw is None:raise ValueError('physical publisher page text extraction unavailable')
-            try:body=raw.decode('utf-8',errors='strict')
-            except UnicodeDecodeError as exc:
-                raise ValueError('original PDF page is not valid extracted UTF-8') from exc
+            unavailable=None
+            if raw is None:
+                unavailable='physical publisher page text extraction unavailable'
+                body=''
+            else:
+                try:body=raw.decode('utf-8',errors='strict')
+                except UnicodeDecodeError:
+                    unavailable='original PDF page is not valid extracted UTF-8'
+                    body=''
+            if unavailable is None and (not body.strip() or body.count('\x00')>=12):
+                unavailable='original PDF physical page lacks usable text (OCR/visual inspection separately required)'
+            if unavailable is not None:
+                if page==requested_page:
+                    raise PhysicalPdfPageContextUnavailable(unavailable)
+                # The named physical page exists in this original, but there
+                # is NO valid textual context. Do not invent OCR, copy NUL
+                # glyph codes, or silently omit this neighboring page.
+                pages.append({'physical_page':page,
+                              'status':'adjacent_original_pdf_page_text_unavailable',
+                              'reason':unavailable,
+                              'physical_page_poppler_sha256':hashlib.sha256(raw).hexdigest() if raw is not None else None,
+                              'extracted_page_text':None,
+                              'requires_original_pdf_visual_or_authorized_ocr_review':True,
+                              'factual_claim_truth_verified':False})
+                continue
             # Never silently crop the beginning or end where a condition or
             # negation may govern the retrieved snippet.
+            # Poppler -layout can insert extraordinary amounts of horizontal
+            # padding while the actual scholarly content is quite short. A
+            # real source page with 21K layout characters and 5K words must
+            # not become uncitable just because its columns are aligned.
+            # Preserve EVERY non-whitespace token, original physical-page
+            # SHA, and ALL line boundaries. Compact only duplicate horizontal
+            # spaces/tabs, declaring the display projection explicitly.
+            display=body
+            layout_policy='verbatim_poppler_page_text'
             if len(body)>max_page_characters:
-                raise ValueError('physical source page exceeds bounded context: no silent truncation')
-            if not body.strip() or body.count('\x00')>=12:
-                raise ValueError('original PDF physical page lacks usable text (OCR/visual inspection separately required)')
+                display=re.sub(r'[ \t]{2,}', ' ', body)
+                if ''.join(display.split())!=''.join(body.split()):
+                    raise ValueError('source projection changed non-whitespace original PDF page text')
+                if len(display)>max_page_characters:
+                    if page==requested_page:
+                        raise PhysicalPdfPageContextUnavailable('physical source page exceeds bounded context: no silent truncation')
+                    pages.append({'physical_page':page,
+                                  'status':'adjacent_original_pdf_page_text_unavailable',
+                                  'reason':'adjacent original PDF physical page exceeds bounded context even after lossless horizontal spacing compaction',
+                                  'physical_page_poppler_sha256':hashlib.sha256(raw).hexdigest(),
+                                  'extracted_page_text':None,
+                                  'requires_original_pdf_visual_or_authorized_ocr_review':True,
+                                  'factual_claim_truth_verified':False})
+                    continue
+                layout_policy='horizontal_padding_compacted_all_non_whitespace_and_line_boundaries_preserved'
             pages.append({'physical_page':page,'physical_page_poppler_sha256':hashlib.sha256(raw).hexdigest(),
-                          'extracted_text_sha256':hashlib.sha256(body.encode()).hexdigest(),
-                          'text_characters':len(body),'extracted_page_text':body,
-                          'provenance':'Poppler text of independently SHA-verified original PDF physical page; may differ from visual glyphs',
-                          'factual_claim_truth_verified':False})
+                          'status':'verified_original_page_text',
+                          'extracted_text_sha256':hashlib.sha256(display.encode()).hexdigest(),
+                          'raw_poppler_page_text_characters':len(body),
+                          'text_characters':len(display),'extracted_page_text':display,
+                          'display_layout_policy':layout_policy,
+                          'text_projection_dropped_non_whitespace':False,
+                          'factual_claim_truth_verified':False,
+                          'provenance':'SHA-verified original PDF physical page via Poppler. When horizontal padding was compacted, line boundaries and every non-whitespace character were preserved but column alignment was lost. Not publisher visual glyph proof.'})
         normalized=' '.join(next(row['extracted_page_text'] for row in pages if row['physical_page']==requested_page).split())
         if required_center_excerpt is not None and ' '.join(required_center_excerpt.split()) not in normalized:
             raise ValueError('required source excerpt absent from the selected physical original PDF page')
@@ -93,9 +143,14 @@ def verified_page_neighbors(pdf:Path,expected_sha256:str,*,
             'required_center_excerpt_verified':required_center_excerpt is not None,
             'original_pdf_revision_verified_before_and_after':True,
             'separate_original_pages_not_joined_into_one_quotation':True,
+            'unavailable_neighbor_text_pages':sum(p.get('status')=='adjacent_original_pdf_page_text_unavailable' for p in pages),
+            'all_returned_neighbors_have_usable_extracted_text':all(p.get('status')=='verified_original_page_text' for p in pages),
             'source_original_publisher_bytes_are_untouched':True,
             'context_cannot_by_itself_prove_a_factual_claim':True,
             'pages':pages,
             'warning':('These are separate Poppler-extracted text pages from the SHA-verified original PDF. '
+                       'Oversized layout-only spacing may be compacted horizontally without dropping '
+                       'non-whitespace text or line boundaries; original visual column alignment then requires direct PDF inspection. '
                        'A source may quote, negate, hypothesize, retract or supersede claims on another page. '
+                       'A separately listed neighboring physical page may have no usable text; its contents remain unknown unless visually inspected. '
                        'Read their governing context, publication status and visuals; do not assert a real-world fact solely from matched text.')}

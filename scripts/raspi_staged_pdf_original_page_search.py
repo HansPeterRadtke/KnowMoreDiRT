@@ -20,6 +20,7 @@ from file_system_catalog.staged_physical_page_search import (
     attach_staged_physical_page_neighbors,
 )
 from file_system_catalog.hybrid_search import query_terms
+from file_system_catalog.verified_pdf_neighbor_context import PhysicalPdfPageContextUnavailable
 
 AUDITS=Path('/data/var/knowmoredirt/knowledge-library/search-audit')
 SOURCES=Path('/data/var/Knowledge Library')
@@ -89,11 +90,21 @@ def main():
                         source_map=sm,native_db=native)
                 if check['status']=='publisher_original_physical_pdf_page_verified':
                     if args.original_neighbor_radius is not None:
-                        check=attach_staged_physical_page_neighbors(
-                            hit,check,original_root=SOURCES,derived_root=DERIVED,
-                            stage_root=AUDITS,completed_receipts=receipts,
-                            source_map=sm,native_db=native,
-                            neighbor_radius=args.original_neighbor_radius)
+                        try:
+                            check=attach_staged_physical_page_neighbors(
+                                hit,check,original_root=SOURCES,derived_root=DERIVED,
+                                stage_root=AUDITS,completed_receipts=receipts,
+                                source_map=sm,native_db=native,
+                                neighbor_radius=args.original_neighbor_radius)
+                        except PhysicalPdfPageContextUnavailable as error:
+                            # The physical citation can still be recovered by
+                            # searching without context. Do not let one
+                            # unreadable center page abort a global query or
+                            # promote it into fabricated nearby evidence.
+                            failed.append({'status':'original_physical_page_context_unavailable',
+                                'reason':str(error)[:160], 'original_path':check['original_path'],
+                                'physical_pdf_page':check['physical_pdf_page']})
+                            continue
                     evidence.append(check)
                     if len(evidence)>=args.top:break
                 else:failed.append(check)
@@ -105,6 +116,10 @@ def main():
                 'verified_original_pdf_physical_page_passages':evidence,
                 'unverified_ranked_candidates_excluded':len(failed),
                 'rejected_for_weak_excerpt_query_coverage':sum(z['status']=='insufficient_source_query_term_coverage' for z in failed),
+                'rejected_for_unavailable_center_physical_page_context':sum(z['status']=='original_physical_page_context_unavailable' for z in failed),
+                'unavailable_but_explicitly_labeled_neighbor_page_texts':sum(
+                    result.get('publisher_original_physical_page_neighbors',{}).get('unavailable_neighbor_text_pages',0)
+                    for result in evidence),
                 'lexical_minimum_distinct_query_terms_per_verified_excerpt':min(2,len(query_terms(args.query))),
                 'source_original_semantic_answer_not_generated':True,
                 'opt_in_original_physical_neighbor_radius':args.original_neighbor_radius,

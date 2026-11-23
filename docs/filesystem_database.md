@@ -2763,3 +2763,67 @@ neighbor radius and fabricated factual-answer status. Exact reproduction
 receipts, real publisher physical-page bytes, hash proofs and current corpus
 coverage are preserved owner-privately in the continuation wave-sixty audit
 folder; never place publisher page bodies or private transcripts in Git.
+
+### Physical-page text completeness and alternate extractor evidence, November 23
+
+The 327 staged PDF repairs now have real **physical** page labels, but their
+publisher text layers are not uniformly readable. A new **private all-327,
+full-SHA-attested source-level audit** rechecked completed owner acquisitions,
+original source hashes, live old extraction hashes, private staged extraction
+hashes, original native FileDB identities and live source-map revisions.
+Across **7,580 physical publisher pages**, all 7,580 source-page markers
+appear in staged text with no missing labels. However, the current safe
+temporary publisher-page index skips **423 pages across 170 PDFs** because
+their text bodies have excessive NUL glyph codes; only **7,157 physical
+pages** are temporarily searchable by that text-only RAM index. The separately
+bounded original-page context reader flags **860 pages containing at least
+12 NUL codes** as unsuitable for reliable text-only quotation. This
+wider diagnostic includes additional glyph-contaminated pages which the
+temporary index's original stricter length-proportional filter still admits:
+page-label correctness and text quality are **independent requirements**.
+Do not infer that the other 6,720 pages are visually or semantically perfect.
+
+An already installed independent local Ghostscript `txtwrite` extractor was
+compared with Poppler **on a separately frozen, predeclared, held-out sample
+of 16 previously unexamined problematic original physical pages**, covering
+16 originals across eight source categories. The same open original file
+handle was SHA-checked before and after both bounded local extraction calls;
+no external source was fetched and no native index, worker or private staged
+candidate was changed. All sixteen Ghostscript outputs were decodable UTF-8.
+**Fifteen of sixteen** no longer contained NUL glyph codes; one had three.
+The original Poppler baseline of all sixteen had at least twelve. The
+median multiset case-insensitive word-token overlap of Ghostscript relative
+to Poppler was about **ninety-one percent**: this is only a lexical
+observation and includes different tokenization/order, **not** a verified
+accuracy improvement, visual-layout reproduction, or permission to replace
+live cached text. At least one sampled page contains dense graphical figures
+and two-column text; comparing a rasterized original page, rather than only
+word counts, is essential before treating either extractor's output as
+complete scholarly evidence. All source bytes, sample precommit hashes,
+individual page-level counts, validity/timeout receipts and the private
+publisher raster are retained under the protected owner-private wave-sixty
+audit folder. Do not publish raw book pages or frozen private study results.
+
+The source-reader's opt-in *adjacent page* view now handles actual PDF glyph
+and long-layout failures without silently truncating or inventing text.
+Horizontal spacing-only runs can be compacted for display **only when all
+original non-whitespace codepoints and all line boundaries remain intact**;
+raw original physical-page SHA and original character length are retained
+and column alignment is expressly marked as altered. An adjacent physical
+page with missing/invalid glyph text is retained as an explicit
+`adjacent_original_pdf_page_text_unavailable` entry with its real physical
+page number, optional Poppler-page byte SHA, and `extracted_page_text: null`.
+A corrupt **center page** is never promoted to a verified quotation. For
+private collection-wide search, that single unusable center candidate is
+excluded with an explicit count, rather than aborting other independently
+verified candidate pages. Original/old/private-staged SHA and live identity
+remain revalidated after the neighbors are read.
+
+The real all-327 private RAM-only search on the USENIX OSDI paper then
+returned five independently publisher-PDF-page-verified passages after
+one unusable center-page candidate was excluded. Two adjacent physical
+pages were explicitly marked as visually requiring inspection; **no
+fabricated page text** replaced their damaged text layers. Results and
+ranked evidence remain source-bound, not asserted factual answers. This
+functionality is a safe *read-only bridge while waiting for* the 327-PDF
+transactional native reindex cutover, not a completed index repair.

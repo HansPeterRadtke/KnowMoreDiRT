@@ -264,8 +264,20 @@ def attach_staged_physical_page_neighbors(
     if len(physical)!=len(pages) or len(set(physical))!=len(physical) or physical!=sorted(physical):
         raise ValueError('adjacent physical pages are not distinct and ordered')
     center=[p for p in pages if p['physical_page']==page]
-    if len(center)!=1 or center[0].get('physical_page_poppler_sha256')!=page_sha:
-        raise ValueError('publisher center PDF page digest changed across two independent readers')
+    if (len(center)!=1 or center[0].get('status')!='verified_original_page_text'
+            or not isinstance(center[0].get('extracted_page_text'),str)
+            or not center[0]['extracted_page_text'].strip()
+            or center[0].get('physical_page_poppler_sha256')!=page_sha):
+        raise ValueError('publisher center PDF page digest changed or source text unavailable across two independent readers')
+    for neighbor in pages:
+        state=neighbor.get('status')
+        if state=='adjacent_original_pdf_page_text_unavailable':
+            if neighbor.get('extracted_page_text') is not None:
+                raise ValueError('unverified original PDF neighbor has invented text')
+        elif (state!='verified_original_page_text'
+              or not isinstance(neighbor.get('extracted_page_text'),str)
+              or not neighbor['extracted_page_text'].strip()):
+            raise ValueError('neighboring original PDF page lacks a valid bounded text status')
     if completed_receipts.get(path)!=original_sha:
         raise ValueError('completed acquisition approval changed after context read')
     latest_map=source_map.execute(

@@ -5,7 +5,9 @@ from tempfile import TemporaryDirectory
 import unittest
 from unittest import mock
 
-from file_system_catalog.verified_pdf_neighbor_context import verified_page_neighbors
+from file_system_catalog.verified_pdf_neighbor_context import (
+    verified_page_neighbors, PhysicalPdfPageContextUnavailable,
+)
 
 
 class VerifiedPdfPhysicalNeighborsTests(unittest.TestCase):
@@ -70,6 +72,53 @@ class VerifiedPdfPhysicalNeighborsTests(unittest.TestCase):
         with mock.patch('file_system_catalog.verified_pdf_neighbor_context._poppler',side_effect=self.poppler):
             with self.assertRaisesRegex(ValueError,'lacks usable text'):
                 verified_page_neighbors(self.pdf,self.sha,requested_page=2)
+
+    def test_nearby_null_glyph_original_page_has_explicit_unknown_context_not_a_fake_quote(self):
+        self.pages[1]=b'\x00'*45+b'corrupt glyph layout'
+        with mock.patch('file_system_catalog.verified_pdf_neighbor_context._poppler',side_effect=self.poppler):
+            x=verified_page_neighbors(self.pdf,self.sha,requested_page=2,neighbor_radius=1,
+                required_center_excerpt='The example asks When was Scott Derrickson Born?')
+        self.assertEqual(1,x['unavailable_neighbor_text_pages'])
+        self.assertFalse(x['all_returned_neighbors_have_usable_extracted_text'])
+        self.assertEqual([1,2,3],[r['physical_page'] for r in x['pages']])
+        self.assertEqual('adjacent_original_pdf_page_text_unavailable',x['pages'][0]['status'])
+        self.assertIsNone(x['pages'][0]['extracted_page_text'])
+        self.assertTrue(x['pages'][0]['requires_original_pdf_visual_or_authorized_ocr_review'])
+        self.assertEqual('verified_original_page_text',x['pages'][1]['status'])
+        self.assertEqual(hashlib.sha256(self.pages[2]).hexdigest(),x['pages'][1]['physical_page_poppler_sha256'])
+
+    def test_center_original_pdf_page_with_null_glyphs_is_never_promoted_to_text_proof(self):
+        self.pages[2]=b'\x00'*45+b'cannot use source glyphs'
+        with mock.patch('file_system_catalog.verified_pdf_neighbor_context._poppler',side_effect=self.poppler):
+            with self.assertRaises(PhysicalPdfPageContextUnavailable):
+                verified_page_neighbors(self.pdf,self.sha,requested_page=2,neighbor_radius=0)
+
+    def test_full_long_layout_page_preserves_non_whitespace_and_line_boundaries_without_truncation(self):
+        self.pages[2]=(b'SOURCE CLAIM: hypothetical scenario only\n'
+                       + b' '*19000 + b'\nLATER RETRACTION: not an actual law.\n')
+        with mock.patch('file_system_catalog.verified_pdf_neighbor_context._poppler',side_effect=self.poppler):
+            x=verified_page_neighbors(self.pdf,self.sha,requested_page=2,neighbor_radius=0,
+                required_center_excerpt='LATER RETRACTION: not an actual law.')
+        page=x['pages'][0]
+        self.assertEqual('verified_original_page_text',page['status'])
+        self.assertIn('horizontal_padding_compacted',page['display_layout_policy'])
+        self.assertFalse(page['text_projection_dropped_non_whitespace'])
+        self.assertLess(page['text_characters'],2000)
+        self.assertGreater(page['raw_poppler_page_text_characters'],18000)
+        self.assertEqual(page['physical_page_poppler_sha256'],hashlib.sha256(self.pages[2]).hexdigest())
+        self.assertEqual(''.join(self.pages[2].decode().split()),''.join(page['extracted_page_text'].split()))
+        self.assertIn('SOURCE CLAIM: hypothetical scenario only\n',page['extracted_page_text'])
+        self.assertIn('LATER RETRACTION: not an actual law.',page['extracted_page_text'])
+
+    def test_irreducibly_overlong_neighbor_is_marked_unknown_without_truncation(self):
+        self.pages[1]=b'X'*20001
+        with mock.patch('file_system_catalog.verified_pdf_neighbor_context._poppler',side_effect=self.poppler):
+            x=verified_page_neighbors(self.pdf,self.sha,requested_page=2,neighbor_radius=1)
+        self.assertEqual(1,x['unavailable_neighbor_text_pages'])
+        p=x['pages'][0]
+        self.assertIsNone(p['extracted_page_text'])
+        self.assertEqual('adjacent_original_pdf_page_text_unavailable',p['status'])
+        self.assertEqual(hashlib.sha256(self.pages[1]).hexdigest(),p['physical_page_poppler_sha256'])
 
     def test_no_silent_context_truncation_before_a_disclaimer(self):
         self.pages[2]=b'A'*2001+b'\nAfterward comes the source limitation and retraction.'
