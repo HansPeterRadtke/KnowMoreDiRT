@@ -142,12 +142,77 @@ class ProvisionalOriginalPdfSearchTests(unittest.TestCase):
         self.assertEqual(1,len(calls))
 
     def test_unique_match_elsewhere_is_not_corroboration_of_original_page(self):
-        def elsewhere(*_):return [{'status':'verified','page':1,'basis':'unique_across_pdf'}]
+        def elsewhere(_pdf,_sha,passages):
+            return [{'status':'verified','page':1,'basis':'unique_across_pdf'} for _ in passages]
         x=provisional_alternate_query_hits('figure panels hypothetical benchmark',
           [self.alt],corroborate_with_poppler=True,
           original_pdf=self.original/self.rel,expected_original_sha256=sha(self.pdf),
           independent_verifier=elsewhere)
         self.assertFalse(x['accepted_provisional_ranked_pages'][0]['independent_poppler_same_physical_page_passage_corroborated'])
+
+    def test_shorter_fragment_can_be_confirmed_without_verifying_surrounding_page(self):
+        seen=[]
+        def partial(_pdf,_sha,passages):
+            seen.append(len(passages))
+            if len(passages)==1:
+                return [{'status':'unverified','reason':'full_long_preview_is_not_literal'}]
+            return [{'status':'verified','page':2,'basis':'derivative_label_confirmed',
+                     'page_text_sha256':'d'*64} if i==1 else
+                    {'status':'unverified','reason':'not_identically_extracted'}
+                    for i,_ in enumerate(passages)]
+        result=provisional_alternate_query_hits('figure panels hypothetical benchmark',
+              [self.alt],top=1,corroborate_with_poppler=True,
+              original_pdf=self.original/self.rel,expected_original_sha256=sha(self.pdf),
+              independent_verifier=partial)
+        hit=result['accepted_provisional_ranked_pages'][0]
+        self.assertEqual('provisional_alternate_machine_text_only_not_a_verified_quote',hit['status'])
+        frag=hit['corroborated_short_fragment_only']
+        self.assertIsNotNone(frag)
+        self.assertEqual(2,frag['physical_pdf_page'])
+        self.assertEqual('d'*64,frag['original_pdf_poppler_physical_page_sha256'])
+        self.assertLess(len(frag['text']),len(self.alternate_text))
+        self.assertTrue(frag['full_machine_page_and_visual_layout_not_verified'])
+        self.assertFalse(hit['factual_answer_verified'])
+        self.assertEqual(2,len(seen))
+        self.assertGreater(seen[1],1)
+
+    def test_one_generic_matching_query_word_is_not_a_dual_extractor_answer(self):
+        # Even a genuinely identical generic figure caption must not become
+        # support for the unrelated material components of the question.
+        from file_system_catalog.alternate_pdf_page_search import corroborate_specific_alternate_source_fragments
+        def no_verification_permitted(*_args,**_kwargs):
+            raise AssertionError('unrelated source fragment must not be submitted as an answer proof')
+        got=corroborate_specific_alternate_source_fragments(
+            physical_page=2,provisional_text=self.alternate_text,
+            query='publisher interplanetary nebula',independent_verifier=no_verification_permitted,
+            original_pdf=self.original/self.rel,original_sha256=sha(self.pdf))
+        self.assertIsNone(got['exact_same_page_corroborated_fragment'])
+        self.assertFalse(got['factual_answer_verified'])
+
+    def test_fake_fragment_page_digest_without_valid_sha_is_rejected(self):
+        from file_system_catalog.alternate_pdf_page_search import corroborate_specific_alternate_source_fragments
+        def fake(_pdf,_sha,passages):
+            return [{'status':'verified','page':2,'basis':'derivative_label_confirmed',
+                     'page_text_sha256':'this_is_not_a_digest'} for _ in passages]
+        x=corroborate_specific_alternate_source_fragments(
+            physical_page=2,provisional_text=self.alternate_text,
+            query='figure panels hypothetical benchmark',
+            independent_verifier=fake,original_pdf=self.original/self.rel,original_sha256=sha(self.pdf))
+        self.assertIsNone(x['exact_same_page_corroborated_fragment'])
+        self.assertFalse(x['factual_answer_verified'])
+
+    def test_wrong_page_fragment_verification_never_makes_a_quote(self):
+        def wrong(_pdf,_sha,passages):
+            return [{'status':'verified','page':1,'basis':'derivative_label_confirmed',
+                     'page_text_sha256':'e'*64} for _ in passages]
+        result=provisional_alternate_query_hits('figure panels hypothetical benchmark',
+              [self.alt],top=1,corroborate_with_poppler=True,
+              original_pdf=self.original/self.rel,expected_original_sha256=sha(self.pdf),
+              independent_verifier=wrong)
+        hit=result['accepted_provisional_ranked_pages'][0]
+        self.assertIsNone(hit['corroborated_short_fragment_only'])
+        self.assertFalse(hit['independent_poppler_same_physical_page_passage_corroborated'])
+        self.assertFalse(hit['factual_answer_verified'])
 
     def test_incomplete_or_tampered_alternate_page_candidate_not_indexed(self):
         bad=dict(self.alt,display_text_sha256='c'*64)

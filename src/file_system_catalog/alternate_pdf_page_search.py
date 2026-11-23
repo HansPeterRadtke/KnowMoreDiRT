@@ -82,6 +82,79 @@ def require_current_approved_staged_pdf_source(item:dict,*,
         'old_source':oldtext,'new_staged_source':candidate}
 
 
+def corroborate_specific_alternate_source_fragments(*,physical_page:int,
+      provisional_text:str,query:str,independent_verifier,
+      original_pdf:Path,original_sha256:str,max_fragments:int=18)->dict:
+    """Corroborate ONLY verbatim same-page phrases, not the whole GS text.
+
+    Search for *bounded* contiguous fragments with multiple relevant query
+    terms. Poppler must independently locate the exact phrase on the exact
+    physical page of the same fully SHA-verified original PDF. A verified
+    subset is never used to confer verified status on neighboring lines or
+    the full provisional page preview.
+    """
+    if (type(physical_page) is not int or physical_page<1
+            or not isinstance(provisional_text,str) or len(provisional_text)>18000
+            or not isinstance(query,str) or not 1<=len(query)<=400
+            or type(max_fragments) is not int or not 1<=max_fragments<=24
+            or not isinstance(original_pdf,Path)
+            or not isinstance(original_sha256,str)
+            or SHA.fullmatch(original_sha256) is None):
+        raise ValueError('invalid bounded publisher original physical-page fragment evidence')
+    terms=set(query_terms(query))
+    if not terms:raise ValueError('no useful original-source query terms')
+    tokens=provisional_text.split()
+    if len(tokens)<10:return {'original_physical_pdf_page':physical_page,
+        'exact_same_page_corroborated_fragment':None,
+        'whole_provisional_text_verified_by_excerpt':False,
+        'factual_answer_verified':False}
+    spans=[]
+    for size in (36,28,20,14):
+        if len(tokens)<size:continue
+        step=max(3,size//6)
+        for start in range(0,len(tokens)-size+1,step):
+            fragment=' '.join(tokens[start:start+size])
+            if not 70<=len(fragment)<=480 or '\x00' in fragment or '�' in fragment:continue
+            covered=set(query_terms(fragment)) & terms
+            if len(covered)<min(2,len(terms)):continue
+            spans.append((len(covered),len(fragment),start,fragment))
+    spans.sort(key=lambda x:(-x[0],-x[1],x[2]))
+    selected=[];positions=[];seen=set()
+    for n,l,start,fragment in spans:
+        if fragment in seen or any(abs(start-old)<12 for old in positions):continue
+        seen.add(fragment);positions.append(start);selected.append((n,l,fragment))
+        if len(selected)>=max_fragments:break
+    if not selected:return {'original_physical_pdf_page':physical_page,
+        'exact_same_page_corroborated_fragment':None,
+        'whole_provisional_text_verified_by_excerpt':False,
+        'factual_answer_verified':False}
+    submitted=[{'source_section':f'PDF page {physical_page}','source_excerpt':f} for _,_,f in selected]
+    verified=independent_verifier(original_pdf,original_sha256,submitted)
+    if not isinstance(verified,list) or len(verified)!=len(submitted):
+        raise ValueError('independent publisher PDF phrase corroboration returned wrong cardinality')
+    accepted=[]
+    for (term_count,length,fragment),proof in zip(selected,verified):
+        if (isinstance(proof,dict) and proof.get('status')=='verified'
+                and proof.get('page')==physical_page
+                and proof.get('basis')=='derivative_label_confirmed'
+                and isinstance(proof.get('page_text_sha256'),str)
+                and SHA.fullmatch(proof['page_text_sha256'])):
+            accepted.append((term_count,length,fragment,proof))
+    best=max(accepted,key=lambda x:(x[0],x[1])) if accepted else None
+    return {'original_physical_pdf_page':physical_page,
+            'exact_same_page_corroborated_fragment':(
+                {'text':best[2],'fragment_sha256':hashlib.sha256(best[2].encode()).hexdigest(),
+                 'original_pdf_poppler_physical_page_sha256':best[3]['page_text_sha256'],
+                 'physical_pdf_page':physical_page,
+                 'matched_query_terms_count':best[0],
+                 'basis':'two_independent_machine_extractors_exact_same_original_physical_page_phrase',
+                 'full_machine_page_and_visual_layout_not_verified':True}
+                if best else None),
+            'tested_candidate_fragments':len(selected),
+            'whole_provisional_text_verified_by_excerpt':False,
+            'factual_answer_verified':False}
+
+
 def provisional_alternate_query_hits(query:str, pages:list[dict],*,top:int=4,
        corroborate_with_poppler=True, original_pdf:Path|None=None,
        expected_original_sha256:str|None=None,
@@ -139,11 +212,25 @@ def provisional_alternate_query_hits(query:str, pages:list[dict],*,top:int=4,
         corroborated=(isinstance(proof,dict)
                 and proof.get('status')=='verified'
                 and proof.get('page')==physical
-                and proof.get('basis')=='derivative_label_confirmed')
+                and proof.get('basis')=='derivative_label_confirmed'
+                and isinstance(proof.get('page_text_sha256'),str)
+                and SHA.fullmatch(proof['page_text_sha256']))
+        fragment={'exact_same_page_corroborated_fragment':None,
+                  'whole_provisional_text_verified_by_excerpt':False,
+                  'factual_answer_verified':False}
+        if corroborated:
+            fragment['whole_provisional_text_verified_by_excerpt']=False
+        elif corroborate_with_poppler:
+            fragment=corroborate_specific_alternate_source_fragments(
+                physical_page=physical,provisional_text=row['text'],query=query,
+                independent_verifier=independent_verifier,original_pdf=original_pdf,
+                original_sha256=expected_original_sha256)
         if not corroborated:uncorroborated+=1
         found.append({'physical_pdf_page':physical,
             'status':('same_page_second_extractor_exact_phrase_corroborated'
                       if corroborated else 'provisional_alternate_machine_text_only_not_a_verified_quote'),
+            'corroborated_short_fragment_only':fragment['exact_same_page_corroborated_fragment'],
+            'short_fragment_does_not_verify_unmatched_surrounding_text':True,
             'provisional_original_page_excerpt':excerpt,
             'provisional_excerpt_sha256':hashlib.sha256(excerpt.encode()).hexdigest(),
             'alternate_extraction_sha256':row['raw_machine_text_sha256'],

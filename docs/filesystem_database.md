@@ -2906,3 +2906,39 @@ live extraction or certify these provisional pages as authoritative.
 The 327-source rollback-safe, coordinated native reindex and summary/vector
 revision cutover is still a separate outstanding step; a cleared source
 page text-corruption warning cannot by itself authorize it.
+
+### Independent exact-phrase corroboration instead of promoting a damaged page wholesale
+
+For a provisionally readable page, a user query can still require stronger
+evidence than a single machine's extraction. An optional secondary Poppler
+pass first checks the returned complete short preview against the **same
+real original physical PDF page**. When that long machine preview differs
+because of graphics or two-column reading order, the new bounded fallback
+tries at most eighteen **source-identical, query-relevant contiguous short
+fragments** with multiple distinct query terms. The independent Poppler
+physical-page verifier may confirm an **exact shorter fragment** and its
+physical PDF page digest without confirming the surrounding Ghostscript-only
+preview. Such a result has two clearly separated parts: a provisional
+longer preview and a separately SHA-proven *exact* text fragment, with an
+explicit warning that the rest of the page has **not** been verified.
+The fallback accepts only an exact same-physical-page proof, not a similar
+sentence on another page, not a relocated quote, not a vague shared keyword,
+not a different PDF, and not a generic source match. It never asserts that
+the manuscript's factual claims are true or that figure labels, scope and
+reading order are correct. The full original PDF SHA and current
+source-map/native original identity are rechecked after both extractions.
+
+The actual approved ACL source-attribution research PDF's formerly omitted
+physical page **twenty-seven** produced an independently *Poppler-and-
+Ghostscript-confirmed exact fragment of two hundred and seventy-nine bytes*,
+covering three distinct query terms, while the larger machine-extracted
+preview remained **provisional**. The same test on the agent TTS source's
+original physical page **one** returned a useful provisional text candidate
+but **no query-relevant second-extractor-corroborated passage**; it was not
+misreported as a verified original quotation. Actual original files and
+full private readouts are retained outside Git. Synthetic hard-negative
+tests verify that a phrase matched on a different physical page, a truncated
+or malformed proof, an unrelated single generic query term, and the wrong
+source identity cannot be elevated into a verified quotation. This is
+opt-in evidence navigation only, not approval for native text/vector/summary
+source revision replacement.
