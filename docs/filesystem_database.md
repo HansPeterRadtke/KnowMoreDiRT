@@ -3154,3 +3154,84 @@ large originals as explicitly unverified unless the operator knowingly uses
 this bounded streaming override and rechecks the exact bytes. Unresolved
 large or derived-over-limit sources remain unverified, never automatically
 declared valid.
+
+### November 23 follow-up — original PDF figure-heavy pages and strict glyph-island retrieval
+
+The previous visual/search review covered **423** physical publisher-PDF pages
+that the earlier physical-page-corrected temporary parser could not safely
+make fully searchable. An alternate original-PDF machine-text preview
+provisionally supplied entire clean text for **411** of those pages. It
+**correctly rejected the other 12**, under the strict no-NUL/no-replacement
+glyph and minimum-word guards. The original PDFs **were not missing**:
+independently SHA-verified renders of all twelve and the two further
+under-corroborated pages showed nonblank content containing charts,
+equations, tables and surrounding prose. This visual classification does
+not validate any machine-transcribed numerical claim, chart axis or scientific
+conclusion. Original folder/grep and PDF viewers remain available.
+
+The twelve fully skipped *source-text pages* are now also partially
+navigable through a **separate, opt-in, RAM-only clean-glyph island search**,
+without weakening the default strict whole-page admission policy. The new
+entry point is `scripts/raspi_private_strict_original_pdf_island_search.py`.
+It requires the exact previous **327-original** approved physical-page stage
+receipt and the protected complete **170-original** private preview rollup:
+
+```bash
+P=/data/var/knowmoredirt/knowledge-library/search-audit/continued-20261121-wave51/all-327-private-staged-original-PDF-preflight-complete.json
+R=/data/var/knowmoredirt/knowledge-library/search-audit/continued-20261123-wave61/private-unapproved-170-original-PDF-glyph-review-cohort/private-170-original-PDF-provisional-machine-glyph-stage-rollup.json
+PYTHONDONTWRITEBYTECODE=1 PYTHONPATH=/data/src/github/KnowMoreDiRT/src \
+ python3 /data/src/github/KnowMoreDiRT/scripts/raspi_private_strict_original_pdf_island_search.py \
+ 'image reconstruction matching template automated retrieval candidate' \
+ --stage-preflight "$P" --private-170-rollup "$R" --top 3 --candidates 32 \
+ --original-path 'ai-agents/2026-tool-use-evaluation/icml-2026-yang26bu.pdf'
+```
+
+The optional `--original-path` must exactly match an existing approved
+original PDF in the **twelve-page** rejected cohort; omit it to search all
+twelve pages. The caller receives no generated answer, only the **exact
+original publisher relative PDF and physical page number**, and at most an
+independently verified *short literal same-page source excerpt*. The complete
+original PDF file, current old text derivative, private approved stage,
+source-map and native FileDB original ID are verified again against the
+approved ledger; PDFinfo physical page boundaries, owner-private preview
+receipts and original file SHA are checked before/after extraction. Ghostscript
+is run locally under the existing output, time and memory bounds. The
+unavailable-page proof must still report its full text as **strictly
+unavailable**. This helper does **not** replace it with an altered text body.
+
+Every NUL, Unicode replacement and non-whitespace control character is
+considered a **hard boundary** between provisional machine-text islands.
+No sentence is fabricated by dropping a corrupted character and joining
+its surrounding text. Only bounded clean segments enter a temporary SQLite
+full-text index, limited to **twelve pages**, **512 islands**, **18,000 bytes
+per candidate**, and **2 MiB of temporary candidate text**; matching requires
+at least two distinct query terms. The returned *candidate* is **not a
+quotation**. Before any short excerpt is emitted, the existing independent
+Poppler original-physical-page verifier must confirm the literal same-page
+passage on the same full-SHA-pinned original PDF. A nonmatching question may
+return the source/page **without** a quotation; a fabricated negative query
+returns no result. The client never prints provisional unconfirmed excerpts.
+No OCR, external model, purchase, source download, source original mutation,
+source-map/derivative/native index write, vector rebuilding, summary
+replacement or worker interruption occurs.
+
+The read-only reproducible investigation checked all **twelve** previously
+strictly rejected physical pages and found at least one independently
+identical **8- to 28-word** publisher-page passage on **each**. These are
+*partial searchable islands*, **not** twelve complete, corrected pages.
+A live targeted, original-SHA/native-source-bound query about template
+matching returned a corroborated passage on physical page thirteen of its
+source, while a different broad query left uncertain candidates clearly
+unverified and an invented hard-negative query yielded no results. The
+private end-to-end source evidence and exact SHA receipts are in
+`search-audit/continued-20261123-wave63/`. These small source pages and
+short excerpts are not proof of full visual/glyph layout, chart contents,
+scientific truth, global search recall or an authorized native migration.
+
+A later **coordinated, rollback-safe source revision cutover** for the 327
+approved corrected-text candidates, rederived embeddings, and hierarchical
+summary generations is still necessary. Retain the existing warnings on old
+native PDF source citations until that cutover has been independently
+validated with all active source consumers. Never write private recovered
+book text, raw original PDFs, page screenshots or private owner recordings
+into the Git repository.
