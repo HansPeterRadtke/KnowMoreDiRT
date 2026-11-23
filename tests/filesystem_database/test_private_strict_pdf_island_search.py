@@ -76,6 +76,25 @@ class StrictOriginalGlyphIslandsTests(unittest.TestCase):
             self.assertEqual([],index.ranked('publisher nebula zetafoo'))
             with self.assertRaises(ValueError):index.ranked('publisher',original_path='not-in-cohort.pdf')
         with self.assertRaises(ValueError):index.ranked('provenance publisher')
+    def test_stemmed_first_page_hits_do_not_hide_later_exact_two_term_match(self):
+        # FTS5 Porter stems "run" as a match for "running". Those short
+        # high-ranked rows must not consume the requested result budget when
+        # the exact source excerpt check rejects their missing query term.
+        one_term='run pipeline stable source physical publisher evidence exact words'
+        two_terms='running pipeline '+('long unrelated provenance information about original page scope '*240)
+        raw=('\x00'.join([one_term]*70+[two_terms])).encode()
+        with OriginalGlyphIslandRAMIndex() as index:
+            self.assertEqual(71,self.add(index,raw=raw))
+            index.commit()
+            rows=index.ranked('running pipeline',limit=3)
+            self.assertEqual(1,len(rows))
+            self.assertEqual(71,rows[0]['row_id'])
+            self.assertEqual(['pipeline','running'],rows[0]['query_terms_in_machine_only_locator'])
+            self.assertTrue(rows[0]['source_excerpt_not_corroborated_or_quoted'])
+            scoped=index.ranked('running pipeline',limit=1,original_path=self.path)
+            self.assertEqual([71],[row['row_id'] for row in scoped])
+            self.assertEqual([],index.ranked('unrelated nonsense',limit=1))
+
     def test_invalid_query_and_limits_refused(self):
         with OriginalGlyphIslandRAMIndex() as index:
             self.add(index);index.commit()

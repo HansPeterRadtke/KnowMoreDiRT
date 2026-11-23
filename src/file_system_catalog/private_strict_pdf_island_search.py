@@ -113,14 +113,19 @@ class OriginalGlyphIslandRAMIndex:
         terms=query_terms(query)
         if not terms:raise ValueError('question lacks original-source search terms')
         expr=' OR '.join('"'+x.replace('"','""')+'"' for x in terms)
+        # FTS5 Porter stemming can rank single-term morphological matches ahead
+        # of the exact multi-term fragments required by _best_excerpt. Scan the
+        # entire strictly bounded in-memory index before applying the caller's
+        # result limit, otherwise the top N raw FTS hits can all be rejected
+        # and hide a valid lower-ranked original physical-page locator.
         if original_path is None:
             rows=self.db.execute('SELECT rowid,bm25(text_fragments,1.0) FROM text_fragments WHERE text_fragments MATCH ? ORDER BY 2,1 LIMIT ?',
-                                (expr,limit)).fetchall()
+                                (expr,MAX_ISLANDS)).fetchall()
         else:
             if original_path not in {path for path,page in self.keys}:
                 raise ValueError('requested original source is outside strict unavailable-page cohort')
             rows=self.db.execute('SELECT rowid,bm25(text_fragments,1.0) FROM text_fragments WHERE text_fragments MATCH ? AND path=? ORDER BY 2,1 LIMIT ?',
-                                 (expr,original_path,limit)).fetchall()
+                                 (expr,original_path,MAX_ISLANDS)).fetchall()
         accepted=[]
         for rowid,score in rows:
             e=self.entries[int(rowid)]
@@ -133,6 +138,7 @@ class OriginalGlyphIslandRAMIndex:
                 'corrected_staged_derived_sha256':e['corrected_staged_derived_sha256'],
                 'query_terms_in_machine_only_locator':sorted(covered),'lexical_score':float(score),
                 'source_excerpt_not_corroborated_or_quoted':True})
+            if len(accepted)>=limit:break
         return accepted
     def private_fragment_for_second_extractor(self,*,row_id:int,path:str,original_sha256:str,
                                                physical_page:int,body_sha256:str)->str:
