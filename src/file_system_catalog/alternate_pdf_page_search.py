@@ -108,22 +108,70 @@ def corroborate_specific_alternate_source_fragments(*,physical_page:int,
         'exact_same_page_corroborated_fragment':None,
         'whole_provisional_text_verified_by_excerpt':False,
         'factual_answer_verified':False}
-    spans=[]
-    for size in (36,28,20,14):
+    # Long whole-sentence windows keep most of the previously confirmed
+    # physical PDF passages. A reserved small fraction of the same bounded
+    # verification batch handles technical PDF pages where glyph/column
+    # damage leaves only shorter exact same-page machine-text fragments.
+    # Never elevate the whole provisional machine page or detached context.
+    window_sizes=(36,28,20,14,12,10,8)
+    candidates={size:[] for size in window_sizes}
+    for size in window_sizes:
         if len(tokens)<size:continue
-        step=max(3,size//6)
+        step=(max(3,size//6) if size>=20 else (2 if size>=14 else 1))
         for start in range(0,len(tokens)-size+1,step):
             fragment=' '.join(tokens[start:start+size])
-            if not 70<=len(fragment)<=480 or '\x00' in fragment or '�' in fragment:continue
+            # A source-attested eight-word technical passage may be only
+            # seventy characters long. The separate six-unique-word and
+            # same-publisher-page independent Poppler checks remain mandatory;
+            # source passage context is NOT automatically verified.
+            if (not 70<=len(fragment)<=480
+                    or chr(0) in fragment or chr(0xfffd) in fragment):
+                continue
             covered=set(query_terms(fragment)) & terms
             if len(covered)<min(2,len(terms)):continue
-            spans.append((len(covered),len(fragment),start,fragment))
-    spans.sort(key=lambda x:(-x[0],-x[1],x[2]))
-    selected=[];positions=[];seen=set()
-    for n,l,start,fragment in spans:
-        if fragment in seen or any(abs(start-old)<12 for old in positions):continue
-        seen.add(fragment);positions.append(start);selected.append((n,l,fragment))
-        if len(selected)>=max_fragments:break
+            if size<=12:
+                # Eight-word source excerpts need at least six distinct
+                # substantive-looking words, not repeated boilerplate.
+                unique_words={w.casefold() for w in re.findall(
+                    r"(?u)\b[^\W\d_][\w'-]{2,}\b",fragment)}
+                if len(unique_words)<6:continue
+            candidates[size].append((len(covered),len(fragment),start,fragment,size))
+    for size in window_sizes:
+        candidates[size].sort(key=lambda x:(-x[0],-x[1],x[2]))
+    shorter=(12,10,8)
+    longer=(36,28,20,14)
+    short_quota=max(1,max_fragments//3)
+    long_quota=max_fragments-short_quota
+    selected=[];seen=set();positions={size:[] for size in window_sizes}
+    def admit(sizes,limit):
+        options=sorted((row for size in sizes for row in candidates[size]),
+                       key=lambda x:(-x[0],-x[1],x[2]))
+        added=0
+        for n,l,at,fragment,size in options:
+            # On short eight-to-twelve-word windows, one shifted token can
+            # make an otherwise exact source phrase unprovable. Allow two
+            # overlapping independent short candidates within the small,
+            # fixed-size page-verification budget. Longer windows still need
+            # spatial diversity to avoid spending all probes in one column.
+            if fragment in seen or (size>=14 and any(abs(at-old)<max(4,size//3)
+                                       for old in positions[size])):continue
+            seen.add(fragment);positions[size].append(at)
+            selected.append((n,l,fragment));added+=1
+            if added>=limit:return
+    admit(longer,long_quota)
+    # Source-original phrase agreement may exist for twelve, ten or eight
+    # words even when every longer provisional sentence differs in columns
+    # or glyph order. Explicit short slots prevent a long-only ranking from
+    # starving independently verifiable compact original-source quotes.
+    # Reserve independently attempted windows at *each* shorter length.
+    # Otherwise dozens of 12-word candidates could crowd out the only
+    # exact eight-word text surviving a corrupt two-column PDF page.
+    for rank,size in enumerate(shorter):
+        share=short_quota//len(shorter)+(1 if rank<short_quota%len(shorter) else 0)
+        if share:admit((size,),share)
+    if len(selected)<max_fragments:
+        admit(window_sizes,max_fragments-len(selected))
+    selected=selected[:max_fragments]
     if not selected:return {'original_physical_pdf_page':physical_page,
         'exact_same_page_corroborated_fragment':None,
         'whole_provisional_text_verified_by_excerpt':False,

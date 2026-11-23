@@ -201,6 +201,53 @@ class ProvisionalOriginalPdfSearchTests(unittest.TestCase):
         self.assertIsNone(x['exact_same_page_corroborated_fragment'])
         self.assertFalse(x['factual_answer_verified'])
 
+    def test_original_page_exact_eight_word_fragment_not_starved_by_long_windows(self):
+        from file_system_catalog.alternate_pdf_page_search import corroborate_specific_alternate_source_fragments
+        original_exact_eight='Physical provenance corroboration independent publisher manuscript recovery verification'
+        self.assertEqual(8,len(original_exact_eight.split()))
+        self.assertGreaterEqual(len(original_exact_eight),80)
+        unverified_body=('Uncorroborated machine layout boundary interpretation '
+                         'is not authoritative text and needs visual review. '*8)
+        provisional=unverified_body+original_exact_eight+' '+unverified_body
+        calls=[]
+        def exact_eight_only(_pdf,_sha,passages):
+            calls.append(passages)
+            return [{'status':'verified','page':2,
+                     'basis':'derivative_label_confirmed','page_text_sha256':'b'*64}
+                    if row['source_excerpt']==original_exact_eight else
+                    {'status':'unverified','reason':'layout_provisional_text_not_literal'}
+                    for row in passages]
+        x=corroborate_specific_alternate_source_fragments(
+            physical_page=2,provisional_text=provisional,
+            query='provenance corroboration publisher verification',
+            independent_verifier=exact_eight_only,
+            original_pdf=self.original/self.rel,original_sha256=sha(self.pdf))
+        best=x['exact_same_page_corroborated_fragment']
+        self.assertIsNotNone(best)
+        self.assertEqual(original_exact_eight,best['text'])
+        self.assertEqual(2,best['physical_pdf_page'])
+        self.assertEqual(4,best['matched_query_terms_count'])
+        self.assertFalse(x['whole_provisional_text_verified_by_excerpt'])
+        self.assertFalse(x['factual_answer_verified'])
+        self.assertEqual(1,len(calls))
+        self.assertLessEqual(len(calls[0]),18)
+
+    def test_exact_eight_word_phrase_found_elsewhere_cannot_verify_this_page(self):
+        from file_system_catalog.alternate_pdf_page_search import corroborate_specific_alternate_source_fragments
+        exact='Physical provenance corroboration independent publisher manuscript recovery verification'
+        body='Machine interpretation not a literal long source paragraph. '*8+exact
+        def wrong_page(_pdf,_sha,passages):
+            return [{'status':'verified','page':3,
+                     'basis':'derivative_label_confirmed','page_text_sha256':'f'*64}
+                    for row in passages]
+        x=corroborate_specific_alternate_source_fragments(
+            physical_page=2,provisional_text=body,
+            query='provenance corroboration publisher verification',
+            independent_verifier=wrong_page,
+            original_pdf=self.original/self.rel,original_sha256=sha(self.pdf))
+        self.assertIsNone(x['exact_same_page_corroborated_fragment'])
+        self.assertFalse(x['factual_answer_verified'])
+
     def test_wrong_page_fragment_verification_never_makes_a_quote(self):
         def wrong(_pdf,_sha,passages):
             return [{'status':'verified','page':1,'basis':'derivative_label_confirmed',

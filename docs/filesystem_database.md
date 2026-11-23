@@ -3063,3 +3063,52 @@ source vectors, summary embeddings, summary-tree generations or hierarchical
 indexing. A coordinated rollback-safe source-revision cutover and visual
 original-source citation/reading-order acceptance remain outstanding. All
 resident summary workers and shared service dependencies continue unchanged.
+
+### Exact short-fragment provenance on glyph-damaged original PDF pages (November 23, wave sixty-two follow-up)
+
+The independently retained owner-private source audit first checked **all
+411** strict, provisionally recovered physical PDF pages against a *second*
+original-PDF Poppler extraction on the identical SHA-attested original file
+and physical page. **380** pages had at least one verbatim passage of sixteen
+or more words, including **318** with at least twenty-eight matching words.
+This is page-local machine agreement, not proof of original typography,
+formulae, figures, complete sentence scope or a factual statement.
+
+The other **31** pages were reviewed in a separate **predeclared shorter-window
+original-PDF test**. Among those, **29** contained at least one further
+identical eight-to-fourteen-word passage, at least sixty-five characters long
+and with six or more distinct word tokens. The remaining **two** provisional
+pages did not meet even that threshold and must not be promoted to confirmed
+source text. Consequently, **409 of 411** recovered provisional physical
+pages have at least one independently identical source-page passage at the
+specified thresholds. **Twelve** original physical pages remain unrecovered
+under the stricter no-NUL candidate rule. These two different deficits
+must not be merged or reported as a false complete-index release.
+
+The optional source proof selector now reserves a small **bounded part of
+its single verifier batch** for 12-, 10- and 8-word candidate fragments,
+while preserving the longer 36-, 28-, 20- and 14-word windows. Short
+windows require **at least seventy characters**, **six distinct nonnumeric
+word tokens**, and **two distinct matching terms in the user's current
+question**; all candidates still require an independent *exact* Poppler
+match with the **same SHA-verified original publisher physical page** before
+any short quotation can be returned. Overlapping short windows may both be
+probed because one extra column/layout-corrupted token can invalidate an
+otherwise exact passage. The total independent candidate verification batch
+remains at most eighteen by default, with a hard maximum of twenty-four;
+there is no unbounded scan, remote model or automatic page promotion.
+
+Additional negative tests refuse a matching phrase located on a **different
+publisher physical page**, untrusted page-digest claims and generic
+one-word match contexts. A real, source-SHA-checked test of the scholarly
+market simulation original showed *two* previously excluded physical pages,
+thirty-eight and forty-four, where **eight-word excerpts** were now verified
+against the same original page by both local extractors. Their test queries
+were selected *after inspection* from known shared-source words; this is a
+**targeted extraction/reproducibility test, not a held-out retrieval-quality
+improvement claim**. The original frozen global source-attribution query
+still returned the same three independently verified exact excerpts after
+the change. The owner-private reports and extracted passages remain outside
+Git under the wave-sixty-two review directory. Never interpret any of these
+machine-matched excerpts as confirmation of the full page, its diagrams,
+claims or its semantic indexing completeness.
