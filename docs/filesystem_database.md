@@ -3566,3 +3566,55 @@ sealed. None of this code is wired into production services or authorizes
 source-map/native/summary replacement. A complete production service census,
 reader-and-writer enrollment, safe writer holds and rollback are still
 required before any corrected PDF or HTML production cutover.
+
+
+### November 24 — frozen source-navigation recall drift across growing native corpus
+
+The private `raspi_frozen_same_snapshot_three_channel_eval.py` captured **73
+predeclared questions with 79 source-known relevant original document
+labels** on November twenty-second and again November twenty-fourth. It
+physically rehashed all **69 distinct known publisher originals and their
+current derived source revisions** in both captures, using one consistent
+native vector set per run. These are *two different read-only time snapshots*,
+not a cross-SQLite atomic transaction. The count of originals with complete
+source-linked native roots grew from **9,108 to 9,614**. At source-label
+top-ten, raw original-passage hits changed from 58 to 57 out of 79, recursive
+summary from 61 to 60, FTS titles/root summaries stayed 55 out of 79, and
+the experimental three-channel reciprocal rank fusion held **65 out of 79**
+with **zero net top-ten gains or losses**. These numbers measure finding the
+correct *original documents*, not independent answer sufficiency, generated
+answer accuracy or confirmed publisher PDF physical pages. Some individual
+raw/summary ranks slipped as the indexed corpus expanded. No current native
+ranking weights, embeddings or production search behavior were changed.
+
+To avoid mistaking a newly extracted source revision for a ranking regression,
+`file_system_catalog.frozen_source_retrieval_drift` and
+`scripts/raspi_compare_frozen_source_recall.py` provide an additional
+**read-only per-original** comparison. The comparator first checks the
+frozen query SHA, gold source labels, encoder/ranking policies, publisher
+original SHA and derivative SHA in both reports, and declines to compare a
+source that changed revision. It produces top-one, top-five, top-ten,
+top-twenty and top-thirty matched-source counts, gains and regressions
+for each raw-vector, summary-vector, lexical FTS, two-channel and
+three-channel ranking; private output records original paths and query
+identifiers but not the query text. It explicitly refuses mismatched gold,
+model revisions, duplicate or unsafe source paths, malformed ranks and
+unattested original source bytes. The output must be a new private file under
+the existing KMD search-audit tree and must not overwrite prior evidence.
+This is an evaluator, **not** permission to tune a production retrieval
+algorithm on frozen case answers. Future algorithm changes need a separately
+held-out, adversarial evaluation, resource safety, and independently
+verified original page/line evidence before publication.
+
+Qualitative inspection of the persistent thirteen three-channel top-ten
+misses identified important actual source-content gaps in *query vocabulary*:
+first-party Blender Normal Map and Gradient Texture, Unity background asset
+loading and sprites in text, and Adobe perspective correction pages **do
+contain the relevant original explanations**. Their indirect task descriptions
+use different vocabulary from the titles/body, so no known physical original
+is absent; the current encoder/lexical ranking simply failed to put those
+documents in the first ten. They are retained as reproducible frozen cases;
+adding bespoke query-to-title shortcuts solely for those gold labels would
+be benchmark leakage. A future reranker or document-alias/term expansion must
+be tested against genuinely unseen sources and a factual sufficiency/negative
+query set, not inferred from these positive source-label metrics.
