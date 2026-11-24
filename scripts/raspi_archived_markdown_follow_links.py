@@ -98,6 +98,23 @@ def follow_current_archived_markdown_references(original_path:str,query:str,*,
                     or not 0<=pub['start_byte']<pub['end_byte']<=len(original_bytes)
                     or hashlib.sha256(original_bytes[pub['start_byte']:pub['end_byte']]).hexdigest()!=pub.get('sha256')):
                     raise ValueError('claimed publisher-original plaintext byte interval failed independent proof')
+                # Matching a digest only proves the claimed publisher byte
+                # interval exists. Also check that the bytes ACTUALLY QUOTE
+                # this derived-text candidate, allowing only the explicit
+                # historical universal-newline normalization. Otherwise an
+                # unrelated but genuine publisher span could be mislabeled
+                # as support for the retrieved excerpt.
+                publisher_span=original_bytes[pub['start_byte']:pub['end_byte']]
+                if pub.get('encoding')!='utf-8' or pub.get('newline_normalization') not in (None,'universal'):
+                    raise ValueError('unsupported claimed publisher original quotation encoding')
+                try:
+                    actual=publisher_span.decode('utf8','strict')
+                except UnicodeDecodeError as exc:
+                    raise ValueError('publisher original quote bytes are not valid UTF-8') from exc
+                if pub.get('newline_normalization')=='universal':
+                    actual=actual.replace('\r\n','\n').replace('\r','\n')
+                if actual!=excerpt:
+                    raise ValueError('publisher original byte interval does not quote the retrieved source excerpt')
                 text_byte_verified=True
             html_anchor=passage.get('publisher_html_dom_anchor')
             verified.append({'source_section':passage['source_section'],

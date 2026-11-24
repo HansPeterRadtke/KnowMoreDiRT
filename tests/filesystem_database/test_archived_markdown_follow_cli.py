@@ -115,6 +115,24 @@ class SourceAttestedMarkdownOriginalNavigationTests(unittest.TestCase):
             with self.assertRaisesRegex(ValueError,'publisher-original plaintext byte interval failed'):
                 M.follow_current_archived_markdown_references(self.parent,self.query,exact_link_text='Transform data')
 
+    def test_genuine_publisher_byte_interval_with_wrong_quote_text_refused(self):
+        # A SHA-valid original publisher interval is not evidence unless it
+        # decodes to the EXACT cited source excerpt, not unrelated original
+        # header or nearby text, even when that other interval has a real SHA.
+        other=self.child_raw[:3]
+        wrong={'passages':[{**self.passage,'publisher_excerpt':{
+           'start_byte':0,'end_byte':3,'sha256':sha(other),'encoding':'utf-8'}}]}
+        with patch.object(M,'source_evidence_candidates',return_value=wrong):
+            with self.assertRaisesRegex(ValueError,'does not quote the retrieved source excerpt'):
+                M.follow_current_archived_markdown_references(self.parent,self.query,exact_link_text='Transform data')
+
+    def test_invalid_publisher_byte_quote_encoding_refused(self):
+        wrong={'passages':[{**self.passage,'publisher_excerpt':{
+            **self.passage['publisher_excerpt'],'encoding':'ISO-8859-1'}}]}
+        with patch.object(M,'source_evidence_candidates',return_value=wrong):
+            with self.assertRaisesRegex(ValueError,'unsupported claimed publisher original quotation encoding'):
+                M.follow_current_archived_markdown_references(self.parent,self.query,exact_link_text='Transform data')
+
     def test_missing_or_unapproved_child_is_not_quoted_or_substituted(self):
         receipt={**self.child_receipt,'status':'pending'}
         revised=(self.records[0],self.records[1],{self.parent:self.parent_receipt,self.child:receipt},set(),set())

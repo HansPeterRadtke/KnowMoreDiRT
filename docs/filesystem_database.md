@@ -4309,3 +4309,99 @@ and the default-HTML-source command remaining unchanged. The tool is a
 working **private, read-only CLI capability** in the canonical KnowMoreDiRT
 repository, not deployed into the owner-facing web GUI and not permission
 to acquire additional copyrighted manuals or change the production corpus.
+
+
+### November 24 — native-ranked document discovery can now follow original Markdown as well as HTML
+
+The existing `scripts/raspi_hierarchical_library.py find-source-evidence`
+command now accepts its explicit `--follow-archived-links` option for
+**verified native-selected `.md` publisher originals**, as well as HTML
+`article`/`main` originals. This is a separate, read-only source-navigation
+channel; the existing native semantic original ranking, selected document
+order, original direct passage status and PDF physical-page evidence remain
+unchanged. Linked sources never replace or rerank native originals. The
+user need **not know an exact source title** to begin: the normal native
+search selects up to five original documents first, after which at most
+five *total* approved same-origin links across selected HTML/Markdown
+parents may be followed. Only current completed originals with approved
+catalog+ledger SHA, derived SHA and native FileDB identity are admissible.
+The entire parent and child source revisions are checked again **after**
+all linked passages have been assembled, refusing observed stale versions.
+
+The optional mixed response distinguishes **original Markdown literal
+hyperlink source bytes**, independently verified **linked publisher UTF-8
+passage byte intervals**, and HTML's separately verified normalized
+`article` text anchors. The original `source-evidence` and
+`find-source-evidence` default modes are unchanged when the option is
+absent. The private audit contains only source paths, ranks, counts and
+proof metadata, not original prose. The result explicitly marks linked
+texts as **candidates, not a verified factual answer**, and preserves
+`cross_store_immutable_generation_pinned=false` and
+`safe_to_cutover_live=false`. PDF physical-page quoting, continuing RFC
+sections and temporary corrected PDF private overlays remain separate and
+are not silently routed through HTML/Markdown reference matching.
+
+A real reproducible query with no exact title is:
+
+```sh
+cd /data/src/github/KnowMoreDiRT
+PYTHONPATH=src /data/var/knowmoredirt/semantic-venv/bin/python \
+  scripts/raspi_hierarchical_library.py find-source-evidence \
+  'How can I reshape and map JSON fields between nodes in an n8n workflow?' \
+  --documents 5 --passages 2 --snippet-characters 850 \
+  --follow-archived-links --linked-originals 5
+```
+
+On the **actual live-read-only Raspi library** this selected five native
+original Markdown documents—*Work with data*, *Break workflows into
+smaller parts*, *Use the UI mapper*, *Configure workflow settings*, and
+*Export and import*. Starting from the original *Work with data* parent
+(natively ranked first), optional publisher links found **five already
+acquired child originals**: *Expressions versus data nodes*, *Reference
+data*, *Transform data*, *Filter out unwanted data*, and *Pin and mock
+data*. Each child yielded **two** source text passages, for **ten**
+independently publisher-original UTF-8-byte-verified passage proofs.
+The independently SHA-attested original parent's literal Markdown link
+bytes, each entire original and derivative SHA, and each unique current
+native FileDB original ID were rechecked. *Transform data* is the same
+publisher source **missing from all top-thirty channels of the previous
+frozen seventy-three-question benchmark**, now available through the
+new explicit navigation channel. The lookup did **not** make it the
+native top-five ranked result, automatically verify answer sufficiency or
+download any outside page.
+
+A second **explicit title** query for *Work with data* returned four
+approved links with **eight** original-publisher byte-proven passages,
+plus two clearly unavailable/unapproved links, and preserved the original
+native rank. A missing literal Markdown link returns no invented sources.
+
+For each Markdown publisher byte quote the independent reader checks not
+only the literal original-byte range SHA, but also that decoding the selected
+original UTF-8 bytes (using only declared universal newline normalization)
+produces the **exact extracted-source candidate passage**. A second genuine
+publisher text span with a valid SHA but unrelated content is **not**
+accepted as a quotation for the retrieved excerpt. A new adversarial
+regression alters the claimed physical publisher byte coordinates and
+recalculates their genuine SHA; the combined lookup correctly refuses it.
+This strengthens provenance beyond the extracted-text-only hash while
+leaving PDF physical page and HTML normalized DOM proof scopes separate.
+The optional reader was tested against changed parent and target SHA,
+wrong native ID, missing approved acquisition, duplicated URL and final
+source revision, as well as mixed HTML + PDF defaults, a shared five-child
+budget and overlap with an already native-ranked Markdown child. No
+other worker's source/index/cache was stopped, copied, replaced or
+reindexed. All acceptance evidence remains in private KMD search-audit,
+not Git or an owner-facing developer report.
+
+At this point the optional HTML/Markdown source discovery still relies on
+current native candidate ranking. A relevant parent excluded from the
+native selected group cannot be reached by this *one-hop* mode. Source-link
+candidates are a useful supplementary navigation path, **not** proof of
+higher equal-budget top-ten recall or semantic answer accuracy. The
+frozen benchmark now has **three** independent predeclared known originals
+recovered through extra first-party HTML/Markdown references beyond the
+original top-ten (two Unity, one n8n). Changing default rankings requires
+independent precision/recall and answer-sufficiency tests with a fixed
+equal candidate budget and negative examples. The 327-PDF and 2-HTML
+production revision cutover still requires all seven reader/writer
+synchronization safeguards.

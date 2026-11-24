@@ -15,6 +15,7 @@ sys.path.insert(0,str(Path(__file__).resolve().parents[2]/"scripts"))
 
 from test_mixed_source_evidence import MixedSourceEvidenceTests
 import raspi_archived_html_follow_links as archived
+import raspi_archived_markdown_follow_links as markdown
 
 
 class NativeMixedArchivedReferenceTests(unittest.TestCase):
@@ -255,6 +256,138 @@ class NativeMixedArchivedReferenceTests(unittest.TestCase):
         with self.assertRaisesRegex(ValueError,'linked publisher derivative changed'):
             self.invoke_once()
         self.assertFalse(self.fixture.mocks['append_query_audit'].call_args.args[0]['success'])
+
+    def _native_approved_markdown_source_fixture(self):
+        """Select a real-kind Markdown original and a PDF without changing global ranks."""
+        parent='docs/official-data-overview.md'
+        child='docs/official-transform-methods.md'
+        with sqlite3.connect(self.fixture.db) as db:
+            db.execute("INSERT INTO filesystem_entries VALUES (32,'file',?)",(parent,))
+        manifest,ledger,source_map=self.cli._current_versions()
+        versions=(
+            {**manifest,parent:{'path':parent,'kind':'text',
+                                'url':'https://docs.example.org/official-data-overview.md'}},
+            {**ledger,parent:{'sha256':'a'*64}},
+            {**source_map,parent:(parent,'a'*64,'b'*64,parent+'.txt','complete')},
+        )
+        source_hit={**self.fixture.hit('text'),
+                    'original_path':parent,
+                    'kmd_original_file_entry_id':32,
+                    'kmd_native_chunk_id':'current-original-n8n-markdown-chunk',
+                    'semantic_similarity':0.96}
+        hits=[source_hit,self.fixture.hit('pdf')]
+        link={
+           'parent_original_path':parent,'parent_original_sha256':'a'*64,
+           'parent_derived_sha256':'b'*64,
+           'linked_original_sources_checked':1,
+           'linked_derived_passage_candidates':2,
+           'independently_publisher_original_plaintext_byte_attested_passages':2,
+           'parent_original_Markdown_literal_byte_link_proof':{
+              'missing_or_unapproved_official_reference_count':1,
+              'original_Markdown_publisher_literal_reference_count':5,
+              'selected_links':[{'publisher_markdown_link_text':'Transform data',
+                'publisher_link_literal_start_byte':24,
+                'publisher_link_literal_end_byte':52,
+                'publisher_link_literal_sha256':'a'*64,
+                'candidate_not_answer':True}]},
+           'linked_approved_current_original_sources':[{
+              'original_path':child,'original_sha256':'a'*64,
+              'derived_sha256':'b'*64,'native_filedb_original_id':56,
+              'publisher_source_link_proof':{'publisher_markdown_link_text':'Transform data',
+                      'candidate_not_answer':True},
+              'passage_candidates':[{'current_derived_text_excerpt':'Publisher source passage.',
+                 'publisher_plaintext_byte_interval_independently_SHA_verified':True,
+                 'factual_answer_sufficiency_verified':False}]}],
+           'cross_store_immutable_generation_pinned':False,
+           'safe_to_cutover_live':False,
+        }
+        return parent,child,versions,hits,link
+
+    def test_native_selected_markdown_adds_separate_publisher_original_byte_evidence(self):
+        parent,child,versions,hits,link=self._native_approved_markdown_source_fixture()
+        self.args.linked_originals=2
+        with mock.patch.object(self.cli,'_current_versions',return_value=versions), \
+             mock.patch.object(self.cli,'_native_passage_search',return_value={'results':hits}), \
+             mock.patch.object(markdown,'follow_current_archived_markdown_references',return_value=link) as reader:
+            result=self.invoke_once()
+        self.assertEqual([parent,self.fixture.paths['pdf']],
+                         [row['original_path'] for row in result['documents']])
+        self.assertEqual([1,2],[row['rank'] for row in result['documents']])
+        overlay=result['opt_in_archived_original_reference_navigation']
+        self.assertEqual(0,overlay['native_selected_HTML_parents_checked'])
+        self.assertEqual(1,overlay['native_selected_Markdown_parents_checked'])
+        self.assertEqual(0,overlay['original_HTML_article_evidence_passages'])
+        self.assertEqual(2,overlay['original_Markdown_publisher_byte_evidence_passages'])
+        self.assertEqual(1,overlay['linked_original_sources_checked'])
+        self.assertEqual(1,overlay['distinct_new_linked_originals_not_in_native_selection'])
+        self.assertEqual(1,overlay['missing_unapproved_original_references'])
+        self.assertTrue(overlay['all_returned_native_selected_parent_and_child_current_source_revisions_rechecked'])
+        candidate=overlay['parents'][0]['linked_existing_original_sources'][0]
+        self.assertEqual(child,candidate['original_path'])
+        self.assertTrue(candidate['passage_candidates'][0]['publisher_plaintext_byte_interval_independently_SHA_verified'])
+        self.assertFalse(candidate['passage_candidates'][0]['factual_answer_sufficiency_verified'])
+        self.assertEqual('original_Markdown',overlay['parents'][0]['parent_source_kind'])
+        reader.assert_called_once()
+        self.assertEqual(parent,reader.call_args.args[0])
+        self.assertEqual(2,reader.call_args.kwargs['limit'])
+        self.follow.assert_not_called()
+        audit=self.fixture.mocks['append_query_audit'].call_args.args[0]
+        self.assertEqual(2,audit['opt_in_archived_original_references']['original_Markdown_publisher_byte_evidence_passages'])
+        self.assertNotIn('Publisher source passage.',str(audit))
+
+    def test_native_markdown_optin_with_absent_official_link_does_not_substitute_source(self):
+        parent,child,versions,hits,link=self._native_approved_markdown_source_fixture()
+        empty={**link,'linked_original_sources_checked':0,'linked_derived_passage_candidates':0,
+               'independently_publisher_original_plaintext_byte_attested_passages':0,
+               'linked_approved_current_original_sources':[]}
+        with mock.patch.object(self.cli,'_current_versions',return_value=versions), \
+             mock.patch.object(self.cli,'_native_passage_search',return_value={'results':hits}), \
+             mock.patch.object(markdown,'follow_current_archived_markdown_references',return_value=empty) as reader:
+            result=self.invoke_once()
+        overlay=result['opt_in_archived_original_reference_navigation']
+        self.assertEqual(0,overlay['linked_original_sources_checked'])
+        self.assertEqual(0,overlay['original_Markdown_publisher_byte_evidence_passages'])
+        self.assertEqual([],overlay['parents'][0]['linked_existing_original_sources'])
+        reader.assert_called_once()
+
+    def test_mixed_markdown_changed_parent_OR_target_SHA_fail_closed(self):
+        parent,child,versions,hits,link=self._native_approved_markdown_source_fixture()
+        for target_key in ('parent_original_sha256','child_source_sha','child_ID'):
+            changed={**link,'linked_approved_current_original_sources':[
+                 dict(link['linked_approved_current_original_sources'][0])]}
+            if target_key=='parent_original_sha256':changed[target_key]='f'*64
+            elif target_key=='child_source_sha':changed['linked_approved_current_original_sources'][0]['original_sha256']='f'*64
+            else:changed['linked_approved_current_original_sources'][0]['native_filedb_original_id']=0
+            with self.subTest(target_key=target_key), \
+                 mock.patch.object(self.cli,'_current_versions',return_value=versions), \
+                 mock.patch.object(self.cli,'_native_passage_search',return_value={'results':hits}), \
+                 mock.patch.object(markdown,'follow_current_archived_markdown_references',return_value=changed):
+                with self.assertRaises(ValueError):self.invoke_once()
+            self.assertFalse(self.fixture.mocks['append_query_audit'].call_args.args[0]['success'])
+
+    def test_markdown_linked_source_already_native_ranked_is_not_counted_new(self):
+        parent,child,versions,hits,link=self._native_approved_markdown_source_fixture()
+        with sqlite3.connect(self.fixture.db) as db:
+            db.execute("INSERT INTO filesystem_entries VALUES (56,'file',?)",(child,))
+        hits=[hits[0],{**hits[0], 'original_path':child,
+                         'kmd_original_file_entry_id':56,'semantic_similarity':0.84,
+                         'kmd_native_chunk_id':'current-other-original-markdown'},hits[1]]
+        versions=({**versions[0],child:{'path':child,'kind':'text',
+                   'url':'https://docs.example.org/official-transform-methods.md'}},
+                  {**versions[1],child:{'sha256':'a'*64}},
+                  {**versions[2],child:(child,'a'*64,'b'*64,child+'.txt','complete')})
+        self.args.linked_originals=1
+        with mock.patch.object(self.cli,'_current_versions',return_value=versions), \
+             mock.patch.object(self.cli,'_native_passage_search',return_value={'results':hits}), \
+             mock.patch.object(markdown,'follow_current_archived_markdown_references',return_value=link) as reader:
+            result=self.invoke_once()
+        out=result['opt_in_archived_original_reference_navigation']
+        self.assertEqual(1,out['linked_original_sources_checked'])
+        self.assertEqual(1,out['already_native_ranked_linked_reference_count'])
+        self.assertEqual(0,out['distinct_new_linked_originals_not_in_native_selection'])
+        self.assertTrue(out['parents'][0]['linked_existing_original_sources'][0]['already_in_native_selected_documents'])
+        self.assertEqual(2,out['parents'][0]['linked_existing_original_sources'][0]['native_selected_original_rank_if_already_selected'])
+        reader.assert_called_once()
 
     def test_no_matching_official_link_returns_empty_source_list_not_a_guess(self):
         self.follow.return_value={**self.link,

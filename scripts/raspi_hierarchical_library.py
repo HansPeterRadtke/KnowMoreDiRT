@@ -1411,29 +1411,36 @@ def _opt_in_native_selected_archived_references(args, documents:list[dict], *,
             or not isinstance(evidence_query,str) or not 1<=len(evidence_query)<=300
             or not isinstance(documents,list) or len(documents)>5
             or not isinstance(versions,tuple) or len(versions)!=3):
-        raise ValueError('archived original reference follow requires bounded HTML evidence and no incompatible PDF overlay')
+        raise ValueError('archived original reference follow requires bounded HTML/Markdown evidence and no incompatible PDF overlay')
     from raspi_archived_html_follow_links import find_archived_linked_source_passages
+    from raspi_archived_markdown_follow_links import follow_current_archived_markdown_references
     manifest,ledger,sources=versions
     eligible=[];unique=set()
     for doc in documents:
-        if doc.get('source_kind')!='html':continue
+        kind=doc.get('source_kind')
+        path=doc.get('original_path')
+        is_html=(kind=='html' and isinstance(path,str)
+                 and Path(path).suffix.casefold() in ('.html','.htm'))
+        is_markdown=(kind=='text' and isinstance(path,str)
+                     and Path(path).suffix.casefold()=='.md')
+        if not (is_html or is_markdown):continue
         if doc.get('status') not in ('verified_derived_text','no_verified_excerpt'):
             continue
-        path=doc.get('original_path')
-        if (not isinstance(path,str) or path in unique
-                or path not in manifest or manifest[path].get('kind')!='html'
+        expected_kind='html' if is_html else 'text'
+        if (path in unique
+                or path not in manifest or manifest[path].get('kind')!=expected_kind
                 or path not in ledger or path not in sources
                 or type(doc.get('filesystem_entry_id')) is not int
                 or doc['filesystem_entry_id']<1):
-            raise ValueError('native-selected HTML original lacks unique verified source identity')
+            raise ValueError('native-selected original HTML/Markdown source lacks unique verified identity')
         unique.add(path)
         if (doc.get('original_sha256')!=sources[path][1]
                 or doc.get('derived_sha256')!=sources[path][2]
                 or ledger[path].get('sha256')!=doc['original_sha256']):
-            raise ValueError('native-selected HTML source SHA differs from current catalog original')
+            raise ValueError('native-selected HTML/Markdown source SHA differs from current catalog original')
         eligible.append(doc)
     if not eligible:
-        raise ValueError('archived source reference follow needs at least one native-selected verified HTML original')
+        raise ValueError('archived source reference follow needs at least one native-selected verified HTML or Markdown original')
     # Linked article references are not necessarily NEW documents. A child
     # may already be among the native-ranked originals; preserve its link
     # provenance while reporting the overlap instead of inflating discovery.
@@ -1443,15 +1450,32 @@ def _opt_in_native_selected_archived_references(args, documents:list[dict], *,
     for doc in eligible:
         if used>=budget:break
         parent_path=doc['original_path']
-        report=find_archived_linked_source_passages(parent_path,evidence_query,
-                    limit=budget-used,passages=min(2,args.passages),
-                    snippet_characters=args.snippet_characters)
+        markdown=Path(parent_path).suffix.casefold()=='.md'
+        if markdown:
+            report=follow_current_archived_markdown_references(
+                parent_path,evidence_query,limit=budget-used,
+                passages=min(2,args.passages),snippet_characters=args.snippet_characters)
+            children=report.get('linked_approved_current_original_sources')
+            parent_proof=report.get('parent_original_Markdown_literal_byte_link_proof')
+            html_proofs=0
+            text_proofs=report.get('independently_publisher_original_plaintext_byte_attested_passages')
+            missing=parent_proof.get('missing_or_unapproved_official_reference_count') if isinstance(parent_proof,dict) else None
+        else:
+            report=find_archived_linked_source_passages(parent_path,evidence_query,
+                limit=budget-used,passages=min(2,args.passages),
+                snippet_characters=args.snippet_characters)
+            children=report.get('linked_existing_original_sources')
+            parent_proof=report.get('parent_original_HTML_article_link_proof')
+            html_proofs=report.get('publisher_original_article_evidence_passages')
+            text_proofs=0
+            missing=parent_proof.get('same_origin_relevant_unarchived_or_unapproved_references') if isinstance(parent_proof,dict) else None
         if (not isinstance(report,dict) or report.get('parent_original_path')!=parent_path
                 or report.get('parent_original_sha256')!=doc['original_sha256']
                 or report.get('parent_derived_sha256')!=doc['derived_sha256']
-                or report.get('safe_to_cutover_live') is not False):
-            raise ValueError('archived link parent source does not match native source revision')
-        children=report.get('linked_existing_original_sources')
+                or report.get('safe_to_cutover_live') is not False
+                or type(html_proofs) is not int or type(text_proofs) is not int
+                or type(missing) is not int or min(html_proofs,text_proofs,missing)<0):
+            raise ValueError('archived link parent source or proof scope differs from current native original')
         if (not isinstance(children,list) or len(children)>budget-used
                 or report.get('linked_original_sources_checked')!=len(children)):
             raise ValueError('archived link returned unbounded or inconsistent current originals')
@@ -1473,8 +1497,8 @@ def _opt_in_native_selected_archived_references(args, documents:list[dict], *,
             if already is not None and (already.get('original_sha256')!=revision[0]
                  or already.get('derived_sha256')!=revision[1]
                  or already.get('filesystem_entry_id')!=revision[2]
-                 or already.get('source_kind')!='html'):
-                raise ValueError('linked HTML source identity differs from already native-ranked original')
+                 or already.get('source_kind') not in ('html','text')):
+                raise ValueError('linked HTML/Markdown source identity differs from already native-ranked original')
             item=dict(child)
             item['already_in_native_selected_documents']=already is not None
             item['native_selected_original_rank_if_already_selected']=(
@@ -1487,12 +1511,18 @@ def _opt_in_native_selected_archived_references(args, documents:list[dict], *,
             raise ValueError('previously linked parent source revision differs from native-ranked original')
         revisions[parent_path]=parent_revision
         parents.append({'native_parent_rank':doc['rank'],'parent_original_path':parent_path,
+                        'parent_source_kind':'original_Markdown' if markdown else 'original_HTML',
                         'parent_status':doc['status'],
                         'parent_direct_excerpt_count':len(doc['passages']),
                         'linked_existing_original_sources':annotated,
-                        'parent_original_HTML_article_link_proof':report['parent_original_HTML_article_link_proof'],
-                        'linked_source_excerpt_candidates':report['linked_source_excerpt_candidates'],
-                        'publisher_original_article_passage_proofs':report['publisher_original_article_evidence_passages'],
+                        **({'parent_original_Markdown_literal_byte_link_proof':parent_proof}
+                           if markdown else {'parent_original_HTML_article_link_proof':parent_proof}),
+                        'linked_source_excerpt_candidates':(
+                            report['linked_derived_passage_candidates'] if markdown
+                            else report['linked_source_excerpt_candidates']),
+                        'publisher_original_article_passage_proofs':html_proofs,
+                        'publisher_original_plaintext_byte_passage_proofs':text_proofs,
+                        'missing_unapproved_original_references':missing,
                         'linked_sources_are_not_semantic_ranks':True})
         used+=len(children)
     # A previous destination might be rewritten during later parent searches.
@@ -1508,16 +1538,16 @@ def _opt_in_native_selected_archived_references(args, documents:list[dict], *,
             raise ValueError('linked source no longer matches original source-map and native file ID')
     return {
         'parents':parents,
-        'native_selected_HTML_parents_checked':len(parents),
+        'native_selected_HTML_parents_checked':sum(x['parent_source_kind']=='original_HTML' for x in parents),
+        'native_selected_Markdown_parents_checked':sum(x['parent_source_kind']=='original_Markdown' for x in parents),
         'linked_original_sources_checked':used,
         'already_native_ranked_linked_reference_count':sum(is_native for _path,is_native in linked_occurrences),
         'distinct_new_linked_originals_not_in_native_selection':len({
             path for path,is_native in linked_occurrences if not is_native}),
         'distinct_linked_original_paths':len({path for path,_is_native in linked_occurrences}),
         'original_HTML_article_evidence_passages':sum(x['publisher_original_article_passage_proofs'] for x in parents),
-        'missing_unapproved_original_references':sum(
-            x['parent_original_HTML_article_link_proof']['same_origin_relevant_unarchived_or_unapproved_references']
-            for x in parents),
+        'original_Markdown_publisher_byte_evidence_passages':sum(x['publisher_original_plaintext_byte_passage_proofs'] for x in parents),
+        'missing_unapproved_original_references':sum(x['missing_unapproved_original_references'] for x in parents),
         'all_returned_native_selected_parent_and_child_current_source_revisions_rechecked':True,
         'no_new_external_source_fetch_or_download':True,
         'linked_originals_do_not_replace_existing_native_document_rank':True,
@@ -1559,7 +1589,7 @@ def find_source_evidence(args) -> None:
                     or getattr(args,'private_staged_pdf_preflight',None) is not None
                     or getattr(args,'continue_section',None) is not None
                     or len(args.query)>300):
-                raise ValueError('archived original reference follow requires bounded HTML evidence and no incompatible PDF overlay')
+                raise ValueError('archived original reference follow requires bounded HTML/Markdown evidence and no incompatible PDF overlay')
         versions = _current_versions()
         manifest, ledger, _ = versions
         # Do not choose among editions or similarly worded studies. Resolve
@@ -1705,6 +1735,7 @@ def find_source_evidence(args) -> None:
             "already_native_ranked_linked_references":linked_archive['already_native_ranked_linked_reference_count'],
             "distinct_new_linked_originals":linked_archive['distinct_new_linked_originals_not_in_native_selection'],
             "original_HTML_article_evidence_passages":linked_archive['original_HTML_article_evidence_passages'],
+            "original_Markdown_publisher_byte_evidence_passages":linked_archive['original_Markdown_publisher_byte_evidence_passages'],
             "missing_unapproved_original_references":linked_archive['missing_unapproved_original_references'],
             "linked_original_paths": [x['original_path'] for p in linked_archive['parents']
                                       for x in p['linked_existing_original_sources']],
@@ -2102,9 +2133,9 @@ def main():
     mixed.add_argument("--private-staged-pdf-preflight",type=Path,
         help="Optional exact private 327-PDF page repair receipt; add original-verified corrected page excerpts for native-selected PDFs without changing live indexes")
     mixed.add_argument("--follow-archived-links",action="store_true",
-        help="Opt-in only: follow publisher links on native-selected verified HTML originals to already archived current source excerpts; no linked native rank promotion")
+        help="Opt-in first-party links on selected verified HTML article or Markdown originals; approved already archived publisher excerpt candidates, no native rank promotion")
     mixed.add_argument("--linked-originals",type=int,default=3,
-        help="Total linked original sources across ALL native-selected HTML documents (1-5; opt-in only)")
+        help="Total linked source originals across ALL native-selected HTML and Markdown parents (1-5; opt-in only)")
     mixed.add_argument("--documents", type=int, default=3,
                        help="Inspect this many ranked originals (1–5)")
     mixed.add_argument("--passages", type=int, default=2,
