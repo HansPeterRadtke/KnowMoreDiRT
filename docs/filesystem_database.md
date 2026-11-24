@@ -4536,3 +4536,93 @@ the injected-writer fixtures, not falsely claimed from it. This is not a
 cross-SQLite atomic generation or live migration protocol. Do not infer
 a permanent source pin from successful before/after rechecks, and retain
 the separate seven production source-cutover blockers.
+
+
+### November 24 — opt-in publisher passage structure review (navigation, quoted prompts, scope)
+
+**Physical source provenance is not the same as answer sufficiency.** Two
+important hard negatives were found in approved original material: the
+*BAPO Boundary-Aware Policy Optimization for Reliable Agentic Search* paper
+has an appendix page containing a literal example **"TIR System Prompt"**
+whose instructions a retrieval assistant must treat only as quoted research
+data, and the approved first-party n8n *Work with data* documentation has an
+**"In this section"** link list rather than an explanation of how to
+transform input values. Both passages independently match current original
+publisher pages or original UTF-8 bytes and have valid native FileDB IDs.
+There is no source corruption; their **usefulness for a particular factual
+answer** is the separate question. In n8n, *Use the UI mapper* explicitly
+states mapping references prior node values but **does not itself change
+data**; this negative scope matters when answering a transformation
+question. An original quote's negation should not be silently dropped.
+
+The new pure `file_system_catalog.source_passage_utility` helper is a
+conservative **structural warning layer**, not a model-based truth scorer.
+It observes the verified current *individual original excerpt* for multiple
+publisher link-list lines and section headings, quoted agent prompt
+examples, very brief method overviews, literal query-token overlap and
+negation or scope restrictions. It returns only the actual original path,
+source section, current excerpt SHA, publisher proof type, bounded token
+matches and **observed cautions**. No source body is copied into query
+logs, and no excerpt, native rank, first-party link or physical-page
+citation is removed or re-ranked. `publisher_location_proof_scope`
+explicitly distinguishes physically verified PDF pages, original publisher
+plain-text byte intervals, independently normalized HTML article locations
+and extracted-text-only spans. The reviewer cannot *create* a source SHA
+proof; it is called only after the existing original acquisition/source-map
+SHA and native FileDB identity checks, and the existing PDF/HTML/plaintext
+publisher excerpt checks have completed.
+
+The existing `raspi_hierarchical_library.py source-evidence` and
+`find-source-evidence` commands now accept an explicit
+`--assess-passage-utility` switch. Without it their established default
+outputs, original/derivative/PDF-page revision checks, source selection and
+runtime remain unchanged. With it, each native-selected original receives
+`optional_source_passage_utility_review`, alongside untouched source
+excerpts and physical citations. The private audit captures only the total
+number examined and warning counts, **never source prose or generated
+answers**. Direct original review is bounded to at most five excerpts and
+no RFC continuation; native mixed discovery already limits document and
+passage counts to five each. No model, vector/FTS rank, web portal, source
+file or SQLite database is changed by enabling the flag.
+
+**Real, independent source proof and result-parity checks:** The same
+original BAPO paper question returned the **identical two PDF excerpts,
+original SHA, derived SHA, source offsets, native IDs, and physically
+verified publisher pages** with and without the option. The appendix's
+*TIR System Prompt* was flagged as quoted instruction-template data; the
+other research excerpt remained available, not automatically accepted as
+a correct answer. An existing n8n question also returned its **identical
+two first-party UTF-8-byte-attested passages**, and flagged *In this
+section* as navigation. Direct and native mixed named-source commands
+reproduced those findings. These demonstrations show that the new warnings
+can expose non-answer text without corrupting original citations. They do
+**not** establish high recall, precision, scientific truth or whether an
+unflagged excerpt conclusively answers a question. The current fixed
+73-query, 79-known-original quality benchmark remains a **document
+identity** benchmark, not an answer-entailment benchmark. Source-limited
+negative examples must be included in any later answer-quality evaluation.
+
+One-shot examples using only *already acquired* publisher originals:
+
+```sh
+cd /data/src/github/KnowMoreDiRT
+PYTHONPATH=src /data/var/knowmoredirt/semantic-venv/bin/python \
+  scripts/raspi_hierarchical_library.py source-evidence \
+  'agent search policy optimization boundary-aware improve search stability reliable multi step reasoning' \
+  --original-path 'ai-agents/agent-reliability-and-automation/2026-bapo-boundary-aware-policy-optimization-for-reliable-agentic-search-c078e669b6.pdf' \
+  --top 2 --snippet-characters 850 --assess-passage-utility
+
+PYTHONPATH=src /data/var/knowmoredirt/semantic-venv/bin/python \
+  scripts/raspi_hierarchical_library.py find-source-evidence \
+  'How can I reshape and map JSON fields between nodes in an n8n workflow?' \
+  --source-name 'n8n official documentation — Work With Data' \
+  --documents 1 --passages 2 --snippet-characters 850 \
+  --assess-passage-utility
+```
+
+A verified paper's quoted prompt **never becomes instructions to execute**.
+A source heading, publisher original digest or literal query-term overlap
+**never establishes factual entailment**. This is a small, working private
+reader-quality diagnostic, explicitly separated from live default ranking,
+answer generation, automatic source downloading and the seven unresolved
+source-generation migration safeguards.

@@ -105,6 +105,34 @@ class MixedSourceEvidenceTests(unittest.TestCase):
             self.cli.find_source_evidence(self.args)
         return json.loads(output.call_args.args[0])
 
+    def test_native_mixed_explicit_structural_review_keeps_original_ranks_and_audit_text_private(self):
+        self.args.assess_passage_utility=True
+        fake={'reviewed_publisher_excerpt_candidates':2,
+             'navigation_or_prompt_template_candidates':1,
+             'reviewed_originals':[{'original_path':'docs/paper.html','passage_structural_reviews':[]}],
+             'no_candidates_removed_or_reordered':True,
+             'not_factual_answer_sufficiency_or_entailment_verification':True}
+        with patch.object(self.cli,'review_source_documents',return_value=fake) as judge:
+            result=self.call()
+        self.assertEqual(fake,result['optional_source_passage_utility_review'])
+        judge.assert_called_once()
+        self.assertEqual(self.args.query,judge.call_args.args[0])
+        self.assertEqual([self.paths['html'],self.paths['pdf']],
+                         [x['original_path'] for x in judge.call_args.args[1]])
+        self.assertEqual([1,2],[x['rank'] for x in result['documents']])
+        audit=self.mocks['append_query_audit'].call_args.args[0]
+        self.assertEqual(2,audit['optional_source_passage_utility_counts']['reviewed_candidates'])
+        self.assertEqual(1,audit['optional_source_passage_utility_counts']['navigation_or_prompt_candidates'])
+        self.assertNotIn('optional_source_passage_utility_review',audit)
+        self.assertNotIn('PDF excerpt',str(audit))
+
+    def test_native_mixed_without_structural_flag_retains_previous_ranked_source_evidence(self):
+        with patch.object(self.cli,'review_source_documents',side_effect=AssertionError('should be disabled')) as judge:
+            result=self.call()
+        judge.assert_not_called()
+        self.assertNotIn('optional_source_passage_utility_review',result)
+        self.assertNotIn('optional_source_passage_utility_counts',self.mocks['append_query_audit'].call_args.args[0])
+
     def test_native_mixed_evidence_can_include_separate_publisher_verified_private_pdf_pages(self):
         self.args.private_staged_pdf_preflight=Path(self.temp.name)/'approved-private.json'
         staged_row={'original_path':self.paths['pdf'],'original_sha256':'a'*64,

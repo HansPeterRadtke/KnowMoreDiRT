@@ -98,6 +98,44 @@ class OptionalMainOriginalArchivedLinkTests(TestCase):
         self.assertTrue(receipt['opt_in_archived_reference_follow']['not_a_verified_answer'])
         self.assertNotIn('linked_archived_original_references',receipt)
 
+    def test_direct_source_evidence_structural_review_optin_only_after_final_revision_guard(self):
+        self.args.follow_archived_links=False
+        self.args.assess_passage_utility=True
+        mocked={'reviewed_publisher_excerpt_candidates':0,
+                'navigation_or_prompt_template_candidates':0,
+                'reviewed_originals':[],
+                'no_candidates_removed_or_reordered':True,
+                'not_factual_answer_sufficiency_or_entailment_verification':True}
+        with mock.patch.object(self.kmd,'review_source_documents',return_value=mocked) as review:
+            result=self.run_query()
+        self.assertEqual(mocked,result['optional_source_passage_utility_review'])
+        review.assert_called_once_with(self.query,[{'original_path':self.rel,
+                                                     'rank':1,'passages':[]}])
+        audit=self.audit.call_args.args[0]
+        self.assertEqual(0,audit['optional_source_passage_utility_counts']['reviewed_candidates'])
+        self.assertTrue(audit['optional_source_passage_utility_counts']['not_answer_verification'])
+        self.assertNotIn('optional_source_passage_utility_review',audit)
+        self.links.assert_not_called()
+
+    def test_review_source_query_rejects_oversized_or_continuing_sources_before_read(self):
+        self.args.follow_archived_links=False
+        self.args.assess_passage_utility=True
+        for top,cursor in ((6,None),(50,None),(2,'continuation-scope')):
+            with self.subTest(top=top,cursor=cursor):
+                self.args.top=top
+                self.args.continue_section=cursor
+                with self.assertRaisesRegex(ValueError,'at most five original passages and no RFC continuation'):
+                    self.kmd.original_source_evidence(self.args)
+        self.patched[1].assert_not_called()
+
+    def test_without_structural_flag_default_direct_source_audit_unmodified(self):
+        self.args.follow_archived_links=False
+        with mock.patch.object(self.kmd,'review_source_documents',side_effect=AssertionError('optin only')) as review:
+            result=self.run_query()
+        review.assert_not_called()
+        self.assertNotIn('optional_source_passage_utility_review',result)
+        self.assertNotIn('optional_source_passage_utility_counts',self.audit.call_args.args[0])
+
     def test_existing_default_source_command_never_imports_or_follows_links(self):
         self.args.follow_archived_links=False
         result=self.run_query()

@@ -46,6 +46,7 @@ from file_system_catalog.summary_search_batched import (
     search_summary_entries_batched, has_native_summary_candidates,
 )
 from file_system_catalog.source_evidence import source_evidence_candidates
+from file_system_catalog.source_passage_utility import review_source_documents
 from file_system_catalog.named_source import resolve_source_name
 from file_system_catalog.publication_identifier import publication_receipt_matches
 from file_system_catalog.publisher_ccs import PREFIX_CHARS, first_page_ccs
@@ -1715,6 +1716,10 @@ def find_source_evidence(args) -> None:
             'operation_stage':'final_mixed_current_original_revision_check',
             'error':f'{type(exc).__name__}: {exc}'[:290]})
         raise
+    # Optional structural diagnostics never alter native rank, excerpt,
+    # publisher SHA, page verification, or answer authority.
+    utility_review=(review_source_documents(evidence_args.query,documents)
+                    if getattr(args,'assess_passage_utility',False) else None)
     # Both evidence and extra source-scope text are untrusted original data:
     # keep coordinate/checksum audit receipts, never actual publisher prose.
     audited = [
@@ -1741,6 +1746,10 @@ def find_source_evidence(args) -> None:
                                       for x in p['linked_existing_original_sources']],
             "not_a_verified_answer":True,
         }} if linked_archive is not None else {}),
+        **({'optional_source_passage_utility_counts':{
+            'reviewed_candidates':utility_review['reviewed_publisher_excerpt_candidates'],
+            'navigation_or_prompt_candidates':utility_review['navigation_or_prompt_template_candidates'],
+            'not_answer_verification':True}} if utility_review is not None else {}),
         "verified_pdf_excerpts": pdf_count,
         "verified_non_pdf_derived_excerpts": derived_count,
         "evidence_kind_counts": evidence_kind_counts, "documents": audited,
@@ -1753,6 +1762,8 @@ def find_source_evidence(args) -> None:
         **({'opt_in_archived_original_reference_navigation':linked_archive}
            if linked_archive is not None else {}),
         "final_current_original_source_revision_check":final_source_proof,
+        **({'optional_source_passage_utility_review':utility_review}
+           if utility_review is not None else {}),
         **({'corrected_private_publisher_page_overlay': corrected_overlay}
            if corrected_overlay is not None else {}),
         "verified_pdf_excerpts": pdf_count,
@@ -1855,6 +1866,8 @@ def original_source_evidence(args) -> None:
     try:
         if not 1 <= args.top <= 50:
             raise ValueError("invalid bounded requested source passage count")
+        if getattr(args,'assess_passage_utility',False) and (args.top>5 or cursor is not None):
+            raise ValueError('optional structural source review requires at most five original passages and no RFC continuation')
         if original_path is None:
             explicit_name = getattr(args, "source_name", None)
             manifest = _unique_path_records(json.loads(SOURCES.read_text())["sources"])
@@ -1917,6 +1930,10 @@ def original_source_evidence(args) -> None:
         # successfully verified *old* passage without this second check.
         result["final_current_source_revision_check"] = final_original_revision_guard(
             source, original_path=original_path, native_file_id=int(row[0]))
+        if getattr(args,'assess_passage_utility',False):
+            result['optional_source_passage_utility_review']=review_source_documents(
+                evidence_query,[{'original_path':original_path,'rank':1,
+                                 'passages':result['passages']}])
         linked=_optional_verified_archived_links(args,original_path=original_path,
                          evidence_query=evidence_query,continuation_cursor=cursor)
         if linked is not None:
@@ -1955,6 +1972,11 @@ def original_source_evidence(args) -> None:
         **({"rfc_section_lookup":result["rfc_section_lookup"]} if "rfc_section_lookup" in result else {}),
         "duration_seconds":round(time.monotonic()-started,3),
         **({"pdf_page_verification": result["pdf_page_verification"]} if "pdf_page_verification" in result else {}),
+        **({'optional_source_passage_utility_counts':{
+            'reviewed_candidates':result['optional_source_passage_utility_review']['reviewed_publisher_excerpt_candidates'],
+            'navigation_or_prompt_candidates':result['optional_source_passage_utility_review']['navigation_or_prompt_template_candidates'],
+            'not_answer_verification':True}}
+            if 'optional_source_passage_utility_review' in result else {}),
         **({"opt_in_archived_reference_follow": {
             "linked_originals_checked": linked['linked_original_sources_checked'],
             "verified_publisher_HTML_article_candidate_passages":linked.get('publisher_original_article_evidence_passages',0),
@@ -2118,6 +2140,8 @@ def main():
                           help="Read the next contiguous excerpt using the previous RFC section result\u0027s context.next_cursor")
     evidence.add_argument("--top",type=int,default=5)
     evidence.add_argument("--snippet-characters",type=int,default=900)
+    evidence.add_argument("--assess-passage-utility",action="store_true",
+        help="Opt-in structural warnings for navigation-only or quoted prompt passages; never score factual correctness or change source rank")
     evidence.add_argument("--follow-archived-links",action="store_true",
         help="Optional official first-party links from one original HTML article or Markdown publisher file into already archived source evidence; source candidates remain separate from answers")
     evidence.add_argument("--linked-originals",type=int,default=3,
@@ -2141,6 +2165,8 @@ def main():
     mixed.add_argument("--passages", type=int, default=2,
                        help="Candidate excerpts per original (1–5)")
     mixed.add_argument("--snippet-characters", type=int, default=1600)
+    mixed.add_argument("--assess-passage-utility",action="store_true",
+        help="Opt-in conservative structural diagnostics for original passage candidates, without changing source ranking or claiming answer sufficiency")
     mixed.add_argument("--scope-context-characters", type=int, default=320,
                        help="Bounded original-derived opening/neighbor context per excerpt (0 or 80–600); no physical-page claim")
     mixed.add_argument("--continue-section", metavar="CURSOR",
