@@ -1434,7 +1434,12 @@ def _opt_in_native_selected_archived_references(args, documents:list[dict], *,
         eligible.append(doc)
     if not eligible:
         raise ValueError('archived source reference follow needs at least one native-selected verified HTML original')
-    used=0;parents=[];revisions={}
+    # Linked article references are not necessarily NEW documents. A child
+    # may already be among the native-ranked originals; preserve its link
+    # provenance while reporting the overlap instead of inflating discovery.
+    native_selected={doc['original_path']:doc for doc in documents
+                     if isinstance(doc,dict) and isinstance(doc.get('original_path'),str)}
+    used=0;parents=[];revisions={};linked_occurrences=[]
     for doc in eligible:
         if used>=budget:break
         parent_path=doc['original_path']
@@ -1450,22 +1455,41 @@ def _opt_in_native_selected_archived_references(args, documents:list[dict], *,
         if (not isinstance(children,list) or len(children)>budget-used
                 or report.get('linked_original_sources_checked')!=len(children)):
             raise ValueError('archived link returned unbounded or inconsistent current originals')
+        annotated=[]
         for child in children:
             if (not isinstance(child,dict) or not isinstance(child.get('original_path'),str)
-                    or child['original_path']==parent_path or child['original_path'] in revisions
+                    or child['original_path']==parent_path
                     or type(child.get('native_filedb_original_id')) is not int
                     or child['native_filedb_original_id']<1):
-                raise ValueError('duplicate or invalid linked native source identity')
-            revisions[child['original_path']]=(child['original_sha256'],child['derived_sha256'],
-                                               child['native_filedb_original_id'])
-        if parent_path in revisions:
-            raise ValueError('an already linked original was also selected as parent')
-        revisions[parent_path]=(doc['original_sha256'],doc['derived_sha256'],
-                                doc['filesystem_entry_id'])
+                raise ValueError('invalid linked native source identity')
+            path=child['original_path']
+            revision=(child['original_sha256'],child['derived_sha256'],
+                      child['native_filedb_original_id'])
+            existing=revisions.get(path)
+            if existing is not None and existing!=revision:
+                raise ValueError('linked source revision changed across native parent references')
+            revisions[path]=revision
+            already=native_selected.get(path)
+            if already is not None and (already.get('original_sha256')!=revision[0]
+                 or already.get('derived_sha256')!=revision[1]
+                 or already.get('filesystem_entry_id')!=revision[2]
+                 or already.get('source_kind')!='html'):
+                raise ValueError('linked HTML source identity differs from already native-ranked original')
+            item=dict(child)
+            item['already_in_native_selected_documents']=already is not None
+            item['native_selected_original_rank_if_already_selected']=(
+                already.get('rank') if already is not None else None)
+            annotated.append(item)
+            linked_occurrences.append((path,already is not None))
+        parent_revision=(doc['original_sha256'],doc['derived_sha256'],
+                         doc['filesystem_entry_id'])
+        if parent_path in revisions and revisions[parent_path]!=parent_revision:
+            raise ValueError('previously linked parent source revision differs from native-ranked original')
+        revisions[parent_path]=parent_revision
         parents.append({'native_parent_rank':doc['rank'],'parent_original_path':parent_path,
                         'parent_status':doc['status'],
                         'parent_direct_excerpt_count':len(doc['passages']),
-                        'linked_existing_original_sources':children,
+                        'linked_existing_original_sources':annotated,
                         'parent_original_HTML_article_link_proof':report['parent_original_HTML_article_link_proof'],
                         'linked_source_excerpt_candidates':report['linked_source_excerpt_candidates'],
                         'publisher_original_article_passage_proofs':report['publisher_original_article_evidence_passages'],
@@ -1486,6 +1510,10 @@ def _opt_in_native_selected_archived_references(args, documents:list[dict], *,
         'parents':parents,
         'native_selected_HTML_parents_checked':len(parents),
         'linked_original_sources_checked':used,
+        'already_native_ranked_linked_reference_count':sum(is_native for _path,is_native in linked_occurrences),
+        'distinct_new_linked_originals_not_in_native_selection':len({
+            path for path,is_native in linked_occurrences if not is_native}),
+        'distinct_linked_original_paths':len({path for path,_is_native in linked_occurrences}),
         'original_HTML_article_evidence_passages':sum(x['publisher_original_article_passage_proofs'] for x in parents),
         'missing_unapproved_original_references':sum(
             x['parent_original_HTML_article_link_proof']['same_origin_relevant_unarchived_or_unapproved_references']
@@ -1674,6 +1702,8 @@ def find_source_evidence(args) -> None:
         **({"opt_in_archived_original_references": {
             "selected_native_parent_originals": [p['parent_original_path'] for p in linked_archive['parents']],
             "linked_original_sources_checked":linked_archive['linked_original_sources_checked'],
+            "already_native_ranked_linked_references":linked_archive['already_native_ranked_linked_reference_count'],
+            "distinct_new_linked_originals":linked_archive['distinct_new_linked_originals_not_in_native_selection'],
             "original_HTML_article_evidence_passages":linked_archive['original_HTML_article_evidence_passages'],
             "missing_unapproved_original_references":linked_archive['missing_unapproved_original_references'],
             "linked_original_paths": [x['original_path'] for p in linked_archive['parents']

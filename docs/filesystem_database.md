@@ -3891,3 +3891,54 @@ unrelated question. Actual Unity original HTML source/derived SHA and native
 ID were rechecked on Raspi after running the opt-in command. No source
 acquisition, model replacement, service restart, index modification, or
 publication of the library's private books is involved.
+
+
+### November 24 — label overlap between native search ranks and followed original references
+
+One real native `find-source-evidence` query for Unity Render Textures selected
+five relevant archived HTML originals and, with the explicit optional
+`--follow-archived-links --linked-originals 3` mode, checked three official
+first-party linked originals. The full current original and derived SHA and
+source-map/native-ID checks passed, and three exact source text excerpts also
+matched their archived publisher HTML articles. **However, one of those
+three linked references was already present at native search rank four.**
+The retrieval thus discovered **two genuinely new distinct original sources,
+not three**. Source-linked citations remain legitimate for overlapping
+originals, but describing a repeat as a newly found document inflates
+retrieval-quality metrics.
+
+The optional mixed native lookup now keeps **both** facts separately. Each
+linked candidate reports `already_in_native_selected_documents` and
+`native_selected_original_rank_if_already_selected`; group counters report
+`linked_original_sources_checked`,
+`already_native_ranked_linked_reference_count`,
+`distinct_new_linked_originals_not_in_native_selection` and
+`distinct_linked_original_paths`. When an already ranked target is linked,
+its publisher source SHA, derived text SHA and exact native original FileDB
+identity MUST match the selected native document or the entire query fails.
+An original already linked from an earlier HTML parent may also be a later
+native-selected parent, but only when its exact source identity agrees.
+Repeated links from different parents are not represented as multiple
+newly acquired or discovered originals. Native rank, original source
+passages, source-link evidence and original corpus are never changed by this
+annotation. The audit records source IDs and counts, never original
+paragraphs. No cross-store atomic generation is claimed.
+
+Replaying the actual five previous native-ranked Unity documents against
+fresh original source-map/native and publisher SHA checks confirmed exactly
+three linked references, **one overlap at native rank four and two new
+originals**, without rerunning the expensive all-vector scan. Synthetic
+regressions cover native overlap, a linked child also serving as a later
+native parent, differing native IDs/SHAs, per-request budget, late source
+revision changes, and default behavior unchanged. The independent same
+native semantic query required approximately **106 seconds wall time**
+in this observed configuration and read gigabytes of vector data. This is
+an observed individual query, **not a latency distribution or speed
+benchmark**. The existing Infra native semantic reader imports a historical
+worktree implementation of `search_semantic_entries` that scans all native
+chunk and representation vector rows; it is not a persistent ANN index.
+Do not silently replace that live implementation or the owner-facing web
+portal during active indexing. A future performance release requires
+isolated equivalent-result benchmarking, source revision consistency,
+read/write admission and a safe deployment/rollback plan. The existing
+explicit-source lookup remains much cheaper and source-exact.

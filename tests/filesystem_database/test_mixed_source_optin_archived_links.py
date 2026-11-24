@@ -68,6 +68,8 @@ class NativeMixedArchivedReferenceTests(unittest.TestCase):
         self.assertEqual(1,out['verified_non_pdf_derived_excerpts'])
         self.assertEqual(1,out['opt_in_archived_original_reference_navigation']['linked_original_sources_checked'])
         self.assertEqual(1,out['opt_in_archived_original_reference_navigation']['original_HTML_article_evidence_passages'])
+        self.assertEqual(0,out['opt_in_archived_original_reference_navigation']['already_native_ranked_linked_reference_count'])
+        self.assertEqual(1,out['opt_in_archived_original_reference_navigation']['distinct_new_linked_originals_not_in_native_selection'])
         self.assertEqual(1,out['opt_in_archived_original_reference_navigation']['missing_unapproved_original_references'])
         self.assertFalse(out['opt_in_archived_original_reference_navigation']['safe_to_cutover_live'])
         self.assertEqual(self.child,out['opt_in_archived_original_reference_navigation']['parents'][0]['linked_existing_original_sources'][0]['original_path'])
@@ -125,6 +127,79 @@ class NativeMixedArchivedReferenceTests(unittest.TestCase):
             with self.subTest(tamper=tamper),self.assertRaises(ValueError):
                 self.invoke_once()
         self.assertEqual(4,self.fixture.mocks['append_query_audit'].call_count)
+        self.assertFalse(self.fixture.mocks['append_query_audit'].call_args.args[0]['success'])
+
+    def _catalog_includes_native_ranked_child(self):
+        with sqlite3.connect(self.fixture.db) as db:
+            db.execute("INSERT INTO filesystem_entries VALUES (51,'file',?)",(self.child,))
+        m,l,c=self.cli._current_versions()
+        manifest={**m,self.child:{'path':self.child,'kind':'html',
+                                    'source_url':'https://publisher.example/approved-child'}}
+        ledger={**l,self.child:{'sha256':'a'*64}}
+        sources={**c,self.child:(self.child,'a'*64,'b'*64,self.child+'.txt','complete')}
+        hits=[self.fixture.hit('html'),
+              dict(self.fixture.hit('html'),original_path=self.child,
+                   kmd_original_file_entry_id=51,
+                   kmd_native_chunk_id='second-native-original-has-independent-rank',
+                   semantic_similarity=0.83),
+              self.fixture.hit('pdf')]
+        return (manifest,ledger,sources),hits
+
+    def test_linked_source_already_in_native_top_results_is_not_counted_as_new(self):
+        versions,hits=self._catalog_includes_native_ranked_child()
+        self.args.linked_originals=1
+        with mock.patch.object(self.cli,'_current_versions',return_value=versions), \
+             mock.patch.object(self.cli,'_native_passage_search',return_value={'results':hits}):
+            result=self.invoke_once()
+        overlay=result['opt_in_archived_original_reference_navigation']
+        self.assertEqual(1,overlay['linked_original_sources_checked'])
+        self.assertEqual(1,overlay['already_native_ranked_linked_reference_count'])
+        self.assertEqual(0,overlay['distinct_new_linked_originals_not_in_native_selection'])
+        self.assertEqual(1,overlay['distinct_linked_original_paths'])
+        self.assertEqual([1,2,3],[doc['rank'] for doc in result['documents']])
+        extra=overlay['parents'][0]['linked_existing_original_sources'][0]
+        self.assertTrue(extra['already_in_native_selected_documents'])
+        self.assertEqual(2,extra['native_selected_original_rank_if_already_selected'])
+        audit=self.fixture.mocks['append_query_audit'].call_args.args[0]
+        self.assertEqual(1,audit['opt_in_archived_original_references']['already_native_ranked_linked_references'])
+        self.assertEqual(0,audit['opt_in_archived_original_references']['distinct_new_linked_originals'])
+
+    def test_native_ranked_child_can_also_be_a_selected_parent_without_revision_confusion(self):
+        versions,hits=self._catalog_includes_native_ranked_child()
+        self.args.linked_originals=2
+        second={**self.link,'parent_original_path':self.child,
+                'linked_existing_original_sources':[],
+                'linked_original_sources_checked':0,
+                'linked_source_excerpt_candidates':0,
+                'publisher_original_article_evidence_passages':0,
+                'parent_original_HTML_article_link_proof':{
+                  'same_origin_relevant_unarchived_or_unapproved_references':0,
+                  'unavailable_publisher_references_not_followed':[]}}
+        self.follow.side_effect=[self.link,second]
+        with mock.patch.object(self.cli,'_current_versions',return_value=versions), \
+             mock.patch.object(self.cli,'_native_passage_search',return_value={'results':hits}):
+            result=self.invoke_once()
+        overlay=result['opt_in_archived_original_reference_navigation']
+        self.assertEqual(2,overlay['native_selected_HTML_parents_checked'])
+        self.assertEqual(1,overlay['linked_original_sources_checked'])
+        self.assertEqual(1,overlay['already_native_ranked_linked_reference_count'])
+        self.assertEqual(0,overlay['distinct_new_linked_originals_not_in_native_selection'])
+        self.assertEqual([self.parent,self.child],
+                         [x['parent_original_path'] for x in overlay['parents']])
+        self.assertEqual(2,self.follow.call_count)
+        self.assertTrue(overlay['all_returned_native_selected_parent_and_child_current_source_revisions_rechecked'])
+
+    def test_linked_original_identity_must_match_its_existing_native_rank(self):
+        versions,hits=self._catalog_includes_native_ranked_child()
+        self.args.linked_originals=1
+        bad={**self.link,'linked_existing_original_sources':[{
+             **self.link['linked_existing_original_sources'][0],
+             'native_filedb_original_id':52}]}
+        self.follow.return_value=bad
+        with mock.patch.object(self.cli,'_current_versions',return_value=versions), \
+             mock.patch.object(self.cli,'_native_passage_search',return_value={'results':hits}):
+            with self.assertRaisesRegex(ValueError,'differs from already native-ranked'):
+                self.invoke_once()
         self.assertFalse(self.fixture.mocks['append_query_audit'].call_args.args[0]['success'])
 
     def test_two_native_selected_HTML_originals_share_one_bounded_link_budget(self):
