@@ -144,6 +144,40 @@ class RecoveredOriginalPageRAMIndexTests(unittest.TestCase):
   with self.assertRaisesRegex(ValueError,'incomplete'):
    candidate_source_page_bodies(self.preview,self.changes,4)
 
+ def test_porter_ranked_single_term_pages_do_not_hide_late_verified_two_term_page(self):
+  # FTS5 Porter matches "run" against "running" but our exact excerpt
+  # verifier rejects that spelling as an original query-term confirmation.
+  # Twenty-seven short, falsely high-ranked pages must not consume limit=1.
+  from file_system_catalog.hybrid_search import query_terms
+  short=('run pipeline stable method publisher evidence exact same source '
+         'physical page revision details\n')
+  valid=('running pipeline '+('unrelated contextual paragraph about original '
+         'source provenance and private PDF pages without empirical claims. '*130)+'\n')
+  def source(page_bodies):
+   preview='KMD source provenance approved private publisher PDF\n'
+   changes=[]
+   for page,body in enumerate(page_bodies,1):
+    preview+=f'[[SOURCE UNIT: PDF page {page}]]\n'+body
+    changes.append({'original_physical_pdf_page':page,
+      'after_provisional_text_sha256':sha(body),
+      'source_page_text_is_not_visually_or_semantically_verified':True})
+   return preview,changes
+  with PrivateRecoveredOriginalPageRAMIndex(max_originals=2) as idx:
+   first,first_changes=source([short]*27)
+   self.add(idx,path='ai-agents/many-weak-pages.pdf',preview=first,pages=27,changes=first_changes)
+   second,second_changes=source([valid])
+   self.add(idx,path='science/one-strong-page.pdf',preview=second,pages=1,changes=second_changes)
+   idx.commit()
+   self.assertEqual(28,len(idx.entries))
+   accepted=idx.ranked('running pipeline',limit=1)
+   self.assertEqual(1,len(accepted))
+   self.assertEqual('science/one-strong-page.pdf',accepted[0]['original_path'])
+   self.assertEqual(['pipeline','running'],accepted[0]['covered_distinct_query_terms'])
+   self.assertTrue(accepted[0]['source_page_full_text_not_approved_as_publisher_quote'])
+   self.assertEqual(1,len(idx.ranked('running pipeline',limit=1,original_path='science/one-strong-page.pdf')))
+   self.assertEqual([],idx.ranked('running pipeline',limit=1,original_path='ai-agents/many-weak-pages.pdf'))
+   self.assertEqual([],idx.ranked('fabricated nebula orthogonal',limit=1))
+
  def test_bad_query_and_closed_index_are_rejected(self):
   with PrivateRecoveredOriginalPageRAMIndex() as i:
    self.add(i);i.commit()

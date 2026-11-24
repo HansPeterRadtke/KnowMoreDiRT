@@ -154,16 +154,23 @@ class PrivateRecoveredOriginalPageRAMIndex:
         tokens=query_terms(query)
         if not tokens:raise ValueError('query does not contain searchable source terms')
         clause=' OR '.join('"'+t.replace('"','""')+'"' for t in tokens)
+        # FTS5 Porter stemming can give high raw BM25 rank to pages that
+        # mention only one exact question term; the independent excerpt test
+        # below rightly rejects those pages. Applying the caller's limit to
+        # raw FTS hits first could therefore hide a later qualifying original
+        # physical-page locator. All rows are already capped at 423 in RAM.
+        # Apply the requested limit only AFTER the exact source-text checks.
+        scan_limit=len(self.entries)
         if original_path is not None:
             if original_path not in self.seen:
                 raise ValueError('requested original PDF source not present in bounded private retrieval cohort')
             rows=self.db.execute('SELECT rowid,bm25(physical_recovered,1.0) '
                 'FROM physical_recovered WHERE physical_recovered MATCH ? AND path=? ORDER BY 2,1 LIMIT ?',
-                (clause,original_path,limit)).fetchall()
+                (clause,original_path,scan_limit)).fetchall()
         else:
             rows=self.db.execute('SELECT rowid,bm25(physical_recovered,1.0) '
                 'FROM physical_recovered WHERE physical_recovered MATCH ? ORDER BY 2,1 LIMIT ?',
-                (clause,limit)).fetchall()
+                (clause,scan_limit)).fetchall()
         accepted=[]
         for rowid,score in rows:
             base=self.entries[int(rowid)]
@@ -183,4 +190,5 @@ class PrivateRecoveredOriginalPageRAMIndex:
                'covered_distinct_query_terms':sorted(covered),
                'source_page_full_text_not_approved_as_publisher_quote':True,
                'lexical_score':float(score)})
+            if len(accepted)>=limit:break
         return accepted
