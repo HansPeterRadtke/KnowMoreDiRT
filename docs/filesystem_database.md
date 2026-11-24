@@ -3670,3 +3670,64 @@ publisher copies, no main/article, short unspecific fragments, altered
 publisher SHA and stale derived excerpt SHA. A broader independent source
 answer-sufficiency benchmark remains required before anyone labels a
 retrieval-generated answer "verified".
+
+
+### November 24 — verified offline links from original HTML to already archived source pages
+
+`raspi_archived_html_follow_links.py` now resolves a narrow but important
+**source-navigation** gap without weakening the existing original-source
+quotation rules: an explicitly selected official HTML overview can be a
+*table of contents*, and the relevant explanation may be in the overview's
+already archived child document. The new `archived_html_source_links` helper
+parses only the **full SHA-verified original publisher `article` element** (or
+`main` when no article exists), excluding scripts, navigation, sidebars and
+footer. Each candidate link must resolve to a unique approved **HTTPS
+same-origin URL** present in the existing curated source catalogue, with a
+matching completed acquisition receipt. Links to external providers, script
+URLs, missing/unapproved documents, ambiguous duplicate URLs and unrelated
+article references are rejected; **no HTTP request, browsing, acquisition,
+new index or source mutation takes place**. The current query terms are used
+only to rank *possible references* in the original document. This does not
+claim to discover the correct original across the whole library or prove any
+candidate passage answers the question.
+
+For at most five selected archive links, the read-only command opens each
+**already downloaded publisher original**, full-SHA verifies its original
+and current derived text, checks the matching unique native KnowMoreDiRT
+original file ID, and invokes the existing original-source evidence search.
+The candidate passage's current extracted-text offsets and SHA are retained;
+for HTML, the existing independent full normalized `article`/`main` source
+anchor is included when available. After searching, each original's
+publisher bytes, source map revision and native identity are checked again.
+A final bounded *collective* review checks all returned destinations after
+any later destination search, and then the original linking page again.
+An observed revision or identity change rejects the **entire** lookup rather
+than emitting stale references. This is repeatable-source validation, **not
+an atomic multi-database generation** or permission to update live source
+maps, embeddings, or the 327 corrected PDF and two HTML source migrations.
+The result explicitly reports `safe_to_cutover_live=false` and
+`not_proof_of_correct_answer_or_atomic_cross_store_generation=true`.
+
+Real original-source verification on November twenty-fourth demonstrated
+`Unity 6.3 LTS — Loading textures in the background` linked in its approved
+original article to `Texture and mesh loading`: the overview's indirect
+frozen question had previously yielded **zero** matching source passage,
+but following the publisher's archived reference yielded **one** original
+HTML article-anchored source candidate for that same question. A second
+separate first-party Unity graphics-profiling overview linked to three
+already archived originals on checking the mesh upload pipeline, configuring
+asynchronous texture/mesh uploads and uploading the data to the GPU, each
+with an independently original-article-anchored candidate. This is a
+material improvement in **explicit selected-document navigation** and
+source provenance, not in global semantic ranking. Fourteen isolated tests
+exercise same-origin URL and catalog/receipt identity, external navigation
+refusal, no-candidate behavior, symlink/path and bounded request refusal,
+parent/source-map/native revision changes, target revisions that change
+only after another destination was processed and preservation of original
+extracted-source versus independently verified HTML article scope.
+
+Production direct folder/grep searching and existing exact-source
+`source-evidence` remain available and unchanged. The CLI writes only a new
+owner-private evidence file under the established KMD search-audit directory.
+The owner-visible search UI is **not** automatically wired to this optional
+reference-following command; this is an independently tested library tool.

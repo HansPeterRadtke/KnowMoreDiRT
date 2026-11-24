@@ -1,0 +1,83 @@
+"""Signed-off same-origin HTML article reference navigation fixtures."""
+import hashlib
+import unittest
+from file_system_catalog.archived_html_source_links import source_link_candidates
+
+def sha(b):return hashlib.sha256(b).hexdigest()
+
+class ArchivedHtmlReferenceTests(unittest.TestCase):
+    def setUp(self):
+        self.original='manual/chapter.html'
+        self.url='https://docs.example.org/engine/chapter'
+        self.child='manual/child.html'
+        self.catalog=[{'path':self.original,'kind':'html','url':self.url,'title':'Chapter Overview'},
+                      {'path':self.child,'kind':'html','url':'https://docs.example.org/engine/chapter/mesh','title':'Texture and mesh loading'},
+                      {'path':'other/unrelated.html','kind':'html','url':'https://evil.example.org/mesh','title':'Texture and mesh loading'}]
+        self.ledger={self.child:{'path':self.child,'url':'https://docs.example.org/engine/chapter/mesh',
+                                 'sha256':sha(b'exact target original'),'bytes_received':123,'status':'complete'}}
+        self.raw=(b'<html><body><nav><a href="/engine/chapter/bad">Mesh spoof</a></nav>'
+                  b'<article><h1>Overview</h1><a href="/engine/chapter/mesh">Texture and mesh loading</a>'
+                  b'<a href="https://evil.example.org/mesh">Texture and mesh loading</a>'
+                  b'<script><a href="/engine/chapter/mesh">Fake script mesh</a></script>'
+                  b'</article></body></html>')
+
+    def call(self,**kw):
+        args={'raw_html':self.raw,'original_sha256':sha(self.raw),'publisher_url':self.url,
+              'catalog':self.catalog,'completed_receipts':self.ledger,
+              'query':'How do I load mesh data from disk without stalls?',
+              'original_path':self.original,'limit':3}
+        args.update(kw)
+        return source_link_candidates(**args)
+
+    def test_exact_first_party_original_article_link_to_existing_original_receipt(self):
+        result=self.call()
+        self.assertEqual(1,result['matching_verified_catalog_receipt_link_candidates'])
+        self.assertEqual(1,len(result['selected_links']))
+        link=result['selected_links'][0]
+        self.assertEqual(self.child,link['catalog_target_original_path'])
+        self.assertEqual(self.ledger[self.child]['sha256'],link['catalog_target_acquisition_sha256'])
+        self.assertEqual(['mesh'],link['matched_query_terms'])
+        self.assertTrue(link['source_link_occurs_in_original_HTML_article_or_main'])
+        self.assertFalse(link['target_original_bytes_verified_by_this_function'])
+        self.assertTrue(result['no_answer_truth_or_page_quote_proved'])
+
+    def test_original_source_sha_or_ambiguous_catalog_url_fails_closed(self):
+        with self.assertRaisesRegex(ValueError,'source SHA'):
+            self.call(original_sha256='0'*64)
+        ambiguous=self.catalog+[{'path':'different/duplicate.html','kind':'html',
+                                'url':self.catalog[1]['url'],'title':'Different edition same URL'}]
+        self.assertEqual([],self.call(catalog=ambiguous)['selected_links'])
+
+    def test_deny_external_non_https_script_navigation_and_unlisted_targets(self):
+        raw=(b'<article><a href="javascript:alert(1)">Mesh data</a>'
+             b'<a href="//evil.example.org/mesh">Texture and mesh loading</a>'
+             b'<a href="/engine/chapter/unknown">Mesh file</a></article>')
+        self.assertEqual([],self.call(raw_html=raw,original_sha256=sha(raw))['selected_links'])
+
+    def test_no_complete_archived_target_receipt_never_promoted(self):
+        missing=dict(self.ledger[self.child],status='pending')
+        self.assertEqual([],self.call(completed_receipts={self.child:missing})['selected_links'])
+        tampered=dict(self.ledger[self.child],url='https://docs.example.org/other')
+        self.assertEqual([],self.call(completed_receipts={self.child:tampered})['selected_links'])
+        self.assertEqual([],self.call(completed_receipts={})['selected_links'])
+
+    def test_main_fallback_when_no_article_and_no_navigation_sidebars(self):
+        raw=(b'<main><nav><a href="/engine/chapter/mesh">FAKE mesh nav</a></nav>'
+             b'<p><a href="/engine/chapter/mesh">Texture and mesh loading</a></p></main>')
+        links=self.call(raw_html=raw,original_sha256=sha(raw))['selected_links']
+        self.assertEqual(1,len(links))
+        self.assertEqual('Texture and mesh loading',links[0]['publisher_article_link_text'])
+
+    def test_zero_query_term_overlap_keeps_possible_source_unselected(self):
+        r=self.call(query='separate astrophysics cosmology neutrino simulations')
+        self.assertEqual([],r['selected_links'])
+
+    def test_unsafe_original_path_or_unbounded_top_are_refused(self):
+        for path in ('../book.html','/data/var/Knowledge Library/private.html','bad\\book.html'):
+            with self.subTest(path=path),self.assertRaises(ValueError):
+                self.call(original_path=path)
+        for limit in (0,6,True):
+            with self.subTest(limit=limit),self.assertRaises(ValueError):
+                self.call(limit=limit)
+
+if __name__=='__main__':unittest.main()
