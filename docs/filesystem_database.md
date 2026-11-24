@@ -3478,6 +3478,19 @@ source snapshots while newer readers select the next version. New
 cooperating legacy sessions are refused after sealing, including after a
 simulated crash *between the durable seal and the pointer rename*.
 
+A concurrency flaw was reproduced in the original **file-lock-only**
+private protocol: renaming the lock file and recreating that pathname let the
+publisher acquire a different inode while an existing reader still held its
+original shared lock. Both private reader/writer admission and publisher now
+also lock the **same owner-controlled private generation-root directory**,
+shared for old sessions and exclusive/nonblocking for private publication.
+Directory locking is acquired before the file and pointer locks in a fixed
+order, preventing that split-file-lock bypass for cooperating Linux processes.
+Both same-process and independent-process regressions exercise the replaced
+lock filename and confirm publication is refused until the old reader exits.
+The additional directory lock does not protect unknown manual clients,
+replaced root directories, other hosts or any production database instance.
+
 The seal is owner-only, regular, bounded JSON pinned to the actual verified
 source-generation manifest SHA and its ordinal; its existence is checked
 while holding the admission lock. If the seal is deleted after a pointer has

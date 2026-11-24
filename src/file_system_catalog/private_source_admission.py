@@ -45,6 +45,36 @@ def _open_admission_lock(base:Path):
     return _owner_only_file_descriptor(base/LOCK_NAME,os.O_RDWR|os.O_CREAT)
 
 
+@contextmanager
+def _private_directory_admission(base:Path,*,exclusive:bool):
+    """Pin the private generation-root directory inode during admission.
+
+    A single lock filename could be replaced while a client is holding the
+    old inode. A second flock on this same directory prevents that split-lock
+    bypass for cooperating Linux clients, without touching live source data.
+    """
+    fd=os.open(base,os.O_RDONLY|os.O_NOFOLLOW|os.O_DIRECTORY|os.O_CLOEXEC)
+    locked=False
+    try:
+        before=os.fstat(fd)
+        current=os.stat(base,follow_symlinks=False)
+        if (not stat.S_ISDIR(before.st_mode) or before.st_uid!=os.geteuid()
+                or not os.path.samestat(before,current)):
+            raise ValueError('private directory admission root is replaced or not owner-controlled')
+        mode=fcntl.LOCK_EX|fcntl.LOCK_NB if exclusive else fcntl.LOCK_SH
+        try:
+            fcntl.flock(fd,mode)
+            locked=True
+        except BlockingIOError as exc:
+            raise ValueError('cooperating legacy reader or writer remains active; private directory admission denied') from exc
+        if not os.path.samestat(before,os.stat(base,follow_symlinks=False)):
+            raise ValueError('private directory admission root changed while obtaining its lock')
+        yield
+    finally:
+        if locked:fcntl.flock(fd,fcntl.LOCK_UN)
+        os.close(fd)
+
+
 def read_private_legacy_seal(base:Path,allowed_root:Path):
     """Inspect the durable private legacy-admission tombstone, never live state."""
     _validate_private_root(base,allowed_root)
@@ -92,20 +122,23 @@ def _admit_private_legacy_client(base:Path,allowed_root:Path,kind:str):
     if kind not in ('reader','writer'):
         raise ValueError('private legacy source client kind must be reader or writer')
     _validate_private_root(base,allowed_root)
-    with _open_admission_lock(base) as lock:
-        fcntl.flock(lock.fileno(),fcntl.LOCK_SH)
-        try:
-            if read_private_legacy_seal(base,allowed_root) is not None:
-                raise ValueError('private legacy reader admission is sealed')
-            # A removed tombstone must not reopen older clients after a
-            # published pointer. This excludes ONLY cooperating fixtures.
-            with _open_owner_only_pointer_lock(base) as pointer_lock:
-                fcntl.flock(pointer_lock.fileno(),fcntl.LOCK_SH)
-                if _read_pointer(base) is not None:
-                    raise ValueError('private legacy reader admission seal missing after published generation')
-            yield AdmittedPrivateLegacyClient(kind=kind)
-        finally:
-            fcntl.flock(lock.fileno(),fcntl.LOCK_UN)
+    # Lock directory first, then lock file, then pointer. Publisher uses the
+    # same order, avoiding lock inversion while protecting lock-file swaps.
+    with _private_directory_admission(base,exclusive=False):
+        with _open_admission_lock(base) as lock:
+            fcntl.flock(lock.fileno(),fcntl.LOCK_SH)
+            try:
+                if read_private_legacy_seal(base,allowed_root) is not None:
+                    raise ValueError('private legacy reader admission is sealed')
+                # A removed tombstone must not reopen older clients after a
+                # published pointer. This excludes ONLY cooperating fixtures.
+                with _open_owner_only_pointer_lock(base) as pointer_lock:
+                    fcntl.flock(pointer_lock.fileno(),fcntl.LOCK_SH)
+                    if _read_pointer(base) is not None:
+                        raise ValueError('private legacy reader admission seal missing after published generation')
+                yield AdmittedPrivateLegacyClient(kind=kind)
+            finally:
+                fcntl.flock(lock.fileno(),fcntl.LOCK_UN)
 
 
 @contextmanager
@@ -159,39 +192,40 @@ def publish_private_after_legacy_drain(base:Path,allowed_root:Path,generation:in
     _validate_private_root(base,allowed_root)
     # Invalid staged source revisions must not unnecessarily seal admissions.
     verify_generation(base,allowed_root,generation)
-    with _open_admission_lock(base) as lock:
-        try:fcntl.flock(lock.fileno(),fcntl.LOCK_EX|fcntl.LOCK_NB)
-        except BlockingIOError as exc:
-            raise ValueError('cooperating legacy reader or writer remains active; private generation switch denied') from exc
-        try:
-            # Validate next ordinal under the pointer's SH lock. The existing
-            # private publisher rechecks with EX before its own atomic rename.
-            with _open_owner_only_pointer_lock(base) as pointer_lock:
-                fcntl.flock(pointer_lock.fileno(),fcntl.LOCK_SH)
-                current=_read_pointer(base)
-                expected=1 if current is None else current['generation']+1
-                if generation!=expected:
-                    raise ValueError('private generation must increment exactly one, including first private generation')
-            seal=read_private_legacy_seal(base,allowed_root)
-            if current is not None and seal is None:
-                raise ValueError('private legacy reader admission seal missing after prior publication')
-            if seal is not None:
-                if generation<seal['sealed_for_generation']:
-                    raise ValueError('private legacy admission seal forbids generation replay')
-                sealed_proof=verify_generation(base,allowed_root,seal['sealed_for_generation'])
-                if sealed_proof['manifest_sha256']!=seal['manifest_sha256']:
-                    raise ValueError('private legacy admission seal manifest no longer matches a verified generation')
-            # The entire private manifest and native source reindex QA are
-            # verified while the cooperative old-reader gate is exclusive.
-            proof=verify_generation(base,allowed_root,generation)
-            if seal is None:
-                _durably_seal(base,generation,proof['manifest_sha256'])
-            if after_seal:after_seal()  # test-only simulated crash; seal stays.
-            result=publish_private_only(base,allowed_root,generation)
-            return {**result,
-                'cooperating_legacy_reader_admissions_sealed':True,
-                'unregistered_clients_excluded':False,
-                'all_live_KMD_readers_admitted':False,
-                'safe_to_cutover_live':False}
-        finally:
-            fcntl.flock(lock.fileno(),fcntl.LOCK_UN)
+    with _private_directory_admission(base,exclusive=True):
+        with _open_admission_lock(base) as lock:
+            try:fcntl.flock(lock.fileno(),fcntl.LOCK_EX|fcntl.LOCK_NB)
+            except BlockingIOError as exc:
+                raise ValueError('cooperating legacy reader or writer remains active; private generation switch denied') from exc
+            try:
+                # Validate next ordinal under the pointer's SH lock. The existing
+                # private publisher rechecks with EX before its own atomic rename.
+                with _open_owner_only_pointer_lock(base) as pointer_lock:
+                    fcntl.flock(pointer_lock.fileno(),fcntl.LOCK_SH)
+                    current=_read_pointer(base)
+                    expected=1 if current is None else current['generation']+1
+                    if generation!=expected:
+                        raise ValueError('private generation must increment exactly one, including first private generation')
+                seal=read_private_legacy_seal(base,allowed_root)
+                if current is not None and seal is None:
+                    raise ValueError('private legacy reader admission seal missing after prior publication')
+                if seal is not None:
+                    if generation<seal['sealed_for_generation']:
+                        raise ValueError('private legacy admission seal forbids generation replay')
+                    sealed_proof=verify_generation(base,allowed_root,seal['sealed_for_generation'])
+                    if sealed_proof['manifest_sha256']!=seal['manifest_sha256']:
+                        raise ValueError('private legacy admission seal manifest no longer matches a verified generation')
+                # The entire private manifest and native source reindex QA are
+                # verified while the cooperative old-reader gate is exclusive.
+                proof=verify_generation(base,allowed_root,generation)
+                if seal is None:
+                    _durably_seal(base,generation,proof['manifest_sha256'])
+                if after_seal:after_seal()  # test-only simulated crash; seal stays.
+                result=publish_private_only(base,allowed_root,generation)
+                return {**result,
+                    'cooperating_legacy_reader_admissions_sealed':True,
+                    'unregistered_clients_excluded':False,
+                    'all_live_KMD_readers_admitted':False,
+                    'safe_to_cutover_live':False}
+            finally:
+                fcntl.flock(lock.fileno(),fcntl.LOCK_UN)

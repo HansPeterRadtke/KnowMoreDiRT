@@ -77,6 +77,55 @@ class PrivateCooperativeAdmissionTests(unittest.TestCase):
         with self.assertRaisesRegex(ValueError,'sealed'):
             with admit_private_legacy_writer(self.base,self.allowed):pass
 
+    def test_replaced_lock_path_cannot_bypass_old_reader_already_holding_admission(self):
+        # A file-only flock can be bypassed if the current lock path is
+        # renamed and recreated: old reader retains a SH lease on the old
+        # inode while a newer publisher takes EX on the new inode.
+        # Private generation root must also be a stable shared lock arbiter.
+        self.stage(1,0)
+        with admit_private_legacy_reader(self.base,self.allowed) as old:
+            original=self.base/'.private-legacy-reader-admission.lock'
+            moved=self.base/'.test-only-old-private-legacy-admission.lock'
+            self.assertFalse(moved.exists())
+            original.rename(moved)
+            fd=os.open(original,os.O_CREAT|os.O_EXCL|os.O_WRONLY|os.O_NOFOLLOW,0o600)
+            os.close(fd)
+            with self.assertRaisesRegex(ValueError,'legacy reader.*active|directory admission'):
+                publish_private_after_legacy_drain(self.base,self.allowed,1)
+            self.assertIsNone(read_private_legacy_seal(self.base,self.allowed))
+            self.assertFalse((self.base/'active-private-generation.json').exists())
+        # Both files remain in the private test directory; no other owner's
+        # temporary file is deleted or replaced in this regression.
+        self.assertTrue(original.exists() and moved.exists())
+
+    def test_cross_process_old_reader_cannot_be_bypassed_by_new_lock_inode(self):
+        # A second OS process still holds SH on the original lock file and
+        # the stable private root directory while the current pathname is
+        # moved and replaced by a different private fixture inode.
+        self.stage(1,0)
+        ctx=get_context('fork');entered=ctx.Event();release=ctx.Event();messages=ctx.Queue()
+        proc=ctx.Process(target=_separate_process_private_legacy_hold,
+              args=(str(self.base),str(self.allowed),entered,release,messages))
+        proc.start()
+        try:
+            self.assertTrue(entered.wait(timeout=6),'private old reader never entered')
+            old=self.base/'.private-legacy-reader-admission.lock'
+            displaced=self.base/'.test-only-displaced-locked-inode'
+            self.assertFalse(displaced.exists())
+            old.rename(displaced)
+            fd=os.open(old,os.O_CREAT|os.O_EXCL|os.O_WRONLY|os.O_NOFOLLOW,0o600)
+            os.close(fd)
+            with self.assertRaisesRegex(ValueError,'legacy reader.*active|directory admission'):
+                publish_private_after_legacy_drain(self.base,self.allowed,1)
+            self.assertIsNone(read_private_legacy_seal(self.base,self.allowed))
+            self.assertFalse((self.base/'active-private-generation.json').exists())
+        finally:
+            release.set();proc.join(timeout=8)
+            if proc.is_alive():proc.terminate();proc.join(timeout=3)
+        self.assertEqual(0,proc.exitcode)
+        self.assertEqual('clean',messages.get(timeout=2))
+        self.assertTrue(old.is_file() and displaced.is_file())
+
     def test_real_separate_process_legacy_reader_blocks_switch_until_it_exits(self):
         self.stage(1,0)
         ctx=get_context('fork');entered=ctx.Event();release=ctx.Event();messages=ctx.Queue()
