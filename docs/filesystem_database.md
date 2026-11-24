@@ -4839,3 +4839,112 @@ are not a pristine semantic evaluation and **no automatic factual
 entailment verdict is claimed**; richer human/adjudicated semantic cases
 are required before changing default search ranking, source-answer
 synthesis or owner-facing GUI behavior.
+
+
+### November 24 — exact source-unique Markdown row and column field lookup with abstention
+
+The existing opt-in `--inspect-original-tables` restores complete
+publisher table rows and column headings, but still leaves the consumer
+with a dangerous choice when multiple tables contain the same row name.
+KnowMoreDiRT now also supports explicit `--table-subject` and
+`--table-column` arguments for **literal** first-column row identifiers
+and **exact** publisher column headings. The optional
+`--table-exact-section` argument disambiguates the source table when
+several table rows share the exact same identifier and column. Both
+`source-evidence` (a known original) and `find-source-evidence` (the
+previously native-ranked approved originals) accept the flags **only
+along with** `--inspect-original-tables`. Normal source passages and
+native document ranks are **unchanged**. The operation is read-only and
+never acquires additional sources or calls a generative model.
+
+A resolved cell is explicitly marked `status=resolved`, comes from
+**one unique** current first-party original source row, and includes
+the **literal publisher cell value**, exact original **cell, row and
+column-header byte spans and their SHA**, full original SHA, full
+current derivative SHA, unique native FileDB original ID and source
+section heading. The normal KMD final revision guard still rejects a
+source-map/native-ID change after the evidence is assembled. Duplicate
+identical table header text is supported because the actual physical
+header and row byte spans in the SHA-attested original disambiguate the
+source, rather than inventing a unique derivative-header occurrence.
+A nonunique extracted **row** span instead fails closed. The exact
+publisher cell is a **quotation**, not a verified semantic conclusion,
+current external product subscription entitlement or model-generated
+answer. A user asking whether a plan supports something must still
+interpret the original publisher's field and its dated edition correctly.
+
+This deliberately conservative lookup returns one of three outcomes:
+
+* `resolved`: exactly one publisher row/column value matched, with a
+  byte-for-byte verified cell and original source citation.
+* `not_found`: the literal subject+column is absent from the **named
+  original**; for the native discovery command, the result is explicitly
+  **not_found_in_selected_native_originals**, NOT a claim that the full
+  archive contains no answer. No artificial cell is emitted.
+* `ambiguous`: the same literal subject+column exists in two publisher
+  tables or distinct native-ranked originals, or another source has
+  multiple matching rows. Even the highest-ranked native document
+  **does not automatically win**. The unique-cell field is null; the
+  caller must constrain the original publisher and exact section.
+
+Ordinary English subject names, such as *Self-hosted Business*, may be
+casefold-matched; **mathematical and code identifiers preserve exact
+case**. A real MaterialX regression revealed that treating LaTeX
+`$\omega_i$` and `$\Omega_i$` as case-insensitive confused a
+**single incident direction** with the **hemisphere of incident
+directions**. The bug was found during frozen real-source evaluation,
+then corrected with adversarial tests. `$L_i$` and `$l_i$`, and code
+identifiers such as `` `dataValue` `` and `` `DataValue` ``, also remain
+distinct. No fuzzy acronym, alias, stemming or cross-document guess is
+accepted as a literal source identity.
+
+The first-party n8n and MaterialX original corpus was checked with a
+**manual, source-revision-frozen sixteen-case** audit: **eleven uniquely
+resolved exact fields, one ambiguous field, four truly missing literal
+fields**. Three approved full original SHA versions, three current
+derivative versions and their native FileDB IDs were independently
+rechecked. The original cells, table headers and rows were rehashed
+from actual publisher UTF-8 bytes; no source or index was modified.
+The same-source ambiguity example is MaterialX's **`normal`** input:
+**`conical_edf`** and **`measured_edf`** both use the label and column
+*Default*. Without an exact section the result is **ambiguous**, with no
+chosen field; with an explicit exact section the publisher result is
+**`Nworld`** for *measured_edf*. An invented n8n *Teleportation engine*
+or price column yields **not_found**, not hallucinated support.
+
+Both commands also support literal cell resolution with existing native
+SHA-ranked original discovery; if multiple selected documents match, the
+result is **ambiguous**, independent of their native rank. The private
+query audit stores **status and counts only**, never the returned
+original cell, source prose or arbitrary model completion. The
+original selected source passages, link navigation, folder/grep search,
+semantic rank, source map, publisher originals and background indexers
+remain unchanged. When flags are omitted, no original-cell lookup runs.
+
+Example exact first-party original:
+
+```sh
+cd /data/src/github/KnowMoreDiRT
+PYTHONPATH=src /data/var/knowmoredirt/semantic-venv/bin/python \
+  scripts/raspi_hierarchical_library.py source-evidence \
+  'Is the AI Transform node available to self-hosted n8n workflows?' \
+  --original-path 'money-and-business/operational-ai-money-2026/automation-agents-and-reliable-workflows/expressions-versus-data-nodes-4bf00f99a.md' \
+  --top 2 --inspect-original-tables \
+  --table-subject 'AI Transform node' --table-column 'Available on'
+
+PYTHONPATH=src /data/var/knowmoredirt/semantic-venv/bin/python \
+  scripts/raspi_hierarchical_library.py find-source-evidence \
+  'Is the AI Transform node available to self-hosted n8n workflows?' \
+  --documents 3 --passages 2 --inspect-original-tables \
+  --table-subject 'AI Transform node' --table-column 'Available on'
+```
+
+The archived publisher's *AI Transform node* row explicitly states
+`Available on: Cloud only`; the *Code node* row states
+`Cloud and Self-hosted`. These are two separate **source statements**,
+not inferred eligibility or present-day terms. The ability to retrieve
+one exact cell has not established a general cross-document
+fact-checker, a semantic truth/contradiction classifier, a better
+identical-result-budget native rank, or the right to migrate live
+corrected PDF/HTML source generations. Those remain separate research
+and engineering tasks, with the seven live cutover blockers unchanged.

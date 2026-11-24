@@ -171,6 +171,99 @@ class OptionalMainOriginalArchivedLinkTests(TestCase):
         self.assertNotIn('Cloud only',str(audit))
         self.links.assert_not_called()
 
+    def test_explicit_exact_original_table_subject_and_column_cell_is_separately_attested(self):
+        self._switch_to_markdown_original()
+        self.args.follow_archived_links=False
+        self.args.inspect_original_tables=True
+        self.args.table_subject='AI Transform node'
+        self.args.table_column='Available on'
+        self.args.table_exact_section='Published methods / Availability'
+        self.source['publisher_text_bytes']=b'| Approach | Available on |\n| --- | --- |\n| AI Transform node | Cloud only |\n'
+        table={'returned_original_publisher_table_row_candidates':1}
+        cell={'status':'resolved','matching_original_table_rows':1,
+              'resolved_unique_literal_publisher_cell':{
+                  'selected_original_table_column_value':'Cloud only',
+                  'original_table_cell_sha256':'c'*64}}
+        with mock.patch.object(self.kmd,'verified_original_markdown_table_rows',return_value=table),\
+             mock.patch.object(self.kmd,'verified_original_markdown_table_cell',return_value=cell) as reader:
+            result=self.run_query()
+        self.assertEqual(cell,result['optional_exact_original_markdown_table_cell'])
+        self.assertEqual([],result['passages'])
+        reader.assert_called_once_with(subject='AI Transform node',column='Available on',
+            exact_section='Published methods / Availability',original_path=self.rel,
+            original_sha256='a'*64,derived_sha256='b'*64,
+            derived_text=self.source['derived_text'],
+            publisher_text_bytes=self.source['publisher_text_bytes'],filesystem_entry_id=3)
+        audit=self.audit.call_args.args[0]
+        self.assertTrue(audit['success'])
+        self.assertEqual('resolved',audit['optional_exact_original_table_cell_diagnostics']['status'])
+        self.assertTrue(audit['optional_exact_original_table_cell_diagnostics']['cell_value_and_source_body_not_in_private_audit'])
+        self.assertNotIn('Cloud only',str(audit))
+        self.assertNotIn('resolved_unique_literal_publisher_cell',str(audit))
+        self.links.assert_not_called()
+
+    def test_ambiguous_verified_original_cell_keeps_full_original_passages_but_refuses_value(self):
+        self._switch_to_markdown_original()
+        self.args.follow_archived_links=False
+        self.args.inspect_original_tables=True
+        self.args.table_subject='normal'
+        self.args.table_column='Default'
+        self.source['publisher_text_bytes']=b'| Port | Default |\n| --- | --- |\n| normal | Nworld |\n'
+        table={'returned_original_publisher_table_row_candidates':2}
+        cell={'status':'ambiguous','matching_original_table_rows':2,
+              'resolved_unique_literal_publisher_cell':None}
+        with mock.patch.object(self.kmd,'verified_original_markdown_table_rows',return_value=table),\
+             mock.patch.object(self.kmd,'verified_original_markdown_table_cell',return_value=cell):
+            result=self.run_query()
+        self.assertEqual(cell,result['optional_exact_original_markdown_table_cell'])
+        self.assertEqual([],result['passages'])
+        self.assertEqual('ambiguous',self.audit.call_args.args[0]['optional_exact_original_table_cell_diagnostics']['status'])
+        self.assertNotIn('Nworld',str(self.audit.call_args.args[0]))
+
+    def test_table_cell_query_requires_both_exact_fields_and_explicit_original_inspection(self):
+        for inspect,subject,column,section in (
+                (False,'AI Transform node','Available on',None),
+                (True,'AI Transform node',None,None),
+                (True,None,'Available on',None),
+                (True,None,None,'Just a section'),
+                (False,None,'Available on',None)):
+            with self.subTest(inspect=inspect,subject=subject,column=column,section=section):
+                self.args.inspect_original_tables=inspect
+                self.args.table_subject=subject
+                self.args.table_column=column
+                self.args.table_exact_section=section
+                with self.assertRaisesRegex(ValueError,'requires --inspect-original-tables with both'):
+                    self.kmd.original_source_evidence(self.args)
+        self.patched[1].assert_not_called()
+
+    def test_exact_original_cell_hash_or_derived_mutation_aborts_with_failure_receipt(self):
+        self._switch_to_markdown_original()
+        self.args.follow_archived_links=False
+        self.args.inspect_original_tables=True
+        self.args.table_subject='AI Transform node'
+        self.args.table_column='Available on'
+        self.source['publisher_text_bytes']=b'| Approach | Available on |\n| --- | --- |\n| AI Transform node | Cloud only |\n'
+        table={'returned_original_publisher_table_row_candidates':1}
+        with mock.patch.object(self.kmd,'verified_original_markdown_table_rows',return_value=table),\
+             mock.patch.object(self.kmd,'verified_original_markdown_table_cell',
+                    side_effect=ValueError('original publisher cell SHA no longer matches')):
+            with self.assertRaisesRegex(ValueError,'original publisher cell SHA no longer matches'):
+                self.kmd.original_source_evidence(self.args)
+        audit=self.audit.call_args.args[0]
+        self.assertFalse(audit['success'])
+        self.assertNotIn('Cloud only',str(audit))
+
+    def test_without_explicit_table_cell_selection_current_default_does_not_lookup_any_field(self):
+        self._switch_to_markdown_original()
+        self.args.follow_archived_links=False
+        self.args.inspect_original_tables=False
+        with mock.patch.object(self.kmd,'verified_original_markdown_table_cell',
+            side_effect=AssertionError('cell lookup must remain opt in')) as reader:
+            result=self.run_query()
+        reader.assert_not_called()
+        self.assertNotIn('optional_exact_original_markdown_table_cell',result)
+        self.assertNotIn('optional_exact_original_table_cell_diagnostics',self.audit.call_args.args[0])
+
     def test_HTML_source_cannot_be_cited_as_a_markdown_publisher_table(self):
         self.args.follow_archived_links=False
         self.args.inspect_original_tables=True

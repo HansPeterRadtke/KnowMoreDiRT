@@ -211,3 +211,138 @@ def verified_original_markdown_table_rows(*,query:str,original_path:str,
         'current_publisher_source_byte_proof_not_semantic_answer_correctness':True,
         'no_native_rank_or_pdf_physical_page_claim':True,
         'read_only_current_approved_original_and_extracted_text':True}
+
+
+def _same_original_literal_subject(actual:str,requested:str)->bool:
+    """Natural-language labels fold case, math/code identifiers NEVER do.
+
+    In MaterialX `$\omega_i$` (one incoming direction) and `$\Omega_i$`
+    (hemisphere of directions) are different identifiers. Python casefold
+    would collapse them; similarly `$L_i$` differs from `$l_i$`. Literal
+    Markdown code and mathematical formulas preserve their exact spelling.
+    """
+    if any(marker in actual+requested for marker in ('`','$','\\','{','}')):
+        return actual==requested
+    return actual.casefold()==requested.casefold()
+
+
+def verified_original_markdown_table_cell(*,subject:str,column:str,
+        original_path:str,original_sha256:str,derived_sha256:str,
+        derived_text:str,publisher_text_bytes:bytes,filesystem_entry_id:int,
+        exact_section:str|None=None)->dict:
+    """Exact first-column+header field from a current SHA-verified original.
+
+    The caller supplies *literal* printed row ID and header name, never a
+    guessed semantic alias. If the source contains multiple matching tables,
+    fail closed as ambiguous unless an exact source section resolves it.
+    A unique answer is source-verbatim evidence, NOT an entailment verdict.
+    """
+    for name,value in (('subject',subject),('column',column)):
+        if (not isinstance(value,str) or not 1<=len(value)<=180
+                or '\n' in value or '\r' in value or '|' in value
+                or not value.strip() or value!=value.strip()):
+            raise ValueError('invalid exact first-party Markdown table '+name)
+    if exact_section is not None and (not isinstance(exact_section,str)
+            or not 1<=len(exact_section)<=400 or '\n' in exact_section
+            or '\r' in exact_section or exact_section!=exact_section.strip()):
+        raise ValueError('invalid exact original Markdown table section context')
+    if (not isinstance(original_path,str) or not original_path.lower().endswith(('.md','.markdown'))
+            or original_path.startswith('/') or '\\' in original_path
+            or any(x in ('','.','..') for x in original_path.split('/'))
+            or not isinstance(original_sha256,str) or not _SHA.fullmatch(original_sha256)
+            or not isinstance(derived_sha256,str) or not _SHA.fullmatch(derived_sha256)
+            or not isinstance(derived_text,str) or not derived_text
+            or not isinstance(publisher_text_bytes,bytes)
+            or not 1<=len(publisher_text_bytes)<=_MAX_SOURCE_BYTES
+            or type(filesystem_entry_id) is not int or filesystem_entry_id<1):
+        raise ValueError('invalid bounded current first-party Markdown original table cell source')
+    if _sha(publisher_text_bytes)!=original_sha256:
+        raise ValueError('entire original Markdown publisher SHA differs from completed receipt')
+    if _sha(derived_text.encode('utf8'))!=derived_sha256:
+        raise ValueError('current derivative SHA differs from original source-map')
+    chosen=[];count=0
+    for columns,header,hstart,hend,values,line,start,end,section in _table_rows(publisher_text_bytes):
+        count+=1
+        if count>2000:raise ValueError('too many current publisher table rows to inspect')
+        if not _same_original_literal_subject(values[0],subject):continue
+        if exact_section is not None and section!=exact_section:continue
+        columns_found=[i for i,x in enumerate(columns) if x.casefold()==column.casefold()]
+        if not columns_found:continue
+        if len(columns_found)!=1:
+            raise ValueError('publisher Markdown original table header contains ambiguous duplicate column names')
+        idx=columns_found[0]
+        # Parse literal original row cell byte coordinates rather than
+        # re-creating its formatting from the extracted document. The table
+        # parser already rejects escaped pipes and malformed rows.
+        orig=publisher_text_bytes[start:end]
+        row_no_newline=orig.decode('utf8','strict').rstrip('\r\n')
+        if row_no_newline!=line:
+            raise ValueError('publisher original table row byte interval differs')
+        parts=line.split('|')
+        if len(parts)!=len(values)+2 or parts[0] or parts[-1]:
+            raise ValueError('ambiguous publisher table cell physical boundary')
+        segment=parts[idx+1]
+        if segment.strip()!=values[idx]:
+            raise ValueError('publisher original table cell parse does not match row')
+        pre='|'.join(parts[:idx+1])+'|'
+        cell_leading=segment[:len(segment)-len(segment.lstrip())]
+        value=values[idx]
+        physical_cell_start=start+len((pre+cell_leading).encode('utf8'))
+        physical_cell_end=physical_cell_start+len(value.encode('utf8'))
+        if publisher_text_bytes[physical_cell_start:physical_cell_end]!=value.encode('utf8'):
+            raise ValueError('original publisher table cell byte coordinates are not literal')
+        # No attribution to a different edition or derived document even
+        # if a coincidentally identical table exists in another original.
+        deriv_pos=derived_text.find(line)
+        if deriv_pos<0 or derived_text.find(line,deriv_pos+1)>=0:
+            raise ValueError('publisher table row is not unique in current extracted source')
+        header_pos=derived_text.find(header)
+        if header_pos<0:
+            raise ValueError('publisher column header missing from current extracted source')
+        # Duplicate identical headers are normal in publisher specifications.
+        # The complete current publisher SHA and the ORIGINAL header byte
+        # interval, not a guessed unique derivative header occurrence, prove
+        # which table this cell belongs to. A duplicated selected row in the
+        # derivative still fails as ambiguous.
+        chosen.append({
+            'original_source_path':original_path,
+            'original_source_sha256':original_sha256,
+            'derived_text_sha256':derived_sha256,
+            'native_original_filedb_id':filesystem_entry_id,
+            'original_table_section_heading':section,
+            'original_table_column_headers':columns,
+            'original_table_row_subject':values[0],
+            'selected_original_table_column_name':columns[idx],
+            'selected_original_table_column_value':value,
+            'original_table_header_byte_start':hstart,
+            'original_table_header_byte_end':hend,
+            'original_table_header_sha256':_sha(publisher_text_bytes[hstart:hend]),
+            'original_table_row_byte_start':start,
+            'original_table_row_byte_end':end,
+            'original_table_row_sha256':_sha(orig),
+            'original_table_cell_byte_start':physical_cell_start,
+            'original_table_cell_byte_end':physical_cell_end,
+            'original_table_cell_sha256':_sha(publisher_text_bytes[physical_cell_start:physical_cell_end]),
+            'derived_table_row_start_char':deriv_pos,
+            'derived_table_row_end_char':deriv_pos+len(line),
+            'derived_table_row_sha256':_sha(line.encode('utf8')),
+            'column_value_is_original_exact_quoted_publisher_text':True,
+            'literal_table_cell_does_not_prove_current_product_policy_or_semantic_answer_truth':True,
+        })
+    status='resolved' if len(chosen)==1 else ('ambiguous' if chosen else 'not_found')
+    return {
+        'schema':'kmd.optin_unique_original_publisher_markdown_cell_literal_proof.v1',
+        'status':status,
+        'requested_first_column_subject':subject,
+        'requested_exact_column':column,
+        'requested_exact_section':exact_section,
+        'matching_original_table_rows':len(chosen),
+        'original_sha256':original_sha256,
+        'derived_sha256':derived_sha256,
+        'native_original_id':filesystem_entry_id,
+        'resolved_unique_literal_publisher_cell':(chosen[0] if len(chosen)==1 else None),
+        'multiple_matches_never_choose_a_source_value':True,
+        'not_found_does_not_fabricate_a_source_value':True,
+        'no_automated_semantic_entailment_or_answer_correctness_claim':True,
+        'no_original_source_or_native_rank_mutation':True,
+    }

@@ -363,6 +363,135 @@ class NativeMixedArchivedReferenceTests(unittest.TestCase):
         self.assertEqual(1,audit['opt_in_original_markdown_table_evidence_counts']['original_table_row_candidates'])
         self.assertNotIn('Cloud only',str(audit))
 
+    def test_generic_original_native_selected_single_exact_publisher_cell_is_unique_and_audits_only_status(self):
+        parent,child,versions,hits,_link=self._native_approved_markdown_source_fixture()
+        self.args.follow_archived_links=False
+        self.args.inspect_original_tables=True
+        self.args.table_subject='AI Transform node'
+        self.args.table_column='Available on'
+        exact={'status':'resolved','matching_original_table_rows':1,
+             'resolved_unique_literal_publisher_cell':{
+                  'selected_original_table_column_value':'Cloud only',
+                  'original_table_cell_sha256':'c'*64}}
+        table={'returned_original_publisher_table_row_candidates':1,'publisher_rows':[]}
+        base_checked=self.fixture.checked
+        def checked(path,**kwargs):
+            v=base_checked(path,**kwargs)
+            return {**v,'publisher_text_bytes':b'| Approach | Available on |\n| --- | --- |\n| AI Transform node | Cloud only |\n'} if path==parent else v
+        with mock.patch.object(self.cli,'_current_versions',return_value=versions),\
+             mock.patch.object(self.cli,'_native_passage_search',return_value={'results':hits}),\
+             mock.patch.object(self.cli,'checked_original',side_effect=checked),\
+             mock.patch.object(self.cli,'verified_original_markdown_table_rows',return_value=table),\
+             mock.patch.object(self.cli,'verified_original_markdown_table_cell',return_value=exact) as lookup:
+            result=self.invoke_once()
+        selected=result['optional_exact_original_markdown_table_cell']
+        self.assertEqual('resolved',selected['status'])
+        self.assertEqual(1,selected['original_markdown_sources_checked'])
+        self.assertEqual(1,selected['selected_original_source_cell']['original_native_rank_prior_to_cell_lookup'])
+        self.assertEqual(parent,selected['selected_original_source_cell']['original_path'])
+        self.assertEqual('Cloud only',selected['selected_original_source_cell']['original_verified_unique_table_cell']['selected_original_table_column_value'])
+        self.assertEqual([1,2],[v['rank'] for v in result['documents']])
+        lookup.assert_called_once()
+        self.assertEqual('AI Transform node',lookup.call_args.kwargs['subject'])
+        self.assertEqual(32,lookup.call_args.kwargs['filesystem_entry_id'])
+        audit=self.fixture.mocks['append_query_audit'].call_args.args[0]
+        self.assertEqual('resolved',audit['opt_in_exact_original_table_cell_counts']['status'])
+        self.assertNotIn('Cloud only',str(audit))
+        self.assertTrue(audit['opt_in_exact_original_table_cell_counts']['literal_cell_value_excluded_from_private_audit'])
+
+    def _two_selected_current_markdown_originals_for_literal_cell(self):
+        parent,child,versions,hits,_link=self._native_approved_markdown_source_fixture()
+        second='docs/second-publisher-original.md'
+        with sqlite3.connect(self.fixture.db) as db:
+            db.execute("INSERT INTO filesystem_entries VALUES (44,'file',?)",(second,))
+        m,l,s=versions
+        versions=({**m,second:{'path':second,'kind':'text','url':'https://docs.example.org/second.md'}},
+                  {**l,second:{'sha256':'a'*64}},
+                  {**s,second:(second,'a'*64,'b'*64,second+'.txt','complete')})
+        second_hit={**hits[0],'original_path':second,'kmd_original_file_entry_id':44,
+                    'kmd_native_chunk_id':'different-current-original-native-chunk','semantic_similarity':0.85}
+        selected=[hits[0],second_hit,hits[1]]
+        base=self.fixture.checked
+        def checked(path,**kwargs):
+            v=base(path,**kwargs)
+            return {**v,'publisher_text_bytes':b'| Approach | Available on |\n| --- | --- |\n| AI Transform node | Cloud only |\n'} if path in (parent,second) else v
+        return parent,second,versions,selected,checked
+
+    def test_across_two_native_selected_originals_same_literal_cell_is_ambiguous_not_highest_rank(self):
+        parent,second,versions,hits,checked=self._two_selected_current_markdown_originals_for_literal_cell()
+        self.args.follow_archived_links=False
+        self.args.inspect_original_tables=True
+        self.args.table_subject='AI Transform node'
+        self.args.table_column='Available on'
+        table={'returned_original_publisher_table_row_candidates':1,'publisher_rows':[]}
+        def same_answer(**kw):
+            return {'status':'resolved','matching_original_table_rows':1,
+                    'resolved_unique_literal_publisher_cell':{'selected_original_table_column_value':
+                        'Cloud only' if kw['original_path']==parent else 'Cloud and Self-hosted'}}
+        with mock.patch.object(self.cli,'_current_versions',return_value=versions),\
+             mock.patch.object(self.cli,'_native_passage_search',return_value={'results':hits}),\
+             mock.patch.object(self.cli,'checked_original',side_effect=checked),\
+             mock.patch.object(self.cli,'verified_original_markdown_table_rows',return_value=table),\
+             mock.patch.object(self.cli,'verified_original_markdown_table_cell',side_effect=same_answer):
+            result=self.invoke_once()
+        value=result['optional_exact_original_markdown_table_cell']
+        self.assertEqual('ambiguous',value['status'])
+        self.assertEqual(2,value['matching_original_table_rows_across_selected_documents'])
+        self.assertIsNone(value['selected_original_source_cell'])
+        self.assertEqual([parent,second,self.fixture.paths['pdf']],[d['original_path'] for d in result['documents']])
+        audit=self.fixture.mocks['append_query_audit'].call_args.args[0]
+        self.assertEqual('ambiguous',audit['opt_in_exact_original_table_cell_counts']['status'])
+        self.assertNotIn('Cloud only',str(audit))
+        self.assertNotIn('Cloud and Self-hosted',str(audit))
+
+    def test_one_ambiguous_source_overrides_another_resolved_source_to_prevent_guessing(self):
+        parent,second,versions,hits,checked=self._two_selected_current_markdown_originals_for_literal_cell()
+        self.args.follow_archived_links=False
+        self.args.inspect_original_tables=True
+        self.args.table_subject='normal'
+        self.args.table_column='Default'
+        table={'returned_original_publisher_table_row_candidates':1,'publisher_rows':[]}
+        def result_for_source(**kw):
+            if kw['original_path']==second:return {'status':'ambiguous','matching_original_table_rows':2,'resolved_unique_literal_publisher_cell':None}
+            return {'status':'resolved','matching_original_table_rows':1,
+                    'resolved_unique_literal_publisher_cell':{'selected_original_table_column_value':'Nworld'}}
+        with mock.patch.object(self.cli,'_current_versions',return_value=versions),\
+             mock.patch.object(self.cli,'_native_passage_search',return_value={'results':hits}),\
+             mock.patch.object(self.cli,'checked_original',side_effect=checked),\
+             mock.patch.object(self.cli,'verified_original_markdown_table_rows',return_value=table),\
+             mock.patch.object(self.cli,'verified_original_markdown_table_cell',side_effect=result_for_source):
+            result=self.invoke_once()
+        chosen=result['optional_exact_original_markdown_table_cell']
+        self.assertEqual('ambiguous',chosen['status'])
+        self.assertEqual(3,chosen['matching_original_table_rows_across_selected_documents'])
+        self.assertIsNone(chosen['selected_original_source_cell'])
+
+    def test_generic_original_exact_cell_missing_does_not_invent_or_promote_unrelated_originals(self):
+        self.args.follow_archived_links=False
+        self.args.inspect_original_tables=True
+        self.args.table_subject='Uninvented magic engine'
+        self.args.table_column='Physical source'
+        with mock.patch.object(self.cli,'verified_original_markdown_table_cell',
+                               side_effect=AssertionError('only real current markdown docs may be inspected')) as reader:
+            result=self.invoke_once()
+        reader.assert_not_called()
+        selected=result['optional_exact_original_markdown_table_cell']
+        self.assertEqual('not_found_in_selected_native_originals',selected['status'])
+        self.assertIsNone(selected['selected_original_source_cell'])
+        self.assertEqual(0,selected['original_markdown_sources_checked'])
+        self.assertTrue(selected['not_found_is_only_within_selected_native_originals_not_entire_archive'])
+
+    def test_native_literal_cell_requires_both_fields_and_explicit_original_table_option(self):
+        for inspect,subject,column,section in ((False,'AI Transform node','Available on',None),
+          (True,None,'Available on',None),(True,'AI Transform node',None,None),
+          (True,None,None,'Some original heading')):
+            self.args.follow_archived_links=False
+            self.args.inspect_original_tables=inspect
+            self.args.table_subject=subject;self.args.table_column=column;self.args.table_exact_section=section
+            with self.subTest(subject=subject,column=column,section=section),self.assertRaisesRegex(ValueError,'exact original table cell requires'):
+                self.invoke_once()
+        self.fixture.mocks['checked_original'].assert_not_called()
+
     def test_optional_markdown_tables_do_not_reinterpret_HTML_or_PDF_as_table_proofs(self):
         self.args.follow_archived_links=False
         self.args.inspect_original_tables=True
