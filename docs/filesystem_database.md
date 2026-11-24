@@ -3684,8 +3684,18 @@ parses only the **full SHA-verified original publisher `article` element** (or
 footer. Each candidate link must resolve to a unique approved **HTTPS
 same-origin URL** present in the existing curated source catalogue, with a
 matching completed acquisition receipt. Links to external providers, script
-URLs, missing/unapproved documents, ambiguous duplicate URLs and unrelated
-article references are rejected; **no HTTP request, browsing, acquisition,
+URLs, ambiguous duplicate URLs and unrelated article references are rejected.
+Relevant same-origin publisher references that are **not in the local
+catalogue**, or have no approved complete acquisition receipt, are returned
+in a separate bounded `unavailable_publisher_references_not_followed` section,
+never as verified archived passages. The source's original HTML SHA and
+article link text are proven, but the missing page's **contents are unknown**:
+`publisher_destination_contents_unavailable=true` and
+`not_a_source_excerpt_or_answer=true`. This identifies a real source gap
+without silently downloading or inventing an answer. In the actual Unity
+manual, the currently archived overview links to the first-party `Make a
+texture or mesh compatible with asynchronous loading` page, which is not in
+the current acquired catalogue. **No HTTP request, browsing, acquisition,
 new index or source mutation takes place**. The current query terms are used
 only to rank *possible references* in the original document. This does not
 claim to discover the correct original across the whole library or prove any

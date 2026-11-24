@@ -127,6 +127,10 @@ class ArchivedOriginalLinkRetrievalTests(unittest.TestCase):
             report=self.cli.find_archived_linked_source_passages(self.parent_path,self.query)
         self.assertEqual(0,report['linked_original_sources_checked'])
         self.assertEqual(0,report['linked_source_excerpt_candidates'])
+        missing=report['parent_original_HTML_article_link_proof']['unavailable_publisher_references_not_followed']
+        self.assertEqual(1,len(missing))
+        self.assertEqual('catalogued_but_not_approved_completed_html_or_text',missing[0]['archive_status'])
+        self.assertTrue(missing[0]['not_a_source_excerpt_or_answer'])
         self.assertEqual([(self.parent_path,1),(self.parent_path,1)],self.fenced)
 
     def test_bounded_and_non_html_parent_requests_refused_before_any_source_read(self):

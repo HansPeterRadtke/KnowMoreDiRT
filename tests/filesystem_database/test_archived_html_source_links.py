@@ -54,6 +54,27 @@ class ArchivedHtmlReferenceTests(unittest.TestCase):
              b'<a href="/engine/chapter/unknown">Mesh file</a></article>')
         self.assertEqual([],self.call(raw_html=raw,original_sha256=sha(raw))['selected_links'])
 
+    def test_relevant_missing_same_origin_original_is_reported_only_as_gap(self):
+        raw=(b'<article><p><a href="/engine/mesh-compatibility">Make mesh compatible with asynchronous loading</a></p></article>')
+        result=self.call(raw_html=raw,original_sha256=sha(raw),
+                         query='How can I make a mesh compatible with asynchronous loading?')
+        self.assertEqual([],result['selected_links'])
+        self.assertEqual(1,result['same_origin_relevant_unarchived_or_unapproved_references'])
+        gap=result['unavailable_publisher_references_not_followed'][0]
+        self.assertEqual('not_in_existing_catalog',gap['archive_status'])
+        self.assertTrue(gap['publisher_destination_contents_unavailable'])
+        self.assertTrue(gap['no_download_or_external_navigation'])
+        self.assertTrue(gap['not_a_source_excerpt_or_answer'])
+
+    def test_listed_but_unapproved_original_is_separate_from_absent_catalog(self):
+        raw=b'<article><a href="/engine/chapter/mesh">Texture and mesh loading</a></article>'
+        ledger={self.child:dict(self.ledger[self.child],status='pending')}
+        result=self.call(raw_html=raw,original_sha256=sha(raw),completed_receipts=ledger)
+        self.assertEqual([],result['selected_links'])
+        gap=result['unavailable_publisher_references_not_followed'][0]
+        self.assertEqual('catalogued_but_not_approved_completed_html_or_text',gap['archive_status'])
+        self.assertTrue(gap['publisher_destination_contents_unavailable'])
+
     def test_no_complete_archived_target_receipt_never_promoted(self):
         missing=dict(self.ledger[self.child],status='pending')
         self.assertEqual([],self.call(completed_receipts={self.child:missing})['selected_links'])

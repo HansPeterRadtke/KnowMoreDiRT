@@ -103,6 +103,11 @@ def source_link_candidates(raw_html:bytes,original_sha256:str,publisher_url:str,
         raise ValueError('unbounded original HTML article references')
     permitted={}
     ambiguous=set()
+    known_catalog_urls=set()
+    for entry in catalog:
+        if isinstance(entry,dict):
+            known_url=_canonical_url(entry.get('url'))
+            if known_url:known_catalog_urls.add(known_url)
     for entry in catalog:
         if not isinstance(entry,dict):continue
         path=entry.get('path');url=_canonical_url(entry.get('url'))
@@ -116,6 +121,7 @@ def source_link_candidates(raw_html:bytes,original_sha256:str,publisher_url:str,
     terms=set(query_terms(query))
     if not terms:raise ValueError('no informative question terms for archived link candidates')
     candidates={}
+    missing={}
     for index,(href,label) in enumerate(references):
         try:target=_canonical_url(urljoin(publisher_url,href))
         except ValueError:continue
@@ -123,19 +129,36 @@ def source_link_candidates(raw_html:bytes,original_sha256:str,publisher_url:str,
             continue
         if target==current_url or target in ambiguous:continue
         entry=permitted.get(target)
-        if not entry or entry['path']==original_path:continue
-        receipt=completed_receipts.get(entry['path'])
-        if (not isinstance(receipt,dict) or receipt.get('status')!='complete'
-                or receipt.get('path')!=entry['path']
-                or _canonical_url(receipt.get('url'))!=target
-                or not isinstance(receipt.get('sha256'),str)
-                or not _SHA.fullmatch(receipt['sha256'])
-                or type(receipt.get('bytes_received')) is not int
-                or receipt['bytes_received']<=0):continue
-        title=entry.get('title') or ''
+        if entry and entry['path']==original_path:continue
+        title=(entry or {}).get('title') or ''
         if not isinstance(title,str) or len(title)>500:continue
         found=sorted(terms.intersection(query_terms(label+' '+title)))
         if not found:continue
+        receipt=completed_receipts.get(entry['path']) if entry else None
+        complete=(isinstance(receipt,dict) and receipt.get('status')=='complete'
+                and receipt.get('path')==entry['path']
+                and _canonical_url(receipt.get('url'))==target
+                and isinstance(receipt.get('sha256'),str)
+                and _SHA.fullmatch(receipt['sha256'])
+                and type(receipt.get('bytes_received')) is int
+                and receipt['bytes_received']>0)
+        if not complete:
+            # The original first-party page really contains this reference,
+            # but the destination is NOT admitted as archived source evidence.
+            # In particular, never download a missing article as a side effect.
+            item={'original_link_index':index,'source_original_path':original_path,
+                  'source_original_sha256':original_sha256,
+                  'publisher_article_link_text':label,'publisher_url':target,
+                  'matched_query_terms':found,
+                  'archive_status':('not_in_existing_catalog' if target not in known_catalog_urls
+                       else 'catalogued_but_not_approved_completed_html_or_text'),
+                  'publisher_destination_contents_unavailable':True,
+                  'no_download_or_external_navigation':True,
+                  'not_a_source_excerpt_or_answer':True}
+            prev=missing.get(target)
+            if prev is None or (len(found),-index)>(len(prev['matched_query_terms']),-prev['original_link_index']):
+                missing[target]=item
+            continue
         value={
             'original_link_index':index,
             'source_original_path':original_path,
@@ -155,10 +178,13 @@ def source_link_candidates(raw_html:bytes,original_sha256:str,publisher_url:str,
         if existing is None or (len(value['matched_query_terms']),-index)>(len(existing['matched_query_terms']),-existing['original_link_index']):
             candidates[entry['path']]=value
     ordered=sorted(candidates.values(),key=lambda x:(-len(x['matched_query_terms']),x['original_link_index'],x['catalog_target_original_path']))
+    unavailable=sorted(missing.values(),key=lambda x:(-len(x['matched_query_terms']),x['original_link_index'],x['publisher_url']))
     return {'original_path':original_path,'original_sha256':original_sha256,
             'original_archived_catalog_reference_count':len(references),
             'matching_verified_catalog_receipt_link_candidates':len(ordered),
             'selected_links':ordered[:limit],
+            'same_origin_relevant_unarchived_or_unapproved_references':len(unavailable),
+            'unavailable_publisher_references_not_followed':unavailable[:limit],
             'no_external_source_fetch_or_download':True,
             'no_target_original_or_derived_bytes_yet_verified':True,
             'no_answer_truth_or_page_quote_proved':True}
