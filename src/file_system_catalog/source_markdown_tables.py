@@ -156,7 +156,18 @@ def verified_original_markdown_table_rows(*,query:str,original_path:str,
         # column identifiers then beat incidental matches in other fields.
         # Heading is context, NOT independent answer evidence.
         phrase_specificity=_longest_exact_subject_phrase(first_sequence,query_words)
-        score=(len(header_matches),phrase_specificity,len(subject),len(section_matches),len(matching))
+        # The user may mention a direction as context while asking for a
+        # different quantity. In MaterialX, `omega_i` is the *direction* of
+        # incoming radiance, whereas `$L_i$` is the incident radiance itself.
+        # Compare exact adjacent informative query terms INSIDE EACH publisher
+        # description cell, without inventing continuity across table cells.
+        explanatory_cells=(cell for heading,cell in zip(columns[1:],values[1:])
+                          if re.search(r'(?i)description|use when|meaning|definition|details',heading))
+        descriptive_phrase_specificity=max((
+            _longest_exact_subject_phrase(list(query_terms(cell,max_terms=100)),query_words)
+            for cell in explanatory_cells),default=0)
+        score=(len(header_matches),descriptive_phrase_specificity,
+               phrase_specificity,len(subject),len(section_matches),len(matching))
         physical_rows.append({'score':score,
             'publisher_original_path':original_path,
             'publisher_original_sha256':original_sha256,
@@ -181,10 +192,11 @@ def verified_original_markdown_table_rows(*,query:str,original_path:str,
             'matched_query_terms_in_row':matching,
             'matched_query_terms_in_first_identifier_column':subject,
             'longest_exact_query_phrase_in_first_identifier_column':phrase_specificity,
+            'longest_exact_query_phrase_in_one_description_column':descriptive_phrase_specificity,
             'source_row_is_candidate_not_proof_of_factual_entailment':True,
             'original_publisher_exact_table_row_utf8_byte_interval_verified':True})
     physical_rows.sort(key=lambda x:(-x['score'][0],-x['score'][1],-x['score'][2],-x['score'][3],
-                                     -x['score'][4],x['publisher_row_original_start_byte']))
+                                     -x['score'][4],-x['score'][5],x['publisher_row_original_start_byte']))
     selected=[]
     for row in physical_rows[:top]:
         score=row.pop('score')

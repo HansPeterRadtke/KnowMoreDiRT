@@ -4783,3 +4783,59 @@ negative-scope and edition/version evaluation. This is a private,
 working **retrieval and original-source quoting** improvement, not an
 authorized production PDF/HTML generation cutover; all seven cross-store
 reader/writer migration blockers remain.
+
+
+#### Postpublication source-row semantic ambiguity: incident radiance is not the incident direction
+
+A new, distinct **MaterialX** source question was posed *after* the
+first table-row implementation and Git publication: **“Which MaterialX
+PBR symbol denotes incident radiance at p along direction omega_i?”**
+The initial method returned the publisher's real `$\omega_i$` row,
+which defines the **incident direction**, instead of `$L_i$`, which
+identifies the **incident radiance** measured along that direction. Both
+rows have correct publisher literal-byte SHA and the same verified
+*Symbols* section, but their **meaning differs**. This is a practical
+example of why a valid source row is not automatically a correct answer.
+The failure was reproduced in a checked-in adversarial synthetic source
+test **before correction** and rechecked on the actual approved original.
+
+The optional table candidate selector now separately scores contiguous
+**informative query phrases within publisher definition/description
+columns**, keeping the text physically scoped to each individual cell.
+This supports an explicit question asking for *incident radiance along
+direction omega_i* rather than incorrectly promoting the direction
+`omega_i` solely because that identifier appears in the question.
+Crucially, only columns whose genuine publisher headings indicate
+*Description*, *Definition*, *Meaning*, *Details* or *Use when...* get
+this descriptive-phrase treatment. Other facts such as a n8n plan's
+*Available on* column are **not** promoted ahead of a strongly named
+row subject just because the user mentions a platform type. Source
+column meaning and original table section continue to be preserved.
+
+Post-fix **five source-verified actual original lookups** passed:
+
+* n8n *AI Transform node* row → `Cloud only`, not an adjacent Code
+  node's `Cloud and Self-hosted` entry;
+* n8n *Self-hosted Business* plan → three parallel test cases, not the
+  nearby Community/Cloud Pro one sequential case;
+* MaterialX *unit surface normal mathematical symbol* → `$n$`, not
+  an unrelated `normal` shader input port;
+* MaterialX *incident radiance along incident direction omega_i* →
+  **`$L_i$`** (`Incident radiance at $p$ along direction $\omega_i$`),
+  not the separate direction symbol `$\omega_i$`;
+* MaterialX *measured_edf normal input port* → `normal`, type `vector3`,
+  default `Nworld`, correctly kept distinct from the scattering equation
+  symbol table.
+
+The first-party original publisher SHA, current derivative SHA, byte
+ranges for the exact selected row/header, unique native FileDB ID and
+final current source-map generation check remained valid in every case.
+The **same exact twenty predeclared n8n source-quotation cases** were
+re-run after the correction: the old two ordinary passage slots remain
+**17/18** for exact manually chosen source quotes, and the optional
+additional table channel still makes **18/18** available with no new
+answer quote for the two unsupported questions. The manual annotations
+are not a pristine semantic evaluation and **no automatic factual
+entailment verdict is claimed**; richer human/adjudicated semantic cases
+are required before changing default search ranking, source-answer
+synthesis or owner-facing GUI behavior.

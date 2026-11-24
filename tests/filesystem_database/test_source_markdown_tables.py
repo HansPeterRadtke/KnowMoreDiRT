@@ -100,6 +100,25 @@ class OriginalMarkdownTableAnswerEvidenceTests(unittest.TestCase):
         self.assertEqual('1 (sequential)',d['publisher_rows'][1]['publisher_table_row_cells'][1])
         self.assertEqual(2,d['publisher_rows'][1]['longest_exact_query_phrase_in_first_identifier_column'])
 
+    def test_materialx_incident_radiance_symbol_is_NOT_incident_ray_direction(self):
+        # Distinguish the measured quantity L_i from its incident direction
+        # omega_i. The prompt names omega_i as context, not as the asked-for
+        # answer; both original publisher rows are genuine source passages.
+        source=(
+            '### Symbols\n'
+            '| Symbol | Description |\n| --- | --- |\n'
+            '| $L_i$ | Incident radiance at $p$ along direction $\\omega_i$ |\n'
+            '| $\\omega_i$ | Direction from $p$ along which incident radiance arrives |\n'
+        )
+        raw=source.encode();derived='[[SOURCE UNIT: Original plain text]]\n'+source
+        d=self.table(query='Which MaterialX PBR symbol denotes incident radiance at p along direction omega_i?',
+          publisher_text_bytes=raw,original_sha256=digest(raw),
+          derived_text=derived,derived_sha256=digest(derived.encode()),top=2)
+        self.assertEqual('$L_i$',d['publisher_rows'][0]['publisher_table_row_cells'][0])
+        self.assertIn('Incident radiance',d['publisher_rows'][0]['publisher_table_row_cells'][1])
+        self.assertEqual('$\\omega_i$',d['publisher_rows'][1]['publisher_table_row_cells'][0])
+        self.assertEqual('Symbol',d['publisher_rows'][0]['publisher_table_columns'][0])
+
     def test_query_that_names_Code_node_prefers_Code_row(self):
         d=self.table(query='Can the Code node execute Python on self-hosted workflows?',top=1)
         self.assertEqual('Code node',d['publisher_rows'][0]['publisher_table_row_cells'][0])
