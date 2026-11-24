@@ -3524,3 +3524,45 @@ client census, enrollment, admission deny/hold protocol, crash-safe
 multi-store generation rollout, rollback and post-switch source QA exist.
 This private rehearsal is not authorization to cut over 327 PDF or two HTML
 sources or to discard historical source generations.
+
+
+### November 24 — source-linked lookup inside one private pinned generation
+
+A separate **private-only** `retrieve_private_source_locators(base,
+allowed_root, original_path, query, top=3)` now demonstrates a real
+provenance-bound document lookup without requiring a live model or changing
+any native FileDB rows. It selects exactly one approved corrected PDF original
+from the *current immutable private generation*, opens its native FileDB and
+source-map database through `open_pinned_private_read_view`, validates the
+original publisher SHA and current derived-text SHA, finds its unique native
+file ID, and loads the exact manifest-listed derived source text plus its
+complete revision-specific recursive summary tree. The native root summary
+representation must match the same original source ID, derived source
+revision and tree root ID. This is a **retrieval proof across the databases
+and actual source text**, not just an index-integrity manifest check.
+
+The lookup then performs temporary in-memory lexical passage discovery over
+only that original's verified derived source text. Returned locators have the
+exact source section, source character offsets, excerpt SHA and matched query
+terms. The physical excerpt hashes are independently verified against the
+pinned derived string before the entire generation is rehashed at the end of
+the context. Deliberately **no publisher quotation or generated answer text**
+is returned. A corrected provisional PDF machine-text locator has explicit
+`original_publisher_pdf_physical_page_verified=false`,
+`original_publisher_quote_verified=false`,
+`source_factual_claims_verified=false` and `safe_to_cutover_live=false`.
+Only a separately verified original publisher PDF page can support quoting.
+The query is limited to one source and five locators; the existing private
+asset reader caps each source at thirty-two MiB by default.
+
+Isolated tests exercise two different original PDFs in one published private
+generation, exact native/root/derivative identity, source-specific positive
+and hard-negative terms, safe path rejection, summary-tree and native SQLite
+mutation during a query, and pointer change to a new generation during the
+old reader's search. The old result remains bound to its pinned revision,
+while a subsequent query sees the new generation. The lookup also operates
+successfully **after** all cooperating old private writer admissions are
+sealed. None of this code is wired into production services or authorizes
+source-map/native/summary replacement. A complete production service census,
+reader-and-writer enrollment, safe writer holds and rollback are still
+required before any corrected PDF or HTML production cutover.
