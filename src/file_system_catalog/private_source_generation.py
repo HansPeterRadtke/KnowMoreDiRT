@@ -350,6 +350,48 @@ def open_pinned_private_read_view(base:Path,allowed_root:Path):
             view.verify_bytes(allowed_root)
 
 
+def _fsync_private_generation_assets(base:Path,generation:int):
+    """Persist all staged private files and directory names before pointer rename.
+
+    A durable active-pointer file is NOT useful after power loss if its
+    referenced SQLite copies, derivative texts, summaries, QA receipt or
+    manifest were never synced. This private-only helper is invoked while
+    holding the exclusive pointer-publisher lock. The validated candidate
+    still needs a final source SHA preflight immediately before the switch.
+    """
+    folder=_generation_path(base,generation)
+    manifest,_=_read_json_regular(folder/'manifest.json',MAX_MANIFEST_BYTES)
+    paths=[safe_file(folder,'manifest.json'),
+           safe_file(folder,manifest['native_gate']['path'])]
+    paths.extend(safe_file(folder,row['path']) for row in manifest['assets'])
+    for path in paths:
+        fd=os.open(path,os.O_RDONLY|os.O_CLOEXEC|os.O_NOFOLLOW)
+        try:
+            state=os.fstat(fd)
+            if not stat.S_ISREG(state.st_mode):
+                raise ValueError('private staged generation has nonregular asset')
+            os.fsync(fd)
+        finally:
+            os.close(fd)
+    # Persist directory entries from the deepest file directory outward.
+    # Without this, a synced file can still be lost after a power failure
+    # when its newly created parent directory was never durably written.
+    directories={base,base/'generations',folder}
+    for path in paths:
+        parent=path.parent
+        while parent!=base:
+            if not parent.is_relative_to(base):
+                raise ValueError('private staged asset escaped its pointer root')
+            directories.add(parent)
+            parent=parent.parent
+    for path in sorted(directories,key=lambda p: (-len(p.parts),str(p))):
+        if path.is_symlink():
+            raise ValueError('private staged directory is a symlink')
+        fd=os.open(path,os.O_RDONLY|os.O_CLOEXEC|os.O_NOFOLLOW|os.O_DIRECTORY)
+        try:os.fsync(fd)
+        finally:os.close(fd)
+
+
 def publish_private_only(base:Path,allowed_root:Path,generation:int,*,
                          before_pointer_replace:Callable[[],None]|None=None,
                          after_pointer_replace:Callable[[],None]|None=None):
@@ -375,6 +417,7 @@ def publish_private_only(base:Path,allowed_root:Path,generation:int,*,
         repeated=verify_generation(base,allowed_root,generation)
         if repeated['manifest_sha256']!=proof['manifest_sha256']:
             raise ValueError('new privately staged generation changed during publication')
+        _fsync_private_generation_assets(base,generation)
         blob=(json.dumps({'schema':POINTER_SCHEMA,'generation':generation,
               'manifest_sha256':proof['manifest_sha256']},sort_keys=True,separators=(',',':'))+'\n').encode()
         marker=base/'active-private-generation.json'

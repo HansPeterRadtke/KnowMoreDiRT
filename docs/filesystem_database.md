@@ -3425,10 +3425,17 @@ one pair: both the native and source-map rows, old original-derived text and
 full summary tree remain matched, and new readers select generation two.
 Mutating an old pinned source file is explicitly detected and refuses the
 old reader on exit, even after another generation has been published. The
-private publisher's atomic pointer rename now calls `fsync` on the parent
-directory **before** the simulated post-switch crash callback. Therefore a
-post-switch crash injection represents a durably committed pointer rather
-than a non-durable rename. Tests also cover crash before pointer rename,
+private publisher now explicitly calls `fsync` on each validated staged SQLite
+file, corrected original-derived text, summary-tree JSON, private native QA
+receipt, generation manifest and every containing directory **before** the
+atomic pointer rename. It then syncs the pointer's parent directory before
+the simulated post-switch crash callback. This avoids claiming a durable
+pointer to unsynced assets. Tests inject failures into both staged file and
+directory `fsync`: the previously selected generation remains active and the
+new generation can be published only after a later successful retry. These
+checks demonstrate correct syscall ordering and failure refusal in isolated
+fixtures, not an actual hardware power-loss test or live production rollback.
+Tests also cover crash before pointer rename,
 replayed generation, unsafe production roots, attempted SQL writes, altered
 source assets, missing manifest roles and oversized original text reads.
 

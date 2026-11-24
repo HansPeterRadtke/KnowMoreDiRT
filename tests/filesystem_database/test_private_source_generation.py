@@ -322,6 +322,55 @@ class PrivateSourceGenerationTests(unittest.TestCase):
             with generation_module.open_pinned_private_read_view(self.switch,self.private_root):
                 pass
 
+    def test_every_staged_asset_and_nested_directory_fsynced_before_private_pointer_commit(self):
+        import os
+        folder=self.stage(1,0)
+        expected={folder/'manifest.json',folder/'proof.json',folder/'native.sqlite3',
+                  folder/'source-map.sqlite3',folder,folder/'text',folder/'summaries',
+                  self.switch/'generations',self.switch}
+        expected.update((folder/'text').rglob('*.txt'))
+        expected.update((folder/'summaries').rglob('*.summary-tree.json'))
+        for file in (folder/'text').rglob('*.txt'):
+            expected.update(parent for parent in file.parents if parent.is_relative_to(folder))
+        synced=set();real=os.fsync
+        def record(fd):
+            target=Path(os.readlink(f'/proc/self/fd/{fd}'))
+            synced.add(target)
+            return real(fd)
+        def after_preflight_and_durable_assets():
+            missing=expected-synced
+            self.assertEqual(set(),missing,'private generation files/directories are not durably staged before pointer switch')
+            raise RuntimeError('test-only exit after durable assets before private pointer replace')
+        with mock.patch.object(generation_module.os,'fsync',side_effect=record):
+            with self.assertRaisesRegex(RuntimeError,'after durable assets'):
+                publish_private_only(self.switch,self.private_root,1,
+                     before_pointer_replace=after_preflight_and_durable_assets)
+        self.assertFalse((self.switch/'active-private-generation.json').exists())
+        self.assertTrue(synced.issuperset(expected))
+
+    def test_failed_staged_file_or_directory_fsync_keeps_old_private_generation(self):
+        import os
+        self.stage(1,0)
+        publish_private_only(self.switch,self.private_root,1)
+        self.stage(2,1)
+        actual=os.fsync
+        for failed in ('native.sqlite3','gen-00000002'):
+            with self.subTest(failed=failed):
+                def inject(fd):
+                    target=Path(os.readlink(f'/proc/self/fd/{fd}'))
+                    if (failed=='native.sqlite3' and target.name==failed and
+                            'gen-00000002' in str(target)) or (
+                            failed=='gen-00000002' and target.name==failed):
+                        raise OSError('isolated private staged fsync failed')
+                    return actual(fd)
+                with mock.patch.object(generation_module.os,'fsync',side_effect=inject):
+                    with self.assertRaisesRegex(OSError,'staged fsync failed'):
+                        publish_private_only(self.switch,self.private_root,2)
+                self.assertEqual(1,read_pinned(self.switch,self.private_root).generation)
+                self.assertEqual(1,json.loads((self.switch/'active-private-generation.json').read_text())['generation'])
+        self.assertEqual(2,publish_private_only(self.switch,self.private_root,2)['private_pointer_generation'])
+        self.assertEqual(2,read_pinned(self.switch,self.private_root).generation)
+
     def test_private_commit_directory_is_synced_before_post_switch_crash_hook(self):
         self.stage(1,0)
         syncs=[];actual=generation_module.os.fsync
