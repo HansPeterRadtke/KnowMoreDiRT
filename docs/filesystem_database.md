@@ -4416,3 +4416,99 @@ independent precision/recall and answer-sufficiency tests with a fixed
 equal candidate budget and negative examples. The 327-PDF and 2-HTML
 production revision cutover still requires all seven reader/writer
 synchronization safeguards.
+
+
+### November 24 — fixed ten-source-slot recall guard, physical originals, and lexical stopword no-go
+
+Improved original-source navigation is not evidence of a stronger *default*
+source ranking. The optional HTML and Markdown link readers found three
+previously missed, approved official source documents, but they added
+additional retrieval candidates **beyond** the original ten native source
+results. The new pure `file_system_catalog.frozen_reference_budget`
+comparator and owner-private one-shot
+`scripts/raspi_frozen_reference_budget_eval.py` provide a reproducible
+**at-most-ten-result-slot comparison** before any such promotion. They take
+the original SHA-attested **73 predeclared questions, 79 known approved
+publisher original labels**, their frozen original/summary/lexical
+three-channel fusion ranks, and the already completed original HTML and
+Markdown first-party publisher link studies. Every link must originate
+from one of the previous **top five native-ranked original parents**.
+Links remain in their prior publisher reference order and never receive
+an artificial relevance label or training reward from the frozen gold.
+
+The fixed candidate-capacity policy is **K native original slots plus up
+to 10−K first-party linked originals**, for K in **10, 9, 8, 7 and 5**.
+A duplicated source or fewer available links consumes a slot rather than
+secretly adding extra results. This is a fair **maximum result-capacity**
+comparison, not a promise of exactly ten distinct original documents in
+every query. It is based on **known-source identity**, NOT factual-answer
+correctness, exact quote sufficiency, product research utility, physical PDF
+page accuracy or statistical power. The already inspected independent
+27-query cohort is **not a pristine blind holdout**. The benchmark uses
+a fixed source corpus, not continuous live native search snapshots.
+
+Observed source-known recall results (read-only November 24 cohort):
+
+| Fixed maximum ten-source capacity | 46 earlier questions (52 labels) | 27 prior independent questions (27 labels) | All 73 (79 labels) | Gain/loss versus 10 native |
+|---|---:|---:|---:|---|
+| 10 native, 0 links | 41 | 24 | **65** | unchanged |
+| 9 native, 1 link | 39 | 25 | **64** | +1 previously missed Unity guide; −2 existing known originals |
+| 8 native, 2 links | 39 | 25 | **64** | same net loss |
+| 7 native, 3 links | 39 | 25 | **64** | same net loss |
+| 5 native, 5 links | 36 | 26 | **62** | +2 missed Unity guides; −5 previously found originals |
+
+The n8n *Transform data* source recovered by unlimited supplementary link
+navigation was **not** recovered by these constrained source-order budgets;
+its official overview link is behind earlier links, which can occupy
+all available slots. This is an observable reason that extra navigation
+and source-aware reading should be a **separately selectable channel**,
+not a blind replacement for native top-ten search results.
+
+The reusable one-shot private evaluation additionally checks the **actual
+current publisher original and derivative bytes** for every admitted frozen
+gold source, selected linked source and publisher parent. On the original
+accepted dataset it streamed full SHA-256 through **284 unique current
+originals and their exact derived files**, checked completed first-party
+catalogue/acquisition metadata, unique native FileDB original IDs, current
+source-map revision, and re-opened both SQLite databases after the full
+file review. Any observed current source revision, missing archive file,
+symlink, incomplete acquisition receipt or changed native source identity
+aborts the complete benchmark. It does **not** claim an atomic cross-SQLite
+reader/writer admission lease: concurrent source updates may still race
+between independent stores, and seven source-generation cutover blockers
+remain. There are no model calls, HTTP requests, downloads, automatic
+source/index changes, owner report effects or cached permanent vectors.
+
+Example command creating a **new** private evidence receipt:
+
+```sh
+cd /data/src/github/KnowMoreDiRT
+PYTHONPATH=src /data/var/knowmoredirt/semantic-venv/bin/python \
+  scripts/raspi_frozen_reference_budget_eval.py \
+  --private-output /data/var/knowmoredirt/knowledge-library/search-audit/NEW-PRIVATE-FROZEN-TEN-SLOT-QA.json
+```
+
+A separate fresh native E5 same-snapshot pilot evaluated correction of the
+historical lexical query word filter, where a long stopword string was
+incorrectly passed to `set(string)` and thus split into **characters** rather
+than actual words. The pilot derived the intended stopword tokens directly
+from the published source's literal text, kept the same original/summary
+vectors, FTS5 title-5/summary-1 Porter OR weights, and RRF k=60, and scored
+all 73 frozen original-source queries without changing native search code.
+**Top-ten fusion recall remained 65/79** and top-five was slightly worse,
+**60/79 versus 61/79** in that current snapshot. The corrected tokenizer
+is therefore **not promoted** to installed search based solely on the
+plausibility of a conventional stoplist. The current known original-source
+corpus grew from **9,614** complete summary roots on the earlier November 24
+snapshot to **9,709** on the later one with the exact same known-source
+revisions, while native top-ten known-source recall stayed **65/79**.
+One top-five historical source label improved; there was no observed top-ten
+regression. This is not a proof of broadly improved factual answer accuracy.
+
+Until an independently better fixed-budget retrieval policy is found, keep
+all official first-party links **opt-in and supplementary**, preserve
+existing original folder/grep search and native semantic ranks, and measure
+actual publisher-context and answer-sufficiency on hard negative questions.
+The full evaluation evidence is private, with exact report SHA records in
+the Raspi project exchange. It must not be mistaken for a seller product,
+an authorized external publication or a source-generation live migration.
