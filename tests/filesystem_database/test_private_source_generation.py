@@ -90,6 +90,60 @@ class PrivateSourceGenerationTests(unittest.TestCase):
         (folder/'manifest.json').write_text(json.dumps(manifest))
         return folder
 
+    def test_two_original_pdfs_share_one_pinned_private_native_and_source_map_generation(self):
+        # The prior crash and pointer tests use one original per generation.
+        # A real migration stage also needs MULTIPLE current original rows,
+        # matching derivatives, and recursive summary roots in ONE snapshot.
+        folder=self.switch/'generations'/'gen-00000001'
+        folder.mkdir()
+        native=folder/'native.sqlite3';source_map=folder/'source-map.sqlite3'
+        shutil.copy2(self.fixture.db,native);shutil.copy2(self.fixture.db,source_map)
+        assets=[('native_sqlite',native),('source_map_sqlite',source_map)]
+        for row in self.records:
+            name=row['original_path'];target=folder/'text'/(name+'.txt')
+            target.parent.mkdir(parents=True,exist_ok=True)
+            shutil.copy2(self.fixture.root/(name+'.txt'),target)
+            base=Path(name).name+'.'+revision_identity(name,row['original_sha256'],
+                row['new_staged_derived_sha256'])[:24]+'.summary-tree.json'
+            summary=folder/'summaries'/base
+            summary.parent.mkdir(parents=True,exist_ok=True)
+            shutil.copy2(self.fixture.summaries/base,summary)
+            assets.extend([('corrected_derived_text',target),('recursive_summary_tree',summary)])
+        with sqlite3.connect(source_map.resolve().as_uri()+'?mode=ro',uri=True) as sm, \
+             sqlite3.connect(native.resolve().as_uri()+'?mode=ro',uri=True) as db, \
+             sqlite3.connect(self.fixture.fixture.sqlite.resolve().as_uri()+'?mode=ro',uri=True) as historic:
+            for con in (sm,db,historic):con.execute('PRAGMA query_only=ON')
+            ready=assess_corrected_native_release(records=self.records,source_map=sm,
+                native=db,historical=historic,derived_root=folder/'text',
+                summary_root=folder/'summaries',expected_count=2)
+        self.assertEqual(2,ready['originals_with_native_full_source_roots_and_vectors'])
+        ready['native_sqlite_sha256']=sha_file(native)
+        ready['source_map_sqlite_sha256']=sha_file(source_map)
+        proof=folder/'proof.json';proof.write_text(json.dumps(ready))
+        manifest={'schema':SCHEMA,'generation':1,'cohort_originals':2,
+            'native_gate':{'path':'proof.json','sha256':sha_file(proof)},
+            'assets':[{'kind':kind,'path':str(file.relative_to(folder)),
+                       'sha256':sha_file(file),'bytes':file.stat().st_size}
+                      for kind,file in assets]}
+        (folder/'manifest.json').write_text(json.dumps(manifest))
+        published=publish_private_only(self.switch,self.private_root,1)
+        self.assertEqual(1,published['private_pointer_generation'])
+        with generation_module.open_pinned_private_read_view(self.switch,self.private_root) as view:
+            native_paths={r[0] for r in view.native.execute(
+                'SELECT relative_path_display FROM filesystem_entries')}
+            map_sources={r[0]:(r[1],r[2]) for r in view.source_map.execute(
+                'SELECT source_path,source_sha256,derived_sha256 FROM originals')}
+            self.assertEqual(native_paths,set(map_sources))
+            self.assertEqual(native_paths,{r['original_path'] for r in self.records})
+            for path,(original_sha,derived_sha) in map_sources.items():
+                source=view.read_source_asset('corrected_derived_text','text/'+path+'.txt')
+                self.assertEqual(derived_sha,digest(source))
+                self.assertTrue(any(path==r['original_path'] and original_sha==r['original_sha256']
+                                    for r in self.records))
+            self.assertTrue(view.verify_bytes(self.private_root)['private_generation_complete'])
+        self.assertEqual(2,len(map_sources))
+        self.assertFalse(ready['safe_to_cutover_live'])
+
     def test_private_generation_real_original_binding_acceptance_and_reader_pin(self):
         self.stage(1,0)
         with self.assertRaisesRegex(ValueError,'no private source generation'):

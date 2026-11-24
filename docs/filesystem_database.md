@@ -3419,6 +3419,14 @@ to their exact pinned manifest SHA. Closing the view hashes the entire pinned
 generation again. Consumers must not expose their query results until the
 `with` block has exited without error.
 
+A separate two-original cohort acceptance also builds one full private
+source-map and native FileDB containing **both corrected publisher PDFs**, their
+current source SHA/derivative rows, two extracted-text files, and two complete
+recursive summary trees. It passes the real private native vector reindex
+gate, then opens them as one pinned same-generation reader. This verifies
+multi-document cohort consistency, not only switching between single-PDF
+fixtures. No live original, vector or summary was replaced.
+
 Concurrent isolated publication can advance the shared pointer to generation
 two while an existing reader continues querying the complete old generation
 one pair: both the native and source-map rows, old original-derived text and
