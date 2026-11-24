@@ -46,7 +46,7 @@ from file_system_catalog.summary_search_batched import (
     search_summary_entries_batched, has_native_summary_candidates,
 )
 from file_system_catalog.source_evidence import source_evidence_candidates
-from file_system_catalog.source_passage_utility import review_source_documents
+from file_system_catalog.source_passage_utility import review_source_documents,review_verified_linked_originals
 from file_system_catalog.named_source import resolve_source_name
 from file_system_catalog.publication_identifier import publication_receipt_matches
 from file_system_catalog.publisher_ccs import PREFIX_CHARS, first_page_ccs
@@ -1720,6 +1720,11 @@ def find_source_evidence(args) -> None:
     # publisher SHA, page verification, or answer authority.
     utility_review=(review_source_documents(evidence_args.query,documents)
                     if getattr(args,'assess_passage_utility',False) else None)
+    if utility_review is not None and linked_archive is not None:
+        linked_children=[child for parent in linked_archive['parents']
+                         for child in parent['linked_existing_original_sources']]
+        utility_review['optional_linked_original_structural_review']=review_verified_linked_originals(
+            evidence_args.query,linked_children)
     # Both evidence and extra source-scope text are untrusted original data:
     # keep coordinate/checksum audit receipts, never actual publisher prose.
     audited = [
@@ -1749,6 +1754,10 @@ def find_source_evidence(args) -> None:
         **({'optional_source_passage_utility_counts':{
             'reviewed_candidates':utility_review['reviewed_publisher_excerpt_candidates'],
             'navigation_or_prompt_candidates':utility_review['navigation_or_prompt_template_candidates'],
+            'linked_excerpt_candidates':(utility_review['optional_linked_original_structural_review']['reviewed_linked_excerpt_candidates']
+                if 'optional_linked_original_structural_review' in utility_review else 0),
+            'linked_navigation_or_prompt_candidates':(utility_review['optional_linked_original_structural_review']['navigation_or_prompt_linked_excerpt_candidates']
+                if 'optional_linked_original_structural_review' in utility_review else 0),
             'not_answer_verification':True}} if utility_review is not None else {}),
         "verified_pdf_excerpts": pdf_count,
         "verified_non_pdf_derived_excerpts": derived_count,
@@ -1941,6 +1950,11 @@ def original_source_evidence(args) -> None:
             # channel. The original's own zero lexical excerpts remain zero:
             # never pretend a linked document's excerpt came from the parent.
             result['linked_archived_original_references']=linked
+            if 'optional_source_passage_utility_review' in result:
+                children=linked.get('linked_existing_original_sources',
+                                    linked.get('linked_approved_current_original_sources',[]))
+                result['optional_source_passage_utility_review']['optional_linked_original_structural_review']=review_verified_linked_originals(
+                    evidence_query,children)
     except Exception as error:
         append_query_audit({
             "operation":"verified_original_source_evidence",
@@ -1975,6 +1989,12 @@ def original_source_evidence(args) -> None:
         **({'optional_source_passage_utility_counts':{
             'reviewed_candidates':result['optional_source_passage_utility_review']['reviewed_publisher_excerpt_candidates'],
             'navigation_or_prompt_candidates':result['optional_source_passage_utility_review']['navigation_or_prompt_template_candidates'],
+            'linked_excerpt_candidates':(
+                result['optional_source_passage_utility_review']['optional_linked_original_structural_review']['reviewed_linked_excerpt_candidates']
+                if 'optional_linked_original_structural_review' in result['optional_source_passage_utility_review'] else 0),
+            'linked_navigation_or_prompt_candidates':(
+                result['optional_source_passage_utility_review']['optional_linked_original_structural_review']['navigation_or_prompt_linked_excerpt_candidates']
+                if 'optional_linked_original_structural_review' in result['optional_source_passage_utility_review'] else 0),
             'not_answer_verification':True}}
             if 'optional_source_passage_utility_review' in result else {}),
         **({"opt_in_archived_reference_follow": {

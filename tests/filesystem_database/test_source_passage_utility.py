@@ -2,7 +2,7 @@
 from __future__ import annotations
 import hashlib
 import unittest
-from file_system_catalog.source_passage_utility import review_passage_candidate,review_source_documents
+from file_system_catalog.source_passage_utility import review_passage_candidate,review_source_documents,review_verified_linked_originals
 
 
 def passage(text,*,section='Source',path='docs/current.md',proof='markdown'):
@@ -23,6 +23,32 @@ class EvidenceSurfaceNotAnswerTest(unittest.TestCase):
         self.assertIn('publisher_link_navigation_not_direct_explanation',p['observed_structural_flags'])
         self.assertTrue(p['possible_navigation_or_prompt_only'])
         self.assertFalse('factual_answer_correctness_verified' in p)
+
+    def test_source_link_list_with_actionable_method_descriptions_is_not_bare_navigation(self):
+        source=(
+            '* [Remove Duplicates](/integrations/n8n-removeduplicates.md): identify and remove items that are identical across selected fields.\n'
+            '* [Sort](/integrations/n8n-sort.md): organize lists in a desired ascending or descending order.\n'
+            '* [Split Out](/integrations/n8n-split.md): separate a list from a field into individual output items.\n'
+            '* [Summarize](/integrations/n8n-summarize.md): group information using a selected aggregation method.\n'
+            '\n**When to use data transformation nodes:**\n'
+            '* The requested operation matches the purpose of a transformation node.\n'
+        )
+        review=review_passage_candidate(self.q,passage(source,section='Data transformation nodes'))
+        self.assertEqual(4,review['markdown_link_line_count'])
+        self.assertEqual(4,review['descriptive_link_line_count'])
+        self.assertNotIn('publisher_link_navigation_not_direct_explanation',review['observed_structural_flags'])
+        self.assertFalse(review['possible_navigation_or_prompt_only'])
+
+    def test_explicit_table_of_contents_still_navigation_even_with_link_descriptions(self):
+        source=(
+            '## In this section\n'
+            '* [Use the UI mapper](/mapper.md): reference existing fields in later nodes.\n'
+            '* [Transform data](/transform.md): choose tools that modify the current data values.\n'
+            '* [Reference data](/reference.md): use previous node output in a workflow.\n'
+        )
+        review=review_passage_candidate(self.q,passage(source,section='Work with data / In this section'))
+        self.assertIn('publisher_link_navigation_not_direct_explanation',review['observed_structural_flags'])
+        self.assertEqual(3,review['descriptive_link_line_count'])
 
     def test_genuine_expression_paragraph_is_not_mistaken_for_navigation(self):
         content=('Expressions are JavaScript-like code placed directly into n8n node parameters. '
@@ -106,6 +132,64 @@ class EvidenceSurfaceNotAnswerTest(unittest.TestCase):
         p=passage('The source text is correct.',path='docs/unrelated.md')
         with self.assertRaisesRegex(ValueError,'different ranked original'):
             review_source_documents(self.q,[{'original_path':'docs/current.md','passages':[p]}])
+
+    def test_linked_markdown_original_passages_are_structural_only_not_native_ranks(self):
+        text='## In this section\n\n* [Map fields](/map.md)\n* [Transform data](/transform.md)\n'
+        child={'original_path':'docs/source.md','passage_candidates':[
+           {'source_section':'In this section',
+            'current_derived_text_excerpt':text,
+            'derived_excerpt_sha256':hashlib.sha256(text.encode()).hexdigest(),
+            'publisher_original_plaintext_byte_interval':{'sha256':'f'*64},
+            'publisher_plaintext_byte_interval_independently_SHA_verified':True}]}
+        result=review_verified_linked_originals(self.q,[child])
+        self.assertEqual(1,result['linked_originals_reviewed'])
+        self.assertEqual(1,result['reviewed_linked_excerpt_candidates'])
+        self.assertEqual(1,result['navigation_or_prompt_linked_excerpt_candidates'])
+        self.assertTrue(result['original_linked_children_not_native_ranked'])
+        review=result['linked_original_reviews'][0]['passage_structural_reviews'][0]
+        self.assertIn('publisher_link_navigation_not_direct_explanation',review['observed_structural_flags'])
+        self.assertEqual('publisher_utf8_byte_range_reported_by_current_source_reader',review['publisher_location_proof_scope'])
+
+    def test_linked_original_HTML_is_normalized_article_not_literal_byte_quote(self):
+        text='The publisher article describes one experimental method for the current sample.'
+        child={'original_path':'docs/official.html','passage_candidates':[
+           {'source_section':'HTML original publisher document',
+            'extracted_text_excerpt_candidate':text,
+            'extracted_text_excerpt_sha256':hashlib.sha256(text.encode()).hexdigest(),
+            'publisher_original_normalized_HTML_article_anchor':{
+                'status':'verified_normalized_original_article_text','container':'article'},
+            'independent_original_article_text_match_verified':True}]}
+        r=review_verified_linked_originals(self.q,[child])
+        proof=r['linked_original_reviews'][0]['passage_structural_reviews'][0]['publisher_location_proof_scope']
+        self.assertEqual('normalized_original_HTML_article_location_verified',proof)
+        self.assertTrue(r['no_linked_candidate_promoted_to_native_rank_or_answer'])
+
+    def test_linked_source_excerpt_digest_mismatch_refuses_without_a_guess(self):
+        bad={'original_path':'docs/source.md','passage_candidates':[
+           {'source_section':'Source',
+            'current_derived_text_excerpt':'The archive says one example.',
+            'derived_excerpt_sha256':'0'*64,
+            'publisher_plaintext_byte_interval_independently_SHA_verified':False}]}
+        with self.assertRaisesRegex(ValueError,'digest'):
+            review_verified_linked_originals(self.q,[bad])
+
+    def test_linked_original_without_verification_marker_never_invents_publisher_proof(self):
+        text='Some source evidence from an unverified linked text passage.'
+        child={'original_path':'docs/source.md','passage_candidates':[
+          {'source_section':'Source','current_derived_text_excerpt':text,
+           'derived_excerpt_sha256':hashlib.sha256(text.encode()).hexdigest(),
+           'publisher_original_plaintext_byte_interval':{'sha256':'a'*64},
+           'publisher_plaintext_byte_interval_independently_SHA_verified':False}]}
+        r=review_verified_linked_originals(self.q,[child])
+        self.assertEqual('verified_derivative_excerpt_only_no_independent_publisher_location',
+            r['linked_original_reviews'][0]['passage_structural_reviews'][0]['publisher_location_proof_scope'])
+
+    def test_bounded_linked_children_and_invalid_child_contents_refused(self):
+        with self.assertRaises(ValueError):review_verified_linked_originals(self.q,[{}]*6)
+        with self.assertRaisesRegex(ValueError,'invalid independently source-verified'):
+            review_verified_linked_originals(self.q,[{'original_path':'docs/source.md','passage_candidates':'invalid'}])
+        with self.assertRaisesRegex(ValueError,'unknown verified original'):
+            review_verified_linked_originals(self.q,[{'original_path':'docs/source.md','passage_candidates':[{'unrecognized':'unknown'}]}])
 
     def test_oversized_or_no_query_refused(self):
         with self.assertRaises(ValueError):review_passage_candidate('',passage('Real original text'))

@@ -128,6 +128,25 @@ class OptionalMainOriginalArchivedLinkTests(TestCase):
                     self.kmd.original_source_evidence(self.args)
         self.patched[1].assert_not_called()
 
+    def test_direct_source_structural_review_can_annotate_verified_linked_children_separately(self):
+        self.args.assess_passage_utility=True
+        direct={'reviewed_publisher_excerpt_candidates':0,
+                'navigation_or_prompt_template_candidates':0,
+                'reviewed_originals':[],'no_candidates_removed_or_reordered':True,
+                'not_factual_answer_sufficiency_or_entailment_verification':True}
+        linked={'reviewed_linked_excerpt_candidates':1,
+                'navigation_or_prompt_linked_excerpt_candidates':1,
+                'original_linked_children_not_native_ranked':True}
+        with mock.patch.object(self.kmd,'review_source_documents',return_value=direct),\
+             mock.patch.object(self.kmd,'review_verified_linked_originals',return_value=linked) as assessor:
+            result=self.run_query()
+        assessor.assert_called_once_with(self.query,self.link_result['linked_existing_original_sources'])
+        self.assertEqual(linked,result['optional_source_passage_utility_review']['optional_linked_original_structural_review'])
+        self.assertEqual(1,self.audit.call_args.args[0]['optional_source_passage_utility_counts']['linked_excerpt_candidates'])
+        self.assertEqual(1,self.audit.call_args.args[0]['optional_source_passage_utility_counts']['linked_navigation_or_prompt_candidates'])
+        self.assertNotIn('Evidence in archived source.',str(self.audit.call_args.args[0]))
+        self.assertEqual(self.link_result,result['linked_archived_original_references'])
+
     def test_without_structural_flag_default_direct_source_audit_unmodified(self):
         self.args.follow_archived_links=False
         with mock.patch.object(self.kmd,'review_source_documents',side_effect=AssertionError('optin only')) as review:

@@ -4626,3 +4626,32 @@ A source heading, publisher original digest or literal query-term overlap
 reader-quality diagnostic, explicitly separated from live default ranking,
 answer generation, automatic source downloading and the seven unresolved
 source-generation migration safeguards.
+
+
+**Source-linked child originals are also reviewed when both opt-ins are
+explicitly enabled.** The two existing reader commands may combine
+`--follow-archived-links` with `--assess-passage-utility` on already archived
+Markdown or HTML originals. The reviewer keeps the native direct passages
+and approved linked children in **separate** structures, without assigning
+linked children native ranks or inventing evidence. Source-linked Markdown
+passages retain their verified literal publisher UTF-8 byte scope; linked
+HTML passages retain their **normalized article proof**, not a fictional
+literal byte interval. The private audit stores only the native and linked
+review counts, never the original text or retrieved quote. On the real n8n
+query, four first-party linked original guides produced eight SHA-verified
+publisher passages. A further exact-source review exposed a **false
+navigation warning**: the *Other data transformation nodes* section
+contains explanatory method descriptions after links (*Remove Duplicates*,
+*Sort*, *Split Out*, *Summarize*) and guidance on when to use them, not just
+a bare table of contents. The structural classifier now distinguishes
+these explanatory link entries from headings explicitly named *In this
+section* or *Related resources*. On the same current eight linked n8n
+excerpts, **two** are now flagged as navigation-only, while the useful
+method descriptions remain unflagged. A separate brief *Transform data*
+overview is marked as requiring further context. A
+*Reference data* passage also explicitly warns that mapping a value does
+not modify the underlying data. Crucially, comparison with the previously
+verified original n8n retrieval proved **identical** native document ranks,
+all four linked original identities and their full publisher source
+passages. The optional cautions are source-reading aids, not a ranking or
+factual-answer verdict.

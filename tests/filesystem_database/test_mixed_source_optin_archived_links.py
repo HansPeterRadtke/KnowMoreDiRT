@@ -82,6 +82,33 @@ class NativeMixedArchivedReferenceTests(unittest.TestCase):
         self.assertNotIn('Evidence in archived source.',str(audit))
         self.assertEqual(1,audit['opt_in_archived_original_references']['linked_original_sources_checked'])
 
+    def test_native_mixed_structural_review_separately_tags_firstparty_children_without_new_ranks(self):
+        self.args.assess_passage_utility=True
+        direct={'reviewed_publisher_excerpt_candidates':2,
+                'navigation_or_prompt_template_candidates':0,
+                'reviewed_originals':[],'no_candidates_removed_or_reordered':True}
+        children={'reviewed_linked_excerpt_candidates':1,
+                  'navigation_or_prompt_linked_excerpt_candidates':1,
+                  'original_linked_children_not_native_ranked':True}
+        with mock.patch.object(self.cli,'review_source_documents',return_value=direct),\
+             mock.patch.object(self.cli,'review_verified_linked_originals',return_value=children) as inspector:
+            out=self.invoke_once()
+        inspector.assert_called_once()
+        self.assertEqual(self.args.query,inspector.call_args.args[0])
+        observed=inspector.call_args.args[1]
+        self.assertEqual(1,len(observed))
+        self.assertEqual(self.child,observed[0]['original_path'])
+        self.assertFalse(observed[0]['already_in_native_selected_documents'])
+        self.assertIsNone(observed[0]['native_selected_original_rank_if_already_selected'])
+        self.assertEqual(children,out['optional_source_passage_utility_review']['optional_linked_original_structural_review'])
+        self.assertEqual([self.parent,self.fixture.paths['pdf']],[x['original_path'] for x in out['documents']])
+        self.assertEqual([1,2],[x['rank'] for x in out['documents']])
+        assert out['opt_in_archived_original_reference_navigation']['linked_original_sources_checked']==1
+        audit=self.fixture.mocks['append_query_audit'].call_args.args[0]
+        self.assertEqual(1,audit['optional_source_passage_utility_counts']['linked_excerpt_candidates'])
+        self.assertEqual(1,audit['optional_source_passage_utility_counts']['linked_navigation_or_prompt_candidates'])
+        self.assertNotIn('Evidence in archived source.',str(audit))
+
     def test_without_explicit_flag_normal_mixed_source_search_is_unchanged(self):
         self.args.follow_archived_links=False
         out=self.invoke_once()

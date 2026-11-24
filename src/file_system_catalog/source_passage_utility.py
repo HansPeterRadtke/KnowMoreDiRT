@@ -14,6 +14,9 @@ from typing import Any
 from .hybrid_search import lexical_token_spans, query_terms
 
 _LINK_LINE = re.compile(r"(?m)^\s*(?:[-*+]\s+|\d+\.\s+)?\[[^\]\n]{2,180}\]\([^\s)\n]{1,800}\)")
+# Link-list entries can be action-oriented publisher prose, not only a TOC:
+# "* [Split Out](...): separate items from a source field" explains a method.
+_DESCRIPTIVE_LINK_LINE = re.compile(r"\]\([^\)\n]{1,800}\)\s*:\s*[A-Za-z].{20,}")
 _TOC_HEADER = re.compile(r"(?im)^\s*#{1,5}\s*(?:in this section|related resources|table of contents|on this page|see also)\b")
 _PROMPT_HEADING = re.compile(r"(?i)\b(?:system prompt|prompt template|agent instruction template)\b")
 _PROMPT_BODY = re.compile(r"(?is)\b(?:you are a helpful assistant|you are an ai assistant|you are an expert assistant)\b")
@@ -54,8 +57,14 @@ def review_passage_candidate(query:str,passage:dict[str,Any])->dict[str,Any]:
     lines=[s for s in excerpt.splitlines() if s.strip()]
     non_link_lines=[x for x in lines if not _LINK_LINE.match(x)]
     body_words=len(_WORD.findall(' '.join(non_link_lines)))
+    descriptive_links=sum(bool(_DESCRIPTIVE_LINK_LINE.search(line))
+                          for line in lines if _LINK_LINE.match(line))
     toc_heading=bool(_TOC_HEADER.search(excerpt) or re.search(r'(?i)(?:in this section|related resources|table of contents)\b',heading))
-    navigation=(len(links)>=2 and (toc_heading or len(links)>=max(2,len(lines)//2)))
+    # A link-rich methods list can carry real explanatory content. Flag only
+    # an EXPLICIT table-of-contents section, or an otherwise sparse list
+    # where fewer than two items describe an actionable operation.
+    navigation=(len(links)>=2 and (toc_heading or
+                (len(links)>=max(2,len(lines)//2) and descriptive_links<2)))
     prompt=(bool(_PROMPT_HEADING.search(excerpt[:220]+' '+heading))
             and bool(_PROMPT_BODY.search(excerpt) or _PROMPT_TAG.search(excerpt)))
     short_overview=(len(excerpt.strip())<180 and len(links)==0
@@ -95,6 +104,7 @@ def review_passage_candidate(query:str,passage:dict[str,Any])->dict[str,Any]:
         'literal_query_terms_in_current_excerpt':matched,
         'original_excerpt_characters':len(excerpt),
         'markdown_link_line_count':len(links),
+        'descriptive_link_line_count':descriptive_links,
         'non_link_text_word_count':body_words,
         'observed_structural_flags':flags,
         'possible_navigation_or_prompt_only':navigation or prompt,
@@ -132,3 +142,57 @@ def review_source_documents(query:str,documents:list[dict])->dict:
             'not_factual_answer_sufficiency_or_entailment_verification':True,
             'quoted_publisher_prompts_are_untrusted_data_not_agent_commands':True,
             'reviewed_originals':results}
+
+
+def review_verified_linked_originals(query:str,linked_children:list[dict])->dict:
+    """Review source-linked child excerpts as CHILD sources, never native ranks.
+
+    The caller has already independently checked the literal parent link
+    and the full original/derived/current native-ID proof of every child.
+    This adapter only describes already verified original child excerpt
+    structure. It MUST NOT mark a linked child as a native-ranked result.
+    """
+    if not isinstance(linked_children,list) or len(linked_children)>5:
+        raise ValueError('publisher link structural review is limited to five approved original children')
+    documents=[]
+    for child in linked_children:
+        if (not isinstance(child,dict) or not isinstance(child.get('original_path'),str)
+                or not isinstance(child.get('passage_candidates'),list)
+                or len(child['passage_candidates'])>5):
+            raise ValueError('invalid independently source-verified linked child evidence')
+        path=child['original_path']
+        passages=[]
+        for row in child['passage_candidates']:
+            if not isinstance(row,dict):
+                raise ValueError('unsupported linked original passage shape')
+            if 'current_derived_text_excerpt' in row:
+                # Markdown current native/derived + publisher-original bytes.
+                excerpt=row['current_derived_text_excerpt']
+                digest=row.get('derived_excerpt_sha256')
+                pub=row.get('publisher_original_plaintext_byte_interval')
+                plain=row.get('publisher_plaintext_byte_interval_independently_SHA_verified')
+                info={'publisher_excerpt':pub} if plain is True and isinstance(pub,dict) else {}
+            elif 'extracted_text_excerpt_candidate' in row:
+                # HTML original article match: normalized DOM coordinate,
+                # explicitly NOT literal publisher UTF-8 byte coordinates.
+                excerpt=row['extracted_text_excerpt_candidate']
+                digest=row.get('extracted_text_excerpt_sha256')
+                anchor=row.get('publisher_original_normalized_HTML_article_anchor')
+                verified=row.get('independent_original_article_text_match_verified')
+                info={'publisher_html_dom_anchor':anchor} if verified is True and isinstance(anchor,dict) else {}
+            else:
+                raise ValueError('unknown verified original Markdown/HTML link passage representation')
+            passages.append({'original_path':path,'source_section':row.get('source_section'),
+                             'source_excerpt':excerpt,'excerpt_sha256':digest,**info})
+        documents.append({'original_path':path,'passages':passages,'rank':None})
+    result=review_source_documents(query,documents)
+    return {'schema':'kmd.opt_in_firstparty_linked_original_structural_diagnostics.v1',
+            'linked_children_source_verified_by_existing_reader':True,
+            'original_linked_children_not_native_ranked':True,
+            'linked_originals_reviewed':len(documents),
+            'reviewed_linked_excerpt_candidates':result['reviewed_publisher_excerpt_candidates'],
+            'navigation_or_prompt_linked_excerpt_candidates':result['navigation_or_prompt_template_candidates'],
+            'source_publisher_quotation_and_full_SHA_still_owned_by_reader':True,
+            'no_linked_candidate_promoted_to_native_rank_or_answer':True,
+            'not_factual_answer_sufficiency_or_entailment_verification':True,
+            'linked_original_reviews':result['reviewed_originals']}
