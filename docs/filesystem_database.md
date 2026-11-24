@@ -3942,3 +3942,81 @@ portal during active indexing. A future performance release requires
 isolated equivalent-result benchmarking, source revision consistency,
 read/write admission and a safe deployment/rollback plan. The existing
 explicit-source lookup remains much cheaper and source-exact.
+
+
+### November 24 — independently verified low-memory native source search (opt-in)
+
+Current native semantic search is slower than it needs to be for an
+interactive library: one Unity Render Texture request took about 106 seconds
+wall time in the observed Nov 24 cold/busy environment. A later detailed
+**read-only one-query profiler** took 20.1 seconds: the 23 MB private source
+catalogue was fully read twice (8.5 s), the native SQLite chunk and
+representation scan took 7.0 s and the E5 model initialized in 2.2 s.
+These were *different single requests, cache and worker contention differed*;
+these two numbers must not be presented as a representative latency average,
+or attributed entirely to embedding computation. The existing installed
+Infra reader imports a historical native scanner that first materializes
+**about 71,000 chunk/representation candidates** as Python dictionaries,
+then selects the strongest candidate per original and sorts all 17,715
+originals. Source revision checks, publisher SHA and excerpt SHA are essential
+and **must not be removed for speed**.
+
+A new standalone, user-invoked helper provides **lower peak Python allocations
+with exactly the same search results**, without modifying the running
+portal or other workers. `native_streamed_semantic` iterates the exact
+original native SQLite SELECT rows in the same order, invokes the same
+`vector_from_blob` and **unchanged** `cosine_similarity` for every candidate,
+retains only the best-scoring candidate dictionary per file ID and uses
+exactly the same final sort/first-winner tie contract. It still returns
+*every* ranked original, because the installed source-verification reader
+may need to skip several stale/uncitable top-ranked candidates.
+
+The optional `scripts/raspi_low_memory_native_original_search.py` is a
+**one-shot, single-Python-thread** command. It temporarily substitutes only
+the process-local native-scanner function for one call to the installed Infra
+semantic source reader and **restores the original function even after a
+failure**. That reader still checks the current source catalogue, completed
+acquisition receipts, source map, original/derived physical SHA, native
+FileDB identity, exact passage SHA and final revision. No persistent cache,
+ANN index, model replacement, network fetch or database write is introduced.
+It rejects multiple Python threads, invalid/unbounded requests and any
+return result missing an exact passage SHA or final source-generation safety
+contract. Results include machine-extracted *candidate passages*, not factual
+answer verification or literal publisher text/byte evidence.
+
+Example (private output deliberately outside Git):
+
+```sh
+cd /data/src/github/KnowMoreDiRT
+PYTHONPATH=src /data/var/knowmoredirt/semantic-venv/bin/python \
+  scripts/raspi_low_memory_native_original_search.py \
+  'Unity Render Texture Inspector create Render Texture view from camera' \
+  --top 5 \
+  --private-output /data/var/knowmoredirt/knowledge-library/search-audit/MY-NEW-PRIVATE-LOWMEM-SEARCH.json
+```
+
+**Measured evidence and honest limitations:** On the current real Raspi
+native database, comparing both scanners in one read-only SQLite connection
+with unchanged `PRAGMA data_version` produced **17,715 exactly equal result
+records, ordered chunk IDs, original IDs and floating-point scores**. The
+legacy scanner took **7.98 s** and streaming took **9.26 s** in that
+uninstrumented comparison: **no verified speed improvement**. In a
+separate `tracemalloc` comparison over the same 17,715 results, peak Python
+allocation fell from **87,915,519 bytes to 24,535,717 bytes** (72.09%
+reduction), with exact results and unchanged database version. Tracemalloc
+does **not** include SQLite's OS file cache or every native model allocation;
+its instrumented times do not represent normal search latency. A real
+standalone opt-in query returned the **same five Unity source originals,
+native chunk IDs, original SHA, passage SHA and scores** as the existing
+reader, with full original/derived/native final revision checks. Fixture
+regressions additionally check mixed float16/float32 vectors, first-winner
+ties, excluded incomplete representations, scoped original CTEs, read-only
+SQLite and restoring the old scanner on exception/multithread rejection.
+
+**Deployment scope:** This helper is an independently tested private CLI
+alternative, **not the live default web or source-evidence scanner**. The
+native E5 search still requires significant I/O, and replacing the old live
+reader would require coordination with agents changing the heavily dirty
+Infra repository, equivalent-result tests under concurrent writers, and a
+rollback plan. Source-boundary migration for corrected PDF/HTML documents
+still has seven independent live reader/writer/admission blockers.
