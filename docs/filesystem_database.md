@@ -3820,3 +3820,74 @@ position rejects the entire linked lookup. The preview is still explicitly
 `factual_answer_sufficiency_verified=false`. It provides evidence the user
 can actually read in one opt-in CLI request, without promoting a machine
 extraction into a literal original-byte quotation or confirmed answer.
+
+
+### November 24 — optional archived original references alongside native mixed-source discovery
+
+The existing canonical
+`scripts/raspi_hierarchical_library.py find-source-evidence` (which can
+select one source by its unique official title or rank up to five originals
+by the **unchanged native semantic search**) now offers
+`--follow-archived-links --linked-originals N` as an **explicit** read-only
+extension. Only an already selected, source-revision-verified **HTML
+original** is eligible to have its article references followed. Linked
+originals are **separate** evidence candidates: they never replace, rerank,
+or pretend to be the previously returned native sources or PDF page quotes.
+`--linked-originals` is a bounded **total** budget, one through five,
+across all selected HTML parents. Source names, native order, direct
+publisher evidence and the ordinary command JSON remain unchanged when the
+opt-in flag is absent. This is distinct from the earlier
+`source-evidence --follow-archived-links` feature, which accepts one
+explicit original without native mixed-source discovery.
+
+A reproducible real source query on Raspi is:
+
+```sh
+cd /data/src/github/KnowMoreDiRT
+PYTHONPATH=src /data/var/knowmoredirt/semantic-venv/bin/python \
+  scripts/raspi_hierarchical_library.py find-source-evidence \
+  'How do I avoid noticeable stutters when transferring model mesh and image asset data from disk in a running game?' \
+  --source-name 'Unity 6.3 LTS — Loading textures in the background' \
+  --documents 1 --passages 2 --snippet-characters 850 \
+  --follow-archived-links --linked-originals 2
+```
+
+The native-selected Unity overview stays `rank=1`, with
+`no_verified_excerpt` and zero directly matching passages. The separate
+`opt_in_archived_original_reference_navigation` output contains the
+already archived first-party **Texture and mesh loading** child, with
+one **readable** current derived-text excerpt, its exact UTF-8 SHA and
+source offsets, an independent normalized original publisher HTML article
+anchor and original/native source revision checks. It also reports a
+linked official compatibility guide **not in the local catalogue** as
+unavailable, never fabricating an original document or downloading it.
+The optional audit record contains **only source paths, counts and scope
+warnings**, not copyrighted publisher paragraph text. The result explicitly
+says `not_a_verified_correct_answer=true`,
+`cross_store_immutable_generation_pinned=false` and
+`safe_to_cutover_live=false`. Existing PDF physical-page and original
+plain-text byte-range proof remain separate and are unaffected.
+
+The opt-in rejects RFC continuation, simultaneous private corrected-PDF
+staging, requests exceeding the total five linked originals, stale or
+swapped parent/child SHAs, duplicated source identities, invalid native
+file IDs, and HTML candidates without a current approved source-map/native
+original. A final **collective** pass reopens and rehashes all selected
+HTML parent and linked child originals after the last link was searched;
+changed original/derived bytes or native IDs refuse the entire response.
+This is a *best-effort post-search consistency fence*, not an atomic
+multi-SQLite writer admission protocol. Source-link quality also depends on
+an HTML original being selected by native search: if a relevant document
+never appears in the selected native top-five, following its links cannot
+recover it. The capability is **live-read-only on the Raspi CLI and
+committed to the official KnowMoreDiRT repository**, not installed in the
+owner-facing web Explorer or authorized as a live PDF/HTML source cutover.
+
+The fixture regression suite covers unchanged default native rank and direct
+PDF/HTML excerpts, explicit named source selection, two native-selected
+HTML parents sharing one total child budget, bogus child count and identity,
+late changed parent/child revisions and unchanged direct result on an
+unrelated question. Actual Unity original HTML source/derived SHA and native
+ID were rechecked on Raspi after running the opt-in command. No source
+acquisition, model replacement, service restart, index modification, or
+publication of the library's private books is involved.

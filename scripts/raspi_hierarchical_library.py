@@ -1392,6 +1392,113 @@ def final_mixed_document_source_revision_guard(documents:list[dict], *, versions
             'cross_store_immutable_generation_pinned':False,
             'safe_to_cutover_live':False}
 
+def _opt_in_native_selected_archived_references(args, documents:list[dict], *,
+                                                evidence_query:str, versions:tuple):
+    """Opt-in publisher links of native-selected, current verified HTML originals.
+
+    Child candidates are separate from the native search rank. Every result is
+    read only, original/derived SHA verified, and ultimately candidate-only.
+    At most five archived destination originals are returned across all
+    selected HTML parent originals; no external browsing or downloading.
+    """
+    if not getattr(args,'follow_archived_links',False):
+        return None
+    cursor=getattr(args,'continue_section',None)
+    private_stage=getattr(args,'private_staged_pdf_preflight',None)
+    budget=getattr(args,'linked_originals',3)
+    if (type(budget) is not int or not 1<=budget<=5
+            or cursor is not None or private_stage is not None
+            or not isinstance(evidence_query,str) or not 1<=len(evidence_query)<=300
+            or not isinstance(documents,list) or len(documents)>5
+            or not isinstance(versions,tuple) or len(versions)!=3):
+        raise ValueError('archived original reference follow requires bounded HTML evidence and no incompatible PDF overlay')
+    from raspi_archived_html_follow_links import find_archived_linked_source_passages
+    manifest,ledger,sources=versions
+    eligible=[];unique=set()
+    for doc in documents:
+        if doc.get('source_kind')!='html':continue
+        if doc.get('status') not in ('verified_derived_text','no_verified_excerpt'):
+            continue
+        path=doc.get('original_path')
+        if (not isinstance(path,str) or path in unique
+                or path not in manifest or manifest[path].get('kind')!='html'
+                or path not in ledger or path not in sources
+                or type(doc.get('filesystem_entry_id')) is not int
+                or doc['filesystem_entry_id']<1):
+            raise ValueError('native-selected HTML original lacks unique verified source identity')
+        unique.add(path)
+        if (doc.get('original_sha256')!=sources[path][1]
+                or doc.get('derived_sha256')!=sources[path][2]
+                or ledger[path].get('sha256')!=doc['original_sha256']):
+            raise ValueError('native-selected HTML source SHA differs from current catalog original')
+        eligible.append(doc)
+    if not eligible:
+        raise ValueError('archived source reference follow needs at least one native-selected verified HTML original')
+    used=0;parents=[];revisions={}
+    for doc in eligible:
+        if used>=budget:break
+        parent_path=doc['original_path']
+        report=find_archived_linked_source_passages(parent_path,evidence_query,
+                    limit=budget-used,passages=min(2,args.passages),
+                    snippet_characters=args.snippet_characters)
+        if (not isinstance(report,dict) or report.get('parent_original_path')!=parent_path
+                or report.get('parent_original_sha256')!=doc['original_sha256']
+                or report.get('parent_derived_sha256')!=doc['derived_sha256']
+                or report.get('safe_to_cutover_live') is not False):
+            raise ValueError('archived link parent source does not match native source revision')
+        children=report.get('linked_existing_original_sources')
+        if (not isinstance(children,list) or len(children)>budget-used
+                or report.get('linked_original_sources_checked')!=len(children)):
+            raise ValueError('archived link returned unbounded or inconsistent current originals')
+        for child in children:
+            if (not isinstance(child,dict) or not isinstance(child.get('original_path'),str)
+                    or child['original_path']==parent_path or child['original_path'] in revisions
+                    or type(child.get('native_filedb_original_id')) is not int
+                    or child['native_filedb_original_id']<1):
+                raise ValueError('duplicate or invalid linked native source identity')
+            revisions[child['original_path']]=(child['original_sha256'],child['derived_sha256'],
+                                               child['native_filedb_original_id'])
+        if parent_path in revisions:
+            raise ValueError('an already linked original was also selected as parent')
+        revisions[parent_path]=(doc['original_sha256'],doc['derived_sha256'],
+                                doc['filesystem_entry_id'])
+        parents.append({'native_parent_rank':doc['rank'],'parent_original_path':parent_path,
+                        'parent_status':doc['status'],
+                        'parent_direct_excerpt_count':len(doc['passages']),
+                        'linked_existing_original_sources':children,
+                        'parent_original_HTML_article_link_proof':report['parent_original_HTML_article_link_proof'],
+                        'linked_source_excerpt_candidates':report['linked_source_excerpt_candidates'],
+                        'publisher_original_article_passage_proofs':report['publisher_original_article_evidence_passages'],
+                        'linked_sources_are_not_semantic_ranks':True})
+        used+=len(children)
+    # A previous destination might be rewritten during later parent searches.
+    # Reverify the complete current publisher+derived bytes and native ID for
+    # ALL returned parents and children as one final bounded group. This is NOT
+    # an atomic multi-database generation or an admission lock for old clients.
+    for path,(orig_sha,derived_sha,native_id) in revisions.items():
+        source=checked_original(path)
+        if (source['original_sha256']!=orig_sha or source['derived_sha256']!=derived_sha):
+            raise ValueError('linked source parent or child changed during mixed native discovery')
+        state=final_original_revision_guard(source,original_path=path,native_file_id=native_id)
+        if not state['latest_source_map_revision_and_native_file_id_rechecked']:
+            raise ValueError('linked source no longer matches original source-map and native file ID')
+    return {
+        'parents':parents,
+        'native_selected_HTML_parents_checked':len(parents),
+        'linked_original_sources_checked':used,
+        'original_HTML_article_evidence_passages':sum(x['publisher_original_article_passage_proofs'] for x in parents),
+        'missing_unapproved_original_references':sum(
+            x['parent_original_HTML_article_link_proof']['same_origin_relevant_unarchived_or_unapproved_references']
+            for x in parents),
+        'all_returned_native_selected_parent_and_child_current_source_revisions_rechecked':True,
+        'no_new_external_source_fetch_or_download':True,
+        'linked_originals_do_not_replace_existing_native_document_rank':True,
+        'not_a_verified_correct_answer':True,
+        'cross_store_immutable_generation_pinned':False,
+        'safe_to_cutover_live':False,
+    }
+
+
 def find_source_evidence(args) -> None:
     """Discover native originals or resolve one explicit named publisher source.
 
@@ -1418,6 +1525,13 @@ def find_source_evidence(args) -> None:
         if cursor is not None and (
                 not isinstance(cursor, str) or not 1 <= len(cursor) <= 128):
             raise ValueError("invalid RFC continuation cursor")
+        if getattr(args,'follow_archived_links',False):
+            limit=getattr(args,'linked_originals',3)
+            if (type(limit) is not int or not 1<=limit<=5
+                    or getattr(args,'private_staged_pdf_preflight',None) is not None
+                    or getattr(args,'continue_section',None) is not None
+                    or len(args.query)>300):
+                raise ValueError('archived original reference follow requires bounded HTML evidence and no incompatible PDF overlay')
         versions = _current_versions()
         manifest, ledger, _ = versions
         # Do not choose among editions or similarly worded studies. Resolve
@@ -1535,6 +1649,8 @@ def find_source_evidence(args) -> None:
         "extracted_text_only": derived_count - publisher_byte_count,
     }
     try:
+        linked_archive=_opt_in_native_selected_archived_references(
+            args,documents,evidence_query=evidence_args.query,versions=versions)
         final_source_proof=final_mixed_document_source_revision_guard(documents,versions=versions)
     except Exception as exc:
         append_query_audit({**receipt,'success':False,
@@ -1555,6 +1671,15 @@ def find_source_evidence(args) -> None:
             (corrected_overlay['publisher_verified_corrected_passages']
              if corrected_overlay is not None else 0),
         "evidence_query": evidence_args.query,
+        **({"opt_in_archived_original_references": {
+            "selected_native_parent_originals": [p['parent_original_path'] for p in linked_archive['parents']],
+            "linked_original_sources_checked":linked_archive['linked_original_sources_checked'],
+            "original_HTML_article_evidence_passages":linked_archive['original_HTML_article_evidence_passages'],
+            "missing_unapproved_original_references":linked_archive['missing_unapproved_original_references'],
+            "linked_original_paths": [x['original_path'] for p in linked_archive['parents']
+                                      for x in p['linked_existing_original_sources']],
+            "not_a_verified_answer":True,
+        }} if linked_archive is not None else {}),
         "verified_pdf_excerpts": pdf_count,
         "verified_non_pdf_derived_excerpts": derived_count,
         "evidence_kind_counts": evidence_kind_counts, "documents": audited,
@@ -1564,6 +1689,8 @@ def find_source_evidence(args) -> None:
         "query": args.query, "evidence_query": evidence_args.query,
         "selection_basis": selection_basis, "retrieval_engine": engine,
         "documents": documents,
+        **({'opt_in_archived_original_reference_navigation':linked_archive}
+           if linked_archive is not None else {}),
         "final_current_original_source_revision_check":final_source_proof,
         **({'corrected_private_publisher_page_overlay': corrected_overlay}
            if corrected_overlay is not None else {}),
@@ -1924,6 +2051,10 @@ def main():
     mixed.add_argument("--source-name", help="Exact original title, RFC, DOI or pinned skill name; bypasses unrelated vector ranks")
     mixed.add_argument("--private-staged-pdf-preflight",type=Path,
         help="Optional exact private 327-PDF page repair receipt; add original-verified corrected page excerpts for native-selected PDFs without changing live indexes")
+    mixed.add_argument("--follow-archived-links",action="store_true",
+        help="Opt-in only: follow publisher links on native-selected verified HTML originals to already archived current source excerpts; no linked native rank promotion")
+    mixed.add_argument("--linked-originals",type=int,default=3,
+        help="Total linked original sources across ALL native-selected HTML documents (1-5; opt-in only)")
     mixed.add_argument("--documents", type=int, default=3,
                        help="Inspect this many ranked originals (1–5)")
     mixed.add_argument("--passages", type=int, default=2,
