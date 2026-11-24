@@ -3306,3 +3306,50 @@ admission mechanism. Tests inject source-map changes both after first read
 and during the derived-hash check, original file byte substitutions, metadata
 edits, and a missing native ID; all fail closed. Positive acceptance uses a
 real current publisher PDF with independently verified physical pages.
+
+
+### November 24 — summary discovery post-ranking source and native representation fence
+
+The normal `raspi_hierarchical_library.py search` operation ranks source-linked
+recursive-summary nodes and verifies the original publisher bytes and current
+source derivative *while* checking native ranked candidates. A concurrent
+extractor or native summary writer can commit a different source-map revision,
+original file or summary representation **after** that early verification.
+Those previously valid in-memory candidate results must not become stale
+source references. A final read-only check now takes place after ranking and
+any explicit publisher selection, before results are returned or private
+search-audit records are written. Every returned original is tied to its
+completed acquisition receipt, current catalog record, source-map original
+and derivative SHA, native FileDB original ID, and each exact ranked native
+summary chunk/representation, including source-span and summary-text hashes
+and source-revision generation metadata. Original and derivative full file
+SHA-256 are then streamed a second time through stable no-follow readers,
+and both the source map and the relevant native summary representations are
+queried afresh *after* those reads. On any observed mismatch the entire query
+fails closed rather than showing a partially stale or substituted document.
+
+The returned result and private search audit include
+`final_current_summary_source_revision_check` with the count of returned
+originals rechecked, total original-plus-derivative bytes hashed, and explicit
+`cross_store_immutable_generation_pinned=false` and
+`safe_to_cutover_live=false`. No second database or source cache is created.
+Physical publisher SHA checks across all returned documents are limited to
+**one GiB per query**; larger searches must be narrowed by `--top` or an
+explicit source name. This restriction must not be weakened silently to
+maintain apparent search results. Some very large archived textbooks may
+therefore require a narrow lookup. The new checks add a **second publisher
+and derivative read per returned source**, not a read for each summary node.
+The verified ranked model results, summary texts and native FileDB are not
+mutated, and this guard does not grant permission to replace any of the
+historical 327 staged PDF or two HTML derivatives. Exact native vector
+changes or source-map writes detected after ranking trigger a negative
+answer, not automatic healing or guessed publisher source truth.
+
+Private synthetic red/green tests reproduce a source-map revision committed
+after native ranking, same-length original publisher byte substitution,
+removal of a selected native summary representation, and two late changes
+committed between full-file hash and final metadata recheck. The known
+uncited and unindexed publisher-name cases still return explicitly empty
+results without calling an LLM. This is a best-effort per-request stale
+revision refusal; all legacy readers and writers must still adopt an atomic
+source-generation admission scheme before any live multistore cutover.

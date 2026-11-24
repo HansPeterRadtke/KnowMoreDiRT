@@ -760,6 +760,123 @@ def _current_versions():
     return manifest, ledger, source_map
 
 
+_SUMMARY_FINAL_SOURCE_PROOF_LIMIT_BYTES = 1024*1024*1024
+
+
+def final_summary_discovery_revision_guard(found:list[dict], *,
+                                           manifest:dict, ledger:dict, sources:dict)->dict:
+    """Reject source or native summary edits occurring after original ranking.
+
+    Reopen fresh read-only views and rehash all selected publisher/derived
+    originals. This is NOT an atomic generation pin across both SQLite DBs.
+    """
+    if not isinstance(found,list) or len(found)>30:
+        raise ValueError('unbounded summary source final proof')
+    if not found:
+        return {'returned_originals_rechecked_after_summary_ranking':0,
+                'cross_store_immutable_generation_pinned':False,
+                'safe_to_cutover_live':False}
+    records={};total=0
+    for item in found:
+        path=item.get('original_path')
+        if (not isinstance(path,str) or not path or path in records
+                or path.startswith('/') or '\\' in path
+                or any(part in ('','.','..') for part in path.split('/'))
+                or path not in manifest or path not in ledger or path not in sources
+                or type(item.get('filesystem_entry_id')) is not int
+                or item['filesystem_entry_id']<1):
+            raise ValueError('summary original source revision has no unique current identity')
+        receipt=ledger[path];rev=sources[path]
+        if (receipt.get('sha256')!=item.get('original_sha256')
+                or receipt.get('bytes_received')!=item.get('original_bytes')
+                or receipt.get('status')!='complete'
+                or rev[1]!=item.get('original_sha256')
+                or not isinstance(rev[2],str)):
+            raise ValueError('original publisher or source-map revision changed after summary ranking')
+        nodes=item.get('matched_summary_nodes')
+        if not isinstance(nodes,list) or not 1<=len(nodes)<=30:
+            raise ValueError('ranked original lacks bounded source-linked summary nodes')
+        for node in nodes:
+            if (not isinstance(node,dict) or node.get('original_path')!=path
+                    or node.get('filesystem_entry_id')!=item['filesystem_entry_id']
+                    or node.get('original_sha256')!=rev[1]
+                    or node.get('derived_sha256')!=rev[2]
+                    or not isinstance(node.get('native_chunk_id'),str)
+                    or not isinstance(node.get('native_representation_id'),str)):
+                raise ValueError('native ranked summary identity is not current-source bound')
+        derivative=checked_derivative_path(rev[3]);original_size=item['original_bytes']
+        # Limit total full-source rehash work even when some approved books
+        # are hundreds of megabytes. Reject unverified wide searches safely.
+        if (type(original_size) is not int or original_size<1
+                or original_size+derivative.stat().st_size+total>_SUMMARY_FINAL_SOURCE_PROOF_LIMIT_BYTES):
+            raise ValueError('summary source final proof exceeds bounded physical byte budget; narrow top or named source')
+        total+=original_size+derivative.stat().st_size
+        records[path]=(item,rev,receipt)
+
+    def metadata_is_current():
+        latest_manifest,latest_ledger,latest_sources=_current_versions()
+        for path,(item,rev,receipt) in records.items():
+            if (latest_manifest.get(path)!=manifest[path]
+                    or latest_ledger.get(path)!=receipt
+                    or latest_sources.get(path)!=rev):
+                raise ValueError('source-map or publisher original revision changed after summary ranking')
+
+    def native_is_current():
+        with sqlite3.connect(f'file:{DB.resolve()}?mode=ro',uri=True,
+                             timeout=NATIVE_READER_WAIT_SECONDS) as db:
+            db.execute('PRAGMA query_only=ON')
+            for path,(item,rev,_) in records.items():
+                ids=db.execute('SELECT id,size_bytes FROM filesystem_entries '
+                        'WHERE entry_type=? AND relative_path_display=?',('file',path)).fetchall()
+                if ids!=[(item['filesystem_entry_id'],item['original_bytes'])]:
+                    raise ValueError('native FileDB original source identity changed after summary ranking')
+                for node in item['matched_summary_nodes']:
+                    rows=db.execute("""SELECT c.filesystem_entry_id,c.content_sha256,c.content_object_id,
+                             c.text_sha256,c.start_char,c.end_char,r.representation_text_sha256,
+                             r.generation_json,r.analysis_status,r.representation_kind
+                             FROM content_chunks c JOIN content_representations r
+                             ON c.chunk_id=r.chunk_id
+                             WHERE c.chunk_id=? AND r.representation_id=?""",
+                             (node['native_chunk_id'],node['native_representation_id'])).fetchall()
+                    if len(rows)!=1:
+                        raise ValueError('native summary representation changed after source ranking')
+                    (source_id,source_sha,source_object,passage_sha,start,end,
+                     summary_sha,metadata,state,kind)=rows[0]
+                    if (source_id!=item['filesystem_entry_id'] or source_sha!=rev[1]
+                            or source_object!='sha256:'+rev[2]
+                            or passage_sha!=node['source_passage_sha256']
+                            or start!=node['source_start_char'] or end!=node['source_end_char']
+                            or summary_sha!=node['summary_sha256']
+                            or state!='complete' or kind!=node['summary_kind']):
+                        raise ValueError('native summary source span or representation revision changed after ranking')
+                    try:meta=json.loads(metadata)
+                    except (ValueError,TypeError) as exc:
+                        raise ValueError('native summary generation metadata malformed after ranking') from exc
+                    if (not isinstance(meta,dict) or meta.get('derived_sha256')!=rev[2]
+                            or meta.get('original_sha256')!=rev[1]
+                            or meta.get('summary_sha256')!=node['summary_sha256']):
+                        raise ValueError('native summary generation revision changed after ranking')
+
+    metadata_is_current();native_is_current()
+    for path,(item,rev,receipt) in records.items():
+        record=manifest[path]
+        original={'original_path':path,'title':record.get('title'),
+                  'publication_year':record.get('publication_year'),
+                  'edition_version':record.get('edition_version'),
+                  'original_sha256':rev[1],'derived_sha256':rev[2],
+                  'original_bytes':item['original_bytes']}
+        proof=final_original_revision_guard(original,original_path=path,
+                                          native_file_id=item['filesystem_entry_id'])
+        if not proof['latest_source_map_revision_and_native_file_id_rechecked']:
+            raise ValueError('incomplete summary original source final revision proof')
+    metadata_is_current();native_is_current()
+    return {'returned_originals_rechecked_after_summary_ranking':len(records),
+            'complete_original_and_derived_source_bytes_rehashed':total,
+            'current_native_summary_representations_and_source_spans_rechecked':True,
+            'fresh_catalog_receipts_source_map_and_native_file_IDs_rechecked':True,
+            'cross_store_immutable_generation_pinned':False,
+            'safe_to_cutover_live':False}
+
 def _search_impl(args) -> dict:
     manifest, ledger, sources = _current_versions()
     name_match = resolve_source_name(args.query, manifest)
@@ -883,8 +1000,12 @@ def _search_impl(args) -> dict:
         # catalog contains multiple real publications with the same name.
         warning = ("The explicitly cited source name identifies multiple catalog originals. "
                    "No document was substituted; select the full title or exact original path.")
+    final_source_proof=final_summary_discovery_revision_guard(
+        [row for row in found if any(x['original_path']==row['original_path'] for x in out)],
+        manifest=manifest,ledger=ledger,sources=sources)
     return {
         **({"source_name_match": name_match} if name_match else {}),
+        "final_current_summary_source_revision_check":final_source_proof,
         "query": args.query,
         "database": str(DB),
         "retrieval_engine": ("exact_publication_catalog_lookup_v1" if missing_identifier

@@ -118,7 +118,11 @@ class PublisherClassificationTests(unittest.TestCase):
             with patch.dict(sys.modules, knowledge_library_semantic_model=fake), patch.object(cli, "DB", disk), \
                  patch.object(cli, "_current_versions", return_value=versions), \
                  patch.object(cli, "publisher_path", return_value=publisher), \
-                 patch.object(cli, "checked_derivative_path", return_value=derivative):
+                 patch.object(cli, "checked_derivative_path", return_value=derivative), \
+                 patch.object(cli, "final_summary_discovery_revision_guard",return_value={
+                     "returned_originals_rechecked_after_summary_ranking":1,
+                     "cross_store_immutable_generation_pinned":False,
+                     "safe_to_cutover_live":False}):
                 found = cli._search_impl(query)
                 node = found["documents"][0]["matched_summary_nodes"][0]
                 anchor = node["publisher_classification"]

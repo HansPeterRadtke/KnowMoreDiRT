@@ -264,6 +264,82 @@ class PublisherRevisionSearchTests(unittest.TestCase):
         self.original.write_bytes(b"A" * 12345)
         self.assertEqual(self.names[0], self.search(top=2)["documents"][0]["original_path"])
 
+    def test_batched_summary_search_must_reject_source_map_revision_changed_after_ranking(self):
+        # The pre-return checks in the ranked source callback may all pass,
+        # then the separate extractor commits a newer derivative revision.
+        original_search=self.cli.search_summary_entries_batched
+        selected=self.names[0]
+        def stale_after_candidates(*args,**kwargs):
+            ranked=original_search(*args,**kwargs)
+            self.assertTrue(ranked)
+            with sqlite3.connect(self.cli.SOURCE_MAP) as db:
+                db.execute('UPDATE originals SET derived_sha256=? WHERE source_path=?',('f'*64,selected))
+            return ranked
+        with mock.patch.object(self.cli,'search_summary_entries_batched',side_effect=stale_after_candidates):
+            with self.assertRaisesRegex(ValueError,'source-map|revision changed'):
+                self.search(top=1)
+
+    def test_batched_summary_search_must_reject_publisher_same_size_modified_after_ranking(self):
+        original_search=self.cli.search_summary_entries_batched
+        original_bytes=self.original.stat().st_size
+        def stale_original_after_candidates(*args,**kwargs):
+            ranked=original_search(*args,**kwargs)
+            self.assertTrue(ranked)
+            self.original.write_bytes(b'X'*original_bytes)
+            return ranked
+        with mock.patch.object(self.cli,'search_summary_entries_batched',side_effect=stale_original_after_candidates):
+            with self.assertRaisesRegex(ValueError,'original|publisher|SHA'):
+                self.search(top=1)
+
+    def test_batched_summary_search_must_reject_native_summary_chunk_removed_after_ranking(self):
+        original_search=self.cli.search_summary_entries_batched
+        def stale_native_after_candidates(*args,**kwargs):
+            ranked=original_search(*args,**kwargs)
+            self.assertTrue(ranked)
+            first=ranked[0]['matched_summary_nodes'][0]
+            with sqlite3.connect(self.cli.DB) as db:
+                db.execute('DELETE FROM content_representations WHERE representation_id=?',
+                           (first['native_representation_id'],))
+            return ranked
+        with mock.patch.object(self.cli,'search_summary_entries_batched',side_effect=stale_native_after_candidates):
+            with self.assertRaisesRegex(ValueError,'summary|native|revision'):
+                self.search(top=1)
+
+    def test_post_summary_hash_writer_race_rejects_late_native_representation_change(self):
+        original_guard=self.cli.final_original_revision_guard
+        def late_native_write(*args,**kwargs):
+            proof=original_guard(*args,**kwargs)
+            with sqlite3.connect(self.cli.DB) as db:
+                db.execute("UPDATE content_representations SET representation_text_sha256=? "
+                           "WHERE representation_id=(SELECT representation_id "
+                           "FROM content_representations ORDER BY representation_id LIMIT 1)",('d'*64,))
+            return proof
+        with mock.patch.object(self.cli,'final_original_revision_guard',side_effect=late_native_write):
+            with self.assertRaisesRegex(ValueError,'native summary.*changed'):
+                self.search(top=2)
+
+    def test_post_summary_hash_writer_race_rejects_late_source_map_revision(self):
+        original_guard=self.cli.final_original_revision_guard
+        def late_extract_write(*args,**kwargs):
+            proof=original_guard(*args,**kwargs)
+            with sqlite3.connect(self.cli.SOURCE_MAP) as db:
+                db.execute('UPDATE originals SET derived_sha256=? WHERE source_path=?',
+                           ('d'*64,kwargs['original_path']))
+            return proof
+        with mock.patch.object(self.cli,'final_original_revision_guard',side_effect=late_extract_write):
+            with self.assertRaisesRegex(ValueError,'source-map.*changed'):
+                self.search(top=2)
+
+    def test_summary_candidate_without_current_original_is_never_pin_approved(self):
+        self.query='arXiv:2608.03496v3'
+        with mock.patch.object(self.cli,'final_original_revision_guard',
+                               side_effect=AssertionError('must not read an unknown publisher file')):
+            result=self.search(top=2)
+        self.assertEqual([],result['documents'])
+        proof=result['final_current_summary_source_revision_check']
+        self.assertEqual(0,proof['returned_originals_rechecked_after_summary_ranking'])
+        self.assertFalse(proof['safe_to_cutover_live'])
+
     def test_unindexed_short_title_never_loads_e5_or_scans_other_originals(self):
         manifest=json.loads(self.cli.SOURCES.read_text())
         manifest["sources"][0]["title"]="CiteGuard: Original Publisher Research"
@@ -453,14 +529,20 @@ class PublisherRevisionSearchTests(unittest.TestCase):
         self.assertEqual(result["source_name_match"]["status"], "no_verified_index_match")
         self.assertEqual(result["documents"][0]["original_path"], self.names[1])
 
-    def test_one_hash_per_file_per_query_with_multiple_nodes(self):
+    def test_each_source_is_hashed_once_during_ranking_and_again_before_return(self):
         with mock.patch.object(self.cli, "regular_file_blocks", wraps=self.cli.regular_file_blocks) as hasher:
             result=self.search(top=2)
         self.assertGreater(len(result["documents"][0]["matched_summary_nodes"]),1)
         files=[c.args[0] for c in hasher.call_args_list]
-        self.assertCountEqual(files,[self.cli.LIBRARY/n for n in self.names] +
-                              [self.cli.CACHE/"text"/f"{i}.txt" for i in range(2)])
+        expected=[self.cli.LIBRARY/n for n in self.names] + [self.cli.CACHE/"text"/f"{i}.txt" for i in range(2)]
+        # The new full-source fence requires a SECOND read after ranking; this
+        # is intentional, not duplicate reads per summary node.
+        self.assertCountEqual(files,expected*2)
         self.assertEqual(result["originals_validated_for_version"],2)
+        self.assertEqual(result['final_current_summary_source_revision_check'][
+            'returned_originals_rechecked_after_summary_ranking'],2)
+        self.assertFalse(result['final_current_summary_source_revision_check'][
+            'cross_store_immutable_generation_pinned'])
 
     def test_audit_records_the_checked_revisions_for_each_selected_node(self):
         result=self.search()
@@ -468,5 +550,9 @@ class PublisherRevisionSearchTests(unittest.TestCase):
         audit=make_search_audit(query=self.query,result=result,elapsed_seconds=.1,model="test",database="test")
         logged=audit["ranked_results"][0]["matched_nodes"][0]
         self.assertEqual("publisher_and_derived_sha256_checked;summary_is_not_primary_evidence",audit["provenance_policy"])
+        self.assertEqual(1,audit["final_current_summary_source_revision_check"][
+            "returned_originals_rechecked_after_summary_ranking"])
+        self.assertFalse(audit["final_current_summary_source_revision_check"][
+            "cross_store_immutable_generation_pinned"])
         for key in ("original_sha256","derived_sha256","source_passage_sha256"):
             self.assertEqual(logged[key],node[key])

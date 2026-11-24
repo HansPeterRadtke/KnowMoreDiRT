@@ -125,6 +125,8 @@ def make_search_audit(
         "provenance_policy": policy,
         **({"source_passage_validation": result["source_passage_validation"]}
            if result and "source_passage_validation" in result else {}),
+        **({"final_current_summary_source_revision_check":result["final_current_summary_source_revision_check"]}
+           if result and "final_current_summary_source_revision_check" in result else {}),
     }
 
 
