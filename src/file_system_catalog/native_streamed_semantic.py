@@ -1,6 +1,6 @@
 """Exact-result, bounded-memory native FileDB semantic scan experiment.
 
-Uses the original KMD cosine_similarity and vector_from_blob, unchanged SQL
+Uses original KMD bit-identical scalar cosine algebra and vector_from_blob, unchanged SQL
 and source ordering, but retains ONLY the best candidate for each original
 file. This preserves existing ranking and ties while avoiding a 70k-dict
 all-candidates list. It does not replace the installed Infra semantic reader
@@ -11,7 +11,7 @@ from typing import Any
 import sqlite3
 import numpy as np
 
-from .content_pipeline import cosine_similarity, vector_from_blob
+from .content_pipeline import vector_from_blob
 from .schema import TABLE_NAME
 from .content_schema import CHUNK_TABLE_NAME, REPRESENTATION_TABLE_NAME
 
@@ -25,6 +25,17 @@ def stream_exact_native_semantic_entries(connection: sqlite3.Connection, query_v
     returns the same full ranked list (not a top-k truncation), preserving
     callers that skip unverified top candidates.
     """
+    # cosine_similarity(left, right) recomputes the unchanged L2 norm of
+    # the SAME query for every one of ~71k native candidate vectors.
+    # Retain NumPy's exact scalar dtype and multiplication order so the
+    # denominator and float scores are BIT-FOR-BIT equivalent to the legacy
+    # `float(np.linalg.norm(left)*np.linalg.norm(right))` expression.
+    query_norm=np.linalg.norm(query_vector)
+
+    def exact_current_query_score(right:np.ndarray)->float:
+        denominator=float(query_norm*np.linalg.norm(right))
+        return float(np.dot(query_vector,right)/denominator) if denominator else 0.0
+
     best: dict[str,dict[str,Any]]={}
     for row in connection.execute(
         f"""SELECT c.chunk_id,c.file_id,c.filesystem_entry_id,f.relative_path_display,f.relative_path_b64,
@@ -33,7 +44,7 @@ def stream_exact_native_semantic_entries(connection: sqlite3.Connection, query_v
         WHERE c.embedding_blob IS NOT NULL"""
     ):
         vector=vector_from_blob(row[11],int(row[9]),row[10])
-        score=cosine_similarity(query_vector,vector)
+        score=exact_current_query_score(vector)
         key=str(row[1])
         prior=best.get(key)
         # Keep the legacy STRICT > comparison. Rewriting it as <= negation
@@ -63,7 +74,7 @@ def stream_exact_native_semantic_entries(connection: sqlite3.Connection, query_v
         JOIN {TABLE_NAME} f ON f.id=c.filesystem_entry_id WHERE r.analysis_status='complete'"""
     ):
         vector=vector_from_blob(row[5],int(row[3]),row[4])
-        score=cosine_similarity(query_vector,vector)
+        score=exact_current_query_score(vector)
         key=str(row[7])
         prior=best.get(key)
         # Keep the legacy STRICT > comparison. Rewriting it as <= negation

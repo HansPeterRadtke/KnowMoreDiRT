@@ -3971,6 +3971,29 @@ exactly the same final sort/first-winner tie contract. It still returns
 *every* ranked original, because the installed source-verification reader
 may need to skip several stale/uncitable top-ranked candidates.
 
+A separate exact-score improvement now computes the unchanged current query
+vector's NumPy L2 norm **once per scan**, rather than approximately 71,000
+times. The denominator still uses precisely the legacy expression
+`float(query_norm * np.linalg.norm(candidate_vector))`; the same
+`np.dot(query_vector, candidate_vector) / denominator` conversion, zero
+vector behavior, and **strict greater-than** winner comparison are retained.
+It is a scalar operation reuse, **not** approximate vector normalization,
+ANN indexing, rounding, model-revision changes or source filtering.
+Corrupted nonfinite native vector regressions explicitly verify that NaNs
+do not displace earlier correctly scored source candidates. The complete
+read-only current native database was checked with three distinct real E5
+query embeddings: each comparison returned **exactly the same 17,715 file
+ranks, selected chunk IDs, native original IDs and float scores** and
+unchanged SQLite data version. Observed legacy/full-streamed per-scan time
+pairs were **6.617/4.189, 4.347/3.922, and 4.334/4.037 seconds**. The
+scans always ran old then new; OS cache and concurrent writer activity can
+explain part of the difference. These are evidence of successful *exactness*
+and promising CPU savings, **not a controlled claim of user-visible query
+latency reduction**. The source catalogue's repeated reads, CPU model
+startup, original physical byte SHA and SQLite revision checks still incur
+runtime. Only the optional one-shot lower-memory KMD scanner uses this
+precomputed query norm; the active Infra default is unchanged.
+
 The optional `scripts/raspi_low_memory_native_original_search.py` is a
 **one-shot, single-Python-thread** command. It temporarily substitutes only
 the process-local native-scanner function for one call to the installed Infra

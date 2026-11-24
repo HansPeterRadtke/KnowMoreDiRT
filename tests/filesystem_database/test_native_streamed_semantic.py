@@ -52,7 +52,13 @@ class StreamedExactNativeTests(unittest.TestCase):
         db=connection or self.connection
         old=search_semantic_entries(db,self.query)
         new=stream_exact_native_semantic_entries(db,self.query)
-        self.assertEqual(old,new)
+        self.assertEqual(len(old),len(new))
+        for legacy,streamed in zip(old,new):
+            self.assertEqual(set(legacy),set(streamed))
+            for key,value in legacy.items():
+                if key=='score' and np.isnan(value) and np.isnan(streamed[key]):
+                    continue  # NaN is not equal to itself, but both scores are identically non-finite.
+                self.assertEqual(value,streamed[key])
         return new
 
     def test_mixed_float16_float32_representations_file_level_order_and_chunk_identity(self):
@@ -130,6 +136,48 @@ class StreamedExactNativeTests(unittest.TestCase):
         best=self.compare()
         self.assertEqual(chunk,best[0]['chunk_id'])
         self.assertEqual('chunk',best[0]['analysis_kind'])
+
+    def test_precomputed_query_norm_preserves_exact_cosine_score_for_floats_nan_zero(self):
+        # Exercise raw float16/float32/int8 vector serialization and compare
+        # the COMPLETE native rank dictionaries, not just their top paths.
+        vectors=[self.query.copy(), np.zeros(384,dtype='<f4'),
+                 np.full(384,np.nan,dtype='<f4'),
+                 self.rng.normal(size=384).astype('<f4')]
+        for i in range(12):
+            x=vectors[i%len(vectors)]
+            y=self.rng.normal(size=384).astype('<f4')
+            self.add('docs/float-one-norm-'+str(i%4)+'.pdf',i,
+                     dtype='float16' if i%2 else 'float32',
+                     chunk_vec=x,rep_vec=y,rep_status='complete' if i%3 else 'pending')
+        self.connection.commit()
+        self.compare()
+
+    def test_reused_norm_does_not_change_query_with_float32_vs_float64(self):
+        for i in range(10):
+            self.add('docs/original-'+str(i%3)+'.html',i,
+                     dtype='float16' if i%3==0 else 'float32')
+        self.connection.commit()
+        for dtype in ('<f4','<f8'):
+            with self.subTest(dtype=dtype):
+                self.query=self.query.astype(dtype)
+                self.compare()
+
+    def test_empty_invalid_query_norm_is_legacy_compatible_not_an_undocumented_fallback(self):
+        self.add('docs/source.html',1)
+        self.connection.commit()
+        for value in (0.0,float('inf'),float('nan')):
+            # Use identical reference and alternative outcomes, including
+            # nonfinite scores, to preserve fail-closed current reader behavior.
+            q=np.zeros(384,dtype='<f4');q[0]=value
+            self.query=q
+            old=search_semantic_entries(self.connection,self.query)
+            new=stream_exact_native_semantic_entries(self.connection,self.query)
+            self.assertEqual(len(old),len(new))
+            for x,y in zip(old,new):
+                self.assertEqual(set(x),set(y))
+                for key in x:
+                    if key=='score' and np.isnan(x[key]) and np.isnan(y[key]):continue
+                    self.assertEqual(x[key],y[key])
 
     def test_empty_files_and_empty_vector_rows(self):
         self.assertEqual([],self.compare())
