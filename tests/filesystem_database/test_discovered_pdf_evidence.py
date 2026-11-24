@@ -37,7 +37,11 @@ class DiscoveredPdfEvidenceTests(unittest.TestCase):
                            ("publisher_path",Path(self.temp.name)/"paper.pdf"),
                            ("verify_pdf_page_excerpts",[{"status":"unverified","reason":"excerpt_absent"},
                                                       {"status":"verified","page":7}]),
-                           ("append_query_audit",Path(self.temp.name)/"receipt")):
+                           ("append_query_audit",Path(self.temp.name)/"receipt"),
+                           ("final_mixed_document_source_revision_guard",{
+                               "verified_source_originals_rechecked_after_combined_evidence":1,
+                               "cross_store_immutable_generation_pinned":False,
+                               "safe_to_cutover_live":False})):
             ctx=patch.object(self.cli,name,return_value=value)
             self.mocked[name]=ctx.start();self.addCleanup(ctx.stop)
     def call(self):

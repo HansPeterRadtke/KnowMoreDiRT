@@ -3353,3 +3353,48 @@ uncited and unindexed publisher-name cases still return explicitly empty
 results without calling an LLM. This is a best-effort per-request stale
 revision refusal; all legacy readers and writers must still adopt an atomic
 source-generation admission scheme before any live multistore cutover.
+
+
+### November 24 — final publisher revision check for combined evidence commands
+
+The `find-source-evidence` and `find-pdf-evidence` commands combine the
+native discovery rank with a separate original-publisher physical PDF page
+or extracted HTML/Office/RFC evidence search. The original source and its
+native FileDB ID are checked before passage/page verification, but a
+concurrent source-map extractor or FileDB writer could change a selected
+original **after** its PDF page or RFC publisher-byte proof. Both combined
+commands now run a shared *final* read-only source revision guard before
+returning any verified publisher passage. For each returned source with a
+verified passage it checks the originally selected source SHA and derivative
+revision, the completed acquisition receipt and current catalog, the latest
+source-map record, the canonical native original FileDB ID and the original
+native discovery chunk if one was used. It independently re-reads the
+complete original and current derivative bytes through the installed
+full-source SHA/identity verifier, and reopens current metadata **again**
+after those reads. An observed change refuses the whole response, with a
+bounded failure receipt in the private query audit; no unverifiable partial
+passage or invented alternate original may be emitted.
+
+The guard is limited to five selected originals and one GiB of complete
+publisher-plus-derived text per query. A larger source selection fails closed;
+use `--documents 1` or the exact `--source-name`, not an ungrounded model
+answer. Records with no independently accepted publisher evidence remain
+explicitly `no_verified_excerpt` or `source_unavailable`, and cannot acquire
+a citation simply by passing a raw vector or lexical search. In mixed-source
+search the existing private staged-PDF overlay remains an **optional,
+separate, non-production** physical source channel; its own private page
+revision proofs are not declared a live source generation.
+
+`final_current_original_source_revision_check` now appears in both combined
+reader results and the owner-private query audit. It explicitly reports
+`cross_store_immutable_generation_pinned=false` and
+`safe_to_cutover_live=false`. This is one more independent stale-citation
+refusal path, not a transaction spanning multiple database files or a green
+light to replace 327 historical PDFs, the two revised publisher HTML
+extractors, native embeddings or recursive summary trees. Synthetic negative
+tests exercise same-size original substitution, newer source-map revision,
+missing native discovery chunk, changes committed **after** the physical
+source bytes were checked, malicious relative paths and total read-budget
+exhaustion. A protected original publisher PDF and a source-linked official
+RFC were then queried through the real mixed-evidence command, preserving
+verified physical PDF page locations and exact original RFC byte intervals.

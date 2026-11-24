@@ -1290,6 +1290,93 @@ def _audit_passage_without_text(passage):
     return output
 
 
+_MIXED_SOURCE_FINAL_PHYSICAL_BUDGET = 1024*1024*1024
+
+
+def final_mixed_document_source_revision_guard(documents:list[dict], *, versions:tuple)->dict:
+    """Refuse assembled source excerpts whose original changed while composing evidence.
+
+    The preexisting publisher page/byte proof is not an immutable generation;
+    validate again after all document/overlay operations, without index writes.
+    """
+    if (not isinstance(documents,list) or len(documents)>5
+            or not isinstance(versions,tuple) or len(versions)!=3):
+        raise ValueError('mixed original-source evidence selection is unbounded')
+    manifest,ledger,sources=versions
+    selected={};total=0
+    for doc in documents:
+        if not isinstance(doc,dict):raise ValueError('invalid mixed source discovery record')
+        if doc.get('status') not in ('verified','verified_derived_text'):
+            continue  # No original passage was emitted for this record.
+        path=doc.get('original_path');entry=doc.get('filesystem_entry_id')
+        if (not isinstance(path,str) or path in selected or path not in manifest
+                or path not in ledger or path not in sources
+                or path.startswith('/') or '\\' in path or any(z in ('','.','..') for z in path.split('/'))
+                or type(entry) is not int or entry<1
+                or not isinstance(doc.get('passages'),list) or not doc['passages']):
+            raise ValueError('mixed publisher original evidence lacks unique source identity')
+        source_sha=doc.get('original_sha256');derived_sha=doc.get('derived_sha256')
+        current=sources[path];receipt=ledger[path]
+        if (source_sha!=current[1] or derived_sha!=current[2]
+                or receipt.get('status')!='complete' or receipt.get('sha256')!=source_sha
+                or type(receipt.get('bytes_received')) is not int):
+            raise ValueError('mixed publisher source-map or completed original revision differs')
+        derivative=checked_derivative_path(current[3])
+        if (total+receipt['bytes_received']+derivative.stat().st_size>
+                _MIXED_SOURCE_FINAL_PHYSICAL_BUDGET):
+            raise ValueError('mixed original publisher full-SHA proof exceeds bounded physical read budget; narrow source selection')
+        total+=receipt['bytes_received']+derivative.stat().st_size
+        selected[path]=(doc,current,receipt)
+    if not selected:
+        return {'verified_source_originals_rechecked_after_combined_evidence':0,
+                'cross_store_immutable_generation_pinned':False,
+                'safe_to_cutover_live':False}
+
+    # A later writer can change one of several selected originals while a
+    # different original is being independently PDF-page validated. Reject
+    # all returned citations if any source revision or native ID now differs.
+    def check_metadata():
+        latest_manifest,latest_ledger,latest_sources=_current_versions()
+        with sqlite3.connect(f'file:{DB.resolve()}?mode=ro',uri=True,
+                             timeout=NATIVE_READER_WAIT_SECONDS) as db:
+            db.execute('pragma query_only=ON')
+            for path,(doc,rev,receipt) in selected.items():
+                if (latest_manifest.get(path)!=manifest[path]
+                        or latest_ledger.get(path)!=receipt
+                        or latest_sources.get(path)!=rev):
+                    raise ValueError('mixed original source-map or publisher receipt changed after evidence ranking')
+                ids=db.execute("SELECT id FROM filesystem_entries WHERE entry_type='file' "
+                               "AND relative_path_display=?",(path,)).fetchall()
+                if ids!=[(doc['filesystem_entry_id'],)]:
+                    raise ValueError('mixed original native FileDB source identity changed during evidence search')
+                chunk_id=doc.get('discovery_chunk_id')
+                if chunk_id is not None:
+                    rows=db.execute("SELECT f.relative_path_display,c.content_sha256 "
+                       "FROM content_chunks c JOIN filesystem_entries f ON c.filesystem_entry_id=f.id "
+                       "WHERE c.chunk_id=?",(chunk_id,)).fetchall()
+                    if rows!=[(path,rev[1])]:
+                        raise ValueError('mixed original native discovery chunk changed after evidence search')
+    check_metadata()
+    for path,(doc,rev,receipt) in selected.items():
+        # The document-specific selector already validated any publisher
+        # acquisition URL. The final fence separately compares the current
+        # complete catalog and receipt to that exact pre-selection snapshot,
+        # then independently rehashes the publisher original and derivative.
+        source=checked_original(path)
+        if (source['original_sha256']!=rev[1] or source['derived_sha256']!=rev[2]
+                or source['original_bytes']!=receipt['bytes_received']):
+            raise ValueError('mixed original publisher full source bytes changed during evidence search')
+        proof=final_original_revision_guard(source,original_path=path,
+                                            native_file_id=doc['filesystem_entry_id'])
+        if not proof['latest_source_map_revision_and_native_file_id_rechecked']:
+            raise ValueError('mixed original source final revision proof did not complete')
+    check_metadata()
+    return {'verified_source_originals_rechecked_after_combined_evidence':len(selected),
+            'complete_original_and_derived_publisher_bytes_rehashed':total,
+            'final_source_map_native_ID_and_original_revision_checked':True,
+            'cross_store_immutable_generation_pinned':False,
+            'safe_to_cutover_live':False}
+
 def find_source_evidence(args) -> None:
     """Discover native originals or resolve one explicit named publisher source.
 
@@ -1432,6 +1519,13 @@ def find_source_evidence(args) -> None:
         "publisher_utf8_byte_intervals": publisher_byte_count,
         "extracted_text_only": derived_count - publisher_byte_count,
     }
+    try:
+        final_source_proof=final_mixed_document_source_revision_guard(documents,versions=versions)
+    except Exception as exc:
+        append_query_audit({**receipt,'success':False,
+            'operation_stage':'final_mixed_current_original_revision_check',
+            'error':f'{type(exc).__name__}: {exc}'[:290]})
+        raise
     # Both evidence and extra source-scope text are untrusted original data:
     # keep coordinate/checksum audit receipts, never actual publisher prose.
     audited = [
@@ -1449,11 +1543,13 @@ def find_source_evidence(args) -> None:
         "verified_pdf_excerpts": pdf_count,
         "verified_non_pdf_derived_excerpts": derived_count,
         "evidence_kind_counts": evidence_kind_counts, "documents": audited,
+        "final_current_original_source_revision_check":final_source_proof,
     })
     print(json.dumps({
         "query": args.query, "evidence_query": evidence_args.query,
         "selection_basis": selection_basis, "retrieval_engine": engine,
         "documents": documents,
+        "final_current_original_source_revision_check":final_source_proof,
         **({'corrected_private_publisher_page_overlay': corrected_overlay}
            if corrected_overlay is not None else {}),
         "verified_pdf_excerpts": pdf_count,
@@ -1487,12 +1583,22 @@ def find_pdf_evidence(args) -> None:
         append_query_audit({**receipt, "success": False, "error": f"{type(exc).__name__}: {exc}"[:300]})
         raise
 
+    try:
+        final_source_proof=final_mixed_document_source_revision_guard(documents,versions=versions)
+    except Exception as exc:
+        append_query_audit({**receipt,'success':False,
+            'operation_stage':'final_pdf_current_original_revision_check',
+            'error':f'{type(exc).__name__}: {exc}'[:290]})
+        raise
     count = sum(len(doc["passages"]) for doc in documents)
     audited = [{**doc, "passages": [{k: v for k, v in hit.items() if k != "source_excerpt"}
                                      for hit in doc["passages"]]} for doc in documents]
-    audit_file = append_query_audit({**receipt, "success": True, "verified_excerpts": count, "documents": audited})
+    audit_file = append_query_audit({**receipt, "success": True, "verified_excerpts": count,
+                                     "documents": audited,
+                                     "final_current_original_source_revision_check":final_source_proof})
     print(json.dumps({
         "query": args.query, "retrieval_engine": engine, "documents": documents, "verified_excerpts": count,
+        "final_current_original_source_revision_check":final_source_proof,
         "query_audit_logged": True, "private_query_audit_file": str(audit_file),
         "evidence_scope": "Documents retain their native semantic rank. Check whether the quoted text answers the question.",
     }, indent=2, ensure_ascii=False))

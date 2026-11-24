@@ -47,7 +47,11 @@ class RfcStructuralDispatchTests(TestCase):
            ("rfc_section_evidence",{"passages":self.rows,
                   "rfc_section_lookup":self.lookup,
                   "evidence_warning":"Continuation may qualify the opening"}),
-           ("append_query_audit",root/"receipt")):
+           ("append_query_audit",root/"receipt"),
+           ("final_mixed_document_source_revision_guard",{
+               "verified_source_originals_rechecked_after_combined_evidence":1,
+               "cross_store_immutable_generation_pinned":False,
+               "safe_to_cutover_live":False})):
             patch=mock.patch.object(self.cli,name,return_value=value) if name!="DB" else mock.patch.object(self.cli,name,value)
             self.mocked[name]=patch.start();self.addCleanup(patch.stop)
         for name in ("_native_passage_search","source_evidence_candidates"):

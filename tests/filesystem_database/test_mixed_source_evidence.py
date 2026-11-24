@@ -54,6 +54,10 @@ class MixedSourceEvidenceTests(unittest.TestCase):
             ("verify_pdf_page_excerpts", None),
             ("publisher_path", self.db),
             ("append_query_audit", Path(self.temp.name)/"audit"),
+            ("final_mixed_document_source_revision_guard",{
+                "verified_source_originals_rechecked_after_combined_evidence":2,
+                "cross_store_immutable_generation_pinned":False,
+                "safe_to_cutover_live":False}),
         ):
             kw = {"side_effect": self.checked} if name == "checked_original" else (
                 {"side_effect": self.candidates} if name == "source_evidence_candidates" else (
