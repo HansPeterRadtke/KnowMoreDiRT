@@ -4512,3 +4512,27 @@ actual publisher-context and answer-sufficiency on hard negative questions.
 The full evaluation evidence is private, with exact report SHA records in
 the Raspi project exchange. It must not be mistaken for a seller product,
 an authorized external publication or a source-generation live migration.
+
+
+**Continuous writer admission for the private quality evaluator:** A real
+postpublication read-only audit originally refused to complete when the
+resident native summarizers committed **another document's** index rows
+during physical SHA review. Rejecting *every* global SQLite
+`PRAGMA data_version` change made the evaluation unnecessarily unavailable
+on the always-indexing Raspi, even if none of the 284 selected originals
+changed. The quality evaluator now first captures **the exact selected
+original source-map revisions and native FileDB IDs** before hashing any
+publisher files, then checks those same selected identities during hashing
+and once again through fresh read-only SQLite connections at the end.
+Unrelated committed native/source-map rows are allowed; any **selected
+source-map SHA, derived file identity or native original ID change** still
+aborts the entire result. Synthetic real separate-connection SQLite writer
+fixtures verify both harmless new unrelated rows and harmful selected
+updates, including writes made during a long hash. The latest live-read-only
+audit passed for all 284 originals with the source-map and FileDB
+identities rechecked on both sides. **That individual live run did not
+observe a concurrent database commit**; concurrency behavior is proven by
+the injected-writer fixtures, not falsely claimed from it. This is not a
+cross-SQLite atomic generation or live migration protocol. Do not infer
+a permanent source pin from successful before/after rechecks, and retain
+the separate seven production source-cutover blockers.

@@ -95,6 +95,20 @@ def revalidate_current_source_paths(native:dict,html:dict,markdown:dict,comparis
         source.execute('PRAGMA query_only=ON');native_db.execute('PRAGMA query_only=ON')
         source_start=source.execute('PRAGMA data_version').fetchone()[0]
         native_start=native_db.execute('PRAGMA data_version').fetchone()[0]
+        # Read SELECTED source-map/native identities before beginning costly
+        # publisher byte hashing. Resident indexers are allowed to add
+        # unrelated rows while a long audit is in progress; a global
+        # `PRAGMA data_version` increase is NOT itself a stale cited source.
+        # Reject if the identity or revision of ANY selected path changes,
+        # regardless of when in the hashing loop that path was checked.
+        selected_before={}
+        for path,expected_sha in sorted(expected.items()):
+            rows=source.execute('SELECT source_sha256,derived_sha256,derived_path,status FROM originals WHERE source_path=?',(path,)).fetchall()
+            ids=native_db.execute("SELECT id FROM filesystem_entries WHERE entry_type='file' AND relative_path_display=?",(path,)).fetchall()
+            if (len(rows)!=1 or rows[0][0]!=expected_sha or rows[0][3]!='complete'
+                    or len(ids)!=1 or type(ids[0][0]) is not int or ids[0][0]<1):
+                raise ValueError('selected source-map or native FileDB identity not current before original hash evaluation')
+            selected_before[path]=(rows[0],ids[0][0])
         for path,expected_sha in sorted(expected.items()):
             item=catalog[path];receipt=ledger[path]
             if (receipt.get('status')!='complete' or receipt.get('sha256')!=expected_sha
@@ -102,8 +116,9 @@ def revalidate_current_source_paths(native:dict,html:dict,markdown:dict,comparis
                     or type(receipt.get('bytes_received')) is not int):
                 raise ValueError('approved acquisition receipt or publisher identity is not current')
             versions=source.execute('SELECT source_sha256,derived_sha256,derived_path,status FROM originals WHERE source_path=?',(path,)).fetchall()
-            if (len(versions)!=1 or versions[0][0]!=expected_sha or versions[0][3]!='complete'):
-                raise ValueError('source-map original or derived SHA version is not current')
+            if (len(versions)!=1 or versions[0]!=selected_before[path][0]
+                    or versions[0][0]!=expected_sha or versions[0][3]!='complete'):
+                raise ValueError('selected source-map original or derived revision changed during file verification')
             orig=safe_file(CORPUS,path)
             if orig.stat().st_size!=receipt['bytes_received'] or orig.stat().st_size>256*1024*1024:
                 raise ValueError('unbounded or changed publisher original size')
@@ -117,14 +132,18 @@ def revalidate_current_source_paths(native:dict,html:dict,markdown:dict,comparis
             ids=native_db.execute("SELECT id FROM filesystem_entries WHERE entry_type='file' AND relative_path_display=?",(path,)).fetchall()
             if len(ids)!=1 or type(ids[0][0]) is not int or ids[0][0]<1:
                 raise ValueError('source original missing unique current native FileDB identity')
+            if ids[0][0]!=selected_before[path][1]:
+                raise ValueError('selected original native FileDB identity changed during file verification')
             revision_map[path]=(versions[0][0],versions[0][1],versions[0][2],ids[0][0])
             totals['original_bytes_sha_read']+=orig.stat().st_size
             totals['extracted_bytes_sha_read']+=derivative.stat().st_size
             totals['native_original_IDs_verified']+=1
-        if source.execute('PRAGMA data_version').fetchone()[0]!=source_start:
-            raise ValueError('source-map changed during original source-link benchmark validation')
-        if native_db.execute('PRAGMA data_version').fetchone()[0]!=native_start:
-            raise ValueError('native original identities changed during original source-link benchmark validation')
+        source_unrelated_writes_seen=(source.execute('PRAGMA data_version').fetchone()[0]!=source_start)
+        native_unrelated_writes_seen=(native_db.execute('PRAGMA data_version').fetchone()[0]!=native_start)
+        # These global version changes may include harmless unrelated new
+        # documents. Each SELECTED path's pre/post source-map SHA and native
+        # identity are checked again in fresh connections below. The audit
+        # still does NOT claim an atomic reader lease across stores.
     if CATALOG.read_bytes()!=catalog_blob or LEDGER.read_bytes()!=ledger_blob:
         raise ValueError('approved original publisher acquisition/catalog revision changed during evaluation')
     # A fresh read-only source-map/ID handle catches committed updates after
@@ -138,7 +157,11 @@ def revalidate_current_source_paths(native:dict,html:dict,markdown:dict,comparis
             id_rows=nd.execute("SELECT id FROM filesystem_entries WHERE entry_type='file' AND relative_path_display=?",(path,)).fetchall()
             if len(current)!=1 or current[0][:3]!=old[:3] or current[0][3]!='complete' or id_rows!=[(old[3],)]:
                 raise ValueError('publisher source-map or native FileDB identity no longer current after benchmark')
-    return {'current_full_source_publisher_and_derived_sha_verified':len(expected),
+    return {'global_source_map_commits_observed_during_audit':source_unrelated_writes_seen,
+            'global_native_FileDB_commits_observed_during_audit':native_unrelated_writes_seen,
+            'selected_source_map_revision_and_native_ID_verified_before_during_and_after_all_hashes':True,
+            'unrelated_global_writer_commits_are_not_proof_of_selected_original_staleness':True,
+            'current_full_source_publisher_and_derived_sha_verified':len(expected),
             'unique_source_IDs_verified':totals['native_original_IDs_verified'],
             'input_selected_link_occurrences_verifiable':len(selected_links),
             'publisher_original_bytes_stream_SHA_read':totals['original_bytes_sha_read'],

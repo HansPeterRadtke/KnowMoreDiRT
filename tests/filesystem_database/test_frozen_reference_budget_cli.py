@@ -117,7 +117,7 @@ class PhysicalOriginalCandidateBudgetVerifierTests(unittest.TestCase):
     def test_native_identity_removed_after_link_report_is_not_certified(self):
         with sqlite3.connect(self.native) as db:
             db.execute('DELETE FROM filesystem_entries WHERE id=1')
-        with self.assertRaisesRegex(ValueError,'unique current native FileDB identity'):
+        with self.assertRaisesRegex(ValueError,'native FileDB identity not current|unique current native FileDB identity'):
             M.revalidate_current_source_paths(self.n,self.h,self.md,self.result)
 
     def test_current_source_map_revision_changed_after_frozen_benchmark_refused(self):
@@ -137,6 +137,66 @@ class PhysicalOriginalCandidateBudgetVerifierTests(unittest.TestCase):
         self.h['frozen_original_results_SHA256']='b'*64
         with self.assertRaisesRegex(ValueError,'different frozen'):
             compare_frozen_reference_budgets(self.n,self.h,self.md,native_input_sha256=sha(self.native_raw))
+
+    def test_unrelated_native_indexer_commit_does_not_stale_all_selected_current_originals(self):
+        """Resident workers continually add OTHER documents while we hash."""
+        real=M.sha_file;inserted=[False]
+        def during_hash(path):
+            result=real(path)
+            if not inserted[0]:
+                inserted[0]=True
+                with sqlite3.connect(self.native) as db:
+                    db.execute('INSERT INTO filesystem_entries VALUES (9999,?,?)',
+                               ('file','unrelated/new-indexed-later-source.html'))
+            return result
+        with mock.patch.object(M,'sha_file',side_effect=during_hash):
+            state=M.revalidate_current_source_paths(self.n,self.h,self.md,self.result)
+        self.assertTrue(inserted[0])
+        self.assertEqual(len(self.sources),state['current_full_source_publisher_and_derived_sha_verified'])
+        self.assertTrue(state['current_catalog_ledger_source_map_and_native_IDs_rechecked_after_full_hashes'])
+
+    def test_unrelated_source_extractor_commit_does_not_stale_other_completed_sources(self):
+        real=M.sha_file;inserted=[False]
+        def during_hash(path):
+            result=real(path)
+            if not inserted[0]:
+                inserted[0]=True
+                with sqlite3.connect(self.sm) as db:
+                    db.execute('INSERT INTO originals VALUES (?,?,?,?,?)',
+                        ('unrelated/just-extracted.md','c'*64,'d'*64,
+                         'unrelated/just-extracted.md.txt','complete'))
+            return result
+        with mock.patch.object(M,'sha_file',side_effect=during_hash):
+            state=M.revalidate_current_source_paths(self.n,self.h,self.md,self.result)
+        self.assertTrue(inserted[0])
+        self.assertEqual(len(self.sources),state['unique_source_IDs_verified'])
+
+    def test_selected_original_native_ID_change_during_hash_is_still_refused(self):
+        real=M.sha_file;changed=[False]
+        def during_hash(path):
+            result=real(path)
+            if not changed[0]:
+                changed[0]=True
+                with sqlite3.connect(self.native) as db:
+                    db.execute('UPDATE filesystem_entries SET id=6000 WHERE id=1')
+            return result
+        with mock.patch.object(M,'sha_file',side_effect=during_hash):
+            with self.assertRaisesRegex(ValueError,'no longer current|native FileDB identity'):
+                M.revalidate_current_source_paths(self.n,self.h,self.md,self.result)
+
+    def test_selected_original_source_map_revision_change_during_hash_refused(self):
+        real=M.sha_file;changed=[False]
+        def during_hash(path):
+            result=real(path)
+            if not changed[0]:
+                changed[0]=True
+                with sqlite3.connect(self.sm) as db:
+                    db.execute('UPDATE originals SET derived_sha256=? WHERE source_path=?',
+                      ('e'*64,next(iter(self.contents))))
+            return result
+        with mock.patch.object(M,'sha_file',side_effect=during_hash):
+            with self.assertRaisesRegex(ValueError,'no longer current|derived original contents'):
+                M.revalidate_current_source_paths(self.n,self.h,self.md,self.result)
 
     def test_external_input_and_preexisting_private_output_path_are_refused(self):
         other=self.root/'foreign.json';other.write_text('{}')
