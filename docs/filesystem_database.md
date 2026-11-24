@@ -3235,3 +3235,42 @@ native PDF source citations until that cutover has been independently
 validated with all active source consumers. Never write private recovered
 book text, raw original PDFs, page screenshots or private owner recordings
 into the Git repository.
+
+
+### November 24 — source-body evidence must survive ranked-candidate caps
+
+The two original PDF provisional-page discovery helpers and the general native
+source-evidence reader must distinguish an **FTS candidate** from a qualified
+source passage *before* applying the returned-result limit. A ranked one-term
+hit, or a title-only hit for a long paper, is not original-publisher evidence.
+The earlier fixed top-N prefilter could conceal real later physical PDF pages
+or source sections. The temporary private recovered-page index is still capped
+at 170 original PDFs, 423 replaced pages and 64 MiB of source text. Its
+strict twelve-page glyph-island helper remains separately bounded by 512
+islands; both apply query-term checks before returning the requested number
+of candidates. They never authorize a PDF repair to enter live indexes.
+
+The ordinary native **source-evidence** reader now streams ranked temporary
+FTS candidates and checks actual source-body terms until it has enough
+verified source chunks or has exhausted that one already bounded original.
+Its per-document limits and exact original/derived SHA checks remain intact;
+there is no unrestricted corpus scan or persistent search index. The public
+candidate-list `BoundedPassageIndex.search()` still accepts at most two
+thousand returned candidates; the separate streaming iterator is used by
+source-evidence to avoid treating a first-hundred title-only ranking as
+exhaustive. Closing early releases its SQLite cursor. A real source result
+still requires exact source offsets, SHA and (for a publisher PDF physical
+page citation) separate same-page original-PDF verification. Rank and exact
+term overlap alone never establish a factual answer.
+
+The red/green tests include a late page with two exact terms below many
+high-ranked one-term or title-only hits, source-specific filters, early cursor
+release, strict current source SHA, and hard-negative exclusion. Privately
+replayed checks against 170 previously staged originals and 411 provisional
+pages returned three source/page locators, only one with independent exact
+same-page corroboration; no machine-only excerpt was promoted as verified.
+A separate four-case frozen original-PDF physical-page holdout was found at
+top five in all four cases; this is bounded page recall, not comprehensive
+semantic or factual-answer evaluation. Historical corrected source-map,
+native vectors and hierarchical summaries were not replaced; the previously
+identified reader/writer/document-boundary cutover gates still apply.

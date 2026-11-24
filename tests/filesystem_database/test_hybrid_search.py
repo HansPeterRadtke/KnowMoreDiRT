@@ -74,6 +74,21 @@ class HybridSearchTest(unittest.TestCase):
             {x["source_section"] for x in result[0]["lexical_passages"]},
         )
 
+    def test_ranked_source_stream_can_close_after_first_verified_candidate(self):
+        with BoundedPassageIndex() as idx:
+            add(idx, 'original/first.pdf','PDF page 2',
+                'Source revision provenance accompanies verified original evidence.',entry_id=7)
+            add(idx, 'original/second.pdf','PDF page 9',
+                'A second original source uses revision-aware provenance.',entry_id=8)
+            stream=idx.iter_search('revision provenance')
+            first=next(stream)
+            self.assertEqual(1,first['lexical_passage_rank'])
+            self.assertTrue(first['matched_query_terms']>=2)
+            self.assertEqual('candidate_requires_source_revision_check',first['evidence_status'])
+            stream.close()  # early consumer Stop must release ephemeral cursor
+            self.assertEqual(2,len(idx.search('revision provenance',limit=2)))
+            self.assertEqual(1,len(idx.search('revision provenance',limit=1)))
+
     def test_lexical_does_not_throw_away_semantic_only_hits(self):
         semantic = [{"relative_path_display": "ai-agents/computer-use.pdf", "score": .83}]
         with BoundedPassageIndex() as idx:

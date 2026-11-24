@@ -10,6 +10,7 @@ No new persistent vector/metadata DB, no source file modification.
 from __future__ import annotations
 
 from bisect import bisect_left
+from contextlib import closing
 import hashlib
 import re
 
@@ -190,15 +191,20 @@ def _publisher_spelling_query(query: str, derived_text: str) -> tuple[str, dict[
     return replacement, aliases
 
 
-def _passage_matches(index, query, terms, *, allow_forms, limit):
-    for row in index.search(query, limit=limit, require_identifier_in_passage=True):
-        yield row, {}
+def _passage_matches(index, query, terms, *, allow_forms):
+    # Yield each exact source candidate without a pre-body-verification cap.
+    # A document title or an FTS stem is not a supporting publisher passage:
+    # the caller checks the real source body and original offsets below.
+    with closing(index.iter_search(query, require_identifier_in_passage=True)) as stream:
+        for row in stream:
+            yield row, {}
     if allow_forms:
         forms = _regular_word_forms(terms)
         alternative = " ".join(forms.get(term, term) for term in terms)
         if forms and len(alternative) <= 1000:
-            for row in index.search(alternative, limit=limit):
-                yield row, forms
+            with closing(index.iter_search(alternative)) as stream:
+                for row in stream:
+                    yield row, forms
 
 
 def _checked_scope_context(
@@ -346,85 +352,89 @@ def source_evidence_candidates(
                     derived_sha256=derived_sha256,
                 )
                 chunks+=1
-        # Oversample a small bounded group then rank by literal evidence
-        # found in the source *body*. A matched document title alone is
-        # not a supporting source passage.
+        # Stream bounded ranked source candidates until the actual publisher
+        # BODY yields enough evidence. A matching title/heading/lexical stem
+        # is not a supporting source passage; a fixed first-100 candidate cap
+        # can hide a later source page, especially in long research books.
         out = []
         accepted = set()
         unreadable_pdf_excerpts_dropped = 0
         candidates = _passage_matches(idx, effective_query, terms,
-                                      allow_forms=markdown and not identifiers,
-                                      limit=min(2000, max(100, top * 12)))
-        for item, forms in candidates:
-            passage=item["passage"]
-            marker = _UNIT_PREFIX.match(passage)
-            body_start = marker.end() if marker else 0
-            body = passage[body_start:]
-            start,end=offsets[(item["source_section"],item["passage_sha256"])]
-            if (start, end) in accepted:
-                continue
-            words = {term for term, _, _ in lexical_token_spans(body)}
-            matches = set(terms).intersection(words)
-            matched_forms = {q: form for q, form in forms.items() if form in words and q not in matches}
-            if forms and not matched_forms:
-                continue
-            if identifiers and identifiers.isdisjoint(matches):
-                continue
-            has_specific_match = identifiers or item["matched_publisher_heading_terms"]
-            if not has_specific_match and len(matches) + len(matched_forms) < min(2, len(terms)):
-                continue
-            small_start,small_end,covered=_best_excerpt(
-                body, terms + tuple(matched_forms.values()), length=snippet_characters
-            )
-            small_start += body_start
-            small_end += body_start
-            excerpt=passage[small_start:small_end]
-            identifier_words = set()
-            if matched_forms:
-                matched_forms = {q: form for q, form in matched_forms.items() if form in covered}
-                if not matched_forms:
+                                      allow_forms=markdown and not identifiers)
+        try:
+            for item, forms in candidates:
+                passage=item["passage"]
+                marker = _UNIT_PREFIX.match(passage)
+                body_start = marker.end() if marker else 0
+                body = passage[body_start:]
+                start,end=offsets[(item["source_section"],item["passage_sha256"])]
+                if (start, end) in accepted:
                     continue
-                # A morphological fallback for a multi-term question needs a second
-                # concept in the actual excerpt. Filenames can spell it inside an identifier.
-                identifier_words = set(terms).intersection(
-                    word for token, _, _ in lexical_token_spans(excerpt) if "_" in token
-                    for word in token.split("_")
+                words = {term for term, _, _ in lexical_token_spans(body)}
+                matches = set(terms).intersection(words)
+                matched_forms = {q: form for q, form in forms.items() if form in words and q not in matches}
+                if forms and not matched_forms:
+                    continue
+                if identifiers and identifiers.isdisjoint(matches):
+                    continue
+                has_specific_match = identifiers or item["matched_publisher_heading_terms"]
+                if not has_specific_match and len(matches) + len(matched_forms) < min(2, len(terms)):
+                    continue
+                small_start,small_end,covered=_best_excerpt(
+                    body, terms + tuple(matched_forms.values()), length=snippet_characters
                 )
-                exact_concepts = set(terms).intersection(covered) | identifier_words
-                if len(terms) > 1 and not exact_concepts.difference(matched_forms):
+                small_start += body_start
+                small_end += body_start
+                excerpt=passage[small_start:small_end]
+                identifier_words = set()
+                if matched_forms:
+                    matched_forms = {q: form for q, form in matched_forms.items() if form in covered}
+                    if not matched_forms:
+                        continue
+                    # A morphological fallback for a multi-term question needs a second
+                    # concept in the actual excerpt. Filenames can spell it inside an identifier.
+                    identifier_words = set(terms).intersection(
+                        word for token, _, _ in lexical_token_spans(excerpt) if "_" in token
+                        for word in token.split("_")
+                    )
+                    exact_concepts = set(terms).intersection(covered) | identifier_words
+                    if len(terms) > 1 and not exact_concepts.difference(matched_forms):
+                        continue
+                # Physical PDF verification establishes location, not readability.
+                # Reject heavily NUL-interleaved font extraction from evidence, but
+                # keep the original and derivative intact for independent inspection.
+                if original_path.casefold().endswith(".pdf") and _garbled_pdf_excerpt(excerpt):
+                    unreadable_pdf_excerpts_dropped += 1
                     continue
-            # Physical PDF verification establishes location, not readability.
-            # Reject heavily NUL-interleaved font extraction from evidence, but
-            # keep the original and derivative intact for independent inspection.
-            if original_path.casefold().endswith(".pdf") and _garbled_pdf_excerpt(excerpt):
-                unreadable_pdf_excerpts_dropped += 1
-                continue
-            accepted.add((start, end))
-            out.append({
-                "original_path":original_path,
-                "filesystem_entry_id":filesystem_entry_id,
-                "original_sha256":original_sha256,
-                "derived_sha256":derived_sha256,
-                "source_section":item["source_section"],
-                "source_start_char":start,
-                "source_end_char":end,
-                "source_span_sha256":item["passage_sha256"],
-                "excerpt_start_char":start+small_start,
-                "excerpt_end_char":start+small_end,
-                "excerpt_sha256":_sha(excerpt),
-                "source_excerpt":excerpt,
-                "lexical_bm25":item["lexical_bm25"],
-                "matched_source_terms":sorted(matches),
-                **({"matched_word_forms": matched_forms} if matched_forms else {}),
-                **({"matched_identifier_words": sorted(identifier_words)} if identifier_words else {}),
-                **({"matched_publisher_heading_terms": item["matched_publisher_heading_terms"]}
-                   if item["matched_publisher_heading_terms"] else {}),
-                "matched_excerpt_terms":list(covered),
-                "total_informative_query_terms":len(terms),
-                "status":"source_lexical_candidate_not_verified_answer",
-            })
-            if len(out)>=top:
-                break
+                accepted.add((start, end))
+                out.append({
+                    "original_path":original_path,
+                    "filesystem_entry_id":filesystem_entry_id,
+                    "original_sha256":original_sha256,
+                    "derived_sha256":derived_sha256,
+                    "source_section":item["source_section"],
+                    "source_start_char":start,
+                    "source_end_char":end,
+                    "source_span_sha256":item["passage_sha256"],
+                    "excerpt_start_char":start+small_start,
+                    "excerpt_end_char":start+small_end,
+                    "excerpt_sha256":_sha(excerpt),
+                    "source_excerpt":excerpt,
+                    "lexical_bm25":item["lexical_bm25"],
+                    "matched_source_terms":sorted(matches),
+                    **({"matched_word_forms": matched_forms} if matched_forms else {}),
+                    **({"matched_identifier_words": sorted(identifier_words)} if identifier_words else {}),
+                    **({"matched_publisher_heading_terms": item["matched_publisher_heading_terms"]}
+                       if item["matched_publisher_heading_terms"] else {}),
+                    "matched_excerpt_terms":list(covered),
+                    "total_informative_query_terms":len(terms),
+                    "status":"source_lexical_candidate_not_verified_answer",
+                })
+                if len(out)>=top:
+                    break
+        finally:
+            candidates.close()
+
     if out and publisher_text_bytes is not None:
         first = _SOURCE_UNIT.search(derived_text)
         if first and first[1] == "Original plain text":

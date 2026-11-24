@@ -44,6 +44,37 @@ class OriginalEvidenceTests(TestCase):
             "derived_sha256":self.derived,"derived_text":self.source,
         }
 
+    def test_many_title_only_pages_do_not_hide_late_real_source_body(self):
+        # A question may exactly match the publisher title on every page,
+        # while only a much later page establishes the actual source claim.
+        # An arbitrary first-100 candidate cap must not hide this page.
+        weak=('An unrelated reference describes optical materials and instrument '
+              'measurements with no target claim.\n')
+        meaningful=('pipeline provenance '+('The original experimental source passage '
+                    'discusses evidence extraction in research systems. '*80)+'\n')
+        raw=('KMD source provenance artificial test only\n'
+             +''.join(f'[[SOURCE UNIT: PDF page {page}]]\n'+weak for page in range(1,136))
+             +'[[SOURCE UNIT: PDF page 136]]\n'+meaningful)
+        expected_sha=hashlib.sha256(raw.encode()).hexdigest()
+        result=source_evidence_candidates(
+            original_path='books/large-scientific-study.pdf',
+            original_title='pipeline provenance',
+            filesystem_entry_id=42,
+            original_sha256='a'*64,
+            derived_sha256=expected_sha,
+            derived_text=raw,query='pipeline provenance',top=1,
+        )
+        self.assertEqual(136,result['source_units'])
+        self.assertEqual(1,result['returned_passages'])
+        proof=result['passages'][0]
+        self.assertEqual('PDF page 136',proof['source_section'])
+        self.assertEqual(['pipeline','provenance'],proof['matched_source_terms'])
+        self.assertEqual(raw[proof['excerpt_start_char']:proof['excerpt_end_char']],
+                         proof['source_excerpt'])
+        self.assertEqual(hashlib.sha256(proof['source_excerpt'].encode()).hexdigest(),
+                         proof['excerpt_sha256'])
+        self.assertEqual('source_lexical_candidate_not_verified_answer',proof['status'])
+
     def test_retrieves_relevant_page_and_exact_original_spans(self):
         result=source_evidence_candidates(
             **self.args,query="graphical user interface windows icons menus",top=3

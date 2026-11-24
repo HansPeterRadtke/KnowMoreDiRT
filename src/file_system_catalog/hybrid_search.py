@@ -11,6 +11,7 @@ revision and page/section mapping before using a candidate as citable evidence.
 from __future__ import annotations
 
 import hashlib
+from itertools import islice
 import math
 import re
 import sqlite3
@@ -164,39 +165,29 @@ class BoundedPassageIndex:
             "evidence_status": "candidate_requires_source_revision_check",
         }
 
-    def search(self, query: str, *, limit: int = 300, require_identifier_in_passage: bool = False) -> list[dict]:
-        """Page-level lexical candidates; lower SQLite BM25 is better.
+    def iter_search(self, query: str, *, require_identifier_in_passage: bool = False):
+        """Yield exact-term-checked candidates in BM25 order, bounded by indexed source size.
 
-        Uses parameterized FTS5 MATCH. Require at least two meaningful terms
-        for multi-term questions, so one incidental word cannot dominate.
+        The caller must exhaust or close this generator to release its SQLite
+        cursor. No result-limit prefilter may conceal a qualifying later page.
         """
         if self._closed:
             raise RuntimeError("passage index is closed")
-        if not 1 <= limit <= 2000:
-            raise ValueError("unbounded search results")
         terms = query_terms(query)
         if not terms:
-            return []
+            return
         match = " OR ".join('"' + term.replace('"', '""') + '"' for term in terms)
         identifiers = [t for t in terms if "_" in t]
         if require_identifier_in_passage and identifiers:
             identifier_match = " OR ".join('"' + t + '"' for t in identifiers)
             match = f"({match}) AND passage : ({identifier_match})"
-        # Raw BM25 rank is not enough for corpus-grounded search: a very
-        # short one-term page can precede a longer two-term source passage.
-        # Ranking first, applying LIMIT second, and THEN rejecting one-term
-        # candidates could return no results even with valid later pages.
-        # Stream the sorted FTS cursor through the exact-term evidence gate
-        # before counting accepted hits. The in-memory index is already
-        # bounded by max_passages and max_characters. Close the cursor even
-        # if iteration is stopped early; no second or persistent index exists.
         rows = self._db.execute(
             "SELECT rowid,bm25(passage_fts,6.0,0.15,1.2,1.0) "
             "FROM passage_fts WHERE passage_fts MATCH ? "
             "ORDER BY 2 ASC, rowid ASC",
             (match,),
         )
-        out = []
+        accepted_rank = 0
         try:
             for rowid, bm25 in rows:
                 item = self._metadata[rowid]
@@ -206,23 +197,37 @@ class BoundedPassageIndex:
                     for term in terms
                 )
                 heading_terms = set(terms).intersection(t for t, _, _ in lexical_token_spans(item["publisher_heading"]))
-                # The FTS passage-column constraint already requires a whole identifier.
                 specific_match = heading_terms or (require_identifier_in_passage and identifiers)
                 if not specific_match and (found < min(2, len(terms)) or (len(terms) >= 5 and found / len(terms) < 0.25)):
                     continue
-                out.append({
+                accepted_rank += 1
+                yield {
                     **item,
                     "lexical_bm25": float(bm25),
                     "matched_query_terms": found,
                     "matched_publisher_heading_terms": sorted(heading_terms),
                     "total_query_terms": len(terms),
-                    "lexical_passage_rank": len(out) + 1,
-                })
-                if len(out) >= limit:
-                    break
+                    "lexical_passage_rank": accepted_rank,
+                }
         finally:
             rows.close()
-        return out
+
+    def search(self, query: str, *, limit: int = 300, require_identifier_in_passage: bool = False) -> list[dict]:
+        """Collect at most `limit` exact-term-qualified lexical passage candidates.
+
+        Limiting is applied to accepted hits, not earlier one-term FTS rows.
+        Source-level verification may impose further filters and must stream
+        beyond this limit if it needs to find a physically supported passage.
+        """
+        if self._closed:
+            raise RuntimeError("passage index is closed")
+        if not 1 <= limit <= 2000:
+            raise ValueError("unbounded search results")
+        stream = self.iter_search(query, require_identifier_in_passage=require_identifier_in_passage)
+        try:
+            return list(islice(stream,limit))
+        finally:
+            stream.close()
 
 
 def fuse_search_candidates(
