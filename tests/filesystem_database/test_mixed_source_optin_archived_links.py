@@ -330,6 +330,67 @@ class NativeMixedArchivedReferenceTests(unittest.TestCase):
         }
         return parent,child,versions,hits,link
 
+    def test_native_discovery_provides_verified_table_columns_only_from_selected_markdown_original(self):
+        parent,child,versions,hits,_link=self._native_approved_markdown_source_fixture()
+        self.args.follow_archived_links=False
+        self.args.inspect_original_tables=True
+        table={'schema':'test-current-source-table','original_path':parent,
+               'returned_original_publisher_table_row_candidates':1,
+               'publisher_rows':[{'publisher_table_row_cells':['AI Transform node','Cloud only'],
+                                  'publisher_table_columns':['Approach','Available on']}],
+               'current_publisher_source_byte_proof_not_semantic_answer_correctness':True}
+        original_checked=self.fixture.checked
+        def checked(path,**kwargs):
+            src=original_checked(path,**kwargs)
+            return {**src,'publisher_text_bytes':b'| Approach | Available on |\n| --- | --- |\n| AI Transform node | Cloud only |\n'} if path==parent else src
+        with mock.patch.object(self.cli,'_current_versions',return_value=versions),\
+             mock.patch.object(self.cli,'_native_passage_search',return_value={'results':hits}),\
+             mock.patch.object(self.cli,'checked_original',side_effect=checked),\
+             mock.patch.object(self.cli,'verified_original_markdown_table_rows',return_value=table) as table_reader:
+            result=self.invoke_once()
+        self.assertEqual([parent,self.fixture.paths['pdf']],[x['original_path'] for x in result['documents']])
+        self.assertEqual([1,2],[x['rank'] for x in result['documents']])
+        tables=result['optional_original_markdown_table_evidence']
+        self.assertEqual(1,tables['original_markdown_documents_inspected'])
+        self.assertEqual(1,tables['original_publisher_table_row_candidates'])
+        self.assertTrue(tables['native_ranked_documents_unchanged'])
+        self.assertEqual(parent,tables['originals'][0]['original_path'])
+        self.assertEqual(table,tables['originals'][0]['original_firstparty_markdown_table_evidence'])
+        table_reader.assert_called_once()
+        self.assertEqual(parent,table_reader.call_args.kwargs['original_path'])
+        self.assertEqual(2,table_reader.call_args.kwargs['top'])
+        audit=self.fixture.mocks['append_query_audit'].call_args.args[0]
+        self.assertEqual(1,audit['opt_in_original_markdown_table_evidence_counts']['original_table_row_candidates'])
+        self.assertNotIn('Cloud only',str(audit))
+
+    def test_optional_markdown_tables_do_not_reinterpret_HTML_or_PDF_as_table_proofs(self):
+        self.args.follow_archived_links=False
+        self.args.inspect_original_tables=True
+        with mock.patch.object(self.cli,'verified_original_markdown_table_rows',
+                               side_effect=AssertionError('no Markdown source selected')) as reader:
+            result=self.invoke_once()
+        reader.assert_not_called()
+        self.assertEqual(0,result['optional_original_markdown_table_evidence']['original_markdown_documents_inspected'])
+        self.assertEqual(0,result['optional_original_markdown_table_evidence']['original_publisher_table_row_candidates'])
+        self.assertEqual([1,2],[x['rank'] for x in result['documents']])
+
+    def test_optional_original_table_reader_SHA_mutation_fails_whole_native_result(self):
+        parent,child,versions,hits,_link=self._native_approved_markdown_source_fixture()
+        self.args.follow_archived_links=False
+        self.args.inspect_original_tables=True
+        original_checked=self.fixture.checked
+        def checked(path,**kwargs):
+            src=original_checked(path,**kwargs)
+            return {**src,'publisher_text_bytes':b'| Table | Source |'} if path==parent else src
+        with mock.patch.object(self.cli,'_current_versions',return_value=versions),\
+             mock.patch.object(self.cli,'_native_passage_search',return_value={'results':hits}),\
+             mock.patch.object(self.cli,'checked_original',side_effect=checked),\
+             mock.patch.object(self.cli,'verified_original_markdown_table_rows',
+                side_effect=ValueError('original published table row SHA changed')):
+            with self.assertRaisesRegex(ValueError,'original published table row SHA changed'):
+                self.invoke_once()
+        self.assertFalse(self.fixture.mocks['append_query_audit'].call_args.args[0]['success'])
+
     def test_native_selected_markdown_adds_separate_publisher_original_byte_evidence(self):
         parent,child,versions,hits,link=self._native_approved_markdown_source_fixture()
         self.args.linked_originals=2

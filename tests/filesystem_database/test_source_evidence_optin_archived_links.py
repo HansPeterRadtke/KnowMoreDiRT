@@ -147,6 +147,49 @@ class OptionalMainOriginalArchivedLinkTests(TestCase):
         self.assertNotIn('Evidence in archived source.',str(self.audit.call_args.args[0]))
         self.assertEqual(self.link_result,result['linked_archived_original_references'])
 
+    def test_direct_verified_original_markdown_table_proof_is_optional_and_keeps_passages(self):
+        self._switch_to_markdown_original()
+        self.args.follow_archived_links=False
+        self.args.inspect_original_tables=True
+        self.source['publisher_text_bytes']=b'# Original firstparty source\n| Approach | Available |\n| --- | --- |\n| AI Transform node | Cloud only |\n'
+        table={'original_path':self.rel,'original_sha256':'a'*64,
+           'returned_original_publisher_table_row_candidates':1,
+           'publisher_rows':[{'publisher_table_row_cells':['AI Transform node','Cloud only'],
+                              'publisher_table_columns':['Approach','Available'],
+                              'publisher_row_original_SHA256':'f'*64}],
+           'current_publisher_source_byte_proof_not_semantic_answer_correctness':True}
+        with mock.patch.object(self.kmd,'verified_original_markdown_table_rows',return_value=table) as reader:
+            result=self.run_query()
+        self.assertEqual(table,result['optional_original_markdown_table_evidence'])
+        self.assertEqual([],result['passages'])
+        reader.assert_called_once()
+        self.assertEqual(self.rel,reader.call_args.kwargs['original_path'])
+        self.assertEqual(self.source['publisher_text_bytes'],reader.call_args.kwargs['publisher_text_bytes'])
+        self.assertEqual(3,reader.call_args.kwargs['filesystem_entry_id'])
+        audit=self.audit.call_args.args[0]
+        self.assertEqual(1,audit['optional_original_table_evidence_counts']['publisher_table_row_candidates'])
+        self.assertNotIn('Cloud only',str(audit))
+        self.links.assert_not_called()
+
+    def test_HTML_source_cannot_be_cited_as_a_markdown_publisher_table(self):
+        self.args.follow_archived_links=False
+        self.args.inspect_original_tables=True
+        with mock.patch.object(self.kmd,'verified_original_markdown_table_rows',
+                               side_effect=AssertionError('wrong source type')) as reader:
+            with self.assertRaisesRegex(ValueError,'requires one verified UTF-8 Markdown original'):
+                self.kmd.original_source_evidence(self.args)
+        reader.assert_not_called()
+        self.assertFalse(self.audit.call_args.args[0]['success'])
+
+    def test_table_option_does_not_alter_original_default_source_response(self):
+        self.args.follow_archived_links=False
+        with mock.patch.object(self.kmd,'verified_original_markdown_table_rows',
+                               side_effect=AssertionError('optin disabled')) as reader:
+            result=self.run_query()
+        self.assertNotIn('optional_original_markdown_table_evidence',result)
+        self.assertNotIn('optional_original_table_evidence_counts',self.audit.call_args.args[0])
+        reader.assert_not_called()
+
     def test_without_structural_flag_default_direct_source_audit_unmodified(self):
         self.args.follow_archived_links=False
         with mock.patch.object(self.kmd,'review_source_documents',side_effect=AssertionError('optin only')) as review:

@@ -46,6 +46,7 @@ from file_system_catalog.summary_search_batched import (
     search_summary_entries_batched, has_native_summary_candidates,
 )
 from file_system_catalog.source_evidence import source_evidence_candidates
+from file_system_catalog.source_markdown_tables import verified_original_markdown_table_rows
 from file_system_catalog.source_passage_utility import review_source_documents,review_verified_linked_originals
 from file_system_catalog.named_source import resolve_source_name
 from file_system_catalog.publication_identifier import publication_receipt_matches
@@ -1688,6 +1689,48 @@ def find_source_evidence(args) -> None:
                 'error':f'{type(exc).__name__}: {exc}'[:250]})
             raise
 
+    # Optional publisher-original table-row evidence is a separate bounded
+    # source structure channel. A wide Markdown table can contain an exact
+    # answer column that a normal source excerpt crops. Do NOT promote table
+    # rows to documents, replace the original ranked passages, or infer truth.
+    selected_original_tables=None
+    try:
+        if getattr(args,'inspect_original_tables',False):
+            inspected=[]
+            for document in documents:
+                original_path=document['original_path']
+                if document.get('source_kind')!='text' or Path(original_path).suffix.casefold() not in ('.md','.markdown'):
+                    continue
+                entry=checked_original(original_path,include_publisher_text=True)
+                if (entry['original_sha256']!=document.get('original_sha256')
+                        or entry['derived_sha256']!=document.get('derived_sha256')
+                        or not isinstance(entry.get('publisher_text_bytes'),bytes)):
+                    raise ValueError('native selected Markdown table source differs from the SHA-verified selected original')
+                table=verified_original_markdown_table_rows(
+                    query=evidence_args.query,original_path=original_path,
+                    original_sha256=entry['original_sha256'],
+                    derived_sha256=entry['derived_sha256'],
+                    derived_text=entry['derived_text'],
+                    publisher_text_bytes=entry['publisher_text_bytes'],
+                    filesystem_entry_id=document['filesystem_entry_id'],top=2)
+                inspected.append({'native_original_rank_not_changed':document['rank'],
+                                  'original_path':original_path,
+                                  'original_firstparty_markdown_table_evidence':table})
+            selected_original_tables={
+                'schema':'kmd.optin_native_ranked_original_markdown_tables.v1',
+                'original_source_documents_selected_before_table_lookup':len(documents),
+                'original_markdown_documents_inspected':len(inspected),
+                'original_publisher_table_row_candidates':sum(x['original_firstparty_markdown_table_evidence']['returned_original_publisher_table_row_candidates'] for x in inspected),
+                'native_ranked_documents_unchanged':True,
+                'publisher_table_rows_separate_from_source_passage_output':True,
+                'no_additional_original_document_discovery_or_search_rerank':True,
+                'not_automatic_factual_entailment_or_answer_truth':True,
+                'originals':inspected}
+    except Exception as exc:
+        append_query_audit({**receipt,'success':False,
+            'operation_stage':'opt_in_current_original_markdown_table_byte_proof',
+            'error':f'{type(exc).__name__}: {exc}'[:280]})
+        raise
     # Document order is the native ranking for generic queries; for explicit
     # name selection rank 1 means one catalog choice, not a measured similarity.
     for doc in documents:
@@ -1739,6 +1782,10 @@ def find_source_evidence(args) -> None:
             (corrected_overlay['publisher_verified_corrected_passages']
              if corrected_overlay is not None else 0),
         "evidence_query": evidence_args.query,
+        **({'opt_in_original_markdown_table_evidence_counts':{
+            'inspected_native_originals':selected_original_tables['original_markdown_documents_inspected'],
+            'original_table_row_candidates':selected_original_tables['original_publisher_table_row_candidates'],
+            'not_verified_answer':True}} if selected_original_tables is not None else {}),
         **({"opt_in_archived_original_references": {
             "selected_native_parent_originals": [p['parent_original_path'] for p in linked_archive['parents']],
             "linked_original_sources_checked":linked_archive['linked_original_sources_checked'],
@@ -1768,6 +1815,8 @@ def find_source_evidence(args) -> None:
         "query": args.query, "evidence_query": evidence_args.query,
         "selection_basis": selection_basis, "retrieval_engine": engine,
         "documents": documents,
+        **({'optional_original_markdown_table_evidence':selected_original_tables}
+           if selected_original_tables is not None else {}),
         **({'opt_in_archived_original_reference_navigation':linked_archive}
            if linked_archive is not None else {}),
         "final_current_original_source_revision_check":final_source_proof,
@@ -1877,6 +1926,9 @@ def original_source_evidence(args) -> None:
             raise ValueError("invalid bounded requested source passage count")
         if getattr(args,'assess_passage_utility',False) and (args.top>5 or cursor is not None):
             raise ValueError('optional structural source review requires at most five original passages and no RFC continuation')
+        if getattr(args,'inspect_original_tables',False) and (
+                cursor is not None or args.top>5):
+            raise ValueError('optional original Markdown table evidence requires at most five original passages and no RFC continuation')
         if original_path is None:
             explicit_name = getattr(args, "source_name", None)
             manifest = _unique_path_records(json.loads(SOURCES.read_text())["sources"])
@@ -1919,6 +1971,16 @@ def original_source_evidence(args) -> None:
         else:
             result = _original_passages({**source, "original_path": original_path}, int(row[0]), evidence_query,
                                         args.top, args.snippet_characters)
+        if getattr(args,'inspect_original_tables',False):
+            if (Path(original_path).suffix.casefold() not in ('.md','.markdown')
+                    or not isinstance(source.get('publisher_text_bytes'),bytes)):
+                raise ValueError('original publisher table inspection requires one verified UTF-8 Markdown original')
+            result['optional_original_markdown_table_evidence']=verified_original_markdown_table_rows(
+                query=evidence_query,original_path=original_path,
+                original_sha256=source['original_sha256'],
+                derived_sha256=source['derived_sha256'],derived_text=source['derived_text'],
+                publisher_text_bytes=source['publisher_text_bytes'],
+                filesystem_entry_id=int(row[0]),top=min(3,args.top))
         if Path(original_path).suffix.casefold() == ".pdf":
             hits = result["passages"]
             proofs = verify_pdf_page_excerpts(publisher_path(original_path), source["original_sha256"], hits)
@@ -1986,6 +2048,10 @@ def original_source_evidence(args) -> None:
         **({"rfc_section_lookup":result["rfc_section_lookup"]} if "rfc_section_lookup" in result else {}),
         "duration_seconds":round(time.monotonic()-started,3),
         **({"pdf_page_verification": result["pdf_page_verification"]} if "pdf_page_verification" in result else {}),
+        **({'optional_original_table_evidence_counts':{
+            'publisher_table_row_candidates':result['optional_original_markdown_table_evidence']['returned_original_publisher_table_row_candidates'],
+            'publisher_table_not_answer_verification':True}}
+            if 'optional_original_markdown_table_evidence' in result else {}),
         **({'optional_source_passage_utility_counts':{
             'reviewed_candidates':result['optional_source_passage_utility_review']['reviewed_publisher_excerpt_candidates'],
             'navigation_or_prompt_candidates':result['optional_source_passage_utility_review']['navigation_or_prompt_template_candidates'],
@@ -2162,6 +2228,8 @@ def main():
     evidence.add_argument("--snippet-characters",type=int,default=900)
     evidence.add_argument("--assess-passage-utility",action="store_true",
         help="Opt-in structural warnings for navigation-only or quoted prompt passages; never score factual correctness or change source rank")
+    evidence.add_argument("--inspect-original-tables",action="store_true",
+        help="Opt-in source-byte verified rows and column names from one current Markdown original, separate from normal excerpts; never infer answer truth")
     evidence.add_argument("--follow-archived-links",action="store_true",
         help="Optional official first-party links from one original HTML article or Markdown publisher file into already archived source evidence; source candidates remain separate from answers")
     evidence.add_argument("--linked-originals",type=int,default=3,
@@ -2187,6 +2255,8 @@ def main():
     mixed.add_argument("--snippet-characters", type=int, default=1600)
     mixed.add_argument("--assess-passage-utility",action="store_true",
         help="Opt-in conservative structural diagnostics for original passage candidates, without changing source ranking or claiming answer sufficiency")
+    mixed.add_argument("--inspect-original-tables",action="store_true",
+        help="Opt-in exact publisher-byte Markdown table rows and column headings for native-selected originals; retain original ranks and excerpts")
     mixed.add_argument("--scope-context-characters", type=int, default=320,
                        help="Bounded original-derived opening/neighbor context per excerpt (0 or 80–600); no physical-page claim")
     mixed.add_argument("--continue-section", metavar="CURSOR",

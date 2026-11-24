@@ -4655,3 +4655,131 @@ verified original n8n retrieval proved **identical** native document ranks,
 all four linked original identities and their full publisher source
 passages. The optional cautions are source-reading aids, not a ranking or
 factual-answer verdict.
+
+
+### November 24 — exact publisher Markdown table cells restore cropped answer evidence without changing native ranks
+
+A reproducible **answer-evidence** gap (not a document-discovery gap)
+was confirmed in the already approved, archived first-party n8n source
+*Expressions versus data nodes*. The ordinary native `find-source-evidence`
+query **“Is the AI Transform node available to self-hosted n8n workflows?”**
+ranks that correct original **first**, but its two extracted-text excerpts
+omit the original table cell **“Available on: Cloud only”**. Even expanding
+normal passage retrieval to the first five excerpts does not include the
+cell, because the relevance excerpt is truncated before the row, while
+the paragraph about the AI Transform node separately lacks its platform
+restriction. Source authenticity and native ranking were correct; the
+missing answer lay in a **structured publisher table**.
+
+New read-only `file_system_catalog.source_markdown_tables` and opt-in
+`--inspect-original-tables` on BOTH existing commands,
+`raspi_hierarchical_library.py source-evidence` and
+`find-source-evidence`, provide a separate **exact publisher-table
+source-evidence channel**. They parse bounded plain original Markdown
+pipe tables with original header and all column names, strict row shape,
+current complete first-party acquisition SHA, full current derived SHA,
+unique native FileDB original ID, exact UTF-8 original **header and row
+byte coordinates and SHA**, and independently checked derivative row
+character coordinates and SHA. The existing native source revision guard
+runs after lookup and refuses observed source-map or native-ID changes.
+In `find-source-evidence`, only already native-selected Markdown
+originals are inspected, up to five documents and **two** source rows per
+document; **native document ranks and the original passage excerpts
+remain unchanged**. Direct named original requests admit at most three
+row candidates. The optional audit logs **counts only** and never the
+publisher row/quote text; on a read or revision failure, the complete
+request fails and the safe private audit records the stage. No model,
+network retrieval, source downloading or original database write occurs.
+
+The row selector checks literal query words against **publisher column
+names**, the **first column identifying the subject**, the source section
+heading and the full row, retaining the publisher original row coordinates.
+A longer exact multi-word subject phrase wins over coincidental matches
+of a product name in another row. This is a **candidate ordering** for a
+bounded separate source channel, not an entailment or correctness score.
+For ambiguous tables, source heading context is preserved; heading words
+are used for selection but are not confused with quoted row evidence.
+Fenced Markdown code, indented code, HTML comments, unescaped/ambiguous
+pipe syntax, malformed column separators, duplicate derivative row spans
+and unrecognized table shapes fail closed or are ignored. No source
+header/row is synthesized from another document.
+
+Three **real already archived originals** independently verify the need:
+
+1. **n8n — Expressions versus data nodes:** The first native-ranked
+   document's physically source-SHA-checked table row has columns
+   *Approach*, *Use when you need to...*, *Examples*, *Available on*.
+   The **AI Transform node** row has *Cloud only*, whereas the **Code node**
+   row has *Cloud and Self-hosted*. These are the **acquired publisher
+   snapshot's own values**, not a separately checked live product
+   subscription or feature policy. The original two normal excerpts
+   still do not include the critical *Cloud only* cell; the new
+   optional source row does, with current original and derived SHA.
+2. **MaterialX physically based rendering specification:** The question
+   asking for the mathematical **surface-normal symbol** must not be
+   answered by an unrelated shader input *Port* named `normal`. The
+   original table under *Physical Material Model / Scattering Framework /
+   Symbols* contains the exact *Symbol* → **`$n$`**, *Description* →
+   *Unit surface normal vector at `$p$`* relationship. The first table
+   parser had selected a different but equally genuine `normal` input
+   port row. Comparing **table column headings and original section
+   context** fixed the ambiguity; current original-byte table header,
+   source row and native FileDB SHA/provenance were independently checked.
+3. **n8n — Use metrics to measure quality:** A question about the
+   **Self-hosted Business** plan's maximum parallel test cases must not
+   be answered using the adjacent *Self-hosted Community, n8n Cloud Pro*
+   plan. The archived publisher table has **Self-hosted Business → 3**
+   and **Community/Cloud Pro → 1 (sequential)**. An initial row selector
+   mixed these up when generic *n8n* and *self-hosted* terms tied; matching
+   the longer literal **`self-hosted Business`** first-column subject
+   phrase corrected the result. All row bytes and headings remain
+   source-verbatim, without silently accepting other plan terms.
+
+A **predeclared private twenty-case** original-grounded retrieval study
+uses **seven** exact original n8n sources and manual source-claim labels:
+**twelve supported claims, six refuted claims and two deliberately
+unsupported questions**. For each answerable case, the reviewer chose
+one exact original-publisher phrase, bounded by the approved original
+full SHA and byte coordinates **before** scoring retrieval. The prior
+fixed **two source-excerpt slots** contained the requisite publisher
+quote in **17/18** answerable cases, including **12/12 supported** and
+**5/6 refuted**. The new **additional opt-in table** channel supplies
+that one missing source quote: **18/18** in this deliberately narrow
+sample, without changing those two normal passages, native ranks or
+publisher citations. The unsupported questions have no manually
+attested answer quote; merely retrieving other words from an original
+**never establishes** an answer. These twenty manual examples were
+chosen after inspecting official sources, and are **not** a pristine
+independent unseen holdout. The table channel adds extra evidence beyond
+the two passage slots, so the observed quote recovery is **not an
+identical-budget top-two passage ranking gain**. Nor does including a
+quoted original cell prove that a generated answer interprets negation,
+version scope, plan eligibility or scientific claims correctly.
+
+Reproduce a current source-verified example without changing live search:
+
+```sh
+cd /data/src/github/KnowMoreDiRT
+PYTHONPATH=src /data/var/knowmoredirt/semantic-venv/bin/python \
+  scripts/raspi_hierarchical_library.py find-source-evidence \
+  'Is the AI Transform node available to self-hosted n8n workflows?' \
+  --documents 3 --passages 2 --snippet-characters 850 \
+  --inspect-original-tables
+
+PYTHONPATH=src /data/var/knowmoredirt/semantic-venv/bin/python \
+  scripts/raspi_hierarchical_library.py source-evidence \
+  'Which MaterialX PBR symbol represents the unit surface normal vector at p?' \
+  --original-path 'graphics/materials-color/materialx-pbr-spec.md' \
+  --top 2 --inspect-original-tables
+```
+
+The existing default source-evidence path is unchanged without the
+explicit flag. Ordinary folder, grep, native semantic result ranking,
+HTML normalized article evidence, PDF **physical publisher page** checks
+and background indexing continue independently. Do not extend this
+source-verbatim Markdown table candidate policy to silent source
+summarization or automatic fact claims without stronger independent
+negative-scope and edition/version evaluation. This is a private,
+working **retrieval and original-source quoting** improvement, not an
+authorized production PDF/HTML generation cutover; all seven cross-store
+reader/writer migration blockers remain.
