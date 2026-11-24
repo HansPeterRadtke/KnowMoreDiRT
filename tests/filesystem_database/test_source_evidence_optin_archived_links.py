@@ -15,6 +15,7 @@ sys.path.insert(0,str(Path(__file__).resolve().parents[2]/"scripts"))
 
 from test_source_evidence import cli
 import raspi_archived_html_follow_links as linked
+import raspi_archived_markdown_follow_links as markdown_linked
 
 
 class OptionalMainOriginalArchivedLinkTests(TestCase):
@@ -131,6 +132,69 @@ class OptionalMainOriginalArchivedLinkTests(TestCase):
         receipt=self.audit.call_args.args[0]
         self.assertFalse(receipt['success'])
         self.assertIn('linked child current original SHA changed',receipt['error'])
+
+    def _switch_to_markdown_original(self):
+        prev=self.rel
+        self.rel='docs/official-overview.md'
+        self.args.original_path=self.rel
+        self.source['original_path']=self.rel
+        with sqlite3.connect(self.db) as db:
+            db.execute('UPDATE filesystem_entries SET relative_path_display=? WHERE relative_path_display=?',
+                       (self.rel,prev))
+        self.patched[2].return_value={
+            'original_path':self.rel,'original_sha256':'a'*64,
+            'derived_sha256':'b'*64,'passages':[],'returned_passages':0,
+            'evidence_warning':'No direct matching publisher passage in the selected overview.'}
+
+    def test_main_source_evidence_direct_markdown_firstparty_link_navigation_has_distinct_byte_proof(self):
+        self._switch_to_markdown_original()
+        self.args.exact_link_text='Transform data'
+        selected={'linked_original_sources_checked':1,
+           'independently_publisher_original_plaintext_byte_attested_passages':2,
+           'parent_original_Markdown_literal_byte_link_proof':{
+                'missing_or_unapproved_official_reference_count':1},
+           'linked_approved_current_original_sources':[{'original_path':'docs/transform-data.md',
+               'passage_candidates':[{'publisher_plaintext_byte_interval_independently_SHA_verified':True,
+                                      'factual_answer_sufficiency_verified':False}]}],
+           'safe_to_cutover_live':False}
+        with mock.patch.object(markdown_linked,'follow_current_archived_markdown_references',return_value=selected) as md:
+            result=self.run_query()
+        self.assertEqual(0,result['returned_passages'])
+        self.assertEqual(selected,result['linked_archived_original_references'])
+        self.assertEqual(1,md.call_count)
+        self.assertEqual(self.rel,md.call_args.args[0])
+        self.assertEqual('Transform data',md.call_args.kwargs['exact_link_text'])
+        audit=self.audit.call_args.args[0]['opt_in_archived_reference_follow']
+        self.assertEqual(0,audit['verified_publisher_HTML_article_candidate_passages'])
+        self.assertEqual(2,audit['independently_publisher_original_plaintext_byte_attested_passages'])
+        self.assertEqual(['docs/transform-data.md'],audit['candidate_original_paths'])
+        self.assertEqual(1,audit['missing_unapproved_original_reference_count'])
+        self.links.assert_not_called()
+
+    def test_explicit_markdown_navigation_without_optin_or_on_HTML_refuses(self):
+        self.args.follow_archived_links=False
+        self.args.exact_link_text='Transform data'
+        with self.assertRaisesRegex(ValueError,'requires explicit --follow-archived-links'):
+            self.run_query()
+        self.args.follow_archived_links=True
+        with self.assertRaisesRegex(ValueError,'only supported for original Markdown'):
+            self.run_query()
+        self.links.assert_not_called()
+
+    def test_markdown_source_nonexistent_exact_link_does_not_fabricate_relevance(self):
+        self._switch_to_markdown_original()
+        self.args.exact_link_text='Nonexistent official publication'
+        result_data={'linked_original_sources_checked':0,
+          'independently_publisher_original_plaintext_byte_attested_passages':0,
+          'parent_original_Markdown_literal_byte_link_proof':{
+             'missing_or_unapproved_official_reference_count':0},
+          'linked_approved_current_original_sources':[],
+          'safe_to_cutover_live':False}
+        with mock.patch.object(markdown_linked,'follow_current_archived_markdown_references',return_value=result_data):
+            result=self.run_query()
+        self.assertEqual(0,result['linked_archived_original_references']['linked_original_sources_checked'])
+        self.assertEqual([],result['linked_archived_original_references']['linked_approved_current_original_sources'])
+        self.assertEqual(0,self.audit.call_args.args[0]['opt_in_archived_reference_follow']['linked_originals_checked'])
 
     def test_invalid_html_topic_without_query_terms_yields_source_error_not_fabricated_result(self):
         self.links.return_value={**self.link_result,

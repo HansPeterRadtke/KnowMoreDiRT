@@ -1784,16 +1784,28 @@ def _optional_verified_archived_links(args, *, original_path:str, evidence_query
     The separate linked-reader rechecks current parent/destination source and
     native identities after building its candidates. No external downloads.
     """
+    exact_name=getattr(args,'exact_link_text',None)
     if not getattr(args, 'follow_archived_links', False):
+        if exact_name is not None:
+            raise ValueError('--exact-link-text requires explicit --follow-archived-links')
         return None
     limit=getattr(args,'linked_originals',3)
+    suffix=Path(original_path).suffix.casefold()
     if (type(limit) is not int or not 1<=limit<=5
             or continuation_cursor is not None
-            or Path(original_path).suffix.casefold() not in ('.html','.htm')
+            or suffix not in ('.html','.htm','.md')
             or not isinstance(evidence_query,str) or not 1<=len(evidence_query)<=300):
-        raise ValueError('archived source following requires one HTML original, no continuation, and 1-5 linked originals')
-    # The wrapper lives in the same repo and uses the current native reader;
-    # import only on explicit invocation to preserve existing runtime behavior.
+        raise ValueError('archived source following requires one HTML/Markdown original, no continuation, and 1-5 linked originals')
+    # Import only on explicit invocation. Plain Markdown has literal publisher
+    # original byte intervals, unlike HTML's independently normalized DOM.
+    if suffix=='.md':
+        from raspi_archived_markdown_follow_links import follow_current_archived_markdown_references
+        return follow_current_archived_markdown_references(
+            original_path,evidence_query,limit=limit,
+            passages=min(2,args.top),snippet_characters=args.snippet_characters,
+            exact_link_text=exact_name)
+    if exact_name is not None:
+        raise ValueError('exact first-party link text navigation is only supported for original Markdown')
     from raspi_archived_html_follow_links import find_archived_linked_source_passages
     return find_archived_linked_source_passages(
         original_path,evidence_query,limit=limit,
@@ -1914,10 +1926,16 @@ def original_source_evidence(args) -> None:
         **({"pdf_page_verification": result["pdf_page_verification"]} if "pdf_page_verification" in result else {}),
         **({"opt_in_archived_reference_follow": {
             "linked_originals_checked": linked['linked_original_sources_checked'],
-            "verified_publisher_HTML_article_candidate_passages":linked['publisher_original_article_evidence_passages'],
-            "missing_unapproved_original_reference_count":
-                linked['parent_original_HTML_article_link_proof']['same_origin_relevant_unarchived_or_unapproved_references'],
-            "candidate_original_paths": [x['original_path'] for x in linked['linked_existing_original_sources']],
+            "verified_publisher_HTML_article_candidate_passages":linked.get('publisher_original_article_evidence_passages',0),
+            "independently_publisher_original_plaintext_byte_attested_passages":
+                linked.get('independently_publisher_original_plaintext_byte_attested_passages',0),
+            "missing_unapproved_original_reference_count":(
+                linked['parent_original_HTML_article_link_proof']['same_origin_relevant_unarchived_or_unapproved_references']
+                if 'parent_original_HTML_article_link_proof' in linked else
+                linked['parent_original_Markdown_literal_byte_link_proof']['missing_or_unapproved_official_reference_count']),
+            "candidate_original_paths": [x['original_path'] for x in
+                linked.get('linked_existing_original_sources',
+                           linked.get('linked_approved_current_original_sources',[]))],
             "not_a_verified_answer": True,
         }} if linked is not None else {}),
         "ranked_source_spans":[{
@@ -2070,9 +2088,11 @@ def main():
     evidence.add_argument("--top",type=int,default=5)
     evidence.add_argument("--snippet-characters",type=int,default=900)
     evidence.add_argument("--follow-archived-links",action="store_true",
-        help="Optional same-publisher HTML article references into already archived original sources, plus clearly marked missing references; requires one selected HTML original")
+        help="Optional official first-party links from one original HTML article or Markdown publisher file into already archived source evidence; source candidates remain separate from answers")
     evidence.add_argument("--linked-originals",type=int,default=3,
         help="At most this many independently checked linked archived originals (1-5; only with --follow-archived-links)")
+    evidence.add_argument("--exact-link-text",
+        help="Optional exact publisher Markdown link label, for navigation without a semantic relevance claim; requires --follow-archived-links and one .md source")
     mixed = sub.add_parser(
         "find-source-evidence",
         help="Find native originals with physically verified PDF or SHA-linked non-PDF excerpts",

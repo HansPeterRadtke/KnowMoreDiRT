@@ -4215,3 +4215,97 @@ writers can affect them. Source link navigation remains opt-in and exposes
 explicit unarchived/unapproved gaps without inventing destination content.
 The full original excerpt and native ID verification still runs for each
 actual user-facing linked source candidate.
+
+
+### November 24 — verified first-party Markdown source navigation and original literal publisher bytes
+
+The offline library now treats **already archived first-party Markdown**
+source links as verifiable publisher evidence, not just HTML `article`
+links. This closes an actual source-discovery gap for first-party n8n,
+agent-automation and technical documentation stored as `.md` originals.
+The new read-only `archived_markdown_source_links.py` extracts only bounded,
+ordinary inline `[label](href)` links from the **full-original-SHA-verified
+publisher UTF-8 bytes**, excluding fenced/indented/inline code, Markdown
+images, cross-origin links, non-HTTPS URLs and ambiguous or uncompleted
+archive entries. Each candidate identifies the exact **literal Markdown
+source link byte start/end** and independent SHA of that original byte
+interval, and its unique HTTPS same-origin URL, current catalogued target
+and completed acquisition receipt. A missing or incomplete publisher link
+is explicitly marked **not available** and never fetched or quoted. This
+is **not** a Markdown or HTML general-purpose renderer: unsupported nested
+links/reference syntax are excluded rather than guessed.
+
+The companion `scripts/raspi_archived_markdown_follow_links.py` follows at
+most **five** approved same-origin links from one explicitly selected,
+verified `.md` parent. It independently rechecks each target's complete
+publisher original SHA, derived text SHA and native KnowMoreDiRT FileDB ID,
+and ranks only **source-passage candidates** within the already acquired
+target. For native original plain text, the reader independently verifies
+the returned passage's exact **publisher UTF-8 original-byte interval**,
+in addition to the current extracted-text char offsets and SHA. Publisher
+Markdown **link** original byte coordinates and publisher **passage**
+original byte coordinates are separate proof scopes. All parent and child
+source SHA/source-map/native IDs are physically rechecked at the end,
+refusing observed stale generations; cross-database atomic writer admission
+is **not** claimed and live PDF/HTML migrations remain disabled.
+
+The standard `raspi_hierarchical_library.py source-evidence` CLI now also
+supports `--follow-archived-links` for one explicit `.md` original. An
+optional `--exact-link-text` selects one publisher link by its literal
+label, e.g. from an official table of contents, without any claim that the
+label alone is semantically relevant or answers the user's question. This
+flag requires the opt-in switch and a Markdown original; an HTML-only
+source is still handled by the older independent DOM-anchored reader.
+RFC `.txt`, PDFs and continuing RFC section cursors cannot enter the
+Markdown link path. The default source-evidence response is unchanged when
+`--follow-archived-links` is absent. The private query audit retains only
+counts, source IDs and verification metadata, not the publisher prose.
+
+Example using **already acquired** original n8n pages (no downloads):
+
+```sh
+cd /data/src/github/KnowMoreDiRT
+PYTHONPATH=src /data/var/knowmoredirt/semantic-venv/bin/python \
+  scripts/raspi_hierarchical_library.py source-evidence \
+  'How can I reshape and map JSON fields between nodes in an n8n workflow?' \
+  --original-path 'money-and-business/operational-ai-money-2026/automation-agents-and-reliable-workflows/work-with-data-e2147cc38.md' \
+  --follow-archived-links --exact-link-text 'Transform data' --linked-originals 2 --top 2
+```
+
+This reproducibly returns the source-verified original **Work with data**
+overview and its officially linked, independently byte-verified **Transform
+data** original. A second explicit step from that overview into its
+already archived **Approaches for transforming data** original returned
+two more independently publisher-byte-verified source excerpts, including
+which expressions and code nodes can restructure data. Direct source
+excerpt truth remains an *evidence candidate*, not an automatic complete
+answer. All current publisher bytes, derived revisions and native IDs were
+rehashed and accepted in both real n8n paths. An unknown exact link name
+must return **zero**, not replace it with a merely similar publication.
+
+The earlier immutable same-corpus seventy-three-question benchmark had
+**79 known original-source labels**, of which **65** were in the fixed
+three-channel fusion top ten. Official first-party HTML article links
+recovered two previously missed Unity original-source labels. Adding
+**original Markdown publisher links** from the same fixed five fusion
+parents per question recovered a **third** known original: n8n **Transform
+data**, whose source itself is only a short navigational table of
+contents. The complete evaluated Markdown scope was **22** original
+SHA-checked parents and **88** query-term-matched approved link
+occurrences. This three-source total is a **supplementary navigation
+recovery**, NOT top-ten ranking or answer-accuracy improvement: each parent
+can introduce up to five additional candidate originals, and a known-label
+hub is not necessarily the best factual answer. The transformation question
+is better answered by additional already archived first-party **Use the UI
+mapper** and **Approaches for transforming data** guidance. Do not tune a
+ranking model just to hit a benchmark's table-of-contents label.
+
+Synthetic regressions cover exact UTF-8 publisher link byte intervals and
+SHA, same-origin official completed receipt, changed catalog or receipt,
+ambiguous duplicated URL, code/image/external spoof links, unsafe source
+paths, missing targets, stale parent/child full source SHA and native ID,
+modified extracted-text excerpt hash, modified publisher byte excerpt SHA,
+and the default-HTML-source command remaining unchanged. The tool is a
+working **private, read-only CLI capability** in the canonical KnowMoreDiRT
+repository, not deployed into the owner-facing web GUI and not permission
+to acquire additional copyrighted manuals or change the production corpus.
