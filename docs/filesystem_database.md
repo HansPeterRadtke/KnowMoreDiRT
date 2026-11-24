@@ -4147,3 +4147,71 @@ an authorized source acquisition. It improves repeated-query throughput
 when the cached native database stays unchanged; any concurrent native
 index update properly aborts this batch and can be retried in a new,
 independently authorized read-only turn after resource admission.
+
+
+### November 24 — frozen seventy-three-question original-article link recovery and safe URL normalization cache
+
+A new **read-only quality evaluation** reused the exact previously frozen
+73 independent research queries and 79 known publisher original-source
+labels, with no changes to their query SHA, approved acquired source paths,
+previous captured RRF-three rankings or gold identities. The official
+first-party link following was applied as a **supplementary navigation
+channel**: for each query, consider only the top five originals from the
+previously captured reciprocal-rank-fusion source ranking. Parse only the
+full-original-SHA-verified `article` (fallback `main`) element for any HTML
+parents, preserve a fixed **maximum five same-origin, acquired, completed
+and query-token-related link candidates per parent**, and inspect only
+those pre-existing catalogued destinations. No source acquisition, external
+HTTP request, summary or vector changes were made. The original and derived
+source-map approval/revision values were compared with the completed ledger,
+and the two recovered known originals were independently full-SHA-verified.
+
+The fixed top-ten source ranking already found **65 of 79 known labels**.
+Following its top-five publisher article links revealed **two additional
+previously missed, already archived labels** among 421 candidate linked
+references seen across **238 original HTML parents**:
+
+* Unity 6.3 LTS **Reflection Probes** from the existing official
+  *Reflections* overview (previously fusion rank **nineteen**).
+* Unity 6.3 LTS **Event examples** from the existing official UI Toolkit
+  *Events* overview (previously fusion rank **eleven**).
+
+Both rescued labels belong to the independent 27-query holdout, and the
+existing full publisher-original `article` evidence reader independently
+verified exact extracted-text excerpts against each archived official HTML
+page, current full original and derivative SHA, canonical native FileDB
+identity and final source-map revision. The original pages were already in
+the library; nothing was downloaded. This identifies a real **supplementary
+source-discovery benefit**. It does **not** prove top-ten ranking improved
+from 65 to 67 labels: adding as many as 25 linked candidates per query
+increases the candidate budget, and the remaining 419 link occurrences
+are not labelled false or true just because they lack frozen gold labels.
+The benchmark is about **known original-source discovery**, not whether an
+answer is factually sufficient or whether arbitrary original quotations can
+be trusted. The result must not silently modify the default search.
+
+The frozen study exposed an independent **performance problem**: the existing
+`source_link_candidates` operation re-parsed the same large publisher URL
+catalogue for every original HTML article. Pure `_canonical_url_string`
+normalization now has a **bounded 32,768-entry in-process LRU** cache;
+source catalogue entries, permitted URLs, completed acquisition ledger
+status, source-map revisions, original files and native IDs are **not**
+cached or pinned. Every call still consults the **current** caller-supplied
+manifest and completed receipt, and still full-SHA-validates the original
+HTML. Synthetic regressions deliberately invalidate a ledger receipt and
+change the official catalogue URL **after the cache is warmed**; neither
+stale original is admitted, and restoring the approved current source
+restores the candidate. Unsafe or unhashable URL arguments remain rejected.
+
+A second complete run of the exact same 73 frozen questions, original
+SHA-approved HTML parents and 421 selected official article links produced
+**identical, byte-for-byte candidate case records** and exactly the same
+independent two-source recovery. Approximate shell start-to-private-artifact
+times fell from **173 seconds to 92 seconds** (a 47 percent reduction in
+this pair of observed runs), with no acquisition, native DB write or
+model/runtime replacement. The timings are **not a controlled population
+latency benchmark**, and other processes, disk cache state and source-map
+writers can affect them. Source link navigation remains opt-in and exposes
+explicit unarchived/unapproved gaps without inventing destination content.
+The full original excerpt and native ID verification still runs for each
+actual user-facing linked source candidate.

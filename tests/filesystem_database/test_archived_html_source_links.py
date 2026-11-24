@@ -75,6 +75,48 @@ class ArchivedHtmlReferenceTests(unittest.TestCase):
         self.assertEqual('catalogued_but_not_approved_completed_html_or_text',gap['archive_status'])
         self.assertTrue(gap['publisher_destination_contents_unavailable'])
 
+    def test_canonical_url_cache_does_not_cache_publisher_approval_or_ledger_status(self):
+        # First populate the *pure string normalization* URL cache. Mutation
+        # of the separately consulted current receipt must still fail closed.
+        from file_system_catalog.archived_html_source_links import _canonical_url_string
+        before=self.call()
+        self.assertEqual(1,len(before['selected_links']))
+        self.assertGreater(_canonical_url_string.cache_info().currsize,0)
+        prior=dict(self.ledger[self.child])
+        self.ledger[self.child]['status']='pending'
+        try:
+            after=self.call()
+            self.assertEqual([],after['selected_links'])
+            self.assertEqual('catalogued_but_not_approved_completed_html_or_text',
+                             after['unavailable_publisher_references_not_followed'][0]['archive_status'])
+        finally:
+            self.ledger[self.child]=prior
+        restored=self.call()
+        self.assertEqual(before['selected_links'],restored['selected_links'])
+
+    def test_cached_canonicalization_does_not_resurrect_changed_official_catalog_URL(self):
+        before=self.call()
+        self.assertEqual(1,len(before['selected_links']))
+        prev=self.catalog[1]['url']
+        self.catalog[1]['url']='https://docs.example.org/different-publisher-guide'
+        try:
+            after=self.call()
+            self.assertEqual([],after['selected_links'])
+            self.assertEqual('not_in_existing_catalog',
+                             after['unavailable_publisher_references_not_followed'][0]['archive_status'])
+        finally:
+            self.catalog[1]['url']=prev
+        self.assertEqual(1,len(self.call()['selected_links']))
+
+    def test_canonical_URL_cache_rejects_unhashable_and_unsafe_strings_as_before(self):
+        from file_system_catalog.archived_html_source_links import _canonical_url
+        for value in ([],{},None,1,'https://evil.example.org/a?token=private',
+                      'http://docs.example.org/a','javascript:alert(1)',
+                      'https://user:password@docs.example.org/a'):
+            with self.subTest(value=repr(value)):
+                self.assertIsNone(_canonical_url(value))
+        self.assertEqual('https://docs.example.org/source',_canonical_url('https://docs.example.org/source/'))
+
     def test_no_complete_archived_target_receipt_never_promoted(self):
         missing=dict(self.ledger[self.child],status='pending')
         self.assertEqual([],self.call(completed_receipts={self.child:missing})['selected_links'])

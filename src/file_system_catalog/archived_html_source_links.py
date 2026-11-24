@@ -7,6 +7,7 @@ No downloading, browsing, network calls, new indexes, or factual-answer claims.
 from __future__ import annotations
 import hashlib
 from html.parser import HTMLParser
+from functools import lru_cache
 import re
 from urllib.parse import urljoin, urlsplit, urlunsplit
 
@@ -23,8 +24,18 @@ def _text(s:str)->str:return ' '.join(s.split())
 
 
 def _canonical_url(url:str)->str|None:
+    # The approved URL set is reloaded and validated for every lookup, but
+    # canonicalization itself is a pure string operation. In multi-source
+    # discovery, the same ~18k original publisher URLs were reparsed for
+    # every parent HTML source. Cache ONLY canonicalization, never approved
+    # catalog/ledger identities, live files, source-map versions or receipts.
     if not isinstance(url,str) or not 8<=len(url)<=2400 or any(ord(c)<33 for c in url):
         return None
+    return _canonical_url_string(url)
+
+
+@lru_cache(maxsize=32768)
+def _canonical_url_string(url:str)->str|None:
     try:
         u=urlsplit(url)
     except ValueError:return None
