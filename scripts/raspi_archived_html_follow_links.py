@@ -107,9 +107,24 @@ def find_archived_linked_source_passages(original_path:str,query:str,*,limit:int
             publisher_text_bytes=target.get('publisher_text_bytes'))
         verified=[]
         for passage in passages_raw['passages']:
+            start=passage['excerpt_start_char']
+            end=passage['excerpt_end_char']
+            excerpt=passage['source_excerpt']
+            # A candidate's text can be useful immediately, rather than
+            # requiring a second manual lookup by character offsets. Recheck
+            # exact source span and UTF-8 digest ourselves before including it.
+            if (type(start) is not int or type(end) is not int
+                    or not 0<=start<end<=len(target['derived_text'])
+                    or end-start>snippet_characters
+                    or not isinstance(excerpt,str)
+                    or target['derived_text'][start:end]!=excerpt
+                    or hashlib.sha256(excerpt.encode('utf8')).hexdigest()!=passage['excerpt_sha256']):
+                raise ValueError('linked source candidate excerpt does not match the current verified derived original')
             anchor=passage.get('publisher_html_dom_anchor')
             verified.append({
                 'source_section':passage['source_section'],
+                'extracted_text_excerpt_candidate':excerpt,
+                'extracted_text_excerpt_is_not_a_literal_publisher_byte_quotation':True,
                 'extracted_text_excerpt_start_char':passage['excerpt_start_char'],
                 'extracted_text_excerpt_end_char':passage['excerpt_end_char'],
                 'extracted_text_excerpt_sha256':passage['excerpt_sha256'],

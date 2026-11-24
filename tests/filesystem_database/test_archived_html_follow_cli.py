@@ -79,6 +79,11 @@ class ArchivedOriginalLinkRetrievalTests(unittest.TestCase):
         self.assertEqual(2,child['native_filedb_original_id'])
         self.assertEqual('Texture and mesh loading',child['link_provenance']['publisher_article_link_text'])
         passage=child['passage_candidates'][0]
+        source=passage['extracted_text_excerpt_candidate']
+        self.assertTrue(source)
+        self.assertEqual(source,self.derived[passage['extracted_text_excerpt_start_char']:passage['extracted_text_excerpt_end_char']])
+        self.assertEqual(sha(source.encode()),passage['extracted_text_excerpt_sha256'])
+        self.assertTrue(passage['extracted_text_excerpt_is_not_a_literal_publisher_byte_quotation'])
         self.assertTrue(passage['independent_original_article_text_match_verified'])
         self.assertEqual('article',passage['publisher_original_normalized_HTML_article_anchor']['container'])
         self.assertFalse(passage['literal_publisher_bytes_verified'])
@@ -99,6 +104,20 @@ class ArchivedOriginalLinkRetrievalTests(unittest.TestCase):
         with patch.object(self.cli.library,'final_original_revision_guard',side_effect=guard):
             with self.assertRaisesRegex(ValueError,'child source revision changed'):
                 self.cli.find_archived_linked_source_passages(self.parent_path,self.query)
+
+    def test_mismatched_excerpt_source_text_and_sha_refuses_all_results(self):
+        from file_system_catalog.source_evidence import source_evidence_candidates
+        for tamper in ('wrong_excerpt_text','wrong_sha','wrong_offset'):
+            def corrupt(**kwargs):
+                matched=source_evidence_candidates(**kwargs)
+                candidate=matched['passages'][0]
+                if tamper=='wrong_excerpt_text':candidate['source_excerpt']='not the original source'
+                elif tamper=='wrong_sha':candidate['excerpt_sha256']='f'*64
+                else:candidate['excerpt_start_char']=candidate['excerpt_start_char']+1
+                return matched
+            with self.subTest(tamper=tamper),patch.object(self.cli,'source_evidence_candidates',side_effect=corrupt):
+                with self.assertRaisesRegex(ValueError,'candidate excerpt does not match'):
+                    self.cli.find_archived_linked_source_passages(self.parent_path,self.query)
 
     def test_destination_changed_only_after_initial_target_guard_still_fails_final_group(self):
         seen=[]

@@ -3805,3 +3805,18 @@ queries without fallback. Real Unicode exact-title, direct-path and
 hard-negative CLI checks confirm the behavior in the actual Raspi archive.
 The overall Knowledge Library source migration remains blocked until the
 seven known live reader/writer admission and rollback requirements are met.
+
+
+The opt-in response now also includes one **bounded, directly readable**
+`extracted_text_excerpt_candidate` per linked source passage. Before the
+candidate text is returned, its exact start/end character offsets must
+reproduce the current derived source text, and its UTF-8 SHA must equal the
+attested original-derived excerpt digest. The entire original publisher HTML
+and complete derived text are separately rehashed, the normalized original
+`article` text anchor is independently verified, and all original source
+revisions are checked again at the end. A change or forged excerpt, SHA or
+position rejects the entire linked lookup. The preview is still explicitly
+`extracted_text_excerpt_is_not_a_literal_publisher_byte_quotation=true` and
+`factual_answer_sufficiency_verified=false`. It provides evidence the user
+can actually read in one opt-in CLI request, without promoting a machine
+extraction into a literal original-byte quotation or confirmed answer.

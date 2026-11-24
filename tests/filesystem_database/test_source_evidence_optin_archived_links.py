@@ -43,7 +43,9 @@ class OptionalMainOriginalArchivedLinkTests(TestCase):
             },
             'linked_existing_original_sources':[
                 {'original_path':'docs/verified-linked-guide.html',
-                 'passage_candidates':[{'factual_answer_sufficiency_verified':False}],
+                 'passage_candidates':[{'factual_answer_sufficiency_verified':False,
+                                       'extracted_text_excerpt_candidate':'A short source-linked candidate from a previously archived document.',
+                                       'extracted_text_excerpt_is_not_a_literal_publisher_byte_quotation':True}],
                  'source_link_candidate_not_factual_answer':True}],
             'not_proof_of_correct_answer_or_atomic_cross_store_generation':True,
             'safe_to_cutover_live':False,
@@ -80,6 +82,10 @@ class OptionalMainOriginalArchivedLinkTests(TestCase):
         self.assertEqual(0,result['returned_passages'])
         self.assertEqual([],result['passages'])
         self.assertEqual(self.link_result,result['linked_archived_original_references'])
+        candidate=result['linked_archived_original_references']['linked_existing_original_sources'][0]['passage_candidates'][0]
+        self.assertIn('source-linked candidate',candidate['extracted_text_excerpt_candidate'])
+        self.assertTrue(candidate['extracted_text_excerpt_is_not_a_literal_publisher_byte_quotation'])
+        self.assertFalse(candidate['factual_answer_sufficiency_verified'])
         self.assertTrue(result['final_current_source_revision_check']['latest_source_map_revision_and_native_file_id_rechecked'])
         self.assertEqual(1,self.links.call_count)
         self.links.assert_called_once_with(self.rel,self.query,limit=3,passages=2,snippet_characters=850)
