@@ -117,6 +117,10 @@ class NamedEvidenceOperatorTests(unittest.TestCase):
         self.printed = mock.Mock()
         for obj, key, value in [(self.cli, "DB", dbpath), (self.cli, "SOURCES", self.manifest),
                                 (self.cli, "checked_original", self.checked),
+                                (self.cli, "final_original_revision_guard", mock.Mock(return_value={
+                                    "latest_source_map_revision_and_native_file_id_rechecked":True,
+                                    "cross_store_immutable_generation_pinned":False,
+                                    "safe_to_cutover_live":False})),
                                 (self.cli, "append_query_audit", self.audit)]:
             patch = mock.patch.object(obj, key, value)
             patch.start()

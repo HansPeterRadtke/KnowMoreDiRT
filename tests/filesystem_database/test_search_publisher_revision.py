@@ -105,6 +105,83 @@ class PublisherRevisionSearchTests(unittest.TestCase):
         with self.assertRaisesRegex(ValueError, "catalog record changed"):
             self.cli.checked_original(self.names[0], publication_record=dict(book, doi="10.1234/old"))
 
+    def test_final_reader_fence_rechecks_current_source_bytes_and_both_databases(self):
+        source=self.cli.checked_original(self.names[0],include_publisher_text=True)
+        with sqlite3.connect(self.cli.DB) as db:
+            native_id=db.execute("SELECT id FROM filesystem_entries WHERE relative_path_display=?",
+                                 (self.names[0],)).fetchone()[0]
+        result=self.cli.final_original_revision_guard(source,original_path=self.names[0],
+                                                       native_file_id=native_id)
+        self.assertTrue(result['original_publisher_bytes_rechecked_after_search'])
+        self.assertTrue(result['derived_source_bytes_rechecked_after_search'])
+        self.assertTrue(result['latest_source_map_revision_and_native_file_id_rechecked'])
+        self.assertFalse(result['cross_store_immutable_generation_pinned'])
+        self.assertFalse(result['safe_to_cutover_live'])
+        with self.assertRaisesRegex(ValueError,'native FileDB identity'):
+            self.cli.final_original_revision_guard(source,original_path=self.names[0],
+                                                   native_file_id=native_id+101)
+        self.original.write_bytes(b'Z'*source['original_bytes'])
+        with self.assertRaisesRegex(ValueError,'SHA differs'):
+            self.cli.final_original_revision_guard(source,original_path=self.names[0],
+                                                   native_file_id=native_id)
+
+    def test_final_reader_fence_rejects_derived_byte_tamper_without_index_writes(self):
+        source=self.cli.checked_original(self.names[0])
+        original_bytes=self.original.read_bytes()
+        self.derivative.write_bytes(b'fake-derived-text-'*200)
+        with self.assertRaisesRegex(ValueError,'derived original text changed'):
+            self.cli.final_original_revision_guard(source,original_path=self.names[0],
+                                                   native_file_id=1)
+        self.assertEqual(original_bytes,self.original.read_bytes())
+
+    def test_final_reader_fence_rechecks_approved_ledger_and_original_title(self):
+        source=self.cli.checked_original(self.names[0])
+        ledger=json.loads(self.cli.LEDGER.read_text())
+        ledger['items'][0]['sha256']='b'*64
+        self.cli.LEDGER.write_text(json.dumps(ledger))
+        with self.assertRaisesRegex(ValueError,'completed original publisher receipt changed'):
+            self.cli.final_original_revision_guard(source,original_path=self.names[0],
+                                                   native_file_id=1)
+        ledger['items'][0]['sha256']=source['original_sha256']
+        self.cli.LEDGER.write_text(json.dumps(ledger))
+        manifest=json.loads(self.cli.SOURCES.read_text())
+        manifest['sources'][0]['title']='wrong publication edition after original lookup'
+        self.cli.SOURCES.write_text(json.dumps(manifest))
+        with self.assertRaisesRegex(ValueError,'curated original metadata changed'):
+            self.cli.final_original_revision_guard(source,original_path=self.names[0],
+                                                   native_file_id=1)
+
+    def test_final_reader_fence_detects_source_map_change_during_derived_sha_stream(self):
+        source=self.cli.checked_original(self.names[0])
+        base=self.cli.file_sha256
+        def source_map_writer_between_first_and_second_fence(path,**kwargs):
+            digest=base(path,**kwargs)
+            if path==self.derivative:
+                with sqlite3.connect(self.cli.SOURCE_MAP) as db:
+                    db.execute('UPDATE originals SET derived_sha256=? WHERE source_path=?',
+                               ('a'*64,self.names[0]))
+            return digest
+        with mock.patch.object(self.cli,'file_sha256',side_effect=source_map_writer_between_first_and_second_fence):
+            with self.assertRaisesRegex(ValueError,'source-map.*changed'):
+                self.cli.final_original_revision_guard(source,original_path=self.names[0],
+                                                       native_file_id=1)
+
+    def test_reader_fence_rejects_new_source_map_revision_published_during_search(self):
+        args=SimpleNamespace(query='source provenance verified', original_path=self.names[0],
+                             top=3,snippet_characters=300)
+        def change_after_first_original_read(*_args,**_kwargs):
+            with sqlite3.connect(self.cli.SOURCE_MAP) as db:
+                db.execute('UPDATE originals SET derived_sha256=? WHERE source_path=?',
+                           ('f'*64,self.names[0]))
+            return {'passages':[], 'evidence_warning':'Source labels remain provisional.'}
+        with mock.patch.object(self.cli,'_original_passages',side_effect=change_after_first_original_read), \
+             mock.patch.object(self.cli,'verify_pdf_page_excerpts',return_value=[]), \
+             mock.patch.object(self.cli,'append_query_audit') as audit:
+            with self.assertRaisesRegex(ValueError,'source-map.*changed'):
+                self.cli.original_source_evidence(args)
+        self.assertEqual(1,audit.call_count)
+        self.assertFalse(audit.call_args.args[0]['success'])
+
     def test_exact_section_respects_source_evidence_passage_limit(self):
         args = SimpleNamespace(query="RFC 9110, Section 9.2.2", top=0, snippet_characters=900)
         with mock.patch.object(self.cli, "append_query_audit") as log, self.assertRaisesRegex(ValueError, "passage count"):

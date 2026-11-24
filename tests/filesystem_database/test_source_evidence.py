@@ -321,6 +321,10 @@ class OriginalEvidenceTests(TestCase):
             with mock.patch.object(module,"DB",dbfile), \
                  mock.patch.object(module,"checked_original",return_value=source), \
                  mock.patch.object(module,"publisher_path",return_value=pdf), \
+                 mock.patch.object(module,"final_original_revision_guard",return_value={
+                     "latest_source_map_revision_and_native_file_id_rechecked":True,
+                     "cross_store_immutable_generation_pinned":False,
+                     "safe_to_cutover_live":False}), \
                  mock.patch.object(module,"append_query_audit",side_effect=audit), \
                  mock.patch("builtins.print") as printed:
                 module.original_source_evidence(SimpleNamespace(
@@ -335,6 +339,8 @@ class OriginalEvidenceTests(TestCase):
             self.assertEqual(self.path,saved[0]["original_path"])
             self.assertEqual(1,saved[0]["count"])
             self.assertEqual(self.derived,saved[0]["derived_sha256"])
+            self.assertTrue(saved[0]["final_current_source_revision_check"][
+                "latest_source_map_revision_and_native_file_id_rechecked"])
             self.assertEqual("PDF page 2",saved[0]["ranked_source_spans"][0]["source_section"])
             self.assertEqual(1, saved[0]["pdf_page_verification"]["unverified"])
             self.assertEqual("page_count_unavailable", saved[0]["ranked_source_spans"][0]["publisher_pdf_page"]["reason"])

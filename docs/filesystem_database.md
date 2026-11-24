@@ -3274,3 +3274,35 @@ top five in all four cases; this is bounded page recall, not comprehensive
 semantic or factual-answer evaluation. Historical corrected source-map,
 native vectors and hierarchical summaries were not replaced; the previously
 identified reader/writer/document-boundary cutover gates still apply.
+
+
+### November 24 — final per-original source-reader revision fence after physical-page checks
+
+The direct `raspi_hierarchical_library.py source-evidence` reader independently
+verifies a publisher original, its acquisition receipt and current extracted
+source-map text before source search. With concurrent source-map extraction and
+native writer timers, a document revision can change *during* physical-page
+confirmation. The reader now performs a **second read-only full-byte revision
+fence immediately before returning evidence**: fresh source catalog and
+completed receipt identity, original publisher SHA and byte size, derived
+source full SHA using bounded streaming, current source-map row and native
+FileDB original file ID, then a fresh second metadata check after streaming
+both files. The guard rejects changed original bytes, a newer derivative,
+missing native file, changed title/edition or source-map revisions observed
+mid-search, and writes no original/vector/summary data. It records the
+`final_current_source_revision_check` in both the returned result and the
+owner-private query receipt. The full original text and search excerpts remain
+private; only verified source coordinates are exposed.
+
+This is an incremental **stale-citation refusal for one installed reader**,
+not a multistore atomic generation or a release mechanism. Independent SQLite
+transactions cannot prove that all other clients are simultaneously pinned,
+so the field `cross_store_immutable_generation_pinned` remains **false** and
+`safe_to_cutover_live` remains **false**. The 327-PDF source repair and two
+HTML original-extraction upgrades must not replace current native rows or
+summary/vector generations until all resident workers, scheduled direct
+embedding/extractor writers and legacy readers have a coordinated revision
+admission mechanism. Tests inject source-map changes both after first read
+and during the derived-hash check, original file byte substitutions, metadata
+edits, and a missing native ID; all fail closed. Positive acceptance uses a
+real current publisher PDF with independently verified physical pages.

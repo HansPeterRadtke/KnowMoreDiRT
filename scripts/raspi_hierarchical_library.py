@@ -209,6 +209,63 @@ def checked_original(relative: str, *, include_publisher_text: bool = False,
     }
 
 
+
+def final_original_revision_guard(source: dict, *, original_path: str, native_file_id: int) -> dict:
+    """Fail closed if one live original/source-map/native revision changed during retrieval.
+
+    Reopen fresh read-only views after source passage/page verification and
+    stream both exact source files again. This detects stale outputs caused by
+    concurrent writers but is NOT a cross-SQLite atomic generation or a live
+    source migration permit. No changes to any native reader or service.
+    """
+    if (not isinstance(source, dict) or source.get("original_path") != original_path
+            or type(native_file_id) is not int or native_file_id < 1):
+        raise ValueError("final original revision guard requires the selected native source")
+    manifest = json.loads(SOURCES.read_text(encoding="utf-8"))["sources"]
+    entries = [item for item in manifest if item.get("path") == original_path]
+    if (len(entries) != 1 or entries[0].get("title") != source.get("title")
+            or entries[0].get("publication_year") != source.get("publication_year")
+            or entries[0].get("edition_version") != source.get("edition_version")):
+        raise ValueError("curated original metadata changed during evidence search")
+    ledger = json.loads(LEDGER.read_text(encoding="utf-8"))["items"]
+    entries = [item for item in ledger if item.get("path") == original_path
+               and item.get("status") == "complete"]
+    if (len(entries) != 1 or entries[0].get("sha256") != source.get("original_sha256")
+            or entries[0].get("bytes_received") != source.get("original_bytes")):
+        raise ValueError("completed original publisher receipt changed during evidence search")
+    def assert_current_views():
+        # Each new SQLite connection sees the latest committed state, rather
+        # than the old read transaction taken before PDF verification.
+        with sqlite3.connect(f"file:{SOURCE_MAP.resolve()}?mode=ro", uri=True, timeout=20) as sm:
+            sm.execute("PRAGMA query_only=ON")
+            rows=sm.execute("SELECT source_sha256,derived_sha256,derived_path,status "
+                "FROM originals WHERE source_path=?",(original_path,)).fetchall()
+        if (len(rows)!=1 or rows[0][0]!=source.get("original_sha256")
+                or rows[0][1]!=source.get("derived_sha256") or rows[0][3]!="complete"):
+            raise ValueError("current source-map original or derived revision changed during evidence search")
+        with sqlite3.connect(f"file:{DB.resolve()}?mode=ro", uri=True, timeout=NATIVE_READER_WAIT_SECONDS) as native:
+            native.execute("PRAGMA query_only=ON")
+            entries=native.execute("SELECT id FROM filesystem_entries "
+                "WHERE entry_type='file' AND relative_path_display=?",(original_path,)).fetchall()
+        if entries != [(native_file_id,)]:
+            raise ValueError("current original native FileDB identity changed during evidence search")
+        return rows[0][2]
+    derivative_path = assert_current_views()
+    # Hash source and derivative through no-follow regular-file readers with
+    # device, inode, size and modification-time rechecks at EOF.
+    verify_publisher_revision(publisher_path(original_path), entries[0])
+    derivative=checked_derivative_path(derivative_path)
+    if file_sha256(derivative, max_bytes=derivative.stat().st_size)!=source["derived_sha256"]:
+        raise ValueError("derived original text changed during evidence search")
+    if assert_current_views()!=derivative_path:
+        raise ValueError("derived original file path changed during evidence search")
+    return {"original_publisher_bytes_rechecked_after_search":True,
+            "derived_source_bytes_rechecked_after_search":True,
+            "latest_source_map_revision_and_native_file_id_rechecked":True,
+            "cross_store_immutable_generation_pinned":False,
+            "safe_to_cutover_live":False}
+
+
 def payload_path(original_path: str, original_sha: str, derived_sha: str) -> Path:
     basename = Path(original_path).name[:64]
     basename = re.sub(r"[^A-Za-z0-9_.-]+", "-", basename)
@@ -1388,6 +1445,12 @@ def original_source_evidence(args) -> None:
                 " The source section is the derivative label. Cite the physical PDF page only "
                 "when publisher_pdf_page has verified status."
             )
+        # The initial source SHA check precedes all retrieval and potentially
+        # expensive independent original-page checks. A worker might publish
+        # a newer source-map/native revision in the meantime: never return a
+        # successfully verified *old* passage without this second check.
+        result["final_current_source_revision_check"] = final_original_revision_guard(
+            source, original_path=original_path, native_file_id=int(row[0]))
     except Exception as error:
         append_query_audit({
             "operation":"verified_original_source_evidence",
@@ -1411,6 +1474,7 @@ def original_source_evidence(args) -> None:
         "original_path":original_path,
         "original_sha256":result["original_sha256"],
         "derived_sha256":result["derived_sha256"],
+        "final_current_source_revision_check":result["final_current_source_revision_check"],
         "success":True,
         "count":result["returned_passages"],
         "retrieval_engine":engine,
