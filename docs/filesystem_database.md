@@ -3398,3 +3398,48 @@ source bytes were checked, malicious relative paths and total read-budget
 exhaustion. A protected original publisher PDF and a source-linked official
 RFC were then queried through the real mixed-evidence command, preserving
 verified physical PDF page locations and exact original RFC byte intervals.
+
+
+### November 24 — isolated dual-SQLite generation reader and durable private pointer
+
+The existing `private_source_generation` proof already validates an isolated
+original-PDF cohort containing one native FileDB SQLite database, its matching
+source-map SQLite database, each corrected extracted-text file, each complete
+recursive-summary tree, source revision checks, normalized embeddings and a
+source-bound release-gate receipt. Both SQLite copies must be physically
+complete and have no mutable WAL sidecars. The new *private-only* function
+`open_pinned_private_read_view(base, allowed_root)` opens the two **same-
+generation** SQLite snapshots as read-only connections, after selecting and
+fully checking a single pointer. The yielded view exposes `.native`,
+`.source_map`, `.generation`, and `.read_source_asset(kind, relative)` for
+manifest-listed `corrected_derived_text` and `recursive_summary_tree` assets.
+The source-asset reader is bounded (default thirty-two MiB, maximum sixty-four
+MiB), checks permitted paths and rejects symlinks, and compares actual bytes
+to their exact pinned manifest SHA. Closing the view hashes the entire pinned
+generation again. Consumers must not expose their query results until the
+`with` block has exited without error.
+
+Concurrent isolated publication can advance the shared pointer to generation
+two while an existing reader continues querying the complete old generation
+one pair: both the native and source-map rows, old original-derived text and
+full summary tree remain matched, and new readers select generation two.
+Mutating an old pinned source file is explicitly detected and refuses the
+old reader on exit, even after another generation has been published. The
+private publisher's atomic pointer rename now calls `fsync` on the parent
+directory **before** the simulated post-switch crash callback. Therefore a
+post-switch crash injection represents a durably committed pointer rather
+than a non-durable rename. Tests also cover crash before pointer rename,
+replayed generation, unsafe production roots, attempted SQL writes, altered
+source assets, missing manifest roles and oversized original text reads.
+
+**Scope and release prohibition:** These functions work only inside isolated
+private audit roots and are not used by any live Knowledge Library reader,
+original-source extractor, scheduled native embedding writer or resident
+summarization worker. Their positive tests are not permission to flip the
+production source-map/FileDB files or to replace 327 corrected PDF and two
+publisher HTML derivatives. Real migration still needs all production
+readers and writers to honor one generation admission mechanism, healthy
+source-boundary acknowledgments, a crash-safe staging/preflight process and
+an independently verified rollback. The module continues to report
+`safe_to_cutover_live=false`. Neither pointer nor assets are copied to
+external services; originals stay grep-readable in their existing folders.

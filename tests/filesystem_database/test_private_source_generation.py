@@ -234,6 +234,110 @@ class PrivateSourceGenerationTests(unittest.TestCase):
         self.assertEqual(2,read_pinned(self.switch,self.private_root).generation)
         self.assertEqual(1,old.verify_bytes(self.private_root)['generation'])
 
+    def test_coherent_private_two_database_reader_keeps_old_pair_across_new_pointer(self):
+        folder1=self.stage(1,0)
+        folder2=self.stage(2,1)
+        publish_private_only(self.switch,self.private_root,1)
+        old=self.records[0]['original_path'];new=self.records[1]['original_path']
+        # A real reader must hold one old native/SM pair, never combine two
+        # different generation pointers when another thread publishes later.
+        with generation_module.open_pinned_private_read_view(self.switch,self.private_root) as view:
+            self.assertEqual(1,view.generation)
+            self.assertEqual([old],[x[0] for x in view.source_map.execute(
+                'SELECT source_path FROM originals ORDER BY source_path')])
+            self.assertEqual([old],[x[0] for x in view.native.execute(
+                'SELECT relative_path_display FROM filesystem_entries ORDER BY id')])
+            with ThreadPoolExecutor(max_workers=1) as pool:
+                result=pool.submit(publish_private_only,self.switch,self.private_root,2).result(timeout=10)
+            self.assertEqual(2,result['private_pointer_generation'])
+            self.assertEqual(2,read_pinned(self.switch,self.private_root).generation)
+            self.assertEqual([old],[x[0] for x in view.native.execute(
+                'SELECT relative_path_display FROM filesystem_entries ORDER BY id')])
+            self.assertEqual([old],[x[0] for x in view.source_map.execute(
+                'SELECT source_path FROM originals ORDER BY source_path')])
+            asset='text/'+old+'.txt'
+            data=view.read_source_asset('corrected_derived_text',asset)
+            digest_source=view.source_map.execute('SELECT derived_sha256 FROM originals').fetchone()[0]
+            self.assertEqual(digest(data),digest_source)
+            self.assertIn(b'[[SOURCE UNIT:',data)
+            summary_assets=[name for kind,name,_ in view.pin.assets if kind=='recursive_summary_tree']
+            self.assertEqual(1,len(summary_assets))
+            tree=json.loads(view.read_source_asset('recursive_summary_tree',summary_assets[0]))
+            self.assertEqual(old,tree['original_path'])
+            self.assertEqual(digest_source,tree['derived_sha256'])
+            self.assertTrue(view.verify_bytes(self.private_root)['private_generation_complete'])
+        with generation_module.open_pinned_private_read_view(self.switch,self.private_root) as fresh:
+            self.assertEqual(2,fresh.generation)
+            self.assertEqual([new],[x[0] for x in fresh.source_map.execute(
+                'SELECT source_path FROM originals ORDER BY source_path')])
+            self.assertEqual([new],[x[0] for x in fresh.native.execute(
+                'SELECT relative_path_display FROM filesystem_entries ORDER BY id')])
+        self.assertTrue(folder1.exists() and folder2.exists())
+
+    def test_old_private_dual_database_reader_refuses_tamper_at_context_exit(self):
+        folder=self.stage(1,0)
+        publish_private_only(self.switch,self.private_root,1)
+        with self.assertRaisesRegex(ValueError,'asset bytes changed'):
+            with generation_module.open_pinned_private_read_view(self.switch,self.private_root) as view:
+                self.assertEqual(1,view.generation)
+                self.assertTrue(view.native.execute('SELECT 1').fetchone())
+                # It must reject a modified old pinned view even if pointer
+                # remains the same; never return a passed final view check.
+                asset=next((folder/'text').rglob('*.txt'))
+                asset.write_bytes(asset.read_bytes()+b'\ninjected private byte change\n')
+        with self.assertRaisesRegex(ValueError,'asset bytes changed'):
+            read_pinned(self.switch,self.private_root)
+
+    def test_private_two_database_view_does_not_allow_sqlite_writes_or_live_roots(self):
+        self.stage(1,0)
+        publish_private_only(self.switch,self.private_root,1)
+        with generation_module.open_pinned_private_read_view(self.switch,self.private_root) as view:
+            self.assertFalse(view.safe_to_cutover_live)
+            self.assertEqual(1,view.generation)
+            for db in (view.native,view.source_map):
+                with self.assertRaises(sqlite3.OperationalError):
+                    db.execute('DELETE FROM originals')
+        if Path('/data/var/knowmoredirt/knowledge-library').exists():
+            with self.assertRaises(ValueError):
+                with generation_module.open_pinned_private_read_view(
+                     Path('/data/var/knowmoredirt/knowledge-library'),Path('/data/var')):
+                    pass
+
+    def test_private_reader_refuses_unlisted_wrong_role_tampered_and_unbounded_asset(self):
+        folder=self.stage(1,0)
+        publish_private_only(self.switch,self.private_root,1)
+        rel='text/'+self.records[0]['original_path']+'.txt'
+        with generation_module.open_pinned_private_read_view(self.switch,self.private_root) as view:
+            good=view.read_source_asset('corrected_derived_text',rel)
+            self.assertTrue(good)
+            for kind,path,limit in [('native_sqlite',rel,100000),
+                                    ('recursive_summary_tree',rel,100000),
+                                    ('corrected_derived_text','../escape.txt',100000),
+                                    ('corrected_derived_text',rel,1),
+                                    ('corrected_derived_text',rel,999999999)]:
+                with self.subTest(kind=kind,path=path,limit=limit),self.assertRaises(ValueError):
+                    view.read_source_asset(kind,path,max_bytes=limit)
+        (folder/rel).write_bytes((folder/rel).read_bytes()+b'changed')
+        with self.assertRaisesRegex(ValueError,'asset bytes changed'):
+            with generation_module.open_pinned_private_read_view(self.switch,self.private_root):
+                pass
+
+    def test_private_commit_directory_is_synced_before_post_switch_crash_hook(self):
+        self.stage(1,0)
+        syncs=[];actual=generation_module.os.fsync
+        def seen(fd):
+            mode=__import__('os').fstat(fd).st_mode
+            if __import__('stat').S_ISDIR(mode):syncs.append('directory_synced')
+            return actual(fd)
+        def crash_after_switch():
+            self.assertEqual(1,json.loads((self.switch/'active-private-generation.json').read_text())['generation'])
+            self.assertTrue(syncs,'published pointer must be fsynced in its parent directory before crash hook')
+            raise RuntimeError('private post-fsync crash simulation')
+        with mock.patch.object(generation_module.os,'fsync',side_effect=seen):
+            with self.assertRaisesRegex(RuntimeError,'post-fsync crash'):
+                publish_private_only(self.switch,self.private_root,1,after_pointer_replace=crash_after_switch)
+        self.assertEqual(1,read_pinned(self.switch,self.private_root).generation)
+
     def test_private_only_root_enforcement_refuses_real_live_kmd_directories(self):
         from file_system_catalog.private_source_generation import _validate_private_root
         live=Path('/data/var/knowmoredirt/knowledge-library')

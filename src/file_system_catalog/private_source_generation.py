@@ -8,6 +8,7 @@ workers, and explicitly does not authorize a real deployment.
 """
 from __future__ import annotations
 from dataclasses import dataclass
+from contextlib import closing,contextmanager
 import fcntl
 import hashlib
 import json
@@ -245,6 +246,110 @@ def read_pinned(base:Path,allowed_root:Path):
                                    base,proof['assets'])
 
 
+@dataclass(frozen=True)
+class PinnedPrivateReadView:
+    """Two read-only SQLite views from one fully validated private generation.
+
+    A caller must use this only within open_pinned_private_read_view(). It
+    cannot authorize any live multi-store migration, nor a cross-host writer
+    lease. Publisher source assets remain in immutable generation-relative
+    paths until all readers finish; nothing is garbage-collected here.
+    """
+    pin:PinnedPrivateGeneration
+    native:sqlite3.Connection
+    source_map:sqlite3.Connection
+    folder:Path
+    safe_to_cutover_live:bool=False
+
+    @property
+    def generation(self)->int:
+        return self.pin.generation
+
+    def verify_bytes(self,allowed_root:Path):
+        return self.pin.verify_bytes(allowed_root)
+
+    def read_source_asset(self,kind:str,relative:str,*,max_bytes:int=32*1024*1024)->bytes:
+        """Read a manifest-pinned private derivative/summary, never a live path.
+
+        Caller receives only SHA-verified original bytes from this reader's
+        immutable generation. A larger source must be handled with a
+        streaming verifier rather than silently bypassing this cap.
+        """
+        if (kind not in ('corrected_derived_text','recursive_summary_tree')
+                or not isinstance(relative,str) or not 1<=len(relative)<=1600
+                or type(max_bytes) is not int or not 1<=max_bytes<=64*1024*1024):
+            raise ValueError('invalid bounded private source-generation asset request')
+        records=[sha for role,path,sha in self.pin.assets
+                 if role==kind and path==relative]
+        if len(records)!=1:
+            raise ValueError('private asset not in this reader pinned generation')
+        asset=safe_file(self.folder,relative)
+        # Parent symlink checks occur through safe_file; reject symlinked
+        # leaf and concurrent replacement as part of the physical read.
+        fd=os.open(asset,os.O_RDONLY|os.O_NOFOLLOW|os.O_CLOEXEC)
+        with os.fdopen(fd,'rb') as stream:
+            before=os.fstat(stream.fileno())
+            if not stat.S_ISREG(before.st_mode) or before.st_size>max_bytes:
+                raise ValueError('private source asset exceeds bounded reader byte budget')
+            data=stream.read(max_bytes+1)
+            after_fd=os.fstat(stream.fileno())
+        after=asset.stat(follow_symlinks=False)
+        if (len(data)!=before.st_size or not os.path.samestat(before,after)
+                or not os.path.samestat(before,after_fd)
+                or before.st_size!=after.st_size
+                or before.st_mtime_ns!=after.st_mtime_ns
+                or before.st_ctime_ns!=after.st_ctime_ns
+                or _sha(data)!=records[0]):
+            raise ValueError('pinned private source asset bytes changed')
+        return data
+
+
+@contextmanager
+def open_pinned_private_read_view(base:Path,allowed_root:Path):
+    """Open an immutable isolated native/source-map pair for one pinned reader.
+
+    A private atomic pointer switch may happen after the reader pins. The
+    view keeps both old SQLite files and all source assets from that exact
+    generation. Revalidating at close rejects tampered old assets. The
+    caller must not expose query results until the context exits cleanly.
+    """
+    pinned=read_pinned(base,allowed_root)   # Does NOT pin live KMD readers.
+    folder=_generation_path(base,pinned.generation)
+    mapping={}
+    for role,relative,digest in pinned.assets:
+        if role not in ('native_sqlite','source_map_sqlite'):
+            continue
+        if role in mapping or not relative.endswith('.sqlite3'):
+            raise ValueError('ambiguous immutable private database role')
+        asset=safe_file(folder,relative)
+        if sha_file(asset)!=digest:
+            raise ValueError('pinned private source database changed before opening')
+        mapping[role]=asset
+    if set(mapping)!={'native_sqlite','source_map_sqlite'}:
+        raise ValueError('private generation has no complete two-database pair')
+    from contextlib import ExitStack
+    with ExitStack() as handles:
+        conns={}
+        for role,path in mapping.items():
+            # These are separate SQLite files from the SAME selected folder.
+            # The immutable candidate validator disallows mutable WAL state.
+            db=handles.enter_context(closing(sqlite3.connect(
+                  path.resolve().as_uri()+'?mode=ro',uri=True,timeout=8)))
+            db.execute('PRAGMA query_only=ON')
+            conns[role]=db
+        view=PinnedPrivateReadView(pinned,conns['native_sqlite'],
+                      conns['source_map_sqlite'],folder)
+        try:
+            # Recheck after both files are opened and before any consumer use.
+            view.verify_bytes(allowed_root)
+            yield view
+        finally:
+            # The caller must treat a nonclean exit as NO verified result.
+            # It is insufficient to authenticate an immutable snapshot only
+            # before a long-running independent original-page analysis.
+            view.verify_bytes(allowed_root)
+
+
 def publish_private_only(base:Path,allowed_root:Path,generation:int,*,
                          before_pointer_replace:Callable[[],None]|None=None,
                          after_pointer_replace:Callable[[],None]|None=None):
@@ -285,11 +390,15 @@ def publish_private_only(base:Path,allowed_root:Path,generation:int,*,
             if final_preflight['manifest_sha256']!=proof['manifest_sha256']:
                 raise ValueError('new private generation changed while preparing atomic pointer')
             os.replace(temp,marker)
-            if after_pointer_replace:
-                after_pointer_replace()
+            # Durably commit the parent directory entry before reporting a
+            # switched pointer. A simulated post-switch crash must occur AFTER
+            # this fsync; otherwise the caller could mistake a volatile
+            # rename for a crash-recoverable committed generation.
             dirfd=os.open(base,os.O_RDONLY|os.O_DIRECTORY)
             try:os.fsync(dirfd)
             finally:os.close(dirfd)
+            if after_pointer_replace:
+                after_pointer_replace()
         finally:
             temp.unlink(missing_ok=True)
     return {'private_pointer_generation':generation,
