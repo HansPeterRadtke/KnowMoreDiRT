@@ -4043,3 +4043,107 @@ reader would require coordination with agents changing the heavily dirty
 Infra repository, equivalent-result tests under concurrent writers, and a
 rollback plan. Source-boundary migration for corrected PDF/HTML documents
 still has seven independent live reader/writer/admission blockers.
+
+
+### November 24 — one short-lived local model and original-source vector snapshot for multiple verified searches
+
+The **read-only** `scripts/raspi_batch_low_memory_original_search.py` supports
+multiple source searches in one private command. The ordinary mode accepts
+**two to six distinct questions**, reuses the installed, unchanged pinned
+multilingual E5-small CPU model across all questions, and invokes the
+existing installed source-verified Infra native reader with the earlier
+exact-result low-memory streaming scanner. The original acquisition catalog,
+current source map, native FileDB and publisher/derived bytes are still
+checked fresh **on every question**, and all returned passages receive a
+**final combined, full-original source-revision check after the last
+question**. Earlier results cannot be returned as verified if their source
+or native ID becomes stale while later queries run. The ordinary mode does
+not cache any native vector or source metadata between queries.
+
+For repeated broad searches there is an additional, explicit option
+`--reuse-current-native-vectors`. This loads the **current read-only** native
+`content_chunks` and complete representation rows **once** into a bounded,
+short-lived in-memory candidate snapshot, checks the native SQLite
+`PRAGMA data_version` and file inode, size, mtime and ctime during construction
+and **before/after every question**, and uses bit-for-bit equivalent original
+cosine scores and first-winner ties to rank the very same native original
+sources. The snapshot remains private to this single-threaded CLI process;
+no ANN index, on-disk source cache or new vector/index write is created. Any
+**observed** native database change makes the entire batch fail closed,
+not return stale candidates or silently use cached rankings. After the last
+question, a fresh all-results source check independently opens the current
+catalog, completed acquisition receipts, source-map SQLite and native
+FileDB, rehashes the complete original and derived documents and rechecks
+every chunk SHA/current native ID. This is **NOT** cross-store writer admission,
+a guarantee of zero concurrent source-map changes or authorization to cut
+over the corrected PDF/HTML indexes; live migration still has seven blockers.
+
+The snapshot variant has stricter resource admission than ordinary batch
+mode: **two to four** queries, at most four results each, current original
+corpus mode only (not a filtered path or alternate source collection), at
+most **100,000 native vector candidates and 30,000 original IDs**, at least
+**two GiB Linux MemAvailable** before construction and at least **512 MiB**
+while it runs. Consult and reserve the shared Raspi resource broker before
+this optional higher-memory operation so resident summarization services
+retain capacity. The snapshot's measured **whole process peak** was about
+**762 MiB** for two searches and **1,013 MiB** for three searches in the
+2026-11-24 Raspi environment; actual memory depends on native SQLite page
+caching and corpus growth. The plain batch or one-shot low-memory source
+search is preferable under tighter RAM pressure. The command restores the
+original process-local E5 model class and vector scanner even on exceptions,
+and never patches other running processes or the active web portal.
+
+Concrete example, creating only a new owner-private receipt:
+
+```sh
+cd /data/src/github/KnowMoreDiRT
+PYTHONPATH=src /data/var/knowmoredirt/semantic-venv/bin/python \
+  scripts/raspi_batch_low_memory_original_search.py \
+  --reuse-current-native-vectors \
+  --query 'Unity Render Texture Inspector create Render Texture view from camera' \
+  --query 'physically based roughness normal map material shading for industrial warehouse rendering' \
+  --query 'agent evidence provenance factuality source citations verification retrieval' \
+  --top 2 \
+  --private-output /data/var/knowmoredirt/knowledge-library/search-audit/MY-NEW-PRIVATE-BATCH.json
+```
+
+**Independent correctness and performance evidence:** A read-only
+three-question comparison with the actual native SQLite database found
+**17,715 exactly identical ranked originals, full scores, selected native
+chunk IDs and source identities in every question** compared with the legacy
+full-materialization scanner, while SQLite `data_version` stayed unchanged.
+After the five-second snapshot construction in that particular run, each
+full-corpus candidate ranking took **0.47–0.50 seconds**, compared with
+**6.27–7.73 seconds** for the uncached legacy scanner. Those are scanner
+measurements, not end-to-end user-response times. On a two-question
+source-evidence benchmark, the previous warm-model streaming batch took
+**15.95 seconds** and the vector snapshot batch took **12.15 seconds**;
+**all four returned original-source passages, hashes, scores and native IDs
+matched exactly**, and the final source check physically rehashed all four
+original/derivative revisions. A separate real three-topic acceptance
+returned **six** publisher SHA-verified passage candidates in
+**22.43 seconds**, including Unity documents, material-rendering research
+and agent evidence verification. The native vector snapshot took 10.55
+seconds to build in that more contended run, versus 5.23 seconds previously;
+**do not claim a universal fixed latency or speedup** in the presence of
+uncontrolled OS caches, background writers and CPU contention. A direct
+one-shot scoped original query remains valuable when a source is known.
+
+Adversarial fixtures test identical original/native ranking with 16- and
+32-bit vectors; strict finite and non-finite winner behavior; source
+collection/path scope refusal; a native writer committing during a batch;
+new original revisions and altered publisher source passage hashes; model
+or source guard failure after an earlier successful query; cross-thread
+usage; total candidate and physical-memory admission; and full restoration
+of the process-local scanner and model. No generated answer is given factual
+authority solely because a source passage is hash-verified. The real
+source-verified result includes exact passage SHA, original-source revision,
+a link to its archived original, and explicit
+`cross_store_immutable_generation_pinned=false` / `safe_to_cutover_live=false`.
+
+This is a **working, tested private command-line capability**, not a live
+replacement for the default semantic search, a deployed website feature, or
+an authorized source acquisition. It improves repeated-query throughput
+when the cached native database stays unchanged; any concurrent native
+index update properly aborts this batch and can be retried in a new,
+independently authorized read-only turn after resource admission.
