@@ -202,6 +202,42 @@ class OptionalMainOriginalArchivedLinkTests(TestCase):
         self.assertNotIn('resolved_unique_literal_publisher_cell',str(audit))
         self.links.assert_not_called()
 
+    def test_literal_expected_value_optin_reports_difference_but_not_semantic_falsehood(self):
+        self._switch_to_markdown_original()
+        self.args.follow_archived_links=False
+        self.args.inspect_original_tables=True
+        self.args.table_subject='AI Transform node'
+        self.args.table_column='Available on'
+        self.args.expect_table_value='On premise'
+        self.source['publisher_text_bytes']=b'| Approach | Available on |\n| --- | --- |\n| AI Transform node | Cloud only |\n'
+        table={'returned_original_publisher_table_row_candidates':1,'publisher_rows':[]}
+        import hashlib
+        exact={'schema':'kmd.optin_unique_original_publisher_markdown_cell_literal_proof.v1',
+            'status':'resolved','matching_original_table_rows':1,
+            'resolved_unique_literal_publisher_cell':{
+                'selected_original_table_column_value':'Cloud only',
+                'original_table_cell_sha256':hashlib.sha256(b'Cloud only').hexdigest(),
+                'column_value_is_original_exact_quoted_publisher_text':True}}
+        with mock.patch.object(self.kmd,'verified_original_markdown_table_rows',return_value=table),\
+             mock.patch.object(self.kmd,'verified_original_markdown_table_cell',return_value=exact):
+            result=self.run_query()
+        check=result['optional_expected_original_cell_literal_comparison']
+        self.assertEqual('literal_different',check['status'])
+        self.assertTrue(check['literal_difference_is_NOT_proof_semantic_contradiction_or_false_claim'])
+        self.assertEqual([],result['passages'])
+        audit=self.audit.call_args.args[0]
+        self.assertEqual('literal_different',audit['optional_expected_original_cell_literal_status']['status'])
+        self.assertTrue(audit['optional_expected_original_cell_literal_status']['asserted_and_source_field_text_excluded_from_private_audit'])
+        self.assertNotIn('On premise',str(audit))
+        self.assertNotIn('Cloud only',str(audit))
+
+    def test_asserted_literal_without_exact_source_row_and_column_refused_before_read(self):
+        self.args.follow_archived_links=False
+        self.args.expect_table_value='Cloud only'
+        with self.assertRaisesRegex(ValueError,'requires explicit original'):
+            self.kmd.original_source_evidence(self.args)
+        self.patched[1].assert_not_called()
+
     def test_ambiguous_verified_original_cell_keeps_full_original_passages_but_refuses_value(self):
         self._switch_to_markdown_original()
         self.args.follow_archived_links=False

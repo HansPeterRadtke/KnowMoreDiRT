@@ -49,6 +49,7 @@ from file_system_catalog.source_evidence import source_evidence_candidates
 from file_system_catalog.source_markdown_tables import (
     verified_original_markdown_table_rows,
     verified_original_markdown_table_cell,
+    compare_claimed_literal_to_current_original_cell,
 )
 from file_system_catalog.source_passage_utility import review_source_documents,review_verified_linked_originals
 from file_system_catalog.named_source import resolve_source_name
@@ -1591,6 +1592,9 @@ def find_source_evidence(args) -> None:
         literal_subject=getattr(args,'table_subject',None)
         literal_column=getattr(args,'table_column',None)
         literal_section=getattr(args,'table_exact_section',None)
+        asserted_value=getattr(args,'expect_table_value',None)
+        if asserted_value is not None and literal_subject is None:
+            raise ValueError('--expect-table-value requires explicit original --inspect-original-tables, --table-subject and --table-column')
         if any(x is not None for x in (literal_subject,literal_column,literal_section)):
             if (not getattr(args,'inspect_original_tables',False)
                     or literal_subject is None or literal_column is None
@@ -1706,13 +1710,20 @@ def find_source_evidence(args) -> None:
     # rows to documents, replace the original ranked passages, or infer truth.
     selected_original_tables=None
     selected_unique_original_cell=None
+    selected_literal_claim_check=None
     try:
         if getattr(args,'inspect_original_tables',False):
             inspected=[]
             cell_candidates=[]
             for document in documents:
                 original_path=document['original_path']
-                if document.get('source_kind')!='text' or Path(original_path).suffix.casefold() not in ('.md','.markdown'):
+                # The approved archive classifies third-party Markdown
+                # agent manuals as 'skill', not 'text'. Both are exact
+                # publisher UTF-8 Markdown originals and must be eligible
+                # for the same original-SHA and native-ID table proof. PDFs,
+                # HTML, and unrecognized source kinds remain excluded.
+                if (document.get('source_kind') not in ('text','skill')
+                        or Path(original_path).suffix.casefold() not in ('.md','.markdown')):
                     continue
                 entry=checked_original(original_path,include_publisher_text=True)
                 if (entry['original_sha256']!=document.get('original_sha256')
@@ -1760,6 +1771,10 @@ def find_source_evidence(args) -> None:
                     'not_found_is_only_within_selected_native_originals_not_entire_archive':True,
                     'existing_native_document_rank_and_excerpts_unchanged':True,
                     'no_automatic_answer_entailment_or_factual_correctness_claimed':True}
+                if asserted_value is not None:
+                    selected_literal_claim_check=compare_claimed_literal_to_current_original_cell(
+                        original_cell_result=selected_unique_original_cell,
+                        claimed_literal_value=asserted_value)
             selected_original_tables={
                 'schema':'kmd.optin_native_ranked_original_markdown_tables.v1',
                 'original_source_documents_selected_before_table_lookup':len(documents),
@@ -1837,6 +1852,11 @@ def find_source_evidence(args) -> None:
             'literal_cell_value_excluded_from_private_audit':True,
             'not_semantic_answer_verification':True}}
             if selected_unique_original_cell is not None else {}),
+        **({'opt_in_expected_original_cell_literal_status':{
+            'status':selected_literal_claim_check['status'],
+            'asserted_and_source_field_text_excluded_from_private_audit':True,
+            'literal_difference_is_not_semantic_contradiction':True}}
+            if selected_literal_claim_check is not None else {}),
         **({"opt_in_archived_original_references": {
             "selected_native_parent_originals": [p['parent_original_path'] for p in linked_archive['parents']],
             "linked_original_sources_checked":linked_archive['linked_original_sources_checked'],
@@ -1870,6 +1890,8 @@ def find_source_evidence(args) -> None:
            if selected_original_tables is not None else {}),
         **({'optional_exact_original_markdown_table_cell':selected_unique_original_cell}
            if selected_unique_original_cell is not None else {}),
+        **({'optional_expected_original_cell_literal_comparison':selected_literal_claim_check}
+           if selected_literal_claim_check is not None else {}),
         **({'opt_in_archived_original_reference_navigation':linked_archive}
            if linked_archive is not None else {}),
         "final_current_original_source_revision_check":final_source_proof,
@@ -1985,6 +2007,9 @@ def original_source_evidence(args) -> None:
         literal_subject=getattr(args,'table_subject',None)
         literal_column=getattr(args,'table_column',None)
         literal_section=getattr(args,'table_exact_section',None)
+        asserted_value=getattr(args,'expect_table_value',None)
+        if asserted_value is not None and literal_subject is None:
+            raise ValueError('--expect-table-value requires explicit original --inspect-original-tables, --table-subject and --table-column')
         if any(x is not None for x in (literal_subject,literal_column,literal_section)):
             if (not getattr(args,'inspect_original_tables',False)
                     or literal_subject is None or literal_column is None):
@@ -2049,6 +2074,10 @@ def original_source_evidence(args) -> None:
                     derived_text=source['derived_text'],
                     publisher_text_bytes=source['publisher_text_bytes'],
                     filesystem_entry_id=int(row[0]))
+                if asserted_value is not None:
+                    result['optional_expected_original_cell_literal_comparison']=compare_claimed_literal_to_current_original_cell(
+                        original_cell_result=result['optional_exact_original_markdown_table_cell'],
+                        claimed_literal_value=asserted_value)
         if Path(original_path).suffix.casefold() == ".pdf":
             hits = result["passages"]
             proofs = verify_pdf_page_excerpts(publisher_path(original_path), source["original_sha256"], hits)
@@ -2126,6 +2155,11 @@ def original_source_evidence(args) -> None:
             'cell_value_and_source_body_not_in_private_audit':True,
             'no_semantic_entailment_proven':True}}
             if 'optional_exact_original_markdown_table_cell' in result else {}),
+        **({'optional_expected_original_cell_literal_status':{
+            'status':result['optional_expected_original_cell_literal_comparison']['status'],
+            'asserted_and_source_field_text_excluded_from_private_audit':True,
+            'literal_difference_is_not_semantic_contradiction':True}}
+            if 'optional_expected_original_cell_literal_comparison' in result else {}),
         **({'optional_source_passage_utility_counts':{
             'reviewed_candidates':result['optional_source_passage_utility_review']['reviewed_publisher_excerpt_candidates'],
             'navigation_or_prompt_candidates':result['optional_source_passage_utility_review']['navigation_or_prompt_template_candidates'],
@@ -2310,6 +2344,8 @@ def main():
         help="Exact publisher Markdown column name for the named source row, not a guessed semantic alias")
     evidence.add_argument("--table-exact-section",
         help="Optional exact original Markdown section heading to resolve duplicate subject+column rows")
+    evidence.add_argument("--expect-table-value",
+        help="Opt-in literal assertion to compare with the unique original publisher cell; different text is not a semantic falsehood. Requires exact table subject and column")
     evidence.add_argument("--follow-archived-links",action="store_true",
         help="Optional official first-party links from one original HTML article or Markdown publisher file into already archived source evidence; source candidates remain separate from answers")
     evidence.add_argument("--linked-originals",type=int,default=3,
@@ -2343,6 +2379,8 @@ def main():
         help="Exact publisher original Markdown column heading, without a guessed semantic alias")
     mixed.add_argument("--table-exact-section",
         help="Optional exact original source section heading to disambiguate identical row subject and field")
+    mixed.add_argument("--expect-table-value",
+        help="Compare supplied literal string with ONE verified original cell across all selected originals; do not infer semantic truth or silently pick a source")
     mixed.add_argument("--scope-context-characters", type=int, default=320,
                        help="Bounded original-derived opening/neighbor context per excerpt (0 or 80–600); no physical-page claim")
     mixed.add_argument("--continue-section", metavar="CURSOR",

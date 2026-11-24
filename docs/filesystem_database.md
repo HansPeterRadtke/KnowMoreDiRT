@@ -4948,3 +4948,131 @@ fact-checker, a semantic truth/contradiction classifier, a better
 identical-result-budget native rank, or the right to migrate live
 corrected PDF/HTML source generations. Those remain separate research
 and engineering tasks, with the seven live cutover blockers unchanged.
+
+
+### November 24 — literal assertion checks against an exact original publisher cell (NVIDIA and ADK)
+
+The original-source table lookup from the preceding section recovers an
+exact archived publisher field, but it did **not** directly compare a
+separately submitted literal assertion against that field. A private,
+read-only, opt-in `--expect-table-value` option now works in BOTH existing
+`raspi_hierarchical_library.py source-evidence` and
+`find-source-evidence` commands, **only** when paired with
+`--inspect-original-tables`, an exact `--table-subject` and an exact
+`--table-column`. The caller may specify `--table-exact-section` where
+several original tables share a literal row subject. The expected value
+must be one bounded nonempty line without control characters; it is not
+silently edited, uppercased, translated, synonymized or coerced.
+
+The exact publisher-cell source reader must first verify **current
+complete original and extracted derivative SHA**, the unique native
+FileDB identity, the literal publisher header/row/**cell** byte ranges
+and their SHA, the original source section and a current source-map
+revision check. The optional comparison only consumes that exact
+**same-call verified original** field. It cannot follow unapproved
+URLs, alter native semantic ranks, replace source excerpts, execute
+agent instructions found within a source document or write original
+source/index data. The private query audit records the result's
+**status and counts only**: neither the claimed literal nor the
+publisher source field text appears in it. The normal option-free
+query returns exactly its existing ranked sources and excerpts.
+
+Four explicit outcomes prevent turning a plausible source quote into a
+fabricated factual assertion:
+
+* `literal_match` — the user-supplied string is **exactly equal** to
+  one uniquely selected, physically source-verified original table
+  cell; this is not verification of current external product policy.
+* `literal_different` — the asserted characters **differ** from that
+  one original cell; this does **not** prove that a differently worded
+  semantic claim is false. For example, synonyms or date/edition
+  differences may change the literal string without changing the
+  meaning. A model must not auto-label this result `false`.
+* `source_ambiguous_no_literal_comparison` — multiple original rows
+  or native-selected original documents match, and **no value** may be
+  chosen because it ranked first. Constrain the original and section.
+* `source_not_found_no_literal_comparison` — no exact matching field
+  exists in the inspected original(s). This does **not** mean the
+  entire Knowledge Library has no answer. No fabricated value appears.
+
+A genuine **native discovery bug** was found in the first real
+cross-domain evaluation. For the question *“Does NVIDIA cuOpt Server
+support QP quadratic programming?”*, native document search ranked
+the relevant approved NVIDIA cuOpt Server agent skill **second**.
+However, its Markdown table was initially skipped as though it did not
+exist, because the acquisition catalog correctly calls these
+third-party approved `SKILL.md` originals **kind=`skill`**, not
+`kind=text`. The exact-cell reader now accepts both *text* and *skill*
+when the **current approved source path really ends in `.md` or
+`.markdown`**. HTML, PDF and unknown source kinds remain excluded.
+The source's literal original table row says **`QP → ✗`**. Comparing
+the assertion `✓` now produces `literal_different` with its
+independently verified physical original field, instead of the old
+incorrect `not_found_in_selected_native_originals`. All four
+previously native-ranked documents and original passage results were
+shown to remain **byte-for-byte identical** before/after this fix.
+These symbols describe the **archived publisher skill snapshot**, not
+a separate fresh verification of NVIDIA's present-day API.
+
+A **predeclared source-literal evaluation** was frozen *before* adding
+the comparison helper, using **five distinct approved first-party
+NVIDIA and Google ADK reference originals** that had not been in the
+preceding n8n/MaterialX source-row checks. It contains **41 manually
+selected field assertions**: **27 exact literal matches, nine
+intentionally different literal strings, five nonexistent literal
+fields**. The original source files, completed acquisition receipts
+and publisher URLs were checked independently; the expected literal
+fields were confirmed by a **separate minimal physical Markdown-line
+reader**, not the production table parser under evaluation. Every
+case was subsequently run through full original and derived SHA,
+original field-byte positions, native FileDB identity and the final
+source revision guard. All **41/41** produced their predeclared
+literal-comparison status, with no fabricated answer for the five
+missing fields. These are new **cross-domain source examples** relative
+to the previous n8n and MaterialX corpus, but they were chosen after
+reading the documents and are **not** an unseen blinded semantic
+entailment holdout. In particular, nine different strings are **not
+nine proven false factual claims**.
+
+Those five approved source originals cover NVIDIA cuOpt routing
+troubleshooting, cuOpt Server routing/LP/MILP/QP support and REST API
+field names, Google ADK user-simulation expert/novice/evaluator
+personas, runtime cancellation behavior and service-memory
+capabilities. For example, the archived ADK novice persona has
+`Correct Agent Inaccuracies: No`, whereas the expert persona has
+`Correct Agent Inaccuracies: Yes`; exact field comparison can show
+that distinction without implementing a speculative semantic
+interpreter. Any source instructions, shell commands or model prompts
+inside these archived documents are **untrusted publisher text**, not
+instructions to the retrieving agent.
+
+Reproducible already-approved local source examples:
+
+```sh
+cd /data/src/github/KnowMoreDiRT
+PYTHONPATH=src /data/var/knowmoredirt/semantic-venv/bin/python \
+  scripts/raspi_hierarchical_library.py source-evidence \
+  'Does NVIDIA cuOpt Server solve quadratic programming?' \
+  --original-path 'skills/nvidia/cuopt-server-api-python-3f546f3/SKILL.md' \
+  --top 2 --inspect-original-tables \
+  --table-subject QP --table-column Supported \
+  --expect-table-value '✓'
+
+PYTHONPATH=src /data/var/knowmoredirt/semantic-venv/bin/python \
+  scripts/raspi_hierarchical_library.py find-source-evidence \
+  'Does NVIDIA cuOpt Server support QP quadratic programming?' \
+  --documents 4 --passages 2 --inspect-original-tables \
+  --table-subject QP --table-column Supported \
+  --expect-table-value '✓'
+```
+
+Both will show a literal difference when the selected current approved
+publisher original contains a uniquely verified **`✗`** value. The
+comparison is a **source-bound literal assertion aid**, not a general
+truth/falsehood adjudicator, current online standards checker, model
+hallucination detector, or permission to publish sources. Before any
+model-generated answer is called correct, independent evaluation must
+check claim scope, meaning, negation, temporal applicability and
+multiple potentially conflicting first-party originals. No source
+acquisition, native reranking, live source-generation cutover or
+indexer stoppage was authorized or performed by these additions.

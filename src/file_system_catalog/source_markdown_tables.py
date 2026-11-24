@@ -346,3 +346,69 @@ def verified_original_markdown_table_cell(*,subject:str,column:str,
         'no_automated_semantic_entailment_or_answer_correctness_claim':True,
         'no_original_source_or_native_rank_mutation':True,
     }
+
+
+def compare_claimed_literal_to_current_original_cell(*,
+        original_cell_result:dict,claimed_literal_value:str)->dict:
+    """Compare ONE literal claim with ONE original-byte-verified table cell.
+
+    A different literal string is NOT proof of a false semantic claim:
+    synonyms, editions, case, different unit formatting and time scope may
+    be equivalent. Missing or ambiguous original-source cells are NOT scored.
+    The caller MUST supply the current SHA-checked original evidence result,
+    from this same reader call, before the final source-revision guard.
+    """
+    if (not isinstance(claimed_literal_value,str) or
+            not 1<=len(claimed_literal_value)<=1200 or
+            not claimed_literal_value.strip() or
+            claimed_literal_value!=claimed_literal_value.strip() or
+            any(ord(c)<32 or ord(c)==127 for c in claimed_literal_value)):
+        raise ValueError('publisher field comparison requires a bounded exact nonempty literal assertion')
+    if not isinstance(original_cell_result,dict):
+        raise ValueError('only a verified current original source cell may be compared')
+    schema=original_cell_result.get('schema')
+    if schema=='kmd.optin_unique_original_publisher_markdown_cell_literal_proof.v1':
+        status=original_cell_result.get('status')
+        valid=('resolved','ambiguous','not_found')
+        field=original_cell_result.get('resolved_unique_literal_publisher_cell')
+        count=original_cell_result.get('matching_original_table_rows')
+    elif schema=='kmd.optin_native_selected_unique_publisher_markdown_cell.v1':
+        status=original_cell_result.get('status')
+        valid=('resolved','ambiguous','not_found_in_selected_native_originals')
+        selected=original_cell_result.get('selected_original_source_cell')
+        field=selected.get('original_verified_unique_table_cell') if isinstance(selected,dict) else None
+        count=original_cell_result.get('matching_original_table_rows_across_selected_documents')
+    else:raise ValueError('original publisher SHA-verified table-cell proof schema required')
+    if status not in valid or type(count) is not int or count<0 or count>2000:
+        raise ValueError('invalid or unbounded verified original source cell lookup')
+    if status=='resolved':
+        if (count!=1 or not isinstance(field,dict)
+                or not isinstance(field.get('selected_original_table_column_value'),str)
+                or field.get('column_value_is_original_exact_quoted_publisher_text') is not True
+                or not isinstance(field.get('original_table_cell_sha256'),str)
+                or not _SHA.fullmatch(field['original_table_cell_sha256'])):
+            raise ValueError('nonunique or unverified publisher source cell cannot be compared')
+        original=field['selected_original_table_column_value']
+        if _sha(original.encode('utf8'))!=field['original_table_cell_sha256']:
+            raise ValueError('publisher original cell text does not match its physical byte SHA')
+        outcome='literal_match' if claimed_literal_value==original else 'literal_different'
+        source_cell_sha=field['original_table_cell_sha256']
+    else:
+        if field is not None or (status=='ambiguous' and count<=1) or (status!='ambiguous' and count!=0):
+            raise ValueError('missing or ambiguous original source incorrectly exposes a unique value')
+        outcome=('source_ambiguous_no_literal_comparison' if status=='ambiguous'
+                 else 'source_not_found_no_literal_comparison')
+        source_cell_sha=None
+    return {
+        'schema':'kmd.original_publisher_cell_literal_assertion_not_semantic_truth.v1',
+        'status':outcome,'original_lookup_status':status,
+        'claimed_literal_sha256':_sha(claimed_literal_value.encode('utf8')),
+        'source_cell_sha256':source_cell_sha,
+        'literal_value_match_only_if_unique':outcome=='literal_match',
+        'literal_value_differs_only_if_unique':outcome=='literal_different',
+        'source_ambiguous_requires_more_specific_original_selection':outcome=='source_ambiguous_no_literal_comparison',
+        'not_found_is_not_proof_entire_archive_has_no_answer':status in ('not_found','not_found_in_selected_native_originals'),
+        'literal_difference_is_NOT_proof_semantic_contradiction_or_false_claim':True,
+        'literal_match_is_NOT_proof_publisher_information_is_current_beyond_pinned_original':True,
+        'no_extra_source_acquisition_or_native_rank_modification':True,
+    }

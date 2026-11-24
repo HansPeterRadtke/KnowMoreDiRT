@@ -417,6 +417,54 @@ class NativeMixedArchivedReferenceTests(unittest.TestCase):
             return {**v,'publisher_text_bytes':b'| Approach | Available on |\n| --- | --- |\n| AI Transform node | Cloud only |\n'} if path in (parent,second) else v
         return parent,second,versions,selected,checked
 
+    def test_native_selected_skill_MD_literal_claim_uses_original_source_not_source_type_name(self):
+        import hashlib
+        parent,child,versions,hits,_link=self._native_approved_markdown_source_fixture()
+        self.args.follow_archived_links=False
+        self.args.inspect_original_tables=True
+        self.args.table_subject='QP';self.args.table_column='Supported'
+        self.args.expect_table_value='✓'
+        manifest,ledger,src=versions
+        versions=({**manifest,parent:{**manifest[parent],'kind':'skill'}},ledger,src)
+        hits=[{**hits[0],'source_kind':'skill'},hits[1]]
+        table={'returned_original_publisher_table_row_candidates':1,'publisher_rows':[]}
+        correct={'schema':'kmd.optin_unique_original_publisher_markdown_cell_literal_proof.v1',
+            'status':'resolved','matching_original_table_rows':1,
+            'resolved_unique_literal_publisher_cell':{
+                 'selected_original_table_column_value':'✗',
+                 'original_table_cell_sha256':hashlib.sha256('✗'.encode()).hexdigest(),
+                 'column_value_is_original_exact_quoted_publisher_text':True}}
+        original_checked=self.fixture.checked
+        def checked(path,**kwargs):
+            x=original_checked(path,**kwargs)
+            return {**x,'publisher_text_bytes':'| Problem type | Supported |\n| --- | --- |\n| QP | ✗ |\n'.encode('utf8')} if path==parent else x
+        with mock.patch.object(self.cli,'_current_versions',return_value=versions),\
+             mock.patch.object(self.cli,'_native_passage_search',return_value={'results':hits}),\
+             mock.patch.object(self.cli,'checked_original',side_effect=checked),\
+             mock.patch.object(self.cli,'verified_original_markdown_table_rows',return_value=table),\
+             mock.patch.object(self.cli,'verified_original_markdown_table_cell',return_value=correct) as reader:
+            result=self.invoke_once()
+        self.assertEqual('skill',result['documents'][0]['source_kind'])
+        self.assertEqual([1,2],[v['rank'] for v in result['documents']])
+        self.assertEqual(1,result['optional_original_markdown_table_evidence']['original_markdown_documents_inspected'])
+        self.assertEqual('resolved',result['optional_exact_original_markdown_table_cell']['status'])
+        check=result['optional_expected_original_cell_literal_comparison']
+        self.assertEqual('literal_different',check['status'])
+        self.assertTrue(check['literal_difference_is_NOT_proof_semantic_contradiction_or_false_claim'])
+        audit=self.fixture.mocks['append_query_audit'].call_args.args[0]
+        self.assertEqual('literal_different',audit['opt_in_expected_original_cell_literal_status']['status'])
+        self.assertNotIn('✓',str(audit))
+        self.assertNotIn('✗',str(audit))
+        reader.assert_called_once()
+        self.assertEqual(parent,reader.call_args.kwargs['original_path'])
+
+    def test_native_expected_value_requires_exact_source_field_before_native_search(self):
+        self.args.follow_archived_links=False
+        self.args.expect_table_value='✓'
+        with self.assertRaisesRegex(ValueError,'requires explicit original'):
+            self.invoke_once()
+        self.fixture.mocks['_native_passage_search'].assert_not_called()
+
     def test_across_two_native_selected_originals_same_literal_cell_is_ambiguous_not_highest_rank(self):
         parent,second,versions,hits,checked=self._two_selected_current_markdown_originals_for_literal_cell()
         self.args.follow_archived_links=False
