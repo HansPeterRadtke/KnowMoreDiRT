@@ -3458,3 +3458,56 @@ source-boundary acknowledgments, a crash-safe staging/preflight process and
 an independently verified rollback. The module continues to report
 `safe_to_cutover_live=false`. Neither pointer nor assets are copied to
 external services; originals stay grep-readable in their existing folders.
+
+
+### November 24 — cooperative PRIVATE legacy reader and writer admission barrier
+
+The isolated generation switch now has an additional **private-only and
+cooperative** client-admission demonstration in
+`file_system_catalog.private_source_admission`. An older-style private
+reader or writer explicitly enters `admit_private_legacy_reader` or
+`admit_private_legacy_writer` and retains a shared advisory lock for its
+entire operation. The *private* rehearsal publisher calls
+`publish_private_after_legacy_drain`: its nonblocking exclusive lock refuses
+a switch while any cooperating old reader or writer is still active. Once
+all participating old clients finish, it validates the exact staged
+native/source-map and recursive-summary generation, durably seals new legacy
+admissions, and invokes the already-tested private atomic pointer switch.
+Older pinned generation-aware readers may continue using their immutable
+source snapshots while newer readers select the next version. New
+cooperating legacy sessions are refused after sealing, including after a
+simulated crash *between the durable seal and the pointer rename*.
+
+The seal is owner-only, regular, bounded JSON pinned to the actual verified
+source-generation manifest SHA and its ordinal; its existence is checked
+while holding the admission lock. If the seal is deleted after a pointer has
+been published, a new legacy session **still fails closed** rather than
+reopening older source paths. A copied/tampered seal, symlinked or
+world-readable lock, invalid staged PDF/vector cohort and replayed
+publication ordinal are refused. An abandoned old seal temporary file is
+left untouched rather than overwritten. These are verified in synthetic
+private fixtures, including a separate operating-system process holding a
+legacy reader open while another publisher is refused. No worker restart,
+signal, native SQLite mutation or external source download is involved.
+
+**Critical limitation:** advisory locking excludes **only cooperating old
+clients** that explicitly use these private functions. An unregistered
+manual SQL client, live native embedding timer, source extractor, resident
+summarization worker, browser/UI reader or older code path can ignore the
+lock. The existing bare `publish_private_only` is deliberately retained for
+older private tests and has no client-admission proof. Consequently neither
+the barrier, a durable tombstone, a positive test nor the existence of the
+private pinned-generation read view demonstrates that **all actual KMD
+production readers and writers** have migrated. The structured private
+publication result explicitly records
+`cooperating_legacy_reader_admissions_sealed=true`,
+`unregistered_clients_excluded=false`,
+`all_live_KMD_readers_admitted=false` and
+`safe_to_cutover_live=false`. These controls are not installed into or
+run against the production source map, native FileDB, original collection,
+public retrieval service or shared resident models. The seven live release
+blockers must stay open until an independently verified production-wide
+client census, enrollment, admission deny/hold protocol, crash-safe
+multi-store generation rollout, rollback and post-switch source QA exist.
+This private rehearsal is not authorization to cut over 327 PDF or two HTML
+sources or to discard historical source generations.
