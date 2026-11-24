@@ -182,33 +182,46 @@ class BoundedPassageIndex:
         if require_identifier_in_passage and identifiers:
             identifier_match = " OR ".join('"' + t + '"' for t in identifiers)
             match = f"({match}) AND passage : ({identifier_match})"
+        # Raw BM25 rank is not enough for corpus-grounded search: a very
+        # short one-term page can precede a longer two-term source passage.
+        # Ranking first, applying LIMIT second, and THEN rejecting one-term
+        # candidates could return no results even with valid later pages.
+        # Stream the sorted FTS cursor through the exact-term evidence gate
+        # before counting accepted hits. The in-memory index is already
+        # bounded by max_passages and max_characters. Close the cursor even
+        # if iteration is stopped early; no second or persistent index exists.
         rows = self._db.execute(
             "SELECT rowid,bm25(passage_fts,6.0,0.15,1.2,1.0) "
             "FROM passage_fts WHERE passage_fts MATCH ? "
-            "ORDER BY 2 ASC, rowid ASC LIMIT ?",
-            (match, limit),
-        ).fetchall()
+            "ORDER BY 2 ASC, rowid ASC",
+            (match,),
+        )
         out = []
-        for rowid, bm25 in rows:
-            item = self._metadata[rowid]
-            searchable = " ".join((item["original_title"], item["source_section"], item["passage"])).casefold()
-            found = sum(
-                re.search(r"(?<!\w)" + re.escape(term) + r"(?!\w)", searchable) is not None
-                for term in terms
-            )
-            heading_terms = set(terms).intersection(t for t, _, _ in lexical_token_spans(item["publisher_heading"]))
-            # The FTS passage-column constraint above already requires a whole identifier.
-            specific_match = heading_terms or (require_identifier_in_passage and identifiers)
-            if not specific_match and (found < min(2, len(terms)) or (len(terms) >= 5 and found / len(terms) < 0.25)):
-                continue
-            out.append({
-                **item,
-                "lexical_bm25": float(bm25),
-                "matched_query_terms": found,
-                "matched_publisher_heading_terms": sorted(heading_terms),
-                "total_query_terms": len(terms),
-                "lexical_passage_rank": len(out) + 1,
-            })
+        try:
+            for rowid, bm25 in rows:
+                item = self._metadata[rowid]
+                searchable = " ".join((item["original_title"], item["source_section"], item["passage"])).casefold()
+                found = sum(
+                    re.search(r"(?<!\w)" + re.escape(term) + r"(?!\w)", searchable) is not None
+                    for term in terms
+                )
+                heading_terms = set(terms).intersection(t for t, _, _ in lexical_token_spans(item["publisher_heading"]))
+                # The FTS passage-column constraint already requires a whole identifier.
+                specific_match = heading_terms or (require_identifier_in_passage and identifiers)
+                if not specific_match and (found < min(2, len(terms)) or (len(terms) >= 5 and found / len(terms) < 0.25)):
+                    continue
+                out.append({
+                    **item,
+                    "lexical_bm25": float(bm25),
+                    "matched_query_terms": found,
+                    "matched_publisher_heading_terms": sorted(heading_terms),
+                    "total_query_terms": len(terms),
+                    "lexical_passage_rank": len(out) + 1,
+                })
+                if len(out) >= limit:
+                    break
+        finally:
+            rows.close()
         return out
 
 

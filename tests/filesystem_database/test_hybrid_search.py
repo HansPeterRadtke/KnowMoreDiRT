@@ -83,6 +83,29 @@ class HybridSearchTest(unittest.TestCase):
         self.assertEqual("ai-agents/computer-use.pdf", results[0]["original_path"])
         self.assertIsNone(results[0]["lexical_rank"])
 
+    def test_result_limit_applies_after_independent_exact_term_filter(self):
+        # FTS5 can rank many very short one-term pages above one long passage
+        # with two exact terms when both terms occur at similar frequencies.
+        # The result limit must not conceal the only qualifying original.
+        long_original='pipeline provenance '+('contextual source evidence about '
+                           'original library references and verification '*200)
+        with BoundedPassageIndex(max_passages=90,max_characters=350000) as idx:
+            for n in range(80):
+                word='pipeline' if n%2==0 else 'provenance'
+                add(idx,f'noise/one-term-{n}.pdf','PDF page 1',
+                    (word+' ')*13+'reference method test',entry_id=n+1)
+            add(idx,'publisher/real-two-term.pdf','PDF page 3',long_original,entry_id=91)
+            self.assertEqual(81,idx.passage_count)
+            matched=idx.search('pipeline provenance',limit=1)
+            self.assertEqual(1,len(matched))
+            self.assertEqual('publisher/real-two-term.pdf',matched[0]['original_path'])
+            self.assertEqual(2,matched[0]['matched_query_terms'])
+            self.assertEqual(1,matched[0]['lexical_passage_rank'])
+            self.assertEqual(hashlib.sha256(long_original.encode()).hexdigest(),matched[0]['passage_sha256'])
+            self.assertEqual('candidate_requires_source_revision_check',matched[0]['evidence_status'])
+            self.assertEqual([],idx.search('fabricated nebulamatter',limit=1))
+            self.assertEqual(matched,idx.search('pipeline provenance',limit=1))
+
     def test_single_incidental_word_cannot_dominate(self):
         with BoundedPassageIndex() as idx:
             add(idx, "unrelated/generic.pdf", "page 1", "Design is a word used here.")
