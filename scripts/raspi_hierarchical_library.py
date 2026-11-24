@@ -31,6 +31,7 @@ import sys
 
 ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT / "src"))
+sys.path.insert(0, str(ROOT / "scripts"))
 INFRA = Path("/data/infra/libexec")
 sys.path.insert(0, str(INFRA))
 from file_system_catalog.hierarchical_summary import (
@@ -1618,6 +1619,30 @@ def find_pdf_evidence(args) -> None:
     }, indent=2, ensure_ascii=False))
 
 
+def _optional_verified_archived_links(args, *, original_path:str, evidence_query:str,
+                                     continuation_cursor:str|None):
+    """Explicit, optional archived first-party reference-following ONLY.
+
+    Never invoked by the default source evidence or semantic search path.
+    The separate linked-reader rechecks current parent/destination source and
+    native identities after building its candidates. No external downloads.
+    """
+    if not getattr(args, 'follow_archived_links', False):
+        return None
+    limit=getattr(args,'linked_originals',3)
+    if (type(limit) is not int or not 1<=limit<=5
+            or continuation_cursor is not None
+            or Path(original_path).suffix.casefold() not in ('.html','.htm')
+            or not isinstance(evidence_query,str) or not 1<=len(evidence_query)<=300):
+        raise ValueError('archived source following requires one HTML original, no continuation, and 1-5 linked originals')
+    # The wrapper lives in the same repo and uses the current native reader;
+    # import only on explicit invocation to preserve existing runtime behavior.
+    from raspi_archived_html_follow_links import find_archived_linked_source_passages
+    return find_archived_linked_source_passages(
+        original_path,evidence_query,limit=limit,
+        passages=min(2,args.top),snippet_characters=args.snippet_characters)
+
+
 def original_source_evidence(args) -> None:
     """Inspect verified original pages; never mistake lexical hits for truth."""
     started=time.monotonic()
@@ -1692,6 +1717,13 @@ def original_source_evidence(args) -> None:
         # successfully verified *old* passage without this second check.
         result["final_current_source_revision_check"] = final_original_revision_guard(
             source, original_path=original_path, native_file_id=int(row[0]))
+        linked=_optional_verified_archived_links(args,original_path=original_path,
+                         evidence_query=evidence_query,continuation_cursor=cursor)
+        if linked is not None:
+            # This is a supplementary, current ORIGINAL-publisher reference
+            # channel. The original's own zero lexical excerpts remain zero:
+            # never pretend a linked document's excerpt came from the parent.
+            result['linked_archived_original_references']=linked
     except Exception as error:
         append_query_audit({
             "operation":"verified_original_source_evidence",
@@ -1723,6 +1755,14 @@ def original_source_evidence(args) -> None:
         **({"rfc_section_lookup":result["rfc_section_lookup"]} if "rfc_section_lookup" in result else {}),
         "duration_seconds":round(time.monotonic()-started,3),
         **({"pdf_page_verification": result["pdf_page_verification"]} if "pdf_page_verification" in result else {}),
+        **({"opt_in_archived_reference_follow": {
+            "linked_originals_checked": linked['linked_original_sources_checked'],
+            "verified_publisher_HTML_article_candidate_passages":linked['publisher_original_article_evidence_passages'],
+            "missing_unapproved_original_reference_count":
+                linked['parent_original_HTML_article_link_proof']['same_origin_relevant_unarchived_or_unapproved_references'],
+            "candidate_original_paths": [x['original_path'] for x in linked['linked_existing_original_sources']],
+            "not_a_verified_answer": True,
+        }} if linked is not None else {}),
         "ranked_source_spans":[{
             "rank":i,
             "source_section":v["source_section"],
@@ -1872,6 +1912,10 @@ def main():
                           help="Read the next contiguous excerpt using the previous RFC section result\u0027s context.next_cursor")
     evidence.add_argument("--top",type=int,default=5)
     evidence.add_argument("--snippet-characters",type=int,default=900)
+    evidence.add_argument("--follow-archived-links",action="store_true",
+        help="Optional same-publisher HTML article references into already archived original sources, plus clearly marked missing references; requires one selected HTML original")
+    evidence.add_argument("--linked-originals",type=int,default=3,
+        help="At most this many independently checked linked archived originals (1-5; only with --follow-archived-links)")
     mixed = sub.add_parser(
         "find-source-evidence",
         help="Find native originals with physically verified PDF or SHA-linked non-PDF excerpts",

@@ -3741,3 +3741,67 @@ Production direct folder/grep searching and existing exact-source
 owner-private evidence file under the established KMD search-audit directory.
 The owner-visible search UI is **not** automatically wired to this optional
 reference-following command; this is an independently tested library tool.
+
+
+### November 24 — standard source-evidence command can optionally follow archived publisher references
+
+The established KnowMoreDiRT `raspi_hierarchical_library.py source-evidence`
+command now accepts the **explicit opt-in** `--follow-archived-links` with
+`--linked-originals N` (one to five, default three). The selected source must
+be **one exact archived HTML original** (given by `--original-path` or a
+uniquely resolved `--source-name`). RFC continuation cursors, PDF/text-only
+originals, unbounded requests, and source-name ambiguities are rejected for
+this mode. The existing default `source-evidence`, `search`,
+`find-source-evidence` and `find-pdf-evidence` operations and native document
+ranking are unchanged when the switch is absent. No network access is
+introduced and the existing original folder/grep search remains usable.
+
+For example, after selecting the exact Unity 6.3 LTS **Loading textures in
+the background** original, the command is:
+
+```sh
+PYTHONPATH=src python3 scripts/raspi_hierarchical_library.py source-evidence \
+  'How do I avoid noticeable stutters when transferring model mesh and image asset data from disk in a running game?' \
+  --source-name 'Unity 6.3 LTS — Loading textures in the background' \
+  --follow-archived-links --linked-originals 2 --top 2
+```
+
+The normal original-source response keeps **zero direct parent excerpts** for
+that indirect question. A distinct
+`linked_archived_original_references` object contains the separate selected
+source-link proof and one already archived **Texture and mesh loading**
+child, with the child's full original-source SHA, derived SHA, native FileDB
+identity, a candidate extracted-text offset/hash and an independently
+normalized **original publisher HTML article** text anchor. The same response
+separately lists the official **Make a texture or mesh compatible with
+asynchronous loading** link as
+`not_in_existing_catalog` with **no acquired content**, no downloaded page,
+and no invented quotation. It still never claims that the candidate is a
+correct answer, literal publisher byte coordinate, physical PDF page, or
+proof of an immutable live cross-store generation. A wholly unrelated
+question about neutrinos returns **zero** verified archived links and zero
+source passages. Without `--follow-archived-links`, the existing query has
+exactly its prior zero-parent-passage structure and no linked response.
+
+The opt-in source-link search uses the previously published bounded
+`raspi_archived_html_follow_links` reader; the original parent and every
+selected target are independently rechecked against completed acquisition
+receipts, current original and derived SHA and native FileDB IDs **after**
+passage selection. It checks the whole candidate set again at the end. A
+revision mismatch refuses the entire optional response instead of
+presenting stale source evidence. The added summary in the normal private
+query audit contains counts and exact source paths but **no publisher
+paragraphs**; it distinguishes parent direct excerpts from linked
+publisher-article candidate passages and missing sources. The separate
+standalone link-follow command remains available for source-navigation
+research and reproducible private receipts. The opt-in is **live-read-only
+CLI functionality**, not installation in the owner-facing web UI, default
+semantic ranking or permission to stage new sources or repair 327 PDFs.
+
+Five opt-in dispatch regressions exercise normal zero-change defaults,
+unique source identity, fail-closed non-HTML/continued/unbounded requests,
+late linked-source changes that reject the entire response, and hard-negative
+queries without fallback. Real Unicode exact-title, direct-path and
+hard-negative CLI checks confirm the behavior in the actual Raspi archive.
+The overall Knowledge Library source migration remains blocked until the
+seven known live reader/writer admission and rollback requirements are met.
