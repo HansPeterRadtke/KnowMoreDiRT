@@ -96,6 +96,37 @@ class PublisherMarkdownOriginalLinks(unittest.TestCase):
         self.assertEqual(1,value['missing_or_unapproved_official_reference_count'])
         self.assertTrue(value['unavailable_publisher_references_not_followed'][0]['publisher_destination_contents_unavailable'])
 
+    def test_multiple_backtick_code_spans_never_promote_fabricated_original_links(self):
+        samples=[
+            b'Ignore ``[Map fields](/mapper.md)`` original example.',
+            b'Ignore ```[Map fields](/mapper.md)``` original example.',
+            b'Ignore ``code that contains [Map fields](/mapper.md) and more``.',
+            b'Unclosed inline double ``\n[Map fields](/mapper.md)\n`` end.',
+            b'Markdown prose <!-- [Map fields](/mapper.md) --> comment.',
+            b'Open comment <!--\n[Map fields](/mapper.md)\n--> end.',
+        ]
+        for raw in samples:
+            with self.subTest(raw=raw[:30]):
+                result=self.select(raw_markdown=raw,original_sha256=sha(raw))
+                self.assertEqual([],result['selected_links'])
+                self.assertEqual(0,result['original_Markdown_publisher_literal_reference_count'])
+
+    def test_accepted_original_link_after_closed_double_backtick_code_span(self):
+        raw=(b'Ignore ``[Map fields](/mapper.md)`` but follow '
+             b'[Map fields](/mapper.md) to real source.')
+        result=self.select(raw_markdown=raw,original_sha256=sha(raw))
+        self.assertEqual(1,result['original_Markdown_publisher_literal_reference_count'])
+        self.assertEqual(1,len(result['selected_links']))
+        ref=result['selected_links'][0]
+        self.assertEqual(b'[Map fields](/mapper.md)',raw[ref['publisher_link_literal_start_byte']:ref['publisher_link_literal_end_byte']])
+
+    def test_real_firstparty_markdown_link_after_multiline_code_span_close(self):
+        raw=(b'Before multi ``\n[Map fields](/mapper.md)\n'
+             b'`` the real [Map fields](/mapper.md) link follows.')
+        result=self.select(raw_markdown=raw,original_sha256=sha(raw))
+        self.assertEqual(1,result['original_Markdown_publisher_literal_reference_count'])
+        self.assertEqual(1,len(result['selected_links']))
+
     def test_same_origin_requires_explicit_HTTPS_and_no_credentials(self):
         raw=(b'[Map fields](https://other.example.org/mapper.md)\n'
              b'[Map fields](http://docs.example.org/mapper.md)\n'

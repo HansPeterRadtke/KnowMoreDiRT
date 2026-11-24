@@ -4305,7 +4305,18 @@ SHA, same-origin official completed receipt, changed catalog or receipt,
 ambiguous duplicated URL, code/image/external spoof links, unsafe source
 paths, missing targets, stale parent/child full source SHA and native ID,
 modified extracted-text excerpt hash, modified publisher byte excerpt SHA,
-and the default-HTML-source command remaining unchanged. The tool is a
+and the default-HTML-source command remaining unchanged. A further adversarial
+case exposed an actual source-spoofing bug in the original narrow Markdown
+link parser: counting backticks modulo two incorrectly promoted links
+inside **double-backtick and multiline inline code examples** as real
+publisher references. The parser now tracks actual backtick delimiter run
+length across lines and excludes inline/multiline HTML comments. Publisher
+links after an explicitly closed code span continue to work; unmatched
+code delimiters fail closed. Both official source-navigation behavior and
+all **73 immutable benchmark questions, 22 Markdown parent original SHAs,
+88 approved Markdown links and one recovered n8n gold original label** were
+unchanged on independent full-current-source recheck. No source-publisher
+approval status is ever cached or inferred from a quoted code sample. The tool is a
 working **private, read-only CLI capability** in the canonical KnowMoreDiRT
 repository, not deployed into the owner-facing web GUI and not permission
 to acquire additional copyrighted manuals or change the production corpus.

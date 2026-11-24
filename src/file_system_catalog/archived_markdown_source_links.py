@@ -27,7 +27,7 @@ def _sha(blob:bytes)->str:return hashlib.sha256(blob).hexdigest()
 def _literal_links(raw:bytes):
     try:decoded=raw.decode('utf8','strict')
     except UnicodeDecodeError as e:raise ValueError('publisher Markdown not valid UTF-8') from e
-    offset=0;fence=None;results=[]
+    offset=0;fence=None;inline_backtick_run=None;html_comment=False;results=[]
     for line in decoded.splitlines(keepends=True):
         current=line.lstrip(' \t')
         marker=_FENCE.match(line)
@@ -37,12 +37,34 @@ def _literal_links(raw:bytes):
             elif fence[0]==symbol and run>=fence[1]:fence=None
             offset+=len(line.encode('utf8'))
             continue
-        if fence is not None or line.startswith(('    ','\t')) or current.startswith('<!--'):
+        if fence is not None or line.startswith(('    ','\t')):
             offset+=len(line.encode('utf8'));continue
-        for hit in _LINK.finditer(line):
-            # The source may contain backtick inline code with fake links.
-            # A complete Markdown parser is deliberately not inferred here.
-            if line[:hit.start()].count('`')%2:
+        # Ignore any line intersecting an HTML comment, including inline
+        # comments and comments spanning multiple lines. This intentionally
+        # forgoes valid adjacent links rather than promoting a fake source.
+        if html_comment or '<!--' in line or '-->' in line:
+            if html_comment:
+                if '-->' in line:html_comment=False
+            elif '<!--' in line and ('-->' not in line or line.index('-->')<line.index('<!--')):
+                html_comment=True
+            offset+=len(line.encode('utf8'));continue
+        # Markdown permits double/triple backtick inline code spans, and
+        # inline code may span lines. Counting all backticks modulo two was
+        # incorrect: two opening backticks could promote an example link as
+        # a real publisher hyperlink. Match the exact delimiter run length,
+        # even when the closing run occurs on a later line.
+        events=[(hit.start(),1,hit) for hit in _LINK.finditer(line)]
+        events.extend((run.start(),0,run) for run in re.finditer(r'`+',line))
+        events.sort(key=lambda item:(item[0],item[1]))
+        for _position,kind,hit in events:
+            if kind==0:
+                length=len(hit[0])
+                if inline_backtick_run is None:
+                    inline_backtick_run=length
+                elif inline_backtick_run==length:
+                    inline_backtick_run=None
+                continue
+            if inline_backtick_run is not None:
                 continue
             label=hit[1].strip();href=hit[2]
             if not label or label.startswith(('!','[')) or len(label)>240:
