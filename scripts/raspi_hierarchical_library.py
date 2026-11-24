@@ -170,7 +170,7 @@ def checked_original(relative: str, *, include_publisher_text: bool = False,
             entries[0] != publication_record or not publication_receipt_matches(entries[0], record)):
         raise ValueError("publication catalog record changed or acquisition URL differs from completed receipt")
     capture = None
-    if (include_publisher_text and path.suffix.casefold() in (".md", ".markdown", ".txt")
+    if (include_publisher_text and path.suffix.casefold() in (".md", ".markdown", ".txt", ".html", ".htm")
             and type(record.get("bytes_received")) is int and record["bytes_received"] <= PUBLISHER_TEXT_LIMIT):
         capture = bytearray()
     original_bytes = verify_publisher_revision(path, record, capture=capture)
@@ -204,7 +204,10 @@ def checked_original(relative: str, *, include_publisher_text: bool = False,
         "original_bytes": original_bytes,
         "derived_sha256": derivative_sha,
         "derived_text": text,
-        **({"publisher_text_bytes": bytes(capture)} if capture is not None else {}),
+        **({"publisher_text_bytes": bytes(capture)} if capture is not None and
+            path.suffix.casefold() in ('.md','.markdown','.txt') else {}),
+        **({"publisher_html_bytes": bytes(capture)} if capture is not None and
+            path.suffix.casefold() in ('.html','.htm') else {}),
         **({"verified_rfc_number": number} if number else {}),
     }
 
@@ -1073,6 +1076,7 @@ def _original_passages(source, entry_id, query, top, snippet_characters, *,
         original_path=source["original_path"], original_title=source["title"], filesystem_entry_id=entry_id,
         original_sha256=source["original_sha256"], derived_sha256=source["derived_sha256"],
         derived_text=source["derived_text"], publisher_text_bytes=source.get("publisher_text_bytes"),
+        publisher_html_bytes=source.get("publisher_html_bytes"),
         query=query, top=top, snippet_characters=snippet_characters,
         scope_context_characters=scope_context_characters,
     )
@@ -1230,19 +1234,29 @@ def _discovered_non_pdf(hit, rank, args, versions, db):
         # calculated excerpt offsets and SHA over those very original-derived
         # characters. The original bytes have a separate completed ledger SHA.
         pub = passage.get("publisher_excerpt")
-        scope = "publisher_utf8_byte_interval" if pub else "verified_extracted_text_only"
+        html_anchor = passage.get("publisher_html_dom_anchor")
+        scope = ("publisher_utf8_byte_interval" if pub else
+                 "publisher_html_main_article_normalized_text" if html_anchor else
+                 "verified_extracted_text_only")
         verified.append(dict(
             passage, source_lexical_rank=None if selector else lexical_rank,
             matched_excerpt_query_terms=(
                 None if selector else len(passage.get("matched_excerpt_terms", ()))
             ),
             evidence_provenance={
-                "status": "verified" if pub else "verified_derived_text",
+                "status": ("verified" if pub else "verified_original_html_dom_text" if html_anchor
+                           else "verified_derived_text"),
                 "scope": scope,
                 "physical_pdf_page_verified": False,
+                "literal_publisher_byte_interval_verified": bool(pub),
+                "answer_factual_sufficiency_verified": False,
                 "warning": (
                     "A publisher-byte range was reproduced against the exact original UTF-8 revision."
                     if pub else
+                    "The exact normalized excerpt occurs uniquely in the publisher's original "
+                    "HTML article/main text. HTML entities and whitespace were normalized; "
+                    "no literal publisher byte interval or correct answer has been proven."
+                    if html_anchor else
                     "The original file SHA and derived text SHA are verified, but extracted "
                     "text can differ from literal publisher bytes; no physical page/byte quote proven."
                 ),

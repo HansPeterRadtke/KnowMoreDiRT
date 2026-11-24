@@ -44,6 +44,39 @@ class OriginalEvidenceTests(TestCase):
             "derived_sha256":self.derived,"derived_text":self.source,
         }
 
+    def test_html_evidence_links_extracted_body_to_independent_original_article(self):
+        publisher_body=(
+            "The Normal Map node generates a perturbed normal from an RGB normal map image. "
+            "The image texture must use Non-Color mode, and its tangent-space coordinates "
+            "must match the geometry UV coordinates for predictable physically based shading."
+        )
+        original=("<html><head><script>Fake source quotation injected by script</script></head>"
+                  "<body><article><p>"+publisher_body+"</p></article></body></html>").encode()
+        derived=("KMD source provenance: offline catalog header.\n"
+                 "[[SOURCE UNIT: HTML original publisher document]]\n"+publisher_body+"\n")
+        result=source_evidence_candidates(
+            original_path="graphics/blender-original.html",original_title="Normal Map Node",
+            filesystem_entry_id=9,original_sha256=hashlib.sha256(original).hexdigest(),
+            derived_sha256=hashlib.sha256(derived.encode()).hexdigest(),derived_text=derived,
+            query="normal map texture tangent space coordinates",top=1,
+            publisher_html_bytes=original,
+        )
+        self.assertEqual(1,result['returned_passages'])
+        hit=result['passages'][0]
+        self.assertEqual('verified_normalized_original_article_text',hit['publisher_html_dom_anchor']['status'])
+        self.assertEqual('article',hit['publisher_html_dom_anchor']['container'])
+        self.assertFalse(hit['publisher_html_dom_anchor']['literal_publisher_byte_interval_verified'])
+        self.assertEqual('source_lexical_candidate_not_verified_answer',hit['status'])
+        self.assertNotIn('publisher_excerpt',hit)
+        with self.assertRaisesRegex(ValueError,'publisher HTML original SHA'):
+            source_evidence_candidates(
+                original_path='graphics/blender-original.html',original_title='Normal Map Node',
+                filesystem_entry_id=9,original_sha256='0'*64,
+                derived_sha256=hashlib.sha256(derived.encode()).hexdigest(),derived_text=derived,
+                query='normal map texture tangent space coordinates',top=1,
+                publisher_html_bytes=original,
+            )
+
     def test_many_title_only_pages_do_not_hide_late_real_source_body(self):
         # A question may exactly match the publisher title on every page,
         # while only a much later page establishes the actual source claim.

@@ -161,6 +161,39 @@ class MixedSourceEvidenceTests(unittest.TestCase):
         self.assertEqual(2,self.mocks["checked_original"].call_count)
         self.assertEqual(1,self.mocks["verify_pdf_page_excerpts"].call_count)
 
+    def test_mixed_html_original_DOM_anchor_is_visible_but_never_claimed_as_literal_quote(self):
+        self.mocks["_native_passage_search"].return_value={"results":[self.hit("html")]}
+        anchor={
+            "status":"verified_normalized_original_article_text",
+            "container":"article", "original_sha256":"a"*64,
+            "normalized_excerpt_sha256":"9"*64,
+            "original_normalized_text_start_char":14,
+            "original_normalized_text_end_char":145,
+            "literal_publisher_byte_interval_verified":False,
+            "original_pdf_page_verified":False,
+            "answer_factual_sufficiency_verified":False,
+        }
+        self.mocks["source_evidence_candidates"].side_effect=lambda **kwargs: {"passages":[{
+            "source_excerpt":"Source technical text matched an original HTML article.",
+            "excerpt_sha256":"3"*64,
+            "matched_excerpt_terms":["technical","article"],
+            "publisher_html_dom_anchor":anchor,
+        }]}
+        result=self.call()
+        self.assertEqual(1,len(result['documents']))
+        doc=result['documents'][0]
+        self.assertEqual('verified_derived_text',doc['status'])
+        passage=doc['passages'][0]
+        self.assertEqual('publisher_html_main_article_normalized_text',
+                         passage['evidence_provenance']['scope'])
+        self.assertEqual('verified_original_html_dom_text',
+                         passage['evidence_provenance']['status'])
+        self.assertFalse(passage['evidence_provenance']['literal_publisher_byte_interval_verified'])
+        self.assertFalse(passage['evidence_provenance']['answer_factual_sufficiency_verified'])
+        self.assertFalse(passage['publisher_html_dom_anchor']['literal_publisher_byte_interval_verified'])
+        self.assertNotIn('publisher_excerpt',passage)
+        self.assertFalse(passage['evidence_provenance']['physical_pdf_page_verified'])
+
     def test_publisher_utf8_plain_text_proof_kept_distinct_from_normalized_html(self):
         self.mocks["_native_passage_search"].return_value={"results":[self.hit("text")]}
         result=self.call()

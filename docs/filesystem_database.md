@@ -3618,3 +3618,55 @@ adding bespoke query-to-title shortcuts solely for those gold labels would
 be benchmark leakage. A future reranker or document-alias/term expansion must
 be tested against genuinely unseen sources and a factual sufficiency/negative
 query set, not inferred from these positive source-label metrics.
+
+
+### November 24 — independent original HTML article text anchors for source evidence
+
+When the current `raspi_hierarchical_library.py source-evidence` or
+`find-source-evidence` retrieves an excerpt from a SHA-approved original
+`.html`/`.htm` document, the verified *derived* text was previously the only
+passage-level proof. A correct whole-original SHA alone does **not** establish
+that a transformed excerpt appears in the official HTML page. The new
+`publisher_html_dom_evidence` module independently parses the bounded
+original HTML publisher bytes (maximum eight MiB) using Python's built-in
+HTML parser. It excludes script, style, template and other non-content
+fields, and requires the complete whitespace-collapsed excerpt to occur
+**uniquely in the original `article` or `main` element**. A match is recorded
+as `publisher_html_dom_anchor` with its container name, SHA of the complete
+approved original, SHA of the normalized matched excerpt and normalized
+article text offsets. If there is no suitable article/main, matching text is
+only present in scripts/navigation, or content appears ambiguously multiple
+times, the source excerpt remains explicitly unverified against the original
+DOM. The original and derived SHA checks and final source-map/native-ID
+revision guard still run after passage selection; no library or database
+row is rewritten.
+
+**Crucial scope:** HTML DOM character references and whitespace have been
+normalized. These are **not publisher byte coordinates, not browser visual
+layout, not a PDF physical page and not proof that the passage answers the
+user's question**. `literal_publisher_byte_interval_verified=false`,
+`original_pdf_page_verified=false` and
+`answer_factual_sufficiency_verified=false` remain explicit. The mixed-source
+reader assigns the separate scope
+`publisher_html_main_article_normalized_text` when such an anchor exists,
+while retaining document-level extracted-text status for compatibility.
+Publisher-original UTF-8 byte intervals for RFC/plain-text sources and
+physically verified original PDF page citations remain different, stronger
+evidence mechanisms. No JS execution, URL fetching or browser interaction is
+used to parse the archived publisher HTML.
+
+The first real regression cohort reused five previously frozen indirect
+Blender, Unity and Adobe task descriptions. Four yielded exact derived-source
+lexical passage candidates whose **complete normalized excerpts** also
+matched their archived first-party publisher HTML articles or main content.
+The Unity asynchronous-background-load question yielded **zero** lexical
+source passages despite the original page containing relevant terminology.
+This proves an independent *citation-provenance improvement* for four known
+cases, not better whole-corpus document discovery, automatic query
+paraphrasing, or answer correctness. A transient read-only SQLite contention
+in one initial verification was not mistaken for a publisher-source failure.
+Adversarial tests cover script-only fake quotes, two identical ambiguous
+publisher copies, no main/article, short unspecific fragments, altered
+publisher SHA and stale derived excerpt SHA. A broader independent source
+answer-sufficiency benchmark remains required before anyone labels a
+retrieval-generated answer "verified".

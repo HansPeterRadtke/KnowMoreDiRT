@@ -15,6 +15,7 @@ import hashlib
 import re
 
 from .publisher_excerpt import attach_publisher_excerpts
+from .publisher_html_dom_evidence import attach_original_html_dom_anchors
 from .hybrid_search import BoundedPassageIndex, lexical_token_spans, query_terms
 from .hierarchical_summary import Section, split_sections
 
@@ -274,6 +275,7 @@ def source_evidence_candidates(
     max_source_characters: int = 20_000_000,
     max_passages: int = 30_000,
     publisher_text_bytes: bytes | None = None,
+    publisher_html_bytes: bytes | None = None,
     scope_context_characters: int = 0,
 ) -> dict:
     """Return exact original-source lexical candidates with stable char spans.
@@ -440,6 +442,10 @@ def source_evidence_candidates(
         if first and first[1] == "Original plain text":
             attach_publisher_excerpts(publisher_text_bytes, original_sha256, derived_text, out,
                                       body_start=first.end())
+    if out and publisher_html_bytes is not None:
+        if not original_path.casefold().endswith(('.html','.htm')):
+            raise ValueError('HTML publisher bytes are not evidence for a non-HTML source')
+        attach_original_html_dom_anchors(publisher_html_bytes,original_sha256,out)
     if scope_context_characters:
         for row in out:
             start, end = section_bounds[(row["source_start_char"], row["source_end_char"])]
