@@ -5272,3 +5272,53 @@ are in the Raspi search-audit directory under prefix
 committed to Git. Model candidates are experimental and should not be
 presented as verified facts. The live immutable generation and publication
 gates remain unchanged.
+
+#### Retrieve intact evidence within an explicitly verified physical page
+
+`scripts/raspi_original_pdf_page_passages.py` ranks bounded contiguous
+sentence windows within a fresh reading-order extraction of one approved
+original PDF page. This is an opt-in read-only operator for an already known
+physical page, not a replacement for native document ranking.
+
+Example (use the exact approved original path and verified page):
+
+```sh
+python scripts/raspi_original_pdf_page_passages.py 'query' \
+    --original-path 'exact/approved/original.pdf' --page 2 \
+    --top 3 --max-characters 900 --include-inflection-matches
+```
+
+The operator independently checks the original/derivative revision, current
+physical page and both extraction digests. Supply all three expected
+original, derivative and reading-order-page hashes if using a previously
+reviewed source identity. It rejects a changed revision or native original ID
+instead of substituting a result. Source and native identities are rechecked
+after ranking. Each result is an exact contiguous span of whitespace-normalized
+reading-order text with its own offset and hash. Adjacent sentence context is
+preserved within the character budget. Sentence splitting is heuristic;
+overlong units are explicitly marked as partial. Page boundaries are not
+silently crossed. Numeric literals preserve sign and percent versus
+percentage-point units. Optional lower-weight ordinary-English inflection
+matching does not rewrite the returned evidence. Neither lexical ranking nor
+the alternate extraction proves visual reading order or a factual claim.
+
+Final 2026-11-25 regression: frozen, manually selected anchors for 28 queries
+on 14 known original pages, using the same verified normalized reading-order
+page for all three methods and 900 characters per candidate. The old
+fixed-length excerpt chooser recovered 18/28 full anchors at rank one;
+sentence windows recovered 26/28 at rank one and 27/28 within three;
+optional Porter matching recovered 26/28 at rank one and 28/28 within three.
+No previous first-rank success regressed. On twelve queries from six
+different papers whose anchors were frozen before ranking that cohort,
+first-rank recovery improved from 8/12 to 12/12. The final operator was also
+run directly with exact expected hashes: the MONDAY manual-annotation
+contradiction was recovered intact at rank two and its anchor hash verified.
+These are known-page, non-blinded retrieval tests, not an end-to-end
+corpus-recall or fact-verification benchmark.
+
+Frozen anchor receipts, reproduction scripts, final regression and exact
+operator receipts remain in the private Raspi search-audit directory under
+prefix `20261125-wave102-`. No publisher text is committed. Ordinary
+folder/grep access and existing native retrieval remain unchanged. The
+operator does not pin an immutable cross-store generation and does not
+authorize a live source-generation migration.
