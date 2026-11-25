@@ -159,13 +159,15 @@ def _porter_tokens(terms:set[str])->dict[str,str]:
     return {words[doc-1]:stem for doc,stem in rows}
 
 
-def reading_order_page_passages(context:dict,query:str,*,top:int=3,max_characters:int=900,
-                                include_inflection_matches:bool=False)->dict:
-    """Rank bounded, exact same-page candidate windows; keep provenance and uncertainty."""
-    if (type(top) is not int or not 1<=top<=5 or type(max_characters) is not int
+def _rank_normalized_reading_order_text(text:str,query:str,*,top:int=3,max_characters:int=900,
+                                       include_inflection_matches:bool=False,
+                                       term_weights:dict|None=None)->dict:
+    """Pure bounded machine-text locator; no original or page proof by itself."""
+    if (not isinstance(text,str) or not text.strip() or len(text)>_MAX_PAGE
+            or text!=" ".join(text.split())
+            or type(top) is not int or not 1<=top<=5 or type(max_characters) is not int
             or not 160<=max_characters<=2000 or type(include_inflection_matches) is not bool):
-        raise ValueError("invalid bounded page-local search parameters")
-    src,page,text,layout_sha,reading_sha=_page_context(context)
+        raise ValueError("invalid bounded normalized reading-order text")
     terms={t for t in query_terms(query) if not t.isdecimal()}
     numbers=_numeric_keys(query)
     if not terms and not numbers:
@@ -186,7 +188,14 @@ def reading_order_page_passages(context:dict,query:str,*,top:int=3,max_character
         return exact,inflections,numbers & _numeric_keys(text[s:e])
     for s,e in units:
         f=features(s,e);unit_features.append(f);frequencies.update(f[0]|f[1])
-    weights={t:1+math.log((1+len(units))/(1+frequencies[t])) for t in terms}
+    if term_weights is None:
+        weights={t:1+math.log((1+len(units))/(1+frequencies[t])) for t in terms}
+    else:
+        if (not isinstance(term_weights,dict) or set(term_weights)!=terms
+                or any(type(v) not in (int,float) or not math.isfinite(v) or not 1<=v<=20
+                       for v in term_weights.values())):
+            raise ValueError("invalid shared page-discovery term weights")
+        weights=term_weights
     candidates=[]
     def add(s,e,words,morph,nums,first,last,partial=False):
         morph=morph-words
@@ -238,6 +247,19 @@ def reading_order_page_passages(context:dict,query:str,*,top:int=3,max_character
             "partial_overlong_heuristic_sentence":partial,
             "touches_physical_page_boundary":s==0 or e==len(text)})
         if len(chosen)>=top:break
+    return {"heuristic_sentence_units":len(units),"overlong_heuristic_units":long_count,
+            "candidate_windows_considered":len(candidates),"passages":chosen}
+
+
+def reading_order_page_passages(context:dict,query:str,*,top:int=3,max_characters:int=900,
+                                include_inflection_matches:bool=False)->dict:
+    """Rank bounded, exact same-page candidate windows; keep provenance and uncertainty."""
+    if (type(top) is not int or not 1<=top<=5 or type(max_characters) is not int
+            or not 160<=max_characters<=2000 or type(include_inflection_matches) is not bool):
+        raise ValueError("invalid bounded page-local search parameters")
+    src,page,text,layout_sha,reading_sha=_page_context(context)
+    ranked=_rank_normalized_reading_order_text(text,query,top=top,max_characters=max_characters,
+                    include_inflection_matches=include_inflection_matches)
     return {"schema":"kmd.verified_original_page_reading_order_lexical_candidates.v1",
             "original_path":src["original_path"],"title":src.get("title"),
             "source_url":src.get("source_url"),"physical_page":page,
@@ -245,9 +267,7 @@ def reading_order_page_passages(context:dict,query:str,*,top:int=3,max_character
             "layout_page_sha256":layout_sha,"reading_order_page_sha256":reading_sha,
             "normalized_reading_order_page_sha256":_sha(text),"normalized_page_characters":len(text),
             "offset_basis":"whitespace-normalized Poppler default reading order on one physical page",
-            "heuristic_sentence_units":len(units),"overlong_heuristic_units":long_count,
-            "candidate_windows_considered":len(candidates),"max_characters_per_candidate":max_characters,
-            "passages":chosen,"native_document_ranking_unchanged":True,
+            **ranked,"max_characters_per_candidate":max_characters,"native_document_ranking_unchanged":True,
             "visual_reading_order_or_factual_claim_truth_verified":False,
             "context_cannot_by_itself_prove_a_factual_claim":True,
             "sentence_boundaries_are_heuristic_not_guaranteed_complete":True,

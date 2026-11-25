@@ -5367,3 +5367,60 @@ the questions are manually selected, and other relevant originals are not
 exhaustively labeled. The native default ranking and all index data remain
 unchanged. Exact private query, source and evaluation receipts reside under
 `search-audit/20261125-wave103-evaluation/` on Raspi.
+
+#### Independent original-PDF discovery and lexical-result evidence
+
+The read-only `raspi_original_pdf_document_passages.py` operator can locate
+evidence across an already known approved original PDF without requiring a
+derivative page label or known physical page. Bounds: 32 MiB original,
+64 physical pages, 2 MiB extracted text, five selected pages, three
+sentence windows per page. Its complete reading-order text scan is only a
+locator. It independently rereads the selected physical pages and checks
+the exact reading-order page digests and normalized passage offsets.
+If extracted form-feed counts disagree with the actual PDF page count,
+it requests each numbered physical page explicitly within the bounded
+deadline rather than guessing boundaries. Unavailable pages and complete
+scan failures are explicit. Source revisions and native original identities
+are rechecked after all reads; no live index is written.
+
+```sh
+python scripts/raspi_original_pdf_document_passages.py 'question' \
+    --original-path 'exact/approved/paper.pdf' --top-pages 5 --snippet-characters 900
+```
+
+The separate `raspi_firstunit_selected_pdf_evidence.py` operator accepts
+the exact SHA-256 of a private receipt from
+`raspi_publisher_firstunit_discovery.py`. It preserves independent literal
+and Porter lexical ranks and expands distinct approved PDF candidates
+round-robin without fusing scores or changing native semantic rank.
+It reattests each source before expansion and collectively rechecks all
+selected source and native identities afterward. It writes exclusively to
+a new private search-audit output, not to Git.
+
+```sh
+python scripts/raspi_firstunit_selected_pdf_evidence.py \
+    --lexical-receipt /data/var/knowmoredirt/knowledge-library/search-audit/PRIVATE_RECEIPT.json \
+    --expected-sha256 EXACT_RECEIPT_SHA256 --originals-per-query 1 \
+    --top-pages 5 --snippet-characters 900 \
+    --output /data/var/knowmoredirt/knowledge-library/search-audit/NEW_PRIVATE_OUTPUT.json
+```
+
+The wave103 final replay found all 35 preselected physical pages when
+only the original was specified, and 32 complete frozen evidence anchors.
+For the earlier 28 named-original cases, the union of existing selected-page
+expansion and independent whole-document search recovered all 28 anchors;
+neither method alone did so. On seven speech research questions, neither
+target original nor page was supplied to the lexical search. Both lexical
+channels reached all seven preselected documents at rank one; verified PDF
+expansion reached all seven target pages and recovered five complete anchors.
+Native semantic retrieval reached three target documents in its top five
+and selected-page expansion recovered two anchors. These are small,
+manually selected, non-exhaustively labeled cohorts, not a general
+corpus-recall or factual-answer accuracy guarantee. All results are
+optional retrieval candidates, not entailment judgments. The seven
+atomic live source-generation migration safeguards remain unresolved.
+
+Private evidence and reproducible scripts are retained under
+`search-audit/20261125-wave103-evaluation/`. Wave105's compatible
+filesystem regression suite passed all 1092 tests, excluding the separate
+pytest-only resource-safety test for which the framework was unavailable.
