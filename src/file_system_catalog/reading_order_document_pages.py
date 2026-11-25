@@ -1,4 +1,4 @@
-"""Independent bounded discovery across one complete original short PDF.
+"""Independent bounded discovery across a short PDF or an explicit physical-page range.
 
 Whole-document Poppler text is a candidate locator only. A selected page is
 read again via the independently verified current-original physical-page
@@ -29,10 +29,11 @@ MAX_ORIGINAL_BYTES = 32 * 1024 * 1024
 MAX_PAGES = 64
 MAX_TEXT_BYTES = 2 * 1024 * 1024
 MAX_PAGE_CHARS = 18000
+MAX_PHYSICAL_PAGE_NUMBER = 999999
 
 
 class BoundedPdfDiscoveryUnavailable(ValueError):
-    """The complete source cannot be examined within the explicit bounds."""
+    """The requested source scope cannot be examined within the explicit bounds."""
 
 
 def _sha(raw: bytes) -> str:
@@ -42,6 +43,41 @@ def _sha(raw: bytes) -> str:
 def _require_digest(value):
     if not isinstance(value, str) or not _SHA.fullmatch(value):
         raise ValueError("missing expected original revision digest")
+
+
+def validate_explicit_page_range(first_page, last_page):
+    """A caller-provided physical range is explicit, bounded and never clamped."""
+    if (type(first_page) is not int or type(last_page) is not int
+            or not 1<=first_page<=last_page<=MAX_PHYSICAL_PAGE_NUMBER
+            or last_page-first_page+1>MAX_PAGES):
+        raise ValueError("both exact physical page bounds required; maximum 64 pages per range")
+
+
+def _scope_bounds(record):
+    """Return actual total, scanned first/last, and explicit-range mode."""
+    if not isinstance(record,dict):
+        raise ValueError("missing physical-page scan metadata")
+    total=record.get("physical_page_count")
+    if type(total) is not int or not 1<=total<=MAX_PHYSICAL_PAGE_NUMBER:
+        raise ValueError("invalid actual physical PDF page count")
+    fields=("scan_scope","scanned_first_physical_page","scanned_last_physical_page")
+    present=[k in record for k in fields]
+    if not any(present):
+        if total>MAX_PAGES:
+            raise ValueError("full scan exceeds 64 physical pages")
+        return total,1,total,False
+    if not all(present) or record["scan_scope"]!="explicit_physical_page_range":
+        raise ValueError("incomplete explicit physical-page scope")
+    first=record["scanned_first_physical_page"];last=record["scanned_last_physical_page"]
+    validate_explicit_page_range(first,last)
+    if last>total:
+        raise ValueError("requested physical page range exceeds actual PDF page count")
+    return total,first,last,True
+
+
+def _range_scope(first,last):
+    return {"scan_scope":"explicit_physical_page_range",
+            "scanned_first_physical_page":first,"scanned_last_physical_page":last}
 
 
 def split_complete_reading_order_pages(raw: bytes, page_count: int) -> list[dict]:
@@ -74,10 +110,10 @@ def _page_record(data: bytes, page: int) -> dict:
     return {**entry,"status":"usable_candidate","text":body}
 
 
-def _read_explicit_physical_pages(name: str, fd: int, count: int, deadline: float):
+def _read_explicit_physical_pages(name: str, fd: int, first: int, last: int, deadline: float):
     """Recover embedded form feeds using actual single-page requests, never splitting them."""
     pages=[];total=0;digest=hashlib.sha256()
-    for page in range(1,count+1):
+    for page in range(first,last+1):
         raw=_poppler(["/usr/bin/pdftotext","-f",str(page),"-l",str(page),
                       "-enc","UTF-8",name,"-"],fd,deadline)
         if raw is None or not raw.endswith(b"\f"):
@@ -90,8 +126,11 @@ def _read_explicit_physical_pages(name: str, fd: int, count: int, deadline: floa
     return pages,digest.hexdigest()
 
 
-def read_complete_original_pdf_pages(pdf: Path, expected_sha256: str) -> dict:
+def _read_original_pdf_pages(pdf: Path, expected_sha256: str, *, first_page=None, last_page=None) -> dict:
     """Open/hash the exact same original file description read by Poppler."""
+    explicit=first_page is not None or last_page is not None
+    if explicit:
+        validate_explicit_page_range(first_page,last_page)
     _require_digest(expected_sha256)
     if not isinstance(pdf, Path) or pdf.suffix.casefold() != ".pdf":
         raise ValueError("one approved PDF file is required")
@@ -107,30 +146,56 @@ def read_complete_original_pdf_pages(pdf: Path, expected_sha256: str) -> dict:
         deadline=time.monotonic()+40
         info=_poppler(["/usr/bin/pdfinfo", name],fd,deadline)
         counts=PAGE_COUNT.findall(info or b"")
-        if len(counts)!=1 or not 1<=int(counts[0])<=MAX_PAGES:
-            raise BoundedPdfDiscoveryUnavailable("physical PDF page count unavailable or above the 64-page bound")
+        if len(counts)!=1 or not 1<=int(counts[0])<=MAX_PHYSICAL_PAGE_NUMBER:
+            raise BoundedPdfDiscoveryUnavailable("actual physical PDF page count unavailable")
         count=int(counts[0])
-        raw=_poppler(["/usr/bin/pdftotext","-f","1","-l",str(count),
+        if explicit:
+            if last_page>count:
+                raise ValueError("requested physical page range exceeds actual PDF page count")
+            first,last=first_page,last_page
+        else:
+            if count>MAX_PAGES:
+                raise BoundedPdfDiscoveryUnavailable("physical PDF page count above the 64-page whole-document bound")
+            first,last=1,count
+        scanned_count=last-first+1
+        raw=_poppler(["/usr/bin/pdftotext","-f",str(first),"-l",str(last),
                       "-enc","UTF-8",name,"-"],fd,deadline)
         if raw is None:
             raise BoundedPdfDiscoveryUnavailable("complete bounded PDF text extraction unavailable")
         if not 0<len(raw)<=MAX_TEXT_BYTES:
             raise BoundedPdfDiscoveryUnavailable("complete PDF text exceeds explicit source bounds")
-        if raw.count(b"\f")==count and raw.endswith(b"\f"):
-            pages=split_complete_reading_order_pages(raw,count)
+        if raw.count(b"\f")==scanned_count and raw.endswith(b"\f"):
+            pages=split_complete_reading_order_pages(raw,scanned_count)
+            if explicit:
+                for page in pages:
+                    page["physical_page"]+=first-1
             digest=_sha(raw)
-            extraction_method="complete_pdf_exact_form_feed_boundaries"
+            extraction_method=("explicit_range_exact_form_feed_boundaries" if explicit
+                               else "complete_pdf_exact_form_feed_boundaries")
         else:
             # An embedded form feed can be ordinary extracted whitespace,
             # not a physical page boundary. Re-read each numbered page.
-            pages,digest=_read_explicit_physical_pages(name,fd,count,deadline)
+            pages,digest=_read_explicit_physical_pages(name,fd,first,last,deadline)
             extraction_method="explicit_numbered_physical_page_reads_after_separator_mismatch"
         after=os.stat(pdf,follow_symlinks=False)
         if (not os.path.samestat(before,after) or before.st_size!=after.st_size
                 or before.st_mtime_ns!=after.st_mtime_ns or before.st_ctime_ns!=after.st_ctime_ns):
             raise ValueError("publisher PDF changed during complete page discovery")
     return {"original_sha256":expected_sha256,"physical_page_count":count,
-            "complete_extraction_sha256":digest,"extraction_method":extraction_method,"pages":pages}
+            **({**_range_scope(first,last),"range_extraction_sha256":digest} if explicit
+               else {"complete_extraction_sha256":digest}),
+            "extraction_method":extraction_method,"pages":pages}
+
+
+def read_complete_original_pdf_pages(pdf: Path, expected_sha256: str) -> dict:
+    """Full scan retains the existing strict short-document bound."""
+    return _read_original_pdf_pages(pdf,expected_sha256)
+
+
+def read_original_pdf_page_range(pdf: Path, expected_sha256: str, *, first_page:int,last_page:int) -> dict:
+    """Scan every page of exactly the requested range, not the rest of the book."""
+    validate_explicit_page_range(first_page,last_page)
+    return _read_original_pdf_pages(pdf,expected_sha256,first_page=first_page,last_page=last_page)
 
 
 def rank_document_page_candidates(scan: dict, query: str, *, top_pages: int=5,
@@ -145,18 +210,19 @@ def rank_document_page_candidates(scan: dict, query: str, *, top_pages: int=5,
             or type(top_pages) is not int or not 1<=top_pages<=5
             or type(snippet_characters) is not int or not 160<=snippet_characters<=2000):
         raise ValueError("invalid bounded original document passage query")
-    if (not isinstance(scan,dict) or type(scan.get("physical_page_count")) is not int
-            or not 1<=scan["physical_page_count"]<=MAX_PAGES
-            or not isinstance(scan.get("pages"),list)
-            or len(scan["pages"])!=scan["physical_page_count"]):
-        raise ValueError("complete physical-page scan required")
-    _require_digest(scan.get("original_sha256"));_require_digest(scan.get("complete_extraction_sha256"))
+    total_pages,first,last,explicit=_scope_bounds(scan)
+    if not isinstance(scan.get("pages"),list) or len(scan["pages"])!=last-first+1:
+        raise ValueError("complete requested physical-page scan required")
+    _require_digest(scan.get("original_sha256"))
+    _require_digest(scan.get("range_extraction_sha256" if explicit else "complete_extraction_sha256"))
+    if explicit and "complete_extraction_sha256" in scan:
+        raise ValueError("explicit range must not claim a full-source extraction digest")
     terms={t for t in query_terms(query) if not t.isdecimal()}
     numbers=_numeric_keys(query)
     if not terms and not numbers:
         raise ValueError("no informative document search terms")
     good=[];unavailable=[];total=0;all_words=set(terms)
-    for page,entry in enumerate(scan["pages"],1):
+    for page,entry in enumerate(scan["pages"],first):
         if not isinstance(entry,dict) or type(entry.get("physical_page")) is not int or entry["physical_page"]!=page:
             raise ValueError("physical-page sequence changed")
         _require_digest(entry.get("reading_order_page_sha256"))
@@ -198,7 +264,9 @@ def rank_document_page_candidates(scan: dict, query: str, *, top_pages: int=5,
                len(nums),len(exact),-(w["core_end_char"]-w["core_start_char"]),-entry["physical_page"])
         candidates.append((score,entry,body,result["passages"]))
     candidates.sort(key=lambda x:x[0],reverse=True)
-    return {"physical_page_count":scan["physical_page_count"],
+    return {"physical_page_count":total_pages,
+            **({**_range_scope(first,last),"scanned_physical_page_count":last-first+1,
+                "physical_pages_outside_requested_range":total_pages-(last-first+1)} if explicit else {}),
             "usable_machine_text_pages":len(good),"unavailable_pages":unavailable,
             "matching_candidate_pages":len(candidates),"top_pages":top_pages,
             "max_characters_per_window":snippet_characters,
@@ -217,15 +285,20 @@ def verify_selected_document_pages(ranked:dict,*,source:dict,read_context) -> di
             or not isinstance(source,dict)):
         raise ValueError("missing bounded original document candidates")
     out=[];seen=set()
-    count=ranked.get("physical_page_count");limit=ranked.get("max_characters_per_window")
-    if (type(count) is not int or not 1<=count<=MAX_PAGES
-            or type(limit) is not int or not 160<=limit<=2000):
-        raise ValueError("invalid complete physical page count")
+    count,first,last,explicit=_scope_bounds(ranked)
+    limit=ranked.get("max_characters_per_window")
+    if type(limit) is not int or not 160<=limit<=2000:
+        raise ValueError("invalid bounded physical page window size")
+    if explicit and (type(ranked.get("scanned_physical_page_count")) is not int
+            or ranked["scanned_physical_page_count"]!=last-first+1
+            or type(ranked.get("physical_pages_outside_requested_range")) is not int
+            or ranked["physical_pages_outside_requested_range"]!=count-(last-first+1)):
+        raise ValueError("inconsistent explicit physical-page coverage")
     for rank,candidate in enumerate(ranked["private_candidates"],1):
         if (not isinstance(candidate,dict) or type(candidate.get("page_candidate_rank")) is not int
                 or candidate["page_candidate_rank"]!=rank
                 or type(candidate.get("physical_page")) is not int
-                or not 1<=candidate["physical_page"]<=count
+                or not first<=candidate["physical_page"]<=last
                 or candidate["physical_page"] in seen):
             raise ValueError("invalid duplicate or reordered document page candidate")
         _require_digest(candidate.get("reading_order_page_sha256"))

@@ -5424,3 +5424,43 @@ Private evidence and reproducible scripts are retained under
 `search-audit/20261125-wave103-evaluation/`. Wave105's compatible
 filesystem regression suite passed all 1092 tests, excluding the separate
 pytest-only resource-safety test for which the framework was unavailable.
+
+#### Explicit physical-page ranges in long original books
+
+The independent PDF reader also accepts paired inclusive physical page
+bounds `--first-page` and `--last-page`. Both are required, and the
+range is never silently clamped to the source's actual page count.
+The original-file bound (32 MiB), maximum 64 requested physical pages,
+2 MiB extraction budget, five returned pages and three windows per page
+remain. This permits bounded chapter searches of longer approved PDFs
+without claiming that every page of the book was searched.
+
+```sh
+python scripts/raspi_original_pdf_document_passages.py 'chapter question' \
+    --original-path 'exact/approved/book.pdf' --first-page 323 --last-page 349 \
+    --top-pages 5 --snippet-characters 900
+```
+
+The range result has a distinct schema and a range-extraction digest,
+records the actual PDF page count, absolute requested page bounds, and
+the count outside the requested range, and explicitly marks full-source
+coverage false. Page numbers are physical PDF positions, not printed
+chapter page labels. Selected pages and every returned span are verified
+by independent current-original reads and final source/derivative/native
+identity checks. If embedded form feeds disrupt the page boundaries, the
+fallback explicitly reads only the requested numbered physical pages.
+Invalid, oversized, or unavailable ranges are refused; individual
+unusable text pages remain explicit. Existing short-PDF and lexical
+receipt operations retain their defaults.
+
+Wave106: six frozen, manually chosen reference questions on two approved
+original linear-algebra/ML textbooks with 417 and 386 physical pages.
+The physical range (27 or 33 pages), not the target page, was supplied.
+All six expected physical pages and complete normalized evidence anchors
+were recovered within five pages and three windows per page; four were
+the first window on the first page. The default whole-document request
+on the 417-page PDF correctly refused the 64-page limit. These are small
+known-source, known-range tests, not full-book, corpus-wide, or factual
+answer accuracy measurements. Private gold, individual result receipts
+and the independent final revision checks are in the existing Raspi
+search-audit wave103 evaluation folder with prefix `wave106-long-`.
