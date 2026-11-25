@@ -17,8 +17,10 @@ def verified_physical_page_candidate(payload:dict,original_path:str)->dict:
             or payload.get('original_path')!=original_path
             or not isinstance(payload.get('passages'),list)
             or not 1<=len(payload['passages'])<=3
-            or not HEX.fullmatch(payload.get('original_sha256',''))
-            or not HEX.fullmatch(payload.get('derived_sha256',''))):
+            or not isinstance(payload.get('original_sha256'),str)
+            or not isinstance(payload.get('derived_sha256'),str)
+            or not HEX.fullmatch(payload['original_sha256'])
+            or not HEX.fullmatch(payload['derived_sha256'])):
         raise ValueError('unverifiable exact-original KMD evidence request')
     for rank,passage in enumerate(payload['passages'],1):
         if not isinstance(passage,dict):raise ValueError('invalid native publisher source passage')
@@ -48,6 +50,8 @@ def verified_physical_page_candidate(payload:dict,original_path:str)->dict:
         mismatch=derived_label_page is not None and derived_label_page!=page
         return {'first_verified_source_excerpt_rank':rank,
             'original_path':original_path,
+            'original_sha256':payload['original_sha256'],
+            'derived_sha256':payload['derived_sha256'],
             'original_derived_page_label_number':derived_label_page,
             'original_derived_page_label_disagrees_with_physical_page':mismatch,
             'corrected_physical_page_citation_required':mismatch,
@@ -68,16 +72,49 @@ def bind_original_pdf_context_to_source_evidence(anchor:dict,page_context:dict)-
         raise ValueError('missing exact source and original-page context')
     src=page_context['source'];block=page_context['physical_pages']
     pages=block.get('pages')
+    # The same page bytes can persist across distinct editions, or after a
+    # changed derivative. Bind the entire source revision, not just the page.
+    for key in ('original_sha256','derived_sha256'):
+        if not isinstance(anchor.get(key),str) or not HEX.fullmatch(anchor[key]):
+            raise ValueError('missing exact source revision in original PDF handoff anchor')
+    if (src.get('original_sha256')!=anchor['original_sha256']
+            or src.get('current_derived_sha256')!=anchor['derived_sha256']):
+        raise ValueError('original or derivative revision changed between source evidence and physical page context')
     if (src.get('original_path')!=anchor.get('original_path')
             or block.get('requested_center_physical_page')!=anchor.get('physical_pdf_page')
             or src.get('original_sha256')!=block.get('original_pdf_sha256')
-            or not block.get('required_center_excerpt_verified')
-            or not page_context.get('source_map_revision_reverified_after_physical_page_extraction')
+            or block.get('required_center_excerpt_verified') is not True
+            or page_context.get('source_map_revision_reverified_after_physical_page_extraction') is not True
             or not isinstance(pages,list)):
         raise ValueError('original PDF context changed since publisher-page source search')
     center=[v for v in pages if v.get('physical_page')==anchor['physical_pdf_page']]
     if (len(center)!=1 or center[0].get('physical_page_poppler_sha256')!=anchor['physical_pdf_page_text_sha256']):
         raise ValueError('physical PDF page text digest diverges across source/evidence operators')
+    if 'optional_center_reading_order_projection' in block:
+        alternate=block['optional_center_reading_order_projection']
+        if (not isinstance(alternate,dict)
+                or alternate.get('physical_page')!=anchor['physical_pdf_page']
+                or alternate.get('exact_layout_page_poppler_sha256')!=anchor['physical_pdf_page_text_sha256']
+                or alternate.get('extraction_mode')!='poppler_default_reading_order_utf8_not_layout'
+                or alternate.get('does_not_replace_verified_layout_excerpt_or_offsets') is not True
+                or alternate.get('visual_reading_order_or_factual_claim_truth_verified') is not False):
+            raise ValueError('alternate reading-order projection is not bound to the verified center page')
+        status=alternate.get('status')
+        body=alternate.get('extracted_page_text')
+        if status=='same_physical_page_alternate_reading_order_text':
+            if not isinstance(body,str) or not body.strip() or len(body)>18000:
+                raise ValueError('alternate reading-order text is invalid or oversized')
+            digest=hashlib.sha256(body.encode('utf8')).hexdigest()
+            contiguous=' '.join(anchor['source_excerpt'].split()) in ' '.join(body.split())
+            if (alternate.get('reading_order_poppler_sha256')!=digest
+                    or alternate.get('extracted_text_sha256')!=digest
+                    or alternate.get('text_characters')!=len(body)
+                    or alternate.get('complete_extractor_output_not_truncated') is not True
+                    or alternate.get('required_layout_excerpt_also_contiguous_in_reading_order') is not contiguous):
+                raise ValueError('alternate reading-order text proof differs from the returned bytes or anchor')
+        elif (status!='center_reading_order_text_unavailable' or body is not None
+              or alternate.get('required_layout_excerpt_also_contiguous_in_reading_order') is not None):
+            raise ValueError('unrecognized alternate reading-order projection status')
     return {'schema':'kmd.source_page_to_neighbor_original_context_no_answer_claim.v1',
             'status':'verified_original_pdf_page_context_not_factual_answer',
             'original_path':anchor['original_path'],
@@ -91,6 +128,8 @@ def bind_original_pdf_context_to_source_evidence(anchor:dict,page_context:dict)-
                 anchor['corrected_physical_page_citation_required'],
             'physical_source_page_sha256_cross_verified_twice':True,
             'source_revision_and_original_pdf_sha_reverified':True,
+            'source_original_and_derived_revision_match_across_operators':True,
+            'cross_store_immutable_generation_pinned':False,
             'source_context_factual_answer_not_established':True,
             'source':src,'physical_pages':block,
             'warning':'Publisher benchmark questions, quotes, dreams, assumptions and obsolete claims remain scoped examples. Inspect the complete governing text and actual document genre before answering real-world questions.'}

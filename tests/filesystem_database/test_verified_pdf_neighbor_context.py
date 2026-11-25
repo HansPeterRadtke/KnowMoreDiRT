@@ -46,6 +46,77 @@ class VerifiedPdfPhysicalNeighborsTests(unittest.TestCase):
             self.assertEqual(self.pages[page['physical_page']].decode(),page['extracted_page_text'])
             self.assertFalse(page['factual_claim_truth_verified'])
 
+    def test_optional_reading_order_retains_layout_proof_and_separate_exact_page_bytes(self):
+        layout=b"Measured 20 percent gain.     This example is hypothetical.\nNot a global guarantee.       Another column.\n"
+        alternate=b"Measured 20 percent gain.\nNot a global guarantee.\nThis example is hypothetical.\nAnother column.\n"
+        self.pages[2]=layout
+        calls=[]
+        def extractor(cmd,fd,deadline):
+            calls.append((cmd,fd))
+            if cmd[0]=='/usr/bin/pdftotext' and '-layout' not in cmd:
+                self.assertEqual('2',cmd[cmd.index('-f')+1])
+                self.assertEqual('2',cmd[cmd.index('-l')+1])
+                return alternate
+            return self.poppler(cmd,fd,deadline)
+        with mock.patch('file_system_catalog.verified_pdf_neighbor_context._poppler',side_effect=extractor):
+            x=verified_page_neighbors(self.pdf,self.sha,requested_page=2,neighbor_radius=0,
+                required_center_excerpt='Measured 20 percent gain. This example is hypothetical.',
+                include_center_reading_order=True)
+        self.assertEqual(3,len(calls));self.assertEqual(1,len({fd for _,fd in calls}))
+        self.assertTrue(x['required_center_excerpt_verified'])
+        self.assertEqual(layout.decode(),x['pages'][0]['extracted_page_text'])
+        a=x['optional_center_reading_order_projection']
+        self.assertEqual('same_physical_page_alternate_reading_order_text',a['status'])
+        self.assertEqual(2,a['physical_page'])
+        self.assertEqual(hashlib.sha256(layout).hexdigest(),a['exact_layout_page_poppler_sha256'])
+        self.assertEqual(hashlib.sha256(alternate).hexdigest(),a['reading_order_poppler_sha256'])
+        self.assertEqual(alternate.decode(),a['extracted_page_text'])
+        self.assertFalse(a['required_layout_excerpt_also_contiguous_in_reading_order'])
+        self.assertTrue(a['does_not_replace_verified_layout_excerpt_or_offsets'])
+        self.assertFalse(a['visual_reading_order_or_factual_claim_truth_verified'])
+
+    def test_unusable_alternate_extraction_does_not_erase_verified_layout_or_invent_context(self):
+        for raw in (None,b'\xff',b'\x0c',b'\x00'*20,b'A'*2001):
+            with self.subTest(raw_length=len(raw) if raw is not None else None):
+                def extractor(cmd,fd,deadline):
+                    if cmd[0]=='/usr/bin/pdftotext' and '-layout' not in cmd:return raw
+                    return self.poppler(cmd,fd,deadline)
+                with mock.patch('file_system_catalog.verified_pdf_neighbor_context._poppler',side_effect=extractor):
+                    x=verified_page_neighbors(self.pdf,self.sha,requested_page=2,neighbor_radius=0,
+                            include_center_reading_order=True,max_page_characters=2000)
+                self.assertEqual('verified_original_page_text',x['pages'][0]['status'])
+                a=x['optional_center_reading_order_projection']
+                self.assertEqual('center_reading_order_text_unavailable',a['status'])
+                self.assertIsNone(a['extracted_page_text'])
+                self.assertIsNone(a['required_layout_excerpt_also_contiguous_in_reading_order'])
+                self.assertFalse(a['visual_reading_order_or_factual_claim_truth_verified'])
+
+    def test_replacement_during_alternate_extraction_is_rejected_even_if_page_text_matches(self):
+        def extractor(cmd,fd,deadline):
+            raw=self.poppler(cmd,fd,deadline)
+            if cmd[0]=='/usr/bin/pdftotext' and '-layout' not in cmd:
+                replacement=self.root/'new.pdf';replacement.write_bytes(b'New edition');replacement.replace(self.pdf)
+            return raw
+        with mock.patch('file_system_catalog.verified_pdf_neighbor_context._poppler',side_effect=extractor):
+            with self.assertRaisesRegex(ValueError,'changed during page extraction'):
+                verified_page_neighbors(self.pdf,self.sha,requested_page=2,neighbor_radius=0,
+                        include_center_reading_order=True)
+
+    def test_reading_order_is_opt_in_center_only_and_boolean(self):
+        with mock.patch('file_system_catalog.verified_pdf_neighbor_context._poppler',side_effect=self.poppler):
+            normal=verified_page_neighbors(self.pdf,self.sha,requested_page=2,neighbor_radius=1)
+            self.assertNotIn('optional_center_reading_order_projection',normal)
+            self.assertEqual(4,len(self.calls))
+            with self.assertRaises(ValueError):
+                verified_page_neighbors(self.pdf,self.sha,requested_page=2,include_center_reading_order=1)
+            self.calls.clear()
+            opted=verified_page_neighbors(self.pdf,self.sha,requested_page=2,neighbor_radius=1,
+                        include_center_reading_order=True,required_center_excerpt='The example asks')
+        self.assertEqual(5,len(self.calls))
+        self.assertEqual([1,2,3],[p['physical_page'] for p in opted['pages']])
+        self.assertEqual(2,opted['optional_center_reading_order_projection']['physical_page'])
+        self.assertTrue(opted['optional_center_reading_order_projection']['required_layout_excerpt_also_contiguous_in_reading_order'])
+
     def test_first_last_page_radius_clamped_without_invented_page(self):
         with mock.patch('file_system_catalog.verified_pdf_neighbor_context._poppler',side_effect=self.poppler):
             x=verified_page_neighbors(self.pdf,self.sha,requested_page=1)

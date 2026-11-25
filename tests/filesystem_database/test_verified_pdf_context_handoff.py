@@ -64,7 +64,7 @@ class VerifiedPhysicalPageHandoffTests(unittest.TestCase):
         self.assertEqual(19,anchor['original_derived_page_label_number'])
         self.assertTrue(anchor['original_derived_page_label_disagrees_with_physical_page'])
         self.assertTrue(anchor['corrected_physical_page_citation_required'])
-        x={'source':{'original_path':self.path,'original_sha256':'a'*64},
+        x={'source':{'original_path':self.path,'original_sha256':'a'*64,'current_derived_sha256':'b'*64},
            'source_map_revision_reverified_after_physical_page_extraction':True,
            'physical_pages':{'original_pdf_sha256':'a'*64,
                'requested_center_physical_page':13,'required_center_excerpt_verified':True,
@@ -94,7 +94,7 @@ class VerifiedPhysicalPageHandoffTests(unittest.TestCase):
 
     def test_same_page_poppler_digest_must_match_independent_reread(self):
         a=verified_physical_page_candidate(self.payload,self.path)
-        good={'source':{'original_path':self.path,'original_sha256':'a'*64},
+        good={'source':{'original_path':self.path,'original_sha256':'a'*64,'current_derived_sha256':'b'*64},
               'source_map_revision_reverified_after_physical_page_extraction':True,
               'physical_pages':{
                  'original_pdf_sha256':'a'*64,'requested_center_physical_page':2,
@@ -103,15 +103,37 @@ class VerifiedPhysicalPageHandoffTests(unittest.TestCase):
                            'extracted_page_text':'Primary source benchmark example.'}]}}
         ok=bind_original_pdf_context_to_source_evidence(a,good)
         self.assertTrue(ok['physical_source_page_sha256_cross_verified_twice'])
+        self.assertTrue(ok['source_original_and_derived_revision_match_across_operators'])
+        self.assertFalse(ok['cross_store_immutable_generation_pinned'])
         self.assertFalse(not ok['source_context_factual_answer_not_established'])
         wrong={**good,'physical_pages':{**good['physical_pages'],
                     'pages':[{'physical_page':2,'physical_page_poppler_sha256':'0'*64}]}}
         with self.assertRaisesRegex(ValueError,'digest diverges'):
             bind_original_pdf_context_to_source_evidence(a,wrong)
 
+    def test_equal_physical_page_cannot_mask_replaced_original_or_derivative(self):
+        anchor=verified_physical_page_candidate(self.payload,self.path)
+        self.assertEqual('a'*64,anchor['original_sha256'])
+        self.assertEqual('b'*64,anchor['derived_sha256'])
+        for original,derived in (('c'*64,'b'*64),('a'*64,'d'*64),('a'*64,None)):
+            with self.subTest(original=original,derived=derived):
+                changed={'source':{'original_path':self.path,'original_sha256':original,'current_derived_sha256':derived},
+                    'source_map_revision_reverified_after_physical_page_extraction':True,
+                    'physical_pages':{'original_pdf_sha256':original,'requested_center_physical_page':2,
+                        'required_center_excerpt_verified':True,
+                        'pages':[{'physical_page':2,'physical_page_poppler_sha256':self.page_sha}]}}
+                with self.assertRaisesRegex(ValueError,'revision changed'):
+                    bind_original_pdf_context_to_source_evidence(anchor,changed)
+
+    def test_incomplete_anchor_cannot_be_used_as_revision_proof(self):
+        anchor=verified_physical_page_candidate(self.payload,self.path)
+        del anchor['derived_sha256']
+        with self.assertRaisesRegex(ValueError,'missing exact source revision'):
+            bind_original_pdf_context_to_source_evidence(anchor,{'source':{},'physical_pages':{}})
+
     def test_stale_map_missing_excerpt_other_original_never_cite(self):
         a=verified_physical_page_candidate(self.payload,self.path)
-        good={'source':{'original_path':self.path,'original_sha256':'a'*64},
+        good={'source':{'original_path':self.path,'original_sha256':'a'*64,'current_derived_sha256':'b'*64},
               'source_map_revision_reverified_after_physical_page_extraction':True,
               'physical_pages':{'original_pdf_sha256':'a'*64,
                 'requested_center_physical_page':2,'required_center_excerpt_verified':True,

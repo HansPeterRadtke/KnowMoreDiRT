@@ -5131,3 +5131,68 @@ PYTHONPATH=src /data/var/knowmoredirt/semantic-venv/bin/python \
 Private evaluation evidence is in the existing Raspi search-audit directory
 under the `20261125-wave101-bibliography-` prefix. Publisher excerpts and
 manual labels are not committed to this repository.
+
+### Revision-bound original PDF context and alternate reading order (November 25, 2026)
+
+The handoff from native source evidence to physical PDF page context now
+binds both complete original and extracted-source revision digests, in
+addition to the physical page text digest. A different original revision
+can preserve the exact same center page while changing its other pages;
+a changed extracted-source revision can also leave this page unchanged.
+Previously both conditions could pass the page-only handoff. Both now fail
+closed, even when the returned page digest is identical. This is a
+cross-operator revision check, not atomic cross-store generation pinning.
+
+The read-only `raspi_original_pdf_page_neighbors.py` and
+`raspi_source_evidence_pdf_neighbors.py` operators also accept
+`--include-center-reading-order`. The optional center-page projection uses
+Poppler's default reading order on the same open, hashed physical original
+file and under the same bounded extraction deadline. It retains the
+existing layout proof, exact quotation offsets, and neighbor pages as
+separate fields. It supplies its own text and digest, and explicitly
+indicates whether the required layout excerpt also occurs contiguously
+in the alternate projection. The handoff rejects a different center page,
+layout digest, changed alternate text, or inconsistent contiguity claim.
+Unavailable or oversized alternate text is explicitly marked unavailable;
+no silently clipped text is presented as the full page. This is not a
+visual reading-order proof or factual claim verifier. The default remains
+layout-only, and neither the native retrieval ranks nor the live index
+are modified.
+
+For example, to obtain original page context for an existing approved PDF:
+
+```sh
+cd /data/src/github/KnowMoreDiRT
+PYTHONPATH=src /data/var/knowmoredirt/semantic-venv/bin/python \
+  scripts/raspi_source_evidence_pdf_neighbors.py \
+  'PRAC subspace rank for linear and non-linear layers pre-training' \
+  --original-path 'ai-agents/retrieval-language-and-memory/2026-prac-principal-random-subspace-for-llm-activation-compression-and-memory-effic-1f0d96954c.pdf' \
+  --neighbor-radius 0 --include-center-reading-order
+```
+
+A live A/B comparison of this query retained the exact original revision,
+excerpt hash and layout page result; the alternate page digest matched an
+independent original-file extraction. In a small four-paper test, twelve
+source-scoped claim anchors were frozen before search. All twelve were
+recovered by explicitly requested physical-page reading-order extraction;
+nine of these were not contiguous in the normalized layout projection.
+Several claim cases share the same evidence phrase. This is context access
+at a known physical location, not a retrieval recall measurement. In the
+separate retrieval evaluation (24 direct queries, 12 claims paired with
+primary and unrelated secondary originals), 53 returned excerpts were
+independently re-attested across 26 physical pages. The preselected primary
+page was among the first three results in 11 of 12 cases and first in seven.
+Manual review found four supporting and two contradicting results with
+sufficient claim-specific text, two partial contradiction contexts and
+four cases with insufficient scope-matched evidence. None of the secondary
+results established the requested claim; three returned no excerpts.
+These small, manually judged source-specific results are neither a blinded
+corpus-wide evaluation nor an automated entailment score. Lack of a
+returned passage never proves that the full document lacks evidence.
+
+Private gold, query receipts, page text and manual evaluation are retained
+in the existing private Raspi search-audit directory with the prefix
+`20261125-wave101-claim-` or `20261125-wave101-cross-original-claim-`.
+No publisher page contents are committed. The next remaining problems
+include scope-aware semantic adjudication, evidence clipping, and safe
+immutable generation pinning across the live stores.

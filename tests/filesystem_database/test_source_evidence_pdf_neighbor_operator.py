@@ -27,7 +27,7 @@ class SourceEvidenceToPdfNeighborsTests(unittest.TestCase):
           'passages':[{'original_path':self.path,'original_sha256':'a'*64,'derived_sha256':'b'*64,
           'source_section':'PDF page 2','source_excerpt':self.text,'excerpt_sha256':self.sha,
           'publisher_pdf_page':{'status':'verified','page':2,'page_text_sha256':self.page_sha,'basis':'derivative_label_confirmed'}}]}
-        self.context={'source':{'original_path':self.path,'original_sha256':'a'*64},
+        self.context={'source':{'original_path':self.path,'original_sha256':'a'*64,'current_derived_sha256':'b'*64},
                       'source_map_revision_reverified_after_physical_page_extraction':True,
                       'physical_pages':{'original_pdf_sha256':'a'*64,
                            'requested_center_physical_page':2,'required_center_excerpt_verified':True,
@@ -51,10 +51,50 @@ class SourceEvidenceToPdfNeighborsTests(unittest.TestCase):
         self.assertIn(self.path,args)
         self.assertIn('500',args)
         self.assertNotIn('restart',args)
-        phys.assert_called_once_with(self.path,2,neighbor_radius=1,required_center_excerpt=self.text)
+        phys.assert_called_once_with(self.path,2,neighbor_radius=1,required_center_excerpt=self.text,include_center_reading_order=False)
         self.assertTrue(got['physical_source_page_sha256_cross_verified_twice'])
         self.assertTrue(got['source_context_factual_answer_not_established'])
         self.assertEqual(2,got['physical_pages']['requested_center_physical_page'])
+
+    def test_optional_reading_order_only_applies_after_verified_source_anchor(self):
+        alternate={'physical_page':2,'status':'same_physical_page_alternate_reading_order_text',
+                   'extraction_mode':'poppler_default_reading_order_utf8_not_layout',
+                   'exact_layout_page_poppler_sha256':self.page_sha,
+                   'reading_order_poppler_sha256':self.sha,'extracted_text_sha256':self.sha,
+                   'extracted_page_text':self.text,'text_characters':len(self.text),
+                   'complete_extractor_output_not_truncated':True,
+                   'does_not_replace_verified_layout_excerpt_or_offsets':True,
+                   'visual_reading_order_or_factual_claim_truth_verified':False,
+                   'required_layout_excerpt_also_contiguous_in_reading_order':True}
+        self.context['physical_pages']['optional_center_reading_order_projection']=alternate
+        proc=SimpleNamespace(returncode=0,stdout=json.dumps(self.payload),stderr='')
+        with mock.patch.object(self.mod.subprocess,'run',return_value=proc), \
+             mock.patch.object(self.mod,'original_pdf_context',return_value=self.context) as phys:
+            got=self.mod.context_from_current_source_evidence('original study benchmark question',self.path,
+                      neighbor_radius=0,include_center_reading_order=True)
+        phys.assert_called_once_with(self.path,2,neighbor_radius=0,required_center_excerpt=self.text,
+                    include_center_reading_order=True)
+        self.assertEqual(alternate,got['physical_pages']['optional_center_reading_order_projection'])
+        self.assertTrue(got['source_original_and_derived_revision_match_across_operators'])
+
+    def test_rejects_wrong_page_or_corrupt_alternate_context(self):
+        good={'physical_page':2,'status':'same_physical_page_alternate_reading_order_text',
+              'extraction_mode':'poppler_default_reading_order_utf8_not_layout',
+              'exact_layout_page_poppler_sha256':self.page_sha,
+              'reading_order_poppler_sha256':self.sha,'extracted_text_sha256':self.sha,
+              'extracted_page_text':self.text,'text_characters':len(self.text),
+              'complete_extractor_output_not_truncated':True,
+              'does_not_replace_verified_layout_excerpt_or_offsets':True,
+              'visual_reading_order_or_factual_claim_truth_verified':False,
+              'required_layout_excerpt_also_contiguous_in_reading_order':True}
+        for patch in ({'physical_page':3},{'extracted_page_text':'changed'},
+                      {'exact_layout_page_poppler_sha256':'0'*64},
+                      {'required_layout_excerpt_also_contiguous_in_reading_order':False},
+                      {'visual_reading_order_or_factual_claim_truth_verified':True}):
+            with self.subTest(patch=patch):
+                self.context['physical_pages']['optional_center_reading_order_projection']={**good,**patch}
+                with self.assertRaisesRegex(ValueError,'alternate reading-order'):
+                    self.call()
 
     def test_invalid_source_or_query_never_launches_existing_reader(self):
         with mock.patch.object(self.mod.subprocess,'run',side_effect=AssertionError('reader launched')):

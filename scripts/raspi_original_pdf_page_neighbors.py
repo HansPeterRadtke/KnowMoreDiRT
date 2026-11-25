@@ -36,8 +36,10 @@ def unique_rows(rows):
 
 
 def original_pdf_context(original_path:str,page:int,*,neighbor_radius:int=1,
-                         required_center_excerpt:str|None=None)->dict:
+                         required_center_excerpt:str|None=None,
+                         include_center_reading_order:bool=False)->dict:
     if (not isinstance(original_path,str) or not 1<=len(original_path)<=1600
+         or type(include_center_reading_order) is not bool
          or not original_path.lower().endswith('.pdf') or original_path.startswith('/')
          or '\\' in original_path or any(s in ('','.','..') for s in original_path.split('/'))):
         raise ValueError('invalid exact approved original PDF path')
@@ -55,7 +57,8 @@ def original_pdf_context(original_path:str,page:int,*,neighbor_radius:int=1,
             original_root=ROOT,derived_root=DERIVED)
     publisher=safe_file(ROOT,original_path)
     context=verified_page_neighbors(publisher,source['original_sha256'],requested_page=page,
-                      neighbor_radius=neighbor_radius,required_center_excerpt=required_center_excerpt)
+                      neighbor_radius=neighbor_radius,required_center_excerpt=required_center_excerpt,
+                      include_center_reading_order=include_center_reading_order)
     # A fresh source-map read after page extraction detects a concurrent
     # source-derived revision change that the first WAL read could not see.
     with sqlite3.connect(SOURCE_MAP.resolve().as_uri()+'?mode=ro',uri=True,timeout=20) as latest:
@@ -74,8 +77,10 @@ def main():
     ap.add_argument('--page',type=int,required=True)
     ap.add_argument('--neighbor-radius',type=int,default=1,choices=(0,1))
     ap.add_argument('--required-center-excerpt',default=None,help='Exact short phrase present on requested original physical page; optional')
+    ap.add_argument('--include-center-reading-order',action='store_true',help='Separate SHA-tracked default Poppler text of the same center physical page; not a replacement for layout proof')
     args=ap.parse_args()
     print(json.dumps(original_pdf_context(args.original_path,args.page,neighbor_radius=args.neighbor_radius,
-                        required_center_excerpt=args.required_center_excerpt),ensure_ascii=False,indent=2))
+                        required_center_excerpt=args.required_center_excerpt,
+                        include_center_reading_order=args.include_center_reading_order),ensure_ascii=False,indent=2))
 
 if __name__=='__main__':main()

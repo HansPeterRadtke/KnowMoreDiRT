@@ -27,10 +27,43 @@ class PhysicalPdfPageContextUnavailable(ValueError):
     """Text for a physical page cannot be supplied; not a source-revision mismatch."""
 
 
+
+def _center_reading_order_projection(raw:bytes|None,*,page:int,layout_sha256:str,
+                                     required_center_excerpt:str|None,max_characters:int)->dict:
+    """Separate same-page text extraction, not a replacement layout quotation."""
+    base={'physical_page':page,
+          'extraction_mode':'poppler_default_reading_order_utf8_not_layout',
+          'exact_layout_page_poppler_sha256':layout_sha256,
+          'reading_order_poppler_sha256':hashlib.sha256(raw).hexdigest() if raw is not None else None,
+          'does_not_replace_verified_layout_excerpt_or_offsets':True,
+          'visual_reading_order_or_factual_claim_truth_verified':False}
+    reason=None
+    body=None
+    if raw is None:
+        reason='reading-order extraction unavailable within bounded original PDF read'
+    else:
+        try:body=raw.decode('utf-8',errors='strict')
+        except UnicodeDecodeError:reason='reading-order extraction is not valid UTF-8'
+        if reason is None and (not body.strip() or body.count('\x00')>=12):
+            reason='reading-order extraction has no usable text'
+        if reason is None and len(body)>max_characters:
+            reason='reading-order extraction exceeds bounded context; no silent truncation'
+    if reason is not None:
+        return {**base,'status':'center_reading_order_text_unavailable','reason':reason,
+                'extracted_page_text':None,'required_layout_excerpt_also_contiguous_in_reading_order':None}
+    return {**base,'status':'same_physical_page_alternate_reading_order_text',
+            'extracted_page_text':body,'extracted_text_sha256':hashlib.sha256(body.encode('utf8')).hexdigest(),
+            'text_characters':len(body),'complete_extractor_output_not_truncated':True,
+            'required_layout_excerpt_also_contiguous_in_reading_order':(
+                ' '.join(required_center_excerpt.split()) in ' '.join(body.split())
+                if required_center_excerpt is not None else None)}
+
+
 def verified_page_neighbors(pdf:Path,expected_sha256:str,*,
         requested_page:int,neighbor_radius:int=1,
         required_center_excerpt:str|None=None,
-        max_page_characters:int=_MAX_CHARACTERS)->dict:
+        max_page_characters:int=_MAX_CHARACTERS,
+        include_center_reading_order:bool=False)->dict:
     """Extract exact original PDF page text with publisher-file revision proof.
 
     The whole Poppler text page may be imperfect for image-only, ligature or
@@ -42,6 +75,7 @@ def verified_page_neighbors(pdf:Path,expected_sha256:str,*,
             or not isinstance(expected_sha256,str) or not re.fullmatch('[0-9a-f]{64}',expected_sha256)
             or type(requested_page) is not int or not 1<=requested_page<=999999
             or type(neighbor_radius) is not int or neighbor_radius not in (0,1)
+            or type(include_center_reading_order) is not bool
             or type(max_page_characters) is not int or not 1000<=max_page_characters<=_MAX_CHARACTERS):
         raise ValueError('invalid bounded original PDF physical page request')
     if required_center_excerpt is not None and (not isinstance(required_center_excerpt,str)
@@ -133,6 +167,19 @@ def verified_page_neighbors(pdf:Path,expected_sha256:str,*,
         normalized=' '.join(next(row['extracted_page_text'] for row in pages if row['physical_page']==requested_page).split())
         if required_center_excerpt is not None and ' '.join(required_center_excerpt.split()) not in normalized:
             raise ValueError('required source excerpt absent from the selected physical original PDF page')
+        alternate=None
+        if include_center_reading_order:
+            center=next(row for row in pages if row['physical_page']==requested_page)
+            # Same already hashed open original, same explicit physical page.
+            # Unlike the layout extraction, Poppler's default projection can
+            # put multi-column prose into a useful reading sequence. It does
+            # not independently prove the visual order or preserve layout
+            # offsets, so keep it separate and recheck the file after both.
+            raw=_poppler(['/usr/bin/pdftotext','-f',str(requested_page),'-l',str(requested_page),
+                          '-enc','UTF-8',name,'-'],fd,deadline)
+            alternate=_center_reading_order_projection(raw,page=requested_page,
+                layout_sha256=center['physical_page_poppler_sha256'],
+                required_center_excerpt=required_center_excerpt,max_characters=max_page_characters)
         after=os.stat(pdf,follow_symlinks=False)
         if (not os.path.samestat(before,after) or before.st_size!=after.st_size
                 or before.st_mtime_ns!=after.st_mtime_ns or before.st_ctime_ns!=after.st_ctime_ns):
@@ -148,6 +195,7 @@ def verified_page_neighbors(pdf:Path,expected_sha256:str,*,
             'source_original_publisher_bytes_are_untouched':True,
             'context_cannot_by_itself_prove_a_factual_claim':True,
             'pages':pages,
+            **({'optional_center_reading_order_projection':alternate} if alternate is not None else {}),
             'warning':('These are separate Poppler-extracted text pages from the SHA-verified original PDF. '
                        'Oversized layout-only spacing may be compacted horizontally without dropping '
                        'non-whitespace text or line boundaries; original visual column alignment then requires direct PDF inspection. '
