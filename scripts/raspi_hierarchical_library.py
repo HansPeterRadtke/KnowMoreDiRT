@@ -1872,6 +1872,7 @@ def find_source_evidence(args) -> None:
         **({'optional_source_passage_utility_counts':{
             'reviewed_candidates':utility_review['reviewed_publisher_excerpt_candidates'],
             'navigation_or_prompt_candidates':utility_review['navigation_or_prompt_template_candidates'],
+            'bibliography_context_candidates':utility_review.get('bibliography_context_candidates',0),
             'linked_excerpt_candidates':(utility_review['optional_linked_original_structural_review']['reviewed_linked_excerpt_candidates']
                 if 'optional_linked_original_structural_review' in utility_review else 0),
             'linked_navigation_or_prompt_candidates':(utility_review['optional_linked_original_structural_review']['navigation_or_prompt_linked_excerpt_candidates']
@@ -2163,6 +2164,7 @@ def original_source_evidence(args) -> None:
         **({'optional_source_passage_utility_counts':{
             'reviewed_candidates':result['optional_source_passage_utility_review']['reviewed_publisher_excerpt_candidates'],
             'navigation_or_prompt_candidates':result['optional_source_passage_utility_review']['navigation_or_prompt_template_candidates'],
+            'bibliography_context_candidates':result['optional_source_passage_utility_review'].get('bibliography_context_candidates',0),
             'linked_excerpt_candidates':(
                 result['optional_source_passage_utility_review']['optional_linked_original_structural_review']['reviewed_linked_excerpt_candidates']
                 if 'optional_linked_original_structural_review' in result['optional_source_passage_utility_review'] else 0),
@@ -2335,7 +2337,7 @@ def main():
     evidence.add_argument("--top",type=int,default=5)
     evidence.add_argument("--snippet-characters",type=int,default=900)
     evidence.add_argument("--assess-passage-utility",action="store_true",
-        help="Opt-in structural warnings for navigation-only or quoted prompt passages; never score factual correctness or change source rank")
+        help="Opt-in structural warnings for navigation, quoted prompts and possible PDF bibliography context; never score factual correctness or change source rank")
     evidence.add_argument("--inspect-original-tables",action="store_true",
         help="Opt-in source-byte verified rows and column names from one current Markdown original, separate from normal excerpts; never infer answer truth")
     evidence.add_argument("--table-subject",

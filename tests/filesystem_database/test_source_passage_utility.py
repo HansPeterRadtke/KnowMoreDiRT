@@ -128,6 +128,63 @@ class EvidenceSurfaceNotAnswerTest(unittest.TestCase):
         self.assertTrue(result['no_candidates_removed_or_reordered'])
         self.assertEqual(1,result['reviewed_originals'][0]['original_native_rank_unchanged'])
 
+    def test_numbered_bibliography_warns_without_suppressing_verified_passage(self):
+        content=("[1] Jane Smith. A method for reasoning. In Proceedings of the ACM Conference, 2023.\n"
+                 "[2] Alex Brown. Training models. Journal of Research, 12(3):32-40, 2024.")
+        item=passage(content,path='papers/a.pdf',proof='pdf')
+        result=review_source_documents(self.q,[{'original_path':'papers/a.pdf','rank':3,'passages':[item]}])
+        r=result['reviewed_originals'][0]['passage_structural_reviews'][0]
+        self.assertTrue(r['possible_bibliography_context'])
+        self.assertIn('publisher_bibliography_style_entries_require_separate_claim_source',r['observed_structural_flags'])
+        self.assertFalse(r['possible_navigation_or_prompt_only'])
+        self.assertTrue(r['no_unverified_semantic_answer_or_correctness_score'])
+        self.assertEqual(1,result['bibliography_context_candidates'])
+        self.assertEqual(0,result['navigation_or_prompt_template_candidates'])
+        self.assertEqual(3,result['reviewed_originals'][0]['original_native_rank_unchanged'])
+        self.assertEqual(content,item['source_excerpt'])
+
+    def test_common_author_reference_formats(self):
+        samples=(
+            "Smith, J., Brown, A. A method. Journal of Research, 12(3):20-30, 2023.\n"
+            "Baker, L., Miller, K. Another method. In Proceedings of the ACM Conference, 2024.",
+            "J. Smith, A. Brown. A method. Journal of Research, 12(3):20-30, 2023.\n"
+            "L. Baker, K. Miller. Another method. In Proceedings of the ACM Conference, 2024.",
+            "Jane Smith, Alex Brown, and Sarah Baker. 2023. A method. Journal of Research, 12(3):20-30.\n"
+            "Lee Miller and Ana Smith. 2024. Another method. In Proceedings of the ACM Conference.",
+        )
+        for content in samples:
+            with self.subTest(content=content):
+                self.assertTrue(review_passage_candidate(self.q,passage(content,path='papers/a.pdf',proof='pdf'))['possible_bibliography_context'])
+
+    def test_mixed_column_warns_without_classifying_entire_excerpt_as_bibliography(self):
+        content=("Our experiment shows improved throughput.                REFERENCES\n"
+                 "This remains a measured result.                         [1] Example Research Group. 2024. https://example.org/paper")
+        r=review_passage_candidate(self.q,passage(content,path='papers/a.pdf',proof='pdf'))
+        self.assertTrue(r['possible_bibliography_context'])
+        self.assertTrue(r['reference_column_heading_observed'])
+        self.assertFalse(r['possible_navigation_or_prompt_only'])
+        self.assertNotIn('factual_answer_correctness_verified',r)
+
+    def test_clipped_numbered_reference_with_publication_identifier(self):
+        content=("Our experiment was run in 2024.                The preceding study appeared in 2021.\n"
+                 "We report the performance below.             [8] A. Brown. Method. In Proceedings of the ACM Conference. doi:10.1234/abc")
+        self.assertTrue(review_passage_candidate(self.q,passage(content,path='papers/a.pdf',proof='pdf'))['possible_bibliography_context'])
+
+    def test_inline_citations_method_steps_and_conference_footer_are_not_reference_entries(self):
+        content=("Smith et al. (2023) and Brown et al. (2024) motivate our research.\n"
+                 "[1] Collect samples in 2023.\n[2] Compare methods in 2024.\n"
+                 "Proceedings of the ACM Conference, 2024. Copyright 2024.\n"
+                 "Our results are reported in the next section.")
+        r=review_passage_candidate(self.q,passage(content,path='papers/a.pdf',proof='pdf'))
+        self.assertFalse(r['possible_bibliography_context'])
+
+    def test_no_bibliography_observation_on_unverified_or_non_pdf(self):
+        content="[1] A. Brown. Journal of Research, 2023.\n[2] B. Brown. Journal of Research, 2024."
+        for item in (passage(content),passage(content,path='papers/a.txt',proof='pdf'),passage(content,path='papers/a.pdf',proof='none')):
+            self.assertFalse(review_passage_candidate(self.q,item)['possible_bibliography_context'])
+        item=passage(content,path='papers/a.pdf',proof='pdf');item['publisher_pdf_page']['status']='unverified'
+        self.assertFalse(review_passage_candidate(self.q,item)['possible_bibliography_context'])
+
     def test_cross_original_passage_attribution_refused(self):
         p=passage('The source text is correct.',path='docs/unrelated.md')
         with self.assertRaisesRegex(ValueError,'different ranked original'):

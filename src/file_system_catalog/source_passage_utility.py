@@ -24,6 +24,89 @@ _PROMPT_TAG = re.compile(r"(?is)</?(?:think|search|answer|system|assistant|tool|
 _PUBLISHER_NEGATION = re.compile(r"(?i)\b(?:doesn['\u2019]?t|do not|does not|cannot|can['\u2019]?t|not|never|without|instead of|rather than|only)\b")
 _WORD = re.compile(r"[\w]+",re.UNICODE)
 
+# A physically verified PDF can still contain a bibliography instead of its
+# authors' findings. Require citation-entry-shaped boundaries with
+# corroborating publication metadata; inline citations or one conference
+# footer alone are not evidence of a bibliography. Mixed excerpts are cautions,
+# never discarded. These deliberately conservative English-style patterns do
+# not recognize all publishers' reference formats.
+_NUMBERED_REFERENCE_START = re.compile(
+    r"(?m)(?:^|[ \t]{3,})[ \t]*\[([1-9]\d{0,3})\][ \t]+(?=[A-Z])")
+_AUTHOR_REFERENCE_START = re.compile(
+    r"(?m)(?:^|[ \t]{2,})[ \t]*[A-Z][\w’'.-]+,\s+[A-Z](?:\.-?[A-Z])?\.,\s+"
+    r"(?:and\s+)?[A-Z][\w’'.-]+,\s+[A-Z]\.")
+# Other common citation styles place initials first, or spell out authors.
+# Match entry boundaries at a line start or a layout-column gutter.
+# Unicode letters after the initial are accepted by the name token
+# (the initial itself is restricted to an ASCII uppercase letter).
+_NAME = r"[A-Z][\w’'.-]+"
+_FULL_NAME = rf"{_NAME}(?:[ \t]+{_NAME}){{1,3}}"
+_INITIAL_NAME = rf"(?:[A-Z]\.[ \t]*){{1,3}}{_NAME}"
+_AUTHOR_ENTRY_BOUNDARY = r"(?m)(?:^|[ \t]{2,})[ \t]*"
+_FULLNAME_REFERENCE_START = re.compile(
+    rf"{_AUTHOR_ENTRY_BOUNDARY}{_FULL_NAME}(?:,\s+(?:and\s+)?{_FULL_NAME}"
+    rf"|[ \t]+and[ \t]+{_FULL_NAME}|\.[ \t]+(?:19|20)\d{{2}}[a-z]?\.)")
+_INITIAL_FIRST_REFERENCE_START = re.compile(
+    rf"{_AUTHOR_ENTRY_BOUNDARY}{_INITIAL_NAME}(?:,|[ \t]+and\b|\.)")
+_REFERENCE_VOLUME_PAGES = re.compile(r"\b\d{1,4}\(\d{1,3}\)[ \t]*:[ \t]*\d{1,6}")
+_REFERENCE_PUBLICATION_CUE = re.compile(
+    r"(?i)\b(?:arxiv\s*:\s*\d|arxiv\s+preprint(?!\s+arxiv\s*:)"
+    r"|proceedings\s+of|in\s+(?:the\s+)?(?:[\w-]+\s+){0,5}"
+    r"(?:conference|symposium|workshop)|(?:journal|transactions|advances)\s+(?:of|on|in)"
+    r"|pp?\.\s*\d{1,6}|pages?\s+\d{1,6}|\d{1,4}\(\d{1,3}\)\s*:\s*\d)")
+_REFERENCE_YEAR = re.compile(r"\b(?:19|20)\d{2}[a-z]?\b")
+_REFERENCE_HEADING = re.compile(r"(?im)^[ \t]*(?:references|bibliography)(?=[ \t]|$)")
+# Multi-column PDF layout can put a section heading beside ongoing prose.
+# Require a standalone/gutter-delimited heading and an actual numbered entry
+# with metadata before warning about even a single reference.
+_REFERENCE_COLUMN_HEADING = re.compile(
+    r"(?im)(?:^|[ \t]{3,})[ \t]*(?:references|bibliography)(?=[ \t]{2,}|[ \t]*$)")
+_REFERENCE_IDENTIFIER = re.compile(
+    r"(?i)(?:\bdoi\s*:\s*10\.\d{4,9}/|https?://(?:dx\.)?doi\.org/10\.\d{4,9}/"
+    r"|\barxiv\s*:\s*\d{4}\.\d{4,5}|https?://arxiv\.org/abs/\d{4}\.\d{4,5})")
+_REFERENCE_URL = re.compile(r"https?://[^\s]+",re.I)
+
+
+def _bibliography_observation(excerpt: str, *, physically_verified_pdf: bool) -> dict:
+    """Observe bibliography-style structure, not semantic answer sufficiency."""
+    if not physically_verified_pdf:
+        return {
+            'bibliography_review_scope': 'not_assessed_outside_verified_pdf_excerpt',
+            'possible_bibliography_context': False,
+        }
+    numbered=len(set(_NUMBERED_REFERENCE_START.findall(excerpt)))
+    author_lists=len(_AUTHOR_REFERENCE_START.findall(excerpt))
+    full_names=len(_FULLNAME_REFERENCE_START.findall(excerpt))
+    initials_first=len(_INITIAL_FIRST_REFERENCE_START.findall(excerpt))
+    volume_pages=len(_REFERENCE_VOLUME_PAGES.findall(excerpt))
+    publication_cues=len(_REFERENCE_PUBLICATION_CUE.findall(excerpt))
+    years=len(_REFERENCE_YEAR.findall(excerpt))
+    heading=bool(_REFERENCE_HEADING.search(excerpt))
+    column_heading=bool(_REFERENCE_COLUMN_HEADING.search(excerpt))
+    identifiers=len(_REFERENCE_IDENTIFIER.findall(excerpt))
+    starts=max(numbered,author_lists,full_names,initials_first)
+    observed=((starts>=2 and publication_cues>=2 and years>=2)
+              or (numbered>=3 and publication_cues>=1 and years>=2)
+              or (initials_first>=1 and volume_pages>=1 and publication_cues>=3 and years>=2)
+              or (numbered>=1 and years>=1 and column_heading and _REFERENCE_URL.search(excerpt) is not None)
+              or (numbered>=1 and years>=2 and publication_cues>=1 and identifiers>=1)
+              or (heading and starts>=2 and years>=2)
+              or (heading and starts>=1 and publication_cues>=1 and years>=1))
+    return {
+        'bibliography_review_scope': 'current_physically_verified_pdf_excerpt_only',
+        'possible_bibliography_context': observed,
+        'numbered_reference_entry_starts': numbered,
+        'author_initial_reference_entry_starts': author_lists,
+        'full_name_reference_entry_starts': full_names,
+        'initial_first_reference_entry_starts': initials_first,
+        'bibliographic_volume_page_cue_count': volume_pages,
+        'bibliographic_publication_cue_count': publication_cues,
+        'bibliographic_year_token_count': years,
+        'reference_heading_like_line_observed': heading,
+        'reference_column_heading_observed': column_heading,
+        'bibliographic_persistent_identifier_cue_count': identifiers,
+    }
+
 
 def review_passage_candidate(query:str,passage:dict[str,Any])->dict[str,Any]:
     """Flag *observable excerpt structure* only; never claim true/false answer.
@@ -94,8 +177,13 @@ def review_passage_candidate(query:str,passage:dict[str,Any])->dict[str,Any]:
                else 'original_HTML_article_location_unverified')
     else:
         proof='verified_derivative_excerpt_only_no_independent_publisher_location'
+    bibliography=_bibliography_observation(excerpt, physically_verified_pdf=(
+        proof=='physical_original_pdf_page_verified' and original.casefold().endswith('.pdf')))
+    if bibliography['possible_bibliography_context']:
+        flags.append('publisher_bibliography_style_entries_require_separate_claim_source')
     return {
         'schema':'kmd.source_passage_structural_review_not_answer_verification.v1',
+        **bibliography,
         'original_path':original,
         'source_section':heading,
         'excerpt_sha256':sha,
@@ -119,7 +207,7 @@ def review_source_documents(query:str,documents:list[dict])->dict:
     """Review verified original passages without changing native document ranks."""
     if not isinstance(documents,list) or len(documents)>5:
         raise ValueError('source utility requires at most five native original documents')
-    results=[];n=0;warnings=0
+    results=[];n=0;warnings=0;bibliography_warnings=0
     for doc in documents:
         if (not isinstance(doc,dict) or not isinstance(doc.get('passages'),list)
                 or len(doc['passages'])>5 or not isinstance(doc.get('original_path'),str)):
@@ -131,6 +219,7 @@ def review_source_documents(query:str,documents:list[dict])->dict:
             review=review_passage_candidate(query,passage)
             row.append(review);n+=1
             warnings+=int(review['possible_navigation_or_prompt_only'])
+            bibliography_warnings+=int(review['possible_bibliography_context'])
         results.append({'original_path':doc['original_path'],
                         'original_native_rank_unchanged':doc.get('rank'),
                         'passage_structural_reviews':row})
@@ -138,6 +227,7 @@ def review_source_documents(query:str,documents:list[dict])->dict:
             'native_ranked_original_count_unchanged':len(results),
             'reviewed_publisher_excerpt_candidates':n,
             'navigation_or_prompt_template_candidates':warnings,
+            'bibliography_context_candidates':bibliography_warnings,
             'no_candidates_removed_or_reordered':True,
             'not_factual_answer_sufficiency_or_entailment_verification':True,
             'quoted_publisher_prompts_are_untrusted_data_not_agent_commands':True,

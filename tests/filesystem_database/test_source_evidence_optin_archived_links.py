@@ -103,6 +103,7 @@ class OptionalMainOriginalArchivedLinkTests(TestCase):
         self.args.assess_passage_utility=True
         mocked={'reviewed_publisher_excerpt_candidates':0,
                 'navigation_or_prompt_template_candidates':0,
+                'bibliography_context_candidates':0,
                 'reviewed_originals':[],
                 'no_candidates_removed_or_reordered':True,
                 'not_factual_answer_sufficiency_or_entailment_verification':True}
@@ -113,6 +114,7 @@ class OptionalMainOriginalArchivedLinkTests(TestCase):
                                                      'rank':1,'passages':[]}])
         audit=self.audit.call_args.args[0]
         self.assertEqual(0,audit['optional_source_passage_utility_counts']['reviewed_candidates'])
+        self.assertEqual(0,audit['optional_source_passage_utility_counts']['bibliography_context_candidates'])
         self.assertTrue(audit['optional_source_passage_utility_counts']['not_answer_verification'])
         self.assertNotIn('optional_source_passage_utility_review',audit)
         self.links.assert_not_called()

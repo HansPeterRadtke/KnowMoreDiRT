@@ -109,6 +109,7 @@ class MixedSourceEvidenceTests(unittest.TestCase):
         self.args.assess_passage_utility=True
         fake={'reviewed_publisher_excerpt_candidates':2,
              'navigation_or_prompt_template_candidates':1,
+             'bibliography_context_candidates':1,
              'reviewed_originals':[{'original_path':'docs/paper.html','passage_structural_reviews':[]}],
              'no_candidates_removed_or_reordered':True,
              'not_factual_answer_sufficiency_or_entailment_verification':True}
@@ -123,6 +124,7 @@ class MixedSourceEvidenceTests(unittest.TestCase):
         audit=self.mocks['append_query_audit'].call_args.args[0]
         self.assertEqual(2,audit['optional_source_passage_utility_counts']['reviewed_candidates'])
         self.assertEqual(1,audit['optional_source_passage_utility_counts']['navigation_or_prompt_candidates'])
+        self.assertEqual(1,audit['optional_source_passage_utility_counts']['bibliography_context_candidates'])
         self.assertNotIn('optional_source_passage_utility_review',audit)
         self.assertNotIn('PDF excerpt',str(audit))
 

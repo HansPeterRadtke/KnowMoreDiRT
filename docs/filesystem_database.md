@@ -5076,3 +5076,58 @@ check claim scope, meaning, negation, temporal applicability and
 multiple potentially conflicting first-party originals. No source
 acquisition, native reranking, live source-generation cutover or
 indexer stoppage was authorized or performed by these additions.
+
+### Possible bibliography context in verified PDF excerpts (November 25, 2026)
+
+A physically verified passage can quote a paper's bibliography rather than
+its own experiments. In a real material-transfer topical query, the second
+returned excerpt was a bibliography. The existing `--assess-passage-utility`
+option on `source-evidence` and `find-source-evidence` now supplies a separate
+`possible_bibliography_context` boolean and, when observed, the structural flag
+`publisher_bibliography_style_entries_require_separate_claim_source`. The
+warning uses bounded numbered/author-entry patterns, year and publication
+metadata cues, and stronger evidence for single references in mixed-column
+passages. It runs only on an excerpt with a verified physical publisher PDF
+page. The result is an observation about the provided excerpt, not about the
+whole page or document. Absence of a warning is not proof of original findings.
+
+Bibliographic content can be useful (particularly for reference searches), and
+mixed passages may contain substantive results. Neither the excerpt, source
+rank, original/derived revision checks, nor page anchors are changed. It is
+not an automatic rejection, relevance score, or factual entailment decision.
+The existing navigation/prompt-only diagnostic retains its meaning. Private
+query-audit records add only the aggregate `bibliography_context_candidates`
+count, not the matched names, text, or publication identifiers. Default
+queries without the optional flag retain their previous behavior.
+
+Evaluation used already-approved local publisher originals. All 89 excerpts
+across sixteen papers were independently rechecked against original SHA,
+Poppler physical-page SHA and normalized page span. The final rules recognized
+all 34 positive and 31 negative tuning examples across twelve papers, but
+these were used to refine the rules and are not a held-out estimate. On a
+separate final set of four different papers (labels frozen before scoring),
+eight of eleven reference-containing excerpts were flagged, and none of
+thirteen negative excerpts were flagged. This is a small, deliberately
+reference-enriched, manually labeled sample, not an unbiased estimate of
+corpus-wide precision/recall. Three clipped or mixed reference passages were
+missed. The flag must therefore remain advisory and optional. Named-original
+and direct live A/B comparisons retained identical returned source passages
+and ranks; a named reference query produced two warnings, and the original
+material-transfer topical query produced one direct warning. No source
+acquisition, alternate index, model generation or live generation cutover
+was required.
+
+Example using the existing approved ICCV paper:
+
+```sh
+cd /data/src/github/KnowMoreDiRT
+PYTHONPATH=src /data/var/knowmoredirt/semantic-venv/bin/python \
+  scripts/raspi_hierarchical_library.py source-evidence \
+  'material transfer geometry illumination reflectance' \
+  --original-path 'graphics/iccv2025-original-published-material_photorealistic_pbr/Huang_MaTe_Images_Are_All_You_Need_for_Material_Transfer_via_ICCV_2025_paper.pdf' \
+  --top 2 --snippet-characters 900 --assess-passage-utility
+```
+
+Private evaluation evidence is in the existing Raspi search-audit directory
+under the `20261125-wave101-bibliography-` prefix. Publisher excerpts and
+manual labels are not committed to this repository.
