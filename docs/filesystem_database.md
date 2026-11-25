@@ -5555,3 +5555,15 @@ writers, unregistered manual clients and legacy production readers are not
 enrolled. All seven live release blockers and the no-cutover restriction
 remain. No live original, derivative, native SQLite, summary or worker
 configuration has been changed by this implementation.
+
+The same-source transition regression additionally constructs two valid
+private generations of the same synthetic publisher path and native file
+ID, with distinct extracted-text SHA, source passage, native embedding and
+summary-tree root. During a revision switch, a pinned reader still returns
+the old exact locators; subsequent readers find the replacement term and
+no longer find the retired term. A forward-numbered private copy of the
+first verified generation then restores the original locators without
+altering either previous generation. This tests revision selection and
+rollback semantics in isolation with synthetic embeddings, not model
+quality, physical publisher evidence or authorization to roll back live
+data.

@@ -141,6 +141,134 @@ class PrivateSourceLinkedRetrievalTests(unittest.TestCase):
         with self.assertRaisesRegex(ValueError,'not in this'):
             self.lookup(self.first['original_path'],'publisher evidence')
 
+    def stage_same_original_corrected_revision(self,old_folder):
+        """Build an independent synthetic corrected revision of the SAME source."""
+        from file_system_catalog.source_page_reindex_release_gate import assess_corrected_native_release
+        from file_system_catalog.source_revision_audit import _verified_derived_body_count
+        from file_system_catalog.source_review_audit import sha_file
+        from file_system_catalog.summary_coverage import revision_identity
+        import struct
+        source=dict(self.first)
+        path=source['original_path'];original=source['original_sha256']
+        old_sha=source['new_staged_derived_sha256'];ident=source['native_original_filedb_id']
+        folder=self.f.switch/'generations'/'gen-00000002'
+        shutil.copytree(old_folder,folder)
+        file=folder/'text'/(path+'.txt')
+        text=file.read_text('utf8')
+        self.assertEqual(1,text.count('audited'))
+        text=text.replace('audited','quasar')
+        self.assertNotIn('audited',text)
+        file.write_text(text,encoding='utf8')
+        derived=sha_file(file)
+        self.assertNotEqual(old_sha,derived)
+        source.update(old_derived_sha256=old_sha,new_staged_derived_sha256=derived)
+        count=_verified_derived_body_count(text,original_path=path,original_sha=original,source_kind='pdf')
+        previous=next((folder/'summaries').glob('*.summary-tree.json'))
+        tree=json.loads(previous.read_text())
+        summary='The corrected synthetic source describes quasar retrieval.'
+        h=lambda value:hashlib.sha256(value.encode('utf8')).hexdigest()
+        root='summary:corrected_private_same_original'
+        tree.update(derived_sha256=derived)
+        tree['tree'].update(source_sha256=derived,original_characters=len(text),root_id=root)
+        self.assertEqual(1,len(tree['tree']['nodes']))
+        node=tree['tree']['nodes'][0]
+        node.update(node_id=root,source_sha256=derived,end_char=len(text),
+                    summary=summary,summary_sha256=h(summary))
+        new_tree=folder/'summaries'/(Path(path).name+'.'+revision_identity(path,original,derived)[:24]+'.summary-tree.json')
+        new_tree.write_text(json.dumps(tree))
+        # This is a disposable copy created inside the test, never a published
+        # generation asset or another worker's file.
+        previous.unlink()
+        native=folder/'native.sqlite3';source_map=folder/'source-map.sqlite3'
+        for database in (native,source_map):
+            with sqlite3.connect(database) as db:
+                db.execute('UPDATE originals SET derived_sha256=?,text_characters=? WHERE source_path=?',(derived,count,path))
+                db.execute('UPDATE snapshot_revisions SET old_derived_sha256=?,new_staged_derived_sha256=? WHERE original_path=?',(old_sha,derived,path))
+        # Deliberately distinct, valid synthetic vectors. This exercises the
+        # complete native schema and release gate, not semantic model quality.
+        vector=struct.pack('<ee',0.0,1.0)+bytes(764)
+        vector_sha=hashlib.sha256(vector).hexdigest()
+        with sqlite3.connect(native) as db:
+            db.execute('UPDATE content_chunks SET content_object_id=?,end_char=?,text_sha256=? WHERE filesystem_entry_id=?',
+                       ('sha256:'+derived,len(text),h(text),ident))
+            db.execute("UPDATE content_chunks SET embedding_blob=?,embedding_sha256=? WHERE collection_id LIKE '%:overview'",(vector,vector_sha))
+            rows=db.execute("SELECT representation_id,generation_json FROM content_representations").fetchall()
+            self.assertEqual(1,len(rows))
+            rep,raw=rows[0];meta=json.loads(raw)
+            meta.update(derived_sha256=derived,source_tree_sha256=derived,source_end_char=len(text),
+                        source_passage_sha256=h(text),node_id=root,summary_sha256=h(summary))
+            db.execute('UPDATE content_representations SET representation_text=?,representation_text_sha256=?,generation_json=?,embedding_blob=?,embedding_sha256=? WHERE representation_id=?',
+                       (summary,h(summary),json.dumps(meta),vector,vector_sha,rep))
+        history=self.f.private_root/'same-original-previous-private-revision.sqlite3'
+        shutil.copy2(old_folder/'native.sqlite3',history)
+        with sqlite3.connect(history) as db:
+            db.execute('UPDATE snapshot_revisions SET old_derived_sha256=?,new_staged_derived_sha256=? WHERE original_path=?',(old_sha,derived,path))
+        with sqlite3.connect(source_map.resolve().as_uri()+'?mode=ro',uri=True) as sm, \
+             sqlite3.connect(native.resolve().as_uri()+'?mode=ro',uri=True) as db, \
+             sqlite3.connect(history.resolve().as_uri()+'?mode=ro',uri=True) as historical:
+            for conn in (sm,db,historical):conn.execute('PRAGMA query_only=ON')
+            ready=assess_corrected_native_release(records=[source],source_map=sm,native=db,historical=historical,
+                        derived_root=folder/'text',summary_root=folder/'summaries',expected_count=1)
+        self.assertTrue(ready['all_corrected_revision_search_evidence_complete'],ready)
+        ready.update(native_sqlite_sha256=sha_file(native),source_map_sqlite_sha256=sha_file(source_map))
+        proof=folder/'proof.json';proof.write_text(json.dumps(ready))
+        manifest_path=folder/'manifest.json';manifest=json.loads(manifest_path.read_text())
+        manifest.update(generation=2,native_gate={'path':'proof.json','sha256':sha_file(proof)})
+        manifest['assets']=[{'kind':role,'path':str(asset.relative_to(folder)),
+                            'sha256':sha_file(asset),'bytes':asset.stat().st_size}
+                            for role,asset in [('native_sqlite',native),('source_map_sqlite',source_map),
+                            ('corrected_derived_text',file),('recursive_summary_tree',new_tree)]]
+        manifest_path.write_text(json.dumps(manifest))
+        return folder,derived,root
+
+    def test_same_original_revision_switch_and_forward_private_rollback(self):
+        from file_system_catalog.private_source_generation import open_pinned_private_read_view
+        from file_system_catalog.source_review_audit import sha_file
+        old_folder=self.stage_one()
+        path=self.first['original_path'];old_sha=self.first['new_staged_derived_sha256']
+        old_manifest=sha_file(old_folder/'manifest.json')
+        new_folder,new_sha,new_root=self.stage_same_original_corrected_revision(old_folder)
+        baseline=self.lookup(path,'audited')
+        self.assertEqual(1,baseline['returned_source_locators'])
+        self.assertEqual(0,self.lookup(path,'quasar')['returned_source_locators'])
+        original_lookup=private_reader.source_evidence_candidates
+        def switch_during_read(**kwargs):
+            self.assertEqual(2,publish_private_only(self.f.switch,self.f.private_root,2)['private_pointer_generation'])
+            return original_lookup(**kwargs)
+        with mock.patch.object(private_reader,'source_evidence_candidates',side_effect=switch_during_read):
+            pinned_old=self.lookup(path,'audited')
+        self.assertEqual(baseline,pinned_old)
+        current=self.lookup(path,'quasar')
+        self.assertEqual(2,current['generation'])
+        self.assertEqual(path,current['original_path'])
+        self.assertEqual(pinned_old['original_sha256'],current['original_sha256'])
+        self.assertEqual(pinned_old['native_filedb_original_id'],current['native_filedb_original_id'])
+        self.assertEqual(new_sha,current['derived_sha256'])
+        self.assertNotEqual(old_sha,current['derived_sha256'])
+        self.assertEqual(new_root,current['pinned_native_summary_root_id'])
+        self.assertEqual(1,current['returned_source_locators'])
+        self.assertEqual(0,self.lookup(path,'audited')['returned_source_locators'])
+        self.assertEqual(old_manifest,sha_file(old_folder/'manifest.json'))
+        # Rehearse a private forward-numbered restoration. The old verified
+        # generation is copied, not changed, and the pointer never goes back.
+        with open_pinned_private_read_view(self.f.switch,self.f.private_root) as new_view:
+            restore=self.f.switch/'generations'/'gen-00000003'
+            shutil.copytree(old_folder,restore)
+            m=restore/'manifest.json';manifest=json.loads(m.read_text());manifest['generation']=3
+            m.write_text(json.dumps(manifest))
+            result=publish_private_only(self.f.switch,self.f.private_root,3)
+            self.assertEqual(2,result['previous_private_generation'])
+            self.assertEqual(3,result['private_pointer_generation'])
+            self.assertFalse(result['safe_to_cutover_live'])
+            self.assertEqual(new_sha,new_view.source_map.execute('SELECT derived_sha256 FROM originals').fetchone()[0])
+        restored=self.lookup(path,'audited')
+        self.assertEqual(3,restored['generation'])
+        self.assertEqual(old_sha,restored['derived_sha256'])
+        self.assertEqual(baseline['locators'],restored['locators'])
+        self.assertEqual(0,self.lookup(path,'quasar')['returned_source_locators'])
+        self.assertTrue(old_folder.is_dir() and new_folder.is_dir())
+        self.assertEqual(old_manifest,sha_file(old_folder/'manifest.json'))
+
     def test_generation_aware_private_lookup_works_only_after_cooperating_writer_drains(self):
         self.f.stage(1,0)
         with admit_private_legacy_writer(self.f.switch,self.f.private_root):
