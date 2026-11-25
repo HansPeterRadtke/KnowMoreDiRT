@@ -307,9 +307,41 @@ class OptionalMainOriginalArchivedLinkTests(TestCase):
         self.args.inspect_original_tables=True
         with mock.patch.object(self.kmd,'verified_original_markdown_table_rows',
                                side_effect=AssertionError('wrong source type')) as reader:
-            with self.assertRaisesRegex(ValueError,'requires one verified UTF-8 Markdown original'):
+            with self.assertRaisesRegex(ValueError,'original HTML table inspection requires exact subject and column'):
                 self.kmd.original_source_evidence(self.args)
         reader.assert_not_called()
+        self.assertFalse(self.audit.call_args.args[0]['success'])
+
+    def test_direct_HTML_cell_returns_original_proof_without_changing_passages(self):
+        from hashlib import sha256
+        raw=b'<main><table><tr><th>Material</th><th>Value</th></tr><tr><td>Example</td><td>private-fixture-value</td></tr></table></main>'
+        self.source['publisher_html_bytes']=raw
+        self.source['original_sha256']=sha256(raw).hexdigest()
+        self.source['derived_sha256']=sha256(self.source['derived_text'].encode()).hexdigest()
+        self.patched[2].return_value.update(original_sha256=self.source['original_sha256'],derived_sha256=self.source['derived_sha256'])
+        self.args.follow_archived_links=False
+        self.args.inspect_original_tables=True
+        self.args.table_subject='Example'
+        self.args.table_column='Value'
+        self.args.expect_table_value='private-fixture-value'
+        result=self.run_query()
+        proof=result['optional_exact_original_html_table_cell']
+        self.assertEqual('resolved',proof['status'])
+        self.assertEqual('private-fixture-value',proof['resolved_unique_literal_publisher_cell']['selected_original_table_column_value'])
+        self.assertEqual('literal_match',result['optional_expected_original_cell_literal_comparison']['status'])
+        self.assertEqual([],result['passages'])
+        self.assertNotIn('optional_exact_original_markdown_table_cell',result)
+        self.assertTrue(result['final_current_source_revision_check']['latest_source_map_revision_and_native_file_id_rechecked'])
+        audit=self.audit.call_args.args[0]
+        self.assertEqual('resolved',audit['optional_exact_original_html_table_cell_diagnostics']['status'])
+        self.assertNotIn('private-fixture-value',str(audit))
+        self.assertNotIn('<td>',str(audit))
+        self.patched[3].assert_called_once()
+        self.patched[3].side_effect=ValueError('current revision changed')
+        with mock.patch('builtins.print') as out:
+            with self.assertRaisesRegex(ValueError,'current revision changed'):
+                self.kmd.original_source_evidence(self.args)
+        out.assert_not_called()
         self.assertFalse(self.audit.call_args.args[0]['success'])
 
     def test_table_option_does_not_alter_original_default_source_response(self):

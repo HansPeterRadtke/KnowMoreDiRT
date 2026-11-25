@@ -2038,7 +2038,7 @@ def original_source_evidence(args) -> None:
             raise ValueError('optional structural source review requires at most five original passages and no RFC continuation')
         if getattr(args,'inspect_original_tables',False) and (
                 cursor is not None or args.top>5):
-            raise ValueError('optional original Markdown table evidence requires at most five original passages and no RFC continuation')
+            raise ValueError('optional original table evidence requires at most five original passages and no RFC continuation')
         literal_subject=getattr(args,'table_subject',None)
         literal_column=getattr(args,'table_column',None)
         literal_section=getattr(args,'table_exact_section',None)
@@ -2091,7 +2091,22 @@ def original_source_evidence(args) -> None:
         else:
             result = _original_passages({**source, "original_path": original_path}, int(row[0]), evidence_query,
                                         args.top, args.snippet_characters)
-        if getattr(args,'inspect_original_tables',False):
+        if getattr(args,'inspect_original_tables',False) and Path(original_path).suffix.casefold() in ('.html','.htm'):
+            if (literal_subject is None or literal_column is None or literal_section is not None
+                    or not isinstance(source.get('publisher_html_bytes'),bytes)):
+                raise ValueError('original HTML table inspection requires exact subject and column, bounded UTF-8 HTML, and no Markdown section selector')
+            from file_system_catalog.source_html_table_cells import (
+                verified_original_html_table_cell,compare_claimed_literal_to_original_html_cell)
+            result['optional_exact_original_html_table_cell']=verified_original_html_table_cell(
+                subject=literal_subject,column=literal_column,original_path=original_path,
+                original_sha256=source['original_sha256'],derived_sha256=source['derived_sha256'],
+                derived_text=source['derived_text'],publisher_html_bytes=source['publisher_html_bytes'],
+                filesystem_entry_id=int(row[0]))
+            if asserted_value is not None:
+                result['optional_expected_original_cell_literal_comparison']=compare_claimed_literal_to_original_html_cell(
+                    original_cell_result=result['optional_exact_original_html_table_cell'],
+                    claimed_literal_value=asserted_value)
+        elif getattr(args,'inspect_original_tables',False):
             if (Path(original_path).suffix.casefold() not in ('.md','.markdown')
                     or not isinstance(source.get('publisher_text_bytes'),bytes)):
                 raise ValueError('original publisher table inspection requires one verified UTF-8 Markdown original')
@@ -2199,6 +2214,12 @@ def original_source_evidence(args) -> None:
             'cell_value_and_source_body_not_in_private_audit':True,
             'no_semantic_entailment_proven':True}}
             if 'optional_exact_original_markdown_table_cell' in result else {}),
+        **({'optional_exact_original_html_table_cell_diagnostics':{
+            'status':result['optional_exact_original_html_table_cell']['status'],
+            'matching_original_table_rows':result['optional_exact_original_html_table_cell']['matching_original_table_rows'],
+            'cell_value_and_markup_not_in_private_audit':True,
+            'no_semantic_entailment_proven':True}}
+            if 'optional_exact_original_html_table_cell' in result else {}),
         **({'optional_expected_original_cell_literal_status':{
             'status':result['optional_expected_original_cell_literal_comparison']['status'],
             'asserted_and_source_field_text_excluded_from_private_audit':True,
@@ -2386,11 +2407,11 @@ def main():
     evidence.add_argument("--assess-passage-utility",action="store_true",
         help="Opt-in structural warnings for navigation, quoted prompts and possible PDF bibliography context; never score factual correctness or change source rank")
     evidence.add_argument("--inspect-original-tables",action="store_true",
-        help="Opt-in source-byte verified rows and column names from one current Markdown original, separate from normal excerpts; never infer answer truth")
+        help="Opt-in original Markdown rows or an explicit exact HTML table cell; separate from normal excerpts; never infer answer truth")
     evidence.add_argument("--table-subject",
         help="Exact literal first-column publisher table subject; with --table-column and --inspect-original-tables, fail closed on missing/ambiguous values")
     evidence.add_argument("--table-column",
-        help="Exact publisher Markdown column name for the named source row, not a guessed semantic alias")
+        help="Exact publisher Markdown or normalized HTML column name for the named source row, not a guessed semantic alias")
     evidence.add_argument("--table-exact-section",
         help="Optional exact original Markdown section heading to resolve duplicate subject+column rows")
     evidence.add_argument("--expect-table-value",

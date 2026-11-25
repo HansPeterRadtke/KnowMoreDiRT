@@ -5464,3 +5464,54 @@ known-source, known-range tests, not full-book, corpus-wide, or factual
 answer accuracy measurements. Private gold, individual result receipts
 and the independent final revision checks are in the existing Raspi
 search-audit wave103 evaluation folder with prefix `wave106-long-`.
+
+#### Exact normalized original HTML table cells
+
+The direct `source-evidence` operation can optionally inspect a single
+approved current HTML publisher original using both an explicit first-column
+subject and a column header. It is not a semantic table search or a new
+default ranking feature.
+
+```sh
+python scripts/raspi_hierarchical_library.py source-evidence 'material reference' \
+    --original-path 'exact/approved/publisher.html' --top 5 \
+    --inspect-original-tables --table-subject 'Example' --table-column 'Value' \
+    --expect-table-value '0.51'
+```
+
+The operation checks the current original and derivative SHA-256 values,
+then independently parses explicitly closed rectangular tables in
+parser-recognized main/article content. Subject and column selection use
+collapsed whitespace and case-insensitive exact equality. The normalized
+cell value decodes HTML character references, concatenates inline text,
+and collapses whitespace. It has a separate text hash from the original
+raw UTF-8 markup interval hashes for the row, header and cells. Raw markup
+coordinates are not a claim that normalized text is one literal byte
+interval, nor proof of browser layout or visibility.
+
+Ambiguous matches, including repeated identical values, are never resolved.
+Malformed, hidden, spanning, nested or unsupported content tables cause
+explicit unsupported status instead of guessing a value from the subset.
+Lookup scope does not include navigation, aside or footer tables and does
+not establish what an omitted or dynamically rendered table contains.
+The HTML parser does not implement browser CSS or HTML5 repair. An optional
+comparison checks exact normalized text only; a differing literal is not
+proof of semantic contradiction or falsehood. A missing match is not a
+negative factual answer.
+
+All normal lexical passages and native ranking remain unchanged. The
+existing final original/derivative/native revision guard runs before any
+successful response; the query audit stores diagnostics, not cell values
+or raw markup. Existing Markdown table and mixed-source interfaces retain
+their previous behavior. The HTML operation requires both exact fields
+and does not accept the Markdown section selector.
+
+Wave106 verified the three exact archived publisher cells for fresh concrete,
+iron and aluminium, one deliberately different literal assertion and one
+missing row. All five retained identical default passages and passed final
+revision checks; all returned raw markup intervals were independently
+rehashed. The private source-linked rendering packet and these receipts are
+retained in the existing wave103 evaluation directory. These example values
+do not calibrate the actual warehouse materials or fixtures. The compatible
+filesystem regression suite passed 1108 tests, excluding the separate
+pytest-only resource-safety test for which the framework remains unavailable.
