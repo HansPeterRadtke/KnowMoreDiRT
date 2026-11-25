@@ -3507,8 +3507,8 @@ signal, native SQLite mutation or external source download is involved.
 clients** that explicitly use these private functions. An unregistered
 manual SQL client, live native embedding timer, source extractor, resident
 summarization worker, browser/UI reader or older code path can ignore the
-lock. The existing bare `publish_private_only` is deliberately retained for
-older private tests and has no client-admission proof. Consequently neither
+lock. The compatibility `publish_private_only` entry point now delegates to the
+same cooperative admission barrier (November 25 correction). Consequently neither
 the barrier, a durable tombstone, a positive test nor the existence of the
 private pinned-generation read view demonstrates that **all actual KMD
 production readers and writers** have migrated. The structured private
@@ -5515,3 +5515,43 @@ retained in the existing wave103 evaluation directory. These example values
 do not calibrate the actual warehouse materials or fixtures. The compatible
 filesystem regression suite passed 1108 tests, excluding the separate
 pytest-only resource-safety test for which the framework remains unavailable.
+
+### November 25 — close private generation admission and validation gaps
+
+Both public private publication entry points now use the same cooperating
+legacy client drain and durable seal. Previously the compatibility entry
+point could publish while a cooperating writer held its admission lock;
+an isolated fixture reproduced this defect before the repair. The internal
+pointer step requires the exact admitted candidate manifest and checks the
+seal and admission directory identity again before atomic replacement.
+An independent directory lock on the generations directory protects
+cooperating pointer selection against replacement of the pointer lock
+filename, without forcing already pinned immutable readers to finish
+before a later generation can be selected. An abandoned PID-named pointer
+temporary file is neither overwritten nor deleted. A symlinked generations
+parent and SQLite rollback-journal or WAL/SHM sidecars (including dangling
+symlinks) are rejected. These are cooperative local controls, not protection
+against arbitrary same-user code or replacement of directory roots by
+unregistered actors.
+
+The private generation validator also independently checks the exact
+native file set, rejects orphan content, verifies source-map body character
+counts and physical machine-page structure, and reruns every original
+span/vector and complete recursive summary representation check. It
+compares the independently counted rows with the historical QA receipt.
+A second isolated regression reproduced the previous false acceptance of
+a missing direct-source embedding when both the manifest and historical
+receipt had been rehashed to match the modified SQLite file. The new
+checks refuse that case, stale source spans, invalid summary vectors,
+incorrect body/page accounting, extra native originals, orphan
+representations and inconsistent receipt counts. The source-page
+structural check is not independent physical publisher quotation proof.
+
+These changes are private-only. Previously created bare-publisher fixtures
+without a durable admission seal cannot silently advance via the updated
+entry points. Do not retrofit a seal onto a live or historical generation
+without a separate validated migration. Existing live workers, scheduled
+writers, unregistered manual clients and legacy production readers are not
+enrolled. All seven live release blockers and the no-cutover restriction
+remain. No live original, derivative, native SQLite, summary or worker
+configuration has been changed by this implementation.

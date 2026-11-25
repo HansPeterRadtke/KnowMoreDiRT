@@ -17,10 +17,13 @@ from pathlib import Path
 import re
 import sqlite3
 import stat
+import tempfile
 from typing import Callable
 
 from .source_review_audit import safe_file, sha_file
-from .source_page_reindex_release_gate import _summary_tree
+from .source_page_reindex_release_gate import _summary_tree, _native_vectors_for_one
+from .source_revision_audit import _verified_derived_body_count
+from .staged_physical_page_search import MARKER, source_units_from_corrected_text
 from .summary_coverage import current_completed_originals,revision_identity
 
 SCHEMA='kmd.private_original_pdf_generation.v1'
@@ -76,8 +79,10 @@ def _read_json_regular(path:Path,limit:int):
 
 
 def _sql_readonly_check(path:Path):
-    if path.with_name(path.name+'-wal').exists() or path.with_name(path.name+'-shm').exists():
-        raise ValueError('private SQLite has mutable WAL sidecars')
+    for suffix in ('-wal','-shm','-journal'):
+        sidecar=path.with_name(path.name+suffix)
+        if sidecar.exists() or sidecar.is_symlink():
+            raise ValueError('private SQLite has mutable WAL or rollback journal sidecars')
     with sqlite3.connect(path.resolve().as_uri()+'?mode=ro',uri=True,timeout=5) as db:
         db.execute('PRAGMA query_only=ON')
         if db.execute('PRAGMA integrity_check').fetchone() != ('ok',):
@@ -88,6 +93,11 @@ def verify_generation(base:Path,allowed_root:Path,generation:int):
     """Re-hash *all* assets every time before a version is used as evidence."""
     _validate_private_root(base,allowed_root)
     folder=_generation_path(base,generation)
+    # Reject an escaping parent before following any manifest or database.
+    generations=base/'generations'
+    if (generations.is_symlink() or not generations.is_dir()
+            or generations.resolve(strict=True)!=base.resolve(strict=True)/'generations'):
+        raise ValueError('immutable private generations parent missing or symlinked')
     if folder.is_symlink() or not folder.is_dir():
         raise ValueError('immutable private generation directory is missing or symlinked')
     manifest,manifest_sha=_read_json_regular(folder/'manifest.json',MAX_MANIFEST_BYTES)
@@ -148,34 +158,70 @@ def verify_generation(base:Path,allowed_root:Path,generation:int):
          sqlite3.connect(native_db.resolve().as_uri()+'?mode=ro',uri=True) as native:
         sm.execute('PRAGMA query_only=ON');native.execute('PRAGMA query_only=ON')
         records=sm.execute('''SELECT source_path,source_sha256,derived_path,
-               derived_sha256,original_kind,status,text_characters
+               derived_sha256,original_kind,status,text_characters,extracted_pages,nonempty_pages
                FROM originals ORDER BY source_path''').fetchall()
         if len(records)!=manifest['cohort_originals']:
             raise ValueError('isolated source map contains incomplete or unexpected originals')
         sources={};all_derived=set();all_trees=set()
+        native_rows=native.execute("SELECT id,relative_path_display FROM filesystem_entries WHERE entry_type='file'").fetchall()
+        if (len(native_rows)!=len(records)
+                or any(type(ident) is not int or ident<=0 or not isinstance(path,str) for ident,path in native_rows)
+                or len({ident for ident,path in native_rows})!=len(native_rows)
+                or len({path for ident,path in native_rows})!=len(native_rows)
+                or {path for ident,path in native_rows}!={r[0] for r in records}):
+            raise ValueError('private native original file set differs from pinned source map')
+        native_ids={path:ident for ident,path in native_rows}
+        # Refuse orphan rows, including vectors attached to a non-file entry.
+        if native.execute('''SELECT 1 FROM content_chunks c LEFT JOIN filesystem_entries f
+                    ON f.id=c.filesystem_entry_id WHERE f.id IS NULL OR f.entry_type IS NULL
+                    OR f.entry_type!='file' LIMIT 1''').fetchone() is not None or native.execute('''
+                    SELECT 1 FROM content_representations r LEFT JOIN content_chunks c
+                    ON c.chunk_id=r.chunk_id WHERE c.chunk_id IS NULL LIMIT 1''').fetchone() is not None:
+            raise ValueError('private native index has orphan or non-original content')
+        verified_chunks=verified_representations=0
         tree_root=folder/'summaries'
         if tree_root.is_symlink() or not tree_root.is_dir():
             raise ValueError('missing private recursive summary generation folder')
-        for path,original_sha,derivative_path,derived_sha,kind,status,characters in records:
+        for path,original_sha,derivative_path,derived_sha,kind,status,characters,pages,nonempty_pages in records:
             if (not isinstance(path,str) or path.startswith('/') or '\\' in path
                     or any(z in ('','.','..') for z in path.split('/'))
                     or not isinstance(original_sha,str) or SHA.fullmatch(original_sha) is None
                     or not isinstance(derived_sha,str) or SHA.fullmatch(derived_sha) is None
                     or derivative_path!=path+'.txt' or kind!='pdf' or status!='complete'
-                    or type(characters) is not int or characters<1):
+                    or type(characters) is not int or characters<1
+                    or type(pages) is not int or not 1<=pages<=450
+                    or type(nonempty_pages) is not int or nonempty_pages!=pages):
                 raise ValueError('unverified corrected source-map PDF identity or status')
             derived_relative='text/'+derivative_path
-            source_text=safe_file(folder,derived_relative).read_text('utf8','strict')
+            derived_file=safe_file(folder,derived_relative)
+            if derived_file.stat().st_size>32*1024*1024:
+                raise ValueError('unbounded private corrected derivative')
+            # Read exact UTF-8 bytes rather than normalizing line endings.
+            source_text=derived_file.read_bytes().decode('utf8','strict')
             if not source_text or _sha(source_text.encode())!=derived_sha:
                 raise ValueError('publisher derivative content differs from current source map')
+            if _verified_derived_body_count(source_text,original_path=path,
+                    original_sha=original_sha,source_kind=kind)!=characters:
+                raise ValueError('private source-map body character count differs from derivative')
+            if set(int(m[2]) for m in MARKER.finditer(source_text))!=set(range(1,pages+1)):
+                raise ValueError('private corrected PDF physical source-page identities incomplete')
+            list(source_units_from_corrected_text(source_text,pages,pages))
             all_derived.add(derived_relative)
             original_name=Path(path).name[:64]
             import re as _re
             original_name=_re.sub(r'[^A-Za-z0-9_.-]+','-',original_name)
             tree_rel='summaries/'+original_name+'.'+revision_identity(path,original_sha,derived_sha)[:24]+'.summary-tree.json'
             all_trees.add(tree_rel)
-            _summary_tree(root=tree_root,path=path,original_sha=original_sha,
+            tree=_summary_tree(root=tree_root,path=path,original_sha=original_sha,
                           derived_sha=derived_sha,expected_text_len=len(source_text))
+            # Hash-matching a historical acceptance receipt does not prove
+            # that its current SQLite content is valid. Recheck every source
+            # span, embedding, summary and representation in the pinned pair.
+            counts=_native_vectors_for_one(native,file_id=native_ids[path],
+                         original_sha=original_sha,derived_sha=derived_sha,
+                         source_text=source_text,tree=tree)
+            verified_chunks+=sum(counts[k] for k in ('direct_overview_chunks','direct_full_chunks','recursive_summary_chunks'))
+            verified_representations+=counts['native_representations']
             sources[path]=(original_sha,derived_sha,characters)
         if (set(a['path'] for a in manifest['assets'] if a['kind']=='corrected_derived_text')!=all_derived
                 or set(a['path'] for a in manifest['assets'] if a['kind']=='recursive_summary_tree')!=all_trees):
@@ -183,7 +229,12 @@ def verify_generation(base:Path,allowed_root:Path,generation:int):
         completed=current_completed_originals(native,sources)
         if len(completed)!=manifest['cohort_originals']:
             raise ValueError('current native FileDB summary roots do not cover every corrected original')
+        if (receipt.get('new_corrected_native_source_chunks_validated')!=verified_chunks
+                or receipt.get('new_corrected_native_summary_representations_validated')!=verified_representations):
+            raise ValueError('private current native counts differ from historical acceptance receipt')
     return {'generation':generation,'manifest_sha256':manifest_sha,
+            'current_native_source_chunks_reverified':verified_chunks,
+            'current_native_summary_representations_reverified':verified_representations,
             'assets':tuple((v['kind'],v['path'],v['sha256']) for v in manifest['assets']),
             'candidate_files_byte_verified':len(manifest['assets']),
             'private_generation_complete':True,
@@ -233,9 +284,34 @@ def _open_owner_only_pointer_lock(base:Path):
         raise
 
 
+@contextmanager
+def _pointer_directory_lock(base:Path,*,exclusive:bool):
+    """A second stable lock for cooperative pointer selection/publication.
+
+    The legacy-admission lock is on base, not this directory. Old pinned
+    generation-aware readers release this lock after selecting the pointer.
+    Replacing the pointer lock filename cannot split cooperating locks.
+    """
+    path=base/'generations'
+    fd=os.open(path,os.O_RDONLY|os.O_DIRECTORY|os.O_NOFOLLOW|os.O_CLOEXEC)
+    try:
+        before=os.fstat(fd)
+        def unchanged():
+            if (before.st_uid!=os.geteuid()
+                    or not os.path.samestat(before,os.stat(path,follow_symlinks=False))):
+                raise ValueError('private pointer directory changed or is not owner-controlled')
+        unchanged()
+        fcntl.flock(fd,fcntl.LOCK_EX if exclusive else fcntl.LOCK_SH)
+        unchanged()
+        yield unchanged
+        unchanged()
+    finally:
+        os.close(fd)
+
+
 def read_pinned(base:Path,allowed_root:Path):
     _validate_private_root(base,allowed_root)
-    with _open_owner_only_pointer_lock(base) as fd:
+    with _pointer_directory_lock(base,exclusive=False), _open_owner_only_pointer_lock(base) as fd:
         fcntl.flock(fd.fileno(),fcntl.LOCK_SH)
         pointer=_read_pointer(base)
         if pointer is None:raise ValueError('no private source generation has been published')
@@ -395,14 +471,32 @@ def _fsync_private_generation_assets(base:Path,generation:int):
 def publish_private_only(base:Path,allowed_root:Path,generation:int,*,
                          before_pointer_replace:Callable[[],None]|None=None,
                          after_pointer_replace:Callable[[],None]|None=None):
-    """Privately switch one pointer. The complete previous generation survives.
+    """Compatibility entry point; no longer bypasses cooperating admission.
 
-    An optional callback exists only for injecting a crash into *isolated*
-    tests; this never supports a live original/source-map/native migration.
+    Both public private-only entry points require legacy client drain/seal.
+    Test-only failure hooks remain available. Never supports live cutover.
+    """
+    from .private_source_admission import publish_private_after_legacy_drain
+    return publish_private_after_legacy_drain(base,allowed_root,generation,
+                before_pointer_replace=before_pointer_replace,
+                after_pointer_replace=after_pointer_replace)
+
+
+def _publish_private_pointer_under_admission(base:Path,allowed_root:Path,generation:int,*,
+                         expected_manifest_sha256:str, verify_admission:Callable[[],None],
+                         before_pointer_replace:Callable[[],None]|None=None,
+                         after_pointer_replace:Callable[[],None]|None=None):
+    """Internal pointer step. Caller owns the cooperative exclusive admission.
+
+    This is not an isolation boundary against arbitrary same-user Python
+    code. The two public APIs alone enforce the full cooperating protocol.
     """
     _validate_private_root(base,allowed_root)
+    verify_admission()
     proof=verify_generation(base,allowed_root,generation)
-    with _open_owner_only_pointer_lock(base) as fd:
+    if proof['manifest_sha256']!=expected_manifest_sha256:
+        raise ValueError('private candidate changed after admission seal verification')
+    with _pointer_directory_lock(base,exclusive=True) as directory_unchanged, _open_owner_only_pointer_lock(base) as fd:
         fcntl.flock(fd.fileno(),fcntl.LOCK_EX)
         previous=_read_pointer(base)
         if previous and generation!=previous['generation']+1:
@@ -421,9 +515,10 @@ def publish_private_only(base:Path,allowed_root:Path,generation:int,*,
         blob=(json.dumps({'schema':POINTER_SCHEMA,'generation':generation,
               'manifest_sha256':proof['manifest_sha256']},sort_keys=True,separators=(',',':'))+'\n').encode()
         marker=base/'active-private-generation.json'
-        temp=base/('.private-generation-pointer-new-'+str(os.getpid()))
-        flags=os.O_CREAT|os.O_EXCL|os.O_WRONLY|os.O_NOFOLLOW
-        temp_fd=os.open(temp,flags,0o600)
+        # Exclusive random filename: an abandoned prior PID-named file is
+        # neither reused nor removed after a crash or PID reuse.
+        temp_fd,temp_name=tempfile.mkstemp(prefix='.private-generation-pointer-new-',dir=base)
+        temp=Path(temp_name)
         try:
             with os.fdopen(temp_fd,'wb') as out:
                 out.write(blob);out.flush();os.fsync(out.fileno())
@@ -432,6 +527,8 @@ def publish_private_only(base:Path,allowed_root:Path,generation:int,*,
             final_preflight=verify_generation(base,allowed_root,generation)
             if final_preflight['manifest_sha256']!=proof['manifest_sha256']:
                 raise ValueError('new private generation changed while preparing atomic pointer')
+            verify_admission()
+            directory_unchanged()
             os.replace(temp,marker)
             # Durably commit the parent directory entry before reporting a
             # switched pointer. A simulated post-switch crash must occur AFTER

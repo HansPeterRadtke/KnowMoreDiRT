@@ -14,7 +14,7 @@ import unittest
 from unittest import mock
 
 import test_private_source_generation as source_fixtures
-from file_system_catalog.private_source_generation import open_pinned_private_read_view, read_pinned
+from file_system_catalog.private_source_generation import open_pinned_private_read_view, read_pinned, publish_private_only
 from file_system_catalog.private_source_admission import (
     admit_private_legacy_reader,
     admit_private_legacy_writer,
@@ -76,6 +76,48 @@ class PrivateCooperativeAdmissionTests(unittest.TestCase):
         self.assertEqual(1,result['private_pointer_generation'])
         with self.assertRaisesRegex(ValueError,'sealed'):
             with admit_private_legacy_writer(self.base,self.allowed):pass
+
+    def test_compatibility_publisher_cannot_bypass_legacy_reader_or_writer(self):
+        self.stage(1,0)
+        for admit in (admit_private_legacy_reader,admit_private_legacy_writer):
+            with admit(self.base,self.allowed):
+                with self.assertRaisesRegex(ValueError,'legacy reader or writer remains active'):
+                    publish_private_only(self.base,self.allowed,1)
+                self.assertIsNone(read_private_legacy_seal(self.base,self.allowed))
+                self.assertFalse((self.base/'active-private-generation.json').exists())
+        published=publish_private_only(self.base,self.allowed,1)
+        self.assertTrue(published['cooperating_legacy_reader_admissions_sealed'])
+        self.assertFalse(published['safe_to_cutover_live'])
+
+    def test_changed_candidate_after_seal_cannot_be_published(self):
+        folder=self.stage(1,0)
+        manifest=folder/'manifest.json'
+        original=manifest.read_bytes()
+        def change():
+            # Same assets and QA, different manifest bytes, still valid by
+            # itself but NOT the sealed candidate.
+            manifest.write_bytes(original+b'\n')
+        with self.assertRaisesRegex(ValueError,'seal manifest changed|candidate changed'):
+            publish_private_after_legacy_drain(self.base,self.allowed,1,after_seal=change)
+        self.assertFalse((self.base/'active-private-generation.json').exists())
+        with self.assertRaisesRegex(ValueError,'sealed'):
+            with admit_private_legacy_reader(self.base,self.allowed):pass
+        manifest.write_bytes(original)
+        self.assertEqual(1,publish_private_only(self.base,self.allowed,1)['private_pointer_generation'])
+
+    def test_changed_seal_before_pointer_rename_refuses_switch(self):
+        self.stage(1,0)
+        seal=self.base/'private-legacy-admission-sealed.json'
+        saved=[]
+        def change():
+            saved.append(seal.read_bytes())
+            doc=json.loads(saved[0]);doc['manifest_sha256']='f'*64
+            seal.write_text(json.dumps(doc))
+        with self.assertRaisesRegex(ValueError,'seal changed'):
+            publish_private_only(self.base,self.allowed,1,before_pointer_replace=change)
+        self.assertFalse((self.base/'active-private-generation.json').exists())
+        seal.write_bytes(saved[0])
+        self.assertEqual(1,publish_private_only(self.base,self.allowed,1)['private_pointer_generation'])
 
     def test_replaced_lock_path_cannot_bypass_old_reader_already_holding_admission(self):
         # A file-only flock can be bypassed if the current lock path is

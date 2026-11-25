@@ -18,7 +18,7 @@ from typing import Callable
 
 from .private_source_generation import (
     _open_owner_only_pointer_lock, _read_pointer, _validate_private_root,
-    publish_private_only, verify_generation,
+    _publish_private_pointer_under_admission, verify_generation,
 )
 
 SCHEMA='kmd.private_cooperative_legacy_read_admission_seal.v1'
@@ -69,7 +69,10 @@ def _private_directory_admission(base:Path,*,exclusive:bool):
             raise ValueError('cooperating legacy reader or writer remains active; private directory admission denied') from exc
         if not os.path.samestat(before,os.stat(base,follow_symlinks=False)):
             raise ValueError('private directory admission root changed while obtaining its lock')
-        yield
+        def unchanged():
+            if not os.path.samestat(before,os.stat(base,follow_symlinks=False)):
+                raise ValueError('private directory admission root changed during operation')
+        yield unchanged
     finally:
         if locked:fcntl.flock(fd,fcntl.LOCK_UN)
         os.close(fd)
@@ -181,7 +184,9 @@ def _durably_seal(base:Path,generation:int,manifest_sha256:str):
 
 
 def publish_private_after_legacy_drain(base:Path,allowed_root:Path,generation:int,*,
-                                        after_seal:Callable[[],None]|None=None):
+                                        after_seal:Callable[[],None]|None=None,
+                                        before_pointer_replace:Callable[[],None]|None=None,
+                                        after_pointer_replace:Callable[[],None]|None=None):
     """Fail fast with active cooperative OLD readers; close admissions forever.
 
     A crash after sealing but before pointer replacement intentionally leaves
@@ -192,7 +197,7 @@ def publish_private_after_legacy_drain(base:Path,allowed_root:Path,generation:in
     _validate_private_root(base,allowed_root)
     # Invalid staged source revisions must not unnecessarily seal admissions.
     verify_generation(base,allowed_root,generation)
-    with _private_directory_admission(base,exclusive=True):
+    with _private_directory_admission(base,exclusive=True) as admission_unchanged:
         with _open_admission_lock(base) as lock:
             try:fcntl.flock(lock.fileno(),fcntl.LOCK_EX|fcntl.LOCK_NB)
             except BlockingIOError as exc:
@@ -220,8 +225,20 @@ def publish_private_after_legacy_drain(base:Path,allowed_root:Path,generation:in
                 proof=verify_generation(base,allowed_root,generation)
                 if seal is None:
                     _durably_seal(base,generation,proof['manifest_sha256'])
+                    seal={'schema':SCHEMA,'sealed_for_generation':generation,
+                          'manifest_sha256':proof['manifest_sha256']}
+                def verify_admission():
+                    admission_unchanged()
+                    if read_private_legacy_seal(base,allowed_root)!=seal:
+                        raise ValueError('private legacy admission seal changed before pointer publication')
+                    sealed_proof=verify_generation(base,allowed_root,seal['sealed_for_generation'])
+                    if sealed_proof['manifest_sha256']!=seal['manifest_sha256']:
+                        raise ValueError('private legacy admission seal manifest changed before pointer publication')
                 if after_seal:after_seal()  # test-only simulated crash; seal stays.
-                result=publish_private_only(base,allowed_root,generation)
+                result=_publish_private_pointer_under_admission(
+                    base,allowed_root,generation,
+                    expected_manifest_sha256=proof['manifest_sha256'],verify_admission=verify_admission,
+                    before_pointer_replace=before_pointer_replace,after_pointer_replace=after_pointer_replace)
                 return {**result,
                     'cooperating_legacy_reader_admissions_sealed':True,
                     'unregistered_clients_excluded':False,

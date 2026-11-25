@@ -468,6 +468,150 @@ class PrivateSourceGenerationTests(unittest.TestCase):
         lock.chmod(0o600)
         self.assertEqual(1,read_pinned(self.switch,self.private_root).generation)
 
+    def test_recreated_pointer_lock_filename_does_not_bypass_pinned_selection(self):
+        import os
+        self.stage(1,0);self.stage(2,1)
+        publish_private_only(self.switch,self.private_root,1)
+        entered=threading.Event();release=threading.Event();publisher_waiting=threading.Event()
+        actual=generation_module.verify_generation
+        actual_flock=generation_module.fcntl.flock
+        def hold_reader(base,allowed,generation):
+            if threading.current_thread().name=='private-pinned-reader' and generation==1:
+                entered.set()
+                if not release.wait(timeout=8):raise RuntimeError('test reader release timeout')
+            return actual(base,allowed,generation)
+        def observe_flock(fd,op):
+            if op==generation_module.fcntl.LOCK_EX and os.readlink('/proc/self/fd/'+str(fd))==str(self.switch/'generations'):
+                publisher_waiting.set()
+            return actual_flock(fd,op)
+        with mock.patch.object(generation_module,'verify_generation',side_effect=hold_reader), \
+             mock.patch.object(generation_module.fcntl,'flock',side_effect=observe_flock):
+            reader_result=[];reader_errors=[]
+            def reader():
+                try:reader_result.append(read_pinned(self.switch,self.private_root))
+                except Exception as exc:reader_errors.append(exc)
+            t=threading.Thread(target=reader,name='private-pinned-reader')
+            t.start()
+            try:
+                self.assertTrue(entered.wait(timeout=5))
+                lock=self.switch/'.private-generation-pointer.lock'
+                displaced=self.switch/'old-test-pointer-lock'
+                lock.rename(displaced)
+                fd=os.open(lock,os.O_WRONLY|os.O_CREAT|os.O_EXCL,0o600);os.close(fd)
+                with ThreadPoolExecutor(max_workers=1) as pool:
+                    pending=pool.submit(publish_private_only,self.switch,self.private_root,2)
+                    try:
+                        self.assertTrue(publisher_waiting.wait(timeout=5))
+                        self.assertFalse(pending.done())
+                        self.assertEqual(1,json.loads((self.switch/'active-private-generation.json').read_text())['generation'])
+                    finally:release.set()
+                    self.assertEqual(2,pending.result(timeout=10)['private_pointer_generation'])
+            finally:
+                release.set();t.join(timeout=10)
+        self.assertFalse(t.is_alive())
+        self.assertEqual([],reader_errors)
+        self.assertEqual(1,reader_result[0].generation)
+        self.assertEqual(2,read_pinned(self.switch,self.private_root).generation)
+        self.assertTrue(displaced.exists())
+
+    def test_abandoned_pid_named_pointer_temp_preserved(self):
+        import os
+        self.stage(1,0)
+        orphan=self.switch/('.private-generation-pointer-new-'+str(os.getpid()))
+        orphan.write_bytes(b'unknown prior private temporary bytes')
+        self.assertEqual(1,publish_private_only(self.switch,self.private_root,1)['private_pointer_generation'])
+        self.assertEqual(b'unknown prior private temporary bytes',orphan.read_bytes())
+
+    def test_symlinked_generations_parent_refuses_before_opening_manifest(self):
+        self.stage(1,0)
+        moved=self.private_root/'other-generations'
+        (self.switch/'generations').rename(moved)
+        (self.switch/'generations').symlink_to(moved,target_is_directory=True)
+        with mock.patch.object(generation_module,'_read_json_regular',side_effect=AssertionError('read escaped root')):
+            with self.assertRaisesRegex(ValueError,'parent missing or symlinked'):
+                verify_generation(self.switch,self.private_root,1)
+
+    def test_sqlite_rollback_journal_and_dangling_wal_sidecars_refused(self):
+        folder=self.stage(1,0)
+        for suffix in ('-journal','-wal'):
+            with self.subTest(suffix=suffix):
+                sidecar=folder/('native.sqlite3'+suffix)
+                sidecar.symlink_to(folder/'absent-test-only-sidecar')
+                try:
+                    with self.assertRaisesRegex(ValueError,'journal sidecars'):
+                        verify_generation(self.switch,self.private_root,1)
+                finally:sidecar.unlink()
+
+    def _rebind_test_receipt(self,folder,role):
+        # Only synthetic, deliberately inconsistent private QA fixtures.
+        # Re-hash both receipt and manifest so failures cannot be ascribed
+        # merely to an ordinary byte-digest mismatch.
+        manifest_path=folder/'manifest.json'
+        manifest=json.loads(manifest_path.read_text())
+        asset=next(a for a in manifest['assets'] if a['kind']==role)
+        path=folder/asset['path'];actual=sha_file(path)
+        asset.update(sha256=actual,bytes=path.stat().st_size)
+        proof_path=folder/'proof.json';proof=json.loads(proof_path.read_text())
+        proof[role+'_sha256']=actual
+        proof_path.write_text(json.dumps(proof))
+        manifest['native_gate']['sha256']=sha_file(proof_path)
+        manifest_path.write_text(json.dumps(manifest))
+
+    def test_current_root_and_rebound_receipt_cannot_hide_missing_direct_vector(self):
+        folder=self.stage(1,0)
+        with sqlite3.connect(folder/'native.sqlite3') as db:
+            db.execute("UPDATE content_chunks SET embedding_blob=NULL,embedding_sha256=NULL WHERE collection_id LIKE '%:overview'")
+        self._rebind_test_receipt(folder,'native_sqlite')
+        with self.assertRaisesRegex(ValueError,'direct-source vector'):
+            publish_private_only(self.switch,self.private_root,1)
+        self.assertFalse((self.switch/'active-private-generation.json').exists())
+
+    def test_rebound_native_receipt_rejects_stale_span_and_summary_vector(self):
+        for kind in ('span','summary'):
+            with self.subTest(kind=kind):
+                folder=self.stage(1 if kind=='span' else 2,0)
+                with sqlite3.connect(folder/'native.sqlite3') as db:
+                    if kind=='span':
+                        db.execute("UPDATE content_chunks SET text_sha256=? WHERE collection_id LIKE '%:overview'",('a'*64,))
+                    else:
+                        bad=b'\x00'*768
+                        db.execute("UPDATE content_representations SET embedding_blob=?,embedding_sha256=?",(bad,digest(bad)))
+                self._rebind_test_receipt(folder,'native_sqlite')
+                with self.assertRaisesRegex(ValueError,'wrong source span|summary vector'):
+                    verify_generation(self.switch,self.private_root,1 if kind=='span' else 2)
+
+    def test_rebound_source_map_receipt_rejects_incorrect_character_and_page_accounting(self):
+        for generation,sql in ((1,'UPDATE originals SET text_characters=text_characters+1'),
+                               (2,'UPDATE originals SET extracted_pages=extracted_pages+1,nonempty_pages=nonempty_pages+1')):
+            with self.subTest(generation=generation):
+                folder=self.stage(generation,0)
+                with sqlite3.connect(folder/'source-map.sqlite3') as db:db.execute(sql)
+                self._rebind_test_receipt(folder,'source_map_sqlite')
+                with self.assertRaisesRegex(ValueError,'body character count|physical source-page identities'):
+                    verify_generation(self.switch,self.private_root,generation)
+
+    def test_rebound_receipt_rejects_unexpected_original_or_orphan_representation(self):
+        for generation,sql in ((1,"INSERT INTO filesystem_entries VALUES(99999,'unexpected.pdf','file')"),
+                               (2,"INSERT INTO content_representations(representation_id,chunk_id) VALUES('orphan','absent')")):
+            with self.subTest(generation=generation):
+                folder=self.stage(generation,0)
+                with sqlite3.connect(folder/'native.sqlite3') as db:db.execute(sql)
+                self._rebind_test_receipt(folder,'native_sqlite')
+                with self.assertRaisesRegex(ValueError,'original file set differs|orphan or non-original'):
+                    verify_generation(self.switch,self.private_root,generation)
+
+    def test_current_vector_counts_independently_match_acceptance_receipt(self):
+        folder=self.stage(1,0)
+        r=verify_generation(self.switch,self.private_root,1)
+        self.assertEqual(2,r['current_native_source_chunks_reverified'])
+        self.assertEqual(1,r['current_native_summary_representations_reverified'])
+        p=folder/'proof.json';proof=json.loads(p.read_text())
+        proof['new_corrected_native_source_chunks_validated']+=1
+        p.write_text(json.dumps(proof))
+        self._rebind_test_receipt(folder,'native_sqlite')
+        with self.assertRaisesRegex(ValueError,'native counts differ'):
+            verify_generation(self.switch,self.private_root,1)
+
     def test_manifest_pointer_does_not_trust_unexpected_sha_or_symlink(self):
         self.stage(1,0)
         publish_private_only(self.switch,self.private_root,1)
