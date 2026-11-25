@@ -96,6 +96,32 @@ class SourceEvidenceToPdfNeighborsTests(unittest.TestCase):
                 with self.assertRaisesRegex(ValueError,'alternate reading-order'):
                     self.call()
 
+    def test_explicit_rank_is_rechecked_before_original_page_read(self):
+        second={**self.payload['passages'][0],'publisher_pdf_page':{
+            'status':'verified','page':3,'page_text_sha256':self.page_sha}}
+        payload={**self.payload,'passages':[self.payload['passages'][0],second]}
+        self.context['physical_pages']['requested_center_physical_page']=3
+        self.context['physical_pages']['pages'][0]['physical_page']=3
+        proc=SimpleNamespace(returncode=0,stdout=json.dumps(payload),stderr='')
+        with mock.patch.object(self.mod.subprocess,'run',return_value=proc), \
+             mock.patch.object(self.mod,'original_pdf_context',return_value=self.context) as phys:
+            got=self.mod.context_from_current_source_evidence('original study benchmark question',self.path,
+                    passage_rank=2,expected_identity=('a'*64,'b'*64,self.sha,3,self.page_sha))
+        phys.assert_called_once_with(self.path,3,neighbor_radius=1,required_center_excerpt=self.text,
+                                    include_center_reading_order=False)
+        self.assertEqual(2,got['selected_source_excerpt_rank'])
+        self.assertEqual(3,got['correct_physical_original_pdf_page'])
+        self.assertIsNone(got['first_verified_source_excerpt_rank'])
+        self.assertTrue(got['explicit_prior_passage_identity_matched'])
+        with mock.patch.object(self.mod.subprocess,'run',return_value=proc), \
+             mock.patch.object(self.mod,'original_pdf_context',side_effect=AssertionError('bad call')):
+            with self.assertRaisesRegex(ValueError,'no longer matches'):
+                self.mod.context_from_current_source_evidence('original study benchmark question',self.path,
+                        passage_rank=2,expected_identity=('a'*64,'b'*64,'0'*64,3,self.page_sha))
+        with mock.patch.object(self.mod.subprocess,'run',side_effect=AssertionError('reader launched')):
+            with self.assertRaisesRegex(ValueError,'requires all four'):
+                self.mod.context_from_current_source_evidence('original study benchmark question',self.path,passage_rank=2)
+
     def test_invalid_source_or_query_never_launches_existing_reader(self):
         with mock.patch.object(self.mod.subprocess,'run',side_effect=AssertionError('reader launched')):
             for name,q in (('../wrong.pdf','normal query'),('/tmp/source.pdf','normal query'),

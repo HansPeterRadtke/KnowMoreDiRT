@@ -12,7 +12,24 @@ import re
 HEX=re.compile(r'[0-9a-f]{64}\Z')
 
 
-def verified_physical_page_candidate(payload:dict,original_path:str)->dict:
+def validate_passage_selection(passage_rank:int|None,expected_identity:tuple[str,str,str,int,str]|None)->None:
+    # Explicit rank selection is meaningful only when it still identifies the
+    # very same original revision, derivative revision, excerpt and physical page.
+    if passage_rank is None:
+        if expected_identity is not None:
+            raise ValueError('expected passage identity requires explicit passage rank')
+        return
+    if (type(passage_rank) is not int or not 1<=passage_rank<=3
+            or not isinstance(expected_identity,tuple) or len(expected_identity)!=5
+            or not all(isinstance(h,str) and HEX.fullmatch(h) for h in (*expected_identity[:3],expected_identity[4]))
+            or type(expected_identity[3]) is not int or not 1<=expected_identity[3]<=999999):
+        raise ValueError('explicit passage rank requires all four SHA digests and exact physical page')
+
+
+def verified_physical_page_candidate(payload:dict,original_path:str,*,
+                                     passage_rank:int|None=None,
+                                     expected_identity:tuple[str,str,str,int,str]|None=None)->dict:
+    validate_passage_selection(passage_rank,expected_identity)
     if (not isinstance(payload,dict) or not isinstance(original_path,str)
             or payload.get('original_path')!=original_path
             or not isinstance(payload.get('passages'),list)
@@ -22,6 +39,11 @@ def verified_physical_page_candidate(payload:dict,original_path:str)->dict:
             or not HEX.fullmatch(payload['original_sha256'])
             or not HEX.fullmatch(payload['derived_sha256'])):
         raise ValueError('unverifiable exact-original KMD evidence request')
+    if passage_rank is not None:
+        if (payload['original_sha256'],payload['derived_sha256'])!=expected_identity[:2]:
+            raise ValueError('explicit ranked passage source revision no longer matches')
+        if passage_rank>len(payload['passages']):
+            raise ValueError('explicit ranked passage no longer exists')
     for rank,passage in enumerate(payload['passages'],1):
         if not isinstance(passage,dict):raise ValueError('invalid native publisher source passage')
         if (passage.get('original_path')!=original_path
@@ -33,14 +55,23 @@ def verified_physical_page_candidate(payload:dict,original_path:str)->dict:
                 or not isinstance(sha,str) or not HEX.fullmatch(sha)
                 or hashlib.sha256(excerpt.encode('utf-8')).hexdigest()!=sha):
             raise ValueError('native excerpt differs from exact current source SHA')
+        if passage_rank is not None:
+            if rank!=passage_rank:
+                continue
+            if sha!=expected_identity[2]:
+                raise ValueError('explicit ranked passage excerpt no longer matches')
         proof=passage.get('publisher_pdf_page')
         if not isinstance(proof,dict) or proof.get('status')!='verified':
+            if passage_rank is not None:
+                raise ValueError('explicit ranked passage lacks verified physical PDF page; no fallback')
             continue
         page=proof.get('page')
         if (type(page) is not int or not 1<=page<=999999
                 or not isinstance(proof.get('page_text_sha256'),str)
                 or not HEX.fullmatch(proof['page_text_sha256'])):
             raise ValueError('source reader claimed a page without a valid physical PDF proof')
+        if passage_rank is not None and (page,proof['page_text_sha256'])!=expected_identity[3:]:
+            raise ValueError('explicit ranked passage physical page no longer matches')
         label=passage.get('source_section')
         derived_label_page=None
         if isinstance(label,str):
@@ -48,7 +79,10 @@ def verified_physical_page_candidate(payload:dict,original_path:str)->dict:
             if old_page:
                 derived_label_page=int(old_page.group(1))
         mismatch=derived_label_page is not None and derived_label_page!=page
-        return {'first_verified_source_excerpt_rank':rank,
+        return {'first_verified_source_excerpt_rank':rank if passage_rank is None else None,
+            'selected_source_excerpt_rank':rank,
+            'source_excerpt_selection':'first_verified' if passage_rank is None else 'explicit_rank_exact_prior_identity',
+            'explicit_prior_passage_identity_matched':passage_rank is not None,
             'original_path':original_path,
             'original_sha256':payload['original_sha256'],
             'derived_sha256':payload['derived_sha256'],
@@ -119,6 +153,9 @@ def bind_original_pdf_context_to_source_evidence(anchor:dict,page_context:dict)-
             'status':'verified_original_pdf_page_context_not_factual_answer',
             'original_path':anchor['original_path'],
             'first_verified_source_excerpt_rank':anchor['first_verified_source_excerpt_rank'],
+            'selected_source_excerpt_rank':anchor['selected_source_excerpt_rank'],
+            'source_excerpt_selection':anchor['source_excerpt_selection'],
+            'explicit_prior_passage_identity_matched':anchor['explicit_prior_passage_identity_matched'],
             'original_source_excerpt_sha256':anchor['source_excerpt_sha256'],
             'original_derived_page_label_number':anchor['original_derived_page_label_number'],
             'correct_physical_original_pdf_page':anchor['physical_pdf_page'],

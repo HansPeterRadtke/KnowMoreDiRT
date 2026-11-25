@@ -5196,3 +5196,36 @@ in the existing private Raspi search-audit directory with the prefix
 No publisher page contents are committed. The next remaining problems
 include scope-aware semantic adjudication, evidence clipping, and safe
 immutable generation pinning across the live stores.
+
+#### Expand an exact previously reviewed ranked source passage
+
+The source-evidence context operator defaults to the first physically verified
+passage. A lower-ranked result may contain the relevant limiting condition
+or explicit contradiction. An agent can now select a specific returned rank
+(one through three) using `--passage-rank`, together with the required
+`--expected-original-sha256`, `--expected-derived-sha256`,
+`--expected-excerpt-sha256`, `--expected-physical-page`, and
+`--expected-page-text-sha256`. Obtain those values from a matching
+`source-evidence` query with `--top 3 --snippet-characters 500`. The context
+operator repeats that exact bounded search and rejects a changed source or
+derivative, changed excerpt at the selected rank, missing rank, unverified
+physical page, or a different physical page or layout digest. Identical text
+repeated on another page cannot be substituted for the reviewed context. It will not silently substitute another result. The existing
+first-verified default and native ranking are unchanged. The response adds
+`selected_source_excerpt_rank` and `source_excerpt_selection`; the old
+`first_verified_source_excerpt_rank` is null in explicit selection mode
+because the selected result need not be the first verified one.
+
+Live checks expanded both partial contradiction cases from the earlier
+four-paper evaluation. The PRAC claim selected rank one, physical page seven,
+recovering the actual unequal linear/non-linear layer ranks. The SegmentDreamer
+claim selected rank three, physical page two, recovering the explicit
+subtrajectory partition statement. Both selected exact prior excerpt identities
+and both returned the independently hashed full center reading-order text
+containing the predeclared evidence anchor. A live negative check supplied a
+wrong expected excerpt digest at rank three and returned no context.
+The final page-bound version also rejected a wrong prior physical page even
+when the original, derivative, excerpt and layout digests matched.
+These are manually selected, source-bound evidence recoveries, not improved
+ranking scores or an autonomous claim classifier. No original source contents
+or private search receipts are included in the repository.

@@ -92,6 +92,42 @@ class VerifiedPhysicalPageHandoffTests(unittest.TestCase):
         self.assertEqual(2,anchor['first_verified_source_excerpt_rank'])
         self.assertEqual(3,anchor['physical_pdf_page'])
 
+    def test_explicit_lower_rank_requires_exact_current_revision_and_excerpt(self):
+        text='A second source excerpt explicitly contradicts the first selected example.'
+        digest=hashlib.sha256(text.encode()).hexdigest()
+        second={**self.entry,'source_excerpt':text,'excerpt_sha256':digest,
+                'publisher_pdf_page':{'status':'verified','page':3,'page_text_sha256':'8'*64}}
+        payload={**self.payload,'passages':[self.entry,second]}
+        a=verified_physical_page_candidate(payload,self.path,passage_rank=2,
+                expected_identity=('a'*64,'b'*64,digest,3,'8'*64))
+        self.assertEqual(2,a['selected_source_excerpt_rank'])
+        self.assertIsNone(a['first_verified_source_excerpt_rank'])
+        self.assertEqual('explicit_rank_exact_prior_identity',a['source_excerpt_selection'])
+        self.assertTrue(a['explicit_prior_passage_identity_matched'])
+        self.assertEqual(3,a['physical_pdf_page'])
+        self.assertEqual(1,verified_physical_page_candidate(payload,self.path)['selected_source_excerpt_rank'])
+        for wrong in (('0'*64,'b'*64,digest,3,'8'*64),('a'*64,'0'*64,digest,3,'8'*64),('a'*64,'b'*64,self.sha,2,self.page_sha)):
+            with self.assertRaisesRegex(ValueError,'no longer matches'):
+                verified_physical_page_candidate(payload,self.path,passage_rank=2,expected_identity=wrong)
+        # Repeated exact text on another page of the same revision is not
+        # the reviewed context, even when rank and excerpt digest agree.
+        for wrong_page in (('a'*64,'b'*64,digest,2,'8'*64),('a'*64,'b'*64,digest,3,'0'*64)):
+            with self.assertRaisesRegex(ValueError,'physical page no longer matches'):
+                verified_physical_page_candidate(payload,self.path,passage_rank=2,expected_identity=wrong_page)
+        with self.assertRaisesRegex(ValueError,'no longer exists'):
+            verified_physical_page_candidate(payload,self.path,passage_rank=3,expected_identity=('a'*64,'b'*64,digest,3,'8'*64))
+        payload['passages'][1]={**second,'publisher_pdf_page':{'status':'unverified'}}
+        with self.assertRaisesRegex(ValueError,'no fallback'):
+            verified_physical_page_candidate(payload,self.path,passage_rank=2,expected_identity=('a'*64,'b'*64,digest,3,'8'*64))
+
+    def test_explicit_rank_validation_is_strict(self):
+        for rank,identity in ((1,None),(True,('a'*64,'b'*64,self.sha,2,self.page_sha)),
+                              (4,('a'*64,'b'*64,self.sha,2,self.page_sha)),(None,('a'*64,'b'*64,self.sha,2,self.page_sha)),
+                              (1,('a'*64,'b'*64,'invalid',2,self.page_sha))):
+            with self.subTest(rank=rank,identity=identity):
+                with self.assertRaises(ValueError):
+                    verified_physical_page_candidate(self.payload,self.path,passage_rank=rank,expected_identity=identity)
+
     def test_same_page_poppler_digest_must_match_independent_reread(self):
         a=verified_physical_page_candidate(self.payload,self.path)
         good={'source':{'original_path':self.path,'original_sha256':'a'*64,'current_derived_sha256':'b'*64},
