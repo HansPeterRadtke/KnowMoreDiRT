@@ -1563,6 +1563,33 @@ def _opt_in_native_selected_archived_references(args, documents:list[dict], *,
     }
 
 
+def _optional_verified_pdf_page_windows(args, documents, *, evidence_query):
+    """Existing selected originals only; caller performs final revision fence."""
+    budget=getattr(args,'expand_pdf_pages',0)
+    if not budget:return None
+    from file_system_catalog.verified_pdf_window_bridge import expand_verified_page_evidence
+    from raspi_original_pdf_page_neighbors import original_pdf_context
+    return expand_verified_page_evidence(documents,evidence_query,page_budget=budget,
+        snippet_characters=args.snippet_characters,
+        read_context=lambda path,page:original_pdf_context(
+            path,page,neighbor_radius=0,include_center_reading_order=True))
+
+
+def _validate_pdf_page_expansion(args, passage_count):
+    budget=getattr(args,'expand_pdf_pages',0)
+    if type(budget) is int and budget==0:return
+    from file_system_catalog.verified_pdf_window_bridge import validate_expansion_request
+    validate_expansion_request(budget,passage_count,args.snippet_characters)
+    if budget and (getattr(args,'continue_section',None) is not None
+                   or getattr(args,'private_staged_pdf_preflight',None) is not None):
+        raise ValueError('verified PDF page expansion cannot be combined with section continuation or private corrected-page overlay')
+
+
+def _pdf_page_windows_audit(result):
+    from file_system_catalog.verified_pdf_window_bridge import expansion_audit_summary
+    return expansion_audit_summary(result)
+
+
 def find_source_evidence(args) -> None:
     """Discover native originals or resolve one explicit named publisher source.
 
@@ -1580,6 +1607,7 @@ def find_source_evidence(args) -> None:
                 or (getattr(args, "scope_context_characters", 0) != 0
                     and not 80 <= args.scope_context_characters <= 600)):
             raise ValueError("invalid bounded source evidence query")
+        _validate_pdf_page_expansion(args,args.passages)
         source_name = getattr(args, "source_name", None)
         if source_name is not None and (
                 not isinstance(source_name, str) or not source_name.strip()
@@ -1812,6 +1840,7 @@ def find_source_evidence(args) -> None:
     try:
         linked_archive=_opt_in_native_selected_archived_references(
             args,documents,evidence_query=evidence_args.query,versions=versions)
+        pdf_windows=_optional_verified_pdf_page_windows(args,documents,evidence_query=evidence_args.query)
         final_source_proof=final_mixed_document_source_revision_guard(documents,versions=versions)
     except Exception as exc:
         append_query_audit({**receipt,'success':False,
@@ -1878,6 +1907,8 @@ def find_source_evidence(args) -> None:
             'linked_navigation_or_prompt_candidates':(utility_review['optional_linked_original_structural_review']['navigation_or_prompt_linked_excerpt_candidates']
                 if 'optional_linked_original_structural_review' in utility_review else 0),
             'not_answer_verification':True}} if utility_review is not None else {}),
+        **({'optional_verified_pdf_page_window_audit':_pdf_page_windows_audit(pdf_windows)}
+           if pdf_windows is not None else {}),
         "verified_pdf_excerpts": pdf_count,
         "verified_non_pdf_derived_excerpts": derived_count,
         "evidence_kind_counts": evidence_kind_counts, "documents": audited,
@@ -1903,6 +1934,8 @@ def find_source_evidence(args) -> None:
         "verified_pdf_excerpts": pdf_count,
         "verified_non_pdf_derived_excerpts": derived_count,
         "evidence_kind_counts": evidence_kind_counts,
+        **({'optional_verified_pdf_page_windows':pdf_windows}
+           if pdf_windows is not None else {}),
         "query_audit_logged": True, "private_query_audit_file": str(audit_file),
         "evidence_scope": (
             "PDF excerpts require physical publisher-page verification. For HTML, Office, ZIP "
@@ -2000,6 +2033,7 @@ def original_source_evidence(args) -> None:
     try:
         if not 1 <= args.top <= 50:
             raise ValueError("invalid bounded requested source passage count")
+        _validate_pdf_page_expansion(args,args.top)
         if getattr(args,'assess_passage_utility',False) and (args.top>5 or cursor is not None):
             raise ValueError('optional structural source review requires at most five original passages and no RFC continuation')
         if getattr(args,'inspect_original_tables',False) and (
@@ -2093,6 +2127,15 @@ def original_source_evidence(args) -> None:
                 " The source section is the derivative label. Cite the physical PDF page only "
                 "when publisher_pdf_page has verified status."
             )
+        if getattr(args,'expand_pdf_pages',0):
+            if Path(original_path).suffix.casefold()!='.pdf':
+                raise ValueError('verified PDF page expansion requires an original PDF')
+            result['optional_verified_pdf_page_windows']=_optional_verified_pdf_page_windows(
+                args,[{'rank':1,'status':'verified','original_path':original_path,
+                       'original_sha256':source['original_sha256'],
+                       'derived_sha256':source['derived_sha256'],
+                       'filesystem_entry_id':int(row[0]),'passages':result['passages']}],
+                evidence_query=evidence_query)
         # The initial source SHA check precedes all retrieval and potentially
         # expensive independent original-page checks. A worker might publish
         # a newer source-map/native revision in the meantime: never return a
@@ -2187,6 +2230,8 @@ def original_source_evidence(args) -> None:
                            linked.get('linked_approved_current_original_sources',[]))],
             "not_a_verified_answer": True,
         }} if linked is not None else {}),
+        **({'optional_verified_pdf_page_window_audit':_pdf_page_windows_audit(result['optional_verified_pdf_page_windows'])}
+           if 'optional_verified_pdf_page_windows' in result else {}),
         "ranked_source_spans":[{
             "rank":i,
             "source_section":v["source_section"],
@@ -2336,6 +2381,8 @@ def main():
                           help="Read the next contiguous excerpt using the previous RFC section result\u0027s context.next_cursor")
     evidence.add_argument("--top",type=int,default=5)
     evidence.add_argument("--snippet-characters",type=int,default=900)
+    evidence.add_argument("--expand-pdf-pages",type=int,default=0,
+        help="Opt-in up to 5 distinct physically verified pages, globally round-robin across selected originals; up to 3 reading-order windows per page, original ranks unchanged")
     evidence.add_argument("--assess-passage-utility",action="store_true",
         help="Opt-in structural warnings for navigation, quoted prompts and possible PDF bibliography context; never score factual correctness or change source rank")
     evidence.add_argument("--inspect-original-tables",action="store_true",
@@ -2371,6 +2418,8 @@ def main():
     mixed.add_argument("--passages", type=int, default=2,
                        help="Candidate excerpts per original (1–5)")
     mixed.add_argument("--snippet-characters", type=int, default=1600)
+    mixed.add_argument("--expand-pdf-pages",type=int,default=0,
+        help="Opt-in up to 5 distinct physically verified pages, globally round-robin across selected originals; up to 3 reading-order windows per page, original ranks unchanged")
     mixed.add_argument("--assess-passage-utility",action="store_true",
         help="Opt-in conservative structural diagnostics for original passage candidates, without changing source ranking or claiming answer sufficiency")
     mixed.add_argument("--inspect-original-tables",action="store_true",

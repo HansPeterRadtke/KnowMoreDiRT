@@ -128,6 +128,36 @@ class MixedSourceEvidenceTests(unittest.TestCase):
         self.assertNotIn('optional_source_passage_utility_review',audit)
         self.assertNotIn('PDF excerpt',str(audit))
 
+    def test_pdf_page_expansion_precedes_collective_final_guard_and_keeps_text_private(self):
+        self.args.expand_pdf_pages=2
+        events=[]
+        extra={"candidate_windows":1,"pages":[{"document_rank":2,"windows":[
+            {"rank":1,"text":"Private expanded publisher prose.","span_sha256":"a"*64}]}]}
+        def expand(args,documents,*,evidence_query):
+            events.append("expand")
+            self.assertEqual([1,2],[d["rank"] for d in documents])
+            self.assertEqual(self.args.query,evidence_query)
+            return extra
+        def final(documents,*,versions):
+            events.append("final")
+            return {"final_source_map_native_ID_and_original_revision_checked":True,
+                    "safe_to_cutover_live":False,"cross_store_immutable_generation_pinned":False}
+        self.mocks["final_mixed_document_source_revision_guard"].side_effect=final
+        with patch.object(self.cli,"_optional_verified_pdf_page_windows",side_effect=expand):
+            result=self.call()
+        self.assertEqual(["expand","final"],events)
+        self.assertEqual(extra,result["optional_verified_pdf_page_windows"])
+        self.assertEqual([1,2],[d["rank"] for d in result["documents"]])
+        audit=self.mocks["append_query_audit"].call_args.args[0]
+        self.assertIn("optional_verified_pdf_page_window_audit",audit)
+        self.assertNotIn("Private expanded publisher prose.",str(audit))
+        # A source revision failure after page expansion refuses all output.
+        self.mocks["final_mixed_document_source_revision_guard"].side_effect=ValueError("source changed")
+        with patch.object(self.cli,"_optional_verified_pdf_page_windows",side_effect=expand),patch("builtins.print") as printed:
+            with self.assertRaisesRegex(ValueError,"source changed"):
+                self.cli.find_source_evidence(self.args)
+        printed.assert_not_called()
+
     def test_native_mixed_without_structural_flag_retains_previous_ranked_source_evidence(self):
         with patch.object(self.cli,'review_source_documents',side_effect=AssertionError('should be disabled')) as judge:
             result=self.call()

@@ -5322,3 +5322,48 @@ prefix `20261125-wave102-`. No publisher text is committed. Ordinary
 folder/grep access and existing native retrieval remain unchanged. The
 operator does not pin an immutable cross-store generation and does not
 authorize a live source-generation migration.
+
+#### Expand the selected verified PDF pages without changing document ranking
+
+Both existing source-evidence commands now accept the optional
+`--expand-pdf-pages N` (zero by default; at most five). For example:
+
+```sh
+python scripts/raspi_hierarchical_library.py find-source-evidence 'query' \
+    --documents 5 --passages 3 --snippet-characters 900 --expand-pdf-pages 5
+```
+
+For the exact-original `source-evidence` command, use its existing
+`--original-path` and at most five passages with this option. Only already
+verified physical pages can be expanded. Distinct pages are allocated
+round-robin in original rank order; every repeated anchor on a selected page
+must agree with the same exact layout extraction and offset. Up to three
+independently checked reading-order windows per page are returned separately
+from the unchanged original passages. Unavailable or noncontiguous alternate
+extractions are explicit; an identity mismatch fails closed. The normal
+final revision guard runs after expansion. The audit excludes publisher
+prose. This option cannot be combined with a continued section or private
+corrected-page overlay.
+
+In the 2026-11-25 wave103 private replay, 28 questions on 14 named originals
+were evaluated with the physical page withheld. Existing top-five snippets
+contained five full frozen reading-order anchors. Expansion recovered 26
+(24 using only the first window of each of up to five pages); the first
+window on the first selected page recovered 17 versus four with the original
+first snippet. Two target pages were never selected by the earlier page
+locator. All earlier full-anchor successes were retained. These are manually
+selected anchor containment measurements, not factual-answer accuracy.
+The fifteen-window maximum is a larger evidence budget than five snippets,
+and layout and reading-order text may not have identical contiguity.
+
+Seven additional source-linked speech research questions, with neither the
+original nor the page provided, reached three of seven preselected documents
+in the native top five. The expansion found two complete frozen anchors,
+versus zero in the original snippets. The existing independent first-unit
+lexical channels both retrieved all seven target documents at rank one on
+this particular frozen set. Their RAM-only scan covered all 17,715 complete
+source-map records. Neither result demonstrates generally superior ranking;
+the questions are manually selected, and other relevant originals are not
+exhaustively labeled. The native default ranking and all index data remain
+unchanged. Exact private query, source and evaluation receipts reside under
+`search-audit/20261125-wave103-evaluation/` on Raspi.
