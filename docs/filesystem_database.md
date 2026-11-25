@@ -5229,3 +5229,46 @@ when the original, derivative, excerpt and layout digests matched.
 These are manually selected, source-bound evidence recoveries, not improved
 ranking scores or an autonomous claim classifier. No original source contents
 or private search receipts are included in the repository.
+
+#### Private source-scoped claim evaluation (experimental, not deployed)
+
+`scripts/raspi_attest_source_claim_dataset.py` independently checks frozen
+private evidence spans against their approved original PDF bytes, extracted
+derivative, exact physical page, reading-order digest, source metadata,
+normalized offsets, and current native identities. Source map and native
+identities are rechecked after all page reads. Synthetic fixtures are explicitly
+not publisher-attested. A source hash does not establish a semantic gold label.
+
+`scripts/benchmark_source_claim_assessment.py` accepts a private frozen
+dataset, an already authorized loopback-only model port and exact model ID,
+a bounded deadline, and explicit experimental variants. It does not start a
+model, contact a remote provider, write live indexes, or expose gold answers
+to the model. Invalid replies remain distinct from valid insufficient-evidence
+judgments. The pairwise variant asks independently about each supplied source,
+then combines validated relations deterministically; this does not make the
+model's individual judgments authoritative. Private exclusive-created
+checkpoints and final receipts record completed cases and exact paired scores.
+
+On 2026-11-25, 44 manually labeled cases were frozen before model inference,
+including ten attested spans from eight approved original PDFs and twelve
+synthetic spans. With the existing Qwen2.5-VL-3B-Instruct Q4_K_M model in
+text-only mode, the baseline joint prompt obtained 11/44 correct labels
+(10/44 with exact decisive source IDs). A richer scope-aware joint prompt
+obtained 1/44. The independently judged source variant, developed after
+reviewing the joint results, obtained 30/44 correct labels and exact source IDs,
+but made four unsupported decisive judgments and three polarity reversals.
+Its valid output rate was 44/44; this is not an accuracy guarantee. The
+pairwise run reused the frozen cases, not an independent blind holdout.
+The initial Qwen2.5-7B CPU trial timed out before a paired comparison could
+be completed. No live fact-checking classifier is enabled by these results.
+
+Reproduce only under an authorized local model lease using the private
+dataset; first run the attestation command with a new private output path,
+then benchmark with `--dataset`, `--output`, `--port`, `--model`,
+`--variant baseline --variant scope` or `--variant pairwise`.
+Exact private data, source attestations, model run and checkpoint receipts
+are in the Raspi search-audit directory under prefix
+`20261125-wave102-`. Publisher text and private gold/receipts are not
+committed to Git. Model candidates are experimental and should not be
+presented as verified facts. The live immutable generation and publication
+gates remain unchanged.
