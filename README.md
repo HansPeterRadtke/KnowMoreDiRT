@@ -25,6 +25,8 @@ The full Raspi offline Knowledge Library filesystem scan has a separate, verifie
 
 For existing publisher originals, the optional [source-linked summary claim review](docs/source-linked-summary-claim-review.md) screens generated quantitative and conditional-performance statements against exact current source passages. It is read-only and reports review candidates, not truth verdicts or automatically corrected summaries. Native indexing and ordinary folder search remain unchanged.
 
+The optional [source-verified lexical original discovery](docs/verified-original-lexical-discovery.md) scans the current native summary roots in a temporary in-memory index and independently rechecks the real publisher-original bytes of each returned document. This can locate originals missed by a top-five semantic query, but summary words alone never establish factual support; it does not replace the original source, normal search, or a citable passage review.
+
 ## What the system does today
 
 Initialization scans the raw folder, reads text-bearing files, normalizes source records, segments content into bounded passages, invokes the configured local model for semantic extraction, validates the returned structures, and stores source-backed discourse objects in SQLite. The stored representation includes source documents, spans, mentions, referents, contexts, frames, frame arguments, conditions, temporal information, and provenance links.

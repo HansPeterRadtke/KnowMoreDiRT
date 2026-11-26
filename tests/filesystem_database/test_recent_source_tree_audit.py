@@ -287,5 +287,95 @@ class RecursiveTreeOriginalProofTests(unittest.TestCase):
                 )
 
 
+
+    def test_verified_original_lexical_summary_discovery_is_not_original_passage_proof(self):
+        from scripts.raspi_source_verified_summary_discovery import (
+            current_summary_roots, verified_original_discovery,
+        )
+        import json
+        ledger=self.original_root/'_management/status.json'
+        ledger.parent.mkdir()
+        ledger.write_text(json.dumps({'items':[
+            {'path':self.path,'status':'complete','sha256':self.o_sha}
+        ]}))
+        roots,metadata=current_summary_roots(self.sm,self.db)
+        self.assertEqual(1,len(roots))
+        self.assertEqual(self.path,roots[0][0])
+        self.assertEqual(1,metadata['metadata_revision_matched_roots'])
+        result=verified_original_discovery(
+            query='Source linked summary root',
+            source_map=self.sm,native_db=self.db,
+            original_root=self.original_root,derived_root=self.derivative_root,
+            ledger=ledger,limit=1,
+        )
+        self.assertEqual(1,result['originals_physically_verified_and_returned'])
+        chosen=result['candidates'][0]
+        self.assertEqual(self.path,chosen['original_path'])
+        self.assertEqual(self.o_sha,chosen['original_sha256_reverified'])
+        self.assertEqual(self.d_sha,chosen['derived_sha256_reverified'])
+        self.assertEqual(3,chosen['all_current_native_summary_nodes_verified'])
+        self.assertTrue(chosen['summary_words_only_locate_original_not_factual_proof'])
+        self.assertFalse(chosen['source_citable_passage_verified_by_this_discovery'])
+        self.assertFalse(result['cross_store_immutable_generation_pinned'])
+        self.assertEqual(0,result['side_effects']['native_database_writes'])
+
+    def test_summary_lexical_candidates_with_changed_original_are_dropped(self):
+        from scripts.raspi_source_verified_summary_discovery import (
+            verified_original_discovery,
+        )
+        import json
+        ledger=self.original_root/'_management/status.json'
+        ledger.parent.mkdir()
+        ledger.write_text(json.dumps({'items':[
+            {'path':self.path,'status':'complete','sha256':self.o_sha}
+        ]}))
+        (self.original_root/self.path).write_text('altered unapproved original')
+        result=verified_original_discovery(
+            query='Source linked summary root',
+            source_map=self.sm,native_db=self.db,
+            original_root=self.original_root,derived_root=self.derivative_root,
+            ledger=ledger,limit=1,
+        )
+        self.assertEqual([],result['candidates'])
+        self.assertEqual(1,len(result['unverified_candidates_dropped']))
+        self.assertTrue(result['unverified_candidates_dropped'][0][
+            'candidate_dropped_without_original_proof'])
+
+    def test_ambiguous_or_modified_native_summary_not_used_in_ephemeral_index(self):
+        from scripts.raspi_source_verified_summary_discovery import current_summary_roots
+        self.db.execute("UPDATE content_representations SET representation_text=? "
+                        "WHERE chunk_id='root'",("unverified overwritten summary",))
+        with self.assertRaisesRegex(ValueError,'no current summary roots eligible'):
+            current_summary_roots(self.sm,self.db)
+
+
+    def test_current_summary_lexical_index_excludes_stale_source_metadata(self):
+        from scripts.raspi_source_verified_summary_discovery import current_summary_roots
+        self.sm.execute("UPDATE originals SET derived_sha256=?",
+                        ('f'*64,))
+        with self.assertRaisesRegex(ValueError,'no current summary roots eligible'):
+            current_summary_roots(self.sm,self.db)
+
+
+    def test_summary_lexical_source_verification_rejects_modified_embedding_blob(self):
+        from scripts.raspi_source_verified_summary_discovery import verified_original_discovery
+        import json
+        ledger=self.original_root/'_management/status.json'
+        ledger.parent.mkdir()
+        ledger.write_text(json.dumps({'items':[
+            {'path':self.path,'status':'complete','sha256':self.o_sha}
+        ]}))
+        self.db.execute("UPDATE content_representations SET embedding_blob=? "
+                        "WHERE chunk_id='root'",(b'injected-unverified-native-embedding',))
+        report=verified_original_discovery(
+            query='Source linked summary root',source_map=self.sm,native_db=self.db,
+            original_root=self.original_root,derived_root=self.derivative_root,
+            ledger=ledger,limit=1,
+        )
+        self.assertEqual(0,report['originals_physically_verified_and_returned'])
+        self.assertEqual([],report['candidates'])
+        self.assertEqual(1,len(report['unverified_candidates_dropped']))
+
+
 if __name__=='__main__':
     unittest.main()
