@@ -22,15 +22,18 @@ sys.path.insert(0, str(ROOT / "src"))
 from file_system_catalog.publisher_html_article_discovery import (
     ArticleRAMIndex, PublisherScope, MAX_SELECTED_SOURCES,
     load_records, load_scoped_articles, readonly, verify_entry,
-    final_metadata_fence,
+    final_metadata_fence, article_context,
 )
 from file_system_catalog.pdf_visual_link import safe_private_result_path
 from raspi_publisher_firstunit_discovery import input_queries
 
 
 def search(*, publisher_url_prefix, queries, top, source_map, native_db,
-           catalog_path, completed_ledger, original_root, derivative_root):
+           catalog_path, completed_ledger, original_root, derivative_root,
+           context_chars=0):
     scope = PublisherScope.parse(publisher_url_prefix)
+    if type(context_chars) is not int or (context_chars != 0 and not 80 <= context_chars <= 2000):
+        raise ValueError("article context must be zero or eighty through two thousand characters per neighbor")
     if type(top) is not int or not 1 <= top <= 10:
         raise ValueError("article result count must be between one and ten")
     if not isinstance(queries, list) or not 1 <= len(queries) <= 32:
@@ -71,6 +74,8 @@ def search(*, publisher_url_prefix, queries, top, source_map, native_db,
                                 original_root=original_root, derived_root=derivative_root, scope=scope)
                             selected[entry.path] = entry
                         excerpt = idx.excerpt(entry, question["query"], channel=channel)
+                        if context_chars:
+                            excerpt["source_context"] = article_context(entry, excerpt, characters=context_chars)
                     except (ValueError, OSError, UnicodeError) as error:
                         omitted.append({"original_path": entry.path, "reason": str(error)[:200]})
                         continue
@@ -121,6 +126,7 @@ def search(*, publisher_url_prefix, queries, top, source_map, native_db,
         "generated_utc": datetime.now(timezone.utc).isoformat(),
         "publisher_url_prefix": scope.url,
         "query_count": len(queries), "source_scan": scan,
+        "context_characters_per_side": context_chars,
         "index_build_seconds": build_seconds,
         "total_seconds": round(time.monotonic() - start, 3),
         "selected_original_count": len(selected),
@@ -138,7 +144,7 @@ def search(*, publisher_url_prefix, queries, top, source_map, native_db,
             "Navigation and explicitly hidden HTML are excluded; external CSS, scripts, figures and browser visibility are not evaluated.",
             "Fresh source checks detect observed changes but do not pin an atomic generation across independently changing stores.",
             "Coverage excludes non-HTML, unapproved, malformed, ambiguous or oversized sources and must be read with source_scan.",
-        ],
+        ] + (["Optional context spans remain separate quotations with explicit omitted intervals; neither governing sections nor answer sufficiency are verified."] if context_chars else []),
         "queries": result_queries,
     }
 
@@ -150,6 +156,8 @@ def main():
     choose.add_argument("--queries-file", type=Path)
     ap.add_argument("--publisher-url-prefix", required=True)
     ap.add_argument("--top", type=int, default=5)
+    ap.add_argument("--context-chars", type=int, default=0,
+                    help="Optional characters per original-text neighbor, 80..2000; zero disables context")
     ap.add_argument("--source-map", type=Path, default=Path("/data/var/knowmoredirt/knowledge-library/semantic/source-map.sqlite3"))
     ap.add_argument("--native-db", type=Path, default=Path("/data/var/knowmoredirt/knowledge-library/filesystem.sqlite3"))
     ap.add_argument("--catalog", type=Path, default=Path("/data/infra/etc/knowledge-library-sources.json"))
@@ -170,6 +178,7 @@ def main():
         top=args.top, source_map=args.source_map, native_db=args.native_db,
         catalog_path=args.catalog, completed_ledger=args.completed_ledger,
         original_root=args.original_root, derivative_root=args.derivative_root,
+        context_chars=args.context_chars,
     )
     raw = (json.dumps(output, ensure_ascii=False, indent=2) + "\n").encode()
     if args.output is None:

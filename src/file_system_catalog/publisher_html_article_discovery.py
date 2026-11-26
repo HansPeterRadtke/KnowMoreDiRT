@@ -368,6 +368,72 @@ class ArticleRAMIndex:
         }
 
 
+def article_context(entry: ArticleEntry, excerpt: dict, *, characters: int) -> dict:
+    """Return separate bounded original-text spans; never infer a section.
+
+    The caller's normal source checks attest current file bytes. This helper
+    verifies the supplied excerpt against that entry and records exact
+    normalized character coverage, including every omitted interval.
+    """
+    if type(characters) is not int or not 80 <= characters <= 2000:
+        raise ValueError("article context requires eighty through two thousand characters per neighbor")
+    if not isinstance(entry, ArticleEntry) or not isinstance(entry.text, str):
+        raise ValueError("article context requires a current parsed article entry")
+    if not isinstance(excerpt, dict):
+        raise ValueError("article context requires a verified excerpt mapping")
+    start = excerpt.get("normalized_article_start_char")
+    end = excerpt.get("normalized_article_end_char")
+    text = excerpt.get("source_excerpt")
+    digest = excerpt.get("source_excerpt_sha256")
+    if (type(start) is not int or type(end) is not int
+            or not 0 <= start < end <= len(entry.text)
+            or not isinstance(text, str) or text != entry.text[start:end]
+            or not isinstance(digest, str) or not SHA.fullmatch(digest)
+            or hashlib.sha256(text.encode()).hexdigest() != digest):
+        raise ValueError("article context excerpt does not match its normalized original coordinates and digest")
+
+    before = max(0, start - characters)
+    after = min(len(entry.text), end + characters)
+    ranges = (
+        ("article_opening", 0, min(characters, before)),
+        ("preceding", before, start),
+        ("following", end, after),
+    )
+    spans = {}
+    covered = [(start, end)]
+    for role, left, right in ranges:
+        if left == right:
+            continue
+        value = entry.text[left:right]
+        spans[role] = {
+            "start_char": left, "end_char": right, "text": value,
+            "sha256": hashlib.sha256(value.encode()).hexdigest(),
+        }
+        covered.append((left, right))
+    omitted = []
+    cursor = 0
+    for left, right in sorted(covered):
+        if left > cursor:
+            omitted.append({"start_char": cursor, "end_char": left})
+        cursor = right
+    if cursor < len(entry.text):
+        omitted.append({"start_char": cursor, "end_char": len(entry.text)})
+    return {
+        "basis": "separate_bounded_whitespace_normalized_original_article_spans",
+        "requested_characters_per_neighbor": characters,
+        "original_path": entry.path,
+        "publisher_original_sha256": entry.source_map_row[1],
+        "normalized_article_sha256": hashlib.sha256(entry.text.encode()).hexdigest(),
+        "article_selector": entry.selector,
+        "spans": spans,
+        "omitted_normalized_article_ranges": omitted,
+        "covered_normalized_article_characters": sum(right - left for left, right in covered),
+        "entire_selected_container_covered": not omitted,
+        "governing_section_identified": False,
+        "factual_answer_verified": False,
+    }
+
+
 def load_scoped_articles(*, source_map: sqlite3.Connection, original_root: Path,
                          catalog: dict, ledger: dict, index: ArticleRAMIndex,
                          scope: PublisherScope, max_records: int = MAX_SCOPE_RECORDS,

@@ -115,6 +115,44 @@ the question. Read the governing section and original before asserting a
 technical conclusion. matched_article_forms reveals matches actually inside
 the excerpt; a title-only candidate can have no article matches.
 
+## Optional surrounding original text
+
+Use --context-chars 2000 to add up to two thousand characters immediately
+before and after each existing excerpt, plus a separately identified article
+opening of at most the same length. Zero, the default, disables context;
+enabled requests must be from eighty through two thousand characters per
+neighbor. The original excerpt, BM25 scores and ordering stay unchanged.
+
+For example, append --context-chars 2000 to either single-question or batch
+commands above. Each returned source then includes a source_context object.
+Its spans dictionary can contain article_opening, preceding and following,
+each with start_char, end_char, exact text and a SHA-256 digest. Empty spans are
+omitted. The opening is clipped before the preceding span, so the added
+passages never duplicate each other or the original excerpt.
+
+The original and normalized-article digests and selector bind these spans
+to the same source proof as the excerpt. They use the same normalized
+Unicode-character coordinate system, not raw byte or browser positions.
+Each span can be reproduced as body[start_char:end_char] after the original
+digest and article-normalization checks above.
+
+Read each span as a separate passage. Do not join discontiguous spans into
+one quotation. omitted_normalized_article_ranges identifies every gap
+between the excerpt and added spans; covered_normalized_article_characters
+counts their union. entire_selected_container_covered is true only when
+that union covers the complete selected article or main container. This is
+not a claim to cover the full page, images, browser display or topic.
+
+Nearby qualifications and the article's opening can make a match easier to
+interpret, but fixed windows can still clip a sentence or miss an important
+section. governing_section_identified and factual_answer_verified remain
+false, even when the complete selected container is visible. No heading
+structure or answer sufficiency is inferred. All context stays inside the
+existing final selected-source byte, metadata and native-identity checks;
+a changed selected source refuses the batch before output.
+
+## Fresh source checks
+
 After ranking the entire batch, the command reopens the catalog, ledger,
 source map and native database and rehashes every selected original and
 derivative. It then performs another fresh metadata/native/file-identity
@@ -136,7 +174,9 @@ controls, without copying publisher content into Git:
     PYTHONDONTWRITEBYTECODE=1 PYTHONPATH=src:tests/filesystem_database \
       OMP_NUM_THREADS=1 OPENBLAS_NUM_THREADS=1 python3 -m unittest -v \
       test_publisher_html_article_discovery \
-      test_publisher_html_article_discovery_cli
+      test_publisher_html_article_discovery_cli \
+      test_publisher_html_article_context \
+      test_publisher_html_article_context_cli
 
 The November 26 private evaluation froze twelve known-source manual questions
 and an unavailable-scope control before examining rankings. Baseline and article
@@ -158,3 +198,12 @@ when the right document ranks first. Private original-linked questions, results
 and independent semantic/provenance receipts remain under the existing Raspi
 search-audit project evidence tree. The new command does not change native
 semantic ranks, stored vectors, derivatives, acquisitions or running workers.
+
+A separate context follow-up used the same frozen questions, sources and ranks.
+The optional two-thousand-character surroundings supplied all independently
+specified governing passages for the six question/version pairs whose short
+previews lacked necessary explanation. Independent original parsing reproduced
+all two hundred twenty-six added spans across the one hundred twenty result
+rows and verified every omitted interval. The pre-existing ranks, scores,
+short excerpts and source proofs were unchanged. This establishes targeted
+context availability, not an unseen answer-quality benchmark.

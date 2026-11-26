@@ -117,4 +117,6 @@ Optional [archived publisher HTML article search](docs/publisher_html_article_di
 finds original article passages inside an explicitly requested publisher URL
 directory, including a specific archived manual version. It uses a bounded
 RAM-only lexical index with fresh original/derivative/native identity checks,
-without changing the native semantic index or acquiring sources.
+without changing the native semantic index or acquiring sources. Optional
+original-text context adds separate neighboring passages and shows every
+omitted interval while preserving the search order and short excerpt.
