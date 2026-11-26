@@ -56,6 +56,17 @@ summary-plus-keyword call was stored and retrieved successfully.
 
 ## Verified original passage inspection, November 2026
 
+For source-linked inspection of **numeric results inside a publisher's
+original physical PDF table**, rather than a model-generated summary or
+unverified page label, use the standalone read-only operator documented in
+`docs/source-linked-summary-claim-review.md` under *Publisher-original
+physical PDF metric row review*. It checks approved original, derivative and
+native summary revisions before/after extracting original PDF word positions
+and explicit model/metric column review candidates. This does **not** alter
+native summary vectors or auto-decide scientific truth. The regular original
+PDF passage and markdown/HTML cell lookup tools remain separate and unchanged.
+
+
 The [source-evidence and abstention research](kmd-source-evidence-and-abstention-2026-11-07.md)
 measures false positives from naive similarity and lexical thresholds,
 then adds a bounded read-only original-page locator. Every candidate retains

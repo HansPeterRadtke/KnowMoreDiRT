@@ -166,3 +166,91 @@ Recent private comparative evidence is kept in the existing Raspi
 /data/var/knowmoredirt/knowledge-library/search-audit tree. Do not commit
 publisher PDF bytes, private owner recordings, raw private research text
 or the review JSON files to the code repository.
+
+## Publisher-original physical PDF metric row review
+
+A generated research summary can assign the correct-looking percentage to
+**the wrong model**. This was observed in the already approved original
+*Agent Memory as Recommendation*: a current native child summary claims
+`AgentMemRec ... LoCoMo (80.3% accuracy)`. The published paper's original
+physical PDF Table 2, page eight, prints **T-Mem∗ 80.3** under LoCoMo,
+**AgentMemRec† 77.0** under LoCoMo, and **T-Mem, reprod. 77.4**. Its separate
+LongMemEval-S column prints **AgentMemRec 83.2**. Copied figures, reproduced
+figures and the authors' write-time-record protocol differ. The generated
+child summary's numeric match alone was therefore insufficient evidence.
+
+The optional source-byte-pinned table reviewer reports the **actual word
+coordinates from the physical PDF text layer**, rather than accepting a
+similar number anywhere in the extracted document as support. This gives
+agents a reproducible source document and model-to-number review cue **before
+repeating a scientific performance claim**. On Raspi, run from the canonical
+KnowMoreDiRT repository:
+
+~~~bash
+umask 077
+PYTHONDONTWRITEBYTECODE=1 PYTHONPATH=src:. python3 \
+  scripts/raspi_physical_pdf_metric_claim_review.py \
+  --original-path 'money-and-business/ai-agent-business-research-2025-2026/ai-sales-marketing-and-conversion/2026-agent-memory-as-recommendation-recommender-system-design-for-long-term-memory-of-llm-agent-2610-34673.pdf' \
+  --physical-page 8 \
+  --focus-model 'AgentMemRec' \
+  --other-model 'T-Mem' --other-model 'T-Mem, reprod.' \
+  --metric-heading 'LoCoMo' --metric-heading 'LongMemEval-S' \
+  --comparison-number 77.0 --comparison-number 77.4 \
+  --output '/data/var/knowmoredirt/knowledge-library/search-audit/MY-UNIQUE-OWNER-ONLY-NUMERIC-REVIEW.json'
+~~~
+
+The output path must be a **new private JSON file** and is created with
+restricted permissions; do not replace an existing review. For each current
+numeric claim containing the explicitly named focus model, the tool ties
+that text to the exact current **native summary-node ID, native summary SHA,
+original-source span, publisher-original SHA and derived-source SHA**. It
+checks the whole current recursive native source graph, independently rehashes
+the approved original using the same open file description that Poppler reads
+and scans one bounded **physical PDF page**. It then checks the original/native
+graph **again** after the page scan and refuses to save evidence if the
+revision moved. It never changes the live database, embeddings, original,
+summary, worker, model or underlying search ranking; the only write is the
+requested owner-only evidence file.
+
+The physical page is represented as individual word bounding boxes with a
+page-size and text-layer hash. The `source_geometry_review_cue` identifies
+whether a reported percentage has a nearby named model or another explicitly
+named model on its **physical horizontal row**. Optional, explicitly supplied
+`--metric-heading` names additionally look for the closest printed heading
+**above** the numerical cell. The competing headings are retained so a
+reader can detect ambiguities: duplicate mentions in the abstract are not
+assumed to be the current column heading, and closeness does not establish
+the experimental protocol. For the recorded Table 2 of *Agent Memory as
+Recommendation*, both the physical **model row** and the likely **metric
+column** are recoverable: AgentMemRec/LongMemEval-S/83.2,
+T-Mem/LoCoMo/80.3, AgentMemRec/LoCoMo/77.0, and the reproduced
+T-Mem/LoCoMo/77.4. These are readings of the current approved original
+text layer, not independent reproduction of the paper's measurements. This is a **review cue**, not a
+claim that the model, metric, exact method or statistical experiment is proven:
+there may be several tables, parallel columns, formatting errors, repeated
+numbers, footnote qualifications and image-only text. A number printed too far
+from a model gives the conservative cue
+`named_model_only_far_left_same_horizontal_row_review_full_wide_table_and_metric_column`
+instead of a false error judgment. For example, the independently reviewed
+*LATMiX* original (physical page thirty-two) prints 99.49 for its LATMiX-LU
+row near the far-right average recovery column. With
+`--metric-heading Recovery` and `--metric-heading Accuracy`, the reader can
+also identify the most plausible original column heading. It still only
+exposes the distant same-row hint and does **not** automatically approve or
+reject the corresponding generated summary. A correct source number can be
+hundreds of PDF points away from its model in a wide table, and a different
+model may share the same horizontal row in two side-by-side tables. Both paper-reported statements must still be
+read with the original column headings, dataset, evaluation protocol and
+source footnotes. Images, embedded figure lettering and scientific truth
+cannot be established from a Poppler text layer alone.
+
+The tool requires the already completed original in the owner-approved
+acquisition ledger, a unique source-map original and unique native FileDB
+identity, and a current complete source-linked native summary graph. It does
+not search or acquire new papers. Supplying a wrong original path, unapproved
+revision, symlink, altered source SHA, old native summary graph or non-PDF
+source fails closed. Result status `NOT_ASSESSED` is intentional and must not
+be silently converted to automatic true/false classifications or rewritten
+summary vectors. A verified incorrect summary is **not yet corrected in the
+live index**; any replacement must go through a separate versioned, safely
+quiesced current-source summarization and vector update pipeline.
