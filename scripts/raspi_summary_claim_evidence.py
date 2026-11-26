@@ -54,7 +54,7 @@ def reviewed_native_root(
     *, original_path: str, source_map: sqlite3.Connection,
     native_db: sqlite3.Connection, original_root: Path,
     derived_root: Path, completed_receipts: dict[str, str],
-    context_chars: int = 440, all_nodes: bool = False,
+    context_chars: int = 2000, all_nodes: bool = False,
     maximum_reviewed_nodes: int = 64,
 ) -> dict:
     """Check current original, native tree and exact root BEFORE and AFTER scan."""
@@ -217,7 +217,7 @@ def main() -> None:
     ap.add_argument("--source-map", type=Path, default=SOURCE_MAP)
     ap.add_argument("--native-db", type=Path, default=FILEDB)
     ap.add_argument("--completed-ledger", type=Path, default=LEDGER)
-    ap.add_argument("--context-chars", type=int, default=440)
+    ap.add_argument("--context-chars", type=int, default=2000)
     ap.add_argument("--all-nodes", action="store_true",
                     help="Review every current native child and root within its exact original span")
     ap.add_argument("--maximum-reviewed-nodes", type=int, default=64)

@@ -26,7 +26,7 @@ PYTHONDONTWRITEBYTECODE=1 PYTHONPATH=src:. nice -n 10 python3 \
 ~~~
 
 Use a **fresh** private output path each time; an existing file is rejected.
-The output file has restrictive owner-only permissions. The CLI prints only
+The output file has restrictive owner-only permissions. The default review excerpts include up to two thousand characters around each matched original-source anchor so a figure and its nearby experimental setup can be read together. Use --context-chars to request a shorter review between one hundred and sixty and two thousand characters; this changes context shown, not the original source or summary. The CLI prints only
 where it saved the review and how many candidates need inspection. The full
 source excerpts and source identity hashes are in the private JSON file.
 For independently constructed fixtures, the original-root, derived-root,
@@ -67,6 +67,17 @@ evidence of faster relational retrieval.
 
 If a percentage is not found in the extracted text, the status is
 not_found_in_extracted_text_check_original_figures, **not** "false".
+When the original text near a matched number uses an explicit qualifier,
+the output now supplies a short, separately hashed and offset-linked
+**possible_missing_qualification_review_cues** array. These are lexical
+review hints, not assertions that the summary lost a meaningful condition.
+The cue must be within two hundred and forty source characters of the
+specific match, even when the displayed evidence has a larger context.
+This distinction prevents an unrelated nearby claim's caveat from being
+automatically associated with a different percentage. An already repeated
+literal qualifier is not listed as missing; equivalent phrasing still needs
+human or model interpretation against the original.
+
 The original PDF may present the number only in a figure, table or
 illustration. Source-unit labels are taken from the marker containing the
 actual matched anchor, not merely from the beginning of a cross-page

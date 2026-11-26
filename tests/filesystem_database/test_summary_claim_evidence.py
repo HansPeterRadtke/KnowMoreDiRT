@@ -174,5 +174,84 @@ class SourceClaimEvidenceCandidatesTest(unittest.TestCase):
                 read_approved_revision(receipt,"papers/original.pdf")
 
 
+    def test_qualification_review_cues_reproduce_exact_original_positions(self):
+        report = scan_summary_claims(summary=SUMMARY, source=SOURCE)
+        cases = report["claims"]
+        cues_by_claim = []
+        for claim in cases:
+            cues = [c for evidence in claim["source_evidence"]
+                    for c in evidence["possible_missing_qualification_review_cues"]]
+            cues_by_claim.append(cues)
+            for cue in cues:
+                start,end=cue["source_start_char"],cue["source_end_char"]
+                self.assertEqual(cue["original_phrase"],SOURCE[start:end])
+                self.assertEqual(
+                    hashlib.sha256(cue["original_phrase"].encode()).hexdigest(),
+                    cue["original_phrase_sha256"],
+                )
+                self.assertFalse(cue["phrase_occurs_in_summary_sentence"])
+                self.assertEqual("NOT_ASSESSED",cue["semantic_relevance_to_claim"])
+        self.assertIn("often",[cue["original_phrase"].lower() for cue in cues_by_claim[0]])
+        self.assertIn("model-scored",[cue["original_phrase"].lower() for cue in cues_by_claim[1]])
+        self.assertIn("would",[cue["original_phrase"].lower() for cue in cues_by_claim[2]])
+        self.assertTrue(all(e["qualification_cues_do_not_prove_a_claim_incorrect"]
+                            for claim in cases for e in claim["source_evidence"]))
+
+    def test_preserved_explicit_qualifier_is_not_a_missing_phrase_cue(self):
+        report = scan_summary_claims(
+            summary="The authors report 25.3% compared with Deep Research.",
+            source=SOURCE,
+        )
+        self.assertEqual(1,report["review_candidates"])
+        cues=[c["original_phrase"].lower()
+              for e in report["claims"][0]["source_evidence"]
+              for c in e["possible_missing_qualification_review_cues"]]
+        self.assertNotIn("compared with",cues)
+        self.assertIn("model-scored",cues)
+
+
+    def test_default_wider_original_excerpt_captures_distant_methodology(self):
+        source = (
+            "[[SOURCE UNIT: PDF page 8]]\n"
+            "Figure 6 reports +25.3% on the average comparison. "
+            + ("Details of the scientific setup. " * 18)
+            + "Experimental Setup: forty representative research queries "
+              "with supplied ground-truth trajectories."
+        )
+        self.assertLess(len(source), 2000)
+        short = scan_summary_claims(
+            summary="The paper reports a 25.3% gain.",source=source,
+            context_chars=440,
+        )
+        default = scan_summary_claims(
+            summary="The paper reports a 25.3% gain.",source=source,
+        )
+        short_excerpt = short["claims"][0]["source_evidence"][0]["source_excerpt"]
+        full_excerpt = default["claims"][0]["source_evidence"][0]["source_excerpt"]
+        self.assertNotIn("Experimental Setup",short_excerpt)
+        self.assertIn("Experimental Setup",full_excerpt)
+        self.assertIn("ground-truth",full_excerpt)
+        self.assertEqual("NOT_ASSESSED",default["claims"][0]["source_evidence"][0]["semantic_support_verdict"])
+
+
+    def test_distant_unrelated_qualifier_stays_outside_specific_claim_cues(self):
+        source=(
+            "[[SOURCE UNIT: PDF page 1]]\n"
+            "The authors report a 25.3% improvement in this experiment. "
+            + ("Other details are provided in the next paragraph. " * 11)
+            + "A distinct question often fails in another evaluation."
+        )
+        report=scan_summary_claims(
+            summary="The authors report a 25.3% improvement.",
+            source=source,
+        )
+        self.assertEqual(1, report["review_candidates"])
+        evidence=report["claims"][0]["source_evidence"][0]
+        self.assertIn("often fails",evidence["source_excerpt"])
+        self.assertNotIn("often",evidence["source_qualifiers_observed"])
+        self.assertEqual([],evidence["possible_missing_qualification_review_cues"])
+        self.assertEqual(240,evidence["qualifier_cue_distance_limit_chars"])
+
+
 if __name__ == "__main__":
     unittest.main()

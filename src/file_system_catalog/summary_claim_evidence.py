@@ -19,8 +19,8 @@ _MODAL = re.compile(r"\b(?:would|could|might|may|potential(?:ly)?|expected|predi
                     r"propos(?:e|es|ed)|future|hypothes(?:is|ized))\b", re.I)
 _QUALIFIERS = re.compile(
     r"\b(?:often|sometimes|estimated|estimate|up to|at most|conditional|"
-    r"model.scored|based on|compared (?:to|with)|may|might|could|would|"
-    r"predict(?:s|ed)?|potential(?:ly)?|upper.bound)\b", re.I,
+    r"model[- ]scored|based on|compared (?:to|with)|may|might|could|would|"
+    r"predict(?:s|ed)?|potential(?:ly)?|upper[- ]bound)\b", re.I,
 )
 _WORDS = re.compile(r"[a-z]{3,}", re.I)
 _STOP = frozenset({
@@ -84,14 +84,46 @@ def _evidence(source: str, sentence: str, locations: list[int], *,
         if (left, right) in used:
             continue
         used.add((left, right))
+        # A wide evidence view may contain other claims. Keep qualifier cues
+        # close to the *matched* anchor; leave the full view available separately.
+        qualifier_matches = [match for match in _QUALIFIERS.finditer(excerpt)
+                             if abs(left + match.start() - position) <= 240]
+        # This is a lexical *review cue* only. Its position and hash make it
+        # possible to inspect the relevant original words independently.
+        qualifiers = [
+            {
+                "source_start_char": left + match.start(),
+                "source_end_char": left + match.end(),
+                "original_phrase": match.group(0),
+                "original_phrase_sha256": _sha(match.group(0)),
+                "phrase_occurs_in_summary_sentence": bool(re.search(
+                    r"(?<!\w)" + re.escape(match.group(0)) + r"(?!\w)",
+                    sentence, re.I,
+                )),
+                "distance_from_matched_evidence_anchor_chars": abs(
+                    left + match.start() - position
+                ),
+                "semantic_relevance_to_claim": "NOT_ASSESSED",
+            }
+            for match in qualifier_matches
+        ]
+        qualifiers.sort(key=lambda x: (
+            x["distance_from_matched_evidence_anchor_chars"],
+            x["source_start_char"],
+        ))
         kept.append({
             "start_char": left, "end_char": right,
             "source_excerpt": excerpt, "excerpt_sha256": _sha(excerpt),
             "source_unit_label": _page_label(source, position),
             "matched_anchor_char": position,
             "source_qualifiers_observed": sorted({
-                match.group(0).casefold() for match in _QUALIFIERS.finditer(excerpt)
+                match.group(0).casefold() for match in qualifier_matches
             }),
+            "possible_missing_qualification_review_cues": [
+                item for item in qualifiers if not item["phrase_occurs_in_summary_sentence"]
+            ][:12],
+            "qualification_cues_do_not_prove_a_claim_incorrect": True,
+            "qualifier_cue_distance_limit_chars": 240,
             "text_is_original_extracted_bytes": True,
             "semantic_support_verdict": "NOT_ASSESSED",
         })
@@ -102,7 +134,7 @@ def _evidence(source: str, sentence: str, locations: list[int], *,
 
 def scan_summary_claims(
     *, summary: str, source: str, maximum_claims: int = 24,
-    context_chars: int = 440, maximum_evidence: int = 3,
+    context_chars: int = 2000, maximum_evidence: int = 3,
     source_start_char: int = 0, source_end_char: int | None = None,
 ) -> dict[str, Any]:
     """Screen numerical claims and unqualified GPU performance statements.
