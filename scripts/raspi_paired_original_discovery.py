@@ -103,6 +103,7 @@ def independent_original_union(native:dict, lexical:dict)->list[dict]:
 def verified_publisher_firstunit_candidates(
     *,query:str,top:int,source_map:sqlite3.Connection,native_db:sqlite3.Connection,
     original_root:Path,derivative_root:Path,ledger:Path,
+    verify_pdf_previews:int=0,
 )->dict:
     """Read existing current-source previews once; SHA-verify each selected hit.
 
@@ -111,7 +112,8 @@ def verified_publisher_firstunit_candidates(
     optional channel also covers originals without completed summaries.
     """
     if not isinstance(query,str) or not 1<=len(query)<=600 or (
-            type(top) is not int or not 1<=top<=MAX_PER_CHANNEL):
+            type(top) is not int or not 1<=top<=MAX_PER_CHANNEL
+            or type(verify_pdf_previews) is not int or not 0<=verify_pdf_previews<=3):
         raise ValueError('invalid bounded original first-unit search')
     receipts=approved_original_receipts(ledger)
     with FirstUnitRAMIndex() as idx:
@@ -121,18 +123,25 @@ def verified_publisher_firstunit_candidates(
         ranked=idx.ranked(query,channel='porter',limit=max(top*6,30))
         verified=[]
         omitted=[]
+        attempted_original_pdf_page_checks=0
         for entry,identity,score in ranked:
             if len(verified)>=top:
                 break
             try:
+                physically_check_pdf=(
+                    entry.original_path.casefold().endswith('.pdf')
+                    and attempted_original_pdf_page_checks<verify_pdf_previews
+                )
                 candidate=verify_index_candidate(
                     entry=entry,original_root=original_root,
                     derived_root=derivative_root,
                     completed_receipts=receipts,
                     native_db=native_db,source_map=source_map,
-                    query=query,verify_pdf_page=False,
+                    query=query,verify_pdf_page=physically_check_pdf,
                     max_original_bytes=MAX_SINGLE_ORIGINAL_BYTES,
                 )
+                if physically_check_pdf:
+                    attempted_original_pdf_page_checks+=1
                 if (candidate['current_approved_publisher_and_extracted_bytes_rehashed'] is not True
                         or candidate['quoted_text_is_original_publisher_bytes'] is not False
                         or candidate['factual_answer_verified'] is not False
@@ -158,6 +167,11 @@ def verified_publisher_firstunit_candidates(
         'source_originals_including_unsummarized_are_eligible':True,
         'returned':len(verified),
         'candidate_originals':verified,
+        'original_pdf_page_checks_requested_max':verify_pdf_previews,
+        'original_pdf_page_checks_attempted':attempted_original_pdf_page_checks,
+        'original_pdf_pages_independently_verified':sum(
+            int((x.get('physical_pdf_page') or {}).get('physical_pdf_page_verified') is True)
+            for x in verified),
         'unverified_source_candidates_excluded':omitted,
         'original_and_full_derivative_sha_reverified_per_returned_candidate':True,
         'source_unit_text_is_derived_original_not_physical_pdf_page_verification':True,
@@ -332,10 +346,15 @@ def paired_verified_discovery(
     native_db_path:Path=DEFAULT_NATIVE_DB,
     ledger:Path=DEFAULT_ORIGINAL_ROOT/'_management/status.json',
     include_source_firstunit:bool=False,
+    verify_firstunit_pdf_pages:int=0,
 )->dict:
     if (not isinstance(query,str) or not 1<=len(query)<=600 or not query.strip()
             or type(top) is not int or not 1<=top<=MAX_PER_CHANNEL
-            or type(include_source_firstunit) is not bool):
+            or type(include_source_firstunit) is not bool
+            or type(verify_firstunit_pdf_pages) is not int
+            or not 0<=verify_firstunit_pdf_pages<=3
+            or (not include_source_firstunit and verify_firstunit_pdf_pages)):
+
         raise ValueError('invalid bounded paired source discovery request')
     started=time.monotonic()
     # In DELETE journal mode the active summarizers periodically hold a
@@ -368,7 +387,7 @@ def paired_verified_discovery(
             firstunit=verified_publisher_firstunit_candidates(
                 query=query,top=top,source_map=sm,native_db=db,
                 original_root=original_root,derivative_root=derived_root,
-                ledger=ledger,
+                ledger=ledger,verify_pdf_previews=verify_firstunit_pdf_pages,
             )
             union=augment_original_union_with_firstunit(union,firstunit)
         final=final_original_union_revision_guard(
@@ -390,6 +409,9 @@ def paired_verified_discovery(
         **({'publisher_firstunit_verified_original_candidates':len(firstunit['candidate_originals']),
             'publisher_firstunit_scan':firstunit['source_scan'],
             'publisher_firstunit_source_verified_candidates':firstunit['candidate_originals'],
+            'publisher_firstunit_original_pdf_page_checks_requested_max':firstunit['original_pdf_page_checks_requested_max'],
+            'publisher_firstunit_original_pdf_page_checks_attempted':firstunit['original_pdf_page_checks_attempted'],
+            'publisher_firstunit_original_pdf_pages_independently_verified':firstunit['original_pdf_pages_independently_verified'],
             'publisher_firstunit_candidates_dropped':firstunit['unverified_source_candidates_excluded'],
             'source_firstunit_is_original_derived_text_not_physical_pdf_quote':True,
             'three_independent_channel_ranks_not_fused':True,
@@ -428,6 +450,8 @@ def main()->None:
     ap.add_argument('--top',type=int,default=5)
     ap.add_argument('--include-source-firstunit',action='store_true',
                     help='Opt-in original first-unit search across all approved originals; extra RAM-only 17k-source index, slow cold start; no score fusion')
+    ap.add_argument('--verify-firstunit-pdf-pages',type=int,default=0,
+                    help='With --include-source-firstunit, independently check original physical PDF page for at most 0-3 ranked PDF candidates; no answer truth claim')
     ap.add_argument('--private-output',type=Path,required=True)
     args=ap.parse_args()
     dest=args.private_output
@@ -438,6 +462,7 @@ def main()->None:
     report=paired_verified_discovery(
         query=args.query,top=args.top,
         include_source_firstunit=args.include_source_firstunit,
+        verify_firstunit_pdf_pages=args.verify_firstunit_pdf_pages,
     )
     fd=os.open(dest,os.O_WRONLY|os.O_CREAT|os.O_EXCL|os.O_NOFOLLOW,0o600)
     with os.fdopen(fd,'w',encoding='utf8') as f:
@@ -447,7 +472,8 @@ def main()->None:
        'status':'paired_source_verified_document_discovery',
        'native_original_evidence_candidates':report['native_original_passage_candidates'],
        'lexical_original_candidates':report['source_verified_summary_lexical_original_candidates'],
-       **({'source_firstunit_original_candidates':report['publisher_firstunit_verified_original_candidates']}
+       **({'source_firstunit_original_candidates':report['publisher_firstunit_verified_original_candidates'],
+            'original_pdf_pages_independently_checked':report['publisher_firstunit_original_pdf_pages_independently_verified']}
           if args.include_source_firstunit else {}),
        'distinct_originals':report['unique_original_candidates'],
        'originals_final_physically_rehashed':report[

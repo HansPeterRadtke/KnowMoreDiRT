@@ -50,6 +50,9 @@ def firstunit(*,paths=("papers/c.pdf","papers/d.pdf"),sha="a"*64,
     return {
         'returned':len(paths),
         'source_scan':{'publisher_firstunit_rows_indexed':len(paths)},
+        'original_pdf_page_checks_requested_max':0,
+        'original_pdf_page_checks_attempted':0,
+        'original_pdf_pages_independently_verified':0,
         'unverified_source_candidates_excluded':[],
         'source_unit_text_is_derived_original_not_physical_pdf_page_verification':True,
         'factual_answer_verified':False,
@@ -307,6 +310,18 @@ class FinalPhysicalOriginalRecheckTest(unittest.TestCase):
         with self.assertRaisesRegex(ValueError,'first-unit excerpt no longer occupies'):
             self.check()
 
+    def test_pdf_page_proof_requires_explicit_firstunit_and_bounded_count(self):
+        from scripts.raspi_paired_original_discovery import paired_verified_discovery
+        for kwargs in (
+            {'verify_firstunit_pdf_pages':1},
+            {'include_source_firstunit':True,'verify_firstunit_pdf_pages':4},
+            {'include_source_firstunit':True,'verify_firstunit_pdf_pages':-1},
+            {'include_source_firstunit':True,'verify_firstunit_pdf_pages':True},
+            {'include_source_firstunit':False,'verify_firstunit_pdf_pages':1},
+        ):
+            with self.subTest(kwargs=kwargs),self.assertRaisesRegex(ValueError,'bounded paired source'):
+                paired_verified_discovery(query='publisher source',top=1,**kwargs)
+
     def test_optional_third_channel_is_never_run_without_explicit_flag(self):
         from unittest.mock import patch
         from scripts.raspi_paired_original_discovery import paired_verified_discovery
@@ -318,9 +333,9 @@ class FinalPhysicalOriginalRecheckTest(unittest.TestCase):
         base_l=lexical(paths=())
         extra=firstunit(paths=(self.path,),sha=self.sha,derivative_sha=self.dsha,
                         native_id=42,preview_text=self.derivedfile.read_text())
-        def invoke(flag):
+        def invoke(flag,verify_pdf=0):
             return paired_verified_discovery(query='verified source query',top=1,
-                include_source_firstunit=flag,
+                include_source_firstunit=flag,verify_firstunit_pdf_pages=verify_pdf,
                 original_root=self.orig,derived_root=self.derived,
                 source_map_path=sm_path,native_db_path=db_path,ledger=self.ledger)
         with patch('scripts.raspi_paired_original_discovery.native_low_memory_search',return_value=base_n),\
@@ -332,6 +347,12 @@ class FinalPhysicalOriginalRecheckTest(unittest.TestCase):
             self.assertNotIn('publisher_firstunit_verified_original_candidates',original)
             extended=invoke(True)
             third.assert_called_once()
+            self.assertEqual(0,third.call_args.kwargs['verify_pdf_previews'])
+            third.reset_mock()
+            requested=invoke(True,verify_pdf=1)
+            third.assert_called_once()
+            self.assertEqual(1,third.call_args.kwargs['verify_pdf_previews'])
+            self.assertEqual(0,requested['publisher_firstunit_original_pdf_pages_independently_verified'])
             self.assertEqual('kmd.opt_in_verified_three_independent_original_channels.v1',extended['schema'])
             self.assertEqual(1,extended['publisher_firstunit_verified_original_candidates'])
             self.assertEqual(1,extended['unique_original_candidates'])

@@ -154,6 +154,15 @@ interface, or use direct native search or source-name lookup when enough.
 Two deliberately unanswerable-looking queries nevertheless produced other
 OR-matched candidates; a populated result alone is not an answer.
 
+If a physical PDF page is needed, the **same third-channel query** accepts
+`--verify-firstunit-pdf-pages 1` (up to three). This asks the existing
+publisher-PDF verifier to independently read the ranked PDF originals and
+compare the selected page excerpt to the physical page. It reports the number
+actually confirmed and leaves other pages explicitly unverified. A correct
+physical page citation is still **not proof** that the paper entails the
+requested factual proposition. This check is optional and adds work; when
+omitted, the first-source-unit page label remains derived-text-only.
+
 The original first-unit text can miss important facts on later pages, tables,
 figures and images. It is a **bounded original-source discovery complement**,
 not a full-document search or proof that the source entails a suggested answer.
