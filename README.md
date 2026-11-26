@@ -23,6 +23,8 @@ The repository now includes the previously separate `file_system_catalog` implem
 
 The full Raspi offline Knowledge Library filesystem scan has a separate, verified, Infra-owned operation and safety guide under `docs/filesystem_database.md`. The raw archive includes PDFs and ZIPs; native KMD metadata coverage must not be confused with model-generated full-text embeddings.
 
+For existing publisher originals, the optional [source-linked summary claim review](docs/source-linked-summary-claim-review.md) screens generated quantitative and conditional-performance statements against exact current source passages. It is read-only and reports review candidates, not truth verdicts or automatically corrected summaries. Native indexing and ordinary folder search remain unchanged.
+
 ## What the system does today
 
 Initialization scans the raw folder, reads text-bearing files, normalizes source records, segments content into bounded passages, invokes the configured local model for semantic extraction, validates the returned structures, and stores source-backed discourse objects in SQLite. The stored representation includes source documents, spans, mentions, referents, contexts, frames, frame arguments, conditions, temporal information, and provenance links.

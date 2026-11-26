@@ -197,5 +197,95 @@ class RecursiveTreeOriginalProofTests(unittest.TestCase):
             self.check()
 
 
+    def test_read_only_current_root_claim_review_uses_verified_graph(self):
+        from scripts.raspi_summary_claim_evidence import reviewed_native_root
+        review = reviewed_native_root(
+            original_path=self.path, source_map=self.sm, native_db=self.db,
+            original_root=self.original_root, derived_root=self.derivative_root,
+            completed_receipts=self.receipts,
+        )
+        self.assertEqual(self.o_sha,review["original_sha256"])
+        self.assertEqual(self.d_sha,review["derived_sha256"])
+        self.assertEqual("root",review["current_native_root_id"])
+        self.assertEqual(3,review["verified_complete_native_source_tree"][
+            "current_native_summary_nodes_fully_verified"])
+        self.assertTrue(review["original_and_native_tree_checked_again_after_review"])
+        self.assertEqual(0,review["candidate_review"]["review_candidates"])
+        self.assertFalse(review["source_visual_figure_or_table_reviewed"])
+        self.assertTrue(review["cannot_automatically_establish_factual_truth"])
+
+    def test_current_root_claim_review_rejects_changed_original_revision(self):
+        from scripts.raspi_summary_claim_evidence import reviewed_native_root
+        (self.original_root/self.path).write_text("UNAPPROVED CURRENT ORIGINAL")
+        with self.assertRaisesRegex(ValueError,"bytes differ"):
+            reviewed_native_root(
+                original_path=self.path, source_map=self.sm, native_db=self.db,
+                original_root=self.original_root,
+                derived_root=self.derivative_root,
+                completed_receipts=self.receipts,
+            )
+
+
+    def test_read_only_all_native_summary_nodes_preserve_exact_source_spans(self):
+        from scripts.raspi_summary_claim_evidence import reviewed_native_root
+        import hashlib
+        report = reviewed_native_root(
+            original_path=self.path, source_map=self.sm, native_db=self.db,
+            original_root=self.original_root, derived_root=self.derivative_root,
+            completed_receipts=self.receipts, all_nodes=True,
+        )
+        nodes = report["all_native_node_claim_reviews"]
+        self.assertEqual(3, len(nodes))
+        self.assertEqual(0, report["all_native_node_review_candidate_count"])
+        self.assertEqual([0,0,1], [n["level"] for n in nodes])
+        self.assertEqual(["summary","summary","summary_long"],[n["kind"] for n in nodes])
+        for node in nodes:
+            start,end=node["original_source_start_char"],node["original_source_end_char"]
+            self.assertEqual(hashlib.sha256(self.text[start:end].encode()).hexdigest(),
+                             node["original_source_span_sha256"])
+            self.assertEqual((start,end),(node["claim_evidence"]["reviewed_source_start_char"],
+                                          node["claim_evidence"]["reviewed_source_end_char"]))
+        with self.assertRaisesRegex(ValueError,"exceeds bounded review"):
+            reviewed_native_root(
+                original_path=self.path, source_map=self.sm, native_db=self.db,
+                original_root=self.original_root, derived_root=self.derivative_root,
+                completed_receipts=self.receipts, all_nodes=True, maximum_reviewed_nodes=2,
+            )
+
+
+    def test_claim_review_rechecks_original_if_source_changes_during_scan(self):
+        from unittest.mock import patch
+        from file_system_catalog.summary_claim_evidence import scan_summary_claims
+        from scripts.raspi_summary_claim_evidence import reviewed_native_root
+        def mutate_after_first_verified_read(**kwargs):
+            (self.derivative_root/self.dpath).write_text(self.text+"new unapproved trailing content")
+            return scan_summary_claims(**kwargs)
+        with patch("scripts.raspi_summary_claim_evidence.scan_summary_claims",
+                   side_effect=mutate_after_first_verified_read):
+            with self.assertRaisesRegex(ValueError,"extracted text differs"):
+                reviewed_native_root(
+                    original_path=self.path,source_map=self.sm,native_db=self.db,
+                    original_root=self.original_root,derived_root=self.derivative_root,
+                    completed_receipts=self.receipts,
+                )
+
+    def test_claim_review_rechecks_native_summary_if_root_changes_during_scan(self):
+        from unittest.mock import patch
+        from file_system_catalog.summary_claim_evidence import scan_summary_claims
+        from scripts.raspi_summary_claim_evidence import reviewed_native_root
+        def mutate_native_root(**kwargs):
+            self.db.execute("UPDATE content_representations SET representation_text=? "
+                            "WHERE chunk_id='root'",("UNVERIFIED MODEL OUTPUT",))
+            return scan_summary_claims(**kwargs)
+        with patch("scripts.raspi_summary_claim_evidence.scan_summary_claims",
+                   side_effect=mutate_native_root):
+            with self.assertRaisesRegex(ValueError,"native summary content differs"):
+                reviewed_native_root(
+                    original_path=self.path,source_map=self.sm,native_db=self.db,
+                    original_root=self.original_root,derived_root=self.derivative_root,
+                    completed_receipts=self.receipts,
+                )
+
+
 if __name__=='__main__':
     unittest.main()
