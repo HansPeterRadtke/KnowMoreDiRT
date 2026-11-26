@@ -1233,10 +1233,23 @@ that no matching verified candidate was returned in that bounded search,
 not that a factual question has no answer. This opt-in option makes no
 change whatsoever to ordinary searches or the installed vector index.
 
-The physical PDF page verifier is separate: a derived
-`[[SOURCE UNIT: PDF page N]]` marker does not prove that the phrase is
-visible on that numbered publisher PDF page. Even physical page verification
-does not prove that the statement asserted by an agent is true.
+**Opt-in physical PDF verification of the required phrase:** Combine
+`--require-source-phrase 'weddings'` with the **existing**
+`--verify-pdf-previews 1` option (zero to three allowed per channel/query).
+Once the complete publisher original, derivative and exact first-unit source
+phrase offsets are verified, this mode now passes the **phrase-centered
+original-source context** to the independent original PDF physical-page
+verifier, rather than validating only a different, query-centered excerpt.
+A returned document retains a separate
+`required_source_phrase_original_pdf_page_proof` that reports physical page
+number and publisher PDF page-text digest only if that context actually
+matches its original physical PDF page. It flags absent, unreadable and
+mispositioned pages instead of inventing coordinates. Non-PDF sources
+remain explicitly `not_pdf`, and the normal no-required-phrase search keeps
+its unchanged, previous PDF excerpt check. A derived
+`[[SOURCE UNIT: PDF page N]]` label alone never constitutes physical page
+proof. The physical check validates only the publisher PDF **text layer**,
+not figures, visual layout fidelity or the factual truth of a statement.
 
 Under concurrent live summarization, a read-only native/source-map query can
 encounter a short SQLite `SQLITE_BUSY` or `SQLITE_LOCKED` failure. This
@@ -1246,12 +1259,10 @@ explicit transient failure and does **not** save an incomplete result file.
 A different SQLite failure such as a corrupt or mismatched schema is never
 silently categorized as an unapproved original. This avoids confusing a
 healthy but temporarily locked original with a source-irrelevant or missing
-paper. No live worker is restarted, blocked intentionally, or reconfigured. `--verify-pdf-previews 1` (maximum three per channel and
-question) additionally checks a returned excerpt on the *original physical
-PDF page*, with its own page-text SHA. A derived page label alone is not a
-verified publisher page. The optional physical-page check never invents a
-citation or repairs an unreadable PDF. Native original/derived/index writes,
-external downloads, model calls and publisher-origin replacements are absent.
+paper. No live worker is restarted, blocked intentionally, or reconfigured.
+The optional physical PDF check is independently bounded, never repairs
+an unreadable PDF and never alters native original/index data. Original,
+derived, indexing, remote model and source acquisition writes are absent.
 
 **Measured private results, November 21:** On the previous opening-page
 baseline, the live Raspi scan inspected 17,715 completed source-map records,

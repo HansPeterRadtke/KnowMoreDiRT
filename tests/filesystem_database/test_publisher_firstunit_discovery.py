@@ -17,6 +17,7 @@ from file_system_catalog.publisher_firstunit_discovery import (
     validate_required_original_source_phrase,
     required_firstunit_source_phrase_proof,
     compiled_required_original_source_phrase,
+    verify_attested_firstunit_phrase_on_physical_pdf_page,
 )
 
 
@@ -187,6 +188,78 @@ class PublisherFirstUnitDiscoveryTests(unittest.TestCase):
         ))
         self.assertEqual('unicode_word_bounded_literal_phrase_ignorecase_not_semantic',
                          exact['match_mode'])
+
+    def test_original_physical_pdf_page_proves_exact_required_phrase_context(self):
+        self.load()
+        entry=next(x for x in self.idx.entries.values()
+                   if x.original_path=='papers/rare.pdf')
+        verified=verify_index_candidate(
+            entry=entry,original_root=self.originals,derived_root=self.derivatives,
+            completed_receipts=self.receipts,native_db=self.native,
+            source_map=self.sm,query='non-zero shaped reward',
+        )
+        quote=required_firstunit_source_phrase_proof(
+            entry=entry,verified_original_candidate=verified,
+            required_phrase='non-zero shaped reward',
+        )
+        def proof_ok(original,expected_sha,passages):
+            self.assertEqual(self.originals/entry.original_path,original)
+            self.assertEqual(entry.original_sha256,expected_sha)
+            self.assertEqual(1,len(passages))
+            self.assertEqual(entry.first_unit_label,passages[0]['source_section'])
+            self.assertIn('non-zero shaped reward',passages[0]['source_excerpt'])
+            self.assertEqual(quote['source_attestations'][0]['source_context_excerpt'],
+                             passages[0]['source_excerpt'])
+            return [{'status':'verified','page':1,
+                     'page_text_sha256':'c'*64,'basis':'derivative_label_confirmed'}]
+        ok=verify_attested_firstunit_phrase_on_physical_pdf_page(
+            entry=entry,verified_original_candidate=verified,
+            phrase_attestation=quote,original_root=self.originals,
+            pdf_verifier=proof_ok,
+        )
+        self.assertEqual('original_physical_pdf_phrase_context_verified',ok['status'])
+        self.assertTrue(ok['physical_original_page_verified_for_required_phrase_context'])
+        self.assertEqual(1,ok['original_physical_pdf_page'])
+        self.assertEqual(quote['source_attestations'][0]['source_context_sha256'],
+                         ok['current_derived_firstunit_source_context_sha256'])
+        self.assertTrue(ok['publisher_pdf_text_layer_not_visual_figure_or_semantic_truth'])
+        for result,expected_status in [
+            ({'status':'verified','page':2,
+              'page_text_sha256':'b'*64},'verified_elsewhere_but_current_page_label_not_confirmed'),
+            ({'status':'unverified','reason':'excerpt_absent'},'not_independently_verified'),
+        ]:
+            with self.subTest(expected_status=expected_status):
+                flagged=verify_attested_firstunit_phrase_on_physical_pdf_page(
+                    entry=entry,verified_original_candidate=verified,
+                    phrase_attestation=quote,original_root=self.originals,
+                    pdf_verifier=lambda *_args:[result],
+                )
+                self.assertEqual(expected_status,flagged['status'])
+                self.assertFalse(flagged['physical_original_page_verified_for_required_phrase_context'])
+        bad=dict(verified)
+        bad['original_path']='papers/another.pdf'
+        with self.assertRaisesRegex(ValueError,'source-attested current candidate'):
+            verify_attested_firstunit_phrase_on_physical_pdf_page(
+                entry=entry,verified_original_candidate=bad,
+                phrase_attestation=quote,original_root=self.originals,
+                pdf_verifier=lambda *_args:[],
+            )
+        bad_quote=dict(quote)
+        bad_quote['source_attestations']=[{**quote['source_attestations'][0],
+                                          'source_context_excerpt':'Unapproved altered context'}]
+        with self.assertRaisesRegex(ValueError,'exact attested first-unit context'):
+            verify_attested_firstunit_phrase_on_physical_pdf_page(
+                entry=entry,verified_original_candidate=verified,
+                phrase_attestation=bad_quote,original_root=self.originals,
+                pdf_verifier=lambda *_args:[],
+            )
+        bad_response=lambda *_args:[{'status':'verified','page':1}]
+        with self.assertRaisesRegex(ValueError,'physical page text hash'):
+            verify_attested_firstunit_phrase_on_physical_pdf_page(
+                entry=entry,verified_original_candidate=verified,
+                phrase_attestation=quote,original_root=self.originals,
+                pdf_verifier=bad_response,
+            )
 
     def test_requested_phrase_cannot_bypass_source_sha_or_revision_checks(self):
         self.load()

@@ -224,6 +224,37 @@ class PublisherFirstUnitRequiredSourcePhraseEndToEndTests(unittest.TestCase):
                 original['original'].read_bytes(),original['derived'].read_bytes()
             ))
 
+    def test_existing_pdf_preview_option_uses_required_phrase_context_without_extra_flag(self):
+        proc,out=self.run_cli('source-phrase-physical-checked-nonpdf.json',extra=(
+            '--require-source-phrase','wedding album proof source',
+            '--verify-pdf-previews','1',
+        ))
+        self.assertEqual(0,proc.returncode,proc.stderr[-1000:])
+        data=json.loads(out.read_text())
+        self.assertTrue(
+            data['optional_original_physical_pdf_verification_attests_required_phrase_context_not_separate_query_excerpt'])
+        for channel in ('literal','porter'):
+            record=data['queries'][0]['independent_rank_channels'][channel]
+            self.assertEqual(1,record['returned_current_originals'])
+            self.assertEqual(1,record['original_pdf_phrase_page_checks_requested_max'])
+            self.assertEqual(0,record['original_pdf_phrase_contexts_independently_verified'])
+            paper=record['source_originals'][0]
+            attestation=paper['required_source_phrase_original_pdf_page_proof']
+            self.assertEqual('not_pdf',attestation['status'])
+            self.assertFalse(
+                attestation['physical_original_page_verified_for_required_phrase_context'])
+            self.assertEqual('not_requested_or_not_pdf',paper['physical_pdf_page']['status'])
+        legacy,out2=self.run_cli('existing-pdf-preview-default-nonpdf.json',extra=(
+            '--verify-pdf-previews','1',
+        ))
+        self.assertEqual(0,legacy.returncode,legacy.stderr[-1000:])
+        old=json.loads(out2.read_text())
+        self.assertEqual('kmd.readonly_publisher_first_source_unit_dual_lexical_discovery.v1',
+                         old['schema'])
+        self.assertNotIn('optional_original_physical_pdf_verification_attests_required_phrase_context_not_separate_query_excerpt',old)
+        self.assertNotIn('required_source_phrase_original_pdf_page_proof',
+                         old['queries'][0]['independent_rank_channels']['porter']['source_originals'][0])
+
     def test_real_cli_refuses_to_write_partial_result_when_verified_source_read_is_locked(self):
         c=module()
         output=self.root/'should-not-write-stale-source-as-empty.json'

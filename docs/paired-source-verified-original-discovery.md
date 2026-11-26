@@ -125,8 +125,12 @@ for either normal search channel. It never silently changes the ranker, and
 a phrase only in the catalog title or on an unsearched later page is
 intentionally insufficient. Under concurrent index writes, a persistent
 SQLite lock aborts the whole bounded phrase query rather than mislabeling
-the original as absent. See `docs/filesystem_database.md` for usage,
-limits and the source-span evidence contract.
+the original as absent. With this phrase requirement, the existing
+`--verify-pdf-previews 1` option can also confirm the **exact matched phrase
+and its source context** against the publisher PDF's original physical text
+page. The old no-required-phrase mode remains unchanged, and no method
+silently claims semantic truth or a verified original image. See
+`docs/filesystem_database.md` for usage, limits and source-span evidence.
 
 This option is **significantly slower at cold start**. On the current Raspi
 archive it sampled approximately 274 megabytes of original-derived first-unit

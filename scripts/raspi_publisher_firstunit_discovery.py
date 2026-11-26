@@ -28,6 +28,7 @@ from file_system_catalog.publisher_firstunit_discovery import (
     FirstUnitRAMIndex,load_complete_source_previews,verify_index_candidate,
     validate_required_original_source_phrase,required_firstunit_source_phrase_proof,
     compiled_required_original_source_phrase,
+    verify_attested_firstunit_phrase_on_physical_pdf_page,
 )
 
 
@@ -186,10 +187,7 @@ def main():
                             # Their original SHA is still rechecked below.
                             verify_pdf_page=(
                                 len(returned)<args.verify_pdf_previews
-                                and (
-                                    required_pattern is None
-                                    or required_pattern.search(entry.excerpt) is not None
-                                )
+                                and required_pattern is None
                             ))
                     except (ValueError,OSError,UnicodeError) as err:
                         omitted.append({'original_path':entry.original_path,
@@ -213,6 +211,17 @@ def main():
                             })
                             continue
                         body['explicit_required_source_phrase_proof']=attestation
+                        if len(returned)<args.verify_pdf_previews:
+                            # Prove the required PHRASE and surrounding source
+                            # context on the physical PDF page, not an
+                            # unrelated query-centered original excerpt.
+                            body['required_source_phrase_original_pdf_page_proof']=(
+                                verify_attested_firstunit_phrase_on_physical_pdf_page(
+                                    entry=entry,verified_original_candidate=body,
+                                    phrase_attestation=attestation,
+                                    original_root=args.original_root,
+                                )
+                            )
                     returned.append({'source_rank':len(returned)+1,'native_firstunit_candidate_id':ident,
                                      'lexical_bm25_not_probability':score,
                                      'rank_channel':'literal_title_firstpage_bm25' if channel=='literal'
@@ -220,6 +229,13 @@ def main():
                 channels[channel]={'returned_current_originals':len(returned),
                                    'source_originals':returned,
                                    'stale_or_unverified_candidates_omitted':omitted,
+                                   **({'original_pdf_phrase_page_checks_requested_max':args.verify_pdf_previews,
+                                       'original_pdf_phrase_contexts_independently_verified':sum(
+                                           item.get('required_source_phrase_original_pdf_page_proof',{}).get(
+                                               'physical_original_page_verified_for_required_phrase_context') is True
+                                           for item in returned),
+                                       'required_phrase_pdf_checks_use_phrase_centered_context_not_query_excerpt':True}
+                                      if required_phrase is not None and args.verify_pdf_previews else {}),
                                    **({'verified_source_unit_candidates_missing_requested_phrase':
                                        source_phrase_excluded,
                                        'required_phrase_checks_are_only_on_bounded_ranked_candidates':True}
@@ -247,7 +263,8 @@ def main():
           'phrase_acceptance_never_from_catalog_title_or_generated_summary':True,
           'negative_or_empty_results_do_not_prove_absence_in_other_units':True,
           'ranked_candidate_scan_bounded_and_not_exhaustive_full_corpus_phrase_search':True,
-          'no_default_rank_or_index_modification':True}
+          'no_default_rank_or_index_modification':True,
+          'optional_original_physical_pdf_verification_attests_required_phrase_context_not_separate_query_excerpt':True}
          if any_source_phrase else {}),
       'generated_utc':datetime.now(timezone.utc).isoformat(),
       'query_count':len(queries),'source_scan':index_receipt,

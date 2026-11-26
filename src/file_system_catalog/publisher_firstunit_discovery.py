@@ -399,6 +399,88 @@ def required_firstunit_source_phrase_proof(
     }
 
 
+def verify_attested_firstunit_phrase_on_physical_pdf_page(
+    *,entry:Entry,verified_original_candidate:dict,
+    phrase_attestation:dict,original_root:Path,pdf_verifier=None,
+)->dict:
+    """Optional physical PDF page proof for the *required phrase context*.
+
+    The ordinary source preview and PDF page citation are distinct facts.
+    A valid original-derived phrase must have its own physical-page proof;
+    an unrelated query excerpt on that page is insufficient evidence.
+    The provided PDF verifier always rehashes the original file bytes.
+    """
+    if (not isinstance(entry,Entry)
+            or not isinstance(verified_original_candidate,dict)
+            or not isinstance(phrase_attestation,dict)
+            or verified_original_candidate.get('current_approved_publisher_and_extracted_bytes_rehashed') is not True
+            or verified_original_candidate.get('original_path')!=entry.original_path
+            or verified_original_candidate.get('publisher_original_sha256')!=entry.original_sha256
+            or verified_original_candidate.get('current_derivative_sha256')!=entry.derived_sha256
+            or phrase_attestation.get('schema')!='kmd.explicit_publisher_first_unit_required_phrase_attestation.v1'
+            or phrase_attestation.get('title_and_generated_metadata_not_used_for_phrase_acceptance') is not True
+            or phrase_attestation.get('entire_approved_original_and_derived_bytes_verified_before_matching') is not True
+            or not isinstance(phrase_attestation.get('source_attestations'),list)
+            or not phrase_attestation['source_attestations']):
+        raise ValueError('physical phrase check requires complete source-attested current candidate')
+    first=phrase_attestation['source_attestations'][0]
+    context=first.get('source_context_excerpt')
+    start=first.get('source_context_start_char')
+    end=first.get('source_context_end_char')
+    if (not isinstance(context,str)
+            or type(start) is not int or type(end) is not int
+            or not entry.excerpt_start_char<=start<end<=entry.excerpt_end_char
+            or entry.excerpt[start-entry.excerpt_start_char:
+                             end-entry.excerpt_start_char]!=context
+            or first.get('source_context_sha256')!=hashlib.sha256(context.encode('utf8')).hexdigest()
+            or first.get('source_unit_label')!=entry.first_unit_label
+            or first.get('source_original_sha256')!=entry.original_sha256
+            or first.get('source_derivative_sha256')!=entry.derived_sha256):
+        raise ValueError('physical page check lacks exact attested first-unit context and source SHA')
+    base={
+        'schema':'kmd.physical_pdf_page_required_firstunit_phrase_proof.v1',
+        'publisher_original_sha256':entry.original_sha256,
+        'current_derived_firstunit_source_context_sha256':hashlib.sha256(context.encode('utf8')).hexdigest(),
+        'required_first_source_unit_phrase':phrase_attestation['requested_literal_phrase'],
+        'source_unit_label_as_extracted_before_original_verification':entry.first_unit_label,
+        'physical_original_page_verified_for_required_phrase_context':False,
+        'publisher_pdf_text_layer_not_visual_figure_or_semantic_truth':True,
+        'does_not_change_source_or_native_summary_or_index':True,
+    }
+    if not entry.original_path.lower().endswith('.pdf'):
+        return {**base,'status':'not_pdf'}
+    page=re.fullmatch(r'PDF page ([1-9][0-9]{0,5})',entry.first_unit_label)
+    if not page:
+        return {**base,'status':'original_source_unit_has_no_exact_physical_pdf_page_label'}
+    source=safe_file(original_root,entry.original_path)
+    verifier=pdf_verifier or verify_pdf_page_excerpts
+    result=verifier(source,entry.original_sha256,[{
+        'source_section':entry.first_unit_label,
+        'source_excerpt':context,
+    }])
+    if not isinstance(result,list) or len(result)!=1 or not isinstance(result[0],dict):
+        raise ValueError('invalid external original PDF page verification receipt')
+    proof=result[0]
+    if proof.get('status')!='verified':
+        return {**base,'status':'not_independently_verified',
+                'reason':str(proof.get('reason','unknown_page_text_mismatch'))[:160]}
+    if proof.get('page')!=int(page[1]):
+        return {**base,'status':'verified_elsewhere_but_current_page_label_not_confirmed',
+                'other_reported_original_page':proof.get('page')}
+    digest=proof.get('page_text_sha256')
+    if not isinstance(digest,str) or not SOURCE_SHA.fullmatch(digest):
+        raise ValueError('original PDF verifier omitted physical page text hash')
+    return {
+        **base,
+        'status':'original_physical_pdf_phrase_context_verified',
+        'physical_original_page_verified_for_required_phrase_context':True,
+        'original_physical_pdf_page':int(page[1]),
+        'original_pdf_page_text_sha256':digest,
+        'publisher_pdf_page_basis':proof.get('basis'),
+        'physical_pdf_context_source_unit_not_claim_semantic_support':True,
+    }
+
+
 def verify_index_candidate(*,entry:Entry,original_root:Path,derived_root:Path,
                            completed_receipts:dict[str,str],native_db:sqlite3.Connection,
                            source_map:sqlite3.Connection,query:str,verify_pdf_page:bool=False,
