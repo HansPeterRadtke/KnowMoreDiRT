@@ -253,5 +253,77 @@ class SourceClaimEvidenceCandidatesTest(unittest.TestCase):
         self.assertEqual(240,evidence["qualifier_cue_distance_limit_chars"])
 
 
+    def test_numeric_table_cell_without_percent_unit_is_only_review_candidate(self):
+        source=(
+            "[[SOURCE UNIT: PDF page 9]]\n"
+            "Table 3. Tool Usage. Columns: Usage Rate (%), Average Calls, Error Rate (%).\n"
+            "Code Execution Tools     64.57      20.41     28.66\n"
+        )
+        report=scan_summary_claims(
+            summary="Code execution has a 64.57% tool usage rate and 28.66% error rate.",
+            source=source,
+        )
+        self.assertEqual(2, report["review_candidates"])
+        for claim in report["claims"]:
+            self.assertEqual("number_without_percent_symbol_check_original_table_or_figure_unit",
+                             claim["evidence_status"])
+            self.assertFalse(claim["source_percent_symbol_present_at_matched_value"])
+            self.assertTrue(claim["matching_bare_number_is_not_percentage_unit_proof"])
+            self.assertEqual("NONE",claim["automatic_truth_verdict"])
+            self.assertEqual(1,len(claim["source_evidence"]))
+            hit=claim["source_evidence"][0]
+            self.assertIn("Usage Rate (%)",hit["source_excerpt"])
+            self.assertIn("page 9",hit["source_unit_label"])
+            self.assertEqual("NOT_ASSESSED",hit["semantic_support_verdict"])
+        # Distinct numbers with the target as a prefix are NOT evidence.
+        for no_match in ("164.57", "64.570", "X64.57", "64.57Y"):
+            with self.subTest(no_match=no_match):
+                row=scan_summary_claims(
+                    summary="The rate is 64.57%.",
+                    source="[[SOURCE UNIT: PDF page 9]]\n"+no_match,
+                )
+                self.assertEqual("not_found_in_extracted_text_check_original_figures",
+                                 row["claims"][0]["evidence_status"])
+                self.assertEqual([],row["claims"][0]["source_evidence"])
+
+    def test_actual_percent_literal_takes_precedence_over_numeric_table_cell(self):
+        report=scan_summary_claims(
+            summary="Tool rate was 64.57%.",
+            source="[[SOURCE UNIT: PDF page 4]]\n"
+                   "64.57 in a table row; 64.57% stated in nearby prose.",
+        )
+        claim=report["claims"][0]
+        self.assertTrue(claim["source_percent_symbol_present_at_matched_value"])
+        self.assertEqual("exact_numeric_text_occurs_in_extracted_source",claim["evidence_status"])
+        self.assertEqual(1,len(claim["source_evidence"]))
+
+
+    def test_numerically_equal_percent_with_different_precision_is_only_candidate(self):
+        cases=[("0%","0.0%"),("100%","100.0%"),("53.4%","53.40%"),("25.3%","25.300%")]
+        for summary_value, source_value in cases:
+            with self.subTest(summary_value=summary_value,source_value=source_value):
+                out=scan_summary_claims(
+                    summary="The measured metric was "+summary_value+" in this test.",
+                    source="[[SOURCE UNIT: PDF page 6]]\nThe measured metric was "
+                           +source_value+" in this test.",
+                )
+                claim=out["claims"][0]
+                self.assertEqual("different_numeric_format_same_percent_value_verify_context",
+                                 claim["evidence_status"])
+                self.assertEqual("numerically_equivalent_percent_text",claim["source_numeric_text_match_kind"])
+                self.assertFalse(claim["exact_text_occurrence_of_summary_percent"])
+                self.assertTrue(claim["source_percent_symbol_present_at_matched_value"])
+                self.assertFalse(claim["matching_bare_number_is_not_percentage_unit_proof"])
+                self.assertEqual("NONE",claim["automatic_truth_verdict"])
+                self.assertEqual(1,len(claim["source_evidence"]))
+                self.assertIn(source_value,claim["source_evidence"][0]["source_excerpt"])
+        no_prefix=scan_summary_claims(
+            summary="The rate is 0%.",
+            source="[[SOURCE UNIT: PDF page 6]]\nThe value 10.0% is unrelated.",
+        )
+        self.assertEqual("not_found_in_extracted_text_check_original_figures",
+                         no_prefix["claims"][0]["evidence_status"])
+
+
 if __name__ == "__main__":
     unittest.main()

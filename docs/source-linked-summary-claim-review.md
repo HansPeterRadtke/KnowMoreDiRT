@@ -50,6 +50,19 @@ another worker may update an index or original **after** the review finishes.
 
 ## Interpret review candidates, not scores of correctness
 
+The numeric locator has three explicitly different kinds. An
+**exact_percent_text** match includes the percent sign with the same
+spelling as the generated claim. A **numerically_equivalent_percent_text**
+match has a percentage with equivalent numeric value but different decimal
+precision, such as zero percent versus zero-point-zero percent. A
+**bare_number_no_unit** match is only a number without a percent symbol,
+often because a PDF table prints the percentage unit in its column heading.
+The last two are **candidate locations only**: compare the original table
+heading, row, control, units and experiment before accepting any claim.
+Neither numerical equality nor matching a bare cell proves a percentage,
+let alone that the same metric or test is being described. Values without a
+text-layer match remain unresolved, not automatically false.
+
 The quantified_summary_claim label means a generated summary contains a
 percentage. The reviewer locates identical numeric text in the verified
 extracted original and shows nearby words and page/source-unit labels.

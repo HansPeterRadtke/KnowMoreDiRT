@@ -8,6 +8,7 @@ infer scientific correctness or approve/rewrite native summary records.
 from __future__ import annotations
 
 import hashlib
+from decimal import Decimal
 from itertools import islice
 import re
 from typing import Any
@@ -166,6 +167,33 @@ def scan_summary_claims(
             value = percent.group("number").replace(",", ".")
             token = re.compile(r"(?<![\w.])" + re.escape(value) + r"\s*%", re.I)
             positions = [source_start_char + m.start() for m in islice(token.finditer(scoped_source), 5000)]
+            match_kind = "exact_percent_text" if positions else "no_text_match"
+            if not positions:
+                # 0% and 0.0% are arithmetically equal but different source
+                # strings. This is a locator, NOT proof of the claim's scope.
+                equivalent = re.compile(
+                    r"(?<![\w.])(?P<number>\d{1,3}(?:\.\d{1,3})?)\s*%",re.I,
+                )
+                expected = Decimal(value)
+                positions = [source_start_char + match.start() for match in
+                             islice(equivalent.finditer(scoped_source), 5000)
+                             if Decimal(match.group("number")) == expected]
+                if positions:
+                    match_kind = "numerically_equivalent_percent_text"
+            if not positions:
+                # PDF tables sometimes omit '%' in the cell and put the unit
+                # in a column header. The bare number is *only* a locator;
+                # it does not establish that this cell measures a percentage.
+                numeric_without_unit = re.compile(
+                    r"(?<![\w.,])" + re.escape(value) + r"(?![\w.,%])", re.I,
+                )
+                positions = [source_start_char + m.start() for m in
+                             islice(numeric_without_unit.finditer(scoped_source), 5000)]
+                if positions:
+                    match_kind = "bare_number_no_unit"
+            source_percent_literal_present = match_kind in (
+                "exact_percent_text", "numerically_equivalent_percent_text",
+            )
             key = (start, "numeric", value)
             if key in seen:
                 continue
@@ -181,12 +209,26 @@ def scan_summary_claims(
                 "claim_text": sentence.strip(),
                 "claim_sha256": _sha(sentence),
                 "matched_value": value + "%",
-                "evidence_status": ("exact_numeric_text_occurs_in_extracted_source"
-                                    if evidence else "not_found_in_extracted_text_check_original_figures"),
+                "evidence_status": {
+                    "exact_percent_text": "exact_numeric_text_occurs_in_extracted_source",
+                    "numerically_equivalent_percent_text":
+                        "different_numeric_format_same_percent_value_verify_context",
+                    "bare_number_no_unit":
+                        "number_without_percent_symbol_check_original_table_or_figure_unit",
+                    "no_text_match": "not_found_in_extracted_text_check_original_figures",
+                }[match_kind],
+                "source_numeric_text_match_kind": match_kind,
+                "exact_text_occurrence_of_summary_percent": match_kind == "exact_percent_text",
+                "source_percent_symbol_present_at_matched_value": source_percent_literal_present,
+                "matching_bare_number_is_not_percentage_unit_proof":
+                    match_kind == "bare_number_no_unit",
                 "source_evidence": evidence,
                 "review_prompt": ("Check task/metric labels, sample, comparison,"
-                                  " reporting attribution and conditions; matching a"
-                                  " number alone does not establish support."),
+                                  " reporting attribution and conditions. If"
+                                  " the source contains only a bare numeric"
+                                  " table cell, independently verify its"
+                                  " column unit from the original PDF."
+                                  " Matching a number never establishes support."),
                 "automatic_truth_verdict": "NONE",
             })
         if _GPU.search(sentence) and _EFFECT.search(sentence) and not _MODAL.search(sentence):
