@@ -293,6 +293,112 @@ def original_firstunit_query_term_coverage(*,query:str,title:str,
     }
 
 
+def validate_required_original_source_phrase(phrase:str|None)->str|None:
+    """An explicit literal phrase for ONE publisher-derived original unit.
+
+    No FTS query syntax, path, SQL, relevance inference or persisted index.
+    Original text remains untrusted content; never execute its instructions.
+    """
+    if phrase is None:
+        return None
+    if (not isinstance(phrase,str) or not 3<=len(phrase)<=160
+            or phrase!=phrase.strip() or not any(c.isalnum() for c in phrase)
+            or any(ord(c)<32 or ord(c)==127 for c in phrase)):
+        raise ValueError('invalid bounded original-source required phrase')
+    return phrase
+
+
+def compiled_required_original_source_phrase(phrase:str):
+    """Literal case-insensitive phrase with word boundaries at alphanumeric ends.
+
+    Never interpret user-controlled regex metacharacters as pattern syntax.
+    Keep offsets in original characters; no Unicode normalization that could
+    silently shift the SHA-linked current source character positions.
+    """
+    phrase=validate_required_original_source_phrase(phrase)
+    if phrase is None:
+        raise ValueError('explicit original source phrase is required')
+    before=r'(?<!\w)' if phrase[0].isalnum() else ''
+    after=r'(?!\w)' if phrase[-1].isalnum() else ''
+    return re.compile(before+re.escape(phrase)+after,re.IGNORECASE)
+
+
+def required_firstunit_source_phrase_proof(
+    *,entry:Entry,verified_original_candidate:dict,required_phrase:str,
+)->dict|None:
+    """Evidence that an exact user phrase appears in the verified source unit.
+
+    Must be invoked only after verify_index_candidate has independently
+    rehashed the entire approved original and derived file and reread the
+    exact current first-source-unit. Absence means only that THIS unit lacks
+    the phrase, never that the rest of the original document lacks it.
+    """
+    phrase=validate_required_original_source_phrase(required_phrase)
+    if phrase is None:
+        raise ValueError('explicit original source phrase required')
+    if (not isinstance(entry,Entry)
+            or not isinstance(verified_original_candidate,dict)
+            or verified_original_candidate.get('current_approved_publisher_and_extracted_bytes_rehashed') is not True
+            or verified_original_candidate.get('publisher_original_sha256')!=entry.original_sha256
+            or verified_original_candidate.get('current_derivative_sha256')!=entry.derived_sha256
+            or verified_original_candidate.get('source_start_char')!=entry.excerpt_start_char
+            or verified_original_candidate.get('source_end_char')!=entry.excerpt_end_char
+            or verified_original_candidate.get('source_unit_label')!=entry.first_unit_label
+            or verified_original_candidate.get('quoted_text_is_original_publisher_bytes') is not False
+            or verified_original_candidate.get('factual_answer_verified') is not False):
+        raise ValueError('required source phrase check lacks current original byte proof')
+    matches=list(compiled_required_original_source_phrase(phrase).finditer(entry.excerpt))[:4]
+    if not matches:
+        return None
+    evidence=[]
+    for matched in matches:
+        literal=entry.excerpt[matched.start():matched.end()]
+        start=entry.excerpt_start_char+matched.start()
+        end=entry.excerpt_start_char+matched.end()
+        if not (entry.excerpt_start_char<=start<end<=entry.excerpt_end_char
+                and len(literal)==end-start):
+            raise ValueError('required source phrase span leaves verified source unit')
+        context_start=max(entry.excerpt_start_char,start-220)
+        context_end=min(entry.excerpt_end_char,end+220)
+        context=entry.excerpt[
+            context_start-entry.excerpt_start_char:
+            context_end-entry.excerpt_start_char
+        ]
+        if not context_start<=start<end<=context_end or literal not in context:
+            raise ValueError('required phrase not inside bounded source-linked context')
+        evidence.append({
+            'source_unit_label':entry.first_unit_label,
+            'source_start_char':start,'source_end_char':end,
+            'source_context_start_char':context_start,
+            'source_context_end_char':context_end,
+            'source_context_excerpt':context,
+            'source_context_sha256':hashlib.sha256(context.encode('utf8')).hexdigest(),
+            'source_context_is_current_first_unit_not_catalog_metadata':True,
+            'original_derived_literal_phrase':literal,
+            'literal_phrase_sha256':hashlib.sha256(literal.encode('utf8')).hexdigest(),
+            'source_unit_sha256':hashlib.sha256(entry.excerpt.encode('utf8')).hexdigest(),
+            'source_original_sha256':entry.original_sha256,
+            'source_derivative_sha256':entry.derived_sha256,
+            'no_actual_publisher_pdf_physical_page_proof':True,
+            'not_a_factual_answer_or_entailment_proof':True,
+        })
+    return {
+        'schema':'kmd.explicit_publisher_first_unit_required_phrase_attestation.v1',
+        'requested_literal_phrase':phrase,
+        'match_mode':'unicode_word_bounded_literal_phrase_ignorecase_not_semantic',
+        'matches_in_verified_first_original_unit':len(evidence),
+        'source_attestations_maximum':4,
+        'additional_matching_occurrences_not_exhaustively_enumerated':True,
+        'source_attestations':evidence,
+        'title_and_generated_metadata_not_used_for_phrase_acceptance':True,
+        'absence_outside_first_unit_not_evaluated':True,
+        'entire_approved_original_and_derived_bytes_verified_before_matching':True,
+        'physical_pdf_page_not_inferred':True,
+        'source_presence_does_not_establish_factual_answer_truth':True,
+        'no_native_index_mutation_or_rank_change':True,
+    }
+
+
 def verify_index_candidate(*,entry:Entry,original_root:Path,derived_root:Path,
                            completed_receipts:dict[str,str],native_db:sqlite3.Connection,
                            source_map:sqlite3.Connection,query:str,verify_pdf_page:bool=False,

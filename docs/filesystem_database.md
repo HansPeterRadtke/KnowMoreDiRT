@@ -1197,7 +1197,56 @@ a one-word OR result can have very weak evidence for answering the question.
 Do not hide a candidate or assert that no source supports an answer merely
 because the literal ratio is low. The diagnostic never adds new original
 files, changes the existing ranking, modifies persistent indexes or checks
-later pages beyond the first verified source unit. `--verify-pdf-previews 1` (maximum three per channel and
+later pages beyond the first verified source unit.
+
+**Optional stricter publisher-source phrase requirement:** When a user knows
+a particular literal name or phrase that MUST appear in the publisher's own
+opening source section, use the same operator with, for example,
+`--require-source-phrase 'AgentMemRec'` on a single query. For a batch of
+different named topics, each question object may add
+`"require_source_phrase":"weddings"`; omit the field to leave that question
+unchanged. The global flag and per-question fields are deliberately
+mutually exclusive. The accepted phrase is literal, case insensitive,
+and bounded by word edges where the first or last character is
+alphanumeric; it is NEVER interpreted as SQL or regular-expression syntax.
+It MUST appear inside the first **SHA-verified publisher-derived source unit**
+itself. Merely matching generated metadata, catalog titles or a later
+unsearched page is insufficient.
+
+The returned proof records the exact original unit, matched source-text
+character interval, the unmodified literal spelling, its SHA, bounded
+surrounding source context with a separate SHA, original publisher and full
+derivative SHA, and the checked native FileDB original identity. Additional
+separate `verified_source_unit_candidates_missing_requested_phrase`
+records distinguish verified first-unit literal nonmatches from stale or
+unapproved originals. The two lexical rankings remain independent;
+surviving candidates retain their relative rank order. This is an
+explicit **first-unit-only** evidence requirement, NOT a complete
+full-document phrase search and NOT a proof that an absent phrase never
+appears on later pages or in images. Because it screens at most thirty to
+one hundred previously ranked candidates per channel, even a phrase that
+does occur in an approved first unit might lie outside the bounded
+initial candidate set. Use the regular native original lookup or the
+full-document source-evidence tools if an exact source has to be located
+regardless of the first-unit query rank. An empty set establishes only
+that no matching verified candidate was returned in that bounded search,
+not that a factual question has no answer. This opt-in option makes no
+change whatsoever to ordinary searches or the installed vector index.
+
+The physical PDF page verifier is separate: a derived
+`[[SOURCE UNIT: PDF page N]]` marker does not prove that the phrase is
+visible on that numbered publisher PDF page. Even physical page verification
+does not prove that the statement asserted by an agent is true.
+
+Under concurrent live summarization, a read-only native/source-map query can
+encounter a short SQLite `SQLITE_BUSY` or `SQLITE_LOCKED` failure. This
+operator now performs at most **one bounded retry** of just the original
+verification read. If the lock persists, the entire query exits with an
+explicit transient failure and does **not** save an incomplete result file.
+A different SQLite failure such as a corrupt or mismatched schema is never
+silently categorized as an unapproved original. This avoids confusing a
+healthy but temporarily locked original with a source-irrelevant or missing
+paper. No live worker is restarted, blocked intentionally, or reconfigured. `--verify-pdf-previews 1` (maximum three per channel and
 question) additionally checks a returned excerpt on the *original physical
 PDF page*, with its own page-text SHA. A derived page label alone is not a
 verified publisher page. The optional physical-page check never invents a

@@ -14,6 +14,9 @@ from file_system_catalog.publisher_firstunit_discovery import (
     FirstUnitRAMIndex,source_firstunit_from_prefix,
     load_complete_source_previews,verify_index_candidate,
     original_firstunit_query_term_coverage,
+    validate_required_original_source_phrase,
+    required_firstunit_source_phrase_proof,
+    compiled_required_original_source_phrase,
 )
 
 
@@ -142,6 +145,88 @@ class PublisherFirstUnitDiscoveryTests(unittest.TestCase):
         self.assertEqual(0,len(self.idx.failed_samples))
         self.assertEqual([],scan['skipped_source_identities'])
         self.assertFalse(scan['skipped_source_details_truncated'])
+
+    def test_required_first_unit_phrase_is_verified_source_only_not_title_or_later_page(self):
+        self.load()
+        entry=next(item for item in self.idx.entries.values()
+                   if item.original_path=='papers/rare.pdf')
+        proven=verify_index_candidate(
+            entry=entry,original_root=self.originals,derived_root=self.derivatives,
+            completed_receipts=self.receipts,native_db=self.native,
+            source_map=self.sm,query='non-zero shaped reward',
+        )
+        exact=required_firstunit_source_phrase_proof(
+            entry=entry,verified_original_candidate=proven,
+            required_phrase='NON-ZERO shaped reward',
+        )
+        self.assertEqual('kmd.explicit_publisher_first_unit_required_phrase_attestation.v1',
+                         exact['schema'])
+        self.assertEqual(1,exact['matches_in_verified_first_original_unit'])
+        self.assertEqual('non-zero shaped reward',
+                         exact['source_attestations'][0]['original_derived_literal_phrase'])
+        source=self.papers['papers/rare.pdf']['derived'].read_text()
+        for hit in exact['source_attestations']:
+            start,end=hit['source_start_char'],hit['source_end_char']
+            self.assertEqual(source[start:end],hit['original_derived_literal_phrase'])
+            self.assertEqual(sha(source[start:end].encode()),hit['literal_phrase_sha256'])
+            self.assertEqual(entry.original_sha256,hit['source_original_sha256'])
+            self.assertFalse(hit['not_a_factual_answer_or_entailment_proof'] is False)
+        self.assertIsNone(required_firstunit_source_phrase_proof(
+            entry=entry,verified_original_candidate=proven,
+            required_phrase='Adaptive Search',  # appears in title, not original
+        ))
+        self.assertIsNone(required_firstunit_source_phrase_proof(
+            entry=entry,verified_original_candidate=proven,
+            required_phrase='fabricated instruction',  # actual later page only
+        ))
+        # Literal phrase is word bounded; a substring of a real word is not
+        # a correct named-entity or metric-label match.
+        self.assertIsNone(required_firstunit_source_phrase_proof(
+            entry=entry,verified_original_candidate=proven,
+            required_phrase='shaped rewar',
+        ))
+        self.assertEqual('unicode_word_bounded_literal_phrase_ignorecase_not_semantic',
+                         exact['match_mode'])
+
+    def test_requested_phrase_cannot_bypass_source_sha_or_revision_checks(self):
+        self.load()
+        entry=next(item for item in self.idx.entries.values()
+                   if item.original_path=='papers/rare.pdf')
+        proven=verify_index_candidate(
+            entry=entry,original_root=self.originals,derived_root=self.derivatives,
+            completed_receipts=self.receipts,native_db=self.native,
+            source_map=self.sm,query='non-zero shaped reward',
+        )
+        altered=dict(proven)
+        altered['current_approved_publisher_and_extracted_bytes_rehashed']=False
+        with self.assertRaisesRegex(ValueError,'current original byte proof'):
+            required_firstunit_source_phrase_proof(
+                entry=entry,verified_original_candidate=altered,
+                required_phrase='non-zero shaped reward')
+        altered=dict(proven);altered['publisher_original_sha256']='9'*64
+        with self.assertRaisesRegex(ValueError,'current original byte proof'):
+            required_firstunit_source_phrase_proof(
+                entry=entry,verified_original_candidate=altered,
+                required_phrase='non-zero shaped reward')
+        original=self.papers['papers/rare.pdf']['original']
+        original.write_bytes(original.read_bytes()+b'unapproved')
+        with self.assertRaisesRegex(ValueError,'SHA differs'):
+            verify_index_candidate(
+                entry=entry,original_root=self.originals,derived_root=self.derivatives,
+                completed_receipts=self.receipts,native_db=self.native,
+                source_map=self.sm,query='non-zero shaped reward')
+
+    def test_explicit_phrase_bounds_injection_untrusted_metadata(self):
+        self.assertIsNone(validate_required_original_source_phrase(None))
+        self.assertEqual('AgentMemRec',validate_required_original_source_phrase('AgentMemRec'))
+        matcher=compiled_required_original_source_phrase('AgentMemRec')
+        self.assertIsNone(matcher.search('AgentMemRecovery'))
+        self.assertIsNotNone(matcher.search('AgentMemRec performs retrieval'))
+        self.assertIsNotNone(compiled_required_original_source_phrase('C++').search('C++ source'))
+        self.assertIsNone(compiled_required_original_source_phrase('A.B').search('AxyB'))
+        for wrong in ('', 'x'*161, ' x ', 'a\nb', '\x00x', '---', 23, False):
+            with self.subTest(wrong=repr(wrong)),self.assertRaisesRegex(ValueError,'bounded original-source'):
+                validate_required_original_source_phrase(wrong)
 
     def test_unsampled_original_is_reported_by_exact_identity_and_cannot_be_retrieved(self):
         omitted_path='papers/unsampled.pdf'

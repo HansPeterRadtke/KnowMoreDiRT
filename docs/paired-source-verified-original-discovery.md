@@ -115,6 +115,19 @@ candidates; it does not filter them or classify whether a document truly
 answers the question. Porter stemming and synonyms can retrieve real sources
 with few exact literal words, so absence is not proof of irrelevance.
 
+The separate `raspi_publisher_firstunit_discovery.py` command additionally
+offers `--require-source-phrase 'AgentMemRec'` as an *explicit* precision mode.
+A batch can use each question's optional `require_source_phrase` key to
+check several independent names during one RAM-only corpus scan. This is a
+bounded, source-byte-SHA-verified first-unit phrase gate, **not** a
+document-wide proof of absence, a relevance classification, or a replacement
+for either normal search channel. It never silently changes the ranker, and
+a phrase only in the catalog title or on an unsearched later page is
+intentionally insufficient. Under concurrent index writes, a persistent
+SQLite lock aborts the whole bounded phrase query rather than mislabeling
+the original as absent. See `docs/filesystem_database.md` for usage,
+limits and the source-span evidence contract.
+
 This option is **significantly slower at cold start**. On the current Raspi
 archive it sampled approximately 274 megabytes of original-derived first-unit
 text across 17,715 originals before ranking. Its selected excerpts are
