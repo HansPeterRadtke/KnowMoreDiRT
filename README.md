@@ -112,3 +112,9 @@ current original-source semantic passage results and generated
 hierarchical-summary results separately, with full source revision
 checks and without replacing either production rank. See the dated
 retrieval regression guide for exact usage and limitations.
+
+Optional [archived publisher HTML article search](docs/publisher_html_article_discovery.md)
+finds original article passages inside an explicitly requested publisher URL
+directory, including a specific archived manual version. It uses a bounded
+RAM-only lexical index with fresh original/derivative/native identity checks,
+without changing the native semantic index or acquiring sources.
