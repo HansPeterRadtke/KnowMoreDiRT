@@ -82,6 +82,85 @@ source-verified archived HTML article search, or the standalone
 summary-lexical discovery with its explicit publisher URL directory argument.
 Do not claim that an unscoped paired result establishes the requested edition.
 
+## Optional third channel: the original publisher first source unit
+
+The earlier two-channel command remains the default. When a query is phrased
+using terms **present in a paper's opening** but omitted from its generated
+summary, add `--include-source-firstunit` to that same command. It reuses the
+existing `FirstUnitRAMIndex` and approved source map to scan a bounded prefix
+of **every completed original**, including originals with no generated
+summary. It then physically hashes each chosen publisher original and its
+full extracted derivative, checks the acquisition receipt and unique native
+FileDB document identity, and preserves the independent Porter rank.
+
+Example (single question, with an original-source excerpt included separately):
+
+~~~bash
+umask 077
+PYTHONDONTWRITEBYTECODE=1 PYTHONPATH=src:. \
+OPENBLAS_NUM_THREADS=1 OMP_NUM_THREADS=1 \
+/data/var/knowmoredirt/semantic-venv/bin/python \
+  scripts/raspi_paired_original_discovery.py \
+  'How do album-understanding benchmarks use trips and wedding photos?' \
+  --top 3 --include-source-firstunit \
+  --private-output \
+  /data/var/knowmoredirt/knowledge-library/search-audit/NEW-THREE-CHANNEL.json
+~~~
+
+This option is **significantly slower at cold start**. On the current Raspi
+archive it sampled approximately 274 megabytes of original-derived first-unit
+text across 17,715 originals before ranking. Its selected excerpts are
+SHA-linked to the **current extracted source text** and marked separately
+from verified original publisher PDF bytes; physical PDF page verification
+requires an additional explicit original-page tool. A generated summary
+remains only an optional search hint; a candidate is never an answer to the
+research question by itself.
+
+The result keeps the native-passage, summary-root and publisher-first-unit
+ranks **independent**, without reranking or inflating a confidence estimate.
+At most five sources per channel and fifteen unique originals can be
+returned. Every distinct returned original and derivative is physically
+rehashed again, and an overlapping original must have identical source
+and derivative revisions and native identity. A different revision, missing
+approved receipt or document outside the original byte budget causes refusal.
+Large PDFs are SHA-streamed as documented above. For multiple questions,
+use the existing `raspi_publisher_firstunit_discovery.py --queries-file`
+interface instead to amortize its initial first-unit index build; this
+three-channel command currently runs a fresh source scan for each query.
+
+A November twenty-sixth original-source comparison used thirteen already
+frozen known-positive research questions. The existing two-channel candidate
+union contained eleven known original documents among its two top-five
+lists. Independently running the existing Porter publisher-firstunit search
+found eleven of thirteen, including **both** originals the two-channel union
+missed. Counting the *union across those separately executed read-only
+searches* therefore covered thirteen of thirteen known supporting documents.
+On a separate five-question, eleven-label multi-relevant set, the existing
+two-channel union identified eight labels, while publisher-firstunit search
+found ten. These are **not** same-snapshot three-channel query tests and
+should not be described as a measured unified ranker improvement or
+exhaustive relevance evaluation. Two actual live three-channel calls also
+verified the previously missing album and overlapping-speech research
+originals, including exact original/source SHA, native identity, and final
+excerpt offsets. Their original physical PDF first-page passages were
+independently checked in separate read-only receipts.
+
+The real single-query cold start was considerable: the archive prefix index
+sampled roughly two hundred seventy-four megabytes for 17,715 sources, and
+the two actual live three-channel queries required approximately sixty-six
+and eighty-three seconds. Do not use it by default for time-critical
+questions. Batch original-first-unit questions with its existing batch
+interface, or use direct native search or source-name lookup when enough.
+Two deliberately unanswerable-looking queries nevertheless produced other
+OR-matched candidates; a populated result alone is not an answer.
+
+The original first-unit text can miss important facts on later pages, tables,
+figures and images. It is a **bounded original-source discovery complement**,
+not a full-document search or proof that the source entails a suggested answer.
+Nonsensical queries containing common words can still return other documents
+because independent lexical candidate discovery uses an OR search; an empty
+or populated candidate set is **not** a verified unanswerability judgment.
+
 ## Current evidence and limitations
 
 On November twenty-sixth an **independent thirteen-question, source-verified

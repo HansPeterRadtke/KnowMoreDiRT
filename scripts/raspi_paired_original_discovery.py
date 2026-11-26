@@ -13,6 +13,7 @@ from datetime import datetime,timezone
 import hashlib
 import json
 import os
+import re
 from pathlib import Path
 import sqlite3
 import sys
@@ -23,6 +24,10 @@ sys.path.insert(0,str(ROOT))
 sys.path.insert(0,str(ROOT/'src'))
 
 from file_system_catalog.source_review_audit import safe_file,sha_file
+from file_system_catalog.publisher_firstunit_discovery import (
+    FirstUnitRAMIndex,load_complete_source_previews,verify_index_candidate,
+)
+from scripts.raspi_publisher_firstunit_discovery import approved_original_receipts
 from scripts.raspi_low_memory_native_original_search import native_low_memory_search
 from scripts.raspi_source_verified_summary_discovery import (
     verified_original_discovery,DEFAULT_ORIGINAL_ROOT,DEFAULT_DERIVED_ROOT,
@@ -31,7 +36,8 @@ from scripts.raspi_source_verified_summary_discovery import (
 from scripts.raspi_summary_claim_evidence import read_approved_revision
 
 MAX_PER_CHANNEL=5
-MAX_UNION=10
+MAX_UNION=15
+MAX_PAIRED_UNION=10
 # Publisher originals are SHA-streamed; extracted text is not. Keep their
 # independent memory/read constraints separate, as in the native source audit.
 MAX_SINGLE_ORIGINAL_BYTES=128*1024*1024
@@ -89,8 +95,145 @@ def independent_original_union(native:dict, lexical:dict)->list[dict]:
                             'native_original_passage_sha256':None,
                             'lexical_summary_candidate_rank':rank,
                             'both_independently_returned':False}
-    if not 0<=len(selected)<=MAX_UNION:
+    if not 0<=len(selected)<=MAX_PAIRED_UNION:
         raise ValueError('unbounded source discovery union')
+    return list(selected.values())
+
+
+def verified_publisher_firstunit_candidates(
+    *,query:str,top:int,source_map:sqlite3.Connection,native_db:sqlite3.Connection,
+    original_root:Path,derivative_root:Path,ledger:Path,
+)->dict:
+    """Read existing current-source previews once; SHA-verify each selected hit.
+
+    A source-unit preview is an exact current derivative excerpt, not a
+    publisher-PDF-byte quotation or a physically attested page. This
+    optional channel also covers originals without completed summaries.
+    """
+    if not isinstance(query,str) or not 1<=len(query)<=600 or (
+            type(top) is not int or not 1<=top<=MAX_PER_CHANNEL):
+        raise ValueError('invalid bounded original first-unit search')
+    receipts=approved_original_receipts(ledger)
+    with FirstUnitRAMIndex() as idx:
+        scan=load_complete_source_previews(
+            source_map=source_map,derived_root=derivative_root,index=idx,
+        )
+        ranked=idx.ranked(query,channel='porter',limit=max(top*6,30))
+        verified=[]
+        omitted=[]
+        for entry,identity,score in ranked:
+            if len(verified)>=top:
+                break
+            try:
+                candidate=verify_index_candidate(
+                    entry=entry,original_root=original_root,
+                    derived_root=derivative_root,
+                    completed_receipts=receipts,
+                    native_db=native_db,source_map=source_map,
+                    query=query,verify_pdf_page=False,
+                    max_original_bytes=MAX_SINGLE_ORIGINAL_BYTES,
+                )
+                if (candidate['current_approved_publisher_and_extracted_bytes_rehashed'] is not True
+                        or candidate['quoted_text_is_original_publisher_bytes'] is not False
+                        or candidate['factual_answer_verified'] is not False
+                        or candidate['source_unit_label_scope']!='derived_source_text_only_not_physical_page_proof'):
+                    raise ValueError('publisher-source first-unit provenance is ambiguous')
+                verified.append({
+                    'source_rank':len(verified)+1,
+                    'native_firstunit_candidate_id':identity,
+                    'porter_bm25_sort_only_not_probability':float(score),
+                    **candidate,
+                })
+            except (ValueError,UnicodeError,OSError,sqlite3.Error) as exc:
+                omitted.append({
+                    'source_path':entry.original_path,
+                    'lexical_rank_before_source_proof':len(verified)+len(omitted)+1,
+                    'reason_type':type(exc).__name__,
+                    'candidate_not_returned':True,
+                })
+    return {
+        'schema':'kmd.opt_in_verified_publisher_firstunit_source_discovery.v1',
+        'source_scan':scan,
+        'source_firstunit_index_is_ephemeral_in_memory':True,
+        'source_originals_including_unsummarized_are_eligible':True,
+        'returned':len(verified),
+        'candidate_originals':verified,
+        'unverified_source_candidates_excluded':omitted,
+        'original_and_full_derivative_sha_reverified_per_returned_candidate':True,
+        'source_unit_text_is_derived_original_not_physical_pdf_page_verification':True,
+        'factual_answer_verified':False,
+    }
+
+
+def augment_original_union_with_firstunit(base:list[dict], firstunit:dict)->list[dict]:
+    """Add at most five independently verified original-source-unit identities.
+
+    Preserve native/summary ranks and append only *new* documents in verified
+    Porter order. The final full publisher/derived source SHA must be checked
+    AGAIN for all selected originals by final_original_union_revision_guard.
+    """
+    if (not isinstance(base,list) or len(base)>MAX_PAIRED_UNION
+            or not isinstance(firstunit,dict)
+            or firstunit.get('returned')!=len(firstunit.get('candidate_originals',[]))
+            or firstunit.get('returned',0)>MAX_PER_CHANNEL
+            or firstunit.get('source_unit_text_is_derived_original_not_physical_pdf_page_verification') is not True
+            or firstunit.get('factual_answer_verified') is not False):
+        raise ValueError('untrusted original firstunit candidate receipt')
+    selected={}
+    for item in base:
+        path=item.get('original_path')
+        if not isinstance(path,str) or path in selected:
+            raise ValueError('duplicate or invalid existing source identity')
+        selected[path]={**item,'publisher_firstunit_porter_rank':None,
+                        'publisher_firstunit_excerpt_sha256':None}
+    for rank,hit in enumerate(firstunit['candidate_originals'],1):
+        path=hit.get('original_path')
+        original_sha=hit.get('publisher_original_sha256')
+        derivative_sha=hit.get('current_derivative_sha256')
+        preview=hit.get('publisher_first_unit_preview')
+        preview_sha=hit.get('source_preview_sha256')
+        if (not isinstance(path,str) or not isinstance(original_sha,str)
+                or not re.fullmatch(r'[0-9a-f]{64}',original_sha)
+                or not isinstance(derivative_sha,str)
+                or not re.fullmatch(r'[0-9a-f]{64}',derivative_sha)
+                or type(hit.get('source_rank')) is not int
+                or hit['source_rank']!=rank
+                or not isinstance(preview,str)
+                or not isinstance(preview_sha,str)
+                or hashlib.sha256(preview.encode('utf8')).hexdigest()!=preview_sha
+                or type(hit.get('source_preview_start_char')) is not int
+                or type(hit.get('source_preview_end_char')) is not int
+                or not 0<=hit['source_preview_start_char']<hit['source_preview_end_char']
+                or hit['source_preview_end_char']-hit['source_preview_start_char']!=len(preview)
+                or hit.get('current_approved_publisher_and_extracted_bytes_rehashed') is not True
+                or hit.get('quoted_text_is_original_publisher_bytes') is not False
+                or hit.get('factual_answer_verified') is not False
+                or hit.get('source_unit_label_scope')!='derived_source_text_only_not_physical_page_proof'
+                or type(hit.get('native_original_filedb_entry_id')) is not int):
+            raise ValueError('first-unit extra source lacks independent current-original proof')
+        if path in selected:
+            row=selected[path]
+            if row['original_source_sha256']!=original_sha:
+                raise ValueError('inconsistent original SHA between source retrieval channels')
+            if row['publisher_firstunit_porter_rank'] is not None:
+                raise ValueError('duplicate firstunit verified original')
+        else:
+            row={'original_path':path,'original_source_sha256':original_sha,
+                 'native_source_passage_rank':None,
+                 'native_original_passage_sha256':None,
+                 'lexical_summary_candidate_rank':None,
+                 'both_independently_returned':False,
+                 'publisher_firstunit_porter_rank':None,
+                 'publisher_firstunit_excerpt_sha256':None}
+            selected[path]=row
+        row['publisher_firstunit_porter_rank']=rank
+        row['publisher_firstunit_excerpt_sha256']=preview_sha
+        row['publisher_firstunit_excerpt_start_char']=hit['source_preview_start_char']
+        row['publisher_firstunit_excerpt_end_char']=hit['source_preview_end_char']
+        row['publisher_firstunit_derived_sha256']=derivative_sha
+        row['publisher_firstunit_native_original_id']=hit['native_original_filedb_entry_id']
+    if len(selected)>MAX_UNION:
+        raise ValueError('verified three-channel original set exceeds bounded union')
     return list(selected.values())
 
 
@@ -142,6 +285,20 @@ def final_original_union_revision_guard(
                 raise ValueError('native hash missing without documented large-file policy')
         elif stored_native_sha!=original_sha:
             raise ValueError('native original SHA contradicts independently verified bytes')
+        if 'publisher_firstunit_derived_sha256' in item:
+            if (item['publisher_firstunit_derived_sha256']!=derived_sha
+                    or item.get('publisher_firstunit_native_original_id')!=_native_id):
+                raise ValueError('first-unit passage identity moved between independent source checks')
+            # One more source-linked excerpt integrity check after all channel
+            # ranks were combined, not merely the source-map SHA comparison.
+            source_text=derivative.read_text(encoding='utf8',errors='strict')
+            start=item['publisher_firstunit_excerpt_start_char']
+            end=item['publisher_firstunit_excerpt_end_char']
+            if (type(start) is not int or type(end) is not int
+                    or not 0<=start<end<=len(source_text)
+                    or hashlib.sha256(source_text[start:end].encode()).hexdigest()
+                        !=item['publisher_firstunit_excerpt_sha256']):
+                raise ValueError('first-unit excerpt no longer occupies the exact current original-source interval')
         if read_approved_revision(ledger,path)!=original_sha:
             raise ValueError('approved original receipt changed during final paired check')
         latest=source_map.execute(
@@ -174,9 +331,11 @@ def paired_verified_discovery(
     source_map_path:Path=DEFAULT_SOURCE_MAP,
     native_db_path:Path=DEFAULT_NATIVE_DB,
     ledger:Path=DEFAULT_ORIGINAL_ROOT/'_management/status.json',
+    include_source_firstunit:bool=False,
 )->dict:
     if (not isinstance(query,str) or not 1<=len(query)<=600 or not query.strip()
-            or type(top) is not int or not 1<=top<=MAX_PER_CHANNEL):
+            or type(top) is not int or not 1<=top<=MAX_PER_CHANNEL
+            or type(include_source_firstunit) is not bool):
         raise ValueError('invalid bounded paired source discovery request')
     started=time.monotonic()
     # In DELETE journal mode the active summarizers periodically hold a
@@ -204,12 +363,22 @@ def paired_verified_discovery(
             ledger=ledger,limit=top,porter=True,
         )
         union=independent_original_union(native,lexical)
+        firstunit=None
+        if include_source_firstunit:
+            firstunit=verified_publisher_firstunit_candidates(
+                query=query,top=top,source_map=sm,native_db=db,
+                original_root=original_root,derivative_root=derived_root,
+                ledger=ledger,
+            )
+            union=augment_original_union_with_firstunit(union,firstunit)
         final=final_original_union_revision_guard(
             records=union,source_map=sm,native_db=db,
             original_root=original_root,derivative_root=derived_root,ledger=ledger,
         )
     return {
-        'schema':'kmd.opt_in_paired_native_passage_plus_summary_lexical_original_discovery.v1',
+        'schema':('kmd.opt_in_verified_three_independent_original_channels.v1'
+                  if firstunit is not None else
+                  'kmd.opt_in_paired_native_passage_plus_summary_lexical_original_discovery.v1'),
         'created_at_utc':datetime.now(timezone.utc).isoformat(),
         'query_sha256':hashlib.sha256(query.encode('utf8')).hexdigest(),
         'requested_per_channel':top,
@@ -218,8 +387,25 @@ def paired_verified_discovery(
         'elapsed_seconds':round(time.monotonic()-started,3),
         'native_original_passage_candidates':len(native['results']),
         'source_verified_summary_lexical_original_candidates':len(lexical['candidates']),
+        **({'publisher_firstunit_verified_original_candidates':len(firstunit['candidate_originals']),
+            'publisher_firstunit_scan':firstunit['source_scan'],
+            'publisher_firstunit_source_verified_candidates':firstunit['candidate_originals'],
+            'publisher_firstunit_candidates_dropped':firstunit['unverified_source_candidates_excluded'],
+            'source_firstunit_is_original_derived_text_not_physical_pdf_quote':True,
+            'three_independent_channel_ranks_not_fused':True,
+            'up_to_fifteen_source_verified_candidate_documents_not_a_new_top_five':True}
+           if firstunit is not None else {}),
         'unique_original_candidates':len(union),
         'candidates_returned_by_both':sum(int(x['both_independently_returned']) for x in union),
+        **({'candidates_found_in_at_least_two_of_three_source_channels':sum(
+            sum(r.get(k) is not None for k in (
+                'native_source_passage_rank','lexical_summary_candidate_rank',
+                'publisher_firstunit_porter_rank'))>=2 for r in union),
+            'candidates_found_exclusively_by_original_firstunit':sum(
+                r['publisher_firstunit_porter_rank'] is not None
+                and r['native_source_passage_rank'] is None
+                and r['lexical_summary_candidate_rank'] is None for r in union),
+        } if firstunit is not None else {}),
         'candidate_union_native_order_then_lexical_additions_not_combined_rank':union,
         'final_current_publisher_source_byte_and_native_file_identity_check':final,
         'native_source_verified_passage_results':native,
@@ -240,6 +426,8 @@ def main()->None:
     ap=argparse.ArgumentParser(description=__doc__)
     ap.add_argument('query')
     ap.add_argument('--top',type=int,default=5)
+    ap.add_argument('--include-source-firstunit',action='store_true',
+                    help='Opt-in original first-unit search across all approved originals; extra RAM-only 17k-source index, slow cold start; no score fusion')
     ap.add_argument('--private-output',type=Path,required=True)
     args=ap.parse_args()
     dest=args.private_output
@@ -247,7 +435,10 @@ def main()->None:
             or dest.suffix!='.json' or not dest.parent.is_dir() or dest.parent.is_symlink()
             or not dest.resolve().is_relative_to(_PRIVATE_ROOT.resolve())):
         raise ValueError('destination must be a fresh restricted private search-audit JSON file')
-    report=paired_verified_discovery(query=args.query,top=args.top)
+    report=paired_verified_discovery(
+        query=args.query,top=args.top,
+        include_source_firstunit=args.include_source_firstunit,
+    )
     fd=os.open(dest,os.O_WRONLY|os.O_CREAT|os.O_EXCL|os.O_NOFOLLOW,0o600)
     with os.fdopen(fd,'w',encoding='utf8') as f:
         json.dump(report,f,ensure_ascii=False,indent=2)
@@ -256,6 +447,8 @@ def main()->None:
        'status':'paired_source_verified_document_discovery',
        'native_original_evidence_candidates':report['native_original_passage_candidates'],
        'lexical_original_candidates':report['source_verified_summary_lexical_original_candidates'],
+       **({'source_firstunit_original_candidates':report['publisher_firstunit_verified_original_candidates']}
+          if args.include_source_firstunit else {}),
        'distinct_originals':report['unique_original_candidates'],
        'originals_final_physically_rehashed':report[
            'final_current_publisher_source_byte_and_native_file_identity_check'][
