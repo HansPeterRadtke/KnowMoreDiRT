@@ -253,6 +253,90 @@ class SourceClaimEvidenceCandidatesTest(unittest.TestCase):
         self.assertEqual(240,evidence["qualifier_cue_distance_limit_chars"])
 
 
+    def test_explicit_focus_subject_flags_attribution_for_parallel_numeric_pdf_table(self):
+        original=(
+            "[[SOURCE UNIT: PDF page 8]]\n"
+            "Table 2: Accuracy (%) for LongMemEval-S and LoCoMo.\n"
+            "MemOS∗ [24] 77.8 T-Mem∗ [16] 80.3 A-Mem 0.502 86.2\n"
+            "AgentMemRec 83.2\n"
+            "T-Mem, reprod. 77.4\n"
+            "AgentMemRec† 77.0\n"
+        )
+        summary=("AgentMemRec achieves 83.2% accuracy on LongMemEval-S and "
+                 "80.3% accuracy on LoCoMo.")
+        out=scan_summary_claims(summary=summary,source=original,
+                                focus_subject_label="AgentMemRec")
+        self.assertEqual(2,out["review_candidates"])
+        self.assertEqual("NOT_PROVIDED",out["automatic_factual_accuracy_or_fidelity_verdict"])
+        self.assertEqual("NOT_PERFORMED",out["figure_and_table_visual_verification"])
+        by_value={c["matched_value"]:c for c in out["claims"]}
+        correct=by_value["83.2%"]
+        wrong=by_value["80.3%"]
+        self.assertEqual("number_without_percent_symbol_check_original_table_or_figure_unit",
+                         wrong["evidence_status"])
+        self.assertFalse(wrong["source_percent_symbol_present_at_matched_value"])
+        self.assertEqual("NONE",wrong["automatic_truth_verdict"])
+        self.assertEqual(1,len(wrong["original_extracted_table_row_attribution_candidates"]))
+        attribution=wrong["original_extracted_table_row_attribution_candidates"][0]
+        self.assertIn("T-Mem∗ [16] 80.3",attribution["source_row_excerpt"])
+        self.assertNotIn("AgentMemRec",attribution["source_row_excerpt"])
+        self.assertFalse(
+            attribution["focus_subject_observed_before_number_on_same_extracted_line"])
+        self.assertEqual("focus_subject_not_seen_close_before_numeric_cell_review_source_table",
+                         attribution["review_cue"])
+        self.assertEqual("NOT_ASSESSED",
+                         attribution["source_numeric_cell_row_attribution_truth_verdict"])
+        self.assertEqual("PDF page 8",attribution["source_unit_label"])
+        self.assertEqual(original[attribution["source_row_start_char"]:
+                                  attribution["source_row_end_char"]],
+                         attribution["source_row_excerpt"])
+        self.assertEqual(hashlib.sha256(attribution["source_row_excerpt"].encode()).hexdigest(),
+                         attribution["source_row_excerpt_sha256"])
+        aligned=correct["original_extracted_table_row_attribution_candidates"][0]
+        self.assertTrue(aligned["focus_subject_observed_before_number_on_same_extracted_line"])
+        self.assertIn("AgentMemRec 83.2",aligned["source_row_excerpt"])
+        self.assertTrue(out["source_table_attribution_candidates_only_not_factual_truth"])
+
+    def test_source_row_focus_subject_is_explicit_optional_and_safely_literal(self):
+        source=("[[SOURCE UNIT: PDF page 2]]\n"
+                "AgentMemRec 83.2\n"
+                "T-Mem∗ 80.3\n")
+        query="AgentMemRec achieves 80.3% in a comparison."
+        legacy=scan_summary_claims(summary=query,source=source)
+        self.assertNotIn("original_extracted_table_row_attribution_candidates",
+                         legacy["claims"][0])
+        for term in ("AgentMemRec.*", "AgentMemRec/foobar"):
+            with self.subTest(term=term):
+                d=scan_summary_claims(summary=query,source=source,
+                                      focus_subject_label=term)
+                self.assertEqual([],d["claims"][0]["original_extracted_table_row_attribution_candidates"])
+                self.assertEqual("NONE",d["claims"][0]["automatic_truth_verdict"])
+        for bad in ("", " A ", "Bad\nLabel", "x"*101,True,123):
+            with self.subTest(bad=bad),self.assertRaisesRegex(ValueError,"subject label"):
+                scan_summary_claims(summary=query,source=source,
+                                    focus_subject_label=bad)
+        excluded=scan_summary_claims(
+            summary=query,source=source,
+            source_start_char=source.index("T-Mem∗"),
+            source_end_char=len(source),
+            focus_subject_label="AgentMemRec")
+        # The generated claim happens to contain the subject, but the first
+        # source row is outside this summary node's actual original span.
+        row=excluded["claims"][0]["original_extracted_table_row_attribution_candidates"][0]
+        self.assertGreaterEqual(row["source_row_start_char"],source.index("T-Mem∗"))
+        self.assertFalse(row["focus_subject_observed_before_number_on_same_extracted_line"])
+        self.assertEqual("NOT_ASSESSED",row["source_numeric_cell_row_attribution_truth_verdict"])
+
+    def test_percent_literal_without_table_row_proof_is_not_false_attribution(self):
+        source=("[[SOURCE UNIT: PDF page 1]]\n"
+                "AgentMemRec achieves 77.0% accuracy.\n")
+        d=scan_summary_claims(summary="AgentMemRec achieves 77.0% accuracy.",
+                              source=source,focus_subject_label="AgentMemRec")
+        c=d["claims"][0]
+        self.assertEqual("exact_percent_text",c["source_numeric_text_match_kind"])
+        self.assertEqual([],c["original_extracted_table_row_attribution_candidates"])
+        self.assertEqual("NONE",c["automatic_truth_verdict"])
+
     def test_numeric_table_cell_without_percent_unit_is_only_review_candidate(self):
         source=(
             "[[SOURCE UNIT: PDF page 9]]\n"

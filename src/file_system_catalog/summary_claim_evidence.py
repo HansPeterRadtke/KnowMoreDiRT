@@ -133,10 +133,61 @@ def _evidence(source: str, sentence: str, locations: list[int], *,
     return kept
 
 
+def _numeric_source_row_candidates(
+    *, source: str, evidence: list[dict[str, Any]],
+    focus_subject_label: str, region_start: int, region_end: int,
+) -> list[dict[str, Any]]:
+    """Exact source-row character locations, no inferred scientific attribution.
+
+    A published PDF's extracted text may weave parallel table columns or
+    separate a label from its numerical cell. A missing adjacent label is
+    therefore a question for review, NEVER a factual error verdict.
+    """
+    matcher = re.compile(
+        r"(?<![\w])" + re.escape(focus_subject_label) + r"(?![\w])",
+        re.I,
+    )
+    rows = []
+    for hit in evidence[:6]:
+        at = hit["matched_anchor_char"]
+        if not region_start <= at < region_end:
+            raise ValueError("number-source anchor outside attested original interval")
+        before = max(region_start, source.rfind("\n", region_start, at) + 1)
+        after = source.find("\n", at, region_end)
+        after = region_end if after == -1 else after
+        start = max(before, at - 160)
+        end = min(after, at + 160)
+        if not start <= at < end or end - start > 320:
+            raise ValueError("invalid bounded source-table row excerpt")
+        snippet = source[start:end]
+        local_prefix = source[max(before, at - 120):at]
+        focus_near = bool(matcher.search(local_prefix))
+        rows.append({
+            "source_row_excerpt":snippet,
+            "source_row_excerpt_sha256":_sha(snippet),
+            "source_row_start_char":start,
+            "source_row_end_char":end,
+            "matched_number_start_char":at,
+            "source_unit_label":_page_label(source, at),
+            "focus_subject_label":focus_subject_label,
+            "focus_subject_observed_before_number_on_same_extracted_line":focus_near,
+            "review_cue":(
+                "focus_subject_not_seen_close_before_numeric_cell_review_source_table"
+                if not focus_near
+                else "focus_subject_text_near_numeric_cell_still_verify_metric_and_units"
+            ),
+            "meaning_of_extracted_line_layout_unverified":True,
+            "source_numeric_cell_row_attribution_truth_verdict":"NOT_ASSESSED",
+            "source_excerpt_is_exact_current_derived_original_text":True,
+        })
+    return rows
+
+
 def scan_summary_claims(
     *, summary: str, source: str, maximum_claims: int = 24,
     context_chars: int = 2000, maximum_evidence: int = 3,
     source_start_char: int = 0, source_end_char: int | None = None,
+    focus_subject_label: str | None = None,
 ) -> dict[str, Any]:
     """Screen numerical claims and unqualified GPU performance statements.
 
@@ -152,6 +203,12 @@ def scan_summary_claims(
             or type(context_chars) is not int or not 160 <= context_chars <= 2000
             or type(maximum_evidence) is not int or not 1 <= maximum_evidence <= 6):
         raise ValueError("invalid bounded claim/evidence request")
+    if focus_subject_label is not None and (
+            not isinstance(focus_subject_label,str)
+            or not 2 <= len(focus_subject_label) <= 100
+            or focus_subject_label != focus_subject_label.strip()
+            or any(ord(char) < 32 for char in focus_subject_label)):
+        raise ValueError("invalid bounded explicit summary subject label")
     if source_end_char is None:
         source_end_char = len(source)
     if (type(source_start_char) is not int or type(source_end_char) is not int
@@ -203,6 +260,17 @@ def scan_summary_claims(
                 maximum=maximum_evidence, region_start=source_start_char,
                 region_end=source_end_char,
             )
+            source_row_review = (
+                _numeric_source_row_candidates(
+                    source=source, evidence=evidence,
+                    focus_subject_label=focus_subject_label,
+                    region_start=source_start_char, region_end=source_end_char,
+                )
+                if focus_subject_label is not None and match_kind == "bare_number_no_unit"
+                and re.search(r"(?<![\w])"+re.escape(focus_subject_label)+r"(?![\w])",
+                              sentence, re.I)
+                else []
+            )
             claims.append({
                 "review_kind": "quantified_summary_claim",
                 "claim_start_char": start, "claim_end_char": end,
@@ -223,6 +291,11 @@ def scan_summary_claims(
                 "matching_bare_number_is_not_percentage_unit_proof":
                     match_kind == "bare_number_no_unit",
                 "source_evidence": evidence,
+                **({"explicit_focus_subject_label": focus_subject_label,
+                    "original_extracted_table_row_attribution_candidates": source_row_review,
+                    "table_row_candidates_are_not_automatic_false_claim_verdicts": True,
+                    "focus_subject_label_supplied_by_reviewer_not_inferred_from_pdf": True}
+                   if focus_subject_label is not None else {}),
                 "review_prompt": ("Check task/metric labels, sample, comparison,"
                                   " reporting attribution and conditions. If"
                                   " the source contains only a bare numeric"
@@ -269,5 +342,8 @@ def scan_summary_claims(
         "generated_summary_is_not_an_original_source": True,
         "automatic_factual_accuracy_or_fidelity_verdict": "NOT_PROVIDED",
         "figure_and_table_visual_verification": "NOT_PERFORMED",
+        **({"explicit_source_table_focus_subject":focus_subject_label,
+            "source_table_attribution_candidates_only_not_factual_truth":True}
+           if focus_subject_label is not None else {}),
         "does_not_change_native_summary_or_corpus": True,
     }

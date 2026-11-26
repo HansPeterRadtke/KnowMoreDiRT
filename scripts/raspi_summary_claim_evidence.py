@@ -56,6 +56,7 @@ def reviewed_native_root(
     derived_root: Path, completed_receipts: dict[str, str],
     context_chars: int = 2000, all_nodes: bool = False,
     maximum_reviewed_nodes: int = 64,
+    focus_subject_label: str | None = None,
 ) -> dict:
     """Check current original, native tree and exact root BEFORE and AFTER scan."""
     if (type(all_nodes) is not bool or type(maximum_reviewed_nodes) is not int
@@ -113,6 +114,7 @@ def reviewed_native_root(
     summary, summary_sha, props = selected[0]
     evidence = scan_summary_claims(
         summary=summary, source=source, context_chars=context_chars,
+        focus_subject_label=focus_subject_label,
     )
     if evidence["summary_sha256"] != summary_sha:
         raise ValueError("claim review does not belong to current native root")
@@ -160,6 +162,7 @@ def reviewed_native_root(
             review = scan_summary_claims(
                 summary=body, source=source, context_chars=context_chars,
                 source_start_char=start, source_end_char=end,
+                focus_subject_label=focus_subject_label,
             )
             if review["summary_sha256"] != body_sha:
                 raise ValueError("native node summary changed during claim review")
@@ -198,6 +201,9 @@ def reviewed_native_root(
         ),
         "original_and_native_tree_checked_again_after_review": True,
         "source_visual_figure_or_table_reviewed": False,
+        **({"reviewer_supplied_focus_subject":focus_subject_label,
+            "candidate_source_table_row_labels_not_semantically_verified":True}
+           if focus_subject_label is not None else {}),
         "cannot_automatically_establish_factual_truth": True,
         "side_effects": {
             "new_downloads": 0, "model_calls": 0,
@@ -221,6 +227,8 @@ def main() -> None:
     ap.add_argument("--all-nodes", action="store_true",
                     help="Review every current native child and root within its exact original span")
     ap.add_argument("--maximum-reviewed-nodes", type=int, default=64)
+    ap.add_argument("--focus-subject-label",
+                    help="Explicit source subject/entity label, e.g. AgentMemRec. Candidate same-line percentage row review ONLY; never an automatic false-attribution verdict")
     args = ap.parse_args()
     # Refuse absolute/traversal/symlink escapes before touching the index.
     safe_file(args.original_root, args.original_path)
@@ -242,6 +250,7 @@ def main() -> None:
             completed_receipts={args.original_path: receipt},
             context_chars=args.context_chars,
             all_nodes=args.all_nodes, maximum_reviewed_nodes=args.maximum_reviewed_nodes,
+            focus_subject_label=args.focus_subject_label,
         )
     # The only write is a fresh private audit artifact, never the corpus.
     old_umask = os.umask(0o077)

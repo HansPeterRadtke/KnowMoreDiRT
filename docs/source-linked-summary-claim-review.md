@@ -71,6 +71,46 @@ control, sample size or attribution is the same. In particular, an
 abstract's number can require qualifications from another section or
 from a rendered figure.
 
+### Optional original-table row attribution check
+
+For a particular paper with an explicitly confirmed model or subject label,
+add `--focus-subject-label 'AgentMemRec'` to the read-only command above.
+Use the `--all-nodes` option to inspect child summaries as well as the root.
+This **does not infer a label automatically** from a model output or a paper
+title. It uses the reviewer-supplied string as literal text and only
+screens quantified claims that contain that same focus label.
+
+For a PDF table numeric cell without a percent sign, the extra
+`original_extracted_table_row_attribution_candidates` records the closest
+actual extracted-source line around the matched number, its original
+character offsets, exact content SHA and physical page *label*. It also
+indicates whether the focus label appeared immediately **before** that
+number on the same extracted line. If not, the result is a prompt for
+checking the source table's row and column labels—not proof of an error.
+A table can have several side-by-side columns, wrapped rows, or a missing
+text layer. Even seeing the label nearby does not establish the right
+metric, unit or experiment; a complete original PDF layout review is
+required for a consequential scientific statement.
+
+This check exposed a real case in the already archived research paper
+*Agent Memory as Recommendation*: a generated child summary associates
+**80.3% LoCoMo accuracy** with AgentMemRec, but the original paper's
+Table 2 (physical page eight) places the copied 80.3 result on **T-Mem's**
+row. The paper reports **77.0** for AgentMemRec with optional write-time
+records and **77.4** for its T-Mem reproduction, while **83.2** is its
+LongMemEval-S result on all five hundred questions. These numbers are
+paper-reported results, not tests on the owner's agent. The review now
+locates the numerical values and distinct row text without ever replacing
+the live native summary. The verified source-specific correction and exact
+publisher-document SHA are retained in the private evidence index.
+
+The new hints are **not** false-claim classifications: a row whose subject
+is missing from the local line can be valid because of table formatting,
+and a matching string can be unrelated in a parallel column. The output
+always retains `automatic_truth_verdict: NONE`. The program leaves the
+canonical FileDB, source-map, generated summaries and embedding vectors
+unchanged and never accesses a remote language model.
+
 The possible_forecast_reported_as_result label is narrower: an unqualified
 GPU performance sentence has a nearby original mention of improving
 throughput **conditionally**. It flags an important comparison for review,
@@ -113,8 +153,9 @@ PYTHONDONTWRITEBYTECODE=1 PYTHONPATH=src:. python3 -m unittest -q \
   tests.filesystem_database.test_recent_source_tree_audit
 ~~~
 
-The synthetic tests include child-span isolation, correct quantified observations, conditional
-GPU claims, missing figure-only numbers, original-byte changes, untrusted
+The synthetic tests include exact source-row attribution candidates, literal
+reviewer-supplied subject labels, child-span isolation, correct quantified
+observations, conditional GPU claims, missing figure-only numbers, original-byte changes, untrusted
 source instructions, decimal percentages, bounded output, exact excerpt
 SHAs and correct page labels. The real SciNet run may identify multiple
 **candidates**; the independent PDF semantic audit remains necessary to
