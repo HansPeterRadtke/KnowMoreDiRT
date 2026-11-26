@@ -22,6 +22,7 @@ ROOT=Path(__file__).resolve().parents[1]
 sys.path.insert(0,str(ROOT))
 sys.path.insert(0,str(ROOT/'src'))
 from file_system_catalog.hybrid_search import query_terms
+from file_system_catalog.publisher_html_article_discovery import PublisherScope
 from file_system_catalog.recent_source_tree_audit import (
     audit_current_source_tree,MAX_SOURCE_BYTES,MAX_DERIVED_BYTES,PROMPT,
 )
@@ -35,8 +36,30 @@ _PRIVATE_ROOT=Path('/data/var/knowmoredirt/knowledge-library/search-audit')
 _SCHEMA='kmd.source_verified_native_summary_lexical_discovery.v1'
 
 
+def validate_publisher_url_prefix(value: str | None) -> str | None:
+    """Reuse the installed publisher-archive URL identity contract.
+
+    This only compares existing approved source-map metadata. It makes no
+    network request and never guesses or upgrades a missing publisher version.
+    """
+    if value is None:
+        return None
+    return PublisherScope.parse(value).url
+
+
+def _url_in_scope(url: str | None, *, publisher_url_prefix: str) -> bool:
+    """Untrusted source-map URL may be malformed: never match it by accident."""
+    if not isinstance(url,str):
+        return False
+    try:
+        return PublisherScope.parse(publisher_url_prefix).contains(url)
+    except ValueError:
+        return False
+
+
 def current_summary_roots(source_map:sqlite3.Connection,native_db:sqlite3.Connection,
-                          *,maximum_roots:int=20000,maximum_total_characters:int=50_000_000):
+                          *,maximum_roots:int=20000,maximum_total_characters:int=50_000_000,
+                          publisher_url_prefix:str|None=None):
     """Use current revision metadata only, fail closed on ambiguous summaries.
 
     This initial collection does NOT physically validate each original. Only
@@ -46,12 +69,21 @@ def current_summary_roots(source_map:sqlite3.Connection,native_db:sqlite3.Connec
             or type(maximum_total_characters) is not int
             or not 500000<=maximum_total_characters<=100_000_000):
         raise ValueError('invalid bounded current-summary scan')
-    revisions={
-        path:(srcsha,dersha) for path,srcsha,dersha in source_map.execute(
-            "SELECT source_path,source_sha256,derived_sha256 "
-            "FROM originals WHERE status='complete'"
-        )
-    }
+    publisher_url_prefix=validate_publisher_url_prefix(publisher_url_prefix)
+    if publisher_url_prefix is None:
+        revisions={
+            path:(srcsha,dersha) for path,srcsha,dersha in source_map.execute(
+                "SELECT source_path,source_sha256,derived_sha256 "
+                "FROM originals WHERE status='complete'"
+            )
+        }
+    else:
+        revisions={
+            path:(srcsha,dersha) for path,srcsha,dersha,url in source_map.execute(
+                "SELECT source_path,source_sha256,derived_sha256,original_url "
+                "FROM originals WHERE status='complete'"
+            ) if _url_in_scope(url,publisher_url_prefix=publisher_url_prefix)
+        }
     native_rows=native_db.execute("""
         SELECT f.relative_path_display,c.start_char,c.end_char,c.content_sha256,
                r.representation_text,r.representation_text_sha256,r.generation_json
@@ -63,11 +95,14 @@ def current_summary_roots(source_map:sqlite3.Connection,native_db:sqlite3.Connec
           AND r.prompt_version=? AND r.analysis_status='complete'
     """,(PROMPT,)).fetchall()
     candidates={}
-    excluded={'historical_or_malformed':0,'oversized_root':0,'ambiguous_current_roots':0}
+    excluded={'historical_or_malformed':0,'oversized_root':0,'ambiguous_current_roots':0,
+              'outside_requested_publisher_scope':0}
     for path,start,end,chunksha,summary,textsha,rawgen in native_rows:
         expected=revisions.get(path)
         if not expected:
-            excluded['historical_or_malformed']+=1
+            excluded[('outside_requested_publisher_scope'
+                      if publisher_url_prefix is not None
+                      else 'historical_or_malformed')]+=1
             continue
         try:meta=json.loads(rawgen)
         except (ValueError,TypeError):
@@ -98,10 +133,15 @@ def current_summary_roots(source_map:sqlite3.Connection,native_db:sqlite3.Connec
         if len(rows)>=maximum_roots or total_chars>maximum_total_characters:
             raise ValueError('current generated-summary corpus exceeds ephemeral safety bound')
         rows.append(record)
-    if not rows:
+    if not rows and publisher_url_prefix is None:
         raise ValueError('no current summary roots eligible for candidate discovery')
     return rows,{'native_root_rows_scanned':len(native_rows),
-                 'source_map_complete_entries':len(revisions),
+                 'publisher_url_prefix_scope':publisher_url_prefix,
+                 'completed_originals_in_requested_url_scope':len(revisions),
+                 'empty_requested_url_scope':bool(publisher_url_prefix and not rows),
+                 'source_map_complete_entries':source_map.execute(
+                     "SELECT COUNT(*) FROM originals WHERE status='complete'"
+                 ).fetchone()[0],
                  'metadata_revision_matched_roots':len(rows),
                  'indexed_summary_characters':total_chars,
                  'excluded':excluded,
@@ -153,11 +193,15 @@ def verified_original_discovery(
     *,query:str,source_map:sqlite3.Connection,native_db:sqlite3.Connection,
     original_root:Path,derived_root:Path,ledger:Path,limit:int=5,
     porter:bool=True,max_scan:int=80,
+    publisher_url_prefix:str|None=None,
 ):
     if (type(limit) is not int or not 1<=limit<=5
             or type(max_scan) is not int or not limit<=max_scan<=100):
         raise ValueError('invalid bounded current-original result count')
-    rows,coverage=current_summary_roots(source_map,native_db)
+    publisher_url_prefix=validate_publisher_url_prefix(publisher_url_prefix)
+    rows,coverage=current_summary_roots(
+        source_map,native_db,publisher_url_prefix=publisher_url_prefix,
+    )
     ranked=lexical_ranked_summary_candidates(rows,query,porter=porter,limit=max_scan)
     accepted=[]
     rejected=[]
@@ -180,10 +224,27 @@ def verified_original_discovery(
                 raise ValueError('original or native summary revision not verified')
             if read_approved_revision(ledger,path)!=approved:
                 raise ValueError('approved acquisition receipt changed during physical source check')
+            url_records=source_map.execute(
+                "SELECT original_url,status,source_sha256,derived_sha256 FROM originals "
+                "WHERE source_path=?",(path,),
+            ).fetchall()
+            if (len(url_records)!=1 or url_records[0][1]!='complete'
+                    or url_records[0][2]!=approved
+                    or url_records[0][3]!=candidate['derived_sha256_from_metadata']
+                    or (publisher_url_prefix is not None and
+                        not _url_in_scope(url_records[0][0],
+                                          publisher_url_prefix=publisher_url_prefix))):
+                raise ValueError('publisher URL scope or current source revision changed during original check')
             # A valid source identity and summary graph are NOT evidence that
             # this source actually supports the user's proposition.
             accepted.append({
                 'original_path':path,
+                'source_map_publisher_url_rechecked':url_records[0][0],
+                'requested_publisher_url_prefix_matched': (
+                    publisher_url_prefix is None or
+                    _url_in_scope(url_records[0][0],
+                                  publisher_url_prefix=publisher_url_prefix)
+                ),
                 'original_sha256_reverified':approved,
                 'derived_sha256_reverified':graph['derived_original_sha256_reverified'],
                 'native_root_summary_sha256_metadata':candidate['native_root_summary_sha256'],
@@ -207,6 +268,8 @@ def verified_original_discovery(
         'query_sha256':hashlib.sha256(query.encode('utf8')).hexdigest(),
         'created_utc':datetime.now(timezone.utc).isoformat(),
         'lexical_tokenizer':('porter' if porter else 'unicode61'),
+        'requested_publisher_url_prefix':publisher_url_prefix,
+        'scope_matched_only_before_ranking_and_again_after_original_proof':True,
         'top_requested':limit,
         'search_metadata_coverage':coverage,
         'candidate_ranks_fetched':len(ranked),
@@ -234,6 +297,8 @@ def main()->None:
     p.add_argument('--top',type=int,default=5)
     p.add_argument('--unicode61',action='store_true',
                    help='Use Unicode-only FTS5 instead of default Porter stemming')
+    p.add_argument('--publisher-url-prefix',
+                   help='Exact HTTPS archived publisher version directory; never fall back to another version')
     p.add_argument('--private-output',type=Path,required=True)
     p.add_argument('--original-root',type=Path,default=DEFAULT_ORIGINAL_ROOT)
     p.add_argument('--derived-root',type=Path,default=DEFAULT_DERIVED_ROOT)
@@ -259,6 +324,7 @@ def main()->None:
             query=args.query,source_map=sm,native_db=db,
             original_root=args.original_root,derived_root=args.derived_root,
             ledger=args.completed_ledger,limit=args.top,porter=not args.unicode61,
+            publisher_url_prefix=args.publisher_url_prefix,
         )
     fd=os.open(dest,os.O_WRONLY|os.O_CREAT|os.O_EXCL|os.O_NOFOLLOW,0o600)
     with os.fdopen(fd,'w',encoding='utf8') as f:
@@ -270,6 +336,8 @@ def main()->None:
         'summary_indexed_originals':result['search_metadata_coverage']['metadata_revision_matched_roots'],
         'read_only':True,
         'textual_source_fact_proof':False,
+        'publisher_url_scope':result['requested_publisher_url_prefix'],
+        'scope_empty':result['search_metadata_coverage']['empty_requested_url_scope'],
         'receipt':str(dest),
     }))
 

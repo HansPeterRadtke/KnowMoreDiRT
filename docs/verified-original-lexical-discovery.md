@@ -31,6 +31,31 @@ PYTHONDONTWRITEBYTECODE=1 PYTHONPATH=src:. nice -n 10 python3 \
   /data/var/knowmoredirt/knowledge-library/search-audit/UNIQUE-DISCOVERY.json
 ~~~
 
+A requested publisher edition is a **hard source boundary**. For example,
+add the following argument when only the archived Blender four-point-five
+manual is permitted:
+
+~~~bash
+--publisher-url-prefix 'https://docs.blender.org/manual/en/4.5/'
+~~~
+
+This is an exact HTTPS URL **directory** prefix, including the final slash.
+It is compared to the canonical source-map publisher URL before generated
+summary ranking, and checked again after each returned original has been
+physically verified. A wrong or unavailable edition returns **zero** matches
+instead of silently substituting a paper from another release or website.
+The filter reuses the repository's established exact publisher-archive URL
+validation rules, including rejection of encoded path escapes and URL ports.
+For **actual passages from archived HTML manuals**, use the existing
+source-verified article search instead:
+`raspi_publisher_html_article_discovery.py`, documented in
+`docs/publisher_html_article_discovery.md`. It indexes the full verified
+original article, whereas this summary-only tool returns document-discovery
+candidates. The scope does not navigate to the URL or download anything. It is not a
+semantic filter on dates or versions inferred from the query alone: callers
+must explicitly supply the needed publisher release. A source absent from
+the archive is not evidence that it does not exist publicly.
+
 Unicode-only tokenization can be selected with --unicode61; the default is
 Porter stemming. Query text is passed as data to a bounded, escaped FTS
 expression, not as raw SQL. At most five independently verified original
@@ -46,7 +71,13 @@ To cite a claim, open the actual original or run an independently verified
 source passage search with relevant governing context.
 
 Only originals with **currently completed recursive summary roots** enter
-the ephemeral ranking. In-progress or unindexed originals may still contain
+the ephemeral ranking. With a publisher-directory restriction, the initial
+in-memory index contains only matching stored publisher URLs; the returned
+originals are checked against that same restriction again. An unscoped query
+may otherwise surface *different archived versions* of an apparently identical
+manual page, so do not use an unscoped result as an answer to a version-specific
+question. Neither text similarity nor successful original-byte validation
+alone establishes that the **right version** was selected. In-progress or unindexed originals may still contain
 a good answer and will not appear here. The rest of the library remains
 accessible through ordinary folder/grep and other permitted search methods.
 The source/derived/native metadata of all candidate roots is revision

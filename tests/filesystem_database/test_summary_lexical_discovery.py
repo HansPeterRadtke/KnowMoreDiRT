@@ -56,5 +56,25 @@ class EphemeralGeneratedSummaryLexicalTest(unittest.TestCase):
             lexical_ranked_summary_candidates(None,'tool response',limit=3)
 
 
+    def test_archive_publisher_directory_scope_validation(self):
+        from scripts.raspi_source_verified_summary_discovery import validate_publisher_url_prefix
+        valid='https://docs.blender.org/manual/en/4.5/'
+        self.assertIsNone(validate_publisher_url_prefix(None))
+        self.assertEqual(valid,validate_publisher_url_prefix(valid))
+        self.assertEqual(valid,validate_publisher_url_prefix('https://DOCS.BLENDER.ORG/manual/en/4.5/'))
+        for bad in ('', 'https://docs.blender.org/manual/en/4.5',
+                    'http://docs.blender.org/manual/en/4.5/',
+                    'https://docs.blender.org/manual/en/4.5/../5.2/',
+                    'https://user:password@docs.blender.org/manual/en/4.5/',
+                    'https://docs.blender.org/manual/en/4.5/?change=5.2',
+                    'https://docs.blender.org/manual/en/4.5/#fragment',
+                    'https://docs.blender.org/manual/en/4.5/\n',
+                    'https://docs.blender.org:443/manual/en/4.5/',
+                    'https://docs.blender.org/manual/en/4.5/%2e%2e/5.2/',
+                    True,object()):
+            with self.subTest(value=repr(bad)),self.assertRaises(ValueError):
+                validate_publisher_url_prefix(bad)
+
+
 if __name__=="__main__":
     unittest.main()

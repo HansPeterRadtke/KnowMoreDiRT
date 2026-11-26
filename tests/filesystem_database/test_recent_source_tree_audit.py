@@ -38,6 +38,8 @@ class RecursiveTreeOriginalProofTests(unittest.TestCase):
         self.addCleanup(self.sm.close);self.addCleanup(self.db.close)
         self.sm.execute('CREATE TABLE originals(source_path TEXT,source_sha256 TEXT,derived_sha256 TEXT,derived_path TEXT,status TEXT,original_bytes INTEGER)')
         self.sm.execute('INSERT INTO originals VALUES (?,?,?,?,?,?)',(self.path,self.o_sha,self.d_sha,self.dpath,'complete',orig.stat().st_size))
+        self.sm.execute('ALTER TABLE originals ADD COLUMN original_url TEXT')
+        self.sm.execute('UPDATE originals SET original_url=?',('https://docs.example.org/manual/en/4.5/papers/original.html',))
         self.db.execute('CREATE TABLE filesystem_entries(id INTEGER,relative_path_display TEXT,entry_type TEXT)')
         self.db.execute('INSERT INTO filesystem_entries VALUES(?,?,?)',(7,self.path,'file'))
         self.db.execute('CREATE TABLE content_chunks(chunk_id TEXT,filesystem_entry_id INTEGER,collection_id TEXT,start_char INTEGER,end_char INTEGER,text_sha256 TEXT,content_sha256 TEXT)')
@@ -375,6 +377,88 @@ class RecursiveTreeOriginalProofTests(unittest.TestCase):
         self.assertEqual(0,report['originals_physically_verified_and_returned'])
         self.assertEqual([],report['candidates'])
         self.assertEqual(1,len(report['unverified_candidates_dropped']))
+
+
+    def test_publisher_version_scope_is_verified_before_ranking_and_after_source_sha(self):
+        from scripts.raspi_source_verified_summary_discovery import verified_original_discovery
+        import json
+        scope='https://docs.example.org/manual/en/4.5/'
+        ledger=self.original_root/'_management/status.json';ledger.parent.mkdir()
+        ledger.write_text(json.dumps({'items':[
+            {'path':self.path,'status':'complete','sha256':self.o_sha}
+        ]}))
+        good=verified_original_discovery(
+            query='Source linked summary root',source_map=self.sm,native_db=self.db,
+            original_root=self.original_root,derived_root=self.derivative_root,
+            ledger=ledger,publisher_url_prefix=scope,limit=1,
+        )
+        self.assertEqual(1,good['originals_physically_verified_and_returned'])
+        self.assertEqual(scope,good['requested_publisher_url_prefix'])
+        self.assertTrue(good['candidates'][0]['source_map_publisher_url_rechecked'].startswith(scope))
+        self.assertTrue(good['candidates'][0]['requested_publisher_url_prefix_matched'])
+        for wrong_scope in ('https://docs.example.org/manual/en/5.2/',
+                            'https://docs.example.org/manual/en/4.50/',
+                            'https://docs.example.org/manual/en/99.99/'):
+            with self.subTest(wrong_scope=wrong_scope):
+                report=verified_original_discovery(
+                    query='Source linked summary root',source_map=self.sm,native_db=self.db,
+                    original_root=self.original_root,derived_root=self.derivative_root,
+                    ledger=ledger,publisher_url_prefix=wrong_scope,limit=1,
+                )
+                self.assertEqual([],report['candidates'])
+                self.assertEqual(0,report['originals_physically_verified_and_returned'])
+                self.assertTrue(report['search_metadata_coverage']['empty_requested_url_scope'])
+                self.assertEqual(1,report['search_metadata_coverage'][
+                    'excluded']['outside_requested_publisher_scope'])
+                self.assertEqual(0,report['search_metadata_coverage'][
+                    'excluded']['historical_or_malformed'])
+                self.assertFalse(report['cross_store_immutable_generation_pinned'])
+
+    def test_publisher_url_changed_after_source_validation_drops_lexical_candidate(self):
+        from unittest.mock import patch
+        from scripts.raspi_source_verified_summary_discovery import verified_original_discovery
+        from file_system_catalog.recent_source_tree_audit import audit_current_source_tree
+        import json
+        scope='https://docs.example.org/manual/en/4.5/'
+        ledger=self.original_root/'_management/status.json';ledger.parent.mkdir()
+        ledger.write_text(json.dumps({'items':[
+            {'path':self.path,'status':'complete','sha256':self.o_sha}
+        ]}))
+        def after_source_verified(**kwargs):
+            proof=audit_current_source_tree(**kwargs)
+            self.sm.execute('UPDATE originals SET original_url=?',
+                            ('https://docs.example.org/manual/en/5.2/papers/original.html',))
+            return proof
+        with patch('scripts.raspi_source_verified_summary_discovery.audit_current_source_tree',
+                   side_effect=after_source_verified):
+            report=verified_original_discovery(
+                query='Source linked summary root',source_map=self.sm,native_db=self.db,
+                original_root=self.original_root,derived_root=self.derivative_root,
+                ledger=ledger,publisher_url_prefix=scope,limit=1,
+            )
+        self.assertEqual(0,report['originals_physically_verified_and_returned'])
+        self.assertEqual(1,len(report['unverified_candidates_dropped']))
+        self.assertEqual('ValueError',report['unverified_candidates_dropped'][0]['reason_type'])
+
+
+    def test_invalid_or_encoded_source_url_does_not_enter_version_scope(self):
+        from scripts.raspi_source_verified_summary_discovery import current_summary_roots
+        prefix='https://docs.example.org/manual/en/4.5/'
+        for malformed in (
+            'https://docs.example.org/manual/en/4.5/%2F/hidden',
+            'https://docs.example.org/manual/en/4.5/../5.2/page.html',
+            'https://docs.example.org:443/manual/en/4.5/page.html',
+            'https://docs.example.org/manual/en/4.50/page.html',
+            None,
+        ):
+            with self.subTest(malformed=malformed):
+                self.sm.execute('UPDATE originals SET original_url=?',(malformed,))
+                roots,metadata=current_summary_roots(
+                    self.sm,self.db,publisher_url_prefix=prefix,
+                )
+                self.assertEqual([],roots)
+                self.assertTrue(metadata['empty_requested_url_scope'])
+                self.assertEqual(1,metadata['excluded']['outside_requested_publisher_scope'])
 
 
 if __name__=='__main__':
