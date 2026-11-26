@@ -1186,7 +1186,18 @@ and excludes any stale, unreadable, unapproved, nonmatching or oversized
 candidate with a recorded reason. Raw textual source previews remain
 untrusted original content and never executable instructions. Their
 `factual_answer_verified` and `quoted_text_is_original_publisher_bytes`
-flags remain false. `--verify-pdf-previews 1` (maximum three per channel and
+flags remain false. A separate, post-verification
+`literal_query_coverage_review_only` field shows which informative question
+words occur **literally** in the verified original-derived first unit,
+and which occur only in the approved current source-map **title metadata**.
+Its ratio is a reviewer diagnostic, **not** semantic similarity, factual
+accuracy or a retrieval filter. Words that are absent literally may still
+match a relevant source after Porter stemming or paraphrasing. Conversely,
+a one-word OR result can have very weak evidence for answering the question.
+Do not hide a candidate or assert that no source supports an answer merely
+because the literal ratio is low. The diagnostic never adds new original
+files, changes the existing ranking, modifies persistent indexes or checks
+later pages beyond the first verified source unit. `--verify-pdf-previews 1` (maximum three per channel and
 question) additionally checks a returned excerpt on the *original physical
 PDF page*, with its own page-text SHA. A derived page label alone is not a
 verified publisher page. The optional physical-page check never invents a

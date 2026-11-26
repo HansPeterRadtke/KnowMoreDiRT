@@ -13,11 +13,72 @@ import unittest
 from file_system_catalog.publisher_firstunit_discovery import (
     FirstUnitRAMIndex,source_firstunit_from_prefix,
     load_complete_source_previews,verify_index_candidate,
+    original_firstunit_query_term_coverage,
 )
 
 
 def sha(data:bytes)->str:
     return hashlib.sha256(data).hexdigest()
+
+
+class OriginalFirstUnitLiteralOverlapDiagnostics(unittest.TestCase):
+    def test_separates_original_body_and_metadata_title_word_overlap(self):
+        out=original_firstunit_query_term_coverage(
+            query='wedding albums photographs from unusual events',
+            title='A Study of Unusual Events in Multimedia',
+            verified_source_unit_excerpt=(
+                'Original publisher article about wedding albums and '
+                'organizing photographs from multiple trips.'),
+        )
+        self.assertEqual(5,out['requested_query_terms_count'])
+        self.assertIn('unusual',out['exact_words_in_current_source_map_title_metadata'])
+        self.assertNotIn('unusual',out['exact_words_in_current_verified_first_source_unit'])
+        self.assertIn('wedding',out['exact_words_in_current_verified_first_source_unit'])
+        self.assertEqual(5,out['combined_exact_word_count'])
+        self.assertEqual(1.0,out['combined_exact_term_coverage_fraction'])
+        self.assertTrue(out['all_literal_query_terms_matched'])
+        self.assertFalse(out['title_metadata_not_publisher_byte_quote'] is False)
+        self.assertTrue(out['no_retrieval_filtering_or_rank_changes'])
+
+    def test_irrelevant_nonce_with_one_common_term_has_low_overlap_not_a_verdict(self):
+        out=original_firstunit_query_term_coverage(
+            query='zjxqnonexistingindependenttermv116 unmapped archival reference',
+            title='Reference manual',
+            verified_source_unit_excerpt='A reference implementation of an unrelated project.',
+        )
+        self.assertEqual(4,out['requested_query_terms_count'])
+        self.assertEqual(['reference'],out['combined_exact_words_present'])
+        self.assertEqual(0.25,out['combined_exact_term_coverage_fraction'])
+        self.assertFalse(out['all_literal_query_terms_matched'])
+        self.assertTrue(out['no_relevance_or_factual_answer_verdict'])
+        self.assertTrue(out['literal_word_absence_may_still_be_a_valid_stem_or_synonym_match'])
+
+    def test_porter_stem_or_phrase_variation_not_falsely_rejected(self):
+        out=original_firstunit_query_term_coverage(
+            query='retrieve source',
+            title='Publisher metadata',
+            verified_source_unit_excerpt='Retrieval of original sources can be useful.',
+        )
+        self.assertEqual(0,out['combined_exact_word_count'])
+        self.assertEqual(0.0,out['combined_exact_term_coverage_fraction'])
+        self.assertTrue(out['literal_word_absence_may_still_be_a_valid_stem_or_synonym_match'])
+        self.assertTrue(out['no_relevance_or_factual_answer_verdict'])
+
+    def test_bounded_input_and_non_sql_query_tokens(self):
+        for bad in ('', 'x'*601, None):
+            with self.subTest(bad=repr(bad)),self.assertRaises(ValueError):
+                original_firstunit_query_term_coverage(
+                    query=bad,title='Title',verified_source_unit_excerpt='Paper source')
+        with self.assertRaises(ValueError):
+            original_firstunit_query_term_coverage(
+                query='quoted original',title='Title',
+                verified_source_unit_excerpt='X'*6501)
+        payload=original_firstunit_query_term_coverage(
+            query='" UNION SELECT * FROM sqlite_master --',
+            title='An original safe title',verified_source_unit_excerpt='Original source',
+        )
+        self.assertIsInstance(payload['combined_exact_words_present'],list)
+        self.assertTrue(payload['no_retrieval_filtering_or_rank_changes'])
 
 
 class PublisherFirstUnitDiscoveryTests(unittest.TestCase):
@@ -137,6 +198,12 @@ class PublisherFirstUnitDiscoveryTests(unittest.TestCase):
               completed_receipts=self.receipts,native_db=self.native,source_map=self.sm,
               query='physically based rendering measurement')
         self.assertEqual('PDF page 3',evidence['source_unit_label'])
+        exact=evidence['literal_query_coverage_review_only']
+        self.assertTrue(exact['no_relevance_or_factual_answer_verdict'])
+        self.assertTrue(exact['no_retrieval_filtering_or_rank_changes'])
+        self.assertIn('physically',exact['exact_words_in_current_verified_first_source_unit'])
+        self.assertIn('rendering',exact['exact_words_in_current_verified_first_source_unit'])
+        self.assertEqual(4,exact['requested_query_terms_count'])
         self.assertEqual(sha(evidence['publisher_first_unit_preview'].encode()),
                          evidence['source_preview_sha256'])
         text=self.papers[path]['derived'].read_text()

@@ -15,7 +15,7 @@ import sqlite3
 import subprocess
 from typing import NamedTuple
 
-from .hybrid_search import query_terms
+from .hybrid_search import query_terms,lexical_token_spans
 from .source_review_audit import safe_file,sha_file
 from .source_evidence import _best_excerpt
 from .publisher_pdf_page import verify_pdf_page_excerpts
@@ -255,6 +255,44 @@ def publisher_pdf_page_map_bounds(original:Path, derived_text:str) -> dict:
     }
 
 
+def original_firstunit_query_term_coverage(*,query:str,title:str,
+                                           verified_source_unit_excerpt:str)->dict:
+    """Exact-word diagnostic for an already verified first original source unit.
+
+    Porter stemming, semantic synonyms and full-document evidence are NOT
+    measured by these literal matches. A low ratio cannot reject relevance.
+    Title is approved source-map metadata, not a publisher-byte quotation.
+    """
+    if (not isinstance(query,str) or not 1<=len(query)<=600
+            or not isinstance(title,str) or len(title)>1000
+            or not isinstance(verified_source_unit_excerpt,str)
+            or len(verified_source_unit_excerpt)>FIRST_UNIT_INDEX_CHARS):
+        raise ValueError('unbounded first-source-unit query evidence')
+    relevant=query_terms(query)
+    body={token for token,_,_ in lexical_token_spans(verified_source_unit_excerpt)}
+    title_words={token for token,_,_ in lexical_token_spans(title)}
+    literal_body=[token for token in relevant if token in body]
+    title_meta=[token for token in relevant if token in title_words]
+    combined=[token for token in relevant if token in body or token in title_words]
+    return {
+        'schema':'kmd.original_first_source_unit_literal_query_coverage.v1',
+        'requested_query_terms_count':len(relevant),
+        'exact_words_in_current_verified_first_source_unit':literal_body,
+        'exact_words_in_current_source_map_title_metadata':title_meta,
+        'combined_exact_words_present':combined,
+        'combined_exact_word_count':len(combined),
+        'combined_exact_term_coverage_fraction': (
+            round(len(combined)/len(relevant),4) if relevant else 0.0
+        ),
+        'all_literal_query_terms_matched':bool(relevant) and len(combined)==len(relevant),
+        'literal_word_absence_may_still_be_a_valid_stem_or_synonym_match':True,
+        'no_relevance_or_factual_answer_verdict':True,
+        'no_retrieval_filtering_or_rank_changes':True,
+        'all_body_words_are_from_current_original_derived_firstunit_not_model_summary':True,
+        'title_metadata_not_publisher_byte_quote':True,
+    }
+
+
 def verify_index_candidate(*,entry:Entry,original_root:Path,derived_root:Path,
                            completed_receipts:dict[str,str],native_db:sqlite3.Connection,
                            source_map:sqlite3.Connection,query:str,verify_pdf_page:bool=False,
@@ -322,9 +360,15 @@ def verify_index_candidate(*,entry:Entry,original_root:Path,derived_root:Path,
                             'reason':str(proof.get('reason','publisher_page_mismatch'))[:100]}
         else:
             pdf_status={'status':'first_source_unit_lacks_a_physical_pdf_page','physical_pdf_page_verified':False}
+    # Use the full current verified first-unit span, not just the shorter
+    # displayed source preview, to avoid dropping literally matched words.
+    coverage=original_firstunit_query_term_coverage(
+        query=query,title=entry.title,verified_source_unit_excerpt=entry.excerpt,
+    )
     return {
         'original_path':entry.original_path,
         'original_title':entry.title,
+        'literal_query_coverage_review_only':coverage,
         'native_original_filedb_entry_id':native[0][0],
         'publisher_original_sha256':entry.original_sha256,
         'current_derivative_sha256':entry.derived_sha256,

@@ -107,6 +107,14 @@ OPENBLAS_NUM_THREADS=1 OMP_NUM_THREADS=1 \
   /data/var/knowmoredirt/knowledge-library/search-audit/NEW-THREE-CHANNEL.json
 ~~~
 
+Returned first-unit candidates also contain a `literal_query_coverage_review_only`
+measurement. It displays exact question-word matches in the attested
+first-source-unit excerpt separately from matches in catalog title metadata.
+This is useful when a nonsense or weakly relevant OR query returns
+candidates; it does not filter them or classify whether a document truly
+answers the question. Porter stemming and synonyms can retrieve real sources
+with few exact literal words, so absence is not proof of irrelevance.
+
 This option is **significantly slower at cold start**. On the current Raspi
 archive it sampled approximately 274 megabytes of original-derived first-unit
 text across 17,715 originals before ranking. Its selected excerpts are
