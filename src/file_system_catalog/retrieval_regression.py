@@ -15,6 +15,25 @@ from pathlib import Path
 from typing import Callable
 
 
+def open_live_readonly_db(path:Path,*,timeout_seconds:float=45.0)->sqlite3.Connection:
+    """Boundedly wait for live FileDB rollback-journal writers; never write.
+
+    A lock timeout remains an explicit failure, not negative retrieval gold.
+    The source-map may use WAL, but receives the same read-only contract.
+    """
+    if (not isinstance(path,Path) or not path.is_file() or path.is_symlink()
+            or not 0.1<=timeout_seconds<=120.0):
+        raise ValueError('invalid or missing read-only live benchmark database')
+    connection=sqlite3.connect(path.resolve().as_uri()+'?mode=ro',uri=True,
+                               timeout=timeout_seconds)
+    try:
+        connection.execute('PRAGMA query_only=ON')
+    except BaseException:
+        connection.close()
+        raise
+    return connection
+
+
 def _safe_original_path(path:str)->bool:
     return (isinstance(path,str) and 1<=len(path)<=1500
             and not path.startswith("/") and "\\" not in path

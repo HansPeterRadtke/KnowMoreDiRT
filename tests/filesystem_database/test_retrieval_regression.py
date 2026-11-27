@@ -1,14 +1,17 @@
 """Fixed-source ranking regression cannot become guessed answer correctness."""
 import hashlib
+from contextlib import closing
 import json
 from pathlib import Path
 import sqlite3
+import threading
+import time
 from tempfile import TemporaryDirectory
 import unittest
 
 from file_system_catalog.retrieval_regression import (
     validated_gold,evaluate_case,score,source_record,assert_equivalent_gold,
-    attest_html_original_gold,
+    attest_html_original_gold,open_live_readonly_db,
 )
 
 
@@ -111,6 +114,29 @@ class FixedOriginalRetrievalTests(unittest.TestCase):
                                "expected_path":"a.pdf","relevant_paths":["a.pdf","b.pdf"]}])
         with self.assertRaisesRegex(ValueError,"multi-source"):
             assert_equivalent_gold(multi,prior)
+
+    def test_readonly_live_file_db_waits_for_brief_exclusive_writer(self):
+        with TemporaryDirectory() as directory:
+            path=Path(directory)/'live.sqlite3'
+            writer=sqlite3.connect(path)
+            writer.execute('CREATE TABLE source (id INT)')
+            writer.commit()
+            writer.execute('BEGIN EXCLUSIVE')
+            writer.execute('INSERT INTO source VALUES (17)')
+            done=[]
+            def read_after_writer():
+                with closing(open_live_readonly_db(path,timeout_seconds=2.0)) as reader:
+                    done.append(reader.execute('SELECT id FROM source').fetchone()[0])
+                    with self.assertRaises(sqlite3.OperationalError):
+                        reader.execute('INSERT INTO source VALUES (99)')
+            thread=threading.Thread(target=read_after_writer)
+            thread.start()
+            time.sleep(0.15)
+            writer.commit()
+            thread.join(timeout=3.0)
+            self.assertFalse(thread.is_alive())
+            self.assertEqual([17],done)
+            writer.close()
 
     def make_databases(self):
         db=sqlite3.connect(":memory:")

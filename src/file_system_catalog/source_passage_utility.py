@@ -23,6 +23,10 @@ _PROMPT_BODY = re.compile(r"(?is)\b(?:you are a helpful assistant|you are an ai 
 _PROMPT_TAG = re.compile(r"(?is)</?(?:think|search|answer|system|assistant|tool|result)>")
 _PUBLISHER_NEGATION = re.compile(r"(?i)\b(?:doesn['\u2019]?t|do not|does not|cannot|can['\u2019]?t|not|never|without|instead of|rather than|only)\b")
 _WORD = re.compile(r"[\w]+",re.UNICODE)
+# Repeated HTML header/menu labels can occupy a SHA-verified excerpt next
+# to real publisher text. Observe the mixture; never discard the article.
+_HTML_MENU_RUN = re.compile(
+    r'(?i)(?:\b(?:academy|portfolio|products|posts|youtube|contact|about|home|blog|services|shop)\b\s*){4,}')
 
 # A physically verified PDF can still contain a bibliography instead of its
 # authors' findings. Require citation-entry-shaped boundaries with
@@ -153,8 +157,15 @@ def review_passage_candidate(query:str,passage:dict[str,Any])->dict[str,Any]:
     short_overview=(len(excerpt.strip())<180 and len(links)==0
                     and len(terms)>=3)
     negation=bool(_PUBLISHER_NEGATION.search(excerpt))
+    # Only structural caution: an HTML publisher excerpt may contain both
+    # useful prose and a repeated site menu. No rank or citation changes.
+    html_mixed_chrome=(original.casefold().endswith(('.html','.htm'))
+                       and len(excerpt)>=200
+                       and bool(_HTML_MENU_RUN.search(excerpt[:650]))
+                       and sum(ch.isspace() for ch in excerpt)/len(excerpt)>0.35)
     flags=[]
     if navigation:flags.append('publisher_link_navigation_not_direct_explanation')
+    if html_mixed_chrome:flags.append('publisher_html_navigation_chrome_mixed_with_source_text')
     if prompt:flags.append('quoted_agent_prompt_template_not_instructions_to_execute')
     if short_overview:flags.append('brief_source_overview_needs_further_context')
     if negation:flags.append('scope_negation_or_restriction_requires_context_review')

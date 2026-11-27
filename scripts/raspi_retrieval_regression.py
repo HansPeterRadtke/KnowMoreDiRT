@@ -7,11 +7,11 @@ Do not use this to automatically choose embedding/ranking parameters.
 from __future__ import annotations
 
 import argparse
+from contextlib import closing
 from datetime import datetime,timezone
 import hashlib
 import json
 from pathlib import Path
-import sqlite3
 import subprocess
 import sys
 import time
@@ -41,6 +41,7 @@ def main()->None:
     sys.path.insert(0,str(Path(__file__).resolve().parents[1]/"src"))
     from file_system_catalog.retrieval_regression import (
         validated_gold,source_record,evaluate_case,score,assert_equivalent_gold,
+        open_live_readonly_db,
         attest_html_original_gold,
     )
     gold=args.gold.read_bytes()
@@ -70,10 +71,12 @@ def main()->None:
         raise ValueError("canonical source, map or search executable missing/symlinked")
     # Persistent connection is query-only; the tested CLI independently
     # performs its own current original+derivative byte provenance checks.
-    with sqlite3.connect(args.database.resolve().as_uri()+"?mode=ro",uri=True) as db, \
-         sqlite3.connect(args.source_map.resolve().as_uri()+"?mode=ro",uri=True) as source_map:
-        db.execute("PRAGMA query_only=ON")
-        source_map.execute("PRAGMA query_only=ON")
+    # The live native FileDB uses rollback journaling and two original-index
+    # writers. A briefly held EXCLUSIVE write lock is not missing gold: wait
+    # boundedly for its release, then still fail closed on persistent locks.
+    # Both connections remain mode=ro and query_only throughout the benchmark.
+    with closing(open_live_readonly_db(args.database)) as db, \
+         closing(open_live_readonly_db(args.source_map)) as source_map:
         publisher_attestations=None
         if args.attest_html_gold:
             if not isinstance(document,dict) or not isinstance(document.get("cases"),list):

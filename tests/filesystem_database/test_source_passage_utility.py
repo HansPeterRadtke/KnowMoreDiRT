@@ -50,6 +50,21 @@ class EvidenceSurfaceNotAnswerTest(unittest.TestCase):
         self.assertIn('publisher_link_navigation_not_direct_explanation',review['observed_structural_flags'])
         self.assertEqual(3,review['descriptive_link_line_count'])
 
+    def test_realistic_mixed_html_menu_is_warned_without_discarding_article(self):
+        source=('\n'*40 + 'Academy \n\n Poliigon \n\n YouTube \n\n Products \n\n Posts \n\n Portfolio '
+                + '\n'*20 + 'Making Realistic PBR Materials - Part 2: Metal. '
+                + 'Surface roughness changes reflection width and image appearance.')
+        r=review_passage_candidate('roughness of metal', passage(source,path='graphics/metal-original.html'))
+        self.assertIn('publisher_html_navigation_chrome_mixed_with_source_text',r['observed_structural_flags'])
+        self.assertFalse(r['possible_navigation_or_prompt_only'])
+        self.assertTrue(r['original_source_unchanged'])
+
+    def test_html_explanatory_paragraph_does_not_trigger_menu_warning(self):
+        source=('A realistic metal material includes microfacet roughness, with highlight '
+                'spread controlled by the roughness parameter. ')*5
+        r=review_passage_candidate('roughness of metal',passage(source,path='graphics/article.html'))
+        self.assertNotIn('publisher_html_navigation_chrome_mixed_with_source_text',r['observed_structural_flags'])
+
     def test_genuine_expression_paragraph_is_not_mistaken_for_navigation(self):
         content=('Expressions are JavaScript-like code placed directly into n8n node parameters. '
                  'They can compute values from previous workflow nodes using {{ ... }} syntax. '
