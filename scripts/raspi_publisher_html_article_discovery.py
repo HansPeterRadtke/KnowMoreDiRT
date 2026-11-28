@@ -30,12 +30,15 @@ from raspi_publisher_firstunit_discovery import input_queries
 
 def search(*, publisher_url_prefix, queries, top, source_map, native_db,
            catalog_path, completed_ledger, original_root, derivative_root,
-           context_chars=0):
+           context_chars=0, include_local_semantic=False, semantic_model=None):
     scope = PublisherScope.parse(publisher_url_prefix)
     if type(context_chars) is not int or (context_chars != 0 and not 80 <= context_chars <= 2000):
         raise ValueError("article context must be zero or eighty through two thousand characters per neighbor")
     if type(top) is not int or not 1 <= top <= 10:
         raise ValueError("article result count must be between one and ten")
+    if type(include_local_semantic) is not bool or (semantic_model is not None
+             and not include_local_semantic):
+        raise ValueError('local semantic source discovery requires explicit opt-in')
     if not isinstance(queries, list) or not 1 <= len(queries) <= 32:
         raise ValueError("bounded query batch required")
     seen = set()
@@ -56,6 +59,21 @@ def search(*, publisher_url_prefix, queries, top, source_map, native_db,
         scan = load_scoped_articles(source_map=sm, original_root=original_root,
                                     catalog=catalog, ledger=ledger, index=idx, scope=scope)
         build_seconds = round(time.monotonic() - start, 3)
+        semantic_index = None
+        if include_local_semantic:
+            # Keep the default stdlib/SQLite-only article CLI independent
+            # from optional NumPy/ONNX packages and their import side effects.
+            from file_system_catalog.publisher_html_article_semantic import OriginalArticleSemanticIndex
+            # Only the explicit opt-in loads the existing pinned LOCAL CPU
+            # E5 model. Operator must obtain a broker lease before calling it.
+            # All selected results reuse the same full original/source-map
+            # evidence gates and final post-query source revision rechecks.
+            if semantic_model is None:
+                sys.path.insert(0, '/data/infra/libexec')
+                from knowledge_library_semantic_model import LocalE5
+                semantic_model = LocalE5(threads=1, batch_size=4)
+            semantic_index = OriginalArticleSemanticIndex(list(idx.entries.values()),
+                                                          semantic_model)
         for question in queries:
             channels = {}
             for channel in ("literal", "porter"):
@@ -93,6 +111,39 @@ def search(*, publisher_url_prefix, queries, top, source_map, native_db,
                     "source_originals": returned,
                     "stale_or_unverified_candidates_omitted": omitted,
                 }
+            if semantic_index is not None:
+                for name in ("article", "catalog_title"):
+                    candidates = semantic_index.ranked(question["query"],
+                                                       channel=name, limit=top)
+                    returned = []
+                    for candidate in candidates:
+                        path = candidate["original_path"]
+                        entry = idx.entries[idx.ids[path]]
+                        a, b = (candidate["normalized_original_article_span_start_char"],
+                                candidate["normalized_original_article_span_end_char"])
+                        excerpt = candidate["source_excerpt"]
+                        if (not 0 <= a < b <= len(entry.text)
+                                or entry.text[a:b] != excerpt
+                                or hashlib.sha256(excerpt.encode()).hexdigest()
+                                != candidate["source_excerpt_sha256"]):
+                            raise ValueError("local semantic passage left verified original article span")
+                        if path not in proofs:
+                            if len(selected) >= MAX_SELECTED_SOURCES:
+                                raise RuntimeError("query batch selects too many distinct sources; split the batch")
+                            proofs[path] = verify_entry(
+                                entry, source_map=sm, native_db=native, catalog=catalog,
+                                ledger=ledger, original_root=original_root,
+                                derived_root=derivative_root, scope=scope)
+                            selected[path] = entry
+                        public_proof = {k: v for k, v in proofs[path].items()
+                                        if k not in ("original_file_identity", "derivative_file_identity")}
+                        returned.append({"source_rank": len(returned)+1,
+                                         **public_proof, **candidate})
+                    channels["semantic_" + name] = {
+                        "returned_current_originals":len(returned),
+                        "source_originals":returned,
+                        "stale_or_unverified_candidates_omitted":[],
+                    }
             result_queries.append({
                 "id": question["id"], "query": question["query"],
                 "query_sha256": hashlib.sha256(question["query"].encode()).hexdigest(),
@@ -122,11 +173,20 @@ def search(*, publisher_url_prefix, queries, top, source_map, native_db,
                              catalog=newest_catalog, ledger=newest_ledger, scope=scope,
                              original_root=original_root, derived_root=derivative_root)
     return {
-        "schema": "kmd.readonly_scoped_publisher_html_article_discovery.v1",
+        "schema": ("kmd.readonly_scoped_publisher_html_article_semantic.v1"
+                   if include_local_semantic else
+                   "kmd.readonly_scoped_publisher_html_article_discovery.v1"),
         "generated_utc": datetime.now(timezone.utc).isoformat(),
         "publisher_url_prefix": scope.url,
         "query_count": len(queries), "source_scan": scan,
         "context_characters_per_side": context_chars,
+        **({"local_article_semantic_opt_in":True,
+            "local_semantic_model":semantic_model.model,
+            "local_semantic_model_revision":semantic_model.revision,
+            "local_semantic_channels_are_independent_and_never_score_fused":True,
+            "semantic_article_windows_cover_each_admitted_current_original":True,
+            "semantic_title_channel_is_catalog_metadata_only":True}
+           if include_local_semantic else {}),
         "index_build_seconds": build_seconds,
         "total_seconds": round(time.monotonic() - start, 3),
         "selected_original_count": len(selected),
@@ -144,7 +204,9 @@ def search(*, publisher_url_prefix, queries, top, source_map, native_db,
             "Navigation and explicitly hidden HTML are excluded; external CSS, scripts, figures and browser visibility are not evaluated.",
             "Fresh source checks detect observed changes but do not pin an atomic generation across independently changing stores.",
             "Coverage excludes non-HTML, unapproved, malformed, ambiguous or oversized sources and must be read with source_scan.",
-        ] + (["Optional context spans remain separate quotations with explicit omitted intervals; neither governing sections nor answer sufficiency are verified."] if context_chars else []),
+        ] + (["Optional context spans remain separate quotations with explicit omitted intervals; neither governing sections nor answer sufficiency are verified."] if context_chars else [])
+          + (["Local semantic E5 ranks are opt-in uncalibrated discoverability only. The title-only model channel is metadata, not publisher prose; article windows are SHA-linked to the exact current original and the full read-back proof is unchanged.",
+              "The original semantic model has a trained 512-token context. Every admitted article is covered by explicit non-overlapping word-aligned windows; overlarge sources fail rather than being silently truncated."] if include_local_semantic else []),
         "queries": result_queries,
     }
 
@@ -156,6 +218,8 @@ def main():
     choose.add_argument("--queries-file", type=Path)
     ap.add_argument("--publisher-url-prefix", required=True)
     ap.add_argument("--top", type=int, default=5)
+    ap.add_argument("--include-local-semantic",action="store_true",
+                    help="Opt-in local CPU E5 article and catalog-title channels. Requires broker admission; no global model/rank change.")
     ap.add_argument("--context-chars", type=int, default=0,
                     help="Optional characters per original-text neighbor, 80..2000; zero disables context")
     ap.add_argument("--source-map", type=Path, default=Path("/data/var/knowmoredirt/knowledge-library/semantic/source-map.sqlite3"))
@@ -179,6 +243,7 @@ def main():
         catalog_path=args.catalog, completed_ledger=args.completed_ledger,
         original_root=args.original_root, derivative_root=args.derivative_root,
         context_chars=args.context_chars,
+        include_local_semantic=args.include_local_semantic,
     )
     raw = (json.dumps(output, ensure_ascii=False, indent=2) + "\n").encode()
     if args.output is None:

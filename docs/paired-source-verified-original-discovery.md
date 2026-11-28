@@ -128,6 +128,116 @@ within ten; this is a **limited scope-specific discovery gain**, not a
 general accuracy claim or a complete holdout. Retrieved documents still
 require actual original passage inspection before any factual answer.
 
+## Optional local semantic discovery on the original publisher HTML
+
+The **separate** original publisher-HTML article command,
+`scripts/raspi_publisher_html_article_discovery.py`, accepts an explicit
+`--include-local-semantic` opt-in. Its original two independent literal
+and Porter-lexical channels and every default output remain unchanged.
+The opt-in adds **two additional, separately ranked candidate lists**:
+`semantic_article` embeds the **current original publisher article**
+after selecting its unique closed HTML `article` or `main` container;
+`semantic_catalog_title` embeds source-map **metadata titles** and must
+never be quoted as publisher prose. Both use the existing pinned, offline
+multilingual E5 small ONNX model on Raspi with no network inference API.
+
+The full original normalized article is divided into complete, word-aligned
+windows that each fit within four hundred model tokens including source and
+catalog-title labels. This is below the model's trained five-hundred-twelve
+token limit, and the full set must cover every original article word exactly
+once. A source requiring more than thirty-two windows, a scope requiring
+more than two thousand forty-eight windows, an unnormalized source, an
+oversized model query or a nonfinite embedding **fails closed** instead of
+silently truncating the source. The model embeds only extracted original
+article text and an explicitly labeled title, not generated summarizations,
+a PDF interpretation or third-party web responses.
+
+For an **authorized, broker-admitted** one-off read-only scan, choose a
+single explicit official version/topic URL directory that fits the
+existing limits, for example:
+
+~~~bash
+PYTHONDONTWRITEBYTECODE=1 PYTHONPATH=src:. \
+/data/var/knowmoredirt/semantic-venv/bin/python \
+  scripts/raspi_publisher_html_article_discovery.py \
+  --publisher-url-prefix \
+  'https://docs.unity.com/en-us/engine/6000.3/manual/visual-effects/' \
+  --query 'How do I attach a scene object to a live particle graph?' \
+  --include-local-semantic --top 5
+~~~
+
+**First use the Raspi resource broker** for CPU and RAM admission; the
+optional E5 inference is a model workload. Do not launch it unadmitted
+or as a generic fallback for a blocked lease. For a batch of at most
+thirty-two questions in the **same** publisher directory, use
+`--queries-file`. The directory scope must still be bounded by the
+preexisting HTML-original record and byte limits; the entire Unity manual
+at once is larger than those limits. Keep each official publisher topic
+in a separate query rather than using an artificially wide or guessed
+scope. This does not create a new persistent index.
+
+Every returned model candidate uses the original publisher-URL/edition
+scope, current acquisition receipt, **full publisher-original SHA**,
+current extracted-source revision, unique native KnowMoreDiRT FileDB
+identity, exact normalized original article span and its own SHA.
+The final full-original/derivative and fresh metadata checks are applied
+across **all channels** after every question, as in the preexisting
+lexical command. The title-only channel returns a publisher-article
+preview but **its ranking came from metadata**, not that passage.
+Original HTML containers and E5 vectors never become source-authoritative
+claims. Every returned excerpt remains a normalized original-article
+passage rather than literal original HTML bytes, and no semantic score
+or similarity establishes a factual answer. Neither this scheme nor the
+older lexical scan pins an immutable atomic generation across both
+SQLite stores and filesystem originals; retain that explicit limitation.
+
+### Measured research pilot and operating cost
+
+A November 28 private single-CPU-only **research pilot**, using the
+same pinned local E5 family but not the final independently source-verified
+operator, evaluated ten previously frozen Unity documentation questions
+across four separately approved publisher topic scopes. It covered 383
+publisher HTML articles and 1,477 complete original article windows.
+The separate article and catalog-title semantic top-ten lists together
+located **eight of ten known supporting originals**; the independently
+run older first-unit and full-article lexical lists together located
+**five of ten**. Two original documents were still missed by the
+semantic top-ten union. Each retrieved known original was independently
+checked against its full publisher original, extracted derivative and
+native FileDB source identity after the pilot. The pilot did **not**
+independently certify every non-gold candidate's source excerpt, and
+cannot establish factual answer correctness, exhaustive relevant
+documents or general retrieval accuracy.
+
+The cold single-core run consumed approximately eighteen and a half
+minutes on Raspi, most of it from the larger Unity interface chapter.
+
+A **separate live read-only operator acceptance** used the actual
+`--include-local-semantic` CLI, the installed pinned E5 model,
+and complete post-query publisher-original/derived SHA proofs on three
+scope batches: Unity visual effects (four archived originals), Unity
+lighting (forty-eight), and the **independently frozen prior Blender 4.5
+holdout** (twenty-seven). All six predeclared known supporting originals
+ranked within ten in both semantic channels; Blender's four expected
+sources ranked at article positions **one, one, two, one**. The
+acceptance independently rehashed forty-two unique returned originals
+and derivatives across the three disjoint scope batches, reconstructed
+every returned normalized publisher article excerpt and SHA, rechecked
+source-map/complete acquisition receipts and unique native FileDB IDs,
+and left all sources and vectors untouched. The original two lexical
+channels remain byte-compatible without opting in; synthetic and
+real-original revision-change tests continue to reject stale sources.
+This establishes a tested **optional discovery channel**, not calibrated
+accuracy, semantic truth, a new default ranker or atomic cross-store
+generation pinning.
+Do not silently promote this expensive on-demand method to default
+search or promise quick results over hundreds of publisher documents.
+Use short, explicitly chosen source scopes and a query batch when
+worth the expense; a future source-revision-pinned vector cache or
+native FileDB integration requires separate design and validation,
+not a shadow semantic database. The source-indexing workers, original
+documents and existing vectors were left untouched.
+
 ## Optional third channel: the original publisher first source unit
 
 The earlier two-channel command remains the default. When a query is phrased

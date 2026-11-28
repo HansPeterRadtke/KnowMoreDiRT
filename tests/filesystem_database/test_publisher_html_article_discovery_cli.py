@@ -178,6 +178,98 @@ class PublisherHTMLArticleCLIIntegrationTests(unittest.TestCase):
                 self.assertNotIn("original_file_identity", proof)
                 self.assertNotIn("derivative_file_identity", proof)
 
+    def test_explicit_opt_in_local_semantic_channels_use_full_original_provenance(self):
+        from tests.filesystem_database.test_publisher_html_article_semantic import FakeLocalE5
+        before=self.fixture.source_digests()
+        result=self.cli.search(**self.fixture.search_arguments(),
+                               include_local_semantic=True,semantic_model=FakeLocalE5())
+        self.assertEqual("kmd.readonly_scoped_publisher_html_article_semantic.v1",result["schema"])
+        self.assertTrue(result['local_article_semantic_opt_in'])
+        self.assertTrue(result['local_semantic_channels_are_independent_and_never_score_fused'])
+        self.assertTrue(result['all_displayed_sources_freshly_revalidated_after_batch'])
+        self.assertFalse(result['cross_store_atomic_generation_pinned'])
+        channels=result['queries'][0]['independent_rank_channels']
+        self.assertEqual({'literal','porter','semantic_article','semantic_catalog_title'},set(channels))
+        self.assertEqual([self.fixture.selected],
+                         [z['original_path'] for z in channels['semantic_article']['source_originals']])
+        for ch in ('semantic_article','semantic_catalog_title'):
+            rows=channels[ch]['source_originals']
+            self.assertEqual(1,len(rows))
+            r=rows[0]
+            self.assertEqual(self.fixture.selected,r['original_path'])
+            self.assertEqual(1,r['native_original_filedb_entry_id'])
+            self.assertTrue(r['original_and_derivative_full_bytes_rehashed'])
+            self.assertFalse(r['factual_answer_verified'])
+            self.assertEqual(sha(r['source_excerpt'].encode()),r['source_excerpt_sha256'])
+            self.assertTrue(r['source_excerpt_is_whitespace_normalized_publisher_article_not_literal_HTML_bytes'])
+            if ch=='semantic_catalog_title':
+                self.assertTrue(r['title_only_rank_is_not_original_article_content_evidence'])
+            else:
+                self.assertFalse(r['title_only_rank_is_not_original_article_content_evidence'])
+        self.assertEqual(before,self.fixture.source_digests())
+
+    def test_optin_semantic_source_changes_after_initial_index_refuse(self):
+        from tests.filesystem_database.test_publisher_html_article_semantic import FakeLocalE5
+        class MutateDuringSemantic(FakeLocalE5):
+            def embed_queries(_self, ss):
+                original=self.fixture.files[self.fixture.selected][0]
+                original.write_bytes(original.read_bytes()+b' unexpected altered bytes')
+                return super().embed_queries(ss)
+        with self.assertRaisesRegex(ValueError,'changed after article indexing'):
+            self.cli.search(**self.fixture.search_arguments(),
+                            include_local_semantic=True,
+                            semantic_model=MutateDuringSemantic())
+
+    def test_legacy_article_cli_does_not_import_optional_numpy_semantic_module(self):
+        # No local model/NumPy dependency is allowed to leak into the old
+        # two-channel command when the opt-in flag is absent.
+        with mock.patch.dict(sys.modules, {
+            'file_system_catalog.publisher_html_article_semantic': None
+        }):
+            default=self.cli.search(**self.fixture.search_arguments())
+        self.assertEqual('kmd.readonly_scoped_publisher_html_article_discovery.v1',
+                         default['schema'])
+        self.assertEqual({'literal','porter'},
+                         set(default['queries'][0]['independent_rank_channels']))
+        self.assertNotIn('local_semantic_model',default)
+        self.assertNotIn('local_article_semantic_opt_in',default)
+
+    def test_optin_local_semantic_rejects_post_query_source_map_revision_change(self):
+        from tests.filesystem_database.test_publisher_html_article_semantic import FakeLocalE5
+        class MutateSourceMapDuringSemantic(FakeLocalE5):
+            def embed_queries(_self, queries):
+                with sqlite3.connect(self.fixture.source_map) as conn:
+                    conn.execute('UPDATE originals SET derived_sha256=? WHERE source_path=?',
+                                 ('f'*64,self.fixture.selected))
+                return super().embed_queries(queries)
+        with self.assertRaisesRegex(ValueError,'current source-map revision|source-map revision'):
+            self.cli.search(**self.fixture.search_arguments(),
+                            include_local_semantic=True,
+                            semantic_model=MutateSourceMapDuringSemantic())
+
+    def test_optin_local_semantic_rejects_post_query_derivative_bytes_change(self):
+        from tests.filesystem_database.test_publisher_html_article_semantic import FakeLocalE5
+        class MutateDerivativeDuringSemantic(FakeLocalE5):
+            def embed_queries(_self, queries):
+                derivative=self.fixture.files[self.fixture.selected][1]
+                derivative.write_bytes(derivative.read_bytes()+b' invalid extra bytes')
+                return super().embed_queries(queries)
+        with self.assertRaisesRegex(ValueError,'current derivative bytes differ'):
+            self.cli.search(**self.fixture.search_arguments(),
+                            include_local_semantic=True,
+                            semantic_model=MutateDerivativeDuringSemantic())
+
+    def test_optin_local_semantic_requires_boolean_and_does_not_change_default(self):
+        original=self.fixture.search_arguments()
+        with self.assertRaises(ValueError):
+            self.cli.search(**original,include_local_semantic=1)
+        with self.assertRaises(ValueError):
+            self.cli.search(**original,semantic_model=object())
+        default=self.cli.search(**original)
+        self.assertNotIn('local_article_semantic_opt_in',default)
+        self.assertEqual({'literal','porter'},
+                         set(default['queries'][0]['independent_rank_channels']))
+
     def test_actual_single_query_stdout_preserves_all_source_bytes(self):
         before = self.fixture.source_digests()
         run = self.run_cli(["--publisher-url-prefix", SCOPE, "--query", QUERY])
