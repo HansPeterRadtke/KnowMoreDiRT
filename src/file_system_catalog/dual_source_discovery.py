@@ -198,41 +198,49 @@ _PHYSICAL_PDF_LABEL = re.compile(r"PDF page ([1-9][0-9]{0,5})$")
 
 def publisher_text_preview(full_passage: str, source_section: str,
                            *, max_chars: int = 350) -> tuple[str,str]:
-    """Quote source-unit text, not KMD metadata; avoid spanning PDF pages.
+    """Select genuine publisher-body text, never generated source labels.
 
-    Native extracted chunks may begin with a generated `[[SOURCE UNIT:]]`
-    delimiter or straddle two independently extracted PDF pages. Those
-    delimiters are NOT printed publisher text. Prefer the first substantive
-    segment, preserving an explicit physical page label if its marker is
-    encountered, and never pretend the displayed preview crosses pages.
-    The full passage's native position and SHA are verified separately.
+    The native reader can return a source-chunk window that begins in
+    generated catalog metadata and later contains one or more complete
+    extractor-owned source-unit markers. Even a long pre-marker prologue
+    cannot become a source preview. Only text *after* a complete marker
+    and before the next complete marker may be previewed. A marker-free
+    chunk may still represent genuine publisher text, but that claim is
+    checked independently by verify_current_source before publication.
+    These source section labels are navigation only, not PDF page proof.
     """
     if (not isinstance(full_passage,str) or not full_passage
             or not isinstance(source_section,str)
             or type(max_chars) is not int or not 30<=max_chars<=350):
         raise ValueError('invalid source-derived passage preview')
     delimiters=list(_DERIVED_SOURCE_UNIT.finditer(full_passage))
+    if ("[[SOURCE UNIT:" in full_passage and
+            len(delimiters)!=full_passage.count("[[SOURCE UNIT:")):
+        raise ValueError('incomplete or untrusted generated source-unit marker')
     segments=[]
-    previous_end=0
-    label=source_section
-    for match in delimiters:
-        part=full_passage[previous_end:match.start()].strip()
-        if part:
-            segments.append((part,label))
-        next_label=match.group(1)
-        if _PHYSICAL_PDF_LABEL.fullmatch(next_label):
-            label=next_label
-        else:
-            label=source_section  # Non-PDF source-unit labels are still context.
-        previous_end=match.end()
-    final=full_passage[previous_end:].strip()
-    if final:
-        segments.append((final,label))
+    if delimiters:
+        for i,marker in enumerate(delimiters):
+            start=marker.end()
+            end=(delimiters[i+1].start()
+                 if i+1<len(delimiters) else len(full_passage))
+            body=full_passage[start:end].strip()
+            if not body or len(body)<20:
+                continue
+            page=marker.group(1)
+            label=(page if _PHYSICAL_PDF_LABEL.fullmatch(page)
+                   else source_section)
+            segments.append((body,label))
+    else:
+        body=full_passage.strip()
+        if body:
+            segments.append((body,source_section))
     if not segments:
         raise ValueError('source passage contains only extractor metadata')
-    # A page-crossing window may start with only an ending phrase from the
-    # preceding page; require a modest substantive excerpt when possible.
-    selected=next(((text,section) for text,section in segments if len(text)>=80),segments[0])
+    # Prefer a substantive source paragraph. Each candidate is drawn from
+    # a SINGLE source body and is subsequently SHA-verified; never merge two
+    # independently extracted PDF pages into a quote.
+    selected=next(((text,section) for text,section in segments if len(text)>=80),
+                  segments[0])
     preview=selected[0][:max_chars].rstrip()
     if not preview or preview not in full_passage:
         raise ValueError('source preview is not a literal verified derivative span')
@@ -438,6 +446,9 @@ def combined_dual_discovery(
         full_passage=item["source_passage"]
         passage_sha=item["source_passage_sha256"]
         expected=item["original_source_sha256"]
+        section=str(item.get("source_section") or "")
+        recovered_body_preview=None
+        recovered_body_section=None
         try:
             proof=verify_current_source(
                 path=path,expected_sha256=expected,
@@ -446,27 +457,57 @@ def combined_dual_discovery(
                 derivative_root=derivative_root,original_receipts=original_receipts,
             )
         except ValueError as error:
-            # Optional *explicitly reported* abstention: the native original
-            # scanner can occasionally return a valid chunk SHA whose text
-            # occurs only in extractor-written catalog metadata. Publisher
-            # and derivative bytes were both rehashed inside the verifier.
-            # Do not allow an unquoted metadata header to destroy otherwise
-            # verified, useful source excerpts in this one result set.
-            # ALL OTHER integrity failures (changed original/derivative,
-            # invalid span hash, missing source) still abort the full result.
-            if (omit_verified_nonpublisher_passages and
-                    str(error)=="raw passage absent from current publisher-source section of derivative"):
+            # The original native chunk may straddle an extractor-written
+            # source-unit marker. Its WHOLE verified chunk is not publisher
+            # prose, but its bounded *post-marker body* can still contain
+            # real, useful source text. Recover only in explicitly requested
+            # audited-abstention mode: native chunk SHA must have passed,
+            # then a separate preview SHA plus FULL original and derivative
+            # source revision proofs must pass. Never silently loosen the
+            # strict complete-chunk source verification contract.
+            if (not omit_verified_nonpublisher_passages or
+                    str(error)!="raw passage absent from current publisher-source section of derivative"):
+                raise
+            if (isinstance(full_passage,str) and
+                    "[[SOURCE UNIT:" in full_passage):
+                try:
+                    candidate,candidate_section=publisher_text_preview(
+                        full_passage,section)
+                except ValueError:
+                    candidate=None
+                if candidate is not None:
+                    try:
+                        proof=verify_current_source(
+                            path=path,expected_sha256=expected,
+                            raw_passage=candidate,
+                            raw_passage_sha256=hashlib.sha256(
+                                candidate.encode("utf-8")).hexdigest(),
+                            source_map=source_map,original_root=original_root,
+                            derivative_root=derivative_root,
+                            original_receipts=original_receipts,
+                        )
+                    except ValueError as preview_error:
+                        if str(preview_error)!="raw passage absent from current publisher-source section of derivative":
+                            raise  # Never hide changed source/hash/receipt.
+                    else:
+                        recovered_body_preview=candidate
+                        recovered_body_section=candidate_section
+            if recovered_body_preview is None:
                 excluded_nonpublisher.append({"original_path":path,
                     "native_candidate_rank":i,
                     "reason":"source_excerpt_not_present_after_publisher_source_unit_marker"})
                 continue
-            raise
         passage_seen.add(path)
         if path in verified and verified[path]["source_original_sha256"]!=proof["source_original_sha256"]:
             raise ValueError("source revisions differ between the two retrieval channels")
         verified[path]=proof
         if len(raw_out)<max_originals:
-            preview,preview_section=publisher_text_preview(full_passage,str(item.get("source_section") or ""))
+            if recovered_body_preview is None:
+                preview,preview_section=publisher_text_preview(
+                    full_passage,section)
+            else:
+                preview,preview_section=(recovered_body_preview,
+                                         recovered_body_section)
             raw_out.append({
                 "original_path":path,
                 "original_source_rank":len(raw_out)+1,
@@ -479,7 +520,13 @@ def combined_dual_discovery(
                 "passage_preview_sha256":hashlib.sha256(preview.encode("utf-8")).hexdigest(),
                 "publisher_url":item.get("publisher_url"),
                 "source_page_citation_warning":item.get("source_page_citation_warning"),
-                "source_scope":"Exact current derivative passage, NOT guaranteed physically correct PDF page or complete governing context.",
+                "source_scope":(
+                    "Only displayed source-body preview independently SHA/revision-verified; "
+                    "native chunk also contains extractor metadata. No PDF page or answer truth."
+                    if recovered_body_preview is not None else
+                    "Exact current source-body passage, NOT guaranteed physically correct PDF page or complete governing context."
+                ),
+                "native_marker_mixed_chunk_source_body_recovered":recovered_body_preview is not None,
                 "publisher_revision_verified":True,
             })
     summary_paths={item["original_path"] for item in summary_out}

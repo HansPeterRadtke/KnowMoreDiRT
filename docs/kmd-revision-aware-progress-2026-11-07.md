@@ -372,6 +372,38 @@ original/derived SHA verification and leave physical PDF
 page confirmation separate; a human review grade is not
 automatically relevant or factually true.
 
+The independent dual summary/original search now has an
+**opt-in, explicitly marked source-body recovery** when an
+upstream exact-chunk-SHA-verified native result contains both a
+generated source-unit marker and actual original text. The
+whole mixed chunk remains **uncitable**. Only text following
+a complete source-unit marker, bounded before the next
+marker, may be considered as a candidate excerpt. Its own
+SHA, the complete original publisher file and complete
+current derivative SHA, acquisition receipt and source-map
+revision are verified again before it is returned. A
+header-only chunk, missing publisher text, changed revision,
+mismatched chunk SHA or two-page stitched passage still
+fails closed or is reported as omitted. The result records
+that the displayed **preview was recovered from a
+marker-mixed native chunk**, distinct from the native
+whole-chunk SHA and ranking.
+
+The same approved, source-named Asuka-Bench question
+was replayed once before and once after this correction
+against the live original native library. Both runs found
+the unique right original as a generated-summary candidate
+at rank one, but the first run explicitly omitted its only
+marker-mixed original passage; after the recovery, **one**
+real original-text passage was returned, verified against
+the actual archived publisher PDF, approved extraction and
+native FileDB identity. It was a source-body preview of the
+paper's title page, not an answer to the benchmark's task
+pass-rate question. Do **not** equate a recovered source
+snippet with the correct answer or with PDF physical-page
+truth. The independent summary and source ranking scores
+remain unfused and unchanged.
+
 The dual-source CLI also reads the canonical source-map using a
 bounded **twenty-second query-only SQLite reader** and closes the
 connection after verification. This corrects its last direct

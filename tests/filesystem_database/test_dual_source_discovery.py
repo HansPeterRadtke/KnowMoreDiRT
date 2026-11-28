@@ -114,9 +114,127 @@ class SourceBoundDualSearchTests(unittest.TestCase):
         self.assertIn(preview,source)
         source='This is a sufficiently detailed statement from page 13 with more than eighty characters.' + '[[SOURCE UNIT: PDF page 14]]\n' + 'Other page separate statement.'
         preview,label=publisher_text_preview(source,'PDF page 13')
-        self.assertEqual('PDF page 13',label)
-        self.assertTrue(preview.startswith('This is a sufficiently detailed'))
+        # A preceding fragment has no complete source-unit marker in
+        # this native chunk, so do not mislabel its beginning as a
+        # physically verified previous PDF page. Keep only text after
+        # the complete page-14 source marker.
+        self.assertEqual('PDF page 14',label)
+        self.assertEqual('Other page separate statement.',preview)
         self.assertNotIn('[[SOURCE UNIT:',preview)
+
+    def test_a_long_generated_prologue_before_a_source_marker_never_becomes_a_preview(self):
+        fake=("KMD source provenance and a generated catalog title with invented key facts. "
+              "A model-written header might repeat any scientific answer or citation. ")*3
+        actual=("The real author discusses the current experimental method, its limitations, "
+                "and which physical measurements were supported in the published study.")
+        source=fake+"[[SOURCE UNIT: PDF page 14]]"+chr(10)+actual+chr(10)
+        snippet,label=publisher_text_preview(source,'PDF page 13')
+        self.assertEqual('PDF page 14',label)
+        self.assertTrue(snippet.startswith('The real author discusses'))
+        self.assertNotIn('KMD source provenance',snippet)
+        self.assertNotIn('[[SOURCE UNIT:',snippet)
+        with self.assertRaisesRegex(ValueError,'extractor metadata'):
+            publisher_text_preview(fake+"[[SOURCE UNIT: PDF page 14]]"+chr(10)+'tiny','PDF page 13')
+        with self.assertRaisesRegex(ValueError,'untrusted'):
+            publisher_text_preview(fake+"[[SOURCE UNIT: Unclosed page label",
+                                   'PDF page 13')
+
+    def test_native_marker_mixed_valid_source_body_recovers_without_generated_label_citation(self):
+        path='official/material.html'
+        header=('KMD source metadata with generated paper title, date and fake claims. ')*3
+        body=('The publisher describes physically measured radiance and the limitations of '
+              'the resulting physically based material model.')
+        native=header+'[[SOURCE UNIT: PDF page 13]]'+chr(10)+body+chr(10)
+        derived=self.derivatives/(path+'.txt')
+        derived.write_text(native)
+        self.map.execute('UPDATE originals SET derived_sha256=? WHERE source_path=?',
+                         (sha(derived.read_bytes()),path))
+        entry=dict(self.raw_node(path),
+                   source_passage=native,
+                   source_passage_sha256=sha(native.encode()),
+                   source_section='PDF page 12')
+        with self.assertRaisesRegex(ValueError,'absent from current publisher-source'):
+            self.combine(raw={**self.raw,'results':[entry]})
+        result=self.combine(raw={**self.raw,'results':[entry]},
+                            omit_unverified=True)
+        self.assertEqual(1,result['raw_original_count'])
+        self.assertEqual(1,result['union_original_count'])
+        self.assertEqual(0,result['uncitable_native_passage_candidates_omitted'])
+        preview=result['original_passage_channel'][0]
+        self.assertTrue(preview['native_marker_mixed_chunk_source_body_recovered'])
+        self.assertEqual('PDF page 13',preview['source_section'])
+        self.assertEqual(body,preview['passage_preview'])
+        self.assertEqual(sha(native.encode()),preview['exact_derived_source_passage_sha256'])
+        self.assertEqual(sha(body.encode()),preview['passage_preview_sha256'])
+        self.assertTrue(preview['publisher_revision_verified'])
+        self.assertEqual(1,preview['native_raw_candidate_rank_before_verification'])
+        self.assertIn('Only displayed source-body preview',preview['source_scope'])
+        self.assertNotIn('KMD source metadata',preview['passage_preview'])
+        self.assertTrue(result['no_ranking_fusion_or_score_threshold_applied'])
+
+    def test_native_marker_only_and_long_fake_prologue_are_omitted_not_misquoted(self):
+        path='official/material.html'
+        header=('KMD generated source catalog description and predicted findings. ')*4
+        derivative=self.derivatives/(path+'.txt')
+        fake=header+'[[SOURCE UNIT: PDF page 13]]'+chr(10)+'tiny'+chr(10)
+        derivative.write_text(fake)
+        self.map.execute('UPDATE originals SET derived_sha256=? WHERE source_path=?',
+                         (sha(derivative.read_bytes()),path))
+        item=dict(self.raw_node(path),
+                  source_passage=fake,source_passage_sha256=sha(fake.encode()))
+        output=self.combine(raw={**self.raw,'results':[item]},
+                            omit_unverified=True)
+        self.assertEqual([],output['original_passage_channel'])
+        self.assertEqual(1,output['uncitable_native_passage_candidates_omitted'])
+        self.assertEqual(1,output['summary_original_count'])
+        self.assertEqual(1,output['union_original_count'])
+        # An extractor label alone is never an original body, even if
+        # the pre-marker catalog header is lengthy and token-relevant.
+
+    def test_mixed_marker_recovery_never_hides_native_or_publisher_sha_tampering(self):
+        path='official/material.html'
+        derived=self.derivatives/(path+'.txt')
+        chunk='[[SOURCE UNIT: PDF page 13]]'+chr(10)+'A factual original source excerpt on measured light distribution.'
+        derived.write_text(chunk)
+        self.map.execute('UPDATE originals SET derived_sha256=? WHERE source_path=?',
+                         (sha(derived.read_bytes()),path))
+        valid=dict(self.raw_node(path),source_passage=chunk,
+                   source_passage_sha256=sha(chunk.encode()))
+        invalid=dict(valid,source_passage_sha256='0'*64)
+        with self.assertRaisesRegex(ValueError,'chunk digest'):
+            self.combine(raw={**self.raw,'results':[invalid]},omit_unverified=True)
+        self.originals.joinpath(path).write_bytes(b'tampered original publisher bytes')
+        with self.assertRaisesRegex(ValueError,'bytes changed'):
+            self.combine(raw={**self.raw,'results':[valid]},omit_unverified=True)
+        self.originals.joinpath(path).write_bytes(b'<html><p>'+self.payload_text[path].encode()+b'</p></html>')
+        derived.write_bytes(derived.read_bytes()+b'changed current derivative')
+        with self.assertRaisesRegex(ValueError,'bytes changed'):
+            self.combine(raw={**self.raw,'results':[valid]},omit_unverified=True)
+
+    def test_marker_crossing_source_body_preview_does_not_join_two_pdf_pages(self):
+        path='official/material.html'
+        header='KMD catalog scope says this is a product title, not source evidence. '
+        real=('The first publisher page ends in a statement about kinetic analysis and '
+              'measured data.')
+        second=('The next publisher page contains the caveat about inference assumptions '
+                'and the limits of the study.')
+        native=(header+'[[SOURCE UNIT: PDF page 7]]'+chr(10)+real+chr(10)+
+                '[[SOURCE UNIT: PDF page 8]]'+chr(10)+second+chr(10))
+        derived=self.derivatives/(path+'.txt')
+        derived.write_text(native)
+        self.map.execute('UPDATE originals SET derived_sha256=? WHERE source_path=?',
+                         (sha(derived.read_bytes()),path))
+        entry=dict(self.raw_node(path),
+                   source_passage=native,source_passage_sha256=sha(native.encode()))
+        combined=self.combine(raw={**self.raw,'results':[entry]},
+                             omit_unverified=True)
+        self.assertEqual(1,combined['raw_original_count'])
+        row=combined['original_passage_channel'][0]
+        self.assertTrue(row['native_marker_mixed_chunk_source_body_recovered'])
+        self.assertEqual('PDF page 7',row['source_section'])
+        self.assertEqual(real,row['passage_preview'])
+        self.assertNotIn('[[SOURCE UNIT:',row['passage_preview'])
+        self.assertNotIn(second,row['passage_preview'])
 
     def test_no_raw_publisher_text_preview_fails_closed(self):
         with self.assertRaisesRegex(ValueError,'only extractor metadata'):
