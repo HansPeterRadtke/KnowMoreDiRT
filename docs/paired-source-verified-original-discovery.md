@@ -238,6 +238,101 @@ native FileDB integration requires separate design and validation,
 not a shadow semantic database. The source-indexing workers, original
 documents and existing vectors were left untouched.
 
+## Original PBRT fourth-edition book chapters — first-party PreTeXt layout
+
+The current optional publisher-scoped archived-HTML reader now supports
+the **actual original structure of Physically Based Rendering, fourth
+edition**, in addition to the previous strict one-article/one-main HTML
+layouts. The PBRT publisher chapters are not wrapped in an HTML
+`<article>` or `<main>`. Each contains exactly one
+`div.maincontainer`, with sibling `div.pretext-layout-root` text/math
+sections. Chapter overviews use one `h1`; their interior chapter
+sections use one `h2`. The old reader skipped *all* of these original
+documents as having no eligible article container.
+
+The alternative parser is admitted only when the **already approved
+source-map publisher URL** belongs to the precise
+`https://pbr-book.org/4ed/` directory. No external fetching or
+version guessing occurs. Its explicit main-container, distinct
+non-nested fragment, correct top-level heading and bounded-structure
+checks fail closed on malformed, hidden, ambiguous, wrong-edition or
+unsupported HTML. Navigation menus, footers, scripts and hidden
+markup remain excluded. Every accepted page is read from the
+**current original publisher HTML bytes** and checked against the
+approved completed acquisition ledger, source map and derivative
+SHA. Each *selected* source is checked again with its unique
+native FileDB document ID and exact normalized original article
+excerpt offsets. Extracted HTML text is not a browser-rendered
+view or a literal byte quotation from the HTML file; do not
+infer figure layout or substantive scientific correctness.
+
+For the complete currently archived book on Raspi, under a
+resource-broker-admitted bounded CPU run where appropriate:
+
+~~~bash
+PYTHONDONTWRITEBYTECODE=1 PYTHONPATH=src:. \
+  /data/var/knowmoredirt/semantic-venv/bin/python \
+  scripts/raspi_publisher_html_article_discovery.py \
+  --publisher-url-prefix 'https://pbr-book.org/4ed/' \
+  --query 'How does microscopic surface roughness affect material reflections?' \
+  --top 10 \
+  --output '/data/var/knowmoredirt/knowledge-library/search-audit/NEW-PRIVATE-PBRT-REFERENCE-SEARCH.json'
+~~~
+
+For one PBRT section only, supply its narrower complete publisher
+directory such as `https://pbr-book.org/4ed/Reflection_Models/`.
+There is **no out-of-scope fallback** or cross-publisher rank fusion.
+The separate Epic Games original PBR material reference must be
+searched in its own approved publisher scope.
+
+A real November twenty-eighth full-byte source test admitted
+**all seventy-one** already archived fourth-edition publisher HTML
+documents: sixty original book sections and eleven chapter overviews.
+The direct HTML source reader previously admitted **none**.
+The real bounded publisher-book search processed about twenty
+megabytes of currently approved original HTML and verified all
+seventy-one parsed chapter sources. It recovered the formerly missed
+*Roughness Using Microfacet Theory* chapter at **rank one in both
+independent lexical channels**, even with the entire archived
+fourth-edition book in scope. An independent source-byte and native
+identity readback verified this chapter, the whole book's original
+source and derived hashes, and the corresponding Epic first-party
+material reference in its separate publisher scope.
+
+The exact *predeclared* five-question, eleven-source multi-positive
+benchmark was also rerun against the **unchanged native summary
+ranking**. It went from five of five questions with at least one
+known original in the top ten to four of five; the rendering-roughness
+question now returned neither of its two independently verified
+supporting references in that global native top ten. The old result
+had one of the two. This indicates genuine **native retrieval
+discoverability drift**, not deleted publisher originals and not
+proof that unrelated retrieved references are factually wrong.
+The scoped source search returned the PBRT roughness chapter at
+rank one and the separate Epic PBR reference at rank one in
+their own respective publisher subsets. Do **not** combine the two
+rank-one positions into an invented global native rank or claim
+global semantic recall is repaired.
+
+The earlier frozen benchmark runner also required a backwards-
+compatible **hash-only historical baseline reader**: existing
+reports intentionally store the question SHA and exact known
+relevant original identities rather than exposing full question
+text. Comparison now requires their complete matching frozen
+gold-file SHA, question SHA, identical ordered source labels and
+entire case population. No changed gold query, missing positive or
+unlabeled negative can be silently accepted. Historical and
+current top-ten and mean known-source recall deltas are separate
+comparisons, not calibrated scientific confidence measures.
+
+No source acquisition, third-party upload, model training, vector
+rebuild, native score-weight change, live FileDB/source-map update
+or interruption of the active summary workers was performed.
+The live native multi-source ranking regression still requires
+an independently evaluated semantic remedy; meanwhile the
+approved original PBRT book is findable through this explicit
+read-only publisher search.
+
 ## Approved publisher breadcrumb navigation without rank inflation
 
 The original publisher-article search also accepts the **independent**

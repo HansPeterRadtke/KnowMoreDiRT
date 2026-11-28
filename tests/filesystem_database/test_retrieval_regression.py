@@ -115,6 +115,74 @@ class FixedOriginalRetrievalTests(unittest.TestCase):
         with self.assertRaisesRegex(ValueError,"multi-source"):
             assert_equivalent_gold(multi,prior)
 
+    def test_historical_hash_only_multi_positive_baseline_requires_frozen_file_sha_and_full_labels(self):
+        cases=validated_gold([
+            {"id":"a","query":"Material roughness and microfacets",
+             "category":"two_references",
+             "relevant_paths":["papers/first.html","papers/second.html"]},
+            {"id":"b","query":"Original normal maps in real-time renderers",
+             "category":"docs",
+             "relevant_paths":["docs/normal-a.html","docs/normal-b.html"]},
+        ])
+        # Mirrors the actual previously frozen 2026-11-20 baseline, whose
+        # question text was intentionally omitted from its private report.
+        digest="b"*64
+        old={
+            "fixed_gold_sha256":digest,
+            "complete_fixed_population":True,
+            "selected_case_ids":["a","b"],
+            "cases":[{"id":row["id"],
+                      "query_sha256":hashlib.sha256(row["query"].encode()).hexdigest(),
+                      "known_relevant_original_paths":list(row["relevant_paths"]),
+                      "gold_path":row["relevant_paths"][0],
+                      "category":row["category"]}
+                     for row in cases],
+        }
+        assert_equivalent_gold(cases,old,fixed_gold_sha256=digest)
+        for edited_cases in [
+            [dict(cases[0],query="Changed prompt"),cases[1]],
+            [dict(cases[0],relevant_paths=["papers/second.html","papers/first.html"]),cases[1]],
+            [dict(cases[0],category="unverified different category"),cases[1]],
+        ]:
+            with self.subTest(edited=edited_cases[0]),self.assertRaises(ValueError):
+                assert_equivalent_gold(edited_cases,old,fixed_gold_sha256=digest)
+        for change in [
+            ("fixed_gold_sha256","c"*64),
+            ("complete_fixed_population",False),
+            ("selected_case_ids",["b","a"]),
+        ]:
+            with self.subTest(key=change[0]),self.assertRaises(ValueError):
+                assert_equivalent_gold(cases,{**old,change[0]:change[1]},
+                                       fixed_gold_sha256=digest)
+        with self.assertRaises(ValueError):
+            assert_equivalent_gold(cases,old)
+        with self.assertRaises(ValueError):
+            assert_equivalent_gold(cases,old,fixed_gold_sha256="0"*64)
+        modified={"cases":[dict(old["cases"][0],gold_path="wrong/source.html"),
+                           old["cases"][1]], **{k:v for k,v in old.items() if k!="cases"}}
+        with self.assertRaises(ValueError):
+            assert_equivalent_gold(cases,modified,fixed_gold_sha256=digest)
+        short=dict(old)
+        short["cases"]=[old["cases"][0]]
+        with self.assertRaises(ValueError):
+            assert_equivalent_gold(cases,short,fixed_gold_sha256=digest)
+
+    def test_actual_frozen_five_multi_positive_source_baseline_bytes_still_match(self):
+        from tempfile import TemporaryDirectory
+        # Use only existing local, committed-in-the-owner-library artifacts;
+        # skip on developer machines without the private original corpus.
+        base=Path('/data/var/knowmoredirt/knowledge-library/search-audit/multirelevant-originals-20261121')
+        frozen=base/'original_multirelevant_gold_frozen.json'
+        historical=base/'native_top10_gold_source_rechecked.json'
+        if not frozen.is_file() or not historical.is_file():
+            self.skipTest('owner-private frozen source evidence unavailable here')
+        data=frozen.read_bytes()
+        cases=validated_gold(json.loads(data)["cases"])
+        self.assertEqual(5,len(cases))
+        self.assertEqual(11,sum(len(x["relevant_paths"]) for x in cases))
+        assert_equivalent_gold(cases,json.loads(historical.read_bytes()),
+                               fixed_gold_sha256=hashlib.sha256(data).hexdigest())
+
     def test_readonly_live_file_db_waits_for_brief_exclusive_writer(self):
         with TemporaryDirectory() as directory:
             path=Path(directory)/'live.sqlite3'
@@ -168,6 +236,30 @@ class FixedOriginalRetrievalTests(unittest.TestCase):
         self.assertEqual("canonical_native_original_absent_or_ambiguous",
                          source_record(db,m,"missing.pdf")["gold_status"])
         db.close();m.close()
+
+    def test_modern_frozen_baseline_reports_real_rank_delta_without_nulls(self):
+        case=validated_gold([{
+            "id":"pbr","query":"Explain material roughness",
+            "relevant_paths":["originals/pbrt.html","originals/epic.html"]}])[0]
+        source_ok={"gold_status":"native_summaries_match_source_map_revision"}
+        now=evaluate_case(case,lambda q:["not-related.html","more.html"],
+                          lambda p:source_ok)
+        baseline={"cases":1,"correct_top1":1,"correct_top10":1,
+                  "known_relevant_source_identifiers":2,
+                  "mean_known_relevant_source_recall_at10":0.5}
+        result=score([now],baseline)
+        self.assertEqual(1,result["historical_top1"])
+        self.assertEqual(1,result["historical_top10"])
+        self.assertEqual(-1,result["top1_difference_vs_historical"])
+        self.assertEqual(-1,result["top10_difference_vs_historical"])
+        self.assertEqual(0.5,result["historical_mean_known_relevant_source_recall_at10"])
+        self.assertEqual(-0.5,result["known_relevant_source_recall_change_at10"])
+        with self.assertRaisesRegex(ValueError,"contradict"):
+            score([now],{**baseline,"top10_count":3})
+        with self.assertRaisesRegex(ValueError,"population differs"):
+            score([now],{**baseline,"known_relevant_source_identifiers":3})
+        with self.assertRaisesRegex(ValueError,"population differs"):
+            score([now],{**baseline,"cases":2})
 
     def test_scores_are_exact_counts_not_unverified_probabilities(self):
         valid={"gold_status":"native_summaries_match_source_map_revision"}

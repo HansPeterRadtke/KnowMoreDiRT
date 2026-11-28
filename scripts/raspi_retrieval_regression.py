@@ -62,7 +62,8 @@ def main()->None:
     if args.baseline:
         raw=json.loads(args.baseline.read_text())
         if len(cases)==len(full_cases):
-            assert_equivalent_gold(cases,raw)
+            assert_equivalent_gold(
+                cases,raw,fixed_gold_sha256=hashlib.sha256(gold).hexdigest())
             baseline=raw["summary"]
     if args.attest_html_gold and (args.original_root is None or args.derived_root is None):
         raise ValueError("strict original-source attestation requires --original-root and --derived-root")

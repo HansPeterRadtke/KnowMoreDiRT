@@ -200,13 +200,147 @@ class _ArticleParser(HTMLParser):
         return c["tag"], text
 
 
-def extract_article(raw: bytes) -> tuple[str, str]:
+class _PBRTPretextParser(HTMLParser):
+    """Read only actual first-party PBRT book chapter fragments.
+
+    PBRT fourth edition uses div.maincontainer containing many sibling
+    div.pretext-layout-root prose/math fragments, NOT <article>/<main>.
+    Selecting the entire body would incorrectly mix navigation and footer
+    with quoted physics. This strict fallback is admitted only for an
+    explicit current pbr-book.org/4ed/Reflection_Models/ publisher URL.
+    """
+    MAX_FRAGMENTS = 128
+
+    def __init__(self, *, expected_heading:str="h2"):
+        if expected_heading not in ("h1","h2"):
+            raise ValueError("PBRT source page must specify chapter or section layout")
+        super().__init__(convert_charrefs=True)
+        self.expected_heading=expected_heading
+        self.stack = []
+        self.tags = 0
+        self.main_count = 0
+        self.main_closed = 0
+        self.fragments = []
+        self.h1_count = 0
+        self.h2_count = 0
+        self.chars = 0
+        self.invalid_structure = False
+
+    def handle_starttag(self, tag, attrs):
+        self.tags += 1
+        if self.tags > 200000 or len(self.stack) >= 512:
+            raise ValueError("PBRT original chapter HTML exceeds bounded parsing work")
+        data = {k.lower(): (v or "") for k,v in attrs}
+        classes = set(data.get("class", "").split())
+        hidden = ("hidden" in data or "inert" in data
+                or data.get("aria-hidden","").strip().lower() == "true"
+                or bool(set(data.get("role","").lower().split()) & _ArticleParser.ROLES)
+                or bool(re.search(r"(?:^|;)\s*(?:display\s*:\s*none|visibility\s*:\s*hidden)\s*(?:!important\s*)?(?:;|$)",
+                                  data.get("style",""),re.I)))
+        excluded = (bool(self.stack and self.stack[-1]["excluded"])
+                    or tag in _ArticleParser.EXCLUDED or hidden)
+        in_main = bool(self.stack and self.stack[-1]["in_main"])
+        active = next((frame["fragment"] for frame in reversed(self.stack)
+                       if frame["fragment"] is not None),None)
+        main = tag=="div" and "maincontainer" in classes
+        if main:
+            self.main_count += 1
+            if self.main_count > 1 or excluded or in_main:
+                raise ValueError("duplicate, nested or hidden PBRT book maincontainer")
+            in_main = True
+        fragment = None
+        if tag=="div" and "pretext-layout-root" in classes:
+            if not in_main or excluded or active is not None:
+                raise ValueError("unbounded, hidden or nested PBRT book chapter fragment")
+            if len(self.fragments) >= self.MAX_FRAGMENTS:
+                raise ValueError("excessive PBRT book source chapter fragments")
+            fragment={"text":[],"closed":False}
+            self.fragments.append(fragment)
+        if tag in ("h1","h2") and in_main and not excluded and (active is not None or fragment is not None):
+            if tag=="h1":self.h1_count+=1
+            else:self.h2_count+=1
+        if tag not in _ArticleParser.VOID:
+            self.stack.append({"tag":tag,"excluded":excluded,
+                               "in_main":in_main,"is_main":main,"fragment":fragment})
+
+    def handle_endtag(self,tag):
+        for i in range(len(self.stack)-1,-1,-1):
+            if self.stack[i]["tag"]==tag:
+                if (any(x["fragment"] is not None for x in self.stack[i+1:])
+                        or any(x["is_main"] for x in self.stack[i+1:])):
+                    self.invalid_structure=True
+                ending=self.stack[i]
+                if ending["fragment"] is not None:ending["fragment"]["closed"]=True
+                if ending["is_main"]:self.main_closed += 1
+                del self.stack[i:]
+                return
+
+    def handle_startendtag(self,tag,attrs):
+        self.handle_starttag(tag,attrs)
+        if tag not in _ArticleParser.VOID:self.handle_endtag(tag)
+
+    def handle_data(self,data):
+        if not self.stack or self.stack[-1]["excluded"]:
+            return
+        for item in reversed(self.stack):
+            frag=item["fragment"]
+            if frag is not None:
+                self.chars+=len(data)
+                if self.chars>MAX_ARTICLE_CHARS:
+                    raise ValueError("PBRT book chapter exceeds text bounds")
+                frag["text"].append(data)
+                break
+
+    def result(self):
+        heading_ok=(self.h1_count==1 and self.h2_count==0 if self.expected_heading=="h1"
+                    else self.h2_count==1 and self.h1_count==0)
+        if (self.main_count!=1 or self.main_closed!=1
+                or self.invalid_structure or not heading_ok
+                or not 2<=len(self.fragments)<=self.MAX_FRAGMENTS
+                or any(not f["closed"] for f in self.fragments)):
+            raise ValueError("PBRT original source has untrusted chapter container boundaries")
+        parts=[" ".join(" ".join(f["text"]).split()) for f in self.fragments]
+        text=" ".join(p for p in parts if p)
+        if (not 80<=len(text)<=MAX_ARTICLE_CHARS or "\x00" in text):
+            raise ValueError("PBRT original source chapter text empty or unusable")
+        return "pbrt4_pretext_layout",text
+
+
+def extract_article(raw: bytes, *, publisher_original_url: str | None = None) -> tuple[str, str]:
+    """Select exact current first-party article, not arbitrary navigation text.
+
+    Only the publisher's explicitly scoped PBRT fourth-edition Reflection
+    Models pages may use the alternative many-fragment book layout. Default
+    strict article/main behavior remains byte-equivalent for other sources.
+    """
     if not isinstance(raw, bytes) or not 1 <= len(raw) <= MAX_HTML_BYTES:
         raise ValueError("invalid or oversized original HTML")
+    body=raw.decode("utf8", "strict")
     parser = _ArticleParser()
-    parser.feed(raw.decode("utf8", "strict"))
+    parser.feed(body)
     parser.close()
-    return parser.result()
+    try:
+        return parser.result()
+    except ValueError as error:
+        if str(error)!="no unique article or main container":
+            raise
+        if (not isinstance(publisher_original_url,str)
+                or not PublisherScope.parse(
+                    "https://pbr-book.org/4ed/").contains(publisher_original_url)):
+            raise
+        _host, page_path=publisher_url(publisher_original_url)
+        if not page_path.endswith(".html"):
+            raise
+        # Original PBRT chapter overview URLs have exactly two segments
+        # /4ed/Reflection_Models.html (h1); sections have >=3 segments
+        # /4ed/Reflection_Models/Roughness_Using_Microfacet_Theory.html (h2).
+        segments=page_path.strip("/").split("/")
+        if not 2<=len(segments)<=3 or segments[0]!="4ed":
+            raise
+        fallback=_PBRTPretextParser(expected_heading=("h1" if len(segments)==2 else "h2"))
+        fallback.feed(body)
+        fallback.close()
+        return fallback.result()
 
 
 @dataclass(frozen=True)
@@ -487,7 +621,7 @@ def load_scoped_articles(*, source_map: sqlite3.Connection, original_root: Path,
             raw = read_bounded(original, min(MAX_HTML_BYTES, row[7], remaining))
             if len(raw) != row[7] or hashlib.sha256(raw).hexdigest() != row[1]:
                 raise ValueError("original HTML bytes differ from approved revision")
-            selector, body = extract_article(raw)
+            selector, body = extract_article(raw,publisher_original_url=url)
             index.add(ArticleEntry(tuple(row), catalog_sha, ledger_sha, url, selector, body))
         except (ValueError, OSError, UnicodeError) as error:
             skipped.append({"original_path": path, "reason": str(error)[:200]})
@@ -522,7 +656,7 @@ def verify_entry(entry: ArticleEntry, *, source_map: sqlite3.Connection,
     raw = read_bounded(original, MAX_HTML_BYTES)
     if len(raw) != entry.source_map_row[7] or hashlib.sha256(raw).hexdigest() != entry.source_map_row[1]:
         raise ValueError("publisher original changed after article indexing")
-    if extract_article(raw) != (entry.selector, entry.text):
+    if extract_article(raw,publisher_original_url=entry.url) != (entry.selector, entry.text):
         raise ValueError("parsed publisher article changed after indexing")
     derivative = read_bounded(derived, MAX_DERIVATIVE_BYTES)
     if hashlib.sha256(derivative).hexdigest() != entry.source_map_row[2]:

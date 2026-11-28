@@ -136,6 +136,118 @@ class ArticleParserTests(unittest.TestCase):
                                      "Synthetic text" + "</div>" * 512 + "</article>").encode())
 
 
+class PBRTFourthEditionOriginalBookLayoutTests(unittest.TestCase):
+    """PBRT's actual PreTeXt layout has no HTML article/main element."""
+
+    URL="https://pbr-book.org/4ed/Reflection_Models/Roughness_Using_Microfacet_Theory.html"
+    @staticmethod
+    def sample():
+        return (
+            '<body><nav>site navigation fake roughness handbook</nav>'
+            '<div class="maincontainer"><div class="container-fluid">'
+            '<div class="col-lg-8 pretext-layout-root"><h2>9.6 Roughness Using Microfacet Theory</h2>'
+            '<p>Original source microfacet normal distributions explain surface roughness.</p>'
+            '<div role="navigation">BAD_BREADCRUMB_REFERENCE</div>'
+            '<p style="display:none">BAD_HIDDEN_SOURCE_CLAIM</p>'
+            '</div>'
+            '<div class="col-lg-8 pretext-layout-root"><p>'
+            'Visible normal distributions determine reflected light in the rough material.</p>'
+            '<footer>BAD_FOOTER_SCIENCE</footer></div>'
+            '</div></div>'
+            '<nav>BAD_OUTSIDE_PBR_NAV</nav></body>'
+        ).encode()
+
+    def test_explicit_publisher_url_accepts_true_maincontainer_sibling_fragments_only(self):
+        with self.assertRaisesRegex(ValueError,'no unique article or main'):
+            article.extract_article(self.sample())
+        selector,body=article.extract_article(self.sample(),publisher_original_url=self.URL)
+        self.assertEqual('pbrt4_pretext_layout',selector)
+        self.assertIn('Original source microfacet normal distributions',body)
+        self.assertIn('Visible normal distributions determine reflected light',body)
+        for decoy in ('BAD_BREADCRUMB','BAD_HIDDEN','BAD_FOOTER','BAD_OUTSIDE','site navigation'):
+            self.assertNotIn(decoy,body)
+
+    def test_untrusted_host_edition_path_depth_or_query_refuses_fallback(self):
+        for url in (
+            'https://pbr-book.org.evil.test/4ed/Reflection_Models/Roughness_Using_Microfacet_Theory.html',
+            'https://pbr-book.org/3ed/Reflection_Models/Roughness_Using_Microfacet_Theory.html',
+            'https://pbr-book.org/4ed/Reflection_Models.evil/test/too_deep.html',
+            'https://pbr-book.org/5ed/Shapes/Some_Chapter.html',
+            'https://pbr-book.org/4ed/Reflection_Models/../Private.html',
+            'http://pbr-book.org/4ed/Reflection_Models/Some.html',
+            'https://pbr-book.org/4ed/Reflection_Models/Other.html?tracked=yes',
+            None,
+        ):
+            with self.subTest(url=url),self.assertRaises(ValueError):
+                article.extract_article(self.sample(),publisher_original_url=url)
+
+    def test_first_party_top_level_chapter_overview_h1_is_supported_without_ignoring_figure_text(self):
+        raw=(
+            '<body><nav>faked navigation about geometry of light</nav>'
+            '<div class="maincontainer"><div class="container-fluid">'
+            '<div class="pretext-layout-root"><h1>9 Reflection Models</h1>'
+            '<p>Original chapter overview introduces reflection and material models.</p></div>'
+            '<div class="pretext-layout-root"><p>'
+            'This independent chapter overview points to sections describing microfacets.</p></div>'
+            '</div></div><nav>Footer decoration</nav></body>'
+        ).encode()
+        overview='https://pbr-book.org/4ed/Reflection_Models.html'
+        selector,text=article.extract_article(raw,publisher_original_url=overview)
+        self.assertEqual('pbrt4_pretext_layout',selector)
+        self.assertIn('9 Reflection Models',text)
+        self.assertIn('microfacets',text)
+        self.assertNotIn('faked navigation',text)
+        # One top-level overview cannot masquerade as a regular section
+        # by claiming a deep publisher URL and switching heading semantics.
+        with self.assertRaisesRegex(ValueError,'chapter container boundaries'):
+            article.extract_article(raw,publisher_original_url=self.URL)
+        chapter=PBRTFourthEditionOriginalBookLayoutTests.sample()
+        with self.assertRaisesRegex(ValueError,'chapter container boundaries'):
+            article.extract_article(chapter,publisher_original_url=overview)
+
+    def test_hidden_nested_ambiguous_or_unclosed_pretext_source_refused(self):
+        full=self.sample().decode()
+        bad=[
+            full.replace('maincontainer','differentcontainer'),
+            full.replace('maincontainer','maincontainer" hidden aria-label="fake'),
+            full.replace('</div></div><nav>','</div></div><div class="maincontainer"><p>duplicate</p></div><nav>'),
+            full.replace('</div></div><nav>','</div><nav>'),
+            full.replace('<p>Visible normal distributions','<div class="pretext-layout-root"><p>nested</p></div><p>Visible normal distributions'),
+            full.replace('<h2>9.6','<h3>9.6').replace('</h2>','</h3>'),
+            full.replace('<p>Original source','<h2>Duplicated heading</h2><p>Original source'),
+            full.replace('pretext-layout-root','pretend-layout-root'),
+        ]
+        for text in bad:
+            with self.subTest(name=text[:100]),self.assertRaises(ValueError):
+                article.extract_article(text.encode(),publisher_original_url=self.URL)
+
+    def test_real_seventy_one_sha_verified_original_pbrt_chapters_parsed_when_available(self):
+        root=Path('/data/var/Knowledge Library')
+        source_map=Path('/data/var/knowmoredirt/knowledge-library/semantic/source-map.sqlite3')
+        if not root.is_dir() or not source_map.is_file():
+            self.skipTest('private approved original PBR fourth edition corpus unavailable')
+        with sqlite3.connect(source_map.resolve().as_uri()+'?mode=ro',uri=True,timeout=25) as db:
+            db.execute('PRAGMA query_only=ON')
+            prefix='https://pbr-book.org/4ed/'
+            rows=db.execute(
+                "SELECT source_path,original_url,source_sha256 FROM originals "
+                "WHERE status='complete' AND original_kind='html' "
+                "AND substr(original_url,1,?)=? ORDER BY source_path",
+                (len(prefix),prefix)).fetchall()
+        self.assertEqual(71,len(rows))
+        self.assertGreaterEqual(sum('/Reflection_Models/' in url for _,url,_ in rows),9)
+        for path,url,sha_expected in rows:
+            with self.subTest(path=path):
+                original=root/path
+                self.assertFalse(original.is_symlink())
+                raw=original.read_bytes()
+                self.assertEqual(sha(raw),sha_expected)
+                selector,body=article.extract_article(raw,publisher_original_url=url)
+                self.assertEqual('pbrt4_pretext_layout',selector)
+                self.assertGreater(len(body),1000)
+                self.assertNotIn('navbar-expand',body)
+                self.assertNotIn('fixed-top-lg-navbar',body)
+
 class ScopedArticleFixture(unittest.TestCase):
     def setUp(self):
         self.tmp = TemporaryDirectory()
@@ -255,6 +367,53 @@ class ScopedArticleRetrievalTests(ScopedArticleFixture):
             hits = self.index.ranked("normalization total power", channel=channel)
             self.assertEqual(self.path, hits[0][0].path)
             self.assertLess(hits[0][2], 0)
+
+    def test_approved_pbrt_chapter_scope_now_indexed_with_proof_and_native_identity(self):
+        scope=article.PublisherScope.parse('https://pbr-book.org/4ed/Reflection_Models/')
+        path='books/pbrt4/roughness.html'
+        page=PBRTFourthEditionOriginalBookLayoutTests.sample()
+        self.add_source(path,scope.url+'Roughness_Using_Microfacet_Theory.html',
+                        page,identifier=88,title='Roughness Using Microfacet Theory')
+        self.scope=scope
+        result=self.scan()
+        self.assertEqual(1,result['eligible_html_records'])
+        self.assertEqual(1,result['verified_original_articles_indexed'])
+        self.assertTrue(result['all_scoped_html_articles_available'])
+        for channel in ('literal','porter'):
+            selected=self.index.ranked('microfacet roughness surface',channel=channel)
+            self.assertEqual(path,selected[0][0].path)
+            excerpt=self.index.excerpt(selected[0][0],'microfacet roughness surface',channel=channel)
+            self.assertIn('microfacet',excerpt['source_excerpt'].lower())
+            self.assertEqual(sha(excerpt['source_excerpt'].encode()),excerpt['source_excerpt_sha256'])
+        proof=self.verify(self.index.entries[self.index.ids[path]])
+        self.assertEqual(88,proof['native_original_filedb_entry_id'])
+        self.assertEqual(sha(page),proof['publisher_original_sha256'])
+        self.assertFalse(proof['factual_answer_verified'])
+        self.assertFalse(proof['browser_visibility_or_rendering_verified'])
+
+    def test_approved_PBRT_top_level_overview_native_source_is_separately_tracked(self):
+        self.scope=article.PublisherScope.parse('https://pbr-book.org/4ed/')
+        path='books/pbrt4/Reflection_Models.html'
+        html=(
+            '<body><nav>outside owner book navigation</nav>'
+            '<div class="maincontainer"><div class="pretext-layout-root">'
+            '<h1>9 Reflection Models</h1><p>The original reflection book chapter overview '
+            'introduces multiple relevant light transport models.</p></div>'
+            '<div class="pretext-layout-root"><p>Future sections examine roughness '
+            'and microfacet distributions on physically reflective surfaces.</p></div>'
+            '</div><footer>outside original article</footer></body>'
+        ).encode()
+        self.add_source(path,self.scope.url+'Reflection_Models.html',html,
+                        identifier=89,title='PBRT 4ed Reflection Models overview')
+        report=self.scan()
+        self.assertEqual(1,report['verified_original_articles_indexed'])
+        entry=self.index.ranked('roughness microfacet distributions',channel='literal')[0][0]
+        self.assertEqual(path,entry.path)
+        self.assertEqual('pbrt4_pretext_layout',entry.selector)
+        proof=self.verify(entry)
+        self.assertEqual(89,proof['native_original_filedb_entry_id'])
+        self.assertEqual(sha(html),proof['publisher_original_sha256'])
+        self.assertFalse(proof['factual_answer_verified'])
 
     def test_unknown_scope_returns_empty_without_other_version_fallback(self):
         self.scope = article.PublisherScope.parse("https://docs.example.test/manual/en/9.9/")

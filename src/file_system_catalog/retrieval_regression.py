@@ -77,14 +77,51 @@ def validated_gold(raw:list[dict]) -> list[dict]:
     return cases
 
 
-def assert_equivalent_gold(cases:list[dict],baseline_report:dict)->None:
-    """Prevent historical score comparison after silently changing gold."""
+def assert_equivalent_gold(cases:list[dict],baseline_report:dict,
+                           *,fixed_gold_sha256:str|None=None)->None:
+    """Reject changed gold for BOTH legacy literal and current hash-only reports.
+
+    The canonical 2026-11-20 multi-positive native benchmark deliberately
+    does not include the raw question in its output: it stores a question SHA,
+    all predeclared source identities, and the complete frozen-gold SHA. A
+    comparison that requires the absent plaintext question incorrectly
+    rejects the original benchmark without running retrieval.
+
+    Hash-only baselines MUST be bound to the exact current gold *file
+    bytes*, not merely an equivalent-looking question/path subset. Never
+    turn source-presence labels into a claim of factual answer truth.
+    """
+    if not isinstance(cases,list) or not cases or not isinstance(baseline_report,dict):
+        raise ValueError("invalid historical baseline or current frozen cases")
     prior=baseline_report.get("cases")
     if not isinstance(prior,list) or len(prior)!=len(cases):
         raise ValueError("historical baseline does not contain matching gold cases")
     prior_by_id={z.get("id"):z for z in prior if isinstance(z,dict)}
     if len(prior_by_id)!=len(prior):
         raise ValueError("historical baseline has ambiguous gold identifiers")
+    hashed=[("query_sha256" in z and "query" not in z) for z in prior]
+    if any(hashed) and not all(hashed):
+        raise ValueError("cannot compare mixed historical literal/hash-only gold")
+    if all(hashed):
+        if (not isinstance(fixed_gold_sha256,str)
+                or re.fullmatch(r"[a-f0-9]{64}",fixed_gold_sha256) is None
+                or baseline_report.get("fixed_gold_sha256")!=fixed_gold_sha256
+                or baseline_report.get("complete_fixed_population") is not True
+                or baseline_report.get("selected_case_ids") != [case["id"] for case in cases]):
+            raise ValueError("historical hashed baseline has different frozen gold bytes/population")
+        for case in cases:
+            old=prior_by_id.get(case["id"])
+            correct_first=(case["expected_path"]
+                           if case["expected_path"] is not None else
+                           (case["relevant_paths"][0] if case["relevant_paths"] else None))
+            if (old is None
+                    or old.get("query_sha256")!=hashlib.sha256(case["query"].encode()).hexdigest()
+                    or old.get("gold_path")!=correct_first
+                    or old.get("known_relevant_original_paths")!=case["relevant_paths"]
+                    or old.get("category")!=case.get("category")):
+                raise ValueError("historical hashed baseline and current exact source gold differ")
+        return
+    # Existing historical raw-query fixtures retain their literal checks.
     for case in cases:
         other=prior_by_id.get(case["id"])
         if (other is None or other.get("query")!=case["query"]
@@ -92,7 +129,6 @@ def assert_equivalent_gold(cases:list[dict],baseline_report:dict)->None:
                 or ("relevant_paths" in other
                     and other["relevant_paths"]!=case["relevant_paths"])):
             raise ValueError("historical baseline and current gold differ")
-        # Single-gold historical reports do not specify relevant_paths.
         if ("relevant_paths" not in other
                 and len(case["relevant_paths"])>int(case["expected_path"] is not None)):
             raise ValueError("cannot compare old one-gold baseline to multi-source labels")
@@ -231,10 +267,41 @@ def score(rows:list[dict],baseline:dict|None=None)->dict:
             for row in positives),
     }
     if baseline is not None:
-        summary["historical_top1"]=baseline.get("top1_count")
-        summary["historical_top10"]=baseline.get("top10_count")
-        if isinstance(summary["historical_top10"],int):
-            summary["top10_difference_vs_historical"]=summary["correct_top10"]-summary["historical_top10"]
+        if not isinstance(baseline,dict):
+            raise ValueError("invalid frozen retrieval baseline summary")
+        def historically_count(current_key:str,legacy_key:str):
+            modern=baseline.get(current_key)
+            legacy=baseline.get(legacy_key)
+            if (modern is not None and legacy is not None and modern!=legacy):
+                raise ValueError("historical source ranking counts contradict each other")
+            value=modern if modern is not None else legacy
+            if value is None:
+                return None
+            if type(value) is not int or not 0<=value<=len(rows):
+                raise ValueError("invalid historical frozen source-recall count")
+            return value
+        if (baseline.get("cases") is not None
+                and baseline.get("cases")!=summary["cases"]):
+            raise ValueError("historical source rank population differs")
+        if (baseline.get("known_relevant_source_identifiers") is not None
+                and baseline.get("known_relevant_source_identifiers")!=summary["known_relevant_source_identifiers"]):
+            raise ValueError("historical known-relevant source label population differs")
+        summary["historical_top1"]=historically_count("correct_top1","top1_count")
+        summary["historical_top10"]=historically_count("correct_top10","top10_count")
+        for name,current,field in (
+            ("top1_difference_vs_historical","correct_top1","historical_top1"),
+            ("top10_difference_vs_historical","correct_top10","historical_top10"),
+        ):
+            if summary[field] is not None:
+                summary[name]=summary[current]-summary[field]
+        prior=baseline.get("mean_known_relevant_source_recall_at10")
+        if prior is not None:
+            if (not isinstance(prior,(int,float)) or isinstance(prior,bool)
+                    or not 0<=prior<=1):
+                raise ValueError("invalid historical known-original fractional recall")
+            summary["historical_mean_known_relevant_source_recall_at10"]=round(float(prior),6)
+            summary["known_relevant_source_recall_change_at10"]=round(
+                summary["mean_known_relevant_source_recall_at10"]-prior,6)
     return summary
 
 
