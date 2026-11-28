@@ -125,6 +125,30 @@ class OriginalFullPDFSectionTests(unittest.TestCase):
             with self.assertRaisesRegex(ValueError,'publisher source-map revision changed'):
                 self.verify(entry)
 
+    def test_physically_impossible_pdf_page_labels_are_flagged_not_cited(self):
+        from unittest import mock
+        from file_system_catalog import publisher_firstunit_discovery as proof
+        with self.search()[0] as index:
+            entry=index.ranked('tomography',channel='literal')[0][0]
+            negative={'status':'derived_page_labels_exceed_original_physical_pages',
+                      'original_physical_pdf_pages':38,'derived_source_unit_labels':52,
+                      'max_derived_page_label':52,'derived_pdf_page_map_suspect':True,
+                      'publisher_page_position_verified':False}
+            with mock.patch.object(proof,'publisher_pdf_page_map_bounds',return_value=negative):
+                report=self.verify(entry,phrase=self.phrase)
+            self.assertTrue(report['derived_page_labels_exceed_original_physical_page_count'])
+            self.assertEqual(38,report['physical_publisher_page_count_bounds_review']['original_physical_pdf_pages'])
+            self.assertFalse(report['original_pdf_physical_page_verified'])
+            self.assertFalse(report['factual_answer_verified'])
+            self.assertTrue(report['complete_original_and_derived_bytes_full_sha_reverified'])
+            self.assertTrue(report['even_consistent_page_counts_do_not_verify_specific_physical_page'])
+            with mock.patch.object(proof,'publisher_pdf_page_map_bounds',
+                                   return_value={**negative,'status':'page_label_bounds_consistent_only_not_verification',
+                                                 'derived_pdf_page_map_suspect':False}):
+                okay=self.verify(entry)
+            self.assertFalse(okay['derived_page_labels_exceed_original_physical_page_count'])
+            self.assertFalse(okay['original_pdf_physical_page_verified'])
+
     def test_native_duplicate_is_not_accepted(self):
         with self.search()[0] as index:
             entry=index.ranked('albatross',channel='literal')[0][0]

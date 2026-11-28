@@ -366,7 +366,12 @@ persistent second database, model load, source download or native write.
 Example from the canonical KnowMoreDiRT repo on Raspi (obtain resource
 broker admission first when the chosen source scope is large):
 
-    PYTHONDONTWRITEBYTECODE=1 PYTHONPATH=src:.       /data/var/knowmoredirt/semantic-venv/bin/python       scripts/raspi_original_fullsection_fts.py       --path-prefix 'ai-agents/2026-evidence-and-grounding/'       --query 'computational buffer factual priming' --top 5       --output '/data/var/knowmoredirt/knowledge-library/search-audit/UNIQUE-OWNER-PRIVATE-OUTPUT.json'
+    PYTHONDONTWRITEBYTECODE=1 PYTHONPATH=src:. \
+      /data/var/knowmoredirt/semantic-venv/bin/python \
+      scripts/raspi_original_fullsection_fts.py \
+      --path-prefix 'ai-agents/2026-evidence-and-grounding/' \
+      --query 'computational buffer factual priming' --top 5 \
+      --output '/data/var/knowmoredirt/knowledge-library/search-audit/UNIQUE-OWNER-PRIVATE-OUTPUT.json'
 
 For batch queries, use the existing `--queries-file` format, including
 an optional `require_source_phrase`. The exact phrase must occur in
@@ -399,6 +404,24 @@ of the query's lowercase spelling. The query inputs remained
 unchanged. This is **not** a blind general recall or model
 truthfulness benchmark, and a figure-caption match does not
 validate the information inside the figure.
+
+The original-PDF physical page count check also runs for each selected
+source before its evidence is returned. It compares the actual
+publisher-PDF physical page count to the maximum source-unit label
+from the current, fully SHA-verified extracted text. If any label
+exceeds the original physical page count, the returned original is
+**flagged as having invalid cached page labels**, while its verified
+source excerpt remains a retrieval candidate. Such labels must
+**never** be used as physical-page citations. For example, the
+SHA-verified paper *Beyond Logits: Coherent Hallucination Mitigation via
+Attention Contrastive Decoding* has **thirty-eight** physical PDF
+pages but its current extracted source labels reach **fifty-two**.
+The new reader independently exposes this mismatch instead of
+silently reporting page fifty-two as a physical publisher page.
+Matching page counts are only a boundary check, **not** an independent
+verification of any particular physical page or figure. The existing
+Poppler original-PDF page verifier remains the separate authority
+for a physical-page quote.
 
 Source-map and FileDB are distinct writer-managed stores:
 the repeated read-only selected-source checks detect observed

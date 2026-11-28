@@ -281,6 +281,16 @@ def verify_current_source_window(*,window:FullSection,query:str,
             or not 0<=window.source_start<window.source_end<=len(text)
             or text[window.source_start:window.source_end]!=window.original_body):
         raise ValueError('current original-derived source section no longer has exact text offsets')
+    # A complete original PDF can contain thirty-eight physical pages while
+    # an older cached extracted text labels pages as high as fifty-two.
+    # Existing KMD physical page-count verification is intentionally
+    # independent of semantic relevance and of real per-page proof. Surface
+    # its negative evidence for every selected original, never silently
+    # reinterpret a derived page label as a publisher physical page.
+    from .publisher_firstunit_discovery import publisher_pdf_page_map_bounds
+    original_page_bounds=publisher_pdf_page_map_bounds(original,text)
+    if not isinstance(original_page_bounds,dict) or not isinstance(original_page_bounds.get('status'),str):
+        raise ValueError('invalid original PDF physical page count diagnostic')
     if phrase is None:
         start,end,_overlap=_best_excerpt(window.original_body,query_terms(query),length=520)
     else:
@@ -316,6 +326,10 @@ def verify_current_source_window(*,window:FullSection,query:str,
         'complete_original_and_derived_bytes_full_sha_reverified':True,
         'current_unique_native_filedb_identity_verified':True,
         'original_pdf_physical_page_verified':False,
+        'physical_publisher_page_count_bounds_review':original_page_bounds,
+        'derived_page_labels_exceed_original_physical_page_count':bool(
+            original_page_bounds.get('derived_pdf_page_map_suspect')),
+        'even_consistent_page_counts_do_not_verify_specific_physical_page':True,
         'factual_answer_verified':False,
         'entire_source_relevant_or_complete':False,
     }
