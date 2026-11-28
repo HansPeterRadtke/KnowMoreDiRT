@@ -338,6 +338,75 @@ is that a narrow one-expected-overview benchmark can overstate
 the need for a costly new semantic model when the old search
 already finds a more directly helpful original technical page.
 
+## Original complete PDF source-section search for later pages
+
+The separate `scripts/raspi_original_fullsection_fts.py` tool provides a
+**bounded, opt-in, RAM-only** lexical search over the complete currently
+extracted source sections of an explicitly selected folder of already
+downloaded PDFs. The existing native vector index, recursive summaries,
+original files, first-unit search, and ordinary `grep` remain unchanged.
+It is useful when the sought material is on a later page rather than
+in an original's opening, particularly while large-library recursive
+summary coverage is still incomplete.
+
+Supply an exact **literal subdirectory** ending in `/`, at most eight
+questions in one folder, and an unused owner-private JSON output path.
+This reader admits no more than sixty-four existing approved PDF
+originals, sixteen megabytes of complete extracted UTF-8 source text,
+and six thousand bounded page/section windows. It indexes every usable
+extracted source unit with independent literal and Porter FTS5 rankings;
+long text units use exact-offset overlapping windows. Every scanned
+derivative is complete-SHA checked against the current source map.
+**Only returned candidates** are full-SHA checked against their
+publisher original, current extracted derivative, completed acquisition
+receipt and unique native FileDB original identity; they are
+reopened and checked again after all the queries. There is no
+persistent second database, model load, source download or native write.
+
+Example from the canonical KnowMoreDiRT repo on Raspi (obtain resource
+broker admission first when the chosen source scope is large):
+
+    PYTHONDONTWRITEBYTECODE=1 PYTHONPATH=src:.       /data/var/knowmoredirt/semantic-venv/bin/python       scripts/raspi_original_fullsection_fts.py       --path-prefix 'ai-agents/2026-evidence-and-grounding/'       --query 'computational buffer factual priming' --top 5       --output '/data/var/knowmoredirt/knowledge-library/search-audit/UNIQUE-OWNER-PRIVATE-OUTPUT.json'
+
+For batch queries, use the existing `--queries-file` format, including
+an optional `require_source_phrase`. The exact phrase must occur in
+the returned current original-derived **body**, not just the title,
+a model summary or a different PDF. Returned excerpts have exact
+derived-source character coordinates and SHA hashes; a matched
+source excerpt is not a verified factual answer or literal PDF-byte
+quotation. Source-unit page labels reflect the existing extraction,
+not proof of a physical publisher PDF page or actual figure content.
+Use the independent PDF original-page verifier when page attribution
+matters. Pages with NUL-corrupted extracted glyphs are **explicitly
+listed as omitted**. The reader does not claim complete PDF coverage
+if any such page was skipped, and never silently incorporates invalid
+page text or patches the original.
+
+The November twenty-eighth functional test scanned fifty-five
+previously archived research PDFs and 2,812 derived-text source
+windows. Three manually preselected phrases from **later original
+source pages** were absent from the source-firstunit reader's
+restricted results. Complete-section FTS found all three expected
+source originals at rank one in **both** independent channels.
+All fifty-five scanned extracted derivatives were SHA checked,
+and each returned publisher original, derivative, native FileDB
+identity and text excerpt was rechecked. Fifteen NUL-corrupt
+extracted source units were excluded and disclosed. Two phrases
+were independently verified on the original physical PDF pages,
+and the third on its physical publisher page by using the
+**publisher's actual uppercase figure-caption text** instead
+of the query's lowercase spelling. The query inputs remained
+unchanged. This is **not** a blind general recall or model
+truthfulness benchmark, and a figure-caption match does not
+validate the information inside the figure.
+
+Source-map and FileDB are distinct writer-managed stores:
+the repeated read-only selected-source checks detect observed
+revision changes but cannot atomically pin both stores. Use
+the original document when consequential, preserve license and
+acquisition rights, and never infer a missing passage from an
+omitted corrupted or unverified physical page.
+
 ## Optional third channel: the original publisher first source unit
 
 The earlier two-channel command remains the default. When a query is phrased
