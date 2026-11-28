@@ -7,10 +7,11 @@ from pathlib import Path
 import sqlite3
 from tempfile import TemporaryDirectory
 import unittest
+from unittest import mock
 
 from file_system_catalog.dual_source_discovery import (
     safe_corpus_relative, existing_file, verify_current_source,
-    combined_dual_discovery,publisher_text_preview,
+    combined_dual_discovery,publisher_text_preview,_hash_file_with_passage,
 )
 
 
@@ -190,6 +191,102 @@ class SourceBoundDualSearchTests(unittest.TestCase):
         raw["results"]=[dict(old,exact_passage_hash_verified=False)]
         with self.assertRaisesRegex(ValueError,"unverified"):
             self.combine(raw=raw)
+
+    def test_generated_first_and_subsequent_source_unit_labels_are_not_publisher_text(self):
+        path="official/material.html"
+        derived=self.derivatives/(path+".txt")
+        real_body="An authentic author statement on reflected light and material roughness."
+        generated=(
+            "KMD generated summary about PDF page 13 is not primary evidence.\n"
+            "[[SOURCE UNIT: PDF page 13]]\n"
+            +real_body+"\n"
+            "[[SOURCE UNIT: PDF page 14]]\n"
+            "The second real page discusses rays reflected by metallic surfaces.\n"
+        )
+        derived.write_text(generated,encoding="utf-8")
+        revision=sha(derived.read_bytes())
+        self.map.execute("UPDATE originals SET derived_sha256=? WHERE source_path=?",
+                         (revision,path))
+        for generated_only in ("PDF page 13","PDF page 14",
+                               "SOURCE UNIT:","KMD generated summary"):
+            with self.subTest(needle=generated_only):
+                item=dict(self.raw_node(path),
+                          source_passage=generated_only,
+                          source_passage_sha256=sha(generated_only.encode()))
+                with self.assertRaisesRegex(ValueError,"absent from current publisher-source"):
+                    self.combine(raw={**self.raw,"results":[item]})
+        for real in (real_body,"rays reflected by metallic surfaces"):
+            with self.subTest(real=real):
+                item=dict(self.raw_node(path),
+                          source_passage=real,
+                          source_passage_sha256=sha(real.encode()))
+                checked=self.combine(raw={**self.raw,"results":[item]})
+                self.assertEqual(1,checked["raw_original_count"])
+                self.assertEqual(real[:260],checked["original_passage_channel"][0]["passage_preview"])
+
+    def test_exact_source_passage_does_not_cross_publisher_unit_boundaries(self):
+        with TemporaryDirectory() as directory:
+            p=Path(directory)/"original-source-derived.txt"
+            p.write_bytes(
+                b"KMD generated title and url metadata\n"
+                b"[[SOURCE UNIT: PDF page 7]]\n"
+                b"An actual first page end phrase with microfacet distributions.\n"
+                b"[[SOURCE UNIT: PDF page 8]]\n"
+                b"Another physical original page begins with dielectric reflectance.\n")
+            for needle,expected in (
+                (b"PDF page 7",False),(b"PDF page 8",False),
+                (b"[[SOURCE UNIT: PDF page 8]]",False),
+                (b"Another physical original page begins",True),
+                (b"microfacet distributions",True),
+                (b"distributions.\n[[SOURCE UNIT: PDF page 8]]\nAnother",False),
+                (b"generated title",False),
+            ):
+                with self.subTest(needle=needle):
+                    digest,present=_hash_file_with_passage(p,needle)
+                    self.assertEqual(sha(p.read_bytes()),digest)
+                    self.assertIs(present,expected)
+
+    def test_source_label_and_publisher_passage_split_at_every_small_read_boundary(self):
+        with TemporaryDirectory() as directory:
+            p=Path(directory)/"original-derived.txt"
+            passage=b"Photorealistic source text uses full spectral radiance and verified page geometry."
+            p.write_bytes(
+                b"Generated source catalog\n"
+                b"[[SOURCE UNIT: PDF page 11]]\n"
+                + passage +b"\n"
+                b"[[SOURCE UNIT: PDF page 12]]\n"
+                b"Second publisher page has authentic original detail."
+            )
+            original=sha(p.read_bytes())
+            for block_bytes in (1,2,5,9,14,17,31,63,256,4096):
+                with self.subTest(block_size=block_bytes),mock.patch(
+                        "file_system_catalog.dual_source_discovery.READ_BLOCK",block_bytes):
+                    for needle,present in (
+                        (passage,True),
+                        (b"spectral radiance",True),
+                        (b"Second publisher page",True),
+                        (b"PDF page 11",False),
+                        (b"PDF page 12",False),
+                        (b"source catalog",False),
+                        (b"original detail.",True),
+                    ):
+                        digest,found=_hash_file_with_passage(p,needle)
+                        self.assertEqual(original,digest)
+                        self.assertIs(found,present,(block_bytes,needle))
+            with self.assertRaisesRegex(ValueError,"nonempty"):
+                _hash_file_with_passage(p,b"")
+
+    def test_unclosed_oversized_extractor_label_abstains_from_source_evidence(self):
+        with TemporaryDirectory() as directory:
+            p=Path(directory)/"unfinished-source.txt"
+            p.write_bytes(b"KMD header\n[[SOURCE UNIT: "+b"page-label-only"*200+
+                          b"Original author body might appear but has no closed unit.")
+            with self.assertRaisesRegex(ValueError,"unclosed source-unit label"):
+                _hash_file_with_passage(p,b"Original author body")
+            self.assertEqual(
+                (sha(p.read_bytes()),True),
+                _hash_file_with_passage(p,None),
+            )
 
     def test_provenance_metadata_prologue_is_never_publisher_passage(self):
         path="official/material.html"

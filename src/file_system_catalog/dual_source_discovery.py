@@ -38,35 +38,95 @@ def existing_file(root: Path, relative: str) -> Path:
 
 
 def _hash_file_with_passage(path: Path, needle: bytes | None) -> tuple[str, bool | None]:
-    """Stream whole-file SHA and search optional raw passage without huge reads."""
+    """Rehash complete derivative and match only substantive source-unit bytes.
+
+    Extracted text begins with generated catalog metadata and a source unit.
+    Prior code began the searchable region at the opening marker, so it
+    incorrectly accepted an extractor-written PDF page label as original
+    publisher text. The same problem recurred on subsequent page labels.
+    Search only text between complete markers, preserving bounded overlap
+    across read boundaries, never across separate source units. A malformed
+    or oversized marker is not publisher evidence.
+    """
+    if needle is not None and (not isinstance(needle, bytes) or not needle):
+        raise ValueError("source passage proof requires nonempty bytes")
     digest = hashlib.sha256()
-    found = needle is None
-    # A source's generated source-map metadata prologue may repeat its
-    # title and domain terminology. Such words are not publisher-source
-    # evidence. Require a raw passage to occur AFTER the first explicit
-    # current-derived original-source unit marker, never only in metadata.
-    passed_source_unit_marker = needle is None
-    overlap = b""
+    if needle is None:
+        with path.open("rb") as source:
+            for chunk in iter(lambda: source.read(READ_BLOCK), b""):
+                digest.update(chunk)
+        return digest.hexdigest(), True
+
     source_marker = b"[[SOURCE UNIT:"
-    with path.open("rb") as stream:
-        while True:
-            chunk = stream.read(READ_BLOCK)
-            if not chunk:
-                break
+    marker_end = b"]]"
+    max_marker_label_bytes = 512
+    state = "before_first_source"
+    pending = b""
+    publisher_overlap = b""
+    found = False
+    with path.open("rb") as source:
+        for chunk in iter(lambda: source.read(READ_BLOCK), b""):
             digest.update(chunk)
-            if not found and needle is not None:
-                buf = overlap + chunk
-                if not passed_source_unit_marker:
-                    marker_at = buf.find(source_marker)
-                    if marker_at < 0:
-                        overlap = buf[-max(len(source_marker),len(needle)-1):]
-                        continue
-                    passed_source_unit_marker = True
-                    buf = buf[marker_at:]
-                if needle in buf:
+            if found:
+                continue  # Even after a match, verify the FULL derivative SHA.
+            block = pending + chunk
+            pending = b""
+            while block:
+                if state == "before_first_source":
+                    at = block.find(source_marker)
+                    if at < 0:
+                        pending = block[-(len(source_marker) - 1):]
+                        break
+                    block = block[at + len(source_marker):]
+                    state = "source_unit_label"
+                    continue
+                if state == "source_unit_label":
+                    close = block.find(marker_end)
+                    if close < 0:
+                        if len(block) > max_marker_label_bytes:
+                            raise ValueError("oversized or unclosed source-unit label")
+                        pending = block
+                        break
+                    if close > max_marker_label_bytes:
+                        raise ValueError("oversized source-unit label")
+                    block = block[close + len(marker_end):]
+                    state = "publisher_source"
+                    publisher_overlap = b""  # Never join two source units.
+                    continue
+
+                # Only original source body bytes may prove a passage.
+                at = block.find(source_marker)
+                if at >= 0:
+                    body = block[:at]
+                    if needle in publisher_overlap + body:
+                        found = True
+                        break
+                    block = block[at + len(source_marker):]
+                    state = "source_unit_label"
+                    publisher_overlap = b""
+                    continue
+                # Withhold the possible prefix of a marker at a read boundary.
+                keep = len(source_marker) - 1
+                if len(block) <= keep:
+                    pending = block
+                    break
+                body = block[:-keep]
+                combined = publisher_overlap + body
+                if needle in combined:
                     found = True
-                else:
-                    overlap = buf[-(len(needle)-1):] if len(needle)>1 else b""
+                    break
+                publisher_overlap = combined[-(len(needle) - 1):] if len(needle) > 1 else b""
+                pending = block[-keep:]
+                break
+    if not found and state == "publisher_source" and pending:
+        # Omit an unfinished marker prefix even at EOF.
+        excluded = 0
+        for size in range(min(len(pending), len(source_marker) - 1), 0, -1):
+            if pending.endswith(source_marker[:size]):
+                excluded = size
+                break
+        valid_tail = pending[:-excluded] if excluded else pending
+        found = needle in publisher_overlap + valid_tail
     return digest.hexdigest(), found
 
 

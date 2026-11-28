@@ -2,6 +2,7 @@
 """Optional dual KMD source lookup: separate native summary and original results."""
 from __future__ import annotations
 import argparse
+from contextlib import closing
 import json
 import os
 from pathlib import Path
@@ -77,7 +78,14 @@ def main()->None:
         # Deliberately no global original query for an ambiguous/missing
         # publisher identity: this would silently substitute another work.
         raw={"query":args.query,"retrieval_mode":"overview","results":[]}
-    with sqlite3.connect(args.source_map.resolve().as_uri()+"?mode=ro",uri=True) as con:
+    # A legitimate extraction/source-map writer can hold a DELETE-journal
+    # exclusive commit longer than SQLite's five-second default. Use the
+    # established bounded twenty-second read-only source-map wait, and
+    # CLOSE after each dual-channel lookup (SQLite's connection context
+    # manager alone does not close the file descriptor).
+    with closing(sqlite3.connect(
+            args.source_map.resolve().as_uri()+"?mode=ro",
+            uri=True,timeout=20)) as con:
         con.execute("PRAGMA query_only=ON")
         result=combined_dual_discovery(
             summary_payload=summary,original_payload=raw,

@@ -313,3 +313,59 @@ child causes a fail-closed source failure that must be investigated;
 it is not authority to delete, refresh or rewrite an original.
 The underlying original/derived/source-map and native SQLite
 writers are separate and are **not** an atomic shared generation.
+
+## Publisher original source-unit labels are not citation text — 28 November 2026
+
+The dual native search compares model-generated **summary candidates**
+with separately ranked **original source-passage candidates**. Original
+and derivative SHA verification protects revision identity, but it must
+not turn an extractor-written source-unit label into publisher evidence.
+
+A reproducible prior negative control demonstrated a real defect in the
+original-passage verification helper: a derivative containing
+a marker named PDF page 13 could satisfy an exact publisher-source
+query for the words PDF page 13, **even when no publisher page body
+contained them**. Later PDF page labels and generated KMD metadata
+had similar exposure. Whole-source SHA equality did not fix that
+semantic provenance mistake.
+
+The read-only streaming verifier now searches only the **body bytes
+after a complete source-unit marker and before the next marker**.
+Generated catalog metadata and the extractor's own page labels cannot
+establish publisher evidence. Exact phrases may cross file read-block
+boundaries within one publisher unit, but never cross into metadata or
+two independently extracted PDF pages. The verifier still streams and
+hashes the **entire** current derivative even after a phrase matches;
+original-source SHA, approved download receipt, native FileDB chunk
+identity and exact chunk digest checks remain mandatory. Invalid
+or unterminated source-unit labels fail closed, rather than counting
+the rest of the file as publisher prose.
+
+When a native excerpt consists of a generated marker or spans page
+boundaries, the optional audited-abstention mode may omit that
+uncitable passage. The generated summary remains only a navigation
+hint. If this reduces recall, inspect the exact original source by
+path and select a genuine bounded publisher excerpt; do not loosen
+the source boundary rule, fabricate a citation or claim an original
+PDF page is physically verified from its extractor page label.
+
+The real approved Blender IES manual and a real archived Asuka
+Bench research PDF were checked directly, without new source
+downloads, live database writes or model calls. Together five
+extractor-written label/control probes were rejected and two
+actual source-text passage probes succeeded. Both publisher originals
+and current derivatives passed full physical SHA checks, with
+acquisition receipts and unique native original IDs rechecked after
+the source query. This establishes source identity and genuine
+derivative-text location, **not** physical PDF page geometry,
+authorship of a generated summary or scientific answer correctness.
+
+The dual-source CLI also reads the canonical source-map using a
+bounded **twenty-second query-only SQLite reader** and closes the
+connection after verification. This corrects its last direct
+five-second default reader under legitimate source metadata commits.
+Disposable real SQLite exclusive writer tests held the source-map
+lock longer than five seconds: a valid original returned once it
+was released, while a source revision committed during the wait
+correctly failed closed. The CLI preserves the original independent
+source and summary ranks and does not change either index or writer.
