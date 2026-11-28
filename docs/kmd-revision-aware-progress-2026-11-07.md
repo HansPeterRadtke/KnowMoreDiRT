@@ -84,3 +84,74 @@ only after tests, then the existing owner-authorized systemd worker
 restarted at a completed-document boundary. It must immediately
 show correct revision-based and text-based counts without losing
 previously generated vectors or stopping the LLM indexing task.
+
+## Live reader safety during two concurrent summary writers — 28 November 2026
+
+The full-library summary task now has two source-disjoint background
+writers feeding the SAME native FileDB. In its existing DELETE-journal
+mode, an authorized summary-vector import may temporarily hold an
+exclusive SQLite lock. That is not evidence that a publisher
+original was deleted, that its checksum is invalid, or that the
+reader should create another database or stop the indexer.
+
+The actual unchanged Unity UI-event reference question failed
+during its native-summary vector SELECT with an SQLite
+OperationalError (database is locked). Its local native search
+entrypoint used a bare read-only sqlite3.connect and SQLite's
+five-second default wait, despite an already established
+open_native_summary_read_connection helper with a bounded
+120-second wait, query-only mode and source file safety checks.
+The coverage status command had the same bare five-second
+native connection and independently failed in a real live read
+while the two workers were active.
+
+The search and status commands now **reuse the existing
+bounded native read-only helper** and always close the connection
+after reading. Status separately opens the original source-map
+as read-only with a bounded twenty-second metadata wait and
+closes that read handle as well. This changes neither the
+summary-ranking model nor source identity and never takes
+a writer lock, switches SQLite journal mode, retries a denied
+provider call, creates another index or stops existing workers.
+
+Disposable, real SQLite DELETE-journal tests held
+BEGIN EXCLUSIVE beyond five seconds while native **search**
+and **status** attempted the same original FileDB. Both
+remained pending and returned validated results once the
+writer rolled back. A third independent source-map exclusive
+writer test confirmed bounded source metadata status recovery.
+Two separate persistently held native locks deliberately
+exhausted a **one-second** test-only bound and raised
+SQLite errors, without inventing source results or waiting
+indefinitely. The production native reader cap remains
+**120 seconds**; a genuinely longer writer conflict
+can still fail closed.
+
+The current real read-only native summary search for the
+previously frozen Unity UI-event example returned the same
+approved original at rank three with current publisher-original
+and extracted derivative SHA and unique native FileDB identity
+verified after ranking. The repaired real status returned
+**10,751 completed current-revision recursive original roots
+of 17,715 eligible originals**, with **6,964** still incomplete,
+and **25,399** native summary vectors. The live source-map
+eligible count was independently read back and matched the
+status denominator. Counts can change as legitimate workers
+continue; the status is a dated point-in-time observation,
+not an atomic generation spanning separately updated stores.
+
+A separate owner-private audit of the latest fifteen
+journal-confirmed completed research originals independently
+rehashed their approved publisher files and derivatives and
+checked **seventy** native summary-node source spans,
+embedding/vector hashes, and parent-child identity, with
+no provenance failures. It is a sample, not proof of integrity
+or answer correctness of every eligible original.
+
+Operational acceptance: keep both indexing workers running,
+query and inspect current original sources, distinguish a
+legitimate timed-out lock from corrupted source data,
+and continue to validate current SHA/native IDs. Never replace
+ordinary folder/grep discovery, raise the configured busy
+bound without evidence, or treat a model answer as a
+verified original passage.

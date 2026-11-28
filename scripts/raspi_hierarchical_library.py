@@ -945,7 +945,14 @@ def _search_impl(args) -> dict:
     missing_identifier = name_match and name_match["status"] == "no_catalog_match"
     ambiguous_reference = name_match and name_match["status"] == "ambiguous"
     named_title_lead = (name_match and name_match.get("kind") == "catalog_title_lead")
-    with sqlite3.connect(f"file:{DB.resolve()}?mode=ro", uri=True) as conn:
+    # The native FileDB is also written by two legitimate concurrent source
+    # summary workers. SQLite's default five-second reader busy budget is too
+    # short in DELETE journal mode: a query can fail with "database is locked"
+    # at the initial batched vector SELECT, even though source bytes are healthy.
+    # Use the existing bounded 120-second read-only native helper used by
+    # other source readers. closing() releases the connection promptly rather
+    # than leaving a context-managed-but-unclosed native read transaction.
+    with closing(open_native_summary_read_connection(DB)) as conn:
         found = []
         # No model request or whole-corpus vector scan is justified when an
         # explicitly named publisher original has zero native summary rows.
@@ -2279,7 +2286,14 @@ def original_source_evidence(args) -> None:
 
 
 def status(_args):
-    with sqlite3.connect(f"file:{SOURCE_MAP.resolve()}?mode=ro", uri=True) as source:
+    # Status is requested while two legitimate native summary writers run.
+    # Keep both source stores read-only, close after each read, and reuse the
+    # same bounded reader admission as search. The earlier bare SQLite
+    # connection could fail after the default five-second native lock wait,
+    # falsely making current indexing coverage unavailable.
+    with closing(sqlite3.connect(f"file:{SOURCE_MAP.resolve()}?mode=ro",
+                                uri=True,timeout=20)) as source:
+        source.execute("PRAGMA query_only=ON")
         current = {
             row[0]: (row[1], row[2], int(row[3]))
             for row in source.execute(
@@ -2287,7 +2301,7 @@ def status(_args):
                 "FROM originals WHERE status='complete' AND text_characters>100"
             )
         }
-    with sqlite3.connect(f"file:{DB.resolve()}?mode=ro", uri=True) as conn:
+    with closing(open_native_summary_read_connection(DB)) as conn:
         result = summary_index_status(conn)
         valid = current_completed_originals(conn, current)
     result.update(summary_progress_metrics(current, valid))

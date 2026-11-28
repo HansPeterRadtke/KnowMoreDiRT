@@ -2,7 +2,9 @@
 from __future__ import annotations
 
 import base64
-from contextlib import ExitStack, closing
+import io
+from concurrent.futures import ThreadPoolExecutor
+from contextlib import ExitStack, closing, redirect_stdout
 import hashlib
 import json
 import os
@@ -10,6 +12,7 @@ from pathlib import Path
 import sqlite3
 import sys
 import tempfile
+import time
 from types import SimpleNamespace
 import unittest
 from unittest import mock
@@ -87,6 +90,155 @@ class PublisherRevisionSearchTests(unittest.TestCase):
 
     def paths(self, **options):
         return [doc["original_path"] for doc in self.search(**options)["documents"]]
+
+    def test_actual_native_search_waits_beyond_default_five_seconds_for_real_writer_lock(self):
+        """Real native search survives a source-index writer on a disposable DB."""
+        writer=sqlite3.connect(self.cli.DB,isolation_level=None,timeout=2)
+        self.addCleanup(writer.close)
+        self.assertEqual('delete',writer.execute('PRAGMA journal_mode').fetchone()[0])
+        writer.execute('BEGIN EXCLUSIVE')
+        try:
+            with mock.patch.object(
+                    self.cli,'open_native_summary_read_connection',
+                    wraps=self.cli.open_native_summary_read_connection) as opener:
+                with ThreadPoolExecutor(max_workers=1) as pool:
+                    request=pool.submit(self.search,top=1)
+                    try:
+                        # Deliberately exceed SQLite's default five-second
+                        # reader timeout. The query must remain bounded
+                        # but not fail while the legitimate writer works.
+                        time.sleep(5.65)
+                        self.assertFalse(request.done(),
+                            'native search timed out while a valid writer held its lock')
+                    finally:
+                        writer.execute('ROLLBACK')
+                    result=request.result(timeout=30)
+                opener.assert_called_once_with(self.cli.DB)
+            self.assertEqual(1,result['count'])
+            self.assertEqual(self.names[0],result['documents'][0]['original_path'])
+            self.assertEqual(1,result['originals_validated_for_version'])
+            self.assertGreaterEqual(result['final_current_summary_source_revision_check'][
+                'complete_original_and_derived_source_bytes_rehashed'],1)
+            # Closing the native read avoids holding later writer transactions.
+            writer.execute('BEGIN EXCLUSIVE')
+            self.assertEqual(2,writer.execute(
+                "SELECT count(*) FROM filesystem_entries WHERE entry_type='file'").fetchone()[0])
+            writer.execute('ROLLBACK')
+        finally:
+            if writer.in_transaction:
+                writer.execute('ROLLBACK')
+
+    def test_native_status_waits_past_default_five_seconds_and_reports_real_source_roots(self):
+        with sqlite3.connect(self.cli.SOURCE_MAP) as meta:
+            meta.execute('ALTER TABLE originals ADD COLUMN text_characters INTEGER NOT NULL DEFAULT 20000')
+        writer=sqlite3.connect(self.cli.DB,isolation_level=None,timeout=2)
+        self.addCleanup(writer.close)
+        writer.execute('BEGIN EXCLUSIVE')
+        captured=io.StringIO()
+        def read_status():
+            with redirect_stdout(captured):
+                self.cli.status(None)
+        try:
+            with mock.patch.object(
+                    self.cli,'open_native_summary_read_connection',
+                    wraps=self.cli.open_native_summary_read_connection) as source_reader:
+                with ThreadPoolExecutor(max_workers=1) as pool:
+                    future=pool.submit(read_status)
+                    try:
+                        time.sleep(5.65)
+                        self.assertFalse(future.done(),'status rejected a legitimate native writer lock')
+                    finally:
+                        writer.execute('ROLLBACK')
+                    future.result(timeout=30)
+                source_reader.assert_called_once_with(self.cli.DB)
+            response=json.loads(captured.getvalue())
+            self.assertEqual(2,response['complete_extracted_originals'])
+            self.assertGreaterEqual(response['original_documents_with_summaries'],1)
+            self.assertEqual(response['complete_extracted_originals'] -
+                             response['original_documents_with_summaries'],
+                             response['originals_without_recursive_summaries'])
+            writer.execute('BEGIN EXCLUSIVE')
+            writer.execute('ROLLBACK')
+        finally:
+            if writer.in_transaction:
+                writer.execute('ROLLBACK')
+
+    def test_native_status_waits_for_independent_source_map_writer_without_inventing_coverage(self):
+        # This is a different SQLite database from the native vector store.
+        # A legitimate original-source metadata update can hold its own
+        # DELETE-journal exclusive lock beyond the old five-second default.
+        with sqlite3.connect(self.cli.SOURCE_MAP) as meta:
+            meta.execute('ALTER TABLE originals ADD COLUMN text_characters INTEGER NOT NULL DEFAULT 20000')
+        source_writer=sqlite3.connect(self.cli.SOURCE_MAP,isolation_level=None,timeout=2)
+        self.addCleanup(source_writer.close)
+        self.assertEqual('delete',source_writer.execute('PRAGMA journal_mode').fetchone()[0])
+        source_writer.execute('BEGIN EXCLUSIVE')
+        capture=io.StringIO()
+        def read_actual_status():
+            with redirect_stdout(capture):
+                self.cli.status(None)
+        try:
+            with ThreadPoolExecutor(max_workers=1) as pool:
+                future=pool.submit(read_actual_status)
+                try:
+                    time.sleep(5.65)
+                    self.assertFalse(future.done(),
+                        'source metadata status reverted to the five-second SQLite default')
+                finally:
+                    source_writer.execute('ROLLBACK')
+                future.result(timeout=30)
+            data=json.loads(capture.getvalue())
+            self.assertEqual(2,data['complete_extracted_originals'])
+            self.assertEqual(data['complete_extracted_originals'] -
+                             data['original_documents_with_summaries'],
+                             data['originals_without_recursive_summaries'])
+            # Read-only status left no writer-visible open read transaction.
+            source_writer.execute('BEGIN EXCLUSIVE')
+            source_writer.execute('ROLLBACK')
+        finally:
+            if source_writer.in_transaction:
+                source_writer.execute('ROLLBACK')
+
+    def test_native_status_explicit_short_reader_bound_refuses_persistent_lock(self):
+        with sqlite3.connect(self.cli.SOURCE_MAP) as meta:
+            meta.execute('ALTER TABLE originals ADD COLUMN text_characters INTEGER NOT NULL DEFAULT 20000')
+        writer=sqlite3.connect(self.cli.DB,isolation_level=None,timeout=2)
+        self.addCleanup(writer.close)
+        original=self.cli.open_native_summary_read_connection
+        writer.execute('BEGIN EXCLUSIVE')
+        try:
+            with mock.patch.object(
+                    self.cli,'open_native_summary_read_connection',
+                    side_effect=lambda path: original(path,wait_seconds=1)) as guarded:
+                elapsed=time.monotonic()
+                with self.assertRaisesRegex(sqlite3.OperationalError,'database is locked'):
+                    self.cli.status(None)
+                duration=time.monotonic()-elapsed
+                self.assertGreaterEqual(duration,.8)
+                self.assertLess(duration,2.5)
+                guarded.assert_called_once_with(self.cli.DB)
+        finally:
+            writer.execute('ROLLBACK')
+
+    def test_native_search_refuses_a_persistent_writer_lock_after_a_short_bounded_wait(self):
+        writer=sqlite3.connect(self.cli.DB,isolation_level=None,timeout=2)
+        self.addCleanup(writer.close)
+        writer.execute('BEGIN EXCLUSIVE')
+        original=self.cli.open_native_summary_read_connection
+        try:
+            with mock.patch.object(
+                    self.cli,'open_native_summary_read_connection',
+                    side_effect=lambda path: original(path,wait_seconds=1)) as safe_open:
+                started=time.monotonic()
+                with self.assertRaisesRegex(sqlite3.OperationalError,'database is locked'):
+                    self.search(top=1)
+                waited=time.monotonic()-started
+                self.assertGreaterEqual(waited,.8)
+                self.assertLess(waited,2.5)
+                safe_open.assert_called_once_with(self.cli.DB)
+        finally:
+            writer.execute('ROLLBACK')
+        self.assertEqual(b'A'*12345,self.original.read_bytes())
 
     def test_publication_requires_matching_acquisition_receipt(self):
         raw = json.loads(self.cli.SOURCES.read_text())
