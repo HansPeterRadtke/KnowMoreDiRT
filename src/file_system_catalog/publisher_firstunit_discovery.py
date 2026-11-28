@@ -75,6 +75,22 @@ def source_firstunit_from_prefix(prefix:bytes,*,max_prefix_bytes:int=FIRST_UNIT_
     return None
 
 
+def validate_literal_source_directory_prefix(prefix:str|None)->str|None:
+    """Opt-in directory boundary, never a LIKE or GLOB query.
+
+    Reject absolute/traversing source paths and invisible control characters;
+    permit literal percent and underscore in legal archive folder names.
+    """
+    if prefix is None:
+        return None
+    if (not isinstance(prefix,str) or not 2<=len(prefix)<=500
+            or prefix.startswith(('/', './')) or not prefix.endswith('/')
+            or '\\' in prefix or any(ord(c)<32 or ord(c)==127 for c in prefix)
+            or any(part in ('', '.', '..') for part in prefix[:-1].split('/'))):
+        raise ValueError('invalid literal curated original directory prefix')
+    return prefix
+
+
 class FirstUnitRAMIndex:
     """Temporary original-path-keyed dual FTS5 index, never a disk schema."""
     def __init__(self,max_records:int=MAX_ROWS):
@@ -149,7 +165,8 @@ class FirstUnitRAMIndex:
 
 
 def load_complete_source_previews(*,source_map:sqlite3.Connection,derived_root:Path,
-                                  index:FirstUnitRAMIndex,max_source_records:int=MAX_ROWS) -> dict:
+                                  index:FirstUnitRAMIndex,max_source_records:int=MAX_ROWS,
+                                  path_prefix:str|None=None) -> dict:
     """Read only sixteen kilobytes per approved extracted original for discovery.
 
     Index entries are *unverified candidates* until verify_index_candidate
@@ -157,8 +174,19 @@ def load_complete_source_previews(*,source_map:sqlite3.Connection,derived_root:P
     """
     if type(max_source_records) is not int or not 1<=max_source_records<=MAX_ROWS:
         raise ValueError('untrusted source-map import volume')
-    rowset=source_map.execute("SELECT source_path,source_sha256,derived_sha256,derived_path,original_title "
-                              "FROM originals WHERE status='complete' ORDER BY source_path").fetchall()
+    path_prefix=validate_literal_source_directory_prefix(path_prefix)
+    # The prefix uses exact substr equality, not LIKE: '_' and '%' are legal
+    # literal publisher-path bytes, never a wildcard expanding user scope.
+    if path_prefix is None:
+        rowset=source_map.execute("SELECT source_path,source_sha256,derived_sha256,derived_path,original_title "
+                                  "FROM originals WHERE status='complete' ORDER BY source_path").fetchall()
+    else:
+        rowset=source_map.execute(
+            "SELECT source_path,source_sha256,derived_sha256,derived_path,original_title "
+            "FROM originals WHERE status='complete' AND substr(source_path,1,?)=? "
+            "ORDER BY source_path",(len(path_prefix),path_prefix)).fetchall()
+        if not rowset:
+            raise ValueError('no completely extracted curated originals in requested literal directory')
     if len(rowset)>max_source_records:raise ValueError('source-map exceeds bounded ephemeral discovery population')
     for path,original_sha,derivative_sha,derived_path,title in rowset:
         try:
@@ -185,7 +213,12 @@ def load_complete_source_previews(*,source_map:sqlite3.Connection,derived_root:P
     # publisher text or generated catalog metadata. A partial sample is not
     # proof that the omitted original is missing from the library.
     skipped=index.failed_samples[:150]
-    return {'eligible_complete_source_map_records':len(rowset),
+    return {**({'literal_original_directory_prefix':path_prefix,
+                'all_indexed_originals_restricted_to_prefix':all(
+                    e.original_path.startswith(path_prefix) for e in index.entries.values()),
+                'directory_scope_is_not_full_corpus_coverage':True}
+               if path_prefix is not None else {}),
+            'eligible_complete_source_map_records':len(rowset),
             'publisher_firstunit_rows_indexed':len(index.entries),
             'bounded_prefix_bytes_read':index.bytes_sampled,
             'extended_source_preview_reads':index.extended_source_preview_reads,

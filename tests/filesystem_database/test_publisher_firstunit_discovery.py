@@ -13,6 +13,7 @@ import unittest
 from file_system_catalog.publisher_firstunit_discovery import (
     FirstUnitRAMIndex,source_firstunit_from_prefix,
     load_complete_source_previews,verify_index_candidate,
+    validate_literal_source_directory_prefix,
     original_firstunit_query_term_coverage,
     validate_required_original_source_phrase,
     required_firstunit_source_phrase_proof,
@@ -132,6 +133,44 @@ class PublisherFirstUnitDiscoveryTests(unittest.TestCase):
     def load(self):
         return load_complete_source_previews(source_map=self.sm,
              derived_root=self.derivatives,index=self.idx,max_source_records=4)
+
+    def test_literal_source_directory_scope_is_not_sql_like(self):
+        self.add_source('docs/source_%/matching.md','A Scope Matched Original',
+                        '[[SOURCE UNIT: original]]\nUseful publisher note about material roughness.',
+                        3)
+        self.add_source('docs/source_A/false.md','A False LIKE Original',
+                        '[[SOURCE UNIT: original]]\nA superficially matching title but wrong original.',
+                        4)
+        with FirstUnitRAMIndex(max_records=4) as scoped:
+            receipt=load_complete_source_previews(
+                source_map=self.sm,derived_root=self.derivatives,
+                index=scoped,max_source_records=4,
+                path_prefix='docs/source_%/')
+            self.assertEqual(1,receipt['eligible_complete_source_map_records'])
+            self.assertEqual(1,receipt['publisher_firstunit_rows_indexed'])
+            self.assertEqual('docs/source_%/',receipt['literal_original_directory_prefix'])
+            self.assertTrue(receipt['all_indexed_originals_restricted_to_prefix'])
+            self.assertEqual(['docs/source_%/matching.md'],
+                             [z.original_path for z in scoped.entries.values()])
+        with FirstUnitRAMIndex(max_records=4) as global_idx:
+            ordinary=load_complete_source_previews(source_map=self.sm,
+                             derived_root=self.derivatives,index=global_idx,
+                             max_source_records=4)
+            self.assertEqual(4,ordinary['publisher_firstunit_rows_indexed'])
+            self.assertNotIn('literal_original_directory_prefix',ordinary)
+
+    def test_literal_directory_scope_rejects_unsafe_or_nonexisting_prefix(self):
+        for bad in ('', '/', 'docs', './docs/','/docs/','docs/../',
+                    'docs//bad/', 'docs\\bad/', 'docs/\n/', 'x'*501):
+            with self.subTest(value=repr(bad)),self.assertRaises(ValueError):
+                validate_literal_source_directory_prefix(bad)
+        self.assertEqual('docs/_%/',validate_literal_source_directory_prefix('docs/_%/'))
+        self.assertIsNone(validate_literal_source_directory_prefix(None))
+        with FirstUnitRAMIndex(max_records=4) as fresh:
+            with self.assertRaisesRegex(ValueError,'no completely extracted'):
+                load_complete_source_previews(source_map=self.sm,
+                    derived_root=self.derivatives,index=fresh,
+                    path_prefix='never-existing/')
 
     def test_first_source_unit_excludes_untrusted_catalog_header_and_later_page(self):
         raw=self.papers['papers/rare.pdf']['derived'].read_bytes()

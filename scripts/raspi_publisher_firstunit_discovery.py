@@ -26,6 +26,7 @@ ROOT=Path(__file__).resolve().parents[1]
 sys.path.insert(0,str(ROOT/'src'))
 from file_system_catalog.publisher_firstunit_discovery import (
     FirstUnitRAMIndex,load_complete_source_previews,verify_index_candidate,
+    validate_literal_source_directory_prefix,
     validate_required_original_source_phrase,required_firstunit_source_phrase_proof,
     compiled_required_original_source_phrase,
     verify_attested_firstunit_phrase_on_physical_pdf_page,
@@ -121,6 +122,7 @@ def main():
     choose.add_argument('--query')
     choose.add_argument('--queries-file',type=Path)
     ap.add_argument('--top',type=int,default=5)
+    ap.add_argument('--path-prefix',help='Opt-in exact original subfolder ending in /. Literal percent and underscore are not wildcards; only that folder is scanned.')
     ap.add_argument('--verify-pdf-previews',type=int,default=0,
                     help='Independently verify physical original page for at most this many results per channel/query (0..3)')
     ap.add_argument('--require-source-phrase',
@@ -132,6 +134,7 @@ def main():
     ap.add_argument('--completed-ledger',type=Path,default=Path('/data/var/Knowledge Library/_management/status.json'))
     ap.add_argument('--output',type=Path,help='New private JSON output file; stdout otherwise')
     args=ap.parse_args()
+    args.path_prefix=validate_literal_source_directory_prefix(args.path_prefix)
     if (type(args.top) is not int or not 1<=args.top<=20
             or type(args.verify_pdf_previews) is not int or not 0<=args.verify_pdf_previews<=3):
         raise ValueError('invalid bounded number of sources or optional physical-page checks')
@@ -157,7 +160,7 @@ def main():
          FirstUnitRAMIndex() as idx:
         sm.execute('PRAGMA query_only=ON');native.execute('PRAGMA query_only=ON')
         index_receipt=load_complete_source_previews(source_map=sm,derived_root=args.derivative_root,
-                                                    index=idx)
+                                                    index=idx,path_prefix=args.path_prefix)
         indexing_seconds=round(time.monotonic()-start,3)
         # A nonzero explicit omission count is a coverage limitation, not
         # proof that the omitted original is absent or irrelevant.
@@ -176,6 +179,8 @@ def main():
                                        limit=min(100,max(args.top*6,30)))
                 for entry,ident,score in oversampled:
                     if len(returned)>=args.top:break
+                    if args.path_prefix is not None and not entry.original_path.startswith(args.path_prefix):
+                        raise ValueError('source candidate crossed requested literal directory boundary')
                     try:
                         body=verify_original_candidate_with_bounded_busy_retry(
                             entry=entry,original_root=args.original_root,
@@ -267,6 +272,14 @@ def main():
           'optional_original_physical_pdf_verification_attests_required_phrase_context_not_separate_query_excerpt':True}
          if any_source_phrase else {}),
       'generated_utc':datetime.now(timezone.utc).isoformat(),
+      **({'literal_source_directory_prefix':args.path_prefix,
+          'all_returned_current_originals_within_literal_directory':all(
+              candidate['original_path'].startswith(args.path_prefix)
+              for row in result_rows
+              for ranked in row['independent_rank_channels'].values()
+              for candidate in ranked['source_originals']),
+          'folder_scope_does_not_prove_absence_outside_requested_directory':True}
+         if args.path_prefix is not None else {}),
       'query_count':len(queries),'source_scan':index_receipt,
       'index_build_seconds':indexing_seconds,
       'total_seconds':round(time.monotonic()-start,3),

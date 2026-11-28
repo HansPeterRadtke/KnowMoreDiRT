@@ -167,6 +167,67 @@ class PublisherFirstUnitRequiredSourcePhraseEndToEndTests(unittest.TestCase):
         )
         return proc,out
 
+    def test_literal_scoped_cli_reads_only_originals_in_requested_directory(self):
+        # A real source-map and native FileDB fixture with a SQL wildcard trap.
+        for n,(path,text) in enumerate([
+            ('documents/scoped_%/chosen.md','Normal direction from RGB map changes surface shading.'),
+            ('documents/scoped_A/decoy.md','Normal maps describe apparent bumpy surfaces.')],start=4):
+            f=self.orig/path;f.parent.mkdir(parents=True,exist_ok=True)
+            f.write_text('Publisher original approved reference '+path)
+            d=self.derived/(path+'.txt');d.parent.mkdir(parents=True,exist_ok=True)
+            d.write_text('[[SOURCE UNIT: Markdown original]]\n'+text)
+            osh=hashlib.sha256(f.read_bytes()).hexdigest()
+            dsh=hashlib.sha256(d.read_bytes()).hexdigest()
+            with sqlite3.connect(self.source_map) as sm,sqlite3.connect(self.native) as native:
+                sm.execute('INSERT INTO originals VALUES (?,?,?,?,?,?)',
+                           (path,osh,dsh,path+'.txt','Normal maps and RGB shading','complete'))
+                native.execute('INSERT INTO filesystem_entries VALUES (?,?,?)',(n,path,'file'))
+            self.originals[path]={'title':'Normal maps and RGB shading','sha':osh,
+                        'derived_sha':dsh,'original':f,'derived':d}
+        receipt=json.loads(self.ledger.read_text())
+        for path in ('documents/scoped_%/chosen.md','documents/scoped_A/decoy.md'):
+            receipt['items'].append({'path':path,'sha256':self.originals[path]['sha'],'status':'complete'})
+        self.ledger.write_text(json.dumps(receipt))
+        found,output=self.run_cli('scoped-result.json',extra=(
+            '--query','RGB map surface normal','--path-prefix','documents/scoped_%/'))
+        # Last argparse occurrence of --query wins; no mutation or new model.
+        self.assertEqual(0,found.returncode,found.stderr[-1400:])
+        evidence=json.loads(output.read_text())
+        self.assertEqual('documents/scoped_%/',evidence['literal_source_directory_prefix'])
+        self.assertTrue(evidence['all_returned_current_originals_within_literal_directory'])
+        self.assertEqual(1,evidence['source_scan']['eligible_complete_source_map_records'])
+        self.assertEqual(1,evidence['source_scan']['publisher_firstunit_rows_indexed'])
+        for channel in ('literal','porter'):
+            ranked=evidence['queries'][0]['independent_rank_channels'][channel]['source_originals']
+            self.assertEqual(1,len(ranked))
+            self.assertEqual('documents/scoped_%/chosen.md',ranked[0]['original_path'])
+            self.assertTrue(ranked[0]['current_approved_publisher_and_extracted_bytes_rehashed'])
+            self.assertFalse(ranked[0]['factual_answer_verified'])
+        for bad in ('documents/../','documents/scoped_A/../','documents/missing/'):
+            failed,out=self.run_cli('invalid-'+str(abs(hash(bad)))+'.json',
+                      extra=('--path-prefix',bad))
+            self.assertNotEqual(0,failed.returncode)
+            self.assertFalse(out.exists())
+
+    def test_scoped_lexical_never_returns_a_modified_original_as_current(self):
+        # The scanned first source unit may be unchanged, but a publisher
+        # original changed after its approved acquisition receipt; refuse it.
+        chosen='documents/first.md'
+        original=self.originals[chosen]['original']
+        original.write_bytes(original.read_bytes()+b' changed publisher source')
+        proc,out=self.run_cli('changed-original-scoped.json',
+                    extra=('--path-prefix','documents/',))
+        self.assertEqual(0,proc.returncode,proc.stderr[-1200:])
+        results=json.loads(out.read_text())
+        self.assertEqual('documents/',results['literal_source_directory_prefix'])
+        for channel in ('literal','porter'):
+            row=results['queries'][0]['independent_rank_channels'][channel]
+            paths=[x['original_path'] for x in row['source_originals']]
+            self.assertNotIn(chosen,paths)
+            self.assertTrue(any(z['original_path']==chosen
+                        for z in row['stale_or_unverified_candidates_omitted']))
+        self.assertTrue(results['all_returned_current_originals_within_literal_directory'])
+
     def test_real_sqlite_and_original_sha_end_to_end_strict_firstunit(self):
         before={path:(i['original'].read_bytes(),i['derived'].read_bytes())
                 for path,i in self.originals.items()}

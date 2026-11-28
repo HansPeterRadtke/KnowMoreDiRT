@@ -82,6 +82,52 @@ source-verified archived HTML article search, or the standalone
 summary-lexical discovery with its explicit publisher URL directory argument.
 Do not claim that an unscoped paired result establishes the requested edition.
 
+## Small, literal-folder first-unit search when global vectors miss the source
+
+The existing `scripts/raspi_publisher_firstunit_discovery.py` has an
+**opt-in** `--path-prefix` for the canonical original-source directory
+(for example `graphics/photorealism-guides-2026/blender45-original-material-render-nodes/`).
+It must end with a slash. This is an **exact string prefix**, not a
+search over untrusted URLs, not a glob, and not SQLite `LIKE`: folder
+names containing `%` or `_` are literal. Unsafe or empty folders fail
+closed rather than report that the requested research topic has no answer.
+
+Run this directly on Raspi for one question, or supply a batch file
+containing independently selected `{"queries":[{"id":"...","query":"..."}]}`
+records to reuse one small, temporary in-memory first-unit index:
+
+~~~bash
+PYTHONDONTWRITEBYTECODE=1 PYTHONPATH=src:. /data/var/knowmoredirt/semantic-venv/bin/python   scripts/raspi_publisher_firstunit_discovery.py   --query 'An RGB image makes the mesh seem bumpy without changing its geometry'   --path-prefix 'graphics/photorealism-guides-2026/blender45-original-material-render-nodes/'   --top 10
+~~~
+
+The optional folder filter is evaluated **against current source-map
+original paths before any derived file reading or FTS insertion**. The
+existing literal and Porter stemmed channels remain independent; only
+current retrieved candidates have their complete publisher original,
+complete derivative, approved download receipt and unique native FileDB
+identity checked. Original files, summaries, embeddings, global rankings
+and indexing workers are never changed. The output states which folder
+was inspected, how many extracted originals were eligible, how many first
+units were usable, and whether every returned source stayed within it.
+This is not a complete full-document or multi-folder search; facts that
+occur after the first indexed unit, in figures, or outside the chosen
+folder may be missed. The matched source excerpt is current derived text,
+not automatically an independently verified physical PDF page.
+
+A November twenty-eighth **frozen source-identity** check covered five
+predeclared Blender material questions within twenty-seven available
+originals. The Porter channel found all five intended originals within
+ten results (four ranked first, one eighth); the separate literal
+channel found four of five within ten. A different, previously frozen
+ten-question Unity group searched 575 original documentation files:
+the union of the two untouched lexical lists found four known sources
+within ten, and missed six. No query terms, source labels, weights, or
+channel scores were tuned to these questions. The older global native
+summary search had found only one of the first four Blender originals
+within ten; this is a **limited scope-specific discovery gain**, not a
+general accuracy claim or a complete holdout. Retrieved documents still
+require actual original passage inspection before any factual answer.
+
 ## Optional third channel: the original publisher first source unit
 
 The earlier two-channel command remains the default. When a query is phrased
