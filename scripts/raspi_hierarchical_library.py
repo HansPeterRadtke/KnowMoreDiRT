@@ -20,6 +20,7 @@ import tempfile
 import hashlib
 from itertools import chain
 import json
+import math
 import os
 from contextlib import closing
 from pathlib import Path
@@ -87,6 +88,10 @@ NATIVE_WRITER_WAIT_SECONDS = 300.0
 # default five-second reader wait is too short for that legitimate workload.
 # This stays read-only and bounded, separate from the exclusive writer lock.
 NATIVE_READER_WAIT_SECONDS = 120.0
+# This is the independent extraction/source-revision metadata database.
+# It has its own legitimate writer; never mistake a transient SQLite
+# exclusive lock for an absent approved original or stale extraction.
+SOURCE_MAP_READER_WAIT_SECONDS = 20.0
 PUBLISHER_TEXT_LIMIT = 8 * 1024 * 1024
 GUARD_TEXT = "exclude_unresolvable_summary_candidates_from_native_excerpt_search_v1"
 
@@ -147,6 +152,32 @@ def verify_publisher_revision(path: Path, record: dict, *, capture: bytearray | 
     return size
 
 
+def open_source_map_read_connection(
+    database: Path, *, wait_seconds: float = SOURCE_MAP_READER_WAIT_SECONDS,
+) -> sqlite3.Connection:
+    """Read current extraction/source-map metadata through a bounded lock.
+
+    A completed source-map writer may briefly hold SQLite's exclusive lock.
+    Use the canonical source-map file without creating a second database,
+    changing the journal mode, acquiring a write lock or accepting stale
+    source revisions. The caller MUST close the connection after its SELECTs.
+    """
+    if (not isinstance(wait_seconds,(int,float)) or isinstance(wait_seconds,bool)
+            or not 1 <= wait_seconds <= 120 or not math.isfinite(wait_seconds)):
+        raise ValueError('source-map read-only wait must be bounded')
+    database=Path(database)
+    if database.is_symlink() or not database.is_file():
+        raise ValueError('canonical source-map database missing or symlinked')
+    conn=sqlite3.connect(database.resolve().as_uri()+'?mode=ro',
+                         uri=True,timeout=float(wait_seconds))
+    try:
+        conn.execute('PRAGMA query_only=ON')
+    except Exception:
+        conn.close()
+        raise
+    return conn
+
+
 def checked_derivative_path(derivative_relative: str) -> Path:
     if not isinstance(derivative_relative, str) or not derivative_relative:
         raise ValueError("empty derived relative path")
@@ -188,7 +219,7 @@ def checked_original(relative: str, *, include_publisher_text: bool = False,
                        or not publication_receipt_matches(entries[0], record)
                        or not rfc_header_matches(capture or b"", number)):
             raise ValueError("RFC number, publisher header or acquisition receipt does not match")
-    with sqlite3.connect(f"file:{SOURCE_MAP}?mode=ro", uri=True) as con:
+    with closing(open_source_map_read_connection(SOURCE_MAP)) as con:
         rows = con.execute(
             "SELECT source_sha256,derived_sha256,derived_path,status "
             "FROM originals WHERE source_path=?",
@@ -246,15 +277,13 @@ def final_original_revision_guard(source: dict, *, original_path: str, native_fi
     def assert_current_views():
         # Each new SQLite connection sees the latest committed state, rather
         # than the old read transaction taken before PDF verification.
-        with sqlite3.connect(f"file:{SOURCE_MAP.resolve()}?mode=ro", uri=True, timeout=20) as sm:
-            sm.execute("PRAGMA query_only=ON")
+        with closing(open_source_map_read_connection(SOURCE_MAP)) as sm:
             rows=sm.execute("SELECT source_sha256,derived_sha256,derived_path,status "
                 "FROM originals WHERE source_path=?",(original_path,)).fetchall()
         if (len(rows)!=1 or rows[0][0]!=source.get("original_sha256")
                 or rows[0][1]!=source.get("derived_sha256") or rows[0][3]!="complete"):
             raise ValueError("current source-map original or derived revision changed during evidence search")
-        with sqlite3.connect(f"file:{DB.resolve()}?mode=ro", uri=True, timeout=NATIVE_READER_WAIT_SECONDS) as native:
-            native.execute("PRAGMA query_only=ON")
+        with closing(open_native_summary_read_connection(DB)) as native:
             entries=native.execute("SELECT id FROM filesystem_entries "
                 "WHERE entry_type='file' AND relative_path_display=?",(original_path,)).fetchall()
         if entries != [(native_file_id,)]:
@@ -762,7 +791,7 @@ def _current_versions():
         record for record in json.loads(LEDGER.read_text())["items"]
         if record.get("status") == "complete"
     )
-    with sqlite3.connect(f"file:{SOURCE_MAP.resolve()}?mode=ro", uri=True) as con:
+    with closing(open_source_map_read_connection(SOURCE_MAP)) as con:
         source_map = _unique_path_records(con.execute(
             "SELECT source_path,source_sha256,derived_sha256,derived_path,status "
             "FROM originals WHERE status='complete'"
@@ -832,8 +861,7 @@ def final_summary_discovery_revision_guard(found:list[dict], *,
                 raise ValueError('source-map or publisher original revision changed after summary ranking')
 
     def native_is_current():
-        with sqlite3.connect(f'file:{DB.resolve()}?mode=ro',uri=True,
-                             timeout=NATIVE_READER_WAIT_SECONDS) as db:
+        with closing(open_native_summary_read_connection(DB)) as db:
             db.execute('PRAGMA query_only=ON')
             for path,(item,rev,_) in records.items():
                 ids=db.execute('SELECT id,size_bytes FROM filesystem_entries '
@@ -1365,8 +1393,7 @@ def final_mixed_document_source_revision_guard(documents:list[dict], *, versions
     # all returned citations if any source revision or native ID now differs.
     def check_metadata():
         latest_manifest,latest_ledger,latest_sources=_current_versions()
-        with sqlite3.connect(f'file:{DB.resolve()}?mode=ro',uri=True,
-                             timeout=NATIVE_READER_WAIT_SECONDS) as db:
+        with closing(open_native_summary_read_connection(DB)) as db:
             db.execute('pragma query_only=ON')
             for path,(doc,rev,receipt) in selected.items():
                 if (latest_manifest.get(path)!=manifest[path]
@@ -1666,7 +1693,7 @@ def find_source_evidence(args) -> None:
 
         selection_basis = "native_semantic_document_ranking"
         evidence_args = args
-        with sqlite3.connect(f"{DB.resolve().as_uri()}?mode=ro", uri=True) as db:
+        with closing(open_native_summary_read_connection(DB)) as db:
             if named is not None:
                 path = named["original_path"]
                 record = manifest[path]
@@ -1964,7 +1991,7 @@ def find_pdf_evidence(args) -> None:
             raise ValueError("invalid PDF evidence query or bounds")
         versions = _current_versions()
         discovery = _native_passage_search(args.query, top=args.documents)
-        with sqlite3.connect(f"{DB.resolve().as_uri()}?mode=ro", uri=True) as db:
+        with closing(open_native_summary_read_connection(DB)) as db:
             documents = [_discovered_pdf(hit, rank, args, versions, db)
                          for rank, hit in enumerate(discovery["results"], 1)]
     except Exception as exc:
@@ -2081,7 +2108,7 @@ def original_source_evidence(args) -> None:
                 if not evidence_query:
                     raise ValueError("supply the topic to find after --source-name or --original-path")
         source=checked_original(original_path, include_publisher_text=True, publication_record=publication_record)
-        with sqlite3.connect(f"file:{DB.resolve()}?mode=ro",uri=True) as db:
+        with closing(open_native_summary_read_connection(DB)) as db:
             row=db.execute(
                 "SELECT id FROM filesystem_entries WHERE entry_type='file' "
                 "AND relative_path_display=?",(original_path,)
@@ -2291,9 +2318,7 @@ def status(_args):
     # same bounded reader admission as search. The earlier bare SQLite
     # connection could fail after the default five-second native lock wait,
     # falsely making current indexing coverage unavailable.
-    with closing(sqlite3.connect(f"file:{SOURCE_MAP.resolve()}?mode=ro",
-                                uri=True,timeout=20)) as source:
-        source.execute("PRAGMA query_only=ON")
+    with closing(open_source_map_read_connection(SOURCE_MAP)) as source:
         current = {
             row[0]: (row[1], row[2], int(row[3]))
             for row in source.execute(

@@ -26,6 +26,69 @@ class NativeSummaryReaderLockTests(unittest.TestCase):
             c.execute('INSERT INTO original_anchor VALUES(1,?)',('original/unchanged.pdf',))
         self.cli=load_cli()
 
+    def test_source_map_reader_is_query_only_and_rejects_unsafe_budgets(self):
+        with closing(self.cli.open_source_map_read_connection(self.db)) as conn:
+            self.assertEqual(1,conn.execute('PRAGMA query_only').fetchone()[0])
+            self.assertEqual('original/unchanged.pdf',conn.execute(
+                'SELECT original_path FROM original_anchor').fetchone()[0])
+            with self.assertRaises(sqlite3.OperationalError):
+                conn.execute('UPDATE original_anchor SET original_path=?',('corrupted',))
+        for wrong in (0,-1,121,float('nan'),float('inf'),True,'unbounded'):
+            with self.subTest(wait=repr(wrong)),self.assertRaises(ValueError):
+                self.cli.open_source_map_read_connection(self.db,wait_seconds=wrong)
+        other=Path(self.tmp.name)/'nonexistent.sqlite3'
+        with self.assertRaisesRegex(ValueError,'source-map database'):
+            self.cli.open_source_map_read_connection(other)
+        symlink=Path(self.tmp.name)/'source-map-link.sqlite3'
+        symlink.symlink_to(self.db)
+        with self.assertRaisesRegex(ValueError,'symlinked'):
+            self.cli.open_source_map_read_connection(symlink)
+        with sqlite3.connect(self.db) as db:
+            self.assertEqual('original/unchanged.pdf',db.execute(
+                'SELECT original_path FROM original_anchor').fetchone()[0])
+
+    def test_source_map_reader_waits_for_legitimate_metadata_writer_without_writing(self):
+        def get_original_after_writer():
+            with closing(self.cli.open_source_map_read_connection(
+                         self.db,wait_seconds=8)) as conn:
+                return conn.execute('SELECT original_path FROM original_anchor').fetchone()[0]
+        writer=sqlite3.connect(self.db,isolation_level=None)
+        self.addCleanup(writer.close)
+        self.assertEqual('delete',writer.execute('PRAGMA journal_mode').fetchone()[0])
+        writer.execute('BEGIN EXCLUSIVE')
+        try:
+            with ThreadPoolExecutor(max_workers=1) as pool:
+                future=pool.submit(get_original_after_writer)
+                try:
+                    time.sleep(5.6)
+                    self.assertFalse(future.done(),
+                        'source-map reader used SQLite default five-second writer lock wait')
+                finally:
+                    writer.execute('ROLLBACK')
+                self.assertEqual('original/unchanged.pdf',future.result(timeout=4))
+        finally:
+            if writer.in_transaction:
+                writer.execute('ROLLBACK')
+        # The previous reader must be fully closed before new source updates.
+        writer.execute('BEGIN EXCLUSIVE')
+        writer.execute('ROLLBACK')
+
+    def test_source_map_reader_short_bound_still_refuses_persistent_writer(self):
+        writer=sqlite3.connect(self.db,isolation_level=None)
+        self.addCleanup(writer.close)
+        writer.execute('BEGIN EXCLUSIVE')
+        try:
+            begin=time.monotonic()
+            with self.assertRaisesRegex(sqlite3.OperationalError,'database is locked'):
+                with closing(self.cli.open_source_map_read_connection(
+                        self.db,wait_seconds=1)) as conn:
+                    conn.execute('SELECT original_path FROM original_anchor').fetchall()
+            elapsed=time.monotonic()-begin
+            self.assertGreaterEqual(elapsed,.8)
+            self.assertLess(elapsed,2.5)
+        finally:
+            writer.execute('ROLLBACK')
+
     def test_retries_real_read_only_source_query_behind_an_exclusive_writer(self):
         def delayed_reader():
             with closing(self.cli.open_native_summary_read_connection(

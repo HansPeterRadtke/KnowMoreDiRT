@@ -155,3 +155,72 @@ and continue to validate current SHA/native IDs. Never replace
 ordinary folder/grep discovery, raise the configured busy
 bound without evidence, or treat a model answer as a
 verified original passage.
+
+## Separate source-map revision writer and original evidence readers — 28 November 2026
+
+The native FileDB writer-lock repair does not by itself cover the
+**independent extraction/source-map database**. During a legitimate
+original-source import or revision update, that SQLite database can
+hold a write lock while a KnowMoreDiRT reader is selecting the
+current extracted document SHA. The original `_current_versions`
+and `checked_original` paths were still opening this source-map
+with SQLite's default five-second wait. An ordinary writer commit
+could therefore interrupt original-source retrieval or be confused
+with missing knowledge.
+
+The shared reader now uses one canonical source-map connection
+helper with a **bounded twenty-second wait**, `mode=ro`,
+`PRAGMA query_only=ON`, canonical non-symlink file validation
+and explicit connection closing. Original-source lookup,
+initial and final source-revision readback, and live summary
+status use the same helper. A source-map revision committed
+while a reader is waiting does **not** authorize an old result:
+after the writer finishes, the physical derivative SHA must
+still match the current source map and approved original
+receipt, otherwise the query fails closed.
+
+Related original evidence readers now also reuse the **existing
+bounded hundred-and-twenty-second read-only native FileDB
+helper**, including selected original identity, verified PDF
+evidence and final source-linked summary checks. Their
+connections are closed after SELECTs to avoid preventing the
+next legitimate indexing transaction. No source-map or
+native FileDB writer behavior, journal mode, original file,
+model, summary content, vector ranking or service was changed.
+
+Five isolated SQLite concurrency tests exercised a real
+source-map exclusive writer held longer than the previous
+five-second read timeout, strict query-only mode, unsafe
+path and timeout refusal, persistent writer bounds, and a
+**changed derived source SHA committed while an original
+reader was blocked**. After release, the current original
+was retrieved or the revised derivative failed closed,
+never silently replaced by stale text. The broader
+original-source, publisher evidence, summary search and
+revision-check suite passed **one hundred seventy-three**
+tests. These are synthetic writer tests, not a claim that
+a live source-map writer was observed holding a lock.
+
+A live read-only verification against the actual archived
+Unity UI-event original returned **one** source-linked
+passage and the same source at native summary-search
+**rank three**. The actual publisher original, derived
+text and unique native FileDB entry were independently
+SHA/identity-checked after both queries. A separate
+incremental audit of **six newly completed real original
+documents** verified their full approved source and
+derivative bytes and **twenty-eight** source-linked
+native summary nodes, including node spans, vectors
+and graph relations, with no provenance failure.
+A successful source hash check verifies evidence identity
+and structure, not a factual answer or the physical
+appearance of every publisher figure.
+
+The source-map and native FileDB remain **separate
+writer-managed SQLite stores**, so the repeated current
+SHA checks are not an atomic shared generation or
+a permission for an uncoordinated live index cutover.
+If a real writer holds its lock beyond the configured
+bounded wait, the read fails and can be investigated;
+never start an unapproved second FileDB, discard its
+evidence or change the live writer as a workaround.

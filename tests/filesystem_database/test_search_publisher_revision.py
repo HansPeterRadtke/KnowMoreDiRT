@@ -113,7 +113,14 @@ class PublisherRevisionSearchTests(unittest.TestCase):
                     finally:
                         writer.execute('ROLLBACK')
                     result=request.result(timeout=30)
-                opener.assert_called_once_with(self.cli.DB)
+                # Independent final source/native revision fences reopen
+                # the same canonical FileDB after ranking. Verify EVERY
+                # read uses the approved bounded helper, not only the first.
+                self.assertGreaterEqual(opener.call_count,1)
+                self.assertTrue(all(
+                    call.args==(self.cli.DB,) and not call.kwargs
+                    for call in opener.call_args_list
+                ))
             self.assertEqual(1,result['count'])
             self.assertEqual(self.names[0],result['documents'][0]['original_path'])
             self.assertEqual(1,result['originals_validated_for_version'])
@@ -256,6 +263,71 @@ class PublisherRevisionSearchTests(unittest.TestCase):
         self.assertEqual(self.cli.checked_original(self.names[0], publication_record=book)["original_path"], self.names[0])
         with self.assertRaisesRegex(ValueError, "catalog record changed"):
             self.cli.checked_original(self.names[0], publication_record=dict(book, doi="10.1234/old"))
+
+    def test_initial_original_discovery_source_map_writer_lock_recovers_without_stale_source(self):
+        # The current extraction/source-map writer can hold a valid SQLite
+        # exclusive commit lock while original-catalog discovery begins.
+        writer=sqlite3.connect(self.cli.SOURCE_MAP,isolation_level=None,timeout=2)
+        self.addCleanup(writer.close)
+        self.assertEqual('delete',writer.execute('PRAGMA journal_mode').fetchone()[0])
+        writer.execute('BEGIN EXCLUSIVE')
+        try:
+            with mock.patch.object(
+                    self.cli,'open_source_map_read_connection',
+                    wraps=self.cli.open_source_map_read_connection) as opener:
+                with ThreadPoolExecutor(max_workers=1) as pool:
+                    future=pool.submit(self.cli._current_versions)
+                    try:
+                        time.sleep(5.6)
+                        self.assertFalse(future.done(),
+                            'original source-map lookup incorrectly timed out at default five seconds')
+                    finally:
+                        writer.execute('ROLLBACK')
+                    manifest,ledger,sources=future.result(timeout=6)
+                opener.assert_called_once_with(self.cli.SOURCE_MAP)
+            self.assertEqual(set(self.names),set(manifest))
+            self.assertEqual(set(self.names),set(ledger))
+            self.assertEqual(set(self.names),set(sources))
+            self.assertEqual(
+                hashlib.sha256(self.original.read_bytes()).hexdigest(),
+                sources[self.names[0]][1])
+            writer.execute('BEGIN EXCLUSIVE')
+            writer.execute('ROLLBACK')
+        finally:
+            if writer.in_transaction:writer.execute('ROLLBACK')
+
+    def test_source_revision_committed_while_original_lookup_waits_fails_closed(self):
+        # A source-map lock is never permission to serve the previous
+        # derivative revision. The writer changes the current revision
+        # while the original was SHA-read but its map lookup was blocked.
+        original_bytes=self.original.read_bytes()
+        writer=sqlite3.connect(self.cli.SOURCE_MAP,isolation_level=None,timeout=2)
+        self.addCleanup(writer.close)
+        writer.execute('BEGIN EXCLUSIVE')
+        writer.execute('UPDATE originals SET derived_sha256=? WHERE source_path=?',
+                       ('b'*64,self.names[0]))
+        try:
+            with mock.patch.object(
+                    self.cli,'open_source_map_read_connection',
+                    wraps=self.cli.open_source_map_read_connection) as opener:
+                with ThreadPoolExecutor(max_workers=1) as pool:
+                    future=pool.submit(self.cli.checked_original,self.names[0])
+                    try:
+                        time.sleep(5.6)
+                        self.assertFalse(future.done(),
+                            'original source-map revision reader rejected a legitimate short writer')
+                    finally:
+                        writer.execute('COMMIT')
+                    with self.assertRaisesRegex(ValueError,'derived source SHA differs'):
+                        future.result(timeout=6)
+                opener.assert_called_once_with(self.cli.SOURCE_MAP)
+            self.assertEqual(original_bytes,self.original.read_bytes())
+            self.assertEqual(
+                'b'*64,sqlite3.connect(self.cli.SOURCE_MAP).execute(
+                    'SELECT derived_sha256 FROM originals WHERE source_path=?',
+                    (self.names[0],)).fetchone()[0])
+        finally:
+            if writer.in_transaction:writer.execute('ROLLBACK')
 
     def test_final_reader_fence_rechecks_current_source_bytes_and_both_databases(self):
         source=self.cli.checked_original(self.names[0],include_publisher_text=True)
