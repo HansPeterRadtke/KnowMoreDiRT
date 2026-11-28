@@ -317,6 +317,27 @@ navigational recovery also shows why a benchmark using only one
 expected overview source per question can incorrectly penalize an
 accurate, more detailed technical article.
 
+The same two frozen Unity questions had **three additional
+supporting original article passages** that became evident only after
+reading the full ranked publisher documents: the asynchronous
+texture-and-mesh loading explanation, the UI Builder visual element
+hierarchy explanation, and the independent visual-tree technical
+introduction. A *separate, explicitly post-hoc* evidence check
+rehashed those three publisher originals, current extracted texts,
+exact governing passages and native original FileDB identities. Adding
+these as supporting alternatives, **without editing the frozen
+single-gold source labels**, changed the old ten-question known-source
+top-ten diagnostic from five to **seven** for the existing first-unit
+and original-article lexical channels combined, and from eight to
+**ten** for the separate optional E5 article/title channels combined.
+These are **not blind holdout accuracy results**: the extra labels
+were recognized after inspecting search outputs, and neither
+completeness of all relevant documents nor factual sufficiency of
+the retrieved context was adjudicated. Their practical implication
+is that a narrow one-expected-overview benchmark can overstate
+the need for a costly new semantic model when the old search
+already finds a more directly helpful original technical page.
+
 ## Optional third channel: the original publisher first source unit
 
 The earlier two-channel command remains the default. When a query is phrased
