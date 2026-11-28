@@ -46,6 +46,9 @@ from file_system_catalog.hierarchical_summary_search import summary_index_scope,
 from file_system_catalog.summary_search_batched import (
     search_summary_entries_batched, has_native_summary_candidates,
 )
+from file_system_catalog.summary_claim_quarantine import (
+    load_reviewed_summary_exclusions, exclude_reviewed_summary_nodes,
+)
 from file_system_catalog.source_evidence import source_evidence_candidates
 from file_system_catalog.source_markdown_tables import (
     verified_original_markdown_table_rows,
@@ -78,6 +81,7 @@ SOURCE_MAP = CACHE / "source-map.sqlite3"
 OUT = Path("/data/var/knowmoredirt/knowledge-library/summaries")
 COLLECTION = "raspi-original-books-semantic-content-v1"
 DB_BUDGET = DEFAULT_DATABASE_BUDGET_BYTES
+REVIEWED_SUMMARY_EXCLUSIONS = DB.parent / "summary-claim-exclusions.json"
 # A live three-gigabyte native FileDB had a legitimate concurrent summary import
 # hold this shared writer lock beyond ninety seconds. Retain a bounded wait
 # rather than falsely marking another already-generated source as failed.
@@ -917,6 +921,8 @@ def final_summary_discovery_revision_guard(found:list[dict], *,
 
 def _search_impl(args) -> dict:
     manifest, ledger, sources = _current_versions()
+    reviewed_exclusions = load_reviewed_summary_exclusions(REVIEWED_SUMMARY_EXCLUSIONS)
+    excluded_reviewed = [0]
     name_match = resolve_source_name(args.query, manifest)
     preferred_path = name_match.get("original_path") if name_match else None
     publication = name_match.get("matched_identifier") if name_match else None
@@ -966,6 +972,12 @@ def _search_impl(args) -> dict:
                     if passages.get((hit["source_start_char"], hit["source_end_char"])) == hit["source_passage_sha256"]
                     and ("publisher_classification" not in hit
                          or subjects.get(hit["summary"]) == hit["publisher_classification"])]
+        # A separately reviewed false claim can remain in generated native
+        # vectors while two genuine indexers write other source documents.
+        # Exclude ONLY its exact native representation and source revision;
+        # the original and all other original-linked summaries remain usable.
+        verified, rejected = exclude_reviewed_summary_nodes(verified, reviewed_exclusions)
+        excluded_reviewed[0] += rejected
         if verified:
             checked.add((path, derivative[1], derivative[2]))
         return verified
@@ -1045,6 +1057,9 @@ def _search_impl(args) -> dict:
         # catalog contains multiple real publications with the same name.
         warning = ("The explicitly cited source name identifies multiple catalog originals. "
                    "No document was substituted; select the full title or exact original path.")
+    if excluded_reviewed[0]:
+        warning += (" Reviewed, source-contradicted generated summary representations "
+                    "were excluded from ranking. Consult the publisher original for figures.")
     final_source_proof=final_summary_discovery_revision_guard(
         [row for row in found if any(x['original_path']==row['original_path'] for x in out)],
         manifest=manifest,ledger=ledger,sources=sources)
@@ -1062,6 +1077,8 @@ def _search_impl(args) -> dict:
         "documents": out,
         "count": len(out),
         "originals_validated_for_version": len(checked),
+        "reviewed_incorrect_generated_summary_representations_excluded": excluded_reviewed[0],
+        "reviewed_summary_exclusion_policy": "exact_source_revision_and_native_representation_only_not_automatic_truth",
         "source_passage_validation": "exact_character_interval_sha256_in_current_derivative",
         "provenance_policy": "publisher_and_derived_sha256_checked;summary_is_not_primary_evidence",
         "index_scope": {

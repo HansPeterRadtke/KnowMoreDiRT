@@ -39,3 +39,35 @@ A read-only Raspi audit independently hashed every original and derivative refer
 The comparison ran 39 fixed queries in both default and facet-assisted search against the same cohort. All 624 result positions retained their document, matched representation IDs, digests and reported scores. The expected source appeared in the first eight for 34 questions in default mode and 32 in facet mode. Median observed query times went from 1.44 to 1.51 seconds in default mode and from 5.10 to 5.73 seconds in facet mode. The two passes ran sequentially on the active host, so these timings include variations in load. The full protocol, controlled-file checks and per-source receipts are private on Raspi under search-audit/publisher-search-verification-20261111.
 
 Three additional interleaved default-mode checks exercised larger graphics publications. The conservation imaging and hair reconstruction papers ranked first, and the rough diffuse shading slides ranked fourth. Both implementations returned the same top eight on every run. Across the eight returned documents, the first revised runs spent 0.37 to 0.76 seconds hashing 121 to 262 MB of publisher files.
+
+
+## Reviewed generated-summary exclusions (November 2026)
+
+Real original-first auditing discovered a false benchmark attribution in one
+AgentMemRec generated *child summary*: the native summary calls the paper's
+LoCoMo **T-Mem copied** 80.3 percent score an **AgentMemRec** score, whereas
+original physical PDF page eight reports 77.0 percent for AgentMemRec with
+optional write-time records, 77.4 percent for the T-Mem reproduction, and
+80.3 percent for the copied T-Mem result. This is a scoped correction to
+published benchmark attribution, not a new independently run benchmark.
+
+Canonical `scripts/raspi_hierarchical_library.py search` now consults the
+optional private `/data/var/knowmoredirt/knowledge-library/summary-claim-exclusions.json`
+registry before exposing ranked generated summaries. Each exclusion needs
+an exact native representation ID, summary text SHA, original and derived
+SHA, and a separately SHA-checked original-source-review receipt. Its
+physical-PDF evidence and provenance must establish that exact claim is
+incorrect. Only that exact generated *representation* is withheld; all
+other summaries, facets, publisher originals, native vectors and working
+indexers remain untouched. The search records the number actually withheld
+and warns that corrected facts must be checked in the publisher original.
+
+The registry is private runtime evidence, NOT a book, alternate semantic
+index, automated scientific-truth oracle or a repository-committed data
+file. A missing registry permits ordinary retrieval unchanged; a malformed
+installed registry or changed evidence fails closed. Changed source
+revisions, representation IDs or summary hashes never inherit an old
+exclusion. The old incorrect native record remains as historical generated
+evidence; production querying can no longer present it as a trustworthy
+summary candidate on a verified matching revision. Regenerating and
+replacing native summaries requires separate verified writer coordination.
