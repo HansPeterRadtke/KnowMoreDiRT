@@ -22,15 +22,17 @@ sys.path.insert(0, str(ROOT / "src"))
 from file_system_catalog.publisher_html_article_discovery import (
     ArticleRAMIndex, PublisherScope, MAX_SELECTED_SOURCES,
     load_records, load_scoped_articles, readonly, verify_entry,
-    final_metadata_fence, article_context,
+    final_metadata_fence, article_context, read_bounded, MAX_HTML_BYTES,
 )
 from file_system_catalog.pdf_visual_link import safe_private_result_path
+from file_system_catalog.source_review_audit import safe_file
 from raspi_publisher_firstunit_discovery import input_queries
 
 
 def search(*, publisher_url_prefix, queries, top, source_map, native_db,
            catalog_path, completed_ledger, original_root, derivative_root,
-           context_chars=0, include_local_semantic=False, semantic_model=None):
+           context_chars=0, include_local_semantic=False, semantic_model=None,
+           include_approved_parent_links=False):
     scope = PublisherScope.parse(publisher_url_prefix)
     if type(context_chars) is not int or (context_chars != 0 and not 80 <= context_chars <= 2000):
         raise ValueError("article context must be zero or eighty through two thousand characters per neighbor")
@@ -39,6 +41,10 @@ def search(*, publisher_url_prefix, queries, top, source_map, native_db,
     if type(include_local_semantic) is not bool or (semantic_model is not None
              and not include_local_semantic):
         raise ValueError('local semantic source discovery requires explicit opt-in')
+    if type(include_approved_parent_links) is not bool:
+        raise ValueError('publisher parent navigation requires an explicit boolean opt-in')
+    if include_approved_parent_links and isinstance(queries,list) and len(queries) > 4:
+        raise ValueError('bounded parent navigation admits at most four questions')
     if not isinstance(queries, list) or not 1 <= len(queries) <= 32:
         raise ValueError("bounded query batch required")
     seen = set()
@@ -55,6 +61,7 @@ def search(*, publisher_url_prefix, queries, top, source_map, native_db,
     selected = {}
     proofs = {}
     result_queries = []
+    catalog_rows = list(catalog.values()) if include_approved_parent_links else None
     with closing(readonly(source_map)) as sm, closing(readonly(native_db)) as native, ArticleRAMIndex() as idx:
         scan = load_scoped_articles(source_map=sm, original_root=original_root,
                                     catalog=catalog, ledger=ledger, index=idx, scope=scope)
@@ -144,11 +151,81 @@ def search(*, publisher_url_prefix, queries, top, source_map, native_db,
                         "source_originals":returned,
                         "stale_or_unverified_candidates_omitted":[],
                     }
+            # Optional original-publisher ARTICLE parent navigation is
+            # completely independent of the ranked candidate lists. A real
+            # first-party <article> anchor and a same-origin approved catalog
+            # URL that is a proper path-segment ancestor of the source are
+            # both required; no word overlap or semantic model score is
+            # inferred from this structural relationship.
+            parent_navigation = []
+            scanned_source_paths = set()
+            if include_approved_parent_links:
+                from file_system_catalog.archived_html_source_links import source_link_candidates
+                for ranked_channel, group in channels.items():
+                    for ranked in group["source_originals"][:10]:
+                        path = ranked["original_path"]
+                        if path in scanned_source_paths:
+                            continue
+                        scanned_source_paths.add(path)
+                        parent_entry = idx.entries[idx.ids[path]]
+                        original = safe_file(original_root,path)
+                        current_original_bytes = read_bounded(original,MAX_HTML_BYTES)
+                        if hashlib.sha256(current_original_bytes).hexdigest() != parent_entry.source_map_row[1]:
+                            raise ValueError('linked publisher parent source SHA changed during navigation')
+                        hints = source_link_candidates(
+                            current_original_bytes,parent_entry.source_map_row[1],
+                            parent_entry.url,catalog_rows,ledger,question["query"],
+                            original_path=path,limit=5,
+                            include_unmatched_ancestor_links=True,
+                            only_explicit_ancestor_navigation=True)
+                        for link in hints["selected_links"]:
+                            if not link["explicit_archived_source_ancestor_reference"]:
+                                continue
+                            target_path = link["catalog_target_original_path"]
+                            if target_path not in idx.ids:
+                                # Only in the EXPLICIT caller-selected version
+                                # / publisher topic scope; never broaden it.
+                                continue
+                            destination = idx.entries[idx.ids[target_path]]
+                            if not parent_entry.url.startswith(destination.url.rstrip("/")+"/"):
+                                raise ValueError('publisher article breadcrumb is not a proper current URL ancestor')
+                            if destination.path not in proofs:
+                                if len(selected) >= MAX_SELECTED_SOURCES:
+                                    raise RuntimeError('bounded article navigation selects too many current source originals')
+                                proofs[destination.path] = verify_entry(
+                                    destination,source_map=sm,native_db=native,
+                                    catalog=catalog,ledger=ledger,original_root=original_root,
+                                    derived_root=derivative_root,scope=scope)
+                                selected[destination.path] = destination
+                            proof={k:v for k,v in proofs[destination.path].items()
+                                   if k not in ("original_file_identity","derivative_file_identity")}
+                            parent_navigation.append({
+                                "source_ranked_original_path":path,
+                                "source_rank_channels":sorted(
+                                    k for k,g in channels.items()
+                                    if any(z["original_path"]==path for z in g["source_originals"])),
+                                "publisher_article_link_proof":link,
+                                "approved_linked_parent_original":proof,
+                                "original_link_sha_and_source_rechecked":True,
+                                "linked_parent_has_NO_new_semantic_rank":True,
+                                "linked_parent_is_not_verified_answer":True,
+                                "other_versions_or_unapproved_sources_not_followed":True,
+                            })
+                            if len(parent_navigation)>=32:
+                                break
+                        if len(parent_navigation)>=32:
+                            break
+                    if len(parent_navigation)>=32:
+                        break
             result_queries.append({
                 "id": question["id"], "query": question["query"],
                 "query_sha256": hashlib.sha256(question["query"].encode()).hexdigest(),
                 "independent_rank_channels": channels,
                 "rank_fusion_applied": False,
+                **({"approved_original_article_parent_breadcrumbs":parent_navigation,
+                    "selected_original_article_sources_inspected_for_parent_links":len(scanned_source_paths),
+                    "linked_parent_sources_are_navigation_only_not_relevance_ranks":True}
+                   if include_approved_parent_links else {}),
             })
 
     # Reopen EVERY independent authority and rehash selected files after the
@@ -180,6 +257,10 @@ def search(*, publisher_url_prefix, queries, top, source_map, native_db,
         "publisher_url_prefix": scope.url,
         "query_count": len(queries), "source_scan": scan,
         "context_characters_per_side": context_chars,
+        **({"approved_parent_breadcrumbs_opt_in":True,
+            "approved_parent_breadcrumbs_are_not_rank_fusion_or_factual_answers":True,
+            "only_explicit_original_article_same_version_ancestor_links":True}
+           if include_approved_parent_links else {}),
         **({"local_article_semantic_opt_in":True,
             "local_semantic_model":semantic_model.model,
             "local_semantic_model_revision":semantic_model.revision,
@@ -205,6 +286,7 @@ def search(*, publisher_url_prefix, queries, top, source_map, native_db,
             "Fresh source checks detect observed changes but do not pin an atomic generation across independently changing stores.",
             "Coverage excludes non-HTML, unapproved, malformed, ambiguous or oversized sources and must be read with source_scan.",
         ] + (["Optional context spans remain separate quotations with explicit omitted intervals; neither governing sections nor answer sufficiency are verified."] if context_chars else [])
+          + (["Opt-in approved publisher breadcrumbs show only verified source-document navigation, not relevance, answer correctness, a new rank or a different edition. Every linked overview is fully SHA-rechecked against its approved original and native source identity after the batch."] if include_approved_parent_links else [])
           + (["Local semantic E5 ranks are opt-in uncalibrated discoverability only. The title-only model channel is metadata, not publisher prose; article windows are SHA-linked to the exact current original and the full read-back proof is unchanged.",
               "The original semantic model has a trained 512-token context. Every admitted article is covered by explicit non-overlapping word-aligned windows; overlarge sources fail rather than being silently truncated."] if include_local_semantic else []),
         "queries": result_queries,
@@ -220,6 +302,8 @@ def main():
     ap.add_argument("--top", type=int, default=5)
     ap.add_argument("--include-local-semantic",action="store_true",
                     help="Opt-in local CPU E5 article and catalog-title channels. Requires broker admission; no global model/rank change.")
+    ap.add_argument("--include-approved-parent-links",action="store_true",
+                    help="Opt-in SHA-verified parent overview navigation from original first-party HTML article links; separate from ranked candidates and limited to four questions.")
     ap.add_argument("--context-chars", type=int, default=0,
                     help="Optional characters per original-text neighbor, 80..2000; zero disables context")
     ap.add_argument("--source-map", type=Path, default=Path("/data/var/knowmoredirt/knowledge-library/semantic/source-map.sqlite3"))
@@ -244,6 +328,7 @@ def main():
         original_root=args.original_root, derivative_root=args.derivative_root,
         context_chars=args.context_chars,
         include_local_semantic=args.include_local_semantic,
+        include_approved_parent_links=args.include_approved_parent_links,
     )
     raw = (json.dumps(output, ensure_ascii=False, indent=2) + "\n").encode()
     if args.output is None:

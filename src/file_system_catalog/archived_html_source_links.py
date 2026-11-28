@@ -51,25 +51,31 @@ class _Anchors(HTMLParser):
                       'link','meta','param','source','track','wbr'))
     _INERT=frozenset(('script','style','noscript','template','svg','canvas','nav','aside','footer'))
 
-    def __init__(self):
+    def __init__(self,*,include_explicit_article_breadcrumb_nav:bool=False):
+        if type(include_explicit_article_breadcrumb_nav) is not bool:
+            raise ValueError('original HTML breadcrumb parsing requires an explicit boolean')
         super().__init__(convert_charrefs=True)
+        self.include_explicit_article_breadcrumb_nav=include_explicit_article_breadcrumb_nav
+        self.inert=(self._INERT-{'nav'} if include_explicit_article_breadcrumb_nav else self._INERT)
         self.stack=[]
         self.active=[]
         self.groups={'article':[],'main':[]}
+        self.breadcrumb_nav_links=set()
 
     def handle_starttag(self,tag,attrs):
         if tag=='a':
             href=dict(attrs).get('href')
-            if (isinstance(href,str) and not any(x in self.stack for x in self._INERT)
+            if (isinstance(href,str) and not any(x in self.stack for x in self.inert)
                     and not any(x['tag']=='a' for x in self.active)):
                 role='article' if 'article' in self.stack else 'main' if 'main' in self.stack else None
-                if role:self.active.append({'tag':'a','role':role,'href':href,'parts':[]})
+                if role:self.active.append({'tag':'a','role':role,'href':href,'parts':[],
+                                            'in_explicit_nav':('nav' in self.stack)})
         if tag not in self._EMPTY:self.stack.append(tag)
 
     def handle_startendtag(self,tag,attrs):return
 
     def handle_data(self,text):
-        if not text or any(t in self.stack for t in self._INERT):return
+        if not text or any(t in self.stack for t in self.inert):return
         if self.active:self.active[-1]['parts'].append(text)
 
     def handle_endtag(self,tag):
@@ -78,6 +84,8 @@ class _Anchors(HTMLParser):
             label=_text(' '.join(item['parts']))
             if label and 2<=len(label)<=300:
                 self.groups[item['role']].append((item['href'],label))
+                if item['in_explicit_nav']:
+                    self.breadcrumb_nav_links.add((item['href'],label))
         if tag in self.stack:
             while self.stack:
                 name=self.stack.pop()
@@ -86,7 +94,9 @@ class _Anchors(HTMLParser):
 
 def source_link_candidates(raw_html:bytes,original_sha256:str,publisher_url:str,
                           catalog:list[dict],completed_receipts:dict[str,dict],
-                          query:str,*,original_path:str,limit:int=3)->dict:
+                          query:str,*,original_path:str,limit:int=3,
+                          include_unmatched_ancestor_links:bool=False,
+                          only_explicit_ancestor_navigation:bool=False)->dict:
     """Find *possible* already archived follow-up pages from one original.
 
     This validates the source HTML bytes and catalogue/receipt URL metadata.
@@ -99,6 +109,9 @@ def source_link_candidates(raw_html:bytes,original_sha256:str,publisher_url:str,
             or original_path.startswith('/') or '\\' in original_path
             or any(p in ('','.','..') for p in original_path.split('/'))
             or type(limit) is not int or not 1<=limit<=5
+            or type(include_unmatched_ancestor_links) is not bool
+            or type(only_explicit_ancestor_navigation) is not bool
+            or (only_explicit_ancestor_navigation and not include_unmatched_ancestor_links)
             or not isinstance(catalog,list) or not 1<=len(catalog)<=50_000
             or not isinstance(completed_receipts,dict)
             or not isinstance(query,str) or not 1<=len(query)<=300):
@@ -108,8 +121,25 @@ def source_link_candidates(raw_html:bytes,original_sha256:str,publisher_url:str,
         raise ValueError('original publisher HTML URL or complete source SHA invalid')
     try:html=raw_html.decode('utf8','strict')
     except UnicodeDecodeError as e:raise ValueError('original HTML is not UTF-8') from e
-    parser=_Anchors();parser.feed(html);parser.close()
+    parser=_Anchors(include_explicit_article_breadcrumb_nav=include_unmatched_ancestor_links)
+    parser.feed(html);parser.close()
     references=parser.groups['article'] or parser.groups['main']
+    total_article_links=len(references)
+    if only_explicit_ancestor_navigation:
+        # Publisher article breadcrumb menus can include hundreds of
+        # unrelated page links. Check ORIGINAL URLs and keep ONLY explicit
+        # proper path-segment ancestors of the original current publisher
+        # page BEFORE the normal bounded link selection. Do not relax the
+        # 200-link safety bound merely to include an entire site menu.
+        ancestor_refs=[]
+        for href,label in references:
+            try:
+                linked=_canonical_url(urljoin(publisher_url,href))
+            except (ValueError,TypeError):
+                continue
+            if linked is not None and current_url.startswith(linked.rstrip('/')+'/'):
+                ancestor_refs.append((href,label))
+        references=ancestor_refs
     if len(references)>200:
         raise ValueError('unbounded original HTML article references')
     permitted={}
@@ -144,7 +174,14 @@ def source_link_candidates(raw_html:bytes,original_sha256:str,publisher_url:str,
         title=(entry or {}).get('title') or ''
         if not isinstance(title,str) or len(title)>500:continue
         found=sorted(terms.intersection(query_terms(label+' '+title)))
-        if not found:continue
+        # A source article may explicitly link its approved *parent overview*
+        # even when an indirect question shares no literal word with the
+        # breadcrumb label. Preserve this as a separate navigational relation,
+        # NEVER as a semantic rank or a verified answer.
+        ancestor=(target is not None and
+                  current_url.startswith(target.rstrip('/')+'/'))
+        if not found and not (include_unmatched_ancestor_links and ancestor):
+            continue
         receipt=completed_receipts.get(entry['path']) if entry else None
         complete=(isinstance(receipt,dict) and receipt.get('status')=='complete'
                 and receipt.get('path')==entry['path']
@@ -184,18 +221,31 @@ def source_link_candidates(raw_html:bytes,original_sha256:str,publisher_url:str,
             'candidate_not_answer':True,
             'source_link_occurs_in_original_HTML_article_or_main':True,
             'target_original_bytes_verified_by_this_function':False,
+            **({'explicit_archived_source_ancestor_reference':bool(ancestor),
+                'query_word_overlap_not_required_for_ancestor_navigation':bool(ancestor),
+                'source_navigation_only_not_semantic_relevance_rank':True,
+                'link_explicitly_present_in_article_breadcrumb_nav':(
+                    (href,label) in parser.breadcrumb_nav_links)}
+               if include_unmatched_ancestor_links else {}),
         }
         existing=candidates.get(entry['path'])
         if existing is None or (len(value['matched_query_terms']),-index)>(len(existing['matched_query_terms']),-existing['original_link_index']):
             candidates[entry['path']]=value
-    ordered=sorted(candidates.values(),key=lambda x:(-len(x['matched_query_terms']),x['original_link_index'],x['catalog_target_original_path']))
+    ordered=sorted(candidates.values(),key=lambda x:(
+        -int(x.get('explicit_archived_source_ancestor_reference',False)),
+        -len(x['matched_query_terms']),x['original_link_index'],x['catalog_target_original_path']))
     unavailable=sorted(missing.values(),key=lambda x:(-len(x['matched_query_terms']),x['original_link_index'],x['publisher_url']))
     return {'original_path':original_path,'original_sha256':original_sha256,
             'original_archived_catalog_reference_count':len(references),
+            **({'all_article_links_observed_before_strict_ancestor_filter':total_article_links,
+                'only_explicit_ancestor_navigation_candidates_considered':True}
+               if only_explicit_ancestor_navigation else {}),
             'matching_verified_catalog_receipt_link_candidates':len(ordered),
             'selected_links':ordered[:limit],
             'same_origin_relevant_unarchived_or_unapproved_references':len(unavailable),
             'unavailable_publisher_references_not_followed':unavailable[:limit],
             'no_external_source_fetch_or_download':True,
             'no_target_original_or_derived_bytes_yet_verified':True,
-            'no_answer_truth_or_page_quote_proved':True}
+            'no_answer_truth_or_page_quote_proved':True,
+            **({'unmatched_approved_ancestor_links_included_as_navigation_only':True}
+               if include_unmatched_ancestor_links else {})}

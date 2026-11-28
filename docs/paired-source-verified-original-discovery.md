@@ -238,6 +238,85 @@ native FileDB integration requires separate design and validation,
 not a shadow semantic database. The source-indexing workers, original
 documents and existing vectors were left untouched.
 
+## Approved publisher breadcrumb navigation without rank inflation
+
+The original publisher-article search also accepts the **independent**
+`--include-approved-parent-links` opt-in. For up to four questions in
+one explicitly selected archived publisher URL topic, it preserves the
+existing literal and Porter rank lists unchanged (and any separately
+opted-in local semantic channels). It follows original publisher
+`<article>` or `<main>` **explicit breadcrumb anchors** from their
+currently returned technical articles only when the destination is a
+proper path-segment ancestor URL within the same declared publisher
+scope and has an already completed approved original and derivative
+in the current KnowMoreDiRT source-map and native FileDB.
+
+An archived breadcrumb can be inside an HTML `<nav>` subtree **within
+the selected original publisher article**. Ordinary article link
+discovery intentionally excludes such navigation. The new separate
+opt-in reads those explicit source breadcrumbs even without word
+overlap, after first checking the complete parent article SHA.
+It does **not** traverse site-wide navigation, cross-version source
+URLs, off-site destinations, sibling/partial URL aliases, unapproved
+files, simulated article content or arbitrary redirects. These links
+are not model-generated related pages, not new original semantic ranks,
+not factual claims and not evidence that a page is better than an
+already-ranked detailed answer.
+
+Every linked overview destination is separately checked using the
+existing approved source catalog/receipt, full original publisher
+file SHA, derived source SHA and unique current native FileDB original
+identity, then **reopened and checked again together** with the
+original ranked sources after the entire batch. This detects observed
+source changes but does not create an atomic cross-store generation
+across separate writer databases. Invalid or incomplete archived
+destinations are excluded and the scanned source population's
+coverage remains explicitly visible. The unranked breadcrumb appears
+only in a separate `approved_original_article_parent_breadcrumbs`
+list with the parent evidence and original linking article; neither
+the existing rank order nor calibrated score is altered.
+
+Example, only for already archived Unity 6.3 materials articles:
+
+~~~bash
+PYTHONDONTWRITEBYTECODE=1 PYTHONPATH=src:. /data/var/knowmoredirt/semantic-venv/bin/python   scripts/raspi_publisher_html_article_discovery.py   --publisher-url-prefix   'https://docs.unity.com/en-us/engine/6000.3/manual/materials-and-shaders/'   --query 'Avoid stutters while mesh and texture data load from disk'   --top 10 --include-approved-parent-links
+~~~
+
+The **real Unity 6.3 source-byte acceptance on November twenty-eighth**
+reopened two previously frozen indirect questions. The child article
+"Texture and mesh loading" was still ranked fifth/sixth in the separate
+legacy lexical lists, and the separate "Introduction to visual
+elements and visual tree" technical page was still eighth in one
+list. Their expected parent overviews were **not** top-ten ranked
+sources. With the breadcrumb opt-in, each ranked child explicitly
+linked the correct, already archived **same-version parent overview**
+inside the original publisher article navigation. Each parent/child
+original and extracted text was independently full-SHA checked with
+the approved acquisition receipt, source-map and unique native FileDB
+identity. The lexical ranked path lists were independently compared
+against their previous results and remained **identical**. Both
+overview parents were returned as separately labeled source
+navigation, **not** new ranked retrieval hits or validated answers.
+
+Unity documentation may include hundreds of unrelated navigation
+anchors embedded in the article layout. The new optional reader
+first reduces candidate links to actual **proper original URL
+ancestors** from the selected original article, then enforces the
+existing hard two-hundred-reference limit. It does not relax the
+limit or follow irrelevant same-origin siblings, unapproved pages
+or different publisher editions. A hidden or CSS-affected publisher
+layout has **not** been independently browser-rendered: the proof is
+an original HTML anchor, not visual positioning or user-interface
+accessibility.
+
+A breadcrumb link must **not** be promoted into the top ten or
+misreported as a new semantic search hit. Compare actual relevant
+original paragraphs and the user's objective, not a single labeled
+overview, to judge factual answer sufficiency. This explicit
+navigational recovery also shows why a benchmark using only one
+expected overview source per question can incorrectly penalize an
+accurate, more detailed technical article.
+
 ## Optional third channel: the original publisher first source unit
 
 The earlier two-channel command remains the default. When a query is phrased

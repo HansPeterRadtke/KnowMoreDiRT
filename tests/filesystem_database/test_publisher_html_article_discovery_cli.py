@@ -178,6 +178,100 @@ class PublisherHTMLArticleCLIIntegrationTests(unittest.TestCase):
                 self.assertNotIn("original_file_identity", proof)
                 self.assertNotIn("derivative_file_identity", proof)
 
+    def add_parent_and_child_source_with_an_explicit_original_breadcrumb(self):
+        parent_path='manuals/4.5/tutorial.html'
+        child_path='manuals/4.5/tutorial/detailed.html'
+        parent_url='https://manual.example.org/manual/en/4.5/tutorial'
+        child_url=parent_url+'/detailed'
+        catalog=[]
+        for ident,path,url,title,body in (
+          (11,parent_path,parent_url,'General reference overview',
+           '<p>Documentation overview topic list that describes available chapters.</p>'),
+          (12,child_path,child_url,'How gizmos update in multiple threads',
+           '<p>Gizmos from a fast renderer update asynchronously during a scene.</p>'
+           '<a href="/manual/en/4.5/tutorial">General documentation overview</a>'
+           '<a href="https://manual.example.org/manual/en/5.2/lights.html">Unrelated edition</a>'),
+        ):
+            original=self.fixture.originals/path
+            original.parent.mkdir(parents=True,exist_ok=True)
+            raw=('<html><nav><a href="/manual/en/4.5/FAKE">FAKE</a></nav>'
+                 '<main><article><h1>'+title+'</h1>'+body+'</article></main></html>').encode()
+            original.write_bytes(raw)
+            derived=self.fixture.derivatives/(path+'.txt')
+            derived.parent.mkdir(parents=True,exist_ok=True)
+            derived.write_text('[[SOURCE UNIT: HTML original]]\n'+title+' '+body)
+            self.fixture.files[path]=(original,derived)
+            self.fixture.catalog_rows.append({
+                'path':path,'kind':'html','title':title,'source_url':url,'url':url,
+                'rights_note':'Synthetic only, no publisher reproduction'})
+            self.fixture.ledger_rows.append({
+                'path':path,'status':'complete','sha256':sha(raw),
+                'bytes_received':len(raw),'url':url})
+            with sqlite3.connect(self.fixture.source_map) as db:
+                db.execute('INSERT INTO originals VALUES (?,?,?,?,?,?,?,?,?,?)',(
+                    path,sha(raw),sha(derived.read_bytes()),path+'.txt','html',
+                    url,title,len(raw),len(derived.read_text()),'complete'))
+            with sqlite3.connect(self.fixture.native) as db:
+                db.execute('INSERT INTO filesystem_entries VALUES (?,?,?)',(ident,path,'file'))
+            catalog.append(path)
+        self.fixture.persist_metadata()
+        return parent_path,child_path
+
+    def test_optin_current_original_breadcrumb_rescues_unmatched_approved_parent_without_reranking(self):
+        parent,child=self.add_parent_and_child_source_with_an_explicit_original_breadcrumb()
+        args=self.fixture.search_arguments()
+        args['queries']=[{'id':'gizmo','query':'How do multithreaded gizmos render efficiently?'}]
+        before=self.fixture.source_digests()
+        ranked=self.cli.search(**args)
+        self.assertNotIn(parent,[x['original_path'] for c in ranked['queries'][0]['independent_rank_channels'].values()
+                                 for x in c['source_originals']])
+        self.assertNotIn('approved_parent_breadcrumbs_opt_in',ranked)
+        extended=self.cli.search(**args,include_approved_parent_links=True)
+        self.assertEqual(ranked['schema'],extended['schema'])
+        self.assertEqual(ranked['queries'][0]['independent_rank_channels'],
+                         extended['queries'][0]['independent_rank_channels'])
+        assert extended['approved_parent_breadcrumbs_opt_in']
+        nav=extended['queries'][0]['approved_original_article_parent_breadcrumbs']
+        self.assertTrue(nav)
+        match=[n for n in nav if n['approved_linked_parent_original']['original_path']==parent]
+        self.assertTrue(match)
+        rec=match[0]
+        self.assertEqual(child,rec['source_ranked_original_path'])
+        self.assertTrue(rec['publisher_article_link_proof']['explicit_archived_source_ancestor_reference'])
+        self.assertEqual([],rec['publisher_article_link_proof']['matched_query_terms'])
+        self.assertEqual(11,rec['approved_linked_parent_original']['native_original_filedb_entry_id'])
+        self.assertTrue(rec['approved_linked_parent_original']['original_and_derivative_full_bytes_rehashed'])
+        self.assertTrue(rec['linked_parent_has_NO_new_semantic_rank'])
+        self.assertTrue(rec['linked_parent_is_not_verified_answer'])
+        self.assertTrue(extended['all_displayed_sources_freshly_revalidated_after_batch'])
+        self.assertEqual(before,self.fixture.source_digests())
+
+    def test_breadcrumb_optin_refuses_changed_parent_original_and_preserves_default(self):
+        parent,child=self.add_parent_and_child_source_with_an_explicit_original_breadcrumb()
+        args=self.fixture.search_arguments()
+        args['queries']=[{'id':'gizmo','query':'How do multithreaded gizmos render efficiently?'}]
+        original=self.fixture.files[parent][0]
+        original.write_bytes(original.read_bytes()+b' unexpected publisher change')
+        extended=self.cli.search(**args,include_approved_parent_links=True)
+        self.assertEqual('partial_html_coverage',extended['source_scan']['scope_status'])
+        self.assertFalse(extended['source_scan']['all_scoped_html_articles_available'])
+        self.assertIn(parent,[x['original_path'] for x in extended['source_scan']['skipped_sources']])
+        self.assertFalse(any(
+            n['approved_linked_parent_original']['original_path']==parent
+            for n in extended['queries'][0]['approved_original_article_parent_breadcrumbs']))
+        ordinary=self.cli.search(**args)
+        self.assertEqual({'literal','porter'},set(ordinary['queries'][0]['independent_rank_channels']))
+        self.assertNotIn('approved_parent_breadcrumbs_opt_in',ordinary)
+
+    def test_breadcrumb_optin_is_bounded_and_boolean_only(self):
+        original=self.fixture.search_arguments()
+        with self.assertRaises(ValueError):
+            self.cli.search(**original,include_approved_parent_links=1)
+        with self.assertRaises(ValueError):
+            self.cli.search(**{**original,'queries':[
+                {'id':str(i),'query':QUERY+' '+str(i)} for i in range(5)]},
+                include_approved_parent_links=True)
+
     def test_explicit_opt_in_local_semantic_channels_use_full_original_provenance(self):
         from tests.filesystem_database.test_publisher_html_article_semantic import FakeLocalE5
         before=self.fixture.source_digests()

@@ -135,6 +135,103 @@ class ArchivedHtmlReferenceTests(unittest.TestCase):
         r=self.call(query='separate astrophysics cosmology neutrino simulations')
         self.assertEqual([],r['selected_links'])
 
+    def test_optin_true_parent_breadcrumb_without_query_overlap(self):
+        # Real descendant URL to an explicitly linked, separately approved
+        # ancestor overview. A literal-text mismatch is not license to claim
+        # factual relevance or fuse this breadcrumb into semantic scores.
+        child='manual/deep.html'
+        child_url='https://docs.example.org/engine/chapter/mesh/advanced'
+        parent=self.child
+        url=self.catalog[1]['url']
+        catalog=[*self.catalog,{'path':child,'kind':'html','url':child_url,
+                                'title':'Deep tutorial'}]
+        ledger=dict(self.ledger)
+        ledger[parent]=dict(self.ledger[parent])
+        raw=b'<article><a href="/engine/chapter/mesh">Mesh overview</a></article>'
+        kwargs=dict(raw_html=raw,original_sha256=sha(raw),publisher_url=child_url,
+                    catalog=catalog,completed_receipts=ledger,
+                    query='completely unrelated astrophysics equations and observations',
+                    original_path=child,limit=5)
+        self.assertEqual([],source_link_candidates(**kwargs)['selected_links'])
+        result=source_link_candidates(**kwargs,include_unmatched_ancestor_links=True)
+        self.assertEqual([parent],[z['catalog_target_original_path']
+                                   for z in result['selected_links']])
+        link=result['selected_links'][0]
+        self.assertTrue(link['explicit_archived_source_ancestor_reference'])
+        self.assertTrue(link['source_navigation_only_not_semantic_relevance_rank'])
+        self.assertEqual([],link['matched_query_terms'])
+        self.assertFalse(link['target_original_bytes_verified_by_this_function'])
+        self.assertTrue(result['unmatched_approved_ancestor_links_included_as_navigation_only'])
+
+    def test_optin_parent_requires_explicit_article_link_exact_url_and_approved_receipt(self):
+        child='manual/deep.html'
+        child_url='https://docs.example.org/engine/chapter/mesh/advanced'
+        catalog=[*self.catalog,{'path':child,'kind':'html','url':child_url,
+                                'title':'Deep material tutorial'}]
+        kw=dict(publisher_url=child_url,catalog=catalog,
+                original_path=child,query='astrophysics neutrino measurements',
+                completed_receipts=self.ledger,limit=5,
+                include_unmatched_ancestor_links=True)
+        nav=b'<article><nav><a href="/engine/chapter/mesh">Mesh parent</a></nav></article>'
+        self.assertEqual([],source_link_candidates(nav,sha(nav),**{**kw,
+                              'include_unmatched_ancestor_links':False})['selected_links'])
+        nav_links=source_link_candidates(nav,sha(nav),**kw)['selected_links']
+        self.assertEqual([self.child],[z['catalog_target_original_path'] for z in nav_links])
+        self.assertTrue(nav_links[0]['link_explicitly_present_in_article_breadcrumb_nav'])
+        testcases=(
+            b'<article><a href="/engine/chapter/misleading">Mesh parent</a></article>',
+            b'<article><a href="https://evil.example.org/mesh">Mesh parent</a></article>',
+            b'<article><a href="/engine/chapter/mesh-other">Mesh parent</a></article>',
+        )
+        for raw in testcases:
+            with self.subTest(raw=raw):
+                r=source_link_candidates(raw,sha(raw),**kw)
+                self.assertEqual([],r['selected_links'])
+        raw=b'<article><a href="/engine/chapter/mesh">Mesh parent</a></article>'
+        denied={self.child:dict(self.ledger[self.child],status='pending')}
+        r=source_link_candidates(raw,sha(raw),**{**kw,'completed_receipts':denied})
+        self.assertEqual([],r['selected_links'])
+        with self.assertRaises(ValueError):
+            source_link_candidates(raw,sha(raw),**{**kw,'include_unmatched_ancestor_links':1})
+
+    def test_large_publisher_site_menu_is_rejected_unless_only_real_ancestors_are_scanned(self):
+        # A genuine article may contain hundreds of unrelated navigation
+        # anchors; the optional original breadcrumb path must retain the
+        # former two-hundred-link safety bound AFTER strict proper-ancestor
+        # filtering, never scan the full site menu as sources.
+        child='manual/child-deep.html'
+        url='https://docs.example.org/engine/chapter/mesh/deep'
+        source=[*self.catalog,{'path':child,'kind':'html','url':url,'title':'Child detail'}]
+        raw=('<article><nav>'
+             +''.join('<a href="/engine/chapter/sibling-'+str(i)+'">Unrelated '+str(i)+'</a>' for i in range(251))
+             +'<a href="/engine/chapter/mesh">Texture and mesh loading</a>'
+             +'</nav></article>').encode()
+        kw=dict(raw_html=raw,original_sha256=sha(raw),publisher_url=url,
+                catalog=source,completed_receipts=self.ledger,
+                query='unrelated astrophysics and neutrino fields',
+                original_path=child,limit=5,include_unmatched_ancestor_links=True)
+        with self.assertRaisesRegex(ValueError,'unbounded original HTML article references'):
+            source_link_candidates(**kw)
+        d=source_link_candidates(**kw,only_explicit_ancestor_navigation=True)
+        self.assertEqual(252,d['all_article_links_observed_before_strict_ancestor_filter'])
+        self.assertEqual(1,d['original_archived_catalog_reference_count'])
+        self.assertEqual([self.child],[z['catalog_target_original_path'] for z in d['selected_links']])
+        self.assertTrue(d['selected_links'][0]['link_explicitly_present_in_article_breadcrumb_nav'])
+        # Attack volume consisting exclusively of repeated ancestor links
+        # remains too large even after filtering, so it must fail closed.
+        many=('<article><nav>'+''.join(
+            '<a href="/engine/chapter/mesh">Texture and mesh loading</a>' for _ in range(205)
+            )+'</nav></article>').encode()
+        with self.assertRaisesRegex(ValueError,'unbounded original HTML article references'):
+            source_link_candidates(**{**kw,'raw_html':many,'original_sha256':sha(many),
+                                      'only_explicit_ancestor_navigation':True})
+
+    def test_strict_ancestor_switch_only_works_with_explicit_parent_nav_optin(self):
+        with self.assertRaises(ValueError):
+            self.call(only_explicit_ancestor_navigation=True)
+        with self.assertRaises(ValueError):
+            self.call(include_unmatched_ancestor_links=True,only_explicit_ancestor_navigation=1)
+
     def test_unsafe_original_path_or_unbounded_top_are_refused(self):
         for path in ('../book.html','/data/var/Knowledge Library/private.html','bad\\book.html'):
             with self.subTest(path=path),self.assertRaises(ValueError):
