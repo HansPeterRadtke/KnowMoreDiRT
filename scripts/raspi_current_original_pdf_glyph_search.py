@@ -48,6 +48,14 @@ def main():
     output=safe_private_result_path(args.output,source_root=args.original_root,
                                     derived_root=args.derived_root,native_filedb=args.native_db,
                                     source_map_db=args.source_map)
+    # The original PDF may be commercially licensed or confidential to the
+    # owner's offline library. Restrict every new report to the source
+    # FileDB's dedicated private audit subtree, even when a caller supplies
+    # an otherwise writable destination outside the protected native DB.
+    owner_private=(args.native_db.parent/'search-audit')
+    if (not owner_private.is_dir() or owner_private.is_symlink()
+            or not output.parent.is_relative_to(owner_private.resolve(strict=True))):
+        raise ValueError('original publisher private page search must stay inside the native FileDB owner-private search-audit directory')
     candidate=candidate_current_original_physical_glyph_page(
         original_path=args.original_path,page=args.physical_page,query=args.query,
         original_root=args.original_root,derived_root=args.derived_root,

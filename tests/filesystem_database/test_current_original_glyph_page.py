@@ -348,6 +348,19 @@ class UnstagedOriginalPhysicalPageTests(unittest.TestCase):
                     cli.main()
                 retry.assert_not_called()
             self.assertEqual(sha(self.original_data),sha(self.original.read_bytes()))
+            # Exfiltration into an arbitrary path outside this same
+            # FileDB's owner-private report tree is never permitted, even
+            # if that path is writable and source bytes are approved.
+            with TemporaryDirectory() as destination:
+                foreign=Path(destination)/'unsafe_output_outside_audit.json'
+                alternate_args=list(args)
+                alternate_args[alternate_args.index(str(target))]=str(foreign)
+                with mock.patch.object(sys,'argv',alternate_args),mock.patch.object(
+                        cli,'candidate_current_original_physical_glyph_page') as attempted:
+                    with self.assertRaisesRegex(ValueError,'owner-private search-audit'):
+                        cli.main()
+                    attempted.assert_not_called()
+                self.assertFalse(foreign.exists())
         finally:
             sys.path.remove(scripts)
 
