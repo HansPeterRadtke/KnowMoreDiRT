@@ -360,6 +360,18 @@ the source query. This establishes source identity and genuine
 derivative-text location, **not** physical PDF page geometry,
 authorship of a generated summary or scientific answer correctness.
 
+A second existing read-only post-hoc source reviewer used
+an initial publisher source-unit boundary but could accept
+an exact-source SHA-backed review anchor **inside a later
+extractor-written PDF page label**. Its current review
+anchors now must lie wholly inside one complete publisher
+source body, rather than within a later marker or spanning
+two separate pages. An unclosed or oversized source-unit
+delimiter makes the review abstain. These checks preserve
+original/derived SHA verification and leave physical PDF
+page confirmation separate; a human review grade is not
+automatically relevant or factually true.
+
 The dual-source CLI also reads the canonical source-map using a
 bounded **twenty-second query-only SQLite reader** and closes the
 connection after verification. This corrects its last direct

@@ -159,6 +159,59 @@ class SourceReviewProofTests(unittest.TestCase):
         row['evidence_anchors'][0]['source_start_char']=self.source.index(phrase)
         return newpath
 
+    def test_extractor_second_pdf_label_only_cannot_verify_review_quote(self):
+        name=self.turn_source_into_pdf()
+        actual=self.source
+        second='[[SOURCE UNIT: PDF page 13]]'
+        paragraph='This genuine second source page describes a different research claim.'
+        self.source=actual+second+chr(10)+paragraph+chr(10)
+        derivative=self.deriv/self.derived_path
+        derivative.write_text(self.source)
+        new_sha=digest(derivative.read_bytes())
+        self.map.execute('UPDATE originals SET derived_sha256=? WHERE source_path=?',
+                         (new_sha,name))
+        quote=second
+        r=deepcopy(self.review)
+        r['cases'][0]['derived_sha256']=new_sha
+        r['cases'][0]['evidence_anchors']=[
+            {'source_start_char':self.source.index(quote),
+             'exact_derived_excerpt':quote,
+             'excerpt_sha256':digest(quote.encode())}]
+        with self.assertRaisesRegex(ValueError,'publisher text body'):
+            self.check(r)
+        # A full source-unit boundary must not be crossed and described
+        # as one original publisher quote either.
+        tail='statement.'+chr(10)+second+chr(10)+'This genuine'
+        r['cases'][0]['evidence_anchors']=[
+            {'source_start_char':self.source.index(tail),
+             'exact_derived_excerpt':tail,
+             'excerpt_sha256':digest(tail.encode())}]
+        with self.assertRaisesRegex(ValueError,'publisher text body'):
+            self.check(r)
+        # Positive second-page original body still works, by itself.
+        r['cases'][0]['evidence_anchors']=[
+            {'source_start_char':self.source.index(paragraph),
+             'exact_derived_excerpt':paragraph,
+             'excerpt_sha256':digest(paragraph.encode())}]
+        result=self.check(r)
+        self.assertEqual(1,result['reviewed'])
+        self.assertEqual(paragraph,self.source[
+            result['cases'][0]['source_text_anchors_sha_verified'][0]['start_char']:
+            result['cases'][0]['source_text_anchors_sha_verified'][0]['end_char']])
+
+    def test_unclosed_later_source_unit_cannot_prove_review_text(self):
+        name=self.turn_source_into_pdf()
+        self.source += '[[SOURCE UNIT: PDF page '+('X'*520)+chr(10)
+        derivative=self.deriv/self.derived_path
+        derivative.write_text(self.source)
+        new_sha=digest(derivative.read_bytes())
+        self.map.execute('UPDATE originals SET derived_sha256=? WHERE source_path=?',
+                         (new_sha,name))
+        r=deepcopy(self.review)
+        r['cases'][0]['derived_sha256']=new_sha
+        with self.assertRaisesRegex(ValueError,'incomplete or untrusted publisher source-unit'):
+            self.check(r)
+
     def test_pdf_physical_page_proof_is_separate_from_relevance_grade(self):
         source=self.turn_source_into_pdf()
         mock_verifier=mock.Mock(return_value=[{'status':'verified','page':2,

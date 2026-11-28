@@ -19,6 +19,29 @@ from .publisher_pdf_page import verify_pdf_page_excerpts
 
 SHA = re.compile(r"[0-9a-f]{64}\Z")
 GRADES = {"partial_support", "direct_support", "different_topic_observed", "evidence_unclear"}
+# Derived PDF page and HTML unit labels are extractor metadata, never quotes.
+_SOURCE_UNIT_START = re.compile(r"\[\[SOURCE UNIT:")
+_COMPLETE_SOURCE_UNIT = re.compile(r"\[\[SOURCE UNIT: ([^\]\r\n]{1,500})\]\]")
+
+
+def publisher_body_intervals(text: str) -> list[tuple[int,int]]:
+    """Return exclusive generated-marker-free source ranges in exact char offsets.
+
+    Original-review anchors use character positions in the SHA-checked
+    derivative. Validate every generated source marker before allowing any
+    original quotation; an unclosed or overlong marker fails closed.
+    """
+    if not isinstance(text,str) or not text:
+        raise ValueError("missing derived publisher source text")
+    markers=list(_COMPLETE_SOURCE_UNIT.finditer(text))
+    raw_starts=[match.start() for match in _SOURCE_UNIT_START.finditer(text)]
+    if (not markers or len(markers)>50000
+            or raw_starts != [match.start() for match in markers]):
+        raise ValueError("incomplete or untrusted publisher source-unit delimiters")
+    return [
+        (marker.end(),markers[i+1].start() if i+1<len(markers) else len(text))
+        for i,marker in enumerate(markers)
+    ]
 
 
 def safe_file(root: Path, relative: str) -> Path:
@@ -125,13 +148,7 @@ def validate_reviews(*, shadow: dict, review: dict, source_map: sqlite3.Connecti
             text = blob.decode("utf-8",errors="strict")
         except UnicodeDecodeError as error:
             raise ValueError("derived text is not strict UTF-8") from error
-        marker = text.find("[[SOURCE UNIT:")
-        if marker < 0:
-            raise ValueError("derivative lacks publisher text boundary")
-        marker_end = text.find("]]",marker + len("[[SOURCE UNIT:"))
-        if marker_end < 0:
-            raise ValueError("invalid publisher text marker")
-        publisher_start = marker_end + 2
+        source_bodies = publisher_body_intervals(text)
         anchors = row.get("evidence_anchors")
         if not isinstance(anchors,list) or not 1 <= len(anchors) <= 6:
             raise ValueError("no bounded source evidence anchors")
@@ -142,12 +159,14 @@ def validate_reviews(*, shadow: dict, review: dict, source_map: sqlite3.Connecti
             offset = anchor.get("source_start_char")
             excerpt = anchor.get("exact_derived_excerpt")
             excerpt_sha = anchor.get("excerpt_sha256")
-            if (type(offset) is not int or offset < publisher_start
+            if (type(offset) is not int or offset < 0
                     or not isinstance(excerpt,str) or not 20 <= len(excerpt) <= 400
                     or not isinstance(excerpt_sha,str) or not SHA.fullmatch(excerpt_sha)
                     or hashlib.sha256(excerpt.encode()).hexdigest() != excerpt_sha
-                    or text[offset:offset+len(excerpt)] != excerpt):
-                raise ValueError("quoted review span absent from current source publisher text")
+                    or text[offset:offset+len(excerpt)] != excerpt
+                    or not any(left <= offset and offset+len(excerpt) <= right
+                               for left,right in source_bodies)):
+                raise ValueError("quoted review span absent from one current publisher text body")
             verified_spans.append({"start_char":offset,"end_char":offset+len(excerpt),
                                    "excerpt_sha256":excerpt_sha})
         page_proofs = []
