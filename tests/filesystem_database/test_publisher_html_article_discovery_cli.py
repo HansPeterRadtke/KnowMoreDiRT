@@ -302,6 +302,54 @@ class PublisherHTMLArticleCLIIntegrationTests(unittest.TestCase):
                 self.assertFalse(r['title_only_rank_is_not_original_article_content_evidence'])
         self.assertEqual(before,self.fixture.source_digests())
 
+    def test_extended_approved_article_source_semantic_optin_is_boolean_and_keeps_default_limit(self):
+        from tests.filesystem_database.test_publisher_html_article_semantic import FakeLocalE5
+        kwargs=self.fixture.search_arguments()
+        with mock.patch.object(self.cli,'load_scoped_articles',wraps=self.cli.load_scoped_articles) as scan:
+            old=self.cli.search(**kwargs,
+                include_local_semantic=True,semantic_model=FakeLocalE5())
+            self.assertFalse(old['extended_approved_original_publisher_scope_opted_in'])
+            self.assertEqual(512,scan.call_args.kwargs['max_records'])
+            self.assertEqual(128*1024*1024,scan.call_args.kwargs['max_total_bytes'])
+        with mock.patch.object(self.cli,'load_scoped_articles',wraps=self.cli.load_scoped_articles) as scan:
+            large=self.cli.search(**kwargs,
+                include_local_semantic=True,semantic_model=FakeLocalE5(),
+                extended_approved_scope=True)
+            self.assertTrue(large['extended_approved_original_publisher_scope_opted_in'])
+            self.assertEqual(768,scan.call_args.kwargs['max_records'])
+            self.assertEqual(384*1024*1024,scan.call_args.kwargs['max_total_bytes'])
+            self.assertEqual({'literal','porter','semantic_article','semantic_catalog_title'},
+                             set(large['queries'][0]['independent_rank_channels']))
+            self.assertTrue(large['all_displayed_sources_freshly_revalidated_after_batch'])
+            self.assertFalse(large['cross_store_atomic_generation_pinned'])
+            self.assertTrue(large['local_semantic_channels_are_independent_and_never_score_fused'])
+        with self.assertRaisesRegex(ValueError,'explicit boolean'):
+            self.cli.search(**kwargs,include_local_semantic=True,
+                            semantic_model=FakeLocalE5(),extended_approved_scope=1)
+
+    def test_large_lexical_manual_does_not_elevate_original_semantic_model_bounds(self):
+        from tests.filesystem_database.test_publisher_html_article_semantic import FakeLocalE5
+        # Five hundred thirteen predeclared already approved HTML source
+        # catalog records: an explicit larger lexical scan is permitted, but
+        # the original E5 model must NOT be auto-launched as if its 512-doc /
+        # 2048-window source context had also been expanded.
+        source_catalog={
+            f'manual/en/4.5/scene/{i}.html':{
+                'kind':'html','path':f'manual/en/4.5/scene/{i}.html',
+                'source_url':SCOPE+f'scene/{i}.html',
+                'url':SCOPE+f'scene/{i}.html',
+            }
+            for i in range(513)
+        }
+        params=self.fixture.search_arguments()
+        with mock.patch.object(self.cli,'load_records',return_value=source_catalog) as loads,             mock.patch.object(self.cli,'load_scoped_articles') as scan:
+            with self.assertRaisesRegex(ValueError,'no local E5 job started'):
+                self.cli.search(**params,include_local_semantic=True,
+                                semantic_model=FakeLocalE5(),
+                                extended_approved_scope=True)
+            self.assertEqual(1,loads.call_count)
+            scan.assert_not_called()
+
     def test_optin_semantic_source_changes_after_initial_index_refuse(self):
         from tests.filesystem_database.test_publisher_html_article_semantic import FakeLocalE5
         class MutateDuringSemantic(FakeLocalE5):
@@ -363,6 +411,33 @@ class PublisherHTMLArticleCLIIntegrationTests(unittest.TestCase):
         self.assertNotIn('local_article_semantic_opt_in',default)
         self.assertEqual({'literal','porter'},
                          set(default['queries'][0]['independent_rank_channels']))
+
+    def test_extended_scope_must_be_explicit_and_never_changes_normal_limits(self):
+        from file_system_catalog.publisher_html_article_discovery import (
+            DEFAULT_SCOPE_BYTES,DEFAULT_SCOPE_RECORDS,
+            MAX_SCOPE_BYTES,MAX_SCOPE_RECORDS,
+        )
+        cli=load_cli()
+        kwargs=self.fixture.search_arguments()
+        assert 'extended_approved_scope' not in kwargs
+        with mock.patch.object(cli,'load_scoped_articles',wraps=cli.load_scoped_articles) as scanner:
+            result=cli.search(**kwargs)
+            self.assertFalse(result['extended_approved_original_publisher_scope_opted_in'])
+            self.assertTrue(result['no_automatic_scope_limit_increase_or_out_of_scope_fallback'])
+            self.assertEqual(DEFAULT_SCOPE_RECORDS,scanner.call_args.kwargs['max_records'])
+            self.assertEqual(DEFAULT_SCOPE_BYTES,scanner.call_args.kwargs['max_total_bytes'])
+            self.assertEqual(DEFAULT_SCOPE_RECORDS,result['source_scan']['max_scope_records'])
+        with mock.patch.object(cli,'load_scoped_articles',wraps=cli.load_scoped_articles) as scanner:
+            result=cli.search(**kwargs,extended_approved_scope=True)
+            self.assertTrue(result['extended_approved_original_publisher_scope_opted_in'])
+            self.assertEqual(MAX_SCOPE_RECORDS,scanner.call_args.kwargs['max_records'])
+            self.assertEqual(MAX_SCOPE_BYTES,scanner.call_args.kwargs['max_total_bytes'])
+            self.assertEqual(MAX_SCOPE_RECORDS,result['source_scan']['max_scope_records'])
+            self.assertFalse(result['source_scan']['out_of_scope_fallback_allowed'])
+            self.assertTrue(result['native_filedb_and_source_map_read_only'])
+        for value in (1,'true',None,[],object()):
+            with self.subTest(value=str(value)),self.assertRaisesRegex(ValueError,'explicit boolean'):
+                cli.search(**kwargs,extended_approved_scope=value)
 
     def test_actual_single_query_stdout_preserves_all_source_bytes(self):
         before = self.fixture.source_digests()

@@ -481,7 +481,7 @@ class ScopedArticleRetrievalTests(ScopedArticleFixture):
 
     def test_scan_budget_and_record_bounds(self):
         for field, bad in (("max_records", 0), ("max_records", True),
-                           ("max_records", 513), ("max_total_bytes", 0),
+                           ("max_records", article.MAX_SCOPE_RECORDS+1), ("max_total_bytes", 0),
                            ("max_total_bytes", -1), ("max_total_bytes", True),
                            ("max_total_bytes", article.MAX_SCOPE_BYTES + 1)):
             with self.subTest(field=field, value=bad):
@@ -494,6 +494,55 @@ class ScopedArticleRetrievalTests(ScopedArticleFixture):
                         identifier=41)
         with self.assertRaisesRegex(ValueError, "cardinality"):
             self.scan(max_records=1)
+
+    def test_extended_approved_publisher_scope_admits_over_512_only_when_explicitly_bounded(self):
+        """The old default remains 512 originals; larger approved manuals require opt-in."""
+        self.assertEqual(512, article.DEFAULT_SCOPE_RECORDS)
+        self.assertEqual(128 * 1024 * 1024, article.DEFAULT_SCOPE_BYTES)
+        self.assertEqual(768, article.MAX_SCOPE_RECORDS)
+        self.assertEqual(384 * 1024 * 1024, article.MAX_SCOPE_BYTES)
+        # One existing source plus 512 more within the exact same approved
+        # first-party publisher directory. No external URLs or network calls.
+        for n in range(512):
+            path=f'manual/version45/expanded/{n:04d}.html'
+            self.add_source(
+                path,self.scope.url+f'expanded/{n:04d}.html',
+                (f'<article><h1>Certified source chapter {n}</h1>'
+                 f'<p>A synthetic source proof about expanded books and complete chapters {n}.</p></article>').encode(),
+                identifier=2000+n)
+        with self.assertRaisesRegex(ValueError,'publisher scope exceeds explicit HTML cardinality limit'):
+            self.scan()
+        self.assertEqual(0,len(self.index.entries))
+        response=self.scan(max_records=article.MAX_SCOPE_RECORDS,
+                           max_total_bytes=article.MAX_SCOPE_BYTES)
+        self.assertEqual(513,response['eligible_html_records'])
+        self.assertEqual(513,response['verified_original_articles_indexed'])
+        self.assertTrue(response['all_scoped_html_articles_available'])
+        self.assertEqual(0,response['skipped_html_records'])
+        self.assertEqual('scoped_html_ready',response['scope_status'])
+        self.assertEqual(article.MAX_SCOPE_RECORDS,response['max_scope_records'])
+        self.assertEqual(article.MAX_SCOPE_BYTES,response['max_scope_bytes'])
+        self.assertNotIn(self.other_path,self.index.ids)
+        source=self.index.entries[self.index.ids['manual/version45/expanded/0511.html']]
+        proof=self.verify(source)
+        self.assertEqual(2511,proof['native_original_filedb_entry_id'])
+        self.assertTrue(proof['original_and_derivative_full_bytes_rehashed'])
+        self.assertFalse(proof['factual_answer_verified'])
+        self.final_check(source,proof)
+
+    def test_enlarged_source_scan_limits_still_reject_unapproved_bounds(self):
+        with self.assertRaisesRegex(ValueError,'invalid bounded scoped source scan'):
+            self.scan(max_records=article.MAX_SCOPE_RECORDS+1,
+                      max_total_bytes=article.MAX_SCOPE_BYTES)
+        with self.assertRaisesRegex(ValueError,'invalid bounded scoped source scan'):
+            self.scan(max_records=article.MAX_SCOPE_RECORDS,
+                      max_total_bytes=article.MAX_SCOPE_BYTES+1)
+        for values in [
+            {'max_records':True,'max_total_bytes':article.MAX_SCOPE_BYTES},
+            {'max_records':article.MAX_SCOPE_RECORDS,'max_total_bytes':True},
+        ]:
+            with self.subTest(values=values),self.assertRaises(ValueError):
+                self.scan(**values)
 
     def test_false_small_metadata_size_cannot_overread_scope_budget(self):
         raw = self.original_bytes[self.path]

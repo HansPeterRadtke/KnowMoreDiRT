@@ -23,8 +23,14 @@ MAX_METADATA_BYTES = 64 * 1024 * 1024
 MAX_METADATA_ROWS = 25000
 MAX_HTML_BYTES = 8 * 1024 * 1024
 MAX_DERIVATIVE_BYTES = 16 * 1024 * 1024
-MAX_SCOPE_BYTES = 128 * 1024 * 1024
-MAX_SCOPE_RECORDS = 512
+# The default original-source HTML scan is deliberately small. An explicit
+# opt-in extended published-manual scope can read larger *already approved*
+# first-party offline corpora, within hard CPU/RAM/byte/cardinality bounds.
+# Neither tier downloads sources or changes the native FileDB.
+DEFAULT_SCOPE_BYTES = 128 * 1024 * 1024
+DEFAULT_SCOPE_RECORDS = 512
+MAX_SCOPE_BYTES = 384 * 1024 * 1024
+MAX_SCOPE_RECORDS = 768
 MAX_ARTICLE_CHARS = 2 * 1024 * 1024
 MAX_SELECTED_SOURCES = 128
 SHA = re.compile(r"[0-9a-f]{64}\Z")
@@ -570,8 +576,8 @@ def article_context(entry: ArticleEntry, excerpt: dict, *, characters: int) -> d
 
 def load_scoped_articles(*, source_map: sqlite3.Connection, original_root: Path,
                          catalog: dict, ledger: dict, index: ArticleRAMIndex,
-                         scope: PublisherScope, max_records: int = MAX_SCOPE_RECORDS,
-                         max_total_bytes: int = MAX_SCOPE_BYTES) -> dict:
+                         scope: PublisherScope, max_records: int = DEFAULT_SCOPE_RECORDS,
+                         max_total_bytes: int = DEFAULT_SCOPE_BYTES) -> dict:
     if (type(max_records) is not int or not 1 <= max_records <= MAX_SCOPE_RECORDS
             or type(max_total_bytes) is not int or not 1 <= max_total_bytes <= MAX_SCOPE_BYTES
             or source_map.execute("PRAGMA query_only").fetchone() != (1,)):

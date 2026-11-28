@@ -21,6 +21,7 @@ ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT / "src"))
 from file_system_catalog.publisher_html_article_discovery import (
     ArticleRAMIndex, PublisherScope, MAX_SELECTED_SOURCES,
+    DEFAULT_SCOPE_BYTES, DEFAULT_SCOPE_RECORDS, MAX_SCOPE_BYTES, MAX_SCOPE_RECORDS,
     load_records, load_scoped_articles, readonly, verify_entry,
     final_metadata_fence, article_context, read_bounded, MAX_HTML_BYTES,
 )
@@ -32,7 +33,7 @@ from raspi_publisher_firstunit_discovery import input_queries
 def search(*, publisher_url_prefix, queries, top, source_map, native_db,
            catalog_path, completed_ledger, original_root, derivative_root,
            context_chars=0, include_local_semantic=False, semantic_model=None,
-           include_approved_parent_links=False):
+           include_approved_parent_links=False, extended_approved_scope=False):
     scope = PublisherScope.parse(publisher_url_prefix)
     if type(context_chars) is not int or (context_chars != 0 and not 80 <= context_chars <= 2000):
         raise ValueError("article context must be zero or eighty through two thousand characters per neighbor")
@@ -43,6 +44,8 @@ def search(*, publisher_url_prefix, queries, top, source_map, native_db,
         raise ValueError('local semantic source discovery requires explicit opt-in')
     if type(include_approved_parent_links) is not bool:
         raise ValueError('publisher parent navigation requires an explicit boolean opt-in')
+    if type(extended_approved_scope) is not bool:
+        raise ValueError('extended approved publisher scope requires an explicit boolean opt-in')
     if include_approved_parent_links and isinstance(queries,list) and len(queries) > 4:
         raise ValueError('bounded parent navigation admits at most four questions')
     if not isinstance(queries, list) or not 1 <= len(queries) <= 32:
@@ -57,14 +60,43 @@ def search(*, publisher_url_prefix, queries, top, source_map, native_db,
         seen.add(q["id"])
     start = time.monotonic()
     catalog = load_records(catalog_path, "sources")
+    if include_local_semantic and extended_approved_scope:
+        # The locally pinned model's established trained-window safety
+        # contract remains 512 original documents and 2048 bounded windows.
+        # An extended original-HTML lexical scan is NOT permission to
+        # extend those model limits. Refuse before source parsing or ONNX
+        # loading; a semantic result cannot be silently incomplete.
+        semantic_html_candidates=0
+        for source in catalog.values():
+            if source.get("kind")!="html":
+                continue
+            urls=[source.get(key) for key in ("source_url","url") if source.get(key)]
+            admitted=False
+            for url in urls:
+                try:
+                    admitted=admitted or scope.contains(url)
+                except ValueError:
+                    continue
+            semantic_html_candidates+=int(admitted)
+        if semantic_html_candidates>512:
+            raise ValueError(
+                "original publisher semantic scope exceeds existing 512-source "
+                "and 2048-window safety capacity; no local E5 job started"
+            )
     ledger = load_records(completed_ledger, "items")
     selected = {}
     proofs = {}
     result_queries = []
     catalog_rows = list(catalog.values()) if include_approved_parent_links else None
     with closing(readonly(source_map)) as sm, closing(readonly(native_db)) as native, ArticleRAMIndex() as idx:
-        scan = load_scoped_articles(source_map=sm, original_root=original_root,
-                                    catalog=catalog, ledger=ledger, index=idx, scope=scope)
+        scan = load_scoped_articles(
+            source_map=sm, original_root=original_root,
+            catalog=catalog, ledger=ledger, index=idx, scope=scope,
+            max_records=(MAX_SCOPE_RECORDS if extended_approved_scope
+                         else DEFAULT_SCOPE_RECORDS),
+            max_total_bytes=(MAX_SCOPE_BYTES if extended_approved_scope
+                             else DEFAULT_SCOPE_BYTES),
+        )
         build_seconds = round(time.monotonic() - start, 3)
         semantic_index = None
         if include_local_semantic:
@@ -256,6 +288,8 @@ def search(*, publisher_url_prefix, queries, top, source_map, native_db,
         "generated_utc": datetime.now(timezone.utc).isoformat(),
         "publisher_url_prefix": scope.url,
         "query_count": len(queries), "source_scan": scan,
+        "extended_approved_original_publisher_scope_opted_in": extended_approved_scope,
+        "no_automatic_scope_limit_increase_or_out_of_scope_fallback": True,
         "context_characters_per_side": context_chars,
         **({"approved_parent_breadcrumbs_opt_in":True,
             "approved_parent_breadcrumbs_are_not_rank_fusion_or_factual_answers":True,
@@ -300,6 +334,8 @@ def main():
     choose.add_argument("--queries-file", type=Path)
     ap.add_argument("--publisher-url-prefix", required=True)
     ap.add_argument("--top", type=int, default=5)
+    ap.add_argument("--extended-approved-scope",action="store_true",
+                    help="EXPLICIT OPT-IN: allow up to 768 existing approved publisher HTML originals and 384 MiB of original HTML reads (default 512 / 128 MiB); obtain a broker lease first. No fetch, model or native index write.")
     ap.add_argument("--include-local-semantic",action="store_true",
                     help="Opt-in local CPU E5 article and catalog-title channels. Requires broker admission; no global model/rank change.")
     ap.add_argument("--include-approved-parent-links",action="store_true",
@@ -329,6 +365,7 @@ def main():
         context_chars=args.context_chars,
         include_local_semantic=args.include_local_semantic,
         include_approved_parent_links=args.include_approved_parent_links,
+        extended_approved_scope=args.extended_approved_scope,
     )
     raw = (json.dumps(output, ensure_ascii=False, indent=2) + "\n").encode()
     if args.output is None:

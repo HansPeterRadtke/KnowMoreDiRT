@@ -359,6 +359,124 @@ native FileDB integration requires separate design and validation,
 not a shadow semantic database. The source-indexing workers, original
 documents and existing vectors were left untouched.
 
+## Extended Unity six-point-three source manual — bounded original article search
+
+The current original Unity six-point-three manual archive contains **five
+hundred seventy-four** approved, already acquired original HTML pages,
+totaling about **two hundred seventy-nine megabytes**. The default strict
+publisher-article source reader intentionally admits at most five hundred
+twelve source files and one hundred twenty-eight mebibytes of originals.
+That is not evidence the remaining original pages are missing, and the
+default guard is **not** raised automatically.
+
+A new **explicit, local-only** `--extended-approved-scope` switch permits
+at most seven hundred sixty-eight already approved first-party
+HTML originals and three hundred eighty-four mebibytes of source-byte
+reads. The per-file eight-mebibyte limit, owner-approved acquisition
+ledger, same HTTPS publisher version directory, safe HTML-article
+structure, source-map revision, full original and derivative SHA, native
+FileDB original ID and final source-byte reread protections remain in
+force. Unknown source documents do not become valid because the
+scope limit increased. There is no fallback to an older manual edition,
+cross-origin search, download, export or persistent index write.
+
+Before a resource-intensive real scan, obtain and register the owner
+project's Raspi resource-broker CPU and memory admission. This example
+searches the ENTIRE already archived Unity six-point-three manual
+in one ephemeral read-only source-text index, not a preselected
+gold-source folder:
+
+~~~bash
+PYTHONDONTWRITEBYTECODE=1 PYTHONPATH=src:. \
+  /data/var/knowmoredirt/semantic-venv/bin/python \
+  scripts/raspi_publisher_html_article_discovery.py \
+  --publisher-url-prefix 'https://docs.unity.com/en-us/engine/6000.3/manual/' \
+  --extended-approved-scope \
+  --query 'Find examples of registering and handling UI Toolkit event callbacks.' \
+  --top 10 \
+  --output '/data/var/knowmoredirt/knowledge-library/search-audit/UNIQUE-PRIVATE-UNITY-ORIGINAL-SEARCH.json'
+~~~
+
+The November twenty-eighth real five-question benchmark used five
+**previously frozen** Unity source questions that were all absent from
+both global first-source-unit lexical top tens; each source URL,
+question SHA, original file SHA and native ID was locked before the
+new entire-manual result. The enlarged original-article reader
+parsed **all five hundred seventy-four** current approved Unity
+source HTML pages with **zero skipped**, and returned two of those five
+predeclared known original references in its separate top ten
+literal/Porter channels: the Shader Graph source and the Running Tests
+source. The other three sources remain present and source-SHA-valid,
+but did **not** rank in the article top tens. This is a bounded
+publisher-specific source-candidate discovery improvement, not
+a promise of global native retrieval or factual answer truth.
+
+A separately precommitted, broader *topic-scoped* original HTML
+lookup of the approved Unity `lighting-overview/` directory
+(48 sources) retrieved the previously missed reflection-probe
+source at **literal rank two / Porter rank five**. The
+separately precommitted `analysis/` and `uitoolkits/`
+broad-topic scans did **not** recover their missing originals
+within their top tens. That is a useful navigation route,
+not a global search result. The existing unchanged native
+summary-vector search returned four of the five original
+Unity references within its own first ten positions: URP
+GPU Resident Drawer **eighth**, Shader Graph **fourth**,
+Running Tests **first**, and UI event examples **third**.
+The reflection-probe source was absent from that native
+ten, but independently present in the lighting topic.
+The current native UI-event query was initially **unavailable
+due to an ordinary live SQLite writer lock**, not a
+negative ranking; it returned the same source at rank three
+on one separately broker-approved read-only pass after
+the writer conflict subsided.
+
+The existing source-verified generated-summary-word search
+found three of those five current originals in its
+separate top ten: URP source **second**, Shader Graph
+**second**, and Running Tests **fifth**. The final
+independent provenance audit rehashed all five approved
+publisher originals and their current extracted derivatives,
+checked unique native FileDB identities, and found all
+**five** immutable original references in **at least one**
+of these separately requested, current original/native or
+topic-scoped source readers. These independent source
+rank lists must **NEVER** be fused into a fabricated
+five-of-five global top-ten ranking, and source presence
+is not proof that the document factually answers a
+question. The old native/global model score and original
+corpus remain unchanged.
+
+A second private independent source proof rehashed every
+original publisher HTML and extracted source derivative (all
+five hundred seventy-four pairs), verified every source's unique
+native FileDB identity, and matched the displayed normalized
+source-text excerpts in sixty-one selected originals to exact
+current article positions. The source files were not changed.
+Publisher HTML source excerpts are not literal HTML bytes or
+browser-rendered code/figures, and word matches do not establish
+that an answer is complete or correct.
+
+**Important separate model limit:** `--extended-approved-scope`
+permits only the larger **lexical original-HTML** input. It is
+*not* authority to exceed the pinned E5 model's separate
+five-hundred-twelve-original and two-thousand-forty-eight-window
+source safety limits. A genuine entire-Unity local semantic
+trial exceeded the existing semantic-window capacity and was
+**not accepted**. The program now refuses a known over-limit
+extended manual with `--include-local-semantic` **before loading
+the local model**. Do not raise that safety cap or shard/retry
+the refused request merely to manufacture a semantic result.
+The local native KMD summary-vector query remains an
+independent existing search, not a substitute for the rejected
+full-original semantic workload.
+
+Source identities and source-related limitation flags stay
+in private Raspi audit reports; never commit the actual original
+Unity articles, private owner content or source excerpts to Git.
+The extended tier is opt-in and the previous smaller lookup
+retains its exact original source coverage rules.
+
 ## Original PBRT fourth-edition book chapters — first-party PreTeXt layout
 
 The current optional publisher-scoped archived-HTML reader now supports
